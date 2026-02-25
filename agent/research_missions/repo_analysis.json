@@ -1,0 +1,11 @@
+{
+  "objective": "Fully analyze this repository autonomously. Continue working until a complete structured case study is produced. Do not ask the user questions. Do not stop early. The mission is complete only when all required sections are written.",
+  "output_structure": ["System Understanding", "Weakness Map", "Upgrade Opportunities", "Lens Case Study", "Suggested Roadmap"],
+  "completion_contract": [
+    "System Understanding",
+    "Weakness Map",
+    "Upgrade Opportunities",
+    "Lens Case Study",
+    "Suggested Roadmap"
+  ]
+}

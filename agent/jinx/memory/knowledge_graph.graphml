@@ -1,0 +1,15 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd"><key id="d2" for="node" attr.name="created_at" attr.type="string"/>
+<key id="d1" for="node" attr.name="metadata" attr.type="string"/>
+<key id="d0" for="node" attr.name="label" attr.type="string"/>
+<graph edgedefault="directed"><node id="0">
+  <data key="d0">We prefer simple solutions over complex ones</data>
+  <data key="d1">{"type": "preference", "content": "We prefer simple solutions over complex ones"}</data>
+  <data key="d2">2026-02-22T19:18:25.930409</data>
+</node>
+<node id="1">
+  <data key="d0">REPAIR TEST: prefer tea over coffee</data>
+  <data key="d1">{"type": "preference", "content": "REPAIR TEST: prefer tea over coffee"}</data>
+  <data key="d2">2026-02-22T19:52:10.472607</data>
+</node>
+</graph></graphml>

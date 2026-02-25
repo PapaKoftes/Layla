@@ -1,0 +1,10 @@
+{
+  "objective": "Research and compare tools, libraries, and alternatives (use fetch_url for documentation). Produce a structured comparison and recommendations. Read-only; experiments only inside .research_lab.",
+  "output_structure": [
+    "System Understanding",
+    "Weakness Map",
+    "Upgrade Opportunities",
+    "Lens Case Study",
+    "Suggested Roadmap"
+  ]
+}

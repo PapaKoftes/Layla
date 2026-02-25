@@ -1,0 +1,29 @@
+{
+  "model_filename": "your-model.gguf",
+  "sandbox_root": ".",
+  "max_ram_percent": 90,
+  "max_cpu_percent": 90,
+  "web_allowlist": [],
+  "use_chroma": true,
+  "scheduler_study_enabled": true,
+  "scheduler_interval_minutes": 30,
+  "scheduler_recent_activity_minutes": 90,
+  "scheduler_use_capabilities": false,
+  "knowledge_sources": [
+    {"url": "https://fastapi.tiangolo.com/tutorial/first-steps/", "slug": "fastapi-quickstart"},
+    {"url": "https://docs.python.org/3/library/asyncio-task.html", "slug": "asyncio-tasks"}
+  ],
+  "uncensored": false,
+  "nsfw_allowed": false,
+  "knowledge_unrestricted": true,
+  "anonymous_access": true,
+  "enable_personality_expression": false,
+  "enable_cognitive_lens": false,
+  "enable_behavioral_rhythm": false,
+  "enable_lens_knowledge": false,
+  "enable_ui_reflection": false,
+  "enable_operational_guidance": false,
+  "enable_style_profile": false,
+  "research_max_tool_calls": 40,
+  "research_max_runtime_seconds": 240
+}

@@ -1,0 +1,1311 @@
+import asyncio
+import json
+import logging
+import queue
+import shutil
+import sys
+import threading
+import time
+import uuid
+from collections import deque
+from contextlib import asynccontextmanager
+from datetime import datetime
+from pathlib import Path
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
+
+from agent_loop import autonomous_run, stream_reason, strip_junk_from_reply, truncate_at_next_user_turn, _is_junk_reply
+
+logger = logging.getLogger("layla")
+
+# Anonymous access: we do not log client IP, auth headers, or other PII. No auth required for local use.
+# Updated on /agent, /wakeup, /learn (and /ui) so study job only runs when you're around
+_last_activity_ts: float = 0.0
+
+
+def touch_activity() -> None:
+    """Call from /agent, /wakeup, /learn, /ui to mark recent activity for scheduler."""
+    global _last_activity_ts
+    _last_activity_ts = time.time()
+
+# Process names (lowercase) that cause study job to skip so we don't override you
+_SCHEDULER_SKIP_PROCESSES = frozenset({
+    "overwatch", "valorant", "valorant", "steam", "fortniteclient", "riotclient",
+    "league of legends", "dota 2", "elden ring", "eldenring", "hogwarts", "cyberpunk",
+    "game", "games", "ea", "origin", "ubisoft", "battle.net", "epicgames",
+})
+
+
+def _game_or_fullscreen_running() -> bool:
+    """True if a known game process is running so we skip scheduled study."""
+    try:
+        import psutil
+        for p in psutil.process_iter(["name"]):
+            try:
+                name = (p.info.get("name") or "").lower()
+                if any(skip in name for skip in _SCHEDULER_SKIP_PROCESSES):
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+    except Exception:
+        pass
+    return False
+
+
+def _scheduled_study_job() -> None:
+    """Run one autonomous study plan only when you're there and not gaming.
+    When scheduler_use_capabilities is true, picks plan by urgency + diversification and records capability growth."""
+    try:
+        import runtime_safety
+        cfg = runtime_safety.load_config()
+        if not cfg.get("scheduler_study_enabled", True):
+            return
+        try:
+            activity_min = max(1, int(float(cfg.get("scheduler_recent_activity_minutes", 90))))
+        except (TypeError, ValueError):
+            activity_min = 90
+        if time.time() - _last_activity_ts > activity_min * 60:
+            return
+        if _game_or_fullscreen_running():
+            return
+        from jinx.memory.db import get_active_study_plans, append_scheduler_history
+        from jinx.memory import capabilities as cap_mod
+        plans = get_active_study_plans()
+        if not plans:
+            return
+        use_capabilities = bool(cfg.get("scheduler_use_capabilities", False))
+        plan, domain_id = cap_mod.get_next_plan_for_study(plans, use_capabilities=use_capabilities)
+        if not plan:
+            return
+        from services.study_service import run_autonomous_study_for_plan
+        summary = run_autonomous_study_for_plan(plan)
+        if domain_id:
+            try:
+                usefulness = cap_mod.run_learning_validation(summary)
+                cap_mod.record_practice(domain_id, mission_id=plan.get("id"), usefulness_score=usefulness)
+                append_scheduler_history(domain_id, plan.get("id"))
+            except Exception as e:
+                logger.warning("capability record_practice failed: %s", e)
+        logger.info("scheduled_study completed topic=%s domain_id=%s", plan.get("topic"), domain_id)
+    except Exception as e:
+        logger.exception("scheduled_study failed: %s", e)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    try:
+        import runtime_safety
+        cfg = runtime_safety.load_config()
+        if cfg.get("use_chroma"):
+            try:
+                from jinx.memory.vector_store import index_knowledge_docs
+                knowledge_dir = REPO_ROOT / "knowledge"
+                if knowledge_dir.exists():
+                    index_knowledge_docs(knowledge_dir)
+                    logger.info("knowledge docs indexed for Chroma")
+            except Exception as e:
+                logger.warning("knowledge index failed: %s", e)
+        # Preload embedder so first /agent request does not load sentence-transformers + HF
+        try:
+            from jinx.memory.vector_store import embed
+            embed("warmup")
+            logger.info("embedder preloaded")
+        except Exception as e:
+            logger.warning("embedder preload failed: %s", e)
+        if cfg.get("scheduler_study_enabled", True):
+            from apscheduler.schedulers.background import BackgroundScheduler
+            from apscheduler.triggers.interval import IntervalTrigger
+            sched = BackgroundScheduler()
+            try:
+                interval_min = max(5, min(120, int(float(cfg.get("scheduler_interval_minutes", 30)))))
+            except (TypeError, ValueError):
+                interval_min = 30
+            sched.add_job(_scheduled_study_job, IntervalTrigger(minutes=interval_min))
+            if cfg.get("enable_lens_refresh") and cfg.get("lens_refresh_interval_days"):
+                try:
+                    days = max(1, min(365, int(cfg["lens_refresh_interval_days"])))
+                    from lens_refresh import rebuild_lens_knowledge
+                    sched.add_job(rebuild_lens_knowledge, IntervalTrigger(days=days))
+                    logger.info("lens refresh scheduled every %s days", days)
+                except (TypeError, ValueError) as e:
+                    logger.warning("lens refresh not scheduled: %s", e)
+            sched.start()
+            app.state.scheduler = sched
+            logger.info("scheduler started (study every %s min when active)", interval_min)
+    except Exception as e:
+        logger.warning("scheduler not started: %s", e)
+    yield
+    # Shutdown
+    if hasattr(app.state, "scheduler"):
+        app.state.scheduler.shutdown(wait=False)
+
+
+app = FastAPI(lifespan=lifespan)
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+AGENT_DIR = Path(__file__).resolve().parent
+HISTORY_FILE = REPO_ROOT / "conversation_history.json"
+GOV_PATH = AGENT_DIR / ".governance"
+PENDING_FILE = GOV_PATH / "pending.json"
+AUDIT_LOG = GOV_PATH / "audit.log"
+
+# In-memory conversation history (max 20 turns); also persisted to disk
+_history: deque = deque(maxlen=20)
+
+
+def _load_history() -> None:
+    try:
+        if not HISTORY_FILE.exists():
+            return
+        data = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+        if not isinstance(data, list):
+            return
+        # If any assistant message is junk or echoed instructions, clear history to avoid poisoning the prompt
+        def _assistant_poison(item: dict) -> bool:
+            if item.get("role") != "assistant":
+                return False
+            c = (item.get("content") or "").strip()
+            if _is_junk_reply(c):
+                return True
+            c_lower = c.lower()
+            if "you are layla" in c_lower and ("use the identity" in c_lower or "rules below" in c_lower):
+                return True
+            if c.startswith("[") and "you are" in c_lower:
+                return True
+            return False
+
+        for item in data[-20:]:
+            if _assistant_poison(item):
+                _history.clear()
+                HISTORY_FILE.write_text("[]", encoding="utf-8")
+                return
+        for item in data[-20:]:
+            _history.append(item)
+    except Exception:
+        pass
+
+
+def _save_history() -> None:
+    try:
+        HISTORY_FILE.write_text(json.dumps(list(_history), indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _append_history(role: str, content: str) -> None:
+    _history.append({"role": role, "content": content})
+    _save_history()
+
+
+def _read_pending() -> list:
+    try:
+        if PENDING_FILE.exists():
+            data = json.loads(PENDING_FILE.read_text(encoding="utf-8"))
+            return data if isinstance(data, list) else []
+    except Exception:
+        pass
+    return []
+
+
+def _write_pending_list(data: list) -> None:
+    GOV_PATH.mkdir(parents=True, exist_ok=True)
+    PENDING_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def _audit(tool: str, args_summary: str, approved_by: str, result_ok: bool) -> None:
+    GOV_PATH.mkdir(parents=True, exist_ok=True)
+    line = f"{datetime.utcnow().isoformat()} | {tool} | {args_summary[:80]} | {approved_by} | {'ok' if result_ok else 'fail'}\n"
+    try:
+        with open(str(AUDIT_LOG), "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
+
+
+def _read_study_plans() -> list:
+    try:
+        from jinx.memory.db import get_active_study_plans
+        return get_active_study_plans()
+    except Exception:
+        return []
+
+
+def _read_wakeup_log() -> dict:
+    try:
+        from jinx.memory.db import get_last_wakeup
+        row = get_last_wakeup()
+        return row or {}
+    except Exception:
+        return {}
+
+
+# Load history at startup
+_load_history()
+
+from shared_state import set_refs
+from services import study_service
+from routers import study, approvals, agent as agent_router, research as research_router
+
+set_refs(
+    _history,
+    touch_activity,
+    _read_pending,
+    _write_pending_list,
+    _audit,
+    _append_history,
+    run_autonomous_study=study_service.run_autonomous_study_for_plan,
+)
+app.include_router(study.router)
+app.include_router(approvals.router)
+app.include_router(agent_router.router)
+app.include_router(research_router.router)
+
+
+# ─────────────────────────────────────────────────────────────
+# §16 Remote: auth and endpoint allowlist (production-safe, minimal)
+# ─────────────────────────────────────────────────────────────
+def _remote_allowed_paths(cfg: dict) -> list[str]:
+    """Derive allowlist from remote_mode if remote_allow_endpoints not set."""
+    explicit = cfg.get("remote_allow_endpoints") or []
+    if isinstance(explicit, list) and len(explicit) > 0:
+        return [str(p).strip() for p in explicit if p]
+    mode = (cfg.get("remote_mode") or "observe").strip().lower()
+    if mode == "interactive":
+        return ["/wakeup", "/project_discovery", "/health", "/agent", "/v1/chat/completions", "/learn/"]
+    return ["/wakeup", "/project_discovery", "/health"]
+
+
+def _is_localhost(host: str | None) -> bool:
+    if not host:
+        return True
+    h = (host or "").strip().lower()
+    return h in ("127.0.0.1", "localhost", "::1", "::ffff:127.0.0.1", "testclient")
+
+
+@app.middleware("http")
+async def remote_auth_middleware(request: Request, call_next):
+    """When remote_enabled: require Bearer token for non-localhost; enforce endpoint allowlist."""
+    try:
+        import runtime_safety
+        cfg = runtime_safety.load_config()
+        if not cfg.get("remote_enabled"):
+            return await call_next(request)
+    except Exception:
+        return await call_next(request)
+
+    client_host = request.client.host if request.client else None
+    if _is_localhost(client_host):
+        return await call_next(request)
+
+    # Non-localhost: require API key
+    api_key = cfg.get("remote_api_key")
+    if not api_key or not str(api_key).strip():
+        return JSONResponse(
+            {"ok": False, "error": "remote_access_requires_api_key", "detail": "Set remote_api_key in config."},
+            status_code=403,
+        )
+    auth = request.headers.get("Authorization") or ""
+    expected = f"Bearer {api_key.strip()}"
+    if auth.strip() != expected:
+        return JSONResponse(
+            {"ok": False, "error": "unauthorized", "detail": "Invalid or missing Authorization header."},
+            status_code=401,
+        )
+
+    # Endpoint allowlist
+    allowed = _remote_allowed_paths(cfg)
+    path = (request.url.path or "").strip()
+    ok = any(path == p or path.startswith(p.rstrip("/") + "/") or path == p.rstrip("/") for p in allowed)
+    if not ok:
+        return JSONResponse(
+            {"ok": False, "error": "forbidden", "detail": "Endpoint not allowed for remote mode."},
+            status_code=403,
+        )
+
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def trace_id_middleware(request: Request, call_next):
+    """Optional: add X-Trace-Id to responses for debugging. Propagate from request or generate new."""
+    response = await call_next(request)
+    try:
+        import runtime_safety
+        cfg = runtime_safety.load_config()
+        if not cfg.get("trace_id_enabled"):
+            return response
+    except Exception:
+        return response
+    trace_id = (request.headers.get("X-Trace-Id") or "").strip() or str(uuid.uuid4())
+    if getattr(response, "headers", None) is not None:
+        response.headers["X-Trace-Id"] = trace_id
+    return response
+
+
+# ─────────────────────────────────────────────────────────────
+# Health
+# ─────────────────────────────────────────────────────────────
+def _health_checks() -> tuple[bool, str]:
+    """Returns (ok, detail). Config and DB must pass; model/remote not checked (slow)."""
+    try:
+        import runtime_safety
+        cfg = runtime_safety.load_config()
+        if not isinstance(cfg, dict):
+            return False, "config_invalid"
+    except Exception as e:
+        logger.debug("health config: %s", e)
+        return False, "config_load_failed"
+    try:
+        from jinx.memory.db import get_recent_learnings
+        get_recent_learnings(n=1)
+    except Exception as e:
+        logger.debug("health db: %s", e)
+        return False, "db_unavailable"
+    return True, "ok"
+
+
+@app.get("/health")
+def health():
+    ok, detail = _health_checks()
+    if not ok:
+        return JSONResponse({"ok": False, "detail": detail}, status_code=503)
+    return {"ok": True, "detail": detail}
+
+
+# ─────────────────────────────────────────────────────────────
+# Project context (North Star §3)
+# ─────────────────────────────────────────────────────────────
+@app.get("/project_context")
+def get_project_context_api():
+    """Return current project context: name, domains, key_files, goals, lifecycle_stage. Read-only for Layla."""
+    try:
+        from jinx.memory.db import get_project_context
+        return get_project_context()
+    except Exception as e:
+        logger.warning("get_project_context failed: %s", e)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.get("/file_intent")
+def get_file_intent_api(path: str = ""):
+    """Read-only file intent (North Star §4). Query param: path. Returns format, intent, and format-specific keys."""
+    if not path:
+        return JSONResponse({"ok": False, "error": "path required"}, status_code=400)
+    try:
+        from jinx.file_understanding import analyze_file
+        return analyze_file(file_path=path)
+    except Exception as e:
+        logger.warning("file_intent failed: %s", e)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/project_context")
+async def set_project_context_api(req: Request):
+    """Update project context. Body: project_name?, domains?, key_files?, goals?, lifecycle_stage? (idea|planning|prototype|iteration|execution|reflection)."""
+    try:
+        from jinx.memory.db import set_project_context, PROJECT_LIFECYCLE_STAGES
+        try:
+            body = await req.json()
+        except Exception:
+            body = {}
+        set_project_context(
+            project_name=body.get("project_name", ""),
+            domains=body.get("domains"),
+            key_files=body.get("key_files"),
+            goals=body.get("goals", ""),
+            lifecycle_stage=body.get("lifecycle_stage", ""),
+        )
+        return {"ok": True, "lifecycle_stages": list(PROJECT_LIFECYCLE_STAGES)}
+    except Exception as e:
+        logger.warning("set_project_context failed: %s", e)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.get("/project_discovery")
+def get_project_discovery_api():
+    """North Star §18: detect opportunities, ideas, feasibility from project context + learnings."""
+    try:
+        from services.project_discovery import run_project_discovery
+        return run_project_discovery()
+    except Exception as e:
+        logger.warning("project_discovery failed: %s", e)
+        return JSONResponse(
+            {"opportunities": [], "ideas": [], "feasibility_notes": [], "error": str(e)},
+            status_code=500,
+        )
+
+
+# ─────────────────────────────────────────────────────────────
+# OpenAI-compatible model list
+# ─────────────────────────────────────────────────────────────
+@app.get("/v1/models")
+def v1_models():
+    return JSONResponse({
+        "object": "list",
+        "data": [
+            {
+                "id": "jinx",
+                "object": "model",
+                "created": 1700000000,
+                "owned_by": "local",
+            }
+        ],
+    })
+
+
+# ─────────────────────────────────────────────────────────────
+# OpenAI-compatible chat completions
+# ─────────────────────────────────────────────────────────────
+@app.post("/v1/chat/completions")
+async def v1_chat_completions(req: dict):
+    messages = (req or {}).get("messages", [])
+    workspace_root = (req or {}).get("workspace_root", "") or ""
+    allow_write = (req or {}).get("allow_write") is True
+    allow_run = (req or {}).get("allow_run") is True
+    aspect_id = (req or {}).get("aspect_id", "") or ""
+    show_thinking = bool((req or {}).get("show_thinking", False))
+
+    goal = ""
+    system_ctx = ""
+    for msg in messages:
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+        if role == "system":
+            system_ctx = content
+        elif role == "user":
+            goal = content
+
+    if not goal:
+        return JSONResponse({
+            "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": "jinx",
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": ""}, "finish_reason": "stop"}],
+        })
+
+    result = await asyncio.to_thread(
+        autonomous_run,
+        goal,
+        context=system_ctx,
+        workspace_root=workspace_root,
+        allow_write=allow_write,
+        allow_run=allow_run,
+        conversation_history=list(_history),
+        aspect_id=aspect_id,
+        show_thinking=show_thinking,
+    )
+
+    steps = result.get("steps") or []
+    final = steps[-1].get("result", "") if steps else ""
+    response_text = final if isinstance(final, str) else json.dumps(final) if final else ""
+
+    _append_history("user", goal)
+    _append_history("assistant", response_text)
+
+    return JSONResponse({
+        "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": "jinx",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": response_text},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "aspect": result.get("aspect", ""),
+    })
+
+
+# ─────────────────────────────────────────────────────────────
+# System export
+# ─────────────────────────────────────────────────────────────
+@app.get("/system_export")
+def system_export():
+    import runtime_safety
+    from jinx.tools.registry import TOOLS
+    from jinx.memory.db import get_recent_learnings, get_active_study_plans, get_last_wakeup, get_recent_audit
+
+    cfg = runtime_safety.load_config()
+
+    learnings_count = 0
+    try:
+        learnings_count = len(get_recent_learnings(n=9999))
+    except Exception:
+        pass
+
+    pending_list = _read_pending()
+    pending_count = len([e for e in pending_list if e.get("status") == "pending"])
+
+    try:
+        active_plans = [p.get("topic") for p in get_active_study_plans()]
+    except Exception:
+        active_plans = []
+    try:
+        last_wakeup_row = get_last_wakeup()
+    except Exception:
+        last_wakeup_row = None
+
+    audit_last = []
+    try:
+        rows = get_recent_audit(n=10)
+        audit_last = [
+            f"{r['timestamp']} | {r['tool']} | {r['args_summary']} | {r['approved_by']} | {'ok' if r['result_ok'] else 'fail'}"
+            for r in rows
+        ]
+    except Exception:
+        pass
+
+    try:
+        from orchestrator import _load_aspects
+        aspects_loaded = [a.get("id") for a in _load_aspects()]
+    except Exception:
+        aspects_loaded = []
+
+    model_filename = cfg.get("model_filename", "jinx-20b.gguf")
+    model_path = str(REPO_ROOT / "models" / model_filename)
+
+    import subprocess
+    git_status = ""
+    git_branch = ""
+    pip_freeze = ""
+    try:
+        r = subprocess.run(
+            ["git", "status", "--short"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        git_status = (r.stdout or "").strip() or (r.stderr or "").strip() or "not a git repo"
+    except Exception as e:
+        git_status = str(e)
+    try:
+        r = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        git_branch = (r.stdout or "").strip() or "—"
+    except Exception as e:
+        git_branch = str(e)
+    try:
+        r = subprocess.run(
+            [getattr(sys, "executable", "python"), "-m", "pip", "freeze"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        pip_freeze = (r.stdout or "").strip()
+    except Exception as e:
+        pip_freeze = str(e)
+
+    return JSONResponse({
+        "timestamp": datetime.utcnow().isoformat(),
+        "config": cfg,
+        "pending_count": pending_count,
+        "learnings_count": learnings_count,
+        "active_study_plans": active_plans,
+        "last_wakeup": (last_wakeup_row or {}).get("timestamp"),
+        "aspects_loaded": aspects_loaded,
+        "tools_registered": list(TOOLS.keys()),
+        "conversation_turns_in_memory": len(_history),
+        "model_path": model_path,
+        "audit_last_10": audit_last,
+        "git_status": git_status,
+        "git_branch": git_branch,
+        "pip_freeze": pip_freeze,
+    })
+
+
+# ─────────────────────────────────────────────────────────────
+# Rich occult web UI — served at /ui
+# ─────────────────────────────────────────────────────────────
+@app.get("/ui", response_class=HTMLResponse)
+def ui_rich():
+    touch_activity()
+    ui_file = AGENT_DIR / "ui" / "index.html"
+    if ui_file.exists():
+        try:
+            return HTMLResponse(ui_file.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning("ui file read failed: %s", e)
+    return HTMLResponse(_INLINE_UI)
+
+
+# Root serves the same full UI as /ui so chat works identically (no stale inline copy)
+@app.get("/", response_class=HTMLResponse)
+def ui_root():
+    touch_activity()
+    ui_file = AGENT_DIR / "ui" / "index.html"
+    if ui_file.exists():
+        try:
+            return HTMLResponse(ui_file.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning("ui file read failed: %s", e)
+    return HTMLResponse(_INLINE_UI)
+
+
+_INLINE_UI = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>∴ LAYLA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Cinzel:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<style>
+  :root {
+    --bg: #0a0008;
+    --bg2: #100010;
+    --crimson: #8b0000;
+    --violet: #3d0050;
+    --accent: #c0006a;
+    --text: #d4c5e2;
+    --text-dim: #7a6a8a;
+    --code-bg: #1a001a;
+    --border: #3d0050;
+    --glow: #8b000088;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  /* Scanline overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  .title { font-family: 'Cinzel', serif; color: var(--crimson); font-size: 1.3rem; letter-spacing: 0.2em; }
+  .aspect-badge {
+    font-size: 0.75rem;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 3px 10px;
+    border-radius: 2px;
+    letter-spacing: 0.15em;
+  }
+  .layout {
+    display: flex;
+    height: calc(100vh - 56px);
+  }
+  .sidebar {
+    width: 220px;
+    min-width: 180px;
+    border-right: 1px solid var(--border);
+    background: var(--bg2);
+    padding: 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    overflow-y: auto;
+  }
+  .sidebar h3 {
+    font-family: 'Cinzel', serif;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 4px;
+  }
+  .aspect-btn {
+    display: block;
+    width: 100%;
+    padding: 7px 10px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    cursor: pointer;
+    text-align: left;
+    border-radius: 2px;
+    margin-bottom: 4px;
+    transition: all 0.15s;
+  }
+  .aspect-btn:hover, .aspect-btn.active { background: var(--violet); border-color: var(--accent); color: #fff; }
+  .aspect-option { margin-bottom: 10px; }
+  .aspect-desc { display: block; font-size: 0.68rem; color: var(--text-dim); margin-top: 2px; margin-left: 2px; line-height: 1.25; }
+  .main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  #chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .msg { max-width: 720px; }
+  .msg-you { align-self: flex-end; }
+  .msg-layla { align-self: flex-start; }
+  .msg-label {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+    letter-spacing: 0.08em;
+  }
+  .msg-bubble {
+    padding: 14px 18px;
+    border-radius: 4px;
+    line-height: 1.65;
+    font-size: 0.95rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .msg-you .msg-bubble { background: var(--violet); border-left: 3px solid var(--accent); }
+  .msg-layla .msg-bubble { background: var(--code-bg); border-left: 3px solid var(--crimson); }
+  .msg-aspect { font-size: 0.68rem; color: var(--accent); margin-top: 6px; letter-spacing: 0.08em; font-style: italic; }
+  .deliberation { background: #1a001a; border: 1px solid var(--border); padding: 10px 12px; margin-top: 8px; font-size: 0.82rem; color: var(--text-dim); border-radius: 4px; }
+  .deliberation .deliberation-label { font-style: italic; margin-bottom: 4px; }
+  .tool-trace { font-size: 0.72rem; color: var(--text-dim); margin-top: 6px; cursor: pointer; }
+  .typing-indicator { padding: 10px 16px; color: var(--text-dim); font-style: italic; font-size: 0.88rem; }
+  .sidebar-hint { font-size: 0.7rem; color: var(--text-dim); line-height: 1.4; margin-top: 8px; }
+  .tool-trace summary { list-style: none; }
+  .tool-trace summary::-webkit-details-marker { display: none; }
+  .tool-trace-content { margin-top: 6px; padding: 8px; background: var(--bg); border-radius: 2px; font-size: 0.7rem; max-height: 120px; overflow-y: auto; }
+  .msg-bubble .md-content { white-space: normal; }
+  .msg-bubble .md-content pre { margin: 8px 0; overflow-x: auto; }
+  .msg-bubble .md-content code { padding: 2px 6px; }
+  .separator { text-align: center; color: var(--border); font-size: 0.8rem; margin: 4px 0; }
+  .input-area {
+    border-top: 1px solid var(--border);
+    padding: 14px 20px;
+    background: var(--bg2);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .toggles { display: flex; gap: 8px; align-items: center; }
+  .toggle-label { font-size: 0.7rem; color: var(--text-dim); }
+  .toggle-danger { color: #ff4444; }
+  input[type=checkbox] { accent-color: var(--crimson); }
+  #msg-input {
+    flex: 1;
+    padding: 10px 14px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9rem;
+    border-radius: 2px;
+    outline: none;
+  }
+  #msg-input:focus { border-color: var(--crimson); }
+  #send-btn {
+    padding: 10px 18px;
+    background: var(--crimson);
+    border: none;
+    color: #fff;
+    font-family: 'Cinzel', serif;
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: background 0.15s;
+  }
+  #send-btn:hover { background: var(--accent); }
+  .panels {
+    width: 240px;
+    border-left: 1px solid var(--border);
+    background: var(--bg2);
+    padding: 14px 12px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .panel-title {
+    font-family: 'Cinzel', serif;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 4px;
+    margin-bottom: 8px;
+  }
+  .panel-item {
+    font-size: 0.75rem;
+    color: var(--text);
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+  }
+  .approve-btn {
+    padding: 3px 8px;
+    background: var(--crimson);
+    border: none;
+    color: #fff;
+    font-size: 0.65rem;
+    cursor: pointer;
+    border-radius: 2px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .study-add { display: flex; gap: 6px; margin-top: 6px; }
+  .study-add input {
+    flex: 1;
+    padding: 5px 8px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    border-radius: 2px;
+  }
+  .study-add button {
+    padding: 5px 8px;
+    background: var(--violet);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 0.75rem;
+    cursor: pointer;
+    border-radius: 2px;
+  }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .greeting-banner {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px 18px;
+    font-size: 0.92rem;
+    line-height: 1.5;
+    color: var(--text);
+    align-self: flex-start;
+    max-width: 720px;
+  }
+  .greeting-banner .from { font-size: 0.72rem; color: var(--accent); margin-bottom: 6px; letter-spacing: 0.06em; font-style: italic; }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 2px; font-family: 'JetBrains Mono', monospace; color: #ff4466; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+</head>
+<body>
+<header>
+  <div class="title">∴ LAYLA</div>
+  <div id="aspect-badge" class="aspect-badge">∴ MORRIGAN</div>
+  <div style="display:flex;gap:12px;font-size:0.72rem;color:var(--text-dim)">
+    <span id="session-time"></span>
+    <a href="/system_export" target="_blank" style="color:var(--text-dim);text-decoration:none">⊕ export</a>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- Aspect sidebar -->
+  <div class="sidebar">
+    <div>
+      <h3>Voices</h3>
+      <p class="sidebar-hint">Talk to Layla or choose a voice. She remembers and grows with you.</p>
+      <div class="aspect-option">
+        <button class="aspect-btn active" onclick="setAspect('morrigan')" id="btn-morrigan">&#9876; Morrigan</button>
+        <span class="aspect-desc">Code, debug, review. The blade. Default for engineering.</span>
+      </div>
+      <div class="aspect-option">
+        <button class="aspect-btn" onclick="setAspect('nyx')" id="btn-nyx">&#9733; Nyx</button>
+        <span class="aspect-desc">Research, study sessions, depth and patterns.</span>
+      </div>
+      <div class="aspect-option">
+        <button class="aspect-btn" onclick="setAspect('echo')" id="btn-echo">&#9678; Echo</button>
+        <span class="aspect-desc">Companion, growth tracker, session greeter.</span>
+      </div>
+      <div class="aspect-option">
+        <button class="aspect-btn" onclick="setAspect('eris')" id="btn-eris">&#9889; Eris</button>
+        <span class="aspect-desc">Chaos, banter, games, music. Unhinged in the best way.</span>
+      </div>
+      <div class="aspect-option">
+        <button class="aspect-btn" onclick="setAspect('lilith')" id="btn-lilith">&#8859; Lilith</button>
+        <span class="aspect-desc">Core authority, ethics. NSFW register: use keyword (e.g. intimate, nsfw) in message.</span>
+      </div>
+    </div>
+    <div>
+      <h3>Options</h3>
+      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;margin-bottom:8px" title="See her reply as it types">
+        <input type="checkbox" id="stream-toggle"> Stream
+      </label>
+      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;margin-bottom:8px" title="Let her think with her inner voices before answering">
+        <input type="checkbox" id="show-thinking"> Her thoughts
+      </label>
+      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;color:#ff4444;margin-bottom:4px">
+        <input type="checkbox" id="allow-write"> Allow Write
+      </label>
+      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;color:#ff4444">
+        <input type="checkbox" id="allow-run"> Allow Run
+      </label>
+    </div>
+  </div>
+
+  <!-- Chat area -->
+  <div class="main-area">
+    <div id="chat"></div>
+    <div class="input-area">
+      <input type="text" id="msg-input" placeholder="What's on your mind?" onkeydown="if(event.key==='Enter')send()">
+      <button id="send-btn" onclick="send()">Send</button>
+    </div>
+  </div>
+
+  <!-- Panels -->
+  <div class="panels">
+    <div>
+      <div class="panel-title">Pending Approvals</div>
+      <div id="approvals-list"><span style="color:var(--text-dim);font-size:0.75rem">none</span></div>
+    </div>
+    <div>
+      <div class="panel-title">Study Plans</div>
+      <div id="study-list"><span style="color:var(--text-dim);font-size:0.75rem">none</span></div>
+      <div class="study-add">
+        <input type="text" id="study-input" placeholder="New topic...">
+        <button onclick="addStudyPlan()">+</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentAspect = 'morrigan';
+const sessionStart = Date.now();
+
+function setAspect(id) {
+  currentAspect = id;
+  document.querySelectorAll('.aspect-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + id)?.classList.add('active');
+  document.getElementById('aspect-badge').textContent = '∴ ' + id.toUpperCase();
+}
+
+function cleanLaylaText(s) {
+  if (typeof s !== 'string') return (s == null || s === undefined) ? '' : String(s);
+  return s.replace(/\\s*\\[EARNED_TITLE:\\s*[^\\]]+\\]\\s*$/gi, '').trim();
+}
+
+function addMsg(role, text, aspectName, deliberated, steps) {
+  const chat = document.getElementById('chat');
+  const div = document.createElement('div');
+  div.className = 'msg msg-' + (role === 'you' ? 'you' : 'layla');
+  const label = document.createElement('div');
+  label.className = 'msg-label';
+  label.textContent = role === 'you' ? 'You' : 'Layla';
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  if (role === 'layla') {
+    text = cleanLaylaText(text || '');
+    if (typeof marked !== 'undefined') {
+      const md = document.createElement('div');
+      md.className = 'md-content';
+      md.innerHTML = marked.parse(text || '');
+      bubble.appendChild(md);
+      bubble.querySelectorAll('pre code').forEach((el) => { if (window.hljs) hljs.highlightElement(el); });
+    } else {
+      bubble.textContent = text;
+    }
+  } else {
+    bubble.textContent = text;
+  }
+  div.appendChild(label);
+  div.appendChild(bubble);
+  if (role !== 'you' && aspectName) {
+    const asp = document.createElement('div');
+    asp.className = 'msg-aspect';
+    asp.textContent = '— ' + aspectName;
+    div.appendChild(asp);
+  }
+  if (steps && steps.length > 0) {
+    const trace = document.createElement('details');
+    trace.className = 'tool-trace';
+    trace.innerHTML = '<summary>What she did (' + steps.length + ')</summary>';
+    const pre = document.createElement('div');
+    pre.className = 'tool-trace-content';
+    pre.textContent = steps.map(s => s.action + ': ' + JSON.stringify(s.result).slice(0, 200)).join('\n');
+    trace.appendChild(pre);
+    div.appendChild(trace);
+  }
+  if (deliberated) {
+    const d = document.createElement('div');
+    d.className = 'deliberation';
+    d.innerHTML = '<span class="deliberation-label">Her thoughts</span><br>She considered this with her inner voices before answering.';
+    div.appendChild(d);
+  }
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function addSeparator() {
+  const chat = document.getElementById('chat');
+  const sep = document.createElement('div');
+  sep.className = 'separator';
+  sep.textContent = '─── ✦ ───';
+  chat.appendChild(sep);
+}
+
+async function send() {
+  const input = document.getElementById('msg-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  addMsg('you', msg);
+  addSeparator();
+
+  const streamMode = document.getElementById('stream-toggle')?.checked || false;
+  const payload = {
+    message: msg,
+    aspect_id: currentAspect,
+    show_thinking: document.getElementById('show-thinking').checked,
+    allow_write: document.getElementById('allow-write').checked,
+    allow_run: document.getElementById('allow-run').checked,
+    stream: streamMode,
+  };
+
+  const chatEl = document.getElementById('chat');
+  function showTyping() {
+    const wrap = document.createElement('div');
+    wrap.className = 'msg msg-layla';
+    wrap.id = 'typing-wrap';
+    wrap.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble typing-indicator">Thinking…</div>';
+    chatEl.appendChild(wrap);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+  function removeTyping() {
+    const w = document.getElementById('typing-wrap');
+    if (w) w.remove();
+  }
+
+  try {
+    if (streamMode) {
+      showTyping();
+      const res = await fetch('/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!res.ok || !res.body) { removeTyping(); let errMsg = res.statusText; try { const t = await res.text(); if (t) try { const d = JSON.parse(t); errMsg = d.response || errMsg; } catch(_) { errMsg = t.length < 120 ? t : errMsg; } } catch(_) {} addMsg('layla', errMsg, null, false, null); refreshApprovals(); return; }
+      removeTyping();
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let full = '';
+      const div = document.createElement('div');
+      div.className = 'msg msg-layla';
+      div.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble"><div class="md-content"></div></div>';
+      chatEl.appendChild(div);
+      const bubble = div.querySelector('.md-content');
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = dec.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const obj = JSON.parse(line.slice(6));
+              if (obj.token) { full += obj.token; bubble.innerHTML = typeof marked !== 'undefined' ? marked.parse(full) : full; bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); }); }
+              if (obj.done) break;
+            } catch (_) {}
+          }
+        }
+      }
+      full = cleanLaylaText(full);
+      bubble.innerHTML = typeof marked !== 'undefined' ? marked.parse(full) : full;
+      bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); });
+      const asp = document.createElement('div');
+      asp.className = 'msg-aspect';
+      asp.textContent = '— ' + (currentAspect || '');
+      div.appendChild(asp);
+      chatEl.scrollTop = chatEl.scrollHeight;
+      refreshApprovals();
+      return;
+    }
+    showTyping();
+    const res = await fetch('/agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    removeTyping();
+    if (!res.ok) {
+      let errBody = '';
+      try { errBody = await res.text(); } catch (_) {}
+      addMsg('layla', 'Error ' + res.status + (errBody && errBody.length < 150 ? ': ' + errBody : ''));
+      refreshApprovals();
+      return;
+    }
+    let data = {};
+    try { data = await res.json(); } catch (_) {
+      addMsg('layla', 'Invalid response from server (non-JSON).');
+      refreshApprovals();
+      return;
+    }
+    let msg = data.response;
+    if (!msg && data.state?.status === 'system_busy') msg = 'System is under load. Try again in a moment.';
+    if (!msg && data.state?.status === 'timeout') msg = 'Request took too long. Try again.';
+    if (!msg) msg = data.response || 'No response — try again.';
+    addMsg('layla', msg, data.aspect_name, data.state?.steps?.some(s => s.deliberated), data.state?.steps);
+    if (data.refused && data.refusal_reason) {
+      const refDiv = document.createElement('div');
+      refDiv.className = 'deliberation';
+      refDiv.innerHTML = '<span class="deliberation-label">She declined</span><br>' + (data.refusal_reason || '').replace(/</g, '&lt;');
+      document.getElementById('chat').lastElementChild?.appendChild(refDiv);
+    }
+    refreshApprovals();
+  } catch (e) {
+    removeTyping();
+    const err = ((e && (e.message || e.reason)) || String(e || '')).toLowerCase();
+    const isNetwork = err.includes('fetch') || err.includes('network') || err.includes('load failed');
+    const msg = isNetwork ? "Can't reach Layla — is the server running at http://127.0.0.1:8000?" : ('Something went wrong: ' + (e && (e.message || e.reason)) || 'unknown error');
+    addMsg('layla', msg);
+  }
+}
+
+async function refreshApprovals() {
+  try {
+    const res = await fetch('/pending');
+    const data = await res.json();
+    const list = document.getElementById('approvals-list');
+    const pending = (data.pending || []).filter(e => e.status === 'pending');
+    if (!pending.length) { list.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">none</span>'; return; }
+    list.innerHTML = '';
+    pending.forEach(e => {
+      const item = document.createElement('div');
+      item.className = 'panel-item';
+      item.innerHTML = '<span style="font-size:0.7rem">' + e.tool + '<br><span style="color:var(--text-dim)">' + e.id.slice(0,8) + '</span></span>';
+      const btn = document.createElement('button');
+      btn.className = 'approve-btn';
+      btn.textContent = 'Approve';
+      btn.onclick = () => approveId(e.id);
+      item.appendChild(btn);
+      list.appendChild(item);
+    });
+  } catch {}
+}
+
+async function approveId(id) {
+  await fetch('/approve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  });
+  refreshApprovals();
+}
+
+async function refreshStudyPlans() {
+  try {
+    const res = await fetch('/study_plans');
+    const data = await res.json();
+    const list = document.getElementById('study-list');
+    const plans = (data.plans || []).filter(p => p.status === 'active');
+    if (!plans.length) { list.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">none</span>'; return; }
+    list.innerHTML = '';
+    plans.forEach(p => {
+      const item = document.createElement('div');
+      item.className = 'panel-item';
+      item.style.display = 'flex';
+      item.style.justifyContent = 'space-between';
+      item.style.alignItems = 'center';
+      item.style.gap = '6px';
+      item.innerHTML = '<span style="font-size:0.72rem">' + (p.topic || '').replace(/</g, '&lt;') + '</span>';
+      const studyBtn = document.createElement('button');
+      studyBtn.className = 'approve-btn';
+      studyBtn.textContent = 'Study now';
+      studyBtn.onclick = () => studyNow(p.topic);
+      item.appendChild(studyBtn);
+      list.appendChild(item);
+    });
+  } catch {}
+}
+
+async function studyNow(topic) {
+  if (!topic) return;
+  const payload = { message: 'Study session on: ' + topic + '. Explain key concepts, list important points, and suggest resources.', aspect_id: 'nyx', show_thinking: false, allow_write: false, allow_run: false };
+  addMsg('you', 'Study now: ' + topic);
+  addSeparator();
+  try {
+    const res = await fetch('/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    addMsg('layla', data.response || '', data.aspect_name, data.state?.steps?.some(s => s.deliberated), data.state?.steps);
+  } catch (e) { addMsg('layla', 'Error: ' + e.message); }
+  refreshStudyPlans();
+}
+
+async function addStudyPlan() {
+  const input = document.getElementById('study-input');
+  const topic = input.value.trim();
+  if (!topic) return;
+  input.value = '';
+  await fetch('/study_plans', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic }),
+  });
+  refreshStudyPlans();
+}
+
+async function doWakeup() {
+  try {
+    const res = await fetch('/wakeup');
+    const data = await res.json();
+    if (data.greeting) {
+      const chat = document.getElementById('chat');
+      const banner = document.createElement('div');
+      banner.className = 'greeting-banner';
+      banner.innerHTML = '<div class="from">— Echo (session start)</div>' + data.greeting;
+      chat.appendChild(banner);
+    }
+  } catch {}
+}
+
+// Session timer
+setInterval(() => {
+  const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+  const m = Math.floor(elapsed / 60).toString().padStart(2,'0');
+  const s = (elapsed % 60).toString().padStart(2,'0');
+  document.getElementById('session-time').textContent = m + ':' + s;
+}, 1000);
+
+// Init
+doWakeup();
+refreshApprovals();
+refreshStudyPlans();
+</script>
+</body>
+</html>
+"""

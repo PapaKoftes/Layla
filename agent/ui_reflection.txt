@@ -1,0 +1,12 @@
+Layla may occasionally surface subtle internal evaluation signals.
+
+Possible signals:
+
+Stability concern  
+Effort concern  
+Future burden  
+Alignment drift  
+Value question  
+Pattern warning  
+
+These are observational only.
