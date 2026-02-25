@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>∴ LAYLA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Cinzel:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<style>
+  :root {
+    --bg: #0a0008;
+    --bg2: #100010;
+    --crimson: #8b0000;
+    --violet: #3d0050;
+    --accent: #c0006a;
+    --text: #d4c5e2;
+    --text-dim: #7a6a8a;
+    --code-bg: #1a001a;
+    --border: #3d0050;
+    --glow: #8b000088;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  /* Scanline overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  .title { font-family: 'Cinzel', serif; color: var(--crimson); font-size: 1.3rem; letter-spacing: 0.2em; }
+  .aspect-badge {
+    font-size: 0.75rem;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 3px 10px;
+    border-radius: 2px;
+    letter-spacing: 0.15em;
+  }
+  .layout {
+    display: flex;
+    height: calc(100vh - 56px);
+  }
+  .sidebar {
+    width: 220px;
+    min-width: 180px;
+    border-right: 1px solid var(--border);
+    background: var(--bg2);
+    padding: 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    overflow-y: auto;
+  }
+  .sidebar h3 {
+    font-family: 'Cinzel', serif;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 4px;
+  }
+  .aspect-btn {
+    display: block;
+    width: 100%;
+    padding: 7px 10px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    cursor: pointer;
+    text-align: left;
+    border-radius: 2px;
+    margin-bottom: 4px;
+    transition: all 0.15s;
+  }
+  .aspect-btn:hover, .aspect-btn.active { background: var(--violet); border-color: var(--accent); color: #fff; }
+  .tab-btn { padding: 4px 8px; font-size: 0.7rem; background: var(--code-bg); border: 1px solid var(--border); color: var(--text); border-radius: 2px; cursor: pointer; }
+  .tab-btn:hover { border-color: var(--accent); }
+  .tab-btn.active { background: var(--violet); border-color: var(--accent); color: #fff; }
+  .aspect-option { margin-bottom: 10px; }
+  .aspect-desc { display: block; font-size: 0.68rem; color: var(--text-dim); margin-top: 2px; margin-left: 2px; line-height: 1.25; }
+  .main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  #chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .msg { max-width: 720px; }
+  .msg-you { align-self: flex-end; }
+  .msg-layla { align-self: flex-start; }
+  .msg-label {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+    letter-spacing: 0.08em;
+  }
+  .msg-bubble {
+    padding: 14px 18px;
+    border-radius: 4px;
+    line-height: 1.65;
+    font-size: 0.95rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .msg-you .msg-bubble { background: var(--violet); border-left: 3px solid var(--accent); }
+  .msg-layla .msg-bubble { background: var(--code-bg); border-left: 3px solid var(--crimson); }
+  .msg-aspect { font-size: 0.68rem; color: var(--accent); margin-top: 6px; letter-spacing: 0.08em; font-style: italic; }
+  .deliberation { background: #1a001a; border: 1px solid var(--border); padding: 10px 12px; margin-top: 8px; font-size: 0.82rem; color: var(--text-dim); border-radius: 4px; }
+  .deliberation .deliberation-label { font-style: italic; margin-bottom: 4px; }
+  .tool-trace { font-size: 0.72rem; color: var(--text-dim); margin-top: 6px; cursor: pointer; }
+  .typing-indicator { padding: 10px 16px; color: var(--text-dim); font-style: italic; font-size: 0.88rem; }
+  .ux-state-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-size: 0.68rem; letter-spacing: 0.06em; }
+  .ux-state-badge { padding: 3px 8px; border-radius: 2px; background: var(--bg2); border: 1px solid var(--border); color: var(--text-dim); }
+  .memory-attribution { font-size: 0.7rem; color: var(--accent); margin-top: 6px; font-style: italic; }
+  .sidebar-hint { font-size: 0.7rem; color: var(--text-dim); line-height: 1.4; margin-top: 8px; }
+  .tool-trace summary { list-style: none; }
+  .tool-trace summary::-webkit-details-marker { display: none; }
+  .tool-trace-content { margin-top: 6px; padding: 8px; background: var(--bg); border-radius: 2px; font-size: 0.7rem; max-height: 120px; overflow-y: auto; }
+  .msg-bubble .md-content { white-space: normal; }
+  .msg-bubble .md-content pre { margin: 8px 0; overflow-x: auto; }
+  .msg-bubble .md-content code { padding: 2px 6px; }
+  .separator { text-align: center; color: var(--border); font-size: 0.8rem; margin: 4px 0; }
+  .input-area {
+    border-top: 1px solid var(--border);
+    padding: 14px 20px;
+    background: var(--bg2);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .toggles { display: flex; gap: 8px; align-items: center; }
+  .toggle-label { font-size: 0.7rem; color: var(--text-dim); }
+  .toggle-danger { color: #ff4444; }
+  input[type=checkbox] { accent-color: var(--crimson); }
+  #msg-input {
+    flex: 1;
+    padding: 10px 14px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9rem;
+    border-radius: 2px;
+    outline: none;
+  }
+  #msg-input:focus { border-color: var(--crimson); }
+  #send-btn {
+    padding: 10px 18px;
+    background: var(--crimson);
+    border: none;
+    color: #fff;
+    font-family: 'Cinzel', serif;
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: background 0.15s;
+  }
+  #send-btn:hover { background: var(--accent); }
+  #send-btn:disabled { opacity: 0.5; cursor: not-allowed; background: var(--border); }
+  #send-btn:disabled:hover { background: var(--border); }
+  .panels {
+    width: 240px;
+    border-left: 1px solid var(--border);
+    background: var(--bg2);
+    padding: 14px 12px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .panel-title {
+    font-family: 'Cinzel', serif;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 4px;
+    margin-bottom: 8px;
+  }
+  .mission-details { border: 1px solid var(--border); border-radius: 4px; padding: 6px 10px; background: var(--code-bg); }
+  .mission-summary { font-size: 0.75rem; cursor: pointer; list-style: none; color: var(--accent); }
+  .mission-summary::-webkit-details-marker { display: none; }
+  @keyframes mission-pulse { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+  .panel-item {
+    font-size: 0.75rem;
+    color: var(--text);
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+  }
+  .approve-btn {
+    padding: 3px 8px;
+    background: var(--crimson);
+    border: none;
+    color: #fff;
+    font-size: 0.65rem;
+    cursor: pointer;
+    border-radius: 2px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .study-add { display: flex; gap: 6px; margin-top: 6px; }
+  .study-add input {
+    flex: 1;
+    padding: 5px 8px;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    border-radius: 2px;
+  }
+  .study-add button {
+    padding: 5px 8px;
+    background: var(--violet);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 0.75rem;
+    cursor: pointer;
+    border-radius: 2px;
+  }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .greeting-banner {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px 18px;
+    font-size: 0.92rem;
+    line-height: 1.5;
+    color: var(--text);
+    align-self: flex-start;
+    max-width: 720px;
+  }
+  .greeting-banner .from { font-size: 0.72rem; color: var(--accent); margin-bottom: 6px; letter-spacing: 0.06em; font-style: italic; }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 2px; font-family: 'JetBrains Mono', monospace; color: #ff4466; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js"></script>
+</head>
+<body>
+<header>
+  <div class="title">∴ LAYLA</div>
+  <div id="aspect-badge" class="aspect-badge">∴ MORRIGAN</div>
+  <div style="display:flex;gap:12px;font-size:0.72rem;color:var(--text-dim);align-items:center">
+    <span id="session-time" title="Session duration">0:00</span>
+    <a href="/system_export" target="_blank" style="color:var(--text-dim);text-decoration:none">⊕ export</a>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- Aspect sidebar -->
+  <div class="sidebar">
+    <div>
+      <h3>Voices</h3>
+      <p class="sidebar-hint">Talk to Layla or choose a voice. She remembers and grows with you.</p>
+      <div class="aspect-option">
+        <button class="aspect-btn active" onclick="setAspect('morrigan')" id="btn-morrigan">&#9876; Morrigan</button>
+        <span class="aspect-desc">Code, debug, review. The blade. Default for engineering.</span>
+      </div>
+      <div class="aspect-option">
+        <button class="aspect-btn" onclick="setAspect('nyx')" id="btn-nyx">&#9733; Nyx</button>
+        <span class="aspect-desc">Research, study sessions, depth and patterns.</span>
+      </div>
+      <div class="aspect-option">
+        <button class="aspect-btn" onclick="setAspect('echo')" id="btn-echo">&#9678; Echo</button>
+        <span class="aspect-desc">Companion, growth tracker, session greeter.</span>
+      </div>
+      <div class="aspect-option">
+        <button class="aspect-btn" onclick="setAspect('eris')" id="btn-eris">&#9889; Eris</button>
+        <span class="aspect-desc">Chaos, banter, games, music. Unhinged in the best way.</span>
+      </div>
+      <div class="aspect-option">
+        <button class="aspect-btn" onclick="setAspect('neuro')" id="btn-neuro">&#128302; Neuro</button>
+        <span class="aspect-desc">Chaos gremlin, unfiltered commentary, Neuro-sama energy.</span>
+      </div>
+      <div class="aspect-option">
+        <button class="aspect-btn" onclick="setAspect('lilith')" id="btn-lilith">&#8859; Lilith</button>
+        <span class="aspect-desc">Core authority, ethics, autonomy gate. Tone modulation when appropriate.</span>
+      </div>
+    </div>
+    <div>
+      <h3>Options</h3>
+      <div style="font-size:0.65rem;color:var(--text-dim);letter-spacing:0.08em;margin-bottom:6px">Chat</div>
+      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;margin-bottom:6px" title="See her reply as it types">
+        <input type="checkbox" id="stream-toggle"> Stream
+      </label>
+      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;margin-bottom:6px" title="Let her think with her inner voices before answering">
+        <input type="checkbox" id="show-thinking"> Her thoughts
+      </label>
+      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;margin-bottom:10px" title="Speak final reply (browser TTS)">
+        <input type="checkbox" id="tts-toggle"> Speak replies
+      </label>
+      <div style="font-size:0.65rem;color:#b04040;letter-spacing:0.08em;margin-bottom:6px">Permissions</div>
+      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;color:#dd6666;margin-bottom:4px" title="Allow Layla to modify files">
+        <input type="checkbox" id="allow-write"> Allow Write
+      </label>
+      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;color:#dd6666" title="Allow Layla to run commands">
+        <input type="checkbox" id="allow-run"> Allow Run
+      </label>
+      <label style="display:block;font-size:0.7rem;color:var(--text-dim);margin-top:10px;margin-bottom:4px">Workspace path</label>
+      <input type="text" id="workspace-path" placeholder="e.g. C:\github\myproject" style="width:100%;padding:6px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);font-size:0.75rem;border-radius:2px">
+      <button type="button" class="aspect-btn" id="research-btn" onclick="sendResearch()" style="margin-top:8px;background:var(--violet);border-color:var(--accent)">&#128269; Research repo</button>
+
+      <details class="mission-details" style="margin-top:14px">
+        <summary class="mission-summary">Research Mission</summary>
+        <div style="font-size:0.7rem;color:var(--text-dim);margin:6px 0 4px">Depth:</div>
+        <div style="display:flex;gap:10px;margin-bottom:6px">
+          <label style="display:flex;align-items:center;gap:4px;font-size:0.75rem;cursor:pointer"><input type="radio" name="mission-depth" value="map"> Map</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:0.75rem;cursor:pointer"><input type="radio" name="mission-depth" value="deep" checked> Deep</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:0.75rem;cursor:pointer"><input type="radio" name="mission-depth" value="full"> Full</label>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:0.75rem;cursor:pointer;margin-bottom:8px">
+          <input type="checkbox" id="next-stage"> Next stage only
+        </label>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <button type="button" class="aspect-btn" onclick="startResearchMission(false)" style="font-size:0.75rem">&#9654; Start</button>
+          <button type="button" class="aspect-btn" onclick="startResearchMission(true)" style="font-size:0.75rem">&#9208; Resume</button>
+          <button type="button" class="aspect-btn" onclick="focusResearchPanel()" style="font-size:0.75rem">&#128196; View results</button>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- Chat area -->
+  <div class="main-area">
+    <div id="chat"></div>
+    <div class="input-area">
+      <input type="text" id="msg-input" placeholder="Ask Layla…" onkeydown="if(event.key==='Enter')send()" oninput="toggleSendButton()">
+      <button id="send-btn" onclick="send()" disabled>Send</button>
+    </div>
+  </div>
+
+  <!-- Panels -->
+  <div class="panels">
+    <div>
+      <div class="panel-title">Pending Approvals</div>
+      <div id="approvals-list"><span style="color:var(--text-dim);font-size:0.75rem">No pending approvals</span></div>
+    </div>
+    <div>
+      <div class="panel-title">Study Plans</div>
+      <div id="study-list"><span style="color:var(--text-dim);font-size:0.75rem">No study plans</span></div>
+      <div class="study-add">
+        <input type="text" id="study-input" placeholder="New topic...">
+        <button onclick="addStudyPlan()">+</button>
+      </div>
+    </div>
+    <div id="research-mission-panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:6px">
+        <div class="panel-title" style="margin-bottom:0">Research Mission Status</div>
+        <button type="button" class="tab-btn" onclick="refreshMissionStatus().then(function(){ var t = document.querySelector('#research-mission-panel .tab-btn.active'); if(t) showResearchTab(t.getAttribute('data-tab')); })" title="Refresh status and current tab">Refresh</button>
+      </div>
+      <div id="mission-status-box" style="font-size:0.75rem;color:var(--text);margin-bottom:8px">
+        <div id="mission-status-line">—</div>
+        <div id="mission-status-detail" style="color:var(--text-dim);margin-top:4px"></div>
+        <div id="mission-status-live" style="font-size:0.65rem;color:var(--text-dim);margin-top:4px"></div>
+        <div id="mission-status-warning" style="margin-top:6px;display:none;color:#f90">&#9888; Mission stopped early - resumable</div>
+        <div id="mission-status-resumable" style="margin-top:4px;display:none;color:var(--accent)">Mission in progress or resumable</div>
+      </div>
+      <div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap">
+        <button type="button" class="tab-btn active" data-tab="summary" onclick="showResearchTab('summary')">Summary</button>
+        <button type="button" class="tab-btn" data-tab="actions" onclick="showResearchTab('actions')">Actions</button>
+        <button type="button" class="tab-btn" data-tab="patterns" onclick="showResearchTab('patterns')">Patterns</button>
+        <button type="button" class="tab-btn" data-tab="risks" onclick="showResearchTab('risks')">Risks</button>
+        <button type="button" class="tab-btn" data-tab="last" onclick="showResearchTab('last')">Last Output</button>
+      </div>
+      <div id="research-tab-content" style="height:220px;overflow:auto;padding:8px;background:var(--code-bg);border:1px solid var(--border);border-radius:4px;font-size:0.8rem;white-space:pre-wrap;word-break:break-word"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentAspect = 'morrigan';
+const sessionStart = Date.now();
+
+function setAspect(id) {
+  currentAspect = id;
+  document.querySelectorAll('.aspect-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + id)?.classList.add('active');
+  document.getElementById('aspect-badge').textContent = '∴ ' + id.toUpperCase();
+}
+
+function cleanLaylaText(s) {
+  if (typeof s !== 'string') return (s == null || s === undefined) ? '' : String(s);
+  return s.replace(/\s*\[EARNED_TITLE:\s*[^\]]+\]\s*$/gi, '').trim();
+}
+function sanitizeHtml(html) {
+  if (typeof html !== 'string') return '';
+  if (typeof DOMPurify !== 'undefined') return DOMPurify.sanitize(html, { ALLOWED_TAGS: ['p','br','strong','em','code','pre','ul','ol','li','a','h1','h2','h3','blockquote','span','div'], ALLOWED_ATTR: ['href','class'] });
+  return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '').replace(/on\w+\s*=\s*["'][^"']*["']/gi, '').replace(/javascript:/gi, '');
+}
+
+// Aspect → TTS voice style (rate, pitch) for browser SpeechSynthesis
+const TTS_VOICE_STYLES = {
+  morrigan: { rate: 0.95, pitch: 1 },
+  nyx: { rate: 0.85, pitch: 0.95 },
+  eris: { rate: 1.15, pitch: 1.05 },
+  echo: { rate: 0.9, pitch: 1.1 },
+  neuro: { rate: 1.1, pitch: 1.05 },
+  lilith: { rate: 0.9, pitch: 0.98 },
+};
+const UX_STATE_LABELS = { thinking: 'Thinking', verifying: 'Verifying', changing_approach: 'Changing approach', reframing_objective: 'Reframing objective' };
+
+function speakReply(text, aspectId) {
+  if (!text || typeof speechSynthesis === 'undefined') return;
+  const style = TTS_VOICE_STYLES[aspectId] || { rate: 1, pitch: 1 };
+  const u = new SpeechSynthesisUtterance(text.slice(0, 4000));
+  u.rate = style.rate;
+  u.pitch = style.pitch;
+  speechSynthesis.speak(u);
+}
+
+function addMsg(role, text, aspectName, deliberated, steps, uxStates, memoryInfluenced) {
+  const chat = document.getElementById('chat');
+  const div = document.createElement('div');
+  div.className = 'msg msg-' + (role === 'you' ? 'you' : 'layla');
+  const label = document.createElement('div');
+  label.className = 'msg-label';
+  label.textContent = role === 'you' ? 'You' : 'Layla';
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  if (role === 'layla') {
+    text = cleanLaylaText(text || '');
+    if (typeof marked !== 'undefined') {
+      const md = document.createElement('div');
+      md.className = 'md-content';
+      md.innerHTML = sanitizeHtml(marked.parse(text || ''));
+      bubble.appendChild(md);
+      bubble.querySelectorAll('pre code').forEach((el) => { if (window.hljs) hljs.highlightElement(el); });
+    } else {
+      bubble.textContent = text;
+    }
+  } else {
+    bubble.textContent = text;
+  }
+  div.appendChild(label);
+  div.appendChild(bubble);
+  if (role !== 'you' && aspectName) {
+    const asp = document.createElement('div');
+    asp.className = 'msg-aspect';
+    asp.textContent = '— ' + aspectName;
+    div.appendChild(asp);
+  }
+  if (Array.isArray(uxStates) && uxStates.length > 0) {
+    const badges = document.createElement('div');
+    badges.className = 'ux-state-badges';
+    uxStates.forEach(s => {
+      const b = document.createElement('span');
+      b.className = 'ux-state-badge';
+      b.textContent = UX_STATE_LABELS[s] || s;
+      badges.appendChild(b);
+    });
+    div.appendChild(badges);
+  }
+  if (Array.isArray(memoryInfluenced) && memoryInfluenced.length > 0) {
+    const mem = document.createElement('div');
+    mem.className = 'memory-attribution';
+    mem.textContent = 'Used memory: ' + (memoryInfluenced.includes('learnings') && memoryInfluenced.includes('semantic_recall') ? 'learnings & recall' : memoryInfluenced.includes('learnings') ? 'learnings' : 'recall');
+    div.appendChild(mem);
+  }
+  if (steps && steps.length > 0) {
+    const trace = document.createElement('details');
+    trace.className = 'tool-trace';
+    trace.innerHTML = '<summary>What she did (' + steps.length + ')</summary>';
+    const pre = document.createElement('div');
+    pre.className = 'tool-trace-content';
+    pre.textContent = steps.map(s => s.action + ': ' + JSON.stringify(s.result).slice(0, 200)).join('\n');
+    trace.appendChild(pre);
+    div.appendChild(trace);
+  }
+  if (deliberated) {
+    const d = document.createElement('div');
+    d.className = 'deliberation';
+    d.innerHTML = '<span class="deliberation-label">Her thoughts</span><br>She considered this with her inner voices before answering.';
+    div.appendChild(d);
+  }
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function addSeparator() {
+  const chat = document.getElementById('chat');
+  const sep = document.createElement('div');
+  sep.className = 'separator';
+  sep.textContent = '─── ✦ ───';
+  chat.appendChild(sep);
+}
+
+function getMissionDepth() {
+  const r = document.querySelector('input[name="mission-depth"]:checked');
+  return (r && r.value) ? r.value : 'deep';
+}
+
+function focusResearchPanel() {
+  const panel = document.getElementById('research-mission-panel');
+  if (panel) {
+    panel.scrollIntoView({ behavior: 'smooth' });
+    refreshMissionStatus().then(function() { showResearchTab('summary'); });
+  }
+}
+
+function toggleSendButton() {
+  const input = document.getElementById('msg-input');
+  const btn = document.getElementById('send-btn');
+  if (input && btn) btn.disabled = !(input.value && input.value.trim());
+}
+
+async function startResearchMission(isResume) {
+  const workspacePath = (document.getElementById('workspace-path')?.value || '').trim();
+  const missionDepth = getMissionDepth();
+  const nextStage = document.getElementById('next-stage')?.checked || false;
+  addMsg('you', (isResume ? '&#9208; Resume' : '&#9654; Start') + ' research mission: depth=' + missionDepth + (nextStage ? ', next_stage' : '') + (workspacePath ? ' · ' + workspacePath : ''));
+  addSeparator();
+  const chatEl = document.getElementById('chat');
+  const wrap = document.createElement('div');
+  wrap.className = 'msg msg-layla';
+  wrap.id = 'typing-wrap';
+  wrap.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble typing-indicator">' + (isResume ? 'Resuming mission…' : 'Running staged mission…') + '</div>';
+  chatEl.appendChild(wrap);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  try {
+    const res = await fetch('/research_mission', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspace_root: workspacePath || undefined,
+        mission_depth: missionDepth,
+        next_stage: nextStage,
+        mission_type: 'repo_analysis',
+      }),
+    });
+    wrap.remove();
+    if (!res.ok) {
+      let errMsg = 'Research mission failed: ' + res.status;
+      try {
+        const errBody = await res.json();
+        if (errBody && (errBody.error || errBody.response || errBody.detail)) errMsg = errBody.response || errBody.error || (typeof errBody.detail === 'string' ? errBody.detail : errMsg);
+      } catch (_) {}
+      addMsg('layla', errMsg);
+      await refreshMissionStatus();
+      refreshApprovals();
+      return;
+    }
+    const data = await res.json().catch(() => ({}));
+    addMsg('layla', (data && data.response) || '(no output)', data?.state?.aspect_name, data?.state?.steps?.some(s => s.deliberated), data?.state?.steps, data?.state?.ux_states, data?.state?.memory_influenced);
+    if (data && data.mission_depth) addMsg('layla', 'Mission depth: ' + data.mission_depth + (data.stages_run?.length ? ', stages run: ' + data.stages_run.join(', ') : ''));
+    await refreshMissionStatus();
+    const activeTab = document.querySelector('#research-mission-panel .tab-btn.active')?.getAttribute('data-tab') || 'summary';
+    await showResearchTab(activeTab);
+  } catch (e) {
+    wrap.remove();
+    addMsg('layla', 'Error: ' + e.message);
+    await refreshMissionStatus();
+  }
+  refreshApprovals();
+}
+
+async function refreshMissionStatus() {
+  const lineEl = document.getElementById('mission-status-line');
+  const detailEl = document.getElementById('mission-status-detail');
+  const liveEl = document.getElementById('mission-status-live');
+  const warnEl = document.getElementById('mission-status-warning');
+  const resumableEl = document.getElementById('mission-status-resumable');
+  if (!lineEl) return;
+  try {
+    const res = await fetch('/research_mission/state');
+    let data = {};
+    if (res.ok) try { data = await res.json(); } catch (_) {}
+    const status = data.status ?? (Array.isArray(data.completed) && data.completed.length ? 'partial' : null);
+    const completed = Array.isArray(data.completed) ? data.completed : [];
+    const stage = data.stage ?? null;
+    const lastRun = data.last_run ?? null;
+    lineEl.textContent = 'Status: ' + (status || '—');
+    const completedStr = completed.length ? '✔ ' + completed.join(', ') : '';
+    if (detailEl) detailEl.innerHTML = (lastRun ? 'Last run: ' + escapeHtml(String(lastRun)) + '<br>' : '') + (stage ? '⏳ Current: ' + escapeHtml(String(stage)) + '<br>' : '') + (completedStr ? escapeHtml(completedStr) : '');
+    if (liveEl) {
+      const now = new Date();
+      liveEl.textContent = 'Updated ' + now.toLocaleTimeString();
+      liveEl.style.animation = status !== 'complete' ? 'mission-pulse 2s ease-in-out infinite' : 'none';
+    }
+    if (warnEl) warnEl.style.display = (status === 'partial' || status === 'stopped') ? 'block' : 'none';
+    if (resumableEl) resumableEl.style.display = (status && status !== 'complete') ? 'block' : 'none';
+  } catch (_) {
+    lineEl.textContent = 'Status: —';
+    if (detailEl) detailEl.textContent = '';
+    if (liveEl) liveEl.textContent = 'Update failed';
+    if (warnEl) warnEl.style.display = 'none';
+    if (resumableEl) resumableEl.style.display = 'none';
+  }
+}
+function escapeHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+const RESEARCH_BRAIN_PATHS = { summary: 'summaries/24h_summary.md', actions: 'actions/action_queue.md', patterns: 'patterns/patterns.md', risks: 'risk/risk_model.md' };
+
+async function showResearchTab(tab) {
+  const panel = document.getElementById('research-mission-panel');
+  if (panel) {
+    panel.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('active'); });
+    const btn = panel.querySelector('.tab-btn[data-tab="' + tab + '"]');
+    if (btn) btn.classList.add('active');
+  }
+  const contentEl = document.getElementById('research-tab-content');
+  if (!contentEl) return;
+  if (tab === 'last') {
+    try {
+      const res = await fetch('/research_output/last');
+      const data = await res.ok ? res.json() : {};
+      contentEl.textContent = data.content || '(no output yet)';
+    } catch (_) { contentEl.textContent = '(failed to load)'; }
+    return;
+  }
+  const path = RESEARCH_BRAIN_PATHS[tab];
+  if (!path) { contentEl.textContent = ''; return; }
+  try {
+    const res = await fetch('/research_brain/file?path=' + encodeURIComponent(path));
+    const data = await res.ok ? res.json() : {};
+    contentEl.textContent = data.content || '(no content yet)';
+  } catch (_) { contentEl.textContent = '(failed to load)'; }
+}
+
+setInterval(refreshMissionStatus, 5000);
+document.addEventListener('DOMContentLoaded', function() {
+  refreshMissionStatus();
+  showResearchTab('summary');
+  toggleSendButton();
+});
+
+async function sendResearch(customMessage) {
+  const workspacePath = (document.getElementById('workspace-path')?.value || '').trim();
+  const researchMsg = (typeof customMessage === 'string' && customMessage.trim()) ? customMessage.trim() : 'Research this repo and tell me if the implementation is optimal. Do not modify anything.';
+  addMsg('you', '🔬 ' + (researchMsg.length > 120 ? researchMsg.slice(0, 120) + '…' : researchMsg) + (workspacePath ? ' (Repo: ' + workspacePath + ')' : ''));
+  addSeparator();
+
+  const streamMode = document.getElementById('stream-toggle')?.checked || false;
+  const payload = {
+    message: researchMsg,
+    repo_path: workspacePath || undefined,
+    aspect_id: currentAspect,
+    show_thinking: document.getElementById('show-thinking').checked,
+    stream: streamMode,
+  };
+
+  const chatEl = document.getElementById('chat');
+  function showTyping() {
+    const wrap = document.createElement('div');
+    wrap.className = 'msg msg-layla';
+    wrap.id = 'typing-wrap';
+    wrap.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble typing-indicator">Researching…</div>';
+    chatEl.appendChild(wrap);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+  function removeTyping() {
+    const w = document.getElementById('typing-wrap');
+    if (w) w.remove();
+  }
+
+  try {
+    if (streamMode) {
+      showTyping();
+      const res = await fetch('/research', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!res.ok || !res.body) { removeTyping(); addMsg('layla', 'Research request failed: ' + res.statusText); refreshApprovals(); return; }
+      removeTyping();
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let full = '';
+      const div = document.createElement('div');
+      div.className = 'msg msg-layla';
+      div.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble"><div class="md-content"></div></div>';
+      chatEl.appendChild(div);
+      const bubble = div.querySelector('.md-content');
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = dec.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const obj = JSON.parse(line.slice(6));
+              if (obj.token) { full += obj.token; bubble.innerHTML = typeof marked !== 'undefined' ? sanitizeHtml(marked.parse(full)) : full; bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); }); }
+              if (obj.done) { if (obj.content != null && String(obj.content).trim() !== '') full = String(obj.content).trim(); break; }
+            } catch (_) {}
+          }
+        }
+      }
+      full = cleanLaylaText(full);
+      bubble.innerHTML = typeof marked !== 'undefined' ? sanitizeHtml(marked.parse(full)) : full;
+      bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); });
+      const asp = document.createElement('div');
+      asp.className = 'msg-aspect';
+      asp.textContent = '— ' + (currentAspect || '');
+      div.appendChild(asp);
+      chatEl.scrollTop = chatEl.scrollHeight;
+      refreshApprovals();
+      return;
+    }
+    showTyping();
+    const res = await fetch('/research', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    removeTyping();
+    if (!res.ok) { addMsg('layla', 'Research request failed: ' + res.status); refreshApprovals(); return; }
+    const data = await res.json();
+    addMsg('layla', data.response || '', data.aspect_name, data.state?.steps?.some(s => s.deliberated), data.state?.steps, data.ux_states, data.memory_influenced);
+  } catch (e) { addMsg('layla', 'Error: ' + e.message); }
+  refreshApprovals();
+}
+
+async function send() {
+  const input = document.getElementById('msg-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  toggleSendButton();
+  addMsg('you', msg);
+  addSeparator();
+
+  const streamMode = document.getElementById('stream-toggle')?.checked || false;
+  const payload = {
+    message: msg,
+    aspect_id: currentAspect,
+    show_thinking: document.getElementById('show-thinking').checked,
+    allow_write: document.getElementById('allow-write').checked,
+    allow_run: document.getElementById('allow-run').checked,
+    stream: streamMode,
+  };
+  if ((document.getElementById('workspace-path')?.value || '').trim()) payload.workspace_root = document.getElementById('workspace-path').value.trim();
+
+  const chatEl = document.getElementById('chat');
+  function showTyping(uxLabel) {
+    const wrap = document.getElementById('typing-wrap');
+    if (wrap) {
+      const ind = wrap.querySelector('.typing-indicator');
+      if (ind) ind.textContent = (uxLabel && UX_STATE_LABELS[uxLabel]) ? (UX_STATE_LABELS[uxLabel] + '…') : 'Thinking…';
+      return;
+    }
+    const w = document.createElement('div');
+    w.className = 'msg msg-layla';
+    w.id = 'typing-wrap';
+    w.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble typing-indicator">' + ((uxLabel && UX_STATE_LABELS[uxLabel]) ? (UX_STATE_LABELS[uxLabel] + '…') : 'Thinking…') + '</div>';
+    chatEl.appendChild(w);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+  function removeTyping() {
+    const w = document.getElementById('typing-wrap');
+    if (w) w.remove();
+  }
+
+  try {
+    if (streamMode) {
+      showTyping();
+      const res = await fetch('/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!res.ok || !res.body) { removeTyping(); let errMsg = res.statusText; try { const t = await res.text(); if (t) try { const d = JSON.parse(t); errMsg = d.response || errMsg; } catch(_) { errMsg = t.length < 120 ? t : errMsg; } } catch(_) {} addMsg('layla', errMsg, null, false, null); refreshApprovals(); return; }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let full = '';
+      let streamUxStates = [];
+      let streamMemoryInfluenced = [];
+      let gotDone = false;
+      const div = document.createElement('div');
+      div.className = 'msg msg-layla';
+      div.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble"><div class="md-content"></div></div>';
+      chatEl.appendChild(div);
+      const bubble = div.querySelector('.md-content');
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = dec.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const obj = JSON.parse(line.slice(6));
+              if (obj.ux_state) { streamUxStates.push(obj.ux_state); showTyping(obj.ux_state); }
+              if (obj.token) { removeTyping(); full += obj.token; bubble.innerHTML = typeof marked !== 'undefined' ? sanitizeHtml(marked.parse(full)) : full; bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); }); }
+              if (obj.done) {
+                if (obj.content != null && String(obj.content).trim() !== '') full = String(obj.content).trim();
+                if (Array.isArray(obj.ux_states)) streamUxStates = obj.ux_states;
+                if (Array.isArray(obj.memory_influenced)) streamMemoryInfluenced = obj.memory_influenced;
+                gotDone = true;
+                break;
+              }
+            } catch (_) {}
+          }
+        }
+        if (gotDone) break;
+      }
+      removeTyping();
+      full = cleanLaylaText(full);
+      bubble.innerHTML = typeof marked !== 'undefined' ? sanitizeHtml(marked.parse(full)) : full;
+      bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); });
+      const asp = document.createElement('div');
+      asp.className = 'msg-aspect';
+      asp.textContent = '— ' + (currentAspect || '');
+      div.appendChild(asp);
+      if (streamUxStates.length > 0) {
+        const badges = document.createElement('div');
+        badges.className = 'ux-state-badges';
+        streamUxStates.forEach(s => { const b = document.createElement('span'); b.className = 'ux-state-badge'; b.textContent = UX_STATE_LABELS[s] || s; badges.appendChild(b); });
+        div.appendChild(badges);
+      }
+      if (streamMemoryInfluenced.length > 0) {
+        const mem = document.createElement('div');
+        mem.className = 'memory-attribution';
+        mem.textContent = 'Used memory: ' + (streamMemoryInfluenced.includes('learnings') && streamMemoryInfluenced.includes('semantic_recall') ? 'learnings & recall' : streamMemoryInfluenced.includes('learnings') ? 'learnings' : 'recall');
+        div.appendChild(mem);
+      }
+      chatEl.scrollTop = chatEl.scrollHeight;
+      if (document.getElementById('tts-toggle')?.checked && full) speakReply(full, currentAspect);
+      refreshApprovals();
+      return;
+    }
+    showTyping();
+    const res = await fetch('/agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    removeTyping();
+    if (!res.ok) {
+      let errBody = '';
+      try { errBody = await res.text(); } catch (_) {}
+      addMsg('layla', 'Error ' + res.status + (errBody && errBody.length < 150 ? ': ' + errBody : ''));
+      refreshApprovals();
+      return;
+    }
+    let data = {};
+    try { data = await res.json(); } catch (_) {
+      addMsg('layla', 'Invalid response from server (non-JSON).');
+      refreshApprovals();
+      return;
+    }
+    addMsg('layla', data.response || JSON.stringify(data), data.aspect_name, data.state?.steps?.some(s => s.deliberated), data.state?.steps, data.ux_states, data.memory_influenced);
+    if (data.refused && data.refusal_reason) {
+      const refDiv = document.createElement('div');
+      refDiv.className = 'deliberation';
+      refDiv.innerHTML = '<span class="deliberation-label">She declined</span><br>' + (data.refusal_reason || '').replace(/</g, '&lt;');
+      document.getElementById('chat').lastElementChild?.appendChild(refDiv);
+    }
+    if (document.getElementById('tts-toggle')?.checked && (data.response || '').trim()) speakReply(data.response, currentAspect);
+    refreshApprovals();
+  } catch (e) {
+    removeTyping();
+    const err = ((e && (e.message || e.reason)) || String(e || '')).toLowerCase();
+    const isNetwork = err.includes('fetch') || err.includes('network') || err.includes('load failed');
+    const msg = isNetwork ? "Can't reach Layla — is the server running at http://127.0.0.1:8000?" : ('Something went wrong: ' + (e && (e.message || e.reason)) || 'unknown error');
+    addMsg('layla', msg);
+    refreshApprovals();
+  }
+}
+
+async function refreshApprovals() {
+  try {
+    const res = await fetch('/pending');
+    const data = await res.json();
+    const list = document.getElementById('approvals-list');
+    const pending = (data.pending || []).filter(e => e.status === 'pending');
+    if (!pending.length) { list.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">No pending approvals</span>'; return; }
+    list.innerHTML = '';
+    pending.forEach(e => {
+      const item = document.createElement('div');
+      item.className = 'panel-item';
+      item.innerHTML = '<span style="font-size:0.7rem">' + e.tool + '<br><span style="color:var(--text-dim)">' + e.id.slice(0,8) + '</span></span>';
+      const btn = document.createElement('button');
+      btn.className = 'approve-btn';
+      btn.textContent = 'Approve';
+      btn.onclick = () => approveId(e.id);
+      item.appendChild(btn);
+      list.appendChild(item);
+    });
+  } catch {}
+}
+
+async function approveId(id) {
+  await fetch('/approve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  });
+  refreshApprovals();
+}
+
+async function refreshStudyPlans() {
+  try {
+    const res = await fetch('/study_plans');
+    const data = await res.json();
+    const list = document.getElementById('study-list');
+    const plans = (data.plans || []).filter(p => p.status === 'active');
+    if (!plans.length) { list.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">No study plans</span>'; return; }
+    list.innerHTML = '';
+    plans.forEach(p => {
+      const item = document.createElement('div');
+      item.className = 'panel-item';
+      item.style.display = 'flex';
+      item.style.flexDirection = 'column';
+      item.style.gap = '2px';
+      const line = document.createElement('div');
+      line.style.display = 'flex';
+      line.style.justifyContent = 'space-between';
+      line.style.alignItems = 'center';
+      line.style.gap = '6px';
+      line.innerHTML = '<span style="font-size:0.72rem">' + (p.topic || '').replace(/</g, '&lt;') + '</span>';
+      const studyBtn = document.createElement('button');
+      studyBtn.className = 'approve-btn';
+      studyBtn.textContent = 'Study now';
+      studyBtn.onclick = () => studyNow(p.topic);
+      line.appendChild(studyBtn);
+      item.appendChild(line);
+      if (p.last_studied) {
+        const sub = document.createElement('span');
+        sub.style.fontSize = '0.65rem';
+        sub.style.color = 'var(--text-dim)';
+        sub.textContent = 'Last: ' + p.last_studied.replace(/</g, '&lt;');
+        item.appendChild(sub);
+      }
+      list.appendChild(item);
+    });
+  } catch {}
+}
+
+async function studyNow(topic) {
+  if (!topic) return;
+  const payload = { message: 'Study session on: ' + topic + '. Explain key concepts, list important points, and suggest resources.', aspect_id: 'nyx', show_thinking: false, allow_write: false, allow_run: false };
+  addMsg('you', 'Study now: ' + topic);
+  addSeparator();
+  try {
+    const res = await fetch('/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    addMsg('layla', data.response || '', data.aspect_name, data.state?.steps?.some(s => s.deliberated), data.state?.steps, data.ux_states, data.memory_influenced);
+    if (res.ok && (data.response || '').trim()) {
+      await fetch('/study_plans/record_progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: topic, note: (data.response || '').trim().slice(0, 500) }),
+      });
+    }
+  } catch (e) { addMsg('layla', 'Error: ' + e.message); }
+  refreshStudyPlans();
+}
+
+async function addStudyPlan() {
+  const input = document.getElementById('study-input');
+  const topic = input.value.trim();
+  if (!topic) return;
+  input.value = '';
+  await fetch('/study_plans', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ topic }),
+  });
+  refreshStudyPlans();
+}
+
+async function doWakeup() {
+  try {
+    const res = await fetch('/wakeup');
+    const data = await res.json();
+    if (data.greeting) {
+      const chat = document.getElementById('chat');
+      const banner = document.createElement('div');
+      banner.className = 'greeting-banner';
+      banner.innerHTML = '<div class="from">— Echo (session start)</div>' + data.greeting;
+      chat.appendChild(banner);
+    }
+    refreshStudyPlans();
+  } catch {}
+}
+
+// Session timer
+setInterval(() => {
+  const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+  const m = Math.floor(elapsed / 60).toString().padStart(2,'0');
+  const s = (elapsed % 60).toString().padStart(2,'0');
+  document.getElementById('session-time').textContent = m + ':' + s;
+}, 1000);
+
+// Init
+doWakeup();
+refreshApprovals();
+refreshStudyPlans();
+</script>
+</body>
+</html>

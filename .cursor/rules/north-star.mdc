@@ -1,0 +1,22 @@
+---
+description: North Star — Canonical plan for Layla. All repo work must align with this vision.
+alwaysApply: true
+---
+
+# North Star alignment
+
+The **single source of truth** for this project is:
+
+- **`LAYLA_NORTH_STAR.md`** (repo root) — full lifelong collaborative intelligence plan and vision.
+
+All features, aspects, safety rules, and product decisions must align with it. Do not stray from the plan.
+
+- **`docs/IMPLEMENTATION_STATUS.md`** — maps each North Star section (§1–§20) to code, tests, and verification. Use it to implement or audit.
+
+When adding or changing behavior:
+
+1. Check which North Star section(s) it falls under.
+2. Implement or extend the mapped components; update IMPLEMENTATION_STATUS if needed.
+3. Add or run the referenced tests.
+
+Safe self-upgrade (changes to Layla after delivery) is done **by Layla** in a safe, controlled way: approval flow for writes/runs, add_learning for memory, Lilith gates autonomy. See North Star end section and IMPLEMENTATION_STATUS “Safe self-upgrade”.

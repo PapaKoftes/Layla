@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "user-jinx": {
+      "command": ".venv/Scripts/python.exe",
+      "args": ["cursor-jinx-mcp/server.py"]
+    }
+  }
+}

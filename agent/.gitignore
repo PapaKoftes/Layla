@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.backup/
+.governance/
+.research_output/
+.research_lab/
+.research_brain/
+*.tmp
+*.log
+venv/
+*.db
+learnings.json
+runtime_config.json

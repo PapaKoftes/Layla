@@ -1,0 +1,41 @@
+# Dependencies and venv
+.venv/
+venv/
+env/
+
+# Local runtime and data (do not commit)
+layla.db
+learnings.json
+*.db
+agent.zip
+
+# Model files (large; each dev supplies their own)
+models/*.gguf
+models/*.bin
+
+# Chroma / vector store persistence (if at repo root)
+chroma/
+*.sqlite3
+
+# OS and editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Knowledge: each collaborator builds their own (do not commit shared content)
+knowledge/*.txt
+knowledge/*.md
+knowledge/fetched/
+knowledge/docs/
+!knowledge/README.md
+
+# Repo-specific / handoff docs (keep locally if needed)
+REPO_ANALYSIS_FOR_HANDOFF.md
+
+# Vendor / nested repos (each dev clones if needed)
+llama.cpp/
+
+# Cursor / IDE (optional; uncomment if you don't want to share)
+# .cursor/

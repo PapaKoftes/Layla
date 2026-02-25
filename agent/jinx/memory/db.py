@@ -1,0 +1,809 @@
+"""
+SQLite persistent memory for Layla.
+
+Tables:
+  learnings        — replaces learnings.json for structured persistence
+  study_plans      — topics Layla is studying
+  wakeup_log       — session greeting history
+  audit            — tool execution audit trail
+  aspect_memories  — per-aspect long-term observations
+"""
+import json
+import sqlite3
+from datetime import datetime
+from pathlib import Path
+
+_DB_PATH = Path(__file__).resolve().parent.parent.parent.parent / "layla.db"
+
+
+def _conn() -> sqlite3.Connection:
+    c = sqlite3.connect(str(_DB_PATH))
+    c.row_factory = sqlite3.Row
+    return c
+
+
+def migrate() -> None:
+    """Create tables and migrate existing learnings.json if present."""
+    import logging
+    log = logging.getLogger("layla")
+    try:
+        _migrate_impl()
+    except Exception as e:
+        log.warning("DB migrate failed: %s", e)
+
+
+def _migrate_impl() -> None:
+    with _conn() as db:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS learnings (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                content      TEXT NOT NULL,
+                type         TEXT DEFAULT 'fact',
+                created_at   TEXT NOT NULL,
+                embedding_id TEXT
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS study_plans (
+                id           TEXT PRIMARY KEY,
+                topic        TEXT NOT NULL,
+                status       TEXT DEFAULT 'active',
+                progress     TEXT DEFAULT '[]',
+                created_at   TEXT NOT NULL,
+                last_studied TEXT,
+                momentum_score REAL DEFAULT 0
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS wakeup_log (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                greeting  TEXT,
+                notes     TEXT
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS audit (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp   TEXT NOT NULL,
+                tool        TEXT NOT NULL,
+                args_summary TEXT,
+                approved_by TEXT,
+                result_ok   INTEGER
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS aspect_memories (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                aspect_id  TEXT NOT NULL,
+                content    TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS earned_titles (
+                aspect_id  TEXT PRIMARY KEY,
+                title      TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        db.commit()
+
+    # Optional: add learning_type (Phase 4). Backward compatible; existing rows default to fact.
+    try:
+        with _conn() as db:
+            db.execute("ALTER TABLE learnings ADD COLUMN learning_type TEXT DEFAULT 'fact'")
+            db.commit()
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
+    try:
+        with _conn() as db:
+            db.execute("UPDATE learnings SET learning_type = COALESCE(type, 'fact') WHERE learning_type IS NULL OR learning_type = ''")
+            db.commit()
+    except Exception:
+        pass
+
+    # Optional: study_plans.momentum_score (Phase 7). Store + expose only.
+    try:
+        with _conn() as db:
+            db.execute("ALTER TABLE study_plans ADD COLUMN momentum_score REAL DEFAULT 0")
+            db.commit()
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
+
+    # Evolution layer: study_plans optional domain_id and linked_capability_event_id
+    for col, spec in [
+        ("domain_id", "TEXT"),
+        ("linked_capability_event_id", "INTEGER"),
+    ]:
+        try:
+            with _conn() as db:
+                db.execute(f"ALTER TABLE study_plans ADD COLUMN {col} {spec}")
+                db.commit()
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
+
+    # Evolution layer: capability tables and seed (Phase 1)
+    _migrate_evolution_layer()
+
+    # Migrate learnings.json
+    _migrate_learnings_json()
+
+
+def _migrate_learnings_json() -> None:
+    learnings_json = Path(__file__).resolve().parent.parent.parent.parent / "learnings.json"
+    if learnings_json.exists():
+        try:
+            data = json.loads(learnings_json.read_text(encoding="utf-8"))
+            if isinstance(data, list) and data:
+                with _conn() as db:
+                    existing = {r[0] for r in db.execute("SELECT content FROM learnings")}
+                    for item in data:
+                        if not isinstance(item, dict):
+                            continue
+                        c = item.get("content", "")
+                        if c and c not in existing:
+                            db.execute(
+                                "INSERT INTO learnings (content, type, created_at) VALUES (?,?,?)",
+                                (c, item.get("type", "fact"), item.get("created_at", datetime.utcnow().isoformat())),
+                            )
+                    db.commit()
+                # Rename old file so we don't migrate twice
+                learnings_json.rename(learnings_json.with_suffix(".json.migrated"))
+        except Exception:
+            pass
+
+
+def _migrate_evolution_layer() -> None:
+    """Create evolution layer tables and seed capability_domains, dependencies, capabilities."""
+    now = datetime.utcnow().isoformat()
+    with _conn() as db:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS capability_domains (
+                id          TEXT PRIMARY KEY,
+                name        TEXT NOT NULL,
+                description TEXT,
+                created_at  TEXT NOT NULL
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS capabilities (
+                domain_id              TEXT PRIMARY KEY REFERENCES capability_domains(id),
+                level                  REAL NOT NULL DEFAULT 0.5,
+                confidence             REAL NOT NULL DEFAULT 0.5,
+                trend                  TEXT NOT NULL DEFAULT 'stable',
+                last_practiced_at      TEXT,
+                decay_risk             REAL NOT NULL DEFAULT 0.5,
+                reinforcement_priority REAL NOT NULL DEFAULT 0.5,
+                practice_count         INTEGER NOT NULL DEFAULT 0,
+                updated_at             TEXT NOT NULL
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS capability_events (
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                domain_id             TEXT NOT NULL,
+                event_type            TEXT NOT NULL,
+                mission_id            TEXT,
+                delta_level           REAL DEFAULT 0,
+                delta_confidence      REAL DEFAULT 0,
+                notes                 TEXT,
+                usefulness_score      REAL DEFAULT 0.5,
+                learning_quality_score REAL DEFAULT 0.5,
+                created_at            TEXT NOT NULL
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS capability_dependencies (
+                source_domain_id TEXT NOT NULL,
+                target_domain_id TEXT NOT NULL,
+                weight          REAL NOT NULL DEFAULT 0.2,
+                PRIMARY KEY (source_domain_id, target_domain_id)
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS style_profile (
+                key                 TEXT PRIMARY KEY,
+                profile_snapshot   TEXT,
+                last_reinforced_at TEXT,
+                drift_score        REAL DEFAULT 0,
+                updated_at         TEXT NOT NULL
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS mission_chains (
+                id                TEXT PRIMARY KEY,
+                parent_mission_id TEXT,
+                mission_type      TEXT NOT NULL,
+                goal_summary      TEXT,
+                outcome_summary   TEXT,
+                status            TEXT NOT NULL DEFAULT 'pending',
+                capability_domains TEXT,
+                created_at        TEXT NOT NULL,
+                completed_at      TEXT
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS scheduler_history (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                domain_id  TEXT,
+                plan_id    TEXT,
+                created_at TEXT NOT NULL
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS project_context (
+                id               INTEGER PRIMARY KEY CHECK (id = 1),
+                project_name     TEXT DEFAULT '',
+                domains         TEXT DEFAULT '[]',
+                key_files       TEXT DEFAULT '[]',
+                goals           TEXT DEFAULT '',
+                lifecycle_stage TEXT DEFAULT '',
+                updated_at      TEXT NOT NULL
+            )
+        """)
+        db.execute("INSERT OR IGNORE INTO project_context (id, updated_at) VALUES (1, ?)", (now,))
+        db.commit()
+
+    # Seed capability_domains (idempotent: insert only if empty)
+    seed_domains = [
+        ("coding", "Coding", "Implementing and refactoring code"),
+        ("system_design", "System Design", "Architecture and design decisions"),
+        ("communication", "Communication", "Explaining and writing clearly"),
+        ("research", "Research", "Deep research and synthesis"),
+        ("planning", "Planning", "Task breakdown and roadmaps"),
+        ("writing", "Writing", "Structured writing and documentation"),
+        ("repo_understanding", "Repo Understanding", "Understanding codebases"),
+        ("problem_solving", "Problem Solving", "Debugging and analysis"),
+        ("strategic_thinking", "Strategic Thinking", "Tradeoffs and strategy"),
+        ("self_maintenance", "Self-Maintenance", "Improving own systems"),
+    ]
+    with _conn() as db:
+        for domain_id, name, description in seed_domains:
+            db.execute(
+                "INSERT OR IGNORE INTO capability_domains (id, name, description, created_at) VALUES (?,?,?,?)",
+                (domain_id, name, description, now),
+            )
+        # Seed capability_dependencies
+        deps = [
+            ("planning", "coding", 0.3),
+            ("research", "writing", 0.2),
+            ("system_design", "coding", 0.2),
+            ("problem_solving", "strategic_thinking", 0.2),
+            ("repo_understanding", "coding", 0.25),
+            ("communication", "writing", 0.2),
+        ]
+        for src, tgt, w in deps:
+            db.execute(
+                "INSERT OR IGNORE INTO capability_dependencies (source_domain_id, target_domain_id, weight) VALUES (?,?,?)",
+                (src, tgt, w),
+            )
+        # Fabrication domains and dependencies (Part 1 + Part 6)
+        fabrication_domains = [
+            ("cad_modeling", "CAD Modeling", "Fabrication-friendly geometry and structure"),
+            ("cam_strategy", "CAM Strategy", "Toolpath and machining strategy"),
+            ("parametric_design", "Parametric Design", "Reusable definitions and constraints"),
+            ("cnc_machining", "CNC Machining", "Material-specific feeds, speeds, toolpaths"),
+            ("tooling", "Tooling", "Tool selection for geometry and material"),
+            ("feeds_and_speeds", "Feeds and Speeds", "Cutting parameters by material and tool"),
+            ("woodworking", "Woodworking", "Joint strength, use cases, techniques"),
+            ("joinery", "Joinery", "Joint types and applications"),
+            ("structural_building", "Structural Building", "Load-bearing and assembly"),
+            ("furniture_design", "Furniture Design", "Form, function, and build sequence"),
+            ("digital_fabrication", "Digital Fabrication", "From design to physical output"),
+            ("python_fabrication_tools", "Python Fabrication Tools", "ezdxf, OpenCV, programmatic DXF"),
+            ("fabrication_logic", "Fabrication Logic", "Logic and workflow from design to physical output"),
+        ]
+        for domain_id, name, description in fabrication_domains:
+            db.execute(
+                "INSERT OR IGNORE INTO capability_domains (id, name, description, created_at) VALUES (?,?,?,?)",
+                (domain_id, name, description, now),
+            )
+        fabrication_deps = [
+            ("cad_modeling", "cam_strategy", 0.25),
+            ("cam_strategy", "cnc_machining", 0.3),
+            ("cnc_machining", "tooling", 0.25),
+            ("tooling", "feeds_and_speeds", 0.25),
+            ("parametric_design", "cad_modeling", 0.2),
+            ("python_fabrication_tools", "digital_fabrication", 0.2),
+        ]
+        for src, tgt, w in fabrication_deps:
+            db.execute(
+                "INSERT OR IGNORE INTO capability_dependencies (source_domain_id, target_domain_id, weight) VALUES (?,?,?)",
+                (src, tgt, w),
+            )
+        db.commit()
+
+    # Optional: add lifecycle_stage to project_context (existing DBs)
+    try:
+        with _conn() as db:
+            db.execute("ALTER TABLE project_context ADD COLUMN lifecycle_stage TEXT DEFAULT ''")
+            db.commit()
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
+
+    # Optional: add usefulness_score and learning_quality_score to capability_events (existing DBs)
+    for col, default in (("usefulness_score", "0.5"), ("learning_quality_score", "0.5")):
+        try:
+            with _conn() as db:
+                db.execute(f"ALTER TABLE capability_events ADD COLUMN {col} REAL DEFAULT {default}")
+                db.commit()
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
+
+    # Backfill capabilities: one row per domain with defaults
+    with _conn() as db:
+        rows = db.execute("SELECT id FROM capability_domains").fetchall()
+        for row in rows:
+            domain_id = row["id"]
+            db.execute(
+                """INSERT OR IGNORE INTO capabilities
+                   (domain_id, level, confidence, trend, decay_risk, reinforcement_priority, practice_count, updated_at)
+                   VALUES (?, 0.5, 0.5, 'stable', 0.5, 0.5, 0, ?)""",
+                (domain_id, now),
+            )
+        db.commit()
+
+    # Seed light style profile (direction only; identity stabilizes over time)
+    with _conn() as db:
+        n = db.execute("SELECT COUNT(*) FROM style_profile").fetchone()[0]
+        if n == 0:
+            defaults = [
+                ("writing", "Clear, direct. Prefer active voice. No fluff. Stay on point."),
+                ("coding", "Readable names, small steps. Prefer standard library. One concern per change."),
+                ("reasoning", "State assumptions. One conclusion per thread. Acknowledge uncertainty when it exists."),
+                ("structuring", "Lead with the point. Group by idea. Short paragraphs and lists when they help."),
+            ]
+            for key, snapshot in defaults:
+                db.execute(
+                    """INSERT INTO style_profile (key, profile_snapshot, last_reinforced_at, drift_score, updated_at)
+                       VALUES (?,?,?,0,?)""",
+                    (key, snapshot, now, now),
+                )
+            db.commit()
+
+
+# ── learnings ──────────────────────────────────────────────────────────────
+
+def save_learning(content: str, kind: str = "fact", embedding_id: str = "") -> int:
+    """Save a learning. kind/learning_type: fact, preference, strategy, identity. Existing default to fact."""
+    migrate()
+    learning_type = kind if kind in ("fact", "preference", "strategy", "identity") else "fact"
+    with _conn() as db:
+        try:
+            cur = db.execute(
+                "INSERT INTO learnings (content, type, created_at, embedding_id, learning_type) VALUES (?,?,?,?,?)",
+                (content, learning_type, datetime.utcnow().isoformat(), embedding_id, learning_type),
+            )
+        except sqlite3.OperationalError:
+            cur = db.execute(
+                "INSERT INTO learnings (content, type, created_at, embedding_id) VALUES (?,?,?,?)",
+                (content, learning_type, datetime.utcnow().isoformat(), embedding_id),
+            )
+        db.commit()
+        return cur.lastrowid
+
+
+_ASPECT_LEARNING_PREFERENCE = {"echo": "preference", "morrigan": "strategy", "nyx": "fact"}
+
+
+def get_recent_learnings(n: int = 30, aspect_id: str | None = None) -> list[dict]:
+    """Recent learnings. If aspect_id given, prefer learning_type: Echo->preference, Morrigan->strategy, Nyx->fact."""
+    migrate()
+    with _conn() as db:
+        try:
+            has_lt = any(r[1] == "learning_type" for r in db.execute("PRAGMA table_info(learnings)").fetchall())
+        except Exception:
+            has_lt = False
+        if not has_lt or not aspect_id:
+            rows = db.execute(
+                "SELECT id, content, type, created_at FROM learnings ORDER BY id DESC LIMIT ?", (n,)
+            ).fetchall()
+        else:
+            pref = _ASPECT_LEARNING_PREFERENCE.get(aspect_id.lower(), "fact")
+            rows = db.execute(
+                """SELECT id, content, type, created_at, learning_type FROM learnings
+                   ORDER BY CASE WHEN learning_type = ? THEN 0 ELSE 1 END, id DESC LIMIT ?""",
+                (pref, n),
+            ).fetchall()
+        result = [dict(r) for r in reversed(rows)]
+        for r in result:
+            if "learning_type" not in r and "type" in r:
+                r["learning_type"] = r["type"]
+        return result
+
+
+def delete_learnings_by_id(ids: list) -> None:
+    """Remove learnings by id list. Used by memory distillation."""
+    if not ids:
+        return
+    migrate()
+    placeholders = ",".join("?" * len(ids))
+    with _conn() as db:
+        db.execute(f"DELETE FROM learnings WHERE id IN ({placeholders})", tuple(ids))
+        db.commit()
+
+
+# ── study plans ────────────────────────────────────────────────────────────
+
+def save_study_plan(plan_id: str, topic: str, status: str = "active", domain_id: str | None = None) -> None:
+    migrate()
+    now = datetime.utcnow().isoformat()
+    with _conn() as db:
+        try:
+            db.execute(
+                """INSERT INTO study_plans (id, topic, status, progress, created_at, domain_id)
+                   VALUES (?,?,?,?,?,?)
+                   ON CONFLICT(id) DO UPDATE SET status=excluded.status, domain_id=COALESCE(excluded.domain_id, study_plans.domain_id)""",
+                (plan_id, topic, status, "[]", now, domain_id),
+            )
+        except sqlite3.OperationalError:
+            db.execute(
+                """INSERT INTO study_plans (id, topic, status, progress, created_at)
+                   VALUES (?,?,?,?,?)
+                   ON CONFLICT(id) DO UPDATE SET status=excluded.status""",
+                (plan_id, topic, status, "[]", now),
+            )
+        db.commit()
+
+
+def get_active_study_plans() -> list[dict]:
+    migrate()
+    with _conn() as db:
+        rows = db.execute(
+            "SELECT * FROM study_plans WHERE status='active'"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_plan_by_topic(topic: str) -> dict | None:
+    """Return the active study plan with this topic (case-insensitive), or None."""
+    if not (topic or "").strip():
+        return None
+    topic_clean = topic.strip().lower()
+    for p in get_active_study_plans():
+        if (p.get("topic") or "").strip().lower() == topic_clean:
+            return p
+    return None
+
+
+def update_study_progress(plan_id: str, note: str) -> None:
+    migrate()
+    with _conn() as db:
+        row = db.execute("SELECT progress FROM study_plans WHERE id=?", (plan_id,)).fetchone()
+        if row:
+            progress = json.loads(row["progress"] or "[]")
+            progress.append({"note": note, "at": datetime.utcnow().isoformat()})
+            db.execute(
+                "UPDATE study_plans SET progress=?, last_studied=? WHERE id=?",
+                (json.dumps(progress), datetime.utcnow().isoformat(), plan_id),
+            )
+            db.commit()
+
+
+# ── wakeup log ─────────────────────────────────────────────────────────────
+
+def log_wakeup(greeting: str, notes: str = "") -> None:
+    migrate()
+    with _conn() as db:
+        db.execute(
+            "INSERT INTO wakeup_log (timestamp, greeting, notes) VALUES (?,?,?)",
+            (datetime.utcnow().isoformat(), greeting, notes),
+        )
+        db.commit()
+
+
+def get_last_wakeup() -> dict | None:
+    migrate()
+    with _conn() as db:
+        row = db.execute(
+            "SELECT * FROM wakeup_log ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    return dict(row) if row else None
+
+
+# ── audit ─────────────────────────────────────────────────────────────────
+
+def log_audit(tool: str, args_summary: str, approved_by: str, result_ok: bool) -> None:
+    migrate()
+    with _conn() as db:
+        db.execute(
+            "INSERT INTO audit (timestamp, tool, args_summary, approved_by, result_ok) VALUES (?,?,?,?,?)",
+            (datetime.utcnow().isoformat(), tool, args_summary[:200], approved_by, int(result_ok)),
+        )
+        db.commit()
+
+
+def get_recent_audit(n: int = 10) -> list[dict]:
+    migrate()
+    with _conn() as db:
+        rows = db.execute(
+            "SELECT * FROM audit ORDER BY id DESC LIMIT ?", (n,)
+        ).fetchall()
+    return [dict(r) for r in reversed(rows)]
+
+
+# ── aspect memories ────────────────────────────────────────────────────────
+
+def save_aspect_memory(aspect_id: str, content: str) -> None:
+    migrate()
+    with _conn() as db:
+        db.execute(
+            "INSERT INTO aspect_memories (aspect_id, content, created_at) VALUES (?,?,?)",
+            (aspect_id, content, datetime.utcnow().isoformat()),
+        )
+        db.commit()
+
+
+def get_aspect_memories(aspect_id: str, n: int = 10) -> list[dict]:
+    migrate()
+    with _conn() as db:
+        rows = db.execute(
+            "SELECT * FROM aspect_memories WHERE aspect_id=? ORDER BY id DESC LIMIT ?",
+            (aspect_id, n),
+        ).fetchall()
+    return [dict(r) for r in reversed(rows)]
+
+
+# ── earned titles ──────────────────────────────────────────────────────────
+
+def save_earned_title(aspect_id: str, title: str) -> None:
+    migrate()
+    with _conn() as db:
+        db.execute(
+            "INSERT INTO earned_titles (aspect_id, title, updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(aspect_id) DO UPDATE SET title=excluded.title, updated_at=excluded.updated_at",
+            (aspect_id, title, datetime.utcnow().isoformat()),
+        )
+        db.commit()
+
+
+def get_earned_title(aspect_id: str) -> str | None:
+    migrate()
+    with _conn() as db:
+        row = db.execute("SELECT title FROM earned_titles WHERE aspect_id=?", (aspect_id,)).fetchone()
+    return row["title"] if row else None
+
+
+# ── evolution layer: capabilities ──────────────────────────────────────────
+
+def get_capability_domains() -> list[dict]:
+    migrate()
+    with _conn() as db:
+        rows = db.execute("SELECT * FROM capability_domains ORDER BY id").fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_capabilities() -> list[dict]:
+    migrate()
+    with _conn() as db:
+        rows = db.execute("SELECT * FROM capabilities ORDER BY domain_id").fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_capability(domain_id: str) -> dict | None:
+    migrate()
+    with _conn() as db:
+        row = db.execute("SELECT * FROM capabilities WHERE domain_id=?", (domain_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def insert_capability_event(
+    domain_id: str,
+    event_type: str,
+    mission_id: str | None = None,
+    delta_level: float = 0.0,
+    delta_confidence: float = 0.0,
+    notes: str | None = None,
+    usefulness_score: float = 0.5,
+    learning_quality_score: float = 0.5,
+) -> int:
+    migrate()
+    now = datetime.utcnow().isoformat()
+    usefulness_score = max(0.0, min(1.0, usefulness_score))
+    learning_quality_score = max(0.0, min(1.0, learning_quality_score))
+    with _conn() as db:
+        try:
+            cur = db.execute(
+                """INSERT INTO capability_events (domain_id, event_type, mission_id, delta_level, delta_confidence, notes, usefulness_score, learning_quality_score, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (domain_id, event_type, mission_id or "", delta_level, delta_confidence, notes or "", usefulness_score, learning_quality_score, now),
+            )
+        except sqlite3.OperationalError:
+            cur = db.execute(
+                """INSERT INTO capability_events (domain_id, event_type, mission_id, delta_level, delta_confidence, notes, usefulness_score, created_at)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (domain_id, event_type, mission_id or "", delta_level, delta_confidence, notes or "", usefulness_score, now),
+            )
+        db.commit()
+        return cur.lastrowid
+
+
+def update_capability(
+    domain_id: str,
+    level: float,
+    confidence: float,
+    trend: str,
+    last_practiced_at: str | None,
+    decay_risk: float,
+    reinforcement_priority: float,
+    practice_count: int,
+) -> None:
+    migrate()
+    now = datetime.utcnow().isoformat()
+    with _conn() as db:
+        db.execute(
+            """UPDATE capabilities SET level=?, confidence=?, trend=?, last_practiced_at=?, decay_risk=?,
+               reinforcement_priority=?, practice_count=?, updated_at=? WHERE domain_id=?""",
+            (level, confidence, trend, last_practiced_at, decay_risk, reinforcement_priority, practice_count, now, domain_id),
+        )
+        db.commit()
+
+
+def get_recent_capability_events(domain_id: str, n: int = 10) -> list[dict]:
+    migrate()
+    with _conn() as db:
+        rows = db.execute(
+            "SELECT * FROM capability_events WHERE domain_id=? ORDER BY id DESC LIMIT ?",
+            (domain_id, n),
+        ).fetchall()
+    return [dict(r) for r in reversed(rows)]
+
+
+def get_scheduler_history(n: int = 10) -> list[dict]:
+    migrate()
+    with _conn() as db:
+        rows = db.execute(
+            "SELECT * FROM scheduler_history ORDER BY id DESC LIMIT ?",
+            (n,),
+        ).fetchall()
+    return [dict(r) for r in reversed(rows)]
+
+
+def append_scheduler_history(domain_id: str | None, plan_id: str | None) -> None:
+    migrate()
+    now = datetime.utcnow().isoformat()
+    with _conn() as db:
+        db.execute(
+            "INSERT INTO scheduler_history (domain_id, plan_id, created_at) VALUES (?,?,?)",
+            (domain_id or "", plan_id or "", now),
+        )
+        db.commit()
+
+
+def get_capability_dependencies() -> list[dict]:
+    """Returns list of {source_domain_id, target_domain_id, weight}."""
+    migrate()
+    with _conn() as db:
+        rows = db.execute("SELECT source_domain_id, target_domain_id, weight FROM capability_dependencies").fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── style profile (evolution layer) ────────────────────────────────────────
+
+def get_style_profile(key: str) -> dict | None:
+    migrate()
+    with _conn() as db:
+        row = db.execute("SELECT * FROM style_profile WHERE key=?", (key,)).fetchone()
+    return dict(row) if row else None
+
+
+def set_style_profile(key: str, profile_snapshot: str, drift_score: float = 0.0) -> None:
+    migrate()
+    now = datetime.utcnow().isoformat()
+    with _conn() as db:
+        db.execute(
+            """INSERT INTO style_profile (key, profile_snapshot, last_reinforced_at, drift_score, updated_at)
+               VALUES (?,?,?,?,?)
+               ON CONFLICT(key) DO UPDATE SET profile_snapshot=excluded.profile_snapshot,
+                 last_reinforced_at=excluded.last_reinforced_at, drift_score=excluded.drift_score, updated_at=excluded.updated_at""",
+            (key, profile_snapshot, now, drift_score, now),
+        )
+        db.commit()
+
+
+# ── mission chains (evolution layer) ───────────────────────────────────────
+
+def create_mission_chain(
+    chain_id: str,
+    mission_type: str,
+    goal_summary: str,
+    parent_mission_id: str | None = None,
+    capability_domains: list[str] | None = None,
+) -> None:
+    migrate()
+    now = datetime.utcnow().isoformat()
+    domains_json = json.dumps(capability_domains or []) if capability_domains else "[]"
+    with _conn() as db:
+        db.execute(
+            """INSERT INTO mission_chains (id, parent_mission_id, mission_type, goal_summary, status, capability_domains, created_at)
+               VALUES (?,?,?,?,?,?,?)""",
+            (chain_id, parent_mission_id or "", mission_type, goal_summary, "pending", domains_json, now),
+        )
+        db.commit()
+
+
+def get_pending_mission_chains() -> list[dict]:
+    migrate()
+    with _conn() as db:
+        rows = db.execute("SELECT * FROM mission_chains WHERE status='pending' ORDER BY created_at").fetchall()
+    return [dict(r) for r in rows]
+
+
+def complete_mission_chain(chain_id: str, outcome_summary: str) -> None:
+    migrate()
+    now = datetime.utcnow().isoformat()
+    with _conn() as db:
+        db.execute(
+            "UPDATE mission_chains SET status='completed', outcome_summary=?, completed_at=? WHERE id=?",
+            (outcome_summary, now, chain_id),
+        )
+        db.commit()
+
+
+def get_project_context() -> dict:
+    """Return current project context: project_name, domains (list), key_files (list), goals. Read-only for Layla; do not modify files without approval."""
+    migrate()
+    with _conn() as db:
+        row = db.execute("SELECT * FROM project_context WHERE id=1").fetchone()
+    if not row:
+        return {"project_name": "", "domains": [], "key_files": [], "goals": "", "lifecycle_stage": "", "updated_at": ""}
+    try:
+        domains = json.loads(row["domains"] or "[]")
+    except (json.JSONDecodeError, TypeError):
+        domains = []
+    try:
+        key_files = json.loads(row["key_files"] or "[]")
+    except (json.JSONDecodeError, TypeError):
+        key_files = []
+    return {
+        "project_name": row["project_name"] or "",
+        "domains": domains,
+        "key_files": key_files,
+        "goals": row["goals"] or "",
+        "lifecycle_stage": (dict(row).get("lifecycle_stage") or "").strip() or "",
+        "updated_at": row["updated_at"] or "",
+    }
+
+
+PROJECT_LIFECYCLE_STAGES = ("idea", "planning", "prototype", "iteration", "execution", "reflection")
+
+
+def set_project_context(
+    project_name: str = "",
+    domains: list[str] | None = None,
+    key_files: list[str] | None = None,
+    goals: str = "",
+    lifecycle_stage: str = "",
+) -> None:
+    """Update project context. lifecycle_stage: idea|planning|prototype|iteration|execution|reflection (North Star §3)."""
+    migrate()
+    now = datetime.utcnow().isoformat()
+    cur = get_project_context()
+    if project_name:
+        cur["project_name"] = project_name
+    if domains is not None:
+        cur["domains"] = domains
+    if key_files is not None:
+        cur["key_files"] = key_files
+    if goals:
+        cur["goals"] = goals
+    if lifecycle_stage and lifecycle_stage.strip().lower() in PROJECT_LIFECYCLE_STAGES:
+        cur["lifecycle_stage"] = lifecycle_stage.strip().lower()
+    with _conn() as db:
+        try:
+            db.execute(
+                """UPDATE project_context SET project_name=?, domains=?, key_files=?, goals=?, lifecycle_stage=?, updated_at=? WHERE id=1""",
+                (cur["project_name"], json.dumps(cur["domains"]), json.dumps(cur["key_files"]), cur["goals"], cur.get("lifecycle_stage", ""), now),
+            )
+        except sqlite3.OperationalError:
+            db.execute(
+                """UPDATE project_context SET project_name=?, domains=?, key_files=?, goals=?, updated_at=? WHERE id=1""",
+                (cur["project_name"], json.dumps(cur["domains"]), json.dumps(cur["key_files"]), cur["goals"], now),
+            )
+        db.commit()

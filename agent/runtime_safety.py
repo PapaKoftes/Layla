@@ -1,0 +1,342 @@
+import json
+import os
+import shutil
+import subprocess
+from datetime import datetime
+from pathlib import Path
+
+AGENT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = AGENT_DIR.parent
+GOV_PATH = AGENT_DIR / ".governance"
+APPROVAL_FILE = GOV_PATH / "approvals.json"
+EXEC_LOG_FILE = GOV_PATH / "execution_log.json"
+IDENTITY_FILE = AGENT_DIR / "system_identity.txt"
+PERSONALITY_EXPRESSION_FILE = AGENT_DIR / "personality_expression.txt"
+COGNITIVE_LENS_FILE = AGENT_DIR / "cognitive_lens.txt"
+BEHAVIORAL_RHYTHM_FILE = AGENT_DIR / "behavioral_rhythm.txt"
+UI_REFLECTION_FILE = AGENT_DIR / "ui_reflection.txt"
+LENS_KNOWLEDGE_DIR = AGENT_DIR / "lens_knowledge"
+OPERATIONAL_GUIDANCE_FILE = AGENT_DIR / "operational_guidance.txt"
+CONFIG_FILE = AGENT_DIR / "runtime_config.json"
+BACKUP_DIR = AGENT_DIR / ".backup"
+
+SAFE_TOOLS = ["git_status", "read_file", "list_dir"]
+DANGEROUS_TOOLS = ["write_file", "shell", "run_python", "apply_patch"]
+
+PROTECTED_FILES = [
+    AGENT_DIR / "main.py",
+    AGENT_DIR / "agent_loop.py",
+    AGENT_DIR / "runtime_safety.py",
+]
+
+_config_cache: dict | None = None
+_config_mtime: float = 0.0
+_hardware_probe_cache: dict | None = None
+
+
+def _probe_hardware() -> dict:
+    """Probe CPU, RAM, GPU/VRAM once per process. Returns ram_gb, vram_gb, cpu_logical."""
+    global _hardware_probe_cache
+    if _hardware_probe_cache is not None:
+        return _hardware_probe_cache
+    cpu_count = os.cpu_count() or 4
+    ram_gb = 16.0
+    vram_gb = 0.0
+    try:
+        import psutil
+        mem = psutil.virtual_memory()
+        ram_gb = round(mem.total / (1024**3), 1)
+    except Exception:
+        pass
+    try:
+        r = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=10, encoding="utf-8", errors="replace",
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            raw = r.stdout.strip().split("\n")[0].strip().replace("MiB", "").replace("MB", "").strip()
+            try:
+                vram_mb = int(raw)
+                vram_gb = round(vram_mb / 1024.0, 1)
+            except ValueError:
+                pass
+    except Exception:
+        pass
+    _hardware_probe_cache = {"ram_gb": ram_gb, "vram_gb": vram_gb, "cpu_logical": cpu_count}
+    return _hardware_probe_cache
+
+
+def _hardware_derived_defaults() -> dict:
+    """Return LLM-related defaults derived from probed hardware. Override in runtime_config.json."""
+    h = _probe_hardware()
+    ram_gb = h["ram_gb"]
+    vram_gb = h["vram_gb"]
+
+    if vram_gb >= 16 and ram_gb >= 24:
+        return {"n_ctx": 8192, "n_gpu_layers": -1, "n_batch": 1024, "use_mlock": True, "completion_max_tokens": 512}
+    if vram_gb >= 12 and ram_gb >= 16:
+        return {"n_ctx": 8192, "n_gpu_layers": -1, "n_batch": 512, "use_mlock": ram_gb >= 24, "completion_max_tokens": 512}
+    if vram_gb >= 8 and ram_gb >= 12:
+        return {"n_ctx": 4096, "n_gpu_layers": -1, "n_batch": 512, "use_mlock": False, "completion_max_tokens": 384}
+    if vram_gb >= 6:
+        return {"n_ctx": 4096, "n_gpu_layers": -1, "n_batch": 256, "use_mlock": False, "completion_max_tokens": 256}
+    if vram_gb >= 4:
+        return {"n_ctx": 4096, "n_gpu_layers": 20, "n_batch": 256, "use_mlock": False, "completion_max_tokens": 256}
+    if vram_gb >= 2:
+        return {"n_ctx": 2048, "n_gpu_layers": 10, "n_batch": 128, "use_mlock": False, "completion_max_tokens": 256}
+    # CPU-only or no GPU
+    return {"n_ctx": 2048, "n_gpu_layers": 0, "n_batch": 128, "use_mlock": ram_gb >= 16, "completion_max_tokens": 256}
+
+
+def load_config() -> dict:
+    global _config_cache, _config_mtime
+    try:
+        current_mtime = CONFIG_FILE.stat().st_mtime
+    except Exception:
+        current_mtime = 0.0
+    if _config_cache is not None and current_mtime == _config_mtime:
+        return _config_cache
+    # Static defaults (safe fallbacks)
+    defaults = {
+        "max_cpu_percent": 90,
+        "max_ram_percent": 90,
+        "max_runtime_seconds": 20,
+        "max_tool_calls": 5,
+        "research_max_tool_calls": 20,
+        "research_max_runtime_seconds": 120,
+        "safe_mode": True,
+        "temperature": 0.2,
+        "n_ctx": 4096,
+        "n_gpu_layers": 0,
+        "n_batch": 512,
+        "n_threads": None,
+        "n_threads_batch": None,
+        "use_mlock": False,
+        "use_mmap": True,
+        "top_p": 0.95,
+        "repeat_penalty": 1.1,
+        "top_k": 40,
+        "model_filename": "jinx-20b.gguf",
+        "sandbox_root": r"C:\github",
+        "web_allowlist": [],
+        "knowledge_sources": [],
+        "knowledge_max_bytes": 4000,
+        "knowledge_chunks_k": 5,
+        "learnings_n": 30,
+        "semantic_k": 5,
+        "aspect_memories_n": 10,
+        "convo_turns": 0,
+        "stop_sequences": ["\nUser:", " User:"],
+        "completion_max_tokens": 256,
+        "remote_model_name": "llama3.1",
+        "scheduler_study_enabled": True,
+        "scheduler_interval_minutes": 30,
+        "scheduler_recent_activity_minutes": 90,
+        "wakeup_include_initiative": False,
+        "wakeup_include_discovery_line": False,
+        "remote_enabled": False,
+        "remote_api_key": None,
+        "remote_allow_endpoints": [],
+        "remote_mode": "observe",
+        "trace_id_enabled": False,
+        "use_chroma": True,
+        "uncensored": True,
+        "nsfw_allowed": True,
+        "knowledge_unrestricted": True,
+        "anonymous_access": True,
+        "enable_personality_expression": False,
+        "enable_cognitive_lens": False,
+        "enable_behavioral_rhythm": False,
+        "enable_ui_reflection": False,
+        "enable_lens_knowledge": False,
+        "enable_lens_refresh": False,
+        "lens_refresh_interval_days": 7,
+        "enable_operational_guidance": False,
+    }
+    defaults.update(_hardware_derived_defaults())
+    try:
+        data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            defaults.update(data)
+    except Exception:
+        pass
+    _config_cache = defaults
+    _config_mtime = current_mtime
+    return _config_cache
+
+
+def load_identity() -> str:
+    try:
+        return IDENTITY_FILE.read_text(encoding="utf-8")
+    except Exception:
+        return ""
+
+
+def load_personality() -> str:
+    try:
+        p = json.loads((REPO_ROOT / "personality.json").read_text(encoding="utf-8"))
+        return p.get("systemPromptAddition", "")
+    except Exception:
+        return ""
+
+
+def load_personality_expression() -> str:
+    """Load the Personality Expression Layer block (prompt-only guidance). Used only when enable_personality_expression is True."""
+    try:
+        if PERSONALITY_EXPRESSION_FILE.exists():
+            return PERSONALITY_EXPRESSION_FILE.read_text(encoding="utf-8").strip()
+    except Exception:
+        pass
+    return ""
+
+
+def load_cognitive_lens() -> str:
+    """Load the Cognitive Lens block (prompt-only). Used only when enable_cognitive_lens is True."""
+    try:
+        if COGNITIVE_LENS_FILE.exists():
+            return COGNITIVE_LENS_FILE.read_text(encoding="utf-8").strip()
+    except Exception:
+        pass
+    return ""
+
+
+def load_behavioral_rhythm() -> str:
+    """Load the Behavioral Rhythm block (prompt-only). Used only when enable_behavioral_rhythm is True."""
+    try:
+        if BEHAVIORAL_RHYTHM_FILE.exists():
+            return BEHAVIORAL_RHYTHM_FILE.read_text(encoding="utf-8").strip()
+    except Exception:
+        pass
+    return ""
+
+
+def load_ui_reflection() -> str:
+    """Load the UI Reflection block (prompt-only). Used only when enable_ui_reflection is True."""
+    try:
+        if UI_REFLECTION_FILE.exists():
+            return UI_REFLECTION_FILE.read_text(encoding="utf-8").strip()
+    except Exception:
+        pass
+    return ""
+
+
+def load_operational_guidance() -> str:
+    """Load the Operational Guidance block (prompt-only). Used only when enable_operational_guidance is True."""
+    try:
+        if OPERATIONAL_GUIDANCE_FILE.exists():
+            return OPERATIONAL_GUIDANCE_FILE.read_text(encoding="utf-8").strip()
+    except Exception:
+        pass
+    return ""
+
+
+def load_lens_knowledge() -> str:
+    """Load summarized lens knowledge from lens_knowledge/*.md (prompt-only). Used only when enable_lens_knowledge is True."""
+    summaries = []
+    try:
+        if LENS_KNOWLEDGE_DIR.exists():
+            for f in sorted(LENS_KNOWLEDGE_DIR.glob("*.md")):
+                summaries.append(f.read_text(encoding="utf-8")[:600])
+    except Exception:
+        pass
+    return "\n\n".join(summaries) if summaries else ""
+
+
+def _knowledge_priority_from_text(text: str) -> str:
+    """Parse optional YAML front matter priority. Default support."""
+    if not (text or "").strip().startswith("---"):
+        return "support"
+    for line in (text or "").split("\n")[1:]:
+        line = line.strip()
+        if line == "---":
+            break
+        if line.lower().startswith("priority:") and ":" in line:
+            val = line.split(":", 1)[1].strip().lower()
+            if val in ("core", "support", "flavor"):
+                return val
+    return "support"
+
+
+def load_knowledge_docs(max_bytes: int = 6000) -> str:
+    """Walk knowledge/ and concatenate .md / .txt files up to max_bytes. Excludes .identity. Priority: core > support > flavor."""
+    knowledge_dir = REPO_ROOT / "knowledge"
+    if not knowledge_dir.exists():
+        return ""
+    collected = []
+    for ext in ("*.md", "*.txt"):
+        for f in sorted(knowledge_dir.rglob(ext)):
+            if ".identity" in str(f):
+                continue
+            try:
+                text = f.read_text(encoding="utf-8", errors="replace")
+                priority = _knowledge_priority_from_text(text)
+                if text.strip().startswith("---"):
+                    end = text.find("\n---", 3)
+                    body = text[end + 4:].strip() if end >= 0 else text
+                else:
+                    body = text
+                collected.append((priority, f"--- {f.name} ---\n{body[:8000]}"))
+            except Exception:
+                continue
+    order = {"core": 0, "support": 1, "flavor": 2}
+    collected.sort(key=lambda x: order.get(x[0], 1))
+    parts = []
+    total = 0
+    for _, chunk in collected:
+        if total >= max_bytes:
+            break
+        remaining = max_bytes - total
+        parts.append(chunk[:remaining])
+        total += len(parts[-1])
+    return "\n\n".join(parts)
+
+
+def require_approval(tool_name: str) -> bool:
+    if tool_name in SAFE_TOOLS:
+        return True
+    if tool_name in DANGEROUS_TOOLS:
+        try:
+            data = json.loads(APPROVAL_FILE.read_text(encoding="utf-8"))
+            return data.get(tool_name, False) if isinstance(data, dict) else False
+        except Exception:
+            return False
+    return False
+
+
+def is_protected(path: Path) -> bool:
+    try:
+        resolved = path.resolve()
+        return any(resolved == p for p in PROTECTED_FILES)
+    except Exception:
+        return False
+
+
+def backup_file(path: Path) -> bool:
+    try:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        dest = BACKUP_DIR / f"{path.stem}_{ts}{path.suffix}"
+        shutil.copy2(str(path), str(dest))
+        return True
+    except Exception:
+        return False
+
+
+def log_execution(tool_name: str, payload: dict) -> None:
+    entry = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "tool": tool_name,
+        "payload": payload,
+    }
+    try:
+        GOV_PATH.mkdir(parents=True, exist_ok=True)
+        data = []
+        if EXEC_LOG_FILE.exists():
+            try:
+                data = json.loads(EXEC_LOG_FILE.read_text(encoding="utf-8"))
+            except Exception:
+                data = []
+        data.append(entry)
+        EXEC_LOG_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except Exception:
+        pass
