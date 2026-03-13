@@ -1,52 +1,90 @@
 # Architecture — One-Page Overview
 
+> For the full AI operations manual (file map, rules, style guide), see **`AGENTS.md`**.
+
+---
+
 ## Pinned versions and paths
 
-- **Python**: 3.10+ (tested 3.10–3.12). Dependencies: `agent/requirements.txt`.
-- **Database**: SQLite at **repo root** `layla.db` (defined in `agent/jinx/memory/db.py` as `Path(__file__).resolve().parent.parent.parent.parent / "layla.db"`). All persistent memory (learnings, study_plans, wakeup_log, audit, aspect_memories, project_context, capabilities) lives in this single file.
+- **Python**: 3.11+ (tested 3.11–3.12). Dependencies: `agent/requirements.txt`.
+- **Database**: SQLite at **repo root** `layla.db`. All persistent memory (learnings, study_plans, wakeup_log, audit, aspect_memories, project_context, capabilities) lives here.
+- **Config**: `agent/runtime_config.json` (gitignored). Template at `agent/runtime_config.example.json`.
+- **Model**: `models/<filename>.gguf` (gitignored). Set `model_filename` in config.
+
+---
 
 ## Request flow
 
-1. **Client** → HTTP to FastAPI (`agent/main.py`) on `localhost:8000`.
-2. **Routes**:
-   - `/agent`, `/learn/` → `routers/agent` (uses `shared_state`: history, touch_activity, append_history).
-   - `/research_mission`, `/research`, `/research_mission/state`, `/research_output/last`, `/research_brain/file`, `/research_mission/debug`, `/research_mission/verify` → `routers/research` (uses `research_lab` paths and helpers, `shared_state`, `agent_loop`).
-   - `/study_plans`, `/wakeup`, … → `routers/study`; `/approve`, `/pending` → `routers/approvals`.
-   - `/health`, `/v1/models`, `/v1/chat/completions`, `/system_export`, `/ui`, `/` → `main.py`.
-3. **Agent path**: `/agent` (and v1 chat) call `agent_loop.autonomous_run(goal, context, workspace_root, allow_write, allow_run, …)`. Optional `research_mode=True` for research/router endpoints.
-4. **agent_loop**:
-   - Loads config (`runtime_safety`), aspect (orchestrator), optional deliberation.
-   - **Decision step**: `_llm_decision()` asks the LLM for one JSON line (action: tool | reason, tool name, objective_complete, …). Uses `decision_schema.parse_decision()` (Pydantic when available) with a single retry on parse failure.
-   - **Tool step**: If action is `tool`, runs one tool from the registry (read_file, write_file, apply_patch, shell, run_python, grep_code, list_dir, git_*, etc.). Write/run are gated by `allow_write`/`allow_run` and approval; in research_mode, writes/runs restricted to `.research_lab`.
-   - **Reason step**: If action is `reason` or objective_complete, calls `_completion()` to generate the final reply.
-   - Loop until objective_complete or max steps/timeout; returns `{ steps, status, aspect, … }`.
-5. **Approval**: When a tool needs approval, the loop returns (or enqueues) an approval request; client approves via `/approve`; the same or a follow-up run can then proceed.
+```
+Client
+  → HTTP → FastAPI (agent/main.py, port 8000)
+  → Router dispatch:
+      /agent, /learn/          → routers/agent.py    → agent_loop.autonomous_run()
+      /research_mission        → routers/research.py → agent_loop (research_mode=True)
+      /study_plans, /wakeup    → routers/study.py
+      /approve, /pending       → routers/approvals.py
+      /voice/transcribe        → services/stt.py     (faster-whisper)
+      /voice/speak             → services/tts.py     (kokoro-onnx)
+      /health, /v1/*, /ui      → main.py (inline)
+```
+
+**agent_loop.autonomous_run():**
+1. `runtime_safety.load_config()` — TTL-cached, hot-path safe
+2. `orchestrator.select_aspect()` — keyword-based, loads `personalities/*.json`
+3. `_build_system_head()` — identity + knowledge RAG (BM25+vector+FTS5+rerank) + learnings + CoT
+4. **Decision loop** (up to `max_tool_calls`):
+   - `_llm_decision()` → parse JSON `{action, tool_name, objective_complete, ...}`
+   - If `action=tool`: `registry.TOOLS[name]()` — gated by `allow_write`/`allow_run` + approval
+   - If `action=reason` or `objective_complete`: `_completion()` → stream final reply
+5. Optional self-reflection (`enable_self_reflection`) — score + rewrite if < 7/10
+6. `_save_outcome_memory()` — distill and store outcome
+
+**Approval:** tool returns `approval_required` → queued in `shared_state.pending` → `POST /approve {"id": uuid}` → proceed
+
+---
 
 ## Where state lives
 
 | What | Where |
-|------|--------|
-| Learnings, study plans, wakeup log, audit | SQLite **repo root** `layla.db` |
-| Optional semantic memory | FAISS/Chroma vector store (config-driven) |
-| Conversation history (in-memory) | `main.py` → `shared_state` (deque); used by agent and research routes |
-| Pending approvals | In-memory list + audit in DB (see `shared_state`, approvals router) |
-| Research lab (sandbox) | `agent/.research_lab/` (lab subdirs: source_copy, notes, experiments) |
-| Research outputs | `agent/.research_output/` (e.g. last_research.md), `agent/.research_brain/` (mission_state, maps, strategic, …) |
-| Config | `agent/runtime_config.json`; hardware defaults from probe if used |
+|---|---|
+| Learnings, study plans, wakeup log, audit | SQLite `layla.db` (repo root) |
+| FTS5 full-text search index | Virtual table in `layla.db` (auto-sync triggers) |
+| Semantic memory vectors | ChromaDB `agent/chroma/` (config-driven) |
+| BM25 index | In-memory, rebuilt from learnings on count change |
+| Conversation history | `shared_state` in-memory deque |
+| Pending approvals | `shared_state.pending` list + audit in DB |
+| Knowledge index | ChromaDB `agent/chroma/` (collection: `knowledge`) |
+| Research lab / output | `agent/.research_lab/`, `agent/.research_output/`, `agent/.research_brain/` |
+| Config | `agent/runtime_config.json` |
+
+---
 
 ## Scheduler and wakeup
 
-- **Scheduler**: Optional background job (e.g. APScheduler) runs autonomous study only when there has been recent activity (touch_activity on /agent, /wakeup, /learn, /ui). Config: `scheduler_study_enabled`, `scheduler_interval_minutes`, `scheduler_recent_activity_minutes`.
-- **Wakeup**: `GET /wakeup` (or CLI `layla.py wakeup`) marks activity, logs wakeup, and returns last wakeup time, active study plans, and optional “what was studied since last session.” Echo aspect often used for greeting and pattern reflection.
+- **Scheduler**: APScheduler background job advances study plans only when `touch_activity` is recent (touched by `/agent`, `/wakeup`, `/learn/`, `/ui`). Config: `scheduler_study_enabled`, `scheduler_interval_minutes`, `scheduler_recent_activity_minutes`.
+- **Wakeup**: `GET /wakeup` marks activity, logs session, returns last wakeup time, active study plans, and optional "what was studied" summary.
+
+---
 
 ## Key files
 
-- `agent/main.py` — App, lifespan, shared_state setup, health, v1/chat, system_export, UI routes.
-- `agent/agent_loop.py` — autonomous_run, _llm_decision (with decision_schema + retry), tools, reason loop.
-- `agent/decision_schema.py` — Pydantic decision model and parse_decision(text, valid_tools).
-- `agent/research_lab.py` — Research lab paths and helpers (copy_source_to_lab, load_mission_preset, etc.).
-- `agent/routers/agent.py` — POST /learn/, POST /agent.
-- `agent/routers/research.py` — Research mission and read-only research endpoints.
-- `agent/routers/study.py` — Study plans, wakeup.
-- `agent/routers/approvals.py` — Approve, pending.
-- `agent/shared_state.py` — Refs for history, touch_activity, pending, audit, append_history, run_autonomous_study.
+| File | Role |
+|---|---|
+| `agent/main.py` | FastAPI app, lifespan, all routes, `/ui`, `/v1`, `/health`, GZip middleware |
+| `agent/agent_loop.py` | `autonomous_run()`, decision loop, tool dispatch, streaming, self-reflection |
+| `agent/orchestrator.py` | Aspect selection, deliberation prompt builder |
+| `agent/runtime_safety.py` | Config load (TTL-cached), file caching, hardware probe, sandbox validation |
+| `agent/shared_state.py` | Shared refs: history deque, pending approvals, touch_activity, audit |
+| `agent/decision_schema.py` | Pydantic decision model, `parse_decision()` |
+| `agent/layla/tools/registry.py` | All 21 tools + `TOOLS` dict. Add tools here. |
+| `agent/layla/memory/db.py` | SQLite schema, `migrate()`, all DB access, FTS5 |
+| `agent/layla/memory/vector_store.py` | ChromaDB, BM25, cross-encoder reranking, HyDE, parent-doc retrieval |
+| `agent/services/llm_gateway.py` | `run_completion()`, `prewarm_llm()`, auto-thread detection |
+| `agent/services/stt.py` | faster-whisper STT |
+| `agent/services/tts.py` | kokoro-onnx TTS with pyttsx3 fallback |
+| `agent/services/browser.py` | Playwright browser automation |
+| `agent/routers/agent.py` | `POST /learn/`, `POST /agent` |
+| `agent/routers/approvals.py` | `POST /approve`, `GET /pending` |
+| `agent/routers/study.py` | `GET /wakeup`, `/study_plans` |
+| `agent/ui/index.html` | Web UI (also served embedded from main.py) |
+| `personalities/*.json` | Aspect definitions. Loaded dynamically — never hardcode the list. |

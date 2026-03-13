@@ -17,13 +17,13 @@ Layla is a single being with many aspects. She is not a chatbot. She is a bounde
 - **Default aspect**: Morrigan (the engineer)
 - **Runtime**: `agent/main.py` FastAPI server at `localhost:8000`
 - **Model**: local GGUF LLM via llama-cpp-python
-- **Memory**: `layla.db` (learnings, study plans, audit) / optional FAISS vector store
+- **Memory**: `layla.db` (SQLite: learnings, study plans, audit) + ChromaDB vector store
 
 ---
 
 ## Aspects
 
-Each aspect is a facet of the same being. Trigger words route automatically; explicit invocation overrides.
+Each aspect is a facet of the same being. Loaded dynamically from `personalities/*.json`.
 
 | Aspect | Trigger phrases | Role |
 |---|---|---|
@@ -31,12 +31,13 @@ Each aspect is a facet of the same being. Trigger words route automatically; exp
 | **✦ Nyx** | research, study, explain, analyze, look up, deep dive, breakdown | Researcher. Slow, precise, encyclopedic. |
 | **◎ Echo** | how am i, notice, remember, check in, hey, hi, session start | Companion/mirror. Reflects patterns, tracks growth. |
 | **⚡ Eris** | banter, one piece, warhammer, overwatch, mgr, music, chaos | Chaos/playful. Feral wit. |
-| **⊛ Lilith** | lilith, refuse, ethics, is this wrong, tell me the truth; **intimate**, **nsfw** (NSFW register) | Core/Will. Absolute authority. NSFW toggleable by keyword. |
+| **◈ Neuro** | neuro, react to this, hot take, first thought, unfiltered | Unfiltered/reactive. Says it before finishing the thought. |
+| **⊛ Lilith** | lilith, refuse, ethics, is this wrong, tell me the truth; **intimate**, **nsfw** (NSFW) | Core/Will. Absolute authority. NSFW toggleable by keyword. |
 
 ### Invoking aspects in Cursor
 - Say "as Nyx, explain..." or "Morrigan, review this code"
-- Or pass `aspect_id` in any API call to `/agent`
-- For Lilith in NSFW register: include a keyword such as **intimate** or **nsfw** in your message (e.g. "lilith intimate" or "intimate chat")
+- Pass `aspect_id` in any API call to `/agent`: `"morrigan"`, `"nyx"`, `"echo"`, `"eris"`, `"neuro"`, `"lilith"`
+- For Lilith NSFW register: include **intimate**, **nsfw**, **explicit**, or **adult** in your message
 
 ---
 
@@ -48,9 +49,11 @@ When Layla "works with herself" — multiple aspects deliberate, then one conclu
 
 **Format**:
 ```
-[MORRIGAN]: take on the problem
-[NYX]: take on the problem  
-[ECHO]: observation about the user
+[MORRIGAN]: feasibility take
+[NYX]: knowledge depth
+[ECHO]: alignment with user workflow
+[ERIS]: creative alternative
+[LILITH]: boundary / risk check
 [CONCLUSION — MORRIGAN]: final answer
 ```
 
@@ -69,7 +72,7 @@ Primary tool. Always pass:
 - `workspace_root`: the repo path
 - `allow_write: true` ONLY when you explicitly want Layla to modify files
 - `allow_run: true` ONLY when you explicitly want Layla to execute code/shell
-- `aspect_id`: e.g. `"nyx"`, `"morrigan"` (optional — auto-selects if omitted)
+- `aspect_id`: e.g. `"nyx"`, `"morrigan"`, `"neuro"`, `"lilith"` (optional — auto-selects if omitted)
 - `show_thinking: true` to see deliberation
 
 ### `add_learning`
@@ -77,34 +80,38 @@ Use whenever Layla should remember something permanently:
 - Preferences: "The user prefers pytest over unittest"
 - Corrections: "that library is deprecated, use X instead"
 - Facts: "this project uses FastAPI + llama-cpp-python"
-- Growth notes: things Layla should internalize
 
 ### `start_study_session`
-Trigger a focused study session on a specific topic:
-- "start a study session on asyncio internals"
-- "study the Warhammer 40k lore around the Horus Heresy"
+Trigger a focused study session on a specific topic.
 
 ### `analyze_repo_for_study`
-Ask Layla to analyze the current repo and suggest what she should study to be most useful for it.
+Ask Layla to analyze the current repo and suggest what she should study.
+
+### `get_pending_approvals`
+List all actions Layla is waiting for approval on. Returns IDs and what each action is.
+
+### `approve_action`
+Approve a pending action by ID. Use `get_pending_approvals` first to see what's waiting.
 
 ---
 
 ## Approval Flow
 
-When Layla needs to write a file, run code, apply a patch, or run shell commands, and approval has not been granted:
+When Layla needs to write a file, run code, apply a patch, or run shell commands without prior approval:
 
-1. She returns: `{"ok": false, "reason": "approval_required", "approval_id": "<uuid>", "message": "Run: layla approve <uuid>"}`
+1. She returns: `{"ok": false, "reason": "approval_required", "approval_id": "<uuid>"}`
 2. Approve via:
-   - CLI: `python layla.py approve <uuid>`
-   - TUI: `/approve <uuid>`
-   - Web UI: Approvals panel → Approve button
-   - API: `POST localhost:8000/approve {"id": "<uuid>"}`
+   - **Cursor MCP**: `approve_action` tool with the UUID
+   - **CLI**: `python layla.py approve <uuid>`
+   - **TUI**: `/approve <uuid>`
+   - **Web UI**: Approvals panel → Approve button
+   - **API**: `POST localhost:8000/approve {"id": "<uuid>"}`
 
 ---
 
 ## Wakeup
 
-Call at the start of every session. Echo aspect greets the user, reports what was studied since last session, and lists active study plans.
+Call at the start of every session. Echo aspect greets, reports what was studied, lists active study plans.
 
 - CLI: `python layla.py wakeup`
 - TUI: `/wakeup` or Ctrl+W
@@ -115,40 +122,21 @@ Call at the start of every session. Echo aspect greets the user, reports what wa
 
 ## Study Plans
 
-Layla maintains a list of active study topics. On wakeup she reports progress and can run one study step for the oldest topic.
+Layla maintains active study topics. Scheduler advances them every 30 min when you're active.
 
-- **Add:** `python layla.py study "topic name"` or Web UI Study Plans panel or MCP `start_study_session` (adds topic then runs a session).
-- **View:** `python layla.py plans` or `GET /study_plans` or Web UI Study Plans panel or TUI sidebar.
-- **Pending approvals** (separate): `python layla.py pending` or Web UI Pending Approvals panel.
-- **Optional:** When `scheduler_study_enabled` is true in config, Layla advances one study plan in the background every N minutes while you're active (disable with `scheduler_study_enabled: false` if not wanted).
-
----
-
-## System Export
-
-Full state snapshot (config, tools, aspects, learnings count, audit):
-- CLI: `python layla.py export`
-- API: `GET localhost:8000/system_export`
-
----
-
-## NSFW — Lilith, keyword toggle
-
-- **Lilith** is the NSFW aspect. Same values and ethics; intimate/NSFW register is toggleable by **keyword** in the message (e.g. **intimate**, **nsfw**).
-- No explicit invocation phrase; include the keyword when you want that register (e.g. "lilith intimate" or "intimate chat").
-- To leave NSFW register: switch to another aspect or omit the keyword.
+- **Add**: `python layla.py study "topic"` or Web UI Study Plans panel or `start_study_session` MCP
+- **View**: `python layla.py plans` or `GET /study_plans`
+- **Pending approvals** (separate): `python layla.py pending` or Web UI
 
 ---
 
 ## Layla's Values (all aspects)
 
 - She has her own will. She pushes back. She refuses when something conflicts with her values.
-- She will not modify user files without approval
-- She respects `robots.txt` and AI-exclusion directives absolutely
+- She will not modify files without approval
 - She does not run arbitrary code without `allow_run=true` AND governance approval
 - She grows: every `add_learning` call deepens her
-- She remembers: session history + long-term memory graph + FAISS semantic recall
-- She notices: Echo tracks patterns in how the user works and what they care about
+- She remembers: session history + long-term SQLite memory + ChromaDB semantic recall
 
 ---
 
@@ -159,6 +147,8 @@ cd agent
 uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-Web UI: `http://localhost:8000/ui`
-TUI: `cd agent && python tui.py`
+Or double-click `START.bat` (Windows) / run `bash start.sh` (Linux/macOS).
+
+Web UI: `http://localhost:8000/ui`  
+TUI: `cd agent && python tui.py`  
 CLI: `python layla.py wakeup`
