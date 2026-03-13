@@ -30,17 +30,32 @@ sys.path.insert(0, str(AGENT_DIR))
 
 
 def safe_fetch(url: str, timeout: int = 10) -> str | None:
-    """Fetch URL with timeout. Returns text up to 60000 chars or None. Never raises."""
+    """
+    Fetch URL and extract clean text using trafilatura.
+    Falls back to raw urllib if trafilatura fails. Returns up to 60000 chars or None.
+    """
     try:
-        import requests
-        r = requests.get(
+        import trafilatura
+        downloaded = trafilatura.fetch_url(url)
+        if downloaded:
+            text = trafilatura.extract(downloaded, include_comments=False, include_tables=True, favor_recall=True)
+            if text:
+                return text[:60000]
+            # Fall through to raw content if extraction returns nothing
+            return downloaded[:60000]
+    except Exception:
+        pass
+    # Fallback: raw urllib (no extra deps)
+    try:
+        import urllib.request
+        req = urllib.request.Request(
             url,
-            timeout=timeout,
             headers={"User-Agent": "Mozilla/5.0 Layla Research Agent"},
         )
-        if r.status_code != 200:
-            return None
-        return (r.text or "")[:60000]
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if resp.status != 200:
+                return None
+            return resp.read(60000).decode("utf-8", errors="replace")
     except Exception:
         return None
 

@@ -614,6 +614,442 @@ def search_memories(query: str, n: int = 8) -> dict:
             return {"ok": False, "error": str(e)}
 
 
+# ─── Research & Information tools ─────────────────────────────────────────────
+
+def read_pdf(path: str, max_pages: int = 30) -> dict:
+    """
+    Extract text from a PDF file using PyMuPDF.
+    Returns text per page up to max_pages. Falls back to pypdf if fitz not installed.
+    """
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "File not found"}
+    # Try PyMuPDF (fitz) first
+    try:
+        import fitz  # PyMuPDF
+        doc = fitz.open(str(target))
+        pages = []
+        for i, page in enumerate(doc):
+            if i >= max_pages:
+                break
+            pages.append(f"--- Page {i+1} ---\n{page.get_text()}")
+        doc.close()
+        full = "\n".join(pages)
+        return {"ok": True, "path": str(target), "pages": min(len(doc), max_pages), "text": full[:12000]}
+    except ImportError:
+        pass
+    # Fallback: pypdf
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(str(target))
+        pages = []
+        for i, page in enumerate(reader.pages):
+            if i >= max_pages:
+                break
+            pages.append(f"--- Page {i+1} ---\n{page.extract_text() or ''}")
+        full = "\n".join(pages)
+        return {"ok": True, "path": str(target), "pages": min(len(reader.pages), max_pages), "text": full[:12000]}
+    except ImportError:
+        return {"ok": False, "error": "PDF reading requires PyMuPDF or pypdf: pip install PyMuPDF"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def fetch_article(url: str) -> dict:
+    """
+    Extract clean text from a web article using trafilatura.
+    Much cleaner than raw fetch — removes nav, ads, footers. Ideal for research.
+    """
+    try:
+        import trafilatura
+        downloaded = trafilatura.fetch_url(url)
+        if not downloaded:
+            return {"ok": False, "error": "Could not fetch URL"}
+        text = trafilatura.extract(
+            downloaded,
+            include_comments=False,
+            include_tables=True,
+            favor_precision=True,
+        )
+        if not text:
+            # Fallback to raw text
+            text = trafilatura.extract(downloaded, favor_recall=True)
+        if not text:
+            return {"ok": False, "error": "Could not extract content from page"}
+        title = ""
+        try:
+            meta = trafilatura.extract_metadata(downloaded)
+            if meta:
+                title = meta.title or ""
+        except Exception:
+            pass
+        return {"ok": True, "url": url, "title": title, "text": text[:10000], "chars": len(text)}
+    except ImportError:
+        return {"ok": False, "error": "trafilatura not installed: pip install trafilatura"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def wiki_search(query: str, sentences: int = 8, lang: str = "en") -> dict:
+    """
+    Search Wikipedia and return a summary. sentences controls summary length.
+    Returns the intro, URL, and a list of related page titles.
+    """
+    try:
+        import wikipedia
+        wikipedia.set_lang(lang)
+        try:
+            summary = wikipedia.summary(query, sentences=sentences, auto_suggest=True)
+            page = wikipedia.page(query, auto_suggest=True)
+            return {
+                "ok": True,
+                "query": query,
+                "title": page.title,
+                "url": page.url,
+                "summary": summary,
+                "related": page.links[:10],
+            }
+        except wikipedia.DisambiguationError as e:
+            # Return top options on disambiguation
+            return {"ok": True, "query": query, "disambiguation": True, "options": e.options[:8]}
+        except wikipedia.PageError:
+            results = wikipedia.search(query, results=5)
+            return {"ok": False, "query": query, "error": "Page not found", "suggestions": results}
+    except ImportError:
+        return {"ok": False, "error": "wikipedia package not installed: pip install wikipedia-api"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def ddg_search(query: str, max_results: int = 10, region: str = "wt-wt") -> dict:
+    """
+    DuckDuckGo web search — pure Python, no browser required.
+    Returns results with title, href, body snippet.
+    """
+    try:
+        from duckduckgo_search import DDGS
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, region=region, max_results=max_results))
+        return {"ok": True, "query": query, "results": results, "count": len(results)}
+    except ImportError:
+        return {"ok": False, "error": "duckduckgo-search not installed: pip install duckduckgo-search"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def arxiv_search(query: str, max_results: int = 5, sort_by: str = "relevance") -> dict:
+    """
+    Search arXiv for papers. Returns title, authors, abstract, PDF URL, published date.
+    sort_by: 'relevance' | 'lastUpdatedDate' | 'submittedDate'
+    """
+    try:
+        import arxiv
+        sort_map = {
+            "relevance": arxiv.SortCriterion.Relevance,
+            "lastUpdatedDate": arxiv.SortCriterion.LastUpdatedDate,
+            "submittedDate": arxiv.SortCriterion.SubmittedDate,
+        }
+        client = arxiv.Client()
+        search = arxiv.Search(
+            query=query,
+            max_results=max_results,
+            sort_by=sort_map.get(sort_by, arxiv.SortCriterion.Relevance),
+        )
+        papers = []
+        for r in client.results(search):
+            papers.append({
+                "title": r.title,
+                "authors": [str(a) for a in r.authors[:5]],
+                "abstract": (r.summary or "")[:500],
+                "pdf_url": r.pdf_url,
+                "published": str(r.published)[:10] if r.published else "",
+                "arxiv_id": r.entry_id.split("/")[-1],
+                "categories": r.categories[:3],
+            })
+        return {"ok": True, "query": query, "results": papers, "count": len(papers)}
+    except ImportError:
+        return {"ok": False, "error": "arxiv not installed: pip install arxiv"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def math_eval(expression: str) -> dict:
+    """
+    Safely evaluate a mathematical expression. Supports: +, -, *, /, **, %, //, abs, round,
+    min, max, sum, int, float, sqrt, log, sin, cos, tan, pi, e, and more.
+    No arbitrary code execution — uses a strict AST whitelist.
+    """
+    import ast as _ast, math as _math, operator as _op
+
+    _SAFE_NODES = (
+        _ast.Expression, _ast.BinOp, _ast.UnaryOp, _ast.Call, _ast.Constant,
+        _ast.Add, _ast.Sub, _ast.Mul, _ast.Div, _ast.Pow, _ast.Mod, _ast.FloorDiv,
+        _ast.UAdd, _ast.USub, _ast.Compare, _ast.Lt, _ast.Gt, _ast.LtE, _ast.GtE,
+        _ast.Eq, _ast.NotEq, _ast.BoolOp, _ast.And, _ast.Or, _ast.Name, _ast.List,
+        _ast.Tuple,
+    )
+    _SAFE_FUNCS = {
+        "abs": abs, "round": round, "min": min, "max": max, "sum": sum,
+        "int": int, "float": float, "bool": bool,
+        "sqrt": _math.sqrt, "log": _math.log, "log2": _math.log2, "log10": _math.log10,
+        "sin": _math.sin, "cos": _math.cos, "tan": _math.tan,
+        "asin": _math.asin, "acos": _math.acos, "atan": _math.atan, "atan2": _math.atan2,
+        "ceil": _math.ceil, "floor": _math.floor, "trunc": _math.trunc,
+        "factorial": _math.factorial, "gcd": _math.gcd,
+        "degrees": _math.degrees, "radians": _math.radians,
+        "pi": _math.pi, "e": _math.e, "tau": _math.tau, "inf": _math.inf,
+        "pow": pow, "divmod": divmod,
+    }
+
+    def _safe_eval(node):
+        if not isinstance(node, _SAFE_NODES):
+            raise ValueError(f"Disallowed operation: {type(node).__name__}")
+        if isinstance(node, _ast.Constant):
+            return node.value
+        if isinstance(node, _ast.Name):
+            if node.id in _SAFE_FUNCS:
+                return _SAFE_FUNCS[node.id]
+            raise ValueError(f"Unknown name: {node.id}")
+        if isinstance(node, _ast.BinOp):
+            ops = {_ast.Add: _op.add, _ast.Sub: _op.sub, _ast.Mul: _op.mul,
+                   _ast.Div: _op.truediv, _ast.Pow: _op.pow, _ast.Mod: _op.mod,
+                   _ast.FloorDiv: _op.floordiv}
+            return ops[type(node.op)](_safe_eval(node.left), _safe_eval(node.right))
+        if isinstance(node, _ast.UnaryOp):
+            ops = {_ast.UAdd: _op.pos, _ast.USub: _op.neg}
+            return ops[type(node.op)](_safe_eval(node.operand))
+        if isinstance(node, _ast.Call):
+            func = _safe_eval(node.func)
+            args = [_safe_eval(a) for a in node.args]
+            return func(*args)
+        if isinstance(node, (_ast.List, _ast.Tuple)):
+            return [_safe_eval(el) for el in node.elts]
+        raise ValueError(f"Unsupported node: {type(node).__name__}")
+
+    try:
+        tree = _ast.parse(expression.strip(), mode="eval")
+        result = _safe_eval(tree.body)
+        return {"ok": True, "expression": expression, "result": result, "result_str": str(result)}
+    except ZeroDivisionError:
+        return {"ok": False, "error": "Division by zero"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def read_csv(path: str, max_rows: int = 50, describe: bool = True) -> dict:
+    """
+    Read a CSV file and return a summary. max_rows controls rows returned.
+    If describe=True, returns statistical summary (count, mean, std, etc.).
+    """
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "File not found"}
+    try:
+        import pandas as _pd
+        df = _pd.read_csv(str(target))
+        result: dict = {
+            "ok": True,
+            "path": str(target),
+            "rows": len(df),
+            "columns": list(df.columns),
+            "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
+            "sample": df.head(max_rows).to_dict(orient="records"),
+            "null_counts": df.isnull().sum().to_dict(),
+        }
+        if describe:
+            try:
+                result["stats"] = df.describe().to_dict()
+            except Exception:
+                pass
+        return result
+    except ImportError:
+        # Fallback to stdlib csv
+        import csv as _csv
+        with open(str(target), newline="", encoding="utf-8", errors="replace") as f:
+            reader = _csv.DictReader(f)
+            rows = [row for _, row in zip(range(max_rows + 1), reader)]
+        return {"ok": True, "path": str(target), "columns": reader.fieldnames or [], "sample": rows[:max_rows]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def count_tokens(text: str, model: str = "gpt-4") -> dict:
+    """
+    Estimate token count for text. Uses tiktoken if available, else rough approximation.
+    Rough rule: ~4 chars per token for English, ~2.5 for code.
+    """
+    try:
+        import tiktoken
+        enc = tiktoken.encoding_for_model(model)
+        tokens = enc.encode(text)
+        return {"ok": True, "tokens": len(tokens), "model": model, "method": "tiktoken"}
+    except ImportError:
+        # Rough estimate: split on whitespace and punctuation
+        import re as _re
+        words = len(_re.split(r"\s+", text.strip()))
+        chars = len(text)
+        rough = max(int(chars / 4), words)
+        return {"ok": True, "tokens": rough, "model": "estimate", "method": "rough (~4 chars/token)"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def http_request(url: str, method: str = "GET", body: str = "", headers: dict | None = None, timeout: int = 15) -> dict:
+    """
+    Make an HTTP request. method: GET | POST | PUT | DELETE | PATCH.
+    Returns status, response text (truncated to 8000 chars).
+    Use for webhooks, REST APIs, testing endpoints.
+    """
+    import urllib.request, urllib.error
+    method = method.upper()
+    hdrs = {"User-Agent": "Layla/2.0 research agent", "Accept": "application/json,text/html,*/*"}
+    if headers:
+        hdrs.update(headers)
+    try:
+        data = body.encode("utf-8") if body else None
+        req = urllib.request.Request(url, data=data, headers=hdrs, method=method)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            content = resp.read(80000).decode("utf-8", errors="replace")
+            return {
+                "ok": resp.status < 400,
+                "status": resp.status,
+                "url": url,
+                "text": content[:8000],
+                "headers": dict(resp.headers),
+            }
+    except urllib.error.HTTPError as e:
+        body_text = ""
+        try:
+            body_text = e.read(2000).decode("utf-8", errors="replace")
+        except Exception:
+            pass
+        return {"ok": False, "status": e.code, "error": str(e), "text": body_text}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def python_ast(path: str) -> dict:
+    """
+    Analyze a Python file's AST structure. Returns:
+    - Top-level functions and classes (with line numbers, decorators, docstrings)
+    - Imports
+    - Global variables
+    - Complexity indicators (nested function depth, line count)
+    """
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "File not found"}
+    import ast as _ast
+    try:
+        source = target.read_text(encoding="utf-8", errors="replace")
+        tree = _ast.parse(source, filename=str(target))
+    except SyntaxError as e:
+        return {"ok": False, "error": f"SyntaxError: {e}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+    functions, classes, imports, globals_list = [], [], [], []
+
+    for node in _ast.walk(tree):
+        if isinstance(node, (_ast.Import, _ast.ImportFrom)):
+            if isinstance(node, _ast.Import):
+                for alias in node.names:
+                    imports.append(alias.name)
+            else:
+                mod = node.module or ""
+                for alias in node.names:
+                    imports.append(f"{mod}.{alias.name}" if mod else alias.name)
+
+    for node in tree.body:
+        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+            decorators = [_ast.unparse(d) for d in (node.decorator_list or [])]
+            doc = _ast.get_docstring(node) or ""
+            functions.append({
+                "name": node.name,
+                "line": node.lineno,
+                "async": isinstance(node, _ast.AsyncFunctionDef),
+                "args": [a.arg for a in node.args.args],
+                "decorators": decorators,
+                "docstring": doc[:120],
+            })
+        elif isinstance(node, _ast.ClassDef):
+            methods = []
+            for item in node.body:
+                if isinstance(item, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                    methods.append({"name": item.name, "line": item.lineno})
+            doc = _ast.get_docstring(node) or ""
+            classes.append({
+                "name": node.name,
+                "line": node.lineno,
+                "bases": [_ast.unparse(b) for b in node.bases],
+                "methods": methods,
+                "docstring": doc[:120],
+            })
+        elif isinstance(node, _ast.Assign):
+            for target in node.targets:
+                if isinstance(target, _ast.Name) and target.id.isupper():
+                    globals_list.append(target.id)
+
+    lines = source.splitlines()
+    return {
+        "ok": True,
+        "path": str(target),
+        "line_count": len(lines),
+        "functions": functions,
+        "classes": classes,
+        "imports": list(dict.fromkeys(imports))[:30],
+        "constants": globals_list[:20],
+    }
+
+
+def project_discovery_tool(workspace_root: str = "") -> dict:
+    """
+    Run project discovery on a workspace: detects tech stack, file types, entry points,
+    README summary, and key structural patterns. Useful for orienting to an unfamiliar codebase.
+    """
+    try:
+        agent_dir = Path(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(agent_dir))
+        from services.project_discovery import discover_project
+        root = workspace_root or str(Path.home())
+        return discover_project(root)
+    except Exception as e:
+        # Fallback: lightweight manual discovery
+        try:
+            root_path = Path(workspace_root or ".").expanduser().resolve()
+            if not root_path.exists():
+                return {"ok": False, "error": "Path not found"}
+            files = []
+            for f in root_path.rglob("*"):
+                if f.is_file() and not any(p in str(f) for p in (".git", ".venv", "__pycache__", "node_modules")):
+                    files.append(str(f.relative_to(root_path)))
+                    if len(files) >= 200:
+                        break
+            ext_counts: dict = {}
+            for f in files:
+                ext = Path(f).suffix.lower()
+                ext_counts[ext] = ext_counts.get(ext, 0) + 1
+            readme = ""
+            for name in ("README.md", "readme.md", "README.txt"):
+                rp = root_path / name
+                if rp.exists():
+                    readme = rp.read_text(encoding="utf-8", errors="replace")[:1000]
+                    break
+            return {
+                "ok": True, "root": str(root_path), "file_count": len(files),
+                "extensions": dict(sorted(ext_counts.items(), key=lambda x: -x[1])[:15]),
+                "readme_preview": readme, "files_sample": files[:40],
+            }
+        except Exception as e2:
+            return {"ok": False, "error": str(e2)}
+
+
 TOOLS: dict[str, Any] = {
     "write_file": {"fn": write_file, "dangerous": True, "require_approval": True, "risk_level": "medium"},
     "read_file": {"fn": read_file, "dangerous": False, "require_approval": False, "risk_level": "low"},
@@ -647,4 +1083,16 @@ TOOLS: dict[str, Any] = {
     "git_commit": {"fn": git_commit, "dangerous": True, "require_approval": True, "risk_level": "medium"},
     "save_note": {"fn": save_note, "dangerous": False, "require_approval": False, "risk_level": "low"},
     "search_memories": {"fn": search_memories, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Research & Information tools
+    "read_pdf": {"fn": read_pdf, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "fetch_article": {"fn": fetch_article, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "wiki_search": {"fn": wiki_search, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "ddg_search": {"fn": ddg_search, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "arxiv_search": {"fn": arxiv_search, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "math_eval": {"fn": math_eval, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "read_csv": {"fn": read_csv, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "count_tokens": {"fn": count_tokens, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "http_request": {"fn": http_request, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "python_ast": {"fn": python_ast, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "project_discovery": {"fn": project_discovery_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
 }
