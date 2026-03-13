@@ -41,8 +41,8 @@ Write-Host ""
 Write-Host "[1/5] Installing dependencies (venv)..." -ForegroundColor Yellow
 & $VenvPython -m pip install -r agent/requirements.txt
 if ($LASTEXITCODE -ne 0) { throw "agent pip install failed" }
-if (Test-Path (Join-Path $Root "cursor-jinx-mcp\requirements.txt")) {
-    & $VenvPython -m pip install -r cursor-jinx-mcp/requirements.txt
+if (Test-Path (Join-Path $Root "cursor-layla-mcp\requirements.txt")) {
+    & $VenvPython -m pip install -r cursor-layla-mcp/requirements.txt
     if ($LASTEXITCODE -ne 0) { Write-Host "MCP deps failed (non-fatal)" -ForegroundColor DarkYellow }
 }
 
@@ -62,7 +62,7 @@ if (-not $NoMCP) {
     Write-Host ""
     Write-Host "[3/5] Starting Cursor MCP in a new window..." -ForegroundColor Yellow
     $safeRoot = $Root -replace "'", "''"
-    $mcpCmd = "Set-Location '" + $safeRoot + "'; & '" + ($VenvPython -replace "'", "''") + "' cursor-jinx-mcp/server.py"
+    $mcpCmd = "Set-Location '" + $safeRoot + "'; & '" + ($VenvPython -replace "'", "''") + "' cursor-layla-mcp/server.py"
     Start-Process powershell -ArgumentList "-NoExit", "-Command", $mcpCmd
 } else {
     Write-Host ""

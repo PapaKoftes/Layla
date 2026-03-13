@@ -284,7 +284,7 @@ _load_history()
 
 from shared_state import set_refs
 from services import study_service
-from routers import study, approvals, agent as agent_router, research as research_router
+from routers import study, approvals, agent as agent_router, research as research_router, memory as memory_router
 
 set_refs(
     _history,
@@ -299,6 +299,7 @@ app.include_router(study.router)
 app.include_router(approvals.router)
 app.include_router(agent_router.router)
 app.include_router(research_router.router)
+app.include_router(memory_router.router)
 
 
 # ─────────────────────────────────────────────────────────────

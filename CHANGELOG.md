@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.0.0] — 2026-02-22
+
+### Major — The Character Update
+
+#### Aspects
+- Renamed Neuro → **Cassandra** (unfiltered oracle; no filter between perception and output)
+- All six aspects rewritten with 300–600-word `systemPromptAddition` character definitions
+- Fixed critical bug: `systemPromptAddition` was silently truncated to 80 chars — now fully injected
+- Added per-aspect symbols: ⚔ Morrigan, ✦ Nyx, ◎ Echo, ⚡ Eris, ⌖ Cassandra, ⊛ Lilith
+- Deliberation prompt rewritten with per-aspect voice cues so the model knows the register
+- `build_standard_prompt` now includes a character anchor line
+- `system_identity.txt` rewritten as a deep foundational Layla identity document
+- `.identity/self_model.md` created — Lilith's self-model, injected only when Lilith is active
+
+#### Capabilities
+- Added 8 new tools: `json_query`, `diff_files`, `env_info`, `regex_test`, `git_add`, `git_commit`, `save_note`, `search_memories`
+- Echo now accumulates session-pattern summaries every 5 turns across all aspects
+- Memory bundle export/import: `/memory/export` (ZIP), `/memory/import` (merge)
+- Model download wizard in `first_run.py`: interactive picker, progress bar, 5 recommended models
+- `Download-Model.ps1` rewritten: interactive model picker with real HuggingFace open model links
+
+#### Knowledge Base
+- Added 6 aspect-specific knowledge docs: `morrigan-engineering.md`, `nyx-research.md`,
+  `echo-behavioral-patterns.md`, `eris-creative-thinking.md`,
+  `lilith-ethics-autonomy.md`, `cassandra-pattern-perception.md`
+
+#### UI
+- Aspect buttons now show symbols (⚔ ✦ ◎ ⚡ ⌖ ⊛) instead of raw HTML codes
+- Header aspect badge updates symbol on aspect switch
+- Improved aspect descriptions for all six
+
+#### Infrastructure
+- Fixed `start-layla.ps1`: `cursor-jinx-mcp` → `cursor-layla-mcp`
+- Fixed `IMPLEMENTATION_STATUS.md`: stale `agent/jinx/` path → `agent/layla/`
+- `SETUP-AND-TEST.ps1` and `PASTE-AND-RUN.ps1` rewritten: no stale refs, cleaner output
+- `/memory/stats` endpoint for memory state inspection
+- Memory router wired into `main.py`
+
+---
+
 ## [Unreleased]
 
 ### Added

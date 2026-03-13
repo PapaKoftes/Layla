@@ -1,0 +1,171 @@
+"""
+Memory bundle export and import router.
+
+GET  /memory/export  — Download a ZIP of all curated knowledge + learnings
+POST /memory/import  — Upload a ZIP to merge knowledge and learnings into this instance
+GET  /memory/stats   — Summary of current memory state
+"""
+import io
+import json
+import zipfile
+from pathlib import Path
+from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse, JSONResponse
+
+router = APIRouter(prefix="/memory", tags=["memory"])
+
+AGENT_DIR = Path(__file__).resolve().parent.parent
+REPO_ROOT = AGENT_DIR.parent
+KNOWLEDGE_DIR = REPO_ROOT / "knowledge"
+DB_PATH = AGENT_DIR / "layla.db"
+
+
+def _get_db():
+    """Lazy import to avoid circular dep at import time."""
+    import sys
+    sys.path.insert(0, str(AGENT_DIR))
+    from layla.memory.db import get_recent_learnings, save_learning
+    return get_recent_learnings, save_learning
+
+
+@router.get("/stats")
+async def memory_stats():
+    """Return a summary of current memory state."""
+    stats = {
+        "knowledge_docs": 0,
+        "knowledge_files": [],
+        "learnings_count": 0,
+        "db_size_kb": 0,
+    }
+    if KNOWLEDGE_DIR.exists():
+        docs = list(KNOWLEDGE_DIR.rglob("*.md")) + list(KNOWLEDGE_DIR.rglob("*.txt"))
+        stats["knowledge_docs"] = len(docs)
+        stats["knowledge_files"] = [f.name for f in docs[:50]]
+    if DB_PATH.exists():
+        stats["db_size_kb"] = round(DB_PATH.stat().st_size / 1024, 1)
+    try:
+        get_recent_learnings, _ = _get_db()
+        rows = get_recent_learnings(n=1000)
+        stats["learnings_count"] = len(rows)
+    except Exception:
+        pass
+    return JSONResponse(stats)
+
+
+@router.get("/export")
+async def export_bundle():
+    """
+    Export a ZIP bundle containing:
+    - All knowledge/*.md and knowledge/*.txt files
+    - All learnings as learnings.json
+    - A manifest.json with export metadata
+    """
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Export knowledge docs
+        if KNOWLEDGE_DIR.exists():
+            for f in sorted(KNOWLEDGE_DIR.rglob("*.md")):
+                if ".identity" in str(f):
+                    continue
+                rel = f.relative_to(REPO_ROOT)
+                zf.writestr(str(rel).replace("\\", "/"), f.read_text(encoding="utf-8", errors="replace"))
+            for f in sorted(KNOWLEDGE_DIR.rglob("*.txt")):
+                rel = f.relative_to(REPO_ROOT)
+                zf.writestr(str(rel).replace("\\", "/"), f.read_text(encoding="utf-8", errors="replace"))
+
+        # Export learnings
+        learnings = []
+        try:
+            get_recent_learnings, _ = _get_db()
+            rows = get_recent_learnings(n=5000)
+            learnings = [{"content": r.get("content", ""), "kind": r.get("kind", "note")} for r in rows]
+        except Exception as e:
+            learnings = [{"error": str(e)}]
+        zf.writestr("learnings.json", json.dumps(learnings, indent=2, ensure_ascii=False))
+
+        # Manifest
+        import datetime
+        manifest = {
+            "exported_at": datetime.datetime.utcnow().isoformat(),
+            "knowledge_docs": len([f for f in KNOWLEDGE_DIR.rglob("*.md")] if KNOWLEDGE_DIR.exists() else []),
+            "learnings_count": len(learnings),
+            "format_version": "1.0",
+            "description": "Layla memory bundle — drop knowledge/ folder and learnings.json into a fresh Layla install.",
+        }
+        zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+
+    buf.seek(0)
+    import datetime
+    filename = f"layla-memory-bundle-{datetime.datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.zip"
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/import")
+async def import_bundle(file: UploadFile = File(...)):
+    """
+    Import a memory bundle ZIP.
+    - Merges knowledge docs into knowledge/ (new files only; does not overwrite existing)
+    - Merges learnings (deduplicates by content prefix)
+    """
+    if not file.filename or not file.filename.endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Expected a .zip file")
+
+    content = await file.read()
+    if len(content) > 100 * 1024 * 1024:  # 100 MB limit
+        raise HTTPException(status_code=413, detail="Bundle too large (100 MB max)")
+
+    results = {"knowledge_imported": [], "knowledge_skipped": [], "learnings_added": 0, "errors": []}
+
+    try:
+        buf = io.BytesIO(content)
+        with zipfile.ZipFile(buf, "r") as zf:
+            names = zf.namelist()
+
+            # Import knowledge docs
+            for name in names:
+                if name.startswith("knowledge/") and (name.endswith(".md") or name.endswith(".txt")):
+                    target = REPO_ROOT / name.replace("/", Path.sep if Path.sep != "/" else "/")
+                    if target.exists():
+                        results["knowledge_skipped"].append(name)
+                        continue
+                    try:
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_bytes(zf.read(name))
+                        results["knowledge_imported"].append(name)
+                    except Exception as e:
+                        results["errors"].append(f"{name}: {e}")
+
+            # Import learnings
+            if "learnings.json" in names:
+                try:
+                    raw = json.loads(zf.read("learnings.json").decode("utf-8", errors="replace"))
+                    if isinstance(raw, list):
+                        _, save_learning = _get_db()
+                        # Get existing content prefixes for dedup
+                        get_recent_learnings, _ = _get_db()
+                        existing = {r.get("content", "")[:60] for r in get_recent_learnings(n=5000)}
+                        added = 0
+                        for item in raw:
+                            if not isinstance(item, dict):
+                                continue
+                            c = (item.get("content") or "").strip()
+                            if not c or c[:60] in existing:
+                                continue
+                            save_learning(content=c[:800], kind=item.get("kind", "imported"))
+                            existing.add(c[:60])
+                            added += 1
+                        results["learnings_added"] = added
+                except Exception as e:
+                    results["errors"].append(f"learnings.json: {e}")
+
+        results["ok"] = True
+        return JSONResponse(results)
+
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Invalid ZIP file")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

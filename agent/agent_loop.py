@@ -1094,6 +1094,47 @@ def _extract_shell_argv(goal: str):
     return goal.split()
 
 
+def _maybe_save_echo_memory(
+    aspect_id: str,
+    user_msg: str,
+    reply: str,
+    conversation_history: list,
+) -> None:
+    """
+    Echo tracks patterns across all turns, not just when Echo is the active aspect.
+    - Every 5 turns: saves a brief session pattern summary to Echo's aspect memories.
+    - When Echo is active: saves the full exchange immediately.
+    - Extracts recurring topics / avoidance signals from recent history.
+    """
+    turn_count = len(conversation_history) if conversation_history else 0
+    is_echo = aspect_id == "echo"
+
+    # When Echo is active — always save
+    if is_echo:
+        summary = f"User: {user_msg[:120]}. Echo replied: {reply[:250]}."
+        _db_save_aspect_memory("echo", summary)
+
+    # Every 5 conversation turns — save a pattern summary regardless of active aspect
+    if turn_count > 0 and (turn_count % 5 == 0 or is_echo):
+        try:
+            recent = conversation_history[-6:] if len(conversation_history) >= 6 else conversation_history
+            topics = []
+            for t in recent:
+                if t.get("role") == "user":
+                    msg = (t.get("content") or "")[:80].strip()
+                    if msg:
+                        topics.append(msg)
+            if topics and len(topics) >= 2:
+                pattern_note = (
+                    f"Session pattern ({turn_count} turns): "
+                    + "; ".join(topics[:3])
+                    + f". Last reply aspect: {aspect_id}."
+                )
+                _db_save_aspect_memory("echo", pattern_note[:400])
+        except Exception:
+            pass
+
+
 def _save_outcome_memory(state: dict) -> None:
     """
     After successful multi-step runs, store a short semantic summary (what was done, what worked).
@@ -1648,6 +1689,40 @@ def _autonomous_run_impl(
             continue
 
         # ------------------------------------------------
+        # EXTENDED TOOLS (no approval needed)
+        # ------------------------------------------------
+        if intent in ("json_query", "diff_files", "env_info", "regex_test",
+                      "save_note", "search_memories", "git_add"):
+            args = (decision.get("args") or {}) if decision else {}
+            state["tool_calls"] += 1
+            result = TOOLS[intent]["fn"](**args) if args else TOOLS[intent]["fn"]()
+            runtime_safety.log_execution(intent, args)
+            state["steps"].append({"action": intent, "result": result})
+            state["last_tool_used"] = intent
+            goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+            continue
+
+        if intent == "git_commit":
+            args = (decision.get("args") or {}) if decision else {}
+            if not allow_write or not runtime_safety.require_approval("git_commit"):
+                approval_id = _write_pending("git_commit", args)
+                state["steps"].append({"action": "git_commit", "result": {
+                    "ok": False, "reason": "approval_required",
+                    "approval_id": approval_id, "message": f"Run: layla approve {approval_id}",
+                }})
+                state["status"] = "finished"
+                break
+            state["tool_calls"] += 1
+            result = TOOLS["git_commit"]["fn"](**args)
+            runtime_safety.log_execution("git_commit", args)
+            state["steps"].append({"action": "git_commit", "result": result})
+            state["last_tool_used"] = "git_commit"
+            _run_verification_after_tool(state, "git_commit", result, workspace)
+            _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
+            goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+            continue
+
+        # ------------------------------------------------
         # PROJECT CONTEXT (agent-readable, agent-updatable)
         # ------------------------------------------------
         if intent == "get_project_context":
@@ -1862,11 +1937,15 @@ def _autonomous_run_impl(
             })
             state["status"] = "finished"
 
-            # Save Echo aspect memory after a reply when active aspect is Echo
-            if active_aspect.get("id") == "echo" and text and not refused:
+            # Save Echo aspect memory after any reply — Echo always tracks
+            if text and not refused:
                 try:
-                    summary = f"User said: {state['original_goal'][:100]}. I replied: {text[:200]}."
-                    _db_save_aspect_memory("echo", summary)
+                    _maybe_save_echo_memory(
+                        aspect_id=active_aspect.get("id", ""),
+                        user_msg=state["original_goal"],
+                        reply=text,
+                        conversation_history=conversation_history or [],
+                    )
                 except Exception:
                     pass
             break
