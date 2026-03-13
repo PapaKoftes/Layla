@@ -127,5 +127,26 @@ deep-translator>=1.11           # Google Translate backend (translate_text tool,
 # ─── Web Crawling (optional, uses trafilatura by default) ─────────────────────
 # crawl4ai>=0.3                 # More powerful async web crawler (alternative to crawl_site)
 
+# ─── Tier 3 Optional: Geographic Intelligence ────────────────────────────────
+# geopy>=2.4                    # geo_query, map_url: geocoding via OpenStreetMap Nominatim
+# folium>=0.16                  # map_url: interactive map HTML generation
+
+# ─── Tier 3 Optional: Video Intelligence ─────────────────────────────────────
+# ffmpeg-python>=0.2            # extract_frames: requires ffmpeg binary in PATH
+# scenedetect[opencv]>=0.6     # detect_scenes: requires opencv-python-headless
+
+# ─── Tier 3 Optional: Object Detection ───────────────────────────────────────
+# ultralytics>=8.0              # detect_objects: YOLOv8 (~6-25 MB model auto-download)
+
+# ─── Tier 3 Optional: Desktop Automation ────────────────────────────────────
+# pyautogui>=0.9                # click_ui, type_text, screenshot_desktop (on Windows/Linux)
+
+# ─── Tier 3 Optional: Financial Data ─────────────────────────────────────────
+# pandas-datareader>=0.10       # economic_indicators via FRED API
+
+# ─── Tier 3 Optional: Enhanced NLP ──────────────────────────────────────────
+# spacy>=3.7                    # extract_entities: pip install spacy && python -m spacy download en_core_web_sm
+# textblob>=0.18                # sentiment_timeline: polarity scoring
+
 # ─── Dev/CI (not required at runtime) ─────────────────────────────────────────
 # ruff>=0.4

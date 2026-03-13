@@ -4,7 +4,7 @@ domain: tools
 aspect: morrigan
 ---
 
-# Tools Reference — All 74 Tools
+# Tools Reference — All 109 Tools
 
 Layla's complete tool registry. Dangerous tools require `allow_run=true` AND approval via `POST /approve` before they execute.
 
@@ -273,3 +273,69 @@ Approval flow:
 `rm`, `del`, `rmdir`, `format`, `mkfs`, `dd`, `shutdown`, `reboot`, `powershell`, `cmd`, `reg`, `netsh`, `sc`, `taskkill`, `cipher`
 
 **Sandbox**: all file operations are confined to `sandbox_root` in `runtime_config.json`. Default: user home dir. Correctly handles `~` via `expanduser().resolve()`.
+
+---
+
+## Tier 3 Tools (74 → 109)
+
+### Scheduling (APScheduler)
+- **schedule_task(tool_name, args, delay_seconds, cron_expr, job_id)** — Schedule any tool to run in background. delay_seconds for one-shot, cron_expr ('*/5 * * * *') for recurring.
+- **list_scheduled_tasks()** — List all active scheduled jobs with next_run, last_result.
+- **cancel_task(job_id)** — Cancel a scheduled job.
+
+### Observability
+- **log_event(message, level, context)** — Structured JSON log to agent/.governance/layla-events.log.
+- **trace_last_run(n)** — Return last N entries from audit.log for debugging agent actions.
+- **tool_metrics(top_n)** — Analyze audit.log: call counts per tool, approval rates, never-called tools.
+
+### Speech as Tools
+- **stt_file(path, language, model_size)** — Transcribe audio file (.wav/.mp3/.flac) using faster-whisper.
+- **tts_speak(text, voice, output_path)** — Synthesize speech WAV using kokoro-onnx or pyttsx3 fallback.
+
+### Finance & Crypto
+- **crypto_prices(symbols, period)** — Real-time crypto prices via yfinance. 'BTC' or ['BTC','ETH','SOL'].
+- **economic_indicators(series, start_year)** — FRED macroeconomic data (GDP, UNRATE, CPI, SP500...) via pandas-datareader; yfinance fallback.
+
+### Code Intelligence Extended
+- **code_metrics(path)** — Python code quality: LOC, complexity, docstring coverage, high-complexity functions.
+- **code_lint(path, fix)** — ruff linter with violation counts; syntax-check fallback if ruff not installed.
+- **git_blame(repo, file_path, line_start, line_end)** — Per-line author/commit/date from git blame.
+
+### File Format Utilities
+- **yaml_read(path)** — Parse YAML files via PyYAML; basic key:value fallback.
+- **xml_parse(path_or_text)** — Parse XML from file or string (stdlib ElementTree).
+- **hash_file(path, algorithm)** — md5/sha1/sha256/sha512 file hash for integrity checks.
+- **base64_tool(data, mode)** — encode/decode/encode_url/decode_url base64.
+
+### System Utilities
+- **check_port(host, port, timeout)** — TCP port open/closed check with response time.
+- **timestamp_convert(value, input_format, output_format)** — Convert between unix/iso/human/strftime formats.
+- **string_transform(text, operations)** — List of text ops: upper/lower/slug/snake_case/camel_case/dedupe_lines/extract_emails/extract_urls/...
+
+### NLP Extended
+- **extract_entities(text, entity_types)** — Named entity extraction via spaCy or regex fallback.
+- **sentiment_timeline(texts, labels)** — Per-item polarity scoring + trend detection (improving/declining/stable).
+
+### Visualization Extended
+- **plot_scatter(x, y, labels, title, show_regression)** — Scatter with optional linear regression + R² annotation.
+- **plot_histogram(data, bins, title, show_kde)** — Histogram with optional KDE overlay + descriptive stats.
+
+### Memory + Self-Awareness
+- **memory_stats()** — Learnings count, ChromaDB doc count, aspect memory breakdown, DB size.
+- **tool_chain_plan(goal, context)** — Heuristic multi-step tool sequence planner for a given goal.
+
+### Geographic Intelligence
+- **geo_query(location, details)** — Geocode to lat/lon + country/state/city. Nominatim (OSM), no API key.
+- **map_url(center, lat, lon, zoom, markers)** — Generate OSM embed URL, static map URL, embed HTML.
+
+### Video Intelligence
+- **extract_frames(path, fps, max_frames, output_dir)** — Extract video frames. Requires ffmpeg binary + ffmpeg-python.
+- **detect_scenes(path, threshold)** — Detect scene cuts. Requires scenedetect[opencv].
+
+### Object Detection
+- **detect_objects(path, confidence, model)** — YOLO object detection (ultralytics). Auto-downloads model on first use.
+
+### Desktop Automation
+- **screenshot_desktop(region, output_path)** — Capture screenshot via Pillow or pyautogui.
+- **click_ui(x, y, button, clicks)** — Click screen coordinates. DANGEROUS: requires approval.
+- **type_text(text, interval)** — Type text at focused window. DANGEROUS: requires approval.

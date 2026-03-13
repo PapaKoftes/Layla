@@ -4,7 +4,7 @@ domain: architecture
 aspect: morrigan
 ---
 
-# Layla Capabilities Map — 74 Tools
+# Layla Capabilities Map — 109 Tools
 
 Full inventory of every tool Layla can call, organized by capability domain.
 All tools are defined in `agent/layla/tools/registry.py`.
@@ -257,10 +257,22 @@ dangerous: True   → requires allow_run=True AND approval_id to proceed
 | ML clustering/regression | scikit-learn | `ml_analyze(data, task)` |
 | Multi-language AST | tree-sitter | `ast_any_lang(path, lang)` |
 | FAISS fast search | faiss-cpu | upgrades `vector_store.py` search speed |
-| Geography | geopandas + folium | `geo_query(location)` |
+| ✅ Geography | geopy + OSM | `geo_query`, `map_url` |
+| ✅ Video frames | ffmpeg-python | `extract_frames`, `detect_scenes` |
+| ✅ Object detection | ultralytics YOLO | `detect_objects` |
+| ✅ Desktop automation | pyautogui | `screenshot_desktop`, `click_ui`, `type_text` |
+| ✅ Scheduling | APScheduler | `schedule_task`, `list_scheduled_tasks`, `cancel_task` |
+| ✅ Observability | stdlib | `log_event`, `trace_last_run`, `tool_metrics` |
+| ✅ Speech tools | faster-whisper + pyttsx3 | `stt_file`, `tts_speak` |
+| ✅ Crypto/Finance | yfinance + FRED | `crypto_prices`, `economic_indicators` |
+| ✅ Code quality | ast + ruff | `code_metrics`, `code_lint`, `git_blame` |
+| ✅ File formats | stdlib | `yaml_read`, `xml_parse`, `hash_file`, `base64_tool` |
+| ✅ System utils | stdlib | `check_port`, `timestamp_convert`, `string_transform` |
+| ✅ NLP extended | spaCy + textblob | `extract_entities`, `sentiment_timeline` |
+| ✅ Viz extended | matplotlib | `plot_scatter`, `plot_histogram` |
+| ✅ Self-awareness | stdlib | `memory_stats`, `tool_chain_plan` |
 | Docker control | docker SDK | `docker_run(image, cmd)` |
 | Email | imaplib | `read_email(folder)` |
-| Video frames | ffmpeg-python | `extract_frames(path, fps)` |
 | Dependency graph | pyan + networkx | `dep_graph(path)` |
 | NSFW content filter | transformers | `content_check(text)` |
 | Transcript download | yt-dlp | `yt_transcript(url)` |
