@@ -205,6 +205,11 @@ def stream_reason(
         if any(s in buffer for s in stop):
             break
         yield token
+    # Optional self-reflection: if enabled and score < 7, stream a rewritten response
+    improved = _reflect_on_response(goal, buffer, active_aspect)
+    if improved:
+        yield "\n\n---\n"  # visual separator for the UI
+        yield improved
 
 
 def _write_pending(tool: str, args: dict) -> str:
@@ -242,17 +247,26 @@ def _load_learnings(aspect_id: str = "") -> str:
 
 
 def _semantic_recall(query: str, k: int = 5) -> str:
-    """Return top-k semantically similar learnings as a text block."""
+    """
+    Full memory recall pipeline: BM25 + vector hybrid search + FTS5 + cross-encoder reranking.
+    Falls back to pure vector search on error.
+    """
     try:
-        from layla.memory.vector_store import embed, search_similar
-        vec = embed(query)
-        results = search_similar(vec, k=k)
+        from layla.memory.vector_store import search_memories_full
+        results = search_memories_full(query, k=k, use_rerank=True)
         if not results:
             return ""
         lines = [r.get("content", "") for r in results if r.get("content")]
         return "\n".join(lines)
     except Exception:
-        return ""
+        try:
+            from layla.memory.vector_store import embed, search_similar
+            vec = embed(query)
+            results = search_similar(vec, k=k)
+            lines = [r.get("content", "") for r in results if r.get("content")]
+            return "\n".join(lines)
+        except Exception:
+            return ""
 
 
 def _decompose_goal(goal: str) -> list:
@@ -352,7 +366,12 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
             except Exception:
                 pass
             k = max(1, min(20, int(cfg.get("knowledge_chunks_k", 5))))
-            chunks_with_sources = get_knowledge_chunks_with_sources(goal, k=k)
+            # Use parent-doc retrieval when available for richer context
+            try:
+                from layla.memory.vector_store import get_knowledge_chunks_with_parent
+                chunks_with_sources = get_knowledge_chunks_with_parent(goal, k=k)
+            except Exception:
+                chunks_with_sources = get_knowledge_chunks_with_sources(goal, k=k)
             if chunks_with_sources:
                 knowledge = "Reference docs (relevant to this turn):\n" + "\n\n".join(c.get("text", "") for c in chunks_with_sources[:k])
                 if state is not None:
@@ -523,7 +542,60 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
         parts.append(f"Relevant memories:\n{semantic[:1000]}")
     if knowledge:
         parts.append(f"Reference docs:\n{knowledge}")
+    # Chain-of-thought elicitation — helps smaller models reason step-by-step
+    if cfg.get("enable_cot", True):
+        parts.append(
+            "Reasoning style: Think through problems step by step before giving your final answer. "
+            "For complex questions, break them down. Show your reasoning when it helps clarity."
+        )
     return "\n\n".join(parts) if parts else "You are Layla, a bounded AI companion and engineering agent."
+
+
+def _reflect_on_response(goal: str, response: str, aspect: dict | None = None) -> str | None:
+    """
+    Self-reflection pass: score the response 1-10. If score < 7, rewrite it.
+    Returns the improved response, or None if reflection is disabled/failed/unnecessary.
+    Only runs when enable_self_reflection=True in config AND response is long enough.
+    Adds ~1 extra inference call; opt-in only.
+    """
+    cfg = runtime_safety.load_config()
+    if not cfg.get("enable_self_reflection", False):
+        return None
+    if len(response.strip()) < 80:  # too short to bother reflecting
+        return None
+    try:
+        from services.llm_gateway import run_completion
+        aspect_name = (aspect.get("name") or "Layla") if aspect else "Layla"
+        critic_prompt = (
+            f"You are a response quality critic for {aspect_name}.\n\n"
+            f"Original question: {goal[:300]}\n\n"
+            f"Response to review: {response[:800]}\n\n"
+            f"Score this response 1-10 for: accuracy, completeness, and helpfulness. "
+            f"Reply with only a number (1-10) on the first line, then 'GOOD' if score >= 7 "
+            f"or a rewritten better response if score < 7. Do NOT repeat the original if it was good."
+        )
+        result = run_completion(critic_prompt, max_tokens=600, temperature=0.1)
+        if not isinstance(result, dict):
+            return None
+        critique = ((result.get("choices") or [{}])[0].get("message") or {}).get("content", "").strip()
+        if not critique:
+            return None
+        lines = critique.split("\n", 1)
+        try:
+            score = int("".join(c for c in lines[0][:3] if c.isdigit()))
+        except (ValueError, IndexError):
+            return None
+        if score >= 7:
+            return None  # original was good
+        # Score < 7: use the rewritten portion
+        rewritten = lines[1].strip() if len(lines) > 1 else ""
+        if rewritten and len(rewritten) > 40 and rewritten.upper() != "GOOD":
+            import logging
+            logging.getLogger("layla").info("Self-reflection improved response (score was %d/10)", score)
+            return rewritten
+    except Exception:
+        pass
+    return None
 
 
 # Smoothed load: avoid one spike from blocking every request

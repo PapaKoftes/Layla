@@ -15,9 +15,26 @@ networkx>=3.0
 chromadb>=0.6.0,<1
 unidiff>=0.7
 langchain-text-splitters>=0.3,<1
-# Optional: for PDF indexing under knowledge/
-# pypdf>=4.0
+
+# RAG upgrades
+rank-bm25>=0.2                  # BM25 hybrid search (used alongside dense vectors)
+
+# Browser automation (requires: playwright install chromium)
+playwright>=1.40
+
+# Voice: Speech-to-Text
+faster-whisper>=1.0             # CPU/CUDA Whisper inference; models auto-download
+
+# Voice: Text-to-Speech (choose one)
+kokoro-onnx>=0.3                # High-quality ONNX TTS (~80 MB), no cloud
+soundfile>=0.12                 # Required by kokoro-onnx for WAV encoding
+# pyttsx3>=2.90                 # Fallback: zero-download system TTS (lower quality)
+
 # Optional: grammar-constrained JSON output (significantly improves decision reliability)
 # instructor>=1.0,<2
+
+# Optional: for PDF indexing under knowledge/
+# pypdf>=4.0
+
 # Dev/CI (not required at runtime)
 # ruff>=0.4

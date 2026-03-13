@@ -395,6 +395,51 @@ def understand_file_tool(path: str, content: str | None = None) -> dict:
         return {"ok": False, "error": str(e)}
 
 
+def browser_navigate(url: str, timeout_ms: int = 15000) -> dict:
+    """Navigate to a URL and return its main text content and title."""
+    try:
+        from services.browser import navigate
+        return navigate(url, timeout_ms=timeout_ms)
+    except ImportError:
+        return {"ok": False, "error": "playwright not installed. Run: playwright install chromium"}
+
+
+def browser_search(query: str) -> dict:
+    """Search the web via DuckDuckGo. Returns top 8 results with titles, URLs, snippets."""
+    try:
+        from services.browser import search_web
+        return search_web(query)
+    except ImportError:
+        return {"ok": False, "error": "playwright not installed. Run: playwright install chromium"}
+
+
+def browser_screenshot(url: str) -> dict:
+    """Take a full-page screenshot of a URL. Returns path to the screenshot file."""
+    try:
+        from services.browser import screenshot
+        return screenshot(url)
+    except ImportError:
+        return {"ok": False, "error": "playwright not installed. Run: playwright install chromium"}
+
+
+def browser_click(url: str, selector: str) -> dict:
+    """Navigate to a URL, click a CSS selector, return updated page text."""
+    try:
+        from services.browser import click_and_extract
+        return click_and_extract(url, selector)
+    except ImportError:
+        return {"ok": False, "error": "playwright not installed. Run: playwright install chromium"}
+
+
+def browser_fill(url: str, fields: dict, submit_selector: str = "") -> dict:
+    """Navigate to a URL, fill form fields {selector: value}, optionally submit."""
+    try:
+        from services.browser import fill_form
+        return fill_form(url, fields, submit_selector)
+    except ImportError:
+        return {"ok": False, "error": "playwright not installed. Run: playwright install chromium"}
+
+
 TOOLS: dict[str, Any] = {
     "write_file": {"fn": write_file, "dangerous": True, "require_approval": True, "risk_level": "medium"},
     "read_file": {"fn": read_file, "dangerous": False, "require_approval": False, "risk_level": "low"},
@@ -413,4 +458,10 @@ TOOLS: dict[str, Any] = {
     "get_project_context": {"fn": get_project_context_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
     "update_project_context": {"fn": update_project_context_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
     "understand_file": {"fn": understand_file_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Browser tools — require playwright: playwright install chromium
+    "browser_navigate": {"fn": browser_navigate, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "browser_search": {"fn": browser_search, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "browser_screenshot": {"fn": browser_screenshot, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "browser_click": {"fn": browser_click, "dangerous": False, "require_approval": True, "risk_level": "medium"},
+    "browser_fill": {"fn": browser_fill, "dangerous": False, "require_approval": True, "risk_level": "medium"},
 }

@@ -49,6 +49,11 @@ def _get_llm():
             else min(n_threads * 2, (os.cpu_count() or n_threads))
         )
 
+        # n_keep: pin this many tokens in KV cache during context-shifting.
+        # Set to system prompt token estimate so the identity is never evicted.
+        # ~1 token per 4 chars; system prompts are typically 500-2000 chars.
+        n_keep = max(64, int(cfg.get("n_keep", 512)))
+
         kwargs = {
             "model_path": str(model_path),
             "n_ctx": n_ctx,
@@ -64,6 +69,8 @@ def _get_llm():
             # KV-cache quantization: int8 halves VRAM for KV cache (safe quality tradeoff)
             "type_k": int(cfg.get("type_k", 8)),   # 8 = GGML_TYPE_Q8_0
             "type_v": int(cfg.get("type_v", 8)),
+            # Pin system-prompt tokens in KV cache — never re-evaluated on context shift
+            "n_keep": n_keep,
         }
 
         # Rope scaling for extended contexts
@@ -81,8 +88,8 @@ def _get_llm():
             _llm = Llama(**{k: v for k, v in kwargs.items() if k in safe_keys})
 
         logger.info(
-            "LLM loaded: %s | ctx=%d batch=%d gpu_layers=%s threads=%d/%d flash=%s",
-            model_filename, n_ctx, n_batch, kwargs["n_gpu_layers"],
+            "LLM loaded: %s | ctx=%d batch=%d n_keep=%d gpu_layers=%s threads=%d/%d flash=%s",
+            model_filename, n_ctx, n_batch, n_keep, kwargs["n_gpu_layers"],
             n_threads, n_threads_batch, kwargs.get("flash_attn"),
         )
     return _llm

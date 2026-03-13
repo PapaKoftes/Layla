@@ -113,6 +113,41 @@ def _migrate_impl() -> None:
         db.execute("CREATE INDEX IF NOT EXISTS idx_audit_id_desc ON audit(id DESC)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_aspect_memories_aspect ON aspect_memories(aspect_id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_study_plans_status ON study_plans(status)")
+
+        # FTS5 virtual table for exact/keyword search over learnings content
+        db.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS learnings_fts
+            USING fts5(content, content='learnings', content_rowid='id',
+                       tokenize='porter unicode61')
+        """)
+        # Populate FTS from any existing data (content= tables require explicit population)
+        db.execute("""
+            INSERT OR IGNORE INTO learnings_fts(rowid, content)
+            SELECT id, content FROM learnings
+            WHERE id NOT IN (SELECT rowid FROM learnings_fts)
+        """)
+        # Triggers to keep FTS in sync automatically
+        db.execute("""
+            CREATE TRIGGER IF NOT EXISTS learnings_fts_insert
+            AFTER INSERT ON learnings BEGIN
+                INSERT INTO learnings_fts(rowid, content) VALUES (new.id, new.content);
+            END
+        """)
+        db.execute("""
+            CREATE TRIGGER IF NOT EXISTS learnings_fts_delete
+            AFTER DELETE ON learnings BEGIN
+                INSERT INTO learnings_fts(learnings_fts, rowid, content)
+                VALUES ('delete', old.id, old.content);
+            END
+        """)
+        db.execute("""
+            CREATE TRIGGER IF NOT EXISTS learnings_fts_update
+            AFTER UPDATE ON learnings BEGIN
+                INSERT INTO learnings_fts(learnings_fts, rowid, content)
+                VALUES ('delete', old.id, old.content);
+                INSERT INTO learnings_fts(rowid, content) VALUES (new.id, new.content);
+            END
+        """)
         db.commit()
 
         db.execute("""
@@ -451,6 +486,37 @@ def get_recent_learnings(n: int = 30, aspect_id: str | None = None) -> list[dict
             if "learning_type" not in r and "type" in r:
                 r["learning_type"] = r["type"]
         return result
+
+
+def search_learnings_fts(query: str, n: int = 20) -> list[dict]:
+    """
+    FTS5 full-text search over learnings using Porter stemmer + unicode tokenization.
+    Falls back to LIKE search if FTS5 table is missing.
+    Returns list of matching learning dicts ordered by relevance (BM25 rank).
+    """
+    migrate()
+    with _conn() as db:
+        try:
+            rows = db.execute(
+                """SELECT l.id, l.content, l.type, l.created_at
+                   FROM learnings l
+                   JOIN learnings_fts f ON l.id = f.rowid
+                   WHERE learnings_fts MATCH ?
+                   ORDER BY rank
+                   LIMIT ?""",
+                (query, n),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        except Exception:
+            # Fallback: simple LIKE search
+            try:
+                rows = db.execute(
+                    "SELECT id, content, type, created_at FROM learnings WHERE content LIKE ? LIMIT ?",
+                    (f"%{query}%", n),
+                ).fetchall()
+                return [dict(r) for r in rows]
+            except Exception:
+                return []
 
 
 def delete_learnings_by_id(ids: list) -> None:
