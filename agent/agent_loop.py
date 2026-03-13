@@ -454,6 +454,15 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
     except Exception:
         pass
 
+    # Section 2: unified retrieval injection (learnings + docs + graph)
+    retrieved_context = ""
+    if goal and cfg.get("retrieval_injection", True):
+        try:
+            from services.retrieval import build_retrieved_context
+            retrieved_context = (build_retrieved_context(goal, k=5) or "").strip()
+        except Exception:
+            pass
+
     # Current working context: repo structure, study topics, sub-goals (unified surface)
     workspace_context_parts = []
     repo_struct = _get_repo_structure(workspace_root)
@@ -571,6 +580,8 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
         parts.append(f"Relevant memories:\n{semantic[:1000]}")
     if graph_associations:
         parts.append(graph_associations)
+    if retrieved_context:
+        parts.append(retrieved_context)
     if knowledge:
         parts.append(f"Reference docs:\n{knowledge}")
     # Chain-of-thought elicitation — helps smaller models reason step-by-step
@@ -1341,12 +1352,13 @@ def autonomous_run(
     stream_final: bool = False,
     ux_state_queue: queue.Queue | None = None,
     research_mode: bool = False,
+    plan_depth: int = 0,
 ) -> dict:
     with llm_serialize_lock:
         return _autonomous_run_impl(
             goal, context, workspace_root, allow_write, allow_run,
             conversation_history, aspect_id, show_thinking, stream_final,
-            ux_state_queue, research_mode,
+            ux_state_queue, research_mode, plan_depth,
         )
 
 
@@ -1362,6 +1374,7 @@ def _autonomous_run_impl(
     stream_final: bool,
     ux_state_queue: queue.Queue | None,
     research_mode: bool,
+    plan_depth: int = 0,
 ) -> dict:
     cfg = runtime_safety.load_config()  # noqa: F841
     # Gate once at entry only: avoid refusing mid-run when our own LLM/embedder spiked CPU
@@ -1429,6 +1442,47 @@ def _autonomous_run_impl(
 
     if research_mode and workspace:
         set_effective_sandbox(workspace)
+
+    # Planning: if goal warrants it, create and execute plan first (respect max_plan_depth)
+    try:
+        from services.planner import should_plan, create_plan, execute_plan
+        from services.observability import log_agent_plan_created, log_agent_plan_completed, log_planner_invoked
+        if should_plan(goal, cfg, plan_depth=plan_depth):
+            plan = create_plan(goal)
+            if plan:
+                log_planner_invoked(steps=len(plan), goal_preview=goal[:60])
+                log_agent_plan_created(steps=len(plan), goal_preview=goal[:60])
+                plan_result = execute_plan(
+                    plan,
+                    autonomous_run,
+                    goal_prefix=goal[:100],
+                    plan_depth=plan_depth,
+                    context=context,
+                    workspace_root=workspace,
+                    allow_write=allow_write,
+                    allow_run=allow_run,
+                    conversation_history=conversation_history or [],
+                    aspect_id=aspect_id or "morrigan",
+                    show_thinking=show_thinking,
+                    stream_final=False,
+                    ux_state_queue=ux_state_queue,
+                    research_mode=research_mode,
+                )
+                log_agent_plan_completed(steps=len(plan_result.get("steps_done", [])))
+                return {
+                    "status": "plan_completed",
+                    "steps": plan_result.get("steps_done", []),
+                    "aspect": active_aspect.get("id", "layla"),
+                    "aspect_name": active_aspect.get("name", "Layla"),
+                    "refused": False,
+                    "refusal_reason": "",
+                    "ux_states": state.get("ux_states", []),
+                    "memory_influenced": memory_influenced,
+                    "reply": plan_result.get("summary", ""),
+                }
+    except Exception:
+        pass
+
     while state["depth"] < 5:
         if time.time() - state["start_time"] > max_runtime:
             state["status"] = "timeout"
@@ -1906,9 +1960,18 @@ def _autonomous_run_impl(
                 convo_turns = max(0, int(cfg.get("convo_turns", 0)))
             except (TypeError, ValueError):
                 convo_turns = 0
-            if convo_turns > 0 and conversation_history:
+            # Section 1: context compression when token count exceeds ~75% of n_ctx
+            effective_history = conversation_history or []
+            if effective_history and cfg.get("context_compression", True):
+                try:
+                    from services.context_manager import summarize_history
+                    n_ctx = max(2048, int(cfg.get("n_ctx", 4096)))
+                    effective_history = summarize_history(effective_history, n_ctx=n_ctx, threshold_ratio=0.75)
+                except Exception:
+                    pass
+            if convo_turns > 0 and effective_history:
                 name = active_aspect.get("name", "Layla")
-                turns = conversation_history[-convo_turns:]
+                turns = effective_history[-convo_turns:]
                 lines = []
                 for t in turns:
                     role = t.get("role", "")

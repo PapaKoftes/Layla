@@ -1,4 +1,7 @@
 # Pinned for reproducible installs. Use: pip install -r agent/requirements.txt
+# Optional: structured observability (Section 8)
+# loguru>=0.7
+
 # Dev / test
 pytest>=8.0
 pytest-asyncio>=0.23

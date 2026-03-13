@@ -16,6 +16,27 @@ _llm_lock = threading.Lock()
 llm_serialize_lock = _llm_lock
 
 
+def model_loaded_status() -> dict:
+    """Return model status for /health. If path invalid, includes error message."""
+    try:
+        import runtime_safety
+        cfg = runtime_safety.load_config()
+        url = (cfg.get("llama_server_url") or "").strip()
+        if url:
+            return {"remote": True, "error": None}
+        model_filename = cfg.get("model_filename", "your-model.gguf")
+        if not model_filename or model_filename == "your-model.gguf":
+            return {"error": "Model not loaded. Please configure model_filename in runtime_config.json"}
+        model_path = REPO_ROOT / "models" / model_filename
+        if not model_path.exists():
+            return {"error": "Model not loaded. Please configure model_path in runtime_config.json and place the .gguf file in models/"}
+        if _llm is not None:
+            return {"error": None}
+        return {"error": None}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 def _auto_threads() -> int:
     """Best thread count for inference: physical cores only, capped sensibly."""
     try:
@@ -145,6 +166,12 @@ def run_completion(
     if url:
         import urllib.request
         import json as _json
+        try:
+            from tenacity import retry, stop_after_attempt, retry_if_exception_type
+            _retry = retry(stop=stop_after_attempt(3), retry=retry_if_exception_type((OSError, ConnectionError)))
+        except ImportError:
+            def _retry(fn):
+                return fn
         model_name = cfg.get("remote_model_name") or "layla"
         body = {
             "model": model_name,

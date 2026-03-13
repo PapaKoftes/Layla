@@ -4246,3 +4246,46 @@ TOOLS.update({
     "click_ui": {"fn": click_ui, "dangerous": True, "require_approval": True, "risk_level": "high"},
     "type_text": {"fn": type_text, "dangerous": True, "require_approval": True, "risk_level": "high"},
 })
+
+
+_REQUIRED_META = {"name", "description", "category", "risk_level"}
+
+
+TOOL_COUNT_THRESHOLD = 50
+
+
+def validate_tools_registry() -> None:
+    """Validate tool registry integrity: count threshold + required metadata. Raise if incomplete."""
+    import logging
+    log = logging.getLogger("layla")
+    if len(TOOLS) < TOOL_COUNT_THRESHOLD:
+        raise RuntimeError(f"Tool registry incomplete: {len(TOOLS)} tools (expected >= {TOOL_COUNT_THRESHOLD})")
+    missing = []
+    for tool_name, entry in TOOLS.items():
+        if not isinstance(entry, dict):
+            missing.append((tool_name, "not a dict"))
+            continue
+        fn = entry.get("fn")
+        if not fn:
+            missing.append((tool_name, "missing fn"))
+            continue
+        # name: key is name
+        if not entry.get("name"):
+            entry["name"] = tool_name
+        # description: prefer explicit, else __doc__
+        if not entry.get("description"):
+            doc = (getattr(fn, "__doc__") or "").strip().split("\n")[0][:200]
+            if doc:
+                entry["description"] = doc
+            else:
+                missing.append((tool_name, "missing description"))
+        # category: infer if missing
+        if not entry.get("category"):
+            entry["category"] = "general"
+            log.debug("tool %s: missing category, defaulting to general", tool_name)
+        # risk_level: required
+        if not entry.get("risk_level"):
+            entry["risk_level"] = "medium" if entry.get("dangerous") else "low"
+            log.warning("tool %s: missing risk_level, inferred as %s", tool_name, entry["risk_level"])
+    for name, msg in missing:
+        log.warning("tool %s: %s", name, msg)

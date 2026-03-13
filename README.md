@@ -121,6 +121,32 @@ Switch between them in the sidebar or say their name:
 
 ---
 
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Client (Web UI / CLI / MCP / TUI)                                       │
+└──────────────────────────────┬──────────────────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────────────────┐
+│  FastAPI (localhost:8000)                                                │
+│  /agent | /health | /wakeup | /approve | /v1 (OpenAI-compatible)         │
+└──────────────────────────────┬──────────────────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────────────────┐
+│  Agent loop  │  Planner  │  Orchestrator (aspects)  │  Tool dispatcher   │
+└──────────────┬────────────────────────────────────┬────────────────────┘
+               │                                      │
+┌──────────────▼──────────────┐    ┌─────────────────▼──────────────────┐
+│  llama-cpp-python (GGUF)     │    │  Memory: SQLite + Chroma + NetworkX │
+│  Model inference            │    │  Learnings, study_plans, audit      │
+└─────────────────────────────┘    └─────────────────────────────────────┘
+```
+
+See [docs/LAYLA_SYSTEM_OVERVIEW.md](docs/LAYLA_SYSTEM_OVERVIEW.md) for the full architecture.
+
+---
+
 ## Configure her
 
 Everything is in `agent/runtime_config.json`. Run `agent/first_run.py` to have it generated for your hardware, or edit it manually:
@@ -140,6 +166,8 @@ Everything is in `agent/runtime_config.json`. Run `agent/first_run.py` to have i
 ```
 
 See [MODELS.md](MODELS.md) for all config options.
+
+**Enabling vector memory:** Set `"use_chroma": true` in `agent/runtime_config.json`. This enables semantic search over learnings and knowledge docs. ChromaDB indexes files in `knowledge/` at startup. Without it, Layla falls back to FTS (full-text search) and the knowledge graph.
 
 ---
 

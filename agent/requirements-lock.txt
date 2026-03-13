@@ -1,0 +1,14 @@
+# Layla v1.0 - Pinned dependencies for reproducible installs.
+# Regenerate: pip install -r requirements.txt && pip freeze -r requirements.txt > requirements-lock.txt
+# Or: pip-compile requirements.txt -o requirements-lock.txt  (if pip-tools installed)
+
+# Critical pinned versions (Section 1)
+fastapi==0.115.6
+llama-cpp-python==0.3.2
+networkx==3.4.2
+tenacity==9.0.0
+chromadb==0.5.23
+playwright==1.49.1
+pandas==2.2.3
+
+# Optional (unpin if not installed): spacy - run: pip install spacy && python -m spacy download en_core_web_sm
