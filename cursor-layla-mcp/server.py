@@ -39,6 +39,12 @@ def _post(url: str, body: dict, timeout: int = 180) -> dict:
         return json.loads(r.read().decode())
 
 
+def _get(url: str, timeout: int = 30) -> dict:
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode())
+
+
 def _learn_sync(content: str, learning_type: str = "fact") -> str:
     data = _post(LAYLA_BASE + "/learn/", {"content": content, "type": learning_type}, timeout=30)
     if data.get("ok"):
@@ -109,7 +115,7 @@ async def handle_list_tools() -> types.ListToolsResult:
                         },
                         "aspect_id": {
                             "type": "string",
-                            "description": "Aspect to invoke: morrigan (engineer), nyx (researcher), echo (companion), eris (chaos/banter), lilith (ethics/core/nsfw). Leave empty for auto-select.",
+                            "description": "Aspect to invoke: morrigan (engineer), nyx (researcher), echo (companion), eris (chaos/banter), lilith (ethics/core/nsfw), neuro (unfiltered/reactive). Leave empty for auto-select.",
                             "default": "",
                         },
                         "show_thinking": {
@@ -185,6 +191,34 @@ async def handle_list_tools() -> types.ListToolsResult:
                         "workspace_root": {
                             "type": "string",
                             "description": "Root path of the repository to analyze.",
+                        },
+                    },
+                },
+            ),
+            types.Tool(
+                name="get_pending_approvals",
+                title="Get Layla's pending approvals",
+                description=(
+                    "List all actions Layla is waiting for approval on. "
+                    "Returns a list of pending approval IDs and what action each is for."
+                ),
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            types.Tool(
+                name="approve_action",
+                title="Approve a Layla action",
+                description=(
+                    "Approve a pending Layla action by its ID. "
+                    "Use get_pending_approvals to see what's waiting. "
+                    "This lets Layla proceed with file writes, code execution, or shell commands."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["approval_id"],
+                    "properties": {
+                        "approval_id": {
+                            "type": "string",
+                            "description": "The approval UUID from get_pending_approvals.",
                         },
                     },
                 },
@@ -320,6 +354,33 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
             return [types.TextContent(type="text", text=response)]
         except Exception as e:
             return [types.TextContent(type="text", text=f"Repo analysis failed: {e}")]
+
+    # ── get_pending_approvals ─────────────────────────────
+    if name == "get_pending_approvals":
+        try:
+            resp = _get(LAYLA_BASE + "/approvals")
+            items = resp.get("approvals") or resp.get("items") or []
+            if not items:
+                return [types.TextContent(type="text", text="No pending approvals.")]
+            lines = []
+            for item in items:
+                lines.append(f"ID: {item.get('id','?')}  tool: {item.get('tool','?')}  args: {str(item.get('args',''))[:80]}")
+            return [types.TextContent(type="text", text="\n".join(lines))]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"Could not fetch approvals: {e}")]
+
+    # ── approve_action ────────────────────────────────────
+    if name == "approve_action":
+        approval_id = args.get("approval_id", "").strip()
+        if not approval_id:
+            return [types.TextContent(type="text", text="No approval_id provided.")]
+        try:
+            result = _post(LAYLA_BASE + "/approve", {"id": approval_id})
+            ok = result.get("ok") or result.get("status") == "approved"
+            msg = "Approved." if ok else f"Approval failed: {result}"
+            return [types.TextContent(type="text", text=msg)]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"Approve failed: {e}")]
 
     return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
 

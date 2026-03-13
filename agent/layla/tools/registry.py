@@ -17,7 +17,7 @@ def _get_sandbox() -> Path:
     try:
         p = getattr(_effective_sandbox, "path", None)
         if p is not None and str(p).strip():
-            return Path(p).resolve()
+            return Path(p).expanduser().resolve()
     except Exception:
         pass
     try:
@@ -26,7 +26,7 @@ def _get_sandbox() -> Path:
         sys.path.insert(0, str(agent_dir))
         import runtime_safety
         root = runtime_safety.load_config().get("sandbox_root", str(Path.home()))
-        return Path(root).resolve()
+        return Path(root).expanduser().resolve()
     except Exception:
         return Path.home().resolve()
 

@@ -1035,22 +1035,28 @@ async function transcribeAndSend(blob) {
 
 async function speakText(text) {
   if (!_ttsEnabled || !text) return;
+  // Try server-side TTS (kokoro-onnx) first; fall back to browser SpeechSynthesis
   try {
     const resp = await fetch('/voice/speak', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     });
-    if (!resp.ok) return;
-    const arrayBuffer = await resp.arrayBuffer();
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-    const source = audioCtx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(audioCtx.destination);
-    source.start();
-  } catch(e) {
-    // TTS not available — silently skip
+    if (resp.ok) {
+      const arrayBuffer = await resp.arrayBuffer();
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      const source = audioCtx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioCtx.destination);
+      source.start();
+      return;
+    }
+    // 503 = kokoro-onnx not installed; fall through to browser fallback
+  } catch(e) { /* network error; fall through */ }
+  // Browser SpeechSynthesis fallback (always available, lower quality)
+  if (typeof speechSynthesis !== 'undefined') {
+    speakReply(text.slice(0, 500), currentAspect);
   }
 }
 
