@@ -39,6 +39,12 @@ Each aspect is a facet of the same being. Loaded dynamically from `personalities
 - Pass `aspect_id` in any API call to `/agent`: `"morrigan"`, `"nyx"`, `"echo"`, `"eris"`, `"cassandra"`, `"lilith"`
 - For Lilith NSFW register: include **intimate**, **nsfw**, **explicit**, or **adult** in your message
 
+### Addressing one specific aspect in the Web UI
+- Type `@aspect_name` at the start of your message: `@nyx explain quantum entanglement`
+- The message routes to that aspect for that single message only — your session aspect doesn't change
+- Autocomplete dropdown appears when you type `@` — arrow keys + Enter to pick
+- **Aspect Lock** (🔓 button next to the badge): click to lock the current aspect; it won't auto-route until unlocked
+
 ---
 
 ## Deliberation
