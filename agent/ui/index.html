@@ -644,28 +644,28 @@
       <h3>Voices</h3>
       <p class="sidebar-hint">Talk to Layla or choose a voice. She remembers and grows with you.</p>
       <div class="aspect-option">
-        <button class="aspect-btn active" onclick="setAspect('morrigan')" id="btn-morrigan">&#9876; Morrigan</button>
-        <span class="aspect-desc">Code, debug, review. The blade. Default for engineering.</span>
+        <button class="aspect-btn active" onclick="setAspect('morrigan')" id="btn-morrigan">⚔ Morrigan</button>
+        <span class="aspect-desc">Code, debug, architecture, execution. The blade.</span>
       </div>
       <div class="aspect-option">
-        <button class="aspect-btn" onclick="setAspect('nyx')" id="btn-nyx">&#9733; Nyx</button>
-        <span class="aspect-desc">Research, study sessions, depth and patterns.</span>
+        <button class="aspect-btn" onclick="setAspect('nyx')" id="btn-nyx">✦ Nyx</button>
+        <span class="aspect-desc">Research, depth, synthesis. Finds the thing under the thing.</span>
       </div>
       <div class="aspect-option">
-        <button class="aspect-btn" onclick="setAspect('echo')" id="btn-echo">&#9678; Echo</button>
-        <span class="aspect-desc">Companion, growth tracker, session greeter.</span>
+        <button class="aspect-btn" onclick="setAspect('echo')" id="btn-echo">◎ Echo</button>
+        <span class="aspect-desc">Pattern guardian, memory, growth. Holds the thread.</span>
       </div>
       <div class="aspect-option">
-        <button class="aspect-btn" onclick="setAspect('eris')" id="btn-eris">&#9889; Eris</button>
-        <span class="aspect-desc">Chaos, banter, games, music. Unhinged in the best way.</span>
+        <button class="aspect-btn" onclick="setAspect('eris')" id="btn-eris">⚡ Eris</button>
+        <span class="aspect-desc">Creative divergence, banter, the leap that skips the steps.</span>
       </div>
       <div class="aspect-option">
         <button class="aspect-btn" onclick="setAspect('cassandra')" id="btn-cassandra">⌖ Cassandra</button>
-        <span class="aspect-desc">Unfiltered oracle. Speaks truth before finishing the thought. Always right.</span>
+        <span class="aspect-desc">Unfiltered oracle. Sees it first, says it before it's finished.</span>
       </div>
       <div class="aspect-option">
-        <button class="aspect-btn" onclick="setAspect('lilith')" id="btn-lilith">&#8859; Lilith</button>
-        <span class="aspect-desc">Core authority, ethics, autonomy gate. Tone modulation when appropriate.</span>
+        <button class="aspect-btn" onclick="setAspect('lilith')" id="btn-lilith">⊛ Lilith</button>
+        <span class="aspect-desc">Sovereign will. Absolute honesty. The part that doesn't flinch.</span>
       </div>
     </div>
     <div>
@@ -783,7 +783,9 @@ function setAspect(id) {
   document.querySelectorAll('.aspect-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('btn-' + id)?.classList.add('active');
   const badge = document.getElementById('aspect-badge');
-  if (badge) { badge.textContent = '∴ ' + id.toUpperCase(); badge.style.animation = 'none'; void badge.offsetWidth; badge.style.animation = ''; }
+  const ASPECT_SYMBOLS = { morrigan:'⚔', nyx:'✦', echo:'◎', eris:'⚡', cassandra:'⌖', lilith:'⊛' };
+  const sym = ASPECT_SYMBOLS[id] || '∴';
+  if (badge) { badge.textContent = sym + ' ' + id.toUpperCase(); badge.style.animation = 'none'; void badge.offsetWidth; badge.style.animation = ''; }
   const c = ASPECT_COLORS[id] || ASPECT_COLORS.morrigan;
   const root = document.documentElement.style;
   root.setProperty('--asp',      c.asp);

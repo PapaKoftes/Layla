@@ -172,6 +172,145 @@ def ask(prompt: str, default: str = "") -> str:
 
 # ── Main wizard ────────────────────────────────────────────────────────────
 
+_MODELS_CATALOG = [
+    {
+        "key": "dolphin-mistral-7b",
+        "name": "Dolphin Mistral 7B Q4_K_M",
+        "filename": "dolphin-2.6-mistral-7b.Q4_K_M.gguf",
+        "url": "https://huggingface.co/TheBloke/dolphin-2.6-mistral-7B-GGUF/resolve/main/dolphin-2.6-mistral-7b.Q4_K_M.gguf",
+        "size_gb": 4.1,
+        "ram_gb": 6,
+        "desc": "Uncensored Mistral 7B. Fast, excellent instruction following. Best for most users.",
+    },
+    {
+        "key": "dolphin-llama3-8b",
+        "name": "Dolphin Llama3 8B Q4_K_M",
+        "filename": "dolphin-2.9.1-llama-3-8b-Q4_K_M.gguf",
+        "url": "https://huggingface.co/bartowski/dolphin-2.9.1-llama-3-8b-GGUF/resolve/main/dolphin-2.9.1-llama-3-8b-Q4_K_M.gguf",
+        "size_gb": 4.9,
+        "ram_gb": 8,
+        "desc": "Llama 3 base — newer architecture, stronger reasoning than Mistral.",
+    },
+    {
+        "key": "hermes-3-8b",
+        "name": "Hermes 3 Llama3.1 8B Q4_K_M",
+        "filename": "Hermes-3-Llama-3.1-8B-Q4_K_M.gguf",
+        "url": "https://huggingface.co/bartowski/Hermes-3-Llama-3.1-8B-GGUF/resolve/main/Hermes-3-Llama-3.1-8B-Q4_K_M.gguf",
+        "size_gb": 4.9,
+        "ram_gb": 8,
+        "desc": "Hermes NousResearch. Strong system-prompt adherence, great for aspect work.",
+    },
+    {
+        "key": "phi3-mini",
+        "name": "Phi-3 Mini 3.8B Q4_K_M",
+        "filename": "Phi-3-mini-4k-instruct-q4.gguf",
+        "url": "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf",
+        "size_gb": 2.2,
+        "ram_gb": 4,
+        "desc": "Tiny but surprisingly good. For low-RAM systems (4 GB). Not uncensored.",
+    },
+    {
+        "key": "dolphin-llama3-70b",
+        "name": "Dolphin Llama3 70B Q2_K",
+        "filename": "dolphin-2.9-llama3-70b-Q2_K.gguf",
+        "url": "https://huggingface.co/bartowski/dolphin-2.9-llama3-70b-GGUF/resolve/main/dolphin-2.9-llama3-70b-Q2_K.gguf",
+        "size_gb": 26.0,
+        "ram_gb": 32,
+        "desc": "Maximum capability. Needs 32+ GB RAM. Not for most systems.",
+    },
+]
+
+
+def _download_with_progress(url: str, dest: Path) -> bool:
+    """Download a file with a simple progress indicator. Returns True on success."""
+    import urllib.request
+
+    def _progress(block_num: int, block_size: int, total_size: int) -> None:
+        if total_size <= 0:
+            return
+        downloaded = block_num * block_size
+        pct = min(100, int(downloaded * 100 / total_size))
+        done = pct // 2
+        bar = "█" * done + "░" * (50 - done)
+        downloaded_mb = downloaded / (1024 * 1024)
+        total_mb = total_size / (1024 * 1024)
+        print(f"\r  [{bar}] {pct}%  {downloaded_mb:.0f}/{total_mb:.0f} MB", end="", flush=True)
+
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        urllib.request.urlretrieve(url, str(dest), _progress)
+        print()
+        return True
+    except Exception as e:
+        print(f"\n  Download error: {e}")
+        return False
+
+
+def _offer_model_download(ram_gb: float) -> str:
+    """Show a model picker and offer to download. Returns chosen filename or ''."""
+    print("  No models found in models/")
+    print()
+    print("  Available models (recommended first):")
+    print()
+
+    # Filter and sort by ram_gb ascending, mark which are viable
+    viable = [m for m in _MODELS_CATALOG if m["ram_gb"] <= (ram_gb or 99)]
+    others = [m for m in _MODELS_CATALOG if m not in viable]
+
+    rows = viable + others
+    for i, m in enumerate(rows, 1):
+        ok = "✓" if m in viable else "!"
+        print(f"  [{i}] {ok} {m['name']}  ({m['size_gb']} GB download, needs {m['ram_gb']} GB RAM)")
+        print(f"      {m['desc']}")
+        print()
+
+    print("  [d] Enter a direct URL to a .gguf file")
+    print("  [s] Skip — I'll add a model manually later")
+    print()
+
+    choice = ask("  Choose a model to download", "1")
+
+    if choice.lower() == "s" or not choice:
+        print("  Skipping model download. See MODELS.md for instructions.")
+        return ""
+
+    if choice.lower() == "d":
+        url = ask("  Paste HuggingFace .gguf direct URL", "")
+        if not url:
+            return ""
+        fname = url.rstrip("/").split("/")[-1]
+        if not fname.endswith(".gguf"):
+            fname = ask("  Filename to save as (include .gguf)", "my-model.gguf")
+        dest = MODELS_DIR / fname
+        print(f"  Downloading {fname}...")
+        if _download_with_progress(url, dest):
+            print(f"  ✓  Saved: {dest}")
+            return fname
+        return ""
+
+    try:
+        idx = int(choice) - 1
+        if idx < 0 or idx >= len(rows):
+            print("  Invalid choice. Skipping.")
+            return ""
+        m = rows[idx]
+        dest = MODELS_DIR / m["filename"]
+        print(f"  Downloading {m['name']} ({m['size_gb']} GB)...")
+        print(f"  This may take several minutes depending on your connection.")
+        print()
+        if _download_with_progress(m["url"], dest):
+            print(f"  ✓  Model saved: {dest}")
+            return m["filename"]
+        else:
+            print(f"  Download failed. Manual download URL:")
+            print(f"  {m['url']}")
+            print(f"  Save as: {dest}")
+            return ""
+    except ValueError:
+        print("  Invalid choice. Skipping.")
+        return ""
+
+
 def run() -> int:
     print()
     print("  ∴  Layla — First-Run Setup")
@@ -214,12 +353,8 @@ def run() -> int:
                 model_filename = choice
     else:
         print("  No .gguf models found in models/")
-        print("  See MODELS.md for download instructions.")
         print()
-        model_filename = ask(
-            "  Enter model filename if you have one elsewhere (or Enter to skip)",
-            ""
-        )
+        model_filename = _offer_model_download(ram_gb)
 
     # Check if config already exists
     existing = load_existing()
