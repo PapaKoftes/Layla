@@ -6,7 +6,7 @@ llama-cpp-python>=0.3.1,<0.4
 sentence-transformers>=3.0,<4
 numpy>=1.24,<3
 psutil>=5.9
-trafilatura>=1.6
+trafilatura>=1.6               # Web article extraction (clean text, no nav/ads)
 textual>=0.40
 sqlite-utils>=3.35
 beautifulsoup4>=4.12
@@ -30,11 +30,39 @@ kokoro-onnx>=0.3                # High-quality ONNX TTS (~80 MB), no cloud
 soundfile>=0.12                 # Required by kokoro-onnx for WAV encoding
 # pyttsx3>=2.90                 # Fallback: zero-download system TTS (lower quality)
 
-# Optional: grammar-constrained JSON output (significantly improves decision reliability)
-# instructor>=1.0,<2
+# ─── Research & Information ───────────────────────────────────────────────────
+PyMuPDF>=1.24                   # PDF reading via fitz (fast, accurate)
+pypdf>=4.0                      # PDF fallback if PyMuPDF unavailable
+wikipedia>=1.4                  # Wikipedia summaries and search
+duckduckgo-search>=6.0          # DuckDuckGo web search (pure Python, no browser)
+arxiv>=2.1                      # arXiv paper search and metadata
+pandas>=2.0,<3                  # CSV/tabular data reading and statistics
 
-# Optional: for PDF indexing under knowledge/
-# pypdf>=4.0
+# ─── HTTP & Networking ────────────────────────────────────────────────────────
+httpx>=0.27                     # Async HTTP client (used for internal requests)
+requests>=2.31                  # Sync HTTP (used by download_docs.py and tools)
 
-# Dev/CI (not required at runtime)
+# ─── JSON & Serialization ─────────────────────────────────────────────────────
+orjson>=3.9                     # Fast JSON serialization (drop-in for json module)
+
+# ─── Caching & Storage ────────────────────────────────────────────────────────
+diskcache>=5.6                  # Disk-backed cache (embedding cache persistence)
+
+# ─── NLP & Text ───────────────────────────────────────────────────────────────
+keybert>=0.8                    # Keyword extraction from text (used by research router)
+
+# ─── Python Source Analysis ───────────────────────────────────────────────────
+# python_ast tool uses stdlib ast module only — no extra deps needed
+
+# ─── Optional: grammar-constrained JSON output ────────────────────────────────
+# instructor>=1.0,<2            # Significantly improves tool-call reliability
+
+# ─── Optional: token counting ─────────────────────────────────────────────────
+# tiktoken>=0.7                 # OpenAI tokenizer (only if needed; adds 100 MB)
+
+# ─── Optional: document formats ───────────────────────────────────────────────
+# python-docx>=1.0              # Word document reading (.docx)
+# openpyxl>=3.1                 # Excel reading (.xlsx)
+
+# ─── Dev/CI (not required at runtime) ─────────────────────────────────────────
 # ruff>=0.4

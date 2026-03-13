@@ -1,0 +1,71 @@
+Layla's current technical stack
+
+Runtime:
+- Python 3.11+
+- FastAPI + uvicorn (agent/main.py — server on localhost:8000)
+- llama-cpp-python (LLM inference, model at models/your-model.gguf)
+- SQLite with WAL mode (layla.db — learnings, study plans, wakeup log, audit, aspect memories)
+- ChromaDB + nomic-embed-text (vector semantic search)
+
+Memory & RAG:
+- BM25 hybrid search (rank-bm25)
+- Cross-encoder reranking (sentence-transformers)
+- HyDE (Hypothetical Document Embeddings) for retrieval
+- Parent-document retrieval
+- SQLite FTS5 for full-text search on learnings
+- LRU cache for embeddings
+
+Aspects (personalities):
+- Morrigan (⚔): engineer, blunt, default
+- Nyx (✦): researcher, depth and synthesis
+- Echo (◎): companion, pattern guardian, memory tracker
+- Eris (⚡): creative chaos, lateral thinking
+- Cassandra (⌖): unfiltered oracle, reactive, fast
+- Lilith (⊛): sovereign core, ethics, absolute honesty
+
+Tools available to Layla (40 total):
+- read_file, write_file, list_dir, file_info (sandboxed to sandbox_root)
+- shell, run_python (blocklisted/sandboxed, require approval)
+- git_status, git_diff, git_log, git_branch, git_add, git_commit
+- grep_code, glob_files, json_query, diff_files, regex_test, python_ast
+- apply_patch (unified diff, backup-before-write, requires approval)
+- fetch_url (robots.txt enforced), browser_navigate, browser_search, browser_screenshot, browser_click, browser_fill
+- fetch_article (trafilatura clean extraction), ddg_search (pure Python DDG, no browser)
+- wiki_search (Wikipedia summaries + related), arxiv_search (paper search + abstracts)
+- read_pdf (PyMuPDF/pypdf fallback), read_csv (pandas + stats), http_request (REST APIs/webhooks)
+- math_eval (safe AST whitelist math), count_tokens (tiktoken or rough estimate)
+- env_info, save_note, search_memories
+- get_project_context, update_project_context, understand_file, project_discovery
+
+Voice (optional):
+- faster-whisper (STT): POST /voice/transcribe
+- kokoro-onnx (TTS): POST /voice/speak (fallback: browser SpeechSynthesis)
+
+Interaction surfaces:
+- Cursor IDE via MCP (cursor-layla-mcp/server.py)
+- Web UI at localhost:8000/ui
+- TUI: agent/tui.py (Textual)
+- CLI: layla.py at repo root
+- OpenAI-compatible API at localhost:8000/v1
+
+Safety:
+- Dangerous tools require approval (agent/.governance/pending.json)
+- Sandbox root enforced with expanduser().resolve()
+- Audit log: agent/.governance/audit.log
+- Shell blocklist: rm, del, rmdir, format, mkfs, shutdown, etc.
+
+Key files:
+- agent/main.py: FastAPI app entry point
+- agent/agent_loop.py: main LLM + tool dispatch loop
+- agent/orchestrator.py: aspect routing, deliberation
+- agent/runtime_safety.py: config loading, sandboxing, safety checks
+- agent/layla/tools/registry.py: all tool functions + TOOLS dict
+- agent/layla/memory/db.py: SQLite schema, migrations, FTS5
+- agent/layla/memory/vector_store.py: ChromaDB, BM25, RAG pipeline
+- agent/services/llm_gateway.py: llama-cpp-python integration
+- agent/services/stt.py: faster-whisper STT
+- agent/services/tts.py: kokoro-onnx TTS
+- agent/services/browser.py: Playwright automation
+- personalities/: JSON files for each aspect (morrigan, nyx, echo, eris, cassandra, lilith)
+- knowledge/: curated knowledge base (indexed into ChromaDB)
+- .identity/self_model.md: Lilith's self-model, injected when Lilith is active

@@ -4,7 +4,7 @@ domain: tools
 aspect: morrigan
 ---
 
-# Tools Reference — All 29 Tools
+# Tools Reference — All 40 Tools
 
 Layla's complete tool registry. Dangerous tools require `allow_run=true` AND approval via `POST /approve` before they execute.
 
@@ -84,6 +84,27 @@ Layla's complete tool registry. Dangerous tools require `allow_run=true` AND app
 |------|-----------|-------|
 | `get_project_context` | _(none)_ | Current project name, domain, goals, lifecycle stage. |
 | `update_project_context` | `project_name, domains, key_files, goals, lifecycle_stage` | Update project state. Lifecycle: idea/planning/prototype/iteration/execution/reflection. |
+| `project_discovery` | `workspace_root: str = ""` | Auto-detect tech stack, entry points, structure. Falls back to manual file scan. |
+
+## Research & Information
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `read_pdf` | `path: str, max_pages: int = 30` | Extract text from PDF via PyMuPDF (fitz) or pypdf fallback. |
+| `fetch_article` | `url: str` | Clean article extraction via trafilatura — strips nav, ads, footers. Best for research reading. |
+| `wiki_search` | `query: str, sentences: int = 8, lang: str = "en"` | Wikipedia summary. Returns title, URL, summary, related pages. Handles disambiguation gracefully. |
+| `ddg_search` | `query: str, max_results: int = 10, region: str = "wt-wt"` | DuckDuckGo search. Pure Python — no browser required. Returns title, href, snippet. |
+| `arxiv_search` | `query: str, max_results: int = 5, sort_by: str = "relevance"` | Search arXiv. Returns title, authors, abstract, PDF URL, categories. |
+
+## Data & Analysis
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `read_csv` | `path: str, max_rows: int = 50, describe: bool = True` | Read CSV + stats summary via pandas. Falls back to stdlib csv if pandas unavailable. |
+| `math_eval` | `expression: str` | Safe math: `sqrt(144) + pi * 2`. Strict AST whitelist, no exec. |
+| `count_tokens` | `text: str, model: str = "gpt-4"` | Token count via tiktoken or ~4 chars/token estimate. |
+| `http_request` | `url: str, method: str = "GET", body: str = "", headers: dict, timeout: int = 15` | General HTTP request. Use for REST APIs, webhooks, POST endpoints. |
+| `python_ast` | `path: str` | Analyze Python file structure: functions, classes, imports, constants, line count. |
 
 ---
 
