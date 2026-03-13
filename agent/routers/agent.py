@@ -88,7 +88,10 @@ async def agent(req: dict):
                 while thread.is_alive() or not ux_state_queue.empty():
                     try:
                         ux = ux_state_queue.get(timeout=0.15)
-                        yield f"data: {json.dumps({'ux_state': ux})}\n\n"
+                        if isinstance(ux, dict) and ux.get("_type") == "tool_start":
+                            yield f"data: {json.dumps({'tool_start': ux['tool']})}\n\n"
+                        else:
+                            yield f"data: {json.dumps({'ux_state': ux})}\n\n"
                     except queue.Empty:
                         if not thread.is_alive():
                             break
