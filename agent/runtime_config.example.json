@@ -1,29 +1,88 @@
 {
+  "_comment": "Copy this to runtime_config.json and set model_filename. Run agent/first_run.py to auto-generate this for your hardware.",
+
   "model_filename": "your-model.gguf",
-  "sandbox_root": ".",
-  "max_ram_percent": 90,
-  "max_cpu_percent": 90,
-  "web_allowlist": [],
+
+  "sandbox_root": "~",
+
+  "uncensored": true,
+  "nsfw_allowed": true,
+  "knowledge_unrestricted": true,
+  "anonymous_access": true,
+
+  "n_ctx": 4096,
+  "n_gpu_layers": -1,
+  "n_batch": 512,
+  "n_threads": null,
+  "n_threads_batch": null,
+  "n_keep": 512,
+
+  "use_mmap": true,
+  "use_mlock": false,
+  "flash_attn": true,
+  "type_k": 8,
+  "type_v": 8,
+
+  "temperature": 0.2,
+  "top_p": 0.95,
+  "top_k": 40,
+  "repeat_penalty": 1.1,
+  "completion_max_tokens": 256,
+  "convo_turns": 0,
+
+  "stop_sequences": ["\nUser:", " User:"],
+
+  "max_tool_calls": 5,
+  "research_max_tool_calls": 40,
+  "research_max_runtime_seconds": 240,
+  "safe_mode": true,
+
   "use_chroma": true,
+
+  "knowledge_chunks_k": 5,
+  "knowledge_max_bytes": 4000,
+  "learnings_n": 30,
+  "semantic_k": 5,
+  "aspect_memories_n": 10,
+
+  "enable_cot": true,
+  "enable_self_reflection": false,
+
   "scheduler_study_enabled": true,
   "scheduler_interval_minutes": 30,
   "scheduler_recent_activity_minutes": 90,
   "scheduler_use_capabilities": false,
+
+  "wakeup_include_initiative": false,
+  "wakeup_include_discovery_line": false,
+
+  "remote_enabled": false,
+  "remote_api_key": null,
+  "remote_allow_endpoints": [],
+  "remote_mode": "observe",
+  "remote_model_name": "layla",
+
+  "trace_id_enabled": false,
+
+  "whisper_model": "base",
+  "whisper_device": "auto",
+  "tts_voice": "af_heart",
+  "tts_speed": 1.0,
+
+  "max_ram_percent": 90,
+  "max_cpu_percent": 90,
+  "web_allowlist": [],
+
   "knowledge_sources": [
     {"url": "https://fastapi.tiangolo.com/tutorial/first-steps/", "slug": "fastapi-quickstart"},
     {"url": "https://docs.python.org/3/library/asyncio-task.html", "slug": "asyncio-tasks"}
   ],
-  "uncensored": false,
-  "nsfw_allowed": false,
-  "knowledge_unrestricted": true,
-  "anonymous_access": true,
+
   "enable_personality_expression": false,
   "enable_cognitive_lens": false,
   "enable_behavioral_rhythm": false,
   "enable_lens_knowledge": false,
   "enable_ui_reflection": false,
   "enable_operational_guidance": false,
-  "enable_style_profile": false,
-  "research_max_tool_calls": 40,
-  "research_max_runtime_seconds": 240
+  "enable_style_profile": false
 }

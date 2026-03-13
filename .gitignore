@@ -33,13 +33,20 @@ Thumbs.db
 *.swo
 *~
 
-# Knowledge: each collaborator builds their own (do not commit shared content)
+# Knowledge: personal content not committed by default; curated project docs are exceptions below
 knowledge/*.txt
 knowledge/*.md
 knowledge/fetched/
 knowledge/docs/
+# Curated base knowledge — committed as part of the project
 !knowledge/README.md
 !knowledge/layla-vision.md
+!knowledge/python-best-practices.md
+!knowledge/local-ai-models-guide.md
+!knowledge/rag-and-memory.md
+!knowledge/tools-reference.md
+!knowledge/troubleshooting.md
+!knowledge/aspects-and-memory.md
 
 # Repo-specific / handoff docs (keep locally if needed)
 REPO_ANALYSIS_FOR_HANDOFF.md
