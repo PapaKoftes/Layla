@@ -81,6 +81,15 @@ def _emit_ux(state: dict, ux_state_queue: queue.Queue | None, label: str) -> Non
             pass
 
 
+def _emit_tool_start(ux_state_queue: queue.Queue | None, tool_name: str) -> None:
+    """Emit a tool_start event so the UI can show 'Running tool_name...' during streaming."""
+    if ux_state_queue is not None:
+        try:
+            ux_state_queue.put({"_type": "tool_start", "tool": tool_name}, block=False)
+        except Exception:
+            pass
+
+
 def _is_junk_reply(content: str) -> bool:
     """True if content is the repeated junk we must never feed back (e.g. 'assistant: I replied.' or just 'I replied.')."""
     if not content or not content.strip():
@@ -1354,6 +1363,10 @@ def _autonomous_run_impl(
             _emit_ux(state, ux_state_queue, UX_STATE_CHANGING_APPROACH)
             state["reflection_pending"] = True
             intent = "reason"
+
+        # Emit tool_start so streaming UI can show "Running tool_name..."
+        if intent not in ("reason", "finish", "wakeup"):
+            _emit_tool_start(ux_state_queue, intent)
 
         # ------------------------------------------------
         # WRITE FILE
