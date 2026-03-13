@@ -2,11 +2,9 @@
 Mission system: long-running agent tasks with persistence.
 Missions execute planner steps asynchronously via APScheduler worker.
 """
-import json
 import logging
 import time
 import uuid
-from typing import Any
 
 logger = logging.getLogger("layla")
 
@@ -20,7 +18,7 @@ def create_mission(goal: str, workspace_root: str = "", allow_write: bool = Fals
     Mission starts as 'pending'; mission_worker will run it.
     """
     try:
-        from layla.memory.db import save_mission, get_mission
+        from layla.memory.db import save_mission
         from services.planner import create_plan
         from services.observability import log_mission_created
     except ImportError as e:

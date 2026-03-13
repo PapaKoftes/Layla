@@ -57,7 +57,7 @@ def retrieve_graph_context(query: str, k: int = TOP_K) -> list[dict]:
     """Query knowledge graph for related nodes. Returns node labels and relations."""
     results = []
     try:
-        from layla.memory.memory_graph import get_recent_nodes, get_neighbors
+        from layla.memory.memory_graph import get_recent_nodes
         goal_words = set(w.lower() for w in query.split() if len(w) > 2)
         recent = get_recent_nodes(n=30)
         for n in recent:
