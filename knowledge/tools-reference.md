@@ -4,7 +4,7 @@ domain: tools
 aspect: morrigan
 ---
 
-# Tools Reference — All 59 Tools
+# Tools Reference — All 74 Tools
 
 Layla's complete tool registry. Dangerous tools require `allow_run=true` AND approval via `POST /approve` before they execute.
 
@@ -150,6 +150,61 @@ Layla's complete tool registry. Dangerous tools require `allow_run=true` AND app
 | Tool | Parameters | Notes |
 |------|-----------|-------|
 | `describe_image` | `path: str, detail: str = "brief"` | BLIP image captioning via transformers. Falls back to EasyOCR text extraction. First run downloads ~500 MB model. |
+
+## NLP — Summarization, Classification, Translation
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `summarize_text` | `text: str, sentences: int = 5, method: str = "extractive"` | extractive (no deps) or abstractive (BART via transformers). |
+| `classify_text` | `text: str, labels: list, threshold: float = 0.0` | zero-shot (transformers) → cosine (sentence-transformers) → keyword fallback. |
+| `translate_text` | `text: str, target_lang: str = "en", source_lang: str = "auto"` | deep-translator (Google) → LibreTranslate public API fallback. |
+| `text_stats` | `text: str` | Flesch readability, word/sentence counts, vocab richness, top words, reading time. |
+
+## Code Intelligence (Extended)
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `code_symbols` | `path: str, include_private: bool = False` | Symbol index: functions, classes, methods, signatures, docstrings. File or directory. |
+| `find_todos` | `path: str, tags: list = [...]` | Scan for TODO/FIXME/HACK/BUG/REVIEW/OPTIMIZE. Returns file+line+message. |
+| `dependency_graph` | `path: str` | Python import graph. local vs external. networkx metrics if available. |
+
+## URL Intelligence
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `extract_links` | `url: str, same_domain: bool = False, max_links: int = 100` | Extract hyperlinks from a page. Internal/external classification. |
+| `check_url` | `url: str, timeout: int = 10` | HEAD request: status code, response time, content type, accessibility check. |
+
+## Scientific Computation
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `scipy_compute` | `operation: str, params: dict` | ops: stats.describe/ttest/correlation/normalize, optimize.minimize, integrate.quad, fft, interpolate |
+
+## Machine Learning
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `cluster_data` | `data: list, n_clusters: int = 3, method: str = "kmeans", features: list` | kmeans/dbscan/hierarchical. Input: list of dicts or numeric lists. Returns labels + stats. |
+| `dataset_summary` | `path: str` | Full analysis: shape, dtypes, missing, numeric stats, correlations, categorical counts, quality flags. |
+
+## RSS / Feeds
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `rss_feed` | `url: str, max_items: int = 20, include_content: bool = False` | Parse RSS/Atom. include_content=True fetches full article via trafilatura. |
+
+## Embedding Generation
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `embedding_generate` | `text: str \| list, normalize: bool = True` | Generate embeddings using Layla's RAG model (nomic-embed-text). String or batch. |
+
+## Image Utilities
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `image_resize` | `path: str, width: int = 0, height: int = 0, output_path: str = "", maintain_aspect: bool = True` | Pillow resize. One dimension is enough with maintain_aspect=True. |
 
 ## Symbolic & Advanced Math
 

@@ -23,7 +23,7 @@ Aspects (personalities):
 - Cassandra (⌖): unfiltered oracle, reactive, fast
 - Lilith (⊛): sovereign core, ethics, absolute honesty
 
-Tools available to Layla (59 total):
+Tools available to Layla (74 total):
 - read_file, write_file, list_dir, file_info (sandboxed to sandbox_root)
 - shell, run_python (blocklisted/sandboxed, require approval)
 - git_status, git_diff, git_log, git_branch, git_add, git_commit
@@ -52,6 +52,14 @@ Tools available to Layla (59 total):
 - context_compress (smart/truncate/middle_out text compression)
 - generate_sql (NL to SQL with schema grounding)
 - describe_image (BLIP image captioning; EasyOCR text fallback)
+- summarize_text (extractive or BART abstractive), classify_text (zero-shot/cosine/keyword)
+- translate_text (deep-translator/LibreTranslate), text_stats (Flesch, word freq, reading time)
+- code_symbols (Python symbol index), find_todos (TODO/FIXME/HACK scan), dependency_graph (import graph)
+- extract_links (hyperlink extraction), check_url (HEAD status + response time)
+- scipy_compute (stats.describe/ttest/correlation, optimize, integrate, FFT, interpolate)
+- cluster_data (kmeans/dbscan/hierarchical via sklearn), dataset_summary (full tabular analysis)
+- rss_feed (RSS/Atom parsing + optional full-text), embedding_generate (expose RAG embedder)
+- image_resize (Pillow aspect-preserving resize)
 
 Voice (optional):
 - faster-whisper (STT): POST /voice/transcribe

@@ -105,6 +105,18 @@ bandit>=1.7                     # Python static security analysis (CWE detection
 # ─── Infrastructure / Reliability ─────────────────────────────────────────────
 tenacity>=8.2                   # Retry logic with exponential backoff (used in service calls)
 
+# ─── Scientific Computation ────────────────────────────────────────────────────
+scipy>=1.12                     # Stats, optimization, FFT, interpolation (scipy_compute tool)
+
+# ─── Machine Learning ─────────────────────────────────────────────────────────
+scikit-learn>=1.4               # Clustering, preprocessing (cluster_data tool)
+
+# ─── RSS / Feed Parsing ───────────────────────────────────────────────────────
+feedparser>=6.0                 # RSS and Atom feed parsing (rss_feed tool)
+
+# ─── Translation ──────────────────────────────────────────────────────────────
+deep-translator>=1.11           # Google Translate backend (translate_text tool, LibreTranslate fallback)
+
 # ─── Image Captioning (optional, ~500 MB model download on first use) ─────────
 # transformers>=4.40            # BLIP image captioning (pip install transformers torch)
 # torch>=2.0                    # PyTorch (required for transformers; heavy install)

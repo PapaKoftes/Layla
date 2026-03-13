@@ -1707,6 +1707,30 @@ TOOLS: dict[str, Any] = {
     "generate_sql": {"fn": generate_sql, "dangerous": False, "require_approval": False, "risk_level": "low"},
     # Image Understanding
     "describe_image": {"fn": describe_image, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # NLP — Summarization, Classification, Translation
+    "summarize_text": {"fn": summarize_text, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "classify_text": {"fn": classify_text, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "translate_text": {"fn": translate_text, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Code Intelligence (extended)
+    "code_symbols": {"fn": code_symbols, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "find_todos": {"fn": find_todos, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "dependency_graph": {"fn": dependency_graph, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # URL Intelligence
+    "extract_links": {"fn": extract_links, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "check_url": {"fn": check_url, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Scientific Computation
+    "scipy_compute": {"fn": scipy_compute, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Machine Learning
+    "cluster_data": {"fn": cluster_data, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "dataset_summary": {"fn": dataset_summary, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # RSS / Feeds
+    "rss_feed": {"fn": rss_feed, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Text Statistics
+    "text_stats": {"fn": text_stats, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Embedding Generation
+    "embedding_generate": {"fn": embedding_generate, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Image Utilities
+    "image_resize": {"fn": image_resize, "dangerous": False, "require_approval": False, "risk_level": "low"},
 }
 
 
@@ -2345,5 +2369,713 @@ def describe_image(path: str, detail: str = "brief") -> dict:
         except Exception:
             pass
         return result_fb
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── NLP — Summarization, Classification, Translation ─────────────────────────
+
+def summarize_text(text: str, sentences: int = 5, method: str = "extractive") -> dict:
+    """
+    Summarize text. method:
+    - 'extractive': score sentences by position, length, keyword density. No deps.
+    - 'abstractive': uses transformers (facebook/bart-large-cnn). First run ~1.5 GB download.
+    sentences: number of sentences to include (extractive) or target length hint (abstractive).
+    """
+    import re as _re
+
+    if not text.strip():
+        return {"ok": False, "error": "Empty text"}
+
+    if method == "abstractive":
+        try:
+            from transformers import pipeline as _pipeline
+            summarizer = _pipeline("summarization", model="facebook/bart-large-cnn")
+            max_len = min(sentences * 40, 200)
+            result_text = summarizer(text[:4096], max_length=max_len, min_length=30, do_sample=False)[0]["summary_text"]
+            return {"ok": True, "method": "abstractive", "model": "bart-large-cnn", "summary": result_text, "original_chars": len(text)}
+        except ImportError:
+            pass  # Fall through to extractive
+
+    # Extractive summarization (no deps)
+    sentence_list = _re.split(r'(?<=[.!?])\s+', text.strip())
+    if not sentence_list:
+        sentence_list = [s.strip() for s in text.split("\n") if s.strip()]
+
+    if len(sentence_list) <= sentences:
+        return {"ok": True, "method": "extractive", "summary": text, "sentences_in": len(sentence_list), "sentences_out": len(sentence_list)}
+
+    words = _re.findall(r'\b\w{4,}\b', text.lower())
+    freq: dict = {}
+    for w in words:
+        freq[w] = freq.get(w, 0) + 1
+    max_freq = max(freq.values(), default=1)
+
+    scored = []
+    total = len(sentence_list)
+    for i, sent in enumerate(sentence_list):
+        pos = 1.5 if i < total * 0.15 else (1.2 if i > total * 0.85 else 1.0)
+        sent_words = _re.findall(r'\b\w{4,}\b', sent.lower())
+        tf_score = sum(freq.get(w, 0) / max_freq for w in sent_words) / max(len(sent_words), 1)
+        len_score = 1.0 if 15 < len(sent.split()) < 50 else 0.7
+        scored.append((pos * len_score * (1 + tf_score), i, sent))
+
+    top = sorted(scored, key=lambda x: -x[0])[:sentences]
+    summary = " ".join(s for _, _, s in sorted(top, key=lambda x: x[1]))
+    return {"ok": True, "method": "extractive", "summary": summary, "sentences_in": total, "sentences_out": len(top), "original_chars": len(text)}
+
+
+def classify_text(text: str, labels: list | None = None, threshold: float = 0.0) -> dict:
+    """
+    Classify text into one or more categories.
+    labels: list of class names. If empty, uses general-purpose categories.
+    Uses zero-shot classification via transformers if available,
+    falls back to cosine similarity via sentence-transformers,
+    falls back to keyword-frequency scoring.
+    threshold: minimum score (0.0 = return all, 0.5 = return only confident)
+    """
+    if not labels:
+        labels = ["technical", "creative", "analytical", "factual", "conversational", "instructional", "narrative"]
+
+    # Try zero-shot with transformers
+    try:
+        from transformers import pipeline as _pipeline
+        classifier = _pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
+        result = classifier(text[:512], labels)
+        scores = dict(zip(result["labels"], result["scores"]))
+        filtered = {k: round(v, 4) for k, v in scores.items() if v >= threshold}
+        return {"ok": True, "method": "zero-shot-transformers", "text_preview": text[:80], "scores": filtered, "top": result["labels"][0]}
+    except (ImportError, Exception):
+        pass
+
+    # Fallback: sentence-transformers cosine similarity
+    try:
+        from sentence_transformers import SentenceTransformer, util as _stutil
+        _model = SentenceTransformer("all-MiniLM-L6-v2")
+        text_emb = _model.encode(text[:512], convert_to_tensor=True)
+        label_embs = _model.encode(labels, convert_to_tensor=True)
+        scores_tensor = _stutil.cos_sim(text_emb, label_embs)[0]
+        scores_dict = {label: round(float(score), 4) for label, score in zip(labels, scores_tensor)}
+        filtered = {k: v for k, v in scores_dict.items() if v >= threshold}
+        top = max(scores_dict, key=lambda x: scores_dict[x])
+        return {"ok": True, "method": "sentence-transformers", "text_preview": text[:80], "scores": filtered, "top": top}
+    except (ImportError, Exception):
+        pass
+
+    # Final fallback: keyword scoring
+    text_lower = text.lower()
+    keyword_map = {
+        "technical": ["function","class","error","code","implement","system","algorithm","api","module"],
+        "creative": ["imagine","story","describe","write","create","design","idea","dream","novel"],
+        "analytical": ["analyze","compare","evaluate","assess","determine","examine","conclude","evidence"],
+        "factual": ["according","reported","data","study","research","found","shows","indicates"],
+        "conversational": ["you","i","we","me","your","my","hey","hi","think","feel","want"],
+        "instructional": ["step","first","then","next","do","run","install","configure","how","guide"],
+        "narrative": ["then","after","before","when","suddenly","finally","said","went","came"],
+    }
+    scores_fb = {}
+    for label in labels:
+        keywords = keyword_map.get(label, [label.lower()])
+        hits = sum(1 for kw in keywords if kw in text_lower)
+        scores_fb[label] = round(hits / max(len(keywords), 1), 4)
+    total_s = sum(scores_fb.values()) or 1
+    scores_norm = {k: round(v / total_s, 4) for k, v in scores_fb.items()}
+    top = max(scores_norm, key=lambda x: scores_norm[x])
+    return {"ok": True, "method": "keyword-fallback", "text_preview": text[:80], "scores": scores_norm, "top": top}
+
+
+def translate_text(text: str, target_lang: str = "en", source_lang: str = "auto") -> dict:
+    """
+    Translate text. Uses deep-translator (Google backend) if installed.
+    Falls back to LibreTranslate public API (rate-limited, no key required).
+    target_lang: ISO 639-1 code (en, fr, de, es, zh, ja, ar, ru, pt, it, ko)
+    source_lang: ISO 639-1 code or 'auto'
+    """
+    try:
+        from deep_translator import GoogleTranslator
+        src = source_lang if source_lang != "auto" else "auto"
+        translator = GoogleTranslator(source=src, target=target_lang)
+        chunks = [text[i:i+4999] for i in range(0, len(text), 4999)]
+        translated_chunks = [translator.translate(chunk) for chunk in chunks]
+        translated = " ".join(c for c in translated_chunks if c)
+        return {"ok": True, "method": "google-translate", "source_lang": source_lang, "target_lang": target_lang, "translated": translated, "original_chars": len(text)}
+    except ImportError:
+        pass
+    # Fallback: LibreTranslate public API
+    try:
+        import urllib.request, json as _json
+        payload = _json.dumps({"q": text[:2000], "source": source_lang if source_lang != "auto" else "en", "target": target_lang, "format": "text"}).encode()
+        req = urllib.request.Request(
+            "https://libretranslate.com/translate", data=payload,
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = _json.loads(resp.read())
+            return {"ok": True, "method": "libretranslate-public", "source_lang": source_lang, "target_lang": target_lang, "translated": data.get("translatedText", ""), "original_chars": len(text)}
+    except Exception as e:
+        return {"ok": False, "error": f"Translation requires deep-translator: pip install deep-translator. Error: {e}"}
+
+
+# ─── Code Intelligence ─────────────────────────────────────────────────────────
+
+def code_symbols(path: str, include_private: bool = False) -> dict:
+    """
+    Extract a complete symbol index from a Python file or directory.
+    For each symbol: name, type, line, docstring, signature, parent class.
+    include_private: include _ prefixed symbols (default False).
+    Returns a structured symbol table useful for code navigation.
+    """
+    import ast as _ast
+
+    def _extract(fpath: Path) -> dict:
+        try:
+            source = fpath.read_text(encoding="utf-8", errors="replace")
+            tree = _ast.parse(source, filename=str(fpath))
+        except Exception as e:
+            return {"error": str(e), "symbols": [], "count": 0}
+        symbols: list = []
+        for node in tree.body:
+            if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                if not include_private and node.name.startswith("_"):
+                    continue
+                try:
+                    sig = f"({', '.join(a.arg for a in node.args.args)})"
+                except Exception:
+                    sig = "()"
+                symbols.append({"name": node.name, "type": "async_fn" if isinstance(node, _ast.AsyncFunctionDef) else "function", "line": node.lineno, "signature": sig, "docstring": (_ast.get_docstring(node) or "")[:100], "decorators": [_ast.unparse(d) for d in node.decorator_list]})
+            elif isinstance(node, _ast.ClassDef):
+                if not include_private and node.name.startswith("_"):
+                    continue
+                methods = []
+                for item in node.body:
+                    if isinstance(item, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                        if not include_private and item.name.startswith("_"):
+                            continue
+                        methods.append({"name": item.name, "line": item.lineno, "type": "method"})
+                symbols.append({"name": node.name, "type": "class", "line": node.lineno, "bases": [_ast.unparse(b) for b in node.bases], "docstring": (_ast.get_docstring(node) or "")[:100], "methods": methods})
+        return {"symbols": symbols, "count": len(symbols)}
+
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "Path not found"}
+
+    if target.is_file():
+        return {"ok": True, "path": str(target), **_extract(target)}
+
+    py_files = [f for f in target.rglob("*.py") if not any(p in str(f) for p in (".venv", "__pycache__"))][:50]
+    all_symbols: dict = {}
+    for f in py_files:
+        all_symbols[str(f.relative_to(target))] = _extract(f)
+    total = sum(v.get("count", 0) for v in all_symbols.values())
+    return {"ok": True, "path": str(target), "files_analyzed": len(py_files), "total_symbols": total, "files": all_symbols}
+
+
+def find_todos(path: str, tags: list | None = None) -> dict:
+    """
+    Scan a file or directory for TODO/FIXME/HACK/NOTE/BUG/REVIEW/OPTIMIZE comments.
+    Returns each finding: file, line, tag type, message.
+    """
+    import re as _re
+    if tags is None:
+        tags = ["TODO", "FIXME", "HACK", "BUG", "REVIEW", "OPTIMIZE", "XXX", "NOTE", "WARN", "DEPRECATED"]
+    tag_pattern = "|".join(_re.escape(t) for t in tags)
+    rx = _re.compile(rf'(?:#|//|/\*|<!--)\s*({tag_pattern})\s*[:\-]?\s*(.*)', _re.IGNORECASE)
+    CODE_EXTS = {".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java", ".c", ".cpp", ".h", ".cs", ".rb", ".php", ".sh", ".yml", ".yaml", ".toml"}
+
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "Path not found"}
+
+    scan_files = [target] if target.is_file() else [
+        f for f in target.rglob("*")
+        if f.is_file() and f.suffix.lower() in CODE_EXTS and not any(p in str(f) for p in (".git", ".venv", "__pycache__", "node_modules"))
+    ][:200]
+
+    findings, files_scanned = [], 0
+    for fpath in scan_files:
+        files_scanned += 1
+        try:
+            lines = fpath.read_text(encoding="utf-8", errors="ignore").splitlines()
+            for lineno, line in enumerate(lines, 1):
+                for m in rx.finditer(line):
+                    findings.append({"file": str(fpath.relative_to(target) if target.is_dir() else fpath), "line": lineno, "tag": m.group(1).upper(), "message": m.group(2).strip()[:120]})
+        except Exception:
+            continue
+
+    by_tag: dict = {}
+    for f in findings:
+        by_tag[f["tag"]] = by_tag.get(f["tag"], 0) + 1
+    return {"ok": True, "path": str(target), "files_scanned": files_scanned, "total_found": len(findings), "by_tag": by_tag, "findings": findings[:100]}
+
+
+def dependency_graph(path: str) -> dict:
+    """
+    Build a Python import dependency graph for a file or package.
+    Uses AST to extract import statements, resolves local vs external deps.
+    Returns adjacency list + networkx metrics if available.
+    """
+    import ast as _ast
+
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "Path not found"}
+
+    root = target if target.is_dir() else target.parent
+    local_modules = {f.stem for f in root.rglob("*.py") if not any(p in str(f) for p in (".venv", "__pycache__"))}
+
+    def _get_imports(fpath: Path) -> list[str]:
+        try:
+            source = fpath.read_text(encoding="utf-8", errors="replace")
+            tree = _ast.parse(source)
+            imports = []
+            for node in _ast.walk(tree):
+                if isinstance(node, _ast.Import):
+                    imports.extend(a.name.split(".")[0] for a in node.names)
+                elif isinstance(node, _ast.ImportFrom):
+                    if node.module:
+                        imports.append(node.module.split(".")[0])
+            return list(dict.fromkeys(imports))
+        except Exception:
+            return []
+
+    py_files = [target] if target.is_file() else [
+        f for f in target.rglob("*.py") if not any(p in str(f) for p in (".venv", "__pycache__"))
+    ][:30]
+
+    edges: list[dict] = []
+    nodes: set[str] = set()
+    for fpath in py_files:
+        module_name = fpath.stem
+        nodes.add(module_name)
+        for imp in _get_imports(fpath):
+            nodes.add(imp)
+            is_local = imp in local_modules
+            edges.append({"from": module_name, "to": imp, "type": "local" if is_local else "external"})
+
+    external_deps = list({e["to"] for e in edges if e["type"] == "external"})
+    local_deps = [e for e in edges if e["type"] == "local"]
+    result: dict = {"ok": True, "path": str(target), "nodes": list(nodes), "node_count": len(nodes), "edges": edges[:200], "edge_count": len(edges), "external_packages": external_deps, "local_edges": local_deps}
+
+    try:
+        import networkx as nx
+        G = nx.DiGraph()
+        G.add_nodes_from(nodes)
+        G.add_edges_from([(e["from"], e["to"]) for e in edges])
+        result["metrics"] = {"most_imported": sorted(dict(G.in_degree()).items(), key=lambda x: -x[1])[:5], "most_importing": sorted(dict(G.out_degree()).items(), key=lambda x: -x[1])[:5], "is_dag": nx.is_directed_acyclic_graph(G)}
+    except Exception:
+        pass
+    return result
+
+
+# ─── URL Intelligence ──────────────────────────────────────────────────────────
+
+def extract_links(url: str, same_domain: bool = False, max_links: int = 100) -> dict:
+    """
+    Extract all hyperlinks from a webpage.
+    same_domain: only return links from the same domain.
+    Returns: links with href, internal/external classification, domain.
+    """
+    from urllib.parse import urlparse, urljoin
+    try:
+        import trafilatura
+        downloaded = trafilatura.fetch_url(url)
+        if not downloaded:
+            return {"ok": False, "error": "Could not fetch URL"}
+        raw_links: list = []
+        try:
+            from trafilatura.urls import extract_links as _traf_links
+            raw_links = list(_traf_links(downloaded, url) or [])
+        except Exception:
+            pass
+        if len(raw_links) < 5:
+            try:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(downloaded, "html.parser")
+                raw_links += [urljoin(url, a.get("href", "")) for a in soup.find_all("a", href=True)]
+            except Exception:
+                pass
+    except ImportError:
+        return {"ok": False, "error": "trafilatura not installed"}
+
+    base_domain = urlparse(url).netloc
+    links, seen = [], set()
+    for link in raw_links:
+        link = str(link).strip()
+        if not link or link.startswith(("mailto:", "javascript:", "#")) or link in seen or len(links) >= max_links:
+            continue
+        seen.add(link)
+        is_internal = urlparse(link).netloc == base_domain
+        if same_domain and not is_internal:
+            continue
+        links.append({"url": link, "internal": is_internal, "domain": urlparse(link).netloc})
+
+    return {"ok": True, "source_url": url, "total_links": len(links), "internal": sum(1 for l in links if l["internal"]), "external": sum(1 for l in links if not l["internal"]), "links": links}
+
+
+def check_url(url: str, timeout: int = 10) -> dict:
+    """
+    Check if a URL is accessible. Returns HTTP status, response time, content type.
+    Uses HEAD request for speed. Useful for monitoring, link validation.
+    """
+    import urllib.request, urllib.error, time as _time
+    start = _time.time()
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Layla/2.0 health-check"}, method="HEAD")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            elapsed = round((_time.time() - start) * 1000, 1)
+            return {"ok": True, "url": url, "status": resp.status, "accessible": resp.status < 400, "response_ms": elapsed, "content_type": resp.headers.get("Content-Type", ""), "server": resp.headers.get("Server", "")}
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "url": url, "status": e.code, "accessible": False, "response_ms": round((_time.time() - start) * 1000, 1), "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "url": url, "accessible": False, "response_ms": round((_time.time() - start) * 1000, 1), "error": str(e)}
+
+
+# ─── Scientific Computation ────────────────────────────────────────────────────
+
+def scipy_compute(operation: str, params: dict | None = None) -> dict:
+    """
+    Scientific computation via scipy.
+    Operations: stats.describe | stats.ttest | stats.correlation | stats.normalize |
+                optimize.minimize | integrate.quad | fft | interpolate
+    params: dict of inputs specific to each operation (see docstring examples below).
+    Examples:
+      scipy_compute('stats.describe', {'data': [1,2,3,4,5]})
+      scipy_compute('stats.ttest', {'a': [1,2,3], 'b': [4,5,6]})
+      scipy_compute('stats.correlation', {'x': [1,2,3], 'y': [2,4,6]})
+      scipy_compute('optimize.minimize', {'func': 'x**2 + 2*x', 'x0': 0})
+      scipy_compute('integrate.quad', {'func': 'x**2', 'a': 0, 'b': 1})
+    """
+    try:
+        import scipy.stats as _stats
+        import numpy as _np
+    except ImportError:
+        return {"ok": False, "error": "scipy not installed: pip install scipy"}
+
+    if params is None:
+        params = {}
+    op = operation.lower().strip()
+
+    try:
+        if op == "stats.describe":
+            data = _np.array(params["data"], dtype=float)
+            desc = _stats.describe(data)
+            return {"ok": True, "operation": op, "result": {"n": desc.nobs, "min": float(desc.minmax[0]), "max": float(desc.minmax[1]), "mean": float(desc.mean), "variance": float(desc.variance), "skewness": float(desc.skewness), "kurtosis": float(desc.kurtosis), "std": float(_np.std(data)), "median": float(_np.median(data)), "q25": float(_np.percentile(data, 25)), "q75": float(_np.percentile(data, 75))}}
+        elif op == "stats.ttest":
+            a, b = _np.array(params["a"], dtype=float), _np.array(params["b"], dtype=float)
+            res = _stats.ttest_ind(a, b)
+            return {"ok": True, "operation": op, "result": {"t_statistic": float(res.statistic), "p_value": float(res.pvalue), "significant_at_05": float(res.pvalue) < 0.05, "mean_a": float(_np.mean(a)), "mean_b": float(_np.mean(b)), "interpretation": "statistically different (p<0.05)" if res.pvalue < 0.05 else "no significant difference"}}
+        elif op == "stats.correlation":
+            x, y = _np.array(params["x"], dtype=float), _np.array(params["y"], dtype=float)
+            r, p = _stats.pearsonr(x, y)
+            return {"ok": True, "operation": op, "result": {"pearson_r": round(float(r), 6), "p_value": round(float(p), 6), "significant": float(p) < 0.05, "strength": "strong" if abs(r) > 0.7 else ("moderate" if abs(r) > 0.4 else "weak"), "direction": "positive" if r > 0 else "negative"}}
+        elif op == "stats.normalize":
+            data = _np.array(params["data"], dtype=float)
+            mn, mx = data.min(), data.max()
+            normalized = ((data - mn) / (mx - mn)).tolist() if mx != mn else [0.0] * len(data)
+            return {"ok": True, "operation": op, "result": {"normalized": normalized, "original_min": float(mn), "original_max": float(mx)}}
+        elif op == "optimize.minimize":
+            import sympy as sp
+            from sympy.parsing.sympy_parser import parse_expr
+            x_sym = sp.Symbol("x")
+            expr = parse_expr(params["func"], local_dict={"x": x_sym})
+            fn = sp.lambdify(x_sym, expr, "numpy")
+            from scipy.optimize import minimize_scalar
+            res = minimize_scalar(fn)
+            return {"ok": True, "operation": op, "result": {"x_min": float(res.x), "f_min": float(res.fun), "success": res.success}}
+        elif op == "integrate.quad":
+            import sympy as sp
+            from sympy.parsing.sympy_parser import parse_expr
+            x_sym = sp.Symbol("x")
+            expr = parse_expr(params["func"], local_dict={"x": x_sym})
+            fn = sp.lambdify(x_sym, expr, "numpy")
+            from scipy.integrate import quad
+            val, err = quad(fn, params["a"], params["b"])
+            return {"ok": True, "operation": op, "result": {"integral": float(val), "error_estimate": float(err)}}
+        elif op == "fft":
+            data = _np.array(params["data"], dtype=float)
+            fft_vals = _np.fft.fft(data)
+            magnitudes = _np.abs(fft_vals).tolist()
+            freqs = _np.fft.fftfreq(len(data)).tolist()
+            half = len(magnitudes) // 2
+            return {"ok": True, "operation": op, "result": {"frequencies": freqs[:half], "magnitudes": magnitudes[:half], "dominant_freq_idx": int(_np.argmax(magnitudes[:half]))}}
+        elif op == "interpolate":
+            from scipy.interpolate import interp1d
+            x, y = _np.array(params["x"], dtype=float), _np.array(params["y"], dtype=float)
+            f = interp1d(x, y, kind=params.get("kind", "linear"), fill_value="extrapolate")
+            x_new = _np.array(params["x_new"], dtype=float)
+            return {"ok": True, "operation": op, "result": {"x_new": params["x_new"], "y_interpolated": f(x_new).tolist()}}
+        else:
+            return {"ok": False, "error": f"Unknown operation: {op}. Use stats.describe/ttest/correlation/normalize, optimize.minimize, integrate.quad, fft, interpolate"}
+    except KeyError as e:
+        return {"ok": False, "error": f"Missing required param: {e}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── Machine Learning ──────────────────────────────────────────────────────────
+
+def cluster_data(data: list, n_clusters: int = 3, method: str = "kmeans", features: list | None = None) -> dict:
+    """
+    Cluster a dataset. method: 'kmeans' | 'dbscan' | 'hierarchical'
+    data: list of dicts (from read_csv) or list of numeric lists.
+    features: column names to use for dict rows. Empty = all numeric columns.
+    Returns cluster assignments, centroids, per-cluster statistics.
+    """
+    try:
+        import numpy as _np
+        import sklearn.cluster as _cluster
+        import sklearn.preprocessing as _prep
+    except ImportError:
+        return {"ok": False, "error": "scikit-learn not installed: pip install scikit-learn"}
+
+    if data and isinstance(data[0], dict):
+        import pandas as _pd
+        df = _pd.DataFrame(data)
+        if features:
+            df = df[features]
+        df = df.select_dtypes(include="number").dropna()
+        X = df.values
+        col_names = list(df.columns)
+    else:
+        X = _np.array(data, dtype=float)
+        if X.ndim == 1:
+            X = X.reshape(-1, 1)
+        col_names = [f"x{i}" for i in range(X.shape[1])]
+
+    if len(X) < 2:
+        return {"ok": False, "error": "Need at least 2 data points"}
+
+    scaler = _prep.StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    if method == "kmeans":
+        n_clusters = min(n_clusters, len(X))
+        model = _cluster.KMeans(n_clusters=n_clusters, random_state=42, n_init="auto")
+        labels = model.fit_predict(X_scaled).tolist()
+        centroids = scaler.inverse_transform(model.cluster_centers_).tolist()
+        extra = {"inertia": float(model.inertia_)}
+    elif method == "dbscan":
+        model = _cluster.DBSCAN(eps=0.5, min_samples=max(2, len(X) // 10))
+        labels = model.fit_predict(X_scaled).tolist()
+        centroids = []
+        extra = {"noise_points": labels.count(-1)}
+    elif method == "hierarchical":
+        model = _cluster.AgglomerativeClustering(n_clusters=min(n_clusters, len(X)))
+        labels = model.fit_predict(X_scaled).tolist()
+        centroids = []
+        extra = {}
+    else:
+        return {"ok": False, "error": f"Unknown method: {method}. Use kmeans/dbscan/hierarchical"}
+
+    unique_labels = sorted(set(labels))
+    cluster_stats = {int(lbl): {"size": labels.count(lbl), "mean": X[[i for i, l in enumerate(labels) if l == lbl]].mean(axis=0).tolist()} for lbl in unique_labels}
+    return {"ok": True, "method": method, "n_clusters_found": len(unique_labels), "labels": labels, "centroids": centroids, "cluster_stats": cluster_stats, "features_used": col_names, "n_points": len(X), **extra}
+
+
+def dataset_summary(path: str) -> dict:
+    """
+    Comprehensive statistical summary of any tabular data (CSV, Excel, JSON, Parquet).
+    Returns: shape, dtypes, missing values, numeric stats, top correlations,
+    categorical value counts, duplicate count, and data quality flags.
+    """
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "File not found"}
+    try:
+        import pandas as _pd
+        import numpy as _np
+        ext = target.suffix.lower()
+        if ext in (".csv", ".tsv"):
+            df = _pd.read_csv(str(target), sep="\t" if ext == ".tsv" else ",")
+        elif ext in (".xlsx", ".xls"):
+            df = _pd.read_excel(str(target))
+        elif ext == ".json":
+            df = _pd.read_json(str(target))
+        elif ext == ".parquet":
+            df = _pd.read_parquet(str(target))
+        else:
+            df = _pd.read_csv(str(target))
+
+        missing = df.isnull().sum()
+        missing_pct = (missing / len(df) * 100).round(2)
+        numeric_cols = df.select_dtypes(include="number")
+        cat_cols = df.select_dtypes(include=["object", "category"])
+
+        result: dict = {
+            "ok": True, "path": str(target),
+            "shape": {"rows": len(df), "columns": len(df.columns)},
+            "columns": list(df.columns),
+            "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
+            "missing": {col: {"count": int(missing[col]), "pct": float(missing_pct[col])} for col in df.columns if missing[col] > 0},
+            "duplicates": int(df.duplicated().sum()),
+        }
+        if len(numeric_cols.columns) > 0:
+            result["numeric_summary"] = numeric_cols.describe().to_dict()
+            try:
+                corr = numeric_cols.corr()
+                pairs = []
+                cols = list(corr.columns)
+                for i in range(len(cols)):
+                    for j in range(i+1, len(cols)):
+                        val = float(corr.iloc[i, j])
+                        if not _np.isnan(val):
+                            pairs.append({"col_a": cols[i], "col_b": cols[j], "pearson_r": round(val, 4)})
+                result["top_correlations"] = sorted(pairs, key=lambda x: abs(x["pearson_r"]), reverse=True)[:10]
+            except Exception:
+                pass
+        if len(cat_cols.columns) > 0:
+            result["categorical_summary"] = {col: {"unique_values": int(df[col].nunique()), "top_values": df[col].value_counts().head(10).to_dict()} for col in list(cat_cols.columns)[:5]}
+        flags = []
+        if result.get("duplicates", 0) > 0:
+            flags.append(f"{result['duplicates']} duplicate rows found")
+        high_missing = {k for k, v in result.get("missing", {}).items() if v["pct"] > 20}
+        if high_missing:
+            flags.append(f"High missing data (>20%) in: {', '.join(high_missing)}")
+        result["quality_flags"] = flags
+        return result
+    except ImportError:
+        return {"ok": False, "error": "pandas not installed: pip install pandas"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── RSS / Feed ────────────────────────────────────────────────────────────────
+
+def rss_feed(url: str, max_items: int = 20, include_content: bool = False) -> dict:
+    """
+    Fetch and parse an RSS or Atom feed.
+    Returns: feed title, description, and entry list (title, link, published, author, summary, tags).
+    include_content: fetch and extract full article text for each entry (slow but thorough).
+    """
+    try:
+        import feedparser
+        feed = feedparser.parse(url)
+        if feed.bozo and not feed.entries:
+            return {"ok": False, "error": f"Feed parse error: {feed.bozo_exception}"}
+        entries = []
+        for entry in feed.entries[:max_items]:
+            item: dict = {"title": entry.get("title", ""), "link": entry.get("link", ""), "published": str(entry.get("published", "")), "author": entry.get("author", ""), "tags": [t.get("term", "") for t in entry.get("tags", [])], "summary": (entry.get("summary", "") or "")[:400]}
+            if include_content and item["link"]:
+                try:
+                    import trafilatura
+                    dl = trafilatura.fetch_url(item["link"])
+                    if dl:
+                        item["full_text"] = (trafilatura.extract(dl) or "")[:3000]
+                except Exception:
+                    pass
+            entries.append(item)
+        return {"ok": True, "url": url, "feed_title": feed.feed.get("title", ""), "feed_description": (feed.feed.get("description", "") or "")[:200], "entry_count": len(entries), "entries": entries}
+    except ImportError:
+        return {"ok": False, "error": "feedparser not installed: pip install feedparser"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── Text Statistics ───────────────────────────────────────────────────────────
+
+def text_stats(text: str) -> dict:
+    """
+    Comprehensive text statistics and readability metrics.
+    Returns: word/sentence/char counts, vocabulary richness, Flesch reading ease,
+    avg sentence length, estimated reading time, top 15 non-stopword words.
+    """
+    import re as _re
+
+    if not text.strip():
+        return {"ok": False, "error": "Empty text"}
+
+    words = _re.findall(r'\b[a-zA-Z]+\b', text)
+    sentences = [s.strip() for s in _re.split(r'(?<=[.!?])\s+', text) if s.strip()]
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    syllables = sum(max(1, len(_re.findall(r'[aeiouAEIOU]+', w))) for w in words)
+
+    wc = len(words)
+    sc = max(len(sentences), 1)
+    unique = set(w.lower() for w in words)
+    avg_wps = round(wc / sc, 1)
+    avg_spw = round(syllables / max(wc, 1), 2)
+    flesch = round(max(0.0, min(100.0, 206.835 - 1.015 * avg_wps - 84.6 * avg_spw)), 1)
+    grade = "Easy" if flesch >= 70 else ("Standard" if flesch >= 50 else ("Difficult" if flesch >= 30 else "Very Difficult"))
+
+    STOPWORDS = {"the","a","an","and","or","but","in","on","at","to","for","of","with","is","was","are","it","this","that","be","have","do","i","you","we","he","she","they","not","by","as","from","his","her","its","our","their","so","if","but","about","which"}
+    freq: dict = {}
+    for w in words:
+        wl = w.lower()
+        if wl not in STOPWORDS and len(wl) > 2:
+            freq[wl] = freq.get(wl, 0) + 1
+
+    return {
+        "ok": True,
+        "counts": {"words": wc, "unique_words": len(unique), "sentences": sc, "paragraphs": len(paragraphs), "characters": len(text)},
+        "averages": {"words_per_sentence": avg_wps, "syllables_per_word": avg_spw},
+        "readability": {"flesch_score": flesch, "grade": grade},
+        "vocabulary_richness": round(len(unique) / max(wc, 1), 4),
+        "reading_time_minutes": round(wc / 200, 1),
+        "top_words": [{"word": w, "count": c} for w, c in sorted(freq.items(), key=lambda x: -x[1])[:15]],
+    }
+
+
+# ─── Embedding Generation ──────────────────────────────────────────────────────
+
+def embedding_generate(text: str | list, normalize: bool = True) -> dict:
+    """
+    Generate dense vector embeddings using Layla's RAG embedder (nomic-embed-text).
+    text: string or list of strings.
+    normalize: L2 normalize (default True — required for cosine similarity).
+    Returns: embedding(s) as list of floats, dimension, model name.
+    """
+    try:
+        agent_dir = Path(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(agent_dir))
+        from layla.memory.vector_store import _get_embedder
+        embedder = _get_embedder()
+        is_batch = isinstance(text, list)
+        texts = text if is_batch else [text]
+        embeddings = embedder.encode(texts, normalize_embeddings=normalize)
+        emb_list = embeddings.tolist() if hasattr(embeddings, "tolist") else [list(e) for e in embeddings]
+        return {"ok": True, "dimension": len(emb_list[0]) if emb_list else 0, "count": len(emb_list), "normalized": normalize, "embeddings": emb_list if is_batch else emb_list[0]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── Image Utilities ───────────────────────────────────────────────────────────
+
+def image_resize(path: str, width: int = 0, height: int = 0, output_path: str = "", maintain_aspect: bool = True) -> dict:
+    """
+    Resize an image. If maintain_aspect=True, only one dimension needed — the other scales proportionally.
+    output_path: where to save. Default: <original>_resized.<ext> in same directory.
+    """
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "File not found"}
+    if not width and not height:
+        return {"ok": False, "error": "Provide at least width or height"}
+    try:
+        from PIL import Image as PILImage
+        img = PILImage.open(str(target))
+        orig_w, orig_h = img.size
+        if maintain_aspect:
+            if width and not height:
+                height = int(orig_h * width / orig_w)
+            elif height and not width:
+                width = int(orig_w * height / orig_h)
+        resized = img.resize((width, height), PILImage.LANCZOS)
+        out = Path(output_path) if output_path else target.parent / (target.stem + "_resized" + target.suffix)
+        if not inside_sandbox(out):
+            out = target.parent / (target.stem + "_resized" + target.suffix)
+        resized.save(str(out))
+        return {"ok": True, "original": str(target), "output": str(out), "original_size": f"{orig_w}x{orig_h}", "new_size": f"{resized.width}x{resized.height}"}
+    except ImportError:
+        return {"ok": False, "error": "Pillow not installed: pip install Pillow"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
