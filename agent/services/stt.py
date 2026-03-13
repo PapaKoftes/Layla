@@ -15,7 +15,6 @@ import io
 import logging
 import threading
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger("layla.stt")
 

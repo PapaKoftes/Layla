@@ -1,18 +1,17 @@
 import json
 import logging
 import queue
-import threading
 import time
 from pathlib import Path
 import psutil
 logger = logging.getLogger("layla")
 
-import runtime_safety
-import orchestrator
-from decision_schema import parse_decision as _parse_decision
-from layla.tools.registry import TOOLS, set_effective_sandbox
-from layla.memory.db import migrate as _db_migrate, get_recent_learnings as _db_get_learnings, get_aspect_memories as _db_get_aspect_memories, save_aspect_memory as _db_save_aspect_memory
-from services.llm_gateway import run_completion, get_stop_sequences, llm_serialize_lock
+import runtime_safety  # noqa: E402
+import orchestrator  # noqa: E402
+from decision_schema import parse_decision as _parse_decision  # noqa: E402
+from layla.tools.registry import TOOLS, set_effective_sandbox  # noqa: E402
+from layla.memory.db import migrate as _db_migrate, get_recent_learnings as _db_get_learnings, get_aspect_memories as _db_get_aspect_memories, save_aspect_memory as _db_save_aspect_memory  # noqa: E402
+from services.llm_gateway import run_completion, get_stop_sequences, llm_serialize_lock  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENT_DIR = Path(__file__).resolve().parent
@@ -203,7 +202,7 @@ def stream_reason(
             message=goal, aspect=active_aspect, context=context,
             head=head, convo_block=convo_block,
         )
-    cfg = runtime_safety.load_config()
+    cfg = runtime_safety.load_config()  # noqa: F841
     temperature = cfg.get("temperature", 0.2)
     max_tok = cfg.get("completion_max_tokens", 256)
     stop = get_stop_sequences()
@@ -291,7 +290,7 @@ def _decompose_goal(goal: str) -> list:
     if not is_broad:
         return []
     try:
-        cfg = runtime_safety.load_config()
+        cfg = runtime_safety.load_config()  # noqa: F841
         prompt = (
             f"Objective: {goal[:500]}\n\n"
             "Output exactly one JSON line: a JSON array of 2-3 concrete sub-objectives (short strings). "
@@ -353,7 +352,7 @@ def _enrich_deliberation_context(context: str) -> str:
     try:
         learnings = _db_get_learnings(n=5)
         if learnings:
-            prefs = [ (l.get("content") or "")[:80] for l in learnings if (l.get("content") or "").strip() ]
+            prefs = [ (ln.get("content") or "")[:80] for ln in learnings if (ln.get("content") or "").strip() ]
             if prefs:
                 extra.append("Echo (patterns/preferences): " + "; ".join(prefs[:3]))
     except Exception:
@@ -364,7 +363,7 @@ def _enrich_deliberation_context(context: str) -> str:
 
 
 def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_root: str = "", sub_goals: list | None = None, state: dict | None = None) -> str:
-    cfg = runtime_safety.load_config()
+    cfg = runtime_safety.load_config()  # noqa: F841
     identity = runtime_safety.load_identity().strip()
     knowledge = ""
     if cfg.get("use_chroma") and goal:
@@ -590,7 +589,7 @@ def _reflect_on_response(goal: str, response: str, aspect: dict | None = None) -
     Only runs when enable_self_reflection=True in config AND response is long enough.
     Adds ~1 extra inference call; opt-in only.
     """
-    cfg = runtime_safety.load_config()
+    cfg = runtime_safety.load_config()  # noqa: F841
     if not cfg.get("enable_self_reflection", False):
         return None
     if len(response.strip()) < 80:  # too short to bother reflecting
@@ -637,7 +636,7 @@ _last_ram: float = 0.0
 
 def system_overloaded() -> bool:
     global _last_cpu, _last_ram
-    cfg = runtime_safety.load_config()
+    cfg = runtime_safety.load_config()  # noqa: F841
     cpu = psutil.cpu_percent(interval=0)
     ram = psutil.virtual_memory().percent
     # Smooth with previous sample so a single spike does not block
@@ -996,7 +995,7 @@ def _llm_decision(
         "Use objective_complete true only when you have enough to answer.\n"
     )
     try:
-        cfg = runtime_safety.load_config()
+        cfg = runtime_safety.load_config()  # noqa: F841
         max_tok = 120 if reframe_candidate else 80
         # Try instructor (grammar-constrained JSON) first
         try:
@@ -1270,7 +1269,7 @@ def _autonomous_run_impl(
     ux_state_queue: queue.Queue | None,
     research_mode: bool,
 ) -> dict:
-    cfg = runtime_safety.load_config()
+    cfg = runtime_safety.load_config()  # noqa: F841
     # Gate once at entry only: avoid refusing mid-run when our own LLM/embedder spiked CPU
     if system_overloaded():
         time.sleep(2.0)
@@ -1535,7 +1534,6 @@ def _autonomous_run_impl(
         # GREP / GLOB
         # ------------------------------------------------
         if intent == "grep_code":
-            import shlex as _shlex
             parts = goal.split()
             pattern = parts[-1] if parts else ""
             grep_path = workspace

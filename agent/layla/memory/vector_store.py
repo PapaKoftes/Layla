@@ -20,7 +20,7 @@ _knowledge_fingerprint: str = ""
 _knowledge_last_check_ts: float = 0.0
 
 # Small LRU cache: avoid re-embedding identical strings during a single agent loop
-import functools as _functools
+import functools as _functools  # noqa: E402
 _EMBED_CACHE_SIZE = 256
 
 
@@ -75,7 +75,6 @@ def embed_batch(texts: list[str]) -> list:
     if not texts:
         return []
     model = _get_embedder()
-    import numpy as np
     vecs = model.encode(texts, convert_to_numpy=True, normalize_embeddings=True, batch_size=32)
     return [v.astype("float32") for v in vecs]
 
@@ -91,6 +90,15 @@ def _get_chroma_collection():
         metadata={"hnsw:space": "cosine"},
     )
     return _chroma_collection
+
+
+def _use_chroma() -> bool:
+    """Return True if chromadb is importable and available."""
+    try:
+        import chromadb  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 # ─── Public API ─────────────────────────────────────────────────────────────
@@ -308,8 +316,6 @@ def get_knowledge_chunks_with_parent(query: str, k: int = 5) -> list[dict]:
     Each chunk's metadata carries a 'source' field; we load the full source file
     and return the surrounding paragraph (up to 1200 chars) around the matched chunk.
     """
-    from pathlib import Path as _Path
-    import os as _os
 
     # Get initial chunks from standard search
     try:

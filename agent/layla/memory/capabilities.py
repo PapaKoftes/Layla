@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any
 
 from . import db as _db
 
@@ -145,7 +144,7 @@ def record_practice(
     level = min(1.0, max(0.0, (cap.get("level") or 0.5) + effective_delta_level))
     confidence = min(1.0, max(0.0, (cap.get("confidence") or 0.5) + effective_delta_confidence))
     practice_count = (cap.get("practice_count") or 0) + 1
-    now = _now_iso()
+    now = _now_iso()  # noqa: F841
     decay_risk = compute_decay_risk(now)
     events = _db.get_recent_capability_events(domain_id, n=RECENT_EVENTS_FOR_TREND)
     net = sum(e.get("delta_level") or 0 for e in events)
@@ -322,7 +321,7 @@ def _topic_to_domain_map() -> dict[str, str]:
 
 def apply_decay_if_needed(decay_threshold_days: float = DECAY_THRESHOLD_DAYS) -> None:
     """For capabilities not practiced in decay_threshold_days, add decay_risk bump and optional decay_tick event."""
-    now = _now_iso()
+    now = _now_iso()  # noqa: F841
     for cap in _db.get_capabilities():
         domain_id = cap.get("domain_id")
         last = cap.get("last_practiced_at")

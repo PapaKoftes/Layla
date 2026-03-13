@@ -44,7 +44,7 @@ def _wakeup_initiative_suggestion(active_plans: list, greeting_parts: list) -> s
         pass
     return ""
 
-from shared_state import (
+from shared_state import (  # noqa: E402
     get_touch_activity,
     get_run_autonomous_study,
 )
@@ -234,7 +234,7 @@ def get_aspect_title(aspect_id: str):
 
 @router.post("/aspects/{aspect_id}/title")
 def set_aspect_title(aspect_id: str, req: dict):
-    from layla.memory.db import save_earned_title, get_earned_title
+    from layla.memory.db import save_earned_title
     title = (req or {}).get("title", "").strip()
     if not title:
         return JSONResponse({"ok": False, "error": "No title"})

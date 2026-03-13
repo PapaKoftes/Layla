@@ -17,7 +17,7 @@ _DB_PATH = Path(__file__).resolve().parent.parent.parent.parent / "layla.db"
 
 # Migration guard: run _migrate_impl at most once per process.
 _MIGRATED = False
-import threading as _threading
+import threading as _threading  # noqa: E402
 _MIGRATION_LOCK = _threading.Lock()
 
 

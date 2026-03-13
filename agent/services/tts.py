@@ -16,7 +16,6 @@ from __future__ import annotations
 import io
 import logging
 import threading
-from typing import Optional
 
 logger = logging.getLogger("layla.tts")
 
@@ -115,7 +114,8 @@ def speak_to_bytes(text: str) -> bytes | None:
 
         elif _tts_type == "pyttsx3":
             # pyttsx3 can save to file; use a temp file
-            import tempfile, os
+            import tempfile
+            import os
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                 fname = f.name
             try:
