@@ -8,6 +8,7 @@ Tables:
   audit            — tool execution audit trail
   aspect_memories  — per-aspect long-term observations
 """
+import hashlib
 import json
 import sqlite3
 from datetime import datetime
@@ -59,6 +60,9 @@ def migrate() -> None:
 
 
 def _migrate_impl() -> None:
+    import logging
+    log = logging.getLogger("layla")
+    first_run = not _DB_PATH.exists()
     with _conn() as db:
         db.execute("""
             CREATE TABLE IF NOT EXISTS learnings (
@@ -183,6 +187,19 @@ def _migrate_impl() -> None:
         if "duplicate column" not in str(e).lower():
             raise
 
+    # Memory quality: learnings confidence, source, content_hash (Section 4)
+    for col, spec in [
+        ("confidence", "REAL DEFAULT 0.5"),
+        ("source", "TEXT DEFAULT ''"),
+        ("content_hash", "TEXT DEFAULT ''"),
+    ]:
+        try:
+            with _conn() as db:
+                db.execute(f"ALTER TABLE learnings ADD COLUMN {col} {spec}")
+                db.commit()
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
     # Evolution layer: study_plans optional domain_id and linked_capability_event_id
     for col, spec in [
         ("domain_id", "TEXT"),
@@ -201,6 +218,9 @@ def _migrate_impl() -> None:
 
     # Migrate learnings.json
     _migrate_learnings_json()
+
+    if first_run:
+        log.info("Initialized new Layla workspace")
 
 
 def _migrate_learnings_json() -> None:
@@ -440,23 +460,73 @@ def _migrate_evolution_layer() -> None:
 
 # ── learnings ──────────────────────────────────────────────────────────────
 
-def save_learning(content: str, kind: str = "fact", embedding_id: str = "") -> int:
-    """Save a learning. kind/learning_type: fact, preference, strategy, identity. Existing default to fact."""
+def save_learning(
+    content: str,
+    kind: str = "fact",
+    embedding_id: str = "",
+    confidence: float = 0.5,
+    source: str = "",
+) -> int:
+    """Save a learning. Uses content_hash for dedup. confidence: 0.9 study, 0.7 LLM, 0.4 heuristic.
+    Hook: learning quality filter rejects short/uncertain entries; long content summarized before storing."""
     migrate()
+    try:
+        from services.learning_filter import filter_learning
+        pass_filter, filtered, reason = filter_learning(content)
+        if not pass_filter:
+            try:
+                from services.observability import log_learning_skipped
+                log_learning_skipped(reason=reason or "filter_rejected")
+            except Exception:
+                pass
+            return -1
+        content = filtered or content
+    except Exception:
+        pass
     learning_type = kind if kind in ("fact", "preference", "strategy", "identity") else "fact"
+    content_hash = hashlib.sha1(content.encode("utf-8", errors="replace")).hexdigest()
     with _conn() as db:
         try:
+            has_hash = any(r[1] == "content_hash" for r in db.execute("PRAGMA table_info(learnings)").fetchall())
+        except Exception:
+            has_hash = False
+        if has_hash:
+            row = db.execute("SELECT id FROM learnings WHERE content_hash=? AND content_hash!=''", (content_hash,)).fetchone()
+            if row:
+                return row[0]
+        try:
+            cur = db.execute(
+                """INSERT INTO learnings (content, type, created_at, embedding_id, learning_type, confidence, source, content_hash)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (content, learning_type, datetime.utcnow().isoformat(), embedding_id, learning_type, confidence, source, content_hash),
+            )
+        except sqlite3.OperationalError:
             cur = db.execute(
                 "INSERT INTO learnings (content, type, created_at, embedding_id, learning_type) VALUES (?,?,?,?,?)",
                 (content, learning_type, datetime.utcnow().isoformat(), embedding_id, learning_type),
             )
-        except sqlite3.OperationalError:
-            cur = db.execute(
-                "INSERT INTO learnings (content, type, created_at, embedding_id) VALUES (?,?,?,?)",
-                (content, learning_type, datetime.utcnow().isoformat(), embedding_id),
-            )
         db.commit()
-        return cur.lastrowid
+        rid = cur.lastrowid
+        try:
+            from services.observability import log_learning_saved
+            log_learning_saved(content_preview=content[:80], source=source or "db")
+        except Exception:
+            pass
+        # Section 5: graph expansion in background (daemon thread, non-blocking)
+        if rid and content:
+            try:
+                import threading
+                def _expand():
+                    try:
+                        from services.graph_learning import expand_graph_from_learning
+                        expand_graph_from_learning(content)
+                    except Exception:
+                        pass
+                t = threading.Thread(target=_expand, daemon=True, name="graph-expand")
+                t.start()
+            except Exception:
+                pass
+        return rid
 
 
 _ASPECT_LEARNING_PREFERENCE = {"echo": "preference", "morrigan": "strategy", "nyx": "fact"}
@@ -488,17 +558,35 @@ def get_recent_learnings(n: int = 30, aspect_id: str | None = None) -> list[dict
         return result
 
 
+def _apply_confidence_decay(confidence: float, created_at: str) -> float:
+    """Age-based decay: adjusted = confidence * exp(-age_days/180)."""
+    import math
+    try:
+        from datetime import datetime
+        dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        age_days = (datetime.utcnow() - dt.replace(tzinfo=None)).total_seconds() / 86400.0
+    except Exception:
+        age_days = 0.0
+    conf = float(confidence) if confidence is not None else 0.5
+    return conf * math.exp(-age_days / 180.0)
+
+
 def search_learnings_fts(query: str, n: int = 20) -> list[dict]:
     """
     FTS5 full-text search over learnings using Porter stemmer + unicode tokenization.
     Falls back to LIKE search if FTS5 table is missing.
     Returns list of matching learning dicts ordered by relevance (BM25 rank).
+    Applies age-based confidence decay for retrieval scoring.
     """
     migrate()
     with _conn() as db:
         try:
+            has_conf = any(r[1] == "confidence" for r in db.execute("PRAGMA table_info(learnings)").fetchall())
+            sel = "l.id, l.content, l.type, l.created_at"
+            if has_conf:
+                sel += ", l.confidence"
             rows = db.execute(
-                """SELECT l.id, l.content, l.type, l.created_at
+                f"""SELECT {sel}
                    FROM learnings l
                    JOIN learnings_fts f ON l.id = f.rowid
                    WHERE learnings_fts MATCH ?
@@ -506,15 +594,27 @@ def search_learnings_fts(query: str, n: int = 20) -> list[dict]:
                    LIMIT ?""",
                 (query, n),
             ).fetchall()
-            return [dict(r) for r in rows]
+            result = [dict(r) for r in rows]
+            for r in result:
+                conf = r.get("confidence")
+                created = r.get("created_at", "")
+                r["adjusted_confidence"] = _apply_confidence_decay(conf, created)
+            return result
         except Exception:
             # Fallback: simple LIKE search
             try:
+                has_conf = any(r[1] == "confidence" for r in db.execute("PRAGMA table_info(learnings)").fetchall())
+                sel = "id, content, type, created_at"
+                if has_conf:
+                    sel += ", confidence"
                 rows = db.execute(
-                    "SELECT id, content, type, created_at FROM learnings WHERE content LIKE ? LIMIT ?",
+                    f"SELECT {sel} FROM learnings WHERE content LIKE ? LIMIT ?",
                     (f"%{query}%", n),
                 ).fetchall()
-                return [dict(r) for r in rows]
+                result = [dict(r) for r in rows]
+                for r in result:
+                    r["adjusted_confidence"] = _apply_confidence_decay(r.get("confidence"), r.get("created_at", ""))
+                return result
             except Exception:
                 return []
 
