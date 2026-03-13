@@ -1,21 +1,72 @@
-MIT License
+Layla Non-Commercial Source License
+Copyright (C) 2024–2025  The Layla Author(s)
 
-Copyright (c) 2024 Layla Contributors
+PREAMBLE
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This software is shared publicly so that people can learn from it, run it
+locally, and contribute improvements back to the project.  It is NOT free
+to use commercially, and it is NOT public domain.  The author(s) retain all
+rights not explicitly granted below.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+GRANTS
+
+Subject to the restrictions below, you are granted a worldwide, royalty-free,
+non-exclusive, non-sublicensable license to:
+
+  1. Use and run the software for personal, educational, research, or internal
+     non-commercial purposes.
+  2. Study and modify the source code for those same purposes.
+  3. Distribute verbatim or modified copies for non-commercial purposes,
+     provided you retain this license notice in full and clearly attribute
+     the original project.
+  4. Submit contributions (pull requests, patches, issues) to the upstream
+     repository.  By submitting a contribution you agree that it is licensed
+     to the project under the same terms as this license, and that you hold
+     the right to grant that license.
+
+RESTRICTIONS
+
+The following are NOT permitted without prior written permission from the
+copyright holder(s):
+
+  A. Commercial use — using, deploying, or distributing the software (or any
+     derivative or substantial portion of it) in exchange for money, as part
+     of a paid product or service, as part of a SaaS offering, or in any
+     other revenue-generating context.
+
+  B. Selling or sublicensing — selling the software, offering it as a
+     product, or granting others rights beyond those in this license.
+
+  C. Trademark use — using the name "Layla", any associated logos, or the
+     identity of any of Layla's aspects (Morrigan, Nyx, Echo, Eris, Lilith,
+     Neuro, Ishtar) as trademarks or branding for a separate product or
+     service without permission.
+
+  D. Misrepresentation — claiming the software as your own original work,
+     removing attribution, or presenting a derivative as an unrelated project.
+
+To request a commercial license, contact the project maintainer(s) via the
+GitHub repository.
+
+CONTRIBUTIONS
+
+Contributions to this repository are welcome and appreciated.  By opening a
+pull request or submitting a patch you represent that:
+
+  - You are the author of the contribution, or have the right to submit it.
+  - You license your contribution under the same terms as this license.
+  - You are not submitting confidential or proprietary material belonging to
+    a third party.
+
+The project maintainer(s) may accept, reject, or modify contributions at
+their sole discretion.
+
+DISCLAIMER
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.

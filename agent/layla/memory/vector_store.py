@@ -19,19 +19,65 @@ _chroma_collection = None
 _knowledge_fingerprint: str = ""
 _knowledge_last_check_ts: float = 0.0
 
+# Small LRU cache: avoid re-embedding identical strings during a single agent loop
+import functools as _functools
+_EMBED_CACHE_SIZE = 256
+
 
 def _get_embedder():
+    """
+    Load the sentence-transformer model once and configure it for speed:
+    - nomic-embed-text-v1.5 (768d, best quality) with all-MiniLM fallback
+    - int8 quantization via quantize_model when available (2× faster CPU, ~same quality)
+    - half-precision on GPU via .half() (2× VRAM reduction, faster matmul)
+    """
     global _embedder, _embedder_dim
     if _embedder is None:
         from sentence_transformers import SentenceTransformer
+        import logging
+        log = logging.getLogger("layla")
         try:
             model = SentenceTransformer("nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True)
             _embedder_dim = 768
+            log.info("Embedding model: nomic-embed-text-v1.5 (768d)")
         except Exception:
             model = SentenceTransformer("all-MiniLM-L6-v2")
             _embedder_dim = 384
+            log.info("Embedding model: all-MiniLM-L6-v2 (384d) [nomic unavailable]")
+        # Quantize to int8 for faster CPU inference when torch is available
+        try:
+            import torch
+            if torch.cuda.is_available():
+                model = model.half()  # float16 on GPU: 2× VRAM reduction
+                log.info("Embedder: float16 on GPU")
+            else:
+                # Dynamic int8 quantization for CPU
+                model[0].auto_model = torch.quantization.quantize_dynamic(
+                    model[0].auto_model, {torch.nn.Linear}, dtype=torch.qint8
+                )
+                log.info("Embedder: int8 quantized on CPU")
+        except Exception:
+            pass
         _embedder = model
     return _embedder
+
+
+@_functools.lru_cache(maxsize=_EMBED_CACHE_SIZE)
+def _embed_cached(text: str) -> tuple:
+    """Cached embedding. Returns tuple (for hashability). Use embed() externally."""
+    model = _get_embedder()
+    vec = model.encode([text], convert_to_numpy=True, normalize_embeddings=True)[0]
+    return tuple(vec.astype("float32").tolist())
+
+
+def embed_batch(texts: list[str]) -> list:
+    """Embed multiple texts in one forward pass — much faster than one-by-one."""
+    if not texts:
+        return []
+    model = _get_embedder()
+    import numpy as np
+    vecs = model.encode(texts, convert_to_numpy=True, normalize_embeddings=True, batch_size=32)
+    return [v.astype("float32") for v in vecs]
 
 
 def _get_chroma_collection():
@@ -50,10 +96,8 @@ def _get_chroma_collection():
 # ─── Public API ─────────────────────────────────────────────────────────────
 
 def embed(text: str) -> np.ndarray:
-    """Return a float32 embedding for a text string."""
-    model = _get_embedder()
-    vec = model.encode([text], convert_to_numpy=True)[0]
-    return vec.astype("float32")
+    """Return a normalized float32 embedding. Results are LRU-cached per text."""
+    return np.array(_embed_cached(text), dtype="float32")
 
 
 def add_vector(vec: np.ndarray, metadata: dict) -> str:
@@ -89,10 +133,16 @@ def delete_vectors_by_ids(ids: list[str]) -> None:
         pass
 
 
+_knowledge_collection = None
+
 def _get_knowledge_collection():
+    global _knowledge_collection
+    if _knowledge_collection is not None:
+        return _knowledge_collection
     import chromadb
     client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-    return client.get_or_create_collection(name="knowledge", metadata={"hnsw:space": "cosine"})
+    _knowledge_collection = client.get_or_create_collection(name="knowledge", metadata={"hnsw:space": "cosine"})
+    return _knowledge_collection
 
 
 def search_similar(query_vec: np.ndarray, k: int = 5) -> list:
@@ -206,7 +256,9 @@ def index_knowledge_docs(knowledge_dir: Path) -> None:
         ids = [c[0] for c in upsert]
         documents = [c[1] for c in upsert]
         metadatas = [c[2] for c in upsert]
-        embs = _get_embedder().encode(documents, convert_to_numpy=True).astype("float32")
+        embs_list = embed_batch(documents)
+        import numpy as _np
+        embs = _np.array(embs_list).astype("float32")
         if hasattr(coll, "upsert"):
             coll.upsert(ids=ids, embeddings=embs.tolist(), documents=documents, metadatas=metadatas)
         else:

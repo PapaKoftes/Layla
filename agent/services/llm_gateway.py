@@ -3,6 +3,7 @@ Shared LLM completion gateway. Single point of access for local Llama or remote
 OpenAI-compatible server. Serializes all completion calls so they never run concurrently.
 """
 import logging
+import os
 import threading
 from pathlib import Path
 
@@ -15,6 +16,18 @@ _llm_lock = threading.Lock()
 llm_serialize_lock = _llm_lock
 
 
+def _auto_threads() -> int:
+    """Best thread count for inference: physical cores only, capped sensibly."""
+    try:
+        # psutil gives physical core count (no HT), which beats logical for LLM
+        import psutil
+        cores = psutil.cpu_count(logical=False) or os.cpu_count() or 4
+    except Exception:
+        cores = os.cpu_count() or 4
+    # Leave one core free for OS + FastAPI; cap at 16 (diminishing returns above that)
+    return max(1, min(cores - 1, 16))
+
+
 def _get_llm():
     global _llm
     if _llm is None:
@@ -23,29 +36,70 @@ def _get_llm():
         cfg = runtime_safety.load_config()
         model_filename = cfg.get("model_filename", "your-model.gguf")
         model_path = REPO_ROOT / "models" / model_filename
+
         n_ctx = max(512, int(cfg.get("n_ctx", 4096)))
         n_batch = max(1, min(n_ctx, int(cfg.get("n_batch", 512))))
+
+        # Auto-detect thread counts if not in config
+        auto_t = _auto_threads()
+        n_threads = max(1, int(cfg["n_threads"])) if cfg.get("n_threads") else auto_t
+        # Batch threads: more threads help here; use logical count capped at 2× physical
+        n_threads_batch = (
+            max(1, int(cfg["n_threads_batch"])) if cfg.get("n_threads_batch")
+            else min(n_threads * 2, (os.cpu_count() or n_threads))
+        )
+
         kwargs = {
             "model_path": str(model_path),
             "n_ctx": n_ctx,
-            "n_gpu_layers": int(cfg.get("n_gpu_layers", 20)),
+            "n_gpu_layers": int(cfg.get("n_gpu_layers", -1)),  # -1 = full GPU offload when VRAM allows
             "n_batch": n_batch,
+            "n_threads": n_threads,
+            "n_threads_batch": n_threads_batch,
             "use_mlock": bool(cfg.get("use_mlock", False)),
             "use_mmap": bool(cfg.get("use_mmap", True)),
             "verbose": False,
+            # Flash attention: dramatically reduces VRAM + speeds up long contexts
+            "flash_attn": bool(cfg.get("flash_attn", True)),
+            # KV-cache quantization: int8 halves VRAM for KV cache (safe quality tradeoff)
+            "type_k": int(cfg.get("type_k", 8)),   # 8 = GGML_TYPE_Q8_0
+            "type_v": int(cfg.get("type_v", 8)),
         }
-        if cfg.get("n_threads") is not None:
-            try:
-                kwargs["n_threads"] = max(1, int(cfg["n_threads"]))
-            except (TypeError, ValueError):
-                pass
-        if cfg.get("n_threads_batch") is not None:
-            try:
-                kwargs["n_threads_batch"] = max(1, int(cfg["n_threads_batch"]))
-            except (TypeError, ValueError):
-                pass
-        _llm = Llama(**kwargs)
+
+        # Rope scaling for extended contexts
+        if cfg.get("rope_freq_base"):
+            kwargs["rope_freq_base"] = float(cfg["rope_freq_base"])
+        if cfg.get("rope_freq_scale"):
+            kwargs["rope_freq_scale"] = float(cfg["rope_freq_scale"])
+
+        try:
+            _llm = Llama(**kwargs)
+        except TypeError:
+            # Older llama-cpp-python may not support all kwargs; retry with safe subset
+            safe_keys = {"model_path", "n_ctx", "n_gpu_layers", "n_batch",
+                         "n_threads", "n_threads_batch", "use_mlock", "use_mmap", "verbose"}
+            _llm = Llama(**{k: v for k, v in kwargs.items() if k in safe_keys})
+
+        logger.info(
+            "LLM loaded: %s | ctx=%d batch=%d gpu_layers=%s threads=%d/%d flash=%s",
+            model_filename, n_ctx, n_batch, kwargs["n_gpu_layers"],
+            n_threads, n_threads_batch, kwargs.get("flash_attn"),
+        )
     return _llm
+
+
+def prewarm_llm() -> None:
+    """Load the LLM in a background thread at startup so first request is instant."""
+    def _load():
+        try:
+            with _llm_lock:
+                _get_llm()
+            logger.info("LLM pre-warm complete.")
+        except Exception as e:
+            logger.warning("LLM pre-warm failed: %s", e)
+
+    t = threading.Thread(target=_load, daemon=True, name="llm-prewarm")
+    t.start()
 
 
 def get_stop_sequences():
@@ -84,7 +138,7 @@ def run_completion(
     if url:
         import urllib.request
         import json as _json
-        model_name = cfg.get("remote_model_name") or "jinx"
+        model_name = cfg.get("remote_model_name") or "layla"
         body = {
             "model": model_name,
             "messages": [{"role": "user", "content": prompt}],

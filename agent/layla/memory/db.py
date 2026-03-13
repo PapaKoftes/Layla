@@ -22,8 +22,22 @@ _MIGRATION_LOCK = _threading.Lock()
 
 
 def _conn() -> sqlite3.Connection:
-    c = sqlite3.connect(str(_DB_PATH))
+    """
+    Return an optimized SQLite connection.
+    - WAL mode: readers don't block writers, writers don't block readers.
+    - SYNCHRONOUS=NORMAL: safe + fast (still durable on power failure with WAL).
+    - CACHE_SIZE=-32000: 32 MB page cache per connection.
+    - TEMP_STORE=MEMORY: temp tables in RAM.
+    - MMAP_SIZE=256MB: memory-mapped I/O for read-heavy paths.
+    """
+    c = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
     c.row_factory = sqlite3.Row
+    c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA synchronous=NORMAL")
+    c.execute("PRAGMA cache_size=-32000")   # 32 MB
+    c.execute("PRAGMA temp_store=MEMORY")
+    c.execute("PRAGMA mmap_size=268435456") # 256 MB
+    c.execute("PRAGMA busy_timeout=5000")   # 5 s wait on SQLITE_BUSY
     return c
 
 
@@ -92,6 +106,15 @@ def _migrate_impl() -> None:
                 created_at TEXT NOT NULL
             )
         """)
+        # Performance indices — cover the hot query patterns
+        db.execute("CREATE INDEX IF NOT EXISTS idx_learnings_type ON learnings(type)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_learnings_id_desc ON learnings(id DESC)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_audit_tool ON audit(tool)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_audit_id_desc ON audit(id DESC)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_aspect_memories_aspect ON aspect_memories(aspect_id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_study_plans_status ON study_plans(status)")
+        db.commit()
+
         db.execute("""
             CREATE TABLE IF NOT EXISTS earned_titles (
                 aspect_id  TEXT PRIMARY KEY,
