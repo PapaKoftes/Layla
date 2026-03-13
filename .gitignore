@@ -18,6 +18,11 @@ agent/.research_lab/
 agent/.research_brain/
 agent/.research_output/
 
+# Personal identity model (curated self-knowledge, not for public repo)
+# The base self_model.md is part of the project; user-added identity files stay local
+.identity/
+!.identity/self_model.md
+
 # Model files (large; each dev supplies their own)
 models/*.gguf
 models/*.bin

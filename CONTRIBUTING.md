@@ -95,7 +95,7 @@ Before opening a PR:
 ```
 agent/              FastAPI server, agent loop, routers
 agent/layla/        Core package: memory, tools, file understanding
-personalities/      Aspect JSON files (Morrigan, Nyx, Echo, Eris, Lilith, Neuro)
+personalities/      Aspect JSON files (Morrigan, Nyx, Echo, Eris, Lilith, Cassandra)
 cursor-layla-mcp/   Cursor MCP server
 docs/               Guides and references
 knowledge/          Operator-specific knowledge docs (gitignored)

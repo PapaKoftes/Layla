@@ -115,7 +115,7 @@ async def handle_list_tools() -> types.ListToolsResult:
                         },
                         "aspect_id": {
                             "type": "string",
-                            "description": "Aspect to invoke: morrigan (engineer), nyx (researcher), echo (companion), eris (chaos/banter), lilith (ethics/core/nsfw), neuro (unfiltered/reactive). Leave empty for auto-select.",
+                            "description": "Aspect to invoke: morrigan (engineer), nyx (researcher), echo (companion), eris (chaos/banter), cassandra (unfiltered oracle/reactive), lilith (ethics/core/nsfw). Leave empty for auto-select.",
                             "default": "",
                         },
                         "show_thinking": {

@@ -53,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Initial public release
 - FastAPI agent server with GGUF/llama-cpp-python backend
-- Multi-aspect personality system (Morrigan, Nyx, Echo, Eris, Lilith, Neuro)
+- Multi-aspect personality system (Morrigan, Nyx, Echo, Eris, Lilith, Cassandra)
 - Tool loop: read_file, write_file, list_dir, grep_code, glob_files, git_*, shell, run_python, apply_patch, fetch_url
 - Approval-gate for dangerous tools
 - SQLite memory (learnings, study plans, audit, aspect memories, capability tracking)
