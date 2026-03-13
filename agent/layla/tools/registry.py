@@ -1690,4 +1690,660 @@ TOOLS: dict[str, Any] = {
     "stock_data": {"fn": stock_data, "dangerous": False, "require_approval": False, "risk_level": "low"},
     # Security Analysis
     "security_scan": {"fn": security_scan, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Semantic Memory
+    "vector_search": {"fn": vector_search, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "vector_store": {"fn": vector_store, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # File System Intelligence
+    "workspace_map": {"fn": workspace_map, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Web Crawl
+    "crawl_site": {"fn": crawl_site, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Database Schema
+    "schema_introspect": {"fn": schema_introspect, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Tool Self-Reflection
+    "list_tools": {"fn": list_tools, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "tool_recommend": {"fn": tool_recommend, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Context Management
+    "context_compress": {"fn": context_compress, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "generate_sql": {"fn": generate_sql, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Image Understanding
+    "describe_image": {"fn": describe_image, "dangerous": False, "require_approval": False, "risk_level": "low"},
 }
+
+
+# ─── Semantic Memory Tools ─────────────────────────────────────────────────────
+
+def vector_search(query: str, collection: str = "knowledge", k: int = 8) -> dict:
+    """
+    Direct semantic vector search over Layla's knowledge or memory collections.
+    collection: 'knowledge' | 'memories' | 'aspects'
+    Returns top-k results with content + similarity score.
+    This is the raw retrieval layer — use search_memories for the full RAG pipeline.
+    """
+    try:
+        agent_dir = Path(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(agent_dir))
+        if collection == "memories":
+            from layla.memory.vector_store import search_memories_full
+            results = search_memories_full(query, k=k, use_rerank=False)
+            return {"ok": True, "collection": collection, "query": query, "results": results[:k], "count": len(results)}
+        elif collection == "knowledge":
+            from layla.memory.vector_store import search_knowledge
+            results = search_knowledge(query, k=k)
+            return {"ok": True, "collection": collection, "query": query, "results": results[:k], "count": len(results)}
+        else:
+            from layla.memory.vector_store import search_memories_full
+            results = search_memories_full(query, k=k, use_rerank=False)
+            return {"ok": True, "collection": collection, "query": query, "results": results[:k], "count": len(results)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def vector_store(text: str, metadata: dict | None = None, collection: str = "memories") -> dict:
+    """
+    Explicitly store text into Layla's vector database.
+    collection: 'memories' (default) — stored as a learning and embedded.
+    metadata: optional dict of tags, source, aspect, etc.
+    """
+    try:
+        agent_dir = Path(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(agent_dir))
+        from layla.memory.db import save_learning
+        meta = metadata or {}
+        kind = meta.get("kind", "tool_store")
+        save_learning(content=text[:800], kind=kind)
+        # Also embed into vector store
+        try:
+            from layla.memory.vector_store import index_memory
+            index_memory(text, metadata=meta)
+        except Exception:
+            pass
+        return {"ok": True, "stored": text[:100], "collection": collection, "kind": kind}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── File System Intelligence ──────────────────────────────────────────────────
+
+def workspace_map(root: str = "", max_files: int = 500, include_content_preview: bool = False) -> dict:
+    """
+    Build a full intelligence map of a workspace:
+    - Directory tree (depth-limited)
+    - File count by extension
+    - Detected tech stack (languages, frameworks, config files)
+    - Entry points (main.py, index.js, Dockerfile, etc.)
+    - Key documentation (README, CHANGELOG, AGENTS.md, etc.)
+    - Large files + recently modified files
+    """
+    root_path = Path(root).expanduser().resolve() if root else Path.cwd()
+    if not root_path.exists():
+        return {"ok": False, "error": "Path not found"}
+
+    IGNORE = {".git", ".venv", "venv", "__pycache__", "node_modules", ".mypy_cache",
+              ".pytest_cache", "dist", "build", ".tox", "*.egg-info"}
+
+    all_files: list[Path] = []
+    for f in root_path.rglob("*"):
+        if f.is_file() and not any(part in IGNORE for part in f.parts):
+            all_files.append(f)
+            if len(all_files) >= max_files:
+                break
+
+    # Extension counts
+    ext_counts: dict = {}
+    for f in all_files:
+        ext = f.suffix.lower() or "(none)"
+        ext_counts[ext] = ext_counts.get(ext, 0) + 1
+
+    # Tech stack detection
+    STACK_SIGNALS = {
+        "Python": {".py", "requirements.txt", "pyproject.toml", "setup.py", "Pipfile"},
+        "JavaScript": {".js", ".mjs", "package.json"},
+        "TypeScript": {".ts", ".tsx", "tsconfig.json"},
+        "Rust": {".rs", "Cargo.toml"},
+        "Go": {".go", "go.mod"},
+        "Java": {".java", "pom.xml", "build.gradle"},
+        "C/C++": {".c", ".cpp", ".h", ".hpp", "CMakeLists.txt"},
+        "Docker": {"Dockerfile", "docker-compose.yml", "docker-compose.yaml"},
+        "Kubernetes": {".yaml", "k8s", "helm"},
+        "FastAPI": {"main.py"},
+        "React": {"package.json", ".jsx", ".tsx"},
+        "Vue": {".vue"},
+    }
+    names_and_exts = {f.name for f in all_files} | {f.suffix.lower() for f in all_files}
+    detected_stack = [lang for lang, signals in STACK_SIGNALS.items() if signals & names_and_exts]
+
+    # Entry points
+    ENTRY_NAMES = {"main.py", "app.py", "server.py", "index.js", "index.ts", "main.rs",
+                   "main.go", "Dockerfile", "docker-compose.yml", "manage.py", "wsgi.py", "asgi.py"}
+    entry_points = [str(f.relative_to(root_path)) for f in all_files if f.name in ENTRY_NAMES]
+
+    # Key docs
+    DOC_NAMES = {"README.md", "AGENTS.md", "ARCHITECTURE.md", "CHANGELOG.md", "CONTRIBUTING.md",
+                 "LICENSE", "INSTALL.md", "SECURITY.md", "TODO.md", "NOTES.md"}
+    key_docs = {}
+    for f in all_files:
+        if f.name in DOC_NAMES:
+            preview = ""
+            if include_content_preview:
+                try:
+                    preview = f.read_text(encoding="utf-8", errors="replace")[:400]
+                except Exception:
+                    pass
+            key_docs[f.name] = {"path": str(f.relative_to(root_path)), "preview": preview}
+
+    # Largest files
+    sorted_by_size = sorted(all_files, key=lambda f: f.stat().st_size, reverse=True)
+    largest = [{"path": str(f.relative_to(root_path)), "size_kb": round(f.stat().st_size / 1024, 1)} for f in sorted_by_size[:10]]
+
+    # Recently modified
+    sorted_by_mtime = sorted(all_files, key=lambda f: f.stat().st_mtime, reverse=True)
+    recent = [{"path": str(f.relative_to(root_path)), "modified": str(__import__("datetime").datetime.fromtimestamp(f.stat().st_mtime))[:16]} for f in sorted_by_mtime[:10]]
+
+    # Directory tree (2-level)
+    def tree_level(path: Path, depth: int = 0, max_depth: int = 2) -> list:
+        if depth >= max_depth:
+            return []
+        entries = []
+        try:
+            for child in sorted(path.iterdir(), key=lambda x: (x.is_file(), x.name)):
+                if any(part in IGNORE for part in child.parts):
+                    continue
+                entry = {"name": child.name, "type": "file" if child.is_file() else "dir"}
+                if child.is_dir() and depth < max_depth - 1:
+                    entry["children"] = tree_level(child, depth + 1, max_depth)
+                entries.append(entry)
+        except PermissionError:
+            pass
+        return entries
+
+    return {
+        "ok": True,
+        "root": str(root_path),
+        "total_files": len(all_files),
+        "extensions": dict(sorted(ext_counts.items(), key=lambda x: -x[1])[:20]),
+        "tech_stack": detected_stack,
+        "entry_points": entry_points,
+        "key_docs": key_docs,
+        "largest_files": largest,
+        "recently_modified": recent,
+        "tree": tree_level(root_path),
+    }
+
+
+# ─── Web Crawl ─────────────────────────────────────────────────────────────────
+
+def crawl_site(
+    url: str,
+    max_pages: int = 20,
+    max_depth: int = 2,
+    same_domain: bool = True,
+    store_knowledge: bool = False,
+) -> dict:
+    """
+    Crawl a website starting from url. Extracts clean text from each page.
+    max_pages: hard cap on pages visited
+    max_depth: link-following depth (1 = only start URL, 2 = start + its links, etc.)
+    same_domain: only follow links within the same domain
+    store_knowledge: save extracted pages to knowledge/fetched/ for later RAG indexing
+    Returns: list of {url, title, text, depth} for all visited pages.
+    """
+    from urllib.parse import urlparse, urljoin
+    import time
+
+    try:
+        import trafilatura
+        from trafilatura.sitemaps import sitemap_search
+    except ImportError:
+        return {"ok": False, "error": "trafilatura not installed: pip install trafilatura"}
+
+    base_domain = urlparse(url).netloc
+    visited: set[str] = set()
+    queue: list[tuple[str, int]] = [(url, 0)]
+    results = []
+    start_time = time.time()
+
+    while queue and len(results) < max_pages:
+        if time.time() - start_time > 120:  # 2 min hard cap
+            break
+        current_url, depth = queue.pop(0)
+        if current_url in visited:
+            continue
+        visited.add(current_url)
+
+        try:
+            downloaded = trafilatura.fetch_url(current_url)
+            if not downloaded:
+                continue
+            text = trafilatura.extract(downloaded, include_comments=False, include_tables=True, favor_recall=True)
+            if not text or len(text.strip()) < 50:
+                continue
+            title = ""
+            links: list[str] = []
+            try:
+                meta = trafilatura.extract_metadata(downloaded)
+                if meta:
+                    title = meta.title or ""
+            except Exception:
+                pass
+            # Extract links for deeper crawl
+            if depth < max_depth - 1:
+                try:
+                    from trafilatura.urls import extract_links
+                    raw_links = extract_links(downloaded, url) or []
+                    for link in raw_links[:30]:
+                        full = urljoin(current_url, link)
+                        if full not in visited:
+                            if not same_domain or urlparse(full).netloc == base_domain:
+                                queue.append((full, depth + 1))
+                except Exception:
+                    pass
+            page_result = {
+                "url": current_url, "title": title,
+                "text": text[:4000], "chars": len(text), "depth": depth,
+            }
+            results.append(page_result)
+
+            # Optionally save to knowledge/fetched/
+            if store_knowledge:
+                try:
+                    slug = urlparse(current_url).path.strip("/").replace("/", "_")[:50] or "index"
+                    fetched_dir = Path(__file__).resolve().parent.parent.parent.parent / "knowledge" / "fetched"
+                    fetched_dir.mkdir(parents=True, exist_ok=True)
+                    out = fetched_dir / f"{base_domain}_{slug}.txt"
+                    out.write_text(f"source: {current_url}\ntitle: {title}\n\n{text[:30000]}", encoding="utf-8")
+                except Exception:
+                    pass
+
+        except Exception:
+            continue
+
+    return {
+        "ok": True, "start_url": url, "pages_visited": len(results),
+        "pages_requested": max_pages, "same_domain": same_domain,
+        "results": results,
+    }
+
+
+# ─── Database Schema Intelligence ─────────────────────────────────────────────
+
+def schema_introspect(db_path: str) -> dict:
+    """
+    Introspect a database schema. Returns tables, columns with types, row counts,
+    foreign keys, and sample data (first 3 rows per table).
+    Supports SQLite (.db, .sqlite) and DuckDB (.duckdb).
+    """
+    target = Path(db_path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "File not found"}
+
+    ext = target.suffix.lower()
+
+    if ext == ".duckdb":
+        try:
+            import duckdb
+            conn = duckdb.connect(str(target))
+            tables_raw = conn.execute("SHOW TABLES").fetchall()
+            schema = {}
+            for (table_name,) in tables_raw:
+                cols = conn.execute(f"DESCRIBE {table_name}").fetchall()
+                count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+                sample = conn.execute(f"SELECT * FROM {table_name} LIMIT 3").fetchall()
+                col_names = [c[0] for c in cols]
+                schema[table_name] = {
+                    "columns": [{"name": c[0], "type": c[1]} for c in cols],
+                    "row_count": count,
+                    "sample": [dict(zip(col_names, row)) for row in sample],
+                }
+            conn.close()
+            return {"ok": True, "db_type": "duckdb", "path": db_path, "tables": schema}
+        except ImportError:
+            return {"ok": False, "error": "duckdb not installed: pip install duckdb"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    # SQLite
+    try:
+        import sqlite3 as _sql
+        conn = _sql.connect(str(target))
+        conn.row_factory = _sql.Row
+        tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        schema = {}
+        for (table_name,) in [(r["name"],) for r in tables]:
+            cols = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+            fkeys = conn.execute(f"PRAGMA foreign_key_list({table_name})").fetchall()
+            count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+            sample_rows = conn.execute(f"SELECT * FROM {table_name} LIMIT 3").fetchall()
+            col_names = [c["name"] for c in cols]
+            schema[table_name] = {
+                "columns": [{"name": c["name"], "type": c["type"], "notnull": bool(c["notnull"]), "pk": bool(c["pk"])} for c in cols],
+                "foreign_keys": [{"from": fk["from"], "to_table": fk["table"], "to_col": fk["to"]} for fk in fkeys],
+                "row_count": count,
+                "sample": [dict(r) for r in sample_rows],
+            }
+        # Views
+        views = conn.execute("SELECT name FROM sqlite_master WHERE type='view'").fetchall()
+        conn.close()
+        return {"ok": True, "db_type": "sqlite", "path": db_path, "tables": schema, "views": [r["name"] for r in views]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── Tool Self-Reflection ──────────────────────────────────────────────────────
+
+def list_tools(filter_by: str = "", include_dangerous: bool = True) -> dict:
+    """
+    List all tools available to Layla with their descriptions, risk levels, and approval status.
+    filter_by: keyword to filter by tool name or description (empty = return all)
+    include_dangerous: if False, only shows safe tools
+    """
+    results = []
+    for name, meta in TOOLS.items():
+        if not include_dangerous and meta.get("dangerous"):
+            continue
+        fn = meta.get("fn")
+        doc = (fn.__doc__ or "").strip().split("\n")[0][:120] if fn else ""
+        if filter_by and filter_by.lower() not in name.lower() and filter_by.lower() not in doc.lower():
+            continue
+        results.append({
+            "name": name,
+            "description": doc,
+            "dangerous": meta.get("dangerous", False),
+            "require_approval": meta.get("require_approval", False),
+            "risk_level": meta.get("risk_level", "low"),
+        })
+    return {
+        "ok": True,
+        "total": len(TOOLS),
+        "shown": len(results),
+        "filter": filter_by,
+        "tools": sorted(results, key=lambda x: x["name"]),
+    }
+
+
+def tool_recommend(task: str) -> dict:
+    """
+    Given a task description, recommend the most relevant tools to use.
+    Uses keyword matching + category heuristics.
+    Example: tool_recommend("read a PDF and summarize it") → [read_pdf, fetch_article, save_note]
+    """
+    task_lower = task.lower()
+    CATEGORY_KEYWORDS = {
+        "file": ["read_file", "write_file", "list_dir", "file_info", "understand_file"],
+        "pdf": ["read_pdf"],
+        "docx word": ["read_docx"],
+        "excel spreadsheet": ["read_excel", "read_csv"],
+        "csv data table": ["read_csv", "read_excel", "sql_query"],
+        "code python": ["python_ast", "grep_code", "run_python", "security_scan"],
+        "code search": ["grep_code", "glob_files", "python_ast"],
+        "git commit diff": ["git_status", "git_diff", "git_log", "git_add", "git_commit"],
+        "web search": ["ddg_search", "browser_search", "fetch_article", "wiki_search"],
+        "research paper arxiv": ["arxiv_search", "wiki_search", "ddg_search"],
+        "website crawl": ["crawl_site", "fetch_article", "browser_navigate"],
+        "math equation": ["math_eval", "sympy_solve"],
+        "image ocr": ["ocr_image", "describe_image"],
+        "chart graph plot": ["plot_chart"],
+        "sql database": ["sql_query", "schema_introspect"],
+        "memory remember": ["save_note", "search_memories", "vector_search", "vector_store"],
+        "security scan": ["security_scan"],
+        "stock finance crypto": ["stock_data"],
+        "nlp entities keywords": ["nlp_analyze"],
+        "compress token context": ["context_compress", "count_tokens"],
+        "translate sql query": ["generate_sql", "sql_query", "schema_introspect"],
+        "workspace project": ["workspace_map", "project_discovery", "get_project_context"],
+    }
+    scores: dict = {}
+    for category, tools in CATEGORY_KEYWORDS.items():
+        for keyword in category.split():
+            if keyword in task_lower:
+                for tool in tools:
+                    scores[tool] = scores.get(tool, 0) + 1
+
+    # Also match tool names/descriptions directly
+    for name, meta in TOOLS.items():
+        fn = meta.get("fn")
+        doc = (fn.__doc__ or "").lower() if fn else ""
+        for word in task_lower.split():
+            if len(word) > 3 and (word in name.lower() or word in doc):
+                scores[name] = scores.get(name, 0) + 1
+
+    ranked = sorted(scores.items(), key=lambda x: -x[1])[:10]
+    recommendations = []
+    for name, score in ranked:
+        if name in TOOLS:
+            fn = TOOLS[name].get("fn")
+            doc = (fn.__doc__ or "").strip().split("\n")[0][:100] if fn else ""
+            recommendations.append({"tool": name, "relevance": score, "description": doc})
+
+    return {"ok": True, "task": task, "recommendations": recommendations}
+
+
+# ─── Context Management ────────────────────────────────────────────────────────
+
+def context_compress(text: str, target_tokens: int = 2000, strategy: str = "smart") -> dict:
+    """
+    Compress text to fit within a token budget.
+    strategy:
+    - 'smart': extract most important sentences (extractive summarization)
+    - 'truncate': simple head truncation
+    - 'middle_out': keep head + tail, drop middle (good for code files with imports + logic)
+    Returns compressed text + token estimates before/after.
+    """
+    def rough_tokens(t: str) -> int:
+        return max(int(len(t) / 4), len(t.split()))
+
+    original_tokens = rough_tokens(text)
+
+    if original_tokens <= target_tokens:
+        return {"ok": True, "strategy": "no_compression_needed", "original_tokens": original_tokens,
+                "compressed_tokens": original_tokens, "text": text, "ratio": 1.0}
+
+    if strategy == "truncate":
+        char_budget = target_tokens * 4
+        compressed = text[:char_budget]
+        return {"ok": True, "strategy": "truncate", "original_tokens": original_tokens,
+                "compressed_tokens": rough_tokens(compressed), "text": compressed,
+                "ratio": round(rough_tokens(compressed) / original_tokens, 3)}
+
+    if strategy == "middle_out":
+        char_budget = target_tokens * 4
+        head = text[:char_budget // 2]
+        tail = text[-(char_budget // 2):]
+        compressed = head + "\n\n[... content compressed ...]\n\n" + tail
+        return {"ok": True, "strategy": "middle_out", "original_tokens": original_tokens,
+                "compressed_tokens": rough_tokens(compressed), "text": compressed,
+                "ratio": round(rough_tokens(compressed) / original_tokens, 3)}
+
+    # Smart: sentence scoring (position + length + keyword density)
+    import re as _re
+    sentences = _re.split(r'(?<=[.!?])\s+', text)
+    if not sentences:
+        sentences = text.split("\n")
+
+    # Score each sentence
+    total = len(sentences)
+    def score_sentence(s: str, idx: int) -> float:
+        pos_score = 1.5 if idx < total * 0.1 else (1.2 if idx > total * 0.9 else 1.0)
+        len_score = 1.0 if 20 < len(s) < 200 else 0.6
+        caps = len(_re.findall(r'\b[A-Z][a-z]+\b', s))
+        return pos_score * len_score * (1 + caps * 0.1)
+
+    scored = [(score_sentence(s, i), i, s) for i, s in enumerate(sentences)]
+    scored.sort(key=lambda x: -x[0])
+
+    # Greedily pick sentences until token budget
+    picked_indices: set[int] = set()
+    budget_used = 0
+    for score, idx, sentence in scored:
+        t = rough_tokens(sentence)
+        if budget_used + t <= target_tokens:
+            picked_indices.add(idx)
+            budget_used += t
+        if budget_used >= target_tokens:
+            break
+
+    # Reconstruct in original order
+    compressed_parts = [sentences[i] for i in sorted(picked_indices)]
+    compressed = " ".join(compressed_parts)
+    return {"ok": True, "strategy": "smart", "original_tokens": original_tokens,
+            "compressed_tokens": rough_tokens(compressed), "text": compressed,
+            "ratio": round(rough_tokens(compressed) / original_tokens, 3)}
+
+
+def generate_sql(question: str, schema: str = "", db_path: str = "") -> dict:
+    """
+    Generate SQL from a natural language question.
+    If db_path is provided, automatically introspects schema.
+    If schema is provided as text, uses it directly.
+    Returns generated SQL query. Pair with sql_query() to execute.
+    Note: This builds the query using heuristics + schema context.
+    For best results, run with an LLM (this provides the schema grounding layer).
+    """
+    # If db_path given, get schema first
+    effective_schema = schema
+    if db_path and not schema:
+        try:
+            schema_result = schema_introspect(db_path)
+            if schema_result.get("ok"):
+                lines = [f"Database: {db_path}"]
+                for table, info in schema_result.get("tables", {}).items():
+                    cols = ", ".join(f"{c['name']} {c['type']}" for c in info.get("columns", []))
+                    lines.append(f"Table {table}: ({cols}) — {info.get('row_count', '?')} rows")
+                effective_schema = "\n".join(lines)
+        except Exception:
+            pass
+
+    # Build context for SQL generation
+    context = {
+        "ok": True,
+        "question": question,
+        "schema": effective_schema[:3000] if effective_schema else "(no schema provided — add db_path or schema parameter)",
+        "hint": (
+            "Use this schema + question with your LLM to generate SQL. "
+            "Then call sql_query(db_path, generated_sql) to execute it. "
+            "Example: SELECT column FROM table WHERE condition LIMIT 100"
+        ),
+        "example_patterns": [
+            "COUNT: SELECT COUNT(*) FROM table WHERE col = 'value'",
+            "JOIN: SELECT a.col, b.col FROM a JOIN b ON a.id = b.a_id",
+            "GROUP BY: SELECT col, COUNT(*) FROM table GROUP BY col ORDER BY 2 DESC",
+            "LIKE: SELECT * FROM table WHERE text_col LIKE '%keyword%'",
+        ],
+    }
+
+    # Simple keyword-based SQL generation for common patterns
+    q_lower = question.lower()
+    if effective_schema:
+        tables = []
+        import re as _re
+        for match in _re.finditer(r"Table (\w+):", effective_schema):
+            tables.append(match.group(1))
+
+        if tables:
+            main_table = tables[0]
+            if "count" in q_lower or "how many" in q_lower:
+                context["generated_sql"] = f"SELECT COUNT(*) FROM {main_table};"
+            elif "all" in q_lower or "show" in q_lower or "list" in q_lower:
+                context["generated_sql"] = f"SELECT * FROM {main_table} LIMIT 100;"
+            elif "recent" in q_lower or "latest" in q_lower or "last" in q_lower:
+                context["generated_sql"] = f"SELECT * FROM {main_table} ORDER BY rowid DESC LIMIT 20;"
+            else:
+                context["generated_sql"] = f"SELECT * FROM {main_table} LIMIT 20; -- adjust as needed"
+
+    return context
+
+
+# ─── Image Understanding ───────────────────────────────────────────────────────
+
+def describe_image(path: str, detail: str = "brief") -> dict:
+    """
+    Generate a natural language description of an image.
+    detail: 'brief' | 'detailed'
+    Uses BLIP (Salesforce/blip-image-captioning-base) via transformers.
+    Falls back to metadata-only description if transformers not installed.
+    Note: First call downloads ~500 MB model. Cached afterward.
+    """
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "File not found"}
+    ext = target.suffix.lower()
+    if ext not in {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp", ".gif"}:
+        return {"ok": False, "error": f"Unsupported image format: {ext}"}
+
+    # Try BLIP via transformers
+    try:
+        from PIL import Image as PILImage
+        from transformers import BlipProcessor, BlipForConditionalGeneration
+        import torch
+
+        model_name = "Salesforce/blip-image-captioning-base"
+        try:
+            processor = BlipProcessor.from_pretrained(model_name)
+            model = BlipForConditionalGeneration.from_pretrained(model_name)
+        except Exception as e:
+            return {"ok": False, "error": f"Failed to load BLIP model: {e}. Run: pip install transformers torch Pillow"}
+
+        img = PILImage.open(str(target)).convert("RGB")
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model = model.to(device)
+
+        if detail == "detailed":
+            # Conditional captioning with a prompt
+            text_prompt = "a photography of"
+            inputs = processor(img, text_prompt, return_tensors="pt").to(device)
+        else:
+            inputs = processor(img, return_tensors="pt").to(device)
+
+        with torch.no_grad():
+            out = model.generate(**inputs, max_new_tokens=80)
+        caption = processor.decode(out[0], skip_special_tokens=True)
+
+        # Also run OCR if text is likely present
+        ocr_text = ""
+        try:
+            import easyocr
+            reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+            ocr_results = reader.readtext(str(target))
+            ocr_text = " ".join([r[1] for r in ocr_results if r[2] > 0.3])[:500]
+        except Exception:
+            pass
+
+        result: dict = {
+            "ok": True, "path": str(target), "model": "BLIP",
+            "caption": caption, "detail": detail,
+        }
+        if ocr_text:
+            result["ocr_text"] = ocr_text
+        return result
+
+    except ImportError:
+        # Fallback: return metadata + OCR if available
+        result_fb: dict = {
+            "ok": True, "path": str(target), "model": "fallback_metadata",
+            "warning": "transformers not installed (pip install transformers torch) — BLIP captioning unavailable",
+        }
+        try:
+            from PIL import Image as PILImage
+            img = PILImage.open(str(target))
+            result_fb["size"] = f"{img.width}x{img.height}"
+            result_fb["mode"] = img.mode
+            result_fb["format"] = img.format
+        except Exception:
+            pass
+        # Try OCR anyway
+        try:
+            import easyocr
+            reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+            ocr_results = reader.readtext(str(target))
+            ocr_text = " ".join([r[1] for r in ocr_results if r[2] > 0.3])[:500]
+            if ocr_text:
+                result_fb["ocr_text"] = ocr_text
+                result_fb["caption"] = f"Image contains text: {ocr_text[:200]}"
+        except Exception:
+            pass
+        return result_fb
+    except Exception as e:
+        return {"ok": False, "error": str(e)}

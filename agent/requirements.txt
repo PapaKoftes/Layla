@@ -102,5 +102,18 @@ bandit>=1.7                     # Python static security analysis (CWE detection
 # scikit-learn>=1.4             # Clustering, regression, classification, metrics
 # xgboost>=2.0                  # Gradient boosting
 
+# ─── Infrastructure / Reliability ─────────────────────────────────────────────
+tenacity>=8.2                   # Retry logic with exponential backoff (used in service calls)
+
+# ─── Image Captioning (optional, ~500 MB model download on first use) ─────────
+# transformers>=4.40            # BLIP image captioning (pip install transformers torch)
+# torch>=2.0                    # PyTorch (required for transformers; heavy install)
+
+# ─── Advanced Vector Search (optional complement to ChromaDB) ─────────────────
+# faiss-cpu>=1.8                # Facebook FAISS fast ANN search (no GPU required)
+
+# ─── Web Crawling (optional, uses trafilatura by default) ─────────────────────
+# crawl4ai>=0.3                 # More powerful async web crawler (alternative to crawl_site)
+
 # ─── Dev/CI (not required at runtime) ─────────────────────────────────────────
 # ruff>=0.4
