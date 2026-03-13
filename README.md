@@ -76,7 +76,7 @@ Switch between them in the sidebar or say their name:
 | **✦ Nyx** | Deep researcher. Encyclopedic. Precise. | Research, explanations, analysis |
 | **◎ Echo** | Companion. Mirrors your patterns. Grows with you. | Check-ins, reflection, context |
 | **⚡ Eris** | Chaos energy. Banter. Games. Music. Feral wit. | Just talking, fun, ideas |
-| **◈ Neuro** | Unfiltered Neuro-sama energy. | Commentary, reactions, chaos |
+| **⌖ Cassandra** | Unfiltered oracle. Speaks truth before finishing the thought. | Raw reactions, first impressions, what nobody else noticed |
 | **⊛ Lilith** | Core authority. Ethics. Full autonomy. | Deep questions, NSFW when you want it |
 
 ---

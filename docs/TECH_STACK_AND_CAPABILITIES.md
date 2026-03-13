@@ -27,7 +27,7 @@ Config: `agent/runtime_config.json` (+ hardware-derived defaults in `runtime_saf
 
 | Area | What’s implemented |
 |------|---------------------|
-| **Agent** | Local GGUF via llama-cpp-python; tool loop (read_file, write_file, list_dir, grep_code, glob_files, git_*, shell, run_python, apply_patch, fetch_url, file_info); approval gate for write/shell/run_python/patch; aspect selection (Morrigan, Nyx, Echo, Eris, Lilith, Neuro); Lilith NSFW by keyword; optional deliberation; streaming. |
+| **Agent** | Local GGUF via llama-cpp-python; tool loop (read_file, write_file, list_dir, grep_code, glob_files, git_*, shell, run_python, apply_patch, fetch_url, file_info); approval gate for write/shell/run_python/patch; aspect selection (Morrigan, Nyx, Echo, Eris, Lilith, Cassandra); Lilith NSFW by keyword; optional deliberation; streaming. |
 | **Memory** | SQLite `layla.db` (learnings, study plans, wakeup log, audit, aspect memories, project context); optional Chroma/FAISS over `knowledge/`; conversation history in-memory + persisted. |
 | **RAG** | Chroma indexes `knowledge/` (.md, .txt, optional .pdf with pypdf); top-k chunks in prompt; API returns `cited_sources` with answers. |
 | **Study** | Study plans in DB; wakeup greeting; optional one autonomous study step per wakeup; scheduler advances one plan when user is active (configurable). |

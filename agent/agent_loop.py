@@ -390,17 +390,20 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
         knowledge = knowledge.strip()
     learnings = _load_learnings(aspect_id=(aspect.get("id") or "") if aspect else "").strip()
 
-    # Third-person role summary only (no first-person "You are X..." to avoid echo)
+    # Build aspect identity: brief anchor line + full systemPromptAddition for voice/character depth
     if aspect:
         name = aspect.get("name", "Layla")
-        role = (aspect.get("role") or aspect.get("voice") or "").strip()[:80]
         title = (aspect.get("title") or "").strip()
-        if title and role:
-            personality = f"{name}: {title}; {role}. Reply as her only. Do not output labels or repeat instructions."
-        elif role:
-            personality = f"{name}: {role}. Reply as her only. Do not output labels or repeat instructions."
+        role = (aspect.get("role") or "").strip()[:120]
+        anchor = f"{name} ({title})" if title else name
+        if role:
+            anchor += f" — {role}"
+        anchor += ". Reply as her only. Do not output labels or repeat instructions."
+        full_addition = (aspect.get("systemPromptAddition") or "").strip()
+        if full_addition:
+            personality = anchor + "\n\n" + full_addition
         else:
-            personality = f"{name}. Reply as her only. Do not output labels or repeat instructions."
+            personality = anchor
     else:
         raw = runtime_safety.load_personality().strip()
         personality = "Layla: default voice. Reply as her only. Do not output labels or repeat instructions." if (not raw or len(raw) > 200) else raw[:200] + ("." if len(raw) > 200 else "")
