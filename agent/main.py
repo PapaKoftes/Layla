@@ -93,6 +93,22 @@ def _scheduled_study_job() -> None:
         logger.exception("scheduled_study failed: %s", e)
 
 
+def _mission_worker_job() -> None:
+    """Background job: run next step of active missions. Persists progress for restart recovery."""
+    try:
+        from layla.memory.db import get_active_missions
+        from services.mission_manager import execute_next_step
+        missions = get_active_missions(limit=1)
+        for m in missions:
+            try:
+                execute_next_step(m["id"])
+                break
+            except Exception as e:
+                logger.warning("mission_worker step failed: %s", e)
+    except Exception as e:
+        logger.warning("mission_worker failed: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -158,10 +174,17 @@ async def lifespan(app: FastAPI):
             tts_prewarm()
         except Exception:
             pass
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from apscheduler.triggers.interval import IntervalTrigger
+        sched = BackgroundScheduler()
+        # Mission worker: always run (v1.1 long-running tasks)
+        try:
+            mission_interval_min = max(1, min(10, int(float(cfg.get("mission_worker_interval_minutes", 2)))))
+            sched.add_job(_mission_worker_job, IntervalTrigger(minutes=mission_interval_min), id="mission_worker")
+            logger.info("mission_worker scheduled every %s min", mission_interval_min)
+        except (TypeError, ValueError):
+            sched.add_job(_mission_worker_job, IntervalTrigger(minutes=2), id="mission_worker")
         if cfg.get("scheduler_study_enabled", True):
-            from apscheduler.schedulers.background import BackgroundScheduler
-            from apscheduler.triggers.interval import IntervalTrigger
-            sched = BackgroundScheduler()
             try:
                 interval_min = max(5, min(120, int(float(cfg.get("scheduler_interval_minutes", 30)))))
             except (TypeError, ValueError):
@@ -175,9 +198,9 @@ async def lifespan(app: FastAPI):
                     logger.info("lens refresh scheduled every %s days", days)
                 except (TypeError, ValueError) as e:
                     logger.warning("lens refresh not scheduled: %s", e)
-            sched.start()
-            app.state.scheduler = sched
             logger.info("scheduler started (study every %s min when active)", interval_min)
+        sched.start()
+        app.state.scheduler = sched
     except Exception as e:
         logger.warning("scheduler not started: %s", e)
     yield
@@ -1025,6 +1048,58 @@ def delete_study_plan(plan_id: int):
         return {"ok": True}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# Missions API (v1.1 — long-running research/engineering tasks)
+
+@app.post("/mission")
+async def create_mission_api(req: Request):
+    """Create and start a mission. Body: { "goal": str, "workspace_root": str?, "allow_write": bool?, "allow_run": bool? }."""
+    try:
+        body = await req.json() if req.headers.get("content-type", "").startswith("application/json") else {}
+        if not isinstance(body, dict):
+            body = {}
+        from services.mission_manager import create_mission, run_mission
+        goal = (body.get("goal") or "").strip()
+        if not goal:
+            return JSONResponse({"error": "goal required"}, status_code=400)
+        mission = create_mission(
+            goal=goal,
+            workspace_root=(req.get("workspace_root") or "").strip(),
+            allow_write=bool(req.get("allow_write")),
+            allow_run=bool(req.get("allow_run")),
+        )
+        if not mission:
+            return JSONResponse({"error": "mission creation failed (plan empty or planner error)"}, status_code=500)
+        run_mission(mission["id"])
+        return JSONResponse({"ok": True, "mission": mission})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/mission/{mission_id}")
+def get_mission_api(mission_id: str):
+    """Fetch a mission by id."""
+    try:
+        from layla.memory.db import get_mission
+        mission = get_mission(mission_id)
+        if not mission:
+            return JSONResponse({"error": "mission not found"}, status_code=404)
+        return JSONResponse(mission)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/missions")
+def list_missions_api(status: str = "", limit: int = 50):
+    """List missions. Query: status (pending|running|completed|failed), limit."""
+    try:
+        from layla.memory.db import get_missions
+        status_filter = status if status in ("pending", "running", "completed", "failed") else None
+        missions = get_missions(limit=max(1, min(100, limit)), status_filter=status_filter)
+        return JSONResponse({"missions": missions})
+    except Exception as e:
+        return JSONResponse({"error": str(e), "missions": []})
 
 
 # File content (safe read for diff viewer)
