@@ -823,12 +823,60 @@
     animation: toast-in 0.2s ease-out;
     pointer-events: none;
   }
+
+  /* ── Warmup bar ── */
+  #warmup-bar { display:none; position:fixed; top:0; left:0; right:0; z-index:9999; background:linear-gradient(90deg,var(--asp),var(--asp-mid),var(--asp)); background-size:200% 100%; animation:warmup-shift 2s linear infinite; color:#fff; text-align:center; font-size:0.72rem; padding:5px 12px; letter-spacing:0.12em; font-family:'Cinzel',serif; }
+  #warmup-bar.visible { display:block; }
+  @keyframes warmup-shift { 0%{background-position:0% 50%} 100%{background-position:200% 50%} }
+
+  /* ── URL detect chip ── */
+  #url-detect-chip { display:none; align-items:center; gap:8px; background:var(--code-bg); border:1px solid var(--asp); border-radius:3px; padding:4px 12px; margin:0 0 4px 0; font-size:0.73rem; flex-wrap:wrap; }
+  #url-detect-chip.visible { display:flex; }
+  .url-chip-label { color:var(--text-dim); }
+  .url-chip-domain { color:var(--asp); font-weight:600; font-family:'JetBrains Mono',monospace; font-size:0.68rem; }
+  .url-chip-btn { background:var(--asp); color:#000; border:none; border-radius:2px; padding:2px 9px; cursor:pointer; font-size:0.7rem; font-weight:600; }
+  .url-chip-dismiss { background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:0.9rem; margin-left:auto; }
+
+  /* ── Session history ── */
+  .history-section summary { font-family:'Cinzel',serif; font-size:0.65rem; color:var(--text-dim); letter-spacing:0.22em; text-transform:uppercase; cursor:pointer; padding:5px 0; border-bottom:1px solid var(--border); list-style:none; display:flex; justify-content:space-between; align-items:center; }
+  .history-section summary::-webkit-details-marker { display:none; }
+  .session-item { display:flex; align-items:center; gap:4px; padding:5px 6px; border-radius:3px; cursor:pointer; font-size:0.71rem; color:var(--text-dim); border:1px solid transparent; margin-top:4px; }
+  .session-item:hover { border-color:var(--border); background:var(--bg); color:var(--text); }
+  .session-item .sess-preview { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .session-item .sess-date { font-size:0.62rem; opacity:0.7; white-space:nowrap; }
+  .session-item .sess-del { background:none; border:none; color:var(--text-dim); cursor:pointer; opacity:0; font-size:0.8rem; padding:0 2px; flex-shrink:0; }
+  .session-item:hover .sess-del { opacity:1; }
+
+  /* ── Apply to file / diff viewer ── */
+  .apply-btn { position:absolute; top:6px; right:56px; padding:2px 8px; background:var(--violet); border:1px solid var(--asp); color:var(--text); font-family:'JetBrains Mono',monospace; font-size:0.67rem; cursor:pointer; border-radius:2px; z-index:1; }
+  .apply-btn:hover { background:var(--asp); color:#000; }
+  #diff-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:10000; align-items:center; justify-content:center; }
+  #diff-overlay.visible { display:flex; }
+  .diff-modal { background:var(--bg2); border:1px solid var(--asp); border-radius:6px; width:92vw; max-width:1100px; max-height:88vh; display:flex; flex-direction:column; padding:20px; gap:14px; overflow:hidden; }
+  .diff-modal h2 { font-family:'Cinzel',serif; font-size:0.9rem; color:var(--asp); letter-spacing:0.1em; margin:0; }
+  .diff-filename { font-family:'JetBrains Mono',monospace; font-size:0.72rem; color:var(--text-dim); margin-top:-8px; }
+  .diff-panels { display:grid; grid-template-columns:1fr 1fr; gap:12px; overflow-y:auto; flex:1; min-height:0; }
+  .diff-panel { background:var(--code-bg); border:1px solid var(--border); border-radius:4px; overflow:auto; font-family:'JetBrains Mono',monospace; font-size:0.71rem; padding:10px; }
+  .diff-panel h4 { font-family:'Cinzel',serif; font-size:0.63rem; color:var(--text-dim); margin:0 0 8px 0; letter-spacing:0.12em; text-transform:uppercase; position:sticky; top:0; background:var(--code-bg); padding-bottom:4px; }
+  .diff-line { white-space:pre; padding:1px 4px; margin:0; line-height:1.5; display:block; }
+  .diff-del { background:rgba(180,40,40,0.22); color:#e88; }
+  .diff-add { background:rgba(40,160,80,0.18); color:#7e7; }
+  .diff-eq  { color:var(--text-dim); }
+  .diff-actions { display:flex; gap:10px; justify-content:flex-end; padding-top:4px; border-top:1px solid var(--border); }
+  .diff-confirm-btn { background:var(--asp); color:#000; border:none; border-radius:3px; padding:7px 20px; cursor:pointer; font-size:0.8rem; font-weight:700; }
+  .diff-confirm-btn:hover { filter:brightness(1.2); }
+  .diff-cancel-btn { background:none; border:1px solid var(--border); color:var(--text-dim); border-radius:3px; padding:7px 20px; cursor:pointer; font-size:0.8rem; }
+
+  /* ── Memory search ── */
+  #memory-search { width:100%; padding:5px 8px; background:var(--code-bg); border:1px solid var(--border); color:var(--text); font-size:0.72rem; border-radius:2px; box-sizing:border-box; margin-bottom:8px; }
+  #memory-search::placeholder { color:var(--text-dim); opacity:0.7; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js"></script>
 </head>
 <body>
+<div id="warmup-bar">⧗ Loading model — <span id="warmup-detail">warming up, this may take a moment</span></div>
 <header>
   <div class="title">∴ LAYLA</div>
   <div style="display:flex;align-items:center;gap:4px">
@@ -917,6 +965,14 @@
         </div>
       </details>
     </div>
+
+    <!-- Session history -->
+    <details class="history-section" id="session-history-panel">
+      <summary>History <span id="session-count" style="opacity:0.5;font-size:0.6rem"></span></summary>
+      <div id="session-history-list" style="margin-top:4px">
+        <span style="color:var(--text-dim);font-size:0.7rem">No saved sessions</span>
+      </div>
+    </details>
   </div>
 
   <!-- Chat area -->
@@ -958,6 +1014,12 @@
          ondragleave="this.style.borderColor=''"
          ondrop="handleFileDrop(event)">
       <div id="file-context-chips" style="display:none;flex-wrap:wrap;gap:6px;padding:6px 12px 0;font-size:0.73rem"></div>
+      <div id="url-detect-chip">
+        <span class="url-chip-label">URL detected —</span>
+        <span class="url-chip-domain" id="url-chip-domain"></span>
+        <button class="url-chip-btn" onclick="acceptUrlFetch()">Fetch content</button>
+        <button class="url-chip-dismiss" onclick="dismissUrlChip()" title="Ignore">✕</button>
+      </div>
       <div class="input-row">
         <div class="mention-wrap">
           <div id="mention-dropdown"></div>
@@ -985,6 +1047,11 @@
         <input type="text" id="study-input" placeholder="New topic...">
         <button onclick="addStudyPlan()">+</button>
       </div>
+    </div>
+    <div>
+      <div class="panel-title">Memory Search</div>
+      <input id="memory-search" placeholder="Search memories…" oninput="onMemorySearch(this.value)" autocomplete="off">
+      <div id="memory-search-results" style="font-size:0.72rem;max-height:220px;overflow-y:auto"></div>
     </div>
     <div id="research-mission-panel">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:6px">
@@ -1118,6 +1185,8 @@ function addMsg(role, text, aspectName, deliberated, steps, uxStates, memoryInfl
           });
         };
         wrap.appendChild(copyBtn);
+        // Apply-to-file button (if filename detectable)
+        if (code) _addApplyBtnToCodeBlock(wrap, code);
       });
       bubble.appendChild(md);
     } else {
@@ -1289,6 +1358,7 @@ function _pickMention(aspectId) {
 function onInputChange(e) {
   toggleSendButton();
   const val = e.target.value;
+  _checkUrlInInput(val);
   const query = _getMentionQuery(val);
   if (query !== null) {
     _showMentionDropdown(query);
@@ -1840,35 +1910,43 @@ async function refreshStudyPlans() {
     const res = await fetch('/study_plans');
     const data = await res.json();
     const list = document.getElementById('study-list');
-    const plans = (data.plans || []).filter(p => p.status === 'active');
+    const plans = data.plans || [];
     if (!plans.length) { list.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">No study plans</span>'; return; }
     list.innerHTML = '';
     plans.forEach(p => {
-      const item = document.createElement('div');
-      item.className = 'panel-item';
-      item.style.display = 'flex';
-      item.style.flexDirection = 'column';
-      item.style.gap = '2px';
-      const line = document.createElement('div');
-      line.style.display = 'flex';
-      line.style.justifyContent = 'space-between';
-      line.style.alignItems = 'center';
-      line.style.gap = '6px';
-      line.innerHTML = '<span style="font-size:0.72rem">' + (p.topic || '').replace(/</g, '&lt;') + '</span>';
+      const card = document.createElement('div');
+      card.className = 'panel-item';
+      card.style.cssText = 'display:flex;flex-direction:column;gap:3px;padding:7px 8px;margin-bottom:4px;background:var(--code-bg);border:1px solid var(--border);border-radius:3px';
+      const topRow = document.createElement('div');
+      topRow.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;gap:4px';
+      const topic = document.createElement('span');
+      topic.style.cssText = 'font-size:0.73rem;color:var(--text);line-height:1.35;flex:1';
+      topic.textContent = p.topic || '';
+      const delBtn = document.createElement('button');
+      delBtn.style.cssText = 'background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.8rem;opacity:0.6;flex-shrink:0;padding:0 2px;line-height:1';
+      delBtn.textContent = '✕';
+      delBtn.title = 'Remove plan';
+      delBtn.onclick = async () => {
+        if (!p.id) return;
+        await fetch(`/study_plans/${p.id}`, { method: 'DELETE' });
+        refreshStudyPlans();
+      };
+      topRow.appendChild(topic);
+      topRow.appendChild(delBtn);
+      card.appendChild(topRow);
+      const meta = document.createElement('div');
+      meta.style.cssText = 'font-size:0.63rem;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center';
+      const lastStr = p.last_studied ? 'last: ' + p.last_studied.slice(0, 16) : 'not yet studied';
+      const sessStr = p.study_sessions > 0 ? `${p.study_sessions} session${p.study_sessions>1?'s':''}` : '';
+      meta.innerHTML = `<span>${lastStr}</span><span style="color:var(--asp)">${sessStr}</span>`;
+      card.appendChild(meta);
       const studyBtn = document.createElement('button');
       studyBtn.className = 'approve-btn';
-      studyBtn.textContent = 'Study now';
+      studyBtn.style.cssText = 'margin-top:4px;font-size:0.68rem;padding:3px 8px';
+      studyBtn.textContent = '▶ Study now';
       studyBtn.onclick = () => studyNow(p.topic);
-      line.appendChild(studyBtn);
-      item.appendChild(line);
-      if (p.last_studied) {
-        const sub = document.createElement('span');
-        sub.style.fontSize = '0.65rem';
-        sub.style.color = 'var(--text-dim)';
-        sub.textContent = 'Last: ' + p.last_studied.replace(/</g, '&lt;');
-        item.appendChild(sub);
-      }
-      list.appendChild(item);
+      card.appendChild(studyBtn);
+      list.appendChild(card);
     });
   } catch {}
 }
@@ -2025,6 +2103,7 @@ function clearToolStatus() {
 }
 
 function clearChat() {
+  _saveCurrentSession();
   const chat = document.getElementById('chat');
   if (chat) {
     chat.innerHTML = '';
@@ -2195,12 +2274,345 @@ async function send() {
   await _origSend();
 }
 
+// ─── Warmup bar ─────────────────────────────────────────────────────────────
+let _warmupDone = false;
+async function pollWarmup() {
+  if (_warmupDone) return;
+  try {
+    const r = await fetch('/health');
+    const d = await r.json();
+    if (d.model_loaded) {
+      _warmupDone = true;
+      const bar = document.getElementById('warmup-bar');
+      if (bar) { bar.style.transition = 'opacity 0.5s'; bar.style.opacity = '0'; setTimeout(() => bar.remove(), 600); }
+      const badge = document.getElementById('model-status-badge');
+      if (badge && !badge.textContent.startsWith('●')) {
+        badge.textContent = '● model ready'; badge.style.color = '#4dff88';
+      }
+      return;
+    }
+    const detail = document.getElementById('warmup-detail');
+    if (detail) detail.textContent = d.detail || 'warming up…';
+  } catch { /* server starting */ }
+  setTimeout(pollWarmup, 3000);
+}
+function startWarmupPoll() {
+  const bar = document.getElementById('warmup-bar');
+  if (bar) bar.classList.add('visible');
+  pollWarmup();
+}
+// Start polling immediately; checkSetupStatus will also fire — warmup supplements it
+startWarmupPoll();
+
+// ─── Session history ─────────────────────────────────────────────────────────
+const SESSIONS_KEY = 'layla_sessions';
+const MAX_SESSIONS = 10;
+
+function _saveCurrentSession() {
+  const chat = document.getElementById('chat');
+  if (!chat) return;
+  const msgs = chat.querySelectorAll('.msg');
+  if (!msgs.length) return;
+  const first = msgs[0].querySelector('.msg-bubble');
+  const preview = (first ? first.textContent : 'Session').replace(/\s+/g, ' ').trim().slice(0, 60);
+  const entry = {
+    id: Date.now(),
+    created: new Date().toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }),
+    preview,
+    html: chat.innerHTML,
+  };
+  try {
+    let sessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]');
+    sessions.unshift(entry);
+    sessions = sessions.slice(0, MAX_SESSIONS);
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+    _renderSessionList();
+  } catch {}
+}
+
+function _renderSessionList() {
+  const container = document.getElementById('session-history-list');
+  const countEl = document.getElementById('session-count');
+  if (!container) return;
+  let sessions = [];
+  try { sessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]'); } catch {}
+  if (countEl) countEl.textContent = sessions.length ? `(${sessions.length})` : '';
+  if (!sessions.length) {
+    container.innerHTML = '<span style="color:var(--text-dim);font-size:0.7rem">No saved sessions</span>';
+    return;
+  }
+  container.innerHTML = '';
+  sessions.forEach(s => {
+    const item = document.createElement('div');
+    item.className = 'session-item';
+    item.innerHTML = `
+      <span class="sess-preview">${s.preview.replace(/</g,'&lt;')}</span>
+      <span class="sess-date">${s.created}</span>
+      <button class="sess-del" title="Delete session" onclick="event.stopPropagation();_deleteSession(${s.id})">✕</button>`;
+    item.addEventListener('click', () => _restoreSession(s));
+    container.appendChild(item);
+  });
+}
+
+function _restoreSession(s) {
+  const chat = document.getElementById('chat');
+  if (!chat) return;
+  if (!confirm('Restore this session? Current chat will be cleared.')) return;
+  chat.innerHTML = s.html;
+  hideEmpty();
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function _deleteSession(id) {
+  try {
+    let sessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]');
+    sessions = sessions.filter(s => s.id !== id);
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+    _renderSessionList();
+  } catch {}
+}
+
+// ─── URL auto-detect chip ────────────────────────────────────────────────────
+const URL_RE = /https?:\/\/[^\s"'<>]+/i;
+let _detectedUrl = '';
+let _urlFetchDismissed = false;
+
+function _checkUrlInInput(val) {
+  const m = val.match(URL_RE);
+  const chip = document.getElementById('url-detect-chip');
+  if (!chip) return;
+  if (m && !_urlFetchDismissed) {
+    _detectedUrl = m[0];
+    const domain = (new URL(_detectedUrl)).hostname;
+    const domEl = document.getElementById('url-chip-domain');
+    if (domEl) domEl.textContent = domain;
+    chip.classList.add('visible');
+  } else if (!m) {
+    chip.classList.remove('visible');
+    _detectedUrl = '';
+    _urlFetchDismissed = false;
+  }
+}
+
+function dismissUrlChip() {
+  _urlFetchDismissed = true;
+  document.getElementById('url-detect-chip')?.classList.remove('visible');
+}
+
+function acceptUrlFetch() {
+  if (!_detectedUrl) return;
+  const chip = document.getElementById('url-detect-chip');
+  if (chip) { chip.classList.remove('visible'); chip.innerHTML = '<span class="url-chip-label">Fetching <b id="url-chip-domain2"></b>…</span>'; chip.classList.add('visible'); }
+  const url = _detectedUrl;
+  _detectedUrl = '';
+  _fetchUrlAsContext(url);
+}
+
+async function _fetchUrlAsContext(url) {
+  const chip = document.getElementById('url-detect-chip');
+  try {
+    const r = await fetch('/agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'fetch_url_only: ' + url, tool_only: 'fetch_article', url }),
+    });
+    const d = await r.json();
+    const content = d.response || d.result || '';
+    if (content) {
+      _attachedFiles.push({ name: url, content: content.slice(0, 6000) });
+      const chips = document.getElementById('file-context-chips');
+      if (chips) {
+        chips.style.display = 'flex';
+        const chip2 = document.createElement('span');
+        chip2.style.cssText = 'background:var(--asp-mid);border:1px solid var(--asp);border-radius:12px;padding:2px 10px;color:var(--text);display:flex;align-items:center;gap:6px;font-size:0.73rem';
+        const hostname = (() => { try { return new URL(url).hostname; } catch { return url.slice(0,30); } })();
+        chip2.innerHTML = `🌐 ${hostname} <button onclick="removeFileChip(this,'${url}')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:0;font-size:0.85rem">✕</button>`;
+        chips.appendChild(chip2);
+      }
+      showToast('🌐 URL content fetched');
+    }
+  } catch(e) {
+    showToast('Could not fetch URL content');
+  }
+  if (chip) chip.classList.remove('visible');
+}
+
+// ─── Apply to file + diff viewer ─────────────────────────────────────────────
+let _diffPending = { filepath: '', newContent: '' };
+
+function _detectFilename(codeEl) {
+  // Check prev sibling heading for filename hint
+  const pre = codeEl.closest('pre');
+  const wrap = pre?.parentElement;
+  // Look at the text node / p just before the pre
+  let prev = pre?.previousElementSibling;
+  while (prev) {
+    const t = prev.textContent?.trim();
+    if (t && /\.(py|js|ts|jsx|tsx|html|css|json|yaml|yml|toml|ini|cfg|sh|bat|ps1|c|cpp|h|rs|go|java|md|txt|sql|xml)$/i.test(t.split(/\s/).pop())) {
+      return t.split(/\s/).pop();
+    }
+    prev = prev.previousElementSibling;
+  }
+  // Check first comment line in code
+  const lines = (codeEl.textContent || '').split('\n');
+  const first = lines[0]?.trim();
+  if (first) {
+    const commentMatch = first.match(/^(?:#|\/\/|<!--|--)\s*([^\s]+\.(py|js|ts|jsx|tsx|html|css|json|yaml|yml|sh|bat|ps1|c|cpp|h|rs|go|java|md|sql|xml))/i);
+    if (commentMatch) return commentMatch[1];
+  }
+  return null;
+}
+
+function _addApplyBtnToCodeBlock(wrap, codeEl) {
+  const filename = _detectFilename(codeEl);
+  if (!filename) return;
+  const btn = document.createElement('button');
+  btn.className = 'apply-btn';
+  btn.textContent = 'apply';
+  btn.title = 'Apply to ' + filename;
+  btn.onclick = () => openDiffViewer(filename, codeEl.textContent || '');
+  wrap.appendChild(btn);
+}
+
+async function openDiffViewer(filepath, newContent) {
+  _diffPending = { filepath, newContent };
+  document.getElementById('diff-filepath').textContent = filepath;
+  // Fetch current file
+  let currentContent = '';
+  try {
+    const r = await fetch('/file_content?path=' + encodeURIComponent(filepath));
+    const d = await r.json();
+    currentContent = d.content || '';
+  } catch { currentContent = ''; }
+  // Render unified diff
+  _renderDiff(currentContent, newContent);
+  document.getElementById('diff-overlay').classList.add('visible');
+}
+
+function closeDiffViewer() {
+  document.getElementById('diff-overlay').classList.remove('visible');
+  _diffPending = { filepath: '', newContent: '' };
+}
+
+function _renderDiff(oldText, newText) {
+  const oldLines = oldText.split('\n');
+  const newLines = newText.split('\n');
+  const leftEl = document.getElementById('diff-left-content');
+  const rightEl = document.getElementById('diff-right-content');
+  leftEl.innerHTML = '';
+  rightEl.innerHTML = '';
+  // Simple LCS-based diff
+  const lcs = _lcs(oldLines, newLines);
+  let oi = 0, ni = 0, li = 0;
+  const leftFrag = document.createDocumentFragment();
+  const rightFrag = document.createDocumentFragment();
+  while (oi < oldLines.length || ni < newLines.length) {
+    if (li < lcs.length && oi === lcs[li][0] && ni === lcs[li][1]) {
+      const t = oldLines[oi];
+      leftFrag.appendChild(_diffLine(t, 'diff-eq'));
+      rightFrag.appendChild(_diffLine(t, 'diff-eq'));
+      oi++; ni++; li++;
+    } else if (ni < newLines.length && (li >= lcs.length || ni < lcs[li][1])) {
+      rightFrag.appendChild(_diffLine(newLines[ni], 'diff-add'));
+      ni++;
+    } else {
+      leftFrag.appendChild(_diffLine(oldLines[oi], 'diff-del'));
+      oi++;
+    }
+  }
+  leftEl.appendChild(leftFrag);
+  rightEl.appendChild(rightFrag);
+}
+
+function _diffLine(text, cls) {
+  const span = document.createElement('span');
+  span.className = 'diff-line ' + cls;
+  span.textContent = text;
+  return span;
+}
+
+function _lcs(a, b) {
+  // Return array of [ai, bi] index pairs in the LCS (capped for perf)
+  const MAX = 300;
+  const al = Math.min(a.length, MAX), bl = Math.min(b.length, MAX);
+  const dp = Array.from({length: al+1}, () => new Int32Array(bl+1));
+  for (let i = 1; i <= al; i++)
+    for (let j = 1; j <= bl; j++)
+      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1]+1 : Math.max(dp[i-1][j], dp[i][j-1]);
+  const res = [];
+  let i = al, j = bl;
+  while (i > 0 && j > 0) {
+    if (a[i-1] === b[j-1]) { res.push([i-1, j-1]); i--; j--; }
+    else if (dp[i-1][j] > dp[i][j-1]) i--;
+    else j--;
+  }
+  return res.reverse();
+}
+
+async function confirmApplyFile() {
+  if (!_diffPending.filepath) return;
+  const btn = document.getElementById('diff-confirm-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  const input = document.getElementById('msg-input');
+  closeDiffViewer();
+  // Send as a write request through the agent (goes through approval)
+  const payload = {
+    message: `write_file path="${_diffPending.filepath}" content=<provided>`,
+    tool_call: { name: 'write_file', args: { path: _diffPending.filepath, content: _diffPending.newContent } },
+    allow_write: true,
+    workspace_root: (document.getElementById('workspace-path')?.value || ''),
+  };
+  addMsg('you', 'Apply to file: ' + _diffPending.filepath);
+  try {
+    const r = await fetch('/agent', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    const d = await r.json();
+    addMsg('layla', d.response || '✓ File apply sent (check approvals if needed)', d.aspect_name);
+  } catch {
+    addMsg('layla', '⚠ Could not apply file — check server');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Apply (requires approval)'; }
+}
+
+// ─── Memory search ───────────────────────────────────────────────────────────
+let _memSearchTimer = null;
+async function onMemorySearch(query) {
+  clearTimeout(_memSearchTimer);
+  const results = document.getElementById('memory-search-results');
+  if (!query.trim()) { if (results) results.innerHTML = ''; return; }
+  _memSearchTimer = setTimeout(async () => {
+    if (!results) return;
+    results.innerHTML = '<span style="color:var(--text-dim)">searching…</span>';
+    try {
+      const r = await fetch('/learnings?limit=100');
+      const d = await r.json();
+      const q = query.toLowerCase();
+      const matches = (d.items || []).filter(item =>
+        (item.content || '').toLowerCase().includes(q)
+      ).slice(0, 12);
+      if (!matches.length) {
+        results.innerHTML = '<span style="color:var(--text-dim)">No matches</span>';
+        return;
+      }
+      results.innerHTML = '';
+      matches.forEach(item => {
+        const el = document.createElement('div');
+        el.style.cssText = 'padding:5px 0;border-bottom:1px solid var(--border);color:var(--text);line-height:1.4';
+        const content = item.content || '';
+        const hi = content.replace(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi'), '<mark style="background:var(--asp);color:#000;border-radius:2px;padding:0 2px">$1</mark>');
+        el.innerHTML = `<span style="font-size:0.68rem;color:var(--text-dim);margin-right:6px">[${item.type||'?'}]</span>${hi}`;
+        results.appendChild(el);
+      });
+    } catch { results.innerHTML = '<span style="color:var(--text-dim)">Error searching</span>'; }
+  }, 250);
+}
+
 // Init
 loadChatHistory();
 doWakeup();
 refreshApprovals();
 refreshStudyPlans();
 checkSetupStatus();
+_renderSessionList();
 
 // ─── Fill prompt tile into input ───────────────────────────────────────
 function fillPrompt(text) {
@@ -2503,6 +2915,28 @@ document.addEventListener('keydown', (e) => {
       <button class="settings-save" onclick="saveSettings()">Save Settings</button>
       <button class="settings-close" onclick="closeSettings()">Close</button>
       <span class="settings-save-msg" id="settings-save-msg">✓ Saved</span>
+    </div>
+  </div>
+</div>
+
+<!-- Diff viewer overlay -->
+<div id="diff-overlay" onclick="if(event.target===this) closeDiffViewer()">
+  <div class="diff-modal">
+    <h2>Apply to file?</h2>
+    <div class="diff-filename" id="diff-filepath"></div>
+    <div class="diff-panels">
+      <div class="diff-panel" id="diff-left">
+        <h4>Current file</h4>
+        <div id="diff-left-content"></div>
+      </div>
+      <div class="diff-panel" id="diff-right">
+        <h4>Proposed changes</h4>
+        <div id="diff-right-content"></div>
+      </div>
+    </div>
+    <div class="diff-actions">
+      <button class="diff-cancel-btn" onclick="closeDiffViewer()">Cancel</button>
+      <button class="diff-confirm-btn" id="diff-confirm-btn" onclick="confirmApplyFile()">Apply (requires approval)</button>
     </div>
   </div>
 </div>
