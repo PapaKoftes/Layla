@@ -51,7 +51,6 @@ def test_file_understanding_extensions():
 def test_file_understanding_intent_by_ext():
     """Intent returned for binary/opaque formats without content."""
     from layla.file_understanding import analyze_file
-    from pathlib import Path
 
     out = analyze_file(file_path="dummy.stl", content=None)
     assert out["format"] == "STL"

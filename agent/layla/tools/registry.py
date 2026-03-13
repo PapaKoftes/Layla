@@ -244,7 +244,8 @@ def apply_patch(original_path: str, patch_text: str) -> dict:
         return {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
         return {"ok": False, "error": "File not found"}
-    import shutil, datetime
+    import shutil
+    import datetime
     backup = target.with_suffix(
         f".bak_{datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')}{target.suffix}"
     )
@@ -289,7 +290,7 @@ def git_log(repo: str, n: int = 10) -> dict:
     if not inside_sandbox(repo_path):
         return {"ok": False, "error": "Outside sandbox"}
     result = subprocess.run(
-        ["git", "log", f"--oneline", f"-{n}"],
+        ["git", "log", "--oneline", f"-{n}"],
         cwd=str(repo_path),
         capture_output=True,
         text=True,
@@ -494,7 +495,8 @@ def diff_files(path_a: str, path_b: str) -> dict:
 
 def env_info() -> dict:
     """Return system info: OS, Python version, CPU, RAM, GPU, installed key packages."""
-    import platform, sys as _sys
+    import platform
+    import sys as _sys
     info: dict = {
         "os": platform.system(),
         "os_version": platform.version(),
@@ -510,7 +512,7 @@ def env_info() -> dict:
     except Exception:
         pass
     try:
-        r = subprocess.run(
+        r = subprocess.run(  # noqa: F841
             ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
             capture_output=True, text=True, timeout=8, encoding="utf-8", errors="replace",
         )
@@ -781,7 +783,9 @@ def math_eval(expression: str) -> dict:
     min, max, sum, int, float, sqrt, log, sin, cos, tan, pi, e, and more.
     No arbitrary code execution — uses a strict AST whitelist.
     """
-    import ast as _ast, math as _math, operator as _op
+    import ast as _ast
+    import math as _math
+    import operator as _op
 
     _SAFE_NODES = (
         _ast.Expression, _ast.BinOp, _ast.UnaryOp, _ast.Call, _ast.Constant,
@@ -904,7 +908,8 @@ def http_request(url: str, method: str = "GET", body: str = "", headers: dict | 
     Returns status, response text (truncated to 8000 chars).
     Use for webhooks, REST APIs, testing endpoints.
     """
-    import urllib.request, urllib.error
+    import urllib.request
+    import urllib.error
     method = method.upper()
     hdrs = {"User-Agent": "Layla/2.0 research agent", "Accept": "application/json,text/html,*/*"}
     if headers:
@@ -1019,7 +1024,7 @@ def project_discovery_tool(workspace_root: str = "") -> dict:
         from services.project_discovery import discover_project
         root = workspace_root or str(Path.home())
         return discover_project(root)
-    except Exception as e:
+    except Exception:
         # Fallback: lightweight manual discovery
         try:
             root_path = Path(workspace_root or ".").expanduser().resolve()
@@ -1262,7 +1267,7 @@ def plot_chart(
         if chart_type == "bar":
             labels = data.get("labels", list(range(len(data.get("values", [])))))
             values = data.get("values", [])
-            ax.bar(range(len(labels)), values, tick_label=[str(l) for l in labels])
+            ax.bar(range(len(labels)), values, tick_label=[str(lbl) for lbl in labels])
             plt.xticks(rotation=45, ha="right")
 
         elif chart_type == "line":
@@ -1313,7 +1318,8 @@ def plot_chart(
         if output_path:
             save_path = Path(output_path)
         else:
-            import tempfile, time
+            import tempfile
+            import time
             tmp_dir = Path(tempfile.gettempdir())
             save_path = tmp_dir / f"layla_chart_{int(time.time())}.png"
 
@@ -1876,7 +1882,7 @@ def crawl_site(
 
     try:
         import trafilatura
-        from trafilatura.sitemaps import sitemap_search
+        from trafilatura.sitemaps import sitemap_search  # noqa: F401
     except ImportError:
         return {"ok": False, "error": "trafilatura not installed: pip install trafilatura"}
 
@@ -1902,7 +1908,7 @@ def crawl_site(
             if not text or len(text.strip()) < 50:
                 continue
             title = ""
-            links: list[str] = []
+            links: list[str] = []  # noqa: F841
             try:
                 meta = trafilatura.extract_metadata(downloaded)
                 if meta:
@@ -2463,7 +2469,8 @@ def translate_text(text: str, target_lang: str = "en", source_lang: str = "auto"
         pass
     # Fallback: LibreTranslate public API
     try:
-        import urllib.request, json as _json
+        import urllib.request
+        import json as _json
         payload = _json.dumps({"q": text[:2000], "source": source_lang if source_lang != "auto" else "en", "target": target_lang, "format": "text"}).encode()
         req = urllib.request.Request(
             "https://libretranslate.com/translate", data=payload,
@@ -2675,7 +2682,7 @@ def extract_links(url: str, same_domain: bool = False, max_links: int = 100) -> 
             continue
         links.append({"url": link, "internal": is_internal, "domain": urlparse(link).netloc})
 
-    return {"ok": True, "source_url": url, "total_links": len(links), "internal": sum(1 for l in links if l["internal"]), "external": sum(1 for l in links if not l["internal"]), "links": links}
+    return {"ok": True, "source_url": url, "total_links": len(links), "internal": sum(1 for lnk in links if lnk["internal"]), "external": sum(1 for lnk in links if not lnk["internal"]), "links": links}
 
 
 def check_url(url: str, timeout: int = 10) -> dict:
@@ -2683,7 +2690,9 @@ def check_url(url: str, timeout: int = 10) -> dict:
     Check if a URL is accessible. Returns HTTP status, response time, content type.
     Uses HEAD request for speed. Useful for monitoring, link validation.
     """
-    import urllib.request, urllib.error, time as _time
+    import urllib.request
+    import urllib.error
+    import time as _time
     start = _time.time()
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Layla/2.0 health-check"}, method="HEAD")
@@ -2834,7 +2843,7 @@ def cluster_data(data: list, n_clusters: int = 3, method: str = "kmeans", featur
         return {"ok": False, "error": f"Unknown method: {method}. Use kmeans/dbscan/hierarchical"}
 
     unique_labels = sorted(set(labels))
-    cluster_stats = {int(lbl): {"size": labels.count(lbl), "mean": X[[i for i, l in enumerate(labels) if l == lbl]].mean(axis=0).tolist()} for lbl in unique_labels}
+    cluster_stats = {int(lbl): {"size": labels.count(lbl), "mean": X[[i for i, ln in enumerate(labels) if ln == lbl]].mean(axis=0).tolist()} for lbl in unique_labels}
     return {"ok": True, "method": method, "n_clusters_found": len(unique_labels), "labels": labels, "centroids": centroids, "cluster_stats": cluster_stats, "features_used": col_names, "n_points": len(X), **extra}
 
 
@@ -3080,7 +3089,8 @@ def schedule_task(
         return {"ok": False, "error": "apscheduler not installed: pip install apscheduler"}
     if tool_name not in TOOLS:
         return {"ok": False, "error": f"Unknown tool: {tool_name}. Use list_tools() to see available tools."}
-    import uuid as _uuid, datetime as _dt
+    import uuid as _uuid
+    import datetime as _dt
     jid = job_id or f"task_{tool_name}_{_uuid.uuid4().hex[:8]}"
     kw = args or {}
 
@@ -3147,7 +3157,8 @@ def log_event(message: str, level: str = "info", context: dict | None = None) ->
     level: debug | info | warning | error | critical.
     context: optional dict of extra fields.
     """
-    import json as _json, datetime as _dt
+    import json as _json
+    import datetime as _dt
     entry = {"ts": str(_dt.datetime.utcnow())[:19], "level": level.upper(), "message": message[:500], "context": context or {}}
     try:
         log_path = Path(__file__).resolve().parent.parent.parent / ".governance" / "layla-events.log"
@@ -3250,7 +3261,8 @@ def tts_speak(text: str, voice: str = "af_heart", output_path: str = "") -> dict
     """
     if not text.strip():
         return {"ok": False, "error": "Empty text"}
-    import tempfile as _tmp, time as _time
+    import tempfile as _tmp
+    import time as _time
     out = output_path or str(Path(_tmp.gettempdir()) / f"layla_tts_{int(_time.time())}.wav")
     try:
         agent_dir = Path(__file__).resolve().parent.parent.parent
@@ -3351,8 +3363,8 @@ def code_metrics(path: str) -> dict:
         except Exception as e:
             return {"error": str(e)}
         lines = source.splitlines()
-        blank = sum(1 for l in lines if not l.strip())
-        comment = sum(1 for l in lines if l.strip().startswith("#"))
+        blank = sum(1 for ln in lines if not ln.strip())
+        comment = sum(1 for ln in lines if ln.strip().startswith("#"))
         try:
             tree = _ast.parse(source)
         except SyntaxError as e:
@@ -3519,7 +3531,7 @@ def hash_file(path: str, algorithm: str = "sha256") -> dict:
     import hashlib as _hl
     algo = algorithm.lower().replace("-", "")
     if algo not in ("md5", "sha1", "sha256", "sha512"):
-        return {"ok": False, "error": f"Use md5/sha1/sha256/sha512"}
+        return {"ok": False, "error": "Use md5/sha1/sha256/sha512"}
     try:
         h = _hl.new(algo)
         with open(str(target), "rb") as f:
@@ -3553,7 +3565,8 @@ def base64_tool(data: str, mode: str = "encode", encoding: str = "utf-8") -> dic
 
 def check_port(host: str, port: int, timeout: float = 3.0) -> dict:
     """Check if a TCP port is open. Returns: open/closed, response time ms."""
-    import socket as _sock, time as _time
+    import socket as _sock
+    import time as _time
     start = _time.time()
     try:
         s = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
@@ -3651,7 +3664,7 @@ def string_transform(text: str, operations: list | str | None = None) -> dict:
             elif op == "sort_lines":
                 result = "\n".join(sorted(result.splitlines()))
             elif op == "remove_empty_lines":
-                result = "\n".join(l for l in result.splitlines() if l.strip())
+                result = "\n".join(ln for ln in result.splitlines() if ln.strip())
             elif op == "first_sentence":
                 m = _re.search(r'^.+?[.!?]', result)
                 result = m.group(0) if m else result
@@ -3667,7 +3680,7 @@ def string_transform(text: str, operations: list | str | None = None) -> dict:
                 applied.append(f"UNKNOWN:{op}")
                 continue
             applied.append(op)
-        except Exception as e:
+        except Exception:
             applied.append(f"ERROR:{op}")
     return {"ok": True, "result": result, "original_length": len(text), "result_length": len(result), "operations_applied": applied}
 
@@ -3775,7 +3788,8 @@ def plot_scatter(x: list, y: list, labels: list | None = None, title: str = "", 
         ax.set_ylabel(ylabel or "y")
         ax.grid(True, alpha=0.3)
         plt.tight_layout()
-        import tempfile as _tmp, time as _time
+        import tempfile as _tmp
+        import time as _time
         out = output_path or str(Path(_tmp.gettempdir()) / f"layla_scatter_{int(_time.time())}.png")
         fig.savefig(out, dpi=120, bbox_inches="tight")
         plt.close(fig)
@@ -3814,7 +3828,8 @@ def plot_histogram(data: list, bins: int = 20, title: str = "", xlabel: str = ""
         ax.set_ylabel("density" if show_kde else "frequency")
         ax.grid(True, alpha=0.3)
         plt.tight_layout()
-        import tempfile as _tmp, time as _time
+        import tempfile as _tmp
+        import time as _time
         out = output_path or str(Path(_tmp.gettempdir()) / f"layla_hist_{int(_time.time())}.png")
         fig.savefig(out, dpi=120, bbox_inches="tight")
         plt.close(fig)
@@ -3954,7 +3969,9 @@ def geo_query(location: str, details: bool = True) -> dict:
         pass
     # Fallback: public REST API
     try:
-        import urllib.request, json as _json, urllib.parse
+        import urllib.request
+        import json as _json
+        import urllib.parse
         q = urllib.parse.quote(location)
         req = urllib.request.Request(f"https://nominatim.openstreetmap.org/search?q={q}&format=json&limit=1&addressdetails=1", headers={"User-Agent": "layla-agent/2.0"})
         with urllib.request.urlopen(req, timeout=10) as resp:
@@ -4015,7 +4032,7 @@ def extract_frames(path: str, fps: float = 1.0, max_frames: int = 30, output_dir
     except ImportError:
         pass
     try:
-        r = subprocess.run(["ffmpeg", "-i", str(target), "-vf", f"fps={fps}", "-frames:v", str(max_frames), out_pattern, "-y"], capture_output=True, timeout=120, text=True, encoding="utf-8", errors="replace")
+        subprocess.run(["ffmpeg", "-i", str(target), "-vf", f"fps={fps}", "-frames:v", str(max_frames), out_pattern, "-y"], capture_output=True, timeout=120, text=True, encoding="utf-8", errors="replace")
         frames = sorted(out_dir.glob("frame_*.png"))
         if frames:
             return {"ok": True, "path": str(target), "fps": fps, "frames_extracted": len(frames), "output_dir": str(out_dir), "frame_paths": [str(f) for f in frames]}
@@ -4087,7 +4104,8 @@ def screenshot_desktop(region: list | None = None, output_path: str = "") -> dic
     Capture a screenshot of the desktop or a region [x, y, width, height].
     Uses Pillow ImageGrab or pyautogui. Returns path to saved PNG.
     """
-    import tempfile as _tmp, time as _time
+    import tempfile as _tmp
+    import time as _time
     out = output_path or str(Path(_tmp.gettempdir()) / f"layla_screen_{int(_time.time())}.png")
     try:
         from PIL import ImageGrab

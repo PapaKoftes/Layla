@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import queue
-import shutil
 import sys
 import threading
 import time
@@ -16,7 +15,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
 
-from agent_loop import autonomous_run, stream_reason, strip_junk_from_reply, truncate_at_next_user_turn, _is_junk_reply
+from agent_loop import autonomous_run, _is_junk_reply
 
 logger = logging.getLogger("layla")
 
@@ -282,9 +281,9 @@ def _read_wakeup_log() -> dict:
 # Load history at startup
 _load_history()
 
-from shared_state import set_refs
-from services import study_service
-from routers import study, approvals, agent as agent_router, research as research_router, memory as memory_router
+from shared_state import set_refs  # noqa: E402
+from services import study_service  # noqa: E402
+from routers import study, approvals, agent as agent_router, research as research_router, memory as memory_router  # noqa: E402
 
 set_refs(
     _history,

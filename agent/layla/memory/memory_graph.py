@@ -88,7 +88,6 @@ def add_node(label: str, metadata: dict = None) -> int:
     # Auto-link: find similar existing nodes via vector search
     try:
         from layla.memory.vector_store import embed, search_similar
-        import numpy as np
         q_vec = embed(label)
         similar = search_similar(q_vec, k=3)
         for s in similar:

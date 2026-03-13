@@ -5,7 +5,6 @@ Safe to re-run at any time — asks before overwriting existing settings.
 """
 from __future__ import annotations
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -296,13 +295,13 @@ def _offer_model_download(ram_gb: float) -> str:
         m = rows[idx]
         dest = MODELS_DIR / m["filename"]
         print(f"  Downloading {m['name']} ({m['size_gb']} GB)...")
-        print(f"  This may take several minutes depending on your connection.")
+        print("  This may take several minutes depending on your connection.")
         print()
         if _download_with_progress(m["url"], dest):
             print(f"  ✓  Model saved: {dest}")
             return m["filename"]
         else:
-            print(f"  Download failed. Manual download URL:")
+            print("  Download failed. Manual download URL:")
             print(f"  {m['url']}")
             print(f"  Save as: {dest}")
             return ""
@@ -321,25 +320,25 @@ def run() -> int:
     ram_gb = detect_ram_gb()
     gpu_vendor, vram_gb = detect_gpu()
 
-    print(f"  Hardware detected:")
+    print("  Hardware detected:")
     print(f"    RAM   : {ram_gb:.0f} GB")
     if gpu_vendor != "none":
         print(f"    GPU   : {gpu_vendor.upper()}, {vram_gb:.0f} GB VRAM")
     else:
-        print(f"    GPU   : none detected (CPU inference)")
+        print("    GPU   : none detected (CPU inference)")
     print()
 
     rec = recommend_model(ram_gb, vram_gb, gpu_vendor)
     print(f"  Recommended model tier : {rec['model_tier']}")
     print(f"  Suggested model        : {rec['suggestion']}")
-    print(f"  (See MODELS.md for download links and more options)")
+    print("  (See MODELS.md for download links and more options)")
     print()
 
     # Find models already in models/
     models = find_models()
     model_filename = ""
     if models:
-        print(f"  Models found in models/ :")
+        print("  Models found in models/ :")
         for i, m in enumerate(models):
             print(f"    [{i+1}] {m.name}")
         print()

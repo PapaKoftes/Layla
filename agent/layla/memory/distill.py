@@ -5,7 +5,6 @@ Run periodically after outcome memory write.
 """
 import logging
 import re
-from pathlib import Path
 
 logger = logging.getLogger("layla")
 
