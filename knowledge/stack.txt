@@ -23,7 +23,7 @@ Aspects (personalities):
 - Cassandra (⌖): unfiltered oracle, reactive, fast
 - Lilith (⊛): sovereign core, ethics, absolute honesty
 
-Tools available to Layla (74 total):
+Tools available to Layla (109 total):
 - read_file, write_file, list_dir, file_info (sandboxed to sandbox_root)
 - shell, run_python (blocklisted/sandboxed, require approval)
 - git_status, git_diff, git_log, git_branch, git_add, git_commit
@@ -71,6 +71,22 @@ Interaction surfaces:
 - TUI: agent/tui.py (Textual)
 - CLI: layla.py at repo root
 - OpenAI-compatible API at localhost:8000/v1
+
+Tier 3 tools added (74→109):
+- schedule_task, list_scheduled_tasks, cancel_task (APScheduler background jobs)
+- log_event, trace_last_run, tool_metrics (observability + audit log analytics)
+- stt_file, tts_speak (speech I/O exposed as tools)
+- crypto_prices, economic_indicators (finance: yfinance + FRED)
+- code_metrics, code_lint, git_blame (code quality + git intelligence)
+- yaml_read, xml_parse, hash_file, base64_tool (file format utilities)
+- check_port, timestamp_convert, string_transform (system utilities)
+- extract_entities, sentiment_timeline (NLP extended)
+- plot_scatter, plot_histogram (visualization extended: regression, KDE)
+- memory_stats, tool_chain_plan (self-awareness + heuristic planning)
+- geo_query, map_url (geographic: OpenStreetMap geocoding, static maps)
+- extract_frames, detect_scenes (video intelligence: ffmpeg)
+- detect_objects (YOLO object detection: ultralytics)
+- screenshot_desktop, click_ui, type_text (desktop automation: pyautogui)
 
 Safety:
 - Dangerous tools require approval (agent/.governance/pending.json)
