@@ -23,7 +23,7 @@ Aspects (personalities):
 - Cassandra (⌖): unfiltered oracle, reactive, fast
 - Lilith (⊛): sovereign core, ethics, absolute honesty
 
-Tools available to Layla (40 total):
+Tools available to Layla (49 total):
 - read_file, write_file, list_dir, file_info (sandboxed to sandbox_root)
 - shell, run_python (blocklisted/sandboxed, require approval)
 - git_status, git_diff, git_log, git_branch, git_add, git_commit
@@ -34,8 +34,16 @@ Tools available to Layla (40 total):
 - wiki_search (Wikipedia summaries + related), arxiv_search (paper search + abstracts)
 - read_pdf (PyMuPDF/pypdf fallback), read_csv (pandas + stats), http_request (REST APIs/webhooks)
 - math_eval (safe AST whitelist math), count_tokens (tiktoken or rough estimate)
-- env_info, save_note, search_memories
+- env_info, save_note, search_memories, count_tokens, http_request
 - get_project_context, update_project_context, understand_file, project_discovery
+- sympy_solve (symbolic math: solve/diff/integrate/simplify/factor/latex)
+- nlp_analyze (entity extraction, keywords, sentiment via KeyBERT/spaCy)
+- ocr_image (EasyOCR or pytesseract fallback)
+- plot_chart (matplotlib: bar/line/scatter/pie/histogram/heatmap → PNG)
+- read_docx (Word), read_excel (Excel/openpyxl)
+- sql_query (SQLite + DuckDB)
+- stock_data (yfinance: stocks, ETFs, crypto OHLCV + info)
+- security_scan (bandit static analysis, secrets scan, pip-audit deps)
 
 Voice (optional):
 - faster-whisper (STT): POST /voice/transcribe

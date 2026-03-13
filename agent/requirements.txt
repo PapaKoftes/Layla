@@ -49,10 +49,41 @@ orjson>=3.9                     # Fast JSON serialization (drop-in for json modu
 diskcache>=5.6                  # Disk-backed cache (embedding cache persistence)
 
 # ─── NLP & Text ───────────────────────────────────────────────────────────────
-keybert>=0.8                    # Keyword extraction from text (used by research router)
+keybert>=0.8                    # Keyword extraction from text (used by nlp_analyze tool)
+
+# ─── Symbolic Math ────────────────────────────────────────────────────────────
+sympy>=1.12                     # Symbolic math: solve, diff, integrate, simplify, LaTeX
+
+# ─── Image & OCR ──────────────────────────────────────────────────────────────
+Pillow>=10.0                    # Image processing (dependency for OCR and chart tools)
+easyocr>=1.7                    # OCR: text from images, no Tesseract binary required
+# pytesseract>=0.3              # OCR fallback (requires Tesseract binary installed separately)
+
+# ─── Visualization ────────────────────────────────────────────────────────────
+matplotlib>=3.8                 # Chart generation: bar, line, scatter, pie, histogram, heatmap
+# plotly>=5.18                  # Interactive charts (optional, heavier)
+# seaborn>=0.13                 # Statistical visualization (optional)
+
+# ─── Document Formats ─────────────────────────────────────────────────────────
+python-docx>=1.1                # Word document reading (.docx)
+openpyxl>=3.1                   # Excel reading (.xlsx) — also used as pandas engine
+
+# ─── Database Intelligence ────────────────────────────────────────────────────
+duckdb>=0.10                    # In-memory/file OLAP SQL engine (fast CSV/Parquet queries)
+# sqlalchemy>=2.0               # ORM + SQL toolkit (optional; adds significant overhead)
+
+# ─── Financial Intelligence ───────────────────────────────────────────────────
+yfinance>=0.2                   # Yahoo Finance: stocks, ETFs, crypto OHLCV data
+# ccxt>=4.0                     # Crypto exchange API (optional, 100+ exchanges)
+
+# ─── Security Analysis ────────────────────────────────────────────────────────
+bandit>=1.7                     # Python static security analysis (CWE detection)
+# pip-audit>=2.7                # Dependency vulnerability scanning (optional)
+# safety>=3.0                   # CVE checking for pip packages (optional)
 
 # ─── Python Source Analysis ───────────────────────────────────────────────────
 # python_ast tool uses stdlib ast module only — no extra deps needed
+# tree-sitter>=0.21             # Language-agnostic AST (optional, heavy install)
 
 # ─── Optional: grammar-constrained JSON output ────────────────────────────────
 # instructor>=1.0,<2            # Significantly improves tool-call reliability
@@ -60,9 +91,16 @@ keybert>=0.8                    # Keyword extraction from text (used by research
 # ─── Optional: token counting ─────────────────────────────────────────────────
 # tiktoken>=0.7                 # OpenAI tokenizer (only if needed; adds 100 MB)
 
-# ─── Optional: document formats ───────────────────────────────────────────────
-# python-docx>=1.0              # Word document reading (.docx)
-# openpyxl>=3.1                 # Excel reading (.xlsx)
+# ─── Optional: spaCy NLP (improves nlp_analyze entity extraction) ─────────────
+# spacy>=3.7                    # NLP pipeline: NER, POS, dependency parsing
+# After installing: python -m spacy download en_core_web_sm
+
+# ─── Optional: advanced vector search ────────────────────────────────────────
+# faiss-cpu>=1.8                # Fast similarity search (complement to ChromaDB)
+
+# ─── Optional: ML / Data Science ─────────────────────────────────────────────
+# scikit-learn>=1.4             # Clustering, regression, classification, metrics
+# xgboost>=2.0                  # Gradient boosting
 
 # ─── Dev/CI (not required at runtime) ─────────────────────────────────────────
 # ruff>=0.4
