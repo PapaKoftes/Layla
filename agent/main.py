@@ -96,6 +96,12 @@ def _scheduled_study_job() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    _start_time = time.time()
+    try:
+        from services.observability import log_agent_started
+        log_agent_started()
+    except Exception:
+        pass
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -120,6 +126,12 @@ async def lifespan(app: FastAPI):
             logger.info("DB migration complete")
         except Exception as e:
             logger.warning("DB migration failed: %s", e)
+        try:
+            from layla.tools.registry import validate_tools_registry
+            validate_tools_registry()
+            logger.info("Tools registry validated")
+        except Exception as e:
+            logger.warning("Tools registry validation failed: %s", e)
         # Pre-warm LLM in background thread â€” first request will be instant
         try:
             from services.llm_gateway import prewarm_llm
@@ -170,6 +182,12 @@ async def lifespan(app: FastAPI):
         logger.warning("scheduler not started: %s", e)
     yield
     # Shutdown
+    try:
+        from services.observability import log_agent_shutdown
+        duration_ms = (time.time() - _start_time) * 1000
+        log_agent_shutdown(duration_ms=duration_ms)
+    except Exception:
+        pass
     if hasattr(app.state, "scheduler"):
         app.state.scheduler.shutdown(wait=False)
 
@@ -178,7 +196,7 @@ app = FastAPI(
     lifespan=lifespan,
     title="Layla",
     description="Local-first AI companion and engineering agent",
-    version="0.1.0",
+    version="1.0.0",
 )
 app.add_middleware(GZipMiddleware, minimum_size=500)  # compress responses > 500 bytes
 
@@ -409,13 +427,44 @@ def _health_checks() -> tuple[bool, str]:
 def health():
     ok, detail = _health_checks()
     try:
-        from services.llm_gateway import _llm
+        from services.llm_gateway import _llm, model_loaded_status
         model_loaded = _llm is not None
+        model_status = model_loaded_status()
     except Exception:
         model_loaded = False
+        model_status = {}
+    try:
+        from layla.tools.registry import TOOLS
+        tools_registered = len(TOOLS)
+    except Exception:
+        tools_registered = 0
+    try:
+        from layla.memory.db import get_recent_learnings, get_active_study_plans
+        learnings = len(get_recent_learnings(n=10000))
+        study_plans = len(get_active_study_plans())
+    except Exception:
+        learnings = 0
+        study_plans = 0
+    try:
+        import runtime_safety
+        cfg = runtime_safety.load_config()
+        vector_store = "enabled" if cfg.get("use_chroma") else "disabled"
+    except Exception:
+        vector_store = "unknown"
+    payload = {
+        "status": "ok" if ok else "degraded",
+        "model_loaded": model_loaded,
+        "tools_registered": tools_registered,
+        "learnings": learnings,
+        "study_plans": study_plans,
+        "vector_store": vector_store,
+    }
+    if model_status:
+        payload["model_error"] = model_status.get("error")
     if not ok:
-        return JSONResponse({"ok": False, "detail": detail, "model_loaded": model_loaded}, status_code=503)
-    return {"ok": True, "detail": detail, "model_loaded": model_loaded}
+        payload["detail"] = detail
+        return JSONResponse(payload, status_code=503)
+    return payload
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

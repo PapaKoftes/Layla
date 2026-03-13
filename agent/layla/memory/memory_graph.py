@@ -23,6 +23,8 @@ def _get_graph():
                     pass  # keep as is for iteration
         except Exception:
             pass
+    if not GRAPH_PATH.exists() and G.number_of_nodes() == 0:
+        _save_graph(G)
     if LEGACY_PATH.exists() and G.number_of_nodes() == 0:
         try:
             data = json.loads(LEGACY_PATH.read_text(encoding="utf-8"))

@@ -45,6 +45,8 @@
   "semantic_k": 5,
   "aspect_memories_n": 10,
 
+  "planning_enabled": true,
+  "max_plan_depth": 3,
   "enable_cot": true,
   "enable_self_reflection": false,
 
