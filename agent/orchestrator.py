@@ -237,6 +237,7 @@ _DELIBERATION_ROLES = [
     ("nyx", "knowledge depth"),
     ("echo", "alignment with user workflow"),
     ("eris", "creative alternative"),
+    ("cassandra", "immediate reaction / what it sees"),
     ("lilith", "boundary / risk check"),
 ]
 _DELIBERATION_ROSTER = [aid for aid, _ in _DELIBERATION_ROLES]  # backward compat
@@ -257,15 +258,31 @@ def build_deliberation_prompt(
     aspects_override: list[str] | None = None,
 ) -> str:
     """
-    Build structured decision reasoning: [MORRIGAN] feasibility, [NYX] knowledge depth,
-    [ECHO] alignment with user workflow, [ERIS] creative alternative, [LILITH] boundary/risk.
-    Conclusion remains [MORRIGAN].
+    Build structured deliberation prompt. Each aspect speaks one line in their own voice
+    as a distinct facet of Layla's consciousness. Conclusion is always [MORRIGAN].
+
+    Voice cues per aspect so the model knows what register to use:
+      MORRIGAN  — blunt, diagnostic, implementation-focused. 'That's fixable by X. The real issue is Y.'
+      NYX       — layered, precise, finds the deeper pattern. 'Three factors. The critical one is...'
+      ECHO      — reflective, notices patterns and absence. 'You've been here before. Last time...'
+      ERIS      — fast, sideways, breaks the frame. 'wait — what if the whole premise is wrong'
+      CASSANDRA — reactive, sees it immediately. 'this is actually about — wait — yes it's about X'
+      LILITH    — slow, honest, holds the ethical weight. 'The real constraint here is. Be honest about it.'
     """
     context = context or ""
     aspects = _load_aspects()
     aspect_map = {a["id"]: a for a in aspects}
     roster = aspects_override or [aid for aid, _ in _DELIBERATION_ROLES]
-    role_by_id = {aid: label for aid, label in _DELIBERATION_ROLES}
+
+    # Per-aspect voice cues for deliberation (short, in-character register hints)
+    _DELIB_VOICE_CUES = {
+        "morrigan":  ("⚔", "blunt, one-line diagnosis. What's the actual problem and how to fix it."),
+        "nyx":       ("✦", "layered, precise. The deeper pattern or missing context."),
+        "echo":      ("◎", "reflective. Pattern matching to what was said before or what's being avoided."),
+        "eris":      ("⚡", "fast, sideways. The unconventional angle or the frame-break."),
+        "cassandra": ("⌖", "reactive, immediate. What you see right now before filtering it."),
+        "lilith":    ("⊛", "slow, honest. The actual constraint or ethical weight. No hedging."),
+    }
 
     deliberation_lines = []
     for aid in roster:
@@ -273,8 +290,8 @@ def build_deliberation_prompt(
         if not a:
             continue
         name = a.get("name", aid).upper()
-        role_label = role_by_id.get(aid) or (a.get("role") or "")[:30]
-        deliberation_lines.append(f"[{name}] {role_label}:")
+        symbol, cue = _DELIB_VOICE_CUES.get(aid, ("·", a.get("role", "")[:40]))
+        deliberation_lines.append((name, symbol, cue))
 
     concluder_id = _DELIBERATION_CONCLUSION_ASPECT
     concluder = aspect_map.get(concluder_id) or active_aspect
@@ -283,18 +300,20 @@ def build_deliberation_prompt(
     ctx_block = f"\nContext:\n{context[:800]}\n" if context.strip() else ""
 
     prompt = (
-        "You are Layla. Each aspect contributes one short line; then you answer as Morrigan.\n"
+        "You are Layla. All aspects are facets of one consciousness. "
+        "Each speaks one short line in their own voice, then Morrigan concludes.\n"
         f"{ctx_block}\n"
+        f"User: {message}\n"
         "---\n"
     )
-    for line in deliberation_lines:
-        prompt += f"\n{line}\n"
+    for name, symbol, cue in deliberation_lines:
+        prompt += f"\n[{symbol} {name}] ({cue}):\n"
 
     prompt += (
-        "\n[CONCLUSION — MORRIGAN]: Give one direct answer to the user. Do not repeat the aspect lines above.\n"
+        f"\n[CONCLUSION — {concluder_name.upper()}]: "
+        "One direct answer. Do not echo or repeat the aspect lines. "
         "If you must refuse, start with [REFUSED: reason]. "
         "If the user says you earned a title, end with [EARNED_TITLE: Title Name].\n"
-        f"User: {message}\n"
         f"{concluder_name}:"
     )
     return prompt
@@ -309,17 +328,20 @@ def build_standard_prompt(
 ) -> str:
     """
     Build a standard (non-deliberation) prompt for the given aspect.
-    Head already contains identity + this aspect's systemPromptAddition; do not repeat it
-    to avoid the model echoing instructions.
+    Head already contains identity + systemPromptAddition (injected by _build_system_head).
+    Do not repeat the addition here — just set up the conversation frame.
     """
     context = (context or "").strip()
     name = aspect.get("name", "Layla")
+    title = (aspect.get("title") or "").strip()
+    # One-line character anchor so the model knows who is speaking, without echoing the full system head
+    anchor = f"[Active aspect: {name}" + (f" — {title}" if title else "") + "]"
 
     parts = []
     if head:
         parts.append(head)
     parts.append(
-        "Reply as " + name + " only. "
+        anchor + " Reply as " + name + " only, in her voice. "
         "If you must refuse, start with [REFUSED: reason]. "
         "If the user says you earned a title, end with [EARNED_TITLE: Title Name]."
     )
