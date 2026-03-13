@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import json
 import logging
 import queue
@@ -120,7 +120,7 @@ async def lifespan(app: FastAPI):
             logger.info("DB migration complete")
         except Exception as e:
             logger.warning("DB migration failed: %s", e)
-        # Pre-warm LLM in background thread — first request will be instant
+        # Pre-warm LLM in background thread â€” first request will be instant
         try:
             from services.llm_gateway import prewarm_llm
             prewarm_llm()
@@ -302,9 +302,9 @@ app.include_router(research_router.router)
 app.include_router(memory_router.router)
 
 
-# ─────────────────────────────────────────────────────────────
-# §16 Remote: auth and endpoint allowlist (production-safe, minimal)
-# ─────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Â§16 Remote: auth and endpoint allowlist (production-safe, minimal)
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def _remote_allowed_paths(cfg: dict) -> list[str]:
     """Derive allowlist from remote_mode if remote_allow_endpoints not set."""
     explicit = cfg.get("remote_allow_endpoints") or []
@@ -383,9 +383,9 @@ async def trace_id_middleware(request: Request, call_next):
     return response
 
 
-# ─────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Health
-# ─────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def _health_checks() -> tuple[bool, str]:
     """Returns (ok, detail). Config and DB must pass; model/remote not checked (slow)."""
     try:
@@ -413,9 +413,184 @@ def health():
     return {"ok": True, "detail": detail}
 
 
-# ─────────────────────────────────────────────────────────────
-# Project context (North Star §3)
-# ─────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Setup status + settings (for first-run overlay and settings panel)
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@app.get("/setup_status")
+def setup_status():
+    """Returns readiness state for the UI first-run overlay."""
+    import runtime_safety as _rs
+    config_exists = _rs.CONFIG_FILE.exists()
+    cfg = {}
+    try:
+        cfg = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8")) if config_exists else {}
+    except Exception:
+        pass
+    model_filename = cfg.get("model_filename", "")
+    placeholder = not model_filename or model_filename == "your-model.gguf"
+    models_dir = REPO_ROOT / "models"
+    model_found = not placeholder and (models_dir / model_filename).exists()
+    # Find any .gguf in models/
+    available_models = [p.name for p in sorted(models_dir.glob("*.gguf"))] if models_dir.exists() else []
+    # Hardware probe
+    hw = {}
+    try:
+        from first_run import detect_ram_gb, detect_gpu, recommend_model
+        ram = detect_ram_gb()
+        vendor, vram = detect_gpu()
+        rec = recommend_model(ram, vram, vendor)
+        hw = {"ram_gb": ram, "gpu_vendor": vendor, "vram_gb": vram,
+              "tier": rec["model_tier"], "suggestion": rec["suggestion"]}
+    except Exception:
+        pass
+    return {
+        "ready": model_found,
+        "config_exists": config_exists,
+        "model_filename": model_filename if not placeholder else "",
+        "model_found": model_found,
+        "available_models": available_models,
+        "hardware": hw,
+    }
+
+
+@app.get("/setup/models")
+def setup_models():
+    """Return the model catalog for the first-run picker."""
+    try:
+        from first_run import _MODELS_CATALOG, detect_ram_gb
+        ram = detect_ram_gb()
+        catalog = []
+        for m in _MODELS_CATALOG:
+            catalog.append({**m, "viable": m.get("ram_gb", 99) <= (ram or 99)})
+        return {"ok": True, "catalog": catalog, "ram_gb": ram}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "catalog": []}
+
+
+@app.get("/setup/download")
+async def setup_download(url: str, filename: str = ""):
+    """Stream model download progress as SSE events. url: HuggingFace direct .gguf URL."""
+    import urllib.request
+    models_dir = REPO_ROOT / "models"
+    models_dir.mkdir(parents=True, exist_ok=True)
+    fname = filename or url.rstrip("/").split("/")[-1]
+    if not fname.endswith(".gguf"):
+        fname += ".gguf"
+    dest = models_dir / fname
+
+    async def _stream():
+        try:
+            # Start download in thread
+            done_event = threading.Event()
+            progress_queue: queue.Queue = queue.Queue()
+            error_holder = [None]
+
+            def _do_download():
+                try:
+                    def _cb(block_num, block_size, total):
+                        dl = block_num * block_size
+                        pct = min(100, int(dl * 100 / total)) if total > 0 else 0
+                        dl_mb = dl / (1024 * 1024)
+                        tot_mb = total / (1024 * 1024) if total > 0 else 0
+                        progress_queue.put({"pct": pct, "dl_mb": round(dl_mb, 1), "tot_mb": round(tot_mb, 1)})
+                    urllib.request.urlretrieve(url, str(dest), _cb)
+                except Exception as exc:
+                    error_holder[0] = str(exc)
+                finally:
+                    done_event.set()
+
+            t = threading.Thread(target=_do_download, daemon=True)
+            t.start()
+
+            last_pct = -1
+            while not done_event.is_set() or not progress_queue.empty():
+                try:
+                    prog = progress_queue.get(timeout=0.3)
+                    if prog["pct"] != last_pct:
+                        last_pct = prog["pct"]
+                        yield f"data: {json.dumps(prog)}\n\n"
+                except queue.Empty:
+                    if done_event.is_set():
+                        break
+                    yield f"data: {json.dumps({'pct': last_pct, 'status': 'downloading'})}\n\n"
+                await asyncio.sleep(0)
+
+            if error_holder[0]:
+                yield f"data: {json.dumps({'error': error_holder[0]})}\n\n"
+            else:
+                # Save config with this model
+                try:
+                    import runtime_safety as _rs
+                    cfg = {}
+                    if _rs.CONFIG_FILE.exists():
+                        try:
+                            cfg = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8"))
+                        except Exception:
+                            pass
+                    if not cfg:
+                        from first_run import DEFAULTS, detect_ram_gb, detect_gpu, recommend_model
+                        ram = detect_ram_gb()
+                        vendor, vram = detect_gpu()
+                        rec = recommend_model(ram, vram, vendor)
+                        cfg = {**DEFAULTS, **rec["config"]}
+                    cfg["model_filename"] = fname
+                    _rs.CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+                except Exception as cfg_err:
+                    logger.warning("setup_download: config save failed: %s", cfg_err)
+                yield f"data: {json.dumps({'pct': 100, 'done': True, 'filename': fname})}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+
+    return StreamingResponse(_stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/settings")
+def get_settings():
+    """Return editable settings from runtime_config.json."""
+    import runtime_safety as _rs
+    try:
+        cfg = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8")) if _rs.CONFIG_FILE.exists() else {}
+    except Exception:
+        cfg = {}
+    EDITABLE = ["model_filename", "sandbox_root", "temperature", "completion_max_tokens",
+                "n_ctx", "n_gpu_layers", "tts_voice", "whisper_model", "scheduler_study_enabled",
+                "scheduler_interval_minutes", "use_chroma", "safe_mode", "uncensored"]
+    return {k: cfg.get(k) for k in EDITABLE if k in cfg}
+
+
+@app.post("/settings")
+async def save_settings(req: Request):
+    """Update runtime_config.json with provided key/value pairs."""
+    import runtime_safety as _rs
+    try:
+        body = await req.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+    try:
+        cfg = {}
+        if _rs.CONFIG_FILE.exists():
+            try:
+                cfg = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        EDITABLE = {"model_filename", "sandbox_root", "temperature", "completion_max_tokens",
+                    "n_ctx", "n_gpu_layers", "tts_voice", "whisper_model", "scheduler_study_enabled",
+                    "scheduler_interval_minutes"}
+        for k, v in body.items():
+            if k in EDITABLE:
+                cfg[k] = v
+        _rs.CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+        _rs._config_cache = None
+        return {"ok": True, "saved": list(body.keys())}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Project context (North Star Â§3)
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.get("/project_context")
 def get_project_context_api():
     """Return current project context: name, domains, key_files, goals, lifecycle_stage. Read-only for Layla."""
@@ -429,7 +604,7 @@ def get_project_context_api():
 
 @app.get("/file_intent")
 def get_file_intent_api(path: str = ""):
-    """Read-only file intent (North Star §4). Query param: path. Returns format, intent, and format-specific keys."""
+    """Read-only file intent (North Star Â§4). Query param: path. Returns format, intent, and format-specific keys."""
     if not path:
         return JSONResponse({"ok": False, "error": "path required"}, status_code=400)
     try:
@@ -464,7 +639,7 @@ async def set_project_context_api(req: Request):
 
 @app.get("/project_discovery")
 def get_project_discovery_api():
-    """North Star §18: detect opportunities, ideas, feasibility from project context + learnings."""
+    """North Star Â§18: detect opportunities, ideas, feasibility from project context + learnings."""
     try:
         from services.project_discovery import run_project_discovery
         return run_project_discovery()
@@ -476,9 +651,9 @@ def get_project_discovery_api():
         )
 
 
-# ─────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # OpenAI-compatible model list
-# ─────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.get("/v1/models")
 def v1_models():
     return JSONResponse({
@@ -494,9 +669,9 @@ def v1_models():
     })
 
 
-# ─────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # OpenAI-compatible chat completions
-# ─────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.post("/v1/chat/completions")
 async def v1_chat_completions(req: dict):
     messages = (req or {}).get("messages", [])
@@ -561,9 +736,9 @@ async def v1_chat_completions(req: dict):
     })
 
 
-# ─────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # System export
-# ─────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.get("/system_export")
 def system_export():
     import runtime_safety
@@ -632,7 +807,7 @@ def system_export():
             text=True,
             timeout=5,
         )
-        git_branch = (r.stdout or "").strip() or "—"
+        git_branch = (r.stdout or "").strip() or "â€”"
     except Exception as e:
         git_branch = str(e)
     try:
@@ -664,9 +839,9 @@ def system_export():
     })
 
 
-# ─────────────────────────────────────────────────────────────
-# Learnings API — paginated read + delete
-# ─────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Learnings API â€” paginated read + delete
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/learnings")
 def list_learnings(page: int = 1, limit: int = 20, type: str = ""):
@@ -748,9 +923,9 @@ def list_audit(page: int = 1, limit: int = 50, tool: str = ""):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-# ─────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Voice endpoints
-# ─────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.post("/voice/transcribe")
 async def voice_transcribe(request: Request):
@@ -799,9 +974,9 @@ async def voice_speak(request: Request):
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
-# ─────────────────────────────────────────────────────────────
-# Rich occult web UI — served at /ui
-# ─────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Rich occult web UI â€” served at /ui
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.get("/ui", response_class=HTMLResponse)
 def ui_rich():
     touch_activity()
@@ -832,7 +1007,7 @@ _INLINE_UI = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>∴ LAYLA</title>
+<title>âˆ´ LAYLA</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Cinzel:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
@@ -1099,11 +1274,11 @@ _INLINE_UI = """<!DOCTYPE html>
 </head>
 <body>
 <header>
-  <div class="title">∴ LAYLA</div>
-  <div id="aspect-badge" class="aspect-badge">∴ MORRIGAN</div>
+  <div class="title">âˆ´ LAYLA</div>
+  <div id="aspect-badge" class="aspect-badge">âˆ´ MORRIGAN</div>
   <div style="display:flex;gap:12px;font-size:0.72rem;color:var(--text-dim)">
     <span id="session-time"></span>
-    <a href="/system_export" target="_blank" style="color:var(--text-dim);text-decoration:none">⊕ export</a>
+    <a href="/system_export" target="_blank" style="color:var(--text-dim);text-decoration:none">âŠ• export</a>
   </div>
 </header>
 
@@ -1185,7 +1360,7 @@ function setAspect(id) {
   currentAspect = id;
   document.querySelectorAll('.aspect-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('btn-' + id)?.classList.add('active');
-  document.getElementById('aspect-badge').textContent = '∴ ' + id.toUpperCase();
+  document.getElementById('aspect-badge').textContent = 'âˆ´ ' + id.toUpperCase();
 }
 
 function cleanLaylaText(s) {
@@ -1221,7 +1396,7 @@ function addMsg(role, text, aspectName, deliberated, steps) {
   if (role !== 'you' && aspectName) {
     const asp = document.createElement('div');
     asp.className = 'msg-aspect';
-    asp.textContent = '— ' + aspectName;
+    asp.textContent = 'â€” ' + aspectName;
     div.appendChild(asp);
   }
   if (steps && steps.length > 0) {
@@ -1248,7 +1423,7 @@ function addSeparator() {
   const chat = document.getElementById('chat');
   const sep = document.createElement('div');
   sep.className = 'separator';
-  sep.textContent = '─── ✦ ───';
+  sep.textContent = 'â”€â”€â”€ âœ¦ â”€â”€â”€';
   chat.appendChild(sep);
 }
 
@@ -1275,7 +1450,7 @@ async function send() {
     const wrap = document.createElement('div');
     wrap.className = 'msg msg-layla';
     wrap.id = 'typing-wrap';
-    wrap.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble typing-indicator">Thinking…</div>';
+    wrap.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble typing-indicator">Thinkingâ€¦</div>';
     chatEl.appendChild(wrap);
     chatEl.scrollTop = chatEl.scrollHeight;
   }
@@ -1318,7 +1493,7 @@ async function send() {
       bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); });
       const asp = document.createElement('div');
       asp.className = 'msg-aspect';
-      asp.textContent = '— ' + (currentAspect || '');
+      asp.textContent = 'â€” ' + (currentAspect || '');
       div.appendChild(asp);
       chatEl.scrollTop = chatEl.scrollHeight;
       refreshApprovals();
@@ -1347,7 +1522,7 @@ async function send() {
     let msg = data.response;
     if (!msg && data.state?.status === 'system_busy') msg = 'System is under load. Try again in a moment.';
     if (!msg && data.state?.status === 'timeout') msg = 'Request took too long. Try again.';
-    if (!msg) msg = data.response || 'No response — try again.';
+    if (!msg) msg = data.response || 'No response â€” try again.';
     addMsg('layla', msg, data.aspect_name, data.state?.steps?.some(s => s.deliberated), data.state?.steps);
     if (data.refused && data.refusal_reason) {
       const refDiv = document.createElement('div');
@@ -1360,7 +1535,7 @@ async function send() {
     removeTyping();
     const err = ((e && (e.message || e.reason)) || String(e || '')).toLowerCase();
     const isNetwork = err.includes('fetch') || err.includes('network') || err.includes('load failed');
-    const msg = isNetwork ? "Can't reach Layla — is the server running at http://127.0.0.1:8000?" : ('Something went wrong: ' + (e && (e.message || e.reason)) || 'unknown error');
+    const msg = isNetwork ? "Can't reach Layla â€” is the server running at http://127.0.0.1:8000?" : ('Something went wrong: ' + (e && (e.message || e.reason)) || 'unknown error');
     addMsg('layla', msg);
   }
 }
@@ -1456,7 +1631,7 @@ async function doWakeup() {
       const chat = document.getElementById('chat');
       const banner = document.createElement('div');
       banner.className = 'greeting-banner';
-      banner.innerHTML = '<div class="from">— Echo (session start)</div>' + data.greeting;
+      banner.innerHTML = '<div class="from">â€” Echo (session start)</div>' + data.greeting;
       chat.appendChild(banner);
     }
   } catch {}
@@ -1478,3 +1653,5 @@ refreshStudyPlans();
 </body>
 </html>
 """
+
+

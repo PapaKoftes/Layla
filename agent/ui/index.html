@@ -225,23 +225,161 @@
     align-items: center;
     justify-content: center;
     pointer-events: none;
-    gap: 12px;
-    opacity: 0.18;
+    gap: 18px;
     user-select: none;
+    padding: 40px 24px;
   }
   #chat-empty .sigil {
     font-family: 'Cinzel', serif;
-    font-size: 4.5rem;
+    font-size: 3.5rem;
     color: var(--asp);
     line-height: 1;
     filter: blur(0.5px);
+    opacity: 0.22;
   }
   #chat-empty .hint {
     font-size: 0.72rem;
     letter-spacing: 0.18em;
     color: var(--text-dim);
     text-transform: uppercase;
+    opacity: 0.5;
   }
+  .prompt-tiles {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    max-width: 520px;
+    width: 100%;
+    pointer-events: all;
+    margin-top: 8px;
+  }
+  .prompt-tile {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    transition: all 0.18s;
+    text-align: left;
+    line-height: 1.4;
+  }
+  .prompt-tile:hover {
+    border-color: var(--asp);
+    color: var(--text);
+    background: var(--asp-mid);
+    box-shadow: 0 0 10px var(--asp-glow);
+  }
+  .prompt-tile .tile-icon { font-size: 1.1rem; display: block; margin-bottom: 4px; }
+  .prompt-tile .tile-text { display: block; }
+
+  /* Tool status in typing indicator */
+  .tool-status-label {
+    font-size: 0.7rem;
+    color: var(--asp);
+    letter-spacing: 0.08em;
+    opacity: 0.85;
+    margin-top: 4px;
+    animation: tool-status-fade 0.3s ease;
+  }
+  @keyframes tool-status-fade { from { opacity: 0; } to { opacity: 0.85; } }
+
+  /* ── Setup overlay ── */
+  #setup-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.92);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  #setup-overlay.visible { display: flex; }
+  .setup-modal {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 32px 36px;
+    max-width: 560px;
+    width: 92vw;
+    max-height: 88vh;
+    overflow-y: auto;
+    box-shadow: 0 0 60px rgba(139,0,0,0.3);
+  }
+  .setup-modal h2 { font-family: 'Cinzel', serif; font-size: 1.2rem; color: var(--asp); margin-bottom: 6px; letter-spacing: 0.15em; }
+  .setup-modal .setup-subtitle { color: var(--text-dim); font-size: 0.8rem; margin-bottom: 22px; }
+  .setup-hw { background: #0d000d; border: 1px solid var(--border); border-radius: 4px; padding: 10px 14px; font-size: 0.78rem; color: var(--text); margin-bottom: 20px; line-height: 1.8; }
+  .model-card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.18s;
+  }
+  .model-card:hover, .model-card.selected {
+    border-color: var(--asp);
+    background: var(--asp-mid);
+    box-shadow: 0 0 10px var(--asp-glow);
+  }
+  .model-card.not-viable { opacity: 0.5; }
+  .model-card .mc-name { font-weight: 700; font-size: 0.85rem; color: var(--text); }
+  .model-card .mc-meta { font-size: 0.73rem; color: var(--text-dim); margin-top: 3px; }
+  .model-card .mc-desc { font-size: 0.75rem; color: var(--text-dim); margin-top: 5px; font-style: italic; }
+  .model-card .mc-badge { display:inline-block; padding:1px 7px; border-radius:10px; font-size:0.65rem; margin-left:8px; }
+  .mc-badge.viable { background:rgba(0,150,50,0.18); color:#4dff88; border:1px solid #0a3; }
+  .mc-badge.heavy  { background:rgba(200,80,0,0.18);  color:#ffa040; border:1px solid #840; }
+  .setup-progress { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; margin: 14px 0; }
+  .setup-progress-bar { height: 100%; background: var(--asp); width: 0%; transition: width 0.3s; border-radius: 4px; }
+  .setup-progress-label { font-size: 0.75rem; color: var(--text-dim); margin-bottom: 4px; }
+  .setup-btns { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  .setup-btn { padding: 9px 22px; border-radius: 4px; border: 1px solid var(--asp); background: transparent; color: var(--asp); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; cursor: pointer; transition: all 0.18s; }
+  .setup-btn:hover, .setup-btn.primary { background: var(--asp); color: #fff; }
+  .setup-btn.skip { border-color: var(--text-dim); color: var(--text-dim); }
+  .setup-btn.skip:hover { background: var(--text-dim); color: #000; }
+  .setup-section-title { font-size: 0.72rem; letter-spacing: 0.12em; color: var(--asp); text-transform: uppercase; margin: 16px 0 10px; }
+  .setup-custom-url { display: flex; gap: 8px; margin-top: 10px; }
+  .setup-custom-url input { flex: 1; background: var(--code-bg); border: 1px solid var(--border); color: var(--text); padding: 7px 10px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; }
+  .setup-step { display: none; }
+  .setup-step.active { display: block; }
+  #setup-done-msg { color: #4dff88; font-size: 0.9rem; margin-top: 12px; display: none; }
+
+  /* ── Settings modal ── */
+  #settings-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 9000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(3px);
+  }
+  #settings-overlay.visible { display: flex; }
+  .settings-modal {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 28px 32px;
+    max-width: 480px;
+    width: 92vw;
+    max-height: 85vh;
+    overflow-y: auto;
+    box-shadow: 0 0 40px rgba(0,0,0,0.7);
+  }
+  .settings-modal h2 { font-family: 'Cinzel', serif; font-size: 1.1rem; color: var(--asp); margin-bottom: 20px; letter-spacing: 0.15em; }
+  .settings-row { margin-bottom: 16px; }
+  .settings-row label { display: block; font-size: 0.72rem; letter-spacing: 0.1em; color: var(--text-dim); text-transform: uppercase; margin-bottom: 5px; }
+  .settings-row input, .settings-row select { width: 100%; background: var(--code-bg); border: 1px solid var(--border); color: var(--text); padding: 7px 10px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; }
+  .settings-row input[type=range] { padding: 4px 0; }
+  .settings-row input:focus, .settings-row select:focus { outline: none; border-color: var(--asp); }
+  .settings-row .hint { font-size: 0.7rem; color: var(--text-dim); margin-top: 4px; opacity: 0.7; }
+  .settings-btns { display: flex; gap: 10px; margin-top: 20px; }
+  .settings-save { padding: 9px 24px; background: var(--asp); border: none; color: #fff; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; }
+  .settings-close { padding: 9px 16px; background: transparent; border: 1px solid var(--border); color: var(--text-dim); border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; }
+  .settings-save-msg { font-size: 0.75rem; color: #4dff88; margin-left: 8px; display: none; }
 
   /* Message entrance */
   @keyframes msg-rise {
@@ -699,8 +837,10 @@
   </div>
   <div class="header-meta">
     <span id="session-time" title="Session duration">0:00</span>
+    <span id="model-status-badge" title="LLM status" style="font-size:0.68rem;opacity:0.7"></span>
     <a href="/system_export" target="_blank" title="Full system export (JSON)">⊕ export</a>
     <a href="/memory/export" download title="Download memory bundle (ZIP of all knowledge + learnings)">⬇ memory</a>
+    <button onclick="openSettings()" title="Settings">⚙</button>
     <button onclick="clearChat()" title="Clear chat history">✕ clear</button>
   </div>
 </header>
@@ -785,14 +925,47 @@
       <div id="chat-empty">
         <div class="sigil">∴</div>
         <div class="hint">she is waiting</div>
+        <div class="prompt-tiles" id="prompt-tiles">
+          <button class="prompt-tile" onclick="fillPrompt('Explain how ')">
+            <span class="tile-icon">✦</span>
+            <span class="tile-text">Explain something</span>
+          </button>
+          <button class="prompt-tile" onclick="fillPrompt('Write Python code to ')">
+            <span class="tile-icon">⚔</span>
+            <span class="tile-text">Write code for me</span>
+          </button>
+          <button class="prompt-tile" onclick="fillPrompt('Research and summarize: ')">
+            <span class="tile-icon">🔬</span>
+            <span class="tile-text">Research a topic</span>
+          </button>
+          <button class="prompt-tile" onclick="fillPrompt('Help me debug this error: ')">
+            <span class="tile-icon">🔧</span>
+            <span class="tile-text">Debug an error</span>
+          </button>
+          <button class="prompt-tile" onclick="fillPrompt('Summarize this text: ')">
+            <span class="tile-icon">◎</span>
+            <span class="tile-text">Summarize text</span>
+          </button>
+          <button class="prompt-tile" onclick="fillPrompt('What should I do about ')">
+            <span class="tile-icon">⌖</span>
+            <span class="tile-text">Get advice</span>
+          </button>
+        </div>
       </div>
     </div>
-    <div class="input-area">
+    <div class="input-area" id="input-area-drop"
+         ondragover="event.preventDefault(); this.style.borderColor='var(--asp)'"
+         ondragleave="this.style.borderColor=''"
+         ondrop="handleFileDrop(event)">
+      <div id="file-context-chips" style="display:none;flex-wrap:wrap;gap:6px;padding:6px 12px 0;font-size:0.73rem"></div>
       <div class="input-row">
         <div class="mention-wrap">
           <div id="mention-dropdown"></div>
-          <input type="text" id="msg-input" placeholder="Ask Layla… or type @nyx, @morrigan…" onkeydown="onInputKeydown(event)" oninput="onInputChange(event)">
+          <input type="text" id="msg-input" placeholder="Ask Layla… drop a file, or type @nyx, @morrigan…" onkeydown="onInputKeydown(event)" oninput="onInputChange(event)">
         </div>
+        <label title="Attach file" style="cursor:pointer;padding:0 8px;display:flex;align-items:center;color:var(--text-dim);font-size:1rem" title="Attach file">
+          📎<input type="file" id="file-attach" style="display:none" onchange="attachFile(this)">
+        </label>
         <button id="mic-btn" onclick="toggleMic()" title="Click to record voice">🎤</button>
         <button id="send-btn" onclick="send()" disabled>Send</button>
       </div>
@@ -1553,7 +1726,8 @@ async function send() {
             try {
               const obj = JSON.parse(line.slice(6));
               if (obj.ux_state) { streamUxStates.push(obj.ux_state); showTyping(obj.ux_state); }
-              if (obj.token) { removeTyping(); full += obj.token; bubble.innerHTML = typeof marked !== 'undefined' ? sanitizeHtml(marked.parse(full)) : full; bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); }); }
+              if (obj.tool_start) { updateToolStatus(obj.tool_start); }
+              if (obj.token) { removeTyping(); clearToolStatus(); full += obj.token; bubble.innerHTML = typeof marked !== 'undefined' ? sanitizeHtml(marked.parse(full)) : full; bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); }); }
               if (obj.done) {
                 if (obj.content != null && String(obj.content).trim() !== '') full = String(obj.content).trim();
                 if (Array.isArray(obj.ux_states)) streamUxStates = obj.ux_states;
@@ -1810,14 +1984,62 @@ const chatEl2 = document.getElementById('chat');
 if (chatEl2) chatObserver.observe(chatEl2, { childList: true, subtree: false });
 
 // ─── Clear chat ─────────────────────────────────────────────
+function updateToolStatus(toolName) {
+  const wrap = document.getElementById('typing-wrap');
+  if (!wrap) return;
+  let statusEl = wrap.querySelector('.tool-status-label');
+  if (!statusEl) {
+    statusEl = document.createElement('div');
+    statusEl.className = 'tool-status-label';
+    wrap.querySelector('.msg-bubble')?.appendChild(statusEl);
+  }
+  const TOOL_LABELS = {
+    ddg_search: 'Searching the web…', web_search: 'Searching the web…',
+    fetch_article: 'Fetching article…', fetch_url: 'Fetching page…',
+    wiki_search: 'Searching Wikipedia…', arxiv_search: 'Searching arXiv…',
+    read_file: 'Reading file…', write_file: 'Writing file…',
+    list_dir: 'Listing directory…', git_status: 'Checking git…',
+    git_diff: 'Reading diff…', run_python: 'Running Python…',
+    shell: 'Running command…', apply_patch: 'Applying patch…',
+    search_memories: 'Searching memory…', save_note: 'Saving to memory…',
+    vector_search: 'Semantic search…', code_symbols: 'Indexing symbols…',
+    workspace_map: 'Mapping workspace…', dependency_graph: 'Building graph…',
+    dataset_summary: 'Analyzing data…', cluster_data: 'Clustering…',
+    ocr_image: 'Reading image…', describe_image: 'Captioning image…',
+    plot_chart: 'Generating chart…', scipy_compute: 'Computing…',
+    sql_query: 'Querying database…', schema_introspect: 'Reading schema…',
+    geo_query: 'Geocoding…', crypto_prices: 'Fetching prices…',
+    detect_objects: 'Detecting objects…', extract_frames: 'Extracting frames…',
+    stt_file: 'Transcribing audio…', tts_speak: 'Synthesizing speech…',
+    schedule_task: 'Scheduling task…', code_metrics: 'Measuring code…',
+    code_lint: 'Linting code…', summarize_text: 'Summarizing…',
+    translate_text: 'Translating…', classify_text: 'Classifying…',
+    extract_entities: 'Extracting entities…', sentiment_timeline: 'Analyzing sentiment…',
+  };
+  statusEl.textContent = TOOL_LABELS[toolName] || ('Running ' + toolName + '…');
+}
+
+function clearToolStatus() {
+  const wrap = document.getElementById('typing-wrap');
+  if (wrap) wrap.querySelector('.tool-status-label')?.remove();
+}
+
 function clearChat() {
   const chat = document.getElementById('chat');
   if (chat) {
     chat.innerHTML = '';
-    // Restore empty state sigil
+    // Restore empty state with prompt tiles
     const empty = document.createElement('div');
     empty.id = 'chat-empty';
-    empty.innerHTML = '<div class="sigil">∴</div><div class="hint">she is waiting</div>';
+    empty.innerHTML = `<div class="sigil">∴</div><div class="hint">she is waiting</div>
+      <div class="prompt-tiles">
+        <button class="prompt-tile" onclick="fillPrompt('Explain how ')"><span class="tile-icon">✦</span><span class="tile-text">Explain something</span></button>
+        <button class="prompt-tile" onclick="fillPrompt('Write Python code to ')"><span class="tile-icon">⚔</span><span class="tile-text">Write code for me</span></button>
+        <button class="prompt-tile" onclick="fillPrompt('Research and summarize: ')"><span class="tile-icon">🔬</span><span class="tile-text">Research a topic</span></button>
+        <button class="prompt-tile" onclick="fillPrompt('Help me debug this error: ')"><span class="tile-icon">🔧</span><span class="tile-text">Debug an error</span></button>
+        <button class="prompt-tile" onclick="fillPrompt('Summarize this text: ')"><span class="tile-icon">◎</span><span class="tile-text">Summarize text</span></button>
+        <button class="prompt-tile" onclick="fillPrompt('What should I do about ')"><span class="tile-icon">⌖</span><span class="tile-text">Get advice</span></button>
+      </div>`;
     chat.appendChild(empty);
   }
   localStorage.removeItem(HISTORY_KEY);
@@ -1836,11 +2058,453 @@ document.getElementById('chat').addEventListener('click', (e) => {
   }).catch(() => {});
 });
 
+// ─── File drop + attach ───────────────────────────────────────────────────
+let _attachedFiles = [];  // [{name, content}]
+
+function handleFileDrop(e) {
+  e.preventDefault();
+  document.getElementById('input-area-drop').style.borderColor = '';
+  const files = e.dataTransfer?.files;
+  if (files && files.length) {
+    Array.from(files).forEach(f => readFileIntoContext(f));
+  }
+}
+
+function attachFile(input) {
+  if (input.files && input.files.length) {
+    Array.from(input.files).forEach(f => readFileIntoContext(f));
+    input.value = '';
+  }
+}
+
+function readFileIntoContext(file) {
+  const TEXT_EXTS = /\.(txt|md|py|js|ts|jsx|tsx|html|css|json|yaml|yml|toml|ini|cfg|sh|bat|ps1|c|cpp|h|rs|go|java|rb|php|sql|xml|csv|log)$/i;
+  const MAX_SIZE = 200 * 1024; // 200 KB
+  if (file.size > MAX_SIZE) {
+    showToast(`File too large: ${file.name} (max 200 KB)`);
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const content = e.target.result;
+    _attachedFiles.push({ name: file.name, content });
+    // Show chip
+    const chips = document.getElementById('file-context-chips');
+    if (chips) {
+      chips.style.display = 'flex';
+      const chip = document.createElement('span');
+      chip.style.cssText = 'background:var(--asp-mid);border:1px solid var(--asp);border-radius:12px;padding:2px 10px;color:var(--text);display:flex;align-items:center;gap:6px';
+      chip.innerHTML = `📄 ${file.name} <button onclick="removeFileChip(this,'${file.name}')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:0;font-size:0.85rem">✕</button>`;
+      chips.appendChild(chip);
+    }
+    showToast(`📄 ${file.name} attached`);
+    toggleSendButton();
+  };
+  if (TEXT_EXTS.test(file.name)) {
+    reader.readAsText(file, 'utf-8');
+  } else {
+    showToast(`Unsupported file type: ${file.name}. Text files only.`);
+  }
+}
+
+function removeFileChip(btn, filename) {
+  _attachedFiles = _attachedFiles.filter(f => f.name !== filename);
+  btn.parentElement.remove();
+  if (!_attachedFiles.length) {
+    const chips = document.getElementById('file-context-chips');
+    if (chips) chips.style.display = 'none';
+  }
+}
+
+// ─── Inline approvals ───────────────────────────────────────────────────────
+async function approveAction(id, btnEl) {
+  try {
+    const res = await fetch('/approve', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id }) });
+    const data = await res.json();
+    if (data.ok || res.ok) {
+      btnEl.textContent = '✓ Approved';
+      btnEl.style.background = '#0a3';
+      btnEl.style.color = '#fff';
+      btnEl.disabled = true;
+      btnEl.closest('.inline-approval')?.classList.add('approved');
+      showToast('Action approved — Layla will continue');
+      refreshApprovals();
+    }
+  } catch(e) { showToast('Approval failed: ' + e.message); }
+}
+
+// Override refreshApprovals to also inject inline approval cards
+const _origRefreshApprovals = refreshApprovals;
+async function refreshApprovals() {
+  try {
+    const res = await fetch('/pending');
+    const data = await res.json();
+    const list = document.getElementById('approvals-list');
+    const pending = (data.pending || []).filter(e => e.status === 'pending');
+    if (!pending.length) {
+      if (list) list.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">No pending approvals</span>';
+      return;
+    }
+    if (list) {
+      list.innerHTML = '';
+      pending.forEach(e => {
+        const item = document.createElement('div');
+        item.className = 'panel-item';
+        item.innerHTML = `<div style="font-size:0.73rem;margin-bottom:6px;color:var(--text)">${escapeHtml(e.tool || '')} <span style="opacity:0.4">${(e.id||'').slice(0,8)}</span></div><button onclick="approveAction('${e.id}',this)" style="font-size:0.72rem;padding:4px 12px;background:transparent;border:1px solid var(--asp);color:var(--asp);border-radius:3px;cursor:pointer">Approve</button>`;
+        list.appendChild(item);
+      });
+    }
+    // Inject inline into last Layla message
+    const chat = document.getElementById('chat');
+    if (!chat) return;
+    // Remove old inline approval cards first
+    chat.querySelectorAll('.inline-approval').forEach(el => el.remove());
+    const lastLayla = [...chat.querySelectorAll('.msg-layla')].pop();
+    if (lastLayla && pending.length > 0) {
+      const inlineWrap = document.createElement('div');
+      inlineWrap.className = 'inline-approval';
+      inlineWrap.style.cssText = 'margin:6px 0 0 0;display:flex;flex-direction:column;gap:6px';
+      pending.forEach(e => {
+        const card = document.createElement('div');
+        card.style.cssText = 'background:rgba(139,0,0,0.08);border:1px solid var(--asp);border-radius:6px;padding:10px 14px;font-size:0.78rem;display:flex;align-items:center;gap:12px;flex-wrap:wrap';
+        card.innerHTML = `<span style="flex:1">🔐 <b>${escapeHtml(e.tool||'action')}</b> needs approval${e.args ? ' — ' + escapeHtml(JSON.stringify(e.args)).slice(0,80) : ''}</span><button onclick="approveAction('${e.id}',this)" style="padding:5px 16px;background:var(--asp);border:none;color:#fff;border-radius:4px;cursor:pointer;font-family:inherit;font-size:0.78rem">Approve</button>`;
+        inlineWrap.appendChild(card);
+      });
+      lastLayla.appendChild(inlineWrap);
+      chat.scrollTop = chat.scrollHeight;
+    }
+  } catch(e) {}
+}
+
+// ─── Inject file context into send payload ─────────────────────────────────
+// Wrap original send() to prepend file context to message
+const _origSend = send;
+async function send() {
+  if (_attachedFiles.length > 0) {
+    const input = document.getElementById('msg-input');
+    if (input && input.value.trim()) {
+      const ctx = _attachedFiles.map(f =>
+        `[Context from ${f.name}]:\n\`\`\`\n${f.content.slice(0, 4000)}\n\`\`\``
+      ).join('\n\n');
+      input.value = ctx + '\n\n' + input.value;
+      _attachedFiles = [];
+      const chips = document.getElementById('file-context-chips');
+      if (chips) { chips.innerHTML = ''; chips.style.display = 'none'; }
+    }
+  }
+  await _origSend();
+}
+
 // Init
 loadChatHistory();
 doWakeup();
 refreshApprovals();
 refreshStudyPlans();
+checkSetupStatus();
+
+// ─── Fill prompt tile into input ───────────────────────────────────────
+function fillPrompt(text) {
+  const input = document.getElementById('msg-input');
+  if (input) {
+    input.value = text;
+    input.focus();
+    toggleSendButton();
+    // Cursor at end
+    input.selectionStart = input.selectionEnd = input.value.length;
+  }
+}
+
+// ─── Setup status check ────────────────────────────────────────────────
+async function checkSetupStatus() {
+  try {
+    const res = await fetch('/setup_status');
+    if (!res.ok) return;
+    const data = await res.json();
+    const badge = document.getElementById('model-status-badge');
+    if (data.ready) {
+      if (badge) {
+        badge.textContent = '● ' + (data.model_filename || 'model ready');
+        badge.style.color = '#4dff88';
+      }
+    } else {
+      if (badge) {
+        badge.textContent = '⚠ no model';
+        badge.style.color = '#ffa040';
+      }
+      // Show setup overlay
+      showSetupOverlay(data);
+    }
+  } catch(e) {
+    // Server not up yet or no config — show setup
+    showSetupOverlay({});
+  }
+}
+
+let _selectedModelUrl = '';
+let _selectedModelFilename = '';
+
+async function showSetupOverlay(statusData) {
+  const overlay = document.getElementById('setup-overlay');
+  if (!overlay) return;
+  overlay.classList.add('visible');
+
+  // Fill hardware info
+  const hw = statusData.hardware || {};
+  const hwEl = document.getElementById('setup-hw');
+  if (hwEl) {
+    const ramTxt = hw.ram_gb ? `RAM: ${hw.ram_gb} GB` : 'RAM: unknown';
+    const gpuTxt = hw.gpu_vendor && hw.gpu_vendor !== 'none' ? `  GPU: ${hw.gpu_vendor.toUpperCase()}, ${hw.vram_gb} GB VRAM` : '  GPU: none (CPU inference)';
+    const tierTxt = hw.tier ? `  Tier: ${hw.tier} — ${hw.suggestion || ''}` : '';
+    hwEl.innerHTML = ramTxt + '<br>' + gpuTxt + (tierTxt ? '<br>' + tierTxt : '');
+  }
+
+  // If models already exist, offer to use them
+  if (statusData.available_models && statusData.available_models.length > 0) {
+    const existEl = document.getElementById('setup-existing-models');
+    if (existEl) {
+      existEl.style.display = 'block';
+      const list = document.getElementById('setup-existing-list');
+      if (list) {
+        list.innerHTML = statusData.available_models.map(m =>
+          `<button class="model-card" onclick="useExistingModel('${m}')">
+            <div class="mc-name">${m}</div>
+            <div class="mc-meta">Already downloaded — click to use</div>
+           </button>`
+        ).join('');
+      }
+    }
+  }
+
+  // Load model catalog
+  try {
+    const catRes = await fetch('/setup/models');
+    const catData = await catRes.json();
+    const container = document.getElementById('setup-model-list');
+    if (container && catData.catalog) {
+      container.innerHTML = catData.catalog.map(m => {
+        const viable = m.viable !== false;
+        return `<div class="model-card ${viable ? '' : 'not-viable'}" onclick="selectModel('${m.url}','${m.filename}',this)">
+          <div class="mc-name">${m.name} <span class="mc-badge ${viable ? 'viable' : 'heavy'}">${viable ? '✓ fits RAM' : '⚠ ' + m.ram_gb + 'GB RAM needed'}</span></div>
+          <div class="mc-meta">${m.size_gb} GB download · needs ${m.ram_gb} GB RAM</div>
+          <div class="mc-desc">${m.desc}</div>
+        </div>`;
+      }).join('');
+    }
+  } catch(e) {}
+}
+
+function selectModel(url, filename, el) {
+  _selectedModelUrl = url;
+  _selectedModelFilename = filename;
+  document.querySelectorAll('.model-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  const btn = document.getElementById('setup-download-btn');
+  if (btn) btn.disabled = false;
+}
+
+async function useExistingModel(filename) {
+  try {
+    await fetch('/settings', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ model_filename: filename }) });
+    document.getElementById('setup-overlay')?.classList.remove('visible');
+    showToast('✓ Model set: ' + filename + ' — restart server to apply');
+    checkSetupStatus();
+  } catch(e) { showToast('Error: ' + e.message); }
+}
+
+async function startModelDownload() {
+  const url = _selectedModelUrl || document.getElementById('setup-custom-url')?.value?.trim();
+  if (!url) { showToast('Select a model first'); return; }
+  const filename = _selectedModelFilename || url.split('/').pop();
+  const btn = document.getElementById('setup-download-btn');
+  const progressBar = document.getElementById('setup-progress-bar');
+  const progressLabel = document.getElementById('setup-progress-label');
+  const doneMsg = document.getElementById('setup-done-msg');
+  if (btn) { btn.disabled = true; btn.textContent = 'Downloading…'; }
+  if (doneMsg) doneMsg.style.display = 'none';
+
+  try {
+    const es = new EventSource('/setup/download?url=' + encodeURIComponent(url) + '&filename=' + encodeURIComponent(filename));
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.error) {
+          es.close();
+          showToast('Download failed: ' + data.error);
+          if (btn) { btn.disabled = false; btn.textContent = 'Download'; }
+          return;
+        }
+        if (progressBar) progressBar.style.width = (data.pct || 0) + '%';
+        if (progressLabel) progressLabel.textContent = (data.pct || 0) + '% · ' + (data.dl_mb || 0) + ' / ' + (data.tot_mb || '?') + ' MB';
+        if (data.done) {
+          es.close();
+          if (progressBar) progressBar.style.width = '100%';
+          if (progressLabel) progressLabel.textContent = '✓ Download complete';
+          if (doneMsg) { doneMsg.textContent = '✓ Model ready: ' + (data.filename || filename); doneMsg.style.display = 'block'; }
+          if (btn) { btn.textContent = '✓ Done — reload page'; btn.onclick = () => location.reload(); btn.disabled = false; }
+          const badge = document.getElementById('model-status-badge');
+          if (badge) { badge.textContent = '● ' + (data.filename || filename); badge.style.color = '#4dff88'; }
+        }
+      } catch(ex) {}
+    };
+    es.onerror = () => {
+      es.close();
+      if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+    };
+  } catch(e) {
+    showToast('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Download'; }
+  }
+}
+
+// ─── Settings panel ───────────────────────────────────────────────────────
+async function openSettings() {
+  const overlay = document.getElementById('settings-overlay');
+  if (!overlay) return;
+  overlay.classList.add('visible');
+  // Load current settings
+  try {
+    const res = await fetch('/settings');
+    const data = await res.json();
+    if (data.model_filename !== undefined) document.getElementById('set-model').value = data.model_filename || '';
+    if (data.sandbox_root !== undefined) document.getElementById('set-sandbox').value = data.sandbox_root || '';
+    if (data.temperature !== undefined) { document.getElementById('set-temp').value = data.temperature; document.getElementById('set-temp-val').textContent = data.temperature; }
+    if (data.completion_max_tokens !== undefined) document.getElementById('set-maxtok').value = data.completion_max_tokens || 512;
+    if (data.tts_voice !== undefined) document.getElementById('set-tts-voice').value = data.tts_voice || 'af_heart';
+    if (data.whisper_model !== undefined) document.getElementById('set-whisper').value = data.whisper_model || 'base';
+  } catch(e) {}
+}
+
+function closeSettings() {
+  document.getElementById('settings-overlay')?.classList.remove('visible');
+}
+
+async function saveSettings() {
+  const body = {
+    model_filename: document.getElementById('set-model').value.trim(),
+    sandbox_root: document.getElementById('set-sandbox').value.trim(),
+    temperature: parseFloat(document.getElementById('set-temp').value),
+    completion_max_tokens: parseInt(document.getElementById('set-maxtok').value),
+    tts_voice: document.getElementById('set-tts-voice').value,
+    whisper_model: document.getElementById('set-whisper').value,
+  };
+  try {
+    const res = await fetch('/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json();
+    const msg = document.getElementById('settings-save-msg');
+    if (data.ok) {
+      if (msg) { msg.style.display = 'inline'; setTimeout(() => { if (msg) msg.style.display = 'none'; }, 2500); }
+      showToast('Settings saved — restart server for model changes to apply');
+    } else {
+      showToast('Save failed: ' + (data.error || 'unknown'));
+    }
+  } catch(e) { showToast('Error: ' + e.message); }
+}
+
+// Close overlays on background click
+document.addEventListener('click', (e) => {
+  if (e.target.id === 'settings-overlay') closeSettings();
+  if (e.target.id === 'setup-overlay') { /* don't close setup on backdrop click — intentional */ }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeSettings();
+    if (document.getElementById('setup-overlay')?.classList.contains('visible')) {
+      document.getElementById('setup-overlay').classList.remove('visible');
+    }
+  }
+});
 </script>
+
+<!-- ── Setup Overlay ───────────────────────────────────────────────────── -->
+<div id="setup-overlay">
+  <div class="setup-modal">
+    <h2>∴ LAYLA — First Setup</h2>
+    <div class="setup-subtitle">No model found. Choose one to download or point to an existing .gguf file.</div>
+
+    <div class="setup-section-title">Your Hardware</div>
+    <div class="setup-hw" id="setup-hw">Detecting…</div>
+
+    <div id="setup-existing-models" style="display:none">
+      <div class="setup-section-title">Models already downloaded</div>
+      <div id="setup-existing-list"></div>
+    </div>
+
+    <div class="setup-section-title">Download a Model</div>
+    <div id="setup-model-list"><div style="color:var(--text-dim);font-size:0.8rem">Loading catalog…</div></div>
+
+    <div class="setup-section-title">Or paste a direct HuggingFace .gguf URL</div>
+    <div class="setup-custom-url">
+      <input type="text" id="setup-custom-url" placeholder="https://huggingface.co/.../model.Q4_K_M.gguf">
+    </div>
+
+    <div class="setup-progress-label" id="setup-progress-label" style="margin-top:12px"></div>
+    <div class="setup-progress"><div class="setup-progress-bar" id="setup-progress-bar"></div></div>
+    <div id="setup-done-msg"></div>
+
+    <div class="setup-btns">
+      <button class="setup-btn primary" id="setup-download-btn" onclick="startModelDownload()" disabled>Download Selected</button>
+      <button class="setup-btn skip" onclick="document.getElementById('setup-overlay').classList.remove('visible')">Skip for now</button>
+    </div>
+
+    <div style="margin-top:18px;font-size:0.72rem;color:var(--text-dim);line-height:1.8">
+      Already have a model? Place the .gguf file in the <code>models/</code> folder and enter its filename in <b>Settings ⚙</b>.
+      <br>Or run <code>python agent/first_run.py</code> for the terminal wizard.
+    </div>
+  </div>
+</div>
+
+<!-- ── Settings Modal ─────────────────────────────────────────────────── -->
+<div id="settings-overlay">
+  <div class="settings-modal">
+    <h2>⚙ Settings</h2>
+
+    <div class="settings-row">
+      <label>Model filename (in models/ folder)</label>
+      <input type="text" id="set-model" placeholder="e.g. dolphin-2.9.1-llama-3-8b-Q4_K_M.gguf">
+      <div class="hint">Requires server restart to take effect</div>
+    </div>
+    <div class="settings-row">
+      <label>Sandbox / workspace root path</label>
+      <input type="text" id="set-sandbox" placeholder="e.g. C:\Users\you or /home/you">
+      <div class="hint">Layla can only read/write files within this directory</div>
+    </div>
+    <div class="settings-row">
+      <label>Temperature: <span id="set-temp-val">0.2</span></label>
+      <input type="range" id="set-temp" min="0.01" max="1.5" step="0.01" value="0.2"
+        oninput="document.getElementById('set-temp-val').textContent = parseFloat(this.value).toFixed(2)">
+      <div class="hint">Lower = more deterministic. Higher = more creative.</div>
+    </div>
+    <div class="settings-row">
+      <label>Max tokens per response</label>
+      <input type="number" id="set-maxtok" min="64" max="4096" step="64" value="512">
+      <div class="hint">Higher = longer responses, slower generation</div>
+    </div>
+    <div class="settings-row">
+      <label>TTS voice</label>
+      <select id="set-tts-voice">
+        <option value="af_heart">af_heart (default — warm American female)</option>
+        <option value="af_sky">af_sky (lighter, airy)</option>
+        <option value="am_adam">am_adam (American male)</option>
+        <option value="bf_emma">bf_emma (British female)</option>
+        <option value="bm_george">bm_george (British male)</option>
+      </select>
+    </div>
+    <div class="settings-row">
+      <label>Whisper model size (STT)</label>
+      <select id="set-whisper">
+        <option value="tiny">tiny (fastest, ~75 MB)</option>
+        <option value="base" selected>base (good balance, ~145 MB)</option>
+        <option value="small">small (better accuracy, ~465 MB)</option>
+        <option value="medium">medium (high accuracy, ~1.5 GB)</option>
+      </select>
+    </div>
+
+    <div class="settings-btns">
+      <button class="settings-save" onclick="saveSettings()">Save Settings</button>
+      <button class="settings-close" onclick="closeSettings()">Close</button>
+      <span class="settings-save-msg" id="settings-save-msg">✓ Saved</span>
+    </div>
+  </div>
+</div>
 </body>
 </html>
