@@ -437,6 +437,24 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
     if goal:
         semantic = _semantic_recall(goal, k=cfg.get("semantic_k", 5)).strip()
 
+    # Memory graph associations: recent concepts and their links (lightweight, always-on)
+    graph_associations = ""
+    try:
+        from layla.memory.memory_graph import get_recent_nodes
+        recent_nodes = get_recent_nodes(n=15)
+        if recent_nodes and goal:
+            goal_words = set(w.lower() for w in goal.split() if len(w) > 3)
+            relevant = [
+                n["label"] for n in recent_nodes
+                if any(w in (n.get("label") or "").lower() for w in goal_words)
+            ]
+            if not relevant:
+                relevant = [n["label"] for n in recent_nodes[-5:] if n.get("label")]
+            if relevant:
+                graph_associations = "Knowledge graph associations: " + "; ".join(relevant[:8])
+    except Exception:
+        pass
+
     # Current working context: repo structure, study topics, sub-goals (unified surface)
     workspace_context_parts = []
     repo_struct = _get_repo_structure(workspace_root)
@@ -552,6 +570,8 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
         parts.append(f"Things I remember:\n{learnings[:2000]}")
     if semantic and semantic not in learnings:
         parts.append(f"Relevant memories:\n{semantic[:1000]}")
+    if graph_associations:
+        parts.append(graph_associations)
     if knowledge:
         parts.append(f"Reference docs:\n{knowledge}")
     # Chain-of-thought elicitation — helps smaller models reason step-by-step

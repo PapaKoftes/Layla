@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import json
 import logging
 import queue
@@ -408,9 +408,14 @@ def _health_checks() -> tuple[bool, str]:
 @app.get("/health")
 def health():
     ok, detail = _health_checks()
+    try:
+        from services.llm_gateway import _llm
+        model_loaded = _llm is not None
+    except Exception:
+        model_loaded = False
     if not ok:
-        return JSONResponse({"ok": False, "detail": detail}, status_code=503)
-    return {"ok": True, "detail": detail}
+        return JSONResponse({"ok": False, "detail": detail, "model_loaded": model_loaded}, status_code=503)
+    return {"ok": True, "detail": detail, "model_loaded": model_loaded}
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -924,6 +929,82 @@ def list_audit(page: int = 1, limit: int = 50, tool: str = ""):
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+# Study plans API
+
+@app.get("/study_plans")
+def list_study_plans():
+    try:
+        from layla.memory.db import get_active_study_plans, _conn, migrate
+        migrate()
+        plans = get_active_study_plans()
+        enriched = []
+        with _conn() as db:
+            for p in plans:
+                topic_snip = (p.get("topic") or "")[:30]
+                try:
+                    row = db.execute(
+                        "SELECT COUNT(*) as cnt, MAX(timestamp) as last FROM audit WHERE tool='study' AND args_summary LIKE ?",
+                        (f"%{topic_snip}%",)
+                    ).fetchone()
+                    sessions = row["cnt"] if row else 0
+                    last = row["last"] if row else None
+                except Exception:
+                    sessions = 0
+                    last = None
+                enriched.append({
+                    "id": p.get("id"),
+                    "topic": p.get("topic", ""),
+                    "notes": p.get("notes", "") or "",
+                    "created_at": p.get("created_at", ""),
+                    "study_sessions": sessions,
+                    "last_studied": last,
+                })
+        return JSONResponse({"plans": enriched})
+    except Exception as e:
+        return JSONResponse({"error": str(e), "plans": []})
+
+
+@app.delete("/study_plans/{plan_id}")
+def delete_study_plan(plan_id: int):
+    try:
+        from layla.memory.db import _conn, migrate
+        migrate()
+        with _conn() as db:
+            db.execute("DELETE FROM study_plans WHERE id=?", (plan_id,))
+            db.commit()
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# File content (safe read for diff viewer)
+
+@app.get("/file_content")
+def read_file_content(path: str = ""):
+    if not path:
+        return JSONResponse({"error": "path required"}, status_code=400)
+    import runtime_safety as _rs
+    try:
+        cfg = _rs.load_config()
+        sandbox = cfg.get("sandbox_root", "")
+        p = Path(path).resolve()
+        if sandbox:
+            sb = Path(sandbox).resolve()
+            try:
+                p.relative_to(sb)
+            except ValueError:
+                return JSONResponse({"error": "path outside sandbox"}, status_code=403)
+        if not p.exists():
+            return JSONResponse({"exists": False, "content": ""})
+        if p.stat().st_size > 500_000:
+            return JSONResponse({"error": "file too large (>500 KB)"}, status_code=413)
+        content = p.read_text(encoding="utf-8", errors="replace")
+        return JSONResponse({"exists": True, "content": content, "path": str(p)})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 # Voice endpoints
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
