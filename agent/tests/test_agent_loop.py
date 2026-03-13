@@ -10,7 +10,7 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-import pytest
+import pytest  # noqa: E402
 
 
 def test_classify_intent_read_file():
@@ -54,7 +54,6 @@ def test_classify_intent_reason_fallback():
 
 def test_decision_parsing_valid_tool():
     """Parse a valid JSON line with action=tool returns structured dict."""
-    from agent_loop import _VALID_TOOLS
     # We can't call _llm_decision easily without mocking run_completion. So test the parsing
     # logic by simulating what _llm_decision does with a given text.
     text = '{"action":"tool","tool":"read_file","priority_level":"high"}'

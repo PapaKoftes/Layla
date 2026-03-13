@@ -1,4 +1,9 @@
 # Pinned for reproducible installs. Use: pip install -r agent/requirements.txt
+# Dev / test
+pytest>=8.0
+pytest-asyncio>=0.23
+httpx>=0.27                        # TestClient dependency for FastAPI tests
+
 fastapi>=0.115,<1
 pydantic>=2.0
 uvicorn[standard]>=0.32,<1

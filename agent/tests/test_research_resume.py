@@ -2,7 +2,7 @@
 import json
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -77,7 +77,7 @@ class TestCopySourceToLab:
             from research_lab import copy_source_to_lab
             with patch('research_lab.RESEARCH_LAB_WORKSPACE', tmp_path / "workspace"), \
                  patch('research_lab.ensure_research_lab_dirs', return_value=None):
-                result = copy_source_to_lab(str(src))
+                result = copy_source_to_lab(str(src))  # noqa: F841
 
         assert not (dst / ".git").exists(), ".git directory should be excluded"
 

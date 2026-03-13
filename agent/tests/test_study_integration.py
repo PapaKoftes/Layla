@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 def test_db_get_plan_by_topic():
     """get_plan_by_topic returns plan when topic matches (case-insensitive)."""
-    from layla.memory.db import save_study_plan, get_plan_by_topic, get_active_study_plans
+    from layla.memory.db import save_study_plan, get_plan_by_topic
     topic = "IntegrationTestTopic_" + uuid.uuid4().hex[:6]
     plan_id = uuid.uuid4().hex[:8]
     save_study_plan(plan_id=plan_id, topic=topic, status="active")
@@ -81,7 +81,7 @@ def test_api_study_plans_get_post_record():
     assert r.status_code == 200
     data = r.json()
     assert "plans" in data
-    plans_before = len(data["plans"])
+    plans_before = len(data["plans"])  # noqa: F841
 
     r = client.post("/study_plans", json={"topic": topic})
     assert r.status_code == 200
@@ -129,7 +129,7 @@ def test_capabilities_get_and_record_practice():
     """Evolution layer: GET /capabilities returns domains and capabilities; record_practice updates level."""
     from fastapi.testclient import TestClient
     from main import app
-    from layla.memory.db import get_capability, get_capability_domains
+    from layla.memory.db import get_capability
     from layla.memory import capabilities as cap_mod
     client = TestClient(app)
     r = client.get("/capabilities")
