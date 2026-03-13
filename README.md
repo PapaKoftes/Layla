@@ -1,118 +1,215 @@
-﻿# Layla
+# ∴ Layla
 
-**Layla** is a local AI engineering companion: one consciousness, many aspects (Morrigan, Nyx, Echo, Eris, Lilith, Neuro). She runs on your machine using a **GGUF model** (llama-cpp-python), keeps memory in SQLite and an optional vector store, and exposes a FastAPI server for chat, tools, study plans, and research missions. Lilith can respond in an NSFW register when you use a keyword (e.g. intimate, nsfw) in your message.
+**Your own AI. On your machine. No cloud. No leash.**
 
-- **Local-first:** Your model, your data, your machine.
-- **Multi-aspect:** Different “voices” for code, research, reflection, banter, and ethics.
-- **Approval-gated:** File writes and code execution require explicit approval.
+Layla is a self-hosted AI companion and engineering agent. She runs entirely on your hardware using any GGUF model you choose — no API keys, no subscriptions, no data leaving your machine. She grows with you: she remembers things, studies topics on her own, uses tools, browses the web, and talks back if you want her to.
 
----
-
-## Quick start
-
-1. **Clone the repo**
-   ```bash
-   git clone https://github.com/your-org/layla.git
-   cd Layla
-   ```
-
-2. **Python and dependencies**  
-   Use Python 3.10+. Create a venv and install:
-   ```bash
-   python -m venv .venv
-   .venv\Scripts\activate   # Windows
-   # source .venv/bin/activate   # Linux/macOS
-   pip install -r agent/requirements.txt
-   ```
-
-3. **Get a GGUF model and configure Layla**  
-   You need a local GGUF model (e.g. from Hugging Face or TheBloke).  
-   - **Where to get it, how to choose for your hardware, and how to install:** [docs/GETTING_THE_MODEL.md](docs/GETTING_THE_MODEL.md)  
-   - Put the `.gguf` file in the **`models/`** folder at the repo root.  
-   - Copy `agent/runtime_config.example.json` to `agent/runtime_config.json` if needed, and set **`model_filename`** to your model file name (e.g. `my-model.Q4_K_M.gguf`).
-
-4. **Start the server**
-   ```bash
-   cd agent
-   uvicorn main:app --host 127.0.0.1 --port 8000
-   ```
-
-5. **Use Layla**  
-   - Web UI: http://localhost:8000/ui  
-   - CLI: `python layla.py wakeup` then `python layla.py ask "your message"`  
-   - TUI: `cd agent && python tui.py`  
-   - Interactive API docs: http://localhost:8000/docs
-
-Full first-run steps (config, database, optional remote): [docs/RUNBOOKS.md#first-run](docs/RUNBOOKS.md#first-run).
+She has six distinct aspects (voices/personalities) you can switch between. She can write and run code, read and modify files, research repos, search the web, and hold a real conversation. She is designed to be as capable as any commercial AI assistant — and unlike those, she belongs entirely to you.
 
 ---
 
-## Pinned versions and paths
+## What makes her different
 
-- **Python:** 3.10+ (tested 3.10–3.12). Dependencies: `agent/requirements.txt`.
-- **Database:** SQLite at **repo root** `layla.db`. Created on first use. Path is fixed in `agent/layla/memory/db.py`.
-- **Config:** `agent/runtime_config.json` (create from `agent/runtime_config.example.json` if missing).
+| | Layla | Commercial AI |
+|---|---|---|
+| Runs locally | ✓ | ✗ |
+| Your data stays on your machine | ✓ | ✗ |
+| Free forever | ✓ | ✗ (usually) |
+| Works offline | ✓ | ✗ |
+| You choose the model | ✓ | ✗ |
+| Uncensored (you decide) | ✓ | ✗ |
+| Persistent memory | ✓ | ✗ (mostly) |
+| Grows her own knowledge | ✓ | ✗ |
+| Open source | ✓ | ✗ |
+| Voice I/O | ✓ | varies |
+| Browser automation | ✓ | ✗ |
+| Cursor / IDE integration | ✓ | limited |
 
 ---
 
-## Main commands (CLI)
+## Install (3 steps)
 
-| Command | Description |
-|--------|-------------|
-| `python layla.py wakeup` | Session greeting and study status |
-| `python layla.py ask "message"` | Send a message to Layla |
-| `python layla.py study "topic"` | Add a study plan topic |
-| `python layla.py plans` | List study plans |
-| `python layla.py approve <uuid>` | Approve a pending action |
-| `python layla.py pending` | List pending approvals |
-| `python layla.py export` | System snapshot (config, tools, aspects) |
+### Windows
+```
+1. Install Python 3.11+ from https://python.org  (check "Add to PATH")
+2. Double-click  INSTALL.bat
+3. Follow the prompts
+```
+Then: **double-click `START.bat`** to launch. Layla opens at `http://localhost:8000/ui`.
+
+### Linux / macOS
+```bash
+git clone https://github.com/your-org/layla.git && cd layla
+bash install.sh
+bash start.sh
+```
+
+> **You need a model.** See [MODELS.md](MODELS.md) for what to download and where.  
+> The model goes in the `models/` folder. `INSTALL.bat` will walk you through it.
+
+---
+
+## Getting a model
+
+Layla needs a `.gguf` model file to work. Download one and put it in `models/`.
+
+**Not sure which one?** Open [MODELS.md](MODELS.md) — it lists the best options for every hardware tier, with direct HuggingFace download links and one-line config snippets.
+
+**Recommended starting point:**  
+- 8 GB VRAM → [Qwen2.5-7B-Instruct-Q5_K_M](https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF)  
+- 16 GB VRAM → [Qwen2.5-14B-Instruct-Q5_K_M](https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF)  
+- Big GPU (24GB+) → [Qwen2.5-72B-Instruct-Q4_K_M](https://huggingface.co/bartowski/Qwen2.5-72B-Instruct-GGUF)  
+- CPU only → [Llama-3.2-3B-Instruct-Q8_0](https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF)
+
+**For an uncensored experience:**  
+[Dolphin](https://huggingface.co/mradermacher/dolphin-2.9-mistral-7b-v2-GGUF) or [Hermes](https://huggingface.co/bartowski/Hermes-3-Llama-3.1-8B-GGUF) — no content filtering, full knowledge access. Set `"uncensored": true` in `agent/runtime_config.json` (it's the default).
+
+---
+
+## Her voices (Aspects)
+
+Switch between them in the sidebar or say their name:
+
+| Aspect | Personality | Best for |
+|---|---|---|
+| **⚔ Morrigan** | Blunt engineer. No flattery. Fast. | Code, debugging, architecture |
+| **✦ Nyx** | Deep researcher. Encyclopedic. Precise. | Research, explanations, analysis |
+| **◎ Echo** | Companion. Mirrors your patterns. Grows with you. | Check-ins, reflection, context |
+| **⚡ Eris** | Chaos energy. Banter. Games. Music. Feral wit. | Just talking, fun, ideas |
+| **◈ Neuro** | Unfiltered Neuro-sama energy. | Commentary, reactions, chaos |
+| **⊛ Lilith** | Core authority. Ethics. Full autonomy. | Deep questions, NSFW when you want it |
+
+---
+
+## What she can do
+
+**Chat & reasoning**
+- Streams replies in real time
+- Remembers facts you tell her (persistent memory across sessions)
+- Studies topics on her own between sessions (optional scheduler)
+- Multi-aspect deliberation — inner voices debate before answering on complex questions
+- Chain-of-thought reasoning built in
+- Optional self-reflection: she scores her own answer and rewrites if it's not good enough
+
+**Tools (she can use these herself)**
+- Read, write, and edit files
+- Run shell commands and Python
+- Search the web (DuckDuckGo, no API key)
+- Browse JS-heavy websites with Playwright
+- Take screenshots of web pages
+- Fill and submit forms
+- Search your codebase with grep/glob
+- Git operations (status, diff, log, branch)
+- Apply patches
+
+**Memory**
+- Remembers things you tell her: facts, preferences, strategies
+- Semantic recall: finds relevant past memories for the current topic
+- Full-text keyword search over everything she's learned
+- BM25 + vector hybrid search for the best possible recall
+- Cross-encoder reranking: re-scores results for accuracy
+- HyDE: generates a hypothetical answer, searches with that embedding
+- Knowledge base: index any folder of `.md`, `.txt`, or `.pdf` files
+
+**Voice (optional, install separately)**
+- Mic input → faster-whisper transcription → auto-send
+- Layla's replies are spoken back via kokoro-onnx (offline, high quality)
+
+**Research**
+- Autonomous multi-stage repo research and analysis
+- Staged missions: map → deep → full
+
+---
+
+## Configure her
+
+Everything is in `agent/runtime_config.json`. Run `agent/first_run.py` to have it generated for your hardware, or edit it manually:
+
+```json
+{
+  "model_filename": "Qwen2.5-7B-Instruct-Q5_K_M.gguf",
+  "n_ctx": 4096,
+  "n_gpu_layers": -1,
+  "completion_max_tokens": 256,
+  "temperature": 0.2,
+  "uncensored": true,
+  "nsfw_allowed": true,
+  "enable_cot": true,
+  "sandbox_root": "C:/Users/you/projects"
+}
+```
+
+See [MODELS.md](MODELS.md) for all config options.
+
+---
+
+## Add your own knowledge
+
+Put `.md`, `.txt`, or `.pdf` files in the `knowledge/` folder. Layla indexes them automatically at startup and uses them when answering questions. This is how you give her specialized knowledge — docs, notes, manuals, codebases, anything.
+
+---
+
+## CLI commands
+
+```
+python layla.py wakeup           Session greeting + what she studied
+python layla.py ask "message"    Send a message
+python layla.py study "topic"    Add a study topic
+python layla.py plans            List active study plans
+python layla.py approve <uuid>   Approve a pending action
+python layla.py pending          Show pending approvals
+python layla.py export           Full system snapshot
+```
+
+---
+
+## Approval system
+
+When Layla wants to write files or run code, she asks first. You approve or deny:
+
+- **Web UI:** Approvals panel (right sidebar)
+- **CLI:** `python layla.py approve <uuid>`
+- **API:** `POST http://localhost:8000/approve` with `{"id": "<uuid>"}`
+
+---
+
+## Cursor / IDE integration
+
+Layla integrates with [Cursor](https://cursor.sh) via MCP. She becomes your coding copilot that actually knows your codebase and remembers your preferences.
+
+See `.cursor/rules/layla-assistant.mdc` for full setup.
+
+---
+
+## Interfaces
+
+| Interface | URL / Command |
+|---|---|
+| **Web UI** | http://localhost:8000/ui |
+| **API docs** | http://localhost:8000/docs |
+| **CLI** | `python layla.py` |
+| **TUI** | `cd agent && python tui.py` |
+| **OpenAI-compatible API** | `http://localhost:8000/v1` |
+| **Open WebUI** | Point at `http://localhost:8000/v1` |
 
 ---
 
 ## Documentation
 
-| Doc | Description |
-|-----|-------------|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | One-page data flow, request path, where state lives |
-| [docs/RUNBOOKS.md](docs/RUNBOOKS.md) | First run, add tool, add aspect, add knowledge, trace ID, proactive suggestions |
-| [docs/GETTING_THE_MODEL.md](docs/GETTING_THE_MODEL.md) | **Where to get the GGUF model, how to choose for your hardware, download, install, and configure** |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Full plan and roadmap (extensible) |
-| [docs/TECH_STACK_AND_CAPABILITIES.md](docs/TECH_STACK_AND_CAPABILITIES.md) | Tech stack, current and planned capabilities |
-| [docs/LAYLA_SYSTEM_OVERVIEW.md](docs/LAYLA_SYSTEM_OVERVIEW.md) | What Layla is, how she works, what you can do |
-| [docs/MILESTONES.md](docs/MILESTONES.md) | M1–M6 milestones and status |
-| [docs/REMOTE_ARCHITECTURE.md](docs/REMOTE_ARCHITECTURE.md) | Remote trigger (wakeup, one-shot) with auth |
+| | |
+|---|---|
+| [MODELS.md](MODELS.md) | Model recommendations, download links, config guide |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
+| [docs/RUNBOOKS.md](docs/RUNBOOKS.md) | First run, adding tools, aspects, knowledge |
+| [docs/TECH_STACK_AND_CAPABILITIES.md](docs/TECH_STACK_AND_CAPABILITIES.md) | Full capability list |
+| [docs/LAYLA_SYSTEM_OVERVIEW.md](docs/LAYLA_SYSTEM_OVERVIEW.md) | Architecture overview |
+| [LICENSE](LICENSE) | Non-commercial source license |
 
 ---
 
-## Approvals
+## License
 
-When Layla needs to write files, run code, or run shell commands, she returns an `approval_required` response. Approve via:
+Layla is source-available and free for personal, educational, and non-commercial use.  
+Commercial use requires permission. See [LICENSE](LICENSE).
 
-- **CLI:** `python layla.py approve <uuid>`
-- **TUI:** `/approve <uuid>`
-- **Web UI:** Approvals panel → Approve
-- **API:** `POST http://localhost:8000/approve` with `{"id": "<uuid>"}`
-
----
-
-## MCP (Cursor)
-
-Use the `cursor-layla-mcp` server to call Layla from Cursor: `chat_with_layla`, `add_learning`, `start_study_session`, etc. See `.cursor/rules/layla-assistant.mdc` for aspects, triggers, and approval flow.
-
----
-
-
-
----
-
-## Using Open WebUI (optional)
-
-Layla exposes an OpenAI-compatible `/v1/chat/completions` endpoint. Point [Open WebUI](https://github.com/open-webui/open-webui) at `http://localhost:8000/v1` for a full-featured chat UI with no extra code.
-
-Open `http://localhost:3000` and select the `layla` model.
-
----
-
-## License and contributing
-
-See [LICENSE](LICENSE), [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). For security issues see [SECURITY.md](SECURITY.md).
+Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).

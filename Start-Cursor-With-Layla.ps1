@@ -1,84 +1,93 @@
-# Launch Cursor with Jinx fully integrated:
-# - Jinx server starts in the background (no visible window).
-# - Only Cursor is visible. Select "Jinx" in the model dropdown to use it.
-# - When Cursor closes, Jinx stops automatically.
+# Launch Cursor with Layla fully integrated:
+# - Layla server starts in the background (no visible window).
+# - Only Cursor is visible. Select "layla" in the model dropdown to use it.
+# - When Cursor closes, Layla stops automatically.
 #
-# Run: powershell -ExecutionPolicy Bypass -File "C:\Users\minam\local-jinx-agent\Start-Cursor-With-Jinx.ps1"
+# Run: powershell -ExecutionPolicy Bypass -File "C:\Users\minam\local-jinx-agent\Start-Cursor-With-Layla.ps1"
 # Or create a shortcut to this script.
 
 $ErrorActionPreference = "Stop"
-$CursorExe = "$env:LOCALAPPDATA\Programs\Cursor\Cursor.exe"
-$AgentDir = "$env:USERPROFILE\local-jinx-agent\agent"
-$PythonExe = Join-Path $AgentDir "venv\Scripts\python.exe"
-$JinxUrl = "http://127.0.0.1:8000/v1/models"
-$JinxLog = "$env:USERPROFILE\local-jinx-agent\jinx-server-error.log"
+$CursorExe    = "$env:LOCALAPPDATA\Programs\Cursor\Cursor.exe"
+$AgentDir     = "$env:USERPROFILE\local-jinx-agent\agent"
+$VenvPython   = "$env:USERPROFILE\local-jinx-agent\.venv\Scripts\python.exe"
+$LaylaUrl     = "http://127.0.0.1:8000/v1/models"
+$LaylaLog     = "$env:USERPROFILE\local-jinx-agent\layla-server.log"
 
 if (-not (Test-Path $CursorExe)) {
     Write-Error "Cursor not found at $CursorExe"
     exit 1
 }
-if (-not (Test-Path $PythonExe)) {
-    Write-Error "Jinx venv not found at $PythonExe"
-    exit 1
+if (-not (Test-Path $VenvPython)) {
+    # Try legacy venv path too
+    $VenvPython = "$AgentDir\venv\Scripts\python.exe"
+    if (-not (Test-Path $VenvPython)) {
+        Write-Error "Layla venv not found. Run INSTALL.bat first."
+        exit 1
+    }
 }
 
-Write-Host "Starting Jinx server (hidden)..."
-# Start Jinx server in a hidden process; capture stderr to log so we can show it on crash
-$jinxProc = Start-Process -FilePath $PythonExe -ArgumentList "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000" -WorkingDirectory $AgentDir -WindowStyle Hidden -PassThru -RedirectStandardError $JinxLog
+Write-Host "∴ Starting Layla server (hidden)..."
+$laylaProc = Start-Process `
+    -FilePath $VenvPython `
+    -ArgumentList "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000" `
+    -WorkingDirectory $AgentDir `
+    -WindowStyle Hidden `
+    -PassThru `
+    -RedirectStandardError $LaylaLog
 
-# Wait for server to respond (retry a few times; model load is slow on first request)
-$maxAttempts = 15
+# Wait for server to respond (model load can take 20–60 seconds on first run)
+$maxAttempts = 30
 $attempt = 0
 $ready = $false
+Write-Host "  Waiting for Layla to load the model..." -NoNewline
 while ($attempt -lt $maxAttempts) {
     Start-Sleep -Seconds 2
     $attempt++
+    Write-Host "." -NoNewline
     try {
-        $null = Invoke-RestMethod -Uri $JinxUrl -Method Get -TimeoutSec 5 -ErrorAction Stop
+        $null = Invoke-RestMethod -Uri $LaylaUrl -Method Get -TimeoutSec 4 -ErrorAction Stop
         $ready = $true
         break
     } catch {
-        if ($jinxProc.HasExited) {
-            Write-Warning "Jinx server process exited (exit code: $($jinxProc.ExitCode))."
-            if (Test-Path $JinxLog) {
-                Write-Host "--- Server error log ($JinxLog) ---"
-                Get-Content $JinxLog -Tail 40
-                Write-Host "--- Fix: In a terminal run: cd $AgentDir; .\venv\Scripts\Activate.ps1; pip install -r requirements.txt ---"
+        if ($laylaProc.HasExited) {
+            Write-Host ""
+            Write-Warning "Layla server exited (exit code: $($laylaProc.ExitCode))."
+            if (Test-Path $LaylaLog) {
+                Write-Host "--- Error log ($LaylaLog) ---"
+                Get-Content $LaylaLog -Tail 40
+                Write-Host "--- Fix: cd $AgentDir; ..\\.venv\Scripts\Activate.ps1; pip install -r requirements.txt ---"
             } else {
-                Write-Host "Run this to see the error: cd $AgentDir; .\venv\Scripts\Activate.ps1; python -m uvicorn main:app --host 127.0.0.1 --port 8000"
+                Write-Host "Diagnose: cd $AgentDir; ..\\.venv\Scripts\Activate.ps1; python -m uvicorn main:app --host 127.0.0.1 --port 8000"
             }
             break
         }
     }
 }
+Write-Host ""
 
-if (-not $ready) {
-    if ($jinxProc -and -not $jinxProc.HasExited) {
-        Write-Warning "Jinx server may still be loading the model. Cursor will start; try the Jinx model in a minute."
-    } else {
-        Write-Warning "Jinx server did not start. Run: cd $AgentDir; .\venv\Scripts\Activate.ps1; pip install -r requirements.txt"
-    }
+if ($ready) {
+    Write-Host "  Layla is ready. Starting Cursor."
 } else {
-    Write-Host "Jinx server is up."
+    if ($laylaProc -and -not $laylaProc.HasExited) {
+        Write-Warning "  Model still loading — Cursor will start. Try the layla model in a minute."
+    }
 }
 
-Write-Host "Starting Cursor. This window will stay open until you close Cursor."
-# Minimize this console so only Cursor is visible (ignore errors if not run from a console)
+# Minimize this window so only Cursor is visible
 try {
     Add-Type -Name Win -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);' -Namespace Native -ErrorAction SilentlyContinue
     $hwnd = (Get-Process -Id $PID).MainWindowHandle
-    if ($hwnd -ne [IntPtr]::Zero) { [Native.Win]::ShowWindow($hwnd, 6) }  # 6 = SW_MINIMIZE
+    if ($hwnd -ne [IntPtr]::Zero) { [Native.Win]::ShowWindow($hwnd, 6) }
 } catch { }
 
 Start-Process $CursorExe
 
-# Wait until Cursor is closed
+# Keep script alive until Cursor closes, then stop Layla
 while (Get-Process -Name "Cursor" -ErrorAction SilentlyContinue) {
     Start-Sleep -Seconds 2
 }
 
-# Cursor closed — stop Jinx
-if ($jinxProc -and -not $jinxProc.HasExited) {
-    $jinxProc.Kill()
-    Write-Host "Jinx server stopped."
+if ($laylaProc -and -not $laylaProc.HasExited) {
+    $laylaProc.Kill()
+    Write-Host "Layla server stopped."
 }

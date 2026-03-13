@@ -39,6 +39,7 @@ knowledge/*.md
 knowledge/fetched/
 knowledge/docs/
 !knowledge/README.md
+!knowledge/layla-vision.md
 
 # Repo-specific / handoff docs (keep locally if needed)
 REPO_ANALYSIS_FOR_HANDOFF.md
