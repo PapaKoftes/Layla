@@ -1,22 +1,31 @@
 ---
-description: North Star — Canonical plan for Layla. All repo work must align with this vision.
+description: North Star — Canonical plan and AI operations manual for Layla. All repo work must align with this vision.
 alwaysApply: true
 ---
 
-# North Star alignment
+# North Star alignment + AI context
 
-The **single source of truth** for this project is:
+## For any AI working on this repo
 
-- **`LAYLA_NORTH_STAR.md`** (repo root) — full lifelong collaborative intelligence plan and vision.
+Read **`AGENTS.md`** first. It contains:
+- The complete file map (where everything lives)
+- Hard rules (what never to break)
+- Code style guide
+- How to add tools, aspects, and routes
+- What documents to keep updated
 
-All features, aspects, safety rules, and product decisions must align with it. Do not stray from the plan.
+## Source of truth
 
-- **`docs/IMPLEMENTATION_STATUS.md`** — maps each North Star section (§1–§20) to code, tests, and verification. Use it to implement or audit.
+- **`LAYLA_NORTH_STAR.md`** — full vision §1–§20. All features and decisions must align with it. Do not modify unless the operator explicitly asks.
+- **`docs/IMPLEMENTATION_STATUS.md`** — maps each §1–§20 to actual code files and verification status. Check here before implementing anything.
+- **`ARCHITECTURE.md`** — one-page request flow and state map. Keep updated when the flow changes.
 
-When adding or changing behavior:
+## When adding or changing behavior
 
-1. Check which North Star section(s) it falls under.
-2. Implement or extend the mapped components; update IMPLEMENTATION_STATUS if needed.
-3. Add or run the referenced tests.
+1. Check which North Star §§ it falls under (`docs/IMPLEMENTATION_STATUS.md`)
+2. Implement or extend the mapped components
+3. Update `ARCHITECTURE.md` if request flow changes
+4. Update `docs/IMPLEMENTATION_STATUS.md` if a section is newly implemented
+5. Run tests: `cd agent && pytest tests/ -x -q`
 
-Safe self-upgrade (changes to Layla after delivery) is done **by Layla** in a safe, controlled way: approval flow for writes/runs, add_learning for memory, Lilith gates autonomy. See North Star end section and IMPLEMENTATION_STATUS “Safe self-upgrade”.
+Safe self-upgrade: approval flow gates writes/runs; `add_learning` for memory; Lilith gates autonomy.

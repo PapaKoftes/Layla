@@ -6,26 +6,28 @@ Procedures for common setup and extension tasks. See also README.md, ARCHITECTUR
 
 ## First run
 
-1. **Python**: Use 3.10+ (tested 3.10–3.12). Create a venv and install deps:
+**Easy way (recommended):** Double-click `INSTALL.bat` (Windows) or run `bash install.sh` (Linux/macOS). The installer handles all steps below automatically.
+
+**Manual:**
+
+1. **Python 3.11+**: Create a venv and install deps:
    ```bash
    python -m venv .venv
-   .venv\Scripts\activate   # Windows
+   .venv\Scripts\activate   # Windows: source .venv/bin/activate on Linux/macOS
    pip install -r agent/requirements.txt
    ```
 
-2. **Database**: On first request that touches memory, `layla.db` is created at **repo root** (see ARCHITECTURE.md). No manual step.
+2. **Hardware config**: Run `python agent/first_run.py` — detects your GPU/RAM, recommends a model, writes `agent/runtime_config.json` with optimal settings.
 
-3. **Config**: If `agent/runtime_config.json` is missing, copy from `agent/runtime_config.example.json` and set `model_filename` and `sandbox_root` (e.g. a directory path where the agent may write). Do not commit real `remote_api_key` if you enable remote access.
+3. **Model**: Download a `.gguf` file into `models/`. See `MODELS.md` for recommendations and download links. Set `model_filename` in `agent/runtime_config.json`.
 
-4. **Model**: Place your GGUF model in `models/` (e.g. `models/your-model.gguf`). Set `model_filename` in `agent/runtime_config.json` if the name differs.
-
-5. **Start server** (from repo root or `agent/`):
+4. **Start server**: Double-click `START.bat` (Windows) / run `bash start.sh`, or manually:
    ```bash
    cd agent
    uvicorn main:app --host 127.0.0.1 --port 8000
    ```
 
-6. **Verify**: Open http://localhost:8000/health — expect `{"ok": true}` (or 503 if DB not yet created). Open http://localhost:8000/ui for the chat UI. Run `python layla.py wakeup` from repo root for CLI wakeup.
+5. **Verify**: Open http://localhost:8000/health — expect `{"ok": true}`. Open http://localhost:8000/ui for the chat UI.
 
 7. **Remote (optional)**: To allow access from another machine, set in `runtime_config.json`: `"remote_enabled": true`, `"remote_api_key": "your-secret"`, and start with `uvicorn main:app --host 0.0.0.0 --port 8000`. See docs/REMOTE_ARCHITECTURE.md.
 
@@ -33,9 +35,9 @@ Procedures for common setup and extension tasks. See also README.md, ARCHITECTUR
 
 ## Add a tool
 
-1. **Implement the tool** in `agent/jinx/tools/` (or extend `agent/jinx/tools/registry.py`). Tool entry: `{"fn": callable, "dangerous": bool, "require_approval": bool, "risk_level": "low"|"medium"|"high"}`.
+1. **Implement the tool** in `agent/layla/tools/registry.py`. Tool entry: `{"fn": callable, "dangerous": bool, "require_approval": bool, "risk_level": "low"|"medium"|"high"}`.
 
-2. **Register** in `agent/jinx/tools/registry.py`: add the entry to the `TOOLS` dict keyed by tool name (e.g. `"my_tool"`).
+2. **Register** in `agent/layla/tools/registry.py`: add the entry to the `TOOLS` dict keyed by tool name (e.g. `"my_tool"`).
 
 3. **Wire into the agent loop** in `agent/agent_loop.py`: add a branch for the new tool’s intent (same pattern as `read_file`, `write_file`, etc.). Use `decision_schema` / `_VALID_TOOLS` so the LLM can choose it.
 
