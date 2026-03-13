@@ -1050,6 +1050,584 @@ def project_discovery_tool(workspace_root: str = "") -> dict:
             return {"ok": False, "error": str(e2)}
 
 
+# ─── Symbolic & Advanced Math ──────────────────────────────────────────────────
+
+def sympy_solve(expression: str, variable: str = "x", mode: str = "solve") -> dict:
+    """
+    Symbolic math via SymPy. mode options:
+    - 'solve': solve equation for variable (e.g. "x**2 - 4", "x" → [-2, 2])
+    - 'simplify': algebraically simplify an expression
+    - 'diff': differentiate with respect to variable
+    - 'integrate': integrate with respect to variable
+    - 'expand': expand/distribute
+    - 'factor': factor into irreducible parts
+    - 'latex': render as LaTeX string
+    - 'numeric': numerical evaluation (calls evalf)
+    """
+    try:
+        import sympy as sp
+        from sympy.parsing.sympy_parser import parse_expr, standard_transformations, implicit_multiplication_application
+        transforms = standard_transformations + (implicit_multiplication_application,)
+        local_dict = {v: sp.Symbol(v) for v in "xyzabcntk"}
+        if variable not in local_dict:
+            local_dict[variable] = sp.Symbol(variable)
+        expr = parse_expr(expression, local_dict=local_dict, transformations=transforms)
+        var = local_dict.get(variable, sp.Symbol(variable))
+        if mode == "solve":
+            sol = sp.solve(expr, var)
+            return {"ok": True, "mode": "solve", "variable": variable, "solutions": [str(s) for s in sol]}
+        elif mode == "diff":
+            return {"ok": True, "mode": "diff", "result": str(sp.diff(expr, var)), "latex": sp.latex(sp.diff(expr, var))}
+        elif mode == "integrate":
+            return {"ok": True, "mode": "integrate", "result": str(sp.integrate(expr, var)), "latex": sp.latex(sp.integrate(expr, var))}
+        elif mode == "simplify":
+            return {"ok": True, "mode": "simplify", "result": str(sp.simplify(expr)), "latex": sp.latex(sp.simplify(expr))}
+        elif mode == "expand":
+            return {"ok": True, "mode": "expand", "result": str(sp.expand(expr))}
+        elif mode == "factor":
+            return {"ok": True, "mode": "factor", "result": str(sp.factor(expr))}
+        elif mode == "latex":
+            return {"ok": True, "mode": "latex", "latex": sp.latex(expr)}
+        elif mode == "numeric":
+            return {"ok": True, "mode": "numeric", "result": str(expr.evalf()), "float": float(expr.evalf())}
+        else:
+            return {"ok": False, "error": f"Unknown mode: {mode}. Use solve/diff/integrate/simplify/expand/factor/latex/numeric"}
+    except ImportError:
+        return {"ok": False, "error": "sympy not installed: pip install sympy"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── NLP Intelligence ──────────────────────────────────────────────────────────
+
+def nlp_analyze(text: str, tasks: list | None = None) -> dict:
+    """
+    NLP analysis pipeline. tasks: list of ['entities', 'keywords', 'sentiment', 'sentences', 'pos']
+    Default: all. Uses spaCy if available, falls back to NLTK + basic heuristics.
+    """
+    if not tasks:
+        tasks = ["entities", "keywords", "sentiment", "sentences"]
+    result: dict = {"ok": True, "text_length": len(text), "tasks": tasks}
+
+    # Try spaCy first
+    try:
+        import spacy
+        try:
+            nlp = spacy.load("en_core_web_sm")
+        except OSError:
+            # Model not downloaded — try blank
+            nlp = spacy.blank("en")
+        doc = nlp(text[:50000])
+        if "entities" in tasks:
+            result["entities"] = [
+                {"text": ent.text, "label": ent.label_, "start": ent.start_char, "end": ent.end_char}
+                for ent in doc.ents
+            ][:50]
+        if "sentences" in tasks:
+            result["sentences"] = [str(s)[:200] for s in list(doc.sents)[:20]]
+        if "pos" in tasks:
+            result["pos_tags"] = [
+                {"token": t.text, "pos": t.pos_, "dep": t.dep_}
+                for t in doc if not t.is_space
+            ][:60]
+    except ImportError:
+        pass
+
+    # Keywords via KeyBERT
+    if "keywords" in tasks:
+        try:
+            from keybert import KeyBERT
+            kw_model = KeyBERT()
+            keywords = kw_model.extract_keywords(text[:10000], keyphrase_ngram_range=(1, 2), top_n=12)
+            result["keywords"] = [{"phrase": kw, "score": round(score, 4)} for kw, score in keywords]
+        except ImportError:
+            # Fallback: simple frequency-based keywords
+            import re
+            words = re.findall(r'\b[a-zA-Z]{4,}\b', text.lower())
+            freq: dict = {}
+            for w in words:
+                freq[w] = freq.get(w, 0) + 1
+            stopwords = {"that", "this", "with", "from", "they", "have", "been", "were", "will", "would", "could", "should", "their", "there", "these", "those"}
+            keywords_fb = sorted([(w, c) for w, c in freq.items() if w not in stopwords], key=lambda x: -x[1])[:12]
+            result["keywords"] = [{"phrase": w, "score": c} for w, c in keywords_fb]
+
+    # Basic sentiment (no ML needed — lexicon approach)
+    if "sentiment" in tasks:
+        try:
+            from textblob import TextBlob
+            tb = TextBlob(text[:5000])
+            result["sentiment"] = {"polarity": round(tb.sentiment.polarity, 3), "subjectivity": round(tb.sentiment.subjectivity, 3)}
+        except ImportError:
+            # Very basic heuristic
+            pos_words = {"good","great","excellent","amazing","love","wonderful","best","fantastic","perfect","brilliant"}
+            neg_words = {"bad","terrible","awful","horrible","hate","worst","poor","disappointing","fail","wrong"}
+            words_lower = set(text.lower().split())
+            pos = len(words_lower & pos_words)
+            neg = len(words_lower & neg_words)
+            polarity = (pos - neg) / max(pos + neg, 1)
+            result["sentiment"] = {"polarity": round(polarity, 3), "method": "lexicon_heuristic"}
+
+    return result
+
+
+# ─── Image & OCR ───────────────────────────────────────────────────────────────
+
+def ocr_image(path: str, lang: str = "eng") -> dict:
+    """
+    Extract text from an image using OCR.
+    Tries EasyOCR first (better accuracy, no Tesseract required),
+    then falls back to pytesseract (requires Tesseract binary installed).
+    lang: language code ('eng', 'fra', 'deu', 'jpn', 'chi_sim', etc.)
+    """
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "File not found"}
+    ext = target.suffix.lower()
+    if ext not in {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp", ".gif"}:
+        return {"ok": False, "error": f"Unsupported image format: {ext}"}
+
+    # Try EasyOCR
+    try:
+        import easyocr
+        lang_map = {"eng": "en", "fra": "fr", "deu": "de", "chi_sim": "ch_sim", "jpn": "ja"}
+        easy_lang = lang_map.get(lang, "en")
+        reader = easyocr.Reader([easy_lang], gpu=False, verbose=False)
+        results = reader.readtext(str(target))
+        text_parts = [item[1] for item in results if item[2] > 0.1]
+        full_text = "\n".join(text_parts)
+        return {
+            "ok": True, "method": "easyocr", "path": str(target),
+            "text": full_text[:8000], "blocks": len(results),
+            "confidence_avg": round(sum(r[2] for r in results) / max(len(results), 1), 3),
+        }
+    except ImportError:
+        pass
+
+    # Fallback: pytesseract
+    try:
+        import pytesseract
+        from PIL import Image as PILImage
+        img = PILImage.open(str(target))
+        text = pytesseract.image_to_string(img, lang=lang)
+        data = pytesseract.image_to_data(img, lang=lang, output_type=pytesseract.Output.DICT)
+        confidences = [int(c) for c in data.get("conf", []) if str(c).lstrip("-").isdigit() and int(c) >= 0]
+        conf_avg = sum(confidences) / max(len(confidences), 1)
+        return {
+            "ok": True, "method": "pytesseract", "path": str(target),
+            "text": text.strip()[:8000],
+            "confidence_avg": round(conf_avg, 1),
+        }
+    except ImportError:
+        return {"ok": False, "error": "OCR requires easyocr or pytesseract+Pillow: pip install easyocr OR pip install pytesseract Pillow"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── Visualization ─────────────────────────────────────────────────────────────
+
+def plot_chart(
+    data: dict,
+    chart_type: str = "bar",
+    title: str = "",
+    output_path: str = "",
+    xlabel: str = "",
+    ylabel: str = "",
+) -> dict:
+    """
+    Generate a chart and save it as PNG. Returns path to saved file.
+    chart_type: 'bar' | 'line' | 'scatter' | 'pie' | 'histogram' | 'heatmap'
+    data format:
+    - bar/line: {"labels": [...], "values": [...]} or {"Series A": [...], "Series B": [...], "labels": [...]}
+    - scatter: {"x": [...], "y": [...]}
+    - pie: {"labels": [...], "values": [...]}
+    - histogram: {"values": [...], "bins": 20}
+    - heatmap: {"matrix": [[...], ...], "row_labels": [...], "col_labels": [...]}
+    """
+    try:
+        import matplotlib
+        matplotlib.use("Agg")  # non-interactive backend, always safe
+        import matplotlib.pyplot as plt
+        import numpy as _np
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        if title:
+            ax.set_title(title, fontsize=14, fontweight="bold")
+        if xlabel:
+            ax.set_xlabel(xlabel)
+        if ylabel:
+            ax.set_ylabel(ylabel)
+
+        if chart_type == "bar":
+            labels = data.get("labels", list(range(len(data.get("values", [])))))
+            values = data.get("values", [])
+            ax.bar(range(len(labels)), values, tick_label=[str(l) for l in labels])
+            plt.xticks(rotation=45, ha="right")
+
+        elif chart_type == "line":
+            labels = data.get("labels", list(range(len(data.get("values", [])))))
+            for key, vals in data.items():
+                if key == "labels":
+                    continue
+                if isinstance(vals, (list, tuple)):
+                    ax.plot(labels if len(labels) == len(vals) else range(len(vals)), vals, label=key, marker="o", markersize=3)
+            ax.legend()
+
+        elif chart_type == "scatter":
+            x, y = data.get("x", []), data.get("y", [])
+            labels = data.get("point_labels", [])
+            ax.scatter(x, y, alpha=0.7)
+            for i, label in enumerate(labels[:len(x)]):
+                ax.annotate(str(label), (x[i], y[i]), fontsize=7)
+
+        elif chart_type == "pie":
+            labels = data.get("labels", [])
+            values = data.get("values", [])
+            ax.pie(values, labels=labels, autopct="%1.1f%%", startangle=140)
+            ax.axis("equal")
+
+        elif chart_type == "histogram":
+            values = data.get("values", [])
+            bins = data.get("bins", 20)
+            ax.hist(values, bins=bins, edgecolor="black", alpha=0.7)
+
+        elif chart_type == "heatmap":
+            matrix = data.get("matrix", [[]])
+            row_labels = data.get("row_labels", [])
+            col_labels = data.get("col_labels", [])
+            arr = _np.array(matrix)
+            im = ax.imshow(arr, cmap="viridis", aspect="auto")
+            plt.colorbar(im, ax=ax)
+            if row_labels:
+                ax.set_yticks(range(len(row_labels)))
+                ax.set_yticklabels(row_labels)
+            if col_labels:
+                ax.set_xticks(range(len(col_labels)))
+                ax.set_xticklabels(col_labels, rotation=45, ha="right")
+        else:
+            plt.close(fig)
+            return {"ok": False, "error": f"Unknown chart_type: {chart_type}"}
+
+        # Determine save path
+        if output_path:
+            save_path = Path(output_path)
+        else:
+            import tempfile, time
+            tmp_dir = Path(tempfile.gettempdir())
+            save_path = tmp_dir / f"layla_chart_{int(time.time())}.png"
+
+        plt.tight_layout()
+        fig.savefig(str(save_path), dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        return {"ok": True, "chart_type": chart_type, "path": str(save_path), "title": title}
+    except ImportError:
+        return {"ok": False, "error": "matplotlib not installed: pip install matplotlib"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── Document Formats ──────────────────────────────────────────────────────────
+
+def read_docx(path: str) -> dict:
+    """
+    Read a Word document (.docx). Returns full text, paragraph list, and table data.
+    """
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "File not found"}
+    try:
+        from docx import Document
+        doc = Document(str(target))
+        paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+        tables = []
+        for table in doc.tables[:10]:
+            rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
+            tables.append(rows)
+        full_text = "\n".join(paragraphs)
+        return {
+            "ok": True, "path": str(target),
+            "paragraphs": len(paragraphs),
+            "text": full_text[:10000],
+            "tables": tables[:5],
+            "table_count": len(doc.tables),
+        }
+    except ImportError:
+        return {"ok": False, "error": "python-docx not installed: pip install python-docx"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def read_excel(path: str, sheet: str = "", max_rows: int = 100) -> dict:
+    """
+    Read an Excel file (.xlsx/.xls). Returns sheet names, data from target sheet,
+    and basic stats. sheet: sheet name or index (default: first sheet).
+    """
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "File not found"}
+    try:
+        import pandas as _pd
+        xl = _pd.ExcelFile(str(target))
+        sheet_names = xl.sheet_names
+        active_sheet = sheet if sheet else sheet_names[0]
+        df = xl.parse(active_sheet)
+        result: dict = {
+            "ok": True, "path": str(target),
+            "sheets": sheet_names, "active_sheet": str(active_sheet),
+            "rows": len(df), "columns": list(df.columns),
+            "sample": df.head(max_rows).to_dict(orient="records"),
+            "null_counts": df.isnull().sum().to_dict(),
+        }
+        try:
+            result["stats"] = df.describe().to_dict()
+        except Exception:
+            pass
+        return result
+    except ImportError:
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(str(target), read_only=True, data_only=True)
+            sheet_names = wb.sheetnames
+            ws = wb[sheet] if sheet and sheet in sheet_names else wb.active
+            rows = []
+            headers: list = []
+            for i, row in enumerate(ws.iter_rows(values_only=True)):
+                if i == 0:
+                    headers = [str(c or f"col_{j}") for j, c in enumerate(row)]
+                elif i <= max_rows:
+                    rows.append(dict(zip(headers, row)))
+            wb.close()
+            return {"ok": True, "path": str(target), "sheets": sheet_names, "columns": headers, "sample": rows}
+        except ImportError:
+            return {"ok": False, "error": "Excel reading requires pandas or openpyxl: pip install pandas openpyxl"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── Database Intelligence ─────────────────────────────────────────────────────
+
+def sql_query(db_path: str, query: str, limit: int = 200) -> dict:
+    """
+    Execute a SQL query against a SQLite or DuckDB database file.
+    READ-ONLY by default: SELECT queries only. Non-SELECT queries require allow_write.
+    db_path: path to .db/.sqlite/.duckdb file, or ':memory:' for DuckDB in-memory.
+    """
+    is_readonly = query.strip().upper().startswith("SELECT") or query.strip().upper().startswith("WITH")
+    target = Path(db_path) if db_path != ":memory:" else None
+    if target and not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if target and not target.exists():
+        return {"ok": False, "error": "File not found"}
+
+    # Inject LIMIT if not present
+    q = query.strip().rstrip(";")
+    if is_readonly and "LIMIT" not in q.upper():
+        q += f" LIMIT {limit}"
+
+    # Try DuckDB first (handles .duckdb and in-memory well)
+    ext = (target.suffix.lower() if target else ".duckdb")
+    if ext == ".duckdb" or db_path == ":memory:":
+        try:
+            import duckdb
+            conn = duckdb.connect(db_path)
+            rel = conn.execute(q)
+            cols = [d[0] for d in rel.description]
+            rows = rel.fetchall()
+            conn.close()
+            return {
+                "ok": True, "db": db_path, "query": query,
+                "columns": cols, "rows": [dict(zip(cols, r)) for r in rows],
+                "row_count": len(rows),
+            }
+        except ImportError:
+            pass
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    # SQLite
+    try:
+        import sqlite3 as _sql
+        conn = _sql.connect(str(target))
+        conn.row_factory = _sql.Row
+        cursor = conn.execute(q)
+        rows = cursor.fetchall()
+        cols = [d[0] for d in cursor.description] if cursor.description else []
+        conn.close()
+        return {
+            "ok": True, "db": db_path, "query": query,
+            "columns": cols, "rows": [dict(r) for r in rows],
+            "row_count": len(rows),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── Financial Intelligence ────────────────────────────────────────────────────
+
+def stock_data(ticker: str, period: str = "1mo", include_info: bool = True) -> dict:
+    """
+    Fetch stock or crypto data via yfinance.
+    ticker: stock symbol (AAPL, TSLA, BTC-USD, ETH-USD, ^GSPC for S&P500)
+    period: '1d' | '5d' | '1mo' | '3mo' | '6mo' | '1y' | '2y' | '5y' | 'ytd' | 'max'
+    Returns: OHLCV data, current price, company info (if include_info=True).
+    """
+    try:
+        import yfinance as yf
+        t = yf.Ticker(ticker)
+        hist = t.history(period=period)
+        if hist.empty:
+            return {"ok": False, "error": f"No data for ticker: {ticker}"}
+        hist_records = []
+        for date, row in hist.tail(30).iterrows():
+            hist_records.append({
+                "date": str(date)[:10],
+                "open": round(float(row["Open"]), 4),
+                "high": round(float(row["High"]), 4),
+                "low": round(float(row["Low"]), 4),
+                "close": round(float(row["Close"]), 4),
+                "volume": int(row["Volume"]),
+            })
+        result: dict = {
+            "ok": True, "ticker": ticker.upper(), "period": period,
+            "current_price": round(float(hist["Close"].iloc[-1]), 4),
+            "price_change_pct": round(float((hist["Close"].iloc[-1] - hist["Close"].iloc[0]) / hist["Close"].iloc[0] * 100), 2),
+            "52w_high": round(float(hist["High"].max()), 4),
+            "52w_low": round(float(hist["Low"].min()), 4),
+            "history": hist_records,
+        }
+        if include_info:
+            try:
+                info = t.info or {}
+                result["info"] = {
+                    "name": info.get("longName") or info.get("shortName", ""),
+                    "sector": info.get("sector", ""),
+                    "industry": info.get("industry", ""),
+                    "market_cap": info.get("marketCap"),
+                    "pe_ratio": info.get("forwardPE") or info.get("trailingPE"),
+                    "dividend_yield": info.get("dividendYield"),
+                    "description": (info.get("longBusinessSummary") or "")[:400],
+                }
+            except Exception:
+                pass
+        return result
+    except ImportError:
+        return {"ok": False, "error": "yfinance not installed: pip install yfinance"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── Security Analysis ─────────────────────────────────────────────────────────
+
+def security_scan(path: str, scan_type: str = "bandit") -> dict:
+    """
+    Run security analysis on Python code or check dependencies for known vulnerabilities.
+    scan_type:
+    - 'bandit': static analysis for Python security issues (CWEs, hardcoded secrets, etc.)
+    - 'deps': check requirements.txt or pyproject.toml for vulnerable packages
+    - 'secrets': pattern-based scan for hardcoded secrets/tokens/keys in any file
+    """
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "Path not found"}
+
+    if scan_type == "bandit":
+        try:
+            r = subprocess.run(
+                [sys.executable, "-m", "bandit", "-r", str(target), "-f", "json", "-q"],
+                capture_output=True, text=True, timeout=60, encoding="utf-8", errors="replace",
+            )
+            import json as _json
+            try:
+                data = _json.loads(r.stdout or "{}")
+            except Exception:
+                data = {}
+            issues = data.get("results", [])
+            metrics = data.get("metrics", {})
+            return {
+                "ok": True, "scan_type": "bandit", "path": str(target),
+                "issues": [
+                    {
+                        "severity": i.get("issue_severity"), "confidence": i.get("issue_confidence"),
+                        "text": i.get("issue_text"), "file": i.get("filename"),
+                        "line": i.get("line_number"), "cwe": i.get("issue_cwe", {}).get("id"),
+                    }
+                    for i in issues[:30]
+                ],
+                "issue_count": len(issues),
+                "metrics": metrics,
+            }
+        except FileNotFoundError:
+            return {"ok": False, "error": "bandit not installed: pip install bandit"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    elif scan_type == "secrets":
+        import re as _re
+        SECRET_PATTERNS = [
+            (r'(?i)(api[_-]?key|apikey)\s*[:=]\s*["\']?([A-Za-z0-9\-_]{16,})', "API Key"),
+            (r'(?i)(secret[_-]?key|secret)\s*[:=]\s*["\']?([A-Za-z0-9\-_]{16,})', "Secret Key"),
+            (r'(?i)(password|passwd|pwd)\s*[:=]\s*["\']?([^\s"\']{8,})', "Password"),
+            (r'(?i)(token|access_token|auth_token)\s*[:=]\s*["\']?([A-Za-z0-9\-_\.]{16,})', "Token"),
+            (r'AKIA[0-9A-Z]{16}', "AWS Access Key"),
+            (r'(?i)(private[_-]?key)\s*[:=]', "Private Key"),
+            (r'sk-[A-Za-z0-9]{32,}', "OpenAI Key"),
+            (r'ghp_[A-Za-z0-9]{36,}', "GitHub Token"),
+        ]
+        findings = []
+        files_scanned = 0
+        if target.is_file():
+            scan_files = [target]
+        else:
+            scan_files = [f for f in target.rglob("*") if f.is_file() and f.suffix in {".py", ".js", ".ts", ".env", ".json", ".yaml", ".yml", ".txt", ".cfg", ".ini"} and ".git" not in str(f)][:100]
+        for fpath in scan_files:
+            files_scanned += 1
+            try:
+                content = fpath.read_text(encoding="utf-8", errors="ignore")
+                for pattern, label in SECRET_PATTERNS:
+                    for m in _re.finditer(pattern, content):
+                        line_num = content[:m.start()].count("\n") + 1
+                        findings.append({"file": str(fpath.relative_to(target) if target.is_dir() else fpath), "line": line_num, "type": label, "match": m.group(0)[:80]})
+            except Exception:
+                continue
+        return {"ok": True, "scan_type": "secrets", "files_scanned": files_scanned, "findings": findings[:50], "finding_count": len(findings)}
+
+    elif scan_type == "deps":
+        req_files = []
+        if target.is_file():
+            req_files = [target]
+        else:
+            for name in ("requirements.txt", "pyproject.toml", "Pipfile"):
+                f = target / name
+                if f.exists():
+                    req_files.append(f)
+        if not req_files:
+            return {"ok": False, "error": "No requirements.txt/pyproject.toml found"}
+        try:
+            r = subprocess.run(
+                [sys.executable, "-m", "pip_audit", "--requirement", str(req_files[0]), "--format", "json"],
+                capture_output=True, text=True, timeout=120, encoding="utf-8", errors="replace",
+            )
+            import json as _json
+            try:
+                data = _json.loads(r.stdout or "[]")
+                return {"ok": True, "scan_type": "deps", "vulnerabilities": data[:30], "count": len(data)}
+            except Exception:
+                return {"ok": True, "scan_type": "deps", "output": (r.stdout or r.stderr)[:2000]}
+        except FileNotFoundError:
+            return {"ok": False, "error": "pip-audit not installed: pip install pip-audit"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    return {"ok": False, "error": f"Unknown scan_type: {scan_type}. Use bandit/secrets/deps"}
+
+
 TOOLS: dict[str, Any] = {
     "write_file": {"fn": write_file, "dangerous": True, "require_approval": True, "risk_level": "medium"},
     "read_file": {"fn": read_file, "dangerous": False, "require_approval": False, "risk_level": "low"},
@@ -1095,4 +1673,21 @@ TOOLS: dict[str, Any] = {
     "http_request": {"fn": http_request, "dangerous": False, "require_approval": False, "risk_level": "low"},
     "python_ast": {"fn": python_ast, "dangerous": False, "require_approval": False, "risk_level": "low"},
     "project_discovery": {"fn": project_discovery_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Symbolic & Advanced Math
+    "sympy_solve": {"fn": sympy_solve, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # NLP Intelligence
+    "nlp_analyze": {"fn": nlp_analyze, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Image & OCR
+    "ocr_image": {"fn": ocr_image, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Visualization
+    "plot_chart": {"fn": plot_chart, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Document Formats
+    "read_docx": {"fn": read_docx, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "read_excel": {"fn": read_excel, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Database Intelligence
+    "sql_query": {"fn": sql_query, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Financial Intelligence
+    "stock_data": {"fn": stock_data, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    # Security Analysis
+    "security_scan": {"fn": security_scan, "dangerous": False, "require_approval": False, "risk_level": "low"},
 }

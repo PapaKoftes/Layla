@@ -4,7 +4,7 @@ domain: tools
 aspect: morrigan
 ---
 
-# Tools Reference — All 40 Tools
+# Tools Reference — All 49 Tools
 
 Layla's complete tool registry. Dangerous tools require `allow_run=true` AND approval via `POST /approve` before they execute.
 
@@ -105,6 +105,55 @@ Layla's complete tool registry. Dangerous tools require `allow_run=true` AND app
 | `count_tokens` | `text: str, model: str = "gpt-4"` | Token count via tiktoken or ~4 chars/token estimate. |
 | `http_request` | `url: str, method: str = "GET", body: str = "", headers: dict, timeout: int = 15` | General HTTP request. Use for REST APIs, webhooks, POST endpoints. |
 | `python_ast` | `path: str` | Analyze Python file structure: functions, classes, imports, constants, line count. |
+
+## Symbolic & Advanced Math
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `sympy_solve` | `expression: str, variable: str = "x", mode: str = "solve"` | Modes: solve/diff/integrate/simplify/expand/factor/latex/numeric. Returns result + LaTeX. |
+
+## NLP Intelligence
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `nlp_analyze` | `text: str, tasks: list = ["entities","keywords","sentiment","sentences"]` | spaCy NER + KeyBERT keywords + sentiment. Falls back to NLTK/heuristics. |
+
+## Image & OCR
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `ocr_image` | `path: str, lang: str = "eng"` | EasyOCR first (no Tesseract binary needed), pytesseract+Pillow fallback. Returns text + confidence. |
+
+## Visualization
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `plot_chart` | `data: dict, chart_type: str = "bar", title, output_path, xlabel, ylabel` | Types: bar/line/scatter/pie/histogram/heatmap. Saves PNG, returns path. Uses Agg backend (headless). |
+
+## Document Formats (expanded)
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `read_docx` | `path: str` | Word document text + table data. Requires python-docx. |
+| `read_excel` | `path: str, sheet: str = "", max_rows: int = 100` | Excel sheets + stats via pandas; openpyxl fallback. |
+
+## Database Intelligence
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `sql_query` | `db_path: str, query: str, limit: int = 200` | SELECT queries on .db/.sqlite/.duckdb files. Auto-injects LIMIT. DuckDB handles in-memory. |
+
+## Financial Intelligence
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `stock_data` | `ticker: str, period: str = "1mo", include_info: bool = True` | OHLCV data + company info. Supports stocks, ETFs, crypto (BTC-USD), indices (^GSPC). |
+
+## Security Analysis
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `security_scan` | `path: str, scan_type: str = "bandit"` | `bandit`: Python CWE static analysis. `secrets`: pattern scan for API keys/tokens. `deps`: pip-audit vulnerability scan. |
 
 ---
 
