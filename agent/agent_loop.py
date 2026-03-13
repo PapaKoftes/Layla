@@ -1235,6 +1235,100 @@ def _extract_patch_text(goal: str) -> str:
     return g
 
 
+_ASPECT_LEARNING_TYPE: dict = {
+    "morrigan": "strategy",
+    "nyx": "fact",
+    "echo": "preference",
+    "eris": "fact",
+    "lilith": "identity",
+    "cassandra": "fact",
+}
+_GREETING_WORDS = frozenset({"hi", "hello", "hey", "thanks", "thank", "ok", "okay", "yes", "no", "sure", "cool"})
+# Keep a small in-process dedup set to avoid saving the same insight twice in a session
+_recent_learning_fingerprints: set = set()
+
+
+def _auto_extract_learnings(user_msg: str, response: str, aspect_id: str) -> None:
+    """Background thread: extract 1-2 concise learnings from a completed exchange and persist them."""
+    global _recent_learning_fingerprints
+    try:
+        resp_clean = response.strip()
+        # Skip trivial / too-short responses
+        words = resp_clean.split()
+        if len(words) < 20:
+            return
+        # Skip if response is basically a greeting/ack
+        first_words = set(w.lower().strip(".,!?") for w in words[:6])
+        if first_words.issubset(_GREETING_WORDS):
+            return
+
+        learning_type = _ASPECT_LEARNING_TYPE.get(aspect_id, "fact")
+        extracted = []
+
+        # ── Attempt 1: LLM extraction (fast short prompt) ──────────────────────
+        try:
+            from services.llm_gateway import run_completion
+            prompt = (
+                "Extract 1-2 concise, standalone, reusable insights from this exchange. "
+                "Output only a valid JSON array of strings. Max 100 chars each. No explanation.\n\n"
+                f"User: {user_msg[:250]}\n"
+                f"Response: {resp_clean[:500]}"
+            )
+            raw = (run_completion(prompt=prompt, max_tokens=140, temperature=0.1) or "").strip()
+            import json as _json
+            import re as _re_al
+            m = _re_al.search(r'\[.*?\]', raw, _re_al.DOTALL)
+            if m:
+                items = _json.loads(m.group(0))
+                for item in items[:2]:
+                    if isinstance(item, str) and len(item.strip()) >= 12:
+                        extracted.append(item.strip()[:200])
+        except Exception:
+            pass
+
+        # ── Attempt 2: structural heuristic extraction ─────────────────────────
+        if not extracted:
+            import re as _re_al
+            for line in resp_clean.split("\n"):
+                line = line.strip()
+                # Numbered / bulleted list items
+                if _re_al.match(r'^[\d\-\*\•\–]\s+.{25,150}$', line):
+                    clean = _re_al.sub(r'^[\d\-\*\•\–]\s+', '', line).strip()
+                    if clean:
+                        extracted.append(clean)
+                # Sentences with knowledge signal words
+                elif any(kw in line.lower() for kw in [
+                    "always ", "never ", "should ", "must ", "key insight", "important:",
+                    "note:", "tip:", "best practice", "remember:", "the solution",
+                ]) and 25 < len(line) < 200:
+                    extracted.append(line)
+                if len(extracted) >= 2:
+                    break
+
+        # ── Persist with dedup ─────────────────────────────────────────────────
+        if not extracted:
+            return
+        from layla.memory.db import save_learning
+        saved = 0
+        for item in extracted[:2]:
+            fp = item[:60].lower()
+            if fp in _recent_learning_fingerprints:
+                continue
+            _recent_learning_fingerprints.add(fp)
+            # Keep dedup set bounded
+            if len(_recent_learning_fingerprints) > 200:
+                _recent_learning_fingerprints = set(list(_recent_learning_fingerprints)[-100:])
+            try:
+                save_learning(content=item, kind=learning_type)
+                saved += 1
+            except Exception:
+                pass
+        if saved:
+            logger.debug("auto-learn: saved %d %s learnings (aspect=%s)", saved, learning_type, aspect_id)
+    except Exception as e:
+        logger.debug("auto-learn failed: %s", e)
+
+
 def autonomous_run(
     goal: str,
     context: str = "",
@@ -1990,6 +2084,21 @@ def _autonomous_run_impl(
             run_distill_after_outcome(n=50)
         except Exception as e:
             logger.debug("distill after outcome failed: %s", e)
+        # Auto-learning: extract and persist 1-2 insights from every substantive exchange
+        final_text = ""
+        for s in reversed(state.get("steps", [])):
+            if s.get("action") == "reason":
+                r = s.get("result", "")
+                final_text = r if isinstance(r, str) else ""
+                break
+        if final_text and not state.get("refused") and len(final_text.strip()) >= 80:
+            import threading as _t
+            _t.Thread(
+                target=_auto_extract_learnings,
+                args=(state.get("original_goal", ""), final_text, active_aspect.get("id", "")),
+                daemon=True,
+                name="auto-learn",
+            ).start()
     if research_mode:
         set_effective_sandbox(None)
     return state
