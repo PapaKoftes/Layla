@@ -4,7 +4,7 @@ domain: tools
 aspect: morrigan
 ---
 
-# Tools Reference — All 49 Tools
+# Tools Reference — All 59 Tools
 
 Layla's complete tool registry. Dangerous tools require `allow_run=true` AND approval via `POST /approve` before they execute.
 
@@ -105,6 +105,51 @@ Layla's complete tool registry. Dangerous tools require `allow_run=true` AND app
 | `count_tokens` | `text: str, model: str = "gpt-4"` | Token count via tiktoken or ~4 chars/token estimate. |
 | `http_request` | `url: str, method: str = "GET", body: str = "", headers: dict, timeout: int = 15` | General HTTP request. Use for REST APIs, webhooks, POST endpoints. |
 | `python_ast` | `path: str` | Analyze Python file structure: functions, classes, imports, constants, line count. |
+
+## Semantic Memory (Direct Access)
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `vector_search` | `query: str, collection: str = "knowledge", k: int = 8` | Direct semantic search over ChromaDB. collection: knowledge/memories/aspects. |
+| `vector_store` | `text: str, metadata: dict, collection: str = "memories"` | Store text into vector DB + SQLite learnings. Embeds immediately. |
+
+## File System Intelligence
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `workspace_map` | `root: str = "", max_files: int = 500, include_content_preview: bool = False` | Full workspace map: tech stack, entry points, key docs, largest files, recently modified, 2-level tree. |
+
+## Web Crawl
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `crawl_site` | `url: str, max_pages: int = 20, max_depth: int = 2, same_domain: bool = True, store_knowledge: bool = False` | Recursive site crawl via trafilatura. store_knowledge=True saves pages to knowledge/fetched/ for RAG indexing. |
+
+## Database Schema Intelligence
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `schema_introspect` | `db_path: str` | Full schema: tables, columns, types, PKs, FKs, row counts, 3-row samples. SQLite + DuckDB. |
+
+## Tool Self-Reflection
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `list_tools` | `filter_by: str = "", include_dangerous: bool = True` | List all 59 tools with descriptions, risk levels, approval requirements. |
+| `tool_recommend` | `task: str` | Given a task, suggest the most relevant tools (keyword + category scoring). |
+
+## Context Management
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `context_compress` | `text: str, target_tokens: int = 2000, strategy: str = "smart"` | Compress text: smart (extractive), truncate, middle_out. Returns ratio + token estimates. |
+| `generate_sql` | `question: str, schema: str = "", db_path: str = ""` | NL → SQL with schema grounding. Auto-introspects db_path if provided. Pair with sql_query() to execute. |
+
+## Image Understanding
+
+| Tool | Parameters | Notes |
+|------|-----------|-------|
+| `describe_image` | `path: str, detail: str = "brief"` | BLIP image captioning via transformers. Falls back to EasyOCR text extraction. First run downloads ~500 MB model. |
 
 ## Symbolic & Advanced Math
 

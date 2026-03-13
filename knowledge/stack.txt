@@ -23,7 +23,7 @@ Aspects (personalities):
 - Cassandra (⌖): unfiltered oracle, reactive, fast
 - Lilith (⊛): sovereign core, ethics, absolute honesty
 
-Tools available to Layla (49 total):
+Tools available to Layla (59 total):
 - read_file, write_file, list_dir, file_info (sandboxed to sandbox_root)
 - shell, run_python (blocklisted/sandboxed, require approval)
 - git_status, git_diff, git_log, git_branch, git_add, git_commit
@@ -44,6 +44,14 @@ Tools available to Layla (49 total):
 - sql_query (SQLite + DuckDB)
 - stock_data (yfinance: stocks, ETFs, crypto OHLCV + info)
 - security_scan (bandit static analysis, secrets scan, pip-audit deps)
+- vector_search, vector_store (direct ChromaDB tool access)
+- workspace_map (full workspace intelligence: stack, entry points, tree)
+- crawl_site (recursive trafilatura web crawl, optional knowledge ingestion)
+- schema_introspect (SQLite/DuckDB full schema: tables, FKs, row counts, samples)
+- list_tools, tool_recommend (self-reflection: what tools exist, what to use)
+- context_compress (smart/truncate/middle_out text compression)
+- generate_sql (NL to SQL with schema grounding)
+- describe_image (BLIP image captioning; EasyOCR text fallback)
 
 Voice (optional):
 - faster-whisper (STT): POST /voice/transcribe

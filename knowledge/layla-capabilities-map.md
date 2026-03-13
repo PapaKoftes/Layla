@@ -4,7 +4,7 @@ domain: architecture
 aspect: morrigan
 ---
 
-# Layla Capabilities Map — 49 Tools
+# Layla Capabilities Map — 59 Tools
 
 Full inventory of every tool Layla can call, organized by capability domain.
 All tools are defined in `agent/layla/tools/registry.py`.
@@ -35,8 +35,18 @@ All tools are defined in `agent/layla/tools/registry.py`.
 | `browser_screenshot` | Full-page screenshot → PNG |
 | `browser_click` | Click CSS selector on page (approval required) |
 | `browser_fill` | Fill form fields + optional submit (approval required) |
+| `crawl_site` | Recursive web crawl — multi-page, depth-limited, optional knowledge ingestion |
 
 **Libraries active:** trafilatura, playwright, beautifulsoup4, httpx, requests
+
+---
+
+## 2b. Semantic Memory — Direct Tool Access
+
+| Tool | What it does |
+|------|-------------|
+| `vector_search` | Direct ChromaDB semantic search — knowledge/memories/aspects collections |
+| `vector_store` | Explicitly embed + store text into vector DB mid-conversation |
 
 ---
 
@@ -67,6 +77,7 @@ Not tools — these are automatic in every response:
 | `read_excel` | Excel sheets — data + statistical summary |
 | `read_csv` | CSV with pandas stats; stdlib fallback |
 | `json_query` | Parse JSON + extract by dot-path |
+| `workspace_map` | Full workspace intelligence: tech stack, entry points, key docs, largest/recent files, directory tree |
 
 ---
 
@@ -126,6 +137,15 @@ Not tools — these are automatic in every response:
 
 ---
 
+## 8b. Database Schema Intelligence
+
+| Tool | What it does |
+|------|-------------|
+| `schema_introspect` | Full DB schema: tables, columns, PKs, FKs, row counts, sample rows. SQLite + DuckDB |
+| `generate_sql` | NL → SQL with schema auto-grounding. Pair with sql_query() to execute |
+
+---
+
 ## 9. Data Science & Analysis
 
 | Tool | What it does |
@@ -158,9 +178,10 @@ Not tools — these are automatic in every response:
 | Tool | What it does |
 |------|-------------|
 | `ocr_image` | Text extraction from images via EasyOCR (no Tesseract binary) or pytesseract fallback |
+| `describe_image` | BLIP image captioning (natural language description). Falls back to EasyOCR text. First run: ~500 MB model download. |
 
-**Libraries active:** easyocr, Pillow
-**Roadmap:** image_describe (CLIP/LLaVA), face_detect (opencv), object_detect (ultralytics)
+**Libraries active:** easyocr, Pillow; transformers+torch (optional for BLIP)
+**Roadmap:** face_detect (opencv), object_detect (ultralytics/YOLO), segment (SAM)
 
 ---
 
@@ -169,6 +190,16 @@ Not tools — these are automatic in every response:
 Not tools — integrated into API endpoints:
 - **STT:** `POST /voice/transcribe` — faster-whisper (CPU/CUDA)
 - **TTS:** `POST /voice/speak` — kokoro-onnx (fallback: browser SpeechSynthesis)
+
+---
+
+## 12b. Tool Self-Reflection & Context Management
+
+| Tool | What it does |
+|------|-------------|
+| `list_tools` | List all 59 tools with descriptions, risk levels, approval status |
+| `tool_recommend` | Given a task, suggest the most relevant tools (keyword + category scoring) |
+| `context_compress` | Compress text to token budget: smart (extractive), truncate, middle_out |
 
 ---
 
@@ -223,13 +254,15 @@ dangerous: True   → requires allow_run=True AND approval_id to proceed
 
 | Capability | Library | Tool to build |
 |-----------|---------|---------------|
-| ML clustering | scikit-learn | `ml_cluster(data, method)` |
+| ML clustering/regression | scikit-learn | `ml_analyze(data, task)` |
 | Multi-language AST | tree-sitter | `ast_any_lang(path, lang)` |
-| FAISS fast search | faiss-cpu | upgrades vector_store.py |
-| Image captioning | LLaVA/CLIP | `describe_image(path)` |
+| FAISS fast search | faiss-cpu | upgrades `vector_store.py` search speed |
 | Geography | geopandas + folium | `geo_query(location)` |
 | Docker control | docker SDK | `docker_run(image, cmd)` |
 | Email | imaplib | `read_email(folder)` |
-| Video frames | ffmpeg-python | `extract_frames(path)` |
-| Dependency graph | pyan/networkx | `dep_graph(path)` |
-| Code generation bench | SWE-bench | evaluation tooling |
+| Video frames | ffmpeg-python | `extract_frames(path, fps)` |
+| Dependency graph | pyan + networkx | `dep_graph(path)` |
+| NSFW content filter | transformers | `content_check(text)` |
+| Transcript download | yt-dlp | `yt_transcript(url)` |
+| Interactive charts | plotly | `plot_interactive(data)` |
+| Clipboard | pyperclip | `clipboard_get/set()` |
