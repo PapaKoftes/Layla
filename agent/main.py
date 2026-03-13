@@ -20,8 +20,8 @@ from agent_loop import autonomous_run, _is_junk_reply
 logger = logging.getLogger("layla")
 
 # Anonymous access: we do not log client IP, auth headers, or other PII. No auth required for local use.
-# Updated on /agent, /wakeup, /learn (and /ui) so study job only runs when you're around
-_last_activity_ts: float = 0.0
+# Initialized to startup time so scheduled study can run from first boot, not just after first message
+_last_activity_ts: float = time.time()
 
 
 def touch_activity() -> None:
@@ -62,9 +62,10 @@ def _scheduled_study_job() -> None:
         if not cfg.get("scheduler_study_enabled", True):
             return
         try:
-            activity_min = max(1, int(float(cfg.get("scheduler_recent_activity_minutes", 90))))
+            # Default 1440 min (24 h) so study runs any time the server is up, not just during active use
+            activity_min = max(1, int(float(cfg.get("scheduler_recent_activity_minutes", 1440))))
         except (TypeError, ValueError):
-            activity_min = 90
+            activity_min = 1440
         if time.time() - _last_activity_ts > activity_min * 60:
             return
         if _game_or_fullscreen_running():
