@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -31,6 +32,8 @@ PROTECTED_FILES = [
 
 _config_cache: dict | None = None
 _config_mtime: float = 0.0
+_config_last_check: float = 0.0
+_CONFIG_CHECK_TTL: float = 2.0  # skip stat() for 2 s during hot loops
 _hardware_probe_cache: dict | None = None
 
 
@@ -89,7 +92,13 @@ def _hardware_derived_defaults() -> dict:
 
 
 def load_config() -> dict:
-    global _config_cache, _config_mtime
+    """Load runtime config. Cached: skips disk stat for _CONFIG_CHECK_TTL seconds during hot loops."""
+    global _config_cache, _config_mtime, _config_last_check
+    now = time.monotonic()
+    # Fast path: TTL not expired and cache warm — zero I/O
+    if _config_cache is not None and (now - _config_last_check) < _CONFIG_CHECK_TTL:
+        return _config_cache
+    _config_last_check = now
     try:
         current_mtime = CONFIG_FILE.stat().st_mtime
     except Exception:
@@ -107,7 +116,7 @@ def load_config() -> dict:
         "safe_mode": True,
         "temperature": 0.2,
         "n_ctx": 4096,
-        "n_gpu_layers": 0,
+        "n_gpu_layers": -1,  # full GPU offload by default; overridden by hardware probe
         "n_batch": 512,
         "n_threads": None,
         "n_threads_batch": None,
@@ -165,78 +174,66 @@ def load_config() -> dict:
     return _config_cache
 
 
-def load_identity() -> str:
+_file_cache: dict[str, tuple[float, str]] = {}  # path -> (mtime, content)
+
+
+def _read_cached(path: Path) -> str:
+    """Read a file with mtime caching — safe to call on every inference turn."""
+    key = str(path)
     try:
-        return IDENTITY_FILE.read_text(encoding="utf-8")
+        mtime = path.stat().st_mtime
     except Exception:
-        return ""
+        return _file_cache.get(key, (0.0, ""))[1]
+    cached = _file_cache.get(key)
+    if cached and cached[0] == mtime:
+        return cached[1]
+    try:
+        content = path.read_text(encoding="utf-8")
+    except Exception:
+        content = ""
+    _file_cache[key] = (mtime, content)
+    return content
+
+
+def load_identity() -> str:
+    return _read_cached(IDENTITY_FILE)
 
 
 def load_personality() -> str:
     try:
-        p = json.loads((REPO_ROOT / "personality.json").read_text(encoding="utf-8"))
+        p = json.loads(_read_cached(REPO_ROOT / "personality.json"))
         return p.get("systemPromptAddition", "")
     except Exception:
         return ""
 
 
 def load_personality_expression() -> str:
-    """Load the Personality Expression Layer block (prompt-only guidance). Used only when enable_personality_expression is True."""
-    try:
-        if PERSONALITY_EXPRESSION_FILE.exists():
-            return PERSONALITY_EXPRESSION_FILE.read_text(encoding="utf-8").strip()
-    except Exception:
-        pass
-    return ""
+    return _read_cached(PERSONALITY_EXPRESSION_FILE).strip() if PERSONALITY_EXPRESSION_FILE.exists() else ""
 
 
 def load_cognitive_lens() -> str:
-    """Load the Cognitive Lens block (prompt-only). Used only when enable_cognitive_lens is True."""
-    try:
-        if COGNITIVE_LENS_FILE.exists():
-            return COGNITIVE_LENS_FILE.read_text(encoding="utf-8").strip()
-    except Exception:
-        pass
-    return ""
+    return _read_cached(COGNITIVE_LENS_FILE).strip() if COGNITIVE_LENS_FILE.exists() else ""
 
 
 def load_behavioral_rhythm() -> str:
-    """Load the Behavioral Rhythm block (prompt-only). Used only when enable_behavioral_rhythm is True."""
-    try:
-        if BEHAVIORAL_RHYTHM_FILE.exists():
-            return BEHAVIORAL_RHYTHM_FILE.read_text(encoding="utf-8").strip()
-    except Exception:
-        pass
-    return ""
+    return _read_cached(BEHAVIORAL_RHYTHM_FILE).strip() if BEHAVIORAL_RHYTHM_FILE.exists() else ""
 
 
 def load_ui_reflection() -> str:
-    """Load the UI Reflection block (prompt-only). Used only when enable_ui_reflection is True."""
-    try:
-        if UI_REFLECTION_FILE.exists():
-            return UI_REFLECTION_FILE.read_text(encoding="utf-8").strip()
-    except Exception:
-        pass
-    return ""
+    return _read_cached(UI_REFLECTION_FILE).strip() if UI_REFLECTION_FILE.exists() else ""
 
 
 def load_operational_guidance() -> str:
-    """Load the Operational Guidance block (prompt-only). Used only when enable_operational_guidance is True."""
-    try:
-        if OPERATIONAL_GUIDANCE_FILE.exists():
-            return OPERATIONAL_GUIDANCE_FILE.read_text(encoding="utf-8").strip()
-    except Exception:
-        pass
-    return ""
+    return _read_cached(OPERATIONAL_GUIDANCE_FILE).strip() if OPERATIONAL_GUIDANCE_FILE.exists() else ""
 
 
 def load_lens_knowledge() -> str:
-    """Load summarized lens knowledge from lens_knowledge/*.md (prompt-only). Used only when enable_lens_knowledge is True."""
+    """Load summarized lens knowledge from lens_knowledge/*.md (prompt-only). Cached per mtime."""
     summaries = []
     try:
         if LENS_KNOWLEDGE_DIR.exists():
             for f in sorted(LENS_KNOWLEDGE_DIR.glob("*.md")):
-                summaries.append(f.read_text(encoding="utf-8")[:600])
+                summaries.append(_read_cached(f)[:600])
     except Exception:
         pass
     return "\n\n".join(summaries) if summaries else ""
@@ -268,7 +265,7 @@ def load_knowledge_docs(max_bytes: int = 6000) -> str:
             if ".identity" in str(f):
                 continue
             try:
-                text = f.read_text(encoding="utf-8", errors="replace")
+                text = _read_cached(f)
                 priority = _knowledge_priority_from_text(text)
                 if text.strip().startswith("---"):
                     end = text.find("\n---", 3)

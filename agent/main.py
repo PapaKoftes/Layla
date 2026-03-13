@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
 
 from agent_loop import autonomous_run, stream_reason, strip_junk_from_reply, truncate_at_next_user_turn, _is_junk_reply
@@ -112,11 +113,26 @@ async def lifespan(app: FastAPI):
                     logger.info("knowledge docs indexed for Chroma")
             except Exception as e:
                 logger.warning("knowledge index failed: %s", e)
-        # Preload embedder so first /agent request does not load sentence-transformers + HF
+        # Run DB migration once at startup (not on every DB call)
+        try:
+            from layla.memory.db import migrate
+            migrate()
+            logger.info("DB migration complete")
+        except Exception as e:
+            logger.warning("DB migration failed: %s", e)
+        # Pre-warm LLM in background thread — first request will be instant
+        try:
+            from services.llm_gateway import prewarm_llm
+            prewarm_llm()
+            logger.info("LLM pre-warm thread started")
+        except Exception as e:
+            logger.warning("LLM pre-warm thread failed: %s", e)
+        # Preload embedder so first /agent request does not block on model load
         try:
             from layla.memory.vector_store import embed
-            embed("warmup")
-            logger.info("embedder preloaded")
+            import threading as _t
+            _t.Thread(target=lambda: embed("warmup"), daemon=True, name="embed-prewarm").start()
+            logger.info("embedder pre-warm thread started")
         except Exception as e:
             logger.warning("embedder preload failed: %s", e)
         if cfg.get("scheduler_study_enabled", True):
@@ -147,7 +163,13 @@ async def lifespan(app: FastAPI):
         app.state.scheduler.shutdown(wait=False)
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    lifespan=lifespan,
+    title="Layla",
+    description="Local-first AI companion and engineering agent",
+    version="0.1.0",
+)
+app.add_middleware(GZipMiddleware, minimum_size=500)  # compress responses > 500 bytes
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENT_DIR = Path(__file__).resolve().parent
@@ -451,7 +473,7 @@ def v1_models():
         "object": "list",
         "data": [
             {
-                "id": "jinx",
+                "id": "layla",
                 "object": "model",
                 "created": 1700000000,
                 "owned_by": "local",
@@ -514,7 +536,7 @@ async def v1_chat_completions(req: dict):
         "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
         "object": "chat.completion",
         "created": int(time.time()),
-        "model": "jinx",
+        "model": "layla",
         "choices": [
             {
                 "index": 0,

@@ -2,6 +2,8 @@
 
 Thank you for your interest in contributing. Layla is a local-first AI companion and engineering agent. Contributions of all kinds are welcome: bug fixes, features, docs, tests, and ideas.
 
+> **License note:** Layla is released under the [Layla Non-Commercial Source License](LICENSE). By contributing you agree your contribution is licensed under the same terms. Commercial use requires explicit written permission from the project maintainer(s).
+
 ---
 
 ## Development setup
