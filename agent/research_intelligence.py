@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 from pathlib import Path
 from research_utils import normalize_stage_text, _extract_json_block
 

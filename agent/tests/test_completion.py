@@ -6,7 +6,6 @@ Runtime tests for System Completion layers:
 - reflection triggers only when needed (once per run)
 No safety/approval/loop changes.
 """
-import json
 import sys
 import tempfile
 from pathlib import Path
@@ -16,12 +15,11 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-import pytest
+import pytest  # noqa: E402
 
 
 def test_memory_distill_merges_similar():
     """memory_distill groups similar learnings and merges into one."""
-    from layla.memory.db import get_recent_learnings, save_learning, delete_learnings_by_id
     from layla.memory.distill import memory_distill, _group_similar, _summarize_group
 
     # Unit test: group similar

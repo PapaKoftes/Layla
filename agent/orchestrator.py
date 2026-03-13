@@ -39,7 +39,7 @@ def _load_aspects() -> list[dict]:
     try:
         from layla.memory.db import get_earned_title
     except Exception:
-        get_earned_title = lambda _: None
+        def get_earned_title(_): return None  # noqa: E731
     if PERSONALITIES_DIR.exists():
         for f in sorted(PERSONALITIES_DIR.glob("*.json")):
             try:

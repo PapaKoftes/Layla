@@ -12,19 +12,15 @@ Commands (type in input bar):
     /wakeup            Trigger session greeting
     /export            Dump system state to layla_export.json
 """
-import json
-import sys
-from datetime import datetime
 from pathlib import Path
 
 import httpx
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import (
-    Footer, Header, Input, Label, ListView, ListItem, Log, Static
+    Footer, Header, Input, Log, Static
 )
 from textual.containers import Horizontal, Vertical, ScrollableContainer
-from textual import events
 
 BASE_URL = "http://localhost:8000"
 

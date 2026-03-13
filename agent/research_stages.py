@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 from pathlib import Path
 
 AGENT_DIR = Path(__file__).resolve().parent
@@ -22,7 +21,7 @@ SUBDIRS = (
 STAGE_TO_SUBDIR = dict(zip(STAGE_ORDER, SUBDIRS[:6]))
 
 
-from research_utils import normalize_stage_text, _extract_json_block
+from research_utils import normalize_stage_text, _extract_json_block  # noqa: E402
 
 
 def ensure_research_brain_dirs() -> None:

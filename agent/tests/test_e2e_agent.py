@@ -10,7 +10,6 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-import pytest
 
 
 def test_agent_endpoint_returns_200_with_mock_run():
