@@ -29,19 +29,21 @@ from textual import events
 BASE_URL = "http://localhost:8000"
 
 ASPECTS = [
-    ("morrigan", "⚔  Morrigan"),
-    ("nyx",      "✦  Nyx"),
-    ("echo",     "◎  Echo"),
-    ("eris",     "⚡  Eris"),
-    ("lilith",   "⊛  Lilith"),
+    ("morrigan",  "⚔  Morrigan"),
+    ("nyx",       "✦  Nyx"),
+    ("echo",      "◎  Echo"),
+    ("eris",      "⚡  Eris"),
+    ("cassandra", "⌖  Cassandra"),
+    ("lilith",    "⊛  Lilith"),
 ]
 
 ASPECT_COLORS = {
-    "morrigan": "dark_red",
-    "nyx":      "dark_magenta",
-    "echo":     "purple",
-    "eris":     "red",
-    "lilith":   "bright_red",
+    "morrigan":  "dark_red",
+    "nyx":       "dark_magenta",
+    "echo":      "purple",
+    "eris":      "red",
+    "cassandra": "dark_blue",
+    "lilith":    "bright_red",
 }
 
 
