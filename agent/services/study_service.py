@@ -1,39 +1,37 @@
 """Study plan autonomous step: one Nyx-style research run per plan."""
+import logging
 from agent_loop import autonomous_run
+
+logger = logging.getLogger("layla")
 
 
 def run_autonomous_study_for_plan(plan: dict) -> str | None:
-    """Run one Nyx-style research step for a study plan; return summary text or None."""
-    from layla.memory.db import update_study_progress
+    """Run one Nyx-style research step for a study plan; return summary text or None.
+    Saves extracted learnings to the DB after every successful study run."""
+    from layla.memory.db import update_study_progress, save_learning
     topic = (plan.get("topic") or "").strip()
     plan_id = plan.get("id")
     if not topic or not plan_id:
         return None
+
+    # Try to fetch reference material first
     ref_text = ""
     try:
         import urllib.parse
-        from layla.tools.web import fetch_url
-        slug = urllib.parse.quote(topic.strip().replace(" ", "_"))
-        if slug:
-            url = f"https://en.wikipedia.org/wiki/{slug}"
-            r = fetch_url(url, store=False)
+        from layla.tools.registry import TOOLS
+        fetch_fn = TOOLS.get("fetch_article", {}).get("fn") or TOOLS.get("fetch_url", {}).get("fn")
+        if fetch_fn:
+            slug = urllib.parse.quote(topic.strip().replace(" ", "_"))
+            r = fetch_fn(url=f"https://en.wikipedia.org/wiki/{slug}")
             if r.get("ok") and r.get("text"):
-                ref_text = (r.get("text") or "")[:2000]
-            else:
-                # Fallback: search Python docs
-                search_url = f"https://docs.python.org/3/search.html?q={urllib.parse.quote(topic.strip())}"
-                r2 = fetch_url(search_url, store=False)
-                if r2.get("ok") and r2.get("text"):
-                    ref_text = (r2.get("text") or "")[:2000]
+                ref_text = (r.get("text") or "")[:3000]
     except Exception:
         pass
-    goal = (
-        f"Summarize the following in 2-3 key points for study progress (topic: {topic}). Be concise."
-    )
+
+    goal = f"Study topic: {topic}\n\nProvide 3-5 key facts, concepts, or insights about this topic. Be specific and educational. Format as a numbered list."
     if ref_text:
-        goal += f"\n\nReference text:\n{ref_text}"
-    else:
-        goal += f"\n\nUse your knowledge of '{topic}' to write 2-3 sentences."
+        goal += f"\n\nReference material:\n{ref_text[:2500]}"
+
     result = autonomous_run(
         goal, context="", workspace_root="", allow_write=False, allow_run=False,
         conversation_history=[], aspect_id="nyx", show_thinking=False,
@@ -45,8 +43,37 @@ def run_autonomous_study_for_plan(plan: dict) -> str | None:
         summary = summary.get("content") or summary.get("output") or str(summary)
     if not isinstance(summary, str) or not summary.strip():
         return None
+
+    summary = summary.strip()
+
+    # Persist study progress
     try:
-        update_study_progress(plan_id, summary.strip())
+        update_study_progress(plan_id, summary)
     except Exception:
         pass
-    return summary.strip()
+
+    # Extract and save learnings from the study output
+    try:
+        import re as _re
+        lines = summary.split("\n")
+        saved = 0
+        for line in lines:
+            line = line.strip()
+            # Numbered list items are prime learning candidates
+            m = _re.match(r'^[\d]+[\.\)]\s+(.{20,200})$', line)
+            if m:
+                fact = m.group(1).strip()
+                if not fact.endswith(":"):  # skip section headers
+                    save_learning(content=f"[{topic}] {fact}", kind="fact")
+                    saved += 1
+            if saved >= 3:
+                break
+        # If no numbered items found, save the whole summary as one fact
+        if saved == 0 and len(summary) >= 60:
+            save_learning(content=f"[{topic}] {summary[:300]}", kind="fact")
+            saved = 1
+        logger.info("study: saved %d learnings for topic=%s", saved, topic)
+    except Exception as e:
+        logger.debug("study: learning save failed: %s", e)
+
+    return summary
