@@ -91,7 +91,10 @@ async def research_mission(request: Request):
         max_mission_runtime_seconds = 14400
         if stages_to_run:
             from research_stages import load_mission_state, save_mission_state
-            save_mission_state({"stage": None, "progress": {}, "completed": []})
+            if not next_stage:
+                # Fresh mission: reset state
+                save_mission_state({"stage": None, "progress": {}, "completed": []})
+            # else: preserve existing state so completed stages are not re-run
             conv = list(_history)
             combined_md = []
             result = {"steps": [], "status": "finished"}

@@ -21,7 +21,7 @@ def _get_llm():
         import runtime_safety
         from llama_cpp import Llama
         cfg = runtime_safety.load_config()
-        model_filename = cfg.get("model_filename", "jinx-20b.gguf")
+        model_filename = cfg.get("model_filename", "your-model.gguf")
         model_path = REPO_ROOT / "models" / model_filename
         n_ctx = max(512, int(cfg.get("n_ctx", 4096)))
         n_batch = max(1, min(n_ctx, int(cfg.get("n_batch", 512))))

@@ -21,8 +21,8 @@ import pytest
 
 def test_memory_distill_merges_similar():
     """memory_distill groups similar learnings and merges into one."""
-    from jinx.memory.db import get_recent_learnings, save_learning, delete_learnings_by_id
-    from jinx.memory.distill import memory_distill, _group_similar, _summarize_group
+    from layla.memory.db import get_recent_learnings, save_learning, delete_learnings_by_id
+    from layla.memory.distill import memory_distill, _group_similar, _summarize_group
 
     # Unit test: group similar
     learnings = [

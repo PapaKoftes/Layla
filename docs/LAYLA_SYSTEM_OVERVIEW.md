@@ -65,7 +65,7 @@ You have **four main ways** to interact:
 
 4. **From Cursor (or any MCP client)**  
    Use the **MCP tools** that talk to Layla:
-   - **chat_with_jinx** — main chat; pass message, context, workspace; set `allow_write` / `allow_run` only when you want her to act.
+   - **chat_with_layla** — main chat; pass message, context, workspace; set `allow_write` / `allow_run` only when you want her to act.
    - **add_learning** — make her remember something (preferences, facts, corrections).
    - **start_study_session** — start a study session on a topic.
    - **analyze_repo_for_study** — ask her what to study next for this repo.
@@ -150,7 +150,7 @@ For technical listeners:
 1. **Start:** `cd agent && uvicorn main:app --host 127.0.0.1 --port 8000`
 2. **Open:** `http://localhost:8000/ui` or run `python layla.py wakeup`
 3. **Set project (optional):** `POST http://localhost:8000/project_context` with `{"project_name": "MyProject", "lifecycle_stage": "planning", "goals": "..."}`
-4. **Chat:** In UI, or `python layla.py ask "your message"`, or in Cursor via MCP `chat_with_jinx`
+4. **Chat:** In UI, or `python layla.py ask "your message"`, or in Cursor via MCP `chat_with_layla`
 5. **When she asks for approval:** `python layla.py approve <uuid>` or use the Web UI Approvals panel
 
 That’s the system you have today: a **local, persistent, multi-aspect partner** with project awareness, file understanding, selective learning, and strict safety—ready to use and to evolve with you.

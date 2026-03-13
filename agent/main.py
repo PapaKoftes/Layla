@@ -69,8 +69,8 @@ def _scheduled_study_job() -> None:
             return
         if _game_or_fullscreen_running():
             return
-        from jinx.memory.db import get_active_study_plans, append_scheduler_history
-        from jinx.memory import capabilities as cap_mod
+        from layla.memory.db import get_active_study_plans, append_scheduler_history
+        from layla.memory import capabilities as cap_mod
         plans = get_active_study_plans()
         if not plans:
             return
@@ -105,7 +105,7 @@ async def lifespan(app: FastAPI):
         cfg = runtime_safety.load_config()
         if cfg.get("use_chroma"):
             try:
-                from jinx.memory.vector_store import index_knowledge_docs
+                from layla.memory.vector_store import index_knowledge_docs
                 knowledge_dir = REPO_ROOT / "knowledge"
                 if knowledge_dir.exists():
                     index_knowledge_docs(knowledge_dir)
@@ -114,7 +114,7 @@ async def lifespan(app: FastAPI):
                 logger.warning("knowledge index failed: %s", e)
         # Preload embedder so first /agent request does not load sentence-transformers + HF
         try:
-            from jinx.memory.vector_store import embed
+            from layla.memory.vector_store import embed
             embed("warmup")
             logger.info("embedder preloaded")
         except Exception as e:
@@ -231,7 +231,7 @@ def _audit(tool: str, args_summary: str, approved_by: str, result_ok: bool) -> N
 
 def _read_study_plans() -> list:
     try:
-        from jinx.memory.db import get_active_study_plans
+        from layla.memory.db import get_active_study_plans
         return get_active_study_plans()
     except Exception:
         return []
@@ -239,7 +239,7 @@ def _read_study_plans() -> list:
 
 def _read_wakeup_log() -> dict:
     try:
-        from jinx.memory.db import get_last_wakeup
+        from layla.memory.db import get_last_wakeup
         row = get_last_wakeup()
         return row or {}
     except Exception:
@@ -363,7 +363,7 @@ def _health_checks() -> tuple[bool, str]:
         logger.debug("health config: %s", e)
         return False, "config_load_failed"
     try:
-        from jinx.memory.db import get_recent_learnings
+        from layla.memory.db import get_recent_learnings
         get_recent_learnings(n=1)
     except Exception as e:
         logger.debug("health db: %s", e)
@@ -386,7 +386,7 @@ def health():
 def get_project_context_api():
     """Return current project context: name, domains, key_files, goals, lifecycle_stage. Read-only for Layla."""
     try:
-        from jinx.memory.db import get_project_context
+        from layla.memory.db import get_project_context
         return get_project_context()
     except Exception as e:
         logger.warning("get_project_context failed: %s", e)
@@ -399,7 +399,7 @@ def get_file_intent_api(path: str = ""):
     if not path:
         return JSONResponse({"ok": False, "error": "path required"}, status_code=400)
     try:
-        from jinx.file_understanding import analyze_file
+        from layla.file_understanding import analyze_file
         return analyze_file(file_path=path)
     except Exception as e:
         logger.warning("file_intent failed: %s", e)
@@ -410,7 +410,7 @@ def get_file_intent_api(path: str = ""):
 async def set_project_context_api(req: Request):
     """Update project context. Body: project_name?, domains?, key_files?, goals?, lifecycle_stage? (idea|planning|prototype|iteration|execution|reflection)."""
     try:
-        from jinx.memory.db import set_project_context, PROJECT_LIFECYCLE_STAGES
+        from layla.memory.db import set_project_context, PROJECT_LIFECYCLE_STAGES
         try:
             body = await req.json()
         except Exception:
@@ -487,7 +487,7 @@ async def v1_chat_completions(req: dict):
             "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
             "object": "chat.completion",
             "created": int(time.time()),
-            "model": "jinx",
+            "model": "layla",
             "choices": [{"index": 0, "message": {"role": "assistant", "content": ""}, "finish_reason": "stop"}],
         })
 
@@ -533,8 +533,8 @@ async def v1_chat_completions(req: dict):
 @app.get("/system_export")
 def system_export():
     import runtime_safety
-    from jinx.tools.registry import TOOLS
-    from jinx.memory.db import get_recent_learnings, get_active_study_plans, get_last_wakeup, get_recent_audit
+    from layla.tools.registry import TOOLS
+    from layla.memory.db import get_recent_learnings, get_active_study_plans, get_last_wakeup, get_recent_audit
 
     cfg = runtime_safety.load_config()
 
@@ -572,7 +572,7 @@ def system_export():
     except Exception:
         aspects_loaded = []
 
-    model_filename = cfg.get("model_filename", "jinx-20b.gguf")
+    model_filename = cfg.get("model_filename", "your-model.gguf")
     model_path = str(REPO_ROOT / "models" / model_filename)
 
     import subprocess
@@ -628,6 +628,90 @@ def system_export():
         "git_branch": git_branch,
         "pip_freeze": pip_freeze,
     })
+
+
+# ─────────────────────────────────────────────────────────────
+# Learnings API — paginated read + delete
+# ─────────────────────────────────────────────────────────────
+
+@app.get("/learnings")
+def list_learnings(page: int = 1, limit: int = 20, type: str = ""):
+    """Paginated list of learnings. Optional ?type= filter (fact, preference, strategy, identity, distilled)."""
+    try:
+        from layla.memory.db import _conn, migrate
+        migrate()
+        offset = (max(1, page) - 1) * limit
+        with _conn() as db:
+            if type:
+                rows = db.execute(
+                    "SELECT id, content, type, created_at, embedding_id FROM learnings WHERE type=? ORDER BY id DESC LIMIT ? OFFSET ?",
+                    (type, limit, offset)
+                ).fetchall()
+                total = db.execute("SELECT COUNT(*) FROM learnings WHERE type=?", (type,)).fetchone()[0]
+            else:
+                rows = db.execute(
+                    "SELECT id, content, type, created_at, embedding_id FROM learnings ORDER BY id DESC LIMIT ? OFFSET ?",
+                    (limit, offset)
+                ).fetchall()
+                total = db.execute("SELECT COUNT(*) FROM learnings").fetchone()[0]
+        return JSONResponse({
+            "page": page, "limit": limit, "total": total,
+            "items": [dict(r) for r in rows],
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.delete("/learnings/{learning_id}")
+def delete_learning(learning_id: int):
+    """Delete a learning by id. Also removes its vector from ChromaDB."""
+    try:
+        from layla.memory.db import _conn, migrate
+        migrate()
+        with _conn() as db:
+            row = db.execute("SELECT embedding_id FROM learnings WHERE id=?", (learning_id,)).fetchone()
+            if not row:
+                return JSONResponse({"ok": False, "error": "Not found"}, status_code=404)
+            embedding_id = row["embedding_id"] or ""
+            db.execute("DELETE FROM learnings WHERE id=?", (learning_id,))
+            db.commit()
+        if embedding_id:
+            try:
+                from layla.memory.vector_store import delete_vectors_by_ids
+                delete_vectors_by_ids([embedding_id])
+            except Exception:
+                pass
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/audit")
+def list_audit(page: int = 1, limit: int = 50, tool: str = ""):
+    """Paginated audit log. Optional ?tool= filter."""
+    try:
+        from layla.memory.db import _conn, migrate
+        migrate()
+        offset = (max(1, page) - 1) * limit
+        with _conn() as db:
+            if tool:
+                rows = db.execute(
+                    "SELECT id, timestamp, tool, args_summary, approved_by, result_ok FROM audit WHERE tool=? ORDER BY id DESC LIMIT ? OFFSET ?",
+                    (tool, limit, offset)
+                ).fetchall()
+                total = db.execute("SELECT COUNT(*) FROM audit WHERE tool=?", (tool,)).fetchone()[0]
+            else:
+                rows = db.execute(
+                    "SELECT id, timestamp, tool, args_summary, approved_by, result_ok FROM audit ORDER BY id DESC LIMIT ? OFFSET ?",
+                    (limit, offset)
+                ).fetchall()
+                total = db.execute("SELECT COUNT(*) FROM audit").fetchone()[0]
+        return JSONResponse({
+            "page": page, "limit": limit, "total": total,
+            "items": [dict(r) for r in rows],
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 # ─────────────────────────────────────────────────────────────

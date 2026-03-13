@@ -25,10 +25,10 @@ def _get_sandbox() -> Path:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
         import runtime_safety
-        root = runtime_safety.load_config().get("sandbox_root", r"C:\github")
+        root = runtime_safety.load_config().get("sandbox_root", str(Path.home()))
         return Path(root).resolve()
     except Exception:
-        return Path(r"C:\github").resolve()
+        return Path.home().resolve()
 
 # Commands that are never allowed even with allow_run=True
 _SHELL_BLOCKLIST = [
@@ -39,10 +39,13 @@ _SHELL_BLOCKLIST = [
 
 
 def inside_sandbox(path: Path) -> bool:
+    """Check whether path is inside the configured sandbox using Path.relative_to (no string prefix tricks)."""
     try:
         sandbox = _get_sandbox()
-        return str(path.resolve()).lower().startswith(str(sandbox).lower())
-    except Exception:
+        resolved = path.resolve()
+        resolved.relative_to(sandbox)
+        return True
+    except (ValueError, Exception):
         return False
 
 
@@ -235,36 +238,33 @@ def run_python(code: str, cwd: str) -> dict:
 
 
 def apply_patch(original_path: str, patch_text: str) -> dict:
-    """Apply a unified diff patch. Creates a backup first."""
+    """Apply a unified diff patch using unidiff (pure Python, Windows-safe). Creates a backup first."""
     target = Path(original_path)
     if not inside_sandbox(target):
         return {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
         return {"ok": False, "error": "File not found"}
-    # Backup
     import shutil, datetime
     backup = target.with_suffix(
         f".bak_{datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')}{target.suffix}"
     )
     shutil.copy2(str(target), str(backup))
     try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".patch", delete=False, encoding="utf-8"
-        ) as tmp:
-            tmp.write(patch_text)
-            patch_path = tmp.name
-        proc = subprocess.run(
-            ["patch", str(target), patch_path],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=15,
-        )
-        Path(patch_path).unlink(missing_ok=True)
-        if proc.returncode == 0:
-            return {"ok": True, "path": str(target), "backup": str(backup)}
-        return {"ok": False, "error": (proc.stderr or "")[:1000], "backup": str(backup)}
+        import unidiff
+        patch_set = unidiff.PatchSet(patch_text.splitlines(keepends=True))
+        original_lines = target.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+        result_lines = list(original_lines)
+        for patched_file in patch_set:
+            offset = 0
+            for hunk in patched_file:
+                src_start = hunk.source_start - 1 + offset
+                removed = [line.value for line in hunk if line.is_removed]
+                added = [line.value for line in hunk if line.is_added]
+                # Remove old lines, insert new ones
+                result_lines[src_start: src_start + len(removed)] = added
+                offset += len(added) - len(removed)
+        target.write_text("".join(result_lines), encoding="utf-8")
+        return {"ok": True, "path": str(target), "backup": str(backup)}
     except Exception as e:
         return {"ok": False, "error": str(e), "backup": str(backup)}
 
@@ -315,7 +315,7 @@ def git_branch(repo: str) -> dict:
 
 
 def fetch_url_tool(url: str, store: bool = False) -> dict:
-    from jinx.tools.web import fetch_url
+    from layla.tools.web import fetch_url
     return fetch_url(url, store=store)
 
 
@@ -352,7 +352,7 @@ def get_project_context_tool() -> dict:
     try:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
-        from jinx.memory.db import get_project_context
+        from layla.memory.db import get_project_context
         return {"ok": True, **get_project_context()}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -369,7 +369,7 @@ def update_project_context_tool(
     try:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
-        from jinx.memory.db import set_project_context
+        from layla.memory.db import set_project_context
         set_project_context(
             project_name=project_name or "",
             domains=domains,
@@ -387,7 +387,7 @@ def understand_file_tool(path: str, content: str | None = None) -> dict:
     try:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
-        from jinx.file_understanding import analyze_file
+        from layla.file_understanding import analyze_file
         if content is not None:
             return {"ok": True, **analyze_file(file_path=path, content=content)}
         return {"ok": True, **analyze_file(file_path=path)}

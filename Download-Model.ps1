@@ -1,8 +1,8 @@
-# Download Jinx 20B GGUF from Hugging Face into local-jinx-agent\models\ and save as jinx-20b.gguf
+# Download Jinx 20B GGUF from Hugging Face into local-jinx-agent\models\ and save as your-model.gguf
 # Quantization: Q4_K_M = good quality/size balance (~15.8 GB). Change $FileName to use another (see list below).
 
 $ModelsDir = "$env:USERPROFILE\local-jinx-agent\models"
-$OutFile   = Join-Path $ModelsDir "jinx-20b.gguf"
+$OutFile   = Join-Path $ModelsDir "your-model.gguf"
 
 # Hugging Face repo: Jinx-org/Jinx-gpt-oss-20b-GGUF
 # Available: Q2_K (12.1 GB), Q3_K_S (12.1), Q3_K_M (12.9), Q4_K_S (14.7), Q4_K_M (15.8), Q5_K_S (15.9), Q5_K_M (16.9), Q6_K (22.2), Q8_0 (22.3)

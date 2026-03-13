@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  layla:
+    build: .
+    image: layla:local
+    container_name: layla-agent
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount your GGUF model directory
+      - ./models:/app/models:ro
+      # Persistent database and knowledge store
+      - ./data:/app/data
+      # Optional: mount your knowledge docs directory
+      # - ./knowledge:/app/knowledge:ro
+    environment:
+      - LAYLA_DB_PATH=/app/data/layla.db
+      # Copy your runtime_config.json here and reference it:
+      # - LAYLA_CONFIG_PATH=/app/data/runtime_config.json
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+# Create the data directory on first run
+volumes:
+  layla-data:
+    driver: local

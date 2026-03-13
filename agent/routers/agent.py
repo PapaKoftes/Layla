@@ -27,19 +27,20 @@ def learn(req: dict):
     if not content:
         return JSONResponse({"ok": False, "error": "No content"})
     try:
-        from jinx.memory.db import save_learning
-        save_learning(content=content, kind=kind)
+        embedding_id = ""
         try:
-            from jinx.memory.memory_graph import add_node
+            from layla.memory.vector_store import embed, add_vector
+            vec = embed(content)
+            embedding_id = add_vector(vec, {"content": content, "type": kind})
+        except Exception as e:
+            logger.warning("vector_store add_vector failed: %s", e)
+        from layla.memory.db import save_learning
+        save_learning(content=content, kind=kind, embedding_id=embedding_id)
+        try:
+            from layla.memory.memory_graph import add_node
             add_node(label=content[:80], metadata={"type": kind, "content": content})
         except Exception as e:
             logger.warning("memory_graph add_node failed: %s", e)
-        try:
-            from jinx.memory.vector_store import embed, add_vector
-            vec = embed(content)
-            add_vector(vec, {"content": content, "type": kind})
-        except Exception as e:
-            logger.warning("vector_store add_vector failed: %s", e)
         return JSONResponse({"ok": True, "message": "Saved."})
     except Exception as e:
         logger.exception("learn failed")

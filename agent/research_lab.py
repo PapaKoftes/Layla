@@ -56,14 +56,21 @@ def copy_source_to_lab(workspace_root: str) -> str | None:
         logging.getLogger("layla").warning("research_lab prepare failed: %s", e)
         return None
 
+    EXCLUDE_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".research_lab", ".research_brain", ".research_output"}
+    MAX_FILE_BYTES = 5 * 1024 * 1024  # 5 MB
+
     def _copy_robust(s: Path, d: Path) -> None:
         for entry in s.iterdir():
+            if entry.name in EXCLUDE_DIRS:
+                continue
             d_entry = d / entry.name
             try:
                 if entry.is_dir():
                     d_entry.mkdir(parents=True, exist_ok=True)
                     _copy_robust(entry, d_entry)
                 else:
+                    if entry.stat().st_size > MAX_FILE_BYTES:
+                        continue
                     shutil.copy2(entry, d_entry, follow_symlinks=False)
             except (OSError, Exception):
                 pass

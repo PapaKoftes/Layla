@@ -35,7 +35,7 @@ def _initiative_condition_matches(condition: str, pc: dict, active_plans: list) 
 def _wakeup_initiative_suggestion(active_plans: list, greeting_parts: list) -> str:
     """North Star §10+§14: one short proactive suggestion (gated — text only). Uses INITIATIVE_RULES; first match wins."""
     try:
-        from jinx.memory.db import get_project_context
+        from layla.memory.db import get_project_context
         pc = get_project_context()
         for rule in INITIATIVE_RULES:
             if _initiative_condition_matches(rule["condition"], pc, active_plans):
@@ -56,7 +56,7 @@ router = APIRouter(tags=["study"])
 @router.get("/study_plans")
 def get_study_plans():
     try:
-        from jinx.memory.db import get_active_study_plans
+        from layla.memory.db import get_active_study_plans
         return JSONResponse({"plans": get_active_study_plans()})
     except Exception as e:
         logger.exception("get_study_plans failed")
@@ -67,7 +67,7 @@ def get_study_plans():
 def get_capabilities():
     """Evolution layer: return capability domains and current growth state."""
     try:
-        from jinx.memory.db import get_capability_domains, get_capabilities as get_caps
+        from layla.memory.db import get_capability_domains, get_capabilities as get_caps
         domains = get_capability_domains()
         caps = get_caps()
         return JSONResponse({"domains": domains, "capabilities": caps})
@@ -79,7 +79,7 @@ def get_capabilities():
 @router.post("/study_plans")
 def add_study_plan(req: dict):
     get_touch_activity()()
-    from jinx.memory.db import save_study_plan, get_plan_by_topic
+    from layla.memory.db import save_study_plan, get_plan_by_topic
     topic = (req or {}).get("topic", "").strip()
     domain_id = (req or {}).get("domain_id") or None
     if isinstance(domain_id, str):
@@ -97,7 +97,7 @@ def add_study_plan(req: dict):
 @router.post("/study_plans/record_progress")
 def record_study_progress(req: dict):
     get_touch_activity()()
-    from jinx.memory.db import get_plan_by_topic, save_study_plan, update_study_progress
+    from layla.memory.db import get_plan_by_topic, save_study_plan, update_study_progress
     topic = (req or {}).get("topic", "").strip()
     note = (req or {}).get("note", "").strip()
     if not topic:
@@ -120,7 +120,7 @@ def record_study_progress(req: dict):
 @router.get("/wakeup")
 def wakeup():
     get_touch_activity()()
-    from jinx.memory.db import log_wakeup, get_last_wakeup, get_active_study_plans
+    from layla.memory.db import log_wakeup, get_last_wakeup, get_active_study_plans
 
     last_row = get_last_wakeup()
     last_ts = last_row.get("timestamp") if last_row else None
@@ -155,7 +155,7 @@ def wakeup():
         plan = None
         domain_id = None
         try:
-            from jinx.memory import capabilities as cap_mod
+            from layla.memory import capabilities as cap_mod
             plan, domain_id = cap_mod.get_next_plan_for_study(active_plans, use_capabilities=use_capabilities)
         except Exception:
             pass
@@ -166,8 +166,8 @@ def wakeup():
             studied_topic_this_wakeup = plan.get("topic")
             if domain_id:
                 try:
-                    from jinx.memory import capabilities as cap_mod
-                    from jinx.memory.db import append_scheduler_history
+                    from layla.memory import capabilities as cap_mod
+                    from layla.memory.db import append_scheduler_history
                     usefulness = cap_mod.run_learning_validation(summary)
                     cap_mod.record_practice(domain_id, mission_id=plan.get("id"), usefulness_score=usefulness)
                     append_scheduler_history(domain_id, plan.get("id"))
@@ -227,14 +227,14 @@ def wakeup():
 
 @router.get("/aspects/{aspect_id}/title")
 def get_aspect_title(aspect_id: str):
-    from jinx.memory.db import get_earned_title
+    from layla.memory.db import get_earned_title
     title = get_earned_title(aspect_id)
     return JSONResponse({"aspect_id": aspect_id, "title": title})
 
 
 @router.post("/aspects/{aspect_id}/title")
 def set_aspect_title(aspect_id: str, req: dict):
-    from jinx.memory.db import save_earned_title, get_earned_title
+    from layla.memory.db import save_earned_title, get_earned_title
     title = (req or {}).get("title", "").strip()
     if not title:
         return JSONResponse({"ok": False, "error": "No title"})

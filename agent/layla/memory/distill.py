@@ -86,7 +86,7 @@ def memory_distill(learnings: list[dict]) -> dict:
     learnings: list of dicts with keys id, content, type, created_at (e.g. get_recent_learnings).
     Returns: {"merged_groups": N, "removed": M, "added": K}.
     """
-    from jinx.memory.db import delete_learnings_by_id, save_learning
+    from layla.memory.db import delete_learnings_by_id, save_learning
 
     if not learnings or len(learnings) < 2:
         return {"merged_groups": 0, "removed": 0, "added": 0}
@@ -99,11 +99,23 @@ def memory_distill(learnings: list[dict]) -> dict:
     added = 0
     for group in groups:
         ids_to_remove = [L["id"] for L in group if L.get("id")]
+        # Collect old embedding IDs so we can remove them from ChromaDB
+        old_embedding_ids = [L["embedding_id"] for L in group if L.get("embedding_id")]
         summary = _summarize_group(group)
         try:
             delete_learnings_by_id(ids_to_remove)
             removed += len(ids_to_remove)
-            save_learning(content=summary, kind="distilled")
+            # Remove old vectors and add fresh one for the merged summary
+            embedding_id = ""
+            try:
+                from layla.memory.vector_store import embed, add_vector, delete_vectors_by_ids
+                if old_embedding_ids:
+                    delete_vectors_by_ids(old_embedding_ids)
+                vec = embed(summary)
+                embedding_id = add_vector(vec, {"content": summary, "type": "distilled"})
+            except Exception as ve:
+                logger.debug("distill vector update failed: %s", ve)
+            save_learning(content=summary, kind="distilled", embedding_id=embedding_id)
             added += 1
         except Exception as e:
             logger.debug("distill merge failed: %s", e)
@@ -115,7 +127,7 @@ def run_distill_after_outcome(n: int = 50) -> dict:
     Call after outcome memory write: load recent learnings and run distillation.
     Returns result of memory_distill (or zeros if skipped).
     """
-    from jinx.memory.db import get_recent_learnings
+    from layla.memory.db import get_recent_learnings
 
     learnings = get_recent_learnings(n=n)
     return memory_distill(learnings)

@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 def test_db_get_plan_by_topic():
     """get_plan_by_topic returns plan when topic matches (case-insensitive)."""
-    from jinx.memory.db import save_study_plan, get_plan_by_topic, get_active_study_plans
+    from layla.memory.db import save_study_plan, get_plan_by_topic, get_active_study_plans
     topic = "IntegrationTestTopic_" + uuid.uuid4().hex[:6]
     plan_id = uuid.uuid4().hex[:8]
     save_study_plan(plan_id=plan_id, topic=topic, status="active")
@@ -31,7 +31,7 @@ def test_db_get_plan_by_topic():
 
 def test_db_update_study_progress():
     """update_study_progress appends note and sets last_studied."""
-    from jinx.memory.db import save_study_plan, update_study_progress, get_plan_by_topic
+    from layla.memory.db import save_study_plan, update_study_progress, get_plan_by_topic
     topic = "ProgressTest_" + uuid.uuid4().hex[:6]
     plan_id = uuid.uuid4().hex[:8]
     save_study_plan(plan_id=plan_id, topic=topic, status="active")
@@ -46,7 +46,7 @@ def test_db_update_study_progress():
 
 def test_add_study_plan_dedup():
     """Adding same topic twice does not duplicate (main.add_study_plan logic)."""
-    from jinx.memory.db import get_active_study_plans, get_plan_by_topic, save_study_plan
+    from layla.memory.db import get_active_study_plans, get_plan_by_topic, save_study_plan
     topic = "DedupTest_" + uuid.uuid4().hex[:6]
     plan_id1 = uuid.uuid4().hex[:8]
     save_study_plan(plan_id=plan_id1, topic=topic, status="active")
@@ -59,7 +59,7 @@ def test_add_study_plan_dedup():
 
 def test_record_progress_creates_plan_if_missing():
     """record_progress creates plan when topic not in list then updates."""
-    from jinx.memory.db import get_plan_by_topic, save_study_plan, update_study_progress
+    from layla.memory.db import get_plan_by_topic, save_study_plan, update_study_progress
     topic = "RecordProgressNew_" + uuid.uuid4().hex[:6]
     assert get_plan_by_topic(topic) is None
     plan_id = uuid.uuid4().hex[:8]
@@ -129,8 +129,8 @@ def test_capabilities_get_and_record_practice():
     """Evolution layer: GET /capabilities returns domains and capabilities; record_practice updates level."""
     from fastapi.testclient import TestClient
     from main import app
-    from jinx.memory.db import get_capability, get_capability_domains
-    from jinx.memory import capabilities as cap_mod
+    from layla.memory.db import get_capability, get_capability_domains
+    from layla.memory import capabilities as cap_mod
     client = TestClient(app)
     r = client.get("/capabilities")
     assert r.status_code == 200

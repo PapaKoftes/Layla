@@ -8,6 +8,15 @@ layla.db
 learnings.json
 *.db
 agent.zip
+data/
+
+# Local config (each user has their own model path / settings)
+agent/runtime_config.json
+
+# Research lab outputs (generated at runtime, can be large)
+agent/.research_lab/
+agent/.research_brain/
+agent/.research_output/
 
 # Model files (large; each dev supplies their own)
 models/*.gguf

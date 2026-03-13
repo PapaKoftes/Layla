@@ -17,10 +17,10 @@ You’ll see the greeting from Echo, the chat area, and the **Voices** sidebar (
 
 ## 3. (Optional) Cursor MCP
 
-To use Layla from Cursor, start the MCP server from the project root, then **use the MCP tools** (e.g. “Chat with Layla (Jinx)” / `chat_with_jinx`) with your message in the tool’s `message` argument. Do not type plain chat into a stream that sends raw text to MCP — that causes “Invalid JSON” errors because MCP expects JSON-RPC.
+To use Layla from Cursor, start the MCP server from the project root, then **use the MCP tools** (e.g. “Chat with Layla (Jinx)” / `chat_with_layla`) with your message in the tool’s `message` argument. Do not type plain chat into a stream that sends raw text to MCP — that causes “Invalid JSON” errors because MCP expects JSON-RPC.
 
 ```bash
-cd cursor-jinx-mcp
+cd cursor-layla-mcp
 python server.py
 ```
 

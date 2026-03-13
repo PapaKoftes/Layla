@@ -239,7 +239,7 @@ def test_pre_read_probe_runs_only_once_per_path(monkeypatch, tmp_path):
 
 
 def test_knowledge_refresh_detects_changes(monkeypatch, tmp_path):
-    from jinx.memory import vector_store
+    from layla.memory import vector_store
 
     # Force chroma path offloading: only test change detection calls into indexer.
     monkeypatch.setattr(vector_store, "_use_chroma", lambda: True)

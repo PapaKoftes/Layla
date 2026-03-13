@@ -46,7 +46,7 @@ def _personality_files() -> list[tuple[str, dict]]:
 
 def _learnings(limit: int = 500) -> list[dict]:
     try:
-        from jinx.memory.db import migrate, get_recent_learnings
+        from layla.memory.db import migrate, get_recent_learnings
         migrate()
         rows = get_recent_learnings(n=limit)
         return [{"content": r.get("content", ""), "type": r.get("type", "fact")} for r in rows if r.get("content")]
@@ -56,7 +56,7 @@ def _learnings(limit: int = 500) -> list[dict]:
 
 def _aspect_memories(limit: int = 200) -> list[dict]:
     try:
-        from jinx.memory.db import migrate
+        from layla.memory.db import migrate
         import sqlite3
         migrate()
         db_path = REPO_ROOT / "layla.db"

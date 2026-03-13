@@ -13,7 +13,7 @@ AGENT_DIR = Path(__file__).resolve().parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-from jinx.memory.db import migrate, save_study_plan, get_plan_by_topic
+from layla.memory.db import migrate, save_study_plan, get_plan_by_topic
 
 PLANS = [
     # coding (2-3)

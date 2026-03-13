@@ -1,9 +1,9 @@
 """
 Vector store for semantic search over learnings.
-Supports FAISS (default) or ChromaDB (when use_chroma=True in config).
-Embedding model: all-MiniLM-L6-v2 (dim=384) via sentence-transformers.
+Uses ChromaDB as the sole persistent store (FAISS removed).
+Embedding model: nomic-embed-text (768 dim) via sentence-transformers,
+with fallback to all-MiniLM-L6-v2 (384 dim) if nomic is unavailable.
 """
-import json
 import uuid
 import numpy as np
 import hashlib
@@ -11,36 +11,27 @@ import time
 from pathlib import Path
 
 MEMORY_DIR = Path(__file__).resolve().parent
-INDEX_PATH = MEMORY_DIR / "vector.index"
-META_PATH = MEMORY_DIR / "vector_meta.json"
 CHROMA_PATH = MEMORY_DIR / "chroma_db"
 
-DIM = 384  # all-MiniLM-L6-v2 output dimension
-
 _embedder = None
+_embedder_dim: int = 768  # set when embedder loads
 _chroma_collection = None
 _knowledge_fingerprint: str = ""
 _knowledge_last_check_ts: float = 0.0
 
 
 def _get_embedder():
-    global _embedder
+    global _embedder, _embedder_dim
     if _embedder is None:
         from sentence_transformers import SentenceTransformer
-        _embedder = SentenceTransformer("all-MiniLM-L6-v2")
+        try:
+            model = SentenceTransformer("nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True)
+            _embedder_dim = 768
+        except Exception:
+            model = SentenceTransformer("all-MiniLM-L6-v2")
+            _embedder_dim = 384
+        _embedder = model
     return _embedder
-
-
-def _use_chroma() -> bool:
-    try:
-        agent_dir = Path(__file__).resolve().parent.parent.parent
-        import sys
-        if str(agent_dir) not in sys.path:
-            sys.path.insert(0, str(agent_dir))
-        import runtime_safety
-        return bool(runtime_safety.load_config().get("use_chroma", False))
-    except Exception:
-        return False
 
 
 def _get_chroma_collection():
@@ -51,77 +42,49 @@ def _get_chroma_collection():
     client = chromadb.PersistentClient(path=str(CHROMA_PATH))
     _chroma_collection = client.get_or_create_collection(
         name="learnings",
-        metadata={"dimension": DIM},
+        metadata={"hnsw:space": "cosine"},
     )
     return _chroma_collection
-
-
-# ─── FAISS backend ───────────────────────────────────────────────────────────
-
-def _get_index():
-    import faiss
-    if INDEX_PATH.exists():
-        return faiss.read_index(str(INDEX_PATH))
-    return faiss.IndexFlatL2(DIM)
-
-
-def _save_index(index) -> None:
-    import faiss
-    MEMORY_DIR.mkdir(parents=True, exist_ok=True)
-    faiss.write_index(index, str(INDEX_PATH))
-
-
-def _load_meta() -> list:
-    if not META_PATH.exists():
-        return []
-    try:
-        return json.loads(META_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return []
-
-
-def _save_meta(meta: list) -> None:
-    MEMORY_DIR.mkdir(parents=True, exist_ok=True)
-    META_PATH.write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
 
 # ─── Public API ─────────────────────────────────────────────────────────────
 
 def embed(text: str) -> np.ndarray:
-    """Return a float32 (384,) embedding for a text string."""
+    """Return a float32 embedding for a text string."""
     model = _get_embedder()
     vec = model.encode([text], convert_to_numpy=True)[0]
     return vec.astype("float32")
 
 
-def add_vector(vec: np.ndarray, metadata: dict) -> None:
-    """Add a vector + metadata. When use_chroma: write to both Chroma and FAISS (RAG layer)."""
-    if _use_chroma():
-        try:
-            coll = _get_chroma_collection()
-            uid = str(uuid.uuid4())
-            meta_flat = {k: (v if isinstance(v, (str, int, float, bool)) else str(v)) for k, v in metadata.items()}
-            coll.add(ids=[uid], embeddings=[vec.astype(float).tolist()], metadatas=[meta_flat])
-        except Exception:
-            pass
-        # Also write to FAISS so both stores stay populated for merged retrieval
-        try:
-            index = _get_index()
-            index.add(np.array([vec]).astype("float32"))
-            _save_index(index)
-            meta = _load_meta()
-            meta.append(metadata)
-            _save_meta(meta)
-        except Exception:
-            pass
+def add_vector(vec: np.ndarray, metadata: dict) -> str:
+    """Add a vector + metadata to ChromaDB. Returns the document ID."""
+    uid = str(uuid.uuid4())
+    try:
+        coll = _get_chroma_collection()
+        meta_flat = {k: (v if isinstance(v, (str, int, float, bool)) else str(v)) for k, v in metadata.items()}
+        coll.add(ids=[uid], embeddings=[vec.astype(float).tolist()], metadatas=[meta_flat])
+    except Exception:
+        pass
+    return uid
+
+
+def upsert_vector(doc_id: str, vec: np.ndarray, metadata: dict) -> None:
+    """Upsert a vector by id. Used when re-embedding distilled learnings."""
+    try:
+        coll = _get_chroma_collection()
+        meta_flat = {k: (v if isinstance(v, (str, int, float, bool)) else str(v)) for k, v in metadata.items()}
+        coll.upsert(ids=[doc_id], embeddings=[vec.astype(float).tolist()], metadatas=[meta_flat])
+    except Exception:
+        pass
+
+
+def delete_vectors_by_ids(ids: list[str]) -> None:
+    """Remove vectors from ChromaDB by id list."""
+    if not ids:
         return
     try:
-        index = _get_index()
-        index.add(np.array([vec]).astype("float32"))
-        _save_index(index)
-        meta = _load_meta()
-        meta.append(metadata)
-        _save_meta(meta)
+        coll = _get_chroma_collection()
+        coll.delete(ids=ids)
     except Exception:
         pass
 
@@ -129,70 +92,26 @@ def add_vector(vec: np.ndarray, metadata: dict) -> None:
 def _get_knowledge_collection():
     import chromadb
     client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-    return client.get_or_create_collection(name="knowledge", metadata={})
-
-
-def _content_key(m: dict) -> str:
-    """Normalized content for dedupe."""
-    c = (m.get("content") or "").strip()[:500]
-    return c
+    return client.get_or_create_collection(name="knowledge", metadata={"hnsw:space": "cosine"})
 
 
 def search_similar(query_vec: np.ndarray, k: int = 5) -> list:
-    """Return up to k metadata dicts. When use_chroma: merge results from Chroma and FAISS (RAG layer)."""
-    seen = set()
-    merged = []
-
-    if _use_chroma():
-        try:
-            coll = _get_chroma_collection()
-            if coll.count() > 0:
-                n = min(k, coll.count())
-                res = coll.query(
-                    query_embeddings=[query_vec.astype(float).tolist()],
-                    n_results=n,
-                    include=["metadatas"],
-                )
-                if res and res.get("metadatas") and res["metadatas"][0]:
-                    for m in res["metadatas"][0]:
-                        key = _content_key(m)
-                        if key and key not in seen:
-                            seen.add(key)
-                            merged.append(m)
-        except Exception:
-            pass
-        # Layer FAISS on top: add results that aren't duplicates
-        try:
-            index = _get_index()
-            if index.ntotal > 0:
-                n = min(k, index.ntotal)
-                _, indices = index.search(np.array([query_vec]).astype("float32"), n)
-                meta = _load_meta()
-                for idx in indices[0]:
-                    if 0 <= idx < len(meta) and len(merged) >= k:
-                        break
-                    if 0 <= idx < len(meta):
-                        m = meta[idx]
-                        key = _content_key(m)
-                        if key and key not in seen:
-                            seen.add(key)
-                            merged.append(m)
-        except Exception:
-            pass
-        return merged[:k]
+    """Return up to k metadata dicts from ChromaDB learnings collection."""
     try:
-        index = _get_index()
-        if index.ntotal == 0:
+        coll = _get_chroma_collection()
+        if coll.count() == 0:
             return []
-        k_use = min(k, index.ntotal)
-        _, indices = index.search(np.array([query_vec]).astype("float32"), k_use)
-        meta = _load_meta()
-        for idx in indices[0]:
-            if 0 <= idx < len(meta):
-                merged.append(meta[idx])
-        return merged
+        n = min(k, coll.count())
+        res = coll.query(
+            query_embeddings=[query_vec.astype(float).tolist()],
+            n_results=n,
+            include=["metadatas"],
+        )
+        if res and res.get("metadatas") and res["metadatas"][0]:
+            return list(res["metadatas"][0])
     except Exception:
-        return []
+        pass
+    return []
 
 
 def _read_pdf_text(path: Path) -> str:
@@ -375,17 +294,24 @@ def refresh_knowledge_if_changed(knowledge_dir: Path, min_interval_s: float = 30
 
 
 def _chunk_text(text: str, max_chars: int = 600) -> list:
-    out = []
-    for para in text.split("\n\n"):
-        para = para.strip()
-        if not para:
-            continue
-        if len(para) <= max_chars:
-            out.append(para)
-        else:
-            for i in range(0, len(para), max_chars):
-                out.append(para[i : i + max_chars])
-    return out
+    """Overlap-aware chunking via langchain-text-splitters, with plain fallback."""
+    try:
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+        splitter = RecursiveCharacterTextSplitter(chunk_size=max_chars, chunk_overlap=100)
+        return [c for c in splitter.split_text(text) if c.strip()]
+    except Exception:
+        # Fallback: paragraph-aware hard split
+        out = []
+        for para in text.split("\n\n"):
+            para = para.strip()
+            if not para:
+                continue
+            if len(para) <= max_chars:
+                out.append(para)
+            else:
+                for i in range(0, len(para), max_chars):
+                    out.append(para[i: i + max_chars])
+        return out
 
 
 _PRIORITY_ORDER = {"core": 0, "support": 1, "flavor": 2}

@@ -1,7 +1,7 @@
-﻿Set-StrictMode -Version Latest
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$AgentDir = "$env:USERPROFILE\local-jinx-agent\agent"
+$AgentDir = "$env:USERPROFILE\local-layla-agent\agent"
 $VenvPython = Join-Path $AgentDir "venv\Scripts\python.exe"
 
 $BindHost = "127.0.0.1"
@@ -14,8 +14,8 @@ if (-not (Test-Path -LiteralPath $VenvPython)) {
 
 . (Join-Path $AgentDir "venv\Scripts\Activate.ps1")
 
-if (-not $env:JINX_WORKSPACE_ROOT) { $env:JINX_WORKSPACE_ROOT = "C:\github" }
-if (-not $env:JINX_AGENT_URL)      { $env:JINX_AGENT_URL = "http://$BindHost`:$Port" }
+if (-not $env:LAYLA_WORKSPACE_ROOT) { $env:LAYLA_WORKSPACE_ROOT = $env:USERPROFILE }
+if (-not $env:LAYLA_AGENT_URL)      { $env:LAYLA_AGENT_URL = "http://$BindHost`:$Port" }
 
 Write-Host ""
 Write-Host "Starting server on $BindHost`:$Port ..."

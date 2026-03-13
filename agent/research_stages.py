@@ -22,11 +22,7 @@ SUBDIRS = (
 STAGE_TO_SUBDIR = dict(zip(STAGE_ORDER, SUBDIRS[:6]))
 
 
-def normalize_stage_text(text: str) -> str:
-    """Replace Unicode em-dash with ASCII hyphen so stage goals are never invalid if mistaken for code."""
-    if not text or not isinstance(text, str):
-        return text or ""
-    return text.replace("\u2014", "-").replace("—", "-")
+from research_utils import normalize_stage_text, _extract_json_block
 
 
 def ensure_research_brain_dirs() -> None:
@@ -116,32 +112,7 @@ def load_research_context(for_stage: str) -> str:
     return "\n\n".join(parts) if parts else ""
 
 
-def _extract_json_block(text: str) -> dict | None:
-    """Try to extract a JSON object from markdown or raw text."""
-    if not text:
-        return None
-    # Code block
-    m = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", text)
-    if m:
-        try:
-            return json.loads(m.group(1))
-        except json.JSONDecodeError:
-            pass
-    # Raw JSON
-    start = text.find("{")
-    if start >= 0:
-        depth = 0
-        for i in range(start, len(text)):
-            if text[i] == "{":
-                depth += 1
-            elif text[i] == "}":
-                depth -= 1
-                if depth == 0:
-                    try:
-                        return json.loads(text[start : i + 1])
-                    except json.JSONDecodeError:
-                        break
-    return None
+# _extract_json_block and normalize_stage_text are imported from research_utils above
 
 
 async def _run_stage(

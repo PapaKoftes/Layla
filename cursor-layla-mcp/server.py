@@ -1,4 +1,4 @@
-# MCP server: exposes tools so Cursor can talk to the local Layla/Jinx agent.
+# MCP server: exposes tools so Cursor can talk to the local Layla agent.
 # Run with: python server.py  (requires mcp package; use agent venv and pip install mcp)
 import anyio
 import json
@@ -9,7 +9,7 @@ from mcp import types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
-JINX_BASE = "http://127.0.0.1:8000"
+LAYLA_BASE = os.environ.get("LAYLA_BASE_URL", "http://127.0.0.1:8000")
 
 
 def _infer_workspace_root() -> str:
@@ -28,7 +28,7 @@ def _infer_workspace_root() -> str:
         pass
     return os.getcwd()
 
-app = Server("jinx")
+app = Server("layla")
 
 
 def _post(url: str, body: dict, timeout: int = 180) -> dict:
@@ -40,7 +40,7 @@ def _post(url: str, body: dict, timeout: int = 180) -> dict:
 
 
 def _learn_sync(content: str, learning_type: str = "fact") -> str:
-    data = _post(JINX_BASE + "/learn/", {"content": content, "type": learning_type}, timeout=30)
+    data = _post(LAYLA_BASE + "/learn/", {"content": content, "type": learning_type}, timeout=30)
     if data.get("ok"):
         return data.get("message", "Saved.")
     return data.get("error", "Failed.")
@@ -55,7 +55,7 @@ def _chat_sync(
     aspect_id: str = "",
     show_thinking: bool = False,
 ) -> str:
-    data = _post(JINX_BASE + "/agent", {
+    data = _post(LAYLA_BASE + "/agent", {
         "message": message,
         "context": context,
         "workspace_root": (workspace_root or "").strip() or _infer_workspace_root(),
@@ -72,10 +72,10 @@ async def handle_list_tools() -> types.ListToolsResult:
     return types.ListToolsResult(
         tools=[
             types.Tool(
-                name="chat_with_jinx",
-                title="Chat with Layla (Jinx)",
+                name="chat_with_layla",
+                title="Chat with Layla",
                 description=(
-                    "Send a message to your local Layla/Jinx agent. She can read files, "
+                    "Send a message to your local Layla agent. She can read files, "
                     "list dirs, and optionally write/run commands. Always pass 'context' "
                     "(open files, selected code) so she can work on what you have open. "
                     "Set allow_write/allow_run true only if you explicitly asked her to "
@@ -95,7 +95,7 @@ async def handle_list_tools() -> types.ListToolsResult:
                         },
                         "workspace_root": {
                             "type": "string",
-                            "description": "Root path for Layla's file/command tools (e.g. C:\\Github).",
+                            "description": "Root path for Layla's file/command tools (e.g. ~/projects/myrepo).",
                         },
                         "allow_write": {
                             "type": "boolean",
@@ -109,7 +109,7 @@ async def handle_list_tools() -> types.ListToolsResult:
                         },
                         "aspect_id": {
                             "type": "string",
-                            "description": "Aspect to invoke: morrigan (engineer), nyx (researcher), echo (companion), eris (chaos/banter), lilith (ethics/core). Leave empty for auto-select.",
+                            "description": "Aspect to invoke: morrigan (engineer), nyx (researcher), echo (companion), eris (chaos/banter), lilith (ethics/core/nsfw). Leave empty for auto-select.",
                             "default": "",
                         },
                         "show_thinking": {
@@ -126,7 +126,7 @@ async def handle_list_tools() -> types.ListToolsResult:
                 description=(
                     "Add a fact, preference, or correction to Layla's long-term memory. "
                     "Use when the user says 'remember this', 'learn this', or 'add to your memory'. "
-                    "Layla grows over time like Neuro-sama."
+                    "Layla grows over time."
                 ),
                 inputSchema={
                     "type": "object",
@@ -158,7 +158,7 @@ async def handle_list_tools() -> types.ListToolsResult:
                     "properties": {
                         "topic": {
                             "type": "string",
-                            "description": "The topic to study (e.g. 'asyncio in Python', 'ezdxf layers').",
+                            "description": "The topic to study (e.g. 'asyncio in Python', 'SQLite full-text search').",
                         },
                         "context": {
                             "type": "string",
@@ -184,7 +184,7 @@ async def handle_list_tools() -> types.ListToolsResult:
                     "properties": {
                         "workspace_root": {
                             "type": "string",
-                            "description": "Root path of the repository to analyze (e.g. C:\\Github\\MyRepo).",
+                            "description": "Root path of the repository to analyze.",
                         },
                     },
                 },
@@ -211,8 +211,8 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
         except Exception as e:
             return [types.TextContent(type="text", text=f"Learn failed: {e}")]
 
-    # ── chat_with_jinx ────────────────────────────────────
-    if name == "chat_with_jinx":
+    # ── chat_with_layla ───────────────────────────────────
+    if name == "chat_with_layla":
         message = args.get("message", "")
         if not message:
             return [types.TextContent(type="text", text="No message provided.")]
@@ -238,14 +238,14 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
         context = args.get("context", "") or ""
         workspace_root = args.get("workspace_root", "") or ""
         try:
-            _post(JINX_BASE + "/study_plans", {"topic": topic}, timeout=10)
+            _post(LAYLA_BASE + "/study_plans", {"topic": topic}, timeout=10)
         except Exception:
             pass
         message = (
             f"Study session on: {topic}.\n"
             "1. Explain the key concepts clearly.\n"
             "2. List the most important things to understand.\n"
-            "3. Suggest 3–5 good resources (docs, tutorials, examples).\n"
+            "3. Suggest 3-5 good resources (docs, tutorials, examples).\n"
             "4. Create a short study plan (steps to learn this well).\n"
             "5. If a workspace is provided, check for related code and mention how it connects."
         )
@@ -256,7 +256,7 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
             if response and isinstance(response, str) and response.strip():
                 try:
                     _post(
-                        JINX_BASE + "/study_plans/record_progress",
+                        LAYLA_BASE + "/study_plans/record_progress",
                         {"topic": topic, "note": response.strip()[:500]},
                         timeout=10,
                     )
@@ -276,7 +276,7 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
             "1. List the main programming languages and frameworks used.\n"
             "2. List the key libraries (from imports, requirements, package.json, etc.).\n"
             "3. Identify the main patterns or architectural decisions.\n"
-            "4. Identify 3–5 knowledge gaps someone working on this repo might have.\n"
+            "4. Identify 3-5 knowledge gaps someone working on this repo might have.\n"
             "5. Suggest a prioritized study plan. List each suggested study topic on its own line, "
             "each line starting with a number (e.g. 1. ), a bullet (- or *), or 'Topic: '. "
             "Example:\n1. Python asyncio\n2. FastAPI\n- SQLite\nTopic: REST API design"
@@ -291,24 +291,20 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
                 line = line.strip()
                 if not line or len(line) < 2:
                     continue
-                # Numbered: "1. Topic" or "1) Topic"
                 if line[0].isdigit():
                     rest = line.lstrip("0123456789.) ")
                     if rest:
                         topics.append(rest.strip())
                     continue
-                # Bullet: "- Topic" or "* Topic"
                 if line.startswith("-") or line.startswith("*"):
                     rest = line.lstrip("-* ").strip()
                     if rest:
                         topics.append(rest)
                     continue
-                # "Topic: ..."
                 if line.lower().startswith("topic:"):
                     rest = line[6:].strip()
                     if rest:
                         topics.append(rest)
-            # Dedupe by normalized lower, keep order
             seen = set()
             unique = []
             for t in topics:
@@ -318,7 +314,7 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
                     unique.append(t)
             for topic in unique[:10]:
                 try:
-                    _post(JINX_BASE + "/study_plans", {"topic": topic}, timeout=10)
+                    _post(LAYLA_BASE + "/study_plans", {"topic": topic}, timeout=10)
                 except Exception:
                     pass
             return [types.TextContent(type="text", text=response)]
