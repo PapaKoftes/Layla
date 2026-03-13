@@ -440,6 +440,180 @@ def browser_fill(url: str, fields: dict, submit_selector: str = "") -> dict:
         return {"ok": False, "error": "playwright not installed. Run: playwright install chromium"}
 
 
+# ─── Extended tools ────────────────────────────────────────────────────────────
+
+def json_query(path: str, query: str = "") -> dict:
+    """
+    Parse a JSON file and optionally extract a value by dot-notation path.
+    query examples: 'key', 'nested.key', 'array.0.field'.
+    If no query, returns the full parsed object (truncated).
+    """
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "File not found"}
+    try:
+        import json as _json
+        data = _json.loads(target.read_text(encoding="utf-8"))
+        if not query:
+            return {"ok": True, "data": str(data)[:4000]}
+        parts = query.split(".")
+        val = data
+        for p in parts:
+            if isinstance(val, dict):
+                val = val[p]
+            elif isinstance(val, list):
+                val = val[int(p)]
+            else:
+                return {"ok": False, "error": f"Cannot traverse into {type(val).__name__} at '{p}'"}
+        return {"ok": True, "result": val, "result_str": str(val)[:2000]}
+    except (KeyError, IndexError) as e:
+        return {"ok": False, "error": f"Path not found: {e}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def diff_files(path_a: str, path_b: str) -> dict:
+    """Diff two text files. Returns unified diff."""
+    for p in (path_a, path_b):
+        t = Path(p)
+        if not inside_sandbox(t):
+            return {"ok": False, "error": f"Outside sandbox: {p}"}
+        if not t.exists():
+            return {"ok": False, "error": f"File not found: {p}"}
+    try:
+        import difflib
+        a_lines = Path(path_a).read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+        b_lines = Path(path_b).read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+        diff = list(difflib.unified_diff(a_lines, b_lines, fromfile=path_a, tofile=path_b, n=3))
+        return {"ok": True, "diff": "".join(diff)[:8000], "changed": len(diff) > 0}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def env_info() -> dict:
+    """Return system info: OS, Python version, CPU, RAM, GPU, installed key packages."""
+    import platform, sys as _sys
+    info: dict = {
+        "os": platform.system(),
+        "os_version": platform.version(),
+        "python": _sys.version.split()[0],
+        "architecture": platform.machine(),
+    }
+    try:
+        import psutil
+        mem = psutil.virtual_memory()
+        info["ram_total_gb"] = round(mem.total / (1024**3), 1)
+        info["ram_available_gb"] = round(mem.available / (1024**3), 1)
+        info["cpu_logical"] = psutil.cpu_count(logical=True)
+    except Exception:
+        pass
+    try:
+        r = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=8, encoding="utf-8", errors="replace",
+        )
+        if r.returncode == 0:
+            info["gpu"] = r.stdout.strip()
+    except Exception:
+        info["gpu"] = "none / not detected"
+    key_packages = ["fastapi", "uvicorn", "llama_cpp", "chromadb", "sentence_transformers",
+                    "playwright", "faster_whisper", "psutil", "rank_bm25"]
+    installed = {}
+    import importlib.metadata as _meta
+    for pkg in key_packages:
+        try:
+            installed[pkg] = _meta.version(pkg.replace("_", "-"))
+        except Exception:
+            installed[pkg] = "not installed"
+    info["packages"] = installed
+    return {"ok": True, **info}
+
+
+def regex_test(pattern: str, text: str, flags: str = "") -> dict:
+    """Test a regex pattern against text. Returns matches, groups, count."""
+    try:
+        import re as _re
+        flag_map = {"i": _re.IGNORECASE, "m": _re.MULTILINE, "s": _re.DOTALL}
+        compiled_flags = 0
+        for f in flags.lower():
+            compiled_flags |= flag_map.get(f, 0)
+        rx = _re.compile(pattern, compiled_flags)
+        matches = list(rx.finditer(text))
+        result = []
+        for m in matches[:20]:
+            result.append({"match": m.group(0), "start": m.start(), "end": m.end(), "groups": list(m.groups())})
+        return {"ok": True, "count": len(matches), "matches": result, "pattern": pattern}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def git_add(repo: str, path: str = ".") -> dict:
+    """Stage files for commit. path: file or '.' for all."""
+    repo_path = Path(repo)
+    if not inside_sandbox(repo_path):
+        return {"ok": False, "error": "Outside sandbox"}
+    result = subprocess.run(
+        ["git", "add", path],
+        cwd=str(repo_path),
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    return {"ok": result.returncode == 0, "output": result.stdout or result.stderr or ""}
+
+
+def git_commit(repo: str, message: str, add_all: bool = False) -> dict:
+    """Commit staged changes. If add_all=True, stages everything first."""
+    repo_path = Path(repo)
+    if not inside_sandbox(repo_path):
+        return {"ok": False, "error": "Outside sandbox"}
+    if add_all:
+        subprocess.run(["git", "add", "-A"], cwd=str(repo_path), capture_output=True)
+    result = subprocess.run(
+        ["git", "commit", "-m", message],
+        cwd=str(repo_path),
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    return {"ok": result.returncode == 0, "output": (result.stdout or result.stderr or "")[:2000]}
+
+
+def save_note(content: str, tag: str = "note") -> dict:
+    """
+    Save a note directly to Layla's memory as a learning.
+    Use this to remember facts, preferences, or observations mid-conversation.
+    """
+    try:
+        agent_dir = Path(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(agent_dir))
+        from layla.memory.db import save_learning
+        save_learning(content=content[:800], kind=tag)
+        return {"ok": True, "saved": content[:100]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def search_memories(query: str, n: int = 8) -> dict:
+    """
+    Search Layla's own memory (learnings + semantic recall) for relevant past knowledge.
+    Returns the most relevant stored memories for the given query.
+    """
+    try:
+        agent_dir = Path(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(agent_dir))
+        from layla.memory.vector_store import search_memories_full
+        results = search_memories_full(query, k=n, use_rerank=False)
+        items = [r.get("content", "") for r in results if r.get("content")]
+        return {"ok": True, "memories": items, "count": len(items)}
+    except Exception as e:
+        try:
+            from layla.memory.db import get_recent_learnings
+            rows = get_recent_learnings(n=n)
+            items = [r.get("content", "") for r in rows if r.get("content")]
+            return {"ok": True, "memories": items, "count": len(items), "fallback": True}
+        except Exception:
+            return {"ok": False, "error": str(e)}
+
+
 TOOLS: dict[str, Any] = {
     "write_file": {"fn": write_file, "dangerous": True, "require_approval": True, "risk_level": "medium"},
     "read_file": {"fn": read_file, "dangerous": False, "require_approval": False, "risk_level": "low"},
@@ -464,4 +638,13 @@ TOOLS: dict[str, Any] = {
     "browser_screenshot": {"fn": browser_screenshot, "dangerous": False, "require_approval": False, "risk_level": "low"},
     "browser_click": {"fn": browser_click, "dangerous": False, "require_approval": True, "risk_level": "medium"},
     "browser_fill": {"fn": browser_fill, "dangerous": False, "require_approval": True, "risk_level": "medium"},
+    # Extended tools
+    "json_query": {"fn": json_query, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "diff_files": {"fn": diff_files, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "env_info": {"fn": env_info, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "regex_test": {"fn": regex_test, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "git_add": {"fn": git_add, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "git_commit": {"fn": git_commit, "dangerous": True, "require_approval": True, "risk_level": "medium"},
+    "save_note": {"fn": save_note, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "search_memories": {"fn": search_memories, "dangerous": False, "require_approval": False, "risk_level": "low"},
 }
