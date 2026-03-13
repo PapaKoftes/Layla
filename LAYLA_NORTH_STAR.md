@@ -293,7 +293,7 @@ A collaborative intelligence that:
 
 - **Start**: `cd agent && uvicorn main:app --host 127.0.0.1 --port 8000` then open `http://localhost:8000/ui` or use `python layla.py wakeup`.
 - **Set project**: `POST localhost:8000/project_context` with `{"project_name": "...", "lifecycle_stage": "planning", "goals": "..."}`.
-- **Cursor**: Use MCP `chat_with_jinx` with message, context, workspace_root; set `allow_write`/`allow_run` only when you want Layla to act; approve via `layla approve <uuid>` when she requests it.
+- **Cursor**: Use MCP `chat_with_layla` with message, context, workspace_root; set `allow_write`/`allow_run` only when you want Layla to act; approve via `layla approve <uuid>` when she requests it.
 
 ---
 

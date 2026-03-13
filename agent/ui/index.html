@@ -288,6 +288,7 @@
   <div style="display:flex;gap:12px;font-size:0.72rem;color:var(--text-dim);align-items:center">
     <span id="session-time" title="Session duration">0:00</span>
     <a href="/system_export" target="_blank" style="color:var(--text-dim);text-decoration:none">⊕ export</a>
+    <button onclick="clearChat()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.72rem;padding:0" title="Clear chat history">✕ clear</button>
   </div>
 </header>
 
@@ -1015,7 +1016,80 @@ setInterval(() => {
   document.getElementById('session-time').textContent = m + ':' + s;
 }, 1000);
 
+// ─── localStorage: persist workspace path ──────────────────
+const WS_KEY = 'layla_workspace_path';
+const wpEl = document.getElementById('workspace-path');
+if (wpEl) {
+  const saved = localStorage.getItem(WS_KEY);
+  if (saved) wpEl.value = saved;
+  wpEl.addEventListener('change', () => {
+    localStorage.setItem(WS_KEY, wpEl.value.trim());
+  });
+}
+
+// ─── localStorage: persist conversation history ─────────────
+const HISTORY_KEY = 'layla_chat_history';
+const MAX_HISTORY_ENTRIES = 40;
+
+function saveChatHistory() {
+  try {
+    const chat = document.getElementById('chat');
+    if (!chat) return;
+    const entries = [];
+    for (const node of chat.children) {
+      if (node.classList.contains('msg') || node.classList.contains('separator') || node.classList.contains('greeting-banner')) {
+        entries.push({ html: node.outerHTML, cls: node.className });
+      }
+    }
+    const trimmed = entries.slice(-MAX_HISTORY_ENTRIES);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
+  } catch {}
+}
+
+function loadChatHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return;
+    const entries = JSON.parse(raw);
+    const chat = document.getElementById('chat');
+    if (!chat || !entries.length) return;
+    const frag = document.createDocumentFragment();
+    entries.forEach(e => {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = e.html;
+      if (tmp.firstChild) frag.appendChild(tmp.firstChild);
+    });
+    chat.insertBefore(frag, chat.firstChild);
+    chat.scrollTop = chat.scrollHeight;
+  } catch {}
+}
+
+// Attach history save observer
+const chatObserver = new MutationObserver(() => saveChatHistory());
+const chatEl2 = document.getElementById('chat');
+if (chatEl2) chatObserver.observe(chatEl2, { childList: true, subtree: false });
+
+// ─── Clear chat ─────────────────────────────────────────────
+function clearChat() {
+  const chat = document.getElementById('chat');
+  if (chat) chat.innerHTML = '';
+  localStorage.removeItem(HISTORY_KEY);
+}
+
+// ─── Copy-to-clipboard on message click ─────────────────────
+document.getElementById('chat').addEventListener('click', (e) => {
+  const bubble = e.target.closest('.msg-bubble');
+  if (!bubble) return;
+  const text = bubble.innerText || bubble.textContent || '';
+  if (!text.trim()) return;
+  navigator.clipboard.writeText(text.trim()).then(() => {
+    bubble.style.outline = '1px solid var(--accent, #c084fc)';
+    setTimeout(() => { bubble.style.outline = ''; }, 600);
+  }).catch(() => {});
+});
+
 // Init
+loadChatHistory();
 doWakeup();
 refreshApprovals();
 refreshStudyPlans();

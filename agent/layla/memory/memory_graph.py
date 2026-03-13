@@ -74,12 +74,36 @@ def save_graph(graph: dict) -> None:
 
 
 def add_node(label: str, metadata: dict = None) -> int:
-    """Add a node to the knowledge graph. Returns the new node id."""
+    """Add a node to the knowledge graph. Returns the new node id.
+
+    Also links the new node to existing similar nodes via cosine similarity
+    (Mem0-style entity linking). Edges are created when cosine sim > 0.8.
+    """
     G = _get_graph()
     existing = [int(x) for x in G.nodes() if isinstance(x, str) and x.isdigit()]
     node_id = max(existing, default=-1) + 1
     nid = str(node_id)
     G.add_node(nid, label=label[:120], metadata=json.dumps(metadata or {}), created_at=datetime.utcnow().isoformat())
+
+    # Auto-link: find similar existing nodes via vector search
+    try:
+        from layla.memory.vector_store import embed, search_similar
+        import numpy as np
+        q_vec = embed(label)
+        similar = search_similar(q_vec, k=3)
+        for s in similar:
+            src_label = (s.get("content") or "").strip()
+            if not src_label or src_label == label.strip():
+                continue
+            # Find the graph node matching this label
+            for existing_nid in G.nodes():
+                n_data = G.nodes.get(existing_nid, {})
+                if (n_data.get("label") or "").strip() == src_label[:120]:
+                    G.add_edge(existing_nid, nid, relation="similar_to")
+                    break
+    except Exception:
+        pass
+
     _save_graph(G)
     return node_id
 

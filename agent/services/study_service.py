@@ -4,20 +4,27 @@ from agent_loop import autonomous_run
 
 def run_autonomous_study_for_plan(plan: dict) -> str | None:
     """Run one Nyx-style research step for a study plan; return summary text or None."""
-    from jinx.memory.db import update_study_progress
+    from layla.memory.db import update_study_progress
     topic = (plan.get("topic") or "").strip()
     plan_id = plan.get("id")
     if not topic or not plan_id:
         return None
     ref_text = ""
     try:
-        from jinx.tools.web import fetch_url
-        slug = "_".join(topic.replace(",", " ").split()[:2])
+        import urllib.parse
+        from layla.tools.web import fetch_url
+        slug = urllib.parse.quote(topic.strip().replace(" ", "_"))
         if slug:
             url = f"https://en.wikipedia.org/wiki/{slug}"
             r = fetch_url(url, store=False)
             if r.get("ok") and r.get("text"):
                 ref_text = (r.get("text") or "")[:2000]
+            else:
+                # Fallback: search Python docs
+                search_url = f"https://docs.python.org/3/search.html?q={urllib.parse.quote(topic.strip())}"
+                r2 = fetch_url(search_url, store=False)
+                if r2.get("ok") and r2.get("text"):
+                    ref_text = (r2.get("text") or "")[:2000]
     except Exception:
         pass
     goal = (

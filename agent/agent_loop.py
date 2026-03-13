@@ -10,8 +10,8 @@ logger = logging.getLogger("layla")
 import runtime_safety
 import orchestrator
 from decision_schema import parse_decision as _parse_decision
-from jinx.tools.registry import TOOLS, set_effective_sandbox
-from jinx.memory.db import migrate as _db_migrate, get_recent_learnings as _db_get_learnings, get_aspect_memories as _db_get_aspect_memories, save_aspect_memory as _db_save_aspect_memory
+from layla.tools.registry import TOOLS, set_effective_sandbox
+from layla.memory.db import migrate as _db_migrate, get_recent_learnings as _db_get_learnings, get_aspect_memories as _db_get_aspect_memories, save_aspect_memory as _db_save_aspect_memory
 from services.llm_gateway import run_completion, get_stop_sequences, llm_serialize_lock
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -244,7 +244,7 @@ def _load_learnings(aspect_id: str = "") -> str:
 def _semantic_recall(query: str, k: int = 5) -> str:
     """Return top-k semantically similar learnings as a text block."""
     try:
-        from jinx.memory.vector_store import embed, search_similar
+        from layla.memory.vector_store import embed, search_similar
         vec = embed(query)
         results = search_similar(vec, k=k)
         if not results:
@@ -318,7 +318,7 @@ def _enrich_deliberation_context(context: str) -> str:
     """Append project context and Echo patterns so deliberation has real workspace awareness."""
     extra = []
     try:
-        from jinx.memory.db import get_project_context
+        from layla.memory.db import get_project_context
         pc = get_project_context()
         if pc.get("project_name") or pc.get("goals") or pc.get("lifecycle_stage"):
             proj_parts = [f"Project: {pc.get('project_name') or '—'}", f"Lifecycle: {pc.get('lifecycle_stage') or '—'}"]
@@ -346,7 +346,7 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
     knowledge = ""
     if cfg.get("use_chroma") and goal:
         try:
-            from jinx.memory.vector_store import get_knowledge_chunks_with_sources, refresh_knowledge_if_changed
+            from layla.memory.vector_store import get_knowledge_chunks_with_sources, refresh_knowledge_if_changed
             try:
                 refresh_knowledge_if_changed(REPO_ROOT / "knowledge")
             except Exception:
@@ -412,7 +412,7 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
     if repo_struct:
         workspace_context_parts.append(f"Repo structure (top-level): {repo_struct}")
     try:
-        from jinx.memory.db import get_active_study_plans
+        from layla.memory.db import get_active_study_plans
         plans = get_active_study_plans()
         if plans:
             topics = ", ".join((p.get("topic") or "")[:50] for p in plans[:5] if p.get("topic"))
@@ -421,7 +421,7 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
     except Exception:
         pass
     try:
-        from jinx.memory.db import get_project_context
+        from layla.memory.db import get_project_context
         pc = get_project_context()
         if pc.get("project_name") or pc.get("goals") or pc.get("key_files"):
             proj_parts = []
@@ -490,7 +490,7 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
     # Style profile (evolution layer): recognizable growth, identity across writing/coding/reasoning
     if cfg.get("enable_style_profile"):
         try:
-            from jinx.memory.db import get_style_profile
+            from layla.memory.db import get_style_profile
             style_parts = []
             for key in ("writing", "coding", "reasoning", "structuring"):
                 row = get_style_profile(key)
@@ -894,6 +894,33 @@ def _llm_decision(
     try:
         cfg = runtime_safety.load_config()
         max_tok = 120 if reframe_candidate else 80
+        # Try instructor (grammar-constrained JSON) first
+        try:
+            import instructor
+            from decision_schema import AgentDecision
+            from services.llm_gateway import _get_llm
+            llm = _get_llm()
+            if llm is not None:
+                client = instructor.patch(llm)
+                decision_obj = client.chat.completions.create(
+                    response_model=AgentDecision,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=max_tok,
+                    temperature=0.1,
+                )
+                d = decision_obj.model_dump()
+                action = (d.get("action") or "reason").lower()
+                if action not in ("tool", "reason"):
+                    action = "reason"
+                tool = (d.get("tool") or "").strip() or None
+                if action == "tool" and tool and tool not in _VALID_TOOLS:
+                    tool = None
+                d["action"] = action
+                d["tool"] = tool
+                return d
+        except Exception:
+            pass
+        # Fallback: plain completion + parse
         retry_prompt_suffix = " Output only a single JSON line, no other text or commentary.\n"
         for attempt in range(2):
             out = run_completion(
@@ -1015,7 +1042,7 @@ def _save_outcome_memory(state: dict) -> None:
     if len(summary) > 400:
         summary = summary[:397] + "..."
     try:
-        from jinx.memory.db import save_learning
+        from layla.memory.db import save_learning
         save_learning(content=summary, kind="outcome")
     except Exception as e:
         logger.debug("outcome memory save failed: %s", e)
@@ -1153,7 +1180,7 @@ def _autonomous_run_impl(
     }
     if research_mode:
         state["research_lab_root"] = str(RESEARCH_LAB_ROOT)
-    workspace = (str(workspace_root).strip() if workspace_root else "") or runtime_safety.load_config().get("sandbox_root", r"C:\github")
+    workspace = (str(workspace_root).strip() if workspace_root else "") or runtime_safety.load_config().get("sandbox_root", str(Path.home()))
     if research_mode:
         max_tool_calls = cfg.get("research_max_tool_calls", 20)
         max_runtime = cfg.get("research_max_runtime_seconds", 120)
@@ -1734,7 +1761,7 @@ def _autonomous_run_impl(
             import re as _re_et
             et_match = _re_et.search(r"\[EARNED_TITLE:\s*(.+?)\]\s*$", text, _re_et.IGNORECASE)
             if et_match:
-                from jinx.memory.db import save_earned_title
+                from layla.memory.db import save_earned_title
                 try:
                     save_earned_title(active_aspect.get("id", ""), et_match.group(1).strip())
                 except Exception:
@@ -1774,7 +1801,7 @@ def _autonomous_run_impl(
     if state.get("status") == "finished":
         _save_outcome_memory(state)
         try:
-            from jinx.memory.distill import run_distill_after_outcome
+            from layla.memory.distill import run_distill_after_outcome
             run_distill_after_outcome(n=50)
         except Exception as e:
             logger.debug("distill after outcome failed: %s", e)

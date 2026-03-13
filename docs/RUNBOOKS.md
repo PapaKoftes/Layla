@@ -17,7 +17,7 @@ Procedures for common setup and extension tasks. See also README.md, ARCHITECTUR
 
 3. **Config**: If `agent/runtime_config.json` is missing, copy from `agent/runtime_config.example.json` and set `model_filename` and `sandbox_root` (e.g. a directory path where the agent may write). Do not commit real `remote_api_key` if you enable remote access.
 
-4. **Model**: Place your GGUF model in `models/` (e.g. `models/jinx-20b.gguf`). Set `model_filename` in `agent/runtime_config.json` if the name differs.
+4. **Model**: Place your GGUF model in `models/` (e.g. `models/your-model.gguf`). Set `model_filename` in `agent/runtime_config.json` if the name differs.
 
 5. **Start server** (from repo root or `agent/`):
    ```bash

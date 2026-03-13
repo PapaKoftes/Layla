@@ -9,6 +9,7 @@ import asyncio
 import json
 import re
 from pathlib import Path
+from research_utils import normalize_stage_text, _extract_json_block
 
 AGENT_DIR = Path(__file__).resolve().parent
 RESEARCH_BRAIN = AGENT_DIR / ".research_brain"
@@ -85,36 +86,7 @@ def load_intelligence_context(for_stage: str) -> str:
     return "\n\n".join(parts) if parts else ""
 
 
-def _extract_json_block(text: str) -> dict | None:
-    if not text:
-        return None
-    m = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", text)
-    if m:
-        try:
-            return json.loads(m.group(1))
-        except json.JSONDecodeError:
-            pass
-    start = text.find("{")
-    if start >= 0:
-        depth = 0
-        for i in range(start, len(text)):
-            if text[i] == "{":
-                depth += 1
-            elif text[i] == "}":
-                depth -= 1
-                if depth == 0:
-                    try:
-                        return json.loads(text[start : i + 1])
-                    except json.JSONDecodeError:
-                        break
-    return None
-
-
-def normalize_stage_text(text: str) -> str:
-    """Replace Unicode em-dash with ASCII hyphen so stage goals are never invalid if mistaken for code."""
-    if not text or not isinstance(text, str):
-        return text or ""
-    return text.replace("\u2014", "-").replace("—", "-")
+# _extract_json_block and normalize_stage_text imported from research_utils
 
 
 async def _run_stage(
@@ -131,7 +103,7 @@ async def _run_stage(
         goal,
         context=context,
         workspace_root=lab_workspace,
-        allow_write=True,
+        allow_write=False,
         allow_run=False,
         conversation_history=conversation_history or [],
         aspect_id="",

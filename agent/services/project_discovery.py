@@ -18,7 +18,7 @@ def run_project_discovery() -> dict:
     Timeout-guarded; strict JSON parsing; safe fallback on any error.
     """
     try:
-        from jinx.memory.db import get_project_context, get_recent_learnings
+        from layla.memory.db import get_project_context, get_recent_learnings
         from services.llm_gateway import run_completion
     except Exception as e:
         logger.warning("project_discovery imports failed: %s", e)

@@ -14,7 +14,7 @@
 | `temperature` | 0.2 | Lower = more deterministic replies. |
 | `n_ctx` | 4096 | Context window size (local model). |
 | `n_gpu_layers` | 20 | GPU layers for local LLM (20B on RTX 5060 Ti). |
-| `model_filename` | jinx-20b.gguf | Model file in `models/`. |
+| `model_filename` | your-model.gguf | Model file in `models/`. |
 | `llama_server_url` | null | If set, she uses that URL instead of local LLM (e.g. `http://localhost:11434` for Ollama). |
 | `remote_model_name` | llama3.1 | Model name sent to remote API when `llama_server_url` is set (e.g. `llama3.1`, `mistral`, `qwen2.5-coder`). |
 | `sandbox_root` | C:\github | Default workspace for file/shell tools. |
@@ -53,7 +53,7 @@
 
 ## 2. How she reacts (reaction flow)
 
-1. **You send a message** (e.g. from the UI or MCP `chat_with_jinx`).
+1. **You send a message** (e.g. from the UI or MCP `chat_with_layla`).
 2. **Aspect selection** (`orchestrator.select_aspect`):
    - If you chose an aspect (e.g. Morrigan, Echo), that aspect is used.
    - Otherwise she matches your message to **triggers** in `personalities/*.json` (e.g. “echo”, “how am i doing” → Echo; “lilith”, “refuse” → Lilith). Lilith's NSFW register is used when you include a keyword (e.g. intimate, nsfw) in the message.

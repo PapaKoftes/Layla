@@ -1,4 +1,4 @@
-# Layla
+﻿# Layla
 
 **Layla** is a local AI engineering companion: one consciousness, many aspects (Morrigan, Nyx, Echo, Eris, Lilith, Neuro). She runs on your machine using a **GGUF model** (llama-cpp-python), keeps memory in SQLite and an optional vector store, and exposes a FastAPI server for chat, tools, study plans, and research missions. Lilith can respond in an NSFW register when you use a keyword (e.g. intimate, nsfw) in your message.
 
@@ -12,7 +12,7 @@
 
 1. **Clone the repo**
    ```bash
-   git clone https://github.com/PapaKoftes/Layla.git
+   git clone https://github.com/your-org/layla.git
    cd Layla
    ```
 
@@ -40,7 +40,8 @@
 5. **Use Layla**  
    - Web UI: http://localhost:8000/ui  
    - CLI: `python layla.py wakeup` then `python layla.py ask "your message"`  
-   - TUI: `cd agent && python tui.py`
+   - TUI: `cd agent && python tui.py`  
+   - Interactive API docs: http://localhost:8000/docs
 
 Full first-run steps (config, database, optional remote): [docs/RUNBOOKS.md#first-run](docs/RUNBOOKS.md#first-run).
 
@@ -49,7 +50,7 @@ Full first-run steps (config, database, optional remote): [docs/RUNBOOKS.md#firs
 ## Pinned versions and paths
 
 - **Python:** 3.10+ (tested 3.10–3.12). Dependencies: `agent/requirements.txt`.
-- **Database:** SQLite at **repo root** `layla.db`. Created on first use. Path is fixed in `agent/jinx/memory/db.py`.
+- **Database:** SQLite at **repo root** `layla.db`. Created on first use. Path is fixed in `agent/layla/memory/db.py`.
 - **Config:** `agent/runtime_config.json` (create from `agent/runtime_config.example.json` if missing).
 
 ---
@@ -96,10 +97,22 @@ When Layla needs to write files, run code, or run shell commands, she returns an
 
 ## MCP (Cursor)
 
-Use the **user-jinx** MCP server to call Layla from Cursor: `chat_with_jinx`, `add_learning`, `start_study_session`, etc. See `.cursor/rules/layla-assistant.mdc` for aspects, triggers, and approval flow.
+Use the `cursor-layla-mcp` server to call Layla from Cursor: `chat_with_layla`, `add_learning`, `start_study_session`, etc. See `.cursor/rules/layla-assistant.mdc` for aspects, triggers, and approval flow.
+
+---
+
+
+
+---
+
+## Using Open WebUI (optional)
+
+Layla exposes an OpenAI-compatible `/v1/chat/completions` endpoint. Point [Open WebUI](https://github.com/open-webui/open-webui) at `http://localhost:8000/v1` for a full-featured chat UI with no extra code.
+
+Open `http://localhost:3000` and select the `layla` model.
 
 ---
 
 ## License and contributing
 
-See [LICENSE](LICENSE) if present. For contribution and conduct guidelines, see the repo’s GitHub page.
+See [LICENSE](LICENSE), [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). For security issues see [SECURITY.md](SECURITY.md).

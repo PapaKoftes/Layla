@@ -17,7 +17,7 @@ Single reference for **technologies in use** and **current vs planned capabiliti
 | **Scheduler** | APScheduler | Optional background study when recent activity; config-driven. |
 | **CLI** | layla.py | Wakeup, ask, study, plans, approve, export, pending, tui. |
 | **TUI** | Textual | `agent/tui.py` — chat, wakeup, approve, aspect switch. |
-| **MCP** | user-jinx server | Cursor integration: chat_with_jinx, add_learning, start_study_session, etc. |
+| **MCP** | user-jinx server | Cursor integration: chat_with_layla, add_learning, start_study_session, etc. |
 
 Config: `agent/runtime_config.json` (+ hardware-derived defaults in `runtime_safety.py`).
 

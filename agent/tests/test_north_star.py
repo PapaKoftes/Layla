@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 def test_project_context_lifecycle():
     """Project context supports lifecycle_stage (North Star §3)."""
-    from jinx.memory.db import migrate, get_project_context, set_project_context, PROJECT_LIFECYCLE_STAGES
+    from layla.memory.db import migrate, get_project_context, set_project_context, PROJECT_LIFECYCLE_STAGES
 
     migrate()
     assert PROJECT_LIFECYCLE_STAGES == ("idea", "planning", "prototype", "iteration", "execution", "reflection")
@@ -31,7 +31,7 @@ def test_project_context_lifecycle():
 
 def test_file_understanding_extensions():
     """File understanding supports North Star §4 extensions."""
-    from jinx.file_understanding import get_supported_extensions, analyze_file
+    from layla.file_understanding import get_supported_extensions, analyze_file
 
     exts = get_supported_extensions()
     for e in (".3dm", ".gh", ".dxf", ".py", ".md", ".json", ".ipynb", ".nc", ".gcode", ".stl", ".svg"):
@@ -50,7 +50,7 @@ def test_file_understanding_extensions():
 
 def test_file_understanding_intent_by_ext():
     """Intent returned for binary/opaque formats without content."""
-    from jinx.file_understanding import analyze_file
+    from layla.file_understanding import analyze_file
     from pathlib import Path
 
     out = analyze_file(file_path="dummy.stl", content=None)

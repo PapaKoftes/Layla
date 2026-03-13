@@ -15,6 +15,11 @@ from pathlib import Path
 
 _DB_PATH = Path(__file__).resolve().parent.parent.parent.parent / "layla.db"
 
+# Migration guard: run _migrate_impl at most once per process.
+_MIGRATED = False
+import threading as _threading
+_MIGRATION_LOCK = _threading.Lock()
+
 
 def _conn() -> sqlite3.Connection:
     c = sqlite3.connect(str(_DB_PATH))
@@ -23,13 +28,20 @@ def _conn() -> sqlite3.Connection:
 
 
 def migrate() -> None:
-    """Create tables and migrate existing learnings.json if present."""
-    import logging
-    log = logging.getLogger("layla")
-    try:
-        _migrate_impl()
-    except Exception as e:
-        log.warning("DB migrate failed: %s", e)
+    """Create tables and run migrations. Safe to call repeatedly; runs at most once per process."""
+    global _MIGRATED
+    if _MIGRATED:
+        return
+    with _MIGRATION_LOCK:
+        if _MIGRATED:
+            return
+        import logging
+        log = logging.getLogger("layla")
+        try:
+            _migrate_impl()
+            _MIGRATED = True
+        except Exception as e:
+            log.warning("DB migrate failed: %s", e)
 
 
 def _migrate_impl() -> None:

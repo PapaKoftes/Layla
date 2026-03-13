@@ -15,7 +15,7 @@ One-page reference for what the system does, how to extend it with public resour
 | **Approvals** | Pending list in `.governance/pending.json`; approve via API/CLI/TUI/UI; audit log; lens knowledge refresh from curated sources. |
 | **API** | FastAPI: `/agent`, `/learn`, `/wakeup`, `/study_plans`, `/pending`, `/approve`, `/research`, `/research_mission`, `/system_export`, `/health`, OpenAI-compatible `/v1/chat/completions`, `/ui`. |
 | **CLI** | `layla.py`: ask, remember, study, plans, approve, wakeup, export, pending, tui, aspect. |
-| **MCP** | Cursor integration: chat_with_jinx, add_learning, start_study_session, analyze_repo_for_study (call Layla API). |
+| **MCP** | Cursor integration: chat_with_layla, add_learning, start_study_session, analyze_repo_for_study (call Layla API). |
 
 ---
 

@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "user-jinx": {
+    "user-layla": {
       "command": ".venv/Scripts/python.exe",
-      "args": ["cursor-jinx-mcp/server.py"]
+      "args": ["cursor-layla-mcp/server.py"]
     }
   }
 }

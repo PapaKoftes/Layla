@@ -39,7 +39,7 @@ def approve(req: dict):
     result_ok = False
     tool_result = {}
     try:
-        from jinx.tools.registry import TOOLS
+        from layla.tools.registry import TOOLS
         if tool_name in TOOLS:
             tool_result = TOOLS[tool_name]["fn"](**{k: v for k, v in args.items() if k != "goal"})
             result_ok = bool(tool_result.get("ok", False))

@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "layla"
+version = "0.1.0"
+description = "A local-first, multi-aspect AI companion and engineering agent"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+authors = [
+  { name = "Layla Contributors" },
+]
+keywords = ["ai", "agent", "llm", "local", "companion", "llama-cpp"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["agent"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = [
+  "E501",   # line too long (handled by formatter)
+  "F401",   # imported but unused (some intentional re-exports)
+  "E741",   # ambiguous variable name (used in math-heavy code)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"agent/tests/*" = ["F811"]   # redefined-while-unused (fixture names)
+
+[tool.pytest.ini_options]
+testpaths = ["agent/tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+filterwarnings = [
+  "ignore::DeprecationWarning",
+  "ignore::PendingDeprecationWarning",
+]
+
+[tool.setuptools.packages.find]
+where = ["agent"]

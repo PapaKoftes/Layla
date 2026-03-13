@@ -6,6 +6,7 @@ and decides whether to deliberate.
 """
 import json
 import time
+import numpy as np
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -14,6 +15,11 @@ PERSONALITIES_DIR = REPO_ROOT / "personalities"
 _ASPECTS_CACHE: list[dict] | None = None
 _ASPECTS_CACHE_TS: float = 0.0
 _ASPECTS_TTL: float = 60.0  # seconds — re-reads JSON files if a minute has passed
+
+# Embedding-based aspect routing: cached aspect embeddings
+_ASPECT_EMBEDDINGS: dict[str, np.ndarray] = {}
+_ASPECT_EMBEDDINGS_TS: float = 0.0
+_EMBED_COSINE_THRESHOLD: float = 0.15  # below this score → use default
 
 
 def reload_aspects() -> list[dict]:
@@ -31,7 +37,7 @@ def _load_aspects() -> list[dict]:
         return _ASPECTS_CACHE
     aspects = []
     try:
-        from jinx.memory.db import get_earned_title
+        from layla.memory.db import get_earned_title
     except Exception:
         get_earned_title = lambda _: None
     if PERSONALITIES_DIR.exists():
@@ -71,12 +77,55 @@ def _fallback_aspect() -> dict:
     }
 
 
+def _get_aspect_embeddings(aspects: list[dict]) -> dict[str, np.ndarray]:
+    """Embed each aspect's role/voice description; cached per load cycle."""
+    global _ASPECT_EMBEDDINGS, _ASPECT_EMBEDDINGS_TS
+    now = time.monotonic()
+    if _ASPECT_EMBEDDINGS and (now - _ASPECT_EMBEDDINGS_TS) < _ASPECTS_TTL:
+        return _ASPECT_EMBEDDINGS
+    try:
+        from layla.memory.vector_store import embed
+        embs: dict[str, np.ndarray] = {}
+        for a in aspects:
+            aid = a.get("id")
+            if not aid:
+                continue
+            desc = " ".join(filter(None, [
+                a.get("role") or "",
+                a.get("voice") or "",
+                " ".join(a.get("triggers", [])),
+            ]))
+            if desc.strip():
+                embs[aid] = embed(desc)
+        _ASPECT_EMBEDDINGS = embs
+        _ASPECT_EMBEDDINGS_TS = now
+        return embs
+    except Exception:
+        return {}
+
+
+def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
+    """Cosine similarity between two 1-D float32 arrays."""
+    try:
+        n_a = np.linalg.norm(a)
+        n_b = np.linalg.norm(b)
+        if n_a == 0 or n_b == 0:
+            return 0.0
+        return float(np.dot(a, b) / (n_a * n_b))
+    except Exception:
+        return 0.0
+
+
 def select_aspect(message: str, force_aspect: str = "") -> dict:
     """
     Return the best-matching aspect dict for the given message.
 
-    force_aspect: if provided, load that aspect by id directly.
-    Lilith can respond in NSFW register when message contains an nsfw_triggers keyword (e.g. intimate, nsfw).
+    Selection order:
+    1. force_aspect (explicit override from CLI/TUI/API)
+    2. Keyword/name trigger scoring (fast, always runs)
+    3. Embedding cosine similarity (optional; used as tiebreaker when keyword score == 0)
+
+    Lilith can respond in NSFW register when message contains an nsfw_triggers keyword.
     """
     aspects = _load_aspects()
     if not aspects:
@@ -84,29 +133,48 @@ def select_aspect(message: str, force_aspect: str = "") -> dict:
 
     msg_lower = message.lower()
 
-    # Honour forced aspect (e.g. from /aspect command in TUI/CLI)
+    # 1. Honour forced aspect
     if force_aspect:
         for a in aspects:
             if a.get("id") == force_aspect:
                 return _maybe_add_nsfw_mode(a, msg_lower)
 
-    # Score each aspect by trigger matches
+    # 2. Keyword/name trigger scoring
     scores: list[tuple[int, dict]] = []
     for a in aspects:
         triggers = [t.lower() for t in a.get("triggers", [])]
         score = sum(1 for t in triggers if t in msg_lower)
-        # Exact name match is worth extra
         if a.get("name", "").lower() in msg_lower:
             score += 5
         scores.append((score, a))
 
     scores.sort(key=lambda x: x[0], reverse=True)
-
-    # If best score > 0, use it; otherwise default
     best_score, best_aspect = scores[0] if scores else (0, _default_aspect())
-    if best_score == 0:
-        return _default_aspect()
-    return _maybe_add_nsfw_mode(best_aspect, msg_lower)
+
+    if best_score > 0:
+        return _maybe_add_nsfw_mode(best_aspect, msg_lower)
+
+    # 3. Embedding cosine similarity (tiebreaker when no keyword matched)
+    try:
+        from layla.memory.vector_store import embed
+        embs = _get_aspect_embeddings(aspects)
+        if embs:
+            q_vec = embed(message)
+            best_id = None
+            best_sim = _EMBED_COSINE_THRESHOLD
+            for aid, a_vec in embs.items():
+                sim = _cosine_sim(q_vec, a_vec)
+                if sim > best_sim:
+                    best_sim = sim
+                    best_id = aid
+            if best_id:
+                for a in aspects:
+                    if a.get("id") == best_id:
+                        return _maybe_add_nsfw_mode(a, msg_lower)
+    except Exception:
+        pass
+
+    return _default_aspect()
 
 
 def _maybe_add_nsfw_mode(aspect: dict, msg_lower: str) -> dict:
