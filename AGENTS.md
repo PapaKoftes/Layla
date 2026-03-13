@@ -20,7 +20,7 @@ Layla is a **self-hosted AI companion and engineering agent** that runs on the u
 3. **Never commit `layla.db`** — user's private memory.
 4. **Never hardcode paths**. Use `Path(__file__).resolve().parent` chains. Always `.expanduser().resolve()` on config paths from `runtime_config.json`.
 5. **Never break the approval gate.** File writes (`write_file`, `apply_patch`) and code execution (`shell`, `run_python`) must remain gated by `allow_write`/`allow_run` + the approval flow.
-6. **Personalities are loaded dynamically** from `personalities/*.json`. Never hardcode an aspect list — always use `_load_aspects()` from `orchestrator.py`.
+6. **Personalities are loaded dynamically** from `personalities/*.json`. Never hardcode an aspect list — always use `_load_aspects()` from `orchestrator.py`. The `systemPromptAddition` field is the character voice — it IS injected into every system head when that aspect is active. Do not truncate it. The `role` field is just a short label for routing and display.
 7. **The DB schema must migrate forward.** Add columns via `db.execute("ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...")` in the `migrate()` function in `agent/layla/memory/db.py`. Never drop columns.
 8. **Keep `ARCHITECTURE.md` and `docs/IMPLEMENTATION_STATUS.md` updated** when you change the request flow, add routes, or implement a section from `LAYLA_NORTH_STAR.md`.
 
@@ -69,8 +69,11 @@ Layla is a **self-hosted AI companion and engineering agent** that runs on the u
 │   ├── nyx.json             # Researcher
 │   ├── echo.json            # Companion/mirror
 │   ├── eris.json            # Chaos/banter
-│   ├── lilith.json          # Core/sovereign, NSFW register
-│   └── neuro.json           # Unfiltered/reactive
+│   ├── lilith.json          # Core/sovereign, NSFW register, will_refuse=false
+│   └── cassandra.json       # Unfiltered oracle/reactive
+│
+├── .identity/               # GITIGNORED (except self_model.md). Lilith's deep self-model.
+│   └── self_model.md        # Injected into system head only when Lilith is active.
 │
 ├── knowledge/               # GITIGNORED by default. Place .md/.txt/.pdf for indexing.
 │   └── (curated base docs are excepted in .gitignore)

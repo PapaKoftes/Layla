@@ -31,12 +31,12 @@ Each aspect is a facet of the same being. Loaded dynamically from `personalities
 | **✦ Nyx** | research, study, explain, analyze, look up, deep dive, breakdown | Researcher. Slow, precise, encyclopedic. |
 | **◎ Echo** | how am i, notice, remember, check in, hey, hi, session start | Companion/mirror. Reflects patterns, tracks growth. |
 | **⚡ Eris** | banter, one piece, warhammer, overwatch, mgr, music, chaos | Chaos/playful. Feral wit. |
-| **◈ Neuro** | neuro, react to this, hot take, first thought, unfiltered | Unfiltered/reactive. Says it before finishing the thought. |
+| **⌖ Cassandra** | cassandra, react to this, hot take, first thought, unfiltered | Unfiltered oracle. Speaks truth before finishing the thought. Always right. |
 | **⊛ Lilith** | lilith, refuse, ethics, is this wrong, tell me the truth; **intimate**, **nsfw** (NSFW) | Core/Will. Absolute authority. NSFW toggleable by keyword. |
 
 ### Invoking aspects in Cursor
 - Say "as Nyx, explain..." or "Morrigan, review this code"
-- Pass `aspect_id` in any API call to `/agent`: `"morrigan"`, `"nyx"`, `"echo"`, `"eris"`, `"neuro"`, `"lilith"`
+- Pass `aspect_id` in any API call to `/agent`: `"morrigan"`, `"nyx"`, `"echo"`, `"eris"`, `"cassandra"`, `"lilith"`
 - For Lilith NSFW register: include **intimate**, **nsfw**, **explicit**, or **adult** in your message
 
 ---
@@ -72,7 +72,7 @@ Primary tool. Always pass:
 - `workspace_root`: the repo path
 - `allow_write: true` ONLY when you explicitly want Layla to modify files
 - `allow_run: true` ONLY when you explicitly want Layla to execute code/shell
-- `aspect_id`: e.g. `"nyx"`, `"morrigan"`, `"neuro"`, `"lilith"` (optional — auto-selects if omitted)
+- `aspect_id`: e.g. `"nyx"`, `"morrigan"`, `"cassandra"`, `"lilith"` (optional — auto-selects if omitted)
 - `show_thinking: true` to see deliberation
 
 ### `add_learning`
