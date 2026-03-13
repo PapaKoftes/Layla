@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 _USE_DISKCACHE = False
 try:
-    import diskcache
+    import diskcache  # noqa: F401
     _USE_DISKCACHE = True
 except ImportError:
     pass

@@ -4,7 +4,6 @@ Uses loguru when available, else standard logging.
 Events include: timestamp, event_type, duration, status (per v1 spec).
 """
 import logging
-import time
 from typing import Any
 
 logger = logging.getLogger("layla")
