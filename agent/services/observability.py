@@ -98,3 +98,26 @@ def log_retrieval_cache_hit(query_preview: str = "", duration_ms: float = 0, **k
 
 def log_retrieval_cache_miss(query_preview: str = "", duration_ms: float = 0, **kw: Any) -> None:
     _log_event("retrieval_cache_miss", query_preview=query_preview[:60], duration=duration_ms, **kw)
+
+
+# Mission lifecycle (v1.1)
+def log_mission_created(mission_id: str = "", goal_preview: str = "", steps: int = 0, **kw: Any) -> None:
+    _log_event("mission_created", mission_id=mission_id, goal_preview=goal_preview[:60], steps=steps, **kw)
+
+
+def log_mission_started(mission_id: str = "", goal_preview: str = "", **kw: Any) -> None:
+    _log_event("mission_started", mission_id=mission_id, goal_preview=goal_preview[:60], **kw)
+
+
+def log_mission_step(
+    mission_id: str = "", step: int = 0, task_preview: str = "", status: str = "", duration_ms: float = 0, **kw: Any
+) -> None:
+    _log_event("mission_step", mission_id=mission_id, step=step, task_preview=task_preview[:60], status=status, duration_ms=duration_ms, **kw)
+
+
+def log_mission_completed(mission_id: str = "", steps_done: int = 0, **kw: Any) -> None:
+    _log_event("mission_completed", mission_id=mission_id, steps_done=steps_done, **kw)
+
+
+def log_mission_failed(mission_id: str = "", reason: str = "", **kw: Any) -> None:
+    _log_event("mission_failed", mission_id=mission_id, reason=reason[:120], **kw)

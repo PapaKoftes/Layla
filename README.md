@@ -115,9 +115,10 @@ Switch between them in the sidebar or say their name:
 - Mic input → faster-whisper transcription → auto-send
 - Layla's replies are spoken back via kokoro-onnx (offline, high quality)
 
-**Research**
+**Research & missions**
 - Autonomous multi-stage repo research and analysis
 - Staged missions: map → deep → full
+- **Long-running missions** — Start research or engineering tasks via `POST /mission`; Layla runs steps in the background and persists progress across restarts. See [docs/missions.md](docs/missions.md).
 
 ---
 

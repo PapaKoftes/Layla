@@ -216,6 +216,29 @@ def _migrate_impl() -> None:
     # Evolution layer: capability tables and seed (Phase 1)
     _migrate_evolution_layer()
 
+    # Missions table (v1.1 — long-running agent tasks)
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS missions (
+                    id             TEXT PRIMARY KEY,
+                    goal           TEXT NOT NULL,
+                    plan_json      TEXT NOT NULL,
+                    status         TEXT NOT NULL DEFAULT 'pending',
+                    current_step   INTEGER NOT NULL DEFAULT 0,
+                    results_json   TEXT DEFAULT '[]',
+                    created_at     TEXT NOT NULL,
+                    updated_at     TEXT NOT NULL,
+                    workspace_root TEXT DEFAULT '',
+                    allow_write    INTEGER DEFAULT 0,
+                    allow_run      INTEGER DEFAULT 0
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_missions_status ON missions(status)")
+            db.commit()
+    except Exception as e:
+        log.warning("missions table migration failed: %s", e)
+
     # Migrate learnings.json
     _migrate_learnings_json()
 
@@ -945,6 +968,146 @@ def complete_mission_chain(chain_id: str, outcome_summary: str) -> None:
             (outcome_summary, now, chain_id),
         )
         db.commit()
+
+
+# ── missions (v1.1 — long-running agent tasks) ────────────────────────────────
+
+def save_mission(mission: dict) -> None:
+    """Persist a mission to the missions table."""
+    migrate()
+    now = datetime.utcnow().isoformat()
+    mission_id = mission.get("id", "")
+    goal = mission.get("goal", "")
+    plan = mission.get("plan") or []
+    status = mission.get("status", "pending")
+    current_step = int(mission.get("current_step", 0))
+    results = mission.get("results") or []
+    workspace_root = mission.get("workspace_root", "")
+    allow_write = 1 if mission.get("allow_write") else 0
+    allow_run = 1 if mission.get("allow_run") else 0
+    plan_json = json.dumps(plan)
+    results_json = json.dumps(results)
+    with _conn() as db:
+        db.execute(
+            """INSERT OR REPLACE INTO missions
+               (id, goal, plan_json, status, current_step, results_json, created_at, updated_at,
+                workspace_root, allow_write, allow_run)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                mission_id,
+                goal,
+                plan_json,
+                status,
+                current_step,
+                results_json,
+                mission.get("created_at", now),
+                mission.get("updated_at", now),
+                workspace_root,
+                allow_write,
+                allow_run,
+            ),
+        )
+        db.commit()
+
+
+def get_mission(mission_id: str) -> dict | None:
+    """Fetch a mission by id."""
+    migrate()
+    with _conn() as db:
+        row = db.execute("SELECT * FROM missions WHERE id=?", (mission_id,)).fetchone()
+    if not row:
+        return None
+    try:
+        plan = json.loads(row["plan_json"] or "[]")
+    except (json.JSONDecodeError, TypeError):
+        plan = []
+    try:
+        results = json.loads(row["results_json"] or "[]")
+    except (json.JSONDecodeError, TypeError):
+        results = []
+    return {
+        "id": row["id"],
+        "goal": row["goal"],
+        "plan": plan,
+        "status": row["status"],
+        "current_step": int(row["current_step"] or 0),
+        "results": results,
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "workspace_root": row["workspace_root"] or "",
+        "allow_write": bool(row["allow_write"]),
+        "allow_run": bool(row["allow_run"]),
+    }
+
+
+def update_mission_status(mission_id: str, status: str) -> None:
+    """Update mission status."""
+    migrate()
+    now = datetime.utcnow().isoformat()
+    with _conn() as db:
+        db.execute(
+            "UPDATE missions SET status=?, updated_at=? WHERE id=?",
+            (status, now, mission_id),
+        )
+        db.commit()
+
+
+def update_mission_progress(
+    mission_id: str,
+    status: str | None = None,
+    current_step: int | None = None,
+    results: list | None = None,
+) -> None:
+    """Update mission progress: status, current_step, results."""
+    migrate()
+    now = datetime.utcnow().isoformat()
+    with _conn() as db:
+        if status is not None:
+            db.execute("UPDATE missions SET status=?, updated_at=? WHERE id=?", (status, now, mission_id))
+        if current_step is not None:
+            db.execute("UPDATE missions SET current_step=?, updated_at=? WHERE id=?", (current_step, now, mission_id))
+        if results is not None:
+            results_json = json.dumps(results)
+            db.execute("UPDATE missions SET results_json=?, updated_at=? WHERE id=?", (results_json, now, mission_id))
+        db.commit()
+
+
+def get_active_missions(limit: int = 5) -> list[dict]:
+    """Fetch missions with status running or pending, for mission_worker."""
+    migrate()
+    with _conn() as db:
+        rows = db.execute(
+            "SELECT id FROM missions WHERE status IN ('running','pending') ORDER BY created_at ASC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    out = []
+    for row in rows:
+        m = get_mission(row["id"])
+        if m:
+            out.append(m)
+    return out
+
+
+def get_missions(limit: int = 50, status_filter: str | None = None) -> list[dict]:
+    """Fetch missions for listing; optionally filter by status."""
+    migrate()
+    with _conn() as db:
+        if status_filter:
+            rows = db.execute(
+                "SELECT id FROM missions WHERE status=? ORDER BY created_at DESC LIMIT ?",
+                (status_filter, limit),
+            ).fetchall()
+        else:
+            rows = db.execute(
+                "SELECT id FROM missions ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+    out = []
+    for row in rows:
+        m = get_mission(row["id"])
+        if m:
+            out.append(m)
+    return out
 
 
 def get_project_context() -> dict:

@@ -47,11 +47,14 @@
 
   "planning_enabled": true,
   "max_plan_depth": 3,
+  "max_mission_runtime_seconds": 3600,
+  "max_mission_steps": 10,
   "enable_cot": true,
   "enable_self_reflection": false,
 
   "scheduler_study_enabled": true,
   "scheduler_interval_minutes": 30,
+  "mission_worker_interval_minutes": 2,
   "scheduler_recent_activity_minutes": 90,
   "scheduler_use_capabilities": false,
 
