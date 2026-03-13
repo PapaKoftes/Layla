@@ -371,6 +371,7 @@
     <div id="chat"></div>
     <div class="input-area">
       <input type="text" id="msg-input" placeholder="Ask Layla…" onkeydown="if(event.key==='Enter')send()" oninput="toggleSendButton()">
+      <button id="mic-btn" onclick="toggleMic()" title="Hold to record voice" style="background:var(--panel-bg);border:1px solid var(--border);border-radius:6px;padding:0 12px;cursor:pointer;font-size:1rem;color:var(--text-dim);transition:all 0.15s" onmouseover="this.style.color=getComputedStyle(document.documentElement).getPropertyValue('--accent')" onmouseout="if(!_micActive)this.style.color=getComputedStyle(document.documentElement).getPropertyValue('--text-dim')">🎤</button>
       <button id="send-btn" onclick="send()" disabled>Send</button>
     </div>
   </div>
@@ -474,6 +475,8 @@ function addMsg(role, text, aspectName, deliberated, steps, uxStates, memoryInfl
     } else {
       bubble.textContent = text;
     }
+    // Speak Layla's response if TTS is enabled
+    speakText(text.slice(0, 500));  // only first 500 chars to avoid giant audio
   } else {
     bubble.textContent = text;
   }
@@ -547,6 +550,117 @@ function toggleSendButton() {
   const input = document.getElementById('msg-input');
   const btn = document.getElementById('send-btn');
   if (input && btn) btn.disabled = !(input.value && input.value.trim());
+}
+
+// ── Voice I/O ──────────────────────────────────────────────────────────────
+let _micActive = false;
+let _mediaRecorder = null;
+let _audioChunks = [];
+let _ttsEnabled = localStorage.getItem('layla_tts') !== 'false';
+
+async function toggleMic() {
+  if (_micActive) {
+    stopMic();
+  } else {
+    await startMic();
+  }
+}
+
+async function startMic() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    _audioChunks = [];
+    _mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+    _mediaRecorder.ondataavailable = e => { if (e.data.size > 0) _audioChunks.push(e.data); };
+    _mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(_audioChunks, { type: 'audio/webm' });
+      await transcribeAndSend(blob);
+    };
+    _mediaRecorder.start();
+    _micActive = true;
+    const micBtn = document.getElementById('mic-btn');
+    if (micBtn) {
+      micBtn.textContent = '⏹';
+      micBtn.style.color = 'var(--accent)';
+      micBtn.title = 'Click to stop recording';
+    }
+  } catch(e) {
+    console.error('Mic access denied:', e);
+    showToast('Microphone access denied');
+  }
+}
+
+function stopMic() {
+  if (_mediaRecorder && _micActive) {
+    _mediaRecorder.stop();
+    _micActive = false;
+    const micBtn = document.getElementById('mic-btn');
+    if (micBtn) {
+      micBtn.textContent = '🎤';
+      micBtn.style.color = 'var(--text-dim)';
+      micBtn.title = 'Hold to record voice';
+    }
+  }
+}
+
+async function transcribeAndSend(blob) {
+  const micBtn = document.getElementById('mic-btn');
+  if (micBtn) { micBtn.textContent = '⌛'; micBtn.style.color = 'var(--text-dim)'; }
+  try {
+    const arrayBuffer = await blob.arrayBuffer();
+    const resp = await fetch('/voice/transcribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'audio/webm' },
+      body: arrayBuffer,
+    });
+    const data = await resp.json();
+    if (data.ok && data.text && data.text.trim()) {
+      const input = document.getElementById('msg-input');
+      if (input) {
+        input.value = data.text.trim();
+        toggleSendButton();
+        // Auto-send after transcription
+        send();
+      }
+    } else {
+      showToast('Could not transcribe audio');
+    }
+  } catch(e) {
+    console.error('Transcription error:', e);
+    showToast('Transcription failed');
+  } finally {
+    if (micBtn) { micBtn.textContent = '🎤'; micBtn.style.color = 'var(--text-dim)'; }
+  }
+}
+
+async function speakText(text) {
+  if (!_ttsEnabled || !text) return;
+  try {
+    const resp = await fetch('/voice/speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!resp.ok) return;
+    const arrayBuffer = await resp.arrayBuffer();
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    const source = audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(audioCtx.destination);
+    source.start();
+  } catch(e) {
+    // TTS not available — silently skip
+  }
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--panel-bg);border:1px solid var(--border);color:var(--text);padding:8px 16px;border-radius:6px;z-index:9999;font-size:0.8rem;';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
 }
 
 async function startResearchMission(isResume) {

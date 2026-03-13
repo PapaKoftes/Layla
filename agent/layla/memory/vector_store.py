@@ -164,6 +164,225 @@ def search_similar(query_vec: np.ndarray, k: int = 5) -> list:
     return []
 
 
+# ─── BM25 hybrid search ──────────────────────────────────────────────────────
+
+_bm25_index = None
+_bm25_docs: list[dict] = []
+_bm25_doc_count: int = -1
+
+
+def _get_bm25_index():
+    """Lazily build BM25 index over all learnings. Rebuilt when count changes."""
+    global _bm25_index, _bm25_docs, _bm25_doc_count
+    try:
+        from layla.memory.db import get_recent_learnings
+        docs = get_recent_learnings(n=2000)
+        if len(docs) == _bm25_doc_count and _bm25_index is not None:
+            return _bm25_index, _bm25_docs
+        from rank_bm25 import BM25Okapi
+        tokenized = [d["content"].lower().split() for d in docs]
+        _bm25_index = BM25Okapi(tokenized)
+        _bm25_docs = docs
+        _bm25_doc_count = len(docs)
+        return _bm25_index, _bm25_docs
+    except Exception:
+        return None, []
+
+
+def _reciprocal_rank_fusion(lists: list[list[dict]], k: int = 5, rrf_k: int = 60) -> list[dict]:
+    """Fuse multiple ranked result lists using Reciprocal Rank Fusion."""
+    scores: dict[str, float] = {}
+    content_map: dict[str, dict] = {}
+    for ranked_list in lists:
+        for i, item in enumerate(ranked_list):
+            key = (item.get("content") or "")[:120]
+            scores[key] = scores.get(key, 0.0) + 1.0 / (rrf_k + i + 1)
+            if key not in content_map:
+                content_map[key] = item
+    sorted_keys = sorted(scores, key=lambda x: scores[x], reverse=True)
+    return [content_map[kk] for kk in sorted_keys[:k]]
+
+
+def search_hybrid(query: str, k: int = 5) -> list[dict]:
+    """
+    Hybrid BM25 + dense vector search fused via Reciprocal Rank Fusion.
+    BM25 catches exact keyword/code matches; vector catches semantic similarity.
+    Falls back gracefully to pure vector search if BM25 index is unavailable.
+    """
+    query_vec = embed(query)
+    vector_results = search_similar(query_vec, k=k * 3)
+
+    bm25_results: list[dict] = []
+    try:
+        bm25, docs = _get_bm25_index()
+        if bm25 and docs:
+            scores = bm25.get_scores(query.lower().split())
+            top_idx = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[: k * 3]
+            bm25_results = [docs[i] for i in top_idx if scores[i] > 0]
+    except Exception:
+        pass
+
+    if not bm25_results:
+        return vector_results[:k]
+    return _reciprocal_rank_fusion([vector_results, bm25_results], k=k)
+
+
+# ─── Cross-encoder reranking ─────────────────────────────────────────────────
+
+_cross_encoder = None
+_cross_encoder_failed = False  # don't retry after download failure
+
+
+def _get_cross_encoder():
+    global _cross_encoder, _cross_encoder_failed
+    if _cross_encoder_failed:
+        return None
+    if _cross_encoder is not None:
+        return _cross_encoder
+    try:
+        from sentence_transformers import CrossEncoder
+        _cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+    except Exception:
+        _cross_encoder_failed = True
+    return _cross_encoder
+
+
+def rerank(query: str, docs: list[dict], k: int = 5) -> list[dict]:
+    """
+    Rerank retrieved docs with a cross-encoder (query, doc) pair scorer.
+    Falls back to original order if model unavailable.
+    ~30ms for 20 docs on CPU — well worth the accuracy gain.
+    """
+    if not docs:
+        return docs
+    ce = _get_cross_encoder()
+    if ce is None:
+        return docs[:k]
+    try:
+        pairs = [(query, (d.get("content") or d.get("text") or "")[:512]) for d in docs]
+        scores = ce.predict(pairs, show_progress_bar=False)
+        ranked = sorted(zip(scores, docs), key=lambda x: x[0], reverse=True)
+        return [d for _, d in ranked[:k]]
+    except Exception:
+        return docs[:k]
+
+
+# ─── HyDE — Hypothetical Document Embeddings ─────────────────────────────────
+
+def search_with_hyde(query: str, k: int = 5, fallback: bool = True) -> list[dict]:
+    """
+    HyDE: generate a short hypothetical answer, embed it, search with that vector.
+    Dramatically improves recall when query phrasing doesn't match document language.
+    Falls back to standard dense search if LLM is unavailable or too slow.
+    """
+    try:
+        from services.llm_gateway import run_completion
+        hyp_prompt = (
+            f"Write a concise, factual 2-3 sentence answer to this question. "
+            f"Be specific and technical if relevant.\n\nQuestion: {query}"
+        )
+        result = run_completion(hyp_prompt, max_tokens=120, temperature=0.0)
+        if isinstance(result, dict):
+            hyp = ((result.get("choices") or [{}])[0].get("message") or {}).get("content", "")
+        else:
+            hyp = ""
+        if hyp and len(hyp.strip()) > 20:
+            hyde_vec = embed(hyp.strip())
+            results = search_similar(hyde_vec, k=k * 2)
+            if results:
+                # Fuse with original query results for robustness
+                orig = search_similar(embed(query), k=k * 2)
+                return _reciprocal_rank_fusion([results, orig], k=k)
+    except Exception:
+        pass
+    if fallback:
+        return search_similar(embed(query), k=k)
+    return []
+
+
+# ─── Parent-document retrieval ────────────────────────────────────────────────
+
+def get_knowledge_chunks_with_parent(query: str, k: int = 5) -> list[dict]:
+    """
+    Retrieve knowledge chunks and enrich with surrounding parent document context.
+    Each chunk's metadata carries a 'source' field; we load the full source file
+    and return the surrounding paragraph (up to 1200 chars) around the matched chunk.
+    """
+    from pathlib import Path as _Path
+    import os as _os
+
+    # Get initial chunks from standard search
+    try:
+        chunks = get_knowledge_chunks_with_sources(query, k=k * 2)
+    except Exception:
+        chunks = []
+
+    enriched = []
+    seen_sources: dict[str, str] = {}
+
+    for chunk in chunks[:k]:
+        source = chunk.get("source", "")
+        text = chunk.get("text", "")
+        if not source or not text:
+            enriched.append(chunk)
+            continue
+        # Try to read the parent file
+        if source not in seen_sources:
+            try:
+                # Look up path relative to knowledge/ dir
+                from pathlib import Path as _P
+                knowledge_dir = _P(__file__).resolve().parent.parent.parent.parent / "knowledge"
+                full_path = knowledge_dir / source
+                if full_path.exists():
+                    seen_sources[source] = full_path.read_text(encoding="utf-8", errors="replace")
+                else:
+                    seen_sources[source] = ""
+            except Exception:
+                seen_sources[source] = ""
+        parent_text = seen_sources.get(source, "")
+        if parent_text and text in parent_text:
+            # Find chunk in parent, extract ±600 chars of surrounding context
+            idx = parent_text.find(text)
+            start = max(0, idx - 400)
+            end = min(len(parent_text), idx + len(text) + 400)
+            extended = parent_text[start:end].strip()
+            enriched.append({**chunk, "text": extended})
+        else:
+            enriched.append(chunk)
+
+    return enriched
+
+
+# ─── Full search pipeline: hybrid → rerank → parent context ──────────────────
+
+def search_memories_full(query: str, k: int = 5, use_rerank: bool = True) -> list[dict]:
+    """
+    Full memory search pipeline:
+      1. Hybrid BM25 + vector (RRF fusion)
+      2. FTS5 keyword results merged in
+      3. Cross-encoder reranking
+    Returns top-k most relevant learnings.
+    """
+    # Step 1: hybrid vector + BM25
+    results = search_hybrid(query, k=k * 3)
+
+    # Step 2: merge FTS5 keyword results
+    try:
+        from layla.memory.db import search_learnings_fts
+        fts_hits = search_learnings_fts(query, n=k * 2)
+        if fts_hits:
+            results = _reciprocal_rank_fusion([results, fts_hits], k=k * 3)
+    except Exception:
+        pass
+
+    # Step 3: cross-encoder rerank
+    if use_rerank:
+        results = rerank(query, results, k=k)
+    else:
+        results = results[:k]
+    return results
+
+
 def _read_pdf_text(path: Path) -> str:
     """Extract text from a PDF file. Returns '' if pypdf not available or on error."""
     try:

@@ -135,6 +135,17 @@ async def lifespan(app: FastAPI):
             logger.info("embedder pre-warm thread started")
         except Exception as e:
             logger.warning("embedder preload failed: %s", e)
+        # Prewarm voice models (optional; silently skipped if not installed)
+        try:
+            from services.stt import prewarm as stt_prewarm
+            stt_prewarm()
+        except Exception:
+            pass
+        try:
+            from services.tts import prewarm as tts_prewarm
+            tts_prewarm()
+        except Exception:
+            pass
         if cfg.get("scheduler_study_enabled", True):
             from apscheduler.schedulers.background import BackgroundScheduler
             from apscheduler.triggers.interval import IntervalTrigger
@@ -734,6 +745,57 @@ def list_audit(page: int = 1, limit: int = 50, tool: str = ""):
         })
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ─────────────────────────────────────────────────────────────
+# Voice endpoints
+# ─────────────────────────────────────────────────────────────
+
+@app.post("/voice/transcribe")
+async def voice_transcribe(request: Request):
+    """
+    Transcribe audio to text using faster-whisper.
+    POST raw audio bytes (WAV/WebM/OGG/MP3).
+    Returns: {"text": "...", "ok": true}
+    """
+    try:
+        from services.stt import transcribe_bytes
+        audio_bytes = await request.body()
+        if not audio_bytes:
+            return JSONResponse({"ok": False, "error": "No audio data"}, status_code=400)
+        text = transcribe_bytes(audio_bytes)
+        return JSONResponse({"ok": True, "text": text})
+    except Exception as e:
+        logger.warning("STT error: %s", e)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/voice/speak")
+async def voice_speak(request: Request):
+    """
+    Text-to-speech via kokoro-onnx (or pyttsx3 fallback).
+    POST JSON: {"text": "Hello!"} or plain text body.
+    Returns: WAV audio bytes (audio/wav).
+    """
+    try:
+        from services.tts import speak_to_bytes
+        body = await request.body()
+        try:
+            import json as _j
+            data = _j.loads(body)
+            text = data.get("text", "")
+        except Exception:
+            text = body.decode("utf-8", errors="replace").strip()
+        if not text:
+            return JSONResponse({"ok": False, "error": "No text provided"}, status_code=400)
+        wav = speak_to_bytes(text)
+        if wav is None:
+            return JSONResponse({"ok": False, "error": "TTS not available. Run: pip install kokoro-onnx soundfile"}, status_code=503)
+        from fastapi.responses import Response
+        return Response(content=wav, media_type="audio/wav")
+    except Exception as e:
+        logger.warning("TTS error: %s", e)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 # ─────────────────────────────────────────────────────────────
