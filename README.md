@@ -27,25 +27,29 @@ She has six distinct aspects (voices/personalities) you can switch between. She 
 
 ---
 
-## Install (3 steps)
+## Install
+
+**Prerequisite:** Python 3.11+
 
 ### Windows
-```
-1. Install Python 3.11+ from https://python.org  (check "Add to PATH")
-2. Double-click  INSTALL.bat
-3. Follow the prompts
-```
-Then: **double-click `START.bat`** to launch. Layla opens at `http://localhost:8000/ui`.
+1. Install Python 3.11+ from [python.org](https://python.org) — check **"Add Python to PATH"**
+2. Double-click **`INSTALL.bat`**
+3. The setup wizard detects your hardware and can download a model for you
+4. Double-click **`START.bat`** to launch → `http://localhost:8000/ui`
 
 ### Linux / macOS
 ```bash
 git clone https://github.com/your-org/layla.git && cd layla
-bash install.sh
-bash start.sh
+bash install.sh    # One command: venv, deps, Playwright, hardware wizard
+bash start.sh     # Launch when ready
 ```
 
-> **You need a model.** See [MODELS.md](MODELS.md) for what to download and where.  
-> The model goes in the `models/` folder. `INSTALL.bat` will walk you through it.
+**Python 3.11+ not installed?**
+- Debian/Ubuntu: `sudo apt install python3.11 python3.11-venv`
+- Fedora: `sudo dnf install python3.11`
+- macOS: `brew install python@3.11`
+
+The setup wizard offers to download a model during install. If you skip it, see [MODELS.md](MODELS.md) — put the `.gguf` in `models/` and run `python agent/first_run.py` to configure.
 
 ---
 

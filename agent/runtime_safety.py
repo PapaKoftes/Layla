@@ -3,7 +3,8 @@ import os
 import shutil
 import subprocess
 import time
-from datetime import datetime
+
+from layla.time_utils import utcnow
 from pathlib import Path
 
 AGENT_DIR = Path(__file__).resolve().parent
@@ -42,30 +43,39 @@ def _probe_hardware() -> dict:
     global _hardware_probe_cache
     if _hardware_probe_cache is not None:
         return _hardware_probe_cache
-    cpu_count = os.cpu_count() or 4
-    ram_gb = 16.0
-    vram_gb = 0.0
     try:
-        import psutil
-        mem = psutil.virtual_memory()
-        ram_gb = round(mem.total / (1024**3), 1)
+        from services.hardware_detect import detect_hardware
+        h = detect_hardware()
+        _hardware_probe_cache = {
+            "ram_gb": h["ram_gb"],
+            "vram_gb": h["vram_gb"],
+            "cpu_logical": h["cpu_cores"],
+        }
     except Exception:
-        pass
-    try:
-        r = subprocess.run(
-            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=10, encoding="utf-8", errors="replace",
-        )
-        if r.returncode == 0 and r.stdout.strip():
-            raw = r.stdout.strip().split("\n")[0].strip().replace("MiB", "").replace("MB", "").strip()
-            try:
-                vram_mb = int(raw)
-                vram_gb = round(vram_mb / 1024.0, 1)
-            except ValueError:
-                pass
-    except Exception:
-        pass
-    _hardware_probe_cache = {"ram_gb": ram_gb, "vram_gb": vram_gb, "cpu_logical": cpu_count}
+        cpu_count = os.cpu_count() or 4
+        ram_gb = 16.0
+        vram_gb = 0.0
+        try:
+            import psutil
+            mem = psutil.virtual_memory()
+            ram_gb = round(mem.total / (1024**3), 1)
+        except Exception:
+            pass
+        try:
+            r = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=10, encoding="utf-8", errors="replace",
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                raw = r.stdout.strip().split("\n")[0].strip().replace("MiB", "").replace("MB", "").strip()
+                try:
+                    vram_mb = int(raw)
+                    vram_gb = round(vram_mb / 1024.0, 1)
+                except ValueError:
+                    pass
+        except Exception:
+            pass
+        _hardware_probe_cache = {"ram_gb": ram_gb, "vram_gb": vram_gb, "cpu_logical": cpu_count}
     return _hardware_probe_cache
 
 
@@ -138,6 +148,8 @@ def load_config() -> dict:
         "stop_sequences": ["\nUser:", " User:"],
         "completion_max_tokens": 256,
         "remote_model_name": "llama3.1",
+        "llama_server_url": None,
+        "inference_backend": "auto",
         "scheduler_study_enabled": True,
         "scheduler_interval_minutes": 30,
         "scheduler_recent_activity_minutes": 90,
@@ -311,7 +323,7 @@ def is_protected(path: Path) -> bool:
 def backup_file(path: Path) -> bool:
     try:
         BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        ts = utcnow().strftime("%Y%m%d_%H%M%S")
         dest = BACKUP_DIR / f"{path.stem}_{ts}{path.suffix}"
         shutil.copy2(str(path), str(dest))
         return True
@@ -321,7 +333,7 @@ def backup_file(path: Path) -> bool:
 
 def log_execution(tool_name: str, payload: dict) -> None:
     entry = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": utcnow().isoformat(),
         "tool": tool_name,
         "payload": payload,
     }

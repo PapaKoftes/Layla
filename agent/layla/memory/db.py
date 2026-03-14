@@ -10,9 +10,13 @@ Tables:
 """
 import hashlib
 import json
+import logging
 import sqlite3
-from datetime import datetime
 from pathlib import Path
+
+from layla.time_utils import utcnow
+
+logger = logging.getLogger("layla")
 
 _DB_PATH = Path(__file__).resolve().parent.parent.parent.parent / "layla.db"
 
@@ -50,18 +54,14 @@ def migrate() -> None:
     with _MIGRATION_LOCK:
         if _MIGRATED:
             return
-        import logging
-        log = logging.getLogger("layla")
         try:
             _migrate_impl()
             _MIGRATED = True
         except Exception as e:
-            log.warning("DB migrate failed: %s", e)
+            logger.warning("DB migrate failed: %s", e)
 
 
 def _migrate_impl() -> None:
-    import logging
-    log = logging.getLogger("layla")
     first_run = not _DB_PATH.exists()
     with _conn() as db:
         db.execute("""
@@ -237,13 +237,53 @@ def _migrate_impl() -> None:
             db.execute("CREATE INDEX IF NOT EXISTS idx_missions_status ON missions(status)")
             db.commit()
     except Exception as e:
-        log.warning("missions table migration failed: %s", e)
+        logger.warning("missions table migration failed: %s", e)
+
+    # Conversation summary memory — prevents context overflow across sessions
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS conversation_summaries (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    summary    TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_conversation_summaries_created ON conversation_summaries(created_at DESC)")
+            db.commit()
+    except Exception as e:
+        logger.warning("conversation_summaries table migration failed: %s", e)
+
+    # embedding_id for conversation_summaries — enables retrieval participation
+    try:
+        with _conn() as db:
+            db.execute("ALTER TABLE conversation_summaries ADD COLUMN embedding_id TEXT DEFAULT ''")
+            db.commit()
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
+
+    # relationship_memory — meaningful interaction summaries for companion intelligence
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS relationship_memory (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_event   TEXT NOT NULL,
+                    timestamp   TEXT NOT NULL,
+                    embedding_id TEXT DEFAULT ''
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_relationship_memory_timestamp ON relationship_memory(timestamp DESC)")
+            db.commit()
+    except Exception as e:
+        logger.warning("relationship_memory table migration failed: %s", e)
 
     # Migrate learnings.json
     _migrate_learnings_json()
 
     if first_run:
-        log.info("Initialized new Layla workspace")
+        logger.info("Initialized new Layla workspace")
 
 
 def _migrate_learnings_json() -> None:
@@ -261,7 +301,7 @@ def _migrate_learnings_json() -> None:
                         if c and c not in existing:
                             db.execute(
                                 "INSERT INTO learnings (content, type, created_at) VALUES (?,?,?)",
-                                (c, item.get("type", "fact"), item.get("created_at", datetime.utcnow().isoformat())),
+                                (c, item.get("type", "fact"), item.get("created_at", utcnow().isoformat())),
                             )
                     db.commit()
                 # Rename old file so we don't migrate twice
@@ -272,7 +312,7 @@ def _migrate_learnings_json() -> None:
 
 def _migrate_evolution_layer() -> None:
     """Create evolution layer tables and seed capability_domains, dependencies, capabilities."""
-    now = datetime.utcnow().isoformat()
+    now = utcnow().isoformat()
     with _conn() as db:
         db.execute("""
             CREATE TABLE IF NOT EXISTS capability_domains (
@@ -449,6 +489,31 @@ def _migrate_evolution_layer() -> None:
             if "duplicate column" not in str(e).lower():
                 raise
 
+    # Capability implementations (technical backends: vector_search, embedding, etc.)
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS capability_implementations (
+                    capability_name   TEXT NOT NULL,
+                    implementation_id TEXT NOT NULL,
+                    package_name      TEXT NOT NULL,
+                    status            TEXT NOT NULL DEFAULT 'candidate',
+                    latency_ms        REAL,
+                    throughput_per_sec REAL,
+                    memory_mb         REAL,
+                    benchmark_results  TEXT,
+                    last_benchmarked_at TEXT,
+                    sandbox_valid     INTEGER DEFAULT 0,
+                    created_at        TEXT NOT NULL,
+                    updated_at        TEXT NOT NULL,
+                    PRIMARY KEY (capability_name, implementation_id)
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_cap_impl_status ON capability_implementations(status)")
+            db.commit()
+    except Exception as e:
+        logger.warning("capability_implementations table migration failed: %s", e)
+
     # Backfill capabilities: one row per domain with defaults
     with _conn() as db:
         rows = db.execute("SELECT id FROM capability_domains").fetchall()
@@ -521,12 +586,12 @@ def save_learning(
             cur = db.execute(
                 """INSERT INTO learnings (content, type, created_at, embedding_id, learning_type, confidence, source, content_hash)
                    VALUES (?,?,?,?,?,?,?,?)""",
-                (content, learning_type, datetime.utcnow().isoformat(), embedding_id, learning_type, confidence, source, content_hash),
+                (content, learning_type, utcnow().isoformat(), embedding_id, learning_type, confidence, source, content_hash),
             )
         except sqlite3.OperationalError:
             cur = db.execute(
                 "INSERT INTO learnings (content, type, created_at, embedding_id, learning_type) VALUES (?,?,?,?,?)",
-                (content, learning_type, datetime.utcnow().isoformat(), embedding_id, learning_type),
+                (content, learning_type, utcnow().isoformat(), embedding_id, learning_type),
             )
         db.commit()
         rid = cur.lastrowid
@@ -561,16 +626,20 @@ def get_recent_learnings(n: int = 30, aspect_id: str | None = None) -> list[dict
     with _conn() as db:
         try:
             has_lt = any(r[1] == "learning_type" for r in db.execute("PRAGMA table_info(learnings)").fetchall())
+            has_conf = any(r[1] == "confidence" for r in db.execute("PRAGMA table_info(learnings)").fetchall())
         except Exception:
             has_lt = False
+            has_conf = False
+        sel = "id, content, type, created_at, embedding_id"
+        if has_conf:
+            sel += ", confidence"
         if not has_lt or not aspect_id:
-            rows = db.execute(
-                "SELECT id, content, type, created_at FROM learnings ORDER BY id DESC LIMIT ?", (n,)
-            ).fetchall()
+            rows = db.execute(f"SELECT {sel} FROM learnings ORDER BY id DESC LIMIT ?", (n,)).fetchall()
         else:
             pref = _ASPECT_LEARNING_PREFERENCE.get(aspect_id.lower(), "fact")
+            sel_lt = sel + ", learning_type" if has_lt else sel
             rows = db.execute(
-                """SELECT id, content, type, created_at, learning_type FROM learnings
+                f"""SELECT {sel_lt} FROM learnings
                    ORDER BY CASE WHEN learning_type = ? THEN 0 ELSE 1 END, id DESC LIMIT ?""",
                 (pref, n),
             ).fetchall()
@@ -578,6 +647,8 @@ def get_recent_learnings(n: int = 30, aspect_id: str | None = None) -> list[dict
         for r in result:
             if "learning_type" not in r and "type" in r:
                 r["learning_type"] = r["type"]
+            if has_conf:
+                r["adjusted_confidence"] = _apply_confidence_decay(r.get("confidence"), r.get("created_at", ""))
         return result
 
 
@@ -587,7 +658,9 @@ def _apply_confidence_decay(confidence: float, created_at: str) -> float:
     try:
         from datetime import datetime
         dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-        age_days = (datetime.utcnow() - dt.replace(tzinfo=None)).total_seconds() / 86400.0
+        from datetime import timezone
+        dt_utc = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+        age_days = (utcnow() - dt_utc).total_seconds() / 86400.0
     except Exception:
         age_days = 0.0
     conf = float(confidence) if confidence is not None else 0.5
@@ -642,6 +715,37 @@ def search_learnings_fts(query: str, n: int = 20) -> list[dict]:
                 return []
 
 
+def get_learnings_by_embedding_ids(embedding_ids: list[str]) -> dict[str, dict]:
+    """Look up confidence and created_at for learnings by embedding_id. Used for retrieval scoring."""
+    if not embedding_ids:
+        return {}
+    migrate()
+    result = {}
+    with _conn() as db:
+        try:
+            has_conf = any(r[1] == "confidence" for r in db.execute("PRAGMA table_info(learnings)").fetchall())
+        except Exception:
+            has_conf = False
+        sel = "embedding_id, created_at"
+        if has_conf:
+            sel += ", confidence"
+        placeholders = ",".join("?" * len(embedding_ids))
+        rows = db.execute(
+            f"SELECT {sel} FROM learnings WHERE embedding_id IN ({placeholders}) AND embedding_id != ''",
+            tuple(embedding_ids),
+        ).fetchall()
+        for r in rows:
+            rid = r["embedding_id"]
+            conf = r.get("confidence")
+            created = r.get("created_at", "")
+            result[rid] = {
+                "confidence": float(conf) if conf is not None else 0.5,
+                "created_at": created,
+                "adjusted_confidence": _apply_confidence_decay(conf, created),
+            }
+    return result
+
+
 def delete_learnings_by_id(ids: list) -> None:
     """Remove learnings by id list. Used by memory distillation."""
     if not ids:
@@ -657,7 +761,7 @@ def delete_learnings_by_id(ids: list) -> None:
 
 def save_study_plan(plan_id: str, topic: str, status: str = "active", domain_id: str | None = None) -> None:
     migrate()
-    now = datetime.utcnow().isoformat()
+    now = utcnow().isoformat()
     with _conn() as db:
         try:
             db.execute(
@@ -702,10 +806,10 @@ def update_study_progress(plan_id: str, note: str) -> None:
         row = db.execute("SELECT progress FROM study_plans WHERE id=?", (plan_id,)).fetchone()
         if row:
             progress = json.loads(row["progress"] or "[]")
-            progress.append({"note": note, "at": datetime.utcnow().isoformat()})
+            progress.append({"note": note, "at": utcnow().isoformat()})
             db.execute(
                 "UPDATE study_plans SET progress=?, last_studied=? WHERE id=?",
-                (json.dumps(progress), datetime.utcnow().isoformat(), plan_id),
+                (json.dumps(progress), utcnow().isoformat(), plan_id),
             )
             db.commit()
 
@@ -717,7 +821,7 @@ def log_wakeup(greeting: str, notes: str = "") -> None:
     with _conn() as db:
         db.execute(
             "INSERT INTO wakeup_log (timestamp, greeting, notes) VALUES (?,?,?)",
-            (datetime.utcnow().isoformat(), greeting, notes),
+            (utcnow().isoformat(), greeting, notes),
         )
         db.commit()
 
@@ -738,7 +842,7 @@ def log_audit(tool: str, args_summary: str, approved_by: str, result_ok: bool) -
     with _conn() as db:
         db.execute(
             "INSERT INTO audit (timestamp, tool, args_summary, approved_by, result_ok) VALUES (?,?,?,?,?)",
-            (datetime.utcnow().isoformat(), tool, args_summary[:200], approved_by, int(result_ok)),
+            (utcnow().isoformat(), tool, args_summary[:200], approved_by, int(result_ok)),
         )
         db.commit()
 
@@ -752,6 +856,73 @@ def get_recent_audit(n: int = 10) -> list[dict]:
     return [dict(r) for r in reversed(rows)]
 
 
+# ── conversation summaries (context overflow prevention) ────────────────────
+
+def add_conversation_summary(summary: str) -> None:
+    """Persist a conversation summary for long-term context retention. Stores embedding for retrieval."""
+    if not (summary or "").strip():
+        return
+    migrate()
+    summary_text = summary.strip()[:8000]
+    embedding_id = ""
+    try:
+        from layla.memory.vector_store import embed, add_vector
+        vec = embed(summary_text)
+        embedding_id = add_vector(vec, {"content": summary_text, "type": "conversation_summary"})
+    except Exception:
+        pass
+    with _conn() as db:
+        db.execute(
+            "INSERT INTO conversation_summaries (summary, created_at, embedding_id) VALUES (?,?,?)",
+            (summary_text, utcnow().isoformat(), embedding_id),
+        )
+        db.commit()
+
+
+def get_recent_conversation_summaries(n: int = 5) -> list[dict]:
+    """Return the n most recent conversation summaries (newest first)."""
+    migrate()
+    with _conn() as db:
+        rows = db.execute(
+            "SELECT id, summary, created_at, embedding_id FROM conversation_summaries ORDER BY id DESC LIMIT ?", (n,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── relationship memory (companion intelligence) ────────────────────────────
+
+def add_relationship_memory(user_event: str, embedding_id: str = "") -> None:
+    """Store a meaningful interaction summary for companion context. Optionally embeds for retrieval."""
+    if not (user_event or "").strip():
+        return
+    migrate()
+    event_text = (user_event or "").strip()[:4000]
+    eid = (embedding_id or "").strip()
+    if not eid:
+        try:
+            from layla.memory.vector_store import embed, add_vector
+            vec = embed(event_text)
+            eid = add_vector(vec, {"content": event_text, "type": "relationship_memory"})
+        except Exception:
+            pass
+    with _conn() as db:
+        db.execute(
+            "INSERT INTO relationship_memory (user_event, timestamp, embedding_id) VALUES (?,?,?)",
+            (event_text, utcnow().isoformat(), eid),
+        )
+        db.commit()
+
+
+def get_recent_relationship_memories(n: int = 5) -> list[dict]:
+    """Return the n most recent relationship memories (newest first)."""
+    migrate()
+    with _conn() as db:
+        rows = db.execute(
+            "SELECT id, user_event, timestamp, embedding_id FROM relationship_memory ORDER BY id DESC LIMIT ?", (n,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 # ── aspect memories ────────────────────────────────────────────────────────
 
 def save_aspect_memory(aspect_id: str, content: str) -> None:
@@ -759,7 +930,7 @@ def save_aspect_memory(aspect_id: str, content: str) -> None:
     with _conn() as db:
         db.execute(
             "INSERT INTO aspect_memories (aspect_id, content, created_at) VALUES (?,?,?)",
-            (aspect_id, content, datetime.utcnow().isoformat()),
+            (aspect_id, content, utcnow().isoformat()),
         )
         db.commit()
 
@@ -782,7 +953,7 @@ def save_earned_title(aspect_id: str, title: str) -> None:
         db.execute(
             "INSERT INTO earned_titles (aspect_id, title, updated_at) VALUES (?,?,?) "
             "ON CONFLICT(aspect_id) DO UPDATE SET title=excluded.title, updated_at=excluded.updated_at",
-            (aspect_id, title, datetime.utcnow().isoformat()),
+            (aspect_id, title, utcnow().isoformat()),
         )
         db.commit()
 
@@ -828,7 +999,7 @@ def insert_capability_event(
     learning_quality_score: float = 0.5,
 ) -> int:
     migrate()
-    now = datetime.utcnow().isoformat()
+    now = utcnow().isoformat()
     usefulness_score = max(0.0, min(1.0, usefulness_score))
     learning_quality_score = max(0.0, min(1.0, learning_quality_score))
     with _conn() as db:
@@ -859,7 +1030,7 @@ def update_capability(
     practice_count: int,
 ) -> None:
     migrate()
-    now = datetime.utcnow().isoformat()
+    now = utcnow().isoformat()
     with _conn() as db:
         db.execute(
             """UPDATE capabilities SET level=?, confidence=?, trend=?, last_practiced_at=?, decay_risk=?,
@@ -891,7 +1062,7 @@ def get_scheduler_history(n: int = 10) -> list[dict]:
 
 def append_scheduler_history(domain_id: str | None, plan_id: str | None) -> None:
     migrate()
-    now = datetime.utcnow().isoformat()
+    now = utcnow().isoformat()
     with _conn() as db:
         db.execute(
             "INSERT INTO scheduler_history (domain_id, plan_id, created_at) VALUES (?,?,?)",
@@ -908,6 +1079,89 @@ def get_capability_dependencies() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+# ── capability implementations (technical backends) ──────────────────────────
+
+def get_capability_implementation(capability_name: str, implementation_id: str) -> dict | None:
+    """Get a capability implementation record by name and impl id."""
+    migrate()
+    with _conn() as db:
+        row = db.execute(
+            "SELECT * FROM capability_implementations WHERE capability_name=? AND implementation_id=?",
+            (capability_name, implementation_id),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def upsert_capability_implementation(
+    capability_name: str,
+    implementation_id: str,
+    package_name: str,
+    status: str = "candidate",
+    latency_ms: float | None = None,
+    throughput_per_sec: float | None = None,
+    memory_mb: float | None = None,
+    benchmark_results: str | None = None,
+    sandbox_valid: bool = False,
+) -> None:
+    """Insert or update a capability implementation record."""
+    migrate()
+    now = utcnow().isoformat()
+    with _conn() as db:
+        db.execute(
+            """INSERT INTO capability_implementations
+               (capability_name, implementation_id, package_name, status, latency_ms, throughput_per_sec,
+                memory_mb, benchmark_results, last_benchmarked_at, sandbox_valid, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(capability_name, implementation_id) DO UPDATE SET
+                 package_name=excluded.package_name, status=excluded.status,
+                 latency_ms=CASE WHEN excluded.latency_ms IS NOT NULL THEN excluded.latency_ms ELSE capability_implementations.latency_ms END,
+                 throughput_per_sec=CASE WHEN excluded.throughput_per_sec IS NOT NULL THEN excluded.throughput_per_sec ELSE capability_implementations.throughput_per_sec END,
+                 memory_mb=CASE WHEN excluded.memory_mb IS NOT NULL THEN excluded.memory_mb ELSE capability_implementations.memory_mb END,
+                 benchmark_results=CASE WHEN excluded.benchmark_results IS NOT NULL THEN excluded.benchmark_results ELSE capability_implementations.benchmark_results END,
+                 last_benchmarked_at=CASE WHEN excluded.last_benchmarked_at IS NOT NULL THEN excluded.last_benchmarked_at ELSE capability_implementations.last_benchmarked_at END,
+                 sandbox_valid=excluded.sandbox_valid,
+                 updated_at=excluded.updated_at""",
+            (
+                capability_name, implementation_id, package_name, status,
+                latency_ms, throughput_per_sec, memory_mb, benchmark_results,
+                now if (latency_ms is not None or throughput_per_sec is not None) else None,
+                1 if sandbox_valid else 0,
+                now, now,
+            ),
+        )
+        db.commit()
+
+
+def get_best_capability_implementation(capability_name: str) -> dict | None:
+    """Return the best benchmarked implementation for a capability (lowest latency, valid sandbox)."""
+    migrate()
+    with _conn() as db:
+        rows = db.execute(
+            """SELECT * FROM capability_implementations
+               WHERE capability_name=? AND status IN ('active','benchmarked') AND sandbox_valid=1
+               ORDER BY latency_ms IS NULL, latency_ms ASC
+               LIMIT 1""",
+            (capability_name,),
+        ).fetchall()
+    return dict(rows[0]) if rows else None
+
+
+def list_capability_implementations(capability_name: str | None = None) -> list[dict]:
+    """List all capability implementation records, optionally filtered by capability."""
+    migrate()
+    with _conn() as db:
+        if capability_name:
+            rows = db.execute(
+                "SELECT * FROM capability_implementations WHERE capability_name=? ORDER BY capability_name, implementation_id",
+                (capability_name,),
+            ).fetchall()
+        else:
+            rows = db.execute(
+                "SELECT * FROM capability_implementations ORDER BY capability_name, implementation_id"
+            ).fetchall()
+    return [dict(r) for r in rows]
+
+
 # ── style profile (evolution layer) ────────────────────────────────────────
 
 def get_style_profile(key: str) -> dict | None:
@@ -919,7 +1173,7 @@ def get_style_profile(key: str) -> dict | None:
 
 def set_style_profile(key: str, profile_snapshot: str, drift_score: float = 0.0) -> None:
     migrate()
-    now = datetime.utcnow().isoformat()
+    now = utcnow().isoformat()
     with _conn() as db:
         db.execute(
             """INSERT INTO style_profile (key, profile_snapshot, last_reinforced_at, drift_score, updated_at)
@@ -941,7 +1195,7 @@ def create_mission_chain(
     capability_domains: list[str] | None = None,
 ) -> None:
     migrate()
-    now = datetime.utcnow().isoformat()
+    now = utcnow().isoformat()
     domains_json = json.dumps(capability_domains or []) if capability_domains else "[]"
     with _conn() as db:
         db.execute(
@@ -961,7 +1215,7 @@ def get_pending_mission_chains() -> list[dict]:
 
 def complete_mission_chain(chain_id: str, outcome_summary: str) -> None:
     migrate()
-    now = datetime.utcnow().isoformat()
+    now = utcnow().isoformat()
     with _conn() as db:
         db.execute(
             "UPDATE mission_chains SET status='completed', outcome_summary=?, completed_at=? WHERE id=?",
@@ -975,7 +1229,7 @@ def complete_mission_chain(chain_id: str, outcome_summary: str) -> None:
 def save_mission(mission: dict) -> None:
     """Persist a mission to the missions table."""
     migrate()
-    now = datetime.utcnow().isoformat()
+    now = utcnow().isoformat()
     mission_id = mission.get("id", "")
     goal = mission.get("goal", "")
     plan = mission.get("plan") or []
@@ -1043,7 +1297,7 @@ def get_mission(mission_id: str) -> dict | None:
 def update_mission_status(mission_id: str, status: str) -> None:
     """Update mission status."""
     migrate()
-    now = datetime.utcnow().isoformat()
+    now = utcnow().isoformat()
     with _conn() as db:
         db.execute(
             "UPDATE missions SET status=?, updated_at=? WHERE id=?",
@@ -1060,7 +1314,7 @@ def update_mission_progress(
 ) -> None:
     """Update mission progress: status, current_step, results."""
     migrate()
-    now = datetime.utcnow().isoformat()
+    now = utcnow().isoformat()
     with _conn() as db:
         if status is not None:
             db.execute("UPDATE missions SET status=?, updated_at=? WHERE id=?", (status, now, mission_id))
@@ -1147,7 +1401,7 @@ def set_project_context(
 ) -> None:
     """Update project context. lifecycle_stage: idea|planning|prototype|iteration|execution|reflection (North Star §3)."""
     migrate()
-    now = datetime.utcnow().isoformat()
+    now = utcnow().isoformat()
     cur = get_project_context()
     if project_name:
         cur["project_name"] = project_name

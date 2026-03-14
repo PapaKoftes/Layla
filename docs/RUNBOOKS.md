@@ -6,7 +6,7 @@ Procedures for common setup and extension tasks. See also README.md, ARCHITECTUR
 
 ## First run
 
-**Easy way (recommended):** Double-click `INSTALL.bat` (Windows) or run `bash install.sh` (Linux/macOS). The installer handles all steps below automatically.
+**Easy way (recommended):** Double-click `INSTALL.bat` (Windows) or run `bash install.sh` (Linux/macOS). The installer creates a venv, installs deps, runs the hardware wizard, and can download a model for you. Linux install flow thanks to Kai.
 
 **Manual:**
 
@@ -83,6 +83,40 @@ Procedures for common setup and extension tasks. See also README.md, ARCHITECTUR
 
 ---
 
+## Add a skill
+
+1. **Edit the registry**: In `agent/layla/skills/registry.py`, add an entry to `SKILLS`:
+   ```python
+   "my_skill": {
+       "description": "What this skill does",
+       "tools": ["tool1", "tool2", "tool3"],
+       "execution_steps": ["Step 1", "Step 2"],
+   }
+   ```
+2. **Ensure tools exist**: All tools in the list must be in `layla/tools/registry.TOOLS`.
+3. **Planner integration**: Skills are automatically injected into the planner prompt when `skills_enabled: true` in config. No agent_loop changes needed — skills are planning hints.
+
+---
+
+## Add a plugin
+
+1. **Create plugin directory**: `plugins/<name>/` (e.g. `plugins/my_plugin/`).
+2. **Add manifest**: Create `plugins/<name>/plugin.yaml`:
+   ```yaml
+   name: my_plugin
+   description: Short description
+   skills:
+     - name: my_skill
+       description: What it does
+       tools: [tool1, tool2]
+   tools: []
+   dependencies: []
+   ```
+3. **Optional tools**: Add `plugins/<name>/tools.py` with a `register(registry)` function that adds entries to the TOOLS dict.
+4. **Restart**: Plugins are loaded at server startup. See [docs/plugins.md](plugins.md) for full documentation.
+
+---
+
 ## Proactive suggestions (wakeup)
 
 - **Initiative**: Set `"wakeup_include_initiative": true` in `runtime_config.json` to append one rule-based suggestion (e.g. study plans, lifecycle stage) to the wakeup greeting.
@@ -93,3 +127,27 @@ Procedures for common setup and extension tasks. See also README.md, ARCHITECTUR
 ## Trace ID (debugging)
 
 Set `"trace_id_enabled": true` in `agent/runtime_config.json`. Every response will include an `X-Trace-Id` header (propagated from request or newly generated). Use it to correlate logs and requests across services.
+
+---
+
+## Prompt and context tuning
+
+The system uses a centralized context manager (`services/context_manager.py`) for token budgets and deduplication.
+
+1. **Enable/disable budget enforcement**: Set `"prompt_budget_enabled": true` (default) to enforce per-section token limits. Set to `false` to use legacy unbounded assembly.
+
+2. **Custom budgets**: Set `"prompt_budgets"` to a dict of section names and token limits, e.g.:
+   ```json
+   "prompt_budgets": {
+     "system_instructions": 1000,
+     "agent_state": 500,
+     "memory": 800,
+     "knowledge_graph": 400,
+     "knowledge": 600
+   }
+   ```
+   Sections: `system_instructions`, `agent_state`, `current_goal`, `memory`, `knowledge_graph`, `knowledge`.
+
+3. **Observability**: When budgets are enabled, `log_prompt_assembled` emits total_tokens, sections count, and truncated sections. Check logs for `[prompt_assembled]` events.
+
+4. **Memory retrieval**: Uses vector + BM25 + FTS5 + cross-encoder reranking + confidence/recency boost. Learnings with higher confidence and more recent `created_at` rank higher. Config: `semantic_k`, `learnings_n`, `knowledge_chunks_k`.

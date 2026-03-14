@@ -117,7 +117,17 @@ if not exist "START.bat" (
     echo title Layla >> START.bat
     echo cd /d "%%~dp0" >> START.bat
     echo call .venv\Scripts\activate.bat >> START.bat
-    echo echo Starting Layla... >> START.bat
+    echo python -c "import json,pathlib; c=pathlib.Path('agent/runtime_config.json'); cfg=json.loads(c.read_text()) if c.exists() else {}; m=cfg.get('model_filename',''); f=pathlib.Path('models')/m if m else None; exit(0 if f and f.exists() else 1)" ^>nul 2^>^&1 >> START.bat
+    echo if errorlevel 1 ^( >> START.bat
+    echo   echo. >> START.bat
+    echo   echo   [!] No model found. Run python agent\first_run.py or see MODELS.md >> START.bat
+    echo   echo. >> START.bat
+    echo   pause ^& exit /b 1 >> START.bat
+    echo ^) >> START.bat
+    echo echo. >> START.bat
+    echo echo   Layla - http://localhost:8000/ui >> START.bat
+    echo echo   Press Ctrl+C to stop. >> START.bat
+    echo echo. >> START.bat
     echo start "" http://localhost:8000/ui >> START.bat
     echo cd agent >> START.bat
     echo uvicorn main:app --host 127.0.0.1 --port 8000 >> START.bat
@@ -132,15 +142,17 @@ echo  ================================================================
 echo   INSTALLATION COMPLETE
 echo  ================================================================
 echo.
-echo   Next step: get a model.
+echo   If the setup wizard didn't download a model:
 echo.
-echo   Open MODELS.md to pick the right model for your hardware.
-echo   Put the .gguf file in the  models\  folder.
-echo   Then run  agent\first_run.py  again to set the filename,
-echo   or just edit  agent\runtime_config.json  directly.
+echo   • Open MODELS.md to pick the right model for your hardware
+echo   • Put the .gguf file in the  models\  folder
+echo   • Run  python agent\first_run.py  again to set the filename
+echo     (or edit agent\runtime_config.json directly)
 echo.
 echo   When you have a model:  double-click  START.bat
-echo   Layla will open at:     http://localhost:8000/ui
+echo   Layla opens at:        http://localhost:8000/ui
+echo.
+echo   Linux/macOS users: run  bash install.sh
 echo.
 echo  ================================================================
 echo.
