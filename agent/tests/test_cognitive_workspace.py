@@ -9,9 +9,6 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-import pytest  # noqa: E402
-
-
 def test_should_use_cognitive_workspace_short_goal():
     from services.cognitive_workspace import should_use_cognitive_workspace
     assert should_use_cognitive_workspace("hi", cfg={}) is False
@@ -50,8 +47,7 @@ def test_run_deliberation_empty_goal():
 
 def test_run_deliberation_returns_structure(monkeypatch):
     """run_deliberation returns chosen_key, rationale, strategy_hint, approaches."""
-    from services import cognitive_workspace
-    from services import llm_gateway
+    from services import cognitive_workspace, llm_gateway
 
     def mock_generate(*a, **k):
         return {"choices": [{"message": {"content": '{"approaches":[{"id":"A","name":"Search-first","brief":"gather","key":"search"},{"id":"B","name":"Reasoning-first","brief":"think","key":"reasoning"},{"id":"C","name":"Tool-first","brief":"explore","key":"tools"}]}'}}]}
@@ -82,8 +78,7 @@ def test_run_deliberation_returns_structure(monkeypatch):
 
 def test_run_deliberation_fallback_without_llm(monkeypatch):
     """When LLM fails, fallback returns canonical approaches and reasoning-first."""
-    from services import cognitive_workspace
-    from services import llm_gateway
+    from services import cognitive_workspace, llm_gateway
 
     monkeypatch.setattr(llm_gateway, "run_completion", lambda *a, **k: {"choices": [{}]})
 

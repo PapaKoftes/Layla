@@ -176,13 +176,31 @@ class GraphExecutor:
                     results.append(r)
         return results
 
+    def _adaptive_workers(self, max_workers: int) -> int:
+        """Adjust workers based on CPU and RAM usage. Uses psutil."""
+        try:
+            import psutil
+            cpu = psutil.cpu_percent(interval=0)
+            ram = psutil.virtual_memory().percent
+            if cpu > 90 or ram > 90:
+                return 1
+            if cpu > 75 or ram > 80:
+                return min(2, max_workers)
+            if cpu > 60 or ram > 70:
+                return min(3, max_workers)
+        except Exception:
+            pass
+        return max_workers
+
     def run_parallel_ready(self, max_workers: int = 4) -> list[dict]:
-        """Execute all currently ready nodes in parallel. Returns merged results."""
+        """Execute all currently ready nodes in parallel. Workers adapt to CPU/RAM."""
         ready = self.graph.get_ready()
         if not ready:
             return []
+        workers = self._adaptive_workers(max_workers)
+        workers = min(workers, len(ready))
         results: list[dict] = []
-        with ThreadPoolExecutor(max_workers=min(max_workers, len(ready))) as ex:
+        with ThreadPoolExecutor(max_workers=workers) as ex:
             futures = {ex.submit(self.run_step, nid): nid for nid in ready}
             for fut in as_completed(futures):
                 try:
@@ -199,7 +217,7 @@ class GraphExecutor:
         return results
 
     def run_until_complete_parallel(self, max_steps: int = 100, max_workers: int = 4) -> list[dict]:
-        """Execute waves of ready nodes in parallel until complete. Merge outputs per wave."""
+        """Execute waves of ready nodes in parallel until complete. Workers adapt to CPU/RAM per wave."""
         results: list[dict] = []
         for _ in range(max_steps):
             wave = self.run_parallel_ready(max_workers=max_workers)

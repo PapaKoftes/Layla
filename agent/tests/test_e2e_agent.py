@@ -15,6 +15,7 @@ if str(AGENT_DIR) not in sys.path:
 def test_agent_endpoint_returns_200_with_mock_run():
     """POST /agent with a simple goal; mock autonomous_run to avoid loading LLM."""
     from fastapi.testclient import TestClient
+
     from main import app
 
     mock_result = {

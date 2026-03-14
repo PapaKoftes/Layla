@@ -33,19 +33,11 @@
   },
   {
     "role": "user",
-    "content": "hi"
+    "content": "Say hello in one word."
   },
   {
     "role": "assistant",
-    "content": "ok"
-  },
-  {
-    "role": "user",
-    "content": "hi"
-  },
-  {
-    "role": "assistant",
-    "content": "ok"
+    "content": "Mocked reply for e2e test."
   },
   {
     "role": "user",
@@ -57,11 +49,11 @@
   },
   {
     "role": "user",
-    "content": "hi"
+    "content": "Say hello in one word."
   },
   {
     "role": "assistant",
-    "content": "ok"
+    "content": "Mocked reply for e2e test."
   },
   {
     "role": "user",
@@ -73,10 +65,18 @@
   },
   {
     "role": "user",
-    "content": "hi"
+    "content": "Say hello in one word."
   },
   {
     "role": "assistant",
-    "content": "ok"
+    "content": "Mocked reply for e2e test."
+  },
+  {
+    "role": "user",
+    "content": "Say hello in one word."
+  },
+  {
+    "role": "assistant",
+    "content": "Mocked reply for e2e test."
   }
 ]

@@ -1,4 +1,5 @@
 # Pinned for reproducible installs. Use: pip install -r agent/requirements.txt
+# Optional for installer (faster model downloads): huggingface_hub[hf_transfer]
 # Optional: structured observability (Section 8)
 # loguru>=0.7
 
@@ -54,6 +55,7 @@ requests>=2.31                  # Sync HTTP (used by download_docs.py and tools)
 
 # ─── JSON & Serialization ─────────────────────────────────────────────────────
 orjson>=3.9                     # Fast JSON serialization (drop-in for json module)
+PyYAML>=6.0                    # Plugin manifests (plugin.yaml)
 
 # ─── Caching & Storage ────────────────────────────────────────────────────────
 diskcache>=5.6                  # Disk-backed cache (embedding cache persistence)
@@ -95,15 +97,21 @@ bandit>=1.7                     # Python static security analysis (CWE detection
 # python_ast tool uses stdlib ast module only — no extra deps needed
 # tree-sitter>=0.21             # Language-agnostic AST (optional, heavy install)
 
+# ─── Phase 1: Runtime stabilization ─────────────────────────────────────────
+torchao>=0.6                   # Replaces deprecated torch.quantization for embedder
+tiktoken>=0.7                  # Accurate token counting for context budgeting
+instructor>=1.0,<2             # Grammar-constrained JSON for tool-call parsing (fallback: plain parse)
+
 # ─── Optional: grammar-constrained JSON output ────────────────────────────────
 # instructor>=1.0,<2            # Significantly improves tool-call reliability
 
-# ─── Optional: token counting ─────────────────────────────────────────────────
-# tiktoken>=0.7                 # OpenAI tokenizer (only if needed; adds 100 MB)
+# ─── Optional: token counting (now core) ─────────────────────────────────────
+# tiktoken>=0.7                 # Moved to Phase 1 above
 
-# ─── Optional: spaCy NLP (improves nlp_analyze entity extraction) ─────────────
-# spacy>=3.7                    # NLP pipeline: NER, POS, dependency parsing
-# After installing: python -m spacy download en_core_web_sm
+# ─── Phase B: Intelligence systems ───────────────────────────────────────────
+# spacy>=3.7                    # graph_reasoning entity extraction (pip install spacy && python -m spacy download en_core_web_sm)
+# tree-sitter>=0.21             # workspace_index code intelligence
+# tree-sitter-python>=0.25      # Python grammar for tree-sitter
 
 # ─── Optional: advanced vector search ────────────────────────────────────────
 # faiss-cpu>=1.8                # Fast similarity search (complement to ChromaDB)

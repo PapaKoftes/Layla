@@ -27,7 +27,7 @@ def model_loaded_status() -> dict:
         model_filename = cfg.get("model_filename", "your-model.gguf")
         if not model_filename or model_filename == "your-model.gguf":
             return {"error": "Model not loaded. Please configure model_filename in runtime_config.json"}
-        model_path = REPO_ROOT / "models" / model_filename
+        model_path = runtime_safety.resolve_model_path(cfg)
         if not model_path.exists():
             return {"error": "Model not loaded. Please configure model_path in runtime_config.json and place the .gguf file in models/"}
         if _llm is not None:
@@ -52,11 +52,12 @@ def _auto_threads() -> int:
 def _get_llm():
     global _llm
     if _llm is None:
-        import runtime_safety
         from llama_cpp import Llama
+
+        import runtime_safety
         cfg = runtime_safety.load_config()
         model_filename = cfg.get("model_filename", "your-model.gguf")
-        model_path = REPO_ROOT / "models" / model_filename
+        model_path = runtime_safety.resolve_model_path(cfg)
 
         n_ctx = max(512, int(cfg.get("n_ctx", 4096)))
         n_batch = max(1, min(n_ctx, int(cfg.get("n_batch", 512))))
@@ -113,6 +114,14 @@ def _get_llm():
             model_filename, n_ctx, n_batch, n_keep, kwargs["n_gpu_layers"],
             n_threads, n_threads_batch, kwargs.get("flash_attn"),
         )
+        if cfg.get("benchmark_on_load"):
+            try:
+                from services.model_benchmark import run_benchmark
+                res = run_benchmark(model_filename)
+                if res.get("ok") and res.get("tokens_per_sec"):
+                    logger.info("Model benchmark: %.1f tokens/sec", res["tokens_per_sec"])
+            except Exception as e:
+                logger.debug("benchmark on load skipped: %s", e)
     return _llm
 
 
@@ -149,112 +158,18 @@ def run_completion(
     timeout_seconds: int | None = None,
 ):
     """
-    Run completion via local Llama or optional llama_server_url (OpenAI-compatible).
+    Run completion via inference_router (llama_cpp, openai_compatible, or ollama).
     If stream=True, yields token strings; else returns {"choices": [{"message": {"content": text}}]}.
     timeout_seconds: used for remote HTTP only; local Llama has no timeout in this call.
     """
-    import runtime_safety
-    cfg = runtime_safety.load_config()
-    if stop is None:
-        stop = get_stop_sequences()
-    top_p = float(cfg.get("top_p", 0.95))
-    repeat_penalty = float(cfg.get("repeat_penalty", 1.1))
-    top_k = max(1, int(cfg.get("top_k", 40)))
-    url = (cfg.get("llama_server_url") or "").strip().rstrip("/")
-    timeout = timeout_seconds if timeout_seconds is not None else 120
-
-    if url:
-        import urllib.request
-        import json as _json
-        try:
-            from tenacity import retry, stop_after_attempt, retry_if_exception_type
-            _retry = retry(stop=stop_after_attempt(3), retry=retry_if_exception_type((OSError, ConnectionError)))
-        except ImportError:
-            def _retry(fn):
-                return fn
-        model_name = cfg.get("remote_model_name") or "layla"
-        body = {
-            "model": model_name,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "stream": stream,
-            "stop": stop,
-            "top_p": top_p,
-            "repeat_penalty": repeat_penalty,
-            "top_k": top_k,
-        }
-        data = _json.dumps(body).encode("utf-8")
-        req = urllib.request.Request(
-            url + "/v1/chat/completions",
-            data=data,
-            method="POST",
-            headers={"Content-Type": "application/json"},
-        )
-        try:
-            if stream:
-                def gen():
-                    try:
-                        with urllib.request.urlopen(req, timeout=timeout) as resp:
-                            for line in resp:
-                                line = line.decode("utf-8").strip()
-                                if not line or not line.startswith("data: ") or line == "data: [DONE]":
-                                    continue
-                                try:
-                                    chunk = _json.loads(line[6:])
-                                    delta = (chunk.get("choices") or [{}])[0].get("delta", {})
-                                    text = delta.get("content") or ""
-                                    if text:
-                                        yield text
-                                except Exception as e:
-                                    logger.debug("stream chunk parse: %s", e)
-                    except Exception as e:
-                        logger.exception("remote completion stream failed: %s", e)
-                        yield ""
-                return gen()
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                raw = resp.read().decode("utf-8")
-            try:
-                out = _json.loads(raw)
-            except _json.JSONDecodeError:
-                out = {"choices": [{"message": {"content": "Remote server returned invalid JSON."}}]}
-            return out
-        except Exception as e:
-            logger.exception("remote completion failed: %s", e)
-            return {"choices": [{"message": {"content": f"Request failed: {e!s}. Is the model server running?"}}]}
-
-    # Local: serialize with lock
-    if stream:
-        def gen():
-            with _llm_lock:
-                llm = _get_llm()
-                for chunk in llm.create_completion(
-                    prompt,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    top_p=top_p,
-                    repeat_penalty=repeat_penalty,
-                    top_k=top_k,
-                    stream=True,
-                    stop=stop,
-                ):
-                    t = (chunk.get("choices") or [{}])[0].get("text") or ""
-                    if t:
-                        yield t
-        return gen()
-    with _llm_lock:
-        llm = _get_llm()
-        out = llm.create_completion(
-            prompt,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            repeat_penalty=repeat_penalty,
-            top_k=top_k,
-            stream=False,
-            stop=stop,
-        )
-    if isinstance(out, dict):
-        return out
-    text = "".join((c.get("choices") or [{}])[0].get("text") or "" for c in out)
-    return {"choices": [{"message": {"content": text}}]}
+    from services.inference_router import run_completion as _run
+    return _run(
+        prompt=prompt,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        stream=stream,
+        stop=stop,
+        timeout_seconds=timeout_seconds,
+        _get_llm=_get_llm,
+        _llm_lock=_llm_lock,
+    )

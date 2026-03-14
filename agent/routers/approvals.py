@@ -1,9 +1,8 @@
 """Pending approvals, approve, refresh lens knowledge."""
-from datetime import datetime
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from shared_state import get_read_pending, get_write_pending_list, get_audit
+from shared_state import get_audit, get_read_pending, get_write_pending_list
 
 router = APIRouter(tags=["approvals"])
 
@@ -31,7 +30,8 @@ def approve(req: dict):
         return JSONResponse({"ok": False, "error": f"Entry status is already: {entry.get('status')}"})
 
     entry["status"] = "approved"
-    entry["approved_at"] = datetime.utcnow().isoformat()
+    from layla.time_utils import utcnow
+    entry["approved_at"] = utcnow().isoformat()
     write_pending_list(pending)
 
     tool_name = entry.get("tool", "")

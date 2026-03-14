@@ -4,6 +4,7 @@ Detects hardware, recommends settings, and writes agent/runtime_config.json.
 Safe to re-run at any time — asks before overwriting existing settings.
 """
 from __future__ import annotations
+
 import json
 import subprocess
 import sys
@@ -317,8 +318,18 @@ def run() -> int:
     print()
 
     # Detect hardware
-    ram_gb = detect_ram_gb()
-    gpu_vendor, vram_gb = detect_gpu()
+    try:
+        from services.hardware_detect import detect_hardware
+        h = detect_hardware()
+        ram_gb = h["ram_gb"]
+        vram_gb = h["vram_gb"]
+        accel = h.get("acceleration_backend", "none")
+        gpu_vendor = "nvidia" if accel == "cuda" else "amd" if accel == "rocm" else "none"
+        if gpu_vendor == "none":
+            vram_gb = 0.0
+    except Exception:
+        ram_gb = detect_ram_gb()
+        gpu_vendor, vram_gb = detect_gpu()
 
     print("  Hardware detected:")
     print(f"    RAM   : {ram_gb:.0f} GB")

@@ -13,9 +13,10 @@ if str(AGENT_DIR) not in sys.path:
 
 def test_remote_disabled_no_auth_required(monkeypatch):
     """When remote_enabled is False, requests succeed without Authorization."""
-    import runtime_safety
     from fastapi.testclient import TestClient
+
     import main
+    import runtime_safety
     monkeypatch.setattr(runtime_safety, "load_config", lambda: {"remote_enabled": False})
     client = TestClient(main.app)
     r = client.get("/health")
@@ -24,9 +25,10 @@ def test_remote_disabled_no_auth_required(monkeypatch):
 
 def test_remote_localhost_bypasses_auth(monkeypatch):
     """When remote_enabled True, localhost requests are not required to send API key."""
-    import runtime_safety
     from fastapi.testclient import TestClient
+
     import main
+    import runtime_safety
     monkeypatch.setattr(runtime_safety, "load_config", lambda: {
         "remote_enabled": True,
         "remote_api_key": "secret",
@@ -40,9 +42,10 @@ def test_remote_localhost_bypasses_auth(monkeypatch):
 
 def test_remote_non_localhost_requires_key(monkeypatch):
     """When remote_enabled True and request is non-localhost, missing Authorization header -> 401."""
-    import runtime_safety
     from fastapi.testclient import TestClient
+
     import main
+    import runtime_safety
     monkeypatch.setattr(main, "_is_localhost", lambda host: False)
     monkeypatch.setattr(runtime_safety, "load_config", lambda: {
         "remote_enabled": True,
@@ -59,9 +62,10 @@ def test_remote_non_localhost_requires_key(monkeypatch):
 
 def test_remote_non_localhost_wrong_key_401(monkeypatch):
     """When remote_enabled True and non-localhost, wrong Bearer token -> 401."""
-    import runtime_safety
     from fastapi.testclient import TestClient
+
     import main
+    import runtime_safety
     monkeypatch.setattr(main, "_is_localhost", lambda host: False)
     monkeypatch.setattr(runtime_safety, "load_config", lambda: {
         "remote_enabled": True,
@@ -77,9 +81,10 @@ def test_remote_non_localhost_wrong_key_401(monkeypatch):
 
 def test_remote_non_localhost_correct_key_allowed(monkeypatch):
     """When remote_enabled True, non-localhost, correct key, allowed path -> request passes."""
-    import runtime_safety
     from fastapi.testclient import TestClient
+
     import main
+    import runtime_safety
     monkeypatch.setattr(main, "_is_localhost", lambda host: False)
     monkeypatch.setattr(runtime_safety, "load_config", lambda: {
         "remote_enabled": True,
@@ -94,9 +99,10 @@ def test_remote_non_localhost_correct_key_allowed(monkeypatch):
 
 def test_remote_mode_observe_blocks_agent(monkeypatch):
     """remote_mode observe: /health allowed, /agent forbidden for remote request."""
-    import runtime_safety
     from fastapi.testclient import TestClient
+
     import main
+    import runtime_safety
     monkeypatch.setattr(main, "_is_localhost", lambda host: False)
     monkeypatch.setattr(runtime_safety, "load_config", lambda: {
         "remote_enabled": True,
@@ -112,10 +118,12 @@ def test_remote_mode_observe_blocks_agent(monkeypatch):
 
 def test_remote_mode_interactive_allows_agent(monkeypatch):
     """remote_mode interactive: /agent is allowed (with correct key)."""
-    import runtime_safety
-    from fastapi.testclient import TestClient
     from unittest.mock import patch
+
+    from fastapi.testclient import TestClient
+
     import main
+    import runtime_safety
     monkeypatch.setattr(main, "_is_localhost", lambda host: False)
     monkeypatch.setattr(runtime_safety, "load_config", lambda: {
         "remote_enabled": True,

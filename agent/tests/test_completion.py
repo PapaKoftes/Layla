@@ -20,7 +20,7 @@ import pytest  # noqa: E402
 
 def test_memory_distill_merges_similar():
     """memory_distill groups similar learnings and merges into one."""
-    from layla.memory.distill import memory_distill, _group_similar, _summarize_group
+    from layla.memory.distill import _group_similar, _summarize_group, memory_distill
 
     # Unit test: group similar
     learnings = [

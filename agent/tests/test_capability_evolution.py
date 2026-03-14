@@ -1,13 +1,13 @@
 """Tests for capability evolution system."""
 
-from services.capability_discovery import (
-    discover_candidate_libraries,
-    fetch_pypi_candidates,
-    fetch_github_candidates,
-    CAPABILITY_SEARCH_TERMS,
-)
-from services.benchmark_suite import run_benchmark
 from capabilities.registry import get_active_implementation, list_implementations
+from services.benchmark_suite import run_benchmark
+from services.capability_discovery import (
+    CAPABILITY_SEARCH_TERMS,
+    discover_candidate_libraries,
+    fetch_github_candidates,
+    fetch_pypi_candidates,
+)
 
 
 def test_discover_candidate_libraries():

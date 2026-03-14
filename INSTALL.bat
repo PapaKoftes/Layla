@@ -95,16 +95,17 @@ if errorlevel 1 (
 )
 echo.
 
-REM ── Hardware detection + config wizard ────────────────────────────────────
+REM ── Hardware detection + config wizard + verify ─────────────────────────────
 
-echo  [5/6]  Detecting your hardware and setting up Layla's config...
+echo  [5/6]  Detecting hardware, setting up config, and verifying...
 echo.
-python agent\first_run.py
+python agent\install\run_first_time.py
 if errorlevel 1 (
     echo.
-    echo  [!] Config setup failed. You can configure manually later.
-    echo      Edit: agent\runtime_config.json
-    echo      See:  MODELS.md for hardware recommendations.
+    echo  [!] Setup had issues. See above for details.
+    echo      Run: python agent\diagnose_startup.py
+    echo      See: knowledge\troubleshooting.md
+    echo.
 )
 echo.
 
@@ -117,10 +118,10 @@ if not exist "START.bat" (
     echo title Layla >> START.bat
     echo cd /d "%%~dp0" >> START.bat
     echo call .venv\Scripts\activate.bat >> START.bat
-    echo python -c "import json,pathlib; c=pathlib.Path('agent/runtime_config.json'); cfg=json.loads(c.read_text()) if c.exists() else {}; m=cfg.get('model_filename',''); f=pathlib.Path('models')/m if m else None; exit(0 if f and f.exists() else 1)" ^>nul 2^>^&1 >> START.bat
+    echo python -c "import json,pathlib; c=pathlib.Path('agent/runtime_config.json'); cfg=json.loads(c.read_text()) if c.exists() else {}; m=cfg.get('model_filename',''); md=cfg.get('models_dir',''); p=pathlib.Path(md).expanduser()/m if md and m else pathlib.Path('models')/m if m else None; exit(0 if p and p.exists() else 1)" ^>nul 2^>^&1 >> START.bat
     echo if errorlevel 1 ^( >> START.bat
     echo   echo. >> START.bat
-    echo   echo   [!] No model found. Run python agent\first_run.py or see MODELS.md >> START.bat
+    echo   echo   [!] No model found. Run python agent\install\installer_cli.py or see MODELS.md >> START.bat
     echo   echo. >> START.bat
     echo   pause ^& exit /b 1 >> START.bat
     echo ^) >> START.bat
@@ -145,8 +146,8 @@ echo.
 echo   If the setup wizard didn't download a model:
 echo.
 echo   • Open MODELS.md to pick the right model for your hardware
-echo   • Put the .gguf file in the  models\  folder
-echo   • Run  python agent\first_run.py  again to set the filename
+echo   • Put the .gguf file in  models\  or  %%USERPROFILE%%\.layla\models\
+echo   • Run  python agent\install\installer_cli.py  again to set the filename
 echo     (or edit agent\runtime_config.json directly)
 echo.
 echo   When you have a model:  double-click  START.bat

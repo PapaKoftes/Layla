@@ -8,7 +8,8 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from research_utils import normalize_stage_text, _extract_json_block
+
+from research_utils import _extract_json_block, normalize_stage_text
 
 AGENT_DIR = Path(__file__).resolve().parent
 RESEARCH_BRAIN = AGENT_DIR / ".research_brain"

@@ -2,9 +2,9 @@
 
 from services.task_graph import (
     AGENT_ROLES,
+    GraphExecutor,
     TaskGraph,
     TaskNode,
-    GraphExecutor,
 )
 
 

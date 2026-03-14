@@ -4,7 +4,8 @@ Supports add_node, add_edge, get_recent_nodes, and get_neighbors for traversal.
 """
 import json
 from pathlib import Path
-from datetime import datetime
+
+from layla.time_utils import utcnow
 
 MEMORY_DIR = Path(__file__).resolve().parent
 GRAPH_PATH = MEMORY_DIR / "knowledge_graph.graphml"
@@ -85,7 +86,7 @@ def add_node(label: str, metadata: dict = None) -> int:
     existing = [int(x) for x in G.nodes() if isinstance(x, str) and x.isdigit()]
     node_id = max(existing, default=-1) + 1
     nid = str(node_id)
-    G.add_node(nid, label=label[:120], metadata=json.dumps(metadata or {}), created_at=datetime.utcnow().isoformat())
+    G.add_node(nid, label=label[:120], metadata=json.dumps(metadata or {}), created_at=utcnow().isoformat())
 
     # Auto-link: find similar existing nodes via vector search
     try:

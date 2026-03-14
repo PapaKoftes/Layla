@@ -1,6 +1,6 @@
 """Tests for graph_reasoning (entity extraction, graph expansion)."""
 
-from services.graph_reasoning import extract_entities, expand_query_via_graph, get_expanded_context
+from services.graph_reasoning import expand_query_via_graph, extract_entities, get_expanded_context
 
 
 def test_extract_entities_empty():

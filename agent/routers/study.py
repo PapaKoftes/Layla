@@ -1,11 +1,11 @@
 """Study plans, wakeup, aspect titles."""
 import logging
 import uuid
-from datetime import datetime
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
+from layla.time_utils import utcnow
 
 # North Star §10+§14: data-driven initiative (rule order = priority; first match wins)
 INITIATIVE_RULES = [
@@ -45,8 +45,8 @@ def _wakeup_initiative_suggestion(active_plans: list, greeting_parts: list) -> s
     return ""
 
 from shared_state import (  # noqa: E402
-    get_touch_activity,
     get_run_autonomous_study,
+    get_touch_activity,
 )
 
 logger = logging.getLogger("layla")
@@ -67,7 +67,8 @@ def get_study_plans():
 def get_capabilities():
     """Evolution layer: return capability domains and current growth state."""
     try:
-        from layla.memory.db import get_capability_domains, get_capabilities as get_caps
+        from layla.memory.db import get_capabilities as get_caps
+        from layla.memory.db import get_capability_domains
         domains = get_capability_domains()
         caps = get_caps()
         return JSONResponse({"domains": domains, "capabilities": caps})
@@ -79,7 +80,7 @@ def get_capabilities():
 @router.post("/study_plans")
 def add_study_plan(req: dict):
     get_touch_activity()()
-    from layla.memory.db import save_study_plan, get_plan_by_topic
+    from layla.memory.db import get_plan_by_topic, save_study_plan
     topic = (req or {}).get("topic", "").strip()
     domain_id = (req or {}).get("domain_id") or None
     if isinstance(domain_id, str):
@@ -120,15 +121,17 @@ def record_study_progress(req: dict):
 @router.get("/wakeup")
 def wakeup():
     get_touch_activity()()
-    from layla.memory.db import log_wakeup, get_last_wakeup, get_active_study_plans
+    from layla.memory.db import get_active_study_plans, get_last_wakeup, log_wakeup
 
     last_row = get_last_wakeup()
     last_ts = last_row.get("timestamp") if last_row else None
     elapsed_hours = 0
     if last_ts:
         try:
-            last_dt = datetime.fromisoformat(last_ts)
-            elapsed_hours = round((datetime.utcnow() - last_dt).total_seconds() / 3600, 1)
+            from datetime import datetime, timezone
+            last_dt = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
+            last_dt_utc = last_dt.replace(tzinfo=timezone.utc) if last_dt.tzinfo is None else last_dt
+            elapsed_hours = round((utcnow() - last_dt_utc).total_seconds() / 3600, 1)
         except Exception:
             pass
 

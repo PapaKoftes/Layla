@@ -33,8 +33,8 @@ She has six distinct aspects (voices/personalities) you can switch between. She 
 
 ### Windows
 1. Install Python 3.11+ from [python.org](https://python.org) — check **"Add Python to PATH"**
-2. Double-click **`INSTALL.bat`**
-3. The setup wizard detects your hardware and can download a model for you
+2. Run **`install.ps1`** (PowerShell) or double-click **`INSTALL.bat`**
+3. The installer detects your hardware, recommends a model, and can download it automatically
 4. Double-click **`START.bat`** to launch → `http://localhost:8000/ui`
 
 ### Linux / macOS
@@ -46,10 +46,10 @@ bash start.sh     # Launch when ready
 
 **Python 3.11+ not installed?**
 - Debian/Ubuntu: `sudo apt install python3.11 python3.11-venv`
-- Fedora: `sudo dnf install python3.11`
+- Fedora: `sudo dnf install python3.11 python3-devel`
 - macOS: `brew install python@3.11`
 
-The setup wizard offers to download a model during install. If you skip it, see [MODELS.md](MODELS.md) — put the `.gguf` in `models/` and run `python agent/first_run.py` to configure.
+The installer automatically detects CPU, RAM, and GPU, recommends the best model for your hardware, and can download it to `~/.layla/models/`. If you skip the download, see [MODELS.md](MODELS.md) — put the `.gguf` in `~/.layla/models/` or `models/` and run `python agent/install/installer_cli.py` to configure.
 
 ---
 

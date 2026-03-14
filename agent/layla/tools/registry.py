@@ -245,9 +245,10 @@ def apply_patch(original_path: str, patch_text: str) -> dict:
     if not target.exists():
         return {"ok": False, "error": "File not found"}
     import shutil
-    import datetime
+
+    from layla.time_utils import utcnow
     backup = target.with_suffix(
-        f".bak_{datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S')}{target.suffix}"
+        f".bak_{utcnow().strftime('%Y%m%d_%H%M%S')}{target.suffix}"
     )
     shutil.copy2(str(target), str(backup))
     try:
@@ -365,8 +366,11 @@ def update_project_context_tool(
     key_files: list | None = None,
     goals: str = "",
     lifecycle_stage: str = "",
+    progress: str = "",
+    blockers: str = "",
+    last_discussed: str = "",
 ) -> dict:
-    """Update project context. lifecycle_stage: idea|planning|prototype|iteration|execution|reflection."""
+    """Update project context. lifecycle_stage: idea|planning|prototype|iteration|execution|reflection. progress/blockers/last_discussed for companion recall."""
     try:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
@@ -377,10 +381,74 @@ def update_project_context_tool(
             key_files=key_files,
             goals=goals,
             lifecycle_stage=lifecycle_stage or "",
+            progress=progress or "",
+            blockers=blockers or "",
+            last_discussed=last_discussed or "",
         )
         return {"ok": True, "message": "Project context updated."}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+def get_user_identity_tool() -> dict:
+    """Return user/companion identity context (verbosity, humor, formality, response length, life narrative). Read-only."""
+    try:
+        agent_dir = Path(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(agent_dir))
+        from layla.memory.db import get_all_user_identity
+        return {"ok": True, **get_all_user_identity()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def update_user_identity_tool(key: str, snapshot: str) -> dict:
+    """Update user identity. key: verbosity|humor_tolerance|formality|response_length|life_narrative_summary. snapshot: description."""
+    try:
+        agent_dir = Path(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(agent_dir))
+        from layla.memory.db import USER_IDENTITY_KEYS, set_user_identity
+        if key not in USER_IDENTITY_KEYS:
+            return {"ok": False, "error": f"key must be one of: {USER_IDENTITY_KEYS}"}
+        set_user_identity(key, snapshot)
+        return {"ok": True, "message": f"User identity '{key}' updated."}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def add_goal_tool(title: str, description: str = "", project_id: str = "") -> dict:
+    """Add a long-term goal. project_id: optional project name to associate."""
+    try:
+        agent_dir = Path(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(agent_dir))
+        from layla.memory.db import add_goal
+        gid = add_goal(title=title, description=description, project_id=project_id)
+        return {"ok": True, "goal_id": gid, "message": "Goal added."}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def add_goal_progress_tool(goal_id: str, note: str = "", progress_pct: float = 0) -> dict:
+    """Record progress on a goal. progress_pct: 0-100."""
+    try:
+        agent_dir = Path(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(agent_dir))
+        from layla.memory.db import add_goal_progress
+        add_goal_progress(goal_id, note=note, progress_pct=progress_pct)
+        return {"ok": True, "message": "Progress recorded."}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def get_active_goals_tool(project_id: str = "") -> dict:
+    """Return active goals, optionally filtered by project_id."""
+    try:
+        agent_dir = Path(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(agent_dir))
+        from layla.memory.db import get_active_goals
+        goals = get_active_goals(project_id=project_id)
+        return {"ok": True, "goals": goals}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "goals": []}
 
 
 def understand_file_tool(path: str, content: str | None = None) -> dict:
@@ -883,23 +951,30 @@ def read_csv(path: str, max_rows: int = 50, describe: bool = True) -> dict:
 
 def count_tokens(text: str, model: str = "gpt-4") -> dict:
     """
-    Estimate token count for text. Uses tiktoken if available, else rough approximation.
-    Rough rule: ~4 chars per token for English, ~2.5 for code.
+    Count tokens in text. Uses tiktoken (cl100k_base) when available.
+    model hint used for encoding_for_model when supported; falls back to cl100k_base.
     """
+    try:
+        from services.token_count import count_tokens as _count
+        from services.token_count import token_count_available
+        if token_count_available():
+            n = _count(text)
+            return {"ok": True, "tokens": n, "model": "cl100k_base", "method": "tiktoken"}
+    except Exception:
+        pass
     try:
         import tiktoken
         enc = tiktoken.encoding_for_model(model)
         tokens = enc.encode(text)
         return {"ok": True, "tokens": len(tokens), "model": model, "method": "tiktoken"}
-    except ImportError:
-        # Rough estimate: split on whitespace and punctuation
-        import re as _re
-        words = len(_re.split(r"\s+", text.strip()))
-        chars = len(text)
-        rough = max(int(chars / 4), words)
-        return {"ok": True, "tokens": rough, "model": "estimate", "method": "rough (~4 chars/token)"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    except Exception:
+        pass
+    # Fallback: ~4 chars per token
+    import re as _re
+    words = len(_re.split(r"\s+", (text or "").strip())) or 1
+    chars = len(text or "")
+    rough = max(int(chars / 4), words)
+    return {"ok": True, "tokens": rough, "model": "estimate", "method": "rough (~4 chars/token)"}
 
 
 def http_request(url: str, method: str = "GET", body: str = "", headers: dict | None = None, timeout: int = 15) -> dict:
@@ -908,8 +983,8 @@ def http_request(url: str, method: str = "GET", body: str = "", headers: dict | 
     Returns status, response text (truncated to 8000 chars).
     Use for webhooks, REST APIs, testing endpoints.
     """
-    import urllib.request
     import urllib.error
+    import urllib.request
     method = method.upper()
     hdrs = {"User-Agent": "Layla/2.0 research agent", "Accept": "application/json,text/html,*/*"}
     if headers:
@@ -1071,7 +1146,7 @@ def sympy_solve(expression: str, variable: str = "x", mode: str = "solve") -> di
     """
     try:
         import sympy as sp
-        from sympy.parsing.sympy_parser import parse_expr, standard_transformations, implicit_multiplication_application
+        from sympy.parsing.sympy_parser import implicit_multiplication_application, parse_expr, standard_transformations
         transforms = standard_transformations + (implicit_multiplication_application,)
         local_dict = {v: sp.Symbol(v) for v in "xyzabcntk"}
         if variable not in local_dict:
@@ -1651,6 +1726,11 @@ TOOLS: dict[str, Any] = {
     "file_info": {"fn": file_info, "dangerous": False, "require_approval": False, "risk_level": "low"},
     "get_project_context": {"fn": get_project_context_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
     "update_project_context": {"fn": update_project_context_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "get_user_identity": {"fn": get_user_identity_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "update_user_identity": {"fn": update_user_identity_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "add_goal": {"fn": add_goal_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "add_goal_progress": {"fn": add_goal_progress_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "get_active_goals": {"fn": get_active_goals_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
     "understand_file": {"fn": understand_file_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
     # Browser tools — require playwright: playwright install chromium
     "browser_navigate": {"fn": browser_navigate, "dangerous": False, "require_approval": False, "risk_level": "low"},
@@ -1877,8 +1957,8 @@ def crawl_site(
     store_knowledge: save extracted pages to knowledge/fetched/ for later RAG indexing
     Returns: list of {url, title, text, depth} for all visited pages.
     """
-    from urllib.parse import urlparse, urljoin
     import time
+    from urllib.parse import urljoin, urlparse
 
     try:
         import trafilatura
@@ -2265,9 +2345,9 @@ def describe_image(path: str, detail: str = "brief") -> dict:
 
     # Try BLIP via transformers
     try:
-        from PIL import Image as PILImage
-        from transformers import BlipProcessor, BlipForConditionalGeneration
         import torch
+        from PIL import Image as PILImage
+        from transformers import BlipForConditionalGeneration, BlipProcessor
 
         model_name = "Salesforce/blip-image-captioning-base"
         try:
@@ -2416,7 +2496,8 @@ def classify_text(text: str, labels: list | None = None, threshold: float = 0.0)
 
     # Fallback: sentence-transformers cosine similarity
     try:
-        from sentence_transformers import SentenceTransformer, util as _stutil
+        from sentence_transformers import SentenceTransformer
+        from sentence_transformers import util as _stutil
         _model = SentenceTransformer("all-MiniLM-L6-v2")
         text_emb = _model.encode(text[:512], convert_to_tensor=True)
         label_embs = _model.encode(labels, convert_to_tensor=True)
@@ -2469,8 +2550,8 @@ def translate_text(text: str, target_lang: str = "en", source_lang: str = "auto"
         pass
     # Fallback: LibreTranslate public API
     try:
-        import urllib.request
         import json as _json
+        import urllib.request
         payload = _json.dumps({"q": text[:2000], "source": source_lang if source_lang != "auto" else "en", "target": target_lang, "format": "text"}).encode()
         req = urllib.request.Request(
             "https://libretranslate.com/translate", data=payload,
@@ -2648,7 +2729,7 @@ def extract_links(url: str, same_domain: bool = False, max_links: int = 100) -> 
     same_domain: only return links from the same domain.
     Returns: links with href, internal/external classification, domain.
     """
-    from urllib.parse import urlparse, urljoin
+    from urllib.parse import urljoin, urlparse
     try:
         import trafilatura
         downloaded = trafilatura.fetch_url(url)
@@ -2690,9 +2771,9 @@ def check_url(url: str, timeout: int = 10) -> dict:
     Check if a URL is accessible. Returns HTTP status, response time, content type.
     Uses HEAD request for speed. Useful for monitoring, link validation.
     """
-    import urllib.request
-    import urllib.error
     import time as _time
+    import urllib.error
+    import urllib.request
     start = _time.time()
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Layla/2.0 health-check"}, method="HEAD")
@@ -2721,8 +2802,8 @@ def scipy_compute(operation: str, params: dict | None = None) -> dict:
       scipy_compute('integrate.quad', {'func': 'x**2', 'a': 0, 'b': 1})
     """
     try:
-        import scipy.stats as _stats
         import numpy as _np
+        import scipy.stats as _stats
     except ImportError:
         return {"ok": False, "error": "scipy not installed: pip install scipy"}
 
@@ -2859,8 +2940,8 @@ def dataset_summary(path: str) -> dict:
     if not target.exists():
         return {"ok": False, "error": "File not found"}
     try:
-        import pandas as _pd
         import numpy as _np
+        import pandas as _pd
         ext = target.suffix.lower()
         if ext in (".csv", ".tsv"):
             df = _pd.read_csv(str(target), sep="\t" if ext == ".tsv" else ",")
@@ -3090,7 +3171,9 @@ def schedule_task(
     if tool_name not in TOOLS:
         return {"ok": False, "error": f"Unknown tool: {tool_name}. Use list_tools() to see available tools."}
     import uuid as _uuid
-    import datetime as _dt
+    from datetime import timedelta
+
+    from layla.time_utils import utcnow
     jid = job_id or f"task_{tool_name}_{_uuid.uuid4().hex[:8]}"
     kw = args or {}
 
@@ -3098,7 +3181,7 @@ def schedule_task(
         try:
             result = TOOLS[tool_name]["fn"](**kw)
             _SCHEDULED_JOBS[jid]["last_result"] = result
-            _SCHEDULED_JOBS[jid]["last_run"] = str(_dt.datetime.utcnow())[:19]
+            _SCHEDULED_JOBS[jid]["last_run"] = str(utcnow())[:19]
         except Exception as exc:
             if jid in _SCHEDULED_JOBS:
                 _SCHEDULED_JOBS[jid]["last_error"] = str(exc)
@@ -3114,11 +3197,11 @@ def schedule_task(
             schedule_type = f"cron: {cron_expr}"
         else:
             from apscheduler.triggers.date import DateTrigger
-            run_at = _dt.datetime.utcnow() + _dt.timedelta(seconds=max(delay_seconds, 0))
+            run_at = utcnow() + timedelta(seconds=max(delay_seconds, 0))
             trigger = DateTrigger(run_date=run_at, timezone="UTC")
             schedule_type = f"once in {delay_seconds}s" if delay_seconds > 0 else "immediate background"
         scheduler.add_job(_run, trigger, id=jid, replace_existing=True)
-        _SCHEDULED_JOBS[jid] = {"tool": tool_name, "args": kw, "schedule": schedule_type, "added_at": str(_dt.datetime.utcnow())[:19], "job_id": jid}
+        _SCHEDULED_JOBS[jid] = {"tool": tool_name, "args": kw, "schedule": schedule_type, "added_at": str(utcnow())[:19], "job_id": jid}
         return {"ok": True, "job_id": jid, "tool": tool_name, "schedule": schedule_type}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -3158,8 +3241,9 @@ def log_event(message: str, level: str = "info", context: dict | None = None) ->
     context: optional dict of extra fields.
     """
     import json as _json
-    import datetime as _dt
-    entry = {"ts": str(_dt.datetime.utcnow())[:19], "level": level.upper(), "message": message[:500], "context": context or {}}
+
+    from layla.time_utils import utcnow
+    entry = {"ts": str(utcnow())[:19], "level": level.upper(), "message": message[:500], "context": context or {}}
     try:
         log_path = Path(__file__).resolve().parent.parent.parent / ".governance" / "layla-events.log"
         log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -3325,8 +3409,9 @@ def economic_indicators(series: str = "SP500", start_year: int = 2000) -> dict:
     Uses pandas-datareader FRED if installed; falls back to yfinance proxies.
     """
     try:
-        import pandas_datareader.data as _pdr
         import datetime as _dt
+
+        import pandas_datareader.data as _pdr
         df = _pdr.DataReader(series, "fred", _dt.datetime(start_year, 1, 1))
         data = df[series].dropna()
         recent = data.tail(20)
@@ -3969,9 +4054,9 @@ def geo_query(location: str, details: bool = True) -> dict:
         pass
     # Fallback: public REST API
     try:
-        import urllib.request
         import json as _json
         import urllib.parse
+        import urllib.request
         q = urllib.parse.quote(location)
         req = urllib.request.Request(f"https://nominatim.openstreetmap.org/search?q={q}&format=json&limit=1&addressdetails=1", headers={"User-Agent": "layla-agent/2.0"})
         with urllib.request.urlopen(req, timeout=10) as resp:
@@ -4054,7 +4139,7 @@ def detect_scenes(path: str, threshold: float = 27.0) -> dict:
     if not target.exists():
         return {"ok": False, "error": "File not found"}
     try:
-        from scenedetect import detect, ContentDetector
+        from scenedetect import ContentDetector, detect
         scenes = detect(str(target), ContentDetector(threshold=threshold))
         scene_list = [{"scene": i+1, "start_sec": round(s[0].get_seconds(), 3), "end_sec": round(s[1].get_seconds(), 3), "duration_sec": round(s[1].get_seconds()-s[0].get_seconds(), 3)} for i, s in enumerate(scenes)]
         return {"ok": True, "path": str(target), "scene_count": len(scene_list), "threshold": threshold, "scenes": scene_list}
@@ -4246,6 +4331,32 @@ TOOLS.update({
     "click_ui": {"fn": click_ui, "dangerous": True, "require_approval": True, "risk_level": "high"},
     "type_text": {"fn": type_text, "dangerous": True, "require_approval": True, "risk_level": "high"},
 })
+
+
+def _wrap_tool_with_metrics(name: str, fn: Any) -> Any:
+    """Wrap tool fn to record execution latency to performance_monitor."""
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
+        import time
+        start = time.perf_counter()
+        result = None
+        try:
+            result = fn(*args, **kwargs)
+            return result
+        finally:
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            try:
+                from services.observability import log_tool_result
+                ok = isinstance(result, dict) and result.get("ok", True) if result is not None else False
+                log_tool_result(name, ok=ok, duration_ms=elapsed_ms)
+            except Exception:
+                pass
+    return wrapped
+
+
+# Wrap all tool fns for observability metrics
+for _tname, _entry in list(TOOLS.items()):
+    if isinstance(_entry, dict) and _entry.get("fn"):
+        _entry["fn"] = _wrap_tool_with_metrics(_tname, _entry["fn"])
 
 
 _REQUIRED_META = {"name", "description", "category", "risk_level"}

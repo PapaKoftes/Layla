@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 def test_project_context_lifecycle():
     """Project context supports lifecycle_stage (North Star §3)."""
-    from layla.memory.db import migrate, get_project_context, set_project_context, PROJECT_LIFECYCLE_STAGES
+    from layla.memory.db import PROJECT_LIFECYCLE_STAGES, get_project_context, migrate, set_project_context
 
     migrate()
     assert PROJECT_LIFECYCLE_STAGES == ("idea", "planning", "prototype", "iteration", "execution", "reflection")
@@ -31,7 +31,7 @@ def test_project_context_lifecycle():
 
 def test_file_understanding_extensions():
     """File understanding supports North Star §4 extensions."""
-    from layla.file_understanding import get_supported_extensions, analyze_file
+    from layla.file_understanding import analyze_file, get_supported_extensions
 
     exts = get_supported_extensions()
     for e in (".3dm", ".gh", ".dxf", ".py", ".md", ".json", ".ipynb", ".nc", ".gcode", ".stl", ".svg"):
@@ -95,7 +95,6 @@ def test_initiative_rule_ordering():
 def test_project_discovery_returns_structure(monkeypatch):
     """North Star §18: run_project_discovery returns dict with opportunities, ideas, feasibility_notes."""
     import services.project_discovery as pd
-
     from services import llm_gateway
     monkeypatch.setattr(
         llm_gateway,

@@ -13,7 +13,7 @@ def test_relationship_memory_add_and_get():
 
 
 def test_style_profile_update_and_summary():
-    from services.style_profile import update_profile_from_interactions, get_profile_summary
+    from services.style_profile import get_profile_summary, update_profile_from_interactions
     update_profile_from_interactions([
         {"role": "user", "content": "Thanks! Can you fix this bug? The error says NoneType."},
         {"role": "user", "content": "Please explain how async works in Python."},

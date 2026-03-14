@@ -9,6 +9,7 @@ Usage:
     python layla.py plans
     python layla.py approve <uuid>
     python layla.py wakeup
+    python layla.py doctor
     python layla.py export
     python layla.py pending
     python layla.py aspect <name>
@@ -176,6 +177,22 @@ def cmd_pending(_args: list) -> None:
         print()
 
 
+def cmd_doctor(_args: list) -> None:
+    """Run full system diagnostics. Works without server."""
+    import os
+    agent_dir = os.path.join(os.path.dirname(__file__), "agent")
+    if agent_dir not in sys.path:
+        sys.path.insert(0, agent_dir)
+    try:
+        os.chdir(agent_dir)
+        from services.system_doctor import run_diagnostics, format_diagnostics
+        report = run_diagnostics(include_llm=False)
+        print(format_diagnostics(report))
+    except Exception as e:
+        print(f"Doctor error: {e}")
+        sys.exit(1)
+
+
 def cmd_tui(_args: list) -> None:
     import subprocess, sys
     from pathlib import Path
@@ -200,6 +217,7 @@ def cmd_aspect(args: list) -> None:
 
 COMMANDS = {
     "ask": cmd_ask,
+    "doctor": cmd_doctor,
     "remember": cmd_remember,
     "study": cmd_study,
     "plans": cmd_plans,

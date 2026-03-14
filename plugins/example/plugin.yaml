@@ -1,0 +1,8 @@
+name: example
+description: Example plugin for testing the plugin system
+skills:
+  - name: example_skill
+    description: Example skill that combines read and search
+    tools: [read_file, list_dir, grep_code]
+tools: []
+dependencies: []

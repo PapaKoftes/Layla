@@ -9,8 +9,9 @@ import io
 import json
 import zipfile
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, UploadFile, File
-from fastapi.responses import StreamingResponse, JSONResponse
+
+from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import JSONResponse, StreamingResponse
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 
@@ -84,9 +85,9 @@ async def export_bundle():
         zf.writestr("learnings.json", json.dumps(learnings, indent=2, ensure_ascii=False))
 
         # Manifest
-        import datetime
+        from layla.time_utils import utcnow
         manifest = {
-            "exported_at": datetime.datetime.utcnow().isoformat(),
+            "exported_at": utcnow().isoformat(),
             "knowledge_docs": len([f for f in KNOWLEDGE_DIR.rglob("*.md")] if KNOWLEDGE_DIR.exists() else []),
             "learnings_count": len(learnings),
             "format_version": "1.0",
@@ -95,8 +96,8 @@ async def export_bundle():
         zf.writestr("manifest.json", json.dumps(manifest, indent=2))
 
     buf.seek(0)
-    import datetime
-    filename = f"layla-memory-bundle-{datetime.datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.zip"
+    from layla.time_utils import utcnow
+    filename = f"layla-memory-bundle-{utcnow().strftime('%Y%m%d-%H%M%S')}.zip"
     return StreamingResponse(
         buf,
         media_type="application/zip",

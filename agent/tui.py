@@ -17,10 +17,8 @@ from pathlib import Path
 import httpx
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import (
-    Footer, Header, Input, Log, Static
-)
-from textual.containers import Horizontal, Vertical, ScrollableContainer
+from textual.containers import Horizontal, ScrollableContainer, Vertical
+from textual.widgets import Footer, Header, Input, Log, Static
 
 BASE_URL = "http://localhost:8000"
 

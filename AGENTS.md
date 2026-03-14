@@ -13,6 +13,19 @@ Layla is a **self-hosted AI companion and engineering agent** that runs on the u
 
 ---
 
+## PREBUILT CAPABILITY PRINCIPLE
+
+Layla should prioritize **integrated capabilities** — core features (conversation, knowledge, code, automation, model management, agent runtime, skills, hardware, self-improvement, UI) ship in the main install, not as optional plugins.
+
+- **Minimal setup** — One install script (`INSTALL.bat` / `install.sh`), hardware wizard, model selection. Users should not manually install large numbers of plugins to get a working companion.
+- **Human usability** — Clear UI, approval flow, aspect selection, voice I/O. Design for operators and everyday users, not just developers.
+- **Hardware-aware defaults** — Model recommender, `n_ctx`, `n_gpu_layers`, acceleration backend. `first_run.py` and `runtime_safety` derive defaults from detected hardware.
+- Avoid designs that require users to manually install many plugins. Prefer promoting optional dependencies to core when they materially improve the default experience.
+
+See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the full capability domain architecture.
+
+---
+
 ## Hard rules — never violate these
 
 1. **Never commit `agent/runtime_config.json`** — it's gitignored and contains local paths + model name.
@@ -49,8 +62,14 @@ Layla is a **self-hosted AI companion and engineering agent** that runs on the u
 │   │   ├── llm_gateway.py   # run_completion(), prewarm_llm(), auto-thread detection
 │   │   ├── stt.py           # faster-whisper STT (transcribe_bytes, prewarm)
 │   │   ├── tts.py           # kokoro-onnx TTS (speak_to_bytes, prewarm)
-│   │   └── browser.py       # Playwright browser (navigate, search, screenshot, fill)
+│   │   ├── browser.py       # Playwright browser (navigate, search, screenshot, fill)
+│   │   ├── capability_discovery.py  # PyPI, GitHub, HuggingFace candidate scan
+│   │   ├── benchmark_suite.py      # Latency, throughput, memory benchmarks
+│   │   ├── sandbox_validator.py    # Import + benchmark before enabling capability
+│   │   └── performance_monitor.py  # Runtime metrics (tool latency, retrieval)
 │   │
+│   ├── capabilities/        # Capability registry (vector_search, embedding, etc.)
+│   │   └── registry.py     # Multiple impls per capability; dynamic selection
 │   ├── layla/
 │   │   ├── tools/
 │   │   │   └── registry.py  # ALL tools live here + TOOLS dict. Add tools here.
@@ -169,6 +188,7 @@ Client → POST /agent → routers/agent.py
 |---|---|
 | `ARCHITECTURE.md` | Request flow changes, new routes, new state stores |
 | `docs/IMPLEMENTATION_STATUS.md` | Any NORTH_STAR §§ are implemented or status changes |
+| `docs/LAYLA_PREBUILT_PLATFORM.md` | Capability domains or prebuilt principles change |
 | `agent/runtime_config.example.json` | New config keys added to `runtime_safety.py` defaults |
 | `CHANGELOG.md` | Any commit worth noting for users |
 | `docs/RUNBOOKS.md` | New "how to add X" procedures |
@@ -206,7 +226,8 @@ Tests live in `agent/tests/`. Key test files: `test_agent_loop.py`, `test_north_
 ## Quick orientation for a new AI session
 
 1. Read this file (done)
-2. Read `ARCHITECTURE.md` for the request flow
-3. Read `docs/IMPLEMENTATION_STATUS.md` to know what's implemented vs planned
-4. Read the specific file you're about to change
-5. Never change `LAYLA_NORTH_STAR.md` unless told to
+2. **If resuming from prior AI session:** Read `docs/AI_HANDOFF_REPORT.md` for total state
+3. Read `ARCHITECTURE.md` for the request flow
+4. Read `docs/IMPLEMENTATION_STATUS.md` to know what's implemented vs planned
+5. Read the specific file you're about to change
+6. Never change `LAYLA_NORTH_STAR.md` unless told to

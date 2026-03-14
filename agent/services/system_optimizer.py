@@ -31,6 +31,7 @@ def collect_metrics() -> dict[str, Any]:
         "token_throughput": 0.0,
         "tool_latency_ms": 0.0,
         "retrieval_latency_ms": 0.0,
+        "agent_decision_ms": 0.0,
         "timestamp": time.time(),
     }
 
@@ -56,6 +57,10 @@ def collect_metrics() -> dict[str, Any]:
         ret = get_stats("retrieval_latency_ms", window_sec=60)
         if ret.get("count", 0) > 0:
             result["retrieval_latency_ms"] = ret.get("mean", 0)
+
+        agent_dec = get_stats("agent_decision_ms", window_sec=60)
+        if agent_dec.get("count", 0) > 0:
+            result["agent_decision_ms"] = agent_dec.get("mean", 0)
     except Exception as e:
         logger.debug("system_optimizer performance_monitor: %s", e)
 
@@ -137,15 +142,47 @@ def should_switch_model(current_model: str, task_type: str) -> bool:
 def get_summary() -> dict[str, Any]:
     """
     Get optimizer summary for health/doctor endpoints.
-    Includes metrics and any active runtime overrides.
+    Includes metrics (token throughput, tool latency, retrieval latency, agent decision time),
+    recent values, and any active runtime overrides.
     """
     metrics = collect_metrics()
+    performance: dict[str, Any] = {}
+    try:
+        from services.performance_monitor import get_stats, get_tool_latency_stats
+        for name, key in [
+            ("token_throughput", "token_throughput"),
+            ("retrieval_latency_ms", "retrieval_latency_ms"),
+            ("agent_decision_ms", "agent_decision_ms"),
+        ]:
+            s = get_stats(key, window_sec=60)
+            if s.get("count", 0) > 0:
+                performance[key] = {"mean": s["mean"], "p95": s["p95"], "count": s["count"]}
+        tool_stats = get_tool_latency_stats(tool_name=None, window_sec=60)
+        if tool_stats.get("count", 0) > 0:
+            performance["tool_latency_ms"] = {
+                "mean_ms": tool_stats["mean_ms"],
+                "p95_ms": tool_stats["p95_ms"],
+                "count": tool_stats["count"],
+            }
+    except Exception:
+        pass
+
     try:
         import runtime_safety
         base = runtime_safety.load_config()
     except Exception:
         base = {}
     effective = get_effective_config(base)
+
+    # Include stored model benchmarks from ~/.layla/benchmarks.json
+    model_benchmarks: dict[str, Any] = {}
+    try:
+        from services.model_benchmark import get_all_benchmarks
+        stored = get_all_benchmarks()
+        if stored:
+            model_benchmarks = dict(stored)
+    except Exception:
+        pass
 
     overrides: dict[str, Any] = {}
     for k in _RUNTIME_OVERRIDE_KEYS:
@@ -154,6 +191,8 @@ def get_summary() -> dict[str, Any]:
 
     return {
         "metrics": metrics,
+        "performance": performance,
+        "model_benchmarks": model_benchmarks,
         "overrides": overrides,
         "parallel_tasks_suggested": suggest_parallel_tasks(),
     }

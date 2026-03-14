@@ -50,8 +50,9 @@ def _analyze_dxf(content: bytes | str) -> dict:
     """Intent-focused DXF summary: layers, entity counts, units if available."""
     out = {"format": "DXF", "intent": "CAD/fabrication geometry", "layers": [], "entity_summary": ""}
     try:
-        import ezdxf
         from io import BytesIO
+
+        import ezdxf
         bio = BytesIO(content.encode("utf-8") if isinstance(content, str) else content)
         doc = ezdxf.read(bio)
         msp = doc.modelspace()
