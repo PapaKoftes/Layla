@@ -28,7 +28,8 @@ def test_agent_endpoint_returns_200_with_mock_run():
         "memory_influenced": [],
     }
 
-    with patch("routers.agent.autonomous_run", return_value=mock_result):
+    with patch("routers.agent.autonomous_run", return_value=mock_result), \
+         patch("routers.agent._model_ready_message", return_value=None):
         client = TestClient(app)
         r = client.post(
             "/agent",
