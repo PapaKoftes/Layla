@@ -9,6 +9,7 @@ learnings.json
 *.db
 agent.zip
 data/
+.zed
 
 # Local config (each user has their own model path / settings)
 agent/runtime_config.json
