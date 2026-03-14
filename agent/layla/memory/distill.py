@@ -79,21 +79,12 @@ def _summarize_group(group: list[dict]) -> str:
     return summary
 
 
-def memory_distill(learnings: list[dict]) -> dict:
-    """
-    Detect similar learnings, merge into summarized experience, update DB.
-    learnings: list of dicts with keys id, content, type, created_at (e.g. get_recent_learnings).
-    Returns: {"merged_groups": N, "removed": M, "added": K}.
-    """
+def _merge_groups(groups: list[list[dict]]) -> dict:
+    """Merge pre-computed groups into distilled learnings. Returns {merged_groups, removed, added}."""
     from layla.memory.db import delete_learnings_by_id, save_learning
 
-    if not learnings or len(learnings) < 2:
-        return {"merged_groups": 0, "removed": 0, "added": 0}
-
-    groups = _group_similar(learnings)
     if not groups:
         return {"merged_groups": 0, "removed": 0, "added": 0}
-
     removed = 0
     added = 0
     for group in groups:
@@ -121,12 +112,83 @@ def memory_distill(learnings: list[dict]) -> dict:
     return {"merged_groups": len(groups), "removed": removed, "added": added}
 
 
-def run_distill_after_outcome(n: int = 50) -> dict:
+def memory_distill(learnings: list[dict]) -> dict:
+    """
+    Detect similar learnings, merge into summarized experience, update DB.
+    learnings: list of dicts with keys id, content, type, created_at (e.g. get_recent_learnings).
+    Returns: {"merged_groups": N, "removed": M, "added": K}.
+    """
+    if not learnings or len(learnings) < 2:
+        return {"merged_groups": 0, "removed": 0, "added": 0}
+    groups = _group_similar(learnings)
+    return _merge_groups(groups)
+
+
+def memory_distill_semantic(learnings: list[dict], threshold: float = 0.75) -> dict:
+    """
+    Optional: cluster learnings by sentence embedding similarity, then merge.
+    Falls back to memory_distill (Jaccard) if embeddings unavailable.
+    """
+    if not learnings or len(learnings) < 2:
+        return {"merged_groups": 0, "removed": 0, "added": 0}
+    try:
+        from layla.memory.vector_store import embed
+        import numpy as np
+        valid = [(i, L) for i, L in enumerate(learnings) if (L.get("content") or "").strip()]
+        if len(valid) < 2:
+            return memory_distill(learnings)
+        subset = [v[1] for v in valid]
+        vecs = [embed((L.get("content") or "").strip()[:500]) for L in subset]
+        if len(vecs) < 2:
+            return memory_distill(learnings)
+        try:
+            from sklearn.cluster import AgglomerativeClustering
+            X = np.array(vecs, dtype=np.float32)
+            n_clusters = max(1, min(len(vecs) - 1, len(vecs) // 2))
+            clustering = AgglomerativeClustering(n_clusters=n_clusters, metric="cosine", linkage="average")
+            labels = clustering.fit_predict(X)
+            groups = []
+            for lid in set(labels):
+                idxs = [i for i, lbl in enumerate(labels) if lbl == lid]
+                if len(idxs) >= 2:
+                    groups.append([subset[i] for i in idxs])
+            if not groups:
+                return memory_distill(learnings)
+            return _merge_groups(groups)
+        except ImportError:
+            return memory_distill(learnings)
+    except Exception:
+        return memory_distill(learnings)
+
+
+def distill_rules(learnings: list[dict], max_rules: int = 5) -> list[str]:
+    """
+    Generate distilled rules from learnings clusters.
+    Returns list of rule strings like "Prefer X when Y".
+    """
+    if not learnings or len(learnings) < 2:
+        return []
+    groups = _group_similar(learnings)
+    rules = []
+    for group in groups[:max_rules]:
+        summary = _summarize_group(group)
+        if summary and "Merged" not in summary:
+            rule = f"When: {summary[:150]}"
+            if len(summary) > 150:
+                rule += "..."
+            rules.append(rule)
+    return rules[:max_rules]
+
+
+def run_distill_after_outcome(n: int = 50, use_semantic: bool = False) -> dict:
     """
     Call after outcome memory write: load recent learnings and run distillation.
+    use_semantic: if True, try embedding-based clustering (requires sentence-transformers).
     Returns result of memory_distill (or zeros if skipped).
     """
     from layla.memory.db import get_recent_learnings
 
     learnings = get_recent_learnings(n=n)
+    if use_semantic:
+        return memory_distill_semantic(learnings)
     return memory_distill(learnings)
