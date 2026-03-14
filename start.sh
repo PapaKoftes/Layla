@@ -40,4 +40,5 @@ echo ""
 (sleep 3 && (xdg-open http://localhost:8000/ui 2>/dev/null || open http://localhost:8000/ui 2>/dev/null)) &
 
 cd agent
-uvicorn main:app --host 127.0.0.1 --port 8000
+# Use python -m uvicorn for PATH robustness (avoids "uvicorn: command not found" on some Linux setups)
+python -m uvicorn main:app --host 127.0.0.1 --port 8000

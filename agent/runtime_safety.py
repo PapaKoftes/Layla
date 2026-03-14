@@ -3,9 +3,9 @@ import os
 import shutil
 import subprocess
 import time
+from pathlib import Path
 
 from layla.time_utils import utcnow
-from pathlib import Path
 
 AGENT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = AGENT_DIR.parent

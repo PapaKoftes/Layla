@@ -14,6 +14,7 @@ if str(AGENT_DIR) not in sys.path:
 def test_pending_returns_200_and_list():
     """GET /pending returns 200 and { pending: list }."""
     from fastapi.testclient import TestClient
+
     from main import app
     client = TestClient(app)
     r = client.get("/pending")
@@ -26,6 +27,7 @@ def test_pending_returns_200_and_list():
 def test_approve_rejects_no_id():
     """POST /approve without id returns error."""
     from fastapi.testclient import TestClient
+
     from main import app
     client = TestClient(app)
     r = client.post("/approve", json={})
@@ -38,6 +40,7 @@ def test_approve_rejects_no_id():
 def test_approve_not_found():
     """POST /approve with nonexistent id returns not found."""
     from fastapi.testclient import TestClient
+
     from main import app
     client = TestClient(app)
     r = client.post("/approve", json={"id": "nonexistent-uuid-12345"})

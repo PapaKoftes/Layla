@@ -54,28 +54,38 @@ def retrieve_documents(query: str, k: int = TOP_K) -> list[dict]:
 
 
 def retrieve_graph_context(query: str, k: int = TOP_K) -> list[dict]:
-    """Query knowledge graph for related nodes. Returns node labels and relations."""
+    """Query knowledge graph for related nodes. Uses graph_reasoning when available for entity extraction + expansion."""
     results = []
     try:
-        from layla.memory.memory_graph import get_recent_nodes
-        goal_words = set(w.lower() for w in query.split() if len(w) > 2)
-        recent = get_recent_nodes(n=30)
-        for n in recent:
-            label = (n.get("label") or "")
-            if not label:
-                continue
-            if any(w in label.lower() for w in goal_words):
+        from services.graph_reasoning import expand_query_via_graph
+        expanded = expand_query_via_graph(query, max_hops=2, max_nodes=k)
+        for n in expanded:
+            label = (n.get("label") or "").strip()
+            if label:
                 results.append({"label": label, "type": "graph_node"})
-            if len(results) >= k:
-                break
-        if len(results) < k:
-            for n in recent[-5:]:
-                if n.get("label"):
-                    results.append({"label": n["label"], "type": "graph_node"})
-                if len(results) >= k:
-                    break
     except Exception:
         pass
+    if not results:
+        try:
+            from layla.memory.memory_graph import get_recent_nodes
+            goal_words = set(w.lower() for w in query.split() if len(w) > 2)
+            recent = get_recent_nodes(n=30)
+            for n in recent:
+                label = (n.get("label") or "")
+                if not label:
+                    continue
+                if any(w in label.lower() for w in goal_words):
+                    results.append({"label": label, "type": "graph_node"})
+                if len(results) >= k:
+                    break
+            if len(results) < k:
+                for n in recent[-5:]:
+                    if n.get("label"):
+                        results.append({"label": n["label"], "type": "graph_node"})
+                    if len(results) >= k:
+                        break
+        except Exception:
+            pass
     return results[:k]
 
 

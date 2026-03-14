@@ -3,16 +3,21 @@ import logging
 import queue
 import time
 from pathlib import Path
+
 import psutil
+
 logger = logging.getLogger("layla")
 
-import runtime_safety  # noqa: E402
 import orchestrator  # noqa: E402
+import runtime_safety  # noqa: E402
 from decision_schema import parse_decision as _parse_decision  # noqa: E402
+from layla.memory.db import get_aspect_memories as _db_get_aspect_memories  # noqa: E402
+from layla.memory.db import get_recent_learnings as _db_get_learnings  # noqa: E402
+from layla.memory.db import migrate as _db_migrate  # noqa: E402
+from layla.memory.db import save_aspect_memory as _db_save_aspect_memory  # noqa: E402
 from layla.tools.registry import TOOLS, set_effective_sandbox  # noqa: E402
-from layla.memory.db import migrate as _db_migrate, get_recent_learnings as _db_get_learnings, get_aspect_memories as _db_get_aspect_memories, save_aspect_memory as _db_save_aspect_memory  # noqa: E402
-from services.llm_gateway import run_completion, get_stop_sequences, llm_serialize_lock  # noqa: E402
-from services.context_manager import build_system_prompt, DEFAULT_BUDGETS  # noqa: E402
+from services.context_manager import DEFAULT_BUDGETS, build_system_prompt  # noqa: E402
+from services.llm_gateway import get_stop_sequences, llm_serialize_lock, run_completion  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENT_DIR = Path(__file__).resolve().parent
@@ -233,6 +238,7 @@ def stream_reason(
 def _write_pending(tool: str, args: dict) -> str:
     """Write a pending approval entry and return its UUID. Exposes risk_level from registry for UI."""
     import uuid as _uuid
+
     from layla.time_utils import utcnow
     gov_path = Path(__file__).resolve().parent / ".governance"
     gov_path.mkdir(parents=True, exist_ok=True)
@@ -1125,6 +1131,7 @@ def _llm_decision(
         # Try instructor (grammar-constrained JSON) when local Llama available
         try:
             import instructor
+
             from decision_schema import AgentDecision
             if not (cfg.get("llama_server_url") or "").strip():
                 from services.llm_gateway import _get_llm
@@ -1543,7 +1550,7 @@ def _autonomous_run_impl(
 
     # Cognitive workspace: generate approaches → evaluate → choose best (tree-of-thought)
     try:
-        from services.cognitive_workspace import should_use_cognitive_workspace, run_deliberation
+        from services.cognitive_workspace import run_deliberation, should_use_cognitive_workspace
         if should_use_cognitive_workspace(goal, cfg, plan_depth):
             deliberation = run_deliberation(goal, context or "")
             if deliberation.get("strategy_hint"):
@@ -1554,8 +1561,8 @@ def _autonomous_run_impl(
 
     # Planning: if goal warrants it, create and execute plan first (respect max_plan_depth)
     try:
-        from services.planner import should_plan, create_plan, execute_plan
-        from services.observability import log_agent_plan_created, log_agent_plan_completed, log_planner_invoked
+        from services.observability import log_agent_plan_completed, log_agent_plan_created, log_planner_invoked
+        from services.planner import create_plan, execute_plan, should_plan
         if should_plan(goal, cfg, plan_depth=plan_depth):
             plan = create_plan(goal, cfg=cfg)
             if plan:

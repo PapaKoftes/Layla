@@ -54,16 +54,10 @@ def extract_entities(text: str) -> list[dict[str, Any]]:
         return []
 
 
-def expand_query_via_graph(query: str, max_hops: int = 2, max_nodes: int = 15) -> list[dict[str, Any]]:
-    """
-    Expand query context via knowledge graph relationships.
-    1. Extract entities from query (spaCy)
-    2. Find matching graph nodes by label
-    3. Traverse graph (BFS) up to max_hops
-    4. Return expanded node labels for context
-    """
+def _expand_query_via_graph_impl(query: str, max_hops: int = 2, max_nodes: int = 15) -> list[dict[str, Any]]:
+    """Inner implementation of graph expansion (no cache)."""
     try:
-        from layla.memory.memory_graph import _get_graph, get_recent_nodes, get_neighbors
+        from layla.memory.memory_graph import _get_graph, get_neighbors, get_recent_nodes
     except ImportError:
         return []
 
@@ -133,6 +127,23 @@ def expand_query_via_graph(query: str, max_hops: int = 2, max_nodes: int = 15) -
                 frontier.append((uid, hop + 1))
 
     return result[:max_nodes]
+
+
+def expand_query_via_graph(query: str, max_hops: int = 2, max_nodes: int = 15) -> list[dict[str, Any]]:
+    """
+    Expand query context via knowledge graph relationships.
+    Uses graph_cache for TTL 300s to avoid repeated BFS.
+    """
+    try:
+        from services.graph_cache import get_cached, set_cached
+        cached = get_cached(query)
+        if cached is not None:
+            return cached[:max_nodes]
+        result = _expand_query_via_graph_impl(query, max_hops=max_hops, max_nodes=max_nodes)
+        set_cached(query, result)
+        return result
+    except Exception:
+        return _expand_query_via_graph_impl(query, max_hops=max_hops, max_nodes=max_nodes)
 
 
 def get_expanded_context(query: str, max_hops: int = 2, max_nodes: int = 15) -> str:

@@ -4,11 +4,12 @@ Uses ChromaDB as the sole persistent store (FAISS removed).
 Embedding model: nomic-embed-text (768 dim) via sentence-transformers,
 with fallback to all-MiniLM-L6-v2 (384 dim) if nomic is unavailable.
 """
-import uuid
-import numpy as np
 import hashlib
 import time
+import uuid
 from pathlib import Path
+
+import numpy as np
 
 MEMORY_DIR = Path(__file__).resolve().parent
 CHROMA_PATH = MEMORY_DIR / "chroma_db"
@@ -21,6 +22,7 @@ _knowledge_last_check_ts: float = 0.0
 
 # Small LRU cache: avoid re-embedding identical strings during a single agent loop
 import functools as _functools  # noqa: E402
+
 _EMBED_CACHE_SIZE = 256
 
 
@@ -33,8 +35,9 @@ def _get_embedder():
     """
     global _embedder, _embedder_dim
     if _embedder is None:
-        from sentence_transformers import SentenceTransformer
         import logging
+
+        from sentence_transformers import SentenceTransformer
         log = logging.getLogger("layla")
         try:
             model = SentenceTransformer("nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True)
@@ -51,11 +54,14 @@ def _get_embedder():
                 model = model.half()  # float16 on GPU: 2× VRAM reduction
                 log.info("Embedder: float16 on GPU")
             else:
-                # Dynamic int8 quantization for CPU
-                model[0].auto_model = torch.quantization.quantize_dynamic(
-                    model[0].auto_model, {torch.nn.Linear}, dtype=torch.qint8
-                )
-                log.info("Embedder: int8 quantized on CPU")
+                # Dynamic int8 quantization for CPU: prefer torchao, fallback to torch (deprecated)
+                try:
+                    from torchao.quantization import Int8DynamicActivationInt8WeightConfig, quantize_
+                    quantize_(model[0].auto_model, Int8DynamicActivationInt8WeightConfig())
+                    log.info("Embedder: int8 quantized on CPU (torchao)")
+                except Exception as e:
+                    # Skip quantization when torchao unavailable; avoid deprecated torch.quantization
+                    log.info("Embedder: no quantization (torchao unavailable: %s)", e)
         except Exception:
             pass
         _embedder = model
@@ -154,7 +160,7 @@ def _get_knowledge_collection():
 
 
 def search_similar(query_vec: np.ndarray, k: int = 5) -> list:
-    """Return up to k metadata dicts from ChromaDB learnings collection."""
+    """Return up to k items from ChromaDB learnings collection. Each item has id (embedding_id), content, type."""
     try:
         coll = _get_chroma_collection()
         if coll.count() == 0:
@@ -165,8 +171,17 @@ def search_similar(query_vec: np.ndarray, k: int = 5) -> list:
             n_results=n,
             include=["metadatas"],
         )
-        if res and res.get("metadatas") and res["metadatas"][0]:
-            return list(res["metadatas"][0])
+        ids = (res.get("ids") or [[]])[0]
+        metas = (res.get("metadatas") or [[]])[0]
+        if not metas:
+            return []
+        out = []
+        for i, meta in enumerate(metas):
+            item = dict(meta) if isinstance(meta, dict) else {}
+            if i < len(ids):
+                item["embedding_id"] = ids[i]
+            out.append(item)
+        return out
     except Exception:
         pass
     return []
@@ -253,6 +268,41 @@ def _get_cross_encoder():
     except Exception:
         _cross_encoder_failed = True
     return _cross_encoder
+
+
+def mmr_rerank(query: str, docs: list[dict], k: int = 5, lambda_: float = 0.7) -> list[dict]:
+    """
+    Maximal Marginal Relevance: balance relevance and diversity.
+    lambda_=0.7: 70% relevance, 30% diversity. Higher lambda = more relevance, less diversity.
+    """
+    if not docs or k <= 0:
+        return docs[:k]
+    query_vec = embed(query)
+    contents = [(d.get("content") or d.get("text") or "")[:512] for d in docs]
+    if not any(c for c in contents):
+        return docs[:k]
+    doc_vecs = embed_batch(contents)
+    selected: list[int] = []
+    remaining = list(range(len(docs)))
+
+    def _sim(a: np.ndarray, b: np.ndarray) -> float:
+        return float(np.dot(a, b))  # cosine for normalized vecs
+
+    for _ in range(min(k, len(docs))):
+        best_idx = -1
+        best_score = -1e9
+        for i in remaining:
+            rel = _sim(query_vec, doc_vecs[i])
+            div = max(_sim(doc_vecs[i], doc_vecs[j]) for j in selected) if selected else 0.0
+            score = lambda_ * rel - (1 - lambda_) * div
+            if score > best_score:
+                best_score = score
+                best_idx = i
+        if best_idx < 0:
+            break
+        selected.append(best_idx)
+        remaining.remove(best_idx)
+    return [docs[i] for i in selected]
 
 
 def rerank(query: str, docs: list[dict], k: int = 5) -> list[dict]:
@@ -361,31 +411,104 @@ def get_knowledge_chunks_with_parent(query: str, k: int = 5) -> list[dict]:
 
 # ─── Full search pipeline: hybrid → rerank → parent context ──────────────────
 
-def search_memories_full(query: str, k: int = 5, use_rerank: bool = True) -> list[dict]:
+def _apply_confidence_recency_boost(items: list[dict], k: int) -> list[dict]:
     """
-    Full memory search pipeline:
-      1. Hybrid BM25 + vector (RRF fusion)
-      2. FTS5 keyword results merged in
-      3. Cross-encoder reranking
-    Returns top-k most relevant learnings.
+    Re-rank by combined score: semantic order + recency + confidence.
+    Items with adjusted_confidence (from BM25) or looked-up confidence (from DB) get boosted.
     """
-    # Step 1: hybrid vector + BM25
-    results = search_hybrid(query, k=k * 3)
+    if not items:
+        return items[:k]
+    import math
+
+    from layla.memory.db import get_learnings_by_embedding_ids
+    from layla.time_utils import utcnow
+
+    # Collect embedding_ids for DB lookup
+    emb_ids = [it.get("embedding_id") for it in items if it.get("embedding_id")]
+    conf_map = get_learnings_by_embedding_ids(emb_ids) if emb_ids else {}
+
+    def score(i: int, item: dict) -> float:
+        base = 1.0 / (i + 1)  # semantic rank (first = best)
+        conf = item.get("adjusted_confidence")
+        if conf is None and item.get("embedding_id"):
+            row = conf_map.get(item["embedding_id"], {})
+            conf = row.get("adjusted_confidence", 0.5)
+        if conf is None:
+            conf = 0.5
+        created = item.get("created_at", "")
+        recency = 1.0
+        if created:
+            try:
+                from datetime import datetime, timezone
+                dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                dt_utc = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+                age_days = (utcnow() - dt_utc).total_seconds() / 86400.0
+                recency = math.exp(-age_days / 90.0)
+            except Exception:
+                pass
+        return base * 0.6 + conf * 0.2 + recency * 0.2
+
+    scored = [(score(i, it), it) for i, it in enumerate(items)]
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [it for _, it in scored[:k]]
+
+
+def search_memories_full(
+    query: str,
+    k: int = 5,
+    use_rerank: bool = True,
+    use_confidence_boost: bool = True,
+    use_mmr: bool = False,
+    cross_encoder_limit: int | None = None,
+) -> list[dict]:
+    """
+    Two-stage retrieval pipeline:
+      1. Vector + BM25 + FTS5 → top 20
+      2. Light rerank (MMR or take top 10) → top 10
+      3. Cross-encoder (only on small candidate set) → top k
+      4. Confidence + recency boost
+    cross_encoder_limit: max candidates to run cross-encoder on (config: retrieval_cross_encoder_limit).
+    """
+    # Resolve cross_encoder_limit from config if not passed
+    if cross_encoder_limit is None:
+        try:
+            import runtime_safety
+            cfg = runtime_safety.load_config()
+            cross_encoder_limit = int(cfg.get("retrieval_cross_encoder_limit", 10))
+        except Exception:
+            cross_encoder_limit = 10
+
+    # Step 1: hybrid vector + BM25 → top 20
+    results = search_hybrid(query, k=20)
 
     # Step 2: merge FTS5 keyword results
     try:
         from layla.memory.db import search_learnings_fts
-        fts_hits = search_learnings_fts(query, n=k * 2)
+        fts_hits = search_learnings_fts(query, n=20)
         if fts_hits:
-            results = _reciprocal_rank_fusion([results, fts_hits], k=k * 3)
+            results = _reciprocal_rank_fusion([results, fts_hits], k=20)
     except Exception:
         pass
 
-    # Step 3: cross-encoder rerank
-    if use_rerank:
+    # Step 2b: light rerank → top 10 (reduce before expensive cross-encoder)
+    light_k = min(cross_encoder_limit, 10)
+    if use_mmr and len(results) > light_k:
+        try:
+            results = mmr_rerank(query, results, k=light_k, lambda_=0.7)
+        except Exception:
+            results = results[:light_k]
+    else:
+        results = results[:light_k]
+
+    # Step 3: cross-encoder only on small candidate set
+    if use_rerank and results:
         results = rerank(query, results, k=k)
     else:
         results = results[:k]
+
+    # Step 4: confidence + recency boost
+    if use_confidence_boost and results:
+        results = _apply_confidence_recency_boost(results, k)
     return results
 
 

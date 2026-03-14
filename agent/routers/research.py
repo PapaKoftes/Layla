@@ -3,31 +3,31 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from shared_state import get_touch_activity, get_history, get_append_history
 from agent_loop import (
     autonomous_run,
     stream_reason,
     strip_junk_from_reply,
     truncate_at_next_user_turn,
 )
+from layla.time_utils import utcnow
 from research_lab import (
     AGENT_DIR,
-    RESEARCH_LAB_WORKSPACE,
     RESEARCH_BRAIN,
+    RESEARCH_LAB_WORKSPACE,
     RESEARCH_OUTPUT,
-    ensure_research_lab_dirs,
     copy_source_to_lab,
-    load_mission_preset,
-    get_default_output_structure,
     default_mission_state,
+    ensure_research_lab_dirs,
     get_allowed_brain_files,
+    get_default_output_structure,
+    load_mission_preset,
 )
+from shared_state import get_append_history, get_history, get_touch_activity
 
 logger = logging.getLogger("layla")
 router = APIRouter(tags=["research"])
@@ -79,9 +79,9 @@ async def research_mission(request: Request):
             from research_stages import (
                 STAGE_RUNNERS,
                 ensure_research_brain_dirs,
-                stages_for_depth,
                 load_mission_state,
                 save_mission_state,
+                stages_for_depth,
             )
             ensure_research_brain_dirs()
             stages_to_run = stages_for_depth(mission_depth, next_stage)
@@ -112,7 +112,7 @@ async def research_mission(request: Request):
                         inc_path.write_text(
                             f"Mission stopped: runtime limit ({max_mission_runtime_seconds}s) reached.\n"
                             f"Completed stages: {_done}\n"
-                            f"Time: {datetime.utcnow().isoformat()}Z",
+                            f"Time: {utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')}",
                             encoding="utf-8",
                         )
                     except Exception:
@@ -147,7 +147,7 @@ async def research_mission(request: Request):
             if not response_text and mission_depth is not None:
                 response_text = "No stage output this run. See .research_brain/ for prior outputs."
             state = load_mission_state()
-            state["last_run"] = datetime.utcnow().isoformat() + "Z"
+            state["last_run"] = utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
             state["completed"] = state.get("completed") or []
             state["status"] = mission_status
             save_mission_state(state)
@@ -210,7 +210,7 @@ async def research_mission(request: Request):
                     f"# Research mission ({mission_type})\n\n**Workspace:** {workspace_root or 'lab only'}\n\n---\n\n{response_text}",
                     encoding="utf-8",
                 )
-                ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                ts = utcnow().strftime("%Y%m%d_%H%M%S")
                 out_dir.joinpath(f"research_{ts}.md").write_text(
                     f"# Research mission ({mission_type}) {ts}\n\n**Workspace:** {workspace_root or 'lab only'}\n\n---\n\n{response_text}",
                     encoding="utf-8",
@@ -402,7 +402,7 @@ async def research(req: dict):
                             f"# Research output\n\n**Request:** {raw_message[:200]}...\n\n---\n\n{text}",
                             encoding="utf-8",
                         )
-                        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                        ts = utcnow().strftime("%Y%m%d_%H%M%S")
                         out_dir.joinpath(f"research_{ts}.md").write_text(
                             f"# Research output ({ts})\n\n**Request:** {raw_message[:200]}...\n\n---\n\n{text}",
                             encoding="utf-8",
@@ -442,7 +442,7 @@ async def research(req: dict):
                 f"# Research output\n\n**Request:** {raw_message[:200]}...\n\n---\n\n{response_text}",
                 encoding="utf-8",
             )
-            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            ts = utcnow().strftime("%Y%m%d_%H%M%S")
             out_dir.joinpath(f"research_{ts}.md").write_text(
                 f"# Research output ({ts})\n\n**Request:** {raw_message[:200]}...\n\n---\n\n{response_text}",
                 encoding="utf-8",

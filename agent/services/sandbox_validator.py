@@ -73,8 +73,8 @@ def run_sandbox_benchmark(capability: str, implementation_id: str, package_name:
     Run benchmark in sandbox (subprocess), validate, and store result.
     Returns {ok, valid, latency_ms, error}.
     """
-    from services.benchmark_suite import run_benchmark
     from layla.memory.db import upsert_capability_implementation
+    from services.benchmark_suite import run_benchmark
 
     val = validate_capability_impl(capability, implementation_id, package_name)
     if not val["valid"]:

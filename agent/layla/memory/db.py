@@ -23,6 +23,7 @@ _DB_PATH = Path(__file__).resolve().parent.parent.parent.parent / "layla.db"
 # Migration guard: run _migrate_impl at most once per process.
 _MIGRATED = False
 import threading as _threading  # noqa: E402
+
 _MIGRATION_LOCK = _threading.Lock()
 
 
@@ -279,6 +280,132 @@ def _migrate_impl() -> None:
     except Exception as e:
         logger.warning("relationship_memory table migration failed: %s", e)
 
+    # timeline_events — personal timeline memory (North Star companion experience)
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS timeline_events (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_type   TEXT NOT NULL,
+                    content      TEXT NOT NULL,
+                    timestamp    TEXT NOT NULL,
+                    importance   REAL DEFAULT 0.5,
+                    embedding_id TEXT DEFAULT '',
+                    project_id   TEXT DEFAULT '',
+                    created_at   TEXT NOT NULL
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_timeline_events_timestamp ON timeline_events(timestamp DESC)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_timeline_events_importance ON timeline_events(importance DESC)")
+            db.commit()
+    except Exception as e:
+        logger.warning("timeline_events table migration failed: %s", e)
+
+    # user_identity — long-term companion context (verbosity, humor, formality, response length, life narrative)
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS user_identity (
+                    key       TEXT PRIMARY KEY,
+                    snapshot  TEXT DEFAULT '',
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            db.commit()
+    except Exception as e:
+        logger.warning("user_identity table migration failed: %s", e)
+
+    # episodes — group timeline events, summaries, reflections into episodic memory
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS episodes (
+                    id           TEXT PRIMARY KEY,
+                    summary      TEXT DEFAULT '',
+                    started_at   TEXT NOT NULL,
+                    ended_at     TEXT,
+                    created_at   TEXT NOT NULL
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_episodes_started ON episodes(started_at DESC)")
+            db.commit()
+    except Exception as e:
+        logger.warning("episodes table migration failed: %s", e)
+
+    # episode_events — links events to episodes
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS episode_events (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    episode_id   TEXT NOT NULL,
+                    event_type   TEXT NOT NULL,
+                    event_id     TEXT,
+                    source_table TEXT,
+                    created_at   TEXT NOT NULL
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_episode_events_episode ON episode_events(episode_id)")
+            db.commit()
+    except Exception as e:
+        logger.warning("episode_events table migration failed: %s", e)
+
+    # tool_outcomes — track tool success/failure for reliability
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS tool_outcomes (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tool_name     TEXT NOT NULL,
+                    context       TEXT DEFAULT '',
+                    success       INTEGER NOT NULL,
+                    latency_ms    REAL DEFAULT 0,
+                    quality_score REAL DEFAULT 0.5,
+                    created_at    TEXT NOT NULL
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_tool_outcomes_tool ON tool_outcomes(tool_name)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_tool_outcomes_created ON tool_outcomes(created_at DESC)")
+            db.commit()
+    except Exception as e:
+        logger.warning("tool_outcomes table migration failed: %s", e)
+
+    # goals — long-term goals
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS goals (
+                    id           TEXT PRIMARY KEY,
+                    title        TEXT NOT NULL,
+                    description  TEXT DEFAULT '',
+                    status       TEXT DEFAULT 'active',
+                    project_id   TEXT DEFAULT '',
+                    created_at   TEXT NOT NULL,
+                    updated_at   TEXT NOT NULL
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_goals_status ON goals(status)")
+            db.commit()
+    except Exception as e:
+        logger.warning("goals table migration failed: %s", e)
+
+    # goal_progress — subgoals and progress tracking
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS goal_progress (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    goal_id      TEXT NOT NULL,
+                    note         TEXT DEFAULT '',
+                    progress_pct REAL DEFAULT 0,
+                    created_at   TEXT NOT NULL
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_goal_progress_goal ON goal_progress(goal_id)")
+            db.commit()
+    except Exception as e:
+        logger.warning("goal_progress table migration failed: %s", e)
+
     # Migrate learnings.json
     _migrate_learnings_json()
 
@@ -478,6 +605,16 @@ def _migrate_evolution_layer() -> None:
     except sqlite3.OperationalError as e:
         if "duplicate column" not in str(e).lower():
             raise
+
+    # Optional: add progress, blockers, last_discussed to project_context (companion experience)
+    for col in ("progress", "blockers", "last_discussed"):
+        try:
+            with _conn() as db:
+                db.execute(f"ALTER TABLE project_context ADD COLUMN {col} TEXT DEFAULT ''")
+                db.commit()
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
 
     # Optional: add usefulness_score and learning_quality_score to capability_events (existing DBs)
     for col, default in (("usefulness_score", "0.5"), ("learning_quality_score", "0.5")):
@@ -866,7 +1003,7 @@ def add_conversation_summary(summary: str) -> None:
     summary_text = summary.strip()[:8000]
     embedding_id = ""
     try:
-        from layla.memory.vector_store import embed, add_vector
+        from layla.memory.vector_store import add_vector, embed
         vec = embed(summary_text)
         embedding_id = add_vector(vec, {"content": summary_text, "type": "conversation_summary"})
     except Exception:
@@ -900,7 +1037,7 @@ def add_relationship_memory(user_event: str, embedding_id: str = "") -> None:
     eid = (embedding_id or "").strip()
     if not eid:
         try:
-            from layla.memory.vector_store import embed, add_vector
+            from layla.memory.vector_store import add_vector, embed
             vec = embed(event_text)
             eid = add_vector(vec, {"content": event_text, "type": "relationship_memory"})
         except Exception:
@@ -920,6 +1057,222 @@ def get_recent_relationship_memories(n: int = 5) -> list[dict]:
         rows = db.execute(
             "SELECT id, user_event, timestamp, embedding_id FROM relationship_memory ORDER BY id DESC LIMIT ?", (n,)
         ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── timeline events (personal timeline memory) ────────────────────────────────
+
+TIMELINE_EVENT_TYPES = ("life_event", "project_milestone", "goal", "blocker", "conversation_summary")
+
+
+def add_timeline_event(
+    content: str,
+    event_type: str = "life_event",
+    importance: float = 0.5,
+    project_id: str = "",
+    embedding_id: str = "",
+) -> int:
+    """Store a timeline event for personal memory. event_type: life_event|project_milestone|goal|blocker|conversation_summary."""
+    if not (content or "").strip():
+        return -1
+    migrate()
+    event_type = event_type if event_type in TIMELINE_EVENT_TYPES else "life_event"
+    content_text = (content or "").strip()[:4000]
+    imp = max(0.0, min(1.0, float(importance)))
+    eid = (embedding_id or "").strip()
+    if not eid:
+        try:
+            from layla.memory.vector_store import add_vector, embed
+            vec = embed(content_text)
+            eid = add_vector(vec, {"content": content_text, "type": "timeline_event", "event_type": event_type})
+        except Exception:
+            pass
+    now = utcnow().isoformat()
+    with _conn() as db:
+        cur = db.execute(
+            """INSERT INTO timeline_events (event_type, content, timestamp, importance, embedding_id, project_id, created_at)
+               VALUES (?,?,?,?,?,?,?)""",
+            (event_type, content_text, now, imp, eid, (project_id or "").strip(), now),
+        )
+        db.commit()
+        return cur.lastrowid or -1
+
+
+def get_recent_timeline_events(n: int = 10, min_importance: float = 0.0) -> list[dict]:
+    """Return the n most recent timeline events (newest first), optionally filtered by importance."""
+    migrate()
+    with _conn() as db:
+        rows = db.execute(
+            """SELECT id, event_type, content, timestamp, importance, project_id FROM timeline_events
+               WHERE importance >= ? ORDER BY timestamp DESC LIMIT ?""",
+            (min_importance, n),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── user identity (long-term companion context) ───────────────────────────────
+
+USER_IDENTITY_KEYS = ("verbosity", "humor_tolerance", "formality", "response_length", "life_narrative_summary")
+
+
+def get_user_identity(key: str) -> dict | None:
+    """Return user identity snapshot for a key. Keys: verbosity, humor_tolerance, formality, response_length, life_narrative_summary."""
+    if not (key or "").strip():
+        return None
+    migrate()
+    with _conn() as db:
+        row = db.execute("SELECT key, snapshot, updated_at FROM user_identity WHERE key=?", (key.strip(),)).fetchone()
+    return dict(row) if row else None
+
+
+def get_all_user_identity() -> dict[str, str]:
+    """Return all user identity key-value pairs for companion context."""
+    migrate()
+    with _conn() as db:
+        rows = db.execute("SELECT key, snapshot FROM user_identity").fetchall()
+    return {r["key"]: (r["snapshot"] or "").strip() for r in rows if r.get("key")}
+
+
+def set_user_identity(key: str, snapshot: str) -> None:
+    """Set user identity snapshot. Keys: verbosity, humor_tolerance, formality, response_length, life_narrative_summary."""
+    if not (key or "").strip():
+        return
+    migrate()
+    now = utcnow().isoformat()
+    key = key.strip()
+    snapshot = (snapshot or "").strip()[:4000]
+    with _conn() as db:
+        db.execute(
+            """INSERT INTO user_identity (key, snapshot, updated_at) VALUES (?,?,?)
+               ON CONFLICT(key) DO UPDATE SET snapshot=excluded.snapshot, updated_at=excluded.updated_at""",
+            (key, snapshot, now),
+        )
+        db.commit()
+
+
+# ── episodes (episodic memory) ──────────────────────────────────────────────
+
+def create_episode(summary: str = "") -> str:
+    """Create a new episode. Returns episode_id."""
+    import uuid
+    migrate()
+    now = utcnow().isoformat()
+    eid = str(uuid.uuid4())[:16]
+    with _conn() as db:
+        db.execute(
+            "INSERT INTO episodes (id, summary, started_at, ended_at, created_at) VALUES (?,?,?,?,?)",
+            (eid, (summary or "")[:500], now, None, now),
+        )
+        db.commit()
+    return eid
+
+
+def add_episode_event(episode_id: str, event_type: str, event_id: str = "", source_table: str = "") -> None:
+    """Link an event to an episode."""
+    if not episode_id:
+        return
+    migrate()
+    now = utcnow().isoformat()
+    with _conn() as db:
+        db.execute(
+            "INSERT INTO episode_events (episode_id, event_type, event_id, source_table, created_at) VALUES (?,?,?,?,?)",
+            (episode_id, event_type or "unknown", (event_id or "")[:64], (source_table or "")[:32], now),
+        )
+        db.commit()
+
+
+def get_recent_episodes(n: int = 5) -> list[dict]:
+    """Return the n most recent episodes."""
+    migrate()
+    with _conn() as db:
+        rows = db.execute("SELECT id, summary, started_at, ended_at FROM episodes ORDER BY started_at DESC LIMIT ?", (n,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── tool outcomes (tool reliability learning) ─────────────────────────────────
+
+def record_tool_outcome(tool_name: str, success: bool, context: str = "", latency_ms: float = 0, quality_score: float = 0.5) -> None:
+    """Record a tool outcome for reliability learning."""
+    if not (tool_name or "").strip():
+        return
+    migrate()
+    now = utcnow().isoformat()
+    with _conn() as db:
+        db.execute(
+            """INSERT INTO tool_outcomes (tool_name, context, success, latency_ms, quality_score, created_at) VALUES (?,?,?,?,?,?)""",
+            (tool_name.strip(), (context or "")[:500], 1 if success else 0, max(0, float(latency_ms)), max(0, min(1, float(quality_score))), now),
+        )
+        db.commit()
+
+
+def get_tool_reliability(tool_name: str | None = None, n: int = 100) -> dict[str, dict]:
+    """Return reliability stats per tool: {tool_name: {success_rate, avg_latency, avg_quality, count}}."""
+    migrate()
+    with _conn() as db:
+        if tool_name:
+            rows = db.execute(
+                """SELECT tool_name, AVG(success) as success_rate, AVG(latency_ms) as avg_latency, AVG(quality_score) as avg_quality, COUNT(*) as count
+                   FROM tool_outcomes WHERE tool_name=? GROUP BY tool_name""",
+                (tool_name,),
+            ).fetchall()
+        else:
+            rows = db.execute(
+                """SELECT tool_name, AVG(success) as success_rate, AVG(latency_ms) as avg_latency, AVG(quality_score) as avg_quality, COUNT(*) as count
+                   FROM tool_outcomes GROUP BY tool_name""",
+                (),
+            ).fetchall()
+    result = {}
+    for r in rows:
+        name = r["tool_name"]
+        result[name] = {
+            "success_rate": float(r["success_rate"] or 0),
+            "avg_latency": float(r["avg_latency"] or 0),
+            "avg_quality": float(r["avg_quality"] or 0.5),
+            "count": int(r["count"] or 0),
+        }
+    return result
+
+
+# ── goals (goal engine) ─────────────────────────────────────────────────────
+
+def add_goal(title: str, description: str = "", project_id: str = "") -> str:
+    """Add a long-term goal. Returns goal_id."""
+    import uuid
+    migrate()
+    now = utcnow().isoformat()
+    gid = str(uuid.uuid4())[:16]
+    with _conn() as db:
+        db.execute(
+            "INSERT INTO goals (id, title, description, status, project_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+            (gid, (title or "")[:200], (description or "")[:1000], "active", (project_id or "").strip(), now, now),
+        )
+        db.commit()
+    return gid
+
+
+def add_goal_progress(goal_id: str, note: str = "", progress_pct: float = 0) -> None:
+    """Record progress on a goal."""
+    if not goal_id:
+        return
+    migrate()
+    now = utcnow().isoformat()
+    with _conn() as db:
+        db.execute(
+            "INSERT INTO goal_progress (goal_id, note, progress_pct, created_at) VALUES (?,?,?,?)",
+            (goal_id, (note or "")[:500], max(0, min(100, float(progress_pct))), now),
+        )
+        db.execute("UPDATE goals SET updated_at=? WHERE id=?", (now, goal_id))
+        db.commit()
+
+
+def get_active_goals(project_id: str = "") -> list[dict]:
+    """Return active goals, optionally filtered by project."""
+    migrate()
+    with _conn() as db:
+        if project_id:
+            rows = db.execute("SELECT * FROM goals WHERE status='active' AND (project_id=? OR project_id='') ORDER BY updated_at DESC", (project_id,)).fetchall()
+        else:
+            rows = db.execute("SELECT * FROM goals WHERE status='active' ORDER BY updated_at DESC LIMIT 20").fetchall()
     return [dict(r) for r in rows]
 
 
@@ -1365,12 +1718,15 @@ def get_missions(limit: int = 50, status_filter: str | None = None) -> list[dict
 
 
 def get_project_context() -> dict:
-    """Return current project context: project_name, domains (list), key_files (list), goals. Read-only for Layla; do not modify files without approval."""
+    """Return current project context: project_name, domains (list), key_files (list), goals, progress, blockers, last_discussed."""
     migrate()
     with _conn() as db:
         row = db.execute("SELECT * FROM project_context WHERE id=1").fetchone()
     if not row:
-        return {"project_name": "", "domains": [], "key_files": [], "goals": "", "lifecycle_stage": "", "updated_at": ""}
+        return {
+            "project_name": "", "domains": [], "key_files": [], "goals": "", "lifecycle_stage": "",
+            "progress": "", "blockers": "", "last_discussed": "", "updated_at": "",
+        }
     try:
         domains = json.loads(row["domains"] or "[]")
     except (json.JSONDecodeError, TypeError):
@@ -1379,13 +1735,17 @@ def get_project_context() -> dict:
         key_files = json.loads(row["key_files"] or "[]")
     except (json.JSONDecodeError, TypeError):
         key_files = []
+    r = dict(row)
     return {
-        "project_name": row["project_name"] or "",
+        "project_name": r.get("project_name") or "",
         "domains": domains,
         "key_files": key_files,
-        "goals": row["goals"] or "",
-        "lifecycle_stage": (dict(row).get("lifecycle_stage") or "").strip() or "",
-        "updated_at": row["updated_at"] or "",
+        "goals": r.get("goals") or "",
+        "lifecycle_stage": (r.get("lifecycle_stage") or "").strip() or "",
+        "progress": (r.get("progress") or "").strip() or "",
+        "blockers": (r.get("blockers") or "").strip() or "",
+        "last_discussed": (r.get("last_discussed") or "").strip() or "",
+        "updated_at": r.get("updated_at") or "",
     }
 
 
@@ -1398,6 +1758,9 @@ def set_project_context(
     key_files: list[str] | None = None,
     goals: str = "",
     lifecycle_stage: str = "",
+    progress: str = "",
+    blockers: str = "",
+    last_discussed: str = "",
 ) -> None:
     """Update project context. lifecycle_stage: idea|planning|prototype|iteration|execution|reflection (North Star §3)."""
     migrate()
@@ -1413,15 +1776,25 @@ def set_project_context(
         cur["goals"] = goals
     if lifecycle_stage and lifecycle_stage.strip().lower() in PROJECT_LIFECYCLE_STAGES:
         cur["lifecycle_stage"] = lifecycle_stage.strip().lower()
+    if progress:
+        cur["progress"] = progress.strip()
+    if blockers:
+        cur["blockers"] = blockers.strip()
+    if last_discussed:
+        cur["last_discussed"] = last_discussed.strip()
+    cols = ["project_name", "domains", "key_files", "goals", "lifecycle_stage", "progress", "blockers", "last_discussed", "updated_at"]
+    vals = (
+        cur["project_name"], json.dumps(cur["domains"]), json.dumps(cur["key_files"]), cur["goals"],
+        cur.get("lifecycle_stage", ""), cur.get("progress", ""), cur.get("blockers", ""), cur.get("last_discussed", ""), now,
+    )
     with _conn() as db:
         try:
+            placeholders = ", ".join(f"{c}=?" for c in cols)
+            db.execute(f"UPDATE project_context SET {placeholders} WHERE id=1", vals)
+        except sqlite3.OperationalError:
+            # Fallback if new columns not yet migrated
             db.execute(
                 """UPDATE project_context SET project_name=?, domains=?, key_files=?, goals=?, lifecycle_stage=?, updated_at=? WHERE id=1""",
                 (cur["project_name"], json.dumps(cur["domains"]), json.dumps(cur["key_files"]), cur["goals"], cur.get("lifecycle_stage", ""), now),
-            )
-        except sqlite3.OperationalError:
-            db.execute(
-                """UPDATE project_context SET project_name=?, domains=?, key_files=?, goals=?, updated_at=? WHERE id=1""",
-                (cur["project_name"], json.dumps(cur["domains"]), json.dumps(cur["key_files"]), cur["goals"], now),
             )
         db.commit()

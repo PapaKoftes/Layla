@@ -11,8 +11,13 @@ domain: troubleshooting
 
 **1. Run the diagnostic first:**
 ```bash
+# Linux/macOS
 source .venv/bin/activate
 python agent/diagnose_startup.py
+
+# Windows
+.venv\Scripts\activate
+python agent\diagnose_startup.py
 ```
 This reports which dependency or import is failing.
 
