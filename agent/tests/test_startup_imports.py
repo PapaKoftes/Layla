@@ -19,14 +19,14 @@ def test_main_app_loads():
 
 def test_agent_loop_imports():
     """agent_loop top-level imports must succeed."""
-    from agent_loop import autonomous_run, _is_junk_reply
+    from agent_loop import _is_junk_reply, autonomous_run
     assert callable(autonomous_run)
     assert callable(_is_junk_reply)
 
 
 def test_context_manager_available():
     """context_manager is required by agent_loop at load time."""
-    from services.context_manager import build_system_prompt, DEFAULT_BUDGETS
+    from services.context_manager import DEFAULT_BUDGETS, build_system_prompt
     assert callable(build_system_prompt)
     assert isinstance(DEFAULT_BUDGETS, dict)
 
@@ -34,6 +34,7 @@ def test_context_manager_available():
 def test_health_endpoint_responds():
     """FastAPI app serves /health."""
     from fastapi.testclient import TestClient
+
     from main import app
     client = TestClient(app)
     r = client.get("/health")

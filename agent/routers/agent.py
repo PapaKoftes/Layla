@@ -4,16 +4,17 @@ import json
 import logging
 import queue
 import threading
+
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from shared_state import get_touch_activity, get_history, get_append_history
 from agent_loop import (
     autonomous_run,
     stream_reason,
     strip_junk_from_reply,
     truncate_at_next_user_turn,
 )
+from shared_state import get_append_history, get_history, get_touch_activity
 
 logger = logging.getLogger("layla")
 router = APIRouter(tags=["agent"])
@@ -29,7 +30,7 @@ def learn(req: dict):
     try:
         embedding_id = ""
         try:
-            from layla.memory.vector_store import embed, add_vector
+            from layla.memory.vector_store import add_vector, embed
             vec = embed(content)
             embedding_id = add_vector(vec, {"content": content, "type": kind})
         except Exception as e:

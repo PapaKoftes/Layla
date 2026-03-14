@@ -1,6 +1,7 @@
 """
 Workspace index. Index local projects using embeddings for semantic search.
 Code intelligence: tree-sitter extracts functions, classes, imports, call graph.
+Workspace dependency graph: files, functions, classes, imports; edges: calls, imports, inherits.
 """
 from __future__ import annotations
 
@@ -10,6 +11,11 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("layla")
+
+# In-memory workspace dependency graph: {node_id: {type, label, file, ...}}, edges: [(src, tgt, edge_type)]
+_workspace_graph: dict[str, dict[str, Any]] = {}
+_workspace_graph_edges: list[tuple[str, str, str]] = []
+_workspace_graph_root: Path | None = None
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 WORKSPACE_INDEX_PATH = Path(__file__).resolve().parent.parent / "chroma_db"
@@ -73,8 +79,13 @@ def extract_code_architecture(source: str, file_path: str = "") -> dict[str, Any
             if node.type == "class_definition":
                 name_node = node.child_by_field_name("name")
                 name = _text(name_node) if name_node else ""
+                bases: list[str] = []
+                superclass = node.child_by_field_name("superclasses")
+                if superclass:
+                    raw_bases = _text(superclass).replace("(", "").replace(")", "").split(",")
+                    bases = [b.strip().split(".")[-1] for b in raw_bases if b.strip()]
                 if name:
-                    classes.append({"name": name, "line": node.start_point[0] + 1})
+                    classes.append({"name": name, "line": node.start_point[0] + 1, "bases": bases})
                 for c in node.children:
                     _walk(c, name, "")
                 return
@@ -203,6 +214,107 @@ def index_workspace(workspace_root: str | Path, extensions: tuple[str, ...] = ("
     except Exception as e:
         errors.append(str(e))
     return {"indexed": indexed, "skipped": skipped, "errors": errors}
+
+
+def build_workspace_graph(workspace_root: str | Path) -> dict[str, Any]:
+    """
+    Build semantic dependency graph for a repository.
+    Nodes: files, functions, classes, imports.
+    Edges: calls, imports, inherits.
+    """
+    global _workspace_graph, _workspace_graph_edges, _workspace_graph_root
+    root = Path(workspace_root).expanduser().resolve()
+    if not root.exists() or not root.is_dir():
+        return {"nodes": 0, "edges": 0}
+    _workspace_graph = {}
+    _workspace_graph_edges = []
+    _workspace_graph_root = root
+
+    for f in root.rglob("*.py"):
+        if ".git" in str(f) or "__pycache__" in str(f) or "node_modules" in str(f):
+            continue
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        rel = str(f.relative_to(root)).replace("\\", "/")
+        arch = extract_code_architecture(text, rel)
+        file_nid = f"file:{rel}"
+        _workspace_graph[file_nid] = {"type": "file", "label": rel, "file": rel}
+        for c in arch.get("classes", []):
+            nid = f"{rel}::class:{c['name']}"
+            _workspace_graph[nid] = {"type": "class", "label": c["name"], "file": rel, "line": c.get("line")}
+            _workspace_graph_edges.append((file_nid, nid, "contains"))
+            for base in c.get("bases", []):
+                _workspace_graph_edges.append((nid, f"class:{base}", "inherits"))
+                # implements: Python uses inheritance for interfaces; same edge type for reasoning
+                if base and (base.endswith("Base") or "Interface" in base or "Protocol" in base or "ABC" in base):
+                    _workspace_graph_edges.append((nid, f"class:{base}", "implements"))
+
+        for fn in arch.get("functions", []):
+            nid = f"{rel}::fn:{fn['name']}"
+            ctx = fn.get("class") or "<module>"
+            _workspace_graph[nid] = {"type": "function", "label": fn["name"], "file": rel, "class": ctx}
+            _workspace_graph_edges.append((file_nid, nid, "contains"))
+        for imp in arch.get("imports", []):
+            raw = (imp.get("raw") or "")[:80]
+            nid = f"{rel}::import:{hashlib.sha1(raw.encode()).hexdigest()[:8]}"
+            _workspace_graph[nid] = {"type": "import", "label": raw, "file": rel}
+            _workspace_graph_edges.append((file_nid, nid, "contains"))
+            # depends_on: extract module from "from X import" or "import X"
+            if " from " in raw.lower():
+                mod = raw.lower().split(" from ")[-1].split(" import ")[0].strip().split(" as ")[0]
+            elif " import " in raw.lower():
+                mod = raw.lower().split(" import ")[0].replace("import ", "").strip().split(",")[0].split(" as ")[0]
+            else:
+                mod = ""
+            if mod and "." in mod:
+                mod = mod.split(".")[0]
+            if mod and len(mod) > 1:
+                _workspace_graph_edges.append((file_nid, f"module:{mod}", "depends_on"))
+        for call in arch.get("calls", []):
+            caller = call.get("caller") or "<module>"
+            callee = call.get("callee") or ""
+            if caller and callee:
+                caller_nid = f"{rel}::fn:{caller}" if caller != "<module>" else file_nid
+                _workspace_graph_edges.append((caller_nid, f"callee:{callee}", "calls"))
+
+    return {"nodes": len(_workspace_graph), "edges": len(_workspace_graph_edges)}
+
+
+def get_workspace_dependency_context(query: str, workspace_root: str | Path = "", max_chars: int = 800) -> str:
+    """
+    Return dependency context relevant to query for coding tasks.
+    Uses workspace graph + architecture summary. Injected into _build_system_head when coding detected.
+    """
+    root = Path(workspace_root).expanduser().resolve() if workspace_root else _workspace_graph_root
+    if not root or not root.exists():
+        return ""
+    if not _workspace_graph:
+        try:
+            build_workspace_graph(root)
+        except Exception:
+            pass
+    if not _workspace_graph:
+        return get_architecture_summary(root)[:max_chars]
+    q_lower = (query or "").lower()
+    relevant: list[str] = []
+    seen: set[str] = set()
+    for nid, data in _workspace_graph.items():
+        label = (data.get("label") or "").lower()
+        if any(w in label for w in q_lower.split() if len(w) > 2):
+            file_path = data.get("file", "")
+            if file_path and file_path not in seen:
+                seen.add(file_path)
+                node_type = data.get("type", "")
+                if node_type == "class":
+                    relevant.append(f"  class {data.get('label')} in {file_path}")
+                elif node_type == "function":
+                    relevant.append(f"  def {data.get('label')} in {file_path}")
+    if not relevant:
+        return get_architecture_summary(root)[:max_chars]
+    header = "Workspace dependency context (relevant to query):\n"
+    return header + "\n".join(relevant[:15])[:max_chars]
 
 
 def search_workspace(query: str, workspace_root: str | Path = "", k: int = 5) -> list[dict]:

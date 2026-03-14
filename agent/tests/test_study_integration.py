@@ -5,16 +5,16 @@ Or: cd agent && python tests/test_study_integration.py
 Requires: server not running (tests use DB and main.app directly) or run against live server (test_study_api_live).
 """
 import json
+import sys
 import uuid
 from pathlib import Path
 
-import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
 def test_db_get_plan_by_topic():
     """get_plan_by_topic returns plan when topic matches (case-insensitive)."""
-    from layla.memory.db import save_study_plan, get_plan_by_topic
+    from layla.memory.db import get_plan_by_topic, save_study_plan
     topic = "IntegrationTestTopic_" + uuid.uuid4().hex[:6]
     plan_id = uuid.uuid4().hex[:8]
     save_study_plan(plan_id=plan_id, topic=topic, status="active")
@@ -31,7 +31,7 @@ def test_db_get_plan_by_topic():
 
 def test_db_update_study_progress():
     """update_study_progress appends note and sets last_studied."""
-    from layla.memory.db import save_study_plan, update_study_progress, get_plan_by_topic
+    from layla.memory.db import get_plan_by_topic, save_study_plan, update_study_progress
     topic = "ProgressTest_" + uuid.uuid4().hex[:6]
     plan_id = uuid.uuid4().hex[:8]
     save_study_plan(plan_id=plan_id, topic=topic, status="active")
@@ -73,6 +73,7 @@ def test_record_progress_creates_plan_if_missing():
 def test_api_study_plans_get_post_record():
     """Test GET /study_plans, POST /study_plans (with dedup), POST /study_plans/record_progress."""
     from fastapi.testclient import TestClient
+
     from main import app
     client = TestClient(app)
     topic = "ApiTest_" + uuid.uuid4().hex[:6]
@@ -114,6 +115,7 @@ def test_api_study_plans_get_post_record():
 def test_api_record_progress_no_topic():
     """record_progress returns error when topic or note missing."""
     from fastapi.testclient import TestClient
+
     from main import app
     client = TestClient(app)
     r = client.post("/study_plans/record_progress", json={})
@@ -128,9 +130,10 @@ def test_api_record_progress_no_topic():
 def test_capabilities_get_and_record_practice():
     """Evolution layer: GET /capabilities returns domains and capabilities; record_practice updates level."""
     from fastapi.testclient import TestClient
-    from main import app
-    from layla.memory.db import get_capability
+
     from layla.memory import capabilities as cap_mod
+    from layla.memory.db import get_capability
+    from main import app
     client = TestClient(app)
     r = client.get("/capabilities")
     assert r.status_code == 200

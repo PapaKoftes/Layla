@@ -30,8 +30,8 @@ def test_get_summary():
 
 def test_get_effective_config_does_not_persist():
     """Ensure we never write to runtime_config.json."""
-    from services.system_optimizer import get_effective_config
     import runtime_safety
+    from services.system_optimizer import get_effective_config
     base = runtime_safety.load_config()
     before_mtime = runtime_safety.CONFIG_FILE.stat().st_mtime if runtime_safety.CONFIG_FILE.exists() else 0
     get_effective_config(base)

@@ -98,7 +98,7 @@ def _merge_groups(groups: list[list[dict]]) -> dict:
             # Remove old vectors and add fresh one for the merged summary
             embedding_id = ""
             try:
-                from layla.memory.vector_store import embed, add_vector, delete_vectors_by_ids
+                from layla.memory.vector_store import add_vector, delete_vectors_by_ids, embed
                 if old_embedding_ids:
                     delete_vectors_by_ids(old_embedding_ids)
                 vec = embed(summary)
@@ -132,8 +132,9 @@ def memory_distill_semantic(learnings: list[dict], threshold: float = 0.75) -> d
     if not learnings or len(learnings) < 2:
         return {"merged_groups": 0, "removed": 0, "added": 0}
     try:
-        from layla.memory.vector_store import embed
         import numpy as np
+
+        from layla.memory.vector_store import embed
         valid = [(i, L) for i, L in enumerate(learnings) if (L.get("content") or "").strip()]
         if len(valid) < 2:
             return memory_distill(learnings)

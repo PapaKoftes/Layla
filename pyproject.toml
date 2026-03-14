@@ -43,9 +43,11 @@ testpaths = ["agent/tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+asyncio_mode = "auto"
 filterwarnings = [
   "ignore::DeprecationWarning",
   "ignore::PendingDeprecationWarning",
+  "ignore:pytest.PytestConfigWarning",
 ]
 
 [tool.setuptools.packages.find]

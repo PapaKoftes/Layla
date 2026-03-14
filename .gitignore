@@ -5,6 +5,8 @@ env/
 
 # Local runtime and data (do not commit)
 layla.db
+layla.db-shm
+layla.db-wal
 learnings.json
 *.db
 agent.zip
@@ -18,6 +20,8 @@ agent/runtime_config.json
 agent/.research_lab/
 agent/.research_brain/
 agent/.research_output/
+agent/.capability_discovery_cache/
+agent/.capability_sandbox/
 
 # Personal identity model (curated self-knowledge, not for public repo)
 # The base self_model.md is part of the project; user-added identity files stay local

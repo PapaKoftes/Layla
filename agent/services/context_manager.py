@@ -56,7 +56,13 @@ def summarize_history(messages: list, n_ctx: int = 4096, threshold_ratio: float 
         # Persist to long-term memory to prevent context overflow across sessions
         if summary.startswith("[Earlier conversation summary]"):
             try:
-                from layla.memory.db import add_conversation_summary, add_relationship_memory, add_timeline_event, create_episode, add_episode_event
+                from layla.memory.db import (
+                    add_conversation_summary,
+                    add_episode_event,
+                    add_relationship_memory,
+                    add_timeline_event,
+                    create_episode,
+                )
                 add_conversation_summary(summary)
                 add_relationship_memory(summary)  # companion intelligence: meaningful interaction
                 tl_id = add_timeline_event(summary, event_type="conversation_summary", importance=0.5)

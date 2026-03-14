@@ -3,6 +3,7 @@
 
 def test_platform_models():
     from fastapi.testclient import TestClient
+
     from main import app
     client = TestClient(app)
     r = client.get("/platform/models")
@@ -10,11 +11,14 @@ def test_platform_models():
     d = r.json()
     assert "models" in d
     assert "active" in d
+    assert "catalog" in d
+    assert "benchmarks" in d
     assert isinstance(d["models"], list)
 
 
 def test_platform_plugins():
     from fastapi.testclient import TestClient
+
     from main import app
     client = TestClient(app)
     r = client.get("/platform/plugins")
@@ -27,6 +31,7 @@ def test_platform_plugins():
 
 def test_platform_knowledge():
     from fastapi.testclient import TestClient
+
     from main import app
     client = TestClient(app)
     r = client.get("/platform/knowledge")
@@ -35,10 +40,28 @@ def test_platform_knowledge():
     assert "summaries" in d
     assert "learnings" in d
     assert "graph_nodes" in d
+    assert "timeline" in d
+    assert "user_identity" in d
+
+
+def test_platform_projects():
+    from fastapi.testclient import TestClient
+
+    from main import app
+    client = TestClient(app)
+    r = client.get("/platform/projects")
+    assert r.status_code == 200
+    d = r.json()
+    assert "project_name" in d
+    assert "goals" in d
+    assert "progress" in d
+    assert "blockers" in d
+    assert "last_discussed" in d
 
 
 def test_ui_loads():
     from fastapi.testclient import TestClient
+
     from main import app
     client = TestClient(app)
     r = client.get("/ui")
