@@ -8,7 +8,8 @@ import time
 import uuid
 from collections import deque
 from contextlib import asynccontextmanager
-from datetime import datetime
+
+from layla.time_utils import utcnow
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -126,6 +127,22 @@ async def lifespan(app: FastAPI):
     try:
         import runtime_safety
         cfg = runtime_safety.load_config()
+        if cfg.get("hardware_aware_startup", True):
+            try:
+                from services.hardware_detect import detect_hardware
+                from services.model_recommender import recommend_from_hardware
+                h = detect_hardware()
+                rec = recommend_from_hardware()
+                logger.info(
+                    "Hardware: %s RAM %.0fGB VRAM %.0fGB tier=%s | Recommended: %s",
+                    h.get("acceleration_backend", "none"),
+                    h.get("ram_gb", 0),
+                    h.get("vram_gb", 0),
+                    h.get("machine_tier", ""),
+                    rec.get("model_tier", ""),
+                )
+            except Exception as e:
+                logger.debug("hardware startup log skipped: %s", e)
         if cfg.get("use_chroma"):
             try:
                 from layla.memory.vector_store import index_knowledge_docs
@@ -148,6 +165,15 @@ async def lifespan(app: FastAPI):
             logger.info("Tools registry validated")
         except Exception as e:
             logger.warning("Tools registry validation failed: %s", e)
+        try:
+            from services.plugin_loader import load_plugins
+            plug_result = load_plugins(cfg)
+            if plug_result["skills_added"] or plug_result["tools_added"]:
+                logger.info("Plugins loaded: %d skills, %d tools", plug_result["skills_added"], plug_result["tools_added"])
+            for err in plug_result.get("errors", [])[:5]:
+                logger.warning("Plugin error: %s", err)
+        except Exception as e:
+            logger.warning("Plugin load failed: %s", e)
         # Pre-warm LLM in background thread â€” first request will be instant
         try:
             from services.llm_gateway import prewarm_llm
@@ -295,7 +321,7 @@ def _write_pending_list(data: list) -> None:
 
 def _audit(tool: str, args_summary: str, approved_by: str, result_ok: bool) -> None:
     GOV_PATH.mkdir(parents=True, exist_ok=True)
-    line = f"{datetime.utcnow().isoformat()} | {tool} | {args_summary[:80]} | {approved_by} | {'ok' if result_ok else 'fail'}\n"
+    line = f"{utcnow().isoformat()} | {tool} | {args_summary[:80]} | {approved_by} | {'ok' if result_ok else 'fail'}\n"
     try:
         with open(str(AUDIT_LOG), "a", encoding="utf-8") as f:
             f.write(line)
@@ -484,6 +510,11 @@ def health():
     }
     if model_status:
         payload["model_error"] = model_status.get("error")
+    try:
+        from services.system_optimizer import get_summary
+        payload["system_optimizer"] = get_summary()
+    except Exception:
+        pass
     if not ok:
         payload["detail"] = detail
         return JSONResponse(payload, status_code=503)
@@ -493,6 +524,80 @@ def health():
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Setup status + settings (for first-run overlay and settings panel)
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@app.get("/doctor")
+def doctor():
+    """Full system diagnostics. Same as `layla doctor`."""
+    try:
+        from services.system_doctor import run_diagnostics
+        return run_diagnostics(include_llm=False)
+    except Exception as e:
+        return {"status": "error", "error": str(e), "checks": {}}
+
+
+# ─── Platform Control Center API ────────────────────────────────────────────
+
+@app.get("/platform/models")
+def platform_models():
+    """List models and active model for UI control center."""
+    try:
+        from services.model_manager import list_models
+        import runtime_safety
+        cfg = runtime_safety.load_config()
+        models = list_models()
+        active = cfg.get("model_filename", "")
+        return {"models": models, "active": active}
+    except Exception as e:
+        return {"models": [], "active": "", "error": str(e)}
+
+
+@app.get("/platform/plugins")
+def platform_plugins():
+    """List loaded plugins, skills, capabilities for UI."""
+    try:
+        from services.plugin_loader import load_plugins
+        import runtime_safety
+        cfg = runtime_safety.load_config()
+        pl = load_plugins(cfg)
+        skills = []
+        try:
+            from layla.skills.registry import SKILLS
+            skills = [{"name": k, "description": (v.get("description") or "")[:80]} for k, v in list(SKILLS.items())[:30]]
+        except Exception:
+            pass
+        return {
+            "skills_added": pl.get("skills_added", 0),
+            "tools_added": pl.get("tools_added", 0),
+            "errors": pl.get("errors", []),
+            "skills": skills[:15],
+        }
+    except Exception as e:
+        return {"skills_added": 0, "tools_added": 0, "errors": [str(e)], "skills": []}
+
+
+@app.get("/platform/knowledge")
+def platform_knowledge():
+    """Conversation summaries, learnings preview, knowledge graph nodes for UI."""
+    try:
+        from layla.memory.db import get_recent_conversation_summaries, get_recent_relationship_memories, get_recent_learnings
+        summaries = get_recent_conversation_summaries(n=5)
+        rel_mems = get_recent_relationship_memories(n=5)
+        learnings = get_recent_learnings(n=10)
+        nodes = []
+        try:
+            from layla.memory.memory_graph import get_recent_nodes
+            nodes = get_recent_nodes(n=20)
+        except Exception:
+            pass
+        return {
+            "summaries": [{"id": s.get("id"), "summary": (s.get("summary") or "")[:200]} for s in summaries],
+            "relationship_memories": [{"id": r.get("id"), "user_event": (r.get("user_event") or "")[:150]} for r in rel_mems],
+            "learnings": [{"id": lr.get("id"), "content": (lr.get("content") or "")[:120], "type": lr.get("type")} for lr in learnings],
+            "graph_nodes": [{"label": n.get("label"), "id": n.get("id")} for n in nodes],
+        }
+    except Exception as e:
+        return {"summaries": [], "relationship_memories": [], "learnings": [], "graph_nodes": [], "error": str(e)}
+
 
 @app.get("/setup_status")
 def setup_status():
@@ -899,7 +1004,7 @@ def system_export():
         pip_freeze = str(e)
 
     return JSONResponse({
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": utcnow().isoformat(),
         "config": cfg,
         "pending_count": pending_count,
         "learnings_count": learnings_count,

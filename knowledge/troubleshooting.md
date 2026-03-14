@@ -15,6 +15,7 @@ domain: troubleshooting
 **"venv not found" or "python not found"**
 - Run `INSTALL.bat` (Windows) or `bash install.sh` (Linux/macOS) first
 - The venv is at `.venv/` in the repo root
+- No model yet? Run `python agent/first_run.py` — the wizard can download one
 
 **Port 8000 already in use**
 - Another process is on port 8000. Change the port: `uvicorn main:app --port 8001`
