@@ -12,10 +12,20 @@ from decision_schema import parse_decision as _parse_decision  # noqa: E402
 from layla.tools.registry import TOOLS, set_effective_sandbox  # noqa: E402
 from layla.memory.db import migrate as _db_migrate, get_recent_learnings as _db_get_learnings, get_aspect_memories as _db_get_aspect_memories, save_aspect_memory as _db_save_aspect_memory  # noqa: E402
 from services.llm_gateway import run_completion, get_stop_sequences, llm_serialize_lock  # noqa: E402
+from services.context_manager import build_system_prompt, DEFAULT_BUDGETS  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENT_DIR = Path(__file__).resolve().parent
 RESEARCH_LAB_ROOT = AGENT_DIR / ".research_lab"
+
+
+def _get_effective_config(base_cfg: dict) -> dict:
+    """Apply system_optimizer runtime overrides. Never persists to disk."""
+    try:
+        from services.system_optimizer import get_effective_config
+        return get_effective_config(base_cfg)
+    except Exception:
+        return base_cfg
 
 
 def _path_under_lab(path: str | Path, lab_root: str) -> bool:
@@ -223,7 +233,7 @@ def stream_reason(
 def _write_pending(tool: str, args: dict) -> str:
     """Write a pending approval entry and return its UUID. Exposes risk_level from registry for UI."""
     import uuid as _uuid
-    from datetime import datetime
+    from layla.time_utils import utcnow
     gov_path = Path(__file__).resolve().parent / ".governance"
     gov_path.mkdir(parents=True, exist_ok=True)
     pending_file = gov_path / "pending.json"
@@ -237,7 +247,7 @@ def _write_pending(tool: str, args: dict) -> str:
         "id": entry_id,
         "tool": tool,
         "args": args,
-        "requested_at": datetime.utcnow().isoformat(),
+        "requested_at": utcnow().isoformat(),
         "status": "pending",
         "risk_level": risk,
     })
@@ -261,7 +271,9 @@ def _semantic_recall(query: str, k: int = 5) -> str:
     """
     try:
         from layla.memory.vector_store import search_memories_full
-        results = search_memories_full(query, k=k, use_rerank=True)
+        cfg = runtime_safety.load_config()
+        use_mmr = bool(cfg.get("retrieval_use_mmr", False))
+        results = search_memories_full(query, k=k, use_rerank=True, use_mmr=use_mmr)
         if not results:
             return ""
         lines = [r.get("content", "") for r in results if r.get("content")]
@@ -468,6 +480,16 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
     repo_struct = _get_repo_structure(workspace_root)
     if repo_struct:
         workspace_context_parts.append(f"Repo structure (top-level): {repo_struct}")
+    # Workspace dependency context for coding tasks
+    coding_keywords = ("code", "debug", "fix", "implement", "refactor", "function", "class", "module", "file", "grep", "read_file", "write_file")
+    if goal and workspace_root and any(kw in goal.lower() for kw in coding_keywords):
+        try:
+            from services.workspace_index import get_workspace_dependency_context
+            dep_ctx = get_workspace_dependency_context(goal, workspace_root, max_chars=400)
+            if dep_ctx:
+                workspace_context_parts.append(dep_ctx)
+        except Exception:
+            pass
     try:
         from layla.memory.db import get_active_study_plans
         plans = get_active_study_plans()
@@ -492,6 +514,19 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
                 proj_parts.append("Key files: " + ", ".join(pc["key_files"][:10]))
             if pc.get("goals"):
                 proj_parts.append("Goals: " + (pc["goals"][:200] or ""))
+            if pc.get("progress"):
+                proj_parts.append("Progress: " + (pc["progress"][:200] or ""))
+            if pc.get("blockers"):
+                proj_parts.append("Blockers: " + (pc["blockers"][:200] or ""))
+            if pc.get("last_discussed"):
+                proj_parts.append("Last discussed: " + (pc["last_discussed"][:200] or ""))
+            try:
+                from layla.memory.db import get_active_goals
+                goals_list = get_active_goals(project_id=pc.get("project_name", ""))
+                if goals_list:
+                    proj_parts.append("Active goals: " + "; ".join((g.get("title") or "")[:50] for g in goals_list[:3]))
+            except Exception:
+                pass
             if proj_parts:
                 workspace_context_parts.append("Project context: " + " | ".join(proj_parts))
     except Exception:
@@ -503,93 +538,193 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
     else:
         workspace_context = ""
 
-    # Core instructions first so they're never pushed out by context limits
+    # Build sections for centralized context management (token budgets, deduplication)
     core = (
         "You are Layla. Use the identity and rules below. Stay in character and follow the reference docs and memories."
     )
-    parts = [core]
+    sys_parts = [core]
     if identity:
-        parts.append(identity)
-    # Identity anchor: .identity/self_model.md — only for Lilith; excluded from RAG
+        sys_parts.append(identity)
     if aspect and aspect.get("id") == "lilith":
         self_model_path = REPO_ROOT / ".identity" / "self_model.md"
         if self_model_path.exists():
             try:
-                parts.append("Self model (internal):\n" + self_model_path.read_text(encoding="utf-8").strip()[:2000])
+                sys_parts.append("Self model (internal):\n" + self_model_path.read_text(encoding="utf-8").strip()[:2000])
             except Exception:
                 pass
-    # Cognitive guidance layers (prompt-only; after identity, before memory)
     if cfg.get("enable_cognitive_lens"):
         cl = runtime_safety.load_cognitive_lens()
         if cl:
-            parts.append(cl)
+            sys_parts.append(cl)
     if cfg.get("enable_lens_knowledge"):
         lk = runtime_safety.load_lens_knowledge()
         if lk:
-            parts.append(lk)
+            sys_parts.append(lk)
     if cfg.get("enable_behavioral_rhythm"):
         br = runtime_safety.load_behavioral_rhythm()
         if br:
-            parts.append(br)
+            sys_parts.append(br)
     if cfg.get("enable_ui_reflection"):
         ur = runtime_safety.load_ui_reflection()
         if ur:
-            parts.append(ur)
+            sys_parts.append(ur)
     if cfg.get("enable_operational_guidance"):
         og = runtime_safety.load_operational_guidance()
         if og:
-            parts.append(og)
-    # Personality Expression Layer (prompt-only; feature-flag)
+            sys_parts.append(og)
     if cfg.get("enable_personality_expression"):
         expr = runtime_safety.load_personality_expression()
         if expr:
-            parts.append(expr)
-    # Style profile (evolution layer): recognizable growth, identity across writing/coding/reasoning
+            sys_parts.append(expr)
     if cfg.get("enable_style_profile"):
         try:
             from layla.memory.db import get_style_profile
             style_parts = []
-            for key in ("writing", "coding", "reasoning", "structuring"):
-                row = get_style_profile(key)
+            for sk in ("writing", "coding", "reasoning", "structuring"):
+                row = get_style_profile(sk)
                 if row and (row.get("profile_snapshot") or "").strip():
                     snip = (row.get("profile_snapshot") or "").strip()[:600]
                     if snip:
-                        style_parts.append(f"{key}: {snip}")
+                        style_parts.append(f"{sk}: {snip}")
             if style_parts:
-                parts.append("Style (stay consistent with these):\n" + "\n".join(style_parts))
+                sys_parts.append("Style (stay consistent with these):\n" + "\n".join(style_parts))
         except Exception:
             pass
-    # When uncensored/NSFW allowed: reinforce refusal-only-for-harm, anonymous access
     if cfg.get("uncensored") or cfg.get("nsfw_allowed"):
-        parts.append(
+        sys_parts.append(
             "Content policy: Do not censor. Adult/NSFW content is allowed in consented contexts. "
             "Refuse only for genuine harm (illegal, non-consensual, abuse). Access is anonymous; do not require or store user identity."
         )
     if personality:
-        parts.append(personality)
-    # Lilith (or any aspect) NSFW register: when user used nsfw_triggers keyword, add the intimate prompt block
+        sys_parts.append(personality)
     if aspect and aspect.get("_use_nsfw_addition") and aspect.get("systemPromptAdditionNsfw"):
-        parts.append(aspect.get("systemPromptAdditionNsfw", ""))
-    if workspace_context:
-        parts.append(workspace_context[:1200])
-    if aspect_memories:
-        parts.append(aspect_memories[:1500])
-    if learnings:
-        parts.append(f"Things I remember:\n{learnings[:2000]}")
-    if semantic and semantic not in learnings:
-        parts.append(f"Relevant memories:\n{semantic[:1000]}")
-    if graph_associations:
-        parts.append(graph_associations)
-    if retrieved_context:
-        parts.append(retrieved_context)
-    if knowledge:
-        parts.append(f"Reference docs:\n{knowledge}")
-    # Chain-of-thought elicitation — helps smaller models reason step-by-step
+        sys_parts.append(aspect.get("systemPromptAdditionNsfw", ""))
     if cfg.get("enable_cot", True):
-        parts.append(
+        sys_parts.append(
             "Reasoning style: Think through problems step by step before giving your final answer. "
             "For complex questions, break them down. Show your reasoning when it helps clarity."
         )
+    system_instructions = "\n\n".join(sys_parts)
+
+    # Memory: learnings + semantic + aspect_memories + retrieved (merged for dedup)
+    memory_parts = []
+    if aspect_memories:
+        memory_parts.append(aspect_memories)
+    if learnings:
+        memory_parts.append(f"Things I remember:\n{learnings}")
+    if semantic and semantic not in learnings:
+        memory_parts.append(f"Relevant memories:\n{semantic}")
+    if retrieved_context:
+        memory_parts.append(retrieved_context)
+    try:
+        from layla.memory.db import get_recent_conversation_summaries
+        summaries = get_recent_conversation_summaries(n=3)
+        if summaries:
+            summary_texts = [s.get("summary", "") for s in summaries if s.get("summary")]
+            if summary_texts:
+                memory_parts.append("Prior conversation summaries:\n" + "\n\n".join(summary_texts))
+    except Exception:
+        pass
+    # Relationship memory: meaningful interaction summaries for companion context
+    try:
+        from layla.memory.db import get_recent_relationship_memories
+        rel_mems = get_recent_relationship_memories(n=3)
+        if rel_mems:
+            rel_texts = [m.get("user_event", "") for m in rel_mems if m.get("user_event")]
+            if rel_texts:
+                memory_parts.append("Recent relationship context:\n" + "\n\n".join(rel_texts))
+    except Exception:
+        pass
+    # Timeline events: personal timeline memory for companion experience
+    try:
+        from layla.memory.db import get_recent_timeline_events
+        timeline = get_recent_timeline_events(n=5, min_importance=0.3)
+        if timeline:
+            tl_texts = [f"[{e.get('event_type','')}] {e.get('content','')}" for e in timeline if e.get("content")]
+            if tl_texts:
+                memory_parts.append("Recent timeline:\n" + "\n\n".join(tl_texts[:5]))
+    except Exception:
+        pass
+    # Style profile (companion intelligence): tone, response style, topics
+    if cfg.get("enable_style_profile"):
+        try:
+            from services.style_profile import get_profile_summary
+            profile = get_profile_summary()
+            profile_parts = []
+            if profile.get("response_style"):
+                profile_parts.append(profile["response_style"])
+            if profile.get("topics"):
+                profile_parts.append(profile["topics"])
+            if profile_parts:
+                memory_parts.append("Conversation style (match these):\n" + "\n".join(profile_parts))
+        except Exception:
+            pass
+    # User identity (long-term companion context): verbosity, humor, formality, response length
+    try:
+        from layla.memory.db import get_all_user_identity
+        uid = get_all_user_identity()
+        if uid:
+            parts = [f"{k}: {v}" for k, v in uid.items() if v]
+            if parts:
+                memory_parts.append("User/companion context:\n" + "\n".join(parts))
+    except Exception:
+        pass
+    # Personal knowledge graph: unified timeline, projects, goals, identity
+    try:
+        from services.personal_knowledge_graph import get_personal_graph_context
+        pkg_ctx = get_personal_graph_context(goal or "", max_chars=400)
+        if pkg_ctx:
+            memory_parts.append("Personal context (relevant):\n" + pkg_ctx)
+    except Exception:
+        pass
+    # Reasoning strategies for complex goals
+    if goal and len(goal) > 100:
+        try:
+            from services.reasoning_strategies import get_strategy_prompt_hint
+            hint = get_strategy_prompt_hint(goal)
+            if hint:
+                memory_parts.append(hint)
+        except Exception:
+            pass
+    memory_block = "\n\n".join(memory_parts) if memory_parts else ""
+
+    current_goal = ""
+    if sub_goals:
+        current_goal = "Sub-objectives: " + "; ".join(sub_goals[:3])
+    elif goal:
+        current_goal = "Current goal: " + (goal[:200] + "..." if len(goal) > 200 else goal)
+
+    budgets = None
+    if cfg.get("prompt_budgets"):
+        budgets = dict(DEFAULT_BUDGETS)
+        for k, v in (cfg.get("prompt_budgets") or {}).items():
+            if k in budgets and v is not None:
+                budgets[k] = max(0, int(v))
+
+    sections = {
+        "system_instructions": system_instructions,
+        "agent_state": workspace_context,
+        "current_goal": current_goal,
+        "memory": memory_block,
+        "knowledge_graph": graph_associations,
+        "knowledge": f"Reference docs:\n{knowledge}" if knowledge else "",
+    }
+    if cfg.get("prompt_budget_enabled", True):
+        n_ctx = max(2048, int(cfg.get("n_ctx", 4096)))
+        assembled, _metrics = build_system_prompt(sections, n_ctx=n_ctx, budgets=budgets, reserve_for_response=512)
+        return assembled if assembled.strip() else "You are Layla, a bounded AI companion and engineering agent."
+    # Legacy path: no budget enforcement
+    parts = [system_instructions]
+    if workspace_context:
+        parts.append(workspace_context[:1200])
+    if current_goal:
+        parts.append(current_goal)
+    if memory_block:
+        parts.append(memory_block)
+    if graph_associations:
+        parts.append(graph_associations)
+    if knowledge:
+        parts.append(f"Reference docs:\n{knowledge}")
     return "\n\n".join(parts) if parts else "You are Layla, a bounded AI companion and engineering agent."
 
 
@@ -821,41 +956,15 @@ def _observe_environment(tool_name: str, result: dict, workspace: str) -> bool:
 
 
 def _classify_failure_and_recovery(state: dict) -> None:
-    """North Star §8: classify failure type and set structured recovery hint (stringify at prompt assembly)."""
-    consecutive = state.get("consecutive_no_progress", 0)
-    if consecutive == 0:
-        state.pop("recovery_hint", None)
-        return
-    last_tool = state.get("last_tool_used") or ""
-    if last_tool in ("read_file", "list_dir", "grep_code", "glob_files", "file_info", "get_project_context", "understand_file"):
-        state["recovery_hint"] = {
-            "type": "planning_gap",
-            "message": "Consider breaking the goal into smaller steps or asking the user to clarify. Try a different inspection or reply (reason).",
-            "source": "failure_classifier",
-        }
-    elif last_tool in ("write_file", "run_python", "apply_patch", "shell"):
-        state["recovery_hint"] = {
-            "type": "execution_issue",
-            "message": "Execution may have failed or been blocked. Check tool result; suggest a fix or ask the user. Prefer read_file to verify state before retrying.",
-            "source": "failure_classifier",
-        }
-    else:
-        state["recovery_hint"] = {
-            "type": "workflow_breakdown",
-            "message": "Workflow may be stuck. Consider replying (reason) to summarize what was tried and suggest next steps, or propose a revised objective.",
-            "source": "failure_classifier",
-        }
+    """North Star §8: delegate to failure_recovery module."""
+    from services.failure_recovery import classify_failure_and_recovery
+    classify_failure_and_recovery(state)
 
 
 def _format_recovery_hint_for_prompt(recovery_hint: dict) -> str:
     """Stringify structured recovery hint for injection into decision prompt."""
-    if not recovery_hint or not isinstance(recovery_hint, dict):
-        return ""
-    t = recovery_hint.get("type") or ""
-    msg = recovery_hint.get("message") or ""
-    if not t and not msg:
-        return ""
-    return f"Failure type: {t}. Assist recovery: {msg} "
+    from services.failure_recovery import format_recovery_hint_for_prompt
+    return format_recovery_hint_for_prompt(recovery_hint)
 
 
 def _run_verification_after_tool(state: dict, tool_name: str, result: dict, workspace: str = "") -> None:
@@ -903,6 +1012,11 @@ def _llm_decision(
     sub_goals = state.get("sub_goals") or []
     if sub_goals:
         prompt_context += "Sub-objectives (guide tool choice): " + "; ".join(sub_goals[:3]) + "\n\n"
+
+    # Cognitive workspace: chosen approach from multi-strategy deliberation
+    cw = state.get("cognitive_workspace") or {}
+    if cw.get("strategy_hint"):
+        prompt_context += f"Chosen approach ({cw.get('chosen_name', '')}): {cw['strategy_hint']}\n\n"
 
     # File probe awareness (planning-only): surface hints without forcing a hard stop.
     try:
@@ -1006,32 +1120,36 @@ def _llm_decision(
         "Use objective_complete true only when you have enough to answer.\n"
     )
     try:
-        cfg = runtime_safety.load_config()  # noqa: F841
+        cfg = runtime_safety.load_config()
         max_tok = 120 if reframe_candidate else 80
-        # Try instructor (grammar-constrained JSON) first
+        # Try instructor (grammar-constrained JSON) when local Llama available
         try:
             import instructor
             from decision_schema import AgentDecision
-            from services.llm_gateway import _get_llm
-            llm = _get_llm()
-            if llm is not None:
-                client = instructor.patch(llm)
-                decision_obj = client.chat.completions.create(
-                    response_model=AgentDecision,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=max_tok,
-                    temperature=0.1,
-                )
-                d = decision_obj.model_dump()
-                action = (d.get("action") or "reason").lower()
-                if action not in ("tool", "reason"):
-                    action = "reason"
-                tool = (d.get("tool") or "").strip() or None
-                if action == "tool" and tool and tool not in _VALID_TOOLS:
-                    tool = None
-                d["action"] = action
-                d["tool"] = tool
-                return d
+            if not (cfg.get("llama_server_url") or "").strip():
+                from services.llm_gateway import _get_llm
+                llm = _get_llm()
+                if llm is not None:
+                    create = instructor.patch(
+                        create=llm.create_chat_completion_openai_v1,
+                        mode=instructor.Mode.JSON_SCHEMA,
+                    )
+                    decision_obj = create(
+                        messages=[{"role": "user", "content": prompt}],
+                        max_tokens=max_tok,
+                        temperature=0.1,
+                        response_model=AgentDecision,
+                    )
+                    d = decision_obj.model_dump()
+                    action = (d.get("action") or "reason").lower()
+                    if action not in ("tool", "reason"):
+                        action = "reason"
+                    tool = (d.get("tool") or "").strip() or None
+                    if action == "tool" and tool and tool not in _VALID_TOOLS:
+                        tool = None
+                    d["action"] = action
+                    d["tool"] = tool
+                    return d
         except Exception:
             pass
         # Fallback: plain completion + parse
@@ -1058,36 +1176,9 @@ def _llm_decision(
 
 
 def classify_intent(goal: str) -> str:
-    g = goal.lower()
-
-    if any(kw in g for kw in ("create file", "write file", "save file", "create a file")):
-        return "write_file"
-    if any(kw in g for kw in ("read file", "open file", "show file", "content of", "contents of")):
-        return "read_file"
-    if any(kw in g for kw in ("list dir", "list files", "list folder", "ls ", "show files", "what files")):
-        return "list_dir"
-    if any(kw in g for kw in ("git status",)):
-        return "git_status"
-    if any(kw in g for kw in ("git diff",)):
-        return "git_diff"
-    if any(kw in g for kw in ("git log",)):
-        return "git_log"
-    if any(kw in g for kw in ("git branch", "current branch")):
-        return "git_branch"
-    if any(kw in g for kw in ("grep ", "search code", "find in code", "grep_code")):
-        return "grep_code"
-    if any(kw in g for kw in ("glob ", "find files", "glob files")):
-        return "glob_files"
-    if any(kw in g for kw in ("run python", "execute python", "run script", "run_python")):
-        return "run_python"
-    if any(kw in g for kw in ("apply patch", "patch file", "apply_patch")):
-        return "apply_patch"
-    if any(kw in g for kw in ("fetch url", "fetch http", "browse ", "scrape ", "look up http", "fetch_url", "http://", "https://")):
-        return "fetch_url"
-    if any(kw in g for kw in ("run ", "execute ", "install ", "npm ", "pip ", "python ", "bash ", "cmd ")):
-        return "shell"
-
-    return "reason"
+    """Delegate to decision_engine module."""
+    from services.decision_engine import classify_intent as _ci
+    return _ci(goal)
 
 
 def _extract_path(goal: str) -> str:
@@ -1201,6 +1292,12 @@ def _save_outcome_memory(state: dict) -> None:
         save_learning(content=summary, kind="outcome")
     except Exception as e:
         logger.debug("outcome memory save failed: %s", e)
+    # Reflection engine: what worked, what failed, what could improve
+    try:
+        from services.reflection_engine import run_reflection
+        run_reflection(state)
+    except Exception as e:
+        logger.debug("reflection engine failed: %s", e)
 
 
 def _format_steps(steps: list) -> str:
@@ -1376,7 +1473,8 @@ def _autonomous_run_impl(
     research_mode: bool,
     plan_depth: int = 0,
 ) -> dict:
-    cfg = runtime_safety.load_config()  # noqa: F841
+    base_cfg = runtime_safety.load_config()
+    cfg = _get_effective_config(base_cfg)
     # Gate once at entry only: avoid refusing mid-run when our own LLM/embedder spiked CPU
     if system_overloaded():
         time.sleep(2.0)
@@ -1443,21 +1541,35 @@ def _autonomous_run_impl(
     if research_mode and workspace:
         set_effective_sandbox(workspace)
 
+    # Cognitive workspace: generate approaches → evaluate → choose best (tree-of-thought)
+    try:
+        from services.cognitive_workspace import should_use_cognitive_workspace, run_deliberation
+        if should_use_cognitive_workspace(goal, cfg, plan_depth):
+            deliberation = run_deliberation(goal, context or "")
+            if deliberation.get("strategy_hint"):
+                state["cognitive_workspace"] = deliberation
+                _emit_ux(state, ux_state_queue, UX_STATE_THINKING)
+    except Exception:
+        pass
+
     # Planning: if goal warrants it, create and execute plan first (respect max_plan_depth)
     try:
         from services.planner import should_plan, create_plan, execute_plan
         from services.observability import log_agent_plan_created, log_agent_plan_completed, log_planner_invoked
         if should_plan(goal, cfg, plan_depth=plan_depth):
-            plan = create_plan(goal)
+            plan = create_plan(goal, cfg=cfg)
             if plan:
                 log_planner_invoked(steps=len(plan), goal_preview=goal[:60])
                 log_agent_plan_created(steps=len(plan), goal_preview=goal[:60])
+                plan_context = context or ""
+                if state.get("cognitive_workspace", {}).get("strategy_hint"):
+                    plan_context = plan_context + f"\n\n[Chosen approach: {state['cognitive_workspace']['strategy_hint']}]"
                 plan_result = execute_plan(
                     plan,
                     autonomous_run,
                     goal_prefix=goal[:100],
                     plan_depth=plan_depth,
-                    context=context,
+                    context=plan_context,
                     workspace_root=workspace,
                     allow_write=allow_write,
                     allow_run=allow_run,
@@ -1497,9 +1609,15 @@ def _autonomous_run_impl(
             _emit_ux(state, ux_state_queue, UX_STATE_CHANGING_APPROACH)
 
         _emit_ux(state, ux_state_queue, UX_STATE_THINKING)
+        _t0 = time.perf_counter()
         decision = _llm_decision(
             goal, state, context, active_aspect, show_thinking, conversation_history or []
         )
+        try:
+            from services.observability import log_agent_decision
+            log_agent_decision(duration_ms=(time.perf_counter() - _t0) * 1000)
+        except Exception:
+            pass
         if decision:
             state["objective_complete"] = bool(decision.get("objective_complete", False))
             state["priority_level"] = decision.get("priority_level") or "medium"

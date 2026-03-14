@@ -38,6 +38,8 @@
   "safe_mode": true,
 
   "use_chroma": true,
+  "retrieval_use_mmr": false,
+  "retrieval_cross_encoder_limit": 10,
 
   "knowledge_chunks_k": 5,
   "knowledge_max_bytes": 4000,
@@ -46,11 +48,17 @@
   "aspect_memories_n": 10,
 
   "planning_enabled": true,
+  "enable_cognitive_workspace": true,
+  "skills_enabled": true,
+  "models_dir": "~/.layla/models",
+  "capability_impls": {},
   "max_plan_depth": 3,
   "max_mission_runtime_seconds": 3600,
   "max_mission_steps": 10,
   "enable_cot": true,
   "enable_self_reflection": false,
+  "benchmark_on_load": false,
+  "hardware_aware_startup": true,
 
   "scheduler_study_enabled": true,
   "scheduler_interval_minutes": 30,
@@ -66,6 +74,8 @@
   "remote_allow_endpoints": [],
   "remote_mode": "observe",
   "remote_model_name": "layla",
+  "llama_server_url": null,
+  "inference_backend": "auto",
 
   "trace_id_enabled": false,
 
@@ -82,6 +92,9 @@
     {"url": "https://fastapi.tiangolo.com/tutorial/first-steps/", "slug": "fastapi-quickstart"},
     {"url": "https://docs.python.org/3/library/asyncio-task.html", "slug": "asyncio-tasks"}
   ],
+
+  "prompt_budget_enabled": true,
+  "prompt_budgets": null,
 
   "enable_personality_expression": false,
   "enable_cognitive_lens": false,
