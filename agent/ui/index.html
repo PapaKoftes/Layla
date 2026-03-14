@@ -376,6 +376,16 @@
   .settings-row input[type=range] { padding: 4px 0; }
   .settings-row input:focus, .settings-row select:focus { outline: none; border-color: var(--asp); }
   .settings-row .hint { font-size: 0.7rem; color: var(--text-dim); margin-top: 4px; opacity: 0.7; }
+  .settings-form-container { max-height: 60vh; overflow-y: auto; margin-bottom: 12px; }
+  .settings-loading { color: var(--text-dim); padding: 20px; }
+  .settings-section { margin-bottom: 16px; }
+  .settings-core .settings-row { margin-bottom: 14px; }
+  .settings-advanced { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
+  .settings-advanced summary { cursor: pointer; font-size: 0.72rem; letter-spacing: 0.1em; color: var(--text-dim); text-transform: uppercase; }
+  .settings-advanced-inner { margin-top: 12px; }
+  .settings-config-ref { margin-top: 12px; font-size: 0.7rem; color: var(--text-dim); }
+  .settings-config-ref a { color: var(--asp); }
+  .settings-config-ref code { font-size: 0.68rem; }
   .settings-btns { display: flex; gap: 10px; margin-top: 20px; }
   .settings-save { padding: 9px 24px; background: var(--asp); border: none; color: #fff; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; }
   .settings-close { padding: 9px 16px; background: transparent; border: 1px solid var(--border); color: var(--text-dim); border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; }
@@ -693,9 +703,10 @@
   #send-btn:active:not(:disabled) { transform: translateY(0); }
   #send-btn:disabled { opacity: 0.35; cursor: not-allowed; background: var(--border); box-shadow: none; }
 
-  /* ── Right panel ── */
+  /* ── Right panel (tabbed) ── */
   .panels {
-    width: 240px;
+    width: 260px;
+    min-width: 220px;
     border-left: 1px solid var(--border);
     background: var(--bg2);
     padding: 14px 12px;
@@ -718,6 +729,41 @@
   .mission-summary { font-size: 0.75rem; cursor: pointer; list-style: none; color: var(--asp); }
   .mission-summary::-webkit-details-marker { display: none; }
   @keyframes mission-pulse { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+
+  /* Panel tabs */
+  .panel-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 8px 0 10px 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 10px;
+  }
+  .panel-tab {
+    padding: 4px 8px;
+    font-size: 0.65rem;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-dim);
+    border-radius: 2px;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.06em;
+    transition: all 0.15s;
+  }
+  .panel-tab:hover { color: var(--text); border-color: var(--border); }
+  .panel-tab.active { background: var(--asp-mid); border-color: var(--asp); color: var(--asp); }
+  .panel-pane { display: none; }
+  .panel-pane.active { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; overflow: hidden; }
+
+  /* Help / capabilities content */
+  .help-section { font-size: 0.72rem; line-height: 1.6; color: var(--text); overflow-y: auto; flex: 1; min-height: 0; }
+  .help-section h4 { font-family: 'Cinzel', serif; font-size: 0.7rem; color: var(--asp); margin: 12px 0 6px; letter-spacing: 0.08em; }
+  .help-section h4:first-child { margin-top: 0; }
+  .help-section ul { margin: 4px 0 0 14px; padding: 0; }
+  .help-section li { margin: 3px 0; }
+  .help-section code { font-size: 0.68rem; }
+  .help-section .help-tip { background: var(--code-bg); border-left: 2px solid var(--asp); padding: 8px 10px; margin: 8px 0; border-radius: 0 3px 3px 0; font-size: 0.7rem; }
   .panel-item {
     font-size: 0.73rem;
     color: var(--text);
@@ -1034,26 +1080,75 @@
     </div>
   </div>
 
-  <!-- Panels -->
+  <!-- Panels (tabbed) -->
   <div class="panels">
-    <div>
+    <div class="panel-tabs">
+      <button class="panel-tab active" data-panel="approvals" onclick="showPanelTab('approvals')">Approvals</button>
+      <button class="panel-tab" data-panel="health" onclick="showPanelTab('health');refreshPlatformHealth()">Health</button>
+      <button class="panel-tab" data-panel="models" onclick="showPanelTab('models');refreshPlatformModels()">Models</button>
+      <button class="panel-tab" data-panel="knowledge" onclick="showPanelTab('knowledge');refreshPlatformKnowledge()">Knowledge</button>
+      <button class="panel-tab" data-panel="plugins" onclick="showPanelTab('plugins');refreshPlatformPlugins()">Plugins</button>
+      <button class="panel-tab" data-panel="projects" onclick="showPanelTab('projects');refreshPlatformProjects()">Projects</button>
+      <button class="panel-tab" data-panel="timeline" onclick="showPanelTab('timeline');refreshPlatformTimeline()">Timeline</button>
+      <button class="panel-tab" data-panel="study" onclick="showPanelTab('study')">Study</button>
+      <button class="panel-tab" data-panel="memory" onclick="showPanelTab('memory')">Memory</button>
+      <button class="panel-tab" data-panel="research" onclick="showPanelTab('research')">Research</button>
+      <button class="panel-tab" data-panel="help" onclick="showPanelTab('help')">Help</button>
+    </div>
+    <div class="panel-pane active" id="panel-approvals" data-panel="approvals">
       <div class="panel-title">Pending Approvals</div>
       <div id="approvals-list"><span style="color:var(--text-dim);font-size:0.75rem">No pending approvals</span></div>
     </div>
-    <div>
+    <div class="panel-pane" id="panel-health" data-panel="health">
+      <div class="panel-title">System Health</div>
+      <div id="platform-health" style="font-size:0.72rem;line-height:1.5">
+        <span style="color:var(--text-dim)">Loading…</span>
+      </div>
+    </div>
+    <div class="panel-pane" id="panel-models" data-panel="models">
+      <div class="panel-title">Model Manager</div>
+      <div id="platform-models" style="font-size:0.72rem">
+        <span style="color:var(--text-dim)">Loading…</span>
+      </div>
+    </div>
+    <div class="panel-pane" id="panel-knowledge" data-panel="knowledge">
+      <div class="panel-title">Knowledge Explorer</div>
+      <div id="platform-knowledge" style="font-size:0.72rem;max-height:280px;overflow-y:auto">
+        <span style="color:var(--text-dim)">Loading…</span>
+      </div>
+    </div>
+    <div class="panel-pane" id="panel-plugins" data-panel="plugins">
+      <div class="panel-title">Plugin Status</div>
+      <div id="platform-plugins" style="font-size:0.72rem">
+        <span style="color:var(--text-dim)">Loading…</span>
+      </div>
+    </div>
+    <div class="panel-pane" id="panel-projects" data-panel="projects">
+      <div class="panel-title">Project Context</div>
+      <div id="platform-projects" style="font-size:0.72rem;max-height:280px;overflow-y:auto">
+        <span style="color:var(--text-dim)">Loading…</span>
+      </div>
+    </div>
+    <div class="panel-pane" id="panel-timeline" data-panel="timeline">
+      <div class="panel-title">Timeline</div>
+      <div id="platform-timeline" style="font-size:0.72rem;max-height:280px;overflow-y:auto">
+        <span style="color:var(--text-dim)">Loading…</span>
+      </div>
+    </div>
+    <div class="panel-pane" id="panel-study" data-panel="study">
       <div class="panel-title">Study Plans</div>
       <div id="study-list"><span style="color:var(--text-dim);font-size:0.75rem">No study plans</span></div>
       <div class="study-add">
-        <input type="text" id="study-input" placeholder="New topic...">
+        <input type="text" id="study-input" placeholder="New topic..." onkeydown="if(event.key==='Enter')addStudyPlan()">
         <button onclick="addStudyPlan()">+</button>
       </div>
     </div>
-    <div>
+    <div class="panel-pane" id="panel-memory" data-panel="memory">
       <div class="panel-title">Memory Search</div>
       <input id="memory-search" placeholder="Search memories…" oninput="onMemorySearch(this.value)" autocomplete="off">
       <div id="memory-search-results" style="font-size:0.72rem;max-height:220px;overflow-y:auto"></div>
     </div>
-    <div id="research-mission-panel">
+    <div class="panel-pane" id="research-mission-panel" data-panel="research">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:6px">
         <div class="panel-title" style="margin-bottom:0">Research Mission Status</div>
         <button type="button" class="tab-btn" onclick="refreshMissionStatus().then(function(){ var t = document.querySelector('#research-mission-panel .tab-btn.active'); if(t) showResearchTab(t.getAttribute('data-tab')); })" title="Refresh status and current tab">Refresh</button>
@@ -1073,6 +1168,19 @@
         <button type="button" class="tab-btn" data-tab="last" onclick="showResearchTab('last')">Last Output</button>
       </div>
       <div id="research-tab-content" style="height:220px;overflow:auto;padding:8px;background:var(--code-bg);border:1px solid var(--border);border-radius:4px;font-size:0.8rem;white-space:pre-wrap;word-break:break-word"></div>
+    </div>
+    <div class="panel-pane" id="panel-help" data-panel="help">
+      <div class="panel-title">Help &amp; Capabilities</div>
+      <div class="help-section">
+        <p><strong>Chat</strong> — Type your message and press Enter or click Send. Attach files with 📎 or drop them. Use @nyx, @morrigan, etc. to address a specific aspect.</p>
+        <p><strong>Voices</strong> — Click an aspect in the sidebar to switch: Morrigan (engineer), Nyx (researcher), Echo (companion), Eris (chaos), Cassandra (oracle), Lilith (sovereign). Lock with 🔓 to prevent auto-routing.</p>
+        <p><strong>Permissions</strong> — Enable Allow Write / Allow Run when you want Layla to modify files or run commands. She will request approval for each action.</p>
+        <p><strong>Approvals</strong> — When Layla needs to write, run code, or run shell commands, she queues an approval. Use this tab to approve or reject.</p>
+        <p><strong>Study Plans</strong> — Add topics Layla will study over time. She advances them when you're active.</p>
+        <p><strong>Memory</strong> — Search her long-term memory (learnings, preferences, facts).</p>
+        <p><strong>Research</strong> — Use "Research repo" in the sidebar to run a full research mission on your workspace. View results here.</p>
+        <p><strong>Settings</strong> — Click the gear icon to change model, paths, and other options.</p>
+      </div>
     </div>
   </div>
 </div>
@@ -1255,7 +1363,13 @@ function getMissionDepth() {
   return (r && r.value) ? r.value : 'deep';
 }
 
+function showPanelTab(tab) {
+  document.querySelectorAll('.panel-tab').forEach(b => { b.classList.toggle('active', b.getAttribute('data-panel') === tab); });
+  document.querySelectorAll('.panel-pane').forEach(p => { p.classList.toggle('active', p.getAttribute('data-panel') === tab); });
+}
+
 function focusResearchPanel() {
+  showPanelTab('research');
   const panel = document.getElementById('research-mission-panel');
   if (panel) {
     panel.scrollIntoView({ behavior: 'smooth' });
@@ -1971,6 +2085,123 @@ async function studyNow(topic) {
   refreshStudyPlans();
 }
 
+async function refreshPlatformHealth() {
+  const el = document.getElementById('platform-health');
+  if (!el) return;
+  try {
+    const r = await fetch('/health');
+    const d = await r.json();
+    const opt = d.system_optimizer || {};
+    const m = opt.metrics || {};
+    let html = `<div style="margin-bottom:6px"><span style="color:${d.status==='ok'?'#4dff88':'#f90'}">●</span> ${d.status || 'unknown'}</div>`;
+    html += `<div>Model: ${d.model_loaded ? 'loaded' : 'not loaded'}</div>`;
+    html += `<div>Tools: ${d.tools_registered || 0}</div>`;
+    html += `<div>Learnings: ${d.learnings || 0}</div>`;
+    html += `<div>Study plans: ${d.study_plans || 0}</div>`;
+    if (m.cpu_percent != null) html += `<div>CPU: ${m.cpu_percent}%</div>`;
+    if (m.ram_percent != null) html += `<div>RAM: ${m.ram_percent}%</div>`;
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = '<span style="color:#f90">Failed to load</span>'; }
+}
+
+async function refreshPlatformModels() {
+  const el = document.getElementById('platform-models');
+  if (!el) return;
+  try {
+    const r = await fetch('/platform/models');
+    const d = await r.json();
+    let html = '';
+    if (d.active) html += `<div style="margin-bottom:6px;color:var(--asp)">Active: ${d.active}</div>`;
+    (d.models || []).forEach(m => {
+      const bench = (d.benchmarks || {})[m.filename];
+      const tps = bench?.tokens_per_sec;
+      const benchStr = tps != null ? ` — ${tps.toFixed(1)} tok/s` : '';
+      html += `<div style="padding:4px 0;border-bottom:1px solid var(--border)">${m.filename || ''} (${m.size_mb || 0} MB)${benchStr}</div>`;
+    });
+    if ((d.catalog || []).length) {
+      html += '<div style="margin-top:10px;font-weight:600;color:var(--asp)">Catalog (jinx/dolphin/hermes/qwen)</div>';
+      (d.catalog || []).slice(0, 6).forEach(m => {
+        html += `<div style="padding:2px 0;font-size:0.65rem;color:var(--text-dim)">${m.family || ''} ${m.size || ''} — ${(m.desc || '').slice(0, 50)}…</div>`;
+      });
+    }
+    if (!html) html = '<span style="color:var(--text-dim)">No models found</span>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = '<span style="color:#f90">Failed to load</span>'; }
+}
+
+async function refreshPlatformKnowledge() {
+  const el = document.getElementById('platform-knowledge');
+  if (!el) return;
+  try {
+    const r = await fetch('/platform/knowledge');
+    const d = await r.json();
+    let html = '<div style="margin-bottom:8px;font-weight:600;color:var(--asp)">Summaries</div>';
+    (d.summaries || []).forEach(s => { html += `<div style="padding:4px 0;font-size:0.68rem;border-bottom:1px solid var(--border)">${(s.summary||'').slice(0,100)}…</div>`; });
+    html += '<div style="margin:10px 0 6px;font-weight:600;color:var(--asp)">Learnings</div>';
+    (d.learnings || []).slice(0,5).forEach(l => { html += `<div style="padding:4px 0;font-size:0.68rem;border-bottom:1px solid var(--border)">[${l.type||'fact'}] ${(l.content||'').slice(0,80)}…</div>`; });
+    html += '<div style="margin:10px 0 6px;font-weight:600;color:var(--asp)">Graph nodes</div>';
+    (d.graph_nodes || []).slice(0,8).forEach(n => { html += `<div style="padding:2px 0;font-size:0.65rem;color:var(--text-dim)">${n.label||n.id||''}</div>`; });
+    if (Object.keys(d.user_identity || {}).length) {
+      html += '<div style="margin:10px 0 6px;font-weight:600;color:var(--asp)">User identity</div>';
+      Object.entries(d.user_identity).forEach(([k,v]) => { if(v) html += `<div style="padding:2px 0;font-size:0.65rem">${k}: ${(v+'').slice(0,60)}…</div>`; });
+    }
+    if (!d.summaries?.length && !d.learnings?.length && !d.graph_nodes?.length && !Object.keys(d.user_identity||{}).length) html = '<span style="color:var(--text-dim)">No data yet</span>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = '<span style="color:#f90">Failed to load</span>'; }
+}
+
+async function refreshPlatformProjects() {
+  const el = document.getElementById('platform-projects');
+  if (!el) return;
+  try {
+    const r = await fetch('/platform/projects');
+    const d = await r.json();
+    let html = '';
+    if (d.project_name) html += `<div style="margin-bottom:6px;font-weight:600;color:var(--asp)">${d.project_name}</div>`;
+    if (d.lifecycle_stage) html += `<div style="font-size:0.68rem;color:var(--text-dim)">Lifecycle: ${d.lifecycle_stage}</div>`;
+    if (d.goals) html += `<div style="margin-top:6px;font-weight:600">Goals</div><div style="font-size:0.68rem;padding:4px 0">${(d.goals+'').slice(0,300)}</div>`;
+    if (d.progress) html += `<div style="margin-top:6px;font-weight:600">Progress</div><div style="font-size:0.68rem;padding:4px 0">${(d.progress+'').slice(0,200)}</div>`;
+    if (d.blockers) html += `<div style="margin-top:6px;font-weight:600">Blockers</div><div style="font-size:0.68rem;padding:4px 0;color:#f90">${(d.blockers+'').slice(0,200)}</div>`;
+    if (d.last_discussed) html += `<div style="margin-top:6px;font-weight:600">Last discussed</div><div style="font-size:0.68rem;padding:4px 0">${(d.last_discussed+'').slice(0,200)}</div>`;
+    if (!html) html = '<span style="color:var(--text-dim)">No project context set. Use update_project_context tool or POST /project_context.</span>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = '<span style="color:#f90">Failed to load</span>'; }
+}
+
+async function refreshPlatformTimeline() {
+  const el = document.getElementById('platform-timeline');
+  if (!el) return;
+  try {
+    const r = await fetch('/platform/knowledge');
+    const d = await r.json();
+    const timeline = d.timeline || [];
+    let html = '';
+    timeline.forEach(t => {
+      const ts = (t.timestamp || '').slice(0, 19).replace('T', ' ');
+      html += `<div style="padding:6px 0;border-bottom:1px solid var(--border)"><span style="font-size:0.65rem;color:var(--text-dim)">[${t.event_type||''}] ${ts}</span><div style="font-size:0.68rem;margin-top:2px">${(t.content||'').slice(0,120)}…</div></div>`;
+    });
+    if (!html) html = '<span style="color:var(--text-dim)">No timeline events yet. Events are added when conversations are summarized.</span>';
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = '<span style="color:#f90">Failed to load</span>'; }
+}
+
+async function refreshPlatformPlugins() {
+  const el = document.getElementById('platform-plugins');
+  if (!el) return;
+  try {
+    const r = await fetch('/platform/plugins');
+    const d = await r.json();
+    let html = `<div>Skills added: ${d.skills_added || 0}</div>`;
+    html += `<div>Tools added: ${d.tools_added || 0}</div>`;
+    if (d.errors?.length) html += `<div style="color:#f90;margin-top:6px">Errors: ${d.errors.join('; ')}</div>`;
+    if (d.skills?.length) {
+      html += '<div style="margin-top:8px;font-weight:600;color:var(--asp)">Skills</div>';
+      d.skills.forEach(s => { html += `<div style="font-size:0.68rem;padding:2px 0">${s.name||''}</div>`; });
+    }
+    el.innerHTML = html;
+  } catch (e) { el.innerHTML = '<span style="color:#f90">Failed to load</span>'; }
+}
+
 async function addStudyPlan() {
   const input = document.getElementById('study-input');
   const topic = input.value.trim();
@@ -2213,7 +2444,6 @@ async function approveAction(id, btnEl) {
 }
 
 // Override refreshApprovals to also inject inline approval cards
-const _origRefreshApprovals = refreshApprovals;
 async function refreshApprovals() {
   try {
     const res = await fetch('/pending');
@@ -2785,22 +3015,75 @@ async function startModelDownload() {
   }
 }
 
-// ─── Settings panel ───────────────────────────────────────────────────────
+// ─── Settings panel (schema-driven, full configurability) ─────────────────
+const CAT_LABELS = { core: 'Core', model: 'Model', memory: 'Memory', voice: 'Voice', scheduler: 'Scheduler', safety: 'Safety', remote: 'Remote' };
+
+function renderSettingField(f, val) {
+  const id = 'set-' + f.key.replace(/_/g, '-');
+  const label = (f.label || f.key.replace(/_/g, ' ')).replace(/\b\w/g, c => c.toUpperCase());
+  const hint = f.hint ? `<div class="hint">${f.hint}</div>` : '';
+  let input = '';
+  if (f.type === 'boolean') {
+    input = `<select id="${id}"><option value="true"${val === true || val === 'true' ? ' selected' : ''}>Yes</option><option value="false"${val === false || val === 'false' ? ' selected' : ''}>No</option></select>`;
+  } else if (f.options) {
+    const opts = f.options.map(o => `<option value="${o}"${val === o ? ' selected' : ''}>${o}</option>`).join('');
+    input = `<select id="${id}">${opts}</select>`;
+  } else if (f.type === 'number') {
+    const v = val != null && val !== '' ? val : (f.default ?? '');
+    const min = f.min != null ? ` min="${f.min}"` : '';
+    const max = f.max != null ? ` max="${f.max}"` : '';
+    const step = f.key === 'temperature' ? ' step="0.01"' : ' step="1"';
+    const ph = f.default != null ? ` placeholder="${f.default}"` : '';
+    if (f.key === 'temperature') {
+      input = `<input type="range" id="${id}"${min} max="${f.max ?? 1.5}" step="0.01" value="${v}" oninput="document.getElementById('${id}-val').textContent=parseFloat(this.value).toFixed(2)"><span id="${id}-val">${parseFloat(v) || 0.2}</span>`;
+    } else {
+      input = `<input type="number" id="${id}"${min}${max}${step} value="${v}"${ph}>`;
+    }
+  } else {
+    const v = (val != null && val !== '') ? String(val).replace(/"/g, '&quot;') : '';
+    const ph = f.key === 'model_filename' ? 'e.g. jinx-20b.gguf' : (f.key === 'sandbox_root' ? 'e.g. C:\\Users\\you' : '');
+    input = `<input type="text" id="${id}" value="${v}" placeholder="${ph}">`;
+  }
+  return `<div class="settings-row"><label for="${id}">${label}</label>${input}${hint}</div>`;
+}
+
 async function openSettings() {
   const overlay = document.getElementById('settings-overlay');
   if (!overlay) return;
   overlay.classList.add('visible');
-  // Load current settings
+  const loading = document.getElementById('settings-loading');
+  const form = document.getElementById('settings-form');
+  loading.style.display = 'block';
+  form.style.display = 'none';
   try {
-    const res = await fetch('/settings');
-    const data = await res.json();
-    if (data.model_filename !== undefined) document.getElementById('set-model').value = data.model_filename || '';
-    if (data.sandbox_root !== undefined) document.getElementById('set-sandbox').value = data.sandbox_root || '';
-    if (data.temperature !== undefined) { document.getElementById('set-temp').value = data.temperature; document.getElementById('set-temp-val').textContent = data.temperature; }
-    if (data.completion_max_tokens !== undefined) document.getElementById('set-maxtok').value = data.completion_max_tokens || 512;
-    if (data.tts_voice !== undefined) document.getElementById('set-tts-voice').value = data.tts_voice || 'af_heart';
-    if (data.whisper_model !== undefined) document.getElementById('set-whisper').value = data.whisper_model || 'base';
-  } catch(e) {}
+    const [schemaRes, dataRes] = await Promise.all([fetch('/settings/schema'), fetch('/settings')]);
+    const schema = await schemaRes.json();
+    const data = await dataRes.json();
+    const byCat = {};
+    for (const f of schema.fields) {
+      const c = f.category || 'advanced';
+      if (!byCat[c]) byCat[c] = [];
+      byCat[c].push(f);
+    }
+    const order = ['core', 'model', 'memory', 'voice', 'scheduler', 'safety', 'remote'];
+    let html = '';
+    for (const cat of order) {
+      if (!byCat[cat]) continue;
+      const label = CAT_LABELS[cat] || cat;
+      const isCore = cat === 'core';
+      const inner = byCat[cat].map(f => renderSettingField(f, data[f.key])).join('');
+      if (isCore) {
+        html += `<div class="settings-section settings-core">${inner}</div>`;
+      } else {
+        html += `<details class="settings-advanced"><summary>${label}</summary><div class="settings-advanced-inner">${inner}</div></details>`;
+      }
+    }
+    form.innerHTML = html;
+    loading.style.display = 'none';
+    form.style.display = 'block';
+  } catch (e) {
+    loading.textContent = 'Failed to load settings: ' + e.message;
+  }
 }
 
 function closeSettings() {
@@ -2808,25 +3091,34 @@ function closeSettings() {
 }
 
 async function saveSettings() {
-  const body = {
-    model_filename: document.getElementById('set-model').value.trim(),
-    sandbox_root: document.getElementById('set-sandbox').value.trim(),
-    temperature: parseFloat(document.getElementById('set-temp').value),
-    completion_max_tokens: parseInt(document.getElementById('set-maxtok').value),
-    tts_voice: document.getElementById('set-tts-voice').value,
-    whisper_model: document.getElementById('set-whisper').value,
-  };
+  const form = document.getElementById('settings-form');
+  if (!form) return;
+  const body = {};
+  const inputs = form.querySelectorAll('input[id^="set-"], select[id^="set-"]');
+  for (const el of inputs) {
+    const key = el.id.replace(/^set-/, '').replace(/-/g, '_');
+    let v = el.value;
+    if (el.type === 'number' || el.type === 'range') {
+      v = v === '' ? undefined : parseFloat(v);
+    } else if (el.tagName === 'SELECT' && (v === 'true' || v === 'false')) {
+      v = v === 'true';
+    } else if (typeof v === 'string') {
+      v = v.trim();
+    }
+    if (v !== undefined && v !== '') body[key] = v;
+  }
+  if (Object.keys(body).length === 0) { showToast('No changes to save'); return; }
   try {
     const res = await fetch('/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await res.json();
     const msg = document.getElementById('settings-save-msg');
     if (data.ok) {
       if (msg) { msg.style.display = 'inline'; setTimeout(() => { if (msg) msg.style.display = 'none'; }, 2500); }
-      showToast('Settings saved — restart server for model changes to apply');
+      showToast('Settings saved — restart server for model/config changes to apply');
     } else {
       showToast('Save failed: ' + (data.error || 'unknown'));
     }
-  } catch(e) { showToast('Error: ' + e.message); }
+  } catch (e) { showToast('Error: ' + e.message); }
 }
 
 // Close overlays on background click
@@ -2886,48 +3178,14 @@ document.addEventListener('keydown', (e) => {
 <div id="settings-overlay">
   <div class="settings-modal">
     <h2>⚙ Settings</h2>
-
-    <div class="settings-row">
-      <label>Model filename (in models/ folder)</label>
-      <input type="text" id="set-model" placeholder="e.g. dolphin-2.9.1-llama-3-8b-Q4_K_M.gguf">
-      <div class="hint">Requires server restart to take effect</div>
+    <div id="settings-form-container" class="settings-form-container">
+      <div class="settings-loading" id="settings-loading">Loading…</div>
+      <div id="settings-form" style="display:none"></div>
     </div>
-    <div class="settings-row">
-      <label>Sandbox / workspace root path</label>
-      <input type="text" id="set-sandbox" placeholder="e.g. C:\Users\you or /home/you">
-      <div class="hint">Layla can only read/write files within this directory</div>
+    <div class="settings-config-ref">
+      <a href="/system_export" target="_blank" title="Full config export">⊕ export config</a>
+      <span class="hint"> — Advanced: edit <code>agent/runtime_config.json</code> directly. See docs/CONFIG_REFERENCE.md</span>
     </div>
-    <div class="settings-row">
-      <label>Temperature: <span id="set-temp-val">0.2</span></label>
-      <input type="range" id="set-temp" min="0.01" max="1.5" step="0.01" value="0.2"
-        oninput="document.getElementById('set-temp-val').textContent = parseFloat(this.value).toFixed(2)">
-      <div class="hint">Lower = more deterministic. Higher = more creative.</div>
-    </div>
-    <div class="settings-row">
-      <label>Max tokens per response</label>
-      <input type="number" id="set-maxtok" min="64" max="4096" step="64" value="512">
-      <div class="hint">Higher = longer responses, slower generation</div>
-    </div>
-    <div class="settings-row">
-      <label>TTS voice</label>
-      <select id="set-tts-voice">
-        <option value="af_heart">af_heart (default — warm American female)</option>
-        <option value="af_sky">af_sky (lighter, airy)</option>
-        <option value="am_adam">am_adam (American male)</option>
-        <option value="bf_emma">bf_emma (British female)</option>
-        <option value="bm_george">bm_george (British male)</option>
-      </select>
-    </div>
-    <div class="settings-row">
-      <label>Whisper model size (STT)</label>
-      <select id="set-whisper">
-        <option value="tiny">tiny (fastest, ~75 MB)</option>
-        <option value="base" selected>base (good balance, ~145 MB)</option>
-        <option value="small">small (better accuracy, ~465 MB)</option>
-        <option value="medium">medium (high accuracy, ~1.5 GB)</option>
-      </select>
-    </div>
-
     <div class="settings-btns">
       <button class="settings-save" onclick="saveSettings()">Save Settings</button>
       <button class="settings-close" onclick="closeSettings()">Close</button>
