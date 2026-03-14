@@ -47,6 +47,19 @@ def learn(req: dict):
         return JSONResponse({"ok": False, "error": str(e)})
 
 
+def _model_ready_message() -> str | None:
+    """Return error message if model/LLM is not ready, else None."""
+    try:
+        from services.llm_gateway import model_loaded_status
+        status = model_loaded_status()
+        err = status.get("error")
+        if err:
+            return f"Model not ready: {err}. Run python agent/first_run.py or configure runtime_config.json. See MODELS.md."
+    except Exception:
+        pass
+    return None
+
+
 @router.post("/agent")
 async def agent(req: dict):
     get_touch_activity()()
@@ -61,24 +74,43 @@ async def agent(req: dict):
     show_thinking = bool((req or {}).get("show_thinking", False))
     stream = bool((req or {}).get("stream", False))
 
+    # Pre-check: model must be ready before we block on a long run
+    model_err = _model_ready_message()
+    if model_err and goal.strip():
+        return JSONResponse({
+            "response": model_err,
+            "state": {},
+            "aspect": "",
+            "aspect_name": "Layla",
+            "refused": False,
+            "refusal_reason": "",
+            "ux_states": [],
+            "memory_influenced": [],
+            "cited_sources": [],
+        }, status_code=200)
+
     if stream:
         ux_state_queue = queue.Queue()
         result_holder = []
+        error_holder = []
 
         def run_agent():
-            r = autonomous_run(
-                goal,
-                context=context,
-                workspace_root=workspace_root,
-                allow_write=allow_write,
-                allow_run=allow_run,
-                conversation_history=list(_history),
-                aspect_id=aspect_id,
-                show_thinking=show_thinking,
-                stream_final=True,
-                ux_state_queue=ux_state_queue,
-            )
-            result_holder.append(r)
+            try:
+                r = autonomous_run(
+                    goal,
+                    context=context,
+                    workspace_root=workspace_root,
+                    allow_write=allow_write,
+                    allow_run=allow_run,
+                    conversation_history=list(_history),
+                    aspect_id=aspect_id,
+                    show_thinking=show_thinking,
+                    stream_final=True,
+                    ux_state_queue=ux_state_queue,
+                )
+                result_holder.append(r)
+            except Exception as e:
+                error_holder.append(e)
 
         thread = threading.Thread(target=run_agent)
         thread.start()
@@ -96,6 +128,14 @@ async def agent(req: dict):
                         if not thread.is_alive():
                             break
                 thread.join(timeout=0.5)
+                if error_holder:
+                    err = str(error_holder[0])
+                    if "model" in err.lower() or "path" in err.lower():
+                        err = f"Model error: {err}. Configure runtime_config.json. See MODELS.md."
+                    _append_history("user", goal)
+                    _append_history("assistant", err)
+                    yield f"data: {json.dumps({'done': True, 'content': err, 'ux_states': [], 'memory_influenced': []})}\n\n"
+                    return
                 result = result_holder[0] if result_holder else {}
                 if result.get("status") == "stream_pending":
                     goal_for_stream = result.get("goal_for_stream", goal)
@@ -122,7 +162,10 @@ async def agent(req: dict):
                     yield f"data: {json.dumps({'done': True, 'content': response_text, 'ux_states': result.get('ux_states', []), 'memory_influenced': result.get('memory_influenced', [])})}\n\n"
             except Exception as e:
                 logger.exception("stream_agent failed")
-                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                err = str(e)
+                if "model" in err.lower() or "path" in err.lower():
+                    err = f"Model error: {err}. Configure runtime_config.json. See MODELS.md."
+                yield f"data: {json.dumps({'done': True, 'content': err, 'ux_states': [], 'memory_influenced': []})}\n\n"
 
         return StreamingResponse(
             gen(),
@@ -130,18 +173,37 @@ async def agent(req: dict):
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    result = await asyncio.to_thread(
-        autonomous_run,
-        goal,
-        context=context,
-        workspace_root=workspace_root,
-        allow_write=allow_write,
-        allow_run=allow_run,
-        conversation_history=list(_history),
-        aspect_id=aspect_id,
-        show_thinking=show_thinking,
-        stream_final=stream,
-    )
+    try:
+        result = await asyncio.to_thread(
+            autonomous_run,
+            goal,
+            context=context,
+            workspace_root=workspace_root,
+            allow_write=allow_write,
+            allow_run=allow_run,
+            conversation_history=list(_history),
+            aspect_id=aspect_id,
+            show_thinking=show_thinking,
+            stream_final=stream,
+        )
+    except Exception as e:
+        logger.exception("agent run failed")
+        err_msg = str(e)
+        if "model" in err_msg.lower() or "path" in err_msg.lower() or "file" in err_msg.lower():
+            err_msg = f"Model error: {err_msg}. Configure model_filename in runtime_config.json and ensure the .gguf file exists. See MODELS.md."
+        _append_history("user", goal)
+        _append_history("assistant", "I couldn't reply — see error below.")
+        return JSONResponse({
+            "response": err_msg,
+            "state": {},
+            "aspect": "",
+            "aspect_name": "Layla",
+            "refused": False,
+            "refusal_reason": "",
+            "ux_states": [],
+            "memory_influenced": [],
+            "cited_sources": [],
+        })
 
     steps = result.get("steps") or []
     final = steps[-1].get("result", "") if steps else ""
