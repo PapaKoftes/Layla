@@ -2,6 +2,7 @@
 Structured logging for agent events.
 Uses loguru when available, else standard logging.
 Events include: timestamp, event_type, duration, status (per v1 spec).
+Also records to performance_monitor for system_optimizer metrics.
 """
 import logging
 from typing import Any
@@ -15,10 +16,19 @@ except ImportError:
     _USE_LOGURU = False
 
 
+def _record_to_performance_monitor(metric: str, value: float, tags: dict[str, str] | None = None) -> None:
+    """Record metric to performance_monitor for system_optimizer to consume."""
+    try:
+        from services.performance_monitor import record
+        record(metric, value, tags or {})
+    except Exception:
+        pass
+
+
 def _log_event(event: str, **kwargs: Any) -> None:
     """Emit structured event. Ensures timestamp, event_type, duration, status."""
-    from datetime import datetime
-    ts = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    from layla.time_utils import utcnow
+    ts = utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
     duration = kwargs.pop("duration", kwargs.pop("duration_ms", 0))
     status = kwargs.pop("status", "ok")
     base = {"timestamp": ts, "event_type": event, "duration": duration, "status": status}
@@ -37,6 +47,8 @@ def log_agent_response(aspect: str, duration_ms: float, status: str, **kw: Any) 
 
 def log_tool_call(tool: str, duration_ms: float, status: str, **kw: Any) -> None:
     _log_event("tool_call", tool=tool, duration_ms=round(duration_ms, 2), status=status, **kw)
+    if duration_ms > 0:
+        _record_to_performance_monitor("tool_latency_ms", duration_ms, {"tool": tool})
 
 
 def log_learning_saved(content_preview: str, source: str, **kw: Any) -> None:
@@ -71,12 +83,28 @@ def log_agent_plan_completed(steps: int, **kw: Any) -> None:
     _log_event("agent_plan_completed", steps=steps, **kw)
 
 
-def log_retrieval_results(query_preview: str, count: int, **kw: Any) -> None:
-    _log_event("retrieval_results", query_preview=query_preview[:60], count=count, **kw)
+def log_retrieval_results(query_preview: str, count: int, duration_ms: float = 0, **kw: Any) -> None:
+    _log_event("retrieval_results", query_preview=query_preview[:60], count=count, duration_ms=round(duration_ms, 2), **kw)
+    if duration_ms > 0:
+        _record_to_performance_monitor("retrieval_latency_ms", duration_ms, {"source": "vector"})
+
+
+def log_prompt_assembled(total_tokens: int = 0, sections: int = 0, truncated: int = 0, **kw: Any) -> None:
+    _log_event("prompt_assembled", total_tokens=total_tokens, sections=sections, truncated=truncated, **kw)
 
 
 def log_tool_result(tool: str, ok: bool, duration_ms: float = 0, **kw: Any) -> None:
     _log_event("tool_result", tool=tool, ok=ok, duration_ms=round(duration_ms, 2), **kw)
+    if duration_ms > 0:
+        _record_to_performance_monitor("tool_latency_ms", duration_ms, {"tool": tool})
+    # Tool outcome learning: record for reliability
+    try:
+        from layla.memory.db import record_tool_outcome
+        context = (kw.get("context") or kw.get("goal_preview") or "")[:500]
+        quality = 1.0 if ok else 0.0
+        record_tool_outcome(tool, ok, context=context, latency_ms=duration_ms, quality_score=quality)
+    except Exception:
+        pass
 
 
 def log_planner_invoked(steps: int = 0, goal_preview: str = "", duration_ms: float = 0, **kw: Any) -> None:
@@ -93,10 +121,21 @@ def log_agent_shutdown(duration_ms: float = 0, **kw: Any) -> None:
 
 def log_retrieval_cache_hit(query_preview: str = "", duration_ms: float = 0, **kw: Any) -> None:
     _log_event("retrieval_cache_hit", query_preview=query_preview[:60], duration=duration_ms, **kw)
+    if duration_ms > 0:
+        _record_to_performance_monitor("retrieval_latency_ms", duration_ms, {"source": "cache_hit"})
 
 
 def log_retrieval_cache_miss(query_preview: str = "", duration_ms: float = 0, **kw: Any) -> None:
-    _log_event("retrieval_cache_miss", query_preview=query_preview[:60], duration=duration_ms, **kw)
+    _log_event("retrieval_cache_miss", query_preview=query_preview[:60], duration_ms=duration_ms, **kw)
+    if duration_ms > 0:
+        _record_to_performance_monitor("retrieval_latency_ms", duration_ms, {"source": "cache_miss"})
+
+
+def log_agent_decision(duration_ms: float = 0, **kw: Any) -> None:
+    """Log agent decision (LLM) latency. Structured event for observability."""
+    _log_event("agent_decision", duration_ms=round(duration_ms, 2), **kw)
+    if duration_ms > 0:
+        _record_to_performance_monitor("agent_decision_ms", duration_ms, {})
 
 
 # Mission lifecycle (v1.1)

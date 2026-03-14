@@ -6,8 +6,9 @@ and decides whether to deliberate.
 """
 import json
 import time
-import numpy as np
 from pathlib import Path
+
+import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PERSONALITIES_DIR = REPO_ROOT / "personalities"

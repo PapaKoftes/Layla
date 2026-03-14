@@ -14,8 +14,8 @@ if not exist ".venv\Scripts\activate.bat" (
 )
 call .venv\Scripts\activate.bat
 
-REM Check for a model
-python -c "import json,pathlib; c=json.loads(open('agent/runtime_config.json').read()) if pathlib.Path('agent/runtime_config.json').exists() else {}; m=c.get('model_filename',''); f=pathlib.Path('models')/m if m else None; exit(0 if f and f.exists() else 1)" >nul 2>&1
+REM Check for a model (uses models_dir from config, else repo/models)
+python -c "import json,pathlib; p=pathlib.Path('agent/runtime_config.json'); c=json.loads(p.read_text(encoding='utf-8-sig')) if p.exists() else {}; m=c.get('model_filename',''); md=c.get('models_dir',''); f=pathlib.Path(md).expanduser()/m if md and m else pathlib.Path('models')/m if m else None; exit(0 if f and f.exists() else 1)" >nul 2>&1
 if errorlevel 1 (
     echo.
     echo  -----------------------------------------------

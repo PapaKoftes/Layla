@@ -68,3 +68,24 @@ def is_routing_enabled() -> bool:
     """True if model routing is configured (any task-specific model set)."""
     cfg = _load_router_config()
     return bool(cfg.get("coding") or cfg.get("reasoning") or cfg.get("chat"))
+
+
+def get_fastest_benchmarked(available: list[str] | None = None) -> str | None:
+    """
+    Return filename of fastest benchmarked model from ~/.layla/benchmarks.json.
+    If available is given, only consider those. Used when no explicit routing.
+    """
+    try:
+        from services.model_benchmark import select_fastest_model
+        return select_fastest_model(available)
+    except Exception:
+        return None
+
+
+def get_benchmark_for_model(model_name: str) -> dict | None:
+    """Return stored benchmark (tokens_per_sec, first_token_ms, memory_mb) for a model."""
+    try:
+        from services.model_benchmark import get_benchmark
+        return get_benchmark(model_name)
+    except Exception:
+        return None

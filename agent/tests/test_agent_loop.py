@@ -98,8 +98,9 @@ def _minimal_cfg(sandbox_root: str) -> dict:
         "knowledge_max_bytes": 0,
         "learnings_n": 0,
         "semantic_k": 0,
-        "convo_turns": 0,
+        "planning_enabled": False,
         "max_tool_calls": 10,
+        "convo_turns": 0,
         "max_runtime_seconds": 5,
         "temperature": 0.0,
         "completion_max_tokens": 40,
@@ -120,6 +121,7 @@ def test_pre_read_probe_inserts_file_info_before_read(monkeypatch, tmp_path):
     f = tmp_path / "a.txt"
     f.write_text("hello\nworld\n", encoding="utf-8")
 
+    monkeypatch.setattr(agent_loop, "system_overloaded", lambda: False)
     monkeypatch.setattr(agent_loop.runtime_safety, "load_config", lambda: _minimal_cfg(str(tmp_path)))
     monkeypatch.setattr(agent_loop.runtime_safety, "load_identity", lambda: "")
     monkeypatch.setattr(agent_loop.runtime_safety, "load_personality", lambda: "")
@@ -153,10 +155,14 @@ def test_pre_read_probe_inserts_file_info_before_read(monkeypatch, tmp_path):
 
 def test_pre_read_probe_avoids_binary_reads(monkeypatch, tmp_path):
     import agent_loop
+    from layla.tools.registry import set_effective_sandbox
+
+    set_effective_sandbox(None)
 
     f = tmp_path / "bin.dat"
     f.write_bytes(b"\xff\x00\x01\x02\xff")
 
+    monkeypatch.setattr(agent_loop, "system_overloaded", lambda: False)
     monkeypatch.setattr(agent_loop.runtime_safety, "load_config", lambda: _minimal_cfg(str(tmp_path)))
     monkeypatch.setattr(agent_loop.runtime_safety, "load_identity", lambda: "")
     monkeypatch.setattr(agent_loop.runtime_safety, "load_personality", lambda: "")
@@ -197,10 +203,14 @@ def test_pre_read_probe_avoids_binary_reads(monkeypatch, tmp_path):
 
 def test_pre_read_probe_runs_only_once_per_path(monkeypatch, tmp_path):
     import agent_loop
+    from layla.tools.registry import set_effective_sandbox
+
+    set_effective_sandbox(None)
 
     f = tmp_path / "a2.txt"
     f.write_text("hello\n", encoding="utf-8")
 
+    monkeypatch.setattr(agent_loop, "system_overloaded", lambda: False)
     monkeypatch.setattr(agent_loop.runtime_safety, "load_config", lambda: _minimal_cfg(str(tmp_path)))
     monkeypatch.setattr(agent_loop.runtime_safety, "load_identity", lambda: "")
     monkeypatch.setattr(agent_loop.runtime_safety, "load_personality", lambda: "")

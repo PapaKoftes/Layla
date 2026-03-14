@@ -25,10 +25,23 @@ _tts_type: str = ""  # "kokoro" | "pyttsx3" | ""
 _tts_failed = False
 
 # Voice selection for kokoro-onnx.
-# Available voices: af (female), am (male), bf (British female), bm (British male)
-# Full list at https://github.com/thewh1teagle/kokoro-onnx
+# Available voices: af_heart, af_bella, af_sarah, am_adam, am_michael,
+# bf_emma, bf_sarah, bm_george, bm_lewis — see kokoro-onnx docs
 _DEFAULT_VOICE = "af_heart"  # warm American female
 _DEFAULT_SPEED = 1.0
+
+# Configurable voice catalog for UI/settings
+AVAILABLE_VOICES = [
+    ("af_heart", "American female (warm)"),
+    ("af_bella", "American female (Bella)"),
+    ("af_sarah", "American female (Sarah)"),
+    ("am_adam", "American male (Adam)"),
+    ("am_michael", "American male (Michael)"),
+    ("bf_emma", "British female (Emma)"),
+    ("bf_sarah", "British female (Sarah)"),
+    ("bm_george", "British male (George)"),
+    ("bm_lewis", "British male (Lewis)"),
+]
 
 
 def _init_kokoro():
@@ -114,8 +127,8 @@ def speak_to_bytes(text: str) -> bytes | None:
 
         elif _tts_type == "pyttsx3":
             # pyttsx3 can save to file; use a temp file
-            import tempfile
             import os
+            import tempfile
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                 fname = f.name
             try:
@@ -132,6 +145,11 @@ def speak_to_bytes(text: str) -> bytes | None:
     except Exception as e:
         logger.warning("TTS synthesis failed: %s", e)
         return None
+
+
+def get_voice_options() -> list[dict]:
+    """Return available TTS voices for config/UI. Set tts_voice in runtime_config.json."""
+    return [{"id": v[0], "label": v[1]} for v in AVAILABLE_VOICES]
 
 
 def prewarm() -> None:

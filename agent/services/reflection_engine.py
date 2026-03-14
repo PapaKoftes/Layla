@@ -5,8 +5,6 @@ Stores reflections as learnings. Integrated with agent_loop._save_outcome_memory
 from __future__ import annotations
 
 import logging
-from typing import Any
-
 logger = logging.getLogger("layla")
 
 
@@ -55,7 +53,7 @@ def generate_reflections(state: dict) -> dict[str, str]:
         if isinstance(out, dict):
             text = ((out.get("choices") or [{}])[0].get("message") or {}).get("content", "") or ""
             if text and len(text.strip()) > 20:
-                lines = [l.strip() for l in text.strip().split("\n") if ":" in l]
+                lines = [ln.strip() for ln in text.strip().split("\n") if ":" in ln]
                 for line in lines[:3]:
                     if "what worked" in line.lower():
                         what_worked = [line.split(":", 1)[-1].strip()[:200]]

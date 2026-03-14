@@ -1,7 +1,8 @@
 """One-off probe: CPU, RAM, GPU/VRAM for LLM defaults."""
+import json
 import os
 import subprocess
-import json
+
 
 def main():
     cpu_count = os.cpu_count() or 4

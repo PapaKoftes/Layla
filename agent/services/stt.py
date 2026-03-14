@@ -104,6 +104,60 @@ def transcribe_file(path: str | Path, language: str | None = None) -> str:
         return ""
 
 
+def detect_voice_mode(audio_bytes: bytes, min_duration_ms: int = 500) -> bool:
+    """
+    Detect if audio contains speech (vs silence). Used for automatic voice mode.
+    Returns True if audio has sufficient duration and non-trivial content.
+    """
+    if not audio_bytes or len(audio_bytes) < 1000:
+        return False
+    try:
+        import struct
+        # WAV: 44-byte header, then 16-bit samples
+        if audio_bytes[:4] == b"RIFF" and len(audio_bytes) > 44:
+            samples = audio_bytes[44:]
+            if len(samples) < 2:
+                return False
+            # Sample every 100th value to avoid full scan
+            step = max(1, len(samples) // 200)
+            vals = [struct.unpack_from("<h", samples, i)[0] for i in range(0, len(samples) - 2, step)]
+            rms = (sum(v * v for v in vals) / max(1, len(vals))) ** 0.5
+            return rms > 100  # non-silent
+        return len(audio_bytes) > 2000  # assume speech if long enough
+    except Exception:
+        return len(audio_bytes) > 2000
+
+
+def transcribe_streaming(audio_bytes: bytes, language: str | None = None):
+    """
+    Transcribe audio, yielding partial transcripts as segments complete.
+    Yields (text_so_far, is_final) tuples.
+    """
+    model = _get_model()
+    if model is None:
+        yield ("", True)
+        return
+    try:
+        audio_io = io.BytesIO(audio_bytes)
+        segments, info = model.transcribe(
+            audio_io,
+            language=language,
+            beam_size=5,
+            vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 500},
+        )
+        acc = []
+        for seg in segments:
+            t = (seg.text or "").strip()
+            if t:
+                acc.append(t)
+                yield (" ".join(acc), False)
+        yield (" ".join(acc), True)
+    except Exception as e:
+        logger.warning("Streaming transcription failed: %s", e)
+        yield ("", True)
+
+
 def prewarm() -> None:
     """Load the Whisper model in a background thread at startup."""
     t = threading.Thread(target=_get_model, daemon=True, name="whisper-prewarm")

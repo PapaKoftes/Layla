@@ -12,21 +12,21 @@ MAX_MISSION_STEPS = 10
 DEFAULT_MAX_MISSION_RUNTIME_SECONDS = 3600  # 1 hour
 
 
-def create_mission(goal: str, workspace_root: str = "", allow_write: bool = False, allow_run: bool = False) -> dict | None:
+def create_mission(goal: str, workspace_root: str = "", allow_write: bool = False, allow_run: bool = False, cfg: dict | None = None) -> dict | None:
     """
     Create a mission: generate plan, persist to DB, return mission dict.
     Mission starts as 'pending'; mission_worker will run it.
     """
     try:
         from layla.memory.db import save_mission
-        from services.planner import create_plan
         from services.observability import log_mission_created
+        from services.planner import create_plan
     except ImportError as e:
         logger.warning("mission create imports failed: %s", e)
         return None
     if not goal or not goal.strip():
         return None
-    plan = create_plan(goal, max_steps=MAX_MISSION_STEPS)
+    plan = create_plan(goal, max_steps=MAX_MISSION_STEPS, cfg=cfg)
     if not plan:
         return None
     mission_id = str(uuid.uuid4())
@@ -82,10 +82,10 @@ def execute_next_step(mission_id: str) -> dict | None:
     Returns updated mission or None on failure/completion.
     """
     try:
-        from layla.memory.db import get_mission, update_mission_progress
-        from agent_loop import autonomous_run
-        from services.observability import log_mission_step, log_mission_completed, log_mission_failed
         import runtime_safety
+        from agent_loop import autonomous_run
+        from layla.memory.db import get_mission, update_mission_progress
+        from services.observability import log_mission_completed, log_mission_failed, log_mission_step
     except ImportError as e:
         logger.warning("mission step imports failed: %s", e)
         return None

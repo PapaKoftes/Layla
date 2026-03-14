@@ -7,16 +7,16 @@ import threading
 import time
 import uuid
 from collections import deque
+from typing import Any
 from contextlib import asynccontextmanager
-
-from layla.time_utils import utcnow
 from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
-from agent_loop import autonomous_run, _is_junk_reply
+from agent_loop import _is_junk_reply, autonomous_run
+from layla.time_utils import utcnow
 
 logger = logging.getLogger("layla")
 
@@ -71,8 +71,8 @@ def _scheduled_study_job() -> None:
             return
         if _game_or_fullscreen_running():
             return
-        from layla.memory.db import get_active_study_plans, append_scheduler_history
         from layla.memory import capabilities as cap_mod
+        from layla.memory.db import append_scheduler_history, get_active_study_plans
         plans = get_active_study_plans()
         if not plans:
             return
@@ -183,8 +183,9 @@ async def lifespan(app: FastAPI):
             logger.warning("LLM pre-warm thread failed: %s", e)
         # Preload embedder so first /agent request does not block on model load
         try:
-            from layla.memory.vector_store import embed
             import threading as _t
+
+            from layla.memory.vector_store import embed
             _t.Thread(target=lambda: embed("warmup"), daemon=True, name="embed-prewarm").start()
             logger.info("embedder pre-warm thread started")
         except Exception as e:
@@ -216,6 +217,22 @@ async def lifespan(app: FastAPI):
             except (TypeError, ValueError):
                 interval_min = 30
             sched.add_job(_scheduled_study_job, IntervalTrigger(minutes=interval_min))
+            # Knowledge distillation + experience replay (intelligence systems)
+            try:
+                def _intelligence_job():
+                    try:
+                        from services.knowledge_distiller import run_periodic_distillation
+                        run_periodic_distillation()
+                    except Exception:
+                        pass
+                    try:
+                        from services.experience_replay import run_experience_replay
+                        run_experience_replay()
+                    except Exception:
+                        pass
+                sched.add_job(_intelligence_job, IntervalTrigger(minutes=60), id="intelligence")
+            except Exception:
+                pass
             if cfg.get("enable_lens_refresh") and cfg.get("lens_refresh_interval_days"):
                 try:
                     days = max(1, min(365, int(cfg["lens_refresh_interval_days"])))
@@ -349,9 +366,12 @@ def _read_wakeup_log() -> dict:
 # Load history at startup
 _load_history()
 
-from shared_state import set_refs  # noqa: E402
+from routers import agent as agent_router  # noqa: E402
+from routers import approvals, study  # noqa: E402
+from routers import memory as memory_router  # noqa: E402
+from routers import research as research_router  # noqa: E402
 from services import study_service  # noqa: E402
-from routers import study, approvals, agent as agent_router, research as research_router, memory as memory_router  # noqa: E402
+from shared_state import set_refs  # noqa: E402
 
 set_refs(
     _history,
@@ -488,7 +508,7 @@ def health():
     except Exception:
         tools_registered = 0
     try:
-        from layla.memory.db import get_recent_learnings, get_active_study_plans
+        from layla.memory.db import get_active_study_plans, get_recent_learnings
         learnings = len(get_recent_learnings(n=10000))
         study_plans = len(get_active_study_plans())
     except Exception:
@@ -539,24 +559,39 @@ def doctor():
 
 @app.get("/platform/models")
 def platform_models():
-    """List models and active model for UI control center."""
+    """List models, active model, catalog (jinx/dolphin/hermes/qwen), and benchmarks for UI control center."""
     try:
-        from services.model_manager import list_models
         import runtime_safety
+        from services.model_manager import list_models
         cfg = runtime_safety.load_config()
         models = list_models()
         active = cfg.get("model_filename", "")
-        return {"models": models, "active": active}
+        catalog = []
+        try:
+            cat_path = Path(__file__).resolve().parent / "models" / "model_catalog.json"
+            if cat_path.exists():
+                import json
+                data = json.loads(cat_path.read_text(encoding="utf-8"))
+                catalog = data.get("models", [])[:12]
+        except Exception:
+            pass
+        benchmarks = {}
+        try:
+            from services.model_benchmark import get_all_benchmarks
+            benchmarks = get_all_benchmarks() or {}
+        except Exception:
+            pass
+        return {"models": models, "active": active, "catalog": catalog, "benchmarks": benchmarks}
     except Exception as e:
-        return {"models": [], "active": "", "error": str(e)}
+        return {"models": [], "active": "", "catalog": [], "benchmarks": {}, "error": str(e)}
 
 
 @app.get("/platform/plugins")
 def platform_plugins():
     """List loaded plugins, skills, capabilities for UI."""
     try:
-        from services.plugin_loader import load_plugins
         import runtime_safety
+        from services.plugin_loader import load_plugins
         cfg = runtime_safety.load_config()
         pl = load_plugins(cfg)
         skills = []
@@ -577,12 +612,20 @@ def platform_plugins():
 
 @app.get("/platform/knowledge")
 def platform_knowledge():
-    """Conversation summaries, learnings preview, knowledge graph nodes for UI."""
+    """Conversation summaries, learnings preview, knowledge graph nodes, timeline, user identity for UI."""
     try:
-        from layla.memory.db import get_recent_conversation_summaries, get_recent_relationship_memories, get_recent_learnings
+        from layla.memory.db import (
+            get_all_user_identity,
+            get_recent_conversation_summaries,
+            get_recent_learnings,
+            get_recent_relationship_memories,
+            get_recent_timeline_events,
+        )
         summaries = get_recent_conversation_summaries(n=5)
         rel_mems = get_recent_relationship_memories(n=5)
         learnings = get_recent_learnings(n=10)
+        timeline = get_recent_timeline_events(n=10, min_importance=0.0)
+        user_identity = get_all_user_identity()
         nodes = []
         try:
             from layla.memory.memory_graph import get_recent_nodes
@@ -594,9 +637,21 @@ def platform_knowledge():
             "relationship_memories": [{"id": r.get("id"), "user_event": (r.get("user_event") or "")[:150]} for r in rel_mems],
             "learnings": [{"id": lr.get("id"), "content": (lr.get("content") or "")[:120], "type": lr.get("type")} for lr in learnings],
             "graph_nodes": [{"label": n.get("label"), "id": n.get("id")} for n in nodes],
+            "timeline": [{"id": t.get("id"), "event_type": t.get("event_type"), "content": (t.get("content") or "")[:150], "timestamp": t.get("timestamp"), "importance": t.get("importance")} for t in timeline],
+            "user_identity": user_identity,
         }
     except Exception as e:
-        return {"summaries": [], "relationship_memories": [], "learnings": [], "graph_nodes": [], "error": str(e)}
+        return {"summaries": [], "relationship_memories": [], "learnings": [], "graph_nodes": [], "timeline": [], "user_identity": {}, "error": str(e)}
+
+
+@app.get("/platform/projects")
+def platform_projects():
+    """Project context for UI: goals, progress, blockers, last_discussed."""
+    try:
+        from layla.memory.db import get_project_context
+        return get_project_context()
+    except Exception as e:
+        return {"project_name": "", "goals": "", "progress": "", "blockers": "", "last_discussed": "", "error": str(e)}
 
 
 @app.get("/setup_status")
@@ -611,14 +666,16 @@ def setup_status():
         pass
     model_filename = cfg.get("model_filename", "")
     placeholder = not model_filename or model_filename == "your-model.gguf"
-    models_dir = REPO_ROOT / "models"
-    model_found = not placeholder and (models_dir / model_filename).exists()
+    models_dir_raw = cfg.get("models_dir")
+    models_dir = Path(models_dir_raw).expanduser().resolve() if models_dir_raw else REPO_ROOT / "models"
+    model_path = _rs.resolve_model_path(cfg)
+    model_found = not placeholder and model_path.exists()
     # Find any .gguf in models/
     available_models = [p.name for p in sorted(models_dir.glob("*.gguf"))] if models_dir.exists() else []
     # Hardware probe
     hw = {}
     try:
-        from first_run import detect_ram_gb, detect_gpu, recommend_model
+        from first_run import detect_gpu, detect_ram_gb, recommend_model
         ram = detect_ram_gb()
         vendor, vram = detect_gpu()
         rec = recommend_model(ram, vram, vendor)
@@ -654,7 +711,11 @@ def setup_models():
 async def setup_download(url: str, filename: str = ""):
     """Stream model download progress as SSE events. url: HuggingFace direct .gguf URL."""
     import urllib.request
-    models_dir = REPO_ROOT / "models"
+
+    import runtime_safety as _rs
+    cfg = _rs.load_config()
+    models_dir_raw = cfg.get("models_dir")
+    models_dir = Path(models_dir_raw).expanduser().resolve() if models_dir_raw else REPO_ROOT / "models"
     models_dir.mkdir(parents=True, exist_ok=True)
     fname = filename or url.rstrip("/").split("/")[-1]
     if not fname.endswith(".gguf"):
@@ -711,12 +772,13 @@ async def setup_download(url: str, filename: str = ""):
                         except Exception:
                             pass
                     if not cfg:
-                        from first_run import DEFAULTS, detect_ram_gb, detect_gpu, recommend_model
+                        from first_run import DEFAULTS, detect_gpu, detect_ram_gb, recommend_model
                         ram = detect_ram_gb()
                         vendor, vram = detect_gpu()
                         rec = recommend_model(ram, vram, vendor)
                         cfg = {**DEFAULTS, **rec["config"]}
                     cfg["model_filename"] = fname
+                    cfg["models_dir"] = str(models_dir)
                     _rs.CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
                 except Exception as cfg_err:
                     logger.warning("setup_download: config save failed: %s", cfg_err)
@@ -730,26 +792,60 @@ async def setup_download(url: str, filename: str = ""):
 
 @app.get("/settings")
 def get_settings():
-    """Return editable settings from runtime_config.json."""
+    """Return all editable settings. Missing keys use schema defaults."""
     import runtime_safety as _rs
+    from config_schema import EDITABLE_SCHEMA, get_editable_keys
     try:
         cfg = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8")) if _rs.CONFIG_FILE.exists() else {}
     except Exception:
         cfg = {}
-    EDITABLE = ["model_filename", "sandbox_root", "temperature", "completion_max_tokens",
-                "n_ctx", "n_gpu_layers", "tts_voice", "whisper_model", "scheduler_study_enabled",
-                "scheduler_interval_minutes", "use_chroma", "safe_mode", "uncensored"]
-    return {k: cfg.get(k) for k in EDITABLE if k in cfg}
+    out = {}
+    for e in EDITABLE_SCHEMA:
+        k = e["key"]
+        if k in cfg:
+            out[k] = cfg[k]
+        elif "default" in e:
+            out[k] = e["default"]
+        else:
+            out[k] = None
+    return out
+
+
+@app.get("/settings/schema")
+def get_settings_schema():
+    """Return config schema for UI. Advanced users: edit agent/runtime_config.json directly."""
+    from config_schema import get_schema_for_api
+    return get_schema_for_api()
+
+
+def _coerce_setting_value(key: str, v: Any, schema: list[dict]) -> Any:
+    """Coerce value to schema type (number, boolean) when needed."""
+    for e in schema:
+        if e.get("key") == key:
+            t = e.get("type")
+            if t == "number" and v is not None:
+                try:
+                    return float(v) if isinstance(v, str) and "." in str(v) else int(v)
+                except (ValueError, TypeError):
+                    return v
+            if t == "boolean":
+                if isinstance(v, bool):
+                    return v
+                return str(v).lower() in ("true", "1", "yes", "on")
+            break
+    return v
 
 
 @app.post("/settings")
 async def save_settings(req: Request):
-    """Update runtime_config.json with provided key/value pairs."""
+    """Update runtime_config.json. Merges with existing config. Only editable keys accepted."""
     import runtime_safety as _rs
+    from config_schema import EDITABLE_SCHEMA, get_editable_keys
     try:
         body = await req.json()
     except Exception:
         return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+    editable = get_editable_keys()
     try:
         cfg = {}
         if _rs.CONFIG_FILE.exists():
@@ -757,15 +853,18 @@ async def save_settings(req: Request):
                 cfg = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8"))
             except Exception:
                 pass
-        EDITABLE = {"model_filename", "sandbox_root", "temperature", "completion_max_tokens",
-                    "n_ctx", "n_gpu_layers", "tts_voice", "whisper_model", "scheduler_study_enabled",
-                    "scheduler_interval_minutes"}
+        saved = []
         for k, v in body.items():
-            if k in EDITABLE:
-                cfg[k] = v
+            if k in editable:
+                coerced = _coerce_setting_value(k, v, EDITABLE_SCHEMA)
+                cfg[k] = coerced
+                saved.append(k)
+        # Preserve full config: merge with existing, write complete file
+        _rs.CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
         _rs.CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
-        _rs._config_cache = None
-        return {"ok": True, "saved": list(body.keys())}
+        if hasattr(_rs, "_config_cache"):
+            _rs._config_cache = None
+        return {"ok": True, "saved": saved}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
@@ -799,9 +898,9 @@ def get_file_intent_api(path: str = ""):
 
 @app.post("/project_context")
 async def set_project_context_api(req: Request):
-    """Update project context. Body: project_name?, domains?, key_files?, goals?, lifecycle_stage? (idea|planning|prototype|iteration|execution|reflection)."""
+    """Update project context. Body: project_name?, domains?, key_files?, goals?, lifecycle_stage?, progress?, blockers?, last_discussed?."""
     try:
-        from layla.memory.db import set_project_context, PROJECT_LIFECYCLE_STAGES
+        from layla.memory.db import PROJECT_LIFECYCLE_STAGES, set_project_context
         try:
             body = await req.json()
         except Exception:
@@ -812,6 +911,9 @@ async def set_project_context_api(req: Request):
             key_files=body.get("key_files"),
             goals=body.get("goals", ""),
             lifecycle_stage=body.get("lifecycle_stage", ""),
+            progress=body.get("progress", ""),
+            blockers=body.get("blockers", ""),
+            last_discussed=body.get("last_discussed", ""),
         )
         return {"ok": True, "lifecycle_stages": list(PROJECT_LIFECYCLE_STAGES)}
     except Exception as e:
@@ -924,8 +1026,8 @@ async def v1_chat_completions(req: dict):
 @app.get("/system_export")
 def system_export():
     import runtime_safety
+    from layla.memory.db import get_active_study_plans, get_last_wakeup, get_recent_audit, get_recent_learnings
     from layla.tools.registry import TOOLS
-    from layla.memory.db import get_recent_learnings, get_active_study_plans, get_last_wakeup, get_recent_audit
 
     cfg = runtime_safety.load_config()
 
@@ -964,7 +1066,7 @@ def system_export():
         aspects_loaded = []
 
     model_filename = cfg.get("model_filename", "your-model.gguf")
-    model_path = str(REPO_ROOT / "models" / model_filename)
+    model_path = str(runtime_safety.resolve_model_path(cfg))
 
     import subprocess
     git_status = ""
@@ -1112,7 +1214,7 @@ def list_audit(page: int = 1, limit: int = 50, tool: str = ""):
 @app.get("/study_plans")
 def list_study_plans():
     try:
-        from layla.memory.db import get_active_study_plans, _conn, migrate
+        from layla.memory.db import _conn, get_active_study_plans, migrate
         migrate()
         plans = get_active_study_plans()
         enriched = []

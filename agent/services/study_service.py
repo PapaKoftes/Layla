@@ -1,5 +1,6 @@
 """Study plan autonomous step: one Nyx-style research run per plan."""
 import logging
+
 from agent_loop import autonomous_run
 
 logger = logging.getLogger("layla")
@@ -8,7 +9,7 @@ logger = logging.getLogger("layla")
 def run_autonomous_study_for_plan(plan: dict) -> str | None:
     """Run one Nyx-style research step for a study plan; return summary text or None.
     Saves extracted learnings to the DB after every successful study run."""
-    from layla.memory.db import update_study_progress, save_learning
+    from layla.memory.db import save_learning, update_study_progress
     topic = (plan.get("topic") or "").strip()
     plan_id = plan.get("id")
     if not topic or not plan_id:
@@ -18,6 +19,7 @@ def run_autonomous_study_for_plan(plan: dict) -> str | None:
     ref_text = ""
     try:
         import urllib.parse
+
         from layla.tools.registry import TOOLS
         fetch_fn = TOOLS.get("fetch_article", {}).get("fn") or TOOLS.get("fetch_url", {}).get("fn")
         if fetch_fn:
@@ -64,16 +66,65 @@ def run_autonomous_study_for_plan(plan: dict) -> str | None:
             if m:
                 fact = m.group(1).strip()
                 if not fact.endswith(":"):  # skip section headers
-                    save_learning(content=f"[{topic}] {fact}", kind="fact")
+                    save_learning(content=f"[{topic}] {fact}", kind="fact", confidence=0.9, source="study_service")
                     saved += 1
             if saved >= 3:
                 break
         # If no numbered items found, save the whole summary as one fact
         if saved == 0 and len(summary) >= 60:
-            save_learning(content=f"[{topic}] {summary[:300]}", kind="fact")
+            save_learning(content=f"[{topic}] {summary[:300]}", kind="fact", confidence=0.9, source="study_service")
             saved = 1
         logger.info("study: saved %d learnings for topic=%s", saved, topic)
+        # Section 5: graph expansion
+        try:
+            from services.graph_learning import expand_graph_from_learning
+            expand_graph_from_learning(summary)
+        except Exception:
+            pass
+        # Section 6: follow-up plans (max 2 new plans per study)
+        _add_follow_up_plans(topic, summary, plan_id)
     except Exception as e:
         logger.debug("study: learning save failed: %s", e)
 
     return summary
+
+
+def _add_follow_up_plans(topic: str, summary: str, parent_plan_id: str) -> None:
+    """Generate 1-2 follow-up questions or new study topics; insert if not duplicates."""
+    import re
+    import uuid
+
+    from layla.memory.db import get_plan_by_topic, save_study_plan
+    if not summary or len(summary.strip()) < 50:
+        return
+    try:
+        from services.llm_gateway import run_completion
+        prompt = (
+            f"Given this study summary about '{topic}':\n\n{summary[:1500]}\n\n"
+            "Generate 1-2 concise follow-up study topics (short phrases, 3-8 words each). "
+            "Output only a JSON array of strings, e.g. [\"topic 1\", \"topic 2\"]. Max 2 items."
+        )
+        out = run_completion(prompt, max_tokens=120, temperature=0.2, stream=False)
+        if isinstance(out, dict):
+            text = ((out.get("choices") or [{}])[0].get("message") or {}).get("content", "") or (out.get("choices") or [{}])[0].get("text", "")
+        else:
+            text = ""
+        m = re.search(r'\[.*?\]', text, re.DOTALL)
+        if not m:
+            return
+        topics = __import__("json").loads(m.group(0))
+        if not isinstance(topics, list):
+            return
+        added = 0
+        for t in topics[:2]:
+            if not isinstance(t, str) or len(t.strip()) < 4:
+                continue
+            t = t.strip()[:80]
+            if get_plan_by_topic(t):
+                continue
+            save_study_plan(plan_id=uuid.uuid4().hex[:12], topic=t, status="active")
+            added += 1
+        if added:
+            logger.info("study: added %d follow-up plans from %s", added, topic)
+    except Exception:
+        pass
