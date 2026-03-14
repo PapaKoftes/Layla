@@ -136,6 +136,7 @@ def load_config() -> dict:
         "repeat_penalty": 1.1,
         "top_k": 40,
         "model_filename": "your-model.gguf",
+        "models_dir": str(REPO_ROOT / "models"),  # repo models/ for backward compat; installer may set ~/.layla/models
         "sandbox_root": str(Path.home()),
         "web_allowlist": [],
         "knowledge_sources": [],
@@ -173,6 +174,7 @@ def load_config() -> dict:
         "enable_lens_refresh": False,
         "lens_refresh_interval_days": 7,
         "enable_operational_guidance": False,
+        "enable_cognitive_workspace": True,
     }
     defaults.update(_hardware_derived_defaults())
     try:
@@ -184,6 +186,23 @@ def load_config() -> dict:
     _config_cache = defaults
     _config_mtime = current_mtime
     return _config_cache
+
+
+def resolve_model_path(cfg: dict | None = None) -> Path:
+    """
+    Resolve full path to model file. Uses models_dir from config if set, else REPO_ROOT/models.
+    """
+    if cfg is None:
+        cfg = load_config()
+    model_filename = (cfg.get("model_filename") or "").strip()
+    if not model_filename or model_filename == "your-model.gguf":
+        return REPO_ROOT / "models" / "your-model.gguf"  # placeholder
+    models_dir_raw = cfg.get("models_dir")
+    if models_dir_raw:
+        models_dir = Path(models_dir_raw).expanduser().resolve()
+    else:
+        models_dir = REPO_ROOT / "models"
+    return models_dir / model_filename
 
 
 _file_cache: dict[str, tuple[float, str]] = {}  # path -> (mtime, content)

@@ -8,7 +8,7 @@ This document maps each section of the North Star to code, tests, and verificati
 |---|------------|----------------|----------------------|
 | 1 | Core purpose: partner system, grow with user, assist, structure, translate, improve, maintain identity | Identity in `.cursor/rules/layla-assistant.mdc`, `agent_loop.py` system head, learnings + style profile | E2E and agent loop tests |
 | 2 | User reality: programming, fabrication, geometry, automation, docs, research, planning; focus on friction points | Morrigan prompt (planning, docs, Python, DXF→fabrication); fabrication domains + study plans | Study plans seeded; capabilities test |
-| 3 | Project participation: project awareness, lifecycle (Idea→Planning→Prototype→Iteration→Execution→Reflection) | `project_context` table: project_name, domains, key_files, goals, **lifecycle_stage**; `get_project_context` / `set_project_context`; injected in agent head; **GET/POST /project_context** API | `test_north_star.py::test_project_context_lifecycle` |
+| 3 | Project participation: project awareness, lifecycle (Idea→Planning→Prototype→Iteration→Execution→Reflection) | `project_context` table: project_name, domains, key_files, goals, **lifecycle_stage**, **progress**, **blockers**, **last_discussed**; `get_project_context` / `set_project_context`; injected in agent head; **GET/POST /project_context**, **GET /platform/projects** API | `test_north_star.py::test_project_context_lifecycle`, `test_platform_ui.py::test_platform_projects` |
 | 4 | File ecosystem: geometry, fabrication, programming, documentation, visual — interpret intent | `agent/layla/file_understanding.py`: all North Star extensions; `analyze_file()`, `get_supported_extensions()` | `test_north_star.py::test_file_understanding_*` |
 | 5 | Workflow translation: Geometry→Fabrication→Machine intent; DXF→machinable, parametric→geometry, Python→automation | Fabrication domains + dependencies; Morrigan/Nyx roles; file_understanding hints | Capability deps; study plans |
 | 6 | Execution loop: Learn→Plan→Assist→Evaluate→Improve; applied learning | Study service, capability events, record_practice, reinforcement_priority, scheduler | `test_study_integration`, scheduler job |
@@ -45,6 +45,140 @@ This document maps each section of the North Star to code, tests, and verificati
 - **Study plans + usefulness**: New knowledge reinforces only when `usefulness_score` ≥ 0.3; low-value learning does not propagate.
 - **Lilith**: Gates autonomous execution and learning acceptance.
 - **Changes by Layla**: Proposed edits go through approval; no self-modification without user approval.
+
+---
+
+---
+
+## Sovereign platform (post–North Star)
+
+| Subsystem | Implementation | Notes |
+|-----------|----------------|------|
+| Hardware detection | `services/hardware_detect.py` | CPU, RAM, GPU, VRAM, Metal/CUDA/ROCm, machine tier |
+| Model recommender | `services/model_recommender.py` | Rule-based model size/quantization from hardware |
+| Model manager | `services/model_manager.py` | list_models, install_model, benchmark_model, select_best_model |
+| Skills layer | `layla/skills/registry.py` | analyze_repo, research_topic, write_python_module, etc. |
+| Plugin system | `plugins/`, `services/plugin_loader.py` | plugin.yaml manifest, auto-register skills/tools |
+| Agent roles | `planner.py` ROLE_TOOL_HINTS | researcher, debugger, memory_curator role hints |
+| Model benchmark | `services/model_benchmark.py` | tokens/sec on first load when benchmark_on_load |
+| Memory distillation | `layla/memory/distill.py` | Jaccard + optional semantic clustering, distill_rules() |
+| Hardware-aware startup | `main.py` lifespan | Log hardware + recommendation when hardware_aware_startup |
+
+---
+
+## Prebuilt capability domains
+
+Maps each capability domain to implemented modules and missing components. See [LAYLA_PREBUILT_PLATFORM.md](LAYLA_PREBUILT_PLATFORM.md) for full architecture.
+
+| Domain | Implemented Modules | Missing Components |
+|--------|---------------------|--------------------|
+| Conversation Intelligence | `orchestrator.py`, `context_manager.py`, `stt.py`, `tts.py`, `llm_gateway.py`, `inference_router.py`, `token_count.py`, `db.conversation_summaries`, `db.relationship_memory`, `style_profile.py` | Companion intelligence — done; voice mode detection, streaming STT, configurable TTS — done |
+| Knowledge Intelligence | `vector_store.py`, `db.py`, `retrieval.py`, `graph_reasoning.py`, `distill.py`, `workspace_index.py` | graph_reasoning (spaCy + networkx) — done; faiss-cpu, qdrant |
+| Code Intelligence | `file_understanding.py`, `workspace_index.py` (tree-sitter), `registry` (python_ast, grep_code, etc.) | tree-sitter: functions, classes, imports, calls — done |
+| Automation | `browser.py`, `task_graph.py`, `planner.py`, `research_stages.py`, registry (shell, run_python, schedule_*, crawl_site) | crawl4ai, docker SDK, pyperclip |
+| Model Management | `llm_gateway.py`, `inference_router.py`, `model_manager.py`, `model_recommender.py`, `model_benchmark.py`, `model_router.py` | inference_router: llama_cpp, openai_compatible (vLLM), ollama — done; model A/B comparison |
+| Agent Runtime | `agent_loop.py`, `task_graph.py`, `shared_state.py`, `decision_schema.py`, `mission_manager.py`, `routers/*.py` | Parallel agent roles (run_parallel_ready) — done; OpenTelemetry |
+| Skill Library | `layla/skills/registry.py`, `plugin_loader.py`, `planner.py` | DAG composition, skill metrics |
+| Hardware Intelligence | `hardware_detect.py`, `first_run.py`, `agent/install/` (hardware_probe, model_selector, model_downloader, installer_cli), `runtime_safety._probe_hardware`, `runtime_safety.resolve_model_path` | First-run installer: detect hardware, recommend from catalog, download to ~/.layla/models, generate config. Metal refinement, disk benchmark, thermal (psutil) |
+| Self Improvement | `study_service.py`, `self_improvement.py`, `capability_discovery.py`, `integration_sandbox.py`, `benchmark_suite.py`, `sandbox_validator.py`, `distill.py`, `performance_monitor.py`, `system_optimizer.py`, `capabilities/registry.py` | Capability evolution pipeline — done; runtime optimization — done; RL feedback loop |
+| User Interface | `ui/index.html`, `tui.py`, `cursor-layla-mcp/server.py`, `layla.py` | Platform control center — Health, Models, Knowledge, Plugins panels; GET /platform/* APIs |
+
+---
+
+## Capability evolution pipeline
+
+| Step | Module | Description |
+|------|--------|-------------|
+| Discover | `capability_discovery.py` | `discover_candidate_libraries`, `fetch_pypi_candidates`, `fetch_github_candidates` |
+| Sandbox | `integration_sandbox.py` | Temp venv, install, compatibility tests, benchmarks |
+| Benchmark | `benchmark_suite.py` | vector_search, embedding, reranker, web_scraper; stores in `capability_implementations` |
+| Promote | `capabilities/registry.py` | Priority: config override → best benchmark → default |
+
+---
+
+## Architecture optimization (2025-03)
+
+| Component | Module | Description |
+|-----------|--------|-------------|
+| Token budgeting | `context_budget.py` | Per-section limits (identity 400, memory 800, knowledge 800, graph 200, workspace 400). Integrates with context_manager. |
+| Two-stage retrieval | `vector_store.py` | vector+BM25→top 20, light rerank→top 10, cross-encoder→top 5. Config `retrieval_cross_encoder_limit`. |
+| Graph expansion cache | `graph_cache.py` | TTL 300s cache for expand_query_via_graph. Key: hash(query). |
+| Workspace dependency graph | `workspace_index.py` | build_workspace_graph(), get_workspace_dependency_context(). Nodes: files, functions, classes, imports. Edges: calls, imports, inherits. |
+| agent_loop modularization | `decision_engine.py`, `failure_recovery.py`, `tool_orchestrator.py`, `context_builder.py` | Extracted logic; autonomous_run remains orchestrator. |
+| Runtime performance | `system_optimizer.py` | Tracks agent_decision_ms. get_summary() exposes performance (mean, p95, count) for /health, /doctor. |
+| Adaptive parallelism | `task_graph.py` | GraphExecutor._adaptive_workers() adjusts workers by CPU/RAM (psutil). |
+
+## Runtime optimization system
+
+| Component | Module | Description |
+|-----------|--------|-------------|
+| Metrics | `system_optimizer.py` | CPU, RAM, GPU, token throughput, tool latency, retrieval latency, agent_decision_ms |
+| Adaptive config | `system_optimizer.py` | `get_effective_config()` — runtime overrides for n_ctx, max_tool_calls, semantic_k, etc. Never persists. |
+| Observability | `observability.py` | `log_agent_decision`, `log_tool_result`, `log_retrieval_cache_*` — structured logging + performance_monitor |
+| Health/doctor | `main.py`, `system_doctor.py` | `system_optimizer` summary in GET /health and GET /doctor |
+
+---
+
+## Platform UI components
+
+| Panel | API | Description |
+|-------|-----|-------------|
+| Health | GET /health | System status, model, tools, learnings, CPU/RAM |
+| Models | GET /platform/models | Active model, installed .gguf list, catalog (jinx/dolphin/hermes/qwen), benchmarks |
+| Knowledge | GET /platform/knowledge | Summaries, learnings, graph nodes, timeline, user identity |
+| Plugins | GET /platform/plugins | Loaded plugins, skills, tools |
+| Projects | GET /platform/projects | Project context: goals, progress, blockers, last_discussed |
+| Timeline | (via /platform/knowledge) | Timeline events (conversation summaries, milestones) |
+| Mission tracker | Research panel | /missions, /mission/{id} |
+
+---
+
+## Companion intelligence subsystem
+
+| Component | Module | Description |
+|-----------|--------|-------------|
+| Relationship memory | `db.py` | `relationship_memory` table; add_relationship_memory, get_recent_relationship_memories; populated on conversation compress |
+| Timeline events | `db.py` | `timeline_events` table; add_timeline_event, get_recent_timeline_events; populated on conversation compress; event_type: life_event, project_milestone, goal, blocker, conversation_summary |
+| User identity | `db.py` | `user_identity` table; get_user_identity, set_user_identity, get_all_user_identity; keys: verbosity, humor_tolerance, formality, response_length, life_narrative_summary; tools: get_user_identity, update_user_identity |
+| Episodes | `db.py` | `episodes`, `episode_events` tables; create_episode, add_episode_event; grouped timeline/summaries/reflections |
+| Tool outcomes | `db.py` | `tool_outcomes` table; record_tool_outcome, get_tool_reliability; planner uses reliability hints |
+| Goals | `db.py` | `goals`, `goal_progress` tables; add_goal, add_goal_progress, get_active_goals; tools: add_goal, add_goal_progress, get_active_goals |
+| Reflection engine | `reflection_engine.py` | generate_reflections after task; what worked/failed/improve; store as learnings; integrated with _save_outcome_memory |
+| Knowledge distiller | `knowledge_distiller.py` | distill_learnings_to_insights; periodic compression; scheduler job every 60 min |
+| Curiosity engine | `curiosity_engine.py` | identify_knowledge_gaps, get_curiosity_suggestions |
+| Experience replay | `experience_replay.py` | run_experience_replay; review tool outcomes and reflections |
+| Personal knowledge graph | `personal_knowledge_graph.py` | get_personal_graph_context; unified timeline, projects, goals, identity |
+| Reasoning strategies | `reasoning_strategies.py` | get_strategy_for_task, get_strategy_prompt_hint; multi-strategy hints for complex goals |
+| Style profile | `style_profile.py` | Tone, response_style, topics; embeddings + clustering; update_profile_from_interactions |
+| Voice | `stt.py`, `tts.py` | detect_voice_mode, transcribe_streaming; get_voice_options, tts_voice config |
+| Context injection | `agent_loop._build_system_head` | Relationship memory, timeline events, user identity, conversation summaries, style profile, personal graph, reasoning strategies, active goals |
+
+---
+
+## Intelligence systems (model-agnostic)
+
+| System | Module | Description |
+|--------|--------|-------------|
+| Reflection engine | `services/reflection_engine.py` | Post-task reflections (what worked/failed/improve) → learnings |
+| Episodic memory | `db.episodes`, `db.episode_events` | Group timeline, summaries, reflections into episodes |
+| Knowledge distiller | `services/knowledge_distiller.py` | Compress learnings → higher-level insights; scheduler 60 min |
+| Tool outcome learning | `db.tool_outcomes` | Record success/latency; planner prefers reliable tools |
+| Workspace semantic graph | `workspace_index.py` | Edges: calls, depends_on, implements |
+| Goal engine | `db.goals`, `db.goal_progress` | Long-term goals; integrated with project context |
+| Curiosity engine | `services/curiosity_engine.py` | Identify knowledge gaps; suggest learning |
+| Multi-strategy reasoning | `services/reasoning_strategies.py` | Strategy hints (decomposition, analogy, etc.) for complex goals |
+| **Cognitive workspace** | `services/cognitive_workspace.py` | Tree-of-thought: generate approaches (search/reasoning/tools) → evaluate → choose best; inject strategy_hint into decision prompt and plan context |
+| Experience replay | `services/experience_replay.py` | Review outcomes/reflections for planning heuristics |
+| Personal knowledge graph | `services/personal_knowledge_graph.py` | Unified graph for retrieval (timeline, projects, goals, identity) |
+
+---
+
+## Debug & upgrade analysis
+
+See [docs/DEBUG_AND_UPGRADE_ANALYSIS.md](DEBUG_AND_UPGRADE_ANALYSIS.md) for:
+- Test flakiness fix (system_overloaded in pre_read_probe tests)
+- OSS upgrade opportunities (instructor, tiktoken, vLLM/Ollama)
+- Deprecation warnings (torch.quantization, ChromaDB Pydantic)
 
 ---
 

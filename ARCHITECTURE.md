@@ -31,13 +31,15 @@ Client
 **agent_loop.autonomous_run():**
 1. `runtime_safety.load_config()` — TTL-cached, hot-path safe
 2. `orchestrator.select_aspect()` — keyword-based, loads `personalities/*.json`
-3. `_build_system_head()` — identity + knowledge RAG (BM25+vector+FTS5+rerank) + learnings + CoT
-4. **Decision loop** (up to `max_tool_calls`):
+3. `_build_system_head()` — identity + knowledge RAG (BM25+vector+FTS5+rerank) + learnings + CoT; passes through `context_manager.build_system_prompt()` for token budgets and deduplication
+4. **Cognitive workspace** (if `enable_cognitive_workspace`): generate approaches → evaluate → choose best; inject `strategy_hint` into decision prompt and plan context
+5. **Planning** (if `should_plan`): `create_plan` → `execute_plan`; each step runs `autonomous_run` recursively
+6. **Decision loop** (up to `max_tool_calls`):
    - `_llm_decision()` → parse JSON `{action, tool_name, objective_complete, ...}`
    - If `action=tool`: `registry.TOOLS[name]()` — gated by `allow_write`/`allow_run` + approval
    - If `action=reason` or `objective_complete`: `_completion()` → stream final reply
-5. Optional self-reflection (`enable_self_reflection`) — score + rewrite if < 7/10
-6. `_save_outcome_memory()` — distill and store outcome
+7. Optional self-reflection (`enable_self_reflection`) — score + rewrite if < 7/10
+8. `_save_outcome_memory()` — distill and store outcome; reflection engine (what worked/failed/improve)
 
 **Approval:** tool returns `approval_required` → queued in `shared_state.pending` → `POST /approve {"id": uuid}` → proceed
 
@@ -52,6 +54,13 @@ Client
 | Semantic memory vectors | ChromaDB `agent/chroma/` (config-driven) |
 | BM25 index | In-memory, rebuilt from learnings on count change |
 | Conversation history | `shared_state` in-memory deque |
+| Conversation summaries | SQLite `layla.db` (conversation_summaries + embedding_id) — retrieval participation |
+| Relationship memory | SQLite `layla.db` (relationship_memory + embedding_id) — companion context |
+| Timeline events | SQLite `layla.db` (timeline_events) — personal timeline memory |
+| User identity | SQLite `layla.db` (user_identity) — verbosity, humor, formality, response length |
+| Episodes | SQLite `layla.db` (episodes, episode_events) — episodic memory grouping |
+| Tool outcomes | SQLite `layla.db` (tool_outcomes) — tool reliability learning |
+| Goals | SQLite `layla.db` (goals, goal_progress) — long-term goal tracking |
 | Pending approvals | `shared_state.pending` list + audit in DB |
 | Knowledge index | ChromaDB `agent/chroma/` (collection: `knowledge`) |
 | Research lab / output | `agent/.research_lab/`, `agent/.research_output/`, `agent/.research_brain/` |
@@ -71,20 +80,133 @@ Client
 | File | Role |
 |---|---|
 | `agent/main.py` | FastAPI app, lifespan, all routes, `/ui`, `/v1`, `/health`, GZip middleware |
-| `agent/agent_loop.py` | `autonomous_run()`, decision loop, tool dispatch, streaming, self-reflection |
+| `agent/agent_loop.py` | `autonomous_run()` orchestrator. Delegates to decision_engine, failure_recovery, tool_orchestrator, context_builder |
 | `agent/orchestrator.py` | Aspect selection, deliberation prompt builder |
 | `agent/runtime_safety.py` | Config load (TTL-cached), file caching, hardware probe, sandbox validation |
 | `agent/shared_state.py` | Shared refs: history deque, pending approvals, touch_activity, audit |
 | `agent/decision_schema.py` | Pydantic decision model, `parse_decision()` |
-| `agent/layla/tools/registry.py` | All 21 tools + `TOOLS` dict. Add tools here. |
+| `agent/layla/tools/registry.py` | All tools + `TOOLS` dict. Add tools here. |
 | `agent/layla/memory/db.py` | SQLite schema, `migrate()`, all DB access, FTS5 |
-| `agent/layla/memory/vector_store.py` | ChromaDB, BM25, cross-encoder reranking, HyDE, parent-doc retrieval |
-| `agent/services/llm_gateway.py` | `run_completion()`, `prewarm_llm()`, auto-thread detection |
-| `agent/services/stt.py` | faster-whisper STT |
-| `agent/services/tts.py` | kokoro-onnx TTS with pyttsx3 fallback |
+| `agent/layla/memory/vector_store.py` | Two-stage retrieval: vector+BM25→top 20, light rerank→top 10, cross-encoder→top k. Config `retrieval_cross_encoder_limit`. ChromaDB, HyDE, parent-doc, confidence+recency boost |
+| `agent/services/context_budget.py` | Token budgets per section (identity, memory, knowledge, graph, workspace) |
+| `agent/services/context_manager.py` | Prompt assembly with budgets, deduplication, conversation summarization |
+| `agent/services/llm_gateway.py` | `run_completion()`, `prewarm_llm()`, delegates to inference_router |
+| `agent/services/inference_router.py` | Multi-backend routing: llama_cpp, openai_compatible (vLLM), ollama |
+| `agent/services/graph_reasoning.py` | Entity extraction (spaCy) + graph expansion (networkx) for query context |
+| `agent/services/cognitive_workspace.py` | Tree-of-thought: generate approaches (search/reasoning/tools) → evaluate → choose best; inject strategy_hint |
+| `agent/services/workspace_index.py` | Semantic search + code intelligence (tree-sitter: functions, classes, imports, calls) |
+| `agent/services/stt.py` | faster-whisper STT; detect_voice_mode, transcribe_streaming |
+| `agent/services/tts.py` | kokoro-onnx TTS with pyttsx3 fallback; get_voice_options, configurable tts_voice |
+| `agent/services/style_profile.py` | Tone, response style, topics; embeddings + clustering; updates db.style_profile |
 | `agent/services/browser.py` | Playwright browser automation |
+| `agent/services/hardware_detect.py` | Hardware detection (CPU, RAM, GPU, tier) |
+| `agent/services/model_recommender.py` | Model recommendation from hardware |
+| `agent/services/model_manager.py` | Model list/install/benchmark |
+| `agent/services/model_benchmark.py` | Tokens/sec benchmark on load |
+| `agent/services/plugin_loader.py` | Load plugins from `plugins/` |
+| `agent/layla/skills/registry.py` | Skills (named tool workflows) |
 | `agent/routers/agent.py` | `POST /learn/`, `POST /agent` |
 | `agent/routers/approvals.py` | `POST /approve`, `GET /pending` |
 | `agent/routers/study.py` | `GET /wakeup`, `/study_plans` |
-| `agent/ui/index.html` | Web UI (also served embedded from main.py) |
+| `agent/ui/index.html` | Web UI: chat, aspect selector, panels (Health, Models, Knowledge, Plugins, Study, Memory, Research, Help) |
 | `personalities/*.json` | Aspect definitions. Loaded dynamically — never hardcode the list. |
+
+---
+
+## Sovereign platform subsystems
+
+- **First-run installer**: `agent/install/` — `hardware_probe.py` (CPU, RAM, GPU, CUDA/ROCm/Metal), `model_selector.py` (catalog-based recommendation), `model_downloader.py` (huggingface_hub or urllib), `installer_cli.py` (interactive wizard). Models in `~/.layla/models/`. Config: `models_dir`, `resolve_model_path()` in `runtime_safety`.
+- **Hardware detection**: `services/hardware_detect.py` — CPU, RAM, GPU, VRAM, acceleration backend, machine tier. Used by `runtime_safety`, `first_run`, `model_recommender`.
+- **Model recommender**: `services/model_recommender.py` — recommends model size/quantization from hardware.
+- **Model manager**: `services/model_manager.py` — list/install/benchmark models under `~/.layla/models/` (config: `models_dir`).
+- **Skills**: `layla/skills/registry.py` — named workflows (analyze_repo, research_topic, etc.). Planner injects skill hints when `skills_enabled`.
+- **Plugins**: `plugins/*/plugin.yaml` — auto-loaded at startup. Add skills and optional tools via `services/plugin_loader.py`.
+- **Model benchmark**: `services/model_benchmark.py` — tokens/sec on load when `benchmark_on_load`.
+- **Memory distillation**: `layla/memory/distill.py` — Jaccard + optional semantic clustering; `distill_rules()` for rule extraction.
+- **Token budgeting**: `services/context_budget.py` — allocates token limits per prompt section (identity, memory, knowledge, graph, workspace). Used by `context_manager.build_system_prompt()`.
+- **Context management**: `services/context_manager.py` — centralized prompt assembly with per-section token budgets (from context_budget), deduplication, conversation summarization, and observability. Summaries persist to `conversation_summaries` (with embeddings) for retrieval.
+- **Graph reasoning**: `services/graph_reasoning.py` — spaCy entity extraction + networkx graph expansion. Query context expands via knowledge graph relationships. Integrated into `retrieval.retrieve_graph_context`. `services/graph_cache.py` caches expansion results (TTL 300s) to avoid repeated BFS.
+- **Code intelligence**: `services/workspace_index.py` — tree-sitter extracts functions, classes, imports, call graph from Python. `extract_code_architecture()`, `get_architecture_summary()`, `build_workspace_graph()` (semantic dependency graph: files, functions, classes, imports; edges: calls, imports, inherits, depends_on, implements), `get_workspace_dependency_context(query)` for coding tasks. Injected into `_build_system_head` when coding keywords detected.
+- **Parallel agent roles**: `services/task_graph.py` — `run_parallel_ready()`, `run_until_complete_parallel()` for concurrent execution of planner, researcher, executor, critic, memory_curator when dependencies permit. Adaptive parallelism: workers adjust dynamically by CPU/RAM (psutil).
+- **Capability registry**: `capabilities/registry.py` — capability types (vector_search, embedding, reranker, web_scraper) with multiple implementations. Selection priority: 1) `capability_impls` config override, 2) best benchmark score, 3) default.
+- **Capability discovery**: `services/capability_discovery.py` — `discover_candidate_libraries`, `fetch_pypi_candidates`, `fetch_github_candidates`; scans PyPI, GitHub, HuggingFace.
+- **Integration sandbox**: `services/integration_sandbox.py` — temp venv, install candidate, compatibility tests, benchmarks; isolated from Layla runtime.
+- **Benchmark suite**: `services/benchmark_suite.py` — latency, throughput, memory for vector_search, embedding, reranker, web_scraper; stores in `capability_implementations`.
+- **Sandbox validator**: `services/sandbox_validator.py` — import check + benchmark before enabling a capability.
+- **Performance monitor**: `services/performance_monitor.py` — runtime metrics (tool latency, retrieval, token throughput).
+- **System optimizer**: `services/system_optimizer.py` — collects CPU, RAM, GPU, token throughput, tool latency, retrieval latency; applies adaptive runtime overrides (context size, parallel tasks, retrieval depth). Changes are runtime-only; never persist to `runtime_config.json`.
+- **Observability**: `services/observability.py` — structured logging for agent_decision, tool_call, tool_result, retrieval_cache_hit/miss; records to performance_monitor for system_optimizer.
+
+---
+
+## Companion intelligence subsystem
+
+1. **Relationship memory** — `db.relationship_memory` stores meaningful interaction summaries (user_event, timestamp, embedding_id). Populated when conversation is compressed. Injected into `_build_system_head` as "Recent relationship context".
+2. **Timeline events** — `db.timeline_events` stores personal timeline (event_type, content, timestamp, importance). Populated on conversation compress. Injected as "Recent timeline".
+3. **User identity** — `db.user_identity` stores long-term companion context (verbosity, humor_tolerance, formality, response_length, life_narrative_summary). Tools: `get_user_identity`, `update_user_identity`. Injected as "User/companion context".
+4. **Style profile** — `services/style_profile.py` tracks tone, preferred response style, frequent topics via embeddings + clustering. Updates `db.style_profile`. Injected when `enable_style_profile` is true.
+5. **Voice** — `stt.detect_voice_mode`, `stt.transcribe_streaming`; `tts.get_voice_options`, configurable `tts_voice` in runtime_config.
+6. **Context injection** — `_build_system_head` injects: relationship memory, timeline events, user identity, conversation summaries, style profile (tone, topics, response_style), personal knowledge graph, reasoning strategies (for complex goals), active goals.
+7. **Reflection engine** — `services/reflection_engine.py`: after task completion, generate what worked/failed/could improve; store as learnings.
+8. **Knowledge distiller** — `services/knowledge_distiller.py`: periodically compress learnings into higher-level insights.
+9. **Tool outcome learning** — `layla.memory.db.tool_outcomes`: record success/latency; planner prefers higher-reliability tools.
+10. **Goal engine** — `goals`, `goal_progress` tables; tools: add_goal, add_goal_progress, get_active_goals; integrated with project context.
+11. **Curiosity engine** — `services/curiosity_engine.py`: identify knowledge gaps, suggest learning/exploration.
+12. **Experience replay** — `services/experience_replay.py`: review tool outcomes and reflections for planning heuristics.
+13. **Personal knowledge graph** — `services/personal_knowledge_graph.py`: unified graph (timeline, projects, goals, identity); used during retrieval.
+
+---
+
+## Runtime optimization system
+
+1. **Metrics** — `system_optimizer.collect_metrics()` aggregates from `resource_manager` (CPU, RAM, GPU) and `performance_monitor` (token throughput, tool latency, retrieval latency, agent decision time).
+2. **Adaptive config** — `system_optimizer.get_effective_config(base_cfg)` returns merged config with runtime overrides when CPU/RAM/GPU exceed thresholds. `agent_loop` uses this at run start.
+3. **Instrumentation** — Tool registry wraps each fn with timing; `log_tool_result` records to performance_monitor. `_llm_decision` timed; `log_agent_decision` records. Retrieval cache hit/miss records retrieval latency.
+4. **Health/doctor** — `GET /health` and `GET /doctor` include `system_optimizer` summary (metrics, performance with averages and recent values, overrides, parallel_tasks_suggested).
+
+---
+
+## Capability evolution pipeline
+
+1. **Discovery** — `capability_discovery.discover_candidate_libraries(capability_name)` fetches candidates from PyPI (`fetch_pypi_candidates`), GitHub (`fetch_github_candidates`), HuggingFace.
+2. **Sandbox** — `integration_sandbox.evaluate_candidate()` creates temp venv, installs package, runs compatibility tests, benchmarks. Isolated from Layla runtime.
+3. **Benchmark** — `benchmark_suite.run_benchmark()` measures latency, throughput, memory for vector_search, embedding, reranker, web_scraper. Results stored in `capability_implementations`.
+4. **Promotion** — `capabilities/registry.get_active_implementation()` selects: 1) `runtime_config.capability_impls` override, 2) best benchmark score, 3) default.
+
+---
+
+## Capability domain mapping
+
+Layla is organized into 10 capability domains. Each maps to specific modules. See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for full detail.
+
+| Domain | Modules | Notes |
+|--------|---------|-------|
+| Conversation Intelligence | orchestrator, context_manager, stt, tts, llm_gateway, style_profile | Aspect selection, RAG context, voice I/O, companion intelligence |
+| Knowledge Intelligence | vector_store, db, retrieval, retrieval_cache, distill | ChromaDB, BM25, FTS5, HyDE |
+| Code Intelligence | file_understanding, workspace_index (tree-sitter), registry (python_ast, grep_code, etc.) | Functions, classes, imports, call graph |
+| Automation | browser, task_graph, planner, research_stages | Playwright, scheduling, research pipeline |
+| Model Management | llm_gateway, model_manager, model_recommender, model_benchmark, model_router | Hardware-aware model selection |
+| Agent Runtime | agent_loop, shared_state, decision_schema, mission_manager, routers | Decision loop, approval gate, tool dispatch |
+| Skill Library | layla/skills/registry, plugin_loader, planner | Named workflows, plugin loading |
+| Hardware Intelligence | hardware_detect, first_run, runtime_safety | CPU/RAM/GPU detection, first-run wizard |
+| Self Improvement | study_service, self_improvement, capability_discovery, integration_sandbox, benchmark_suite, sandbox_validator, capabilities/registry, distill | Capability evolution pipeline; study plans; benchmarking |
+| User Interface | ui/index.html, tui, cursor-layla-mcp, layla.py | Web UI, TUI, MCP, CLI |
+
+---
+
+## Platform UI components
+
+Control center panels (right sidebar, tabbed):
+
+| Panel | API | Content |
+|-------|-----|---------|
+| Health | GET /health | Status, model loaded, tools, learnings, study plans, CPU/RAM |
+| Models | GET /platform/models | Active model, installed .gguf list, catalog (jinx/dolphin/hermes/qwen), benchmarks |
+| Knowledge | GET /platform/knowledge | Summaries, learnings, graph nodes, timeline, user identity |
+| Plugins | GET /platform/plugins | Loaded plugins, skills added, tools added, errors |
+| Projects | GET /platform/projects | Project context: goals, progress, blockers, last_discussed |
+| Timeline | (via /platform/knowledge) | Timeline events (conversation summaries, milestones) |
+| Study | GET /study_plans | Study plans, add/remove |
+| Memory | (search) | Memory search via agent |
+| Research | /missions, /mission/{id} | Mission tracker, research mission status |
+| Help | — | Capabilities, usage hints |
