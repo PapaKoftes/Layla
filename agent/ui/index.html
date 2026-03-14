@@ -2257,22 +2257,39 @@ async function refreshApprovals() {
 
 // ─── Inject file context into send payload ─────────────────────────────────
 // Wrap original send() to prepend file context to message
-const _origSend = send;
-async function send() {
-  if (_attachedFiles.length > 0) {
-    const input = document.getElementById('msg-input');
-    if (input && input.value.trim()) {
-      const ctx = _attachedFiles.map(f =>
-        `[Context from ${f.name}]:\n\`\`\`\n${f.content.slice(0, 4000)}\n\`\`\``
-      ).join('\n\n');
-      input.value = ctx + '\n\n' + input.value;
-      _attachedFiles = [];
-      const chips = document.getElementById('file-context-chips');
-      if (chips) { chips.innerHTML = ''; chips.style.display = 'none'; }
-    }
+(function () {
+  // Capture original send from a stable place (window). Fallback to any existing `send`.
+  const _origSend = (typeof window !== "undefined" && window.send) || (typeof send !== "undefined" ? send : null);
+  if (!_origSend) {
+    // If there's no original send (unexpected), don't overwrite anything.
+    return;
   }
-  await _origSend();
-}
+
+  // Replace the global/send function with a safe wrapper that preserves `this` and args.
+  window.send = async function (...args) {
+    if (_attachedFiles.length > 0) {
+      const input = document.getElementById("msg-input");
+      if (input && input.value.trim()) {
+        const ctx = _attachedFiles
+          .map(
+            (f) =>
+              `[Context from ${f.name}]:\n\`\`\`\n${f.content.slice(0, 4000)}\n\`\`\``,
+          )
+          .join("\n\n");
+        input.value = ctx + "\n\n" + input.value;
+        _attachedFiles = [];
+        const chips = document.getElementById("file-context-chips");
+        if (chips) {
+          chips.innerHTML = "";
+          chips.style.display = "none";
+        }
+      }
+    }
+    // Call the original with the same `this` and arguments.
+    return _origSend.apply(this, args);
+  };
+})();
+
 
 // ─── Warmup bar ─────────────────────────────────────────────────────────────
 let _warmupDone = false;
