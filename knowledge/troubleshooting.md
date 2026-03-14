@@ -5,6 +5,42 @@ domain: troubleshooting
 
 # Layla Troubleshooting Guide
 
+## Linux (Ubuntu / Fedora) — startup fails
+
+**Symptom:** `bash start.sh` or `uvicorn main:app` fails immediately, or pip install fails with "No CMAKE_CXX_COMPILER" / "Python.h not found".
+
+**1. Run the diagnostic first:**
+```bash
+source .venv/bin/activate
+python agent/diagnose_startup.py
+```
+This reports which dependency or import is failing.
+
+**2. Install system build dependencies before pip install:**
+- **Ubuntu/Debian:** `sudo apt install build-essential cmake libsndfile1`
+- **Fedora:** `sudo dnf install python3-devel gcc-c++ cmake libsndfile`
+- **Arch:** `sudo pacman -S base-devel cmake libsndfile`
+
+Then re-run `bash install.sh` (or `pip install -r agent/requirements.txt` if venv already exists).
+
+**3. Use `python -m uvicorn` (avoids PATH issues):**
+```bash
+cd agent
+python -m uvicorn main:app --host 127.0.0.1 --port 8000
+```
+The `start.sh` script uses this by default. If you run uvicorn manually and get "command not found", use `python -m uvicorn` instead.
+
+**4. If llama-cpp-python fails to build:**
+- Ensure gcc, g++, cmake are installed (see step 2)
+- `python3-devel` (Fedora) or `python3-dev` (Ubuntu) provides `Python.h` — required for compilation
+- Try: `pip install llama-cpp-python --no-cache-dir` to force a clean rebuild
+
+**5. If ChromaDB / sentence-transformers fails:**
+- ChromaDB needs SQLite ≥ 3.35. If you see sqlite3 errors: `pip install pysqlite3-binary`
+- sentence-transformers downloads models on first use — ensure internet access
+
+---
+
 ## Layla won't start
 
 **"Model not found" error**
@@ -20,6 +56,12 @@ domain: troubleshooting
 **Port 8000 already in use**
 - Another process is on port 8000. Change the port: `uvicorn main:app --port 8001`
 - Or kill the existing process: `netstat -ano | findstr 8000` (Windows), `lsof -i :8000` (Linux)
+
+**Uvicorn won't start or crashes**
+- Run from the agent directory: `cd agent && uvicorn main:app --host 127.0.0.1 --port 8000`
+- Or: `cd agent && python -m uvicorn main:app --host 127.0.0.1 --port 8000`
+- Ensure venv is activated and uvicorn is installed: `pip install uvicorn[standard]`
+- On Fedora, install build deps first: `sudo dnf install python3-devel` (needed for some compiled deps)
 
 **FastAPI import errors**
 - Activate the venv: `.venv\Scripts\activate` (Windows) or `source .venv/bin/activate` (Linux)
@@ -87,6 +129,22 @@ domain: troubleshooting
 **Browser automation (Playwright) fails**
 - Run: `playwright install chromium`
 - Check it's installed: `python -c "from playwright.sync_api import sync_playwright; print('ok')"`
+
+## Cannot send a message
+
+**Send button stays disabled**
+- Type something in the input box — the button enables only when there's text
+- If it still won't enable, check the browser console (F12 → Console) for JavaScript errors
+
+**Clicking Send does nothing or shows an error**
+- **"Model not ready"** — Configure a model: run `python agent/first_run.py` or put a `.gguf` in `models/` and set `model_filename` in `agent/runtime_config.json`. See MODELS.md.
+- **"Model error: ... path ..."** — The model file path is wrong. Check `models_dir` and `model_filename` in config; the file must exist.
+- **Using a remote LLM?** — Set `llama_server_url` in `runtime_config.json` (e.g. `http://localhost:11434` for Ollama). No local .gguf needed.
+- **Request hangs or times out** — Model may be loading (first request can take 30+ seconds). Or the model is too large for your RAM — try a smaller one.
+
+**Check model status:** Open `http://localhost:8000/health` — if `model_loaded` is false, fix the config before sending.
+
+---
 
 ## UI problems
 
