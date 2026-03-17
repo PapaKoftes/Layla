@@ -130,7 +130,8 @@ def get_architecture_summary(workspace_root: str | Path) -> str:
             continue
         try:
             text = f.read_text(encoding="utf-8", errors="replace")
-        except Exception:
+        except Exception as e:
+            logger.debug("get_architecture_summary read failed %s: %s", f, e)
             continue
         arch = extract_code_architecture(text, str(f.relative_to(root)))
         if not arch.get("functions") and not arch.get("classes"):
@@ -183,6 +184,7 @@ def index_workspace(workspace_root: str | Path, extensions: tuple[str, ...] = ("
     ids: list[str] = []
     docs: list[str] = []
     metas: list[dict] = []
+    parser = _get_parser()
     for ext in extensions:
         for f in root.rglob(f"*{ext}"):
             if ".git" in str(f) or "__pycache__" in str(f) or "node_modules" in str(f):
@@ -197,15 +199,58 @@ def index_workspace(workspace_root: str | Path, extensions: tuple[str, ...] = ("
                 skipped += 1
                 continue
             rel = str(f.relative_to(root)).replace("\\", "/")
-            for i in range(0, len(text), 600):
-                chunk = text[i : i + 600].strip()
-                if len(chunk) < 20:
-                    continue
-                cid = hashlib.sha1(f"{rel}:{i}".encode()).hexdigest()[:16]
-                ids.append(cid)
-                docs.append(chunk)
-                metas.append({"source": rel, "chunk_index": i // 600})
-                indexed += 1
+            # Chunk by function/class for .py when tree-sitter available; else fixed-size
+            if ext == ".py" and parser is not None:
+                arch = extract_code_architecture(text, rel)
+                chunks_added = False
+                for cls in arch.get("classes", [])[:20]:
+                    name = cls.get("name", "")
+                    line = cls.get("line", 0)
+                    lines = text.split("\n")
+                    start = max(0, line - 1)
+                    end = min(len(lines), start + 50)
+                    chunk_text = "\n".join(lines[start:end]).strip()
+                    if len(chunk_text) >= 20:
+                        cid = hashlib.sha1(f"{rel}:class:{name}".encode()).hexdigest()[:16]
+                        ids.append(cid)
+                        docs.append(f"class {name}\n{chunk_text}")
+                        metas.append({"source": rel, "type": "class", "name": name})
+                        indexed += 1
+                        chunks_added = True
+                for fn in arch.get("functions", [])[:30]:
+                    name = fn.get("name", "")
+                    line = fn.get("line", 0)
+                    lines = text.split("\n")
+                    start = max(0, line - 1)
+                    end = min(len(lines), start + 40)
+                    chunk_text = "\n".join(lines[start:end]).strip()
+                    if len(chunk_text) >= 20 and not name.startswith("_"):
+                        cid = hashlib.sha1(f"{rel}:fn:{name}".encode()).hexdigest()[:16]
+                        ids.append(cid)
+                        docs.append(chunk_text)
+                        metas.append({"source": rel, "type": "function", "name": name})
+                        indexed += 1
+                        chunks_added = True
+                if not chunks_added:
+                    # Fallback: fixed-size chunks
+                    for i in range(0, len(text), 600):
+                        chunk = text[i : i + 600].strip()
+                        if len(chunk) >= 20:
+                            cid = hashlib.sha1(f"{rel}:{i}".encode()).hexdigest()[:16]
+                            ids.append(cid)
+                            docs.append(chunk)
+                            metas.append({"source": rel, "chunk_index": i // 600})
+                            indexed += 1
+            else:
+                for i in range(0, len(text), 600):
+                    chunk = text[i : i + 600].strip()
+                    if len(chunk) < 20:
+                        continue
+                    cid = hashlib.sha1(f"{rel}:{i}".encode()).hexdigest()[:16]
+                    ids.append(cid)
+                    docs.append(chunk)
+                    metas.append({"source": rel, "chunk_index": i // 600})
+                    indexed += 1
     if not docs:
         return {"indexed": 0, "skipped": skipped, "errors": errors}
     try:
@@ -235,7 +280,8 @@ def build_workspace_graph(workspace_root: str | Path) -> dict[str, Any]:
             continue
         try:
             text = f.read_text(encoding="utf-8", errors="replace")
-        except Exception:
+        except Exception as e:
+            logger.debug("build_workspace_graph read failed %s: %s", f, e)
             continue
         rel = str(f.relative_to(root)).replace("\\", "/")
         arch = extract_code_architecture(text, rel)
@@ -293,8 +339,8 @@ def get_workspace_dependency_context(query: str, workspace_root: str | Path = ""
     if not _workspace_graph:
         try:
             build_workspace_graph(root)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("get_workspace_dependency_context build_graph failed: %s", e)
     if not _workspace_graph:
         return get_architecture_summary(root)[:max_chars]
     q_lower = (query or "").lower()
@@ -337,5 +383,6 @@ def search_workspace(query: str, workspace_root: str | Path = "", k: int = 5) ->
             meta = metas[i] if i < len(metas) else {}
             out.append({"text": doc or "", "source": meta.get("source", "")})
         return out
-    except Exception:
+    except Exception as e:
+        logger.debug("search_workspace failed: %s", e)
         return []

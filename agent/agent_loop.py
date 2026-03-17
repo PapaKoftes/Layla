@@ -29,7 +29,8 @@ def _get_effective_config(base_cfg: dict) -> dict:
     try:
         from services.system_optimizer import get_effective_config
         return get_effective_config(base_cfg)
-    except Exception:
+    except Exception as e:
+        logger.debug("get_effective_config failed: %s", e)
         return base_cfg
 
 
@@ -91,8 +92,8 @@ def _emit_ux(state: dict, ux_state_queue: queue.Queue | None, label: str) -> Non
     if ux_state_queue is not None:
         try:
             ux_state_queue.put(label, block=False)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("emit_ux put failed: %s", e)
 
 
 def _emit_tool_start(ux_state_queue: queue.Queue | None, tool_name: str) -> None:
@@ -100,8 +101,8 @@ def _emit_tool_start(ux_state_queue: queue.Queue | None, tool_name: str) -> None
     if ux_state_queue is not None:
         try:
             ux_state_queue.put({"_type": "tool_start", "tool": tool_name}, block=False)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("emit_tool_start put failed: %s", e)
 
 
 def _is_junk_reply(content: str) -> bool:
@@ -273,7 +274,7 @@ def _load_learnings(aspect_id: str = "") -> str:
 def _semantic_recall(query: str, k: int = 5) -> str:
     """
     Full memory recall pipeline: BM25 + vector hybrid search + FTS5 + cross-encoder reranking.
-    Falls back to pure vector search on error.
+    Falls back to pure vector search, then FTS on ChromaDB error.
     """
     try:
         from layla.memory.vector_store import search_memories_full
@@ -284,13 +285,12 @@ def _semantic_recall(query: str, k: int = 5) -> str:
             return ""
         lines = [r.get("content", "") for r in results if r.get("content")]
         return "\n".join(lines)
-    except Exception:
+    except Exception as e:
+        logger.warning("ChromaDB failed, falling back to FTS: %s", e)
         try:
-            from layla.memory.vector_store import embed, search_similar
-            vec = embed(query)
-            results = search_similar(vec, k=k)
-            lines = [r.get("content", "") for r in results if r.get("content")]
-            return "\n".join(lines)
+            from layla.memory.db import search_learnings_fts
+            results = search_learnings_fts(query, n=k)
+            return "\n".join(r.get("content", "") for r in results if r.get("content"))
         except Exception:
             return ""
 
@@ -380,11 +380,28 @@ def _enrich_deliberation_context(context: str) -> str:
     return (context or "").strip() + "\n\n" + "\n".join(extra)
 
 
+def _needs_knowledge_rag(goal: str) -> bool:
+    """True if goal suggests research/search/explain — use full Chroma retrieval."""
+    if not (goal or "").strip():
+        return False
+    g = goal.lower()
+    return any(kw in g for kw in ("research", "search", "explain", "look up", "what is", "how does", "find out", "learn about"))
+
+
+def _needs_graph(goal: str) -> bool:
+    """True if goal suggests related/context/connection — include graph associations."""
+    if not (goal or "").strip():
+        return False
+    g = goal.lower()
+    return any(kw in g for kw in ("related", "context", "connection", "link", "associate", "connected"))
+
+
 def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_root: str = "", sub_goals: list | None = None, state: dict | None = None) -> str:
     cfg = runtime_safety.load_config()  # noqa: F841
     identity = runtime_safety.load_identity().strip()
     knowledge = ""
-    if cfg.get("use_chroma") and goal:
+    # Lazy: full Chroma knowledge RAG only when research/search/explain keywords
+    if cfg.get("use_chroma") and goal and _needs_knowledge_rag(goal):
         try:
             from layla.memory.vector_store import get_knowledge_chunks_with_sources, refresh_knowledge_if_changed
             try:
@@ -411,6 +428,7 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
                 state["cited_knowledge_sources"] = []
             pass
     if not knowledge.strip():
+        # Fallback: lightweight docs when chroma disabled or non-research goal
         knowledge = runtime_safety.load_knowledge_docs(max_bytes=cfg.get("knowledge_max_bytes", 4000)).strip()
     else:
         knowledge = knowledge.strip()
@@ -454,23 +472,24 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
     if goal:
         semantic = _semantic_recall(goal, k=cfg.get("semantic_k", 5)).strip()
 
-    # Memory graph associations: recent concepts and their links (lightweight, always-on)
+    # Memory graph associations: skip when goal is short and no related/context keywords
     graph_associations = ""
-    try:
-        from layla.memory.memory_graph import get_recent_nodes
-        recent_nodes = get_recent_nodes(n=15)
-        if recent_nodes and goal:
-            goal_words = set(w.lower() for w in goal.split() if len(w) > 3)
-            relevant = [
-                n["label"] for n in recent_nodes
-                if any(w in (n.get("label") or "").lower() for w in goal_words)
-            ]
-            if not relevant:
-                relevant = [n["label"] for n in recent_nodes[-5:] if n.get("label")]
-            if relevant:
-                graph_associations = "Knowledge graph associations: " + "; ".join(relevant[:8])
-    except Exception:
-        pass
+    if goal and (len(goal.split()) >= 3 or _needs_graph(goal)):
+        try:
+            from layla.memory.memory_graph import get_recent_nodes
+            recent_nodes = get_recent_nodes(n=15)
+            if recent_nodes:
+                goal_words = set(w.lower() for w in goal.split() if len(w) > 3)
+                relevant = [
+                    n["label"] for n in recent_nodes
+                    if any(w in (n.get("label") or "").lower() for w in goal_words)
+                ]
+                if not relevant:
+                    relevant = [n["label"] for n in recent_nodes[-5:] if n.get("label")]
+                if relevant:
+                    graph_associations = "Knowledge graph associations: " + "; ".join(relevant[:8])
+        except Exception:
+            pass
 
     # Section 2: unified retrieval injection (learnings + docs + graph)
     retrieved_context = ""
@@ -486,14 +505,25 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
     repo_struct = _get_repo_structure(workspace_root)
     if repo_struct:
         workspace_context_parts.append(f"Repo structure (top-level): {repo_struct}")
-    # Workspace dependency context for coding tasks
+    # Workspace dependency context + semantic code search for coding tasks
     coding_keywords = ("code", "debug", "fix", "implement", "refactor", "function", "class", "module", "file", "grep", "read_file", "write_file")
     if goal and workspace_root and any(kw in goal.lower() for kw in coding_keywords):
         try:
-            from services.workspace_index import get_workspace_dependency_context
+            from services.workspace_index import get_workspace_dependency_context, search_workspace
             dep_ctx = get_workspace_dependency_context(goal, workspace_root, max_chars=400)
             if dep_ctx:
                 workspace_context_parts.append(dep_ctx)
+            # Semantic codebase search: top-k chunks from indexed workspace
+            code_chunks = search_workspace(goal, workspace_root, k=5)
+            if code_chunks:
+                chunk_lines = []
+                for c in code_chunks[:5]:
+                    src = c.get("source", "")
+                    txt = (c.get("text") or "").strip()[:600]
+                    if txt:
+                        chunk_lines.append(f"  [{src}]: {txt}")
+                if chunk_lines:
+                    workspace_context_parts.append("Semantic code matches:\n" + "\n".join(chunk_lines))
         except Exception:
             pass
     try:
@@ -718,7 +748,10 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
     if cfg.get("prompt_budget_enabled", True):
         n_ctx = max(2048, int(cfg.get("n_ctx", 4096)))
         assembled, _metrics = build_system_prompt(sections, n_ctx=n_ctx, budgets=budgets, reserve_for_response=512)
-        return assembled if assembled.strip() else "You are Layla, a bounded AI companion and engineering agent."
+        head = assembled if assembled.strip() else "You are Layla, a bounded AI companion and engineering agent."
+        if cfg.get("custom_system_prefix"):
+            head = head + "\n\n" + cfg["custom_system_prefix"].strip()
+        return head
     # Legacy path: no budget enforcement
     parts = [system_instructions]
     if workspace_context:
@@ -731,7 +764,10 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
         parts.append(graph_associations)
     if knowledge:
         parts.append(f"Reference docs:\n{knowledge}")
-    return "\n\n".join(parts) if parts else "You are Layla, a bounded AI companion and engineering agent."
+    head = "\n\n".join(parts) if parts else "You are Layla, a bounded AI companion and engineering agent."
+    if cfg.get("custom_system_prefix"):
+        head = head + "\n\n" + cfg["custom_system_prefix"].strip()
+    return head
 
 
 def _reflect_on_response(goal: str, response: str, aspect: dict | None = None) -> str | None:
@@ -800,6 +836,31 @@ def system_overloaded() -> bool:
 
 # Valid tool names for LLM decision (must match TOOLS registry)
 _VALID_TOOLS = frozenset(TOOLS.keys())
+
+
+def _get_tools_for_goal(goal: str) -> frozenset:
+    """
+    Return tool names for this turn. When tool_routing_enabled, uses intent-based
+    subset (15-25 tools) instead of all tools. Fallback: full TOOLS when disabled.
+    """
+    try:
+        cfg = runtime_safety.load_config()
+        if not cfg.get("tool_routing_enabled", True):
+            return _VALID_TOOLS
+        from services.intent_detection import get_tool_names_for_goal
+        names = get_tool_names_for_goal(goal, TOOLS)
+        # Cap at 30; truncate to top 25 by relevance if over (plan §7.3)
+        if len(names) > 30:
+            try:
+                from layla.tools.registry import tool_recommend
+                rec = tool_recommend(goal)
+                top = [r.get("tool") for r in (rec.get("recommendations") or [])[:25] if r.get("tool") in names]
+                names = frozenset(top) | {"reason", "read_file", "list_dir", "search_memories", "save_note"}
+            except Exception:
+                names = frozenset(list(names)[:25]) | {"reason", "read_file", "list_dir", "search_memories", "save_note"}
+        return names
+    except Exception:
+        return _VALID_TOOLS
 
 # ─────────────────────────────────────────────────────────────
 # Auto file probe (planning layer only)
@@ -973,6 +1034,88 @@ def _format_recovery_hint_for_prompt(recovery_hint: dict) -> str:
     return format_recovery_hint_for_prompt(recovery_hint)
 
 
+def _run_git_auto_commit(tool_name: str, result: dict, path: str, workspace: str) -> None:
+    """
+    After write_file or apply_patch succeeds, optionally auto-commit.
+    Config: git_auto_commit. Stores last commit for /undo.
+    """
+    try:
+        cfg = runtime_safety.load_config()
+        if not cfg.get("git_auto_commit", False):
+            return
+        if not result.get("ok") or not workspace:
+            return
+        repo = str(Path(workspace).expanduser().resolve())
+        # Resolve path relative to repo for git add
+        p = Path(path) if path else None
+        if p and not p.is_absolute():
+            add_path = str(p)
+        elif p:
+            try:
+                add_path = str(p.relative_to(repo))
+            except ValueError:
+                add_path = "."
+        else:
+            add_path = "."
+        add_res = TOOLS["git_add"]["fn"](repo=repo, path=add_path)
+        if not add_res.get("ok"):
+            logger.debug("git_auto_commit: git_add failed: %s", add_res.get("output"))
+            return
+        msg = "fix: apply changes from Layla"
+        commit_res = TOOLS["git_commit"]["fn"](repo=repo, message=msg, add_all=False)
+        if not commit_res.get("ok"):
+            logger.debug("git_auto_commit: git_commit failed: %s", commit_res.get("output"))
+            return
+        # Get new commit hash
+        import subprocess
+        r = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            from shared_state import set_last_layla_commit
+            set_last_layla_commit(repo, r.stdout.strip())
+    except Exception as e:
+        logger.debug("git_auto_commit failed: %s", e)
+
+
+def _run_auto_lint_test_fix(state: dict, tool_name: str, result: dict, path: str, workspace: str) -> str | None:
+    """
+    Post-write hook: run code_lint (and optionally run_tests) on changed path.
+    If issues found, return hint string to inject into goal for retry. Cap at 3 iterations.
+    """
+    try:
+        cfg = runtime_safety.load_config()
+        if not cfg.get("auto_lint_test_fix", False):
+            return None
+        iters = state.get("lint_test_fix_iterations", 0)
+        if iters >= 3:
+            return None
+        if not path or not workspace:
+            return None
+        state["lint_test_fix_iterations"] = iters + 1
+        lint_result = TOOLS["code_lint"]["fn"](path=path, fix=False)
+        if not isinstance(lint_result, dict) or not lint_result.get("ok"):
+            return None
+        violations = lint_result.get("violations", 0) or len(lint_result.get("details", []))
+        if violations > 0:
+            details = lint_result.get("details", [])[:5]
+            lines = [f"- {d.get('file','')}:{d.get('line','')} {d.get('code','')}: {d.get('message','')}" for d in details if isinstance(d, dict)]
+            hint = f"[Lint found {violations} violation(s). Fix these and retry:\n" + "\n".join(lines) + "]"
+            return hint
+        if cfg.get("auto_lint_test_fix_run_tests", False):
+            test_result = TOOLS["run_tests"]["fn"](cwd=workspace, pattern="", extra_args="-x -q", timeout_s=60)
+            if isinstance(test_result, dict) and not test_result.get("ok") and test_result.get("failed", 0) > 0:
+                out = (test_result.get("output") or "")[:500]
+                return f"[Tests failed. Fix and retry:\n{out}]"
+    except Exception as e:
+        logger.debug("auto_lint_test_fix failed: %s", e)
+    return None
+
+
 def _run_verification_after_tool(state: dict, tool_name: str, result: dict, workspace: str = "") -> None:
     """If tool is verifiable and succeeded, run verification and environment observation; update state."""
     if tool_name not in _VERIFY_TOOLS or not (isinstance(result, dict) and result.get("ok")):
@@ -1109,7 +1252,8 @@ def _llm_decision(
         elif prev_priority:
             priority_context += "When risk is high prefer safer paths (read, inspect). "
 
-    tools_list = ", ".join(sorted(_VALID_TOOLS - {"reason"}))
+    valid_tools = _get_tools_for_goal(goal)
+    tools_list = ", ".join(sorted(valid_tools - {"reason"}))
     prompt = (
         f"{aspect_block}"
         f"{bias_hint}"
@@ -1128,37 +1272,40 @@ def _llm_decision(
     try:
         cfg = runtime_safety.load_config()
         max_tok = 120 if reframe_candidate else 80
+        use_instructor = cfg.get("use_instructor_for_decisions", True)
         # Try instructor (grammar-constrained JSON) when local Llama available
-        try:
-            import instructor
+        if use_instructor:
+            for _attempt in range(2):  # 1 retry before falling back
+                try:
+                    import instructor
 
-            from decision_schema import AgentDecision
-            if not (cfg.get("llama_server_url") or "").strip():
-                from services.llm_gateway import _get_llm
-                llm = _get_llm()
-                if llm is not None:
-                    create = instructor.patch(
-                        create=llm.create_chat_completion_openai_v1,
-                        mode=instructor.Mode.JSON_SCHEMA,
-                    )
-                    decision_obj = create(
-                        messages=[{"role": "user", "content": prompt}],
-                        max_tokens=max_tok,
-                        temperature=0.1,
-                        response_model=AgentDecision,
-                    )
-                    d = decision_obj.model_dump()
-                    action = (d.get("action") or "reason").lower()
-                    if action not in ("tool", "reason"):
-                        action = "reason"
-                    tool = (d.get("tool") or "").strip() or None
-                    if action == "tool" and tool and tool not in _VALID_TOOLS:
-                        tool = None
-                    d["action"] = action
-                    d["tool"] = tool
-                    return d
-        except Exception:
-            pass
+                    from decision_schema import AgentDecision
+                    if not (cfg.get("llama_server_url") or "").strip():
+                        from services.llm_gateway import _get_llm
+                        llm = _get_llm()
+                        if llm is not None:
+                            create = instructor.patch(
+                                create=llm.create_chat_completion_openai_v1,
+                                mode=instructor.Mode.JSON_SCHEMA,
+                            )
+                            decision_obj = create(
+                                messages=[{"role": "user", "content": prompt}],
+                                max_tokens=max_tok,
+                                temperature=0.1,
+                                response_model=AgentDecision,
+                            )
+                            d = decision_obj.model_dump()
+                            action = (d.get("action") or "reason").lower()
+                            if action not in ("tool", "reason"):
+                                action = "reason"
+                            tool = (d.get("tool") or "").strip() or None
+                            if action == "tool" and tool and tool not in valid_tools:
+                                tool = None
+                            d["action"] = action
+                            d["tool"] = tool
+                            return d
+                except Exception as e:
+                    logger.debug("instructor decision attempt failed: %s", e)
         # Fallback: plain completion + parse
         retry_prompt_suffix = " Output only a single JSON line, no other text or commentary.\n"
         for attempt in range(2):
@@ -1173,7 +1320,7 @@ def _llm_decision(
             else:
                 text = ""
             text = (text or "").strip()
-            decision = _parse_decision(text, _VALID_TOOLS)
+            decision = _parse_decision(text, valid_tools)
             if decision is not None:
                 return decision
         return None
@@ -1457,16 +1604,48 @@ def autonomous_run(
     ux_state_queue: queue.Queue | None = None,
     research_mode: bool = False,
     plan_depth: int = 0,
+    model_override: str | None = None,
+    reasoning_effort: str | None = None,
 ) -> dict:
     with llm_serialize_lock:
         return _autonomous_run_impl(
             goal, context, workspace_root, allow_write, allow_run,
             conversation_history, aspect_id, show_thinking, stream_final,
-            ux_state_queue, research_mode, plan_depth,
+            ux_state_queue, research_mode, plan_depth, model_override, reasoning_effort,
         )
 
 
 def _autonomous_run_impl(
+    goal: str,
+    context: str,
+    workspace_root: str,
+    allow_write: bool,
+    allow_run: bool,
+    conversation_history: list,
+    aspect_id: str,
+    show_thinking: bool,
+    stream_final: bool,
+    ux_state_queue: queue.Queue | None,
+    research_mode: bool,
+    plan_depth: int = 0,
+    model_override: str | None = None,
+    reasoning_effort: str | None = None,
+) -> dict:
+    from services.llm_gateway import set_model_override, set_reasoning_effort
+    set_model_override(model_override)
+    set_reasoning_effort(reasoning_effort)
+    try:
+        return _autonomous_run_impl_core(
+            goal, context, workspace_root, allow_write, allow_run,
+            conversation_history, aspect_id, show_thinking, stream_final,
+            ux_state_queue, research_mode, plan_depth,
+        )
+    finally:
+        set_model_override(None)
+        set_reasoning_effort(None)
+
+
+def _autonomous_run_impl_core(
     goal: str,
     context: str,
     workspace_root: str,
@@ -1687,7 +1866,11 @@ def _autonomous_run_impl(
                 state["last_tool_used"] = "write_file"
                 _run_verification_after_tool(state, "write_file", result, workspace)
                 _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
+                _run_git_auto_commit("write_file", result, result.get("path") or path, workspace)
                 goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+                hint = _run_auto_lint_test_fix(state, "write_file", result, result.get("path") or path, workspace)
+                if hint:
+                    goal = goal + "\n\n" + hint
                 continue
             if not allow_write or not runtime_safety.require_approval("write_file"):
                 approval_id = _write_pending("write_file", {"path": path, "content": content})
@@ -1720,6 +1903,48 @@ def _autonomous_run_impl(
             state["last_tool_used"] = "write_file"
             _run_verification_after_tool(state, "write_file", result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
+            _run_git_auto_commit("write_file", result, result.get("path") or path, workspace)
+            goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+            hint = _run_auto_lint_test_fix(state, "write_file", result, result.get("path") or path, workspace)
+            if hint:
+                goal = goal + "\n\n" + hint
+            continue
+
+        # ------------------------------------------------
+        # WRITE FILES BATCH
+        # ------------------------------------------------
+        if intent == "write_files_batch":
+            args = (decision.get("args") or {}) if decision else {}
+            files = args.get("files") or []
+            if not isinstance(files, list) or not files:
+                state["steps"].append({
+                    "action": "write_files_batch",
+                    "result": {"ok": False, "error": "write_files_batch requires args.files: [{path, content}, ...]"},
+                })
+                goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+                continue
+            if not allow_write or not runtime_safety.require_approval("write_files_batch"):
+                approval_id = _write_pending("write_files_batch", {"files": files})
+                state["steps"].append({
+                    "action": "write_files_batch",
+                    "result": {
+                        "ok": False,
+                        "reason": "approval_required",
+                        "approval_id": approval_id,
+                        "message": f"Run: layla approve {approval_id}",
+                    },
+                })
+                state["status"] = "finished"
+                break
+            state["tool_calls"] += 1
+            result = TOOLS["write_files_batch"]["fn"](files=files)
+            runtime_safety.log_execution("write_files_batch", {"count": len(files)})
+            state["steps"].append({"action": "write_files_batch", "result": result})
+            state["last_tool_used"] = "write_files_batch"
+            if result.get("ok") and result.get("written"):
+                for p in result.get("written", [])[:1]:
+                    _run_git_auto_commit("write_files_batch", result, p, workspace)
+                    break
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
 
@@ -1933,7 +2158,11 @@ def _autonomous_run_impl(
             state["last_tool_used"] = "apply_patch"
             _run_verification_after_tool(state, "apply_patch", result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
+            _run_git_auto_commit("apply_patch", result, path, workspace)
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+            hint = _run_auto_lint_test_fix(state, "apply_patch", result, path, workspace)
+            if hint:
+                goal = goal + "\n\n" + hint
             continue
 
         # ------------------------------------------------
@@ -2049,6 +2278,55 @@ def _autonomous_run_impl(
             )
             state["steps"].append({"action": "update_project_context", "result": result})
             state["last_tool_used"] = "update_project_context"
+            goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+            continue
+
+        # ------------------------------------------------
+        # GENERIC TOOL DISPATCH (tools not hardcoded above)
+        # ------------------------------------------------
+        if intent in TOOLS and intent not in (
+            "reason", "write_file", "read_file", "list_dir", "git_status", "git_diff", "git_log", "git_branch",
+            "grep_code", "glob_files", "run_python", "apply_patch", "fetch_url", "shell",
+            "json_query", "diff_files", "env_info", "regex_test", "save_note", "search_memories", "git_add",
+            "git_commit", "get_project_context", "update_project_context", "understand_file",
+        ):
+            args = (decision.get("args") or {}) if decision else {}
+            meta = TOOLS.get(intent, {})
+            needs_approval = meta.get("require_approval", False)
+            allow = allow_write or allow_run  # generic tools need at least one
+            if needs_approval and (not allow or not runtime_safety.require_approval(intent)):
+                approval_id = _write_pending(intent, args)
+                state["steps"].append({"action": intent, "result": {
+                    "ok": False, "reason": "approval_required",
+                    "approval_id": approval_id, "message": f"Run: layla approve {approval_id}",
+                }})
+                state["status"] = "finished"
+                break
+            # Inject workspace/cwd for tools that expect it
+            if "cwd" not in args and intent in ("run_tests", "pip_install", "pip_list"):
+                args["cwd"] = workspace
+            if "repo" not in args and intent.startswith("git_"):
+                args["repo"] = workspace
+            if ("path" not in args or not args.get("path")) and intent in ("parse_gcode", "stl_mesh_info", "tail_file"):
+                path = _extract_path(goal)
+                if path:
+                    args["path"] = path
+            if "root" not in args and intent in ("search_replace", "rename_symbol"):
+                args["root"] = workspace
+            try:
+                fn = meta.get("fn")
+                if fn:
+                    result = fn(**args) if args else fn()
+                else:
+                    result = {"ok": False, "error": "Tool not found"}
+            except TypeError as e:
+                result = {"ok": False, "error": str(e)}
+            runtime_safety.log_execution(intent, args)
+            state["tool_calls"] += 1
+            state["steps"].append({"action": intent, "result": result})
+            state["last_tool_used"] = intent
+            _run_verification_after_tool(state, intent, result, workspace)
+            _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
 

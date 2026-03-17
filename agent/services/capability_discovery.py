@@ -70,7 +70,8 @@ def _read_cache(key: str) -> list[dict] | None:
         if time.time() - mtime > _CACHE_TTL_SEC:
             return None
         return json.loads(p.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as e:
+        logger.debug("capability_discovery cache read failed: %s", e)
         return None
 
 

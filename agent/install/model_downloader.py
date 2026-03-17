@@ -9,9 +9,43 @@ Canonical models directory: ONE place for all models.
 """
 from __future__ import annotations
 
+import logging
 import urllib.request
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
+
+logger = logging.getLogger("layla")
+
+
+def _is_safe_url(url: str) -> bool:
+    """Return True if URL is safe (no private/localhost). SSRF mitigation."""
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+            return False
+        if host.startswith("127.") or host.startswith("10.") or host.startswith("169.254."):
+            return False
+        if host.startswith("172."):
+            parts = host.split(".")
+            if len(parts) >= 2:
+                try:
+                    b = int(parts[1])
+                except ValueError:
+                    b = -1
+                if 16 <= b <= 31:
+                    return False
+        return True
+    except Exception:
+        return False
+
+
+def _safe_filename(name: str) -> str | None:
+    """Return basename if safe (no path traversal), else None."""
+    if not name or ".." in name or "/" in name or "\\" in name:
+        return None
+    return Path(name).name or None
 
 # Paths
 _INSTALL_DIR = Path(__file__).resolve().parent.parent
@@ -56,11 +90,12 @@ def download_model(
     models_dir.mkdir(parents=True, exist_ok=True)
 
     url = model.get("download_url") or model.get("url")
-    filename = model.get("filename") or (url.rstrip("/").split("/")[-1] if url else None)
+    raw_filename = model.get("filename") or (url.rstrip("/").split("/")[-1] if url else None)
     repo_id = model.get("repo_id")
 
+    filename = _safe_filename(raw_filename) if raw_filename else None
     if not filename:
-        return {"ok": False, "path": None, "filename": None, "error": "No filename in model entry"}
+        return {"ok": False, "path": None, "filename": None, "error": "No filename in model entry or invalid path"}
 
     dest = models_dir / filename
 
@@ -93,9 +128,11 @@ def download_model(
         if progress:
             print(f"  [note] HuggingFace Hub failed: {e}. Trying direct download...")
 
-    # Fallback: direct URL download
+    # Fallback: direct URL download (SSRF: block private IPs)
     if not url:
         return {"ok": False, "path": None, "filename": None, "error": "No download URL"}
+    if not _is_safe_url(url):
+        return {"ok": False, "path": None, "filename": None, "error": "URL not allowed (private/localhost blocked)"}
 
     def _progress(block_num: int, block_size: int, total_size: int) -> None:
         if not progress or total_size <= 0:
