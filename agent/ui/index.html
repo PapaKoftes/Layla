@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Cinzel:wght@400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<link rel="manifest" href="/manifest.json">
 <style>
   :root {
     --bg: #0a0008;
@@ -23,9 +24,26 @@
     --asp: #8b0000;
     --asp-glow: rgba(139,0,0,0.28);
     --asp-mid: rgba(139,0,0,0.12);
+    --text-xs: 0.65rem;
+    --text-sm: 0.75rem;
+    --text-base: 0.9rem;
+    --text-lg: 1rem;
+    --heading: 1.1rem;
+  }
+  body.theme-light {
+    --bg: #f5f0f8;
+    --bg2: #ebe5f0;
+    --text: #2a1a35;
+    --text-dim: #5a4a65;
+    --code-bg: #e8e0f0;
+    --border: #c0b0d0;
+    --crimson: #6b0000;
+    --violet: #4a2060;
+    --accent: #8b0050;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--asp); outline-offset: 2px; }
 
   body {
     background: var(--bg);
@@ -58,7 +76,8 @@
     border-bottom: 1px solid var(--border);
     background: linear-gradient(to bottom, #110011, var(--bg2));
     box-shadow: 0 1px 20px rgba(0,0,0,0.6);
-    position: relative;
+    position: sticky;
+    top: 0;
     z-index: 10;
   }
 
@@ -134,7 +153,20 @@
     flex-direction: column;
     gap: 22px;
     overflow-y: auto;
+    transition: width 0.2s;
   }
+  .sidebar.compact {
+    width: 48px;
+    min-width: 48px;
+  }
+  .sidebar.compact h3,
+  .sidebar.compact .sidebar-hint,
+  .sidebar.compact .aspect-desc,
+  .sidebar.compact .history-section .sess-preview,
+  .sidebar.compact .history-section .sess-date,
+  .sidebar.compact .mission-details > *:not(summary) { display: none !important; }
+  .sidebar.compact .aspect-btn { width: 100%; padding: 8px; }
+  .sidebar.compact .aspect-option { margin-bottom: 4px; }
   .sidebar h3 {
     font-family: 'Cinzel', serif;
     font-size: 0.65rem;
@@ -204,10 +236,18 @@
   }
 
   /* ── Main chat area ── */
-  .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .main-area { flex: 1; min-height: 0; display: flex; flex-direction: column; min-width: 0; }
+
+  @media (max-width: 768px) {
+    .mobile-hamburger { display: flex !important; align-items: center; justify-content: center; }
+    .sidebar.mobile-sidebar-hidden { width: 0; overflow: hidden; min-width: 0; padding: 0; border-right: none; }
+    header { padding: 8px 12px; }
+    .main-area { flex: 1; min-height: 0; min-width: 0; }
+  }
 
   #chat {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: 24px 28px;
     display: flex;
@@ -297,6 +337,9 @@
     backdrop-filter: blur(4px);
   }
   #setup-overlay.visible { display: flex; }
+  .onboarding-highlight { outline: 2px solid var(--asp); outline-offset: 2px; box-shadow: 0 0 12px var(--asp-glow); position: relative; z-index: 10004; }
+  .skeleton { background: linear-gradient(90deg, var(--code-bg) 25%, var(--border) 50%, var(--code-bg) 75%); background-size: 200% 100%; animation: skeleton-shift 1.5s infinite; border-radius: 2px; }
+  @keyframes skeleton-shift { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
   .setup-modal {
     background: var(--bg2);
     border: 1px solid var(--border);
@@ -419,6 +462,22 @@
     color: var(--text-dim);
   }
   .msg:hover .msg-ts { opacity: 0.7; }
+  .msg-copy-btn {
+    margin-left: auto;
+    font-size: 0.6rem;
+    padding: 2px 6px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 2px;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+  }
+  .msg:hover .msg-copy-btn { opacity: 1; }
+  .msg-copy-btn:hover { color: var(--asp); border-color: var(--asp); }
+  .msg-copy-btn.copied { color: #4dff88; border-color: #4dff88; }
+  .msg-search-hit .msg-bubble { outline: 2px solid var(--asp); box-shadow: 0 0 12px var(--asp-glow); }
 
   .msg-bubble {
     padding: 13px 17px;
@@ -621,6 +680,7 @@
 
   /* ── Input area ── */
   .input-area {
+    flex-shrink: 0;
     border-top: 1px solid var(--border);
     padding: 12px 20px;
     background: linear-gradient(to top, #0d000d, var(--bg2));
@@ -631,7 +691,7 @@
   .input-row {
     display: flex;
     gap: 8px;
-    align-items: center;
+    align-items: flex-end;
   }
 
   input[type=checkbox] { accent-color: var(--crimson); }
@@ -647,6 +707,9 @@
     border-radius: 4px;
     outline: none;
     transition: border-color 0.2s, box-shadow 0.2s;
+    resize: none;
+    min-height: 38px;
+    max-height: 200px;
   }
   #msg-input::placeholder { color: var(--text-dim); opacity: 0.6; }
   #msg-input:focus {
@@ -717,7 +780,7 @@
   }
   .panel-title {
     font-family: 'Cinzel', serif;
-    font-size: 0.65rem;
+    font-size: var(--heading);
     color: var(--text-dim);
     letter-spacing: 0.22em;
     text-transform: uppercase;
@@ -753,11 +816,11 @@
   }
   .panel-tab:hover { color: var(--text); border-color: var(--border); }
   .panel-tab.active { background: var(--asp-mid); border-color: var(--asp); color: var(--asp); }
-  .panel-pane { display: none; }
+  .panel-pane { display: none; font-size: var(--text-sm); }
   .panel-pane.active { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; overflow: hidden; }
 
   /* Help / capabilities content */
-  .help-section { font-size: 0.72rem; line-height: 1.6; color: var(--text); overflow-y: auto; flex: 1; min-height: 0; }
+  .help-section { font-size: var(--text-base); line-height: 1.6; color: var(--text); overflow-y: auto; flex: 1; min-height: 0; }
   .help-section h4 { font-family: 'Cinzel', serif; font-size: 0.7rem; color: var(--asp); margin: 12px 0 6px; letter-spacing: 0.08em; }
   .help-section h4:first-child { margin-top: 0; }
   .help-section ul { margin: 4px 0 0 14px; padding: 0; }
@@ -923,7 +986,19 @@
 </head>
 <body>
 <div id="warmup-bar">⧗ Loading model — <span id="warmup-detail">warming up, this may take a moment</span></div>
+<div id="connection-banner" style="display:none;background:#8b0000;color:#fff;padding:8px 20px;font-size:0.8rem;text-align:center">Cannot reach Layla — is the server running? <button onclick="location.reload()" style="margin-left:12px;padding:4px 12px;background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:4px;cursor:pointer">Retry</button></div>
+<div id="model-readiness-banner" style="display:none;background:#5a2040;color:#fff;padding:8px 20px;font-size:0.8rem;text-align:center">No model loaded — <a href="/docs/MODELS.md" target="_blank" style="color:#e0a0ff;text-decoration:underline">Configure</a> or run first setup</div>
+<div id="onboarding-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10003;align-items:center;justify-content:center">
+  <div class="onboarding-modal" style="background:var(--bg2);border:1px solid var(--asp);border-radius:8px;padding:24px;max-width:360px;text-align:center">
+    <p id="onboarding-text" style="font-size:0.95rem;line-height:1.5;margin-bottom:20px">Choose a voice in the sidebar.</p>
+    <div style="display:flex;gap:12px;justify-content:center">
+      <button id="onboarding-next" onclick="onboardingNext()" style="padding:8px 20px;background:var(--asp);border:none;color:#fff;border-radius:4px;cursor:pointer">Next</button>
+      <button id="onboarding-done" onclick="dismissOnboarding()" style="display:none;padding:8px 20px;background:var(--asp);border:none;color:#fff;border-radius:4px;cursor:pointer">Done</button>
+    </div>
+  </div>
+</div>
 <header>
+  <button id="mobile-hamburger" class="mobile-hamburger" onclick="toggleMobileSidebar()" title="Toggle sidebar" aria-label="Toggle sidebar" style="display:none;background:none;border:none;color:var(--text);font-size:1.2rem;cursor:pointer;padding:4px 8px">☰</button>
   <div class="title">∴ LAYLA</div>
   <div style="display:flex;align-items:center;gap:4px">
     <div id="aspect-badge" class="aspect-badge">∴ MORRIGAN</div>
@@ -931,11 +1006,20 @@
   </div>
   <div class="header-meta">
     <span id="session-time" title="Session duration">0:00</span>
+    <select id="model-override" title="Model for this request (remote backends only)" style="font-size:0.68rem;opacity:0.9;background:var(--code-bg);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:2px;cursor:pointer">
+      <option value="">Default</option>
+      <option value="coding">Coding</option>
+      <option value="reasoning">Reasoning</option>
+      <option value="chat">Chat</option>
+    </select>
     <span id="model-status-badge" title="LLM status" style="font-size:0.68rem;opacity:0.7"></span>
     <a href="/system_export" target="_blank" title="Full system export (JSON)">⊕ export</a>
+    <button onclick="exportChat()" title="Export chat as Markdown/JSON" aria-label="Export chat">📤 chat</button>
     <a href="/memory/export" download title="Download memory bundle (ZIP of all knowledge + learnings)">⬇ memory</a>
-    <button onclick="openSettings()" title="Settings">⚙</button>
-    <button onclick="clearChat()" title="Clear chat history">✕ clear</button>
+    <button onclick="toggleTheme()" id="theme-btn" title="Toggle dark/light" aria-label="Toggle theme">🌙</button>
+    <button onclick="toggleSidebarCompact()" id="sidebar-compact-btn" title="Compact sidebar" aria-label="Compact sidebar">◀</button>
+    <button onclick="openSettings()" title="Settings" aria-label="Settings">⚙</button>
+    <button onclick="clearChat()" title="Clear chat history" aria-label="Clear chat">✕ clear</button>
   </div>
 </header>
 
@@ -979,6 +1063,9 @@
       <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;margin-bottom:6px" title="Let her think with her inner voices before answering">
         <input type="checkbox" id="show-thinking"> Her thoughts
       </label>
+      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;margin-bottom:6px" title="Use reasoning budget for thinking models (DeepSeek R1, Qwen QwQ)">
+        <input type="checkbox" id="reasoning-effort"> Think harder
+      </label>
       <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;margin-bottom:10px" title="Speak final reply (browser TTS)">
         <input type="checkbox" id="tts-toggle"> Speak replies
       </label>
@@ -990,6 +1077,13 @@
         <input type="checkbox" id="allow-run"> Allow Run
       </label>
       <label style="display:block;font-size:0.7rem;color:var(--text-dim);margin-top:10px;margin-bottom:4px">Workspace path</label>
+      <div style="display:flex;gap:4px;margin-bottom:4px">
+        <select id="workspace-presets" onchange="onWorkspacePresetSelect()" style="flex:1;max-width:140px;padding:4px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);font-size:0.7rem;border-radius:2px">
+          <option value="">— Preset —</option>
+        </select>
+        <button type="button" onclick="addWorkspacePreset()" style="font-size:0.65rem;padding:4px 8px;background:var(--asp-mid);border:1px solid var(--asp);color:var(--text);border-radius:2px;cursor:pointer">Add current</button>
+        <button type="button" onclick="removeWorkspacePreset()" style="font-size:0.65rem;padding:4px 8px;background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:2px;cursor:pointer">Remove</button>
+      </div>
       <input type="text" id="workspace-path" placeholder="e.g. C:\github\myproject" style="width:100%;padding:6px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);font-size:0.75rem;border-radius:2px">
       <button type="button" class="aspect-btn" id="research-btn" onclick="sendResearch()" style="margin-top:8px;background:var(--violet);border-color:var(--accent)">&#128269; Research repo</button>
 
@@ -1024,36 +1118,7 @@
   <!-- Chat area -->
   <div class="main-area">
     <div id="chat">
-      <div id="chat-empty">
-        <div class="sigil">∴</div>
-        <div class="hint">she is waiting</div>
-        <div class="prompt-tiles" id="prompt-tiles">
-          <button class="prompt-tile" onclick="fillPrompt('Explain how ')">
-            <span class="tile-icon">✦</span>
-            <span class="tile-text">Explain something</span>
-          </button>
-          <button class="prompt-tile" onclick="fillPrompt('Write Python code to ')">
-            <span class="tile-icon">⚔</span>
-            <span class="tile-text">Write code for me</span>
-          </button>
-          <button class="prompt-tile" onclick="fillPrompt('Research and summarize: ')">
-            <span class="tile-icon">🔬</span>
-            <span class="tile-text">Research a topic</span>
-          </button>
-          <button class="prompt-tile" onclick="fillPrompt('Help me debug this error: ')">
-            <span class="tile-icon">🔧</span>
-            <span class="tile-text">Debug an error</span>
-          </button>
-          <button class="prompt-tile" onclick="fillPrompt('Summarize this text: ')">
-            <span class="tile-icon">◎</span>
-            <span class="tile-text">Summarize text</span>
-          </button>
-          <button class="prompt-tile" onclick="fillPrompt('What should I do about ')">
-            <span class="tile-icon">⌖</span>
-            <span class="tile-text">Get advice</span>
-          </button>
-        </div>
-      </div>
+      <div id="chat-empty"><!-- populated by renderPromptTilesAndEmptyState() --></div>
     </div>
     <div class="input-area" id="input-area-drop"
          ondragover="event.preventDefault(); this.style.borderColor='var(--asp)'"
@@ -1069,14 +1134,16 @@
       <div class="input-row">
         <div class="mention-wrap">
           <div id="mention-dropdown"></div>
-          <input type="text" id="msg-input" placeholder="Ask Layla… drop a file, or type @nyx, @morrigan…" onkeydown="onInputKeydown(event)" oninput="onInputChange(event)">
+          <textarea id="msg-input" rows="1" placeholder="Ask Layla… drop a file, or type @nyx, @morrigan… (Shift+Enter for newline)" onkeydown="onInputKeydown(event)" oninput="onInputChange(event)"></textarea>
         </div>
         <label title="Attach file" style="cursor:pointer;padding:0 8px;display:flex;align-items:center;color:var(--text-dim);font-size:1rem" title="Attach file">
           📎<input type="file" id="file-attach" style="display:none" onchange="attachFile(this)">
         </label>
-        <button id="mic-btn" onclick="toggleMic()" title="Click to record voice">🎤</button>
+        <button id="mic-btn" onclick="toggleMic()" title="Click to record voice" aria-label="Record voice">🎤</button>
+        <button id="retry-btn" onclick="retryLastMessage()" title="Retry last message (Ctrl+R)" aria-label="Retry last message" style="display:none;font-size:0.75rem;padding:4px 8px">↻</button>
         <button id="send-btn" onclick="send()" disabled>Send</button>
       </div>
+      <span class="input-hint" style="display:block;font-size:var(--text-xs);color:var(--text-dim);margin-top:4px;padding:0 4px">Attach files with 📎 or paste. Enter to send, Shift+Enter for newline. Ctrl+K to clear.</span>
     </div>
   </div>
 
@@ -1097,7 +1164,7 @@
     </div>
     <div class="panel-pane active" id="panel-approvals" data-panel="approvals">
       <div class="panel-title">Pending Approvals</div>
-      <div id="approvals-list"><span style="color:var(--text-dim);font-size:0.75rem">No pending approvals</span></div>
+      <div id="approvals-list"><span style="color:var(--text-dim);font-size:0.75rem">Layla will ask here when she needs permission to act</span></div>
     </div>
     <div class="panel-pane" id="panel-health" data-panel="health">
       <div class="panel-title">System Health</div>
@@ -1137,7 +1204,7 @@
     </div>
     <div class="panel-pane" id="panel-study" data-panel="study">
       <div class="panel-title">Study Plans</div>
-      <div id="study-list"><span style="color:var(--text-dim);font-size:0.75rem">No study plans</span></div>
+      <div id="study-list"><span style="color:var(--text-dim);font-size:0.75rem">Add a topic — Layla will study it when you're active</span></div>
       <div class="study-add">
         <input type="text" id="study-input" placeholder="New topic..." onkeydown="if(event.key==='Enter')addStudyPlan()">
         <button onclick="addStudyPlan()">+</button>
@@ -1180,6 +1247,20 @@
         <p><strong>Memory</strong> — Search her long-term memory (learnings, preferences, facts).</p>
         <p><strong>Research</strong> — Use "Research repo" in the sidebar to run a full research mission on your workspace. View results here.</p>
         <p><strong>Settings</strong> — Click the gear icon to change model, paths, and other options.</p>
+        <p><strong>Shortcuts</strong></p>
+        <ul style="font-size:0.85em;margin:4px 0 0 16px">
+          <li>Ctrl+K — Clear input</li>
+          <li>Ctrl+R — Retry last message</li>
+          <li>Ctrl+/ — Open Help</li>
+          <li>Ctrl+F — Search in chat</li>
+          <li>Escape — Stop recording / close overlays</li>
+        </ul>
+        <p><strong>Troubleshooting</strong></p>
+        <ul style="font-size:0.85em;margin:4px 0 0 16px">
+          <li><b>Model not loading</b> — Check path in Settings, VRAM, <code>n_gpu_layers</code>. See <a href="/docs/MODELS.md" target="_blank">MODELS.md</a>.</li>
+          <li><b>Approvals not working</b> — Enable Allow Write / Allow Run in sidebar.</li>
+          <li><b>Voice not working</b> — <code>pip install sounddevice</code> (CLI) or check browser mic permissions (UI).</li>
+        </ul>
       </div>
     </div>
   </div>
@@ -1188,6 +1269,14 @@
 <script>
 let currentAspect = 'morrigan';
 const sessionStart = Date.now();
+
+function formatAgentError(res, body) {
+  if (!res) return "Can't reach Layla. Is the server running at http://127.0.0.1:8000?";
+  if (res.status === 500) return 'Something went wrong. Check the server logs or try again.';
+  if (res.status === 503) return (body && body.detail) || 'Service temporarily unavailable.';
+  const err = (body && (body.detail || body.response || body.message)) || res.statusText;
+  return err && String(err).length < 200 ? String(err) : 'Request failed: ' + res.status;
+}
 
 // Per-aspect color palette — shifts the whole UI on switch
 const ASPECT_COLORS = {
@@ -1199,6 +1288,7 @@ const ASPECT_COLORS = {
   lilith:   { asp: '#6a0070', glow: 'rgba(106,0,112,0.28)', mid: 'rgba(106,0,112,0.10)' },
 };
 
+let _lastAspectSwitchTime = 0;
 function setAspect(id, force) {
   if (_aspectLocked && !force) return; // locked — ignore sidebar clicks unless forced
   currentAspect = id;
@@ -1213,6 +1303,11 @@ function setAspect(id, force) {
   root.setProperty('--asp',      c.asp);
   root.setProperty('--asp-glow', c.glow);
   root.setProperty('--asp-mid',  c.mid);
+  if (Date.now() - _lastAspectSwitchTime > 300) {
+    _lastAspectSwitchTime = Date.now();
+    const name = (typeof ASPECTS !== 'undefined' && ASPECTS.find) ? ASPECTS.find(a => a.id === id)?.name : null;
+    showToast('Now talking to ' + (name || id));
+  }
 }
 
 function cleanLaylaText(s) {
@@ -1250,9 +1345,28 @@ function hideEmpty() {
   if (e) e.style.display = 'none';
 }
 
+function renderPromptTilesAndEmptyState() {
+  return `<div class="sigil">∴</div><div class="hint">she is waiting</div>
+      <div class="prompt-tiles" id="prompt-tiles">
+        <button class="prompt-tile" onclick="fillPrompt('Explain how ')"><span class="tile-icon">✦</span><span class="tile-text">Explain something</span></button>
+        <button class="prompt-tile" onclick="fillPrompt('Write Python code to ')"><span class="tile-icon">⚔</span><span class="tile-text">Write code for me</span></button>
+        <button class="prompt-tile" onclick="fillPrompt('Research and summarize: ')"><span class="tile-icon">🔬</span><span class="tile-text">Research a topic</span></button>
+        <button class="prompt-tile" onclick="fillPrompt('Help me debug this error: ')"><span class="tile-icon">🔧</span><span class="tile-text">Debug an error</span></button>
+        <button class="prompt-tile" onclick="fillPrompt('Summarize this text: ')"><span class="tile-icon">◎</span><span class="tile-text">Summarize text</span></button>
+        <button class="prompt-tile" onclick="fillPrompt('What should I do about ')"><span class="tile-icon">⌖</span><span class="tile-text">Get advice</span></button>
+        <button class="prompt-tile" onclick="fillPrompt('Refactor this code: ')"><span class="tile-icon">⚔</span><span class="tile-text">Refactor</span></button>
+        <button class="prompt-tile" onclick="fillPrompt('Add tests for ')"><span class="tile-icon">🧪</span><span class="tile-text">Add tests</span></button>
+      </div>
+      <div class="try-this-chips" style="margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center">
+        <button class="try-this-chip" onclick="fillPrompt('Explain quantum entanglement')" style="padding:6px 12px;font-size:0.75rem;background:var(--asp-mid);border:1px solid var(--asp);color:var(--text);border-radius:4px;cursor:pointer">Explain quantum entanglement</button>
+        <button class="try-this-chip" onclick="fillPrompt('Write a Python hello world')" style="padding:6px 12px;font-size:0.75rem;background:var(--asp-mid);border:1px solid var(--asp);color:var(--text);border-radius:4px;cursor:pointer">Write a Python hello world</button>
+      </div>`;
+}
+
 function addMsg(role, text, aspectName, deliberated, steps, uxStates, memoryInfluenced) {
   hideEmpty();
   const chat = document.getElementById('chat');
+  if (!chat) return;
   const div = document.createElement('div');
   div.className = 'msg msg-' + (role === 'you' ? 'you' : 'layla');
   const label = document.createElement('div');
@@ -1268,12 +1382,15 @@ function addMsg(role, text, aspectName, deliberated, steps, uxStates, memoryInfl
   label.appendChild(ts);
   const bubble = document.createElement('div');
   bubble.className = 'msg-bubble';
+  bubble.title = 'Click to copy';
   if (role === 'layla') {
     text = cleanLaylaText(text || '');
     if (typeof marked !== 'undefined') {
       const md = document.createElement('div');
       md.className = 'md-content';
-      md.innerHTML = sanitizeHtml(marked.parse(text || ''));
+      let parsed = '';
+      try { parsed = marked.parse(text || ''); } catch (_) { parsed = (text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+      md.innerHTML = sanitizeHtml(parsed);
       // Syntax highlight + copy buttons on code blocks
       md.querySelectorAll('pre').forEach((pre) => {
         const code = pre.querySelector('code');
@@ -1300,10 +1417,21 @@ function addMsg(role, text, aspectName, deliberated, steps, uxStates, memoryInfl
     } else {
       bubble.textContent = text;
     }
-    // Speak Layla's response if TTS is enabled
-    speakText(text.slice(0, 500));
+    // TTS is handled by send() and other entry points via tts-toggle checkbox
   } else {
     bubble.textContent = text;
+  }
+  if (role === 'layla') {
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'msg-copy-btn';
+    copyBtn.textContent = 'copy';
+    copyBtn.title = 'Copy response'; copyBtn.setAttribute('aria-label', 'Copy response');
+    copyBtn.onclick = (ev) => {
+      ev.stopPropagation();
+      const txt = (bubble.innerText || bubble.textContent || '').trim();
+      if (txt) navigator.clipboard?.writeText(txt).then(() => { copyBtn.textContent = 'copied'; copyBtn.classList.add('copied'); setTimeout(() => { copyBtn.textContent = 'copy'; copyBtn.classList.remove('copied'); }, 1500); }).catch(() => {});
+    };
+    label.appendChild(copyBtn);
   }
   div.appendChild(label);
   div.appendChild(bubble);
@@ -1336,7 +1464,7 @@ function addMsg(role, text, aspectName, deliberated, steps, uxStates, memoryInfl
     trace.innerHTML = '<summary>What she did (' + steps.length + ')</summary>';
     const pre = document.createElement('div');
     pre.className = 'tool-trace-content';
-    pre.textContent = steps.map(s => s.action + ': ' + JSON.stringify(s.result).slice(0, 200)).join('\n');
+    pre.textContent = steps.map(s => { try { return s.action + ': ' + JSON.stringify(s.result).slice(0, 200); } catch (_) { return s.action + ': [unserializable]'; } }).join('\n');
     trace.appendChild(pre);
     div.appendChild(trace);
   }
@@ -1352,6 +1480,7 @@ function addMsg(role, text, aspectName, deliberated, steps, uxStates, memoryInfl
 
 function addSeparator() {
   const chat = document.getElementById('chat');
+  if (!chat) return;
   const sep = document.createElement('div');
   sep.className = 'separator';
   sep.textContent = '✦';
@@ -1482,6 +1611,12 @@ function onInputChange(e) {
 }
 
 function onInputKeydown(e) {
+  if (e.ctrlKey || e.metaKey) {
+    if (e.key === 'k') { e.preventDefault(); const inp = document.getElementById('msg-input'); if (inp) { inp.value = ''; toggleSendButton(); } return; }
+    if (e.key === 'r') { e.preventDefault(); retryLastMessage(); return; }
+    if (e.key === '/') { e.preventDefault(); showPanelTab('help'); return; }
+    if (e.key === 'f') { e.preventDefault(); openChatSearch(); return; }
+  }
   if (_mentionActive) {
     if (e.key === 'ArrowDown') { e.preventDefault(); _moveMentionDropdown(1); return; }
     if (e.key === 'ArrowUp')   { e.preventDefault(); _moveMentionDropdown(-1); return; }
@@ -1497,7 +1632,11 @@ function onInputKeydown(e) {
     }
     if (e.key === 'Escape') { _hideMentionDropdown(); return; }
   }
-  if (e.key === 'Enter') send();
+  if (e.key === 'Enter') {
+    if (e.shiftKey) return; // Shift+Enter = newline
+    e.preventDefault();
+    send();
+  }
 }
 
 // ── Voice I/O ──────────────────────────────────────────────────────────────
@@ -1605,16 +1744,17 @@ async function speakText(text) {
   } catch(e) { /* network error; fall through */ }
   // Browser SpeechSynthesis fallback (always available, lower quality)
   if (typeof speechSynthesis !== 'undefined') {
-    speakReply(text.slice(0, 500), currentAspect);
+    try { speakReply(text.slice(0, 500), currentAspect); } catch (_) {}
   }
 }
 
-function showToast(msg) {
+function showToast(msg, opts) {
   const t = document.createElement('div');
   t.className = 'toast';
-  t.textContent = msg;
+  if (opts && opts.html) { t.innerHTML = msg; } else { t.textContent = msg; }
   document.body.appendChild(t);
-  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(() => t.remove(), 300); }, 2200);
+  const duration = (opts && opts.duration) || 2200;
+  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(() => t.remove(), 300); }, duration);
 }
 
 async function startResearchMission(isResume) {
@@ -1654,8 +1794,10 @@ async function startResearchMission(isResume) {
       return;
     }
     const data = await res.json().catch(() => ({}));
-    addMsg('layla', (data && data.response) || '(no output)', data?.state?.aspect_name, data?.state?.steps?.some(s => s.deliberated), data?.state?.steps, data?.state?.ux_states, data?.state?.memory_influenced);
+    const resp = (data && data.response) || '(no output)';
+    addMsg('layla', resp, data?.state?.aspect_name, data?.state?.steps?.some(s => s.deliberated), data?.state?.steps, data?.state?.ux_states, data?.state?.memory_influenced);
     if (data && data.mission_depth) addMsg('layla', 'Mission depth: ' + data.mission_depth + (data.stages_run?.length ? ', stages run: ' + data.stages_run.join(', ') : ''));
+    if (document.getElementById('tts-toggle')?.checked && resp && resp !== '(no output)') { try { speakReply(resp, currentAspect); } catch (_) {} }
     await refreshMissionStatus();
     const activeTab = document.querySelector('#research-mission-panel .tab-btn.active')?.getAttribute('data-tab') || 'summary';
     await showResearchTab(activeTab);
@@ -1770,14 +1912,14 @@ async function sendResearch(customMessage) {
     if (streamMode) {
       showTyping();
       const res = await fetch('/research', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (!res.ok || !res.body) { removeTyping(); addMsg('layla', 'Research request failed: ' + res.statusText); refreshApprovals(); return; }
+      if (!res.ok || !res.body) { removeTyping(); let body = {}; try { const t = await res.text(); if (t) try { body = JSON.parse(t); } catch(_) {} } catch(_) {} addMsg('layla', formatAgentError(res, body)); refreshApprovals(); return; }
       removeTyping();
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let full = '';
       const div = document.createElement('div');
       div.className = 'msg msg-layla';
-      div.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble"><div class="md-content"></div></div>';
+      div.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble" title="Click to copy"><div class="md-content"></div></div>';
       chatEl.appendChild(div);
       const bubble = div.querySelector('.md-content');
       while (true) {
@@ -1789,31 +1931,56 @@ async function sendResearch(customMessage) {
           if (line.startsWith('data: ')) {
             try {
               const obj = JSON.parse(line.slice(6));
-              if (obj.token) { full += obj.token; bubble.innerHTML = typeof marked !== 'undefined' ? sanitizeHtml(marked.parse(full)) : full; bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); }); }
+              if (obj.token) { full += obj.token; let parsed = full; try { if (typeof marked !== 'undefined') parsed = sanitizeHtml(marked.parse(full)); } catch (_) {} bubble.innerHTML = parsed; bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); }); chatEl.scrollTop = chatEl.scrollHeight; }
               if (obj.done) { if (obj.content != null && String(obj.content).trim() !== '') full = String(obj.content).trim(); break; }
             } catch (_) {}
           }
         }
       }
       full = cleanLaylaText(full);
-      bubble.innerHTML = typeof marked !== 'undefined' ? sanitizeHtml(marked.parse(full)) : full;
+      let parsed = full; try { if (typeof marked !== 'undefined') parsed = sanitizeHtml(marked.parse(full)); } catch (_) {} bubble.innerHTML = parsed;
       bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); });
       const asp = document.createElement('div');
       asp.className = 'msg-aspect';
       asp.textContent = '— ' + (currentAspect || '');
       div.appendChild(asp);
       chatEl.scrollTop = chatEl.scrollHeight;
+      if (document.getElementById('tts-toggle')?.checked && full) { try { speakReply(full, currentAspect); } catch (_) {} }
       refreshApprovals();
       return;
     }
     showTyping();
     const res = await fetch('/research', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     removeTyping();
-    if (!res.ok) { addMsg('layla', 'Research request failed: ' + res.status); refreshApprovals(); return; }
+    if (!res.ok) { let body = {}; try { const t = await res.text(); if (t) try { body = JSON.parse(t); } catch(_) {} } catch(_) {} addMsg('layla', formatAgentError(res, body)); refreshApprovals(); return; }
     const data = await res.json();
     addMsg('layla', data.response || '', data.aspect_name, data.state?.steps?.some(s => s.deliberated), data.state?.steps, data.ux_states, data.memory_influenced);
-  } catch (e) { addMsg('layla', 'Error: ' + e.message); }
+    if (document.getElementById('tts-toggle')?.checked && (data.response || '').trim()) { try { speakReply(data.response, currentAspect); } catch (_) {} }
+  } catch (e) { addMsg('layla', ((e && (e.message||'')).toLowerCase().includes('fetch') || (e && (e.message||'')).toLowerCase().includes('network')) ? formatAgentError(null, null) : ('Error: ' + (e && e.message || 'unknown'))); }
   refreshApprovals();
+}
+
+let _lastDisplayMsg = null;
+
+function retryLastMessage() {
+  if (!_lastDisplayMsg) return;
+  const chat = document.getElementById('chat');
+  const input = document.getElementById('msg-input');
+  if (!chat || !input) return;
+  const nodes = [...chat.children];
+  const toRemove = [];
+  let foundLayla = false, foundSep = false, foundYou = false;
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const n = nodes[i];
+    if (n.id === 'typing-wrap') { toRemove.push(n); continue; }
+    if (!foundLayla && n.classList.contains('msg-layla')) { foundLayla = true; toRemove.push(n); continue; }
+    if (foundLayla && !foundSep && n.classList.contains('separator')) { foundSep = true; toRemove.push(n); continue; }
+    if (foundSep && !foundYou && n.classList.contains('msg-you')) { foundYou = true; toRemove.push(n); break; }
+  }
+  toRemove.forEach(el => el.remove());
+  input.value = _lastDisplayMsg;
+  toggleSendButton();
+  send();
 }
 
 async function send() {
@@ -1848,15 +2015,19 @@ async function send() {
     }
   }
 
+  const hadImages = _attachedImages.length > 0;
   input.value = '';
   toggleSendButton();
-  const displayMsg = mentionMatch && msgAspect !== currentAspect
+  let displayMsg = mentionMatch && msgAspect !== currentAspect
     ? `@${msgAspect} ${msg}`
     : msg;
+  if (hadImages) displayMsg += ' [📎 image attached]';
   addMsg('you', displayMsg);
   addSeparator();
+  _lastDisplayMsg = displayMsg;
 
   const streamMode = document.getElementById('stream-toggle')?.checked || false;
+  const modelOverride = (document.getElementById('model-override')?.value || '').trim();
   const payload = {
     message: msg,
     aspect_id: msgAspect,
@@ -1865,13 +2036,43 @@ async function send() {
     allow_run: document.getElementById('allow-run').checked,
     stream: streamMode,
   };
-  if ((document.getElementById('workspace-path')?.value || '').trim()) payload.workspace_root = document.getElementById('workspace-path').value.trim();
+  if (modelOverride) payload.model_override = modelOverride;
+  if (document.getElementById('reasoning-effort')?.checked) payload.reasoning_effort = 'high';
+  const wp = (document.getElementById('workspace-path')?.value || '').trim();
+  if (wp) {
+    payload.workspace_root = wp;
+    try {
+      let recent = JSON.parse(localStorage.getItem(WS_RECENT_KEY) || '[]');
+      recent = [wp, ...recent.filter(p => p !== wp)].slice(0, WS_RECENT_MAX);
+      localStorage.setItem(WS_RECENT_KEY, JSON.stringify(recent));
+    } catch (_) {}
+  }
+  if (hadImages) {
+    payload.image_base64 = _attachedImages[0].base64;
+    _attachedImages = [];
+    const chips = document.getElementById('file-context-chips');
+    if (chips) {
+      chips.querySelectorAll('[data-image-chip]').forEach(el => el.remove());
+      if (!chips.children.length) chips.style.display = 'none';
+    }
+  }
 
   const chatEl = document.getElementById('chat');
   function showTyping(uxLabel) {
     hideEmpty();
     const wrap = document.getElementById('typing-wrap');
-    if (wrap) { return; }  // dots already showing; no need to update text
+    if (wrap) {
+      if (uxLabel) {
+        let labelEl = wrap.querySelector('.tool-status-label');
+        if (!labelEl) {
+          labelEl = document.createElement('div');
+          labelEl.className = 'tool-status-label';
+          wrap.querySelector('.msg-bubble')?.appendChild(labelEl);
+        }
+        labelEl.textContent = UX_STATE_LABELS[uxLabel] || uxLabel;
+      }
+      return;
+    }
     const w = document.createElement('div');
     w.className = 'msg msg-layla';
     w.id = 'typing-wrap';
@@ -1886,18 +2087,19 @@ async function send() {
 
   try {
     if (streamMode) {
-      showTyping();
+      // No typing indicator in stream mode — stream div appears immediately and fills
       const res = await fetch('/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (!res.ok || !res.body) { removeTyping(); let errMsg = res.statusText; try { const t = await res.text(); if (t) try { const d = JSON.parse(t); errMsg = d.response || errMsg; } catch(_) { errMsg = t.length < 120 ? t : errMsg; } } catch(_) {} addMsg('layla', errMsg, null, false, null); refreshApprovals(); return; }
+      if (!res.ok || !res.body) { let body = {}; try { const t = await res.text(); if (t) try { body = JSON.parse(t); } catch(_) { body = { response: t.length < 120 ? t : res.statusText }; } } catch(_) {} addMsg('layla', formatAgentError(res, body), null, false, null); refreshApprovals(); return; }
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let full = '';
       let streamUxStates = [];
       let streamMemoryInfluenced = [];
       let gotDone = false;
+      hideEmpty();
       const div = document.createElement('div');
       div.className = 'msg msg-layla';
-      div.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble"><div class="md-content"></div></div>';
+      div.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble" title="Click to copy"><div class="md-content"></div></div>';
       chatEl.appendChild(div);
       const bubble = div.querySelector('.md-content');
       while (true) {
@@ -1909,9 +2111,21 @@ async function send() {
           if (line.startsWith('data: ')) {
             try {
               const obj = JSON.parse(line.slice(6));
-              if (obj.ux_state) { streamUxStates.push(obj.ux_state); showTyping(obj.ux_state); }
-              if (obj.tool_start) { updateToolStatus(obj.tool_start); }
-              if (obj.token) { removeTyping(); clearToolStatus(); full += obj.token; bubble.innerHTML = typeof marked !== 'undefined' ? sanitizeHtml(marked.parse(full)) : full; bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); }); }
+              if (obj.ux_state) {
+                streamUxStates.push(obj.ux_state);
+                let statusEl = div.querySelector('.tool-status-label');
+                if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; div.querySelector('.msg-bubble')?.appendChild(statusEl); }
+                statusEl.textContent = UX_STATE_LABELS[obj.ux_state] || obj.ux_state;
+              }
+              if (obj.tool_start) {
+                let statusEl = div.querySelector('.tool-status-label');
+                if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; div.querySelector('.msg-bubble')?.appendChild(statusEl); }
+                statusEl.textContent = (obj.tool_start === 'ddg_search' || obj.tool_start === 'web_search') ? 'Searching the web…' : ('Running ' + obj.tool_start + '…');
+              }
+              if (obj.token) {
+                div.querySelector('.tool-status-label')?.remove();
+                full += obj.token; let parsed = full; try { if (typeof marked !== 'undefined') parsed = sanitizeHtml(marked.parse(full)); } catch (_) {} bubble.innerHTML = parsed; bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); }); chatEl.scrollTop = chatEl.scrollHeight;
+              }
               if (obj.done) {
                 if (obj.content != null && String(obj.content).trim() !== '') full = String(obj.content).trim();
                 if (Array.isArray(obj.ux_states)) streamUxStates = obj.ux_states;
@@ -1926,8 +2140,21 @@ async function send() {
       }
       removeTyping();
       full = cleanLaylaText(full);
-      bubble.innerHTML = typeof marked !== 'undefined' ? sanitizeHtml(marked.parse(full)) : full;
+      let parsed = full; try { if (typeof marked !== 'undefined') parsed = sanitizeHtml(marked.parse(full)); } catch (_) {} bubble.innerHTML = parsed;
       bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); });
+      const label = div.querySelector('.msg-label');
+      if (label) {
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'msg-copy-btn';
+        copyBtn.textContent = 'copy';
+        copyBtn.title = 'Copy response'; copyBtn.setAttribute('aria-label', 'Copy response');
+        copyBtn.onclick = (ev) => {
+          ev.stopPropagation();
+          const txt = (bubble.innerText || bubble.textContent || '').trim();
+          if (txt) navigator.clipboard?.writeText(txt).then(() => { copyBtn.textContent = 'copied'; copyBtn.classList.add('copied'); setTimeout(() => { copyBtn.textContent = 'copy'; copyBtn.classList.remove('copied'); }, 1500); }).catch(() => {});
+        };
+        label.appendChild(copyBtn);
+      }
       const asp = document.createElement('div');
       asp.className = 'msg-aspect';
       asp.textContent = '— ' + (currentAspect || '');
@@ -1945,8 +2172,10 @@ async function send() {
         div.appendChild(mem);
       }
       chatEl.scrollTop = chatEl.scrollHeight;
-      if (document.getElementById('tts-toggle')?.checked && full) speakReply(full, currentAspect);
+      if (document.getElementById('tts-toggle')?.checked && full) { try { speakReply(full, currentAspect); } catch (_) {} }
+      updateRetryButton();
       refreshApprovals();
+      document.getElementById('msg-input')?.focus();
       return;
     }
     showTyping();
@@ -1957,9 +2186,9 @@ async function send() {
     });
     removeTyping();
     if (!res.ok) {
-      let errBody = '';
-      try { errBody = await res.text(); } catch (_) {}
-      addMsg('layla', 'Error ' + res.status + (errBody && errBody.length < 150 ? ': ' + errBody : ''));
+      let body = {};
+      try { const t = await res.text(); if (t) try { body = JSON.parse(t); } catch(_) { body = { response: t }; } } catch (_) {}
+      addMsg('layla', formatAgentError(res, body));
       refreshApprovals();
       return;
     }
@@ -1970,21 +2199,24 @@ async function send() {
       return;
     }
     addMsg('layla', data.response || JSON.stringify(data), data.aspect_name, data.state?.steps?.some(s => s.deliberated), data.state?.steps, data.ux_states, data.memory_influenced);
+    updateRetryButton();
     if (data.refused && data.refusal_reason) {
       const refDiv = document.createElement('div');
       refDiv.className = 'deliberation';
       refDiv.innerHTML = '<span class="deliberation-label">She declined</span><br>' + (data.refusal_reason || '').replace(/</g, '&lt;');
-      document.getElementById('chat').lastElementChild?.appendChild(refDiv);
+      const lastLayla = document.querySelector('#chat .msg-layla:last-of-type');
+      if (lastLayla) lastLayla.appendChild(refDiv);
     }
-    if (document.getElementById('tts-toggle')?.checked && (data.response || '').trim()) speakReply(data.response, currentAspect);
+    if (document.getElementById('tts-toggle')?.checked && (data.response || '').trim()) { try { speakReply(data.response, currentAspect); } catch (_) {} }
     refreshApprovals();
+    document.getElementById('msg-input')?.focus();
   } catch (e) {
     removeTyping();
     const err = ((e && (e.message || e.reason)) || String(e || '')).toLowerCase();
-    const isNetwork = err.includes('fetch') || err.includes('network') || err.includes('load failed');
-    const msg = isNetwork ? "Can't reach Layla — is the server running at http://127.0.0.1:8000?" : ('Something went wrong: ' + (e && (e.message || e.reason)) || 'unknown error');
+    const msg = (err.includes('fetch') || err.includes('network') || err.includes('load failed')) ? formatAgentError(null, null) : ('Something went wrong: ' + (e && (e.message || e.reason)) || 'unknown error');
     addMsg('layla', msg);
     refreshApprovals();
+    document.getElementById('msg-input')?.focus();
   }
 }
 
@@ -1994,15 +2226,25 @@ async function refreshApprovals() {
     const data = await res.json();
     const list = document.getElementById('approvals-list');
     const pending = (data.pending || []).filter(e => e.status === 'pending');
-    if (!pending.length) { list.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">No pending approvals</span>'; return; }
+    if (!pending.length) { list.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">Layla will ask here when she needs permission to act</span>'; return; }
     list.innerHTML = '';
     pending.forEach(e => {
       const item = document.createElement('div');
       item.className = 'panel-item';
-      item.innerHTML = '<span style="font-size:0.7rem">' + e.tool + '<br><span style="color:var(--text-dim)">' + e.id.slice(0,8) + '</span></span>';
+      const files = e.args?.files;
+      const isBatch = e.tool === 'write_files_batch' && Array.isArray(files) && files.length > 1;
+      item.innerHTML = '<span style="font-size:0.7rem">' + e.tool + (isBatch ? ' (' + files.length + ' files)' : '') + '<br><span style="color:var(--text-dim)">' + e.id.slice(0,8) + '</span></span>';
+      if (isBatch) {
+        const viewBtn = document.createElement('button');
+        viewBtn.className = 'approve-btn';
+        viewBtn.style.marginRight = '4px';
+        viewBtn.textContent = 'View';
+        viewBtn.onclick = () => openBatchDiffViewer(e);
+        item.appendChild(viewBtn);
+      }
       const btn = document.createElement('button');
       btn.className = 'approve-btn';
-      btn.textContent = 'Approve';
+      btn.textContent = isBatch ? 'Apply all' : 'Approve';
       btn.onclick = () => approveId(e.id);
       item.appendChild(btn);
       list.appendChild(item);
@@ -2025,7 +2267,7 @@ async function refreshStudyPlans() {
     const data = await res.json();
     const list = document.getElementById('study-list');
     const plans = data.plans || [];
-    if (!plans.length) { list.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">No study plans</span>'; return; }
+    if (!plans.length) { list.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">Add a topic — Layla will study it when you're active</span>'; return; }
     list.innerHTML = '';
     plans.forEach(p => {
       const card = document.createElement('div');
@@ -2062,7 +2304,7 @@ async function refreshStudyPlans() {
       card.appendChild(studyBtn);
       list.appendChild(card);
     });
-  } catch {}
+  } catch (e) { console.warn('refreshStudyPlans failed:', e); }
 }
 
 async function studyNow(topic) {
@@ -2074,6 +2316,7 @@ async function studyNow(topic) {
     const res = await fetch('/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await res.json();
     addMsg('layla', data.response || '', data.aspect_name, data.state?.steps?.some(s => s.deliberated), data.state?.steps, data.ux_states, data.memory_influenced);
+    if (document.getElementById('tts-toggle')?.checked && (data.response || '').trim()) { try { speakReply(data.response, currentAspect); } catch (_) {} }
     if (res.ok && (data.response || '').trim()) {
       await fetch('/study_plans/record_progress', {
         method: 'POST',
@@ -2088,12 +2331,21 @@ async function studyNow(topic) {
 async function refreshPlatformHealth() {
   const el = document.getElementById('platform-health');
   if (!el) return;
+  el.innerHTML = '<div class="skeleton" style="height:12px;width:80%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:60%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:70%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:50%"></div>';
   try {
     const r = await fetch('/health');
     const d = await r.json();
+    if (!r.ok) { el.innerHTML = '<span style="color:#f90">' + formatAgentError(r, d) + '</span>'; return; }
     const opt = d.system_optimizer || {};
     const m = opt.metrics || {};
-    let html = `<div style="margin-bottom:6px"><span style="color:${d.status==='ok'?'#4dff88':'#f90'}">●</span> ${d.status || 'unknown'}</div>`;
+    const dbOk = d.db_ok !== false;
+    const chromaOk = d.chroma_ok === true;
+    const uptimeSec = d.uptime_seconds || 0;
+    const uh = Math.floor(uptimeSec / 3600);
+    const um = Math.floor((uptimeSec % 3600) / 60);
+    const uptimeStr = uh > 0 ? uh + 'h ' + um + 'm' : um + 'm';
+    let html = `<div style="margin-bottom:6px">DB: ${dbOk ? '✓' : '✗'} | Chroma: ${chromaOk ? '✓' : '✗'} | Uptime: ${uptimeStr}</div>`;
+    html += `<div style="margin-bottom:6px"><span style="color:${d.status==='ok'?'#4dff88':'#f90'}">●</span> ${d.status || 'unknown'}</div>`;
     html += `<div>Model: ${d.model_loaded ? 'loaded' : 'not loaded'}</div>`;
     html += `<div>Tools: ${d.tools_registered || 0}</div>`;
     html += `<div>Learnings: ${d.learnings || 0}</div>`;
@@ -2101,15 +2353,17 @@ async function refreshPlatformHealth() {
     if (m.cpu_percent != null) html += `<div>CPU: ${m.cpu_percent}%</div>`;
     if (m.ram_percent != null) html += `<div>RAM: ${m.ram_percent}%</div>`;
     el.innerHTML = html;
-  } catch (e) { el.innerHTML = '<span style="color:#f90">Failed to load</span>'; }
+  } catch (e) { el.innerHTML = '<span style="color:#f90">' + formatAgentError(null, null) + '</span>'; }
 }
 
 async function refreshPlatformModels() {
   const el = document.getElementById('platform-models');
   if (!el) return;
+  el.innerHTML = '<div class="skeleton" style="height:12px;width:90%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:75%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:85%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:65%"></div>';
   try {
     const r = await fetch('/platform/models');
     const d = await r.json();
+    if (!r.ok) { el.innerHTML = '<span style="color:#f90">' + formatAgentError(r, d) + '</span>'; return; }
     let html = '';
     if (d.active) html += `<div style="margin-bottom:6px;color:var(--asp)">Active: ${d.active}</div>`;
     (d.models || []).forEach(m => {
@@ -2126,12 +2380,13 @@ async function refreshPlatformModels() {
     }
     if (!html) html = '<span style="color:var(--text-dim)">No models found</span>';
     el.innerHTML = html;
-  } catch (e) { el.innerHTML = '<span style="color:#f90">Failed to load</span>'; }
+  } catch (e) { el.innerHTML = '<span style="color:#f90">' + formatAgentError(null, null) + '</span>'; }
 }
 
 async function refreshPlatformKnowledge() {
   const el = document.getElementById('platform-knowledge');
   if (!el) return;
+  el.innerHTML = '<div class="skeleton" style="height:12px;width:85%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:70%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:80%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:60%"></div>';
   try {
     const r = await fetch('/platform/knowledge');
     const d = await r.json();
@@ -2221,13 +2476,14 @@ async function doWakeup() {
     const data = await res.json();
     if (data.greeting) {
       const chat = document.getElementById('chat');
+      if (!chat) return;
       const banner = document.createElement('div');
       banner.className = 'greeting-banner';
-      banner.innerHTML = '<div class="from">— Echo (session start)</div>' + data.greeting;
+      banner.innerHTML = '<div class="from">— Echo (session start)</div>' + sanitizeHtml(data.greeting || '');
       chat.appendChild(banner);
     }
     refreshStudyPlans();
-  } catch {}
+  } catch (e) { console.warn('doWakeup failed:', e); }
 }
 
 // Session timer
@@ -2238,34 +2494,104 @@ setInterval(() => {
   document.getElementById('session-time').textContent = m + ':' + s;
 }, 1000);
 
-// ─── localStorage: persist workspace path ──────────────────
+// ─── localStorage: persist workspace path + presets + autocomplete ────────
 const WS_KEY = 'layla_workspace_path';
+const WS_PRESETS_KEY = 'layla_workspace_presets';
+const WS_RECENT_KEY = 'layla_workspace_recent';
+const WS_RECENT_MAX = 8;
+function getWorkspacePresets() {
+  try { return JSON.parse(localStorage.getItem(WS_PRESETS_KEY) || '[]'); } catch (_) { return []; }
+}
+function setWorkspacePresets(arr) {
+  localStorage.setItem(WS_PRESETS_KEY, JSON.stringify(arr));
+  renderWorkspacePresets();
+}
+function renderWorkspacePresets() {
+  const sel = document.getElementById('workspace-presets');
+  if (!sel) return;
+  const presets = getWorkspacePresets();
+  sel.innerHTML = '<option value="">— Preset —</option>' + presets.map((p, i) => '<option value="' + i + '">' + escapeHtml((p.name || p.path || 'Preset').slice(0, 30)) + '</option>').join('');
+}
+function onWorkspacePresetSelect() {
+  const sel = document.getElementById('workspace-presets');
+  const wp = document.getElementById('workspace-path');
+  if (!sel || !wp) return;
+  const idx = sel.value;
+  if (idx === '') return;
+  const presets = getWorkspacePresets();
+  const p = presets[parseInt(idx, 10)];
+  if (p && p.path) { wp.value = p.path; localStorage.setItem(WS_KEY, p.path); }
+}
+function addWorkspacePreset() {
+  const wp = document.getElementById('workspace-path');
+  if (!wp) return;
+  const path = wp.value.trim();
+  if (!path) { showToast('Enter a path first'); return; }
+  const presets = getWorkspacePresets();
+  const name = path.split(/[/\\]/).pop() || path.slice(-20);
+  presets.push({ name, path });
+  setWorkspacePresets(presets);
+  showToast('Preset added');
+}
+function removeWorkspacePreset() {
+  const sel = document.getElementById('workspace-presets');
+  if (!sel || sel.value === '') { showToast('Select a preset to remove'); return; }
+  const presets = getWorkspacePresets();
+  presets.splice(parseInt(sel.value, 10), 1);
+  setWorkspacePresets(presets);
+  sel.value = '';
+  showToast('Preset removed');
+}
 const wpEl = document.getElementById('workspace-path');
 if (wpEl) {
+  renderWorkspacePresets();
   const saved = localStorage.getItem(WS_KEY);
   if (saved) wpEl.value = saved;
   wpEl.addEventListener('change', () => {
-    localStorage.setItem(WS_KEY, wpEl.value.trim());
+    const v = wpEl.value.trim();
+    if (v) {
+      localStorage.setItem(WS_KEY, v);
+      try {
+        let recent = JSON.parse(localStorage.getItem(WS_RECENT_KEY) || '[]');
+        recent = [v, ...recent.filter(p => p !== v)].slice(0, WS_RECENT_MAX);
+        localStorage.setItem(WS_RECENT_KEY, JSON.stringify(recent));
+      } catch (_) {}
+    }
   });
+  try {
+    const recent = JSON.parse(localStorage.getItem(WS_RECENT_KEY) || '[]');
+    if (recent.length) {
+      const dl = document.createElement('datalist');
+      dl.id = 'workspace-datalist';
+      recent.forEach(p => { const o = document.createElement('option'); o.value = p; dl.appendChild(o); });
+      wpEl.setAttribute('list', 'workspace-datalist');
+      wpEl.parentNode?.appendChild(dl);
+    }
+  } catch (_) {}
 }
 
 // ─── localStorage: persist conversation history ─────────────
 const HISTORY_KEY = 'layla_chat_history';
 const MAX_HISTORY_ENTRIES = 40;
+let _saveHistoryTimer = null;
 
 function saveChatHistory() {
-  try {
-    const chat = document.getElementById('chat');
-    if (!chat) return;
-    const entries = [];
-    for (const node of chat.children) {
-      if (node.classList.contains('msg') || node.classList.contains('separator') || node.classList.contains('greeting-banner')) {
-        entries.push({ html: node.outerHTML, cls: node.className });
+  if (_saveHistoryTimer) clearTimeout(_saveHistoryTimer);
+  _saveHistoryTimer = setTimeout(() => {
+    _saveHistoryTimer = null;
+    try {
+      const chat = document.getElementById('chat');
+      if (!chat) return;
+      const entries = [];
+      for (const node of chat.children) {
+        if (node.classList.contains('msg') || node.classList.contains('separator') || node.classList.contains('greeting-banner')) {
+          entries.push({ html: node.outerHTML, cls: node.className });
+        }
       }
-    }
-    const trimmed = entries.slice(-MAX_HISTORY_ENTRIES);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
-  } catch {}
+      const trimmed = entries.slice(-MAX_HISTORY_ENTRIES);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
+    } catch (e) { console.warn('saveChatHistory failed:', e); }
+  }, 400);
 }
 
 function loadChatHistory() {
@@ -2278,13 +2604,13 @@ function loadChatHistory() {
     const frag = document.createDocumentFragment();
     entries.forEach(e => {
       const tmp = document.createElement('div');
-      tmp.innerHTML = e.html;
+      tmp.innerHTML = sanitizeHtml(e.html || '');
       if (tmp.firstChild) frag.appendChild(tmp.firstChild);
     });
     chat.insertBefore(frag, chat.firstChild);
     chat.scrollTop = chat.scrollHeight;
     hideEmpty();
-  } catch {}
+  } catch (e) { console.warn('loadChatHistory failed:', e); }
 }
 
 // Attach history save observer
@@ -2333,32 +2659,33 @@ function clearToolStatus() {
   if (wrap) wrap.querySelector('.tool-status-label')?.remove();
 }
 
+function updateRetryButton() {
+  const btn = document.getElementById('retry-btn');
+  if (btn) btn.style.display = _lastDisplayMsg ? 'inline-block' : 'none';
+}
+
 function clearChat() {
+  if (!confirm('Clear all messages? This cannot be undone.')) return;
+  _lastDisplayMsg = null;
+  updateRetryButton();
   _saveCurrentSession();
   const chat = document.getElementById('chat');
   if (chat) {
     chat.innerHTML = '';
-    // Restore empty state with prompt tiles
     const empty = document.createElement('div');
     empty.id = 'chat-empty';
-    empty.innerHTML = `<div class="sigil">∴</div><div class="hint">she is waiting</div>
-      <div class="prompt-tiles">
-        <button class="prompt-tile" onclick="fillPrompt('Explain how ')"><span class="tile-icon">✦</span><span class="tile-text">Explain something</span></button>
-        <button class="prompt-tile" onclick="fillPrompt('Write Python code to ')"><span class="tile-icon">⚔</span><span class="tile-text">Write code for me</span></button>
-        <button class="prompt-tile" onclick="fillPrompt('Research and summarize: ')"><span class="tile-icon">🔬</span><span class="tile-text">Research a topic</span></button>
-        <button class="prompt-tile" onclick="fillPrompt('Help me debug this error: ')"><span class="tile-icon">🔧</span><span class="tile-text">Debug an error</span></button>
-        <button class="prompt-tile" onclick="fillPrompt('Summarize this text: ')"><span class="tile-icon">◎</span><span class="tile-text">Summarize text</span></button>
-        <button class="prompt-tile" onclick="fillPrompt('What should I do about ')"><span class="tile-icon">⌖</span><span class="tile-text">Get advice</span></button>
-      </div>`;
+    empty.innerHTML = renderPromptTilesAndEmptyState();
     chat.appendChild(empty);
   }
   localStorage.removeItem(HISTORY_KEY);
 }
 
 // ─── Copy-to-clipboard on message click ─────────────────────
-document.getElementById('chat').addEventListener('click', (e) => {
+const chatEl = document.getElementById('chat');
+if (chatEl) chatEl.addEventListener('click', (e) => {
   const bubble = e.target.closest('.msg-bubble');
   if (!bubble) return;
+  if (e.target.closest('button') || e.target.closest('a')) return;
   const text = bubble.innerText || bubble.textContent || '';
   if (!text.trim()) return;
   navigator.clipboard.writeText(text.trim()).then(() => {
@@ -2370,6 +2697,7 @@ document.getElementById('chat').addEventListener('click', (e) => {
 
 // ─── File drop + attach ───────────────────────────────────────────────────
 let _attachedFiles = [];  // [{name, content}]
+let _attachedImages = []; // [{name, base64}] for image context in agent loop
 
 function handleFileDrop(e) {
   e.preventDefault();
@@ -2389,7 +2717,35 @@ function attachFile(input) {
 
 function readFileIntoContext(file) {
   const TEXT_EXTS = /\.(txt|md|py|js|ts|jsx|tsx|html|css|json|yaml|yml|toml|ini|cfg|sh|bat|ps1|c|cpp|h|rs|go|java|rb|php|sql|xml|csv|log)$/i;
-  const MAX_SIZE = 200 * 1024; // 200 KB
+  const IMAGE_EXTS = /\.(png|jpg|jpeg|webp|gif|bmp)$/i;
+  const MAX_SIZE = 200 * 1024; // 200 KB (text)
+  const MAX_IMAGE_SIZE = 4 * 1024 * 1024; // 4 MB for images
+  if (IMAGE_EXTS.test(file.name)) {
+    if (file.size > MAX_IMAGE_SIZE) {
+      showToast(`Image too large: ${file.name} (max 4 MB)`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target.result;
+      _attachedImages.push({ name: file.name, base64: dataUrl });
+      const chips = document.getElementById('file-context-chips');
+      if (chips) {
+        chips.style.display = 'flex';
+        const chip = document.createElement('span');
+        chip.style.cssText = 'background:var(--asp-mid);border:1px solid var(--asp);border-radius:12px;padding:2px 10px;color:var(--text);display:flex;align-items:center;gap:6px';
+        chip.setAttribute('data-image-chip', '1');
+        chip.dataset.type = 'image';
+        chip.dataset.filename = file.name;
+        chip.innerHTML = `🖼 ${escapeHtml(file.name)} <button class="chip-remove-btn" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:0;font-size:0.85rem">✕</button>`;
+        chips.appendChild(chip);
+      }
+      showToast(`🖼 ${file.name} attached (image context)`);
+      toggleSendButton();
+    };
+    reader.readAsDataURL(file);
+    return;
+  }
   if (file.size > MAX_SIZE) {
     showToast(`File too large: ${file.name} (max 200 KB)`);
     return;
@@ -2398,13 +2754,14 @@ function readFileIntoContext(file) {
   reader.onload = (e) => {
     const content = e.target.result;
     _attachedFiles.push({ name: file.name, content });
-    // Show chip
     const chips = document.getElementById('file-context-chips');
     if (chips) {
       chips.style.display = 'flex';
       const chip = document.createElement('span');
       chip.style.cssText = 'background:var(--asp-mid);border:1px solid var(--asp);border-radius:12px;padding:2px 10px;color:var(--text);display:flex;align-items:center;gap:6px';
-      chip.innerHTML = `📄 ${file.name} <button onclick="removeFileChip(this,'${file.name}')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:0;font-size:0.85rem">✕</button>`;
+      chip.dataset.type = 'file';
+      chip.dataset.filename = file.name;
+      chip.innerHTML = `📄 ${escapeHtml(file.name)} <button class="chip-remove-btn" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:0;font-size:0.85rem">✕</button>`;
       chips.appendChild(chip);
     }
     showToast(`📄 ${file.name} attached`);
@@ -2413,21 +2770,63 @@ function readFileIntoContext(file) {
   if (TEXT_EXTS.test(file.name)) {
     reader.readAsText(file, 'utf-8');
   } else {
-    showToast(`Unsupported file type: ${file.name}. Text files only.`);
+    showToast(`Unsupported file type: ${file.name}. Text or image files only.`);
   }
 }
 
-function removeFileChip(btn, filename) {
-  _attachedFiles = _attachedFiles.filter(f => f.name !== filename);
-  btn.parentElement.remove();
-  if (!_attachedFiles.length) {
+function removeImageChip(chip) {
+  const filename = chip?.dataset?.filename || '';
+  _attachedImages = _attachedImages.filter(f => f.name !== filename);
+  chip?.remove();
+  if (!_attachedImages.length && !_attachedFiles.length) {
     const chips = document.getElementById('file-context-chips');
     if (chips) chips.style.display = 'none';
   }
+  toggleSendButton();
+}
+
+function removeFileChip(chip) {
+  const filename = chip?.dataset?.filename || '';
+  _attachedFiles = _attachedFiles.filter(f => f.name !== filename);
+  chip?.remove();
+  if (!_attachedFiles.length && !_attachedImages.length) {
+    const chips = document.getElementById('file-context-chips');
+    if (chips) chips.style.display = 'none';
+  }
+  toggleSendButton();
+}
+
+// Delegated handler for file-context chip remove buttons (avoids XSS from filename/url in onclick)
+const fileChipsEl = document.getElementById('file-context-chips');
+if (fileChipsEl) {
+  fileChipsEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.chip-remove-btn');
+    if (!btn) return;
+    const chip = btn.closest('[data-type]');
+    if (!chip) return;
+    if (chip.dataset.type === 'image') removeImageChip(chip);
+    else if (chip.dataset.type === 'file') removeFileChip(chip);
+  });
 }
 
 // ─── Inline approvals ───────────────────────────────────────────────────────
+async function batchApproveAll(pending, btnEl) {
+  if (!btnEl) return;
+  btnEl.disabled = true;
+  btnEl.textContent = 'Approving…';
+  let ok = 0;
+  for (const e of pending) {
+    try {
+      const res = await fetch('/approve', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id: e.id }) });
+      const data = await res.json();
+      if (data.ok || res.ok) ok++;
+    } catch (_) {}
+  }
+  showToast('Approved ' + ok + ' of ' + pending.length);
+  refreshApprovals();
+}
 async function approveAction(id, btnEl) {
+  const tool = btnEl?.dataset?.tool || '';
   try {
     const res = await fetch('/approve', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ id }) });
     const data = await res.json();
@@ -2437,12 +2836,28 @@ async function approveAction(id, btnEl) {
       btnEl.style.color = '#fff';
       btnEl.disabled = true;
       btnEl.closest('.inline-approval')?.classList.add('approved');
-      showToast('Action approved — Layla will continue');
+      const canUndo = (tool === 'write_file' || tool === 'apply_patch');
+      if (canUndo) {
+        const t = document.createElement('div');
+        t.className = 'toast';
+        t.innerHTML = 'Approved. <a href="#" class="undo-link" data-undo-id="' + escapeHtml(id) + '" style="color:var(--asp);text-decoration:underline;margin-left:4px">Undo</a>';
+        document.body.appendChild(t);
+        t.querySelector('.undo-link')?.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          const uid = ev.target.dataset?.undoId;
+          if (uid) fetch('/undo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: uid }) });
+          t.remove();
+        });
+        setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(() => t.remove(), 300); }, 5000);
+      } else {
+        showToast('Action approved — Layla will continue');
+      }
       refreshApprovals();
     }
   } catch(e) { showToast('Approval failed: ' + e.message); }
 }
 
+let _lastPendingCount = 0;
 // Override refreshApprovals to also inject inline approval cards
 async function refreshApprovals() {
   try {
@@ -2450,16 +2865,33 @@ async function refreshApprovals() {
     const data = await res.json();
     const list = document.getElementById('approvals-list');
     const pending = (data.pending || []).filter(e => e.status === 'pending');
+    if (_lastPendingCount === 0 && pending.length > 0) showToast('🔐 Approval needed — check Approvals panel or inline');
+    _lastPendingCount = pending.length;
     if (!pending.length) {
-      if (list) list.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">No pending approvals</span>';
+      if (list) list.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">Layla will ask here when she needs permission to act</span>';
       return;
     }
     if (list) {
       list.innerHTML = '';
+      if (pending.length > 1) {
+        const batchBtn = document.createElement('button');
+        batchBtn.className = 'approve-btn';
+        batchBtn.style.cssText = 'margin-bottom:10px;font-size:0.72rem;padding:6px 14px;background:var(--asp);border:none;color:#fff;border-radius:3px;cursor:pointer';
+        batchBtn.textContent = '✓ Approve all (' + pending.length + ')';
+        batchBtn.onclick = () => batchApproveAll(pending, batchBtn);
+        list.appendChild(batchBtn);
+      }
       pending.forEach(e => {
         const item = document.createElement('div');
         item.className = 'panel-item';
-        item.innerHTML = `<div style="font-size:0.73rem;margin-bottom:6px;color:var(--text)">${escapeHtml(e.tool || '')} <span style="opacity:0.4">${(e.id||'').slice(0,8)}</span></div><button onclick="approveAction('${e.id}',this)" style="font-size:0.72rem;padding:4px 12px;background:transparent;border:1px solid var(--asp);color:var(--asp);border-radius:3px;cursor:pointer">Approve</button>`;
+        const btn = document.createElement('button');
+        btn.style.cssText = 'font-size:0.72rem;padding:4px 12px;background:transparent;border:1px solid var(--asp);color:var(--asp);border-radius:3px;cursor:pointer';
+        btn.textContent = 'Approve';
+        btn.dataset.id = e.id || '';
+        btn.dataset.tool = e.tool || '';
+        btn.onclick = () => approveAction(btn.dataset.id, btn);
+        item.innerHTML = `<div style="font-size:0.73rem;margin-bottom:6px;color:var(--text)">${escapeHtml(e.tool || '')} <span style="opacity:0.4">${escapeHtml((e.id||'').slice(0,8))}</span></div>`;
+        item.appendChild(btn);
         list.appendChild(item);
       });
     }
@@ -2476,13 +2908,20 @@ async function refreshApprovals() {
       pending.forEach(e => {
         const card = document.createElement('div');
         card.style.cssText = 'background:rgba(139,0,0,0.08);border:1px solid var(--asp);border-radius:6px;padding:10px 14px;font-size:0.78rem;display:flex;align-items:center;gap:12px;flex-wrap:wrap';
-        card.innerHTML = `<span style="flex:1">🔐 <b>${escapeHtml(e.tool||'action')}</b> needs approval${e.args ? ' — ' + escapeHtml(JSON.stringify(e.args)).slice(0,80) : ''}</span><button onclick="approveAction('${e.id}',this)" style="padding:5px 16px;background:var(--asp);border:none;color:#fff;border-radius:4px;cursor:pointer;font-family:inherit;font-size:0.78rem">Approve</button>`;
+        card.innerHTML = `<span style="flex:1">🔐 <b>${escapeHtml(e.tool||'action')}</b> needs approval${e.args ? ' — ' + escapeHtml(JSON.stringify(e.args)).slice(0,80) : ''}</span>`;
+        const appBtn = document.createElement('button');
+        appBtn.style.cssText = 'padding:5px 16px;background:var(--asp);border:none;color:#fff;border-radius:4px;cursor:pointer;font-family:inherit;font-size:0.78rem';
+        appBtn.textContent = 'Approve';
+        appBtn.dataset.id = e.id || '';
+        appBtn.dataset.tool = e.tool || '';
+        appBtn.onclick = () => approveAction(appBtn.dataset.id, appBtn);
+        card.appendChild(appBtn);
         inlineWrap.appendChild(card);
       });
       lastLayla.appendChild(inlineWrap);
       chat.scrollTop = chat.scrollHeight;
     }
-  } catch(e) {}
+  } catch (e) { console.warn('refreshApprovals failed:', e); }
 }
 
 // ─── Inject file context into send payload ─────────────────────────────────
@@ -2523,13 +2962,17 @@ async function refreshApprovals() {
 
 // ─── Warmup bar ─────────────────────────────────────────────────────────────
 let _warmupDone = false;
+let _connectionOk = true;
 async function pollWarmup() {
-  if (_warmupDone) return;
   try {
     const r = await fetch('/health');
     const d = await r.json();
+    _connectionOk = true;
+    document.getElementById('connection-banner')?.style.setProperty('display', 'none');
+    if (_warmupDone) return;
     if (d.model_loaded) {
       _warmupDone = true;
+      document.getElementById('model-readiness-banner')?.style.setProperty('display', 'none');
       const bar = document.getElementById('warmup-bar');
       if (bar) { bar.style.transition = 'opacity 0.5s'; bar.style.opacity = '0'; setTimeout(() => bar.remove(), 600); }
       const badge = document.getElementById('model-status-badge');
@@ -2539,9 +2982,42 @@ async function pollWarmup() {
       return;
     }
     const detail = document.getElementById('warmup-detail');
-    if (detail) detail.textContent = d.detail || 'warming up…';
-  } catch { /* server starting */ }
-  setTimeout(pollWarmup, 3000);
+    const modelBanner = document.getElementById('model-readiness-banner');
+    try {
+      const setupRes = await fetch('/setup_status');
+      if (setupRes.ok) {
+        const setup = await setupRes.json();
+        if (!setup.ready) {
+          if (detail) detail.textContent = 'No model configured';
+          if (modelBanner) {
+            const err = (d.model_error || '').replace(/</g, '&lt;');
+            modelBanner.innerHTML = 'No model loaded' + (err ? ' — ' + err + '. ' : ' — ') + '<a href="/docs/MODELS.md" target="_blank" style="color:#e0a0ff;text-decoration:underline">Configure</a> or run first setup';
+            modelBanner.style.display = 'block';
+          }
+        } else {
+          if (modelBanner) modelBanner.style.display = 'none';
+          if (detail) detail.textContent = d.detail || 'warming up…';
+        }
+      } else {
+        if (detail) detail.textContent = d.detail || 'warming up…';
+        if (modelBanner) modelBanner.style.display = 'none';
+      }
+    } catch (_) {
+      if (detail) detail.textContent = d.detail || 'warming up…';
+      if (modelBanner) modelBanner.style.display = 'none';
+    }
+  } catch {
+    _connectionOk = false;
+    document.getElementById('connection-banner')?.style.setProperty('display', 'block');
+    document.getElementById('model-readiness-banner')?.style.setProperty('display', 'none');
+  }
+  setTimeout(pollWarmup, _warmupDone ? 10000 : 3000);
+}
+function pollConnectionStatus() {
+  if (_warmupDone) {
+    fetch('/health').then(r => { if (r.ok) { _connectionOk = true; document.getElementById('connection-banner')?.style.setProperty('display', 'none'); } }).catch(() => { _connectionOk = false; document.getElementById('connection-banner')?.style.setProperty('display', 'block'); });
+  }
+  setTimeout(pollConnectionStatus, 10000);
 }
 function startWarmupPoll() {
   const bar = document.getElementById('warmup-bar');
@@ -2550,6 +3026,7 @@ function startWarmupPoll() {
 }
 // Start polling immediately; checkSetupStatus will also fire — warmup supplements it
 startWarmupPoll();
+setTimeout(pollConnectionStatus, 15000);
 
 // ─── Session history ─────────────────────────────────────────────────────────
 const SESSIONS_KEY = 'layla_sessions';
@@ -2592,10 +3069,14 @@ function _renderSessionList() {
   sessions.forEach(s => {
     const item = document.createElement('div');
     item.className = 'session-item';
-    item.innerHTML = `
-      <span class="sess-preview">${s.preview.replace(/</g,'&lt;')}</span>
-      <span class="sess-date">${s.created}</span>
-      <button class="sess-del" title="Delete session" onclick="event.stopPropagation();_deleteSession(${s.id})">✕</button>`;
+    item.innerHTML = `<span class="sess-preview">${(s.preview || '').replace(/</g,'&lt;')}</span><span class="sess-date">${escapeHtml(String(s.created || ''))}</span>`;
+    const delBtn = document.createElement('button');
+    delBtn.className = 'sess-del';
+    delBtn.title = 'Delete session';
+    delBtn.textContent = '✕';
+    delBtn.dataset.sessionId = String(s.id);
+    delBtn.addEventListener('click', (ev) => { ev.stopPropagation(); _deleteSession(ev.target.dataset.sessionId); });
+    item.appendChild(delBtn);
     item.addEventListener('click', () => _restoreSession(s));
     container.appendChild(item);
   });
@@ -2611,9 +3092,10 @@ function _restoreSession(s) {
 }
 
 function _deleteSession(id) {
+  if (!confirm('Delete this saved session?')) return;
   try {
     let sessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]');
-    sessions = sessions.filter(s => s.id !== id);
+    sessions = sessions.filter(s => String(s.id) !== String(id));
     localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
     _renderSessionList();
   } catch {}
@@ -2673,7 +3155,9 @@ async function _fetchUrlAsContext(url) {
         const chip2 = document.createElement('span');
         chip2.style.cssText = 'background:var(--asp-mid);border:1px solid var(--asp);border-radius:12px;padding:2px 10px;color:var(--text);display:flex;align-items:center;gap:6px;font-size:0.73rem';
         const hostname = (() => { try { return new URL(url).hostname; } catch { return url.slice(0,30); } })();
-        chip2.innerHTML = `🌐 ${hostname} <button onclick="removeFileChip(this,'${url}')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:0;font-size:0.85rem">✕</button>`;
+        chip2.dataset.type = 'file';
+        chip2.dataset.filename = url;
+        chip2.innerHTML = `🌐 ${escapeHtml(hostname)} <button class="chip-remove-btn" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:0;font-size:0.85rem">✕</button>`;
         chips.appendChild(chip2);
       }
       showToast('🌐 URL content fetched');
@@ -2820,15 +3304,55 @@ async function confirmApplyFile() {
   if (btn) { btn.disabled = false; btn.textContent = 'Apply (requires approval)'; }
 }
 
+let _batchDiffPending = null;
+function openBatchDiffViewer(approvalEntry) {
+  const files = approvalEntry?.args?.files || [];
+  if (!files.length) return;
+  _batchDiffPending = approvalEntry;
+  const overlay = document.getElementById('batch-diff-overlay');
+  const countEl = document.getElementById('batch-diff-count');
+  const tabsEl = document.getElementById('batch-diff-tabs');
+  const contentEl = document.getElementById('batch-diff-content');
+  countEl.textContent = files.length;
+  tabsEl.innerHTML = '';
+  contentEl.textContent = '';
+  files.forEach((f, i) => {
+    const tab = document.createElement('button');
+    tab.style.cssText = 'padding:4px 10px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);border-radius:3px;cursor:pointer;font-size:0.7rem';
+    tab.textContent = (f.path || f.filepath || 'file ' + (i+1)).split(/[/\\]/).pop();
+    tab.onclick = () => {
+      tabsEl.querySelectorAll('button').forEach(b => b.style.borderColor = '');
+      tab.style.borderColor = 'var(--asp)';
+      contentEl.textContent = (f.content || '').slice(0, 8000);
+    };
+    tabsEl.appendChild(tab);
+    if (i === 0) tab.click();
+  });
+  overlay.style.display = 'flex';
+}
+function closeBatchDiffViewer() {
+  document.getElementById('batch-diff-overlay').style.display = 'none';
+  _batchDiffPending = null;
+}
+async function confirmApplyBatch() {
+  if (!_batchDiffPending?.id) return;
+  const btn = document.getElementById('batch-apply-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Applying…'; }
+  closeBatchDiffViewer();
+  await approveId(_batchDiffPending.id);
+  if (btn) { btn.disabled = false; btn.textContent = 'Apply all'; }
+}
+
 // ─── Memory search ───────────────────────────────────────────────────────────
 let _memSearchTimer = null;
 async function onMemorySearch(query) {
   clearTimeout(_memSearchTimer);
   const results = document.getElementById('memory-search-results');
   if (!query.trim()) { if (results) results.innerHTML = ''; return; }
+  if (results) results.innerHTML = '<span style="color:var(--text-dim)">Searching…</span>';
   _memSearchTimer = setTimeout(async () => {
     if (!results) return;
-    results.innerHTML = '<span style="color:var(--text-dim)">searching…</span>';
+    results.innerHTML = '<span style="color:var(--text-dim)">Searching…</span>';
     try {
       const r = await fetch('/learnings?limit=100');
       const d = await r.json();
@@ -2845,21 +3369,166 @@ async function onMemorySearch(query) {
         const el = document.createElement('div');
         el.style.cssText = 'padding:5px 0;border-bottom:1px solid var(--border);color:var(--text);line-height:1.4';
         const content = item.content || '';
-        const hi = content.replace(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi'), '<mark style="background:var(--asp);color:#000;border-radius:2px;padding:0 2px">$1</mark>');
-        el.innerHTML = `<span style="font-size:0.68rem;color:var(--text-dim);margin-right:6px">[${item.type||'?'}]</span>${hi}`;
+        const safe = escapeHtml(content);
+        const hi = safe.replace(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi'), '<mark style="background:var(--asp);color:#000;border-radius:2px;padding:0 2px">$1</mark>');
+        el.innerHTML = `<span style="font-size:0.68rem;color:var(--text-dim);margin-right:6px">[${escapeHtml(item.type||'?')}]</span>${hi}`;
         results.appendChild(el);
       });
-    } catch { results.innerHTML = '<span style="color:var(--text-dim)">Error searching</span>'; }
+    } catch { results.innerHTML = '<span style="color:var(--text-dim)">' + formatAgentError(null, null) + '</span>'; }
   }, 250);
 }
 
+// ─── First-run onboarding ───────────────────────────────────────────────
+let _onboardingStep = 0;
+const ONBOARDING_STEPS = [
+  { text: 'Choose a voice — pick one in the sidebar.', selector: '.aspect-btn' },
+  { text: 'Send a message — type below and hit Send.', selector: '#msg-input, #send-btn' },
+  { text: 'Layla will ask here when she needs permission to act.', selector: '.panel-tab[data-panel="approvals"]' },
+  { text: "You're ready. Start chatting.", selector: null }
+];
+function showOnboarding() {
+  const ov = document.getElementById('onboarding-overlay');
+  if (!ov) return;
+  _onboardingStep = 0;
+  ov.style.display = 'flex';
+  applyOnboardingStep();
+}
+function dismissOnboarding() {
+  const ov = document.getElementById('onboarding-overlay');
+  if (ov) ov.style.display = 'none';
+  document.querySelectorAll('.onboarding-highlight').forEach(el => el.classList.remove('onboarding-highlight'));
+  localStorage.setItem('layla_onboarding_done', '1');
+}
+function applyOnboardingStep() {
+  document.querySelectorAll('.onboarding-highlight').forEach(el => el.classList.remove('onboarding-highlight'));
+  const step = ONBOARDING_STEPS[_onboardingStep];
+  const textEl = document.getElementById('onboarding-text');
+  const nextBtn = document.getElementById('onboarding-next');
+  const doneBtn = document.getElementById('onboarding-done');
+  if (textEl) textEl.textContent = step.text;
+  if (step && step.selector) {
+    document.querySelectorAll(step.selector).forEach(el => el.classList.add('onboarding-highlight'));
+  }
+  if (_onboardingStep === 3) {
+    if (nextBtn) nextBtn.style.display = 'none';
+    if (doneBtn) doneBtn.style.display = 'inline-block';
+  } else {
+    if (nextBtn) nextBtn.style.display = 'inline-block';
+    if (doneBtn) doneBtn.style.display = 'none';
+  }
+}
+function onboardingNext() {
+  _onboardingStep++;
+  if (_onboardingStep >= 4) return dismissOnboarding();
+  applyOnboardingStep();
+}
+
 // Init
+(function () {
+  const e = document.getElementById('chat-empty');
+  if (e) e.innerHTML = renderPromptTilesAndEmptyState();
+})();
 loadChatHistory();
 doWakeup();
 refreshApprovals();
 refreshStudyPlans();
-checkSetupStatus();
+checkSetupStatus().then(function() {
+  if (!localStorage.getItem('layla_onboarding_done') && !document.getElementById('setup-overlay')?.classList.contains('visible')) {
+    showOnboarding();
+  }
+});
 _renderSessionList();
+
+// ─── Export chat, theme, compact, search ─────────────────────────────────
+function exportChat() {
+  const chat = document.getElementById('chat');
+  if (!chat) return;
+  const entries = [];
+  for (const node of chat.children) {
+    if (node.classList.contains('msg')) {
+      const role = node.classList.contains('msg-you') ? 'you' : 'layla';
+      const bubble = node.querySelector('.msg-bubble');
+      const text = (bubble?.innerText || bubble?.textContent || '').trim();
+      if (text) entries.push({ role, text });
+    }
+  }
+  if (!entries.length) { showToast('No messages to export'); return; }
+  const md = entries.map(e => `**${e.role === 'you' ? 'You' : 'Layla'}:**\n${e.text}`).join('\n\n---\n\n');
+  const blob = new Blob([md], { type: 'text/markdown' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'layla_chat_' + new Date().toISOString().slice(0,10) + '.md';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('Chat exported');
+}
+
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('theme-light');
+  localStorage.setItem('layla_theme', isLight ? 'light' : 'dark');
+  const btn = document.getElementById('theme-btn');
+  if (btn) btn.textContent = isLight ? '☀' : '🌙';
+}
+(function initTheme() {
+  const t = localStorage.getItem('layla_theme');
+  if (t === 'light') { document.body.classList.add('theme-light'); const b = document.getElementById('theme-btn'); if (b) b.textContent = '☀'; }
+})();
+
+function toggleSidebarCompact() {
+  document.querySelector('.sidebar')?.classList.toggle('compact');
+  const btn = document.getElementById('sidebar-compact-btn');
+  if (btn) btn.textContent = document.querySelector('.sidebar')?.classList.contains('compact') ? '▶' : '◀';
+  localStorage.setItem('layla_sidebar_compact', document.querySelector('.sidebar')?.classList.contains('compact') ? '1' : '');
+}
+(function initSidebarCompact() {
+  if (localStorage.getItem('layla_sidebar_compact') === '1') { document.querySelector('.sidebar')?.classList.add('compact'); const b = document.getElementById('sidebar-compact-btn'); if (b) b.textContent = '▶'; }
+})();
+function toggleMobileSidebar() {
+  const sb = document.querySelector('.sidebar');
+  if (!sb) return;
+  const open = !sb.classList.toggle('mobile-sidebar-hidden');
+  localStorage.setItem('layla_sidebar_mobile_open', open ? '1' : '');
+}
+(function initMobileSidebar() {
+  if (window.matchMedia('(max-width: 768px)').matches && localStorage.getItem('layla_sidebar_mobile_open') !== '1') {
+    document.querySelector('.sidebar')?.classList.add('mobile-sidebar-hidden');
+  }
+})();
+
+let _chatSearchIdx = -1;
+let _lastFocusedBeforeModal = null;
+function openChatSearch() {
+  _lastFocusedBeforeModal = document.activeElement;
+  const ov = document.getElementById('chat-search-overlay');
+  if (ov) { ov.style.display = 'flex'; document.getElementById('chat-search-input')?.focus(); }
+}
+function closeChatSearch() {
+  const ov = document.getElementById('chat-search-overlay');
+  if (ov) ov.style.display = 'none';
+  document.querySelectorAll('.msg-search-hit').forEach(el => el.classList.remove('msg-search-hit'));
+  if (_lastFocusedBeforeModal && typeof _lastFocusedBeforeModal.focus === 'function') _lastFocusedBeforeModal.focus(); else document.getElementById('msg-input')?.focus();
+}
+function onChatSearchInput(val) {
+  const q = (val || '').trim().toLowerCase();
+  document.querySelectorAll('.msg-search-hit').forEach(el => el.classList.remove('msg-search-hit'));
+  if (!q) return;
+  const chat = document.getElementById('chat');
+  if (!chat) return;
+  let first = null;
+  chat.querySelectorAll('.msg .msg-bubble').forEach(b => {
+    if ((b.innerText || b.textContent || '').toLowerCase().includes(q)) {
+      b.closest('.msg')?.classList.add('msg-search-hit');
+      if (!first) first = b.closest('.msg');
+    }
+  });
+  if (first) first.scrollIntoView({ block: 'nearest' });
+}
+function chatSearchNext() {
+  const hits = document.querySelectorAll('.msg-search-hit');
+  if (!hits.length) return;
+  _chatSearchIdx = (_chatSearchIdx + 1) % hits.length;
+  hits[_chatSearchIdx].scrollIntoView({ block: 'nearest' });
+}
 
 // ─── Fill prompt tile into input ───────────────────────────────────────
 function fillPrompt(text) {
@@ -2925,11 +3594,14 @@ async function showSetupOverlay(statusData) {
       const list = document.getElementById('setup-existing-list');
       if (list) {
         list.innerHTML = statusData.available_models.map(m =>
-          `<button class="model-card" onclick="useExistingModel('${m}')">
-            <div class="mc-name">${m}</div>
+          `<button class="model-card" data-existing-filename="${escapeHtml(m)}">
+            <div class="mc-name">${escapeHtml(m)}</div>
             <div class="mc-meta">Already downloaded — click to use</div>
            </button>`
         ).join('');
+        list.querySelectorAll('.model-card[data-existing-filename]').forEach(btn => {
+          btn.onclick = () => useExistingModel(btn.dataset.existingFilename || '');
+        });
       }
     }
   }
@@ -2942,12 +3614,15 @@ async function showSetupOverlay(statusData) {
     if (container && catData.catalog) {
       container.innerHTML = catData.catalog.map(m => {
         const viable = m.viable !== false;
-        return `<div class="model-card ${viable ? '' : 'not-viable'}" onclick="selectModel('${m.url}','${m.filename}',this)">
-          <div class="mc-name">${m.name} <span class="mc-badge ${viable ? 'viable' : 'heavy'}">${viable ? '✓ fits RAM' : '⚠ ' + m.ram_gb + 'GB RAM needed'}</span></div>
-          <div class="mc-meta">${m.size_gb} GB download · needs ${m.ram_gb} GB RAM</div>
-          <div class="mc-desc">${m.desc}</div>
+        return `<div class="model-card ${viable ? '' : 'not-viable'}" data-model-url="${escapeHtml(m.url || '')}" data-model-filename="${escapeHtml(m.filename || '')}">
+          <div class="mc-name">${escapeHtml(m.name || '')} <span class="mc-badge ${viable ? 'viable' : 'heavy'}">${viable ? '✓ fits RAM' : '⚠ ' + (m.ram_gb || '') + 'GB RAM needed'}</span></div>
+          <div class="mc-meta">${escapeHtml(String(m.size_gb || ''))} GB download · needs ${escapeHtml(String(m.ram_gb || ''))} GB RAM</div>
+          <div class="mc-desc">${escapeHtml(m.desc || '')}</div>
         </div>`;
       }).join('');
+      container.querySelectorAll('.model-card[data-model-url]').forEach(el => {
+        el.onclick = () => selectModel(el.dataset.modelUrl || '', el.dataset.modelFilename || '', el);
+      });
     }
   } catch(e) {}
 }
@@ -3040,14 +3715,19 @@ function renderSettingField(f, val) {
       input = `<input type="number" id="${id}"${min}${max}${step} value="${v}"${ph}>`;
     }
   } else {
-    const v = (val != null && val !== '') ? String(val).replace(/"/g, '&quot;') : '';
+    const v = (val != null && val !== '') ? String(val).replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') : '';
     const ph = f.key === 'model_filename' ? 'e.g. jinx-20b.gguf' : (f.key === 'sandbox_root' ? 'e.g. C:\\Users\\you' : '');
-    input = `<input type="text" id="${id}" value="${v}" placeholder="${ph}">`;
+    if (f.multiline) {
+      input = `<textarea id="${id}" rows="3" placeholder="${ph}" style="width:100%;min-height:60px;resize:vertical">${v}</textarea>`;
+    } else {
+      input = `<input type="text" id="${id}" value="${v}" placeholder="${ph}">`;
+    }
   }
   return `<div class="settings-row"><label for="${id}">${label}</label>${input}${hint}</div>`;
 }
 
 async function openSettings() {
+  _lastFocusedBeforeModal = document.activeElement;
   const overlay = document.getElementById('settings-overlay');
   if (!overlay) return;
   overlay.classList.add('visible');
@@ -3088,13 +3768,14 @@ async function openSettings() {
 
 function closeSettings() {
   document.getElementById('settings-overlay')?.classList.remove('visible');
+  if (_lastFocusedBeforeModal && typeof _lastFocusedBeforeModal.focus === 'function') _lastFocusedBeforeModal.focus(); else document.getElementById('msg-input')?.focus();
 }
 
 async function saveSettings() {
   const form = document.getElementById('settings-form');
   if (!form) return;
   const body = {};
-  const inputs = form.querySelectorAll('input[id^="set-"], select[id^="set-"]');
+  const inputs = form.querySelectorAll('input[id^="set-"], select[id^="set-"], textarea[id^="set-"]');
   for (const el of inputs) {
     const key = el.id.replace(/^set-/, '').replace(/-/g, '_');
     let v = el.value;
@@ -3128,6 +3809,8 @@ document.addEventListener('click', (e) => {
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
+    if (_micActive) { stopMic(); return; }
+    closeChatSearch();
     closeSettings();
     if (document.getElementById('setup-overlay')?.classList.contains('visible')) {
       document.getElementById('setup-overlay').classList.remove('visible');
@@ -3135,6 +3818,13 @@ document.addEventListener('keydown', (e) => {
   }
 });
 </script>
+
+<!-- ── Chat search overlay ─────────────────────────────────────────────── -->
+<div id="chat-search-overlay" style="display:none;position:fixed;top:0;left:0;right:0;background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 20px;z-index:10002;align-items:center;gap:12px;flex-direction:row">
+  <input type="text" id="chat-search-input" placeholder="Search in chat (Ctrl+F)…" oninput="onChatSearchInput(this.value)" style="flex:1;padding:8px 12px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.9rem">
+  <button onclick="chatSearchNext()" style="padding:6px 12px;background:var(--asp);border:none;color:#fff;border-radius:4px;cursor:pointer">Next</button>
+  <button onclick="closeChatSearch()" style="padding:6px 12px;background:transparent;border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer">Close</button>
+</div>
 
 <!-- ── Setup Overlay ───────────────────────────────────────────────────── -->
 <div id="setup-overlay">
@@ -3184,12 +3874,25 @@ document.addEventListener('keydown', (e) => {
     </div>
     <div class="settings-config-ref">
       <a href="/system_export" target="_blank" title="Full config export">⊕ export config</a>
-      <span class="hint"> — Advanced: edit <code>agent/runtime_config.json</code> directly. See docs/CONFIG_REFERENCE.md</span>
+      <span class="hint"> — Advanced: edit <code>agent/runtime_config.json</code> directly. <a href="/docs/CONFIG_REFERENCE.md" target="_blank">Config Reference</a></span>
     </div>
     <div class="settings-btns">
       <button class="settings-save" onclick="saveSettings()">Save Settings</button>
       <button class="settings-close" onclick="closeSettings()">Close</button>
       <span class="settings-save-msg" id="settings-save-msg">✓ Saved</span>
+    </div>
+  </div>
+</div>
+
+<!-- Batch diff viewer overlay -->
+<div id="batch-diff-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10001;align-items:center;justify-content:center" onclick="if(event.target===this) closeBatchDiffViewer()">
+  <div class="diff-modal" style="max-width:900px" onclick="event.stopPropagation()">
+    <h2>Batch edit — <span id="batch-diff-count">0</span> files</h2>
+    <div id="batch-diff-tabs" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;max-height:120px;overflow-y:auto"></div>
+    <div id="batch-diff-content" class="diff-panel" style="min-height:200px;max-height:50vh;overflow:auto;white-space:pre-wrap;font-family:JetBrains Mono,monospace;font-size:0.72rem"></div>
+    <div class="diff-actions" style="margin-top:10px">
+      <button class="diff-cancel-btn" onclick="closeBatchDiffViewer()">Cancel</button>
+      <button class="diff-confirm-btn" id="batch-apply-btn" onclick="confirmApplyBatch()">Apply all</button>
     </div>
   </div>
 </div>

@@ -29,6 +29,36 @@ _loop: Optional[asyncio.AbstractEventLoop] = None
 _browser_thread: Optional[threading.Thread] = None
 
 
+# ── SSRF mitigation ──────────────────────────────────────────────────────────
+
+def _is_safe_url(url: str) -> bool:
+    """Return True if URL is safe to fetch (http/https, not private/localhost)."""
+    if not url or not isinstance(url, str):
+        return False
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        host = (parsed.hostname or "").lower()
+        if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+            return False
+        if host.startswith("127.") or host.startswith("10.") or host.startswith("169.254."):
+            return False
+        if host.startswith("172."):
+            parts = host.split(".")
+            if len(parts) >= 2:
+                try:
+                    b = int(parts[1])
+                except ValueError:
+                    b = -1
+                if 16 <= b <= 31:
+                    return False
+        return True
+    except Exception:
+        return False
+
+
 # ── Async internals ──────────────────────────────────────────────────────────
 
 async def _ensure_context():
@@ -64,6 +94,8 @@ async def _new_page():
 
 
 async def _navigate(url: str, timeout_ms: int = 15000) -> dict:
+    if not _is_safe_url(url):
+        return {"ok": False, "error": "URL not allowed (private/localhost blocked)"}
     page = await _new_page()
     try:
         await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
@@ -85,6 +117,8 @@ async def _navigate(url: str, timeout_ms: int = 15000) -> dict:
 
 
 async def _screenshot(url: str, timeout_ms: int = 15000) -> dict:
+    if not _is_safe_url(url):
+        return {"ok": False, "error": "URL not allowed (private/localhost blocked)"}
     page = await _new_page()
     try:
         await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
@@ -101,6 +135,8 @@ async def _screenshot(url: str, timeout_ms: int = 15000) -> dict:
 
 
 async def _click_and_extract(url: str, selector: str, timeout_ms: int = 10000) -> dict:
+    if not _is_safe_url(url):
+        return {"ok": False, "error": "URL not allowed (private/localhost blocked)"}
     page = await _new_page()
     try:
         await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
@@ -116,6 +152,8 @@ async def _click_and_extract(url: str, selector: str, timeout_ms: int = 10000) -
 
 async def _fill_form(url: str, fields: dict[str, str], submit_selector: str = "", timeout_ms: int = 10000) -> dict:
     """Fill form fields and optionally submit. fields = {css_selector: value}."""
+    if not _is_safe_url(url):
+        return {"ok": False, "error": "URL not allowed (private/localhost blocked)"}
     page = await _new_page()
     try:
         await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
@@ -264,5 +302,5 @@ def close() -> None:
     try:
         if _loop and _loop.is_running():
             _run(_close())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("browser close failed: %s", e)

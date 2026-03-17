@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from pathlib import Path
+
+logger = logging.getLogger("layla")
 
 AGENT_DIR = Path(__file__).resolve().parent
 RESEARCH_BRAIN = AGENT_DIR / ".research_brain"
@@ -38,7 +41,8 @@ def load_mission_state() -> dict:
         return {"stage": None, "progress": {}, "completed": []}
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as e:
+        logger.debug("research_stages load_mission_state failed: %s", e)
         return {"stage": None, "progress": {}, "completed": []}
 
 
@@ -78,36 +82,36 @@ def load_research_context(for_stage: str) -> str:
         if map_path.exists():
             try:
                 parts.append("## System map (previous stage)\n" + map_path.read_text(encoding="utf-8"))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("load_research_context map read failed: %s", e)
     if idx > 1:
         inv_path = RESEARCH_BRAIN / "investigations" / "notes.md"
         if inv_path.exists():
             try:
                 parts.append("## Investigation notes (previous stage)\n" + inv_path.read_text(encoding="utf-8"))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("load_research_context inv read failed: %s", e)
     if idx > 2:
         ver_path = RESEARCH_BRAIN / "verifications" / "verified.md"
         if ver_path.exists():
             try:
                 parts.append("## Verification (previous stage)\n" + ver_path.read_text(encoding="utf-8"))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("load_research_context ver read failed: %s", e)
     if idx > 3:
         contra_path = RESEARCH_BRAIN / "contradictions" / "check.md"
         if contra_path.exists():
             try:
                 parts.append("## Contradiction check (previous stage)\n" + contra_path.read_text(encoding="utf-8"))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("load_research_context contra read failed: %s", e)
     if idx > 4:
         dist_path = RESEARCH_BRAIN / "distilled" / "knowledge.md"
         if dist_path.exists():
             try:
                 parts.append("## Distilled knowledge (previous stage)\n" + dist_path.read_text(encoding="utf-8"))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("load_research_context dist read failed: %s", e)
     return "\n\n".join(parts) if parts else ""
 
 

@@ -117,7 +117,8 @@ def get_active_implementation(capability: str, cfg: dict | None = None) -> Capab
         try:
             import runtime_safety
             cfg = runtime_safety.load_config()
-        except Exception:
+        except Exception as e:
+            logger.debug("get_active_implementation load_config failed: %s", e)
             cfg = {}
 
     impls = list_implementations(capability)
@@ -142,8 +143,8 @@ def get_active_implementation(capability: str, cfg: dict | None = None) -> Capab
             for impl in impls:
                 if impl.id == impl_id:
                     return impl
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("get_active_implementation get_best failed: %s", e)
 
     # 3. Default fallback
     for impl in impls:

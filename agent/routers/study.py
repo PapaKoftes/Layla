@@ -40,8 +40,8 @@ def _wakeup_initiative_suggestion(active_plans: list, greeting_parts: list) -> s
         for rule in INITIATIVE_RULES:
             if _initiative_condition_matches(rule["condition"], pc, active_plans):
                 return (rule.get("suggestion") or "").strip()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("_wakeup_initiative_suggestion failed: %s", e)
     return ""
 
 from shared_state import (  # noqa: E402
@@ -81,7 +81,7 @@ def get_capabilities():
 def add_study_plan(req: dict):
     get_touch_activity()()
     from layla.memory.db import get_plan_by_topic, save_study_plan
-    topic = (req or {}).get("topic", "").strip()
+    topic = (req or {}).get("topic", "").strip()[:500]
     domain_id = (req or {}).get("domain_id") or None
     if isinstance(domain_id, str):
         domain_id = domain_id.strip() or None
@@ -132,8 +132,8 @@ def wakeup():
             last_dt = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
             last_dt_utc = last_dt.replace(tzinfo=timezone.utc) if last_dt.tzinfo is None else last_dt
             elapsed_hours = round((utcnow() - last_dt_utc).total_seconds() / 3600, 1)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("wakeup elapsed_hours parse failed: %s", e)
 
     active_plans = get_active_study_plans()
     greeting_parts = []
@@ -153,15 +153,15 @@ def wakeup():
         try:
             import runtime_safety
             use_capabilities = bool(runtime_safety.load_config().get("scheduler_use_capabilities", False))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("wakeup scheduler_use_capabilities failed: %s", e)
         plan = None
         domain_id = None
         try:
             from layla.memory import capabilities as cap_mod
             plan, domain_id = cap_mod.get_next_plan_for_study(active_plans, use_capabilities=use_capabilities)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("wakeup get_next_plan_for_study failed: %s", e)
         if not plan:
             plan = min(active_plans, key=lambda p: (p.get("last_studied") or "") or "0000")
         try:
@@ -180,8 +180,8 @@ def wakeup():
             logger.warning("wakeup autonomous study failed: %s", e)
     try:
         active_plans = get_active_study_plans()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("wakeup get_active_study_plans refresh failed: %s", e)
 
     for plan in active_plans[:3]:
         topic = plan.get("topic", "")
@@ -210,10 +210,10 @@ def wakeup():
                 line = (opps[0] if opps else ideas[0] if ideas else "").strip()
                 if line and len(line) <= 200:
                     greeting_parts.append("Discovery: " + line)
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as e:
+                logger.debug("wakeup project_discovery failed: %s", e)
+    except Exception as e:
+        logger.debug("wakeup initiative/discovery config failed: %s", e)
 
     greeting_text = " ".join(greeting_parts)
     log_wakeup(greeting=greeting_text, notes="")
@@ -238,7 +238,7 @@ def get_aspect_title(aspect_id: str):
 @router.post("/aspects/{aspect_id}/title")
 def set_aspect_title(aspect_id: str, req: dict):
     from layla.memory.db import save_earned_title
-    title = (req or {}).get("title", "").strip()
+    title = (req or {}).get("title", "").strip()[:200]
     if not title:
         return JSONResponse({"ok": False, "error": "No title"})
     save_earned_title(aspect_id, title)

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import queue
 import sys
 import threading
@@ -14,6 +15,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from agent_loop import _is_junk_reply, autonomous_run
 from layla.time_utils import utcnow
@@ -114,16 +116,34 @@ def _mission_worker_job() -> None:
 async def lifespan(app: FastAPI):
     # Startup
     _start_time = time.time()
+    app.state.start_time = _start_time
     try:
         from services.observability import log_agent_started
         log_agent_started()
     except Exception:
         pass
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    log_level = getattr(logging, log_level, logging.INFO)
+    if os.getenv("LAYLA_LOG_JSON") == "1":
+        import logging.handlers
+        class JsonFormatter(logging.Formatter):
+            def format(self, record):
+                return json.dumps({
+                    "time": self.formatTime(record),
+                    "level": record.levelname,
+                    "name": record.name,
+                    "message": record.getMessage(),
+                })
+        h = logging.StreamHandler()
+        h.setFormatter(JsonFormatter())
+        logging.getLogger().handlers = [h]
+        logging.getLogger().setLevel(log_level)
+    else:
+        logging.basicConfig(
+            level=log_level,
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
     try:
         import runtime_safety
         cfg = runtime_safety.load_config()
@@ -203,7 +223,7 @@ async def lifespan(app: FastAPI):
             pass
         from apscheduler.schedulers.background import BackgroundScheduler
         from apscheduler.triggers.interval import IntervalTrigger
-        sched = BackgroundScheduler()
+        sched = BackgroundScheduler(timezone="UTC")
         # Mission worker: always run (v1.1 long-running tasks)
         try:
             mission_interval_min = max(1, min(10, int(float(cfg.get("mission_worker_interval_minutes", 2)))))
@@ -268,6 +288,7 @@ app.add_middleware(GZipMiddleware, minimum_size=500)  # compress responses > 500
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENT_DIR = Path(__file__).resolve().parent
+DOCS_DIR = REPO_ROOT / "docs"
 HISTORY_FILE = REPO_ROOT / "conversation_history.json"
 GOV_PATH = AGENT_DIR / ".governance"
 PENDING_FILE = GOV_PATH / "pending.json"
@@ -326,8 +347,8 @@ def _read_pending() -> list:
         if PENDING_FILE.exists():
             data = json.loads(PENDING_FILE.read_text(encoding="utf-8"))
             return data if isinstance(data, list) else []
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("_read_pending failed: %s", e)
     return []
 
 
@@ -342,15 +363,16 @@ def _audit(tool: str, args_summary: str, approved_by: str, result_ok: bool) -> N
     try:
         with open(str(AUDIT_LOG), "a", encoding="utf-8") as f:
             f.write(line)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("_audit write failed: %s", e)
 
 
 def _read_study_plans() -> list:
     try:
         from layla.memory.db import get_active_study_plans
         return get_active_study_plans()
-    except Exception:
+    except Exception as e:
+        logger.debug("_read_study_plans failed: %s", e)
         return []
 
 
@@ -359,7 +381,8 @@ def _read_wakeup_log() -> dict:
         from layla.memory.db import get_last_wakeup
         row = get_last_wakeup()
         return row or {}
-    except Exception:
+    except Exception as e:
+        logger.debug("_read_wakeup_log failed: %s", e)
         return {}
 
 
@@ -387,6 +410,9 @@ app.include_router(approvals.router)
 app.include_router(agent_router.router)
 app.include_router(research_router.router)
 app.include_router(memory_router.router)
+
+if DOCS_DIR.exists():
+    app.mount("/docs", StaticFiles(directory=str(DOCS_DIR)), name="docs")
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -492,8 +518,44 @@ def _health_checks() -> tuple[bool, str]:
     return True, "ok"
 
 
+@app.get("/usage")
+def usage():
+    """Per-session token usage (prompt, completion, request count)."""
+    try:
+        from services.llm_gateway import get_token_usage
+        return get_token_usage()
+    except Exception as e:
+        logger.debug("usage endpoint: %s", e)
+        return {"error": str(e)}
+
+
+@app.post("/undo")
+def undo():
+    """Revert last Layla auto-commit (git revert HEAD --no-edit). Requires git_auto_commit.
+    Note: Request body (e.g. id) is ignored; this endpoint only performs git revert."""
+    try:
+        from shared_state import get_last_layla_commit
+        repo, _ = get_last_layla_commit()
+        if not repo:
+            return JSONResponse({"ok": False, "error": "No Layla commit to undo"})
+        import subprocess
+        r = subprocess.run(
+            ["git", "revert", "HEAD", "--no-edit"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if r.returncode != 0:
+            return JSONResponse({"ok": False, "error": r.stderr or r.stdout or "git revert failed"})
+        return {"ok": True, "message": "Reverted last Layla commit"}
+    except Exception as e:
+        logger.debug("undo failed: %s", e)
+        return JSONResponse({"ok": False, "error": str(e)})
+
+
 @app.get("/health")
-def health():
+def health(request: Request):
     ok, detail = _health_checks()
     try:
         from services.llm_gateway import _llm, model_loaded_status
@@ -520,8 +582,21 @@ def health():
         vector_store = "enabled" if cfg.get("use_chroma") else "disabled"
     except Exception:
         vector_store = "unknown"
+    db_ok = ok
+    chroma_ok = False
+    try:
+        from layla.memory.vector_store import search_similar
+        from layla.memory.vector_store import embed
+        search_similar(embed("health"), k=1)
+        chroma_ok = True
+    except Exception:
+        pass
+    uptime_seconds = time.time() - getattr(request.app.state, "start_time", time.time())
     payload = {
         "status": "ok" if ok else "degraded",
+        "db_ok": db_ok,
+        "chroma_ok": chroma_ok,
+        "uptime_seconds": uptime_seconds,
         "model_loaded": model_loaded,
         "tools_registered": tools_registered,
         "learnings": learnings,
@@ -533,6 +608,11 @@ def health():
     try:
         from services.system_optimizer import get_summary
         payload["system_optimizer"] = get_summary()
+    except Exception:
+        pass
+    try:
+        from services.llm_gateway import get_token_usage
+        payload["token_usage"] = get_token_usage()
     except Exception:
         pass
     if not ok:
@@ -919,6 +999,26 @@ async def set_project_context_api(req: Request):
     except Exception as e:
         logger.warning("set_project_context failed: %s", e)
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/workspace/index")
+def workspace_index(req: dict):
+    """Index workspace for semantic code search. body: {workspace_root: path}."""
+    root = (req or {}).get("workspace_root", "")
+    if not root:
+        return JSONResponse({"ok": False, "error": "workspace_root required"})
+    try:
+        resolved = Path(root).expanduser().resolve()
+        if not resolved.exists():
+            return JSONResponse({"ok": False, "error": "workspace_root path does not exist"})
+        if not resolved.is_dir():
+            return JSONResponse({"ok": False, "error": "workspace_root must be a directory"})
+        from services.workspace_index import index_workspace
+        result = index_workspace(str(resolved))
+        return {"ok": True, "indexed": result.get("indexed", 0), "skipped": result.get("skipped", 0), "errors": result.get("errors", [])}
+    except Exception as e:
+        logger.debug("workspace index failed: %s", e)
+        return JSONResponse({"ok": False, "error": str(e)})
 
 
 @app.get("/project_discovery")
@@ -1389,6 +1489,18 @@ async def voice_speak(request: Request):
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Rich occult web UI â€” served at /ui
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+@app.get("/manifest.json")
+def manifest():
+    """PWA manifest."""
+    manifest_file = AGENT_DIR / "ui" / "manifest.json"
+    if manifest_file.exists():
+        try:
+            return JSONResponse(json.loads(manifest_file.read_text(encoding="utf-8")))
+        except Exception:
+            pass
+    return JSONResponse({"name": "Layla", "short_name": "Layla", "start_url": "/ui", "display": "standalone"})
+
+
 @app.get("/ui", response_class=HTMLResponse)
 def ui_rich():
     touch_activity()

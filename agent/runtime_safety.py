@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -6,6 +7,8 @@ import time
 from pathlib import Path
 
 from layla.time_utils import utcnow
+
+logger = logging.getLogger("layla")
 
 AGENT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = AGENT_DIR.parent
@@ -23,7 +26,13 @@ CONFIG_FILE = AGENT_DIR / "runtime_config.json"
 BACKUP_DIR = AGENT_DIR / ".backup"
 
 SAFE_TOOLS = ["git_status", "read_file", "list_dir"]
-DANGEROUS_TOOLS = ["write_file", "shell", "run_python", "apply_patch"]
+DANGEROUS_TOOLS = [
+    "write_file", "shell", "run_python", "apply_patch", "git_commit",
+    "git_push", "git_revert", "git_clone", "run_tests", "pip_install",
+    "search_replace", "rename_symbol", "generate_gcode", "docker_run",
+    "github_pr", "send_email", "clipboard_write", "browser_click", "browser_fill",
+    "code_format", "write_csv", "calendar_add_event", "create_svg", "create_mermaid",
+]
 
 PROTECTED_FILES = [
     AGENT_DIR / "main.py",
@@ -51,7 +60,8 @@ def _probe_hardware() -> dict:
             "vram_gb": h["vram_gb"],
             "cpu_logical": h["cpu_cores"],
         }
-    except Exception:
+    except Exception as e:
+        logger.debug("runtime_safety hardware_detect failed: %s", e)
         cpu_count = os.cpu_count() or 4
         ram_gb = 16.0
         vram_gb = 0.0
@@ -59,8 +69,8 @@ def _probe_hardware() -> dict:
             import psutil
             mem = psutil.virtual_memory()
             ram_gb = round(mem.total / (1024**3), 1)
-        except Exception:
-            pass
+        except Exception as pe:
+            logger.debug("runtime_safety psutil fallback failed: %s", pe)
         try:
             r = subprocess.run(
                 ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
@@ -73,8 +83,8 @@ def _probe_hardware() -> dict:
                     vram_gb = round(vram_mb / 1024.0, 1)
                 except ValueError:
                     pass
-        except Exception:
-            pass
+        except Exception as ne:
+            logger.debug("runtime_safety nvidia-smi failed: %s", ne)
         _hardware_probe_cache = {"ram_gb": ram_gb, "vram_gb": vram_gb, "cpu_logical": cpu_count}
     return _hardware_probe_cache
 
@@ -111,7 +121,8 @@ def load_config() -> dict:
     _config_last_check = now
     try:
         current_mtime = CONFIG_FILE.stat().st_mtime
-    except Exception:
+    except Exception as e:
+        logger.debug("runtime_safety config stat failed: %s", e)
         current_mtime = 0.0
     if _config_cache is not None and current_mtime == _config_mtime:
         return _config_cache
@@ -121,6 +132,12 @@ def load_config() -> dict:
         "max_ram_percent": 90,
         "max_runtime_seconds": 20,
         "max_tool_calls": 5,
+        "tool_routing_enabled": True,
+        "use_instructor_for_decisions": True,
+        "retrieval_cache_ttl_seconds": 60,
+        "auto_lint_test_fix": False,
+        "auto_lint_test_fix_run_tests": False,
+        "git_auto_commit": False,
         "research_max_tool_calls": 20,
         "research_max_runtime_seconds": 120,
         "safe_mode": True,
@@ -151,6 +168,12 @@ def load_config() -> dict:
         "remote_model_name": "llama3.1",
         "llama_server_url": None,
         "inference_backend": "auto",
+        "coding_model": None,
+        "reasoning_model": None,
+        "chat_model": None,
+        "model_override_enabled": True,
+        "reasoning_budget": -1,
+        "reasoning_model": None,
         "scheduler_study_enabled": True,
         "scheduler_interval_minutes": 30,
         "scheduler_recent_activity_minutes": 90,
@@ -175,14 +198,19 @@ def load_config() -> dict:
         "lens_refresh_interval_days": 7,
         "enable_operational_guidance": False,
         "enable_cognitive_workspace": True,
+        "spotify_client_id": None,
+        "spotify_client_secret": None,
+        "slack_bot_token": None,
+        "slack_app_token": None,
+        "telegram_bot_token": None,
     }
     defaults.update(_hardware_derived_defaults())
     try:
         data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
         if isinstance(data, dict):
             defaults.update(data)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("runtime_safety config load failed: %s", e)
     _config_cache = defaults
     _config_mtime = current_mtime
     return _config_cache

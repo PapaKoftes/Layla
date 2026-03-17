@@ -8,8 +8,10 @@ Programming: .py, .ipynb, .json, .yaml, .toml
 Documentation: .md, .pdf, .docx
 Visual: .png, .jpg, .svg
 """
-
+import logging
 from pathlib import Path
+
+logger = logging.getLogger("layla")
 
 # North Star §4: intent by extension (binary or opaque → describe from context)
 _FILE_INTENT = {
@@ -61,7 +63,8 @@ def _analyze_dxf(content: bytes | str) -> dict:
         out["entity_summary"] = f"{len(list(msp))} entities, {len(layers)} layers"
         if doc.units:
             out["units"] = str(doc.units)
-    except Exception:
+    except Exception as e:
+        logger.debug("file_understanding _analyze_dxf failed: %s", e)
         out["entity_summary"] = "DXF file; parse skipped or ezdxf not available"
     return out
 
@@ -112,8 +115,8 @@ def _analyze_json(content: str) -> dict:
             out["top_level_keys"] = list(data.keys())[:20]
         elif isinstance(data, list):
             out["list_length"] = len(data)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("file_understanding _analyze_json failed: %s", e)
     return out
 
 
@@ -126,8 +129,8 @@ def _analyze_ipynb(content: str) -> dict:
         cells = nb.get("cells") or []
         out["cell_count"] = len(cells)
         out["cell_types"] = list({c.get("cell_type", "code") for c in cells})
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("file_understanding _analyze_ipynb failed: %s", e)
     return out
 
 

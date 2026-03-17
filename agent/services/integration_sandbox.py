@@ -21,7 +21,14 @@ _SANDBOX_BASE = AGENT_DIR / ".capability_sandbox"
 
 def _sandbox_dir(session_id: str) -> Path:
     """Return sandbox directory for a session. Isolated from Layla."""
-    d = _SANDBOX_BASE / session_id
+    if not session_id or ".." in session_id or "/" in session_id or "\\" in session_id:
+        raise ValueError("Invalid session_id")
+    d = (_SANDBOX_BASE / session_id).resolve()
+    base = _SANDBOX_BASE.resolve()
+    try:
+        d.relative_to(base)
+    except ValueError:
+        raise ValueError("Invalid session_id: path escapes sandbox")
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -199,6 +206,6 @@ def evaluate_candidate(
 
     try:
         shutil.rmtree(_sandbox_dir(sid), ignore_errors=True)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("integration_sandbox cleanup failed: %s", e)
     return result
