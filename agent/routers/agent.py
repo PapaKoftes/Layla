@@ -1,9 +1,12 @@
 """Agent and learn endpoints. Mounted at / by main."""
 import asyncio
+import base64
 import json
 import logging
 import queue
+import tempfile
 import threading
+from pathlib import Path
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -18,6 +21,55 @@ from shared_state import get_append_history, get_history, get_touch_activity
 
 logger = logging.getLogger("layla")
 router = APIRouter(tags=["agent"])
+
+
+@router.get("/memories")
+def search_memories(q: str = "", n: int = 8):
+    """Search Layla's memories. q=query, n=max results."""
+    get_touch_activity()()
+    if not (q or "").strip():
+        return JSONResponse({"ok": True, "memories": [], "count": 0})
+    try:
+        from layla.memory.vector_store import search_memories_full
+        results = search_memories_full(q.strip(), k=min(n, 20), use_rerank=False)
+        items = [r.get("content", "") for r in results if r.get("content")]
+        return JSONResponse({"ok": True, "memories": items, "count": len(items)})
+    except Exception as e:
+        logger.warning("search_memories failed: %s", e)
+        try:
+            from layla.memory.db import search_learnings_fts
+            rows = search_learnings_fts(q.strip(), n=min(n, 20))
+            items = [r.get("content", "") for r in rows if r.get("content")]
+            return JSONResponse({"ok": True, "memories": items, "count": len(items)})
+        except Exception as e2:
+            logger.warning("search_learnings_fts fallback failed: %s", e2)
+            return JSONResponse({"ok": False, "error": str(e2), "memories": [], "count": 0})
+
+
+@router.post("/schedule")
+def schedule(req: dict):
+    """Schedule a tool to run in background. tool_name, args, delay_seconds, cron_expr."""
+    get_touch_activity()()
+    r = req or {}
+    tool_name = (r.get("tool_name") or "").strip()
+    if not tool_name:
+        return JSONResponse({"ok": False, "error": "tool_name required"})
+    try:
+        from layla.tools.registry import TOOLS, schedule_task
+        if tool_name not in TOOLS:
+            return JSONResponse({"ok": False, "error": f"Unknown tool: {tool_name}"})
+        raw_delay = float(r.get("delay_seconds") or 0)
+        delay_seconds = max(0.0, min(86400.0, raw_delay)) if not (raw_delay != raw_delay) else 0.0  # clamp 0-24h, reject NaN
+        result = schedule_task(
+            tool_name=tool_name,
+            args=r.get("args") or {},
+            delay_seconds=delay_seconds,
+            cron_expr=(r.get("cron_expr") or "").strip(),
+        )
+        return JSONResponse(result)
+    except Exception as e:
+        logger.exception("schedule failed: %s", e)
+        return JSONResponse({"ok": False, "error": str(e)})
 
 
 @router.post("/learn/")
@@ -48,6 +100,101 @@ def learn(req: dict):
         return JSONResponse({"ok": False, "error": str(e)})
 
 
+def _get_image_context(image_url: str = "", image_base64: str = "", workspace_root: str = "") -> str:
+    """
+    Process attached image: fetch or decode, run describe_image/ocr_image, return context string.
+    Returns empty string on failure. Saves temp file inside sandbox so tools accept it.
+    """
+    tmp_path = None
+    try:
+        try:
+            import runtime_safety
+            sandbox = Path(runtime_safety.load_config().get("sandbox_root", str(Path.home()))).expanduser().resolve()
+        except Exception:
+            sandbox = Path.home()
+        if workspace_root:
+            sandbox = Path(workspace_root).expanduser().resolve()
+        tmp_dir = sandbox / ".layla_temp_images"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        if image_base64:
+            data = image_base64
+            if "," in data:
+                data = data.split(",", 1)[1]
+            raw = base64.b64decode(data)
+            ext = ".png"
+            if image_base64.startswith("data:image/jpeg") or image_base64.startswith("data:image/jpg"):
+                ext = ".jpg"
+            elif image_base64.startswith("data:image/webp"):
+                ext = ".webp"
+            elif image_base64.startswith("data:image/gif"):
+                ext = ".gif"
+            import uuid
+            tmp_path = str(tmp_dir / f"img_{uuid.uuid4().hex[:12]}{ext}")
+            Path(tmp_path).write_bytes(raw)
+        elif image_url and image_url.startswith("http"):
+            import urllib.request
+            import uuid
+            # SSRF mitigation: only http/https, block private/localhost
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(image_url)
+                if parsed.scheme not in ("http", "https"):
+                    raise ValueError("Invalid scheme")
+                host = (parsed.hostname or "").lower()
+                if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+                    raise ValueError("Private host blocked")
+                if host.startswith("127.") or host.startswith("10.") or host.startswith("169.254."):
+                    raise ValueError("Private host blocked")
+                if host.startswith("172."):
+                    parts = host.split(".")
+                    if len(parts) >= 2:
+                        try:
+                            b = int(parts[1])
+                        except ValueError:
+                            b = -1
+                        if 16 <= b <= 31:
+                            raise ValueError("Private host blocked")
+            except Exception as e:
+                logger.debug("image_url validation failed: %s", e)
+            else:
+                tmp_path = str(tmp_dir / f"img_{uuid.uuid4().hex[:12]}.png")
+                with urllib.request.urlopen(image_url, timeout=15) as resp:
+                    Path(tmp_path).write_bytes(resp.read())
+        if not tmp_path or not Path(tmp_path).exists():
+            return ""
+        from layla.tools.registry import TOOLS
+        desc = TOOLS.get("describe_image", {}).get("fn")
+        ocr = TOOLS.get("ocr_image", {}).get("fn")
+        caption = ""
+        if desc:
+            try:
+                r = desc(path=tmp_path, detail="brief")
+                if isinstance(r, dict) and r.get("ok"):
+                    caption = (r.get("caption") or "").strip()
+                    if r.get("ocr_text", "").strip():
+                        caption += f" [OCR text: {r['ocr_text'][:300]}]"
+            except Exception as e:
+                logger.debug("describe_image failed: %s", e)
+        if not caption and ocr:
+            try:
+                r = ocr(path=tmp_path, lang="eng")
+                if isinstance(r, dict) and r.get("ok"):
+                    caption = (r.get("text") or "").strip()[:500]
+            except Exception as e:
+                logger.debug("ocr_image failed: %s", e)
+        if caption:
+            return f"[Image context: {caption}]"
+    except Exception as e:
+        logger.debug("image context failed: %s", e)
+    finally:
+        if tmp_path and Path(tmp_path).exists():
+            try:
+                Path(tmp_path).unlink()
+            except Exception:
+                pass
+    return ""
+
+
 def _model_ready_message() -> str | None:
     """Return error message if model/LLM is not ready, else None."""
     try:
@@ -69,11 +216,21 @@ async def agent(req: dict):
     goal = (req or {}).get("message", "")
     context = (req or {}).get("context", "") or ""
     workspace_root = (req or {}).get("workspace_root", "") or ""
+    image_url = (req or {}).get("image_url", "") or ""
+    image_base64 = (req or {}).get("image_base64", "") or ""
     allow_write = (req or {}).get("allow_write") is True
     allow_run = (req or {}).get("allow_run") is True
     aspect_id = (req or {}).get("aspect_id", "") or ""
     show_thinking = bool((req or {}).get("show_thinking", False))
     stream = bool((req or {}).get("stream", False))
+    model_override = (req or {}).get("model_override", "") or ""
+    reasoning_effort = "high" if (req or {}).get("reasoning_effort") == "high" else None
+
+    # Image context: if user attached image, process and prepend to context
+    if image_url or image_base64:
+        img_ctx = await asyncio.to_thread(_get_image_context, image_url, image_base64, workspace_root)
+        if img_ctx:
+            context = (img_ctx + "\n\n" + context).strip() if context else img_ctx
 
     # Pre-check: model must be ready before we block on a long run
     model_err = _model_ready_message()
@@ -108,6 +265,8 @@ async def agent(req: dict):
                     show_thinking=show_thinking,
                     stream_final=True,
                     ux_state_queue=ux_state_queue,
+                    model_override=model_override or None,
+                    reasoning_effort=reasoning_effort,
                 )
                 result_holder.append(r)
             except Exception as e:
@@ -186,6 +345,8 @@ async def agent(req: dict):
             aspect_id=aspect_id,
             show_thinking=show_thinking,
             stream_final=stream,
+            model_override=model_override or None,
+            reasoning_effort=reasoning_effort,
         )
     except Exception as e:
         logger.exception("agent run failed")

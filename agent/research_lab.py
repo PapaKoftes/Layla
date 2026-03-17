@@ -1,7 +1,10 @@
 """Research lab paths and helpers. Used by research router and main."""
 import json
+import logging
 import shutil
 from pathlib import Path
+
+logger = logging.getLogger("layla")
 
 AGENT_DIR = Path(__file__).resolve().parent
 RESEARCH_LAB_ROOT = AGENT_DIR / ".research_lab"
@@ -52,8 +55,7 @@ def copy_source_to_lab(workspace_root: str) -> str | None:
             shutil.rmtree(dst)
         dst.mkdir(parents=True, exist_ok=True)
     except Exception as e:
-        import logging
-        logging.getLogger("layla").warning("research_lab prepare failed: %s", e)
+        logger.warning("research_lab prepare failed: %s", e)
         return None
 
     EXCLUDE_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".research_lab", ".research_brain", ".research_output"}
@@ -72,15 +74,14 @@ def copy_source_to_lab(workspace_root: str) -> str | None:
                     if entry.stat().st_size > MAX_FILE_BYTES:
                         continue
                     shutil.copy2(entry, d_entry, follow_symlinks=False)
-            except (OSError, Exception):
-                pass
+            except (OSError, Exception) as e:
+                logger.debug("research_lab _copy_robust entry failed %s: %s", entry, e)
 
     try:
         _copy_robust(src, dst)
         return str(RESEARCH_LAB_WORKSPACE)
     except Exception as e:
-        import logging
-        logging.getLogger("layla").warning("research_lab copy failed: %s", e)
+        logger.warning("research_lab copy failed: %s", e)
         return None
 
 
@@ -90,7 +91,8 @@ def load_mission_preset(mission_type: str) -> dict:
         return {"objective": "Research the repository. Read-only.", "output_structure": []}
     try:
         return json.loads(preset_path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as e:
+        logger.debug("research_lab load_mission_preset failed: %s", e)
         return {"objective": "Research the repository. Read-only.", "output_structure": []}
 
 

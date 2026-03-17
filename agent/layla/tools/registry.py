@@ -1,3 +1,4 @@
+import logging
 import re
 import subprocess
 import sys
@@ -6,27 +7,45 @@ import threading
 from pathlib import Path
 from typing import Any
 
+logger = logging.getLogger("layla")
+
 # Thread-local effective sandbox for research missions (lab path). When set, tools use this instead of config sandbox_root.
 _effective_sandbox = threading.local()
+# Sandbox path cache (plan §7.1): avoid load_config on every tool call
+_sandbox_cache: dict[int, tuple[Path, float]] = {}
+_SANDBOX_CACHE_TTL = 2.0  # seconds
 
 def set_effective_sandbox(path: str | None) -> None:
     """Set the effective sandbox root for this thread (e.g. .research_lab/workspace). Used by research missions so read_file/list_dir accept lab paths. Clear with None when run ends."""
     _effective_sandbox.path = path
+    try:
+        tid = threading.get_ident()
+        _sandbox_cache.pop(tid, None)
+    except Exception:
+        pass
 
 def _get_sandbox() -> Path:
+    import time as _time
     try:
         p = getattr(_effective_sandbox, "path", None)
         if p is not None and str(p).strip():
             return Path(p).expanduser().resolve()
     except Exception:
         pass
+    tid = threading.get_ident()
+    now = _time.monotonic()
+    if tid in _sandbox_cache:
+        cached, ts = _sandbox_cache[tid]
+        if now - ts < _SANDBOX_CACHE_TTL:
+            return cached
     try:
-        # runtime_safety is a sibling of this package's grandparent (agent/)
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
         import runtime_safety
         root = runtime_safety.load_config().get("sandbox_root", str(Path.home()))
-        return Path(root).expanduser().resolve()
+        result = Path(root).expanduser().resolve()
+        _sandbox_cache[tid] = (result, now)
+        return result
     except Exception:
         return Path.home().resolve()
 
@@ -58,6 +77,41 @@ def write_file(path: str, content: str) -> dict:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
     return {"ok": True, "path": str(target)}
+
+
+def write_files_batch(files: list) -> dict:
+    """
+    Write multiple files atomically. files: [{path, content}, ...].
+    Returns approval_required when gated; otherwise applies all and returns ok.
+    """
+    if not isinstance(files, list) or not files:
+        return {"ok": False, "error": "files must be a non-empty list of {path, content}"}
+    written = []
+    errors = []
+    for i, item in enumerate(files):
+        if not isinstance(item, dict):
+            errors.append(f"Item {i}: not a dict")
+            continue
+        path = (item.get("path") or "").strip()
+        content = item.get("content", "")
+        if not path:
+            errors.append(f"Item {i}: missing path")
+            continue
+        target = Path(path)
+        if not target.is_absolute() and getattr(_effective_sandbox, "path", None):
+            target = (Path(_effective_sandbox.path) / path).resolve()
+        if not inside_sandbox(target):
+            errors.append(f"{path}: outside sandbox")
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+            written.append(str(target))
+        except Exception as e:
+            errors.append(f"{path}: {e}")
+    if errors:
+        return {"ok": False, "error": "; ".join(errors[:5]), "written": written}
+    return {"ok": True, "written": written, "count": len(written)}
 
 
 def read_file(path: str) -> dict:
@@ -181,7 +235,8 @@ def grep_code(pattern: str, path: str, file_glob: str = "*") -> dict:
                         results.append(f"{f}:{i}: {line.rstrip()}")
                         if len(results) >= 50:
                             break
-            except Exception:
+            except Exception as e:
+                logger.debug("grep_code read failed %s: %s", f, e)
                 continue
             if len(results) >= 50:
                 break
@@ -233,6 +288,293 @@ def run_python(code: str, cwd: str) -> dict:
         }
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "run_python timed out (30s)"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def run_tests(cwd: str, pattern: str = "", extra_args: str = "", timeout_s: int = 120) -> dict:
+    """
+    Discover and run pytest (or unittest) in cwd. pattern: test file/pattern e.g. tests/ or test_foo.py.
+    extra_args: e.g. -v -x. Returns pass/fail counts and output.
+    """
+    cwd_path = Path(cwd)
+    if not inside_sandbox(cwd_path):
+        return {"ok": False, "error": "cwd outside sandbox"}
+    if not cwd_path.exists():
+        return {"ok": False, "error": "Path not found"}
+    # Prefer pytest
+    args = ["python", "-m", "pytest", pattern] if pattern else ["python", "-m", "pytest"]
+    if extra_args:
+        args.extend(extra_args.split())
+    try:
+        proc = subprocess.run(
+            args,
+            cwd=str(cwd_path),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_s,
+        )
+        out = (proc.stdout or "") + "\n" + (proc.stderr or "")
+        # Parse pytest output for pass/fail
+        passed = failed = 0
+        for line in out.splitlines():
+            if " passed" in line or " passed," in line:
+                for part in line.split():
+                    if part.isdigit():
+                        passed = int(part)
+                        break
+            if " failed" in line or " failed," in line:
+                for part in line.replace(",", " ").split():
+                    if part.isdigit():
+                        failed = int(part)
+                        break
+        return {
+            "ok": proc.returncode == 0,
+            "returncode": proc.returncode,
+            "passed": passed,
+            "failed": failed,
+            "output": out[:8000],
+        }
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": f"Tests timed out ({timeout_s}s)"}
+    except FileNotFoundError:
+        # Fallback: unittest
+        try:
+            proc = subprocess.run(
+                ["python", "-m", "unittest", "discover", "-v"],
+                cwd=str(cwd_path),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout_s,
+            )
+            out = (proc.stdout or "") + "\n" + (proc.stderr or "")
+            return {"ok": proc.returncode == 0, "returncode": proc.returncode, "output": out[:8000], "runner": "unittest"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+
+def parse_gcode(path: str) -> dict:
+    """
+    Parse G-code / NC file: moves, tools, units, bounds, feed rates.
+    Supports .gcode, .nc, .tap, .sbp.
+    """
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "File not found"}
+    try:
+        content = target.read_text(encoding="utf-8", errors="replace")
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    # Parse G-code patterns
+    moves = []
+    tools = set()
+    feed_rates = []
+    bounds = {"x": [], "y": [], "z": []}
+    units = "mm"  # default
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith(";"):
+            continue
+        # G20 = inches, G21 = mm
+        if "G20" in line.upper():
+            units = "in"
+        elif "G21" in line.upper():
+            units = "mm"
+        # Tool: T1, T02, M6 T1
+        for m in re.finditer(r"\bT(\d+)\b", line, re.I):
+            tools.add(int(m.group(1)))
+        # Feed: F3000, F100.5
+        for m in re.finditer(r"\bF([\d.]+)\b", line, re.I):
+            feed_rates.append(float(m.group(1)))
+        # Moves: G0/G1 X Y Z
+        for m in re.finditer(r"\b[Gg]?[01]\b.*\b([XYZxyz])([-]?[\d.]+)", line):
+            axis = m.group(1).lower()
+            val = float(m.group(2))
+            if axis in bounds:
+                bounds[axis].append(val)
+    # Summarize bounds
+    summary = {}
+    for ax, vals in bounds.items():
+        if vals:
+            summary[ax] = {"min": min(vals), "max": max(vals), "count": len(vals)}
+    return {
+        "ok": True,
+        "path": str(target),
+        "units": units,
+        "tools": sorted(tools) if tools else [],
+        "move_count": sum(len(bounds[ax]) for ax in bounds),
+        "feed_rates": list(set(feed_rates))[:20] if feed_rates else [],
+        "bounds": summary,
+        "lines": len([l for l in content.splitlines() if l.strip() and not l.strip().startswith(";")]),
+    }
+
+
+def stl_mesh_info(path: str) -> dict:
+    """STL mesh stats: vertex count, bounds, volume. Requires trimesh or numpy."""
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "File not found"}
+    try:
+        import trimesh
+        mesh = trimesh.load(str(target))
+        if isinstance(mesh, trimesh.Scene):
+            mesh = mesh.dump(concatenate=True)
+        bounds = mesh.bounds
+        vol = float(mesh.volume) if hasattr(mesh, "volume") else None
+        return {
+            "ok": True,
+            "path": str(target),
+            "vertices": int(len(mesh.vertices)),
+            "faces": int(len(mesh.faces)) if hasattr(mesh, "faces") else None,
+            "bounds": {"min": bounds[0].tolist(), "max": bounds[1].tolist()},
+            "volume": vol,
+        }
+    except ImportError:
+        # Fallback: count vertices from ASCII STL
+        try:
+            content = target.read_text(encoding="utf-8", errors="replace")
+            if "vertex" in content.lower():
+                verts = re.findall(r"vertex\s+([-\d.e]+)\s+([-\d.e]+)\s+([-\d.e]+)", content, re.I)
+                xs, ys, zs = zip(*[[float(a), float(b), float(c)] for a, b, c in verts]) if verts else ([], [], [])
+                return {
+                    "ok": True,
+                    "path": str(target),
+                    "vertices": len(verts),
+                    "bounds": {"min": [min(xs), min(ys), min(zs)], "max": [max(xs), max(ys), max(zs)]} if verts else {},
+                    "fallback": "ascii_parse",
+                }
+        except Exception as e:
+            return {"ok": False, "error": str(e), "hint": "pip install trimesh for full support"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def tail_file(path: str, n: int = 50) -> dict:
+    """Return last n lines of a file. Useful for logs."""
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "File not found"}
+    try:
+        with open(target, encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+        tail = lines[-n:] if len(lines) > n else lines
+        return {"ok": True, "path": str(target), "lines": "".join(tail)[:8000], "total_lines": len(lines)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def clipboard_read() -> dict:
+    """Read text from system clipboard. Requires pyperclip."""
+    try:
+        import pyperclip
+        text = pyperclip.paste()
+        return {"ok": True, "text": (text or "")[:10000]}
+    except ImportError:
+        return {"ok": False, "error": "pyperclip not installed: pip install pyperclip"}
+
+
+def clipboard_write(text: str) -> dict:
+    """Write text to system clipboard. Requires pyperclip."""
+    try:
+        import pyperclip
+        pyperclip.copy(text[:50000])
+        return {"ok": True, "length": len(text)}
+    except ImportError:
+        return {"ok": False, "error": "pyperclip not installed: pip install pyperclip"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def search_replace(root: str, find: str, replace: str, file_glob: str = "*", dry_run: bool = True) -> dict:
+    """
+    Multi-file find/replace. dry_run=True lists matches without changing. Uses regex if find contains regex chars.
+    """
+    root_path = Path(root)
+    if not inside_sandbox(root_path):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not root_path.exists():
+        return {"ok": False, "error": "Path not found"}
+    use_regex = bool(re.search(r"[.*+?^${}()|[\]\\]", find))
+    pattern = re.compile(find) if use_regex else None
+    matches = []
+    for f in root_path.rglob(file_glob):
+        if not f.is_file():
+            continue
+        try:
+            content = f.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        if use_regex:
+            new_content, n = pattern.subn(replace, content)
+        else:
+            n = content.count(find)
+            new_content = content.replace(find, replace) if n else content
+        if n:
+            matches.append({"path": str(f), "count": n})
+            if not dry_run:
+                f.write_text(new_content, encoding="utf-8")
+    return {"ok": True, "dry_run": dry_run, "matches": matches[:100], "total_files": len(matches)}
+
+
+def pip_list(cwd: str = "") -> dict:
+    """List installed pip packages. cwd: optional venv path."""
+    try:
+        argv = [sys.executable, "-m", "pip", "list", "--format=json"]
+        proc = subprocess.run(
+            argv,
+            cwd=cwd or str(Path.cwd()),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+        if proc.returncode != 0:
+            return {"ok": False, "error": (proc.stderr or proc.stdout or "")[:500]}
+        import json as _json
+        data = _json.loads(proc.stdout or "[]")
+        return {"ok": True, "packages": [{"name": p["name"], "version": p["version"]} for p in data[:200]]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def pip_install(packages: str, cwd: str = "", upgrade: bool = False) -> dict:
+    """Install pip package(s). packages: space-separated names or path to requirements.txt."""
+    cwd_path = Path(cwd) if cwd else Path.cwd()
+    if cwd and not inside_sandbox(cwd_path):
+        return {"ok": False, "error": "cwd outside sandbox"}
+    argv = [sys.executable, "-m", "pip", "install"]
+    if upgrade:
+        argv.append("--upgrade")
+    pkg = packages.strip()
+    if pkg.endswith(".txt") and Path(pkg).exists():
+        argv.append("-r")
+        argv.append(pkg)
+    else:
+        argv.extend(pkg.split())
+    try:
+        proc = subprocess.run(
+            argv,
+            cwd=str(cwd_path),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+        )
+        return {"ok": proc.returncode == 0, "output": (proc.stdout or proc.stderr or "")[:4000]}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "pip install timed out"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -643,6 +985,93 @@ def git_commit(repo: str, message: str, add_all: bool = False) -> dict:
         ["git", "commit", "-m", message],
         cwd=str(repo_path),
         capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    return {"ok": result.returncode == 0, "output": (result.stdout or result.stderr or "")[:2000]}
+
+
+def git_push(repo: str, remote: str = "origin", branch: str = "") -> dict:
+    """Push commits to remote. branch: empty = current branch."""
+    repo_path = Path(repo)
+    if not inside_sandbox(repo_path):
+        return {"ok": False, "error": "Outside sandbox"}
+    argv = ["git", "push", remote]
+    if branch:
+        argv.append(branch)
+    result = subprocess.run(
+        argv,
+        cwd=str(repo_path),
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=60,
+    )
+    return {"ok": result.returncode == 0, "output": (result.stdout or result.stderr or "")[:2000]}
+
+
+def git_pull(repo: str, remote: str = "origin", branch: str = "") -> dict:
+    """Pull from remote. branch: empty = current branch."""
+    repo_path = Path(repo)
+    if not inside_sandbox(repo_path):
+        return {"ok": False, "error": "Outside sandbox"}
+    argv = ["git", "pull", remote]
+    if branch:
+        argv.append(branch)
+    result = subprocess.run(
+        argv,
+        cwd=str(repo_path),
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=60,
+    )
+    return {"ok": result.returncode == 0, "output": (result.stdout or result.stderr or "")[:2000]}
+
+
+def git_stash(repo: str, action: str = "list", message: str = "") -> dict:
+    """Stash changes. action: list|push|pop|apply."""
+    repo_path = Path(repo)
+    if not inside_sandbox(repo_path):
+        return {"ok": False, "error": "Outside sandbox"}
+    if action == "list":
+        argv = ["git", "stash", "list"]
+    elif action == "push":
+        argv = ["git", "stash", "push", "-m", message or "layla stash"]
+    elif action in ("pop", "apply"):
+        argv = ["git", "stash", action]
+    else:
+        return {"ok": False, "error": f"Unknown action: {action}. Use list|push|pop|apply"}
+    result = subprocess.run(
+        argv,
+        cwd=str(repo_path),
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    return {"ok": result.returncode == 0, "output": (result.stdout or result.stderr or "")[:2000]}
+
+
+def git_revert(repo: str, commit: str, no_commit: bool = False) -> dict:
+    """Revert a commit. commit: hash or HEAD~1. no_commit=True leaves changes staged."""
+    repo_path = Path(repo)
+    if not inside_sandbox(repo_path):
+        return {"ok": False, "error": "Outside sandbox"}
+    argv = ["git", "revert", "--no-edit", commit]
+    if no_commit:
+        argv.append("--no-commit")
+    result = subprocess.run(
+        argv,
+        cwd=str(repo_path),
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    return {"ok": result.returncode == 0, "output": (result.stdout or result.stderr or "")[:2000]}
+
+
+def git_clone(url: str, dest: str, depth: int = 0) -> dict:
+    """Clone a git repo. dest: path inside sandbox. depth: 0 = full clone."""
+    dest_path = Path(dest)
+    if not inside_sandbox(dest_path):
+        return {"ok": False, "error": "Destination outside sandbox"}
+    argv = ["git", "clone", url, str(dest_path)]
+    if depth:
+        argv.insert(2, f"--depth={depth}")
+    result = subprocess.run(
+        argv,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=120,
     )
     return {"ok": result.returncode == 0, "output": (result.stdout or result.stderr or "")[:2000]}
 
@@ -1709,75 +2138,41 @@ def security_scan(path: str, scan_type: str = "bandit") -> dict:
     return {"ok": False, "error": f"Unknown scan_type: {scan_type}. Use bandit/secrets/deps"}
 
 
-TOOLS: dict[str, Any] = {
-    "write_file": {"fn": write_file, "dangerous": True, "require_approval": True, "risk_level": "medium"},
-    "read_file": {"fn": read_file, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "list_dir": {"fn": list_dir, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "git_status": {"fn": git_status, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "shell": {"fn": shell, "dangerous": True, "require_approval": True, "risk_level": "high"},
-    "grep_code": {"fn": grep_code, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "glob_files": {"fn": glob_files, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "run_python": {"fn": run_python, "dangerous": True, "require_approval": True, "risk_level": "high"},
-    "apply_patch": {"fn": apply_patch, "dangerous": True, "require_approval": True, "risk_level": "medium"},
-    "git_diff": {"fn": git_diff, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "git_log": {"fn": git_log, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "git_branch": {"fn": git_branch, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "fetch_url": {"fn": fetch_url_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "file_info": {"fn": file_info, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "get_project_context": {"fn": get_project_context_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "update_project_context": {"fn": update_project_context_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "get_user_identity": {"fn": get_user_identity_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "update_user_identity": {"fn": update_user_identity_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "add_goal": {"fn": add_goal_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "add_goal_progress": {"fn": add_goal_progress_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "get_active_goals": {"fn": get_active_goals_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "understand_file": {"fn": understand_file_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Browser tools — require playwright: playwright install chromium
-    "browser_navigate": {"fn": browser_navigate, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "browser_search": {"fn": browser_search, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "browser_screenshot": {"fn": browser_screenshot, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "browser_click": {"fn": browser_click, "dangerous": False, "require_approval": True, "risk_level": "medium"},
-    "browser_fill": {"fn": browser_fill, "dangerous": False, "require_approval": True, "risk_level": "medium"},
-    # Extended tools
-    "json_query": {"fn": json_query, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "diff_files": {"fn": diff_files, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "env_info": {"fn": env_info, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "regex_test": {"fn": regex_test, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "git_add": {"fn": git_add, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "git_commit": {"fn": git_commit, "dangerous": True, "require_approval": True, "risk_level": "medium"},
-    "save_note": {"fn": save_note, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "search_memories": {"fn": search_memories, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Research & Information tools
-    "read_pdf": {"fn": read_pdf, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "fetch_article": {"fn": fetch_article, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "wiki_search": {"fn": wiki_search, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "ddg_search": {"fn": ddg_search, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "arxiv_search": {"fn": arxiv_search, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "math_eval": {"fn": math_eval, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "read_csv": {"fn": read_csv, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "count_tokens": {"fn": count_tokens, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "http_request": {"fn": http_request, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "python_ast": {"fn": python_ast, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "project_discovery": {"fn": project_discovery_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Symbolic & Advanced Math
-    "sympy_solve": {"fn": sympy_solve, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # NLP Intelligence
-    "nlp_analyze": {"fn": nlp_analyze, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Image & OCR
-    "ocr_image": {"fn": ocr_image, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Visualization
-    "plot_chart": {"fn": plot_chart, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Document Formats
-    "read_docx": {"fn": read_docx, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "read_excel": {"fn": read_excel, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Database Intelligence
-    "sql_query": {"fn": sql_query, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Financial Intelligence
-    "stock_data": {"fn": stock_data, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Security Analysis
-    "security_scan": {"fn": security_scan, "dangerous": False, "require_approval": False, "risk_level": "low"},
-}
-# NOTE: Tools whose functions are defined below this dict are registered via TOOLS.update() at end of file.
+def _build_tools_from_domains() -> dict[str, Any]:
+    """Build TOOLS by merging domain modules. Called after all tool functions are defined."""
+    from layla.tools.domains import (
+        FILE_TOOLS,
+        GIT_TOOLS,
+        WEB_TOOLS,
+        MEMORY_TOOLS,
+        CODE_TOOLS,
+        DATA_TOOLS,
+        SYSTEM_TOOLS,
+        AUTOMATION_TOOLS,
+        ANALYSIS_TOOLS,
+        GENERAL_TOOLS,
+    )
+    result: dict[str, Any] = {}
+    for domain_tools in (
+        FILE_TOOLS,
+        GIT_TOOLS,
+        WEB_TOOLS,
+        MEMORY_TOOLS,
+        CODE_TOOLS,
+        DATA_TOOLS,
+        SYSTEM_TOOLS,
+        AUTOMATION_TOOLS,
+        ANALYSIS_TOOLS,
+        GENERAL_TOOLS,
+    ):
+        for name, meta in domain_tools.items():
+            meta = dict(meta)
+            fn_name = meta.pop("fn_key", name)
+            fn = globals().get(fn_name)
+            if fn is None:
+                raise ValueError(f"Tool {name}: function {fn_name} not found in registry")
+            result[name] = {"fn": fn, **meta}
+    return result
 
 
 # ─── Semantic Memory Tools ─────────────────────────────────────────────────────
@@ -2145,9 +2540,9 @@ def tool_recommend(task: str) -> dict:
         "docx word": ["read_docx"],
         "excel spreadsheet": ["read_excel", "read_csv"],
         "csv data table": ["read_csv", "read_excel", "sql_query"],
-        "code python": ["python_ast", "grep_code", "run_python", "security_scan"],
+        "code python test pytest": ["python_ast", "grep_code", "run_python", "run_tests", "security_scan", "code_lint"],
         "code search": ["grep_code", "glob_files", "python_ast"],
-        "git commit diff": ["git_status", "git_diff", "git_log", "git_add", "git_commit"],
+        "git commit diff push pull": ["git_status", "git_diff", "git_log", "git_add", "git_commit", "git_push", "git_pull", "git_stash", "git_revert", "git_clone"],
         "web search": ["ddg_search", "browser_search", "fetch_article", "wiki_search"],
         "research paper arxiv": ["arxiv_search", "wiki_search", "ddg_search"],
         "website crawl": ["crawl_site", "fetch_article", "browser_navigate"],
@@ -2162,6 +2557,28 @@ def tool_recommend(task: str) -> dict:
         "compress token context": ["context_compress", "count_tokens"],
         "translate sql query": ["generate_sql", "sql_query", "schema_introspect"],
         "workspace project": ["workspace_map", "project_discovery", "get_project_context"],
+        "gcode dxf stl fabrication": ["parse_gcode", "stl_mesh_info", "understand_file", "generate_gcode"],
+        "clipboard copy paste": ["clipboard_read", "clipboard_write"],
+        "search replace refactor": ["search_replace", "rename_symbol", "grep_code"],
+        "pip install package": ["pip_list", "pip_install"],
+        "docker container": ["docker_ps", "docker_run"],
+        "ci github pr issue": ["check_ci", "github_issues", "github_pr"],
+        "webhook slack discord email": ["send_webhook", "send_email"],
+        "log tail": ["tail_file", "read_file"],
+        "format code black ruff": ["code_format"],
+        "archive zip extract": ["extract_archive", "create_archive"],
+        "uuid random password": ["uuid_generate", "random_string", "password_generate"],
+        "disk process system": ["disk_usage", "process_list", "env_info"],
+        "qr code": ["generate_qr"],
+        "csv write export": ["write_csv", "read_csv"],
+        "json schema": ["json_schema", "json_query"],
+        "jwt token": ["jwt_decode"],
+        "toml config": ["read_toml", "yaml_read"],
+        "merge pdf": ["merge_pdf", "read_pdf"],
+        "discord": ["discord_send", "send_webhook"],
+        "calendar ics event": ["calendar_read", "calendar_add_event"],
+        "database backup": ["db_backup", "sql_query", "schema_introspect"],
+        "svg draw diagram": ["create_svg", "create_mermaid", "write_file"],
     }
     scores: dict = {}
     for category, tools in CATEGORY_KEYWORDS.items():
@@ -3927,6 +4344,34 @@ def plot_histogram(data: list, bins: int = 20, title: str = "", xlabel: str = ""
 
 # â”€â”€â”€ Memory Stats Tool â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+def spaced_repetition_review(limit: int = 10, interval_hours: float = 24.0) -> dict:
+    """
+    Get learnings due for spaced repetition review. Optionally schedule next review.
+    Returns items due (next_review_at <= now or NULL). Call schedule_next_review per item to reinforce.
+    """
+    try:
+        agent_dir = Path(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(agent_dir))
+        from layla.memory.db import get_learnings_due_for_review, schedule_next_review
+        due = get_learnings_due_for_review(limit=limit)
+        items = [{"id": r["id"], "content": (r.get("content") or "")[:200], "importance": r.get("importance_score")} for r in due]
+        return {"ok": True, "due_count": len(items), "items": items}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def schedule_learning_review(learning_id: int, interval_hours: float = 24.0) -> dict:
+    """Schedule next spaced repetition review for a learning."""
+    try:
+        agent_dir = Path(__file__).resolve().parent.parent.parent
+        sys.path.insert(0, str(agent_dir))
+        from layla.memory.db import schedule_next_review
+        schedule_next_review(learning_id, interval_hours)
+        return {"ok": True, "learning_id": learning_id, "interval_hours": interval_hours}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def memory_stats() -> dict:
     """
     Return stats about Layla's memory: learnings count, ChromaDB docs, aspect memories, DB size.
@@ -4242,95 +4687,649 @@ def type_text(text: str, interval: float = 0.03) -> dict:
         return {"ok": False, "error": str(e)}
 
 
-# ─── Register tools defined after the TOOLS dict ──────────────────────────────
-TOOLS.update({
-    # Tier 2 extensions: Semantic Memory
-    "vector_search": {"fn": vector_search, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "vector_store": {"fn": vector_store, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 2 extensions: File System
-    "workspace_map": {"fn": workspace_map, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 2 extensions: Web Crawl
-    "crawl_site": {"fn": crawl_site, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 2 extensions: Database Schema
-    "schema_introspect": {"fn": schema_introspect, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 2 extensions: Tool Self-Reflection
-    "list_tools": {"fn": list_tools, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "tool_recommend": {"fn": tool_recommend, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 2 extensions: Context + SQL
-    "context_compress": {"fn": context_compress, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "generate_sql": {"fn": generate_sql, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 2 extensions: Image
-    "describe_image": {"fn": describe_image, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 2 extensions: NLP
-    "summarize_text": {"fn": summarize_text, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "classify_text": {"fn": classify_text, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "translate_text": {"fn": translate_text, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 2 extensions: Code Intelligence
-    "code_symbols": {"fn": code_symbols, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "find_todos": {"fn": find_todos, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "dependency_graph": {"fn": dependency_graph, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 2 extensions: URL
-    "extract_links": {"fn": extract_links, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "check_url": {"fn": check_url, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 2 extensions: Scientific
-    "scipy_compute": {"fn": scipy_compute, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 2 extensions: ML
-    "cluster_data": {"fn": cluster_data, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "dataset_summary": {"fn": dataset_summary, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 2 extensions: RSS / Text / Embed / Image
-    "rss_feed": {"fn": rss_feed, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "text_stats": {"fn": text_stats, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "embedding_generate": {"fn": embedding_generate, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "image_resize": {"fn": image_resize, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 3: Scheduling
-    "schedule_task": {"fn": schedule_task, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "list_scheduled_tasks": {"fn": list_scheduled_tasks, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "cancel_task": {"fn": cancel_task, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 3: Observability
-    "log_event": {"fn": log_event, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "trace_last_run": {"fn": trace_last_run, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "tool_metrics": {"fn": tool_metrics, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 3: Speech
-    "stt_file": {"fn": stt_file, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "tts_speak": {"fn": tts_speak, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 3: Finance / Crypto
-    "crypto_prices": {"fn": crypto_prices, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "economic_indicators": {"fn": economic_indicators, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 3: Code Intelligence Extended
-    "code_metrics": {"fn": code_metrics, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "code_lint": {"fn": code_lint, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "git_blame": {"fn": git_blame, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 3: File Formats
-    "yaml_read": {"fn": yaml_read, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "xml_parse": {"fn": xml_parse, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "hash_file": {"fn": hash_file, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "base64_tool": {"fn": base64_tool, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 3: System Utilities
-    "check_port": {"fn": check_port, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "timestamp_convert": {"fn": timestamp_convert, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "string_transform": {"fn": string_transform, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 3: NLP Extended
-    "extract_entities": {"fn": extract_entities, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "sentiment_timeline": {"fn": sentiment_timeline, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 3: Visualization Extended
-    "plot_scatter": {"fn": plot_scatter, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "plot_histogram": {"fn": plot_histogram, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 3: Memory + Self-Awareness
-    "memory_stats": {"fn": memory_stats, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "tool_chain_plan": {"fn": tool_chain_plan, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 3: Geographic
-    "geo_query": {"fn": geo_query, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "map_url": {"fn": map_url, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 3: Video
-    "extract_frames": {"fn": extract_frames, "dangerous": False, "require_approval": False, "risk_level": "medium"},
-    "detect_scenes": {"fn": detect_scenes, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 3: Object Detection
-    "detect_objects": {"fn": detect_objects, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    # Tier 3: Desktop Automation
-    "screenshot_desktop": {"fn": screenshot_desktop, "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "click_ui": {"fn": click_ui, "dangerous": True, "require_approval": True, "risk_level": "high"},
-    "type_text": {"fn": type_text, "dangerous": True, "require_approval": True, "risk_level": "high"},
-})
+# ─── Fabrication: DXF → G-code ─────────────────────────────────────────────────
+
+def generate_gcode(dxf_path: str, output_path: str, layer: str = "", depth_mm: float = -5.0, feed_rate: int = 3000, safe_z: float = 5.0) -> dict:
+    """
+    Generate 2D G-code from DXF polylines (flat cutting). layer: filter by layer name, empty=all.
+    Requires ezdxf. Output is inside sandbox.
+    """
+    target = Path(dxf_path)
+    out = Path(output_path)
+    if not inside_sandbox(target) or not inside_sandbox(out):
+        return {"ok": False, "error": "Paths must be inside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "DXF file not found"}
+    try:
+        import ezdxf
+        doc = ezdxf.readfile(str(target))
+        msp = doc.modelspace()
+        lines_out = ["G21", "G90", f"G0 Z{safe_z}", f"F{feed_rate}"]
+        count = 0
+        for e in msp:
+            if layer and getattr(e.dxf, "layer", "") != layer:
+                continue
+            if e.dxftype() == "LINE":
+                start, end = e.dxf.start, e.dxf.end
+                lines_out.append(f"G0 X{start[0]:.3f} Y{start[1]:.3f}")
+                lines_out.append(f"G1 Z{depth_mm:.3f}")
+                lines_out.append(f"G1 X{end[0]:.3f} Y{end[1]:.3f}")
+                lines_out.append(f"G0 Z{safe_z}")
+                count += 1
+            elif e.dxftype() == "LWPOLYLINE":
+                points = list(e.get_points())
+                if len(points) < 2:
+                    continue
+                x, y = points[0][0], points[0][1]
+                lines_out.append(f"G0 X{x:.3f} Y{y:.3f}")
+                lines_out.append(f"G1 Z{depth_mm:.3f}")
+                for x, y in points[1:]:
+                    lines_out.append(f"G1 X{x:.3f} Y{y:.3f}")
+                lines_out.append(f"G0 Z{safe_z}")
+                count += 1
+        lines_out.append("M2")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("\n".join(lines_out), encoding="utf-8")
+        return {"ok": True, "output_path": str(out), "moves": count, "lines": len(lines_out)}
+    except ImportError:
+        return {"ok": False, "error": "ezdxf not installed: pip install ezdxf"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── Code Refactoring ──────────────────────────────────────────────────────────
+
+def rename_symbol(root: str, old_name: str, new_name: str, symbol_type: str = "auto", file_glob: str = "*.py", apply: bool = False) -> dict:
+    """
+    Rename symbol across Python files. symbol_type: function|class|variable|auto.
+    apply=False: dry run, returns proposed changes. apply=True: writes changes.
+    """
+    root_path = Path(root)
+    if not inside_sandbox(root_path):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not root_path.exists():
+        return {"ok": False, "error": "Path not found"}
+    pattern = re.compile(r"\b" + re.escape(old_name) + r"\b")
+    changes = []
+    for f in root_path.rglob(file_glob):
+        if not f.is_file():
+            continue
+        try:
+            content = f.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        new_content = pattern.sub(new_name, content)
+        if new_content != content:
+            n = len(pattern.findall(content))
+            changes.append({"path": str(f), "replacements": n})
+            if apply:
+                f.write_text(new_content, encoding="utf-8")
+    return {"ok": True, "old_name": old_name, "new_name": new_name, "changes": changes[:50], "total_files": len(changes), "applied": apply}
+
+
+# ─── Docker ────────────────────────────────────────────────────────────────────
+
+def docker_ps(all_containers: bool = False) -> dict:
+    """List Docker containers. all_containers=True includes stopped."""
+    try:
+        argv = ["docker", "ps", "-a"] if all_containers else ["docker", "ps"]
+        proc = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10)
+        return {"ok": proc.returncode == 0, "output": (proc.stdout or proc.stderr or "")[:4000]}
+    except FileNotFoundError:
+        return {"ok": False, "error": "Docker not found or not in PATH"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def docker_run(image: str, args: str = "", name: str = "", rm: bool = True) -> dict:
+    """Run a Docker container. args: extra docker run args. name: container name. rm: remove when stopped."""
+    argv = ["docker", "run"]
+    if rm:
+        argv.append("--rm")
+    if name:
+        argv.extend(["--name", name])
+    argv.append(image)
+    if args:
+        argv.extend(args.split())
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+        return {"ok": proc.returncode == 0, "output": (proc.stdout or proc.stderr or "")[:4000]}
+    except FileNotFoundError:
+        return {"ok": False, "error": "Docker not found"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── CI / GitHub ────────────────────────────────────────────────────────────────
+
+def check_ci(repo: str, provider: str = "github") -> dict:
+    """Check CI status. repo: path or owner/repo. provider: github|gitlab."""
+    repo_path = Path(repo)
+    if repo_path.exists() and repo_path.is_dir():
+        try:
+            r = subprocess.run(["git", "remote", "get-url", "origin"], cwd=str(repo_path), capture_output=True, text=True)
+            url = (r.stdout or "").strip()
+            if "github.com" in url:
+                m = re.search(r"github\.com[/:]([\w-]+)/([\w.-]+)", url)
+                if m:
+                    owner, repo_name = m.group(1), m.group(2).replace(".git", "")
+                    api_url = f"https://api.github.com/repos/{owner}/{repo_name}/actions/runs?per_page=5"
+                    try:
+                        import urllib.request
+                        req = urllib.request.Request(api_url, headers={"Accept": "application/vnd.github.v3+json"})
+                        with urllib.request.urlopen(req, timeout=10) as resp:
+                            data = __import__("json").loads(resp.read().decode())
+                        runs = data.get("workflow_runs", [])[:5]
+                        return {"ok": True, "provider": "github", "runs": [{"name": r.get("name"), "status": r.get("status"), "conclusion": r.get("conclusion"), "created_at": r.get("created_at")} for r in runs]}
+                    except Exception as e:
+                        return {"ok": False, "error": str(e)}
+        except Exception:
+            pass
+    return {"ok": False, "error": "Could not determine repo or fetch CI status"}
+
+
+def send_webhook(url: str, payload: dict, method: str = "POST") -> dict:
+    """Send JSON payload to webhook URL (Slack, Discord, custom)."""
+    try:
+        import json as _json
+        import urllib.request
+        data = _json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data, method=method, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = resp.read().decode("utf-8", errors="replace")[:2000]
+        return {"ok": True, "status": resp.status, "response": body}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def discord_send(content: str = "", embed: dict | None = None, webhook_url: str = "") -> dict:
+    """
+    Send message to Discord via webhook. Easy setup: Server Settings → Integrations → Webhooks → New.
+    webhook_url: override; else reads discord_webhook_url from config or DISCORD_WEBHOOK_URL env.
+    """
+    url = webhook_url or __import__("os").environ.get("DISCORD_WEBHOOK_URL", "")
+    if not url:
+        try:
+            agent_dir = Path(__file__).resolve().parent.parent.parent
+            sys.path.insert(0, str(agent_dir))
+            import runtime_safety
+            cfg = runtime_safety.load_config()
+            url = cfg.get("discord_webhook_url", "") or ""
+        except Exception:
+            pass
+    if not url:
+        return {"ok": False, "error": "No webhook URL. Set discord_webhook_url in config, DISCORD_WEBHOOK_URL env, or pass webhook_url."}
+    payload = {}
+    if content:
+        payload["content"] = content[:2000]
+    if embed:
+        payload["embeds"] = [{"title": embed.get("title", "")[:256], "description": (embed.get("description") or "")[:4096], "color": embed.get("color")}][:1]
+    if not payload:
+        return {"ok": False, "error": "Provide content or embed"}
+    return send_webhook(url, payload)
+
+
+def calendar_read(path: str) -> dict:
+    """Read .ics calendar file. Returns events with start, end, summary."""
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "File not found"}
+    try:
+        import icalendar
+        cal = icalendar.Calendar.from_ical(target.read_bytes())
+        events = []
+        for c in cal.walk():
+            if c.name == "VEVENT":
+                start = c.get("dtstart").dt if c.get("dtstart") else None
+                end = c.get("dtend").dt if c.get("dtend") else None
+                summary = str(c.get("summary", ""))
+                events.append({"start": str(start), "end": str(end), "summary": summary})
+        return {"ok": True, "path": str(target), "events": events[:50]}
+    except ImportError:
+        return {"ok": False, "error": "icalendar not installed: pip install icalendar"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def calendar_add_event(path: str, summary: str, start: str, end: str = "", description: str = "") -> dict:
+    """Add event to .ics file. start/end: ISO or YYYY-MM-DD HH:MM. Creates file if missing."""
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    try:
+        import icalendar
+        from datetime import datetime
+        cal = icalendar.Calendar()
+        if target.exists():
+            cal = icalendar.Calendar.from_ical(target.read_text(encoding="utf-8", errors="replace"))
+        event = icalendar.Event()
+        event.add("summary", summary[:200])
+        event.add("dtstart", datetime.fromisoformat(start.replace("Z", "+00:00")) if "T" in start else datetime.fromisoformat(start))
+        if end:
+            event.add("dtend", datetime.fromisoformat(end.replace("Z", "+00:00")) if "T" in end else datetime.fromisoformat(end))
+        if description:
+            event.add("description", description[:500])
+        cal.add_component(event)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(cal.to_ical().decode("utf-8", errors="replace"), encoding="utf-8")
+        return {"ok": True, "path": str(target), "summary": summary}
+    except ImportError:
+        return {"ok": False, "error": "icalendar not installed: pip install icalendar"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def db_backup(db_path: str, backup_path: str = "") -> dict:
+    """Backup SQLite database. backup_path: optional; default adds .bak timestamp."""
+    src = Path(db_path)
+    if not inside_sandbox(src):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not src.exists():
+        return {"ok": False, "error": "Database not found"}
+    dest = Path(backup_path) if backup_path else src.with_suffix(f".bak_{__import__('time').strftime('%Y%m%d_%H%M%S')}{src.suffix}")
+    if not inside_sandbox(dest):
+        return {"ok": False, "error": "Backup path outside sandbox"}
+    try:
+        import shutil
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(src), str(dest))
+        return {"ok": True, "source": str(src), "backup": str(dest)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def create_svg(path: str, content: str) -> dict:
+    """Write SVG file. content: valid SVG markup. Procedural drawing — no Gen AI."""
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not content.strip().startswith("<"):
+        content = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">{content}</svg>'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    return {"ok": True, "path": str(target)}
+
+
+def create_mermaid(path: str, content: str) -> dict:
+    """Write Mermaid diagram file (.mmd). content: mermaid code (flowchart, sequenceDiagram, etc)."""
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not content.strip().startswith(("flowchart", "graph", "sequenceDiagram", "classDiagram", "stateDiagram", "erDiagram", "gantt", "pie", "journey")):
+        content = f"flowchart TD\n{content}"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    return {"ok": True, "path": str(target)}
+
+
+def github_issues(repo_slug: str, state: str = "open", token: str = "") -> dict:
+    """List GitHub issues. repo_slug: owner/repo. token: optional GITHUB_TOKEN env or param."""
+    token = token or __import__("os").environ.get("GITHUB_TOKEN", "")
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    url = f"https://api.github.com/repos/{repo_slug}/issues?state={state}&per_page=20"
+    try:
+        import urllib.request
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = __import__("json").loads(resp.read().decode())
+        return {"ok": True, "issues": [{"number": i["number"], "title": i["title"], "state": i["state"], "url": i["html_url"]} for i in data[:20]]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def github_pr(repo_slug: str, title: str, head: str, base: str = "main", body: str = "", token: str = "") -> dict:
+    """Create a GitHub PR. token: GITHUB_TOKEN env or param."""
+    token = token or __import__("os").environ.get("GITHUB_TOKEN", "")
+    if not token:
+        return {"ok": False, "error": "GITHUB_TOKEN required for creating PRs"}
+    import json as _json
+    import urllib.request
+    payload = {"title": title, "head": head, "base": base, "body": body}
+    data = _json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request("https://api.github.com/repos/" + repo_slug + "/pulls", data=data, method="POST", headers={"Accept": "application/vnd.github.v3+json", "Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            pr = _json.loads(resp.read().decode())
+            return {"ok": True, "number": pr.get("number"), "url": pr.get("html_url"), "title": pr.get("title")}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── Code Format & Archive ──────────────────────────────────────────────────────
+
+def code_format(path: str, formatter: str = "ruff") -> dict:
+    """Format Python code with ruff or black. path: file or directory."""
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "Path not found"}
+    try:
+        if formatter == "ruff":
+            proc = subprocess.run(
+                [sys.executable, "-m", "ruff", "format", str(target)],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+            )
+        else:
+            proc = subprocess.run(
+                [sys.executable, "-m", "black", str(target)],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+            )
+        return {"ok": proc.returncode == 0, "output": (proc.stdout or proc.stderr or "")[:2000]}
+    except FileNotFoundError:
+        return {"ok": False, "error": f"{formatter} not installed: pip install {formatter}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def extract_archive(path: str, dest: str = "") -> dict:
+    """Extract zip or tar archive. dest: output dir, default same as archive."""
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "Archive not found"}
+    out = Path(dest) if dest else target.parent
+    if not inside_sandbox(out):
+        return {"ok": False, "error": "Destination outside sandbox"}
+    try:
+        import zipfile
+        import tarfile
+        out = out.resolve()
+        out.mkdir(parents=True, exist_ok=True)
+        if target.suffix.lower() in (".zip",):
+            with zipfile.ZipFile(target, "r") as z:
+                for m in z.namelist():
+                    if ".." in m or m.startswith("/") or (m.startswith("\\") if len(m) > 1 else False):
+                        continue
+                    member_path = (out / m).resolve()
+                    try:
+                        member_path.relative_to(out)
+                    except ValueError:
+                        continue
+                    try:
+                        z.extract(m, out)
+                    except Exception:
+                        pass
+        elif target.suffix.lower() in (".tar", ".gz", ".tgz", ".bz2", ".xz"):
+            with tarfile.open(target, "r:*") as t:
+                for m in t.getnames():
+                    if ".." in m or m.startswith("/") or (m.startswith("\\") if len(m) > 1 else False):
+                        continue
+                    member_path = (out / m).resolve()
+                    try:
+                        member_path.relative_to(out)
+                    except ValueError:
+                        continue
+                    try:
+                        t.extract(m, out)
+                    except Exception:
+                        pass
+        else:
+            return {"ok": False, "error": "Unsupported format. Use .zip, .tar, .tar.gz, .tgz"}
+        return {"ok": True, "path": str(target), "dest": str(out)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def create_archive(paths: list, output: str, format: str = "zip") -> dict:
+    """Create zip archive from paths. paths: list of files/dirs. output: .zip path."""
+    out = Path(output)
+    if not inside_sandbox(out):
+        return {"ok": False, "error": "Output path outside sandbox"}
+    try:
+        import zipfile
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+            for p in paths:
+                fp = Path(p)
+                if not inside_sandbox(fp):
+                    continue
+                if fp.is_file():
+                    z.write(fp, fp.name)
+                elif fp.is_dir():
+                    for f in fp.rglob("*"):
+                        if f.is_file():
+                            z.write(f, str(f.relative_to(fp)))
+        return {"ok": True, "output": str(out), "files": len(paths)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def uuid_generate(count: int = 1) -> dict:
+    """Generate UUID(s). count: number of UUIDs."""
+    import uuid
+    uuids = [str(uuid.uuid4()) for _ in range(min(max(1, count), 100))]
+    return {"ok": True, "uuids": uuids}
+
+
+def random_string(length: int = 16, charset: str = "alphanumeric") -> dict:
+    """Generate random string. charset: alphanumeric|hex|ascii."""
+    import secrets
+    import string
+    if charset == "hex":
+        s = secrets.token_hex(length // 2 + 1)[:length]
+    elif charset == "ascii":
+        s = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(length))
+    else:
+        s = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(length))
+    return {"ok": True, "value": s}
+
+
+def password_generate(length: int = 20, symbols: bool = True) -> dict:
+    """Generate secure random password."""
+    import secrets
+    import string
+    chars = string.ascii_letters + string.digits
+    if symbols:
+        chars += "!@#$%^&*"
+    pwd = "".join(secrets.choice(chars) for _ in range(min(max(12, length), 128)))
+    return {"ok": True, "password": pwd, "length": len(pwd)}
+
+
+def disk_usage(path: str = ".") -> dict:
+    """Disk usage for path. Returns used/total/free in GB."""
+    try:
+        import shutil
+        p = Path(path)
+        if not p.exists():
+            p = Path.cwd()
+        total, used, free = shutil.disk_usage(str(p))
+        return {"ok": True, "path": str(p), "total_gb": round(total / (1024**3), 2), "used_gb": round(used / (1024**3), 2), "free_gb": round(free / (1024**3), 2)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def process_list(limit: int = 20) -> dict:
+    """List running processes (top by CPU/memory). Requires psutil."""
+    try:
+        import psutil
+        procs = []
+        for p in sorted(psutil.process_iter(["pid", "name", "cpu_percent", "memory_percent"]), key=lambda x: (x.info.get("cpu_percent") or 0) + (x.info.get("memory_percent") or 0), reverse=True)[:limit]:
+            try:
+                procs.append({"pid": p.info["pid"], "name": (p.info.get("name") or "")[:40], "cpu": p.info.get("cpu_percent"), "memory": p.info.get("memory_percent")})
+            except (psutil.NoSuchProcess, KeyError):
+                pass
+        return {"ok": True, "processes": procs}
+    except ImportError:
+        return {"ok": False, "error": "psutil not installed: pip install psutil"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def generate_qr(data: str, output_path: str = "", size: int = 10) -> dict:
+    """Generate QR code. data: text/URL. output_path: save PNG. Requires qrcode."""
+    try:
+        import qrcode
+        qr = qrcode.QRCode(version=1, box_size=size, border=2)
+        qr.add_data(data[:4000])
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        if output_path:
+            out = Path(output_path)
+            if not inside_sandbox(out):
+                return {"ok": False, "error": "Output outside sandbox"}
+            img.save(str(out))
+            return {"ok": True, "output": str(out)}
+        import io
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return {"ok": True, "base64": __import__("base64").b64encode(buf.getvalue()).decode()[:5000]}
+    except ImportError:
+        return {"ok": False, "error": "qrcode not installed: pip install qrcode[pil]"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def write_csv(path: str, rows: list, headers: list | None = None) -> dict:
+    """Write CSV file. rows: list of dicts or lists. headers: optional column order."""
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    try:
+        import csv
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(target, "w", newline="", encoding="utf-8") as f:
+            if rows and isinstance(rows[0], dict):
+                h = headers or list(rows[0].keys())
+                w = csv.DictWriter(f, fieldnames=h, extrasaction="ignore")
+                w.writeheader()
+                w.writerows(rows)
+            else:
+                w = csv.writer(f)
+                if headers:
+                    w.writerow(headers)
+                w.writerows(rows)
+        return {"ok": True, "path": str(target), "rows": len(rows)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def json_schema(data: str | dict) -> dict:
+    """Infer JSON schema from sample data. data: JSON string or dict."""
+    try:
+        import json as _json
+        obj = _json.loads(data) if isinstance(data, str) else data
+        def _infer(v):
+            if v is None: return {"type": "null"}
+            if isinstance(v, bool): return {"type": "boolean"}
+            if isinstance(v, int): return {"type": "integer"}
+            if isinstance(v, float): return {"type": "number"}
+            if isinstance(v, str): return {"type": "string"}
+            if isinstance(v, list):
+                item = _infer(v[0]) if v else {}
+                return {"type": "array", "items": item}
+            if isinstance(v, dict):
+                return {"type": "object", "properties": {k: _infer(v) for k, v in v.items()}}
+            return {}
+        schema = _infer(obj)
+        return {"ok": True, "schema": schema}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def jwt_decode(token: str, verify: bool = False, secret: str = "") -> dict:
+    """Decode JWT (header + payload). verify=True validates signature with secret."""
+    try:
+        import base64
+        import json as _json
+        parts = token.split(".")
+        if len(parts) != 3:
+            return {"ok": False, "error": "Invalid JWT format"}
+        def b64d(s):
+            pad = 4 - len(s) % 4
+            return base64.urlsafe_b64decode(s + "=" * pad)
+        header = _json.loads(b64d(parts[0]).decode())
+        payload = _json.loads(b64d(parts[1]).decode())
+        if verify and secret:
+            try:
+                import hmac
+                import hashlib
+                sig = parts[2]
+                msg = f"{parts[0]}.{parts[1]}".encode()
+                exp = base64.urlsafe_b64encode(hmac.new(secret.encode(), msg, hashlib.sha256).digest()).decode().rstrip("=")
+                if exp != sig:
+                    return {"ok": False, "error": "Signature verification failed"}
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+        return {"ok": True, "header": header, "payload": payload}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def read_toml(path: str) -> dict:
+    """Parse TOML file. Returns dict."""
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "File not found"}
+    try:
+        import tomllib
+        return {"ok": True, "path": str(target), "data": tomllib.loads(target.read_text(encoding="utf-8"))}
+    except ImportError:
+        try:
+            import tomli
+            return {"ok": True, "path": str(target), "data": tomli.loads(target.read_text(encoding="utf-8"))}
+        except ImportError:
+            return {"ok": False, "error": "tomllib (3.11+) or tomli required"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def merge_pdf(paths: list, output: str) -> dict:
+    """Merge PDFs into one. paths: list of PDF paths. output: output path."""
+    out = Path(output)
+    if not inside_sandbox(out):
+        return {"ok": False, "error": "Output outside sandbox"}
+    for p in paths:
+        if not inside_sandbox(Path(p)):
+            return {"ok": False, "error": f"Path outside sandbox: {p}"}
+    try:
+        from pypdf import PdfMerger
+        merger = PdfMerger()
+        for p in paths:
+            if Path(p).exists():
+                merger.append(str(p))
+        merger.write(str(out))
+        merger.close()
+        return {"ok": True, "output": str(out), "merged": len(paths)}
+    except ImportError:
+        return {"ok": False, "error": "pypdf not installed: pip install pypdf"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def send_email(to: str, subject: str, body: str, smtp_host: str = "", smtp_port: int = 587, username: str = "", password: str = "") -> dict:
+    """Send email via SMTP. Credentials from env: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS."""
+    import os
+    host = smtp_host or os.environ.get("SMTP_HOST", "localhost")
+    port = smtp_port or int(os.environ.get("SMTP_PORT", "587"))
+    user = username or os.environ.get("SMTP_USER", "")
+    pwd = password or os.environ.get("SMTP_PASS", "")
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        msg = MIMEText(body, "plain", "utf-8")
+        msg["Subject"] = subject
+        msg["To"] = to
+        msg["From"] = user or "layla@local"
+        with smtplib.SMTP(host, port, timeout=15) as s:
+            if user and pwd:
+                s.starttls()
+                s.login(user, pwd)
+            s.send_message(msg)
+        return {"ok": True, "to": to, "subject": subject[:50]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── Build TOOLS from domain modules ───────────────────────────────────────────
+TOOLS = _build_tools_from_domains()
 
 
 def _wrap_tool_with_metrics(name: str, fn: Any) -> Any:

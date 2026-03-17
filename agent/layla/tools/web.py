@@ -9,14 +9,40 @@ Strictly respects:
 
 If AI-exclusion is detected AFTER fetching, any stored data is deleted.
 """
+import logging
 import re
 import time
 import urllib.robotparser
 from pathlib import Path
 from urllib.parse import urlparse
 
+logger = logging.getLogger("layla")
+
 _UA = "Layla-Personal-Research/1.0 (+local; single-user; respects-robots)"
 _TIMEOUT = 15
+
+
+def _is_safe_url(url: str) -> bool:
+    """Return True if URL is safe (no private/localhost). SSRF mitigation."""
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+            return False
+        if host.startswith("127.") or host.startswith("10.") or host.startswith("169.254."):
+            return False
+        if host.startswith("172."):
+            parts = host.split(".")
+            if len(parts) >= 2:
+                try:
+                    b = int(parts[1])
+                except ValueError:
+                    b = -1
+                if 16 <= b <= 31:
+                    return False
+        return True
+    except Exception:
+        return False
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -30,7 +56,8 @@ def _get_allowlist() -> list[str]:
             cfg_path = Path(__file__).resolve().parent.parent.parent / "runtime_config.json"
         data = json.loads(cfg_path.read_text(encoding="utf-8"))
         return data.get("web_allowlist", [])
-    except Exception:
+    except Exception as e:
+        logger.debug("web fetch_url _get_allowlist failed: %s", e)
         return []
 
 
@@ -42,8 +69,8 @@ def _robots_allowed(url: str) -> bool:
     rp.set_url(robots_url)
     try:
         rp.read()
-    except Exception:
-        # Can't reach robots.txt — assume allowed (we tried)
+    except Exception as e:
+        logger.debug("web fetch_url robots.txt read failed: %s", e)
         return True
     return rp.can_fetch(_UA, url) or rp.can_fetch("*", url)
 
@@ -116,6 +143,8 @@ def fetch_url(url: str, store: bool = False) -> dict:
         {"ok": True, "url": ..., "text": ..., "stored": bool}
         {"ok": False, "reason": str}
     """
+    if not _is_safe_url(url):
+        return {"ok": False, "reason": "url_blocked_private", "url": url}
     # Allowlist check
     allowlist = _get_allowlist()
     if allowlist:

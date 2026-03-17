@@ -126,10 +126,15 @@ async def import_bundle(file: UploadFile = File(...)):
         with zipfile.ZipFile(buf, "r") as zf:
             names = zf.namelist()
 
-            # Import knowledge docs
+            # Import knowledge docs (Zip slip: ensure path stays under knowledge/)
+            knowledge_base = (REPO_ROOT / "knowledge").resolve()
             for name in names:
                 if name.startswith("knowledge/") and (name.endswith(".md") or name.endswith(".txt")):
-                    target = REPO_ROOT / name.replace("/", Path.sep if Path.sep != "/" else "/")
+                    target = (REPO_ROOT / name).resolve()
+                    try:
+                        target.relative_to(knowledge_base)
+                    except ValueError:
+                        continue  # path traversal attempt
                     if target.exists():
                         results["knowledge_skipped"].append(name)
                         continue
