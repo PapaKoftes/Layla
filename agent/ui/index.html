@@ -765,6 +765,7 @@
   }
   #send-btn:active:not(:disabled) { transform: translateY(0); }
   #send-btn:disabled { opacity: 0.35; cursor: not-allowed; background: var(--border); box-shadow: none; }
+  #send-btn.send-empty { opacity: 0.5; }
 
   /* ── Right panel (tabbed) ── */
   .panels {
@@ -988,13 +989,14 @@
 <div id="warmup-bar">⧗ Loading model — <span id="warmup-detail">warming up, this may take a moment</span></div>
 <div id="connection-banner" style="display:none;background:#8b0000;color:#fff;padding:8px 20px;font-size:0.8rem;text-align:center">Cannot reach Layla — is the server running? <button onclick="location.reload()" style="margin-left:12px;padding:4px 12px;background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:4px;cursor:pointer">Retry</button></div>
 <div id="model-readiness-banner" style="display:none;background:#5a2040;color:#fff;padding:8px 20px;font-size:0.8rem;text-align:center">No model loaded — <a href="/docs/MODELS.md" target="_blank" style="color:#e0a0ff;text-decoration:underline">Configure</a> or run first setup</div>
-<div id="onboarding-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10003;align-items:center;justify-content:center">
-  <div class="onboarding-modal" style="background:var(--bg2);border:1px solid var(--asp);border-radius:8px;padding:24px;max-width:360px;text-align:center">
+<div id="onboarding-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10003;align-items:center;justify-content:center" onclick="if(event.target===this)typeof dismissOnboarding==='function'&&dismissOnboarding()">
+  <div class="onboarding-modal" style="background:var(--bg2);border:1px solid var(--asp);border-radius:8px;padding:24px;max-width:360px;text-align:center" onclick="event.stopPropagation()">
     <p id="onboarding-text" style="font-size:0.95rem;line-height:1.5;margin-bottom:20px">Choose a voice in the sidebar.</p>
     <div style="display:flex;gap:12px;justify-content:center">
       <button id="onboarding-next" onclick="onboardingNext()" style="padding:8px 20px;background:var(--asp);border:none;color:#fff;border-radius:4px;cursor:pointer">Next</button>
       <button id="onboarding-done" onclick="dismissOnboarding()" style="display:none;padding:8px 20px;background:var(--asp);border:none;color:#fff;border-radius:4px;cursor:pointer">Done</button>
     </div>
+    <p style="font-size:0.75rem;color:var(--text-dim);margin-top:14px">Press Escape to skip</p>
   </div>
 </div>
 <header>
@@ -1020,6 +1022,7 @@
     <button onclick="toggleSidebarCompact()" id="sidebar-compact-btn" title="Compact sidebar" aria-label="Compact sidebar">◀</button>
     <button onclick="openSettings()" title="Settings" aria-label="Settings">⚙</button>
     <button onclick="clearChat()" title="Clear chat history" aria-label="Clear chat">✕ clear</button>
+    <button type="button" id="open-cli-btn" onclick="openCliHelp()" title="Copy command to open terminal UI (TUI)">⌘ Terminal</button>
   </div>
 </header>
 
@@ -1141,7 +1144,7 @@
         </label>
         <button id="mic-btn" onclick="toggleMic()" title="Click to record voice" aria-label="Record voice">🎤</button>
         <button id="retry-btn" onclick="retryLastMessage()" title="Retry last message (Ctrl+R)" aria-label="Retry last message" style="display:none;font-size:0.75rem;padding:4px 8px">↻</button>
-        <button id="send-btn" onclick="send()" disabled>Send</button>
+        <button type="button" id="send-btn" onclick="typeof window.triggerSend==='function'&&window.triggerSend();">Send</button>
       </div>
       <span class="input-hint" style="display:block;font-size:var(--text-xs);color:var(--text-dim);margin-top:4px;padding:0 4px">Attach files with 📎 or paste. Enter to send, Shift+Enter for newline. Ctrl+K to clear.</span>
     </div>
@@ -1266,10 +1269,97 @@
   </div>
 </div>
 
+<!-- Bootstrap: runs first so Send/Enter work even if main script fails to parse or throws -->
+<script>
+(function() {
+  'use strict';
+  window.currentAspect = window.currentAspect || 'morrigan';
+  window.triggerSend = function triggerSend() {
+    try {
+      if (typeof window.send === 'function') { window.send(); return; }
+      var inp = document.getElementById('msg-input');
+      if (!inp || !inp.value || !inp.value.trim()) return;
+      var msg = inp.value.trim();
+      var aspect = (typeof window.currentAspect !== 'undefined') ? window.currentAspect : 'morrigan';
+      var chat = document.getElementById('chat');
+      inp.value = '';
+      if (chat) {
+        var you = document.createElement('div');
+        you.className = 'msg msg-you';
+        you.innerHTML = '<div class="msg-label">You</div><div class="msg-bubble">' + String(msg).replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+        chat.appendChild(you);
+      }
+      fetch('/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg, aspect_id: aspect, show_thinking: false, allow_write: false, allow_run: false, stream: false }) })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          var el = document.getElementById('chat');
+          if (el && d && d.response) {
+            var div = document.createElement('div');
+            div.className = 'msg msg-layla';
+            div.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble">' + String(d.response).replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+            el.appendChild(div);
+            el.scrollTop = el.scrollHeight;
+          }
+        })
+        .catch(function(e) { if (chat) { var err = document.createElement('div'); err.className = 'msg msg-layla'; err.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble">Error: ' + String(e && e.message || e).replace(/</g, '&lt;') + '</div>'; chat.appendChild(err); } });
+    } catch (e) { console.warn('[Layla] triggerSend', e); }
+  };
+  document.addEventListener('keydown', function (e) {
+    if ((e.key !== 'Enter' && e.keyCode !== 13) || e.shiftKey) return;
+    var active = document.activeElement;
+    if (!active || active.id !== 'msg-input') return;
+    var dd = document.getElementById('mention-dropdown');
+    if (dd && dd.children.length > 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof window.triggerSend === 'function') window.triggerSend();
+  }, true);
+  var sendBtn = document.getElementById('send-btn');
+  if (sendBtn) {
+    sendBtn.removeAttribute('disabled');
+    sendBtn.disabled = false;
+    sendBtn.addEventListener('click', function () { if (typeof window.triggerSend === 'function') window.triggerSend(); });
+  }
+  // Delegated click: personality and panel buttons work even if main script fails or inline handler misses
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    var aspectBtn = t && t.closest && t.closest('.aspect-btn');
+    if (aspectBtn) {
+      if (typeof window.setAspect === 'function') { window.setAspect(aspectBtn.id ? aspectBtn.id.replace(/^btn-/, '') : ''); return; }
+      var id = (aspectBtn.id || '').replace(/^btn-/, '') || 'morrigan';
+      window.currentAspect = id;
+      document.querySelectorAll('.aspect-btn').forEach(function(b) { b.classList.remove('active'); if (b.id === 'btn-' + id) b.classList.add('active'); });
+      var badge = document.getElementById('aspect-badge');
+      if (badge) badge.textContent = id.toUpperCase();
+      return;
+    }
+    var panelTab = t && t.closest && t.closest('.panel-tab');
+    if (panelTab) {
+      if (typeof window.showPanelTab === 'function') { window.showPanelTab(panelTab.getAttribute('data-panel') || ''); return; }
+      var panel = panelTab.getAttribute('data-panel');
+      if (!panel) return;
+      document.querySelectorAll('.panel-tab').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-panel') === panel); });
+      document.querySelectorAll('.panel-pane').forEach(function(p) { p.classList.toggle('active', p.getAttribute('data-panel') === panel); });
+    }
+  }, false);
+})();
+</script>
+
 <script>
 let currentAspect = 'morrigan';
 const sessionStart = Date.now();
 
+// Debug: localStorage.setItem('layla_debug','1') and reload; or ?layla_debug=1 in URL; or in console: window.LAYLA_DEBUG = true
+var LAYLA_DEBUG = (typeof localStorage !== 'undefined' && localStorage.getItem('layla_debug') === '1') || (typeof location !== 'undefined' && location.search.indexOf('layla_debug') !== -1);
+window.LAYLA_DEBUG = LAYLA_DEBUG; // allow toggling in console without reload
+function _dbg() {
+  if (!window.LAYLA_DEBUG && !LAYLA_DEBUG) return;
+  try { console.log.apply(console, ['[Layla]'].concat(Array.prototype.slice.call(arguments))); } catch (_) {}
+}
+_dbg('script started');
+
+// triggerSend and Enter listener already registered by bootstrap script above; ensure window.send wrapper can delegate to full send()
+try {
 function formatAgentError(res, body) {
   if (!res) return "Can't reach Layla. Is the server running at http://127.0.0.1:8000?";
   if (res.status === 500) return 'Something went wrong. Check the server logs or try again.';
@@ -1309,6 +1399,7 @@ function setAspect(id, force) {
     showToast('Now talking to ' + (name || id));
   }
 }
+window.setAspect = setAspect;
 
 function cleanLaylaText(s) {
   if (typeof s !== 'string') return (s == null || s === undefined) ? '' : String(s);
@@ -1496,6 +1587,7 @@ function showPanelTab(tab) {
   document.querySelectorAll('.panel-tab').forEach(b => { b.classList.toggle('active', b.getAttribute('data-panel') === tab); });
   document.querySelectorAll('.panel-pane').forEach(p => { p.classList.toggle('active', p.getAttribute('data-panel') === tab); });
 }
+window.showPanelTab = showPanelTab;
 
 function focusResearchPanel() {
   showPanelTab('research');
@@ -1509,7 +1601,11 @@ function focusResearchPanel() {
 function toggleSendButton() {
   const input = document.getElementById('msg-input');
   const btn = document.getElementById('send-btn');
-  if (input && btn) btn.disabled = !(input.value && input.value.trim());
+  if (input && btn) {
+    // Always leave button clickable so Send works even if input listener misses; send() no-ops when empty
+    btn.disabled = false;
+    btn.classList.toggle('send-empty', !(input.value && input.value.trim()));
+  }
 }
 
 // ── Aspect registry for @mention ────────────────────────────────────────────
@@ -1523,6 +1619,7 @@ const ASPECTS = [
 ];
 
 let _mentionActive = false;   // dropdown is open
+window._mentionActive = false; // for listeners that run in finally (may run before this line)
 let _mentionIdx = 0;          // selected item index
 let _mentionAspectOverride = null; // one-shot aspect for next send
 let _aspectLocked = false;    // lock prevents auto-route
@@ -1555,6 +1652,7 @@ function _showMentionDropdown(query) {
     : ASPECTS.filter(a => a.id.startsWith(query) || a.name.toLowerCase().startsWith(query));
   if (!filtered.length) { _hideMentionDropdown(); return; }
   _mentionActive = true;
+  window._mentionActive = true;
   _mentionIdx = 0;
   dd.innerHTML = filtered.map((a, i) =>
     `<div class="mention-item${i === 0 ? ' active' : ''}" data-id="${a.id}" onmousedown="event.preventDefault();_pickMention('${a.id}')">
@@ -1571,6 +1669,7 @@ function _hideMentionDropdown() {
   const dd = document.getElementById('mention-dropdown');
   if (dd) { dd.classList.remove('open'); dd.innerHTML = ''; }
   _mentionActive = false;
+  window._mentionActive = false;
   _mentionIdx = 0;
 }
 
@@ -1610,6 +1709,10 @@ function onInputChange(e) {
   }
 }
 
+function _isEnterKey(e) {
+  return e.key === 'Enter' || e.keyCode === 13;
+}
+
 function onInputKeydown(e) {
   if (e.ctrlKey || e.metaKey) {
     if (e.key === 'k') { e.preventDefault(); const inp = document.getElementById('msg-input'); if (inp) { inp.value = ''; toggleSendButton(); } return; }
@@ -1620,7 +1723,7 @@ function onInputKeydown(e) {
   if (_mentionActive) {
     if (e.key === 'ArrowDown') { e.preventDefault(); _moveMentionDropdown(1); return; }
     if (e.key === 'ArrowUp')   { e.preventDefault(); _moveMentionDropdown(-1); return; }
-    if (e.key === 'Tab' || e.key === 'Enter') {
+    if (e.key === 'Tab' || _isEnterKey(e)) {
       const dd = document.getElementById('mention-dropdown');
       if (dd && _mentionActive) {
         e.preventDefault();
@@ -1632,11 +1735,7 @@ function onInputKeydown(e) {
     }
     if (e.key === 'Escape') { _hideMentionDropdown(); return; }
   }
-  if (e.key === 'Enter') {
-    if (e.shiftKey) return; // Shift+Enter = newline
-    e.preventDefault();
-    send();
-  }
+  // Enter-to-send is handled solely by document keydown (bootstrap); do not duplicate here.
 }
 
 // ── Voice I/O ──────────────────────────────────────────────────────────────
@@ -1890,7 +1989,7 @@ async function sendResearch(customMessage) {
     message: researchMsg,
     repo_path: workspacePath || undefined,
     aspect_id: currentAspect,
-    show_thinking: document.getElementById('show-thinking').checked,
+    show_thinking: document.getElementById('show-thinking')?.checked ?? false,
     stream: streamMode,
   };
 
@@ -1984,10 +2083,13 @@ function retryLastMessage() {
 }
 
 async function send() {
+  _dbg('send() called');
   _hideMentionDropdown();
   const input = document.getElementById('msg-input');
+  if (!input) { _dbg('send() exit: no #msg-input'); return; }
   let msg = input.value.trim();
-  if (!msg) return;
+  if (!msg) { _dbg('send() exit: empty msg'); return; }
+  _dbg('send() proceeding', 'msg length=' + msg.length);
 
   // Parse @mention — extract aspect override for this message only
   let msgAspect = currentAspect;
@@ -2031,9 +2133,9 @@ async function send() {
   const payload = {
     message: msg,
     aspect_id: msgAspect,
-    show_thinking: document.getElementById('show-thinking').checked,
-    allow_write: document.getElementById('allow-write').checked,
-    allow_run: document.getElementById('allow-run').checked,
+    show_thinking: document.getElementById('show-thinking')?.checked ?? false,
+    allow_write: document.getElementById('allow-write')?.checked ?? false,
+    allow_run: document.getElementById('allow-run')?.checked ?? false,
     stream: streamMode,
   };
   if (modelOverride) payload.model_override = modelOverride;
@@ -2085,6 +2187,7 @@ async function send() {
     if (w) w.remove();
   }
 
+  _dbg('send() calling fetch /agent', 'stream=' + !!streamMode);
   try {
     if (streamMode) {
       // No typing indicator in stream mode — stream div appears immediately and fills
@@ -2211,6 +2314,7 @@ async function send() {
     refreshApprovals();
     document.getElementById('msg-input')?.focus();
   } catch (e) {
+    _dbg('send() catch', e && e.message, e);
     removeTyping();
     const err = ((e && (e.message || e.reason)) || String(e || '')).toLowerCase();
     const msg = (err.includes('fetch') || err.includes('network') || err.includes('load failed')) ? formatAgentError(null, null) : ('Something went wrong: ' + (e && (e.message || e.reason)) || 'unknown error');
@@ -2935,6 +3039,7 @@ async function refreshApprovals() {
   }
 
   // Replace the global/send function with a safe wrapper that preserves `this` and args.
+  _dbg('window.send wrapper installed');
   window.send = async function (...args) {
     if (_attachedFiles.length > 0) {
       const input = document.getElementById("msg-input");
@@ -3387,6 +3492,7 @@ const ONBOARDING_STEPS = [
   { text: "You're ready. Start chatting.", selector: null }
 ];
 function showOnboarding() {
+  return; // OVERLAY DISABLED FOR TESTING — remove this line to re-enable
   const ov = document.getElementById('onboarding-overlay');
   if (!ov) return;
   _onboardingStep = 0;
@@ -3398,6 +3504,7 @@ function dismissOnboarding() {
   if (ov) ov.style.display = 'none';
   document.querySelectorAll('.onboarding-highlight').forEach(el => el.classList.remove('onboarding-highlight'));
   localStorage.setItem('layla_onboarding_done', '1');
+  document.getElementById('msg-input')?.focus();
 }
 function applyOnboardingStep() {
   document.querySelectorAll('.onboarding-highlight').forEach(el => el.classList.remove('onboarding-highlight'));
@@ -3434,7 +3541,11 @@ refreshApprovals();
 refreshStudyPlans();
 checkSetupStatus().then(function() {
   if (!localStorage.getItem('layla_onboarding_done') && !document.getElementById('setup-overlay')?.classList.contains('visible')) {
-    showOnboarding();
+    if (document.activeElement && document.activeElement.id === 'msg-input') {
+      localStorage.setItem('layla_onboarding_done', '1');
+    } else {
+      showOnboarding();
+    }
   }
 });
 _renderSessionList();
@@ -3563,8 +3674,8 @@ async function checkSetupStatus() {
       showSetupOverlay(data);
     }
   } catch(e) {
-    // Server not up yet or no config — show setup
-    showSetupOverlay({});
+    // Server not reachable — show connection banner only; do not block the whole UI
+    document.getElementById('connection-banner')?.style.setProperty('display', 'block');
   }
 }
 
@@ -3572,6 +3683,7 @@ let _selectedModelUrl = '';
 let _selectedModelFilename = '';
 
 async function showSetupOverlay(statusData) {
+  return; // OVERLAY DISABLED FOR TESTING — remove this line to re-enable
   const overlay = document.getElementById('setup-overlay');
   if (!overlay) return;
   overlay.classList.add('visible');
@@ -3771,6 +3883,19 @@ function closeSettings() {
   if (_lastFocusedBeforeModal && typeof _lastFocusedBeforeModal.focus === 'function') _lastFocusedBeforeModal.focus(); else document.getElementById('msg-input')?.focus();
 }
 
+function openCliHelp() {
+  var cmd = 'python layla.py tui';
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(cmd).then(function() {
+      showToast('Copied: ' + cmd + ' — run in terminal to open the TUI');
+    }).catch(function() {
+      showToast('TUI: run in terminal from repo root: ' + cmd);
+    });
+  } else {
+    showToast('TUI: from repo root run: ' + cmd);
+  }
+}
+
 async function saveSettings() {
   const form = document.getElementById('settings-form');
   if (!form) return;
@@ -3808,15 +3933,94 @@ document.addEventListener('click', (e) => {
   if (e.target.id === 'setup-overlay') { /* don't close setup on backdrop click — intentional */ }
 });
 document.addEventListener('keydown', (e) => {
+  // Enter handled by early listener at top of script
   if (e.key === 'Escape') {
     if (_micActive) { stopMic(); return; }
+    const onboardingOv = document.getElementById('onboarding-overlay');
+    if (onboardingOv && onboardingOv.style.display === 'flex') {
+      dismissOnboarding();
+      document.getElementById('msg-input')?.focus();
+      return;
+    }
     closeChatSearch();
     closeSettings();
     if (document.getElementById('setup-overlay')?.classList.contains('visible')) {
       document.getElementById('setup-overlay').classList.remove('visible');
     }
   }
-});
+}, true);
+
+// Expose all UI handlers to window so inline onclick/onchange work regardless of script scope
+if (typeof exportChat === 'function') window.exportChat = exportChat;
+if (typeof toggleTheme === 'function') window.toggleTheme = toggleTheme;
+if (typeof toggleSidebarCompact === 'function') window.toggleSidebarCompact = toggleSidebarCompact;
+if (typeof openSettings === 'function') window.openSettings = openSettings;
+if (typeof clearChat === 'function') window.clearChat = clearChat;
+if (typeof openCliHelp === 'function') window.openCliHelp = openCliHelp;
+if (typeof toggleAspectLock === 'function') window.toggleAspectLock = toggleAspectLock;
+if (typeof toggleMobileSidebar === 'function') window.toggleMobileSidebar = toggleMobileSidebar;
+if (typeof addWorkspacePreset === 'function') window.addWorkspacePreset = addWorkspacePreset;
+if (typeof removeWorkspacePreset === 'function') window.removeWorkspacePreset = removeWorkspacePreset;
+if (typeof onWorkspacePresetSelect === 'function') window.onWorkspacePresetSelect = onWorkspacePresetSelect;
+if (typeof sendResearch === 'function') window.sendResearch = sendResearch;
+if (typeof startResearchMission === 'function') window.startResearchMission = startResearchMission;
+if (typeof focusResearchPanel === 'function') window.focusResearchPanel = focusResearchPanel;
+if (typeof acceptUrlFetch === 'function') window.acceptUrlFetch = acceptUrlFetch;
+if (typeof dismissUrlChip === 'function') window.dismissUrlChip = dismissUrlChip;
+if (typeof toggleMic === 'function') window.toggleMic = toggleMic;
+if (typeof retryLastMessage === 'function') window.retryLastMessage = retryLastMessage;
+if (typeof addStudyPlan === 'function') window.addStudyPlan = addStudyPlan;
+if (typeof fillPrompt === 'function') window.fillPrompt = fillPrompt;
+if (typeof showResearchTab === 'function') window.showResearchTab = showResearchTab;
+if (typeof chatSearchNext === 'function') window.chatSearchNext = chatSearchNext;
+if (typeof closeChatSearch === 'function') window.closeChatSearch = closeChatSearch;
+if (typeof onChatSearchInput === 'function') window.onChatSearchInput = onChatSearchInput;
+if (typeof openChatSearch === 'function') window.openChatSearch = openChatSearch;
+if (typeof dismissOnboarding === 'function') window.dismissOnboarding = dismissOnboarding;
+if (typeof onboardingNext === 'function') window.onboardingNext = onboardingNext;
+if (typeof startModelDownload === 'function') window.startModelDownload = startModelDownload;
+if (typeof saveSettings === 'function') window.saveSettings = saveSettings;
+if (typeof closeSettings === 'function') window.closeSettings = closeSettings;
+if (typeof closeBatchDiffViewer === 'function') window.closeBatchDiffViewer = closeBatchDiffViewer;
+if (typeof confirmApplyBatch === 'function') window.confirmApplyBatch = confirmApplyBatch;
+if (typeof closeDiffViewer === 'function') window.closeDiffViewer = closeDiffViewer;
+if (typeof confirmApplyFile === 'function') window.confirmApplyFile = confirmApplyFile;
+if (typeof refreshPlatformHealth === 'function') window.refreshPlatformHealth = refreshPlatformHealth;
+if (typeof refreshPlatformModels === 'function') window.refreshPlatformModels = refreshPlatformModels;
+if (typeof refreshPlatformKnowledge === 'function') window.refreshPlatformKnowledge = refreshPlatformKnowledge;
+if (typeof refreshPlatformPlugins === 'function') window.refreshPlatformPlugins = refreshPlatformPlugins;
+if (typeof refreshPlatformProjects === 'function') window.refreshPlatformProjects = refreshPlatformProjects;
+if (typeof refreshPlatformTimeline === 'function') window.refreshPlatformTimeline = refreshPlatformTimeline;
+if (typeof attachFile === 'function') window.attachFile = attachFile;
+if (typeof onMemorySearch === 'function') window.onMemorySearch = onMemorySearch;
+
+} finally {
+// Bind input keydown (Ctrl+K, mentions, etc.) and optional toggleSendButton/onInputChange. Send and Enter use triggerSend (inline + document keydown). Panel tabs use inline onclick only.
+(function bindChatInputNow() {
+  try {
+    if (typeof _dbg === 'function') _dbg('bindChatInputNow running');
+    var input = document.getElementById('msg-input');
+    var btn = document.getElementById('send-btn');
+    if (input) {
+      if (typeof onInputKeydown === 'function') input.addEventListener('keydown', onInputKeydown);
+      if (typeof onInputChange === 'function') input.addEventListener('input', onInputChange);
+      if (typeof toggleSendButton === 'function') {
+        input.addEventListener('focus', toggleSendButton);
+        toggleSendButton();
+      }
+      if (typeof _dbg === 'function') _dbg('input listeners attached');
+    }
+    if (btn) {
+      btn.removeAttribute('disabled');
+      btn.disabled = false;
+      if (typeof toggleSendButton === 'function') toggleSendButton();
+    }
+  } catch (e) {
+    if (typeof _dbg === 'function') _dbg('bindChatInputNow FAILED', e);
+    try { console.warn('[Layla] bindChatInputNow error', e); } catch (_) {}
+  }
+})();
+}
 </script>
 
 <!-- ── Chat search overlay ─────────────────────────────────────────────── -->
