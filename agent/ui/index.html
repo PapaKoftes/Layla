@@ -1301,7 +1301,19 @@
             el.scrollTop = el.scrollHeight;
           }
         })
-        .catch(function(e) { if (chat) { var err = document.createElement('div'); err.className = 'msg msg-layla'; err.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble">Error: ' + String(e && e.message || e).replace(/</g, '&lt;') + '</div>'; chat.appendChild(err); } });
+        .catch(function(e) {
+          if (chat) {
+            var err = document.createElement('div');
+            err.className = 'msg msg-layla';
+            var msg = (e && (e.message || '').toLowerCase()) || '';
+            var friendly = (msg.indexOf('fetch') !== -1 || msg.indexOf('network') !== -1 || msg.indexOf('load failed') !== -1)
+              ? "Can't reach Layla. Is the server running at http://127.0.0.1:8000?"
+              : ('Error: ' + String(e && e.message || e));
+            err.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble">' + String(friendly).replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+            chat.appendChild(err);
+            chat.scrollTop = chat.scrollHeight;
+          }
+        });
     } catch (e) { console.warn('[Layla] triggerSend', e); }
   };
   document.addEventListener('keydown', function (e) {
@@ -2301,7 +2313,8 @@ async function send() {
       refreshApprovals();
       return;
     }
-    addMsg('layla', data.response || JSON.stringify(data), data.aspect_name, data.state?.steps?.some(s => s.deliberated), data.state?.steps, data.ux_states, data.memory_influenced);
+    const replyText = (data.response != null && String(data.response).trim() !== '') ? data.response : 'No response from Layla.';
+    addMsg('layla', replyText, data.aspect_name, data.state?.steps?.some(s => s.deliberated), data.state?.steps, data.ux_states, data.memory_influenced);
     updateRetryButton();
     if (data.refused && data.refusal_reason) {
       const refDiv = document.createElement('div');
