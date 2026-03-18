@@ -831,7 +831,7 @@ def system_overloaded() -> bool:
     smooth_cpu = (cpu + _last_cpu) / 2.0 if _last_cpu else cpu
     smooth_ram = (ram + _last_ram) / 2.0 if _last_ram else ram
     _last_cpu, _last_ram = cpu, ram
-    return smooth_cpu > cfg.get("max_cpu_percent", 90) or smooth_ram > cfg.get("max_ram_percent", 90)
+    return smooth_cpu > cfg.get("max_cpu_percent", 95) or smooth_ram > cfg.get("max_ram_percent", 95)
 
 
 # Valid tool names for LLM decision (must match TOOLS registry)

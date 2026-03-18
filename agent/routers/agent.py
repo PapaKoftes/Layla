@@ -4,7 +4,6 @@ import base64
 import json
 import logging
 import queue
-import tempfile
 import threading
 from pathlib import Path
 
@@ -232,6 +231,20 @@ async def agent(req: dict):
         if img_ctx:
             context = (img_ctx + "\n\n" + context).strip() if context else img_ctx
 
+    # Empty message: avoid running the full loop
+    if not (goal or "").strip():
+        return JSONResponse({
+            "response": "Please type a message.",
+            "state": {},
+            "aspect": aspect_id or "morrigan",
+            "aspect_name": "Layla",
+            "refused": False,
+            "refusal_reason": "",
+            "ux_states": [],
+            "memory_influenced": [],
+            "cited_sources": [],
+        }, status_code=200)
+
     # Pre-check: model must be ready before we block on a long run
     model_err = _model_ready_message()
     if model_err and goal.strip():
@@ -297,6 +310,16 @@ async def agent(req: dict):
                     yield f"data: {json.dumps({'done': True, 'content': err, 'ux_states': [], 'memory_influenced': []})}\n\n"
                     return
                 result = result_holder[0] if result_holder else {}
+                if result.get("status") == "system_busy":
+                    _append_history("user", goal)
+                    _append_history("assistant", "I couldn't reply just then.")
+                    yield f"data: {json.dumps({'done': True, 'content': 'System is under load (CPU or RAM). Try again in a moment.', 'ux_states': [], 'memory_influenced': []})}\n\n"
+                    return
+                if result.get("status") == "timeout":
+                    _append_history("user", goal)
+                    _append_history("assistant", "I couldn't reply just then.")
+                    yield f"data: {json.dumps({'done': True, 'content': 'Request took too long and was stopped. Try a shorter message or try again.', 'ux_states': [], 'memory_influenced': []})}\n\n"
+                    return
                 if result.get("status") == "stream_pending":
                     goal_for_stream = result.get("goal_for_stream", goal)
                     full = []
@@ -317,6 +340,12 @@ async def agent(req: dict):
                     steps = result.get("steps") or []
                     final = steps[-1].get("result", "") if steps else ""
                     response_text = final if isinstance(final, str) else json.dumps(final) if final else ""
+                    if not response_text and result.get("status") == "tool_limit":
+                        response_text = "Stopped after maximum tool calls. Try a simpler request or say 'continue'."
+                    if not response_text and result.get("status") == "parse_failed":
+                        response_text = "I couldn't understand the request. Please rephrase."
+                    if not response_text:
+                        response_text = "No response. Try again or rephrase."
                     _append_history("user", goal)
                     _append_history("assistant", response_text)
                     yield f"data: {json.dumps({'done': True, 'content': response_text, 'ux_states': result.get('ux_states', []), 'memory_influenced': result.get('memory_influenced', [])})}\n\n"
@@ -374,6 +403,12 @@ async def agent(req: dict):
         response_text = "System is under load (CPU or RAM). Try again in a moment."
     elif not response_text and result.get("status") == "timeout":
         response_text = "Request took too long and was stopped. Try a shorter message or try again."
+    elif not response_text and result.get("status") == "tool_limit":
+        response_text = "Stopped after maximum tool calls. Try a simpler request or say 'continue'."
+    elif not response_text and result.get("status") == "parse_failed":
+        response_text = "I couldn't understand the request. Please rephrase."
+    elif not response_text:
+        response_text = "No response. Try again or rephrase."
 
     _append_history("user", goal)
     if result.get("status") in ("system_busy", "timeout") and response_text:
