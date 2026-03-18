@@ -128,8 +128,8 @@ def load_config() -> dict:
         return _config_cache
     # Static defaults (safe fallbacks)
     defaults = {
-        "max_cpu_percent": 90,
-        "max_ram_percent": 90,
+        "max_cpu_percent": 95,
+        "max_ram_percent": 95,
         "max_runtime_seconds": 20,
         "max_tool_calls": 5,
         "tool_routing_enabled": True,
@@ -173,7 +173,6 @@ def load_config() -> dict:
         "chat_model": None,
         "model_override_enabled": True,
         "reasoning_budget": -1,
-        "reasoning_model": None,
         "scheduler_study_enabled": True,
         "scheduler_interval_minutes": 30,
         "scheduler_recent_activity_minutes": 90,

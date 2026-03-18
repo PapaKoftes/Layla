@@ -22,6 +22,8 @@
   "flash_attn": true,
   "type_k": 8,
   "type_v": 8,
+  "rope_freq_base": null,
+  "rope_freq_scale": null,
 
   "temperature": 0.2,
   "top_p": 0.95,
@@ -33,6 +35,15 @@
   "stop_sequences": ["\nUser:", " User:"],
 
   "max_tool_calls": 5,
+  "max_runtime_seconds": 20,
+  "tool_routing_enabled": true,
+  "use_instructor_for_decisions": true,
+  "retrieval_cache_ttl_seconds": 60,
+  "auto_lint_test_fix": false,
+  "auto_lint_test_fix_run_tests": false,
+  "retrieval_injection": true,
+  "context_compression": true,
+  "git_auto_commit": false,
   "research_max_tool_calls": 40,
   "research_max_runtime_seconds": 240,
   "safe_mode": true,
@@ -57,6 +68,7 @@
   "max_mission_steps": 10,
   "enable_cot": true,
   "enable_self_reflection": false,
+  "custom_system_prefix": "",
   "benchmark_on_load": false,
   "hardware_aware_startup": true,
 
@@ -76,6 +88,21 @@
   "remote_model_name": "layla",
   "llama_server_url": null,
   "inference_backend": "auto",
+  "coding_model": null,
+  "reasoning_model": null,
+  "chat_model": null,
+  "model_override_enabled": true,
+  "reasoning_budget": -1,
+  "reasoning_model": null,
+
+  "discord_webhook_url": null,
+  "discord_bot_token": null,
+  "slack_bot_token": null,
+  "slack_app_token": null,
+  "telegram_bot_token": null,
+  "spotify_client_id": null,
+  "spotify_client_secret": null,
+  "slack_webhook_url": null,
 
   "trace_id_enabled": false,
 
@@ -84,8 +111,8 @@
   "tts_voice": "af_heart",
   "tts_speed": 1.0,
 
-  "max_ram_percent": 90,
-  "max_cpu_percent": 90,
+  "max_ram_percent": 95,
+  "max_cpu_percent": 95,
   "web_allowlist": [],
 
   "knowledge_sources": [
@@ -99,6 +126,8 @@
   "enable_personality_expression": false,
   "enable_cognitive_lens": false,
   "enable_behavioral_rhythm": false,
+  "enable_lens_refresh": false,
+  "lens_refresh_interval_days": 7,
   "enable_lens_knowledge": false,
   "enable_ui_reflection": false,
   "enable_operational_guidance": false,
