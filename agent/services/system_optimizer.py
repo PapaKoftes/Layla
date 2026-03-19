@@ -16,6 +16,8 @@ logger = logging.getLogger("layla")
 _RUNTIME_OVERRIDE_KEYS = frozenset({
     "n_ctx", "max_tool_calls", "research_max_tool_calls",
     "semantic_k", "knowledge_chunks_k", "knowledge_max_bytes",
+    "retrieval_cross_encoder_limit", "max_plan_depth",
+    "enable_cognitive_workspace", "planning_enabled",
 })
 
 
@@ -85,7 +87,60 @@ def get_effective_config(base_cfg: dict | None = None) -> dict:
     ram = metrics.get("ram_percent", 0)
     gpu = metrics.get("gpu_percent", 0)
 
-    # Under pressure: reduce context, tool calls, retrieval depth
+    # Performance mode: fixed profile before pressure-based tuning.
+    # Missing key = mid (backward compatible). Explicit "auto" = hardware-detected.
+    raw_pm = cfg.get("performance_mode")
+    if raw_pm is None or str(raw_pm).strip() == "":
+        mode = "mid"
+    else:
+        mode = str(raw_pm).strip().lower()
+    if mode == "auto":
+        try:
+            from services.hardware_detect import detect_hardware
+
+            hw = detect_hardware()
+            vram = float(hw.get("vram_gb", 0.0) or 0.0)
+            ram = float(hw.get("ram_gb", 0.0) or 0.0)
+            if vram > 0:
+                mode = "low" if vram < 6 else ("mid" if vram < 12 else "high")
+            else:
+                mode = "low" if ram < 8 else ("mid" if ram < 24 else "high")
+        except Exception as e:
+            logger.debug("performance_mode auto detect: %s", e)
+            mode = "mid"
+
+    n_ctx_base = int(cfg.get("n_ctx", 4096))
+    max_tool_base = int(cfg.get("max_tool_calls", 5))
+    research_max_base = int(cfg.get("research_max_tool_calls", 20))
+    semantic_k_base = int(cfg.get("semantic_k", 5))
+    chunks_k_base = int(cfg.get("knowledge_chunks_k", 5))
+    knowledge_max_base = int(cfg.get("knowledge_max_bytes", 4000))
+    ce_base = int(cfg.get("retrieval_cross_encoder_limit", 10) or 0)
+    plan_depth_base = int(cfg.get("max_plan_depth", 3) or 0)
+
+    if mode == "low":
+        cfg["n_ctx"] = min(2048, n_ctx_base)
+        cfg["max_tool_calls"] = min(3, max_tool_base)
+        cfg["research_max_tool_calls"] = min(10, research_max_base)
+        cfg["semantic_k"] = min(3, semantic_k_base)
+        cfg["knowledge_chunks_k"] = min(3, chunks_k_base)
+        cfg["knowledge_max_bytes"] = min(2000, knowledge_max_base)
+        cfg["retrieval_cross_encoder_limit"] = 0
+        cfg["max_plan_depth"] = min(1, plan_depth_base)
+        cfg["enable_cognitive_workspace"] = False
+        cfg["planning_enabled"] = bool(cfg.get("planning_enabled", True)) and plan_depth_base > 0
+    elif mode == "high":
+        cfg["n_ctx"] = max(n_ctx_base, min(8192, n_ctx_base * 2))
+        cfg["max_tool_calls"] = max(max_tool_base, min(8, max_tool_base + 3))
+        cfg["research_max_tool_calls"] = max(research_max_base, min(50, research_max_base + 10))
+        cfg["semantic_k"] = max(semantic_k_base, min(8, semantic_k_base + 2))
+        cfg["knowledge_chunks_k"] = max(chunks_k_base, min(8, chunks_k_base + 2))
+        cfg["retrieval_cross_encoder_limit"] = max(ce_base, 10) if ce_base > 0 else 10
+        cfg["max_plan_depth"] = max(plan_depth_base, min(5, plan_depth_base + 1))
+        cfg["enable_cognitive_workspace"] = True
+    # mid: no preset changes (use base_cfg values already in cfg)
+
+    # Refresh bases after mode preset (pressure tier uses current cfg)
     n_ctx_base = int(cfg.get("n_ctx", 4096))
     max_tool_base = int(cfg.get("max_tool_calls", 5))
     research_max_base = int(cfg.get("research_max_tool_calls", 20))

@@ -100,12 +100,57 @@ CAPABILITIES: dict[str, list[CapabilityImpl]] = {
             description="BeautifulSoup HTML parsing",
         ),
     ],
+    # Local GGUF code specialist vs default stack (llama_cpp always importable when installed)
+    "llm_model_coding": [
+        CapabilityImpl(
+            id="magicoder",
+            package="llama_cpp",
+            module_path="llama_cpp",
+            description="Magicoder-S-DS-6.7B-class GGUF code specialist (set coding_model / models.code)",
+            is_default=False,
+        ),
+        CapabilityImpl(
+            id="default_coding",
+            package="llama_cpp",
+            module_path="llama_cpp",
+            description="Primary model for coding tasks (same stack as chat)",
+            is_default=True,
+        ),
+    ],
 }
 
 
 def list_implementations(capability: str) -> list[CapabilityImpl]:
     """Return all known implementations for a capability."""
     return list(CAPABILITIES.get(capability, []))
+
+
+def get_best_llm_filename_for_task(task_type: str, cfg: dict | None = None) -> str | None:
+    """
+    Capability + benchmark aware GGUF basename for routing (currently coding / Magicoder path).
+    Returns None to fall back to select_model / route_model logic.
+    """
+    if task_type != "coding":
+        return None
+    if cfg is None:
+        try:
+            import runtime_safety
+
+            cfg = runtime_safety.load_config()
+        except Exception:
+            cfg = {}
+    try:
+        impl = get_active_implementation("llm_model_coding", cfg)
+        if impl and impl.id == "magicoder":
+            raw = (cfg.get("coding_model") or "").strip()
+            if not raw:
+                return None
+            from services.model_router import _resolve_models_block_alias
+
+            return _resolve_models_block_alias(raw) or raw
+    except Exception as e:
+        logger.debug("get_best_llm_filename_for_task: %s", e)
+    return None
 
 
 def _module_importable(module_path: str) -> bool:

@@ -16,6 +16,7 @@ from agent_loop import (
     strip_junk_from_reply,
     truncate_at_next_user_turn,
 )
+from services.output_polish import polish_output
 from shared_state import get_append_history, get_history, get_touch_activity
 
 logger = logging.getLogger("layla")
@@ -207,6 +208,26 @@ def _model_ready_message() -> str | None:
     return None
 
 
+def _no_model_response(message: str) -> JSONResponse:
+    """Standard shape when no GGUF / remote model is configured (UI opens setup)."""
+    return JSONResponse(
+        {
+            "error": "no_model",
+            "action": "open_setup",
+            "response": message,
+            "state": {},
+            "aspect": "",
+            "aspect_name": "Layla",
+            "refused": False,
+            "refusal_reason": "",
+            "ux_states": [],
+            "memory_influenced": [],
+            "cited_sources": [],
+        },
+        status_code=200,
+    )
+
+
 @router.post("/agent")
 async def agent(req: dict):
     get_touch_activity()()
@@ -248,17 +269,7 @@ async def agent(req: dict):
     # Pre-check: model must be ready before we block on a long run
     model_err = _model_ready_message()
     if model_err and goal.strip():
-        return JSONResponse({
-            "response": model_err,
-            "state": {},
-            "aspect": "",
-            "aspect_name": "Layla",
-            "refused": False,
-            "refusal_reason": "",
-            "ux_states": [],
-            "memory_influenced": [],
-            "cited_sources": [],
-        }, status_code=200)
+        return _no_model_response(model_err)
 
     if stream:
         ux_state_queue = queue.Queue()
@@ -329,10 +340,11 @@ async def agent(req: dict):
                         conversation_history=list(_history),
                         aspect_id=aspect_id,
                         show_thinking=show_thinking,
+                        model_override=model_override or None,
                     ):
                         full.append(token)
                         yield f"data: {json.dumps({'token': token})}\n\n"
-                    text = truncate_at_next_user_turn(strip_junk_from_reply("".join(full)))
+                    text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply("".join(full))))
                     _append_history("user", goal)
                     _append_history("assistant", text)
                     yield f"data: {json.dumps({'done': True, 'content': text, 'ux_states': result.get('ux_states', []), 'memory_influenced': result.get('memory_influenced', [])})}\n\n"
@@ -409,6 +421,9 @@ async def agent(req: dict):
         response_text = "I couldn't understand the request. Please rephrase."
     elif not response_text:
         response_text = "No response. Try again or rephrase."
+
+    if result.get("status") == "finished":
+        response_text = polish_output(response_text)
 
     _append_history("user", goal)
     if result.get("status") in ("system_busy", "timeout") and response_text:
