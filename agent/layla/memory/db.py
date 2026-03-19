@@ -208,6 +208,7 @@ def _migrate_impl() -> None:
         ("confidence", "REAL DEFAULT 0.5"),
         ("source", "TEXT DEFAULT ''"),
         ("content_hash", "TEXT DEFAULT ''"),
+        ("score", "REAL DEFAULT 1.0"),
     ]:
         try:
             with _conn() as db:
@@ -719,6 +720,7 @@ def save_learning(
     embedding_id: str = "",
     confidence: float = 0.5,
     source: str = "",
+    score: float = 1.0,
 ) -> int:
     """Save a learning. Uses content_hash for dedup. confidence: 0.9 study, 0.7 LLM, 0.4 heuristic.
     Hook: learning quality filter rejects short/uncertain entries; long content summarized before storing."""
@@ -752,6 +754,7 @@ def save_learning(
         pass
     learning_type = kind if kind in ("fact", "preference", "strategy", "identity") else "fact"
     content_hash = hashlib.sha1(content.encode("utf-8", errors="replace")).hexdigest()
+    score = max(0.0, min(1.0, float(score)))
     with _conn() as db:
         try:
             has_hash = any(r[1] == "content_hash" for r in db.execute("PRAGMA table_info(learnings)").fetchall())
@@ -763,9 +766,9 @@ def save_learning(
                 return row[0]
         try:
             cur = db.execute(
-                """INSERT INTO learnings (content, type, created_at, embedding_id, learning_type, confidence, source, content_hash)
-                   VALUES (?,?,?,?,?,?,?,?)""",
-                (content, learning_type, utcnow().isoformat(), embedding_id, learning_type, confidence, source, content_hash),
+                """INSERT INTO learnings (content, type, created_at, embedding_id, learning_type, confidence, source, content_hash, score)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (content, learning_type, utcnow().isoformat(), embedding_id, learning_type, confidence, source, content_hash, score),
             )
         except sqlite3.OperationalError:
             cur = db.execute(
@@ -799,7 +802,15 @@ def save_learning(
 _ASPECT_LEARNING_PREFERENCE = {"echo": "preference", "morrigan": "strategy", "nyx": "fact"}
 
 
-def get_recent_learnings(n: int = 30, aspect_id: str | None = None) -> list[dict]:
+def count_learnings() -> int:
+    """Return total number of stored learnings quickly."""
+    migrate()
+    with _conn() as db:
+        row = db.execute("SELECT COUNT(*) AS c FROM learnings").fetchone()
+        return int(row["c"]) if row and row["c"] is not None else 0
+
+
+def get_recent_learnings(n: int = 30, aspect_id: str | None = None, min_score: float | None = None) -> list[dict]:
     """Recent learnings. If aspect_id given, prefer learning_type: Echo->preference, Morrigan->strategy, Nyx->fact."""
     migrate()
     with _conn() as db:
@@ -812,15 +823,24 @@ def get_recent_learnings(n: int = 30, aspect_id: str | None = None) -> list[dict
         sel = "id, content, type, created_at, embedding_id"
         if has_conf:
             sel += ", confidence"
+        has_score = any(r[1] == "score" for r in db.execute("PRAGMA table_info(learnings)").fetchall())
+        if has_score:
+            sel += ", score"
+        score_filter = ""
+        args: list = []
+        if has_score and min_score is not None:
+            score_filter = " WHERE COALESCE(score, 1.0) >= ?"
+            args.append(float(min_score))
         if not has_lt or not aspect_id:
-            rows = db.execute(f"SELECT {sel} FROM learnings ORDER BY id DESC LIMIT ?", (n,)).fetchall()
+            rows = db.execute(f"SELECT {sel} FROM learnings{score_filter} ORDER BY id DESC LIMIT ?", tuple(args + [n])).fetchall()
         else:
             pref = _ASPECT_LEARNING_PREFERENCE.get(aspect_id.lower(), "fact")
             sel_lt = sel + ", learning_type" if has_lt else sel
             rows = db.execute(
                 f"""SELECT {sel_lt} FROM learnings
+                   {score_filter}
                    ORDER BY CASE WHEN learning_type = ? THEN 0 ELSE 1 END, id DESC LIMIT ?""",
-                (pref, n),
+                tuple(args + [pref, n]),
             ).fetchall()
         result = [dict(r) for r in reversed(rows)]
         for r in result:

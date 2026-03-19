@@ -4,6 +4,7 @@ import base64
 import json
 import logging
 import queue
+import re
 import threading
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from shared_state import get_append_history, get_history, get_touch_activity
 
 logger = logging.getLogger("layla")
 router = APIRouter(tags=["agent"])
+_TRIVIAL_PATTERNS = re.compile(r"^(hi|hello|hey|yo|sup|ok|okay|sure|thanks|ty|lol|k|thx)\W*$", re.IGNORECASE)
 
 
 @router.get("/memories")
@@ -228,6 +230,17 @@ def _no_model_response(message: str) -> JSONResponse:
     )
 
 
+def _trivial_fast_reply(goal: str, aspect_id: str) -> str | None:
+    text = (goal or "").strip()
+    if not text or len(text) > 20:
+        return None
+    if not _TRIVIAL_PATTERNS.match(text):
+        return None
+    if text.lower().startswith(("thanks", "thx", "ty")):
+        return "Anytime. Want to keep going?"
+    return "Hey. I am here. What do you want to work on?"
+
+
 @router.post("/agent")
 async def agent(req: dict):
     get_touch_activity()()
@@ -245,6 +258,12 @@ async def agent(req: dict):
     stream = bool((req or {}).get("stream", False))
     model_override = (req or {}).get("model_override", "") or ""
     reasoning_effort = "high" if (req or {}).get("reasoning_effort") == "high" else None
+    cfg = {}
+    try:
+        import runtime_safety
+        cfg = runtime_safety.load_config()
+    except Exception:
+        cfg = {}
 
     # Image context: if user attached image, process and prepend to context
     if image_url or image_base64:
@@ -265,6 +284,41 @@ async def agent(req: dict):
             "memory_influenced": [],
             "cited_sources": [],
         }, status_code=200)
+
+    # Fast path for trivial greetings/acks: avoid full orchestration overhead.
+    fast_reply = _trivial_fast_reply(goal, aspect_id)
+    if fast_reply and not context and not image_url and not image_base64 and not show_thinking:
+        _append_history("user", goal)
+        _append_history("assistant", fast_reply)
+        return JSONResponse({
+            "response": fast_reply,
+            "state": {"status": "fast_path", "reasoning_mode": "none"},
+            "aspect": aspect_id or "morrigan",
+            "aspect_name": "Layla",
+            "refused": False,
+            "refusal_reason": "",
+            "ux_states": ["fast_path"],
+            "memory_influenced": [],
+            "cited_sources": [],
+            "reasoning_mode": "none",
+        }, status_code=200)
+
+    cache_enabled = bool(cfg.get("response_cache_enabled", False))
+    cache_ttl = int(cfg.get("response_cache_ttl_seconds", 300) or 0)
+    cache_max_entries = int(cfg.get("response_cache_max_entries", 300) or 300)
+    if cache_enabled and not stream and not allow_write and not allow_run and not context and not image_url and not image_base64:
+        try:
+            from services.response_cache import get_cached_response
+            cached = get_cached_response(goal, aspect_id or "morrigan", cache_ttl)
+            if cached:
+                cached.setdefault("state", {})
+                if isinstance(cached["state"], dict):
+                    cached["state"]["status"] = "cache_hit"
+                _append_history("user", goal)
+                _append_history("assistant", cached.get("response", ""))
+                return JSONResponse(cached, status_code=200)
+        except Exception:
+            pass
 
     # Pre-check: model must be ready before we block on a long run
     model_err = _model_ready_message()
@@ -301,6 +355,7 @@ async def agent(req: dict):
 
         def gen():
             try:
+                yield f"data: {json.dumps({'ux_state': 'thinking'})}\n\n"
                 while thread.is_alive() or not ux_state_queue.empty():
                     try:
                         ux = ux_state_queue.get(timeout=0.15)
@@ -432,7 +487,7 @@ async def agent(req: dict):
     else:
         _append_history("assistant", response_text)
 
-    return JSONResponse({
+    response_payload = {
         "response": response_text,
         "state": result,
         "aspect": result.get("aspect", ""),
@@ -443,4 +498,11 @@ async def agent(req: dict):
         "memory_influenced": result.get("memory_influenced", []),
         "cited_sources": result.get("cited_knowledge_sources", []),
         "reasoning_mode": result.get("reasoning_mode"),
-    })
+    }
+    if cache_enabled and not stream and not allow_write and not allow_run and not context and not image_url and not image_base64:
+        try:
+            from services.response_cache import put_cached_response
+            put_cached_response(goal, aspect_id or response_payload.get("aspect") or "morrigan", response_payload, max_entries=cache_max_entries)
+        except Exception:
+            pass
+    return JSONResponse(response_payload)

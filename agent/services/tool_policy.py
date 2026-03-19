@@ -8,9 +8,9 @@ import fnmatch
 import logging
 from typing import Any
 
-logger = logging.getLogger("layla")
-
 from services.intent_detection import _get_tool_category, get_tool_names_for_goal
+
+logger = logging.getLogger("layla")
 
 # OpenClaw-aligned group names -> Layla tool categories (expanded via registry)
 _GROUP_TO_CATEGORIES: dict[str, tuple[str, ...]] = {

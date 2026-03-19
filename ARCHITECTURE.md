@@ -25,7 +25,7 @@ Client
       /approve, /pending       → routers/approvals.py
       /voice/transcribe        → services/stt.py     (faster-whisper)
       /voice/speak             → services/tts.py     (kokoro-onnx)
-      /health, /usage, /undo   → main.py (inline)
+      /health, /health?deep=true, /usage, /undo, /version, /update/* → main.py (inline)
       /knowledge/ingest, /knowledge/ingest/sources → main.py (doc ingestion)
       /workspace/index         → main.py (semantic codebase indexing)
       /v1/*, /ui               → main.py (inline)
@@ -38,6 +38,7 @@ Client
 **Transport inbound policy** (optional, OpenClaw-style): `transports/base.py` — env `LAYLA_TRANSPORT_ALLOWLIST`, `LAYLA_TRANSPORT_PAIRING_SECRET` (`/pair`), config `transport_allowlist`, `transport_require_allowlist`. Paired ids: repo-root `.layla_transport_paired.json` (gitignored). See `docs/OPENCLAW_ALIGNMENT.md`, `docs/OPENCLAW_BRIDGE.md`.
 
 **Sandbox runners** (optional paths): `services/sandbox/shell_runner.py` and `services/sandbox/python_runner.py` — timeouts and optional shell allowlist; wired from `shell` / `run_python` tools.
+**Fast chat path**: `routers/agent.py` short-circuits trivial greeting/ack turns and can serve cached short responses via `services/response_cache.py` when enabled.
 
 **Structured tool args** (optional): `services/tool_args.py` validates `decision["args"]` for selected tools when `tool_args_validation_enabled`.
 
@@ -63,6 +64,8 @@ Client
 **Performance modes:** `system_optimizer.get_effective_config()` applies `performance_mode` (`low` / `mid` / `high` / `auto`) before CPU/RAM pressure tiers. Omitted key = `mid`. Explicit `auto` uses `hardware_detect.detect_hardware()` with VRAM/RAM numeric thresholds (GPU VRAM: 6 GB and 12 GB boundaries; CPU-only: system RAM 8 GB and 24 GB boundaries). Never writes to `runtime_config.json`.
 
 **Streaming final reply:** When `stream_final` returns `stream_pending`, `routers/agent.py` calls `stream_reason(..., model_override=..., skip_self_reflection=...)` so task routing matches the main run and reflection respects `reasoning_mode` (ContextVar is cleared after `autonomous_run` returns). SSE `done` payloads include `reasoning_mode`.
+
+**LLM run lock scope:** `services/llm_gateway.llm_serialize_lock` is held for the entire `autonomous_run` lifecycle (not just completion calls) to avoid concurrent local LLM runs.
 
 **First-run UI:** `GET /setup_status` (`performance_mode`, `model_valid`, `ready`), `GET /setup/models` (catalog + `recommended_key`) — setup overlay in `agent/ui/index.html`. **`POST /agent`** returns `error: no_model`, `action: open_setup` when the model is missing.
 
@@ -120,7 +123,7 @@ Client
 | `agent/layla/memory/vector_store.py` | Two-stage retrieval: vector+BM25→top 20, light rerank→top 10, cross-encoder→top k. Config `retrieval_cross_encoder_limit`. ChromaDB, HyDE, parent-doc, confidence+recency boost |
 | `agent/services/context_budget.py` | Token budgets per section (identity, memory, knowledge, graph, workspace) |
 | `agent/services/context_manager.py` | Prompt assembly with budgets, deduplication, conversation summarization |
-| `agent/services/llm_gateway.py` | `run_completion()`, `prewarm_llm()`, multi-path `_get_llm()` + `RLock` serialize; delegates to inference_router |
+| `agent/services/llm_gateway.py` | `run_completion()`, `prewarm_llm()`, multi-path `_get_llm()` + `RLock`; exported serialize lock used for full `autonomous_run` serialization |
 | `agent/services/model_router.py` | `classify_task`, `route_model`, `select_model`, `models{}` aliases, `reset_router_config_cache` |
 | `agent/services/output_polish.py` | `polish_output()` final reply cleanup |
 | `agent/services/inference_router.py` | Multi-backend routing: llama_cpp, openai_compatible (vLLM), ollama |

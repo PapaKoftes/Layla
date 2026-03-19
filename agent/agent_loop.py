@@ -358,8 +358,10 @@ def _write_pending(tool: str, args: dict) -> str:
 
 def _load_learnings(aspect_id: str = "") -> str:
     try:
-        n = runtime_safety.load_config().get("learnings_n", 30)
-        rows = _db_get_learnings(n=n, aspect_id=aspect_id or None)
+        cfg = runtime_safety.load_config()
+        n = cfg.get("learnings_n", 30)
+        min_score = float(cfg.get("learning_min_score", 0.3) or 0.3)
+        rows = _db_get_learnings(n=n, aspect_id=aspect_id or None, min_score=min_score)
         return "\n".join(r["content"] for r in rows if r.get("content"))
     except Exception:
         return ""
@@ -2723,7 +2725,7 @@ def _autonomous_run_impl_core(
                 return state
             # Section 1: context compression when token count exceeds ~75% of n_ctx (before system head)
             effective_history = conversation_history or []
-            if effective_history and cfg.get("context_compression", True):
+            if effective_history and cfg.get("context_compression", True) and reasoning_mode != "none":
                 try:
                     from services.context_manager import summarize_history
                     n_ctx = max(2048, int(cfg.get("n_ctx", 4096)))

@@ -129,6 +129,9 @@ DEFAULTS: dict = {
     "scheduler_interval_minutes": 30,
     "enable_cot": True,
     "enable_self_reflection": False,
+    "embedder_prewarm_enabled": False,
+    "voice_stt_prewarm_enabled": False,
+    "voice_tts_prewarm_enabled": False,
     "whisper_model": "base",
     "tts_voice": "af_heart",
 }

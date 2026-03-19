@@ -95,6 +95,9 @@ Tests: `tests/test_reasoning_classifier.py`.
 | Knowledge ingestion | `services/doc_ingestion.py`, `main.py` routes, UI Knowledge panel | Writes under `knowledge/_ingested/`; `knowledge_ingestion_enabled`; content-hash dedup (`.hash` sidecars); `doc_injection_guard_enabled` (framing + redaction) |
 | Learning gate | `layla/memory/distill.py`, `layla/memory/db.py` `save_learning` | `learning_quality_gate_enabled`, `learning_quality_min_score` |
 | Multi-agent (prompt) | `services/agent_roles.py`, `agent_loop._build_system_head` | `multi_agent_orchestration_enabled` + deep mode |
+| Fast chat UX | `routers/agent.py`, `agent_loop.py`, `services/response_cache.py` | Trivial greeting fast-path, instant stream `thinking` event, optional response cache (`response_cache_*`) |
+| Productization | `version.py`, `services/auto_updater.py`, `main.py`, `ui/index.html` | `GET /version`, `GET /update/check`, `POST /update/apply` (allow_run + approval), UI health panel version/update controls |
+| Learning score floor | `layla/memory/db.py`, `agent_loop._load_learnings` | `learnings.score` column + prompt-time filter by `learning_min_score` |
 
 Tests: `tests/test_sandbox_runners.py`, `tests/test_code_intelligence.py`, `tests/test_tool_args.py`, `tests/test_tool_output_validator.py`.
 
@@ -172,13 +175,26 @@ Maps each capability domain to implemented modules and missing components. See [
 
 | Panel | API | Description |
 |-------|-----|-------------|
-| Health | GET /health | System status, model, tools, learnings, CPU/RAM |
+| Health | GET /health, GET /health?deep=true | Fast default health status; optional deep vector probe on demand |
 | Models | GET /platform/models | Active model, installed .gguf list, catalog (jinx/dolphin/hermes/qwen), benchmarks |
 | Knowledge | GET /platform/knowledge | Summaries, learnings, graph nodes, timeline, user identity |
 | Plugins | GET /platform/plugins | Loaded plugins, skills, tools |
 | Projects | GET /platform/projects | Project context: goals, progress, blockers, last_discussed |
 | Timeline | (via /platform/knowledge) | Timeline events (conversation summaries, milestones) |
 | Mission tracker | Research panel | /missions, /mission/{id} |
+
+---
+
+## Bug fixes (2026-03-19)
+
+| Area | Fix | Files |
+|------|-----|-------|
+| Mission API parsing | `/mission` now reads `workspace_root`, `allow_write`, and `allow_run` from parsed body dict | `agent/main.py` |
+| Health endpoint cost | `GET /health` now uses lightweight learning count; Chroma probe runs only on `?deep=true` | `agent/main.py`, `agent/layla/memory/db.py` |
+| Plugins endpoint cost | `/platform/plugins` now uses 60s TTL cache to avoid repeated plugin scans | `agent/main.py` |
+| Updater safety | `apply_update()` now checks dirty tree, syncs dependencies, returns `restart_required` | `agent/services/auto_updater.py` |
+| Approval robustness | `/approve` is idempotent for already executed approvals; unknown tools return structured errors | `agent/routers/approvals.py` |
+| Download integrity | Optional SHA-256 verification added to `verify_file()` | `agent/install/model_downloader.py` |
 
 ---
 
