@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## Unreleased
+
+### Hardening
+- `GET /setup_status` adds `model_valid`; UI re-opens setup when config points at a missing file
+- `POST /agent` returns `error: no_model` and `action: open_setup` when the model is not ready
+- `llm_gateway`: routing prompt ContextVar + `_effective_model_filename` uses `select_model` for all completions (skips internal decision/critic prompts)
+- Optional `completion_cache_enabled` + TTL for non-stream completions
+- `get_best_llm_filename_for_task` (capability-aware) wired into `select_model`
+- Context: `pinned_context` (last user message, last tool result, session summary), memory chunk dedup
+- `output_polish`: skip tool-style JSON (`"ok":` / `"error":` leaders)
+- Plugins: stricter YAML/capability validation; `/platform/plugins` includes `capabilities_by_type`
+- Setup UI: recommended model highlight, download retry, catalog `recommended` from hardware tier
+
+---
+
 ## [2.0.0] — 2026-02-22
 
 ### Major — The Character Update
@@ -50,6 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Task-aware model routing**: when `tool_routing_enabled` and task models are configured, `autonomous_run` sets `model_override` from `model_router.classify_task(goal, context)`; `llm_gateway._get_llm()` loads per-GGUF path (primary + `coding_model` / `reasoning_model` / `chat_model`). `model_router.select_model()` ties `llm_model_coding` capability (Magicoder id) to benchmarks and `coding_model`.
+- **`performance_mode`** (`low` | `mid` | `high` | `auto`) in `system_optimizer.get_effective_config()`: missing config defaults to `mid` (backward compatible); explicit `auto` maps from `hardware_detect` tiers. Adjusts `n_ctx`, tool limits, cross-encoder, planning depth, cognitive workspace (runtime only, never persisted).
+- **`models` block** in `runtime_config.example.json` (`default`, `code`, `fast`, `fallback`) with `magicoder` alias → known Magicoder GGUF basename under `models_dir`.
+- **`llm_model_coding`** capability in `capabilities/registry.py` (`magicoder`, `default_coding` impls).
+- **Plugin YAML `capabilities`**: `plugin_loader` registers `CapabilityImpl` entries via `register_implementation`.
+- **Startup capability benchmarks**: when `benchmark_on_load`, background thread runs `benchmark_suite` for `embedding` + `vector_search`.
+- **`services/output_polish.py`** (`polish_output`) applied to final agent replies and SSE stream completion in `routers/agent.py`.
+- **Web UI**: Stop button (`AbortController` on `/agent`), Regenerate label on retry; **`GET /platform/plugins`** includes `capabilities_added`.
+- **Tests**: `tests/test_capability_routing.py`; `pytest.ini` timeout 120s for slow first embedder load.
+- **LLM lock**: `threading.RLock` for `llm_serialize_lock` / `_llm_lock` to allow nested model load during `autonomous_run` without deadlock.
 - First-run onboarding (4-step guided tour)
 - Model readiness banner
 - Keyboard shortcut reference in Help panel

@@ -14,6 +14,7 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 # Aligned with context_budget.DEFAULT_BUDGETS
 DEFAULT_BUDGETS = {
     "system_instructions": 800,
+    "pinned_context": 400,
     "agent_state": 400,
     "current_goal": 100,
     "memory": 800,
@@ -175,6 +176,7 @@ def build_system_prompt(
     total_budget = max(512, n_ctx - reserve_for_response)
     order = [
         "system_instructions",
+        "pinned_context",
         "agent_state",
         "current_goal",
         "memory",

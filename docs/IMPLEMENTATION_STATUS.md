@@ -99,6 +99,20 @@ Maps each capability domain to implemented modules and missing components. See [
 
 ---
 
+## Capability routing and performance modes (2026-03)
+
+| Component | Module | Description |
+|-----------|--------|-------------|
+| Task model routing | `agent_loop._autonomous_run_impl`, `model_router.py`, `llm_gateway._get_llm` | When routing enabled: `classify_task(goal, context)` → per-task GGUF (`coding_model` / `reasoning_model` / `chat_model` or `models{}` block). `select_model()` + `llm_model_coding` capability for Magicoder vs default; benchmarks via `capability_implementations`. |
+| `llm_model_coding` | `capabilities/registry.py` | `magicoder` + `default_coding` impls (`llama_cpp` module_path). |
+| Performance modes | `system_optimizer.get_effective_config()` | `performance_mode`: `low` / `mid` / `high` / `auto` (explicit `auto` only → hardware tiers; omitted = `mid`). Runtime overrides: `n_ctx`, tool limits, `retrieval_cross_encoder_limit`, `max_plan_depth`, `enable_cognitive_workspace`, `planning_enabled`. |
+| Plugin capabilities | `plugin_loader.py` | YAML `capabilities:` → `register_implementation`. |
+| Startup capability benchmarks | `main.py` lifespan | If `benchmark_on_load`: daemon thread runs `benchmark_suite.run_benchmark` for embedding + vector_search. |
+| Output polish | `services/output_polish.py`, `routers/agent.py` | `polish_output` on finished replies and SSE final content. |
+| UI | `ui/index.html` | Regenerate (retry), Stop (AbortController on `/agent`). |
+
+---
+
 ## Architecture optimization (2025-03)
 
 | Component | Module | Description |
@@ -182,6 +196,20 @@ See [docs/DEBUG_AND_UPGRADE_ANALYSIS.md](DEBUG_AND_UPGRADE_ANALYSIS.md) for:
 - Test flakiness fix (system_overloaded in pre_read_probe tests)
 - OSS upgrade opportunities (instructor, tiktoken, vLLM/Ollama)
 - Deprecation warnings (torch.quantization, ChromaDB Pydantic)
+
+---
+
+## Phase 2 hardening (verified)
+
+| Area | Code |
+|------|------|
+| SSE / `stream_reason` task model | `agent_loop.stream_reason` + `_stream_reason_body`; `routers/agent.py` passes `model_override` |
+| Missing routed GGUF | `services/llm_gateway.py` `_get_llm` falls back to `model_filename` |
+| Polish safety for code/JSON | `services/output_polish.py` `_looks_like_code_or_structured` |
+| `performance_mode` auto | `services/system_optimizer.py` — VRAM/RAM numeric thresholds via `detect_hardware()` |
+| Setup overlay + status | `ui/index.html` `showSetupOverlay` enabled; `GET /setup_status` includes `performance_mode`; badge via `refreshModelStatus` |
+| Retrieval cap | `services/retrieval.py` `MAX_K = 5` on `build_retrieved_context` |
+| Tests | `tests/test_capability_routing.py` — `test_routing_consistency`, `test_missing_model_graceful_fallback` |
 
 ---
 

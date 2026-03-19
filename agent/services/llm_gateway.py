@@ -2,18 +2,24 @@
 Shared LLM completion gateway. Single point of access for local Llama or remote
 OpenAI-compatible server. Serializes all completion calls so they never run concurrently.
 """
+from __future__ import annotations
+
 import logging
 import os
 import threading
 import time
 from contextvars import ContextVar
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger("layla")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-_llm = None
-_llm_lock = threading.Lock()
+_llm = None  # legacy: first loaded instance (health/UI)
+_llm_by_path: dict[str, Any] = {}  # resolved model path -> Llama (task-based routing)
+# RLock: autonomous_run holds llm_serialize_lock for the whole run; nested _get_llm()
+# may load an alternate GGUF (coding_model) without deadlocking the same thread.
+_llm_lock = threading.RLock()
 # Exposed so agent_loop can serialize full autonomous_run (one run at a time for LLM)
 llm_serialize_lock = _llm_lock
 
@@ -21,6 +27,8 @@ llm_serialize_lock = _llm_lock
 _model_override_var: ContextVar[str | None] = ContextVar("model_override", default=None)
 # Per-request reasoning: "high" = use reasoning_budget from config for thinking models
 _reasoning_effort_var: ContextVar[str | None] = ContextVar("reasoning_effort", default=None)
+# Current completion prompt snippet: enables routing when model_override is unset (single source of truth in _effective_model_filename)
+_routing_prompt_var: ContextVar[str | None] = ContextVar("routing_prompt", default=None)
 
 
 def set_model_override(override: str | None) -> None:
@@ -41,6 +49,20 @@ def set_reasoning_effort(effort: str | None) -> None:
 def get_reasoning_effort() -> str | None:
     """Get reasoning effort for current request."""
     return _reasoning_effort_var.get(None)
+
+
+def _prompt_is_router_internal(prompt: str) -> bool:
+    """True for decision/critic/summarizer prompts — do not re-classify task from these."""
+    if not (prompt or "").strip():
+        return True
+    markers = (
+        "Choose one: run one tool",
+        "Output exactly one JSON line",
+        "You are a response quality critic",
+        "Summarize this conversation excerpt",
+        "Score this response 1-10",
+    )
+    return any(m in prompt for m in markers)
 
 
 # Token usage tracking (session totals since server start)
@@ -68,7 +90,7 @@ def model_loaded_status() -> dict:
         model_path = runtime_safety.resolve_model_path(cfg)
         if not model_path.exists():
             return {"error": "Model not loaded. Please configure model_path in runtime_config.json and place the .gguf file in models/"}
-        if _llm is not None:
+        if _llm is not None or _llm_by_path:
             return {"error": None}
         return {"error": None}
     except Exception as e:
@@ -87,15 +109,83 @@ def _auto_threads() -> int:
     return max(1, min(cores - 1, 16))
 
 
+def _effective_model_filename(cfg: dict) -> str:
+    """
+    Resolve GGUF basename: ContextVar override, else classify from routing prompt, else default.
+    Uses model_router.select_model (capability + benchmark aware) when a task type applies.
+    """
+    override = get_model_override()
+    rp = (_routing_prompt_var.get(None) or "").strip()
+    task: str | None = override if override in ("coding", "reasoning", "chat") else None
+    if task is None and rp and not _prompt_is_router_internal(rp):
+        if cfg.get("tool_routing_enabled", True):
+            try:
+                from services.model_router import classify_task, is_routing_enabled
+
+                if is_routing_enabled():
+                    c = classify_task(rp[:4000], "")
+                    if c in ("coding", "reasoning", "chat"):
+                        task = c
+            except Exception:
+                pass
+    if task in ("coding", "reasoning", "chat"):
+        try:
+            from services.hardware_detect import detect_hardware
+            from services.model_router import route_model, select_model
+
+            hw = detect_hardware()
+            lat = 0
+            try:
+                lat = int(cfg.get("latency_budget_ms") or 0)
+            except (TypeError, ValueError):
+                lat = 0
+            picked = select_model(task, len(rp), hw, lat)
+            if picked and str(picked).strip():
+                return str(picked).strip()
+            alt = route_model(task)
+            if alt and str(alt).strip():
+                return str(alt).strip()
+        except Exception as e:
+            logger.debug("task model route failed: %s", e)
+    return (cfg.get("model_filename") or "your-model.gguf").strip()
+
+
 def _get_llm():
     global _llm
-    if _llm is None:
-        from llama_cpp import Llama
+    from llama_cpp import Llama
 
-        import runtime_safety
-        cfg = runtime_safety.load_config()
-        model_filename = cfg.get("model_filename", "your-model.gguf")
-        model_path = runtime_safety.resolve_model_path(cfg)
+    import runtime_safety
+    cfg = runtime_safety.load_config()
+    model_filename = _effective_model_filename(cfg)
+    cfg_eff = dict(cfg)
+    cfg_eff["model_filename"] = model_filename
+    model_path = runtime_safety.resolve_model_path(cfg_eff)
+    if not model_path.exists():
+        logger.warning(
+            "Model file not found: %s — falling back to default model_filename",
+            model_path,
+        )
+        fallback_cfg = dict(cfg)
+        fallback_cfg["model_filename"] = (cfg.get("model_filename") or "your-model.gguf").strip()
+        model_path = runtime_safety.resolve_model_path(fallback_cfg)
+        model_filename = fallback_cfg["model_filename"]
+        cfg_eff = dict(cfg)
+        cfg_eff["model_filename"] = model_filename
+    try:
+        path_key = str(model_path.resolve())
+    except Exception:
+        path_key = str(model_path)
+
+    # Fast path without lock: autonomous_run holds llm_serialize_lock (same as _llm_lock);
+    # re-entering would deadlock during reflection / nested completion.
+    cached_fast = _llm_by_path.get(path_key)
+    if cached_fast is not None:
+        return cached_fast
+
+    with _llm_lock:
+        cached = _llm_by_path.get(path_key)
+        if cached is not None:
+            return cached
 
         n_ctx = max(512, int(cfg.get("n_ctx", 4096)))
         n_batch = max(1, min(n_ctx, int(cfg.get("n_batch", 512))))
@@ -140,12 +230,16 @@ def _get_llm():
             kwargs["rope_freq_scale"] = float(cfg["rope_freq_scale"])
 
         try:
-            _llm = Llama(**kwargs)
+            inst = Llama(**kwargs)
         except TypeError:
             # Older llama-cpp-python may not support all kwargs; retry with safe subset
             safe_keys = {"model_path", "n_ctx", "n_gpu_layers", "n_batch",
                          "n_threads", "n_threads_batch", "use_mlock", "use_mmap", "verbose"}
-            _llm = Llama(**{k: v for k, v in kwargs.items() if k in safe_keys})
+            inst = Llama(**{k: v for k, v in kwargs.items() if k in safe_keys})
+
+        _llm_by_path[path_key] = inst
+        if _llm is None:
+            _llm = inst
 
         logger.info(
             "LLM loaded: %s | ctx=%d batch=%d n_keep=%d gpu_layers=%s threads=%d/%d flash=%s",
@@ -160,7 +254,7 @@ def _get_llm():
                     logger.info("Model benchmark: %.1f tokens/sec", res["tokens_per_sec"])
             except Exception as e:
                 logger.debug("benchmark on load skipped: %s", e)
-    return _llm
+        return inst
 
 
 def prewarm_llm() -> None:
@@ -234,47 +328,78 @@ def run_completion(
     If stream=True, yields token strings; else returns {"choices": [{"message": {"content": text}}]}.
     timeout_seconds: used for remote HTTP only; local Llama has no timeout in this call.
     Token usage is tracked for /usage endpoint.
+    Sets routing prompt ContextVar so _effective_model_filename always has authority
+    (override or classify-from-prompt + select_model); internal prompts are excluded.
     """
     from services.inference_router import run_completion as _run
 
+    import runtime_safety
+
+    routing_tok = _routing_prompt_var.set((prompt or "")[:16000])
     prompt_tokens = _count_tokens(prompt)
     model_override = get_model_override()
+    routing_tag = str(model_override or "none")
     reasoning_effort = get_reasoning_effort()
     reasoning_budget = None
-    if reasoning_effort == "high":
-        try:
-            import runtime_safety
-            cfg = runtime_safety.load_config()
+    cfg: dict = {}
+    try:
+        cfg = runtime_safety.load_config()
+        if reasoning_effort == "high":
             budget = cfg.get("reasoning_budget", -1)
             if budget != 0:
                 reasoning_budget = int(budget) if budget else -1
-        except Exception:
-            pass
+    except Exception:
+        pass
 
-    if stream:
-        def _counting_gen():
-            completion_tokens = 0
-            inner = _run(
-                prompt=prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                stream=True,
-                stop=stop,
-                timeout_seconds=timeout_seconds,
-                _get_llm=_get_llm,
-                _llm_lock=_llm_lock,
-                model_override=model_override,
-                reasoning_budget=reasoning_budget,
-            )
+    try:
+        if (
+            not stream
+            and cfg.get("completion_cache_enabled")
+            and len(prompt or "") < 12000
+        ):
             try:
-                for chunk in inner:
-                    completion_tokens += _count_tokens(chunk)
-                    yield chunk
-            finally:
-                _add_usage(prompt_tokens, completion_tokens)
+                from services.completion_cache import get_cached
 
-        return _counting_gen()
-    else:
+                hit = get_cached(prompt or "", routing_tag)
+                if hit is not None:
+                    choices = hit.get("choices") or [{}]
+                    msg = (choices[0] if choices else {}).get("message") or {}
+                    text = msg.get("content") or (choices[0] if choices else {}).get("text") or ""
+                    _routing_prompt_var.reset(routing_tok)
+                    _add_usage(prompt_tokens, _count_tokens(text))
+                    return hit
+            except Exception as e:
+                logger.debug("completion cache get: %s", e)
+
+        if stream:
+
+            def _counting_gen():
+                completion_tokens = 0
+                try:
+                    inner = _run(
+                        prompt=prompt,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        stream=True,
+                        stop=stop,
+                        timeout_seconds=timeout_seconds,
+                        _get_llm=_get_llm,
+                        _llm_lock=_llm_lock,
+                        model_override=model_override,
+                        reasoning_budget=reasoning_budget,
+                    )
+                    try:
+                        for chunk in inner:
+                            completion_tokens += _count_tokens(chunk)
+                            yield chunk
+                    finally:
+                        _add_usage(prompt_tokens, completion_tokens)
+                finally:
+                    _routing_prompt_var.reset(routing_tok)
+
+            return _counting_gen()
+
+        out = None
         for attempt in range(2):
             try:
                 out = _run(
@@ -302,4 +427,17 @@ def run_completion(
             text = msg.get("content") or (choices[0] if choices else {}).get("text") or ""
         completion_tokens = _count_tokens(text)
         _add_usage(prompt_tokens, completion_tokens)
+        if cfg.get("completion_cache_enabled") and isinstance(out, dict):
+            try:
+                from services.completion_cache import set_cached
+
+                set_cached(prompt or "", routing_tag, out)
+            except Exception as e:
+                logger.debug("completion cache set: %s", e)
         return out
+    finally:
+        if not stream:
+            try:
+                _routing_prompt_var.reset(routing_tok)
+            except (ValueError, LookupError):
+                pass
