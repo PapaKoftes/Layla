@@ -39,6 +39,8 @@
   "tool_routing_enabled": true,
   "use_instructor_for_decisions": true,
   "retrieval_cache_ttl_seconds": 60,
+  "completion_cache_enabled": false,
+  "completion_cache_ttl_seconds": 45,
   "auto_lint_test_fix": false,
   "auto_lint_test_fix_run_tests": false,
   "retrieval_injection": true,
@@ -70,7 +72,17 @@
   "enable_self_reflection": false,
   "custom_system_prefix": "",
   "benchmark_on_load": false,
+  "_comment_benchmark_on_load": "When true: model bench on first LLM load; also runs lightweight embedding + vector_search capability benchmarks in a background thread at server startup.",
   "hardware_aware_startup": true,
+  "performance_mode": "auto",
+  "_comment_performance_mode": "low | mid | high | auto — auto maps from RAM/GPU tiers via system_optimizer.get_effective_config() (runtime only).",
+  "models": {
+    "default": "",
+    "code": "magicoder",
+    "fast": "",
+    "fallback": ""
+  },
+  "_comment_models": "Optional aliases: code=magicoder maps to a known GGUF basename under models_dir. coding_model / reasoning_model / chat_model still override when set.",
 
   "scheduler_study_enabled": true,
   "scheduler_interval_minutes": 30,

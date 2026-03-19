@@ -107,6 +107,7 @@ def run_diagnostics(include_llm: bool = False) -> dict[str, Any]:
         report["checks"]["plugins"] = {
             "skills_added": pl.get("skills_added", 0),
             "tools_added": pl.get("tools_added", 0),
+            "capabilities_added": pl.get("capabilities_added", 0),
             "errors": pl.get("errors", []),
         }
     except Exception as e:

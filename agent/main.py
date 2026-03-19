@@ -189,8 +189,13 @@ async def lifespan(app: FastAPI):
         try:
             from services.plugin_loader import load_plugins
             plug_result = load_plugins(cfg)
-            if plug_result["skills_added"] or plug_result["tools_added"]:
-                logger.info("Plugins loaded: %d skills, %d tools", plug_result["skills_added"], plug_result["tools_added"])
+            if plug_result["skills_added"] or plug_result["tools_added"] or plug_result.get("capabilities_added"):
+                logger.info(
+                    "Plugins loaded: %d skills, %d tools, %d capabilities",
+                    plug_result["skills_added"],
+                    plug_result["tools_added"],
+                    plug_result.get("capabilities_added", 0),
+                )
             for err in plug_result.get("errors", [])[:5]:
                 logger.warning("Plugin error: %s", err)
         except Exception as e:
@@ -202,6 +207,21 @@ async def lifespan(app: FastAPI):
             logger.info("LLM pre-warm thread started")
         except Exception as e:
             logger.warning("LLM pre-warm thread failed: %s", e)
+        if cfg.get("benchmark_on_load"):
+            def _startup_capability_benchmarks() -> None:
+                try:
+                    from services.benchmark_suite import run_benchmark
+                    run_benchmark("embedding", "sentence_transformers", "sentence-transformers")
+                    run_benchmark("vector_search", "chromadb", "chromadb")
+                except Exception as e:
+                    logger.debug("startup capability benchmarks skipped: %s", e)
+
+            threading.Thread(
+                target=_startup_capability_benchmarks,
+                daemon=True,
+                name="capability-benchmark-startup",
+            ).start()
+            logger.info("Capability benchmark startup thread started (benchmark_on_load)")
         # Preload embedder so first /agent request does not block on model load
         try:
             import threading as _t
@@ -680,14 +700,22 @@ def platform_plugins():
             skills = [{"name": k, "description": (v.get("description") or "")[:80]} for k, v in list(SKILLS.items())[:30]]
         except Exception:
             pass
+        try:
+            from capabilities.registry import CAPABILITIES
+
+            caps_summary = {k: len(v) for k, v in CAPABILITIES.items()}
+        except Exception:
+            caps_summary = {}
         return {
             "skills_added": pl.get("skills_added", 0),
             "tools_added": pl.get("tools_added", 0),
+            "capabilities_added": pl.get("capabilities_added", 0),
             "errors": pl.get("errors", []),
+            "capabilities_by_type": caps_summary,
             "skills": skills[:15],
         }
     except Exception as e:
-        return {"skills_added": 0, "tools_added": 0, "errors": [str(e)], "skills": []}
+        return {"skills_added": 0, "tools_added": 0, "capabilities_added": 0, "errors": [str(e)], "skills": []}
 
 
 @app.get("/platform/knowledge")
@@ -763,13 +791,17 @@ def setup_status():
               "tier": rec["model_tier"], "suggestion": rec["suggestion"]}
     except Exception:
         pass
+    performance_mode = str(cfg.get("performance_mode", "auto") or "auto").strip()
+    model_valid = bool(not placeholder and model_path.exists())
     return {
         "ready": model_found,
+        "model_valid": model_valid,
         "config_exists": config_exists,
         "model_filename": model_filename if not placeholder else "",
         "model_found": model_found,
         "available_models": available_models,
         "hardware": hw,
+        "performance_mode": performance_mode,
     }
 
 
@@ -777,12 +809,47 @@ def setup_status():
 def setup_models():
     """Return the model catalog for the first-run picker."""
     try:
-        from first_run import _MODELS_CATALOG, detect_ram_gb
+        from first_run import _MODELS_CATALOG, detect_gpu, detect_ram_gb, recommend_model
         ram = detect_ram_gb()
+        vendor, vram = detect_gpu()
+        rec = recommend_model(ram or 0, vram or 0, vendor or "none")
+        tier = rec.get("model_tier") or "medium"
+        tier_keys = {
+            "tiny": ("phi3-mini",),
+            "small": ("dolphin-mistral-7b",),
+            "medium": ("dolphin-llama3-8b", "hermes-3-8b", "dolphin-mistral-7b"),
+            "medium-large": ("dolphin-llama3-8b", "hermes-3-8b"),
+            "large": ("dolphin-llama3-70b",),
+        }
+        preferred = list(tier_keys.get(tier, ("dolphin-mistral-7b",)))
         catalog = []
+        recommended_key = None
+        rec_matched = False
         for m in _MODELS_CATALOG:
-            catalog.append({**m, "viable": m.get("ram_gb", 99) <= (ram or 99)})
-        return {"ok": True, "catalog": catalog, "ram_gb": ram}
+            viable = m.get("ram_gb", 99) <= (ram or 99)
+            is_rec = bool(
+                viable
+                and (m.get("key") in preferred)
+                and not rec_matched
+            )
+            if is_rec:
+                rec_matched = True
+                recommended_key = m.get("key")
+            catalog.append({**m, "viable": viable, "recommended": is_rec})
+        if not recommended_key:
+            for m in catalog:
+                if m.get("viable"):
+                    recommended_key = m.get("key")
+                    m["recommended"] = True
+                    break
+        return {
+            "ok": True,
+            "catalog": catalog,
+            "ram_gb": ram,
+            "recommended_key": recommended_key,
+            "recommended_tier": tier,
+            "suggestion": rec.get("suggestion") or "",
+        }
     except Exception as e:
         return {"ok": False, "error": str(e), "catalog": []}
 

@@ -12,6 +12,8 @@ logger = logging.getLogger("layla")
 AGENT_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = AGENT_DIR.parent
 TOP_K = 6
+# Cap for merged retrieval context (prompt safety)
+MAX_K = 5
 W_VECTOR, W_BM25, W_GRAPH, W_CONFIDENCE = 0.5, 0.3, 0.2, 0.1
 MAX_RETRIEVED_CHARS = 2000
 
@@ -96,6 +98,7 @@ def retrieve_graph_context(query: str, k: int = TOP_K) -> list[dict]:
 def _build_retrieved_context_impl(query: str, k: int) -> str:
     """Inner implementation (called with cache when enabled). Combined output capped at MAX_RETRIEVED_CHARS.
     Runs learnings, documents, graph retrieval in parallel."""
+    k = max(1, min(int(k), MAX_K))
     learnings, docs, graph = [], [], []
     with ThreadPoolExecutor(max_workers=3) as ex:
         f_learn = ex.submit(retrieve_learnings, query, k)
@@ -151,6 +154,7 @@ def build_retrieved_context(query: str, k: int = TOP_K) -> str:
     Merge learnings, documents, and graph into one block. Cached 60s.
     Total injected context capped at MAX_RETRIEVED_CHARS to avoid prompt overflow.
     """
+    k = max(1, min(int(k), MAX_K))
     try:
         from services.retrieval_cache import cached_retrieve
         result = cached_retrieve(query, k, _build_retrieved_context_impl)

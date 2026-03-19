@@ -18,6 +18,7 @@ from layla.memory.db import save_aspect_memory as _db_save_aspect_memory  # noqa
 from layla.tools.registry import TOOLS, set_effective_sandbox  # noqa: E402
 from services.context_manager import DEFAULT_BUDGETS, build_system_prompt  # noqa: E402
 from services.llm_gateway import get_stop_sequences, llm_serialize_lock, run_completion  # noqa: E402
+from services.output_polish import polish_output as _polish_output  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENT_DIR = Path(__file__).resolve().parent
@@ -174,13 +175,44 @@ def stream_reason(
     conversation_history: list = None,
     aspect_id: str = "",
     show_thinking: bool = False,
+    model_override: str | None = None,
 ):
     """
     Build the same prompt as the reason path and yield token strings from streaming completion.
     Used when the client requests stream=True; no refusal/earned_title parsing.
+    Sets model ContextVar for this generator (autonomous_run clears it before streaming).
     """
+    from services.llm_gateway import set_model_override
+
+    set_model_override(model_override)
+    if not model_override:
+        try:
+            _cfg_route = runtime_safety.load_config()
+            if _cfg_route.get("tool_routing_enabled", True):
+                from services.model_router import classify_task, is_routing_enabled
+
+                if is_routing_enabled():
+                    set_model_override(classify_task(goal, context or ""))
+        except Exception:
+            pass
+    try:
+        yield from _stream_reason_body(
+            goal, context, conversation_history, aspect_id, show_thinking
+        )
+    finally:
+        set_model_override(None)
+
+
+def _stream_reason_body(
+    goal: str,
+    context: str = "",
+    conversation_history: list = None,
+    aspect_id: str = "",
+    show_thinking: bool = False,
+):
+    """Inner generator: prompt + streaming tokens (model override set by stream_reason)."""
     active_aspect = orchestrator.select_aspect(goal, force_aspect=aspect_id)
-    head = _build_system_head(goal=goal, aspect=active_aspect)
+    head = _build_system_head(goal=goal, aspect=active_aspect, conversation_history=conversation_history or [])
     convo_block = ""
     try:
         convo_turns = max(0, int(runtime_safety.load_config().get("convo_turns", 0)))
@@ -396,7 +428,14 @@ def _needs_graph(goal: str) -> bool:
     return any(kw in g for kw in ("related", "context", "connection", "link", "associate", "connected"))
 
 
-def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_root: str = "", sub_goals: list | None = None, state: dict | None = None) -> str:
+def _build_system_head(
+    goal: str = "",
+    aspect: dict | None = None,
+    workspace_root: str = "",
+    sub_goals: list | None = None,
+    state: dict | None = None,
+    conversation_history: list | None = None,
+) -> str:
     cfg = runtime_safety.load_config()  # noqa: F841
     identity = runtime_safety.load_identity().strip()
     knowledge = ""
@@ -722,7 +761,44 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
                 memory_parts.append(hint)
         except Exception:
             pass
+    try:
+        from services.context_manager import deduplicate_content
+
+        memory_parts = deduplicate_content(memory_parts, key_len=100)
+    except Exception:
+        pass
     memory_block = "\n\n".join(memory_parts) if memory_parts else ""
+
+    pinned_parts: list[str] = []
+    hist = conversation_history or []
+    if hist:
+        for t in reversed(hist):
+            if (t.get("role") or "").lower() == "user":
+                u = (t.get("content") or "").strip()[:500]
+                if u:
+                    pinned_parts.append(f"Last user message: {u}")
+                break
+    if state and state.get("steps"):
+        try:
+            import json as _json
+
+            last = state["steps"][-1]
+            act = last.get("action") or last.get("tool") or "?"
+            res = last.get("result")
+            if res is not None:
+                rs = res if isinstance(res, str) else _json.dumps(res, default=str)[:900]
+                pinned_parts.append(f"Last tool ({act}): {rs}")
+        except Exception:
+            pass
+    try:
+        from layla.memory.db import get_recent_conversation_summaries
+
+        sums = get_recent_conversation_summaries(n=1)
+        if sums and (sums[0].get("summary") or "").strip():
+            pinned_parts.append("Session summary: " + (sums[0]["summary"] or "").strip()[:400])
+    except Exception:
+        pass
+    pinned_block = "\n".join(pinned_parts) if pinned_parts else ""
 
     current_goal = ""
     if sub_goals:
@@ -739,6 +815,7 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
 
     sections = {
         "system_instructions": system_instructions,
+        "pinned_context": pinned_block,
         "agent_state": workspace_context,
         "current_goal": current_goal,
         "memory": memory_block,
@@ -754,6 +831,8 @@ def _build_system_head(goal: str = "", aspect: dict | None = None, workspace_roo
         return head
     # Legacy path: no budget enforcement
     parts = [system_instructions]
+    if pinned_block:
+        parts.append(pinned_block[:1500])
     if workspace_context:
         parts.append(workspace_context[:1200])
     if current_goal:
@@ -1646,6 +1725,16 @@ def _autonomous_run_impl(
 ) -> dict:
     from services.llm_gateway import set_model_override, set_reasoning_effort
     set_model_override(model_override)
+    if not model_override:
+        try:
+            import runtime_safety
+            _cfg_route = runtime_safety.load_config()
+            if _cfg_route.get("tool_routing_enabled", True):
+                from services.model_router import classify_task, is_routing_enabled
+                if is_routing_enabled():
+                    set_model_override(classify_task(goal, context or ""))
+        except Exception:
+            pass
     set_reasoning_effort(reasoning_effort)
     try:
         return _autonomous_run_impl_core(
@@ -2418,7 +2507,14 @@ def _autonomous_run_impl_core(
                 state["status"] = "stream_pending"
                 state["goal_for_stream"] = goal
                 return state
-            head = _build_system_head(goal=goal, aspect=active_aspect, workspace_root=workspace, sub_goals=state.get("sub_goals"), state=state)
+            head = _build_system_head(
+                goal=goal,
+                aspect=active_aspect,
+                workspace_root=workspace,
+                sub_goals=state.get("sub_goals"),
+                state=state,
+                conversation_history=effective_history,
+            )
 
             # Inject conversation history (sanitize assistant messages that are echoed instructions)
             convo_block = ""
@@ -2583,6 +2679,7 @@ def _autonomous_run_impl_core(
                     )
                     continue
 
+            text = _polish_output(text)
             state["steps"].append({
                 "action": "reason",
                 "result": text,

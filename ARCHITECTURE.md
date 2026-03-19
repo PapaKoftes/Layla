@@ -40,6 +40,7 @@ Client
 
 **agent_loop.autonomous_run():**
 1. `runtime_safety.load_config()` — TTL-cached, hot-path safe
+1b. **Task model routing** (when `tool_routing_enabled` and `model_router.is_routing_enabled()`): `classify_task(goal, context)` → `set_model_override` so `llm_gateway` loads task GGUFs via `resolve_model_path`. Additionally, every `run_completion()` sets a routing-prompt ContextVar so `_effective_model_filename()` applies `select_model` / `get_best_llm_filename_for_task` when override is unset (internal JSON/decision prompts are excluded). Multi-model cache `_llm_by_path`; serialize lock is `RLock`. Optional `completion_cache_enabled` caches non-stream dict responses briefly.
 2. `orchestrator.select_aspect()` — keyword-based, loads `personalities/*.json`
 3. `_build_system_head()` — identity + knowledge RAG (BM25+vector+FTS5+rerank) + learnings + CoT; passes through `context_manager.build_system_prompt()` for token budgets and deduplication
 4. **Cognitive workspace** (if `enable_cognitive_workspace`): generate approaches → evaluate → choose best; inject `strategy_hint` into decision prompt and plan context
@@ -50,6 +51,14 @@ Client
    - If `action=reason` or `objective_complete`: `_completion()` → stream final reply
 7. Optional self-reflection (`enable_self_reflection`) — score + rewrite if < 7/10
 8. `_save_outcome_memory()` — distill and store outcome; reflection engine (what worked/failed/improve)
+
+**Performance modes:** `system_optimizer.get_effective_config()` applies `performance_mode` (`low` / `mid` / `high` / `auto`) before CPU/RAM pressure tiers. Omitted key = `mid`. Explicit `auto` uses `hardware_detect.detect_hardware()` with VRAM/RAM numeric thresholds (GPU VRAM: 6 GB and 12 GB boundaries; CPU-only: system RAM 8 GB and 24 GB boundaries). Never writes to `runtime_config.json`.
+
+**Streaming final reply:** When `stream_final` returns `stream_pending`, `routers/agent.py` calls `stream_reason(..., model_override=...)` so task routing matches the main run (ContextVar is cleared after `autonomous_run` returns).
+
+**First-run UI:** `GET /setup_status` (`performance_mode`, `model_valid`, `ready`), `GET /setup/models` (catalog + `recommended_key`) — setup overlay in `agent/ui/index.html`. **`POST /agent`** returns `error: no_model`, `action: open_setup` when the model is missing.
+
+**Capability LLM routing:** `capabilities/registry.py` includes `llm_model_coding` (Magicoder vs default); `model_router.select_model()` consults `get_active_implementation("llm_model_coding", cfg)` and stored benchmarks. **`models` config block** and `coding_model` remain the source of GGUF filenames.
 
 **Approval:** tool returns `approval_required` → queued in `shared_state.pending` → `POST /approve {"id": uuid}` → proceed
 
@@ -102,7 +111,9 @@ Client
 | `agent/layla/memory/vector_store.py` | Two-stage retrieval: vector+BM25→top 20, light rerank→top 10, cross-encoder→top k. Config `retrieval_cross_encoder_limit`. ChromaDB, HyDE, parent-doc, confidence+recency boost |
 | `agent/services/context_budget.py` | Token budgets per section (identity, memory, knowledge, graph, workspace) |
 | `agent/services/context_manager.py` | Prompt assembly with budgets, deduplication, conversation summarization |
-| `agent/services/llm_gateway.py` | `run_completion()`, `prewarm_llm()`, delegates to inference_router |
+| `agent/services/llm_gateway.py` | `run_completion()`, `prewarm_llm()`, multi-path `_get_llm()` + `RLock` serialize; delegates to inference_router |
+| `agent/services/model_router.py` | `classify_task`, `route_model`, `select_model`, `models{}` aliases, `reset_router_config_cache` |
+| `agent/services/output_polish.py` | `polish_output()` final reply cleanup |
 | `agent/services/inference_router.py` | Multi-backend routing: llama_cpp, openai_compatible (vLLM), ollama |
 | `agent/services/graph_reasoning.py` | Entity extraction (spaCy) + graph expansion (networkx) for query context |
 | `agent/services/cognitive_workspace.py` | Tree-of-thought: generate approaches (search/reasoning/tools) → evaluate → choose best; inject strategy_hint |

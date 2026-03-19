@@ -26,6 +26,7 @@ def test_platform_plugins():
     d = r.json()
     assert "skills_added" in d
     assert "tools_added" in d
+    assert "capabilities_added" in d
     assert "skills" in d
 
 

@@ -362,6 +362,9 @@
     cursor: pointer;
     transition: all 0.18s;
   }
+  .model-card.recommended {
+    box-shadow: 0 0 0 2px var(--asp);
+  }
   .model-card:hover, .model-card.selected {
     border-color: var(--asp);
     background: var(--asp-mid);
@@ -1143,7 +1146,8 @@
           📎<input type="file" id="file-attach" style="display:none" onchange="attachFile(this)">
         </label>
         <button id="mic-btn" onclick="toggleMic()" title="Click to record voice" aria-label="Record voice">🎤</button>
-        <button id="retry-btn" onclick="retryLastMessage()" title="Retry last message (Ctrl+R)" aria-label="Retry last message" style="display:none;font-size:0.75rem;padding:4px 8px">↻</button>
+        <button id="retry-btn" onclick="retryLastMessage()" title="Regenerate last reply (Ctrl+R)" aria-label="Regenerate last reply" style="display:none;font-size:0.75rem;padding:4px 8px">↻ Regenerate</button>
+        <button type="button" id="cancel-send-btn" onclick="cancelActiveSend()" title="Stop generation" aria-label="Stop generation" style="display:none;font-size:0.75rem;padding:4px 8px">Stop</button>
         <button type="button" id="send-btn" onclick="typeof window.triggerSend==='function'&&window.triggerSend();">Send</button>
       </div>
       <span class="input-hint" style="display:block;font-size:var(--text-xs);color:var(--text-dim);margin-top:4px;padding:0 4px">Attach files with 📎 or paste. Enter to send, Shift+Enter for newline. Ctrl+K to clear.</span>
@@ -1253,7 +1257,7 @@
         <p><strong>Shortcuts</strong></p>
         <ul style="font-size:0.85em;margin:4px 0 0 16px">
           <li>Ctrl+K — Clear input</li>
-          <li>Ctrl+R — Retry last message</li>
+          <li>Ctrl+R — Regenerate last reply</li>
           <li>Ctrl+/ — Open Help</li>
           <li>Ctrl+F — Search in chat</li>
           <li>Escape — Stop recording / close overlays</li>
@@ -2072,6 +2076,18 @@ async function sendResearch(customMessage) {
 }
 
 let _lastDisplayMsg = null;
+let _activeAgentAbort = null;
+
+function cancelActiveSend() {
+  try {
+    if (_activeAgentAbort) _activeAgentAbort.abort();
+  } catch (_) {}
+}
+
+function setCancelSendVisible(visible) {
+  const b = document.getElementById('cancel-send-btn');
+  if (b) b.style.display = visible ? 'inline-block' : 'none';
+}
 
 function retryLastMessage() {
   if (!_lastDisplayMsg) return;
@@ -2102,6 +2118,10 @@ async function send() {
   let msg = input.value.trim();
   if (!msg) { _dbg('send() exit: empty msg'); return; }
   _dbg('send() proceeding', 'msg length=' + msg.length);
+
+  const ac = new AbortController();
+  _activeAgentAbort = ac;
+  setCancelSendVisible(true);
 
   // Parse @mention — extract aspect override for this message only
   let msgAspect = currentAspect;
@@ -2203,8 +2223,8 @@ async function send() {
   try {
     if (streamMode) {
       // No typing indicator in stream mode — stream div appears immediately and fills
-      const res = await fetch('/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (!res.ok || !res.body) { let body = {}; try { const t = await res.text(); if (t) try { body = JSON.parse(t); } catch(_) { body = { response: t.length < 120 ? t : res.statusText }; } } catch(_) {} addMsg('layla', formatAgentError(res, body), null, false, null); refreshApprovals(); return; }
+      const res = await fetch('/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: ac.signal });
+      if (!res.ok || !res.body) { let body = {}; try { const t = await res.text(); if (t) try { body = JSON.parse(t); } catch(_) { body = { response: t.length < 120 ? t : res.statusText }; } } catch(_) {} addMsg('layla', formatAgentError(res, body), null, false, null); refreshApprovals(); setCancelSendVisible(false); _activeAgentAbort = null; return; }
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let full = '';
@@ -2291,6 +2311,8 @@ async function send() {
       updateRetryButton();
       refreshApprovals();
       document.getElementById('msg-input')?.focus();
+      setCancelSendVisible(false);
+      _activeAgentAbort = null;
       return;
     }
     showTyping();
@@ -2298,6 +2320,7 @@ async function send() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: ac.signal,
     });
     removeTyping();
     if (!res.ok) {
@@ -2305,12 +2328,16 @@ async function send() {
       try { const t = await res.text(); if (t) try { body = JSON.parse(t); } catch(_) { body = { response: t }; } } catch (_) {}
       addMsg('layla', formatAgentError(res, body));
       refreshApprovals();
+      setCancelSendVisible(false);
+      _activeAgentAbort = null;
       return;
     }
     let data = {};
     try { data = await res.json(); } catch (_) {
       addMsg('layla', 'Invalid response from server (non-JSON).');
       refreshApprovals();
+      setCancelSendVisible(false);
+      _activeAgentAbort = null;
       return;
     }
     const replyText = (data.response != null && String(data.response).trim() !== '') ? data.response : 'No response from Layla.';
@@ -2326,14 +2353,27 @@ async function send() {
     if (document.getElementById('tts-toggle')?.checked && (data.response || '').trim()) { try { speakReply(data.response, currentAspect); } catch (_) {} }
     refreshApprovals();
     document.getElementById('msg-input')?.focus();
+    setCancelSendVisible(false);
+    _activeAgentAbort = null;
   } catch (e) {
     _dbg('send() catch', e && e.message, e);
     removeTyping();
-    const err = ((e && (e.message || e.reason)) || String(e || '')).toLowerCase();
+    const errRaw = (e && (e.message || e.reason)) || String(e || '');
+    const err = errRaw.toLowerCase();
+    if (e && e.name === 'AbortError') {
+      addMsg('layla', 'Generation stopped.');
+      setCancelSendVisible(false);
+      _activeAgentAbort = null;
+      refreshApprovals();
+      document.getElementById('msg-input')?.focus();
+      return;
+    }
     const msg = (err.includes('fetch') || err.includes('network') || err.includes('load failed')) ? formatAgentError(null, null) : ('Something went wrong: ' + (e && (e.message || e.reason)) || 'unknown error');
     addMsg('layla', msg);
     refreshApprovals();
     document.getElementById('msg-input')?.focus();
+    setCancelSendVisible(false);
+    _activeAgentAbort = null;
   }
 }
 
@@ -3667,23 +3707,32 @@ function fillPrompt(text) {
 }
 
 // ─── Setup status check ────────────────────────────────────────────────
+async function refreshModelStatus(prefetched) {
+  try {
+    const d = prefetched != null ? prefetched : await (await fetch('/setup_status')).json();
+    const badge = document.getElementById('model-status-badge');
+    if (!badge) return;
+    const mode = d.performance_mode || 'auto';
+    const valid = (d.model_valid !== false) && (d.ready || d.model_found || (d.model_filename || '').length > 0);
+    if (valid) {
+      const raw = (d.model_filename || '').trim() || 'model';
+      const short = raw.replace(/\.gguf$/i, '').slice(0, 28);
+      badge.textContent = 'Model: ' + short + ' | Mode: ' + mode;
+      badge.style.color = '#4dff88';
+    } else {
+      badge.textContent = '⚠ setup required';
+      badge.style.color = '#ffa040';
+    }
+  } catch (_) {}
+}
+
 async function checkSetupStatus() {
   try {
     const res = await fetch('/setup_status');
     if (!res.ok) return;
     const data = await res.json();
-    const badge = document.getElementById('model-status-badge');
-    if (data.ready) {
-      if (badge) {
-        badge.textContent = '● ' + (data.model_filename || 'model ready');
-        badge.style.color = '#4dff88';
-      }
-    } else {
-      if (badge) {
-        badge.textContent = '⚠ no model';
-        badge.style.color = '#ffa040';
-      }
-      // Show setup overlay
+    await refreshModelStatus(data);
+    if (data.model_valid === false || !data.ready) {
       showSetupOverlay(data);
     }
   } catch(e) {
@@ -3694,9 +3743,10 @@ async function checkSetupStatus() {
 
 let _selectedModelUrl = '';
 let _selectedModelFilename = '';
+let _lastDownloadUrl = '';
+let _lastDownloadFilename = '';
 
 async function showSetupOverlay(statusData) {
-  return; // OVERLAY DISABLED FOR TESTING — remove this line to re-enable
   const overlay = document.getElementById('setup-overlay');
   if (!overlay) return;
   overlay.classList.add('visible');
@@ -3739,8 +3789,9 @@ async function showSetupOverlay(statusData) {
     if (container && catData.catalog) {
       container.innerHTML = catData.catalog.map(m => {
         const viable = m.viable !== false;
-        return `<div class="model-card ${viable ? '' : 'not-viable'}" data-model-url="${escapeHtml(m.url || '')}" data-model-filename="${escapeHtml(m.filename || '')}">
-          <div class="mc-name">${escapeHtml(m.name || '')} <span class="mc-badge ${viable ? 'viable' : 'heavy'}">${viable ? '✓ fits RAM' : '⚠ ' + (m.ram_gb || '') + 'GB RAM needed'}</span></div>
+        const rec = m.recommended ? ' recommended' : '';
+        return `<div class="model-card ${viable ? '' : 'not-viable'}${rec}" data-model-url="${escapeHtml(m.url || '')}" data-model-filename="${escapeHtml(m.filename || '')}">
+          <div class="mc-name">${escapeHtml(m.name || '')} <span class="mc-badge ${viable ? 'viable' : 'heavy'}">${m.recommended ? '★ recommended · ' : ''}${viable ? '✓ fits RAM' : '⚠ ' + (m.ram_gb || '') + 'GB RAM needed'}</span></div>
           <div class="mc-meta">${escapeHtml(String(m.size_gb || ''))} GB download · needs ${escapeHtml(String(m.ram_gb || ''))} GB RAM</div>
           <div class="mc-desc">${escapeHtml(m.desc || '')}</div>
         </div>`;
@@ -3770,15 +3821,26 @@ async function useExistingModel(filename) {
   } catch(e) { showToast('Error: ' + e.message); }
 }
 
+function retryModelDownload() {
+  if (!_lastDownloadUrl) { showToast('Nothing to retry — select a model first'); return; }
+  _selectedModelUrl = _lastDownloadUrl;
+  _selectedModelFilename = _lastDownloadFilename;
+  startModelDownload();
+}
+
 async function startModelDownload() {
   const url = _selectedModelUrl || document.getElementById('setup-custom-url')?.value?.trim();
   if (!url) { showToast('Select a model first'); return; }
   const filename = _selectedModelFilename || url.split('/').pop();
+  _lastDownloadUrl = url;
+  _lastDownloadFilename = filename;
   const btn = document.getElementById('setup-download-btn');
+  const retryBtn = document.getElementById('setup-retry-btn');
   const progressBar = document.getElementById('setup-progress-bar');
   const progressLabel = document.getElementById('setup-progress-label');
   const doneMsg = document.getElementById('setup-done-msg');
   if (btn) { btn.disabled = true; btn.textContent = 'Downloading…'; }
+  if (retryBtn) retryBtn.style.display = 'none';
   if (doneMsg) doneMsg.style.display = 'none';
 
   try {
@@ -3790,6 +3852,7 @@ async function startModelDownload() {
           es.close();
           showToast('Download failed: ' + data.error);
           if (btn) { btn.disabled = false; btn.textContent = 'Download'; }
+          if (retryBtn) { retryBtn.style.display = 'inline-block'; retryBtn.textContent = 'Retry download'; }
           return;
         }
         if (progressBar) progressBar.style.width = (data.pct || 0) + '%';
@@ -3800,6 +3863,7 @@ async function startModelDownload() {
           if (progressLabel) progressLabel.textContent = '✓ Download complete';
           if (doneMsg) { doneMsg.textContent = '✓ Model ready: ' + (data.filename || filename); doneMsg.style.display = 'block'; }
           if (btn) { btn.textContent = '✓ Done — reload page'; btn.onclick = () => location.reload(); btn.disabled = false; }
+          if (retryBtn) retryBtn.style.display = 'none';
           const badge = document.getElementById('model-status-badge');
           if (badge) { badge.textContent = '● ' + (data.filename || filename); badge.style.color = '#4dff88'; }
         }
@@ -3807,11 +3871,13 @@ async function startModelDownload() {
     };
     es.onerror = () => {
       es.close();
-      if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+      if (btn) { btn.disabled = false; btn.textContent = 'Download'; }
+      if (retryBtn) { retryBtn.style.display = 'inline-block'; retryBtn.textContent = 'Retry download'; }
     };
   } catch(e) {
     showToast('Error: ' + e.message);
     if (btn) { btn.disabled = false; btn.textContent = 'Download'; }
+    if (retryBtn) { retryBtn.style.display = 'inline-block'; }
   }
 }
 
@@ -4071,6 +4137,7 @@ if (typeof onMemorySearch === 'function') window.onMemorySearch = onMemorySearch
 
     <div class="setup-btns">
       <button class="setup-btn primary" id="setup-download-btn" onclick="startModelDownload()" disabled>Download Selected</button>
+      <button class="setup-btn" type="button" id="setup-retry-btn" style="display:none" onclick="retryModelDownload()">Retry download</button>
       <button class="setup-btn skip" onclick="document.getElementById('setup-overlay').classList.remove('visible')">Skip for now</button>
     </div>
 
