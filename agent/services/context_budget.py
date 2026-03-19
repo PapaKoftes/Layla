@@ -13,12 +13,14 @@ logger = logging.getLogger("layla")
 # Default token budgets per section (tunable via config prompt_budgets)
 DEFAULT_BUDGETS: dict[str, int] = {
     "identity": 400,
+    "pinned_context": 400,
     "memory": 800,
     "knowledge": 800,
     "graph_context": 200,
     "workspace_context": 400,
     # Legacy keys used by context_manager
     "system_instructions": 800,
+    "pinned_context": 400,
     "agent_state": 400,
     "current_goal": 100,
     "knowledge_graph": 200,

@@ -163,6 +163,8 @@ def load_config() -> dict:
             "browser_persistent_profiles": False,
             "use_instructor_for_decisions": True,
             "retrieval_cache_ttl_seconds": 60,
+            "completion_cache_enabled": False,
+            "completion_cache_ttl_seconds": 45,
             "auto_lint_test_fix": False,
             "auto_lint_test_fix_run_tests": False,
             "git_auto_commit": False,
