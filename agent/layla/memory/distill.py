@@ -10,6 +10,44 @@ logger = logging.getLogger("layla")
 
 # Similarity threshold: word-set overlap ratio (0 = none, 1 = identical)
 _DISTILL_SIMILARITY_THRESHOLD = 0.35
+
+
+def score_learning_content(content: str) -> float:
+    """Heuristic 0..1 for optional quality gate (length, token count, junk patterns)."""
+    if not content or not isinstance(content, str):
+        return 0.0
+    c = content.strip()
+    if len(c) < 12:
+        return 0.2
+    if len(c) > 800:
+        score = 0.85
+    elif len(c) > 80:
+        score = 0.7
+    else:
+        score = 0.45
+    low = c.lower()
+    junk = ("i don't know", "as an ai", "cannot assist", "sorry,")
+    if any(j in low for j in junk):
+        score *= 0.5
+    words = len(c.split())
+    if words < 4:
+        score *= 0.7
+    return min(1.0, max(0.0, score))
+
+
+def passes_learning_quality_gate(content: str) -> tuple[bool, float]:
+    """When learning_quality_gate_enabled, reject low-score content before DB insert."""
+    try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        if not cfg.get("learning_quality_gate_enabled", False):
+            return True, 1.0
+        min_s = float(cfg.get("learning_quality_min_score", 0.35))
+    except Exception:
+        return True, 1.0
+    s = score_learning_content(content)
+    return s >= min_s, s
 _MAX_DISTILLED_CONTENT = 400
 
 

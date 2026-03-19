@@ -68,6 +68,38 @@ See [ETHICAL_AI_PRINCIPLES.md](ETHICAL_AI_PRINCIPLES.md) for the full ethical AI
 
 ---
 
+## Phase 3 — Performance, adaptive reasoning, local telemetry
+
+| Area | Implementation | Notes |
+|------|----------------|-------|
+| Completion cache key | `services/completion_cache.py`, `services/llm_gateway.py` | Key: routing tag + effective model + temperature + max_tokens + prompt; `completion_cache_max_entries` |
+| Context budgets | `services/context_budget.py` | Single `pinned_context` entry in `DEFAULT_BUDGETS` (deduped) |
+| Reasoning classifier | `services/reasoning_classifier.py` | `none` \| `light` \| `deep`; gates planner + streaming reflection; `reasoning_mode` on state and `/agent` JSON/SSE |
+| Telemetry | `services/telemetry.py`, `db.telemetry_events`, `db.log_telemetry_event` / `get_recent_telemetry_events` | `telemetry_enabled` (default true); `telemetry_log_trivial` to log `reasoning_mode=none` runs; `suggest_optimization()` heuristic over last 50 events |
+| Agent loop safety / hygiene | `services/tool_output_validator.py`, `agent_loop.py`, `services/tool_loop_detection.py`, `decision_schema.py` | Tool output normalization; per-run exact duplicate suppression; `push_and_evaluate(..., reasoning_mode=)` tightens default repeat stop in `none`/`light`; `action: "none"`; `max_patch_lines` before `apply_patch` |
+| UI | `agent/ui/index.html` | `#reasoning-mode-badge` |
+
+Tests: `tests/test_reasoning_classifier.py`.
+
+---
+
+## Power-user upgrade (phased)
+
+| Area | Implementation | Notes |
+|------|----------------|-------|
+| Sandbox execution | `services/sandbox/python_runner.py`, `services/sandbox/shell_runner.py` | Used by `run_python` / `shell` in `layla/tools/registry.py`; config timeouts + optional shell allowlist; `sandbox_python_memory_limit_mb` (RLIMIT_AS on POSIX); isolated temp dir per `run_python` |
+| Tool reliability | `services/tool_args.py` | Validates `args` for selected tools when `tool_args_validation_enabled` |
+| Code search | `services/code_intelligence.py`, tool `search_codebase` | Workspace graph + semantic `search_workspace`; sandbox-scoped `root` |
+| Routing (large context) | `services/model_router.py` | `coding_model_large_context`, `coding_large_context_threshold` vs `context_len` from `llm_gateway` |
+| Retrieval weights / BGE | `layla/memory/vector_store.py`, `services/retrieval.py` | Weighted RRF; `coding_boost` from deep reasoning; optional BGE CrossEncoder in `rerank()`; fused context: `max_chars_per_source`, `retrieval_line_overlap_threshold` |
+| Knowledge ingestion | `services/doc_ingestion.py`, `main.py` routes, UI Knowledge panel | Writes under `knowledge/_ingested/`; `knowledge_ingestion_enabled`; content-hash dedup (`.hash` sidecars); `doc_injection_guard_enabled` (framing + redaction) |
+| Learning gate | `layla/memory/distill.py`, `layla/memory/db.py` `save_learning` | `learning_quality_gate_enabled`, `learning_quality_min_score` |
+| Multi-agent (prompt) | `services/agent_roles.py`, `agent_loop._build_system_head` | `multi_agent_orchestration_enabled` + deep mode |
+
+Tests: `tests/test_sandbox_runners.py`, `tests/test_code_intelligence.py`, `tests/test_tool_args.py`, `tests/test_tool_output_validator.py`.
+
+---
+
 ## Prebuilt capability domains
 
 Maps each capability domain to implemented modules and missing components. See [LAYLA_PREBUILT_PLATFORM.md](LAYLA_PREBUILT_PLATFORM.md) for full architecture.

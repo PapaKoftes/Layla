@@ -5,6 +5,7 @@ Return top 6. Cached 60s. Chroma-disabled path supported.
 Runs learnings, documents, graph retrieval in parallel.
 """
 import logging
+import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -18,14 +19,38 @@ W_VECTOR, W_BM25, W_GRAPH, W_CONFIDENCE = 0.5, 0.3, 0.2, 0.1
 MAX_RETRIEVED_CHARS = 2000
 
 
-def retrieve_learnings(query: str, k: int = TOP_K) -> list[dict]:
+def _word_set(s: str) -> set[str]:
+    return {w for w in re.findall(r"[a-zA-Z0-9_]{2,}", (s or "").lower())}
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    if not a and not b:
+        return 1.0
+    u = len(a | b)
+    if u == 0:
+        return 0.0
+    return len(a & b) / u
+
+
+def _retrieval_guard_config() -> tuple[int, float]:
+    try:
+        cfg = __import__("runtime_safety", fromlist=[None]).load_config()
+        cap = max(50, int(cfg.get("max_chars_per_source", 500)))
+        sim = float(cfg.get("retrieval_line_overlap_threshold", 0.7))
+        sim = max(0.0, min(1.0, sim))
+        return cap, sim
+    except Exception:
+        return 500, 0.7
+
+
+def retrieve_learnings(query: str, k: int = TOP_K, *, coding_boost: bool = False) -> list[dict]:
     """Search vector memory (Chroma if enabled) and BM25. Returns top k items."""
     results = []
     try:
         cfg = __import__("runtime_safety", fromlist=[None]).load_config()
         if cfg.get("use_chroma"):
             from layla.memory.vector_store import search_memories_full
-            results = search_memories_full(query, k=k, use_rerank=False)
+            results = search_memories_full(query, k=k, use_rerank=False, coding_boost=coding_boost)
         if not results:
             from layla.memory.db import search_learnings_fts
             results = search_learnings_fts(query, n=k)
@@ -95,72 +120,99 @@ def retrieve_graph_context(query: str, k: int = TOP_K) -> list[dict]:
     return results[:k]
 
 
-def _build_retrieved_context_impl(query: str, k: int) -> str:
+def _build_retrieved_context_impl(query: str, k: int, *, coding_boost: bool = False) -> str:
     """Inner implementation (called with cache when enabled). Combined output capped at MAX_RETRIEVED_CHARS.
     Runs learnings, documents, graph retrieval in parallel."""
     k = max(1, min(int(k), MAX_K))
     learnings, docs, graph = [], [], []
     with ThreadPoolExecutor(max_workers=3) as ex:
-        f_learn = ex.submit(retrieve_learnings, query, k)
+        f_learn = ex.submit(retrieve_learnings, query, k, coding_boost=coding_boost)
         f_docs = ex.submit(retrieve_documents, query, k)
         f_graph = ex.submit(retrieve_graph_context, query, k)
         learnings = f_learn.result()
         docs = f_docs.result()
         graph = f_graph.result()
-    lines = []
+    lines: list[str] = []
+    line_word_sets: list[set[str]] = []
     remaining = MAX_RETRIEVED_CHARS - len("Relevant knowledge:\n")
+    per_cap, overlap_th = _retrieval_guard_config()
+
+    def _append_line(line: str) -> bool:
+        nonlocal remaining
+        if remaining <= 40 or not line.strip():
+            return False
+        cap_body = per_cap
+        if len(line) > cap_body:
+            line = line[:cap_body].rsplit(" ", 1)[0]
+        ws = _word_set(line)
+        for prev_ws in line_word_sets:
+            if _jaccard(ws, prev_ws) > overlap_th:
+                return False
+        if len(line) > remaining:
+            line = line[:remaining].rsplit(" ", 1)[0]
+        if not line.strip():
+            return False
+        lines.append(line)
+        line_word_sets.append(ws)
+        remaining -= len(line) + 1
+        return True
+
     for r in learnings:
-        content = (r.get("content") or r.get("text") or "")[:300].strip()
+        content = (r.get("content") or r.get("text") or "").strip()
+        if len(content) > per_cap:
+            content = content[:per_cap].rsplit(" ", 1)[0]
         kind = (r.get("type") or r.get("learning_type") or "fact")
         if content and remaining > 40:
             line = f"* {kind}: {content}"
-            if len(line) <= remaining:
-                lines.append(line)
-                remaining -= len(line) + 1
-            else:
-                lines.append(line[:remaining].rsplit(" ", 1)[0])
+            if not _append_line(line):
                 break
     for d in docs:
         if remaining <= 40:
             break
-        text = (d.get("text") or "")[:200].strip()
+        text = (d.get("text") or "").strip()
+        if len(text) > per_cap:
+            text = text[:per_cap].rsplit(" ", 1)[0]
         src = d.get("source", "")
         if text:
             line = f"* doc excerpt ({src}): {text}"
-            if len(line) <= remaining:
-                lines.append(line)
-                remaining -= len(line) + 1
-            else:
-                lines.append(line[:remaining].rsplit(" ", 1)[0])
+            if not _append_line(line):
                 break
     for g in graph:
         if remaining <= 40:
             break
         label = (g.get("label") or "").strip()
+        if len(label) > per_cap:
+            label = label[:per_cap]
         if label:
             line = f"* graph relation: {label}"
-            if len(line) <= remaining:
-                lines.append(line)
-                remaining -= len(line) + 1
-            else:
+            if not _append_line(line):
                 break
     if not lines:
         return ""
     return "Relevant knowledge:\n" + "\n".join(lines)
 
 
-def build_retrieved_context(query: str, k: int = TOP_K) -> str:
+def build_retrieved_context(query: str, k: int = TOP_K, reasoning_mode: str = "light") -> str:
     """
     Merge learnings, documents, and graph into one block. Cached 60s.
     Total injected context capped at MAX_RETRIEVED_CHARS to avoid prompt overflow.
     """
+    rm = (reasoning_mode or "light").strip().lower()
+    if rm == "light" and len((query or "").strip()) < 20:
+        return ""
     k = max(1, min(int(k), MAX_K))
+    coding_boost = (reasoning_mode or "").strip().lower() == "deep"
+    cache_query = f"{query}\x1e{'deep' if coding_boost else 'std'}"
     try:
         from services.retrieval_cache import cached_retrieve
-        result = cached_retrieve(query, k, _build_retrieved_context_impl)
+
+        def _fetch(_q: str, kk: int) -> str:
+            return _build_retrieved_context_impl(query, kk, coding_boost=coding_boost)
+
+        result = cached_retrieve(cache_query, k, _fetch)
     except Exception as e:
         logger.debug("build_retrieved_context cache failed: %s", e)
-        result = _build_retrieved_context_impl(query, k)
+        result = _build_retrieved_context_impl(query, k, coding_boost=coding_boost)
     if len(result) > MAX_RETRIEVED_CHARS:
         result = result[:MAX_RETRIEVED_CHARS].rsplit("\n", 1)[0] + "\n"
     return result

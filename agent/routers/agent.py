@@ -341,13 +341,14 @@ async def agent(req: dict):
                         aspect_id=aspect_id,
                         show_thinking=show_thinking,
                         model_override=model_override or None,
+                        skip_self_reflection=(result.get("reasoning_mode") or "light") in ("none", "light"),
                     ):
                         full.append(token)
                         yield f"data: {json.dumps({'token': token})}\n\n"
                     text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply("".join(full))))
                     _append_history("user", goal)
                     _append_history("assistant", text)
-                    yield f"data: {json.dumps({'done': True, 'content': text, 'ux_states': result.get('ux_states', []), 'memory_influenced': result.get('memory_influenced', [])})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'content': text, 'ux_states': result.get('ux_states', []), 'memory_influenced': result.get('memory_influenced', []), 'reasoning_mode': result.get('reasoning_mode')})}\n\n"
                 else:
                     steps = result.get("steps") or []
                     final = steps[-1].get("result", "") if steps else ""
@@ -360,7 +361,7 @@ async def agent(req: dict):
                         response_text = "No response. Try again or rephrase."
                     _append_history("user", goal)
                     _append_history("assistant", response_text)
-                    yield f"data: {json.dumps({'done': True, 'content': response_text, 'ux_states': result.get('ux_states', []), 'memory_influenced': result.get('memory_influenced', [])})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'content': response_text, 'ux_states': result.get('ux_states', []), 'memory_influenced': result.get('memory_influenced', []), 'reasoning_mode': result.get('reasoning_mode')})}\n\n"
             except Exception as e:
                 logger.exception("stream_agent failed")
                 err = str(e)
@@ -441,4 +442,5 @@ async def agent(req: dict):
         "ux_states": result.get("ux_states", []),
         "memory_influenced": result.get("memory_influenced", []),
         "cited_sources": result.get("cited_knowledge_sources", []),
+        "reasoning_mode": result.get("reasoning_mode"),
     })
