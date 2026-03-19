@@ -14,9 +14,18 @@ try:
 except ImportError:
     pass
 
-_CACHE_TTL = 60.0
+_DEFAULT_TTL = 60.0
 _cache: dict[str, tuple[Any, float]] = {}
 _cache_lock = threading.Lock()
+
+
+def _get_cache_ttl() -> float:
+    """TTL from runtime_config.retrieval_cache_ttl_seconds or default 60."""
+    try:
+        import runtime_safety
+        return float(runtime_safety.load_config().get("retrieval_cache_ttl_seconds", _DEFAULT_TTL))
+    except Exception:
+        return _DEFAULT_TTL
 
 
 def _cache_key(query: str) -> str:
@@ -28,10 +37,11 @@ def cached_retrieve(query: str, k: int, fetcher: Callable[[str, int], Any]) -> A
     key = _cache_key(f"{query}|{k}")
     now = time.monotonic()
     preview = (query or "")[:60]
+    ttl = _get_cache_ttl()
     with _cache_lock:
         if key in _cache:
             val, ts = _cache[key]
-            if now - ts < _CACHE_TTL:
+            if now - ts < ttl:
                 try:
                     from services.observability import log_retrieval_cache_hit
                     log_retrieval_cache_hit(query_preview=preview, duration_ms=0)

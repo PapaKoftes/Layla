@@ -4,10 +4,50 @@ import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
+from pathlib import Path
 
 logger = logging.getLogger("layla")
 
 DISCOVERY_TIMEOUT_SECONDS = 60
+
+
+def discover_project(workspace_root: str = "") -> dict:
+    """
+    Lightweight project structure discovery: file scan, extensions, README preview.
+    Used by project_discovery_tool when workspace_root is provided.
+    """
+    try:
+        root_path = Path(workspace_root or ".").expanduser().resolve()
+        if not root_path.exists():
+            return {"ok": False, "error": "Path not found"}
+        files = []
+        for f in root_path.rglob("*"):
+            if f.is_file() and not any(
+                p in str(f) for p in (".git", ".venv", "__pycache__", "node_modules")
+            ):
+                files.append(str(f.relative_to(root_path)))
+                if len(files) >= 200:
+                    break
+        ext_counts: dict = {}
+        for f in files:
+            ext = Path(f).suffix.lower()
+            ext_counts[ext] = ext_counts.get(ext, 0) + 1
+        readme = ""
+        for name in ("README.md", "readme.md", "README.txt"):
+            rp = root_path / name
+            if rp.exists():
+                readme = rp.read_text(encoding="utf-8", errors="replace")[:1000]
+                break
+        return {
+            "ok": True,
+            "root": str(root_path),
+            "file_count": len(files),
+            "extensions": dict(sorted(ext_counts.items(), key=lambda x: -x[1])[:15]),
+            "readme_preview": readme,
+            "files_sample": files[:40],
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 DISCOVERY_MAX_ITEM_LENGTH = 500
 SAFE_FALLBACK = {"opportunities": [], "ideas": [], "feasibility_notes": []}
 

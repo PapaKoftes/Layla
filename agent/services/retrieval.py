@@ -2,9 +2,13 @@
 Unified retrieval: learnings (vector/BM25), documents, knowledge graph.
 Merge results into a scored pool. Formula: vector*0.5 + bm25*0.3 + graph*0.2 + confidence*0.1.
 Return top 6. Cached 60s. Chroma-disabled path supported.
+Runs learnings, documents, graph retrieval in parallel.
 """
+import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+logger = logging.getLogger("layla")
 AGENT_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = AGENT_DIR.parent
 TOP_K = 6
@@ -23,8 +27,8 @@ def retrieve_learnings(query: str, k: int = TOP_K) -> list[dict]:
         if not results:
             from layla.memory.db import search_learnings_fts
             results = search_learnings_fts(query, n=k)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("retrieve_learnings failed: %s", e)
     return results[:k]
 
 
@@ -40,16 +44,16 @@ def retrieve_documents(query: str, k: int = TOP_K) -> list[dict]:
             )
             try:
                 refresh_knowledge_if_changed(REPO_ROOT / "knowledge")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("retrieve_documents refresh_knowledge failed: %s", e)
             chunks = get_knowledge_chunks_with_sources(query, k=k)
             for c in chunks:
                 text = c.get("text", "")
                 src = c.get("source", "")
                 if text:
                     results.append({"text": text[:400], "source": src})
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("retrieve_documents failed: %s", e)
     return results[:k]
 
 
@@ -63,8 +67,8 @@ def retrieve_graph_context(query: str, k: int = TOP_K) -> list[dict]:
             label = (n.get("label") or "").strip()
             if label:
                 results.append({"label": label, "type": "graph_node"})
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("retrieve_graph_context expand_query failed: %s", e)
     if not results:
         try:
             from layla.memory.memory_graph import get_recent_nodes
@@ -84,16 +88,22 @@ def retrieve_graph_context(query: str, k: int = TOP_K) -> list[dict]:
                         results.append({"label": n["label"], "type": "graph_node"})
                     if len(results) >= k:
                         break
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("retrieve_graph_context get_recent_nodes failed: %s", e)
     return results[:k]
 
 
 def _build_retrieved_context_impl(query: str, k: int) -> str:
-    """Inner implementation (called with cache when enabled). Combined output capped at MAX_RETRIEVED_CHARS."""
-    learnings = retrieve_learnings(query, k=k)
-    docs = retrieve_documents(query, k=k)
-    graph = retrieve_graph_context(query, k=k)
+    """Inner implementation (called with cache when enabled). Combined output capped at MAX_RETRIEVED_CHARS.
+    Runs learnings, documents, graph retrieval in parallel."""
+    learnings, docs, graph = [], [], []
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        f_learn = ex.submit(retrieve_learnings, query, k)
+        f_docs = ex.submit(retrieve_documents, query, k)
+        f_graph = ex.submit(retrieve_graph_context, query, k)
+        learnings = f_learn.result()
+        docs = f_docs.result()
+        graph = f_graph.result()
     lines = []
     remaining = MAX_RETRIEVED_CHARS - len("Relevant knowledge:\n")
     for r in learnings:
@@ -144,7 +154,8 @@ def build_retrieved_context(query: str, k: int = TOP_K) -> str:
     try:
         from services.retrieval_cache import cached_retrieve
         result = cached_retrieve(query, k, _build_retrieved_context_impl)
-    except Exception:
+    except Exception as e:
+        logger.debug("build_retrieved_context cache failed: %s", e)
         result = _build_retrieved_context_impl(query, k)
     if len(result) > MAX_RETRIEVED_CHARS:
         result = result[:MAX_RETRIEVED_CHARS].rsplit("\n", 1)[0] + "\n"

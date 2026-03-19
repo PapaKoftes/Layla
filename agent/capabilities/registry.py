@@ -108,10 +108,20 @@ def list_implementations(capability: str) -> list[CapabilityImpl]:
     return list(CAPABILITIES.get(capability, []))
 
 
+def _module_importable(module_path: str) -> bool:
+    """Return True if module_path can be imported (e.g. capabilities.impl.faiss_vector exists)."""
+    try:
+        __import__(module_path)
+        return True
+    except Exception:
+        return False
+
+
 def get_active_implementation(capability: str, cfg: dict | None = None) -> CapabilityImpl | None:
     """
     Return the active implementation for a capability.
     Priority: 1) runtime_config capability_impls override, 2) best benchmark score, 3) default fallback.
+    If the selected impl's module_path cannot be imported, falls back to default.
     """
     if cfg is None:
         try:
@@ -125,6 +135,13 @@ def get_active_implementation(capability: str, cfg: dict | None = None) -> Capab
     if not impls:
         return None
 
+    def _pick_impl(candidates: list[CapabilityImpl]) -> CapabilityImpl | None:
+        for impl in candidates:
+            if _module_importable(impl.module_path):
+                return impl
+            logger.debug("capability %s impl %s module %s not importable, skipping", capability, impl.id, impl.module_path)
+        return None
+
     # 1. Config override: capability_impls.vector_search = "faiss"
     if cfg:
         overrides = cfg.get("capability_impls") or {}
@@ -132,7 +149,10 @@ def get_active_implementation(capability: str, cfg: dict | None = None) -> Capab
         if override_id:
             for impl in impls:
                 if impl.id == override_id:
-                    return impl
+                    if _module_importable(impl.module_path):
+                        return impl
+                    logger.warning("capability_impls.%s=%s: module %s not found, falling back to default", capability, override_id, impl.module_path)
+                    break
 
     # 2. Best benchmarked (lowest latency, sandbox_valid)
     try:
@@ -141,12 +161,12 @@ def get_active_implementation(capability: str, cfg: dict | None = None) -> Capab
         if best:
             impl_id = best.get("implementation_id")
             for impl in impls:
-                if impl.id == impl_id:
+                if impl.id == impl_id and _module_importable(impl.module_path):
                     return impl
     except Exception as e:
         logger.debug("get_active_implementation get_best failed: %s", e)
 
-    # 3. Default fallback
+    # 3. Default fallback (default impls use layla.memory.vector_store or layla.tools.registry)
     for impl in impls:
         if impl.is_default:
             return impl

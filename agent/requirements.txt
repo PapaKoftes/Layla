@@ -38,6 +38,7 @@ faster-whisper>=1.0             # CPU/CUDA Whisper inference; models auto-downlo
 
 # Voice: Text-to-Speech (choose one)
 kokoro-onnx>=0.3                # High-quality ONNX TTS (~80 MB), no cloud
+# sounddevice>=0.4              # Optional: TUI /voice (pip install sounddevice)
 soundfile>=0.12                 # Required by kokoro-onnx for WAV encoding
 # pyttsx3>=2.90                 # Fallback: zero-download system TTS (lower quality)
 
@@ -102,9 +103,6 @@ torchao>=0.6                   # Replaces deprecated torch.quantization for embe
 tiktoken>=0.7                  # Accurate token counting for context budgeting
 instructor>=1.0,<2             # Grammar-constrained JSON for tool-call parsing (fallback: plain parse)
 
-# ─── Optional: grammar-constrained JSON output ────────────────────────────────
-# instructor>=1.0,<2            # Significantly improves tool-call reliability
-
 # ─── Optional: token counting (now core) ─────────────────────────────────────
 # tiktoken>=0.7                 # Moved to Phase 1 above
 
@@ -165,6 +163,12 @@ deep-translator>=1.11           # Google Translate backend (translate_text tool,
 # ─── Tier 3 Optional: Enhanced NLP ──────────────────────────────────────────
 # spacy>=3.7                    # extract_entities: pip install spacy && python -m spacy download en_core_web_sm
 # textblob>=0.18                # sentiment_timeline: polarity scoring
+
+# ─── Integrations: Discord, Calendar, QR ──────────────────────────────────────
+# discord_send: no extra deps (uses urllib). Set discord_webhook_url in config.
+# Full Discord bot (voice, TTS, music): pip install "py-cord[voice]" yt-dlp aiohttp
+# icalendar>=5.0                # calendar_read, calendar_add_event: .ics files
+# qrcode[pil]>=7.4              # generate_qr: QR codes
 
 # ─── Dev/CI (not required at runtime) ─────────────────────────────────────────
 # ruff>=0.4
