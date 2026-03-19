@@ -1018,6 +1018,8 @@
       <option value="chat">Chat</option>
     </select>
     <span id="model-status-badge" title="LLM status" style="font-size:0.68rem;opacity:0.7"></span>
+    <span id="reasoning-mode-badge" title="Adaptive reasoning depth for this turn" style="font-size:0.68rem;opacity:0.75;margin-left:4px"></span>
+    <span id="cache-stats-badge" title="Completion cache hit rate. Enable: localStorage.setItem('layla_show_cache_stats','1')" style="font-size:0.68rem;opacity:0.65;margin-left:4px;display:none"></span>
     <a href="/system_export" target="_blank" title="Full system export (JSON)">⊕ export</a>
     <button onclick="exportChat()" title="Export chat as Markdown/JSON" aria-label="Export chat">📤 chat</button>
     <a href="/memory/export" download title="Download memory bundle (ZIP of all knowledge + learnings)">⬇ memory</a>
@@ -1186,8 +1188,15 @@
       </div>
     </div>
     <div class="panel-pane" id="panel-knowledge" data-panel="knowledge">
-      <div class="panel-title">Knowledge Explorer</div>
-      <div id="platform-knowledge" style="font-size:0.72rem;max-height:280px;overflow-y:auto">
+      <div class="panel-title">Knowledge Manager</div>
+      <div style="font-size:0.68rem;margin-bottom:8px">
+        <input type="text" id="km-source" placeholder="URL or folder path (inside sandbox)" style="width:100%;box-sizing:border-box;margin-bottom:4px;padding:4px">
+        <input type="text" id="km-label" placeholder="Label (optional)" style="width:100%;box-sizing:border-box;margin-bottom:4px;padding:4px">
+        <button type="button" onclick="runKnowledgeIngest()">Ingest</button>
+      </div>
+      <div id="km-ingest-list" style="font-size:0.65rem;color:var(--text-dim);margin-bottom:10px;max-height:80px;overflow-y:auto"></div>
+      <div class="panel-title" style="margin-top:4px">Knowledge Explorer</div>
+      <div id="platform-knowledge" style="font-size:0.72rem;max-height:220px;overflow-y:auto">
         <span style="color:var(--text-dim)">Loading…</span>
       </div>
     </div>
@@ -1999,6 +2008,10 @@ async function sendResearch(customMessage) {
   const researchMsg = (typeof customMessage === 'string' && customMessage.trim()) ? customMessage.trim() : 'Research this repo and tell me if the implementation is optimal. Do not modify anything.';
   addMsg('you', '🔬 ' + (researchMsg.length > 120 ? researchMsg.slice(0, 120) + '…' : researchMsg) + (workspacePath ? ' (Repo: ' + workspacePath + ')' : ''));
   addSeparator();
+  try {
+    const rmBadge = document.getElementById('reasoning-mode-badge');
+    if (rmBadge) rmBadge.textContent = '';
+  } catch (_) {}
 
   const streamMode = document.getElementById('stream-toggle')?.checked || false;
   const payload = {
@@ -2047,7 +2060,14 @@ async function sendResearch(customMessage) {
             try {
               const obj = JSON.parse(line.slice(6));
               if (obj.token) { full += obj.token; let parsed = full; try { if (typeof marked !== 'undefined') parsed = sanitizeHtml(marked.parse(full)); } catch (_) {} bubble.innerHTML = parsed; bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); }); chatEl.scrollTop = chatEl.scrollHeight; }
-              if (obj.done) { if (obj.content != null && String(obj.content).trim() !== '') full = String(obj.content).trim(); break; }
+              if (obj.done) {
+                if (obj.content != null && String(obj.content).trim() !== '') full = String(obj.content).trim();
+                try {
+                  const rmBadge = document.getElementById('reasoning-mode-badge');
+                  if (rmBadge && obj.reasoning_mode) rmBadge.textContent = 'Thinking: ' + obj.reasoning_mode;
+                } catch (_) {}
+                break;
+              }
             } catch (_) {}
           }
         }
@@ -2069,6 +2089,11 @@ async function sendResearch(customMessage) {
     removeTyping();
     if (!res.ok) { let body = {}; try { const t = await res.text(); if (t) try { body = JSON.parse(t); } catch(_) {} } catch(_) {} addMsg('layla', formatAgentError(res, body)); refreshApprovals(); return; }
     const data = await res.json();
+    try {
+      const rmBadge = document.getElementById('reasoning-mode-badge');
+      const rm = data.reasoning_mode || data.state?.reasoning_mode;
+      if (rmBadge) rmBadge.textContent = rm ? ('Thinking: ' + rm) : '';
+    } catch (_) {}
     addMsg('layla', data.response || '', data.aspect_name, data.state?.steps?.some(s => s.deliberated), data.state?.steps, data.ux_states, data.memory_influenced);
     if (document.getElementById('tts-toggle')?.checked && (data.response || '').trim()) { try { speakReply(data.response, currentAspect); } catch (_) {} }
   } catch (e) { addMsg('layla', ((e && (e.message||'')).toLowerCase().includes('fetch') || (e && (e.message||'')).toLowerCase().includes('network')) ? formatAgentError(null, null) : ('Error: ' + (e && e.message || 'unknown'))); }
@@ -2159,6 +2184,10 @@ async function send() {
   addMsg('you', displayMsg);
   addSeparator();
   _lastDisplayMsg = displayMsg;
+  try {
+    const rmBadge = document.getElementById('reasoning-mode-badge');
+    if (rmBadge) rmBadge.textContent = '';
+  } catch (_) {}
 
   const streamMode = document.getElementById('stream-toggle')?.checked || false;
   const modelOverride = (document.getElementById('model-override')?.value || '').trim();
@@ -2265,6 +2294,10 @@ async function send() {
                 if (obj.content != null && String(obj.content).trim() !== '') full = String(obj.content).trim();
                 if (Array.isArray(obj.ux_states)) streamUxStates = obj.ux_states;
                 if (Array.isArray(obj.memory_influenced)) streamMemoryInfluenced = obj.memory_influenced;
+                try {
+                  const rmBadge = document.getElementById('reasoning-mode-badge');
+                  if (rmBadge && obj.reasoning_mode) rmBadge.textContent = 'Thinking: ' + obj.reasoning_mode;
+                } catch (_) {}
                 gotDone = true;
                 break;
               }
@@ -2341,6 +2374,11 @@ async function send() {
       return;
     }
     const replyText = (data.response != null && String(data.response).trim() !== '') ? data.response : 'No response from Layla.';
+    try {
+      const rmBadge = document.getElementById('reasoning-mode-badge');
+      const rm = data.reasoning_mode || data.state?.reasoning_mode;
+      if (rmBadge) rmBadge.textContent = rm ? ('Thinking: ' + rm) : '';
+    } catch (_) {}
     addMsg('layla', replyText, data.aspect_name, data.state?.steps?.some(s => s.deliberated), data.state?.steps, data.ux_states, data.memory_influenced);
     updateRetryButton();
     if (data.refused && data.refusal_reason) {
@@ -2540,9 +2578,35 @@ async function refreshPlatformModels() {
   } catch (e) { el.innerHTML = '<span style="color:#f90">' + formatAgentError(null, null) + '</span>'; }
 }
 
+async function refreshKnowledgeIngestList() {
+  const el = document.getElementById('km-ingest-list');
+  if (!el) return;
+  try {
+    const r = await fetch('/knowledge/ingest/sources');
+    const d = await r.json();
+    const items = d.sources || [];
+    if (!items.length) { el.textContent = 'No ingested sources yet.'; return; }
+    el.innerHTML = items.map(s => `<div>${(s.name || '').replace(/</g, '&lt;')} <span style="opacity:0.7">(${s.entries || 0})</span></div>`).join('');
+  } catch (_) { el.textContent = ''; }
+}
+
+async function runKnowledgeIngest() {
+  const src = document.getElementById('km-source')?.value?.trim() || '';
+  const label = document.getElementById('km-label')?.value?.trim() || '';
+  if (!src) { alert('Enter a URL or folder path'); return; }
+  try {
+    const r = await fetch('/knowledge/ingest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source: src, label }) });
+    const d = await r.json();
+    if (d.ok) alert('Ingest OK: ' + (d.path || '').slice(0, 120));
+    else alert('Ingest failed: ' + (d.error || 'unknown'));
+    refreshKnowledgeIngestList();
+  } catch (e) { alert('Request failed'); }
+}
+
 async function refreshPlatformKnowledge() {
   const el = document.getElementById('platform-knowledge');
   if (!el) return;
+  refreshKnowledgeIngestList();
   el.innerHTML = '<div class="skeleton" style="height:12px;width:85%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:70%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:80%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:60%"></div>';
   try {
     const r = await fetch('/platform/knowledge');
@@ -3127,6 +3191,21 @@ async function pollWarmup() {
     const d = await r.json();
     _connectionOk = true;
     document.getElementById('connection-banner')?.style.setProperty('display', 'none');
+    try {
+      const cs = d.cache_stats;
+      const cb = document.getElementById('cache-stats-badge');
+      if (cb && cs && typeof cs.hits === 'number' && typeof cs.misses === 'number') {
+        const tot = cs.hits + cs.misses;
+        const show = (typeof localStorage !== 'undefined' && localStorage.getItem('layla_show_cache_stats') === '1');
+        if (show && tot > 0) {
+          const pct = Math.round((cs.hit_ratio != null ? cs.hit_ratio : (cs.hits / tot)) * 100);
+          cb.textContent = 'Cache: ' + pct + '% hit';
+          cb.style.display = '';
+        } else {
+          cb.style.display = 'none';
+        }
+      }
+    } catch (_) {}
     if (_warmupDone) return;
     if (d.model_loaded) {
       _warmupDone = true;
@@ -3715,9 +3794,11 @@ async function refreshModelStatus(prefetched) {
     const mode = d.performance_mode || 'auto';
     const valid = (d.model_valid !== false) && (d.ready || d.model_found || (d.model_filename || '').length > 0);
     if (valid) {
-      const raw = (d.model_filename || '').trim() || 'model';
-      const short = raw.replace(/\.gguf$/i, '').slice(0, 28);
-      badge.textContent = 'Model: ' + short + ' | Mode: ' + mode;
+      const raw = ((d.resolved_model || d.model_filename || '') + '').trim() || 'model';
+      const short = raw.replace(/\.gguf$/i, '').slice(0, 36);
+      const hint = (d.model_route_hint || '').trim();
+      const hintPart = hint ? ' (' + hint + ')' : '';
+      badge.textContent = 'Model: ' + short + hintPart + ' | Mode: ' + mode;
       badge.style.color = '#4dff88';
     } else {
       badge.textContent = '⚠ setup required';

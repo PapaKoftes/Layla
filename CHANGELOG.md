@@ -9,6 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Safety & hygiene (agent loop)
+- **Tool output validation**: `services/tool_output_validator.py`; wired after real tool execution in `agent_loop.py` (skips policy / approval / loop pseudo-results)
+- **Exact duplicate tool calls**: per-run `_recent_exact_calls` + `exact_call_key()`; `push_and_evaluate(..., reasoning_mode=)` lowers default repeat stop threshold (20→5) for `none`/`light` unless `tool_loop_stop_threshold` is overridden
+- **Sandbox Python**: `python_runner` uses isolated `mkdtemp` + cleanup; optional `sandbox_python_memory_limit_mb` + `preexec_fn` RLIMIT_AS on POSIX
+- **Knowledge ingest**: content-hash dedup via `.hash` sidecars; optional injection guard (`doc_injection_guard_enabled`) with data framing + redaction
+- **Retrieval context**: `max_chars_per_source`, `retrieval_line_overlap_threshold` (Jaccard on words) in `_build_retrieved_context_impl`
+- **Writes / patches**: `write_file_max_bytes`, `write_file_explosion_factor`; `max_patch_lines` for `apply_patch`
+- **Decisions**: `action: "none"` in `decision_schema` + no-op step in loop
+- **Telemetry**: skip `reasoning_mode=none` events unless `telemetry_log_trivial`
+- **Routing**: `model_router` warns when selected GGUF path missing; clearer `llm_gateway` fallback warning
+
+### Power-user phased integration
+- **Sandbox runners**: `services/sandbox/shell_runner.py`, `services/sandbox/python_runner.py` — timeouts from `sandbox_runner_timeout_seconds` / `sandbox_python_timeout_seconds`; optional `shell_restrict_to_allowlist` + `shell_allowlist_extra`; `shell` / `run_python` tools delegate with subprocess fallback
+- **Tool args validation**: `services/tool_args.py` + `tool_args_validation_enabled`; structured errors before dispatch when LLM supplies `args`
+- **Code intelligence**: `services/code_intelligence.py`, tool `search_codebase` (graph + semantic); `coding_model_large_context` + `coding_large_context_threshold` in `select_model()`
+- **Retrieval**: weighted hybrid fusion (`retrieval_hybrid_*`); `coding_boost` for `reasoning_mode` deep; optional BGE reranker (`use_bge_reranker`, `bge_reranker_model`)
+- **Doc ingestion**: `services/doc_ingestion.py`; `GET /knowledge/ingest/sources`, `POST /knowledge/ingest`; Knowledge Manager UI in platform Knowledge panel
+- **Learning quality**: `distill.score_learning_content` / `passes_learning_quality_gate`; `save_learning` rejects when `learning_quality_gate_enabled`
+- **Multi-agent hints**: `services/agent_roles.py`; `multi_agent_orchestration_enabled` injects coordination snippet for `reasoning_mode` deep (prompt-only, single LLM)
+
+### Final polish (Phase 3)
+- **Completion cache metrics**: hit/miss counters, `get_cache_stats()`; exposed on `GET /health` as `cache_stats`; optional UI badge when `localStorage.layla_show_cache_stats === '1'`
+- **Reasoning stability**: `stabilize_reasoning_mode()` (deep→light smoothing); `last_reasoning_mode` on agent state; streaming path uses same global smoothing
+- **Retrieval**: `build_retrieved_context(..., reasoning_mode=)` skips fused retrieval for `light` + query length &lt; 20
+- **Telemetry → routing**: `get_user_profile()` (simple/coding ratios); soft bias in `select_model()` toward chat/default when `simple_ratio` &gt; 0.7 (telemetry disabled → no bias)
+- **Setup status**: `resolved_model`, `model_route_hint` (`code` / `chat` / `reasoning`); header shows resolved filename + hint
+
+### Phase 3 — Performance & adaptive reasoning
+- **Reasoning classifier** (`services/reasoning_classifier.py`): per-turn `none` / `light` / `deep`; `deep` capped to `light` when `performance_mode` is `low`; `none` skips planner; `light`/`none` skip streaming self-reflection
+- **`reasoning_mode`** on agent state; forwarded in `POST /agent` JSON, stream `done` events, and `/research` responses; Web UI `#reasoning-mode-badge`
+- **Completion cache**: key includes model + temperature + max_tokens; `completion_cache_max_entries` config (default 500)
+- **Local telemetry**: `telemetry_events` table + `services/telemetry.py` (`telemetry_enabled`, default on); logged at end of `autonomous_run` (including `system_busy` / `plan_completed` paths)
+- **Fix**: `effective_history` initialized before `_build_system_head` in the non-stream reason path (was `UnboundLocalError`)
+
 ### Hardening
 - `GET /setup_status` adds `model_valid`; UI re-opens setup when config points at a missing file
 - `POST /agent` returns `error: no_model` and `action: open_setup` when the model is not ready

@@ -164,6 +164,21 @@ def _migrate_impl() -> None:
         """)
         db.commit()
 
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS telemetry_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL,
+                task_type TEXT,
+                reasoning_mode TEXT,
+                model_used TEXT,
+                latency_ms REAL,
+                success INTEGER,
+                performance_mode TEXT
+            )
+        """)
+        db.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_ts ON telemetry_events(ts)")
+        db.commit()
+
     # Optional: add learning_type (Phase 4). Backward compatible; existing rows default to fact.
     try:
         with _conn() as db:
@@ -719,6 +734,20 @@ def save_learning(
                 pass
             return -1
         content = filtered or content
+    except Exception:
+        pass
+    try:
+        from layla.memory.distill import passes_learning_quality_gate
+
+        ok_q, qscore = passes_learning_quality_gate(content)
+        if not ok_q:
+            try:
+                from services.observability import log_learning_skipped
+
+                log_learning_skipped(reason=f"quality_gate:{qscore:.2f}")
+            except Exception:
+                pass
+            return -1
     except Exception:
         pass
     learning_type = kind if kind in ("fact", "preference", "strategy", "identity") else "fact"
@@ -1863,3 +1892,55 @@ def set_project_context(
                 (cur["project_name"], json.dumps(cur["domains"]), json.dumps(cur["key_files"]), cur["goals"], cur.get("lifecycle_stage", ""), now),
             )
         db.commit()
+
+
+def log_telemetry_event(
+    task_type: str | None,
+    reasoning_mode: str | None,
+    model_used: str | None,
+    latency_ms: float,
+    success: int,
+    performance_mode: str | None,
+) -> None:
+    """Append one local telemetry row (privacy-safe; no external calls)."""
+    migrate()
+    ts = utcnow().isoformat()
+    with _conn() as db:
+        db.execute(
+            """
+            INSERT INTO telemetry_events (ts, task_type, reasoning_mode, model_used, latency_ms, success, performance_mode)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (ts, task_type, reasoning_mode, model_used, float(latency_ms), int(success), performance_mode),
+        )
+        db.commit()
+
+
+def get_recent_telemetry_events(n: int = 50) -> list[dict]:
+    """Return most recent telemetry rows as dicts (id, ts, task_type, ...)."""
+    migrate()
+    lim = max(1, min(int(n), 500))
+    with _conn() as db:
+        cur = db.execute(
+            """
+            SELECT id, ts, task_type, reasoning_mode, model_used, latency_ms, success, performance_mode
+            FROM telemetry_events
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (lim,),
+        )
+        rows = cur.fetchall()
+    out: list[dict] = []
+    for r in rows:
+        out.append({
+            "id": r["id"],
+            "ts": r["ts"],
+            "task_type": r["task_type"],
+            "reasoning_mode": r["reasoning_mode"],
+            "model_used": r["model_used"],
+            "latency_ms": r["latency_ms"],
+            "success": r["success"],
+            "performance_mode": r["performance_mode"],
+        })
+    return out
