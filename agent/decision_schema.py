@@ -72,11 +72,13 @@ def parse_decision(text: str, valid_tools: frozenset[str]) -> dict | None:
         except Exception:
             return None
 
-    action = (data.get("action") or "reason").lower()
-    if action not in ("tool", "reason"):
+    action = (data.get("action") or "reason").lower().strip()
+    if action not in ("tool", "reason", "none"):
         action = "reason"
     tool = (data.get("tool") or "").strip() or None
-    if action == "tool" and tool and tool not in valid_tools:
+    if action == "none":
+        tool = None
+    elif action == "tool" and tool and tool not in valid_tools:
         tool = None
     revised = _str_opt(data.get("revised_objective"), 500)
     pl = (data.get("priority_level") or "").strip().lower()

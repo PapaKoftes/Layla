@@ -9,6 +9,37 @@ import logging
 logger = logging.getLogger("layla")
 
 TASK_TYPES = ("coding", "reasoning", "chat", "default")
+
+
+def _warn_router_model_missing(model_fn: str | None, label: str) -> None:
+    m = (model_fn or "").strip()
+    if not m:
+        return
+    try:
+        import runtime_safety
+
+        cfg0 = runtime_safety.load_config()
+        probe = dict(cfg0)
+        probe["model_filename"] = m
+        p = runtime_safety.resolve_model_path(probe)
+        if not p.exists():
+            d = (cfg0.get("model_filename") or "").strip() or "model_filename"
+            logger.warning(
+                "model_router fallback: %s not found → using default at load (%s) [%s]",
+                m, d, label,
+            )
+    except Exception:
+        pass
+
+
+def _select_return(sel: str | None, label: str) -> str | None:
+    if sel is None:
+        return None
+    s = str(sel).strip()
+    if not s:
+        return None
+    _warn_router_model_missing(s, label)
+    return s
 _ROUTER_CONFIG: dict[str, str | None] = {}
 
 # Alias → common GGUF basename (resolved under models_dir; not a filesystem path)
@@ -128,10 +159,17 @@ def select_model(
 
         best_fn = get_best_llm_filename_for_task(tt, cfg)
         if best_fn and str(best_fn).strip():
-            return str(best_fn).strip()
+            return _select_return(str(best_fn).strip(), "capability_best")
     except Exception as e:
         logger.debug("select_model get_best: %s", e)
     if tt == "coding":
+        try:
+            lg = (cfg.get("coding_model_large_context") or "").strip()
+            thresh = int(cfg.get("coding_large_context_threshold", 12000))
+            if lg and int(context_len) >= thresh:
+                return _select_return(_resolve_models_block_alias(lg), "coding_large_context")
+        except Exception as e:
+            logger.debug("select_model large_context: %s", e)
         try:
             from capabilities.registry import get_active_implementation
 
@@ -139,7 +177,7 @@ def select_model(
             if impl and impl.id == "magicoder":
                 cm = (cfg.get("coding_model") or "").strip()
                 if cm:
-                    return _resolve_models_block_alias(cm)
+                    return _select_return(_resolve_models_block_alias(cm), "coding_magicoder")
         except Exception as e:
             logger.debug("select_model coding capability: %s", e)
         # Latency: prefer fastest benchmarked among configured candidates if budget tight
@@ -150,10 +188,20 @@ def select_model(
 
                 fastest = select_fastest_model([str(c) for c in candidates if c])
                 if fastest:
-                    return str(fastest)
+                    return _select_return(str(fastest), "benchmark_fastest")
             except Exception:
                 pass
-    return route_model(tt)
+    try:
+        from services.telemetry import get_user_profile
+
+        profile = get_user_profile()
+        if profile.get("simple_ratio", 0) > 0.7:
+            chat_m = (cfg.get("chat_model") or cfg.get("model_filename") or "").strip()
+            if chat_m:
+                return _select_return(chat_m, "telemetry_chat")
+    except Exception as e:
+        logger.debug("select_model telemetry bias: %s", e)
+    return _select_return(route_model(tt), "route_model")
 
 
 def get_model_for_task(task_text: str) -> str | None:
