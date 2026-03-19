@@ -2,6 +2,8 @@
 
 This document is the **canonical plan and vision** for the Layla project. The entire repo is built so we never stray from this plan. All features, aspects, and safety rules align with it.
 
+**Values:** Layla is built as a sovereign, privacy-focused, local-first alternative to corporate AI. See [VALUES.md](VALUES.md). Development and design decisions reflect these principles.
+
 ---
 
 # 1. CORE PURPOSE

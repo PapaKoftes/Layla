@@ -50,6 +50,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- First-run onboarding (4-step guided tour)
+- Model readiness banner
+- Keyboard shortcut reference in Help panel
+- Improved error messages (`formatAgentError` for 500/503/network)
+- Empty state copy for study plans and approvals panels
+- Loading skeletons for Health, Models, Knowledge panels
+- Focus management (input after send, restore on modal close)
+- Responsive layout (sticky header, mobile sidebar with hamburger)
+- Accessibility (aria-label on icon buttons, focus-visible styles)
+- Typography scale (--text-xs/sm/base/lg, --heading)
+- Try-this suggestions (quantum entanglement, Python hello world chips)
+- Destructive action confirmations (clear chat, delete session)
+- Undo toast for approvals (write_file, apply_patch)
+- Input affordances hint (attach, paste, Ctrl+K)
+- Aspect switching feedback toast
+- Inline docs mount (`/docs`), Config Reference link in Settings
+- Troubleshooting section in Help panel and README
+- ChromaDB FTS fallback when vector store fails
+- TTS degradation (speakReply wrapped in try/catch)
+- Health dashboard (db_ok, chroma_ok, uptime)
+- Logging (LOG_LEVEL, LAYLA_LOG_JSON env)
+- Saved workspaces (localStorage presets)
+- Custom prompt prefixes (config + UI)
+- PWA manifest
 - ChromaDB as sole vector store (FAISS dual-write removed); learnings now linked via `embedding_id`
 - `instructor` integration for grammar-constrained JSON output in agent loop
 - Embedding-based aspect routing via cosine similarity (replaces keyword substring scoring)

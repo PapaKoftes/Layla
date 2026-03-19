@@ -4,6 +4,14 @@ Procedures for common setup and extension tasks. See also README.md, ARCHITECTUR
 
 **Config:** [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — full list of `runtime_config.json` keys for advanced users.
 
+**Ethics:** [ETHICAL_AI_PRINCIPLES.md](ETHICAL_AI_PRINCIPLES.md) — core ethical AI principles; all behavior must align.
+
+**Discord:** [DISCORD_SETUP.md](DISCORD_SETUP.md) — hook Layla to your Discord server (webhook, no bot).
+
+**optional layer (optional sidecar):** [ALIGNMENT_NOTE.md](ALIGNMENT_NOTE.md) maps optional layer concepts to Layla. [BRIDGE_NOTE.md](BRIDGE_NOTE.md) describes pointing an optional gateway at `POST /agent`. Layla-native onboarding is under **First run** below; no Node stack required for core use.
+
+**Tool policy & markdown skills:** `tools_profile`, `tools_allow`, `tools_deny`, `tool_loop_detection_enabled`, `http_cache_ttl_seconds`, `inference_fallback_urls`, `browser_persistent_profiles` — see `agent/runtime_config.example.json` and [ALIGNMENT_NOTE.md](ALIGNMENT_NOTE.md). Optional AgentSkills-style files: repo [`skills/`](../skills/README.md) or `markdown_skills_dir` in config.
+
 ---
 
 ## First run

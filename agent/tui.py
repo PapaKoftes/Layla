@@ -10,8 +10,15 @@ Commands (type in input bar):
     /study <topic>     Add a study plan topic
     /approve <uuid>    Approve a pending tool call
     /wakeup            Trigger session greeting
+    /voice             Record from mic, transcribe, send to agent (voice-to-code)
+    /undo              Revert last Layla auto-commit (git revert HEAD)
+    /add <path>        Add file to context for next message
+    /run <cmd>         Execute command (no shell; compound commands like && not supported)
+    /diff              Show git diff (uncommitted changes)
     /export            Dump system state to layla_export.json
 """
+import asyncio
+import struct
 from pathlib import Path
 
 import httpx
@@ -137,6 +144,8 @@ class LaylaApp(App):
         self._allow_run = False
         self._pending: list = []
         self._study_plans: list = []
+        self._context_files: list = []  # /add: paths for next message
+        self._run_output: str = ""  # /run: output to inject into next message
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -154,7 +163,7 @@ class LaylaApp(App):
                 with ScrollableContainer(id="chat-scroll"):
                     yield Log(id="chat-log", highlight=True)
                 with Horizontal(id="input-row"):
-                    yield Input(placeholder="Speak to Layla…  (/aspect /think /study /approve /wakeup /export)", id="msg-input")
+                    yield Input(placeholder="Speak to Layla…  (/aspect /think /add /run /diff /undo /voice /export)", id="msg-input")
             with Vertical(id="panels"):
                 yield Static("∴ PENDING", classes="section-title")
                 yield Static("none", id="pending-list")
@@ -179,6 +188,20 @@ class LaylaApp(App):
             return
 
         log = self.query_one("#chat-log", Log)
+        # Prepend context from /add and /run
+        ctx_parts = []
+        if self._run_output:
+            ctx_parts.append(f"[Command output:\n{self._run_output}]")
+            self._run_output = ""
+        if self._context_files:
+            for p in self._context_files:
+                try:
+                    content = Path(p).expanduser().resolve().read_text(encoding="utf-8", errors="replace")[:6000]
+                    ctx_parts.append(f"[File {p}:\n{content}]")
+                except Exception:
+                    ctx_parts.append(f"[File {p}: (could not read)]")
+            self._context_files = []
+        full_msg = ("\n\n".join(ctx_parts) + "\n\n" + text).strip() if ctx_parts else text
         log.write_line(f"[bold cyan]USER:[/] {text}")
         log.write_line("─── ✦ ───")
 
@@ -186,7 +209,7 @@ class LaylaApp(App):
             resp = httpx.post(
                 f"{BASE_URL}/agent",
                 json={
-                    "message": text,
+                    "message": full_msg,
                     "aspect_id": self._aspect,
                     "show_thinking": self._show_thinking,
                     "allow_write": self._allow_write,
@@ -262,12 +285,144 @@ class LaylaApp(App):
             self._allow_write = not self._allow_write
             log.write_line(f"[yellow]Allow Write: {'ON' if self._allow_write else 'OFF'}[/]")
 
-        elif cmd == "/run":
+        elif cmd == "/allow-run":
             self._allow_run = not self._allow_run
             log.write_line(f"[yellow]Allow Run: {'ON' if self._allow_run else 'OFF'}[/]")
 
+        elif cmd == "/add":
+            if not arg:
+                log.write_line("[yellow]Usage: /add <path> — add file to context for next message[/]")
+                return
+            p = Path(arg).expanduser().resolve()
+            if not p.exists():
+                log.write_line(f"[red]File not found: {p}[/]")
+                return
+            self._context_files.append(str(p))
+            log.write_line(f"[green]Added {p.name} to context ({len(self._context_files)} file(s))[/]")
+
+        elif cmd == "/run":
+            if not arg:
+                self._allow_run = not self._allow_run
+                log.write_line(f"[yellow]Allow Run: {'ON' if self._allow_run else 'OFF'}[/]")
+                return
+            log.write_line(f"[yellow]Running: {arg}[/]")
+            try:
+                import shlex
+                import subprocess
+                argv = shlex.split(arg)
+                if not argv:
+                    log.write_line("[red]Empty command[/]")
+                    return
+                r = subprocess.run(
+                    argv,
+                    shell=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    cwd=str(Path.cwd()),
+                )
+                out = (r.stdout or "") + (r.stderr or "")
+                self._run_output = out[:4000] or "(no output)"
+                log.write_line(f"[green]Output captured for next message ({len(self._run_output)} chars)[/]")
+            except subprocess.TimeoutExpired:
+                self._run_output = "(command timed out)"
+                log.write_line("[red]Command timed out[/]")
+            except Exception as e:
+                log.write_line(f"[red]Run error: {e}[/]")
+
+        elif cmd == "/diff":
+            try:
+                import subprocess
+                r = subprocess.run(
+                    ["git", "diff"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    cwd=str(Path.cwd()),
+                )
+                out = (r.stdout or r.stderr or "(no diff)")[:3000]
+                log.write_line(f"[bold]Git diff:[/]\n{out}")
+            except Exception as e:
+                log.write_line(f"[red]Diff error: {e}[/]")
+
+        elif cmd == "/voice":
+            await self._do_voice(log)
+
+        elif cmd == "/undo":
+            try:
+                resp = httpx.post(f"{BASE_URL}/undo", json={}, timeout=10)
+                data = resp.json()
+                if data.get("ok"):
+                    log.write_line("[green]Reverted last Layla commit.[/]")
+                else:
+                    log.write_line(f"[red]{data.get('error', 'Undo failed')}[/]")
+            except Exception as e:
+                log.write_line(f"[red]Undo error: {e}[/]")
+
         else:
             log.write_line(f"[red]Unknown command: {cmd}[/]")
+
+    def _record_voice(self) -> bytes:
+        """Blocking: record 5s from mic, return WAV bytes."""
+        import sounddevice as sd
+        sample_rate = 16000
+        duration_sec = 5
+        rec = sd.rec(
+            int(duration_sec * sample_rate),
+            samplerate=sample_rate,
+            channels=1,
+            dtype="int16",
+        )
+        return self._raw_to_wav(rec, sample_rate)
+
+    async def _do_voice(self, log) -> None:
+        """Record from mic, transcribe, send to agent (voice-to-code)."""
+        log.write_line("[yellow]Recording 5s from mic…[/]")
+        try:
+            wav_bytes = await asyncio.to_thread(self._record_voice)
+            log.write_line("[yellow]Transcribing…[/]")
+            resp = httpx.post(
+                f"{BASE_URL}/voice/transcribe",
+                content=wav_bytes,
+                timeout=30,
+            )
+            data = resp.json()
+            text = (data.get("text") or "").strip()
+            if not text:
+                log.write_line("[red]No speech detected.[/]")
+                return
+            log.write_line(f"[bold cyan]USER (voice):[/] {text}")
+            log.write_line("─── ✦ ───")
+            agent_resp = httpx.post(
+                f"{BASE_URL}/agent",
+                json={
+                    "message": text,
+                    "aspect_id": self._aspect,
+                    "show_thinking": self._show_thinking,
+                    "allow_write": self._allow_write,
+                    "allow_run": self._allow_run,
+                },
+                timeout=60,
+            )
+            agent_data = agent_resp.json()
+            log.write_line(f"[bold magenta]∴ {agent_data.get('aspect_name', 'Layla').upper()}:[/] {agent_data.get('response', '')}")
+            await self._refresh_panels()
+        except ImportError:
+            log.write_line("[red]Voice requires: pip install sounddevice[/]")
+        except Exception as e:
+            log.write_line(f"[red]Voice error: {e}[/]")
+
+    def _raw_to_wav(self, samples, sample_rate: int) -> bytes:
+        """Convert int16 numpy array to WAV bytes."""
+        import numpy as np
+        buf = samples.astype(np.int16).tobytes()
+        n = len(buf)
+        header = struct.pack(
+            "<4sI4s4sIHHIIHH4sI",
+            b"RIFF", 36 + n, b"WAVE", b"fmt ", 16,
+            1, 1, sample_rate, sample_rate * 2, 2, 16, b"data", n,
+        )
+        return header + buf
 
     def _set_aspect(self, aspect_id: str) -> None:
         for aid, _ in ASPECTS:
