@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from agent_loop import _is_junk_reply, autonomous_run
 from layla.time_utils import utcnow
+from version import __version__
 
 logger = logging.getLogger("layla")
 
@@ -223,25 +224,29 @@ async def lifespan(app: FastAPI):
             ).start()
             logger.info("Capability benchmark startup thread started (benchmark_on_load)")
         # Preload embedder so first /agent request does not block on model load
-        try:
-            import threading as _t
+        # Optional and disabled by default for stability on some Python/torchao combos.
+        if cfg.get("embedder_prewarm_enabled", False):
+            try:
+                import threading as _t
 
-            from layla.memory.vector_store import embed
-            _t.Thread(target=lambda: embed("warmup"), daemon=True, name="embed-prewarm").start()
-            logger.info("embedder pre-warm thread started")
-        except Exception as e:
-            logger.warning("embedder preload failed: %s", e)
-        # Prewarm voice models (optional; silently skipped if not installed)
-        try:
-            from services.stt import prewarm as stt_prewarm
-            stt_prewarm()
-        except Exception:
-            pass
-        try:
-            from services.tts import prewarm as tts_prewarm
-            tts_prewarm()
-        except Exception:
-            pass
+                from layla.memory.vector_store import embed
+                _t.Thread(target=lambda: embed("warmup"), daemon=True, name="embed-prewarm").start()
+                logger.info("embedder pre-warm thread started")
+            except Exception as e:
+                logger.warning("embedder preload failed: %s", e)
+        # Prewarm voice models (optional; default off to avoid startup spikes)
+        if cfg.get("voice_stt_prewarm_enabled", False):
+            try:
+                from services.stt import prewarm as stt_prewarm
+                stt_prewarm()
+            except Exception:
+                pass
+        if cfg.get("voice_tts_prewarm_enabled", False):
+            try:
+                from services.tts import prewarm as tts_prewarm
+                tts_prewarm()
+            except Exception:
+                pass
         from apscheduler.schedulers.background import BackgroundScheduler
         from apscheduler.triggers.interval import IntervalTrigger
         sched = BackgroundScheduler(timezone="UTC")
@@ -303,7 +308,7 @@ app = FastAPI(
     lifespan=lifespan,
     title="Layla",
     description="Local-first AI companion and engineering agent",
-    version="1.0.0",
+    version=__version__,
 )
 app.add_middleware(GZipMiddleware, minimum_size=500)  # compress responses > 500 bytes
 
@@ -317,6 +322,9 @@ AUDIT_LOG = GOV_PATH / "audit.log"
 
 # In-memory conversation history (max 20 turns); also persisted to disk
 _history: deque = deque(maxlen=20)
+_plugins_cache: dict = {}
+_plugins_cache_ts: float = 0.0
+_PLUGINS_CACHE_TTL: float = 60.0
 
 
 def _load_history() -> None:
@@ -361,6 +369,19 @@ def _save_history() -> None:
 def _append_history(role: str, content: str) -> None:
     _history.append({"role": role, "content": content})
     _save_history()
+
+
+def _get_cached_plugins(cfg: dict) -> dict:
+    """Avoid rescanning plugins on every UI refresh."""
+    global _plugins_cache, _plugins_cache_ts
+    now = time.time()
+    if _plugins_cache and (now - _plugins_cache_ts) < _PLUGINS_CACHE_TTL:
+        return _plugins_cache
+    from services.plugin_loader import load_plugins
+
+    _plugins_cache = load_plugins(cfg)
+    _plugins_cache_ts = now
+    return _plugins_cache
 
 
 def _read_pending() -> list:
@@ -550,6 +571,41 @@ def usage():
         return {"error": str(e)}
 
 
+@app.get("/version")
+def version():
+    return {"ok": True, "version": __version__}
+
+
+@app.get("/update/check")
+def update_check():
+    try:
+        import runtime_safety
+        from services.auto_updater import check_update
+
+        cfg = runtime_safety.load_config()
+        return check_update(__version__, str(cfg.get("github_repo") or ""))
+    except Exception as e:
+        return {"ok": False, "error": f"update_check_failed: {e}"}
+
+
+@app.post("/update/apply")
+def update_apply(req: dict | None = None):
+    req = req or {}
+    allow_run = req.get("allow_run") is True
+    if not allow_run:
+        return JSONResponse({"ok": False, "error": "allow_run_required"}, status_code=403)
+    try:
+        import runtime_safety
+        from services.auto_updater import apply_update
+
+        # Align with existing dangerous-tool approval config.
+        if not runtime_safety.require_approval("shell"):
+            return JSONResponse({"ok": False, "error": "approval_required_for_shell"}, status_code=403)
+        return apply_update(REPO_ROOT)
+    except Exception as e:
+        return {"ok": False, "error": f"update_apply_failed: {e}"}
+
+
 @app.post("/undo")
 def undo():
     """Revert last Layla auto-commit (git revert HEAD --no-edit). Requires git_auto_commit.
@@ -591,8 +647,9 @@ def health(request: Request):
     except Exception:
         tools_registered = 0
     try:
-        from layla.memory.db import get_active_study_plans, get_recent_learnings
-        learnings = len(get_recent_learnings(n=10000))
+        from layla.memory.db import count_learnings, get_active_study_plans
+
+        learnings = count_learnings()
         study_plans = len(get_active_study_plans())
     except Exception:
         learnings = 0
@@ -605,12 +662,15 @@ def health(request: Request):
         vector_store = "unknown"
     db_ok = ok
     chroma_ok = False
-    try:
-        from layla.memory.vector_store import embed, search_similar
-        search_similar(embed("health"), k=1)
-        chroma_ok = True
-    except Exception:
-        pass
+    deep = ((request.query_params.get("deep") or "").strip().lower() == "true")
+    if deep:
+        try:
+            from layla.memory.vector_store import embed, search_similar
+
+            search_similar(embed("health"), k=1)
+            chroma_ok = True
+        except Exception:
+            pass
     uptime_seconds = time.time() - getattr(request.app.state, "start_time", time.time())
     payload = {
         "status": "ok" if ok else "degraded",
@@ -697,9 +757,8 @@ def platform_plugins():
     """List loaded plugins, skills, capabilities for UI."""
     try:
         import runtime_safety
-        from services.plugin_loader import load_plugins
         cfg = runtime_safety.load_config()
-        pl = load_plugins(cfg)
+        pl = _get_cached_plugins(cfg)
         skills = []
         try:
             from layla.skills.registry import SKILLS
@@ -1506,9 +1565,9 @@ async def create_mission_api(req: Request):
             return JSONResponse({"error": "goal required"}, status_code=400)
         mission = create_mission(
             goal=goal,
-            workspace_root=(req.get("workspace_root") or "").strip(),
-            allow_write=bool(req.get("allow_write")),
-            allow_run=bool(req.get("allow_run")),
+            workspace_root=(body.get("workspace_root") or "").strip(),
+            allow_write=bool(body.get("allow_write")),
+            allow_run=bool(body.get("allow_run")),
         )
         if not mission:
             return JSONResponse({"error": "mission creation failed (plan empty or planner error)"}, status_code=500)

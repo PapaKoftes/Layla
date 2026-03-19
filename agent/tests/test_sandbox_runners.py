@@ -1,8 +1,6 @@
 """Sandbox subprocess runners (timeout, cwd check)."""
 from pathlib import Path
 
-import pytest
-
 
 def test_python_runner_rejects_outside_sandbox(tmp_path):
     from services.sandbox.python_runner import run_python_file

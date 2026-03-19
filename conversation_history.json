@@ -9,11 +9,11 @@
   },
   {
     "role": "user",
-    "content": "Say hello in one word."
+    "content": "hi"
   },
   {
     "role": "assistant",
-    "content": "Mocked reply for e2e test."
+    "content": "Hey. I am here. What do you want to work on?"
   },
   {
     "role": "user",
@@ -25,11 +25,11 @@
   },
   {
     "role": "user",
-    "content": "Say hello in one word."
+    "content": "hi"
   },
   {
     "role": "assistant",
-    "content": "Mocked reply for e2e test."
+    "content": "Hey. I am here. What do you want to work on?"
   },
   {
     "role": "user",
@@ -41,11 +41,11 @@
   },
   {
     "role": "user",
-    "content": "Say hello in one word."
+    "content": "hi"
   },
   {
     "role": "assistant",
-    "content": "Mocked reply for e2e test."
+    "content": "Hey. I am here. What do you want to work on?"
   },
   {
     "role": "user",
@@ -57,11 +57,11 @@
   },
   {
     "role": "user",
-    "content": "Say hello in one word."
+    "content": "hi"
   },
   {
     "role": "assistant",
-    "content": "Mocked reply for e2e test."
+    "content": "Hey. I am here. What do you want to work on?"
   },
   {
     "role": "user",
@@ -73,10 +73,10 @@
   },
   {
     "role": "user",
-    "content": "Say hello in one word."
+    "content": "hi"
   },
   {
     "role": "assistant",
-    "content": "Mocked reply for e2e test."
+    "content": "Hey. I am here. What do you want to work on?"
   }
 ]

@@ -166,6 +166,9 @@ def load_config() -> dict:
             "completion_cache_enabled": False,
             "completion_cache_ttl_seconds": 45,
             "completion_cache_max_entries": 500,
+            "response_cache_enabled": False,
+            "response_cache_ttl_seconds": 300,
+            "response_cache_max_entries": 300,
             "telemetry_enabled": True,
             "sandbox_runner_timeout_seconds": 120.0,
             "sandbox_python_timeout_seconds": 45.0,
@@ -183,9 +186,12 @@ def load_config() -> dict:
             "multi_agent_orchestration_enabled": False,
             "learning_quality_gate_enabled": False,
             "learning_quality_min_score": 0.35,
+            "learning_min_score": 0.3,
             "auto_lint_test_fix": False,
             "auto_lint_test_fix_run_tests": False,
             "git_auto_commit": False,
+            "github_repo": "",
+            "auto_update_check_enabled": False,
             "research_max_tool_calls": 20,
             "research_max_runtime_seconds": 120,
             "safe_mode": True,
@@ -261,6 +267,9 @@ def load_config() -> dict:
             "max_patch_lines": 0,
             "doc_injection_guard_enabled": True,
             "telemetry_log_trivial": False,
+            "embedder_prewarm_enabled": False,
+            "voice_stt_prewarm_enabled": False,
+            "voice_tts_prewarm_enabled": False,
         }
         defaults.update(_hardware_derived_defaults())
         try:

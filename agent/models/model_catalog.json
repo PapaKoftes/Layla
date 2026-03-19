@@ -260,6 +260,45 @@
       "filename": "dolphin-2.6-mistral-7b-Q3_K_M.gguf",
       "uncensored": true,
       "desc": "Dolphin 2.6 Mistral 7B Q3. Smaller, 5GB VRAM. Uncensored."
+    },
+    {
+      "name": "dolphin-3.0-llama3.3-70b-Q4_K_M",
+      "family": "dolphin",
+      "size": "70B",
+      "ram_required": 40,
+      "vram_required": 40,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/mradermacher/Dolphin3.0-Llama3.3-70B-GGUF/resolve/main/Dolphin3.0-Llama3.3-70B-Q4_K_M.gguf",
+      "repo_id": "mradermacher/Dolphin3.0-Llama3.3-70B-GGUF",
+      "filename": "Dolphin3.0-Llama3.3-70B-Q4_K_M.gguf",
+      "uncensored": true,
+      "desc": "Dolphin 3.0 Llama 3.3 70B. Uncensored flagship for high-end systems."
+    },
+    {
+      "name": "deepseek-r1-distill-qwen-7b-Q4_K_M",
+      "family": "deepseek",
+      "size": "7B",
+      "ram_required": 8,
+      "vram_required": 8,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
+      "repo_id": "bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF",
+      "filename": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
+      "uncensored": true,
+      "desc": "DeepSeek R1 Distill Qwen 7B. Strong reasoning/coding on mid-range hardware."
+    },
+    {
+      "name": "qwen2.5-coder-14b-instruct-Q4_K_M",
+      "family": "qwen",
+      "size": "14B",
+      "ram_required": 14,
+      "vram_required": 10,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/bartowski/Qwen2.5-Coder-14B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf",
+      "repo_id": "bartowski/Qwen2.5-Coder-14B-Instruct-GGUF",
+      "filename": "Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf",
+      "uncensored": true,
+      "desc": "Qwen2.5 Coder 14B Instruct. Strong code-generation and refactor quality."
     }
   ]
 }

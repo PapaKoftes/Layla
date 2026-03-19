@@ -31,6 +31,9 @@ def approve(req: dict):
         entry = next((e for e in pending if e.get("id") == approval_id), None)
         if not entry:
             return JSONResponse({"ok": False, "error": "Approval ID not found"})
+        if entry.get("status") == "executed":
+            # Idempotent: approving again should not re-run the tool.
+            return JSONResponse({"ok": True, "result": entry.get("result", {}), "idempotent": True})
         if entry.get("status") != "pending":
             return JSONResponse({"ok": False, "error": f"Entry status is already: {entry.get('status')}"})
 
@@ -45,9 +48,11 @@ def approve(req: dict):
         tool_result = {}
         try:
             from layla.tools.registry import TOOLS
-            if tool_name in TOOLS:
+            if tool_name not in TOOLS:
+                tool_result = {"ok": False, "error": f"Unknown tool: {tool_name}"}
+            else:
                 tool_result = TOOLS[tool_name]["fn"](**{k: v for k, v in args.items() if k != "goal"})
-                result_ok = bool(tool_result.get("ok", False))
+                result_ok = bool((tool_result or {}).get("ok", False))
         except Exception as e:
             tool_result = {"ok": False, "error": str(e)}
 

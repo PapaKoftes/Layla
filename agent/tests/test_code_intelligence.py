@@ -1,5 +1,4 @@
 """code_intelligence facade over workspace_index."""
-from pathlib import Path
 
 import pytest
 
