@@ -7,9 +7,23 @@ with fallback to all-MiniLM-L6-v2 (384 dim) if nomic is unavailable.
 import hashlib
 import time
 import uuid
+import warnings
 from pathlib import Path
 
 import numpy as np
+
+# TorchAO currently emits noisy deprecation warnings from internal re-exports.
+# They are upstream warnings (no behavior impact here), so suppress them locally.
+warnings.filterwarnings(
+    "ignore",
+    message=r"Importing from torchao\.dtypes\..*deprecated.*",
+    category=DeprecationWarning,
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r"Importing .* from torchao\.dtypes is deprecated.*",
+    category=DeprecationWarning,
+)
 
 MEMORY_DIR = Path(__file__).resolve().parent
 CHROMA_PATH = MEMORY_DIR / "chroma_db"
@@ -56,7 +70,15 @@ def _get_embedder():
             else:
                 # Dynamic int8 quantization for CPU: prefer torchao, fallback to torch (deprecated)
                 try:
-                    from torchao.quantization import Int8DynamicActivationInt8WeightConfig, quantize_
+                    # torchao currently emits deprecation warnings for legacy internal
+                    # re-export paths; suppress those noisy upstream warnings locally.
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings(
+                            "ignore",
+                            message=r"Importing from torchao\.dtypes\..*is deprecated.*",
+                            category=DeprecationWarning,
+                        )
+                        from torchao.quantization import Int8DynamicActivationInt8WeightConfig, quantize_
                     quantize_(model[0].auto_model, Int8DynamicActivationInt8WeightConfig())
                     log.info("Embedder: int8 quantized on CPU (torchao)")
                 except Exception as e:

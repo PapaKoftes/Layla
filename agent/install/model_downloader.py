@@ -10,6 +10,7 @@ Canonical models directory: ONE place for all models.
 from __future__ import annotations
 
 import logging
+import hashlib
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -164,11 +165,21 @@ def download_model(
         return {"ok": False, "path": None, "filename": None, "error": str(e)}
 
 
-def verify_file(path: Path) -> bool:
+def verify_file(path: Path, expected_sha256: str = "") -> bool:
     """
-    Basic integrity check: file exists and has non-zero size.
-    Full checksum verification would require catalog to store expected hashes.
+    Basic integrity check: file exists and minimum size.
+    If expected_sha256 is provided, verify exact file hash.
     """
     if not path.exists():
         return False
-    return path.stat().st_size > 1024 * 1024  # At least 1 MB
+    if path.stat().st_size <= 1024 * 1024:
+        return False
+    expected = (expected_sha256 or "").strip().lower()
+    if not expected:
+        return True
+
+    hasher = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest().lower() == expected

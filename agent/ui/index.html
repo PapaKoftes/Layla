@@ -1039,27 +1039,27 @@
       <p class="sidebar-hint">Talk to Layla or choose a voice. She remembers and grows with you.</p>
       <div class="aspect-option">
         <button class="aspect-btn active" onclick="setAspect('morrigan')" id="btn-morrigan">⚔ Morrigan</button>
-        <span class="aspect-desc">Code, debug, architecture, execution. The blade.</span>
+        <span class="aspect-desc">Software engineering: coding, debugging, refactoring, and system architecture.</span>
       </div>
       <div class="aspect-option">
         <button class="aspect-btn" onclick="setAspect('nyx')" id="btn-nyx">✦ Nyx</button>
-        <span class="aspect-desc">Research, depth, synthesis. Finds the thing under the thing.</span>
+        <span class="aspect-desc">Research and analysis: deep dives, technical explanations, and synthesis.</span>
       </div>
       <div class="aspect-option">
         <button class="aspect-btn" onclick="setAspect('echo')" id="btn-echo">◎ Echo</button>
-        <span class="aspect-desc">Pattern guardian, memory, growth. Holds the thread.</span>
+        <span class="aspect-desc">Continuity and context: memory tracking, user patterns, and long-term consistency.</span>
       </div>
       <div class="aspect-option">
         <button class="aspect-btn" onclick="setAspect('eris')" id="btn-eris">⚡ Eris</button>
-        <span class="aspect-desc">Creative divergence, banter, the leap that skips the steps.</span>
+        <span class="aspect-desc">Creative ideation: brainstorming, unconventional options, and exploratory thinking.</span>
       </div>
       <div class="aspect-option">
         <button class="aspect-btn" onclick="setAspect('cassandra')" id="btn-cassandra">⌖ Cassandra</button>
-        <span class="aspect-desc">Unfiltered oracle. Sees it first, says it before it's finished.</span>
+        <span class="aspect-desc">Rapid critique: direct first-pass judgments and blunt feedback.</span>
       </div>
       <div class="aspect-option">
         <button class="aspect-btn" onclick="setAspect('lilith')" id="btn-lilith">⊛ Lilith</button>
-        <span class="aspect-desc">Sovereign will. Absolute honesty. The part that doesn't flinch.</span>
+        <span class="aspect-desc">Safety and boundaries: ethics checks, refusal logic, and high-risk decision review.</span>
       </div>
     </div>
     <div>
@@ -1177,6 +1177,11 @@
     </div>
     <div class="panel-pane" id="panel-health" data-panel="health">
       <div class="panel-title">System Health</div>
+      <div style="font-size:0.7rem;margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:8px">
+        <div id="app-version" style="margin-bottom:6px;color:var(--text-dim)">Version: loading...</div>
+        <button type="button" class="tab-btn" onclick="checkForUpdates()">Check for updates</button>
+        <div id="update-status" style="margin-top:6px;color:var(--text-dim)"></div>
+      </div>
       <div id="platform-health" style="font-size:0.72rem;line-height:1.5">
         <span style="color:var(--text-dim)">Loading…</span>
       </div>
@@ -2551,6 +2556,44 @@ async function refreshPlatformHealth() {
   } catch (e) { el.innerHTML = '<span style="color:#f90">' + formatAgentError(null, null) + '</span>'; }
 }
 
+async function refreshVersionInfo() {
+  const el = document.getElementById('app-version');
+  if (!el) return;
+  try {
+    const r = await fetch('/version');
+    const d = await r.json();
+    if (!r.ok || !d || !d.version) {
+      el.textContent = 'Version: unknown';
+      return;
+    }
+    el.textContent = 'Version: ' + d.version;
+  } catch (_) {
+    el.textContent = 'Version: unknown';
+  }
+}
+
+async function checkForUpdates() {
+  const el = document.getElementById('update-status');
+  if (!el) return;
+  el.textContent = 'Checking...';
+  try {
+    const r = await fetch('/update/check');
+    const d = await r.json();
+    if (!r.ok || !d.ok) {
+      el.textContent = 'Update check failed.';
+      return;
+    }
+    if (d.update_available) {
+      const url = d.release_url ? ` <a href="${String(d.release_url).replace(/"/g, '&quot;')}" target="_blank" rel="noopener">release</a>` : '';
+      el.innerHTML = `Update available: ${d.latest_version}.${url}`;
+    } else {
+      el.textContent = 'You are up to date.';
+    }
+  } catch (_) {
+    el.textContent = 'Update check failed.';
+  }
+}
+
 async function refreshPlatformModels() {
   const el = document.getElementById('platform-models');
   if (!el) return;
@@ -3671,6 +3714,7 @@ loadChatHistory();
 doWakeup();
 refreshApprovals();
 refreshStudyPlans();
+refreshVersionInfo();
 checkSetupStatus().then(function() {
   if (!localStorage.getItem('layla_onboarding_done') && !document.getElementById('setup-overlay')?.classList.contains('visible')) {
     if (document.activeElement && document.activeElement.id === 'msg-input') {

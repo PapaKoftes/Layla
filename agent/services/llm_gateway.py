@@ -20,7 +20,8 @@ _llm_by_path: dict[str, Any] = {}  # resolved model path -> Llama (task-based ro
 # RLock: autonomous_run holds llm_serialize_lock for the whole run; nested _get_llm()
 # may load an alternate GGUF (coding_model) without deadlocking the same thread.
 _llm_lock = threading.RLock()
-# Exposed so agent_loop can serialize full autonomous_run (one run at a time for LLM)
+# Held for the entire autonomous_run to prevent concurrent LLM runs.
+# Safe for single-user local use; multi-user concurrency requires per-run queuing.
 llm_serialize_lock = _llm_lock
 
 # Per-request model override: "default" | "coding" | "reasoning" | "chat" (for remote backends)

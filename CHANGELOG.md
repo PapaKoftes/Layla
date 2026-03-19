@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## [1.1.0] — 2026-03-19
+
+### Full power-user upgrade pass
+- **Fast chat latency path**: trivial greetings/acks now short-circuit in `routers/agent.py`; `agent_loop.py` skips history summarization when `reasoning_mode` is `none`.
+- **Instant UX + cache**: streaming sends immediate `thinking` event; optional in-memory response cache (`services/response_cache.py`) via `response_cache_enabled`, `response_cache_ttl_seconds`, `response_cache_max_entries`.
+- **Product endpoints**: new `agent/version.py`, `GET /version`, `GET /update/check`, and `POST /update/apply` backed by `services/auto_updater.py` (requires `allow_run` + shell approval).
+- **UI product polish**: Health panel shows version and includes "Check for updates" action.
+- **Smarter defaults**: added model catalog entries for Dolphin 3.0 Llama 3.3 70B, DeepSeek R1 Distill Qwen 7B, and Qwen2.5 Coder 14B.
+- **Learning quality control**: `learnings.score` migration in `db.py`; `save_learning(..., score=...)`; `get_recent_learnings(..., min_score=...)`; prompt injection path reads only learnings above `learning_min_score`.
+
 ### Safety & hygiene (agent loop)
 - **Tool output validation**: `services/tool_output_validator.py`; wired after real tool execution in `agent_loop.py` (skips policy / approval / loop pseudo-results)
 - **Exact duplicate tool calls**: per-run `_recent_exact_calls` + `exact_call_key()`; `push_and_evaluate(..., reasoning_mode=)` lowers default repeat stop threshold (20→5) for `none`/`light` unless `tool_loop_stop_threshold` is overridden
