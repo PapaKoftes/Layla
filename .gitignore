@@ -3,10 +3,15 @@
 venv/
 env/
 
+# Python bytecode (never commit)
+__pycache__/
+*.py[cod]
+
 # Local runtime and data (do not commit)
 layla.db
 layla.db-shm
 layla.db-wal
+.layla_transport_paired.json
 learnings.json
 *.db
 agent.zip
@@ -15,6 +20,15 @@ data/
 
 # Local config (each user has their own model path / settings)
 agent/runtime_config.json
+
+# Discord bot per-guild state (local)
+discord_bot/discord_bot_state.json
+
+# Temp image uploads (agent image context)
+.layla_temp_images/
+
+# Playwright persistent profiles (local browser state)
+agent/.browser_profiles/
 
 # Research lab outputs (generated at runtime, can be large)
 agent/.research_lab/

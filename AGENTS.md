@@ -36,6 +36,7 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 6. **Personalities are loaded dynamically** from `personalities/*.json`. Never hardcode an aspect list — always use `_load_aspects()` from `orchestrator.py`. The `systemPromptAddition` field is the character voice — it IS injected into every system head when that aspect is active. Do not truncate it. The `role` field is just a short label for routing and display.
 7. **The DB schema must migrate forward.** Add columns via `db.execute("ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...")` in the `migrate()` function in `agent/layla/memory/db.py`. Never drop columns.
 8. **Keep `ARCHITECTURE.md` and `docs/IMPLEMENTATION_STATUS.md` updated** when you change the request flow, add routes, or implement a section from `LAYLA_NORTH_STAR.md`.
+9. **Ethical AI** — All behavior must align with `docs/ETHICAL_AI_PRINCIPLES.md`. Never bypass approval, sandbox, or refusal.
 
 ---
 
@@ -192,6 +193,8 @@ Client → POST /agent → routers/agent.py
 | `agent/runtime_config.example.json` | New config keys added to `runtime_safety.py` defaults |
 | `CHANGELOG.md` | Any commit worth noting for users |
 | `docs/RUNBOOKS.md` | New "how to add X" procedures |
+
+**Values:** [VALUES.md](VALUES.md) — sovereignty, privacy, anti-surveillance, solidarity. All development aligns with these.
 
 **Do NOT update** `LAYLA_NORTH_STAR.md` unless the user explicitly asks. It is the canonical vision document, not a status tracker.
 

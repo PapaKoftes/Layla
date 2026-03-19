@@ -17,7 +17,7 @@ Skills can call other skills (sub_skills). Each skill defines:
 
 ---
 
-## Built-in skills
+## Built-in skills (42)
 
 | Skill | Description | Sub-skills |
 |-------|-------------|------------|
@@ -26,6 +26,43 @@ Skills can call other skills (sub_skills). Each skill defines:
 | `write_python_module` | Read, implement, verify | analyze_repo |
 | `debug_code` | Locate issues, trace, suggest fixes | analyze_repo |
 | `document_codebase` | Summarize structure, key files | analyze_repo |
+| `fabrication_workflow` | DXF/G-code/STL analysis, geometry→fabrication | — |
+| `run_test_suite` | Run tests, summarize, suggest fixes | analyze_repo |
+| `setup_project` | Install deps, run first test | — |
+| `create_pr` | Stage, commit, push, open PR | — |
+| `investigate_bug` | Blame, grep, audit log, context | analyze_repo |
+| `code_review` | Structure, style, security, best practices | analyze_repo |
+| `generate_tests` | Unit tests from code | analyze_repo |
+| `generate_docs` | README, docstrings, API docs | analyze_repo |
+| `data_analysis` | Load, summarize, visualize data | — |
+| `refactor_code` | Rename, extract, format | analyze_repo |
+| `performance_audit` | Complexity, bottlenecks | analyze_repo |
+| `security_audit` | Vulnerabilities, secrets scan | analyze_repo |
+| `create_presentation` | Outline, slides, speaker notes | research_topic |
+| `compare_versions` | Diff across branches/versions | — |
+| `extract_insights` | Summarize, classify, extract entities | — |
+| `api_exploration` | Fetch, parse, document APIs | — |
+| `backup_and_restore` | Create/extract archives | — |
+| `optimize_code` | Performance, complexity, efficiency | analyze_repo, performance_audit |
+| `migrate_codebase` | Framework upgrade, deprecations | analyze_repo |
+| `review_pull_request` | Full PR: diff, security, style | — |
+| `fix_imports` | Organize imports | analyze_repo |
+| `data_cleaning` | Missing, outliers, validation | — |
+| `data_export` | Export to CSV/JSON | — |
+| `data_validation` | Schema, constraints | — |
+| `system_health_check` | Disk, memory, processes (read-only) | — |
+| `safe_cleanup` | Temp/cache report (approval for delete) | — |
+| `create_diagram` | Mermaid, SVG (no Gen AI) | — |
+| `create_visualization` | Charts from data (no Gen AI) | — |
+| `compose_document` | Outlines, reports, specs | research_topic |
+| `discord_notify` | Send to Discord | — |
+| `send_notification` | Discord/Slack/webhook/email | — |
+| `manage_calendar` | Read/add .ics events | — |
+| `database_workflow` | Query, schema, backup | — |
+| `read_any_file` | Any file type: code, docs, data | — |
+| `review_past_work` | Audit log, learnings, history | — |
+| `optimize_workflow` | Suggest efficiency improvements | — |
+| `practice_skill` | Focused practice, game-like improvement | — |
 
 ---
 

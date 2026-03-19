@@ -40,6 +40,8 @@ This document maps each section of the North Star to code, tests, and verificati
 
 ## Safe self-upgrade (post–North Star)
 
+See [ETHICAL_AI_PRINCIPLES.md](ETHICAL_AI_PRINCIPLES.md) for the full ethical AI framework.
+
 - **Approval flow**: All file writes, code execution, and high-impact actions require `layla approve <uuid>` or API approve.
 - **add_learning**: Layla can remember preferences and corrections; stored in learnings.
 - **Study plans + usefulness**: New knowledge reinforces only when `usefulness_score` ≥ 0.3; low-value learning does not propagate.
@@ -75,10 +77,11 @@ Maps each capability domain to implemented modules and missing components. See [
 | Conversation Intelligence | `orchestrator.py`, `context_manager.py`, `stt.py`, `tts.py`, `llm_gateway.py`, `inference_router.py`, `token_count.py`, `db.conversation_summaries`, `db.relationship_memory`, `style_profile.py` | Companion intelligence — done; voice mode detection, streaming STT, configurable TTS — done |
 | Knowledge Intelligence | `vector_store.py`, `db.py`, `retrieval.py`, `graph_reasoning.py`, `distill.py`, `workspace_index.py` | graph_reasoning (spaCy + networkx) — done; faiss-cpu, qdrant |
 | Code Intelligence | `file_understanding.py`, `workspace_index.py` (tree-sitter), `registry` (python_ast, grep_code, etc.) | tree-sitter: functions, classes, imports, calls — done |
-| Automation | `browser.py`, `task_graph.py`, `planner.py`, `research_stages.py`, registry (shell, run_python, schedule_*, crawl_site) | crawl4ai, docker SDK, pyperclip |
+| Automation | `browser.py` (optional persistent profiles), `task_graph.py`, `planner.py`, `research_stages.py`, registry (shell, `shell_session_*`, run_python, schedule_*, crawl_site), `http_response_cache.py` | crawl4ai, docker SDK, pyperclip |
+| Chat Transports | `discord_bot/`, `transports/slack_bot.py`, `transports/telegram_bot.py`, `transports/base.py` (allowlist + `/pair`, `runtime_safety` keys `transport_*`) | Matrix, WhatsApp (optional); OpenClaw gateway sidecar — `docs/OPENCLAW_BRIDGE.md` |
 | Model Management | `llm_gateway.py`, `inference_router.py`, `model_manager.py`, `model_recommender.py`, `model_benchmark.py`, `model_router.py` | inference_router: llama_cpp, openai_compatible (vLLM), ollama — done; model A/B comparison |
-| Agent Runtime | `agent_loop.py`, `task_graph.py`, `shared_state.py`, `decision_schema.py`, `mission_manager.py`, `routers/*.py` | Parallel agent roles (run_parallel_ready) — done; OpenTelemetry |
-| Skill Library | `layla/skills/registry.py`, `plugin_loader.py`, `planner.py` | DAG composition, skill metrics |
+| Agent Runtime | `agent_loop.py` (+ `tool_policy.py`, `tool_loop_detection.py`), `task_graph.py`, `shared_state.py`, `decision_schema.py`, `mission_manager.py`, `routers/*.py` | Parallel agent roles (run_parallel_ready) — done; OpenTelemetry |
+| Skill Library | `layla/skills/registry.py`, `markdown_skills.py`, `skills/` (optional `SKILL.md`), `plugin_loader.py`, `planner.py` | DAG composition, skill metrics |
 | Hardware Intelligence | `hardware_detect.py`, `first_run.py`, `agent/install/` (hardware_probe, model_selector, model_downloader, installer_cli), `runtime_safety._probe_hardware`, `runtime_safety.resolve_model_path` | First-run installer: detect hardware, recommend from catalog, download to ~/.layla/models, generate config. Metal refinement, disk benchmark, thermal (psutil) |
 | Self Improvement | `study_service.py`, `self_improvement.py`, `capability_discovery.py`, `integration_sandbox.py`, `benchmark_suite.py`, `sandbox_validator.py`, `distill.py`, `performance_monitor.py`, `system_optimizer.py`, `capabilities/registry.py` | Capability evolution pipeline — done; runtime optimization — done; RL feedback loop |
 | User Interface | `ui/index.html`, `tui.py`, `cursor-layla-mcp/server.py`, `layla.py` | Platform control center — Health, Models, Knowledge, Plugins panels; GET /platform/* APIs |

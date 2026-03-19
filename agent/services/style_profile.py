@@ -114,29 +114,3 @@ def get_profile_summary() -> dict[str, Any]:
     return result
 
 
-def cluster_topics_with_embeddings(texts: list[str], k: int = 5) -> list[str]:
-    """
-    Use embeddings + simple clustering to find recurring topic clusters.
-    Returns representative topic labels (first few words of centroid-like samples).
-    """
-    if not texts or len(texts) < 2:
-        return _extract_topic_keywords(texts[0] if texts else "")[:k]
-    try:
-        import numpy as np
-
-        from layla.memory.vector_store import embed
-        vecs = [embed(t[:500]) for t in texts[:20]]
-        if len(vecs) < 2:
-            return _extract_topic_keywords(texts[0])[:k]
-        arr = np.array([v.tolist() if hasattr(v, "tolist") else list(v) for v in vecs])
-        # Simple k-means style: pick k diverse samples by max-min distance
-        chosen = [0]
-        for _ in range(min(k - 1, len(arr) - 1)):
-            best_idx = max(
-                range(len(arr)),
-                key=lambda i: min(np.linalg.norm(arr[i] - arr[j]) for j in chosen) if i not in chosen else -1,
-            )
-            chosen.append(best_idx)
-        return _extract_topic_keywords(" ".join(texts[i] for i in chosen))[:k]
-    except Exception:
-        return _extract_topic_keywords(" ".join(texts))[:k]

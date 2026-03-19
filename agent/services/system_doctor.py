@@ -64,7 +64,6 @@ def run_diagnostics(include_llm: bool = False) -> dict[str, Any]:
     report["checks"]["config"] = {"exists": cfg_path.exists(), "path": str(cfg_path)}
     if cfg_path.exists():
         try:
-            import json
             cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
             report["checks"]["config"]["model_filename"] = cfg.get("model_filename", "")
         except Exception as e:
@@ -123,6 +122,57 @@ def run_diagnostics(include_llm: bool = False) -> dict[str, Any]:
         report["checks"]["port_8000"] = {"in_use": result == 0}
     except Exception as e:
         report["checks"]["port_8000"] = {"error": str(e)}
+
+    # Optional OpenClaw / sidecar gateway reachability (config-gated)
+    try:
+        import runtime_safety
+        import urllib.error
+        import urllib.parse
+        import urllib.request
+
+        _cfg = runtime_safety.load_config()
+        gw_raw = (_cfg.get("openclaw_gateway_url") or "").strip()
+        if gw_raw:
+            parsed = urllib.parse.urlparse(gw_raw)
+            if parsed.scheme not in ("http", "https"):
+                report["checks"]["openclaw_gateway"] = {
+                    "ok": False,
+                    "error": "openclaw_gateway_url must be http(s)",
+                }
+            else:
+                check_url = (
+                    gw_raw.rstrip("/") + "/health"
+                    if parsed.path in ("", "/")
+                    else gw_raw
+                )
+                try:
+                    req = urllib.request.Request(check_url, method="GET")
+                    with urllib.request.urlopen(req, timeout=3) as r:
+                        report["checks"]["openclaw_gateway"] = {
+                            "ok": 200 <= (r.status or 0) < 500,
+                            "url": check_url,
+                            "http_status": r.status,
+                        }
+                except urllib.error.HTTPError as e:
+                    report["checks"]["openclaw_gateway"] = {
+                        "ok": e.code in (401, 403, 404),
+                        "url": check_url,
+                        "http_status": e.code,
+                        "note": "reachable but non-200",
+                    }
+                except Exception as e:
+                    report["checks"]["openclaw_gateway"] = {
+                        "ok": False,
+                        "url": check_url,
+                        "error": str(e),
+                    }
+        else:
+            report["checks"]["openclaw_gateway"] = {
+                "skipped": True,
+                "reason": "openclaw_gateway_url not set",
+            }
+    except Exception as e:
+        report["checks"]["openclaw_gateway"] = {"error": str(e)}
 
     # Skills registry
     try:

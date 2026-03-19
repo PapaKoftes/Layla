@@ -39,4 +39,4 @@ start /b cmd /c "timeout /t 3 /nobreak >nul && start http://localhost:8000/ui"
 
 REM Start the server (foreground, visible output)
 cd agent
-uvicorn main:app --host 127.0.0.1 --port 8000
+uvicorn main:app --host 127.0.0.1 --port 8000 --reload

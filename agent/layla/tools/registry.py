@@ -198,6 +198,30 @@ def shell(argv: list, cwd: str) -> dict:
         return {"ok": False, "error": str(e)}
 
 
+def shell_session_start(argv: list | None = None, cwd: str = "") -> dict:
+    """Start a background shell process; returns session_id. Requires approval."""
+    from services.shell_sessions import shell_session_tool
+
+    return shell_session_tool(action="start", argv=list(argv or []), cwd=cwd or "")
+
+
+def shell_session_manage(
+    action: str = "poll",
+    session_id: str = "",
+    cwd: str = "",
+    limit: int = 80,
+) -> dict:
+    """Poll, log, or kill a background shell session (no extra approval)."""
+    from services.shell_sessions import shell_session_tool
+
+    return shell_session_tool(
+        action=action,
+        session_id=session_id,
+        cwd=cwd or "",
+        limit=limit,
+    )
+
+
 def grep_code(pattern: str, path: str, file_glob: str = "*") -> dict:
     """Search for a pattern in files. Tries rg first, falls back to Python re walk."""
     root = Path(path)
@@ -372,7 +396,6 @@ def parse_gcode(path: str) -> dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
     # Parse G-code patterns
-    moves = []
     tools = set()
     feed_rates = []
     bounds = {"x": [], "y": [], "z": []}
@@ -411,7 +434,7 @@ def parse_gcode(path: str) -> dict:
         "move_count": sum(len(bounds[ax]) for ax in bounds),
         "feed_rates": list(set(feed_rates))[:20] if feed_rates else [],
         "bounds": summary,
-        "lines": len([l for l in content.splitlines() if l.strip() and not l.strip().startswith(";")]),
+        "lines": len([ln for ln in content.splitlines() if ln.strip() and not ln.strip().startswith(";")]),
     }
 
 
@@ -659,8 +682,30 @@ def git_branch(repo: str) -> dict:
 
 
 def fetch_url_tool(url: str, store: bool = False) -> dict:
+    try:
+        import runtime_safety
+        from services.http_response_cache import get_cached, set_cached
+
+        cfg = runtime_safety.load_config()
+        if not store:
+            ck = f"fetch:{url}"
+            hit = get_cached(ck, cfg)
+            if hit is not None:
+                return hit
+    except Exception:
+        cfg = {}
     from layla.tools.web import fetch_url
-    return fetch_url(url, store=store)
+
+    out = fetch_url(url, store=store)
+    try:
+        if not store and out.get("ok"):
+            import runtime_safety
+            from services.http_response_cache import set_cached
+
+            set_cached(f"fetch:{url}", out, runtime_safety.load_config())
+    except Exception:
+        pass
+    return out
 
 
 def file_info(path: str) -> dict:
@@ -1113,6 +1158,50 @@ def search_memories(query: str, n: int = 8) -> dict:
             return {"ok": False, "error": str(e)}
 
 
+def memory_search(query: str, n: int = 8) -> dict:
+    """OpenClaw-style alias: search long-term memory and learnings (same as search_memories)."""
+    return search_memories(query, n=n)
+
+
+def memory_get(query: str, n: int = 5) -> dict:
+    """OpenClaw-style: retrieve memory snippets by semantic query."""
+    return search_memories(query, n=n)
+
+
+def structured_llm_task(
+    instruction: str,
+    schema_hint: str = "",
+    max_tokens: int = 256,
+) -> dict:
+    """One bounded LLM step that should return JSON (OpenClaw llm-task style). No file writes."""
+    import json as _json
+
+    from services.llm_gateway import run_completion
+
+    sh = (schema_hint or "").strip()
+    prompt = (
+        "You are a precise JSON generator. Output ONLY one JSON object, no markdown fences.\n"
+        f"Task: {instruction}\n"
+    )
+    if sh:
+        prompt += f"Expected shape / keys: {sh}\n"
+    mt = min(512, max(32, int(max_tokens)))
+    try:
+        out = run_completion(prompt, max_tokens=mt, temperature=0.1, stream=False)
+    except Exception as e:
+        return {"ok": False, "error": f"LLM call failed: {e}"}
+    text = ""
+    if isinstance(out, dict):
+        choices = out.get("choices") or [{}]
+        text = (choices[0].get("message") or {}).get("content") or ""
+    text = (text or "").strip()
+    try:
+        obj = _json.loads(text)
+        return {"ok": True, "json": obj, "raw": text[:2000]}
+    except Exception:
+        return {"ok": True, "json": None, "raw": text[:4000], "parse_error": True}
+
+
 # ─── Research & Information tools ─────────────────────────────────────────────
 
 def read_pdf(path: str, max_pages: int = 30) -> dict:
@@ -1129,14 +1218,16 @@ def read_pdf(path: str, max_pages: int = 30) -> dict:
     try:
         import fitz  # PyMuPDF
         doc = fitz.open(str(target))
-        pages = []
-        for i, page in enumerate(doc):
-            if i >= max_pages:
-                break
-            pages.append(f"--- Page {i+1} ---\n{page.get_text()}")
-        doc.close()
-        full = "\n".join(pages)
-        return {"ok": True, "path": str(target), "pages": min(len(doc), max_pages), "text": full[:12000]}
+        try:
+            pages = []
+            for i, page in enumerate(doc):
+                if i >= max_pages:
+                    break
+                pages.append(f"--- Page {i+1} ---\n{page.get_text()}")
+            full = "\n".join(pages)
+            return {"ok": True, "path": str(target), "pages": min(len(pages), max_pages), "text": full[:12000]}
+        finally:
+            doc.close()
     except ImportError:
         pass
     # Fallback: pypdf
@@ -1228,10 +1319,29 @@ def ddg_search(query: str, max_results: int = 10, region: str = "wt-wt") -> dict
     Returns results with title, href, body snippet.
     """
     try:
+        import runtime_safety
+        from services.http_response_cache import get_cached, set_cached
+
+        cfg = runtime_safety.load_config()
+        ck = f"ddg:{region}:{max_results}:{query}"
+        hit = get_cached(ck, cfg)
+        if hit is not None:
+            return hit
+    except Exception:
+        cfg = {}
+    try:
         from duckduckgo_search import DDGS
         with DDGS() as ddgs:
             results = list(ddgs.text(query, region=region, max_results=max_results))
-        return {"ok": True, "query": query, "results": results, "count": len(results)}
+        out = {"ok": True, "query": query, "results": results, "count": len(results)}
+        try:
+            import runtime_safety
+            from services.http_response_cache import set_cached
+
+            set_cached(f"ddg:{region}:{max_results}:{query}", out, runtime_safety.load_config())
+        except Exception:
+            pass
+        return out
     except ImportError:
         return {"ok": False, "error": "duckduckgo-search not installed: pip install duckduckgo-search"}
     except Exception as e:
@@ -1526,37 +1636,10 @@ def project_discovery_tool(workspace_root: str = "") -> dict:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
         from services.project_discovery import discover_project
-        root = workspace_root or str(Path.home())
+        root = workspace_root or str(Path.cwd())
         return discover_project(root)
-    except Exception:
-        # Fallback: lightweight manual discovery
-        try:
-            root_path = Path(workspace_root or ".").expanduser().resolve()
-            if not root_path.exists():
-                return {"ok": False, "error": "Path not found"}
-            files = []
-            for f in root_path.rglob("*"):
-                if f.is_file() and not any(p in str(f) for p in (".git", ".venv", "__pycache__", "node_modules")):
-                    files.append(str(f.relative_to(root_path)))
-                    if len(files) >= 200:
-                        break
-            ext_counts: dict = {}
-            for f in files:
-                ext = Path(f).suffix.lower()
-                ext_counts[ext] = ext_counts.get(ext, 0) + 1
-            readme = ""
-            for name in ("README.md", "readme.md", "README.txt"):
-                rp = root_path / name
-                if rp.exists():
-                    readme = rp.read_text(encoding="utf-8", errors="replace")[:1000]
-                    break
-            return {
-                "ok": True, "root": str(root_path), "file_count": len(files),
-                "extensions": dict(sorted(ext_counts.items(), key=lambda x: -x[1])[:15]),
-                "readme_preview": readme, "files_sample": files[:40],
-            }
-        except Exception as e2:
-            return {"ok": False, "error": str(e2)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 # ─── Symbolic & Advanced Math ──────────────────────────────────────────────────
@@ -1718,9 +1801,9 @@ def ocr_image(path: str, lang: str = "eng") -> dict:
     try:
         import pytesseract
         from PIL import Image as PILImage
-        img = PILImage.open(str(target))
-        text = pytesseract.image_to_string(img, lang=lang)
-        data = pytesseract.image_to_data(img, lang=lang, output_type=pytesseract.Output.DICT)
+        with PILImage.open(str(target)) as img:
+            text = pytesseract.image_to_string(img, lang=lang)
+            data = pytesseract.image_to_data(img, lang=lang, output_type=pytesseract.Output.DICT)
         confidences = [int(c) for c in data.get("conf", []) if str(c).lstrip("-").isdigit() and int(c) >= 0]
         conf_avg = sum(confidences) / max(len(confidences), 1)
         return {
@@ -2141,16 +2224,16 @@ def security_scan(path: str, scan_type: str = "bandit") -> dict:
 def _build_tools_from_domains() -> dict[str, Any]:
     """Build TOOLS by merging domain modules. Called after all tool functions are defined."""
     from layla.tools.domains import (
-        FILE_TOOLS,
-        GIT_TOOLS,
-        WEB_TOOLS,
-        MEMORY_TOOLS,
+        ANALYSIS_TOOLS,
+        AUTOMATION_TOOLS,
         CODE_TOOLS,
         DATA_TOOLS,
-        SYSTEM_TOOLS,
-        AUTOMATION_TOOLS,
-        ANALYSIS_TOOLS,
+        FILE_TOOLS,
         GENERAL_TOOLS,
+        GIT_TOOLS,
+        MEMORY_TOOLS,
+        SYSTEM_TOOLS,
+        WEB_TOOLS,
     )
     result: dict[str, Any] = {}
     for domain_tools in (
@@ -2192,8 +2275,9 @@ def vector_search(query: str, collection: str = "knowledge", k: int = 8) -> dict
             results = search_memories_full(query, k=k, use_rerank=False)
             return {"ok": True, "collection": collection, "query": query, "results": results[:k], "count": len(results)}
         elif collection == "knowledge":
-            from layla.memory.vector_store import search_knowledge
-            results = search_knowledge(query, k=k)
+            from layla.memory.vector_store import get_knowledge_chunks_with_sources
+            chunks = get_knowledge_chunks_with_sources(query, k=k)
+            results = [{"content": c.get("text", ""), "text": c.get("text", ""), "source": c.get("source", "")} for c in chunks]
             return {"ok": True, "collection": collection, "query": query, "results": results[:k], "count": len(results)}
         else:
             from layla.memory.vector_store import search_memories_full
@@ -2218,8 +2302,10 @@ def vector_store(text: str, metadata: dict | None = None, collection: str = "mem
         save_learning(content=text[:800], kind=kind)
         # Also embed into vector store
         try:
-            from layla.memory.vector_store import index_memory
-            index_memory(text, metadata=meta)
+            from layla.memory.vector_store import embed, add_vector
+            vec = embed(text[:800])
+            meta_with_content = {**meta, "content": text[:800]}
+            add_vector(vec, meta_with_content)
         except Exception:
             pass
         return {"ok": True, "stored": text[:100], "collection": collection, "kind": kind}
@@ -2766,23 +2852,30 @@ def describe_image(path: str, detail: str = "brief") -> dict:
         from PIL import Image as PILImage
         from transformers import BlipForConditionalGeneration, BlipProcessor
 
-        model_name = "Salesforce/blip-image-captioning-base"
+        try:
+            import runtime_safety
+
+            _cfg = runtime_safety.load_config()
+            model_name = (_cfg.get("image_model") or "Salesforce/blip-image-captioning-base").strip()
+        except Exception:
+            model_name = "Salesforce/blip-image-captioning-base"
         try:
             processor = BlipProcessor.from_pretrained(model_name)
             model = BlipForConditionalGeneration.from_pretrained(model_name)
         except Exception as e:
             return {"ok": False, "error": f"Failed to load BLIP model: {e}. Run: pip install transformers torch Pillow"}
 
-        img = PILImage.open(str(target)).convert("RGB")
+        with PILImage.open(str(target)) as img:
+            img_rgb = img.convert("RGB")
         device = "cuda" if torch.cuda.is_available() else "cpu"
         model = model.to(device)
 
         if detail == "detailed":
             # Conditional captioning with a prompt
             text_prompt = "a photography of"
-            inputs = processor(img, text_prompt, return_tensors="pt").to(device)
+            inputs = processor(img_rgb, text_prompt, return_tensors="pt").to(device)
         else:
-            inputs = processor(img, return_tensors="pt").to(device)
+            inputs = processor(img_rgb, return_tensors="pt").to(device)
 
         with torch.no_grad():
             out = model.generate(**inputs, max_new_tokens=80)
@@ -2814,10 +2907,10 @@ def describe_image(path: str, detail: str = "brief") -> dict:
         }
         try:
             from PIL import Image as PILImage
-            img = PILImage.open(str(target))
-            result_fb["size"] = f"{img.width}x{img.height}"
-            result_fb["mode"] = img.mode
-            result_fb["format"] = img.format
+            with PILImage.open(str(target)) as img:
+                result_fb["size"] = f"{img.width}x{img.height}"
+                result_fb["mode"] = img.mode
+                result_fb["format"] = img.format
         except Exception:
             pass
         # Try OCR anyway
@@ -3529,14 +3622,14 @@ def image_resize(path: str, width: int = 0, height: int = 0, output_path: str = 
         return {"ok": False, "error": "Provide at least width or height"}
     try:
         from PIL import Image as PILImage
-        img = PILImage.open(str(target))
-        orig_w, orig_h = img.size
-        if maintain_aspect:
-            if width and not height:
-                height = int(orig_h * width / orig_w)
-            elif height and not width:
-                width = int(orig_w * height / orig_h)
-        resized = img.resize((width, height), PILImage.LANCZOS)
+        with PILImage.open(str(target)) as img:
+            orig_w, orig_h = img.size
+            if maintain_aspect:
+                if width and not height:
+                    height = int(orig_h * width / orig_w)
+                elif height and not width:
+                    width = int(orig_w * height / orig_h)
+            resized = img.resize((width, height), PILImage.LANCZOS)
         out = Path(output_path) if output_path else target.parent / (target.stem + "_resized" + target.suffix)
         if not inside_sandbox(out):
             out = target.parent / (target.stem + "_resized" + target.suffix)
@@ -3736,8 +3829,8 @@ def stt_file(path: str, language: str = "en", model_size: str = "base") -> dict:
     try:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
-        from services.stt import transcribe
-        result = transcribe(str(target), language=language or None)
+        from services.stt import transcribe_file
+        result = transcribe_file(str(target), language=language or None)
         if isinstance(result, dict):
             return {"ok": True, "path": str(target), **result}
         return {"ok": True, "path": str(target), "text": str(result)}
@@ -3768,9 +3861,13 @@ def tts_speak(text: str, voice: str = "af_heart", output_path: str = "") -> dict
     try:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
-        from services.tts import synthesize
-        synthesize(text, voice=voice, output_path=out)
-        return {"ok": True, "output_path": out, "method": "kokoro-onnx", "chars": len(text)}
+        from services.tts import speak_to_bytes
+        wav_bytes = speak_to_bytes(text)
+        if wav_bytes:
+            p = Path(out)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(wav_bytes)
+            return {"ok": True, "output_path": out, "method": "kokoro-onnx", "chars": len(text)}
     except Exception:
         pass
     try:
@@ -4352,7 +4449,7 @@ def spaced_repetition_review(limit: int = 10, interval_hours: float = 24.0) -> d
     try:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
-        from layla.memory.db import get_learnings_due_for_review, schedule_next_review
+        from layla.memory.db import get_learnings_due_for_review
         due = get_learnings_due_for_review(limit=limit)
         items = [{"id": r["id"], "content": (r.get("content") or "")[:200], "importance": r.get("importance_score")} for r in due]
         return {"ok": True, "due_count": len(items), "items": items}
@@ -4899,8 +4996,9 @@ def calendar_add_event(path: str, summary: str, start: str, end: str = "", descr
     if not inside_sandbox(target):
         return {"ok": False, "error": "Outside sandbox"}
     try:
-        import icalendar
         from datetime import datetime
+
+        import icalendar
         cal = icalendar.Calendar()
         if target.exists():
             cal = icalendar.Calendar.from_ical(target.read_text(encoding="utf-8", errors="replace"))
@@ -5037,8 +5135,8 @@ def extract_archive(path: str, dest: str = "") -> dict:
     if not inside_sandbox(out):
         return {"ok": False, "error": "Destination outside sandbox"}
     try:
-        import zipfile
         import tarfile
+        import zipfile
         out = out.resolve()
         out.mkdir(parents=True, exist_ok=True)
         if target.suffix.lower() in (".zip",):
@@ -5215,11 +5313,16 @@ def json_schema(data: str | dict) -> dict:
         import json as _json
         obj = _json.loads(data) if isinstance(data, str) else data
         def _infer(v):
-            if v is None: return {"type": "null"}
-            if isinstance(v, bool): return {"type": "boolean"}
-            if isinstance(v, int): return {"type": "integer"}
-            if isinstance(v, float): return {"type": "number"}
-            if isinstance(v, str): return {"type": "string"}
+            if v is None:
+                return {"type": "null"}
+            if isinstance(v, bool):
+                return {"type": "boolean"}
+            if isinstance(v, int):
+                return {"type": "integer"}
+            if isinstance(v, float):
+                return {"type": "number"}
+            if isinstance(v, str):
+                return {"type": "string"}
             if isinstance(v, list):
                 item = _infer(v[0]) if v else {}
                 return {"type": "array", "items": item}
@@ -5247,8 +5350,8 @@ def jwt_decode(token: str, verify: bool = False, secret: str = "") -> dict:
         payload = _json.loads(b64d(parts[1]).decode())
         if verify and secret:
             try:
-                import hmac
                 import hashlib
+                import hmac
                 sig = parts[2]
                 msg = f"{parts[0]}.{parts[1]}".encode()
                 exp = base64.urlsafe_b64encode(hmac.new(secret.encode(), msg, hashlib.sha256).digest()).decode().rstrip("=")
@@ -5382,13 +5485,13 @@ def validate_tools_registry() -> None:
         # name: key is name
         if not entry.get("name"):
             entry["name"] = tool_name
-        # description: prefer explicit, else __doc__
+        # description: prefer explicit, else __doc__, else humanized name
         if not entry.get("description"):
             doc = (getattr(fn, "__doc__") or "").strip().split("\n")[0][:200]
             if doc:
                 entry["description"] = doc
             else:
-                missing.append((tool_name, "missing description"))
+                entry["description"] = tool_name.replace("_", " ").strip()
         # category: infer if missing
         if not entry.get("category"):
             entry["category"] = "general"

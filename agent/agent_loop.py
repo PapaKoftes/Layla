@@ -840,25 +840,30 @@ _VALID_TOOLS = frozenset(TOOLS.keys())
 
 def _get_tools_for_goal(goal: str) -> frozenset:
     """
-    Return tool names for this turn. When tool_routing_enabled, uses intent-based
-    subset (15-25 tools) instead of all tools. Fallback: full TOOLS when disabled.
+    Return tool names for this turn. Applies OpenClaw-style tool_policy (profile,
+    tools_allow/deny, groups) then intent-based subset when tool_routing_enabled.
     """
     try:
         cfg = runtime_safety.load_config()
-        if not cfg.get("tool_routing_enabled", True):
-            return _VALID_TOOLS
-        from services.intent_detection import get_tool_names_for_goal
-        names = get_tool_names_for_goal(goal, TOOLS)
-        # Cap at 30; truncate to top 25 by relevance if over (plan §7.3)
-        if len(names) > 30:
+        from services.tool_policy import resolve_effective_tools
+
+        skip_intent = not cfg.get("tool_routing_enabled", True)
+        names = set(resolve_effective_tools(cfg, goal, TOOLS, skip_intent_filter=skip_intent))
+        # Cap at 30 when routing narrows by intent (plan §7.3)
+        if cfg.get("tool_routing_enabled", True) and len(names) > 30:
             try:
                 from layla.tools.registry import tool_recommend
+
                 rec = tool_recommend(goal)
-                top = [r.get("tool") for r in (rec.get("recommendations") or [])[:25] if r.get("tool") in names]
-                names = frozenset(top) | {"reason", "read_file", "list_dir", "search_memories", "save_note"}
+                top = [
+                    r.get("tool")
+                    for r in (rec.get("recommendations") or [])[:25]
+                    if r.get("tool") in names
+                ]
+                names = set(top) | {"reason", "read_file", "list_dir", "search_memories", "save_note"}
             except Exception:
-                names = frozenset(list(names)[:25]) | {"reason", "read_file", "list_dir", "search_memories", "save_note"}
-        return names
+                names = set(list(names)[:25]) | {"reason", "read_file", "list_dir", "search_memories", "save_note"}
+        return frozenset(names)
     except Exception:
         return _VALID_TOOLS
 
@@ -1203,9 +1208,17 @@ def _llm_decision(
         bias_hint = f"Decision bias: {', '.join(bias)}. Prefer tools and approach that match.\n"
 
     no_progress_hint = ""
+    try:
+        from services.tool_loop_detection import consume_prompt_hint
+
+        _tlh = consume_prompt_hint(state)
+        if _tlh:
+            no_progress_hint += f"[Loop guard] {_tlh} "
+    except Exception:
+        pass
     last_ver = state.get("last_verification")
     if last_ver and not last_ver.get("progress_made") and last_ver.get("retry_suggested"):
-        no_progress_hint = "Last tool step did not make progress; consider a different approach or reply (reason). "
+        no_progress_hint += "Last tool step did not make progress; consider a different approach or reply (reason). "
     if state.get("environment_aligned") is False:
         no_progress_hint += "Environment check did not confirm success; consider different approach or reply (reason). "
     # North Star §8: failure awareness (structured hint stringified here)
@@ -1814,6 +1827,10 @@ def _autonomous_run_impl_core(
                 intent = "reason"
             elif decision.get("action") == "tool" and decision.get("tool") and decision["tool"] in _VALID_TOOLS:
                 intent = decision["tool"]
+            elif decision.get("action") == "tool":
+                # Model chose a tool but it was nulled by the policy filter; skip classify_intent
+                # (which is policy-unaware) to avoid burning tool budget on a denied tool.
+                intent = "reason"
             else:
                 intent = classify_intent(goal)
         else:
@@ -1826,6 +1843,7 @@ def _autonomous_run_impl_core(
             _emit_ux(state, ux_state_queue, UX_STATE_REFRAMING_OBJECTIVE)
             state["reflection_pending"] = True
             state["objective"] = revised_objective.strip()
+            state["original_goal"] = revised_objective.strip()
             state["consecutive_no_progress"] = 0
             state["strategy_shift_count"] = 0
             goal = state["objective"]
@@ -1838,6 +1856,51 @@ def _autonomous_run_impl_core(
         # Emit tool_start so streaming UI can show "Running tool_name..."
         if intent not in ("reason", "finish", "wakeup"):
             _emit_tool_start(ux_state_queue, intent)
+
+        # OpenClaw-style tool policy: block execution outside effective tool set
+        if intent not in ("reason", "finish", "wakeup") and intent in _VALID_TOOLS:
+            from services.tool_policy import tool_allowed
+
+            _vt = _get_tools_for_goal(goal)
+            if not tool_allowed(intent, _vt):
+                state["tool_calls"] += 1
+                state["steps"].append({
+                    "action": intent,
+                    "result": {
+                        "ok": False,
+                        "reason": "tool_policy_denied",
+                        "message": (
+                            f"Tool {intent} is not allowed this turn "
+                            "(tools_profile / tools_allow / tools_deny / intent filter)."
+                        ),
+                    },
+                })
+                state["last_tool_used"] = intent
+                goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+                continue
+
+        if intent not in ("reason", "finish", "wakeup") and intent in _VALID_TOOLS:
+            try:
+                from services.tool_loop_detection import push_and_evaluate
+
+                _loop_ev = push_and_evaluate(cfg, state, intent, decision)
+                if _loop_ev and _loop_ev.startswith("STOP:"):
+                    state["tool_calls"] += 1
+                    state["steps"].append({
+                        "action": intent,
+                        "result": {
+                            "ok": False,
+                            "reason": "tool_loop_detected",
+                            "message": _loop_ev[5:].strip(),
+                        },
+                    })
+                    state["last_tool_used"] = intent
+                    goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+                    continue
+                if _loop_ev and _loop_ev.startswith("WARN:"):
+                    state["tool_loop_prompt_hint"] = _loop_ev[5:].strip()
+            except Exception:
+                pass
 
         # ------------------------------------------------
         # WRITE FILE
@@ -2303,7 +2366,7 @@ def _autonomous_run_impl_core(
                 state["status"] = "finished"
                 break
             # Inject workspace/cwd for tools that expect it
-            if "cwd" not in args and intent in ("run_tests", "pip_install", "pip_list"):
+            if "cwd" not in args and intent in ("run_tests", "pip_install", "pip_list", "shell_session_start", "shell_session_manage"):
                 args["cwd"] = workspace
             if "repo" not in args and intent.startswith("git_"):
                 args["repo"] = workspace

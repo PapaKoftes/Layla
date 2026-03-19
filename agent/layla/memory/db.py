@@ -201,6 +201,19 @@ def _migrate_impl() -> None:
         except sqlite3.OperationalError as e:
             if "duplicate column" not in str(e).lower():
                 raise
+    # Spaced repetition: importance_score (0-1), next_review_at (ISO datetime)
+    for col, spec in [
+        ("importance_score", "REAL DEFAULT 0.5"),
+        ("next_review_at", "TEXT"),
+    ]:
+        try:
+            with _conn() as db:
+                db.execute(f"ALTER TABLE learnings ADD COLUMN {col} {spec}")
+                db.commit()
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
+
     # Evolution layer: study_plans optional domain_id and linked_capability_event_id
     for col, spec in [
         ("domain_id", "TEXT"),
@@ -892,6 +905,58 @@ def delete_learnings_by_id(ids: list) -> None:
     with _conn() as db:
         db.execute(f"DELETE FROM learnings WHERE id IN ({placeholders})", tuple(ids))
         db.commit()
+
+
+def get_learnings_due_for_review(limit: int = 10) -> list[dict]:
+    """
+    Return learnings due for spaced repetition review.
+    next_review_at <= now or NULL; ordered by importance_score then created_at.
+    """
+    migrate()
+    now = utcnow().isoformat()
+    with _conn() as db:
+        try:
+            has_col = any(r[1] == "next_review_at" for r in db.execute("PRAGMA table_info(learnings)").fetchall())
+        except Exception:
+            has_col = False
+        if not has_col:
+            return []
+        rows = db.execute(
+            """SELECT id, content, type, created_at, importance_score, next_review_at
+               FROM learnings
+               WHERE next_review_at IS NULL OR next_review_at <= ?
+               ORDER BY COALESCE(importance_score, 0.5) DESC, created_at ASC
+               LIMIT ?""",
+            (now, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def schedule_next_review(learning_id: int, interval_hours: float = 24.0) -> None:
+    """Schedule next review for a learning. Uses simple interval (FSRS-style would need more params)."""
+    migrate()
+    from datetime import datetime, timedelta
+    try:
+        next_at = (datetime.utcnow() + timedelta(hours=interval_hours)).isoformat() + "Z"
+        with _conn() as db:
+            db.execute("UPDATE learnings SET next_review_at = ? WHERE id = ?", (next_at, learning_id))
+            db.commit()
+    except Exception as e:
+        logger.warning("schedule_next_review failed: %s", e)
+
+
+def set_learning_importance(learning_id: int, score: float) -> None:
+    """Set importance_score (0-1) for a learning. Higher = more likely to persist."""
+    migrate()
+    score = max(0.0, min(1.0, score))
+    try:
+        with _conn() as db:
+            has_col = any(r[1] == "importance_score" for r in db.execute("PRAGMA table_info(learnings)").fetchall())
+            if has_col:
+                db.execute("UPDATE learnings SET importance_score = ? WHERE id = ?", (score, learning_id))
+                db.commit()
+    except Exception as e:
+        logger.warning("set_learning_importance failed: %s", e)
 
 
 # ── study plans ────────────────────────────────────────────────────────────

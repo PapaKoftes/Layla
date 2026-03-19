@@ -1,4 +1,7 @@
-"""One-off probe: CPU, RAM, GPU/VRAM for LLM defaults."""
+"""One-off probe: CPU, RAM, GPU/VRAM for LLM defaults.
+Standalone script; run as: python probe_hardware.py
+For programmatic use, prefer install.hardware_probe.probe_hardware().
+"""
 import json
 import os
 import subprocess
