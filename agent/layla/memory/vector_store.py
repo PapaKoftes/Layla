@@ -212,26 +212,45 @@ def _get_bm25_index():
         return None, []
 
 
-def _reciprocal_rank_fusion(lists: list[list[dict]], k: int = 5, rrf_k: int = 60) -> list[dict]:
-    """Fuse multiple ranked result lists using Reciprocal Rank Fusion."""
+def _reciprocal_rank_fusion(
+    lists: list[list[dict]],
+    k: int = 5,
+    rrf_k: int = 60,
+    weights: list[float] | None = None,
+) -> list[dict]:
+    """Fuse multiple ranked result lists using Reciprocal Rank Fusion. Optional per-list weights."""
     scores: dict[str, float] = {}
     content_map: dict[str, dict] = {}
-    for ranked_list in lists:
+    w = weights or []
+    for li, ranked_list in enumerate(lists):
+        wt = w[li] if li < len(w) else 1.0
         for i, item in enumerate(ranked_list):
             key = (item.get("content") or "")[:120]
-            scores[key] = scores.get(key, 0.0) + 1.0 / (rrf_k + i + 1)
+            scores[key] = scores.get(key, 0.0) + wt * (1.0 / (rrf_k + i + 1))
             if key not in content_map:
                 content_map[key] = item
     sorted_keys = sorted(scores, key=lambda x: scores[x], reverse=True)
     return [content_map[kk] for kk in sorted_keys[:k]]
 
 
-def search_hybrid(query: str, k: int = 5) -> list[dict]:
+def search_hybrid(query: str, k: int = 5, *, coding_boost: bool = False) -> list[dict]:
     """
     Hybrid BM25 + dense vector search fused via Reciprocal Rank Fusion.
     BM25 catches exact keyword/code matches; vector catches semantic similarity.
     Falls back gracefully to pure vector search if BM25 index is unavailable.
+    coding_boost: when True, up-weight BM25 (exact tokens / symbols) via config.
     """
+    wv, wb = 1.0, 1.0
+    try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        wv = float(cfg.get("retrieval_hybrid_vector_weight", 1.0))
+        wb = float(cfg.get("retrieval_hybrid_bm25_weight", 1.0))
+        if coding_boost:
+            wb *= float(cfg.get("retrieval_hybrid_coding_bm25_boost", 1.25))
+    except Exception:
+        pass
     query_vec = embed(query)
     vector_results = search_similar(query_vec, k=k * 3)
 
@@ -247,13 +266,34 @@ def search_hybrid(query: str, k: int = 5) -> list[dict]:
 
     if not bm25_results:
         return vector_results[:k]
-    return _reciprocal_rank_fusion([vector_results, bm25_results], k=k)
+    return _reciprocal_rank_fusion([vector_results, bm25_results], k=k, weights=[wv, wb])
 
 
 # ─── Cross-encoder reranking ─────────────────────────────────────────────────
 
 _cross_encoder = None
 _cross_encoder_failed = False  # don't retry after download failure
+_bge_cross_encoder = None
+_bge_cross_encoder_model: str | None = None
+_bge_cross_encoder_failed = False
+
+
+def _get_bge_cross_encoder(model_name: str):
+    """Optional BGE reranker (sentence_transformers CrossEncoder). Separate from default CE."""
+    global _bge_cross_encoder, _bge_cross_encoder_model, _bge_cross_encoder_failed
+    if _bge_cross_encoder_failed:
+        return None
+    if _bge_cross_encoder is not None and _bge_cross_encoder_model == model_name:
+        return _bge_cross_encoder
+    try:
+        from sentence_transformers import CrossEncoder
+
+        _bge_cross_encoder = CrossEncoder(model_name)
+        _bge_cross_encoder_model = model_name
+        return _bge_cross_encoder
+    except Exception:
+        _bge_cross_encoder_failed = True
+        return None
 
 
 def _get_cross_encoder():
@@ -310,9 +350,25 @@ def rerank(query: str, docs: list[dict], k: int = 5) -> list[dict]:
     Rerank retrieved docs with a cross-encoder (query, doc) pair scorer.
     Falls back to original order if model unavailable.
     ~30ms for 20 docs on CPU — well worth the accuracy gain.
+    When use_bge_reranker + bge_reranker_model are set, tries BGE CrossEncoder first.
     """
     if not docs:
         return docs
+    try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        if cfg.get("use_bge_reranker"):
+            mname = (cfg.get("bge_reranker_model") or "").strip()
+            if mname:
+                bce = _get_bge_cross_encoder(mname)
+                if bce is not None:
+                    pairs = [(query, (d.get("content") or d.get("text") or "")[:512]) for d in docs]
+                    scores = bce.predict(pairs, show_progress_bar=False)
+                    ranked = sorted(zip(scores, docs), key=lambda x: x[0], reverse=True)
+                    return [d for _, d in ranked[:k]]
+    except Exception:
+        pass
     ce = _get_cross_encoder()
     if ce is None:
         return docs[:k]
@@ -460,6 +516,7 @@ def search_memories_full(
     use_confidence_boost: bool = True,
     use_mmr: bool = False,
     cross_encoder_limit: int | None = None,
+    coding_boost: bool = False,
 ) -> list[dict]:
     """
     Two-stage retrieval pipeline:
@@ -479,7 +536,7 @@ def search_memories_full(
             cross_encoder_limit = 10
 
     # Step 1: hybrid vector + BM25 → top 20
-    results = search_hybrid(query, k=20)
+    results = search_hybrid(query, k=20, coding_boost=coding_boost)
 
     # Step 2: merge FTS5 keyword results
     try:

@@ -7,7 +7,7 @@
 ## Pinned versions and paths
 
 - **Python**: 3.11+ (tested 3.11–3.12). Dependencies: `agent/requirements.txt`.
-- **Database**: SQLite at **repo root** `layla.db`. All persistent memory (learnings, study_plans, wakeup_log, audit, aspect_memories, project_context, capabilities) lives here.
+- **Database**: SQLite at **repo root** `layla.db`. All persistent memory (learnings, study_plans, wakeup_log, audit, aspect_memories, project_context, capabilities, **telemetry_events**) lives here.
 - **Config**: `agent/runtime_config.json` (gitignored). Template at `agent/runtime_config.example.json`.
 - **Model**: `models/<filename>.gguf` (gitignored). Set `model_filename` in config.
 
@@ -26,6 +26,7 @@ Client
       /voice/transcribe        → services/stt.py     (faster-whisper)
       /voice/speak             → services/tts.py     (kokoro-onnx)
       /health, /usage, /undo   → main.py (inline)
+      /knowledge/ingest, /knowledge/ingest/sources → main.py (doc ingestion)
       /workspace/index         → main.py (semantic codebase indexing)
       /v1/*, /ui               → main.py (inline)
 ```
@@ -36,25 +37,32 @@ Client
 
 **Transport inbound policy** (optional, OpenClaw-style): `transports/base.py` — env `LAYLA_TRANSPORT_ALLOWLIST`, `LAYLA_TRANSPORT_PAIRING_SECRET` (`/pair`), config `transport_allowlist`, `transport_require_allowlist`. Paired ids: repo-root `.layla_transport_paired.json` (gitignored). See `docs/OPENCLAW_ALIGNMENT.md`, `docs/OPENCLAW_BRIDGE.md`.
 
-**OpenClaw-style core emulation** (optional): `services/tool_policy.py` (`tools_profile`, `tools_allow`/`tools_deny`, `group:*`, `tools_by_provider`) + intent filter + pre-exec guard in `agent_loop`; `services/tool_loop_detection.py`; `services/shell_sessions.py` (`shell_session_start` / `shell_session_manage`); `services/http_response_cache.py`; `services/markdown_skills.py` + repo `skills/`; `inference_fallback_urls` + non-stream retries in `inference_router.py`; `browser_persistent_profiles` in `services/browser.py`. See `docs/OPENCLAW_ALIGNMENT.md`.
+**Sandbox runners** (optional paths): `services/sandbox/shell_runner.py` and `services/sandbox/python_runner.py` — timeouts and optional shell allowlist; wired from `shell` / `run_python` tools.
+
+**Structured tool args** (optional): `services/tool_args.py` validates `decision["args"]` for selected tools when `tool_args_validation_enabled`.
+
+**OpenClaw-style core emulation** (optional): `services/tool_policy.py` (`tools_profile`, `tools_allow`/`tools_deny`, `group:*`, `tools_by_provider`) + intent filter + pre-exec guard in `agent_loop`; `services/tool_loop_detection.py` (`push_and_evaluate(..., reasoning_mode=)`, `exact_call_key`); `services/tool_output_validator.py` (post-tool dict hygiene); per-run exact duplicate tool invocation suppression in `agent_loop`; `services/shell_sessions.py` (`shell_session_start` / `shell_session_manage`); `services/http_response_cache.py`; `services/markdown_skills.py` + repo `skills/`; `inference_fallback_urls` + non-stream retries in `inference_router.py`; `browser_persistent_profiles` in `services/browser.py`. See `docs/OPENCLAW_ALIGNMENT.md`.
 
 **agent_loop.autonomous_run():**
 1. `runtime_safety.load_config()` — TTL-cached, hot-path safe
-1b. **Task model routing** (when `tool_routing_enabled` and `model_router.is_routing_enabled()`): `classify_task(goal, context)` → `set_model_override` so `llm_gateway` loads task GGUFs via `resolve_model_path`. Additionally, every `run_completion()` sets a routing-prompt ContextVar so `_effective_model_filename()` applies `select_model` / `get_best_llm_filename_for_task` when override is unset (internal JSON/decision prompts are excluded). Multi-model cache `_llm_by_path`; serialize lock is `RLock`. Optional `completion_cache_enabled` caches non-stream dict responses briefly.
+1a. **`services/reasoning_classifier.classify_reasoning_need()`** — heuristic `none` | `light` | `deep`; stored as `state["reasoning_mode"]`, returned in API/UI. On `performance_mode: low`, `deep` is capped to `light`. **`none`** skips planner (`should_plan` short-circuited); **`light`** and **`none`** skip streaming self-reflection (`stream_reason` `skip_self_reflection`).
+1b. **Task model routing** (when `tool_routing_enabled` and `model_router.is_routing_enabled()`): `classify_task(goal, context)` → `set_model_override` so `llm_gateway` loads task GGUFs via `resolve_model_path`. Additionally, every `run_completion()` sets a routing-prompt ContextVar so `_effective_model_filename()` applies `select_model` / `get_best_llm_filename_for_task` when override is unset (internal JSON/decision prompts are excluded). Multi-model cache `_llm_by_path`; serialize lock is `RLock`. Optional `completion_cache_enabled` caches non-stream dict responses briefly; cache key includes **model basename + temperature + max_tokens** + routing tag + prompt; `completion_cache_max_entries` caps size.
 2. `orchestrator.select_aspect()` — keyword-based, loads `personalities/*.json`
 3. `_build_system_head()` — identity + knowledge RAG (BM25+vector+FTS5+rerank) + learnings + CoT; passes through `context_manager.build_system_prompt()` for token budgets and deduplication
 4. **Cognitive workspace** (if `enable_cognitive_workspace`): generate approaches → evaluate → choose best; inject `strategy_hint` into decision prompt and plan context
 5. **Planning** (if `should_plan`): `create_plan` → `execute_plan`; each step runs `autonomous_run` recursively
 6. **Decision loop** (up to `max_tool_calls`):
-   - `_llm_decision()` → parse JSON `{action, tool_name, objective_complete, ...}`
-   - If `action=tool`: `registry.TOOLS[name]()` — gated by `allow_write`/`allow_run` + approval
+   - `_llm_decision()` → parse JSON `{action, tool_name, objective_complete, ...}` (`decision_schema.parse_decision`; `action` may be `none` | `tool` | `reason`)
+   - If `action=none`: append no-op step and continue
+   - If `action=tool`: `registry.TOOLS[name]()` — gated by `allow_write`/`allow_run` + approval; optional `max_patch_lines` gate for `apply_patch`
    - If `action=reason` or `objective_complete`: `_completion()` → stream final reply
 7. Optional self-reflection (`enable_self_reflection`) — score + rewrite if < 7/10
 8. `_save_outcome_memory()` — distill and store outcome; reflection engine (what worked/failed/improve)
+9. **Local telemetry** (`telemetry_enabled`, default on): `services/telemetry.log_event()` → SQLite `telemetry_events` (task type, reasoning_mode, model, latency, success, performance_mode). Trivial `reasoning_mode=none` rows skipped unless `telemetry_log_trivial`. No network.
 
 **Performance modes:** `system_optimizer.get_effective_config()` applies `performance_mode` (`low` / `mid` / `high` / `auto`) before CPU/RAM pressure tiers. Omitted key = `mid`. Explicit `auto` uses `hardware_detect.detect_hardware()` with VRAM/RAM numeric thresholds (GPU VRAM: 6 GB and 12 GB boundaries; CPU-only: system RAM 8 GB and 24 GB boundaries). Never writes to `runtime_config.json`.
 
-**Streaming final reply:** When `stream_final` returns `stream_pending`, `routers/agent.py` calls `stream_reason(..., model_override=...)` so task routing matches the main run (ContextVar is cleared after `autonomous_run` returns).
+**Streaming final reply:** When `stream_final` returns `stream_pending`, `routers/agent.py` calls `stream_reason(..., model_override=..., skip_self_reflection=...)` so task routing matches the main run and reflection respects `reasoning_mode` (ContextVar is cleared after `autonomous_run` returns). SSE `done` payloads include `reasoning_mode`.
 
 **First-run UI:** `GET /setup_status` (`performance_mode`, `model_valid`, `ready`), `GET /setup/models` (catalog + `recommended_key`) — setup overlay in `agent/ui/index.html`. **`POST /agent`** returns `error: no_model`, `action: open_setup` when the model is missing.
 
@@ -71,6 +79,7 @@ Client
 | What | Where |
 |---|---|
 | Learnings, study plans, wakeup log, audit | SQLite `layla.db` (repo root) |
+| Run telemetry (local) | SQLite `layla.db` → `telemetry_events` |
 | FTS5 full-text search index | Virtual table in `layla.db` (auto-sync triggers) |
 | Semantic memory vectors | ChromaDB `agent/chroma/` (config-driven) |
 | BM25 index | In-memory, rebuilt from learnings on count change |
@@ -223,7 +232,7 @@ Control center panels (right sidebar, tabbed):
 
 | Panel | API | Content |
 |-------|-----|---------|
-| Health | GET /health | Status, model loaded, tools, learnings, study plans, CPU/RAM |
+| Health | GET /health | Status, model loaded, tools, learnings, study plans, CPU/RAM, `cache_stats` (completion cache hits/misses) |
 | Models | GET /platform/models | Active model, installed .gguf list, catalog (jinx/dolphin/hermes/qwen), benchmarks |
 | Knowledge | GET /platform/knowledge | Summaries, learnings, graph nodes, timeline, user identity |
 | Plugins | GET /platform/plugins | Loaded plugins, skills added, tools added, errors |

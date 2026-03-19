@@ -1,6 +1,7 @@
 """Code search, execution, analysis, and refactoring tools."""
 
 TOOLS = {
+    "search_codebase": {"dangerous": False, "require_approval": False, "risk_level": "low"},
     "grep_code": {"dangerous": False, "require_approval": False, "risk_level": "low"},
     "run_python": {"dangerous": True, "require_approval": True, "risk_level": "high"},
     "run_tests": {"dangerous": True, "require_approval": True, "risk_level": "medium"},

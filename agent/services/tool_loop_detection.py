@@ -62,11 +62,17 @@ def ensure_history_deque(state: dict[str, Any], maxlen: int) -> deque[tuple[str,
     return d
 
 
+def exact_call_key(intent: str, decision: dict[str, Any] | None) -> str:
+    """Stable key for per-run exact duplicate tool invocation detection."""
+    return f"{intent}\x00{_signature(intent, decision)}"
+
+
 def push_and_evaluate(
     cfg: dict[str, Any],
     state: dict[str, Any],
     intent: str,
     decision: dict[str, Any] | None,
+    reasoning_mode: str | None = None,
 ) -> str | None:
     """
     Record intended tool invocation; return None, 'WARN:...', or 'STOP:...'.
@@ -87,6 +93,10 @@ def push_and_evaluate(
 
     warn_th = int(cfg.get("tool_loop_warning_threshold") or 10)
     stop_th = int(cfg.get("tool_loop_stop_threshold") or 20)
+    rm = (reasoning_mode or "").strip().lower()
+    # Default threshold 20 → effective 5 for low-reasoning modes unless operator overrides.
+    if rm in ("none", "light") and stop_th == 20:
+        stop_th = 5
 
     if cfg.get("tool_loop_detect_repeat", True):
         rep = _consecutive_repeat_tail(history_list)

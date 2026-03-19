@@ -68,6 +68,10 @@ def test_select_model_fallback_to_route(monkeypatch):
         }
 
     monkeypatch.setattr("runtime_safety.load_config", _cfg)
+    monkeypatch.setattr(
+        "services.telemetry.get_user_profile",
+        lambda: {"simple_ratio": 0.0, "coding_ratio": 0.0},
+    )
     reset_router_config_cache()
     out = select_model("coding", 100, {}, 999999)
     assert out == "code.gguf"

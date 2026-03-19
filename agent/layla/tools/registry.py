@@ -68,12 +68,44 @@ def inside_sandbox(path: Path) -> bool:
         return False
 
 
+def _write_file_limits() -> tuple[int, int]:
+    try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        max_b = max(1024, int(cfg.get("write_file_max_bytes", 500_000)))
+        fact = max(2, int(cfg.get("write_file_explosion_factor", 5)))
+        return max_b, fact
+    except Exception:
+        return 500_000, 5
+
+
 def write_file(path: str, content: str) -> dict:
     target = Path(path)
     if not target.is_absolute() and getattr(_effective_sandbox, "path", None):
         target = (Path(_effective_sandbox.path) / path).resolve()
     if not inside_sandbox(target):
         return {"ok": False, "error": "Outside sandbox"}
+    try:
+        max_bytes, explosion = _write_file_limits()
+        raw = (content or "").encode("utf-8", errors="replace")
+        if len(raw) > max_bytes:
+            return {"ok": False, "error": "content_too_large", "limit_bytes": max_bytes}
+        if target.exists():
+            try:
+                existing_size = target.stat().st_size
+                new_size = len(raw)
+                if existing_size > 0 and new_size > existing_size * explosion:
+                    return {
+                        "ok": False,
+                        "error": "size_explosion_detected",
+                        "existing_bytes": existing_size,
+                        "new_bytes": new_size,
+                    }
+            except Exception:
+                pass
+    except Exception:
+        pass
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
     return {"ok": True, "path": str(target)}
@@ -167,6 +199,13 @@ def git_status(repo: str) -> dict:
 
 
 def shell(argv: list, cwd: str) -> dict:
+    try:
+        from services.sandbox.shell_runner import run_shell_argv
+
+        cwd_path = Path(cwd)
+        return run_shell_argv(list(argv or []), cwd_path, inside_sandbox_check=inside_sandbox)
+    except Exception as e:
+        logger.debug("shell runner failed, fallback: %s", e)
     if not argv:
         return {"ok": False, "error": "Empty command"}
     cmd = argv[0].lower().lstrip("./\\")
@@ -284,7 +323,26 @@ def glob_files(pattern: str, root: str) -> dict:
         return {"ok": False, "error": str(e)}
 
 
+def search_codebase(symbol: str, root: str = "") -> dict:
+    """Find functions/classes and semantic chunks matching symbol (read-only). root defaults to sandbox."""
+    try:
+        from services.code_intelligence import search_symbols
+    except Exception as e:
+        return {"ok": False, "error": str(e), "matches": []}
+    root_path = Path(root).expanduser().resolve() if (root or "").strip() else _get_sandbox()
+    if not inside_sandbox(root_path):
+        return {"ok": False, "error": "Workspace outside sandbox", "matches": []}
+    return search_symbols(root_path, symbol, k=25)
+
+
 def run_python(code: str, cwd: str) -> dict:
+    try:
+        from services.sandbox.python_runner import run_python_file
+
+        cwd_path = Path(cwd)
+        return run_python_file(code or "", cwd_path, inside_sandbox_check=inside_sandbox)
+    except Exception as e:
+        logger.debug("python runner failed, fallback: %s", e)
     cwd_path = Path(cwd)
     if not inside_sandbox(cwd_path):
         return {"ok": False, "error": "cwd outside sandbox"}
@@ -295,7 +353,7 @@ def run_python(code: str, cwd: str) -> dict:
             tmp.write(code)
             tmp_path = tmp.name
         proc = subprocess.run(
-            ["python", tmp_path],
+            [sys.executable, tmp_path],
             cwd=str(cwd_path),
             capture_output=True,
             text=True,
@@ -2627,7 +2685,7 @@ def tool_recommend(task: str) -> dict:
         "excel spreadsheet": ["read_excel", "read_csv"],
         "csv data table": ["read_csv", "read_excel", "sql_query"],
         "code python test pytest": ["python_ast", "grep_code", "run_python", "run_tests", "security_scan", "code_lint"],
-        "code search": ["grep_code", "glob_files", "python_ast"],
+        "code search": ["search_codebase", "grep_code", "glob_files", "python_ast"],
         "git commit diff push pull": ["git_status", "git_diff", "git_log", "git_add", "git_commit", "git_push", "git_pull", "git_stash", "git_revert", "git_clone"],
         "web search": ["ddg_search", "browser_search", "fetch_article", "wiki_search"],
         "research paper arxiv": ["arxiv_search", "wiki_search", "ddg_search"],

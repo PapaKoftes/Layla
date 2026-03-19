@@ -162,8 +162,9 @@ def _get_llm():
     model_path = runtime_safety.resolve_model_path(cfg_eff)
     if not model_path.exists():
         logger.warning(
-            "Model file not found: %s — falling back to default model_filename",
+            "llm_gateway: routed model file not found at %s — falling back to default model_filename (%s)",
             model_path,
+            (cfg.get("model_filename") or "your-model.gguf").strip(),
         )
         fallback_cfg = dict(cfg)
         fallback_cfg["model_filename"] = (cfg.get("model_filename") or "your-model.gguf").strip()
@@ -339,11 +340,16 @@ def run_completion(
     prompt_tokens = _count_tokens(prompt)
     model_override = get_model_override()
     routing_tag = str(model_override or "none")
+    cache_model_name = ""
     reasoning_effort = get_reasoning_effort()
     reasoning_budget = None
     cfg: dict = {}
     try:
         cfg = runtime_safety.load_config()
+        try:
+            cache_model_name = str(_effective_model_filename(cfg) or cfg.get("model_filename") or "")
+        except Exception:
+            cache_model_name = str(cfg.get("model_filename") or "")
         if reasoning_effort == "high":
             budget = cfg.get("reasoning_budget", -1)
             if budget != 0:
@@ -360,7 +366,13 @@ def run_completion(
             try:
                 from services.completion_cache import get_cached
 
-                hit = get_cached(prompt or "", routing_tag)
+                hit = get_cached(
+                    prompt or "",
+                    routing_tag,
+                    cache_model_name or "unknown",
+                    float(temperature),
+                    int(max_tokens),
+                )
                 if hit is not None:
                     choices = hit.get("choices") or [{}]
                     msg = (choices[0] if choices else {}).get("message") or {}
@@ -431,7 +443,14 @@ def run_completion(
             try:
                 from services.completion_cache import set_cached
 
-                set_cached(prompt or "", routing_tag, out)
+                set_cached(
+                    prompt or "",
+                    routing_tag,
+                    cache_model_name or "unknown",
+                    float(temperature),
+                    int(max_tokens),
+                    out,
+                )
             except Exception as e:
                 logger.debug("completion cache set: %s", e)
         return out

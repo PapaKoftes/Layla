@@ -635,6 +635,12 @@ def health(request: Request):
         payload["token_usage"] = get_token_usage()
     except Exception:
         pass
+    try:
+        from services.completion_cache import get_cache_stats
+
+        payload["cache_stats"] = get_cache_stats()
+    except Exception:
+        pass
     if not ok:
         payload["detail"] = detail
         return JSONResponse(payload, status_code=503)
@@ -793,12 +799,47 @@ def setup_status():
         pass
     performance_mode = str(cfg.get("performance_mode", "auto") or "auto").strip()
     model_valid = bool(not placeholder and model_path.exists())
+    resolved_model = (
+        model_path.name
+        if model_found
+        else (available_models[0] if available_models else "")
+    )
+
+    def _cfg_basename(key: str) -> str:
+        raw = (cfg.get(key) or "").strip()
+        if not raw:
+            return ""
+        try:
+            return Path(raw).name
+        except Exception:
+            return raw.split("/")[-1].split("\\")[-1]
+
+    model_route_hint = ""
+    if resolved_model:
+        coding_n = _cfg_basename("coding_model")
+        chat_n = _cfg_basename("chat_model")
+        reason_n = _cfg_basename("reasoning_model")
+        mb = cfg.get("models")
+        if isinstance(mb, dict):
+            if not coding_n:
+                coding_n = _cfg_basename(str(mb.get("code") or ""))
+            if not chat_n:
+                chat_n = _cfg_basename(str(mb.get("fast") or ""))
+        if coding_n and coding_n == resolved_model:
+            model_route_hint = "code"
+        elif chat_n and chat_n == resolved_model:
+            model_route_hint = "chat"
+        elif reason_n and reason_n == resolved_model:
+            model_route_hint = "reasoning"
+
     return {
         "ready": model_found,
         "model_valid": model_valid,
         "config_exists": config_exists,
         "model_filename": model_filename if not placeholder else "",
         "model_found": model_found,
+        "resolved_model": resolved_model,
+        "model_route_hint": model_route_hint,
         "available_models": available_models,
         "hardware": hw,
         "performance_mode": performance_mode,
@@ -1319,6 +1360,33 @@ def list_learnings(page: int = 1, limit: int = 20, type: str = ""):
         })
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/knowledge/ingest/sources")
+def knowledge_ingest_sources_list():
+    """List folders under knowledge/_ingested (Knowledge Manager)."""
+    try:
+        from services.doc_ingestion import list_ingested_sources
+
+        return {"sources": list_ingested_sources()}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/knowledge/ingest")
+async def knowledge_ingest_run(request: Request):
+    """Ingest URL or sandbox folder into knowledge/_ingested (re-index on next knowledge refresh)."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    try:
+        from services.doc_ingestion import ingest_docs
+
+        out = ingest_docs(str(body.get("source") or ""), str(body.get("label") or ""))
+        return JSONResponse(out)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 @app.delete("/learnings/{learning_id}")

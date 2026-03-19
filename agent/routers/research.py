@@ -385,6 +385,7 @@ async def research(req: dict):
                     conversation_history=list(_history),
                     aspect_id=aspect_id,
                     show_thinking=show_thinking,
+                    skip_self_reflection=(result.get("reasoning_mode") or "light") in ("none", "light"),
                 ):
                     full.append(token)
                     yield f"data: {json.dumps({'token': token})}\n\n"
@@ -406,7 +407,7 @@ async def research(req: dict):
                         )
                     except Exception as e:
                         logger.debug("save research output failed: %s", e)
-                yield f"data: {json.dumps({'done': True, 'content': text})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'content': text, 'reasoning_mode': result.get('reasoning_mode')})}\n\n"
             except Exception as e:
                 logger.exception("stream_reason failed")
                 yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -454,4 +455,5 @@ async def research(req: dict):
         "aspect_name": result.get("aspect_name", "Layla"),
         "ux_states": result.get("ux_states", []),
         "memory_influenced": result.get("memory_influenced", []),
+        "reasoning_mode": result.get("reasoning_mode"),
     })

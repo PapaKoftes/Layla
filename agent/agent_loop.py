@@ -24,6 +24,33 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENT_DIR = Path(__file__).resolve().parent
 RESEARCH_LAB_ROOT = AGENT_DIR / ".research_lab"
 
+_SKIP_TOOL_OUTPUT_VALIDATION = frozenset({
+    "approval_required", "tool_policy_denied", "tool_loop_detected",
+})
+
+
+def _maybe_validate_tool_output(intent: str, result: object) -> object:
+    if not isinstance(result, dict):
+        from services.tool_output_validator import validate_tool_output
+
+        return validate_tool_output(intent, result)
+    if result.get("reason") in _SKIP_TOOL_OUTPUT_VALIDATION:
+        return result
+    from services.tool_output_validator import validate_tool_output
+
+    return validate_tool_output(intent, result)
+
+
+def _register_exact_tool_call(state: dict, intent: str, decision: dict | None) -> None:
+    if intent in ("reason", "finish", "wakeup", "none"):
+        return
+    try:
+        from services.tool_loop_detection import exact_call_key
+
+        state.setdefault("_recent_exact_calls", set()).add(exact_call_key(intent, decision))
+    except Exception:
+        pass
+
 
 def _get_effective_config(base_cfg: dict) -> dict:
     """Apply system_optimizer runtime overrides. Never persists to disk."""
@@ -169,6 +196,9 @@ def strip_junk_from_reply(text: str) -> str:
 # Ensure DB tables exist before first request
 _db_migrate()
 
+# Last turn's reasoning mode (cross-request smoothing; single-operator local default)
+_last_reasoning_mode: str = ""
+
 def stream_reason(
     goal: str,
     context: str = "",
@@ -176,6 +206,7 @@ def stream_reason(
     aspect_id: str = "",
     show_thinking: bool = False,
     model_override: str | None = None,
+    skip_self_reflection: bool = False,
 ):
     """
     Build the same prompt as the reason path and yield token strings from streaming completion.
@@ -197,7 +228,7 @@ def stream_reason(
             pass
     try:
         yield from _stream_reason_body(
-            goal, context, conversation_history, aspect_id, show_thinking
+            goal, context, conversation_history, aspect_id, show_thinking, skip_self_reflection
         )
     finally:
         set_model_override(None)
@@ -209,10 +240,37 @@ def _stream_reason_body(
     conversation_history: list = None,
     aspect_id: str = "",
     show_thinking: bool = False,
+    skip_self_reflection: bool = False,
 ):
     """Inner generator: prompt + streaming tokens (model override set by stream_reason)."""
     active_aspect = orchestrator.select_aspect(goal, force_aspect=aspect_id)
-    head = _build_system_head(goal=goal, aspect=active_aspect, conversation_history=conversation_history or [])
+    # Classify reasoning need for the streaming path (same logic as the non-streaming path).
+    # This gates expensive _build_system_head ops so "hi" doesn't trigger ChromaDB + graph + workspace.
+    try:
+        from services.reasoning_classifier import classify_reasoning_need, stabilize_reasoning_mode
+
+        global _last_reasoning_mode
+        _stream_rmode = classify_reasoning_need(goal, context or "")
+        _cfg_sr = runtime_safety.load_config()
+        if _stream_rmode == "deep" and (_cfg_sr.get("performance_mode") or "").strip().lower() in ("low",):
+            _stream_rmode = "light"
+        _stream_rmode = stabilize_reasoning_mode(_last_reasoning_mode, _stream_rmode)
+        _last_reasoning_mode = _stream_rmode
+    except Exception:
+        _stream_rmode = "light"
+    _stream_recall = ""
+    if goal and _stream_rmode != "none":
+        try:
+            _stream_recall = _semantic_recall(goal, k=runtime_safety.load_config().get("semantic_k", 5)).strip()
+        except Exception:
+            pass
+    head = _build_system_head(
+        goal=goal,
+        aspect=active_aspect,
+        conversation_history=conversation_history or [],
+        reasoning_mode=_stream_rmode,
+        _precomputed_recall=_stream_recall,
+    )
     convo_block = ""
     try:
         convo_turns = max(0, int(runtime_safety.load_config().get("convo_turns", 0)))
@@ -221,10 +279,14 @@ def _stream_reason_body(
     if convo_turns > 0 and conversation_history:
         name = active_aspect.get("name", "Layla")
         turns = conversation_history[-convo_turns:]
+        n_turns = len(turns)
         lines = []
-        for t in turns:
+        for i, t in enumerate(turns):
             role = t.get("role", "")
-            content_t = (t.get("content") or "")[:300].strip()
+            # Recent turns (last 2) get more context; older turns are compressed.
+            turns_from_end = n_turns - i
+            max_chars = 600 if turns_from_end <= 2 else 220
+            content_t = (t.get("content") or "")[:max_chars].strip()
             if role == "user":
                 lines.append(f"User: {content_t}")
             else:
@@ -262,7 +324,7 @@ def _stream_reason_body(
             break
         yield token
     # Optional self-reflection: if enabled and score < 7, stream a rewritten response
-    improved = _reflect_on_response(goal, buffer, active_aspect)
+    improved = None if skip_self_reflection else _reflect_on_response(goal, buffer, active_aspect)
     if improved:
         yield "\n\n---\n"  # visual separator for the UI
         yield improved
@@ -435,12 +497,17 @@ def _build_system_head(
     sub_goals: list | None = None,
     state: dict | None = None,
     conversation_history: list | None = None,
+    reasoning_mode: str = "light",
+    _precomputed_recall: str | None = None,
 ) -> str:
     cfg = runtime_safety.load_config()  # noqa: F841
+    # Skip expensive retrieval operations for trivial/chat turns.
+    # "none" = greeting/yes-no, no benefit from vector search.
+    _skip_expensive = (reasoning_mode == "none")
     identity = runtime_safety.load_identity().strip()
     knowledge = ""
     # Lazy: full Chroma knowledge RAG only when research/search/explain keywords
-    if cfg.get("use_chroma") and goal and _needs_knowledge_rag(goal):
+    if not _skip_expensive and cfg.get("use_chroma") and goal and _needs_knowledge_rag(goal):
         try:
             from layla.memory.vector_store import get_knowledge_chunks_with_sources, refresh_knowledge_if_changed
             try:
@@ -506,14 +573,16 @@ def _build_system_head(
             except Exception:
                 pass
 
-    # Semantic recall: pull the most relevant past learnings for this specific goal
+    # Semantic recall: use precomputed result if available (avoids double ChromaDB query).
     semantic = ""
-    if goal:
+    if _precomputed_recall is not None:
+        semantic = _precomputed_recall
+    elif not _skip_expensive and goal:
         semantic = _semantic_recall(goal, k=cfg.get("semantic_k", 5)).strip()
 
-    # Memory graph associations: skip when goal is short and no related/context keywords
+    # Memory graph associations: skip for trivial turns or short goals
     graph_associations = ""
-    if goal and (len(goal.split()) >= 3 or _needs_graph(goal)):
+    if not _skip_expensive and goal and (len(goal.split()) >= 3 or _needs_graph(goal)):
         try:
             from layla.memory.memory_graph import get_recent_nodes
             recent_nodes = get_recent_nodes(n=15)
@@ -530,12 +599,12 @@ def _build_system_head(
         except Exception:
             pass
 
-    # Section 2: unified retrieval injection (learnings + docs + graph)
+    # Unified retrieval injection: skip for trivial turns
     retrieved_context = ""
-    if goal and cfg.get("retrieval_injection", True):
+    if not _skip_expensive and goal and cfg.get("retrieval_injection", True):
         try:
             from services.retrieval import build_retrieved_context
-            retrieved_context = (build_retrieved_context(goal, k=5) or "").strip()
+            retrieved_context = (build_retrieved_context(goal, k=5, reasoning_mode=reasoning_mode) or "").strip()
         except Exception:
             pass
 
@@ -544,9 +613,9 @@ def _build_system_head(
     repo_struct = _get_repo_structure(workspace_root)
     if repo_struct:
         workspace_context_parts.append(f"Repo structure (top-level): {repo_struct}")
-    # Workspace dependency context + semantic code search for coding tasks
+    # Workspace dependency context + semantic code search: only for coding/deep turns
     coding_keywords = ("code", "debug", "fix", "implement", "refactor", "function", "class", "module", "file", "grep", "read_file", "write_file")
-    if goal and workspace_root and any(kw in goal.lower() for kw in coding_keywords):
+    if not _skip_expensive and goal and workspace_root and any(kw in goal.lower() for kw in coding_keywords):
         try:
             from services.workspace_index import get_workspace_dependency_context, search_workspace
             dep_ctx = get_workspace_dependency_context(goal, workspace_root, max_chars=400)
@@ -672,6 +741,15 @@ def _build_system_head(
         )
     if personality:
         sys_parts.append(personality)
+    if cfg.get("multi_agent_orchestration_enabled") and (reasoning_mode or "").strip().lower() == "deep":
+        try:
+            from services.agent_roles import deep_task_coordination_prompt
+
+            _dap = deep_task_coordination_prompt()
+            if _dap:
+                sys_parts.append(_dap)
+        except Exception:
+            pass
     if aspect and aspect.get("_use_nsfw_addition") and aspect.get("systemPromptAdditionNsfw"):
         sys_parts.append(aspect.get("systemPromptAdditionNsfw", ""))
     if cfg.get("enable_cot", True):
@@ -700,26 +778,26 @@ def _build_system_head(
                 memory_parts.append("Prior conversation summaries:\n" + "\n\n".join(summary_texts))
     except Exception:
         pass
-    # Relationship memory: meaningful interaction summaries for companion context
-    try:
-        from layla.memory.db import get_recent_relationship_memories
-        rel_mems = get_recent_relationship_memories(n=3)
-        if rel_mems:
-            rel_texts = [m.get("user_event", "") for m in rel_mems if m.get("user_event")]
-            if rel_texts:
-                memory_parts.append("Recent relationship context:\n" + "\n\n".join(rel_texts))
-    except Exception:
-        pass
-    # Timeline events: personal timeline memory for companion experience
-    try:
-        from layla.memory.db import get_recent_timeline_events
-        timeline = get_recent_timeline_events(n=5, min_importance=0.3)
-        if timeline:
-            tl_texts = [f"[{e.get('event_type','')}] {e.get('content','')}" for e in timeline if e.get("content")]
-            if tl_texts:
-                memory_parts.append("Recent timeline:\n" + "\n\n".join(tl_texts[:5]))
-    except Exception:
-        pass
+    # Relationship memory + timeline events: skip for trivial/chat turns
+    if not _skip_expensive:
+        try:
+            from layla.memory.db import get_recent_relationship_memories
+            rel_mems = get_recent_relationship_memories(n=3)
+            if rel_mems:
+                rel_texts = [m.get("user_event", "") for m in rel_mems if m.get("user_event")]
+                if rel_texts:
+                    memory_parts.append("Recent relationship context:\n" + "\n\n".join(rel_texts))
+        except Exception:
+            pass
+        try:
+            from layla.memory.db import get_recent_timeline_events
+            timeline = get_recent_timeline_events(n=5, min_importance=0.3)
+            if timeline:
+                tl_texts = [f"[{e.get('event_type','')}] {e.get('content','')}" for e in timeline if e.get("content")]
+                if tl_texts:
+                    memory_parts.append("Recent timeline:\n" + "\n\n".join(tl_texts[:5]))
+        except Exception:
+            pass
     # Style profile (companion intelligence): tone, response style, topics
     if cfg.get("enable_style_profile"):
         try:
@@ -744,14 +822,15 @@ def _build_system_head(
                 memory_parts.append("User/companion context:\n" + "\n".join(parts))
     except Exception:
         pass
-    # Personal knowledge graph: unified timeline, projects, goals, identity
-    try:
-        from services.personal_knowledge_graph import get_personal_graph_context
-        pkg_ctx = get_personal_graph_context(goal or "", max_chars=400)
-        if pkg_ctx:
-            memory_parts.append("Personal context (relevant):\n" + pkg_ctx)
-    except Exception:
-        pass
+    # Personal knowledge graph: skip for trivial turns
+    if not _skip_expensive:
+        try:
+            from services.personal_knowledge_graph import get_personal_graph_context
+            pkg_ctx = get_personal_graph_context(goal or "", max_chars=400)
+            if pkg_ctx:
+                memory_parts.append("Personal context (relevant):\n" + pkg_ctx)
+        except Exception:
+            pass
     # Reasoning strategies for complex goals
     if goal and len(goal) > 100:
         try:
@@ -1763,11 +1842,46 @@ def _autonomous_run_impl_core(
 ) -> dict:
     base_cfg = runtime_safety.load_config()
     cfg = _get_effective_config(base_cfg)
+    _prev_reasoning_mode = ""
+    try:
+        from services.reasoning_classifier import classify_reasoning_need, stabilize_reasoning_mode
+
+        global _last_reasoning_mode
+        _prev_reasoning_mode = _last_reasoning_mode
+        reasoning_mode = classify_reasoning_need(goal, context or "", research_mode=research_mode)
+        if reasoning_mode == "deep" and (cfg.get("performance_mode") or "").strip().lower() in ("low",):
+            reasoning_mode = "light"
+        reasoning_mode = stabilize_reasoning_mode(_prev_reasoning_mode, reasoning_mode)
+        _last_reasoning_mode = reasoning_mode
+    except Exception:
+        reasoning_mode = "light"
+    _run_t0 = time.time()
+
+    def _emit_run_telemetry(st: dict, success: bool) -> None:
+        try:
+            _cfg_t = runtime_safety.load_config()
+            if not _cfg_t.get("telemetry_enabled", True):
+                return
+            from services.telemetry import log_event as _tel
+
+            _lat_ms = max(0.0, (time.time() - _run_t0) * 1000.0)
+            _tel(
+                task_type="research" if research_mode else "agent",
+                reasoning_mode=str(st.get("reasoning_mode") or "light"),
+                model_used=str(_cfg_t.get("model_filename") or ""),
+                latency_ms=_lat_ms,
+                success=success,
+                performance_mode=str(_cfg_t.get("performance_mode") or "auto"),
+            )
+        except Exception:
+            pass
+
     # Gate once at entry only: avoid refusing mid-run when our own LLM/embedder spiked CPU
     if system_overloaded():
         time.sleep(2.0)
         if system_overloaded():
             active_aspect = orchestrator.select_aspect(goal, force_aspect=aspect_id)
+            _emit_run_telemetry({"reasoning_mode": reasoning_mode}, False)
             return {
                 "status": "system_busy",
                 "steps": [],
@@ -1777,13 +1891,21 @@ def _autonomous_run_impl_core(
                 "refusal_reason": "",
                 "ux_states": [],
                 "memory_influenced": [],
+                "reasoning_mode": reasoning_mode,
             }
     active_aspect = orchestrator.select_aspect(goal, force_aspect=aspect_id)
-    # Memory attribution: did we inject learnings or semantic recall into this run?
+    # Memory attribution: compute semantic recall ONCE here; pass it to _build_system_head
+    # so it is not queried twice (eliminates double ChromaDB call per non-streaming turn).
+    _precomputed_recall = ""
+    if goal and reasoning_mode != "none":
+        try:
+            _precomputed_recall = _semantic_recall(goal, k=cfg.get("semantic_k", 5)).strip()
+        except Exception:
+            _precomputed_recall = ""
     memory_influenced = []
     if _load_learnings(aspect_id=active_aspect.get("id") or "").strip():
         memory_influenced.append("learnings")
-    if goal and _semantic_recall(goal, k=cfg.get("semantic_k", 5)).strip():
+    if _precomputed_recall:
         memory_influenced.append("semantic_recall")
     state = {
         "goal": goal,
@@ -1814,6 +1936,9 @@ def _autonomous_run_impl_core(
         "sub_goals": _decompose_goal(goal),
         "reflection_pending": False,
         "reflection_asked": False,
+        "last_reasoning_mode": _prev_reasoning_mode,
+        "reasoning_mode": reasoning_mode,
+        "_recent_exact_calls": set(),
     }
     if research_mode:
         state["research_lab_root"] = str(RESEARCH_LAB_ROOT)
@@ -1844,7 +1969,7 @@ def _autonomous_run_impl_core(
     try:
         from services.observability import log_agent_plan_completed, log_agent_plan_created, log_planner_invoked
         from services.planner import create_plan, execute_plan, should_plan
-        if should_plan(goal, cfg, plan_depth=plan_depth):
+        if reasoning_mode != "none" and should_plan(goal, cfg, plan_depth=plan_depth):
             plan = create_plan(goal, cfg=cfg)
             if plan:
                 log_planner_invoked(steps=len(plan), goal_preview=goal[:60])
@@ -1869,6 +1994,7 @@ def _autonomous_run_impl_core(
                     research_mode=research_mode,
                 )
                 log_agent_plan_completed(steps=len(plan_result.get("steps_done", [])))
+                _emit_run_telemetry(state, True)
                 return {
                     "status": "plan_completed",
                     "steps": plan_result.get("steps_done", []),
@@ -1879,6 +2005,7 @@ def _autonomous_run_impl_core(
                     "ux_states": state.get("ux_states", []),
                     "memory_influenced": memory_influenced,
                     "reply": plan_result.get("summary", ""),
+                    "reasoning_mode": reasoning_mode,
                 }
     except Exception:
         pass
@@ -1914,6 +2041,8 @@ def _autonomous_run_impl_core(
             state["risk_estimate"] = decision.get("risk_estimate")
             if decision.get("action") == "reason" or state["objective_complete"]:
                 intent = "reason"
+            elif decision.get("action") == "none":
+                intent = "none"
             elif decision.get("action") == "tool" and decision.get("tool") and decision["tool"] in _VALID_TOOLS:
                 intent = decision["tool"]
             elif decision.get("action") == "tool":
@@ -1941,6 +2070,14 @@ def _autonomous_run_impl_core(
             _emit_ux(state, ux_state_queue, UX_STATE_CHANGING_APPROACH)
             state["reflection_pending"] = True
             intent = "reason"
+
+        if intent == "none":
+            state["steps"].append({
+                "action": "none",
+                "result": {"ok": True, "message": "No action needed"},
+            })
+            goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+            continue
 
         # Emit tool_start so streaming UI can show "Running tool_name..."
         if intent not in ("reason", "finish", "wakeup"):
@@ -1972,7 +2109,9 @@ def _autonomous_run_impl_core(
             try:
                 from services.tool_loop_detection import push_and_evaluate
 
-                _loop_ev = push_and_evaluate(cfg, state, intent, decision)
+                _loop_ev = push_and_evaluate(
+                    cfg, state, intent, decision, reasoning_mode=state.get("reasoning_mode"),
+                )
                 if _loop_ev and _loop_ev.startswith("STOP:"):
                     state["tool_calls"] += 1
                     state["steps"].append({
@@ -1988,6 +2127,42 @@ def _autonomous_run_impl_core(
                     continue
                 if _loop_ev and _loop_ev.startswith("WARN:"):
                     state["tool_loop_prompt_hint"] = _loop_ev[5:].strip()
+            except Exception:
+                pass
+
+        if intent not in ("reason", "finish", "wakeup") and intent in _VALID_TOOLS:
+            try:
+                from services.tool_args import validate_tool_invocation
+
+                _verr = validate_tool_invocation(intent, decision, goal, workspace)
+                if _verr:
+                    state["tool_calls"] += 1
+                    state["steps"].append({"action": intent, "result": _verr})
+                    state["last_tool_used"] = intent
+                    goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+                    continue
+            except Exception:
+                pass
+
+        if intent not in ("reason", "finish", "wakeup", "none") and intent in _VALID_TOOLS:
+            try:
+                from services.tool_loop_detection import exact_call_key
+
+                _eck = exact_call_key(intent, decision)
+                _seen = state.setdefault("_recent_exact_calls", set())
+                if _eck in _seen:
+                    state["tool_calls"] += 1
+                    state["steps"].append({
+                        "action": intent,
+                        "result": {
+                            "ok": False,
+                            "reason": "tool_loop_detected",
+                            "message": "Exact duplicate tool invocation blocked for this run.",
+                        },
+                    })
+                    state["last_tool_used"] = intent
+                    goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+                    continue
             except Exception:
                 pass
 
@@ -2013,8 +2188,9 @@ def _autonomous_run_impl_core(
                     continue
                 state["tool_calls"] += 1
                 result = TOOLS["write_file"]["fn"](path=path, content=content)
+                _register_exact_tool_call(state, "write_file", decision)
                 runtime_safety.log_execution("write_file", {"path": path})
-                state["steps"].append({"action": "write_file", "result": result})
+                state["steps"].append({"action": "write_file", "result": _maybe_validate_tool_output("write_file", result)})
                 state["last_tool_used"] = "write_file"
                 _run_verification_after_tool(state, "write_file", result, workspace)
                 _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
@@ -2050,8 +2226,9 @@ def _autonomous_run_impl_core(
 
             state["tool_calls"] += 1
             result = TOOLS["write_file"]["fn"](path=path, content=content)
+            _register_exact_tool_call(state, "write_file", decision)
             runtime_safety.log_execution("write_file", {"path": path})
-            state["steps"].append({"action": "write_file", "result": result})
+            state["steps"].append({"action": "write_file", "result": _maybe_validate_tool_output("write_file", result)})
             state["last_tool_used"] = "write_file"
             _run_verification_after_tool(state, "write_file", result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
@@ -2090,8 +2267,9 @@ def _autonomous_run_impl_core(
                 break
             state["tool_calls"] += 1
             result = TOOLS["write_files_batch"]["fn"](files=files)
+            _register_exact_tool_call(state, "write_files_batch", decision)
             runtime_safety.log_execution("write_files_batch", {"count": len(files)})
-            state["steps"].append({"action": "write_files_batch", "result": result})
+            state["steps"].append({"action": "write_files_batch", "result": _maybe_validate_tool_output("write_files_batch", result)})
             state["last_tool_used"] = "write_files_batch"
             if result.get("ok") and result.get("written"):
                 for p in result.get("written", [])[:1]:
@@ -2114,8 +2292,9 @@ def _autonomous_run_impl_core(
                 continue
             state["tool_calls"] += 1
             result = TOOLS["read_file"]["fn"](path=path)
+            _register_exact_tool_call(state, "read_file", decision)
             runtime_safety.log_execution("read_file", {"path": path})
-            state["steps"].append({"action": "read_file", "result": result})
+            state["steps"].append({"action": "read_file", "result": _maybe_validate_tool_output("read_file", result)})
             state["last_tool_used"] = "read_file"
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -2127,8 +2306,9 @@ def _autonomous_run_impl_core(
             path = _extract_path(goal) or workspace
             state["tool_calls"] += 1
             result = TOOLS["list_dir"]["fn"](path=path)
+            _register_exact_tool_call(state, "list_dir", decision)
             runtime_safety.log_execution("list_dir", {"path": path})
-            state["steps"].append({"action": "list_dir", "result": result})
+            state["steps"].append({"action": "list_dir", "result": _maybe_validate_tool_output("list_dir", result)})
             state["last_tool_used"] = "list_dir"
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -2139,8 +2319,9 @@ def _autonomous_run_impl_core(
         if intent == "git_status":
             state["tool_calls"] += 1
             result = TOOLS["git_status"]["fn"](repo=workspace)
+            _register_exact_tool_call(state, "git_status", decision)
             runtime_safety.log_execution("git_status", {"repo": workspace})
-            state["steps"].append({"action": "git_status", "result": result})
+            state["steps"].append({"action": "git_status", "result": _maybe_validate_tool_output("git_status", result)})
             state["last_tool_used"] = "git_status"
             _run_verification_after_tool(state, "git_status", result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
@@ -2150,8 +2331,9 @@ def _autonomous_run_impl_core(
         if intent == "git_diff":
             state["tool_calls"] += 1
             result = TOOLS["git_diff"]["fn"](repo=workspace)
+            _register_exact_tool_call(state, "git_diff", decision)
             runtime_safety.log_execution("git_diff", {"repo": workspace})
-            state["steps"].append({"action": "git_diff", "result": result})
+            state["steps"].append({"action": "git_diff", "result": _maybe_validate_tool_output("git_diff", result)})
             state["last_tool_used"] = "git_diff"
             _run_verification_after_tool(state, "git_diff", result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
@@ -2161,8 +2343,9 @@ def _autonomous_run_impl_core(
         if intent == "git_log":
             state["tool_calls"] += 1
             result = TOOLS["git_log"]["fn"](repo=workspace, n=10)
+            _register_exact_tool_call(state, "git_log", decision)
             runtime_safety.log_execution("git_log", {"repo": workspace})
-            state["steps"].append({"action": "git_log", "result": result})
+            state["steps"].append({"action": "git_log", "result": _maybe_validate_tool_output("git_log", result)})
             state["last_tool_used"] = "git_log"
             _run_verification_after_tool(state, "git_log", result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
@@ -2172,8 +2355,9 @@ def _autonomous_run_impl_core(
         if intent == "git_branch":
             state["tool_calls"] += 1
             result = TOOLS["git_branch"]["fn"](repo=workspace)
+            _register_exact_tool_call(state, "git_branch", decision)
             runtime_safety.log_execution("git_branch", {"repo": workspace})
-            state["steps"].append({"action": "git_branch", "result": result})
+            state["steps"].append({"action": "git_branch", "result": _maybe_validate_tool_output("git_branch", result)})
             state["last_tool_used"] = "git_branch"
             _run_verification_after_tool(state, "git_branch", result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
@@ -2195,8 +2379,9 @@ def _autonomous_run_impl_core(
                 grep_path = maybe_path
             state["tool_calls"] += 1
             result = TOOLS["grep_code"]["fn"](pattern=pattern, path=grep_path)
+            _register_exact_tool_call(state, "grep_code", decision)
             runtime_safety.log_execution("grep_code", {"pattern": pattern, "path": grep_path})
-            state["steps"].append({"action": "grep_code", "result": result})
+            state["steps"].append({"action": "grep_code", "result": _maybe_validate_tool_output("grep_code", result)})
             state["last_tool_used"] = "grep_code"
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -2206,8 +2391,9 @@ def _autonomous_run_impl_core(
             pattern = parts[-1] if parts else "*"
             state["tool_calls"] += 1
             result = TOOLS["glob_files"]["fn"](pattern=pattern, root=workspace)
+            _register_exact_tool_call(state, "glob_files", decision)
             runtime_safety.log_execution("glob_files", {"pattern": pattern, "root": workspace})
-            state["steps"].append({"action": "glob_files", "result": result})
+            state["steps"].append({"action": "glob_files", "result": _maybe_validate_tool_output("glob_files", result)})
             state["last_tool_used"] = "glob_files"
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -2237,8 +2423,9 @@ def _autonomous_run_impl_core(
                 code = goal
                 state["tool_calls"] += 1
                 result = TOOLS["run_python"]["fn"](code=code, cwd=workspace)
+                _register_exact_tool_call(state, "run_python", decision)
                 runtime_safety.log_execution("run_python", {"cwd": workspace})
-                state["steps"].append({"action": "run_python", "result": result})
+                state["steps"].append({"action": "run_python", "result": _maybe_validate_tool_output("run_python", result)})
                 state["last_tool_used"] = "run_python"
                 _run_verification_after_tool(state, "run_python", result, workspace)
                 _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
@@ -2260,8 +2447,9 @@ def _autonomous_run_impl_core(
             code = goal
             state["tool_calls"] += 1
             result = TOOLS["run_python"]["fn"](code=code, cwd=workspace)
+            _register_exact_tool_call(state, "run_python", decision)
             runtime_safety.log_execution("run_python", {"cwd": workspace})
-            state["steps"].append({"action": "run_python", "result": result})
+            state["steps"].append({"action": "run_python", "result": _maybe_validate_tool_output("run_python", result)})
             state["last_tool_used"] = "run_python"
             _run_verification_after_tool(state, "run_python", result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
@@ -2287,6 +2475,23 @@ def _autonomous_run_impl_core(
                 if not _apply_probe_guidance(state, "apply_patch", path, probe):
                     goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                     continue
+            try:
+                max_patch_lines = int(cfg.get("max_patch_lines", 0) or 0)
+            except (TypeError, ValueError):
+                max_patch_lines = 0
+            if max_patch_lines and patch_body and patch_body.count("\n") > max_patch_lines:
+                state["tool_calls"] += 1
+                state["steps"].append({
+                    "action": "apply_patch",
+                    "result": {
+                        "ok": False,
+                        "error": "diff_too_large",
+                        "lines": patch_body.count("\n"),
+                        "max": max_patch_lines,
+                    },
+                })
+                goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+                continue
             if not allow_write or not runtime_safety.require_approval("apply_patch"):
                 approval_id = _write_pending("apply_patch", {"original_path": path or "", "patch_text": patch_body})
                 state["steps"].append({
@@ -2305,8 +2510,9 @@ def _autonomous_run_impl_core(
                 break
             state["tool_calls"] += 1
             result = TOOLS["apply_patch"]["fn"](original_path=path, patch_text=patch_body)
+            _register_exact_tool_call(state, "apply_patch", decision)
             runtime_safety.log_execution("apply_patch", {"path": path})
-            state["steps"].append({"action": "apply_patch", "result": result})
+            state["steps"].append({"action": "apply_patch", "result": _maybe_validate_tool_output("apply_patch", result)})
             state["last_tool_used"] = "apply_patch"
             _run_verification_after_tool(state, "apply_patch", result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
@@ -2328,8 +2534,9 @@ def _autonomous_run_impl_core(
                 break
             state["tool_calls"] += 1
             result = TOOLS["fetch_url"]["fn"](url=url)
+            _register_exact_tool_call(state, "fetch_url", decision)
             runtime_safety.log_execution("fetch_url", {"url": url})
-            state["steps"].append({"action": "fetch_url", "result": result})
+            state["steps"].append({"action": "fetch_url", "result": _maybe_validate_tool_output("fetch_url", result)})
             state["last_tool_used"] = "fetch_url"
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -2365,8 +2572,9 @@ def _autonomous_run_impl_core(
                 break
             state["tool_calls"] += 1
             result = TOOLS["shell"]["fn"](argv=argv, cwd=workspace)
+            _register_exact_tool_call(state, "shell", decision)
             runtime_safety.log_execution("shell", {"argv": argv, "cwd": workspace})
-            state["steps"].append({"action": "shell", "result": result})
+            state["steps"].append({"action": "shell", "result": _maybe_validate_tool_output("shell", result)})
             state["last_tool_used"] = "shell"
             _run_verification_after_tool(state, "shell", result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
@@ -2381,8 +2589,9 @@ def _autonomous_run_impl_core(
             args = (decision.get("args") or {}) if decision else {}
             state["tool_calls"] += 1
             result = TOOLS[intent]["fn"](**args) if args else TOOLS[intent]["fn"]()
+            _register_exact_tool_call(state, intent, decision)
             runtime_safety.log_execution(intent, args)
-            state["steps"].append({"action": intent, "result": result})
+            state["steps"].append({"action": intent, "result": _maybe_validate_tool_output(intent, result)})
             state["last_tool_used"] = intent
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -2399,8 +2608,9 @@ def _autonomous_run_impl_core(
                 break
             state["tool_calls"] += 1
             result = TOOLS["git_commit"]["fn"](**args)
+            _register_exact_tool_call(state, "git_commit", decision)
             runtime_safety.log_execution("git_commit", args)
-            state["steps"].append({"action": "git_commit", "result": result})
+            state["steps"].append({"action": "git_commit", "result": _maybe_validate_tool_output("git_commit", result)})
             state["last_tool_used"] = "git_commit"
             _run_verification_after_tool(state, "git_commit", result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
@@ -2413,7 +2623,8 @@ def _autonomous_run_impl_core(
         if intent == "get_project_context":
             state["tool_calls"] += 1
             result = TOOLS["get_project_context"]["fn"]()
-            state["steps"].append({"action": "get_project_context", "result": result})
+            _register_exact_tool_call(state, "get_project_context", decision)
+            state["steps"].append({"action": "get_project_context", "result": _maybe_validate_tool_output("get_project_context", result)})
             state["last_tool_used"] = "get_project_context"
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -2428,7 +2639,8 @@ def _autonomous_run_impl_core(
                 goals=args.get("goals", ""),
                 lifecycle_stage=args.get("lifecycle_stage", ""),
             )
-            state["steps"].append({"action": "update_project_context", "result": result})
+            _register_exact_tool_call(state, "update_project_context", decision)
+            state["steps"].append({"action": "update_project_context", "result": _maybe_validate_tool_output("update_project_context", result)})
             state["last_tool_used"] = "update_project_context"
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -2438,7 +2650,7 @@ def _autonomous_run_impl_core(
         # ------------------------------------------------
         if intent in TOOLS and intent not in (
             "reason", "write_file", "read_file", "list_dir", "git_status", "git_diff", "git_log", "git_branch",
-            "grep_code", "glob_files", "run_python", "apply_patch", "fetch_url", "shell",
+            "grep_code", "glob_files", "search_codebase", "run_python", "apply_patch", "fetch_url", "shell",
             "json_query", "diff_files", "env_info", "regex_test", "save_note", "search_memories", "git_add",
             "git_commit", "get_project_context", "update_project_context", "understand_file",
         ):
@@ -2463,7 +2675,7 @@ def _autonomous_run_impl_core(
                 path = _extract_path(goal)
                 if path:
                     args["path"] = path
-            if "root" not in args and intent in ("search_replace", "rename_symbol"):
+            if "root" not in args and intent in ("search_replace", "rename_symbol", "search_codebase"):
                 args["root"] = workspace
             try:
                 fn = meta.get("fn")
@@ -2475,7 +2687,8 @@ def _autonomous_run_impl_core(
                 result = {"ok": False, "error": str(e)}
             runtime_safety.log_execution(intent, args)
             state["tool_calls"] += 1
-            state["steps"].append({"action": intent, "result": result})
+            _register_exact_tool_call(state, intent, decision)
+            state["steps"].append({"action": intent, "result": _maybe_validate_tool_output(intent, result)})
             state["last_tool_used"] = intent
             _run_verification_after_tool(state, intent, result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
@@ -2494,7 +2707,8 @@ def _autonomous_run_impl_core(
                 break
             state["tool_calls"] += 1
             result = TOOLS["understand_file"]["fn"](path=path)
-            state["steps"].append({"action": "understand_file", "result": result})
+            _register_exact_tool_call(state, "understand_file", decision)
+            state["steps"].append({"action": "understand_file", "result": _maybe_validate_tool_output("understand_file", result)})
             state["last_tool_used"] = "understand_file"
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -2507,22 +2721,7 @@ def _autonomous_run_impl_core(
                 state["status"] = "stream_pending"
                 state["goal_for_stream"] = goal
                 return state
-            head = _build_system_head(
-                goal=goal,
-                aspect=active_aspect,
-                workspace_root=workspace,
-                sub_goals=state.get("sub_goals"),
-                state=state,
-                conversation_history=effective_history,
-            )
-
-            # Inject conversation history (sanitize assistant messages that are echoed instructions)
-            convo_block = ""
-            try:
-                convo_turns = max(0, int(cfg.get("convo_turns", 0)))
-            except (TypeError, ValueError):
-                convo_turns = 0
-            # Section 1: context compression when token count exceeds ~75% of n_ctx
+            # Section 1: context compression when token count exceeds ~75% of n_ctx (before system head)
             effective_history = conversation_history or []
             if effective_history and cfg.get("context_compression", True):
                 try:
@@ -2531,13 +2730,34 @@ def _autonomous_run_impl_core(
                     effective_history = summarize_history(effective_history, n_ctx=n_ctx, threshold_ratio=0.75)
                 except Exception:
                     pass
+            head = _build_system_head(
+                goal=goal,
+                aspect=active_aspect,
+                workspace_root=workspace,
+                sub_goals=state.get("sub_goals"),
+                state=state,
+                conversation_history=effective_history,
+                reasoning_mode=state.get("reasoning_mode", "light"),
+                _precomputed_recall=_precomputed_recall,
+            )
+
+            # Inject conversation history (sanitize assistant messages that are echoed instructions)
+            convo_block = ""
+            try:
+                convo_turns = max(0, int(cfg.get("convo_turns", 0)))
+            except (TypeError, ValueError):
+                convo_turns = 0
             if convo_turns > 0 and effective_history:
                 name = active_aspect.get("name", "Layla")
                 turns = effective_history[-convo_turns:]
+                n_turns = len(turns)
                 lines = []
-                for t in turns:
+                for i, t in enumerate(turns):
                     role = t.get("role", "")
-                    content_t = (t.get("content") or "")[:300].strip()
+                    # Recent turns (last 2) get more context; older turns are compressed.
+                    turns_from_end = n_turns - i
+                    max_chars = 600 if turns_from_end <= 2 else 220
+                    content_t = (t.get("content") or "")[:max_chars].strip()
                     if role == "user":
                         lines.append(f"User: {content_t}")
                     else:
@@ -2727,4 +2947,7 @@ def _autonomous_run_impl_core(
             ).start()
     if research_mode:
         set_effective_sandbox(None)
+
+    _emit_run_telemetry(state, state.get("status") in ("finished", "plan_completed"))
+
     return state

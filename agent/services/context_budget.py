@@ -20,7 +20,6 @@ DEFAULT_BUDGETS: dict[str, int] = {
     "workspace_context": 400,
     # Legacy keys used by context_manager
     "system_instructions": 800,
-    "pinned_context": 400,
     "agent_state": 400,
     "current_goal": 100,
     "knowledge_graph": 200,
