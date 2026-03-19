@@ -42,9 +42,14 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
     {"key": "max_tool_calls", "type": "number", "category": "safety", "default": 5, "min": 1, "max": 20, "hint": "Max tool calls per turn."},
     {"key": "enable_cot", "type": "boolean", "category": "safety", "default": True, "hint": "Chain-of-thought reasoning."},
     {"key": "enable_self_reflection", "type": "boolean", "category": "safety", "default": False, "hint": "Post-response self-reflection."},
+    {"key": "custom_system_prefix", "type": "string", "category": "safety", "multiline": True, "hint": "Custom system addition (e.g. Always respond in bullet points)."},
     # ── Remote ──
     {"key": "remote_enabled", "type": "boolean", "category": "remote", "default": False, "hint": "Allow remote API access."},
     {"key": "llama_server_url", "type": "string", "category": "remote", "hint": "External llama.cpp server URL. Overrides local model."},
+    # ── Integrations (Discord, Slack, etc.) ──
+    {"key": "discord_webhook_url", "type": "string", "category": "integrations", "hint": "Discord webhook URL for discord_send. Server Settings → Integrations → Webhooks."},
+    {"key": "discord_bot_token", "type": "string", "category": "integrations", "hint": "Discord bot token for full bot (voice, TTS, music). Create at Discord Developer Portal."},
+    {"key": "slack_webhook_url", "type": "string", "category": "integrations", "hint": "Slack incoming webhook URL for notifications."},
 ]
 
 

@@ -1,0 +1,149 @@
+# Ethical AI Principles — Layla
+
+This document codifies the ethical AI principles that govern Layla's design and implementation. All features, tools, and behaviors must align with these principles.
+
+**Project values:** See [VALUES.md](../VALUES.md) — sovereignty, privacy, anti-surveillance capitalism, solidarity. Development aligns with these.
+
+**Reference:** `knowledge/lilith-ethics-autonomy.md` — detailed ethics framework (autonomy, consent, honesty, real harm vs. safety theater).
+
+---
+
+## 1. Human-in-the-loop (Consent)
+
+**Principle:** Layla never modifies files or runs code without explicit user approval.
+
+**Implementation:**
+- `allow_write` / `allow_run` required for write/run tools
+- `write_file`, `apply_patch`, `shell`, `run_python`, `git_commit` return `approval_required` → user must approve via `POST /approve` or CLI
+- `runtime_safety.require_approval()` gates dangerous tools
+- `agent/routers/approvals.py` — approval endpoint
+
+**Hard rule:** Never bypass the approval gate. See `AGENTS.md` §5.
+
+---
+
+## 2. Sandbox (Scope)
+
+**Principle:** Layla operates only within the user-defined sandbox. No access outside.
+
+**Implementation:**
+- `inside_sandbox(path)` in `layla/tools/registry.py` — every file/tool checks before read/write
+- `sandbox_root` in `runtime_config.json` — user configurable
+- Tools return `{"ok": false, "error": "Outside sandbox"}` when path is outside
+
+**Hard rule:** No tool may read or write outside the sandbox.
+
+---
+
+## 3. Shell Blocklist (Harm Prevention)
+
+**Principle:** Certain commands are never allowed, even with approval.
+
+**Implementation:**
+- `_SHELL_BLOCKLIST` in `layla/tools/registry.py`: `rm`, `del`, `rmdir`, `format`, `mkfs`, `dd`, `shutdown`, `reboot`, `powershell`, `cmd`, `reg`, `netsh`, `sc`, `taskkill`, `cipher`
+- Returns `{"ok": false, "error": "Command blocked"}` before execution
+
+---
+
+## 4. Refusal (Honest Pushback)
+
+**Principle:** Layla can refuse requests that conflict with her values. She is not a yes-machine.
+
+**Implementation:**
+- Aspects with `will_refuse` or `can_refuse` (e.g. Lilith) can output `[REFUSED: reason]`
+- `agent_loop.py` parses refusal, sets `state["refused"]`, does not run tools
+- Orchestrator prompts: "If you must refuse, start with [REFUSED: reason]."
+
+**Reference:** `knowledge/lilith-ethics-autonomy.md` — real harm vs. safety theater.
+
+---
+
+## 5. Content Policy (No Over-censorship)
+
+**Principle:** Refuse only for genuine harm. Do not censor uncomfortable topics.
+
+**Implementation:**
+- System prompt: "Refuse only for genuine harm (illegal, non-consensual, abuse)"
+- `uncensored` / `nsfw_allowed` config — user controls content boundaries
+- `knowledge/lilith-ethics-autonomy.md` — real harm categories vs. discomfort
+
+---
+
+## 6. Privacy (Local-first)
+
+**Principle:** User data stays on the user's machine. No cloud. No telemetry.
+
+**Implementation:**
+- `layla.db` — local SQLite only (gitignored)
+- `knowledge/` — local by default (gitignored)
+- `runtime_config.json` — local paths only (gitignored)
+- No API keys required for core operation
+- Remote access is opt-in (`remote_enabled`)
+
+---
+
+## 7. Audit Trail (Accountability)
+
+**Principle:** All tool executions are logged. User can review what Layla did.
+
+**Implementation:**
+- `layla/memory/db.py` — `audit` table: `timestamp`, `tool`, `args_summary`, `approved_by`, `result_ok`
+- `GET /audit` — paginated audit log
+- `_audit()` in `main.py` — logs after approval execution
+
+---
+
+## 8. Learning Quality (Honesty)
+
+**Principle:** Do not store uncertain or low-quality learnings. Honesty about uncertainty.
+
+**Implementation:**
+- `services/learning_filter.py` — rejects `UNCERTAINTY_PHRASES` ("maybe", "not sure", "i don't know", etc.)
+- `add_learning` — quality filter before persistence
+- `knowledge/lilith-ethics-autonomy.md` — "Honesty about uncertainty"
+
+---
+
+## 9. Protected Files (Integrity)
+
+**Principle:** Core system files cannot be modified by the agent.
+
+**Implementation:**
+- `runtime_safety.PROTECTED_FILES`: `main.py`, `agent_loop.py`, `runtime_safety.py`
+- `is_protected(path)` — blocks writes to these
+
+---
+
+## 10. Transparency (Explainability)
+
+**Principle:** User understands what Layla is doing and why.
+
+**Implementation:**
+- Approval flow shows tool name and args before execution
+- `ux_states` — thinking, verifying, changing_approach
+- Deliberation mode — shows aspect reasoning when requested
+- `show_thinking: true` — multi-aspect deliberation visible
+
+---
+
+## Checklist for Contributors
+
+When adding or changing behavior, verify:
+
+- [ ] No approval bypass for write/run tools
+- [ ] All file paths checked with `inside_sandbox()`
+- [ ] No new shell commands that bypass blocklist
+- [ ] Refusal path remains available for aspects
+- [ ] No cloud/telemetry without explicit opt-in
+- [ ] Audit logged for tool executions
+- [ ] Learning filter applied for `add_learning`
+- [ ] Protected files remain protected
+
+---
+
+## References
+
+- `AGENTS.md` — hard rules, never violate
+- `knowledge/lilith-ethics-autonomy.md` — ethics framework
+- `LAYLA_NORTH_STAR.md` §20 — safe self-upgrade
+- `ARCHITECTURE.md` — request flow

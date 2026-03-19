@@ -132,9 +132,6 @@ async def research_mission(request: Request):
                 else:
                     md, _ = res
                     status = "ok"
-                if stage_name == "mapping":
-                    if not (AGENT_DIR / ".research_brain" / "maps" / "system_map.json").exists():
-                        pass
                 combined_md.append(f"## {stage_name.title()}\n\n{md or '(no output)'}")
                 if status == "no_progress":
                     consecutive_no_progress += 1

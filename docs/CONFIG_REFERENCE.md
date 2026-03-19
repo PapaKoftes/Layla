@@ -95,6 +95,18 @@ For advanced users. Edit `agent/runtime_config.json` directly, or use **Settings
 
 ---
 
+## Integrations (Discord, Slack)
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `discord_webhook_url` | string | null | Discord webhook for `discord_send`. Server Settings → Integrations → Webhooks → New. |
+| `discord_bot_token` | string | null | Full Discord bot (voice, TTS, music). Create at Discord Developer Portal. See discord_bot/README.md. |
+| `slack_webhook_url` | string | null | Slack incoming webhook for notifications. |
+
+**Discord setup:** 1) Server Settings → Integrations → Webhooks. 2) New Webhook, pick channel. 3) Copy Webhook URL. 4) Set `discord_webhook_url` in config or `DISCORD_WEBHOOK_URL` env.
+
+---
+
 ## File location
 
 - **Config file:** `agent/runtime_config.json` (gitignored)

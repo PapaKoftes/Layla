@@ -6,6 +6,10 @@ from typing import Callable
 
 # Set by main after defining _history, touch_activity, etc.
 _history: deque | None = None
+
+# Last Layla auto-commit: for /undo
+_last_layla_commit_repo: str | None = None
+_last_layla_commit_hash: str | None = None
 _touch_activity: Callable[[], None] | None = None
 _read_pending: Callable[[], list] | None = None
 _write_pending_list: Callable[[list], None] | None = None
@@ -71,3 +75,13 @@ def get_append_history() -> Callable[[str, str], None]:
 
 def get_run_autonomous_study() -> Callable | None:
     return _run_autonomous_study
+
+
+def set_last_layla_commit(repo: str, commit_hash: str) -> None:
+    global _last_layla_commit_repo, _last_layla_commit_hash
+    _last_layla_commit_repo = repo
+    _last_layla_commit_hash = commit_hash
+
+
+def get_last_layla_commit() -> tuple[str | None, str | None]:
+    return _last_layla_commit_repo, _last_layla_commit_hash

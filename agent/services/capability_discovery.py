@@ -85,16 +85,10 @@ def _write_cache(key: str, data: list[dict]) -> None:
 def scan_pypi(capability: str, terms: list[str]) -> list[CandidateLibrary]:
     """
     Scan PyPI for packages matching capability search terms.
-    Uses simple search API; no API key required.
+    PyPI has no public JSON search API; we return known packages per capability.
     """
     candidates: list[CandidateLibrary] = []
     seen: set[str] = set()
-    for term in terms[:5]:  # Limit to avoid rate limits
-        # PyPI search returns HTML; we use the JSON API for project metadata
-        # Alternative: https://pypi.org/pypi/<package>/json
-        # PyPI has no public JSON search; we use a minimal scrape or known packages
-        # Fallback: return known packages per capability
-        pass
     # Known PyPI packages per capability (discovery without scraping)
     known: dict[str, list[tuple[str, str]]] = {
         "vector_search": [

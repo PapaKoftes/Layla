@@ -118,7 +118,7 @@ def test_model_router_benchmark_helpers():
 
 def test_config_schema_and_settings_api():
     """Config schema and settings endpoints work correctly."""
-    from config_schema import get_editable_keys, get_schema_for_api, EDITABLE_SCHEMA
+    from config_schema import EDITABLE_SCHEMA, get_editable_keys, get_schema_for_api
 
     keys = get_editable_keys()
     assert len(keys) >= 10
@@ -133,6 +133,7 @@ def test_config_schema_and_settings_api():
     # Test FastAPI app if available
     try:
         from fastapi.testclient import TestClient
+
         from main import app
         client = TestClient(app)
         r = client.get("/settings")

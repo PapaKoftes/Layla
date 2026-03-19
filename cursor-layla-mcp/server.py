@@ -223,6 +223,62 @@ async def handle_list_tools() -> types.ListToolsResult:
                     },
                 },
             ),
+            types.Tool(
+                name="get_memories",
+                title="Search Layla's memories",
+                description=(
+                    "Search Layla's long-term memory (learnings, semantic recall) for relevant past knowledge. "
+                    "Use when you need to recall what Layla has learned or what the user told her."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["query"],
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query for relevant memories.",
+                        },
+                        "n": {
+                            "type": "integer",
+                            "description": "Max number of memories to return. Default 8.",
+                            "default": 8,
+                        },
+                    },
+                },
+            ),
+            types.Tool(
+                name="schedule_layla_task",
+                title="Schedule a Layla task",
+                description=(
+                    "Schedule a tool to run in the background: once after delay, or recurring via cron. "
+                    "Use schedule_task tool on Layla's side. Requires Layla API to support it."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["tool_name"],
+                    "properties": {
+                        "tool_name": {
+                            "type": "string",
+                            "description": "Tool name to run (e.g. discord_send, run_tests).",
+                        },
+                        "args": {
+                            "type": "object",
+                            "description": "Arguments for the tool as JSON.",
+                            "default": {},
+                        },
+                        "delay_seconds": {
+                            "type": "number",
+                            "description": "Run once after N seconds. Default 0.",
+                            "default": 0,
+                        },
+                        "cron_expr": {
+                            "type": "string",
+                            "description": "Cron: 'min hour dom month dow' e.g. '*/5 * * * *' for every 5 min.",
+                            "default": "",
+                        },
+                    },
+                },
+            ),
         ]
     )
 
@@ -381,6 +437,41 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
             return [types.TextContent(type="text", text=msg)]
         except Exception as e:
             return [types.TextContent(type="text", text=f"Approve failed: {e}")]
+
+    # ── get_memories ───────────────────────────────────────
+    if name == "get_memories":
+        query = args.get("query", "").strip()
+        if not query:
+            return [types.TextContent(type="text", text="No query provided.")]
+        n = int(args.get("n") or 8)
+        try:
+            import urllib.parse
+            url = LAYLA_BASE + "/memories?" + urllib.parse.urlencode({"q": query, "n": n})
+            resp = _get(url)
+            items = resp.get("memories") or []
+            if not items:
+                return [types.TextContent(type="text", text="No relevant memories found.")]
+            return [types.TextContent(type="text", text="\n".join(f"- {m}" for m in items[:n]))]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"Memory search failed: {e}")]
+
+    # ── schedule_layla_task ─────────────────────────────────
+    if name == "schedule_layla_task":
+        tool_name = args.get("tool_name", "").strip()
+        if not tool_name:
+            return [types.TextContent(type="text", text="No tool_name provided.")]
+        try:
+            result = _post(LAYLA_BASE + "/schedule", {
+                "tool_name": tool_name,
+                "args": args.get("args") or {},
+                "delay_seconds": float(args.get("delay_seconds") or 0),
+                "cron_expr": (args.get("cron_expr") or "").strip(),
+            })
+            if result.get("ok"):
+                return [types.TextContent(type="text", text=f"Scheduled: {result.get('job_id', '?')} ({result.get('schedule', '')})")]
+            return [types.TextContent(type="text", text=f"Schedule failed: {result.get('error', result)}")]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"Schedule failed: {e}")]
 
     return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
 

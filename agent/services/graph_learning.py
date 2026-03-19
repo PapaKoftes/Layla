@@ -43,9 +43,11 @@ def expand_graph_from_learning(content: str) -> None:
                 nodes.append({"id": max_id, "label": lbl_clean[:120], "metadata": {}, "created_at": utcnow().isoformat()})
                 label_to_id[key] = max_id
         vals = list(label_to_id.values())
+        existing_pairs = {(e["src"], e["dst"]) for e in edges}
         for i in range(len(vals) - 1):
-            if vals[i] != vals[i + 1]:
+            if vals[i] != vals[i + 1] and (vals[i], vals[i + 1]) not in existing_pairs:
                 edges.append({"src": vals[i], "dst": vals[i + 1], "relation": "related_in_learning"})
+                existing_pairs.add((vals[i], vals[i + 1]))
         if len(edges) > len(data.get("edges") or []):
             save_graph({"nodes": nodes, "edges": edges})
     except Exception:

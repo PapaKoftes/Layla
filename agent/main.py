@@ -8,9 +8,9 @@ import threading
 import time
 import uuid
 from collections import deque
-from typing import Any
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
@@ -122,11 +122,12 @@ async def lifespan(app: FastAPI):
         log_agent_started()
     except Exception:
         pass
+    import logging as _logging
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-    log_level = getattr(logging, log_level, logging.INFO)
+    log_level = getattr(_logging, log_level, _logging.INFO)
     if os.getenv("LAYLA_LOG_JSON") == "1":
         import logging.handlers
-        class JsonFormatter(logging.Formatter):
+        class JsonFormatter(_logging.Formatter):
             def format(self, record):
                 return json.dumps({
                     "time": self.formatTime(record),
@@ -134,12 +135,12 @@ async def lifespan(app: FastAPI):
                     "name": record.name,
                     "message": record.getMessage(),
                 })
-        h = logging.StreamHandler()
+        h = _logging.StreamHandler()
         h.setFormatter(JsonFormatter())
-        logging.getLogger().handlers = [h]
-        logging.getLogger().setLevel(log_level)
+        _logging.getLogger().handlers = [h]
+        _logging.getLogger().setLevel(log_level)
     else:
-        logging.basicConfig(
+        _logging.basicConfig(
             level=log_level,
             format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
@@ -326,15 +327,15 @@ def _load_history() -> None:
                 return
         for item in data[-20:]:
             _history.append(item)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("_load_history failed: %s", e)
 
 
 def _save_history() -> None:
     try:
         HISTORY_FILE.write_text(json.dumps(list(_history), indent=2), encoding="utf-8")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("_save_history failed: %s", e)
 
 
 def _append_history(role: str, content: str) -> None:
@@ -585,8 +586,7 @@ def health(request: Request):
     db_ok = ok
     chroma_ok = False
     try:
-        from layla.memory.vector_store import search_similar
-        from layla.memory.vector_store import embed
+        from layla.memory.vector_store import embed, search_similar
         search_similar(embed("health"), k=1)
         chroma_ok = True
     except Exception:
@@ -874,7 +874,7 @@ async def setup_download(url: str, filename: str = ""):
 def get_settings():
     """Return all editable settings. Missing keys use schema defaults."""
     import runtime_safety as _rs
-    from config_schema import EDITABLE_SCHEMA, get_editable_keys
+    from config_schema import EDITABLE_SCHEMA
     try:
         cfg = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8")) if _rs.CONFIG_FILE.exists() else {}
     except Exception:
@@ -1165,7 +1165,6 @@ def system_export():
     except Exception:
         aspects_loaded = []
 
-    model_filename = cfg.get("model_filename", "your-model.gguf")
     model_path = str(runtime_safety.resolve_model_path(cfg))
 
     import subprocess
@@ -1418,7 +1417,9 @@ def read_file_content(path: str = ""):
     import runtime_safety as _rs
     try:
         cfg = _rs.load_config()
-        sandbox = cfg.get("sandbox_root", "")
+        sandbox = (cfg.get("sandbox_root") or "").strip()
+        if not sandbox:
+            return JSONResponse({"error": "sandbox_root not configured; file_content disabled"}, status_code=403)
         p = Path(path).resolve()
         if sandbox:
             sb = Path(sandbox).resolve()
@@ -1501,29 +1502,34 @@ def manifest():
     return JSONResponse({"name": "Layla", "short_name": "Layla", "start_url": "/ui", "display": "standalone"})
 
 
+_UI_NO_CACHE = {"Cache-Control": "no-store"}
+
+
 @app.get("/ui", response_class=HTMLResponse)
 def ui_rich():
     touch_activity()
-    ui_file = AGENT_DIR / "ui" / "index.html"
-    if ui_file.exists():
+    ui_file = (AGENT_DIR / "ui" / "index.html").resolve()
+    if ui_file.is_file():
         try:
-            return HTMLResponse(ui_file.read_text(encoding="utf-8"))
+            return HTMLResponse(ui_file.read_text(encoding="utf-8"), headers=_UI_NO_CACHE)
         except Exception as e:
             logger.warning("ui file read failed: %s", e)
-    return HTMLResponse(_INLINE_UI)
+    logger.warning("Serving fallback _INLINE_UI (file missing or unreadable): %s", ui_file)
+    return HTMLResponse(_INLINE_UI, headers=_UI_NO_CACHE)
 
 
 # Root serves the same full UI as /ui so chat works identically (no stale inline copy)
 @app.get("/", response_class=HTMLResponse)
 def ui_root():
     touch_activity()
-    ui_file = AGENT_DIR / "ui" / "index.html"
-    if ui_file.exists():
+    ui_file = (AGENT_DIR / "ui" / "index.html").resolve()
+    if ui_file.is_file():
         try:
-            return HTMLResponse(ui_file.read_text(encoding="utf-8"))
+            return HTMLResponse(ui_file.read_text(encoding="utf-8"), headers=_UI_NO_CACHE)
         except Exception as e:
             logger.warning("ui file read failed: %s", e)
-    return HTMLResponse(_INLINE_UI)
+    logger.warning("Serving fallback _INLINE_UI (file missing or unreadable): %s", ui_file)
+    return HTMLResponse(_INLINE_UI, headers=_UI_NO_CACHE)
 
 
 _INLINE_UI = """<!DOCTYPE html>

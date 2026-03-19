@@ -6,6 +6,8 @@ Layla is a self-hosted AI companion and engineering agent. She runs entirely on 
 
 She has six distinct aspects (voices/personalities) you can switch between. She can write and run code, read and modify files, research repos, search the web, and hold a real conversation. She is designed to be as capable as any commercial AI assistant — and unlike those, she belongs entirely to you.
 
+**Why Layla exists:** Built as a sovereign alternative to corporate AI — privacy-focused, local-first, anti-surveillance. Your data stays yours. See [VALUES.md](VALUES.md) for the principles behind the project.
+
 ---
 
 ## What makes her different
@@ -224,6 +226,7 @@ See `.cursor/rules/layla-assistant.mdc` for full setup.
 | **TUI** | `cd agent && python tui.py` |
 | **OpenAI-compatible API** | `http://localhost:8000/v1` |
 | **Open WebUI** | Point at `http://localhost:8000/v1` |
+| **Discord bot** | `python -m discord_bot.run` — voice, TTS, music. See [discord_bot/README.md](discord_bot/README.md). |
 
 ---
 
@@ -231,12 +234,21 @@ See `.cursor/rules/layla-assistant.mdc` for full setup.
 
 | | |
 |---|---|
+| [VALUES.md](VALUES.md) | Project principles: sovereignty, privacy, anti-surveillance |
 | [MODELS.md](MODELS.md) | Model recommendations, download links, config guide |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
 | [docs/RUNBOOKS.md](docs/RUNBOOKS.md) | First run, adding tools, aspects, knowledge |
 | [docs/TECH_STACK_AND_CAPABILITIES.md](docs/TECH_STACK_AND_CAPABILITIES.md) | Full capability list |
 | [docs/LAYLA_SYSTEM_OVERVIEW.md](docs/LAYLA_SYSTEM_OVERVIEW.md) | Architecture overview |
 | [LICENSE](LICENSE) | Non-commercial source license |
+
+---
+
+## Common issues
+
+- **Model not loading** — Check path in Settings, VRAM, `n_gpu_layers`. See [MODELS.md](MODELS.md).
+- **Approvals not working** — Enable Allow Write / Allow Run in the sidebar.
+- **Voice not working** — `pip install sounddevice` (CLI) or check browser mic permissions (UI).
 
 ---
 

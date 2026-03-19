@@ -50,12 +50,9 @@ def _is_safe_url(url: str) -> bool:
 
 def _get_allowlist() -> list[str]:
     try:
-        import json
-        cfg_path = Path(__file__).resolve().parent.parent.parent.parent / "agent" / "runtime_config.json"
-        if not cfg_path.exists():
-            cfg_path = Path(__file__).resolve().parent.parent.parent / "runtime_config.json"
-        data = json.loads(cfg_path.read_text(encoding="utf-8"))
-        return data.get("web_allowlist", [])
+        import runtime_safety
+        cfg = runtime_safety.load_config()
+        return cfg.get("web_allowlist") or []
     except Exception as e:
         logger.debug("web fetch_url _get_allowlist failed: %s", e)
         return []

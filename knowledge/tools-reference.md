@@ -4,7 +4,7 @@ domain: tools
 aspect: morrigan
 ---
 
-# Tools Reference — All 109 Tools
+# Tools Reference — All 157 Tools
 
 Layla's complete tool registry. Dangerous tools require `allow_run=true` AND approval via `POST /approve` before they execute.
 
@@ -339,3 +339,84 @@ Approval flow:
 - **screenshot_desktop(region, output_path)** — Capture screenshot via Pillow or pyautogui.
 - **click_ui(x, y, button, clicks)** — Click screen coordinates. DANGEROUS: requires approval.
 - **type_text(text, interval)** — Type text at focused window. DANGEROUS: requires approval.
+
+---
+
+## Tier 4: Fabrication, Git, Dev Workflow, CI (23 new tools)
+
+### Fabrication (North Star §5)
+- **parse_gcode(path)** — Parse G-code/NC: moves, tools, units, bounds, feed rates.
+- **stl_mesh_info(path)** — STL mesh stats: vertices, faces, bounds, volume. trimesh or ASCII fallback.
+- **generate_gcode(dxf_path, output_path, layer, depth_mm, feed_rate, safe_z)** — DXF → 2D G-code. DANGEROUS: approval required.
+
+### Git Extended
+- **git_push(repo, remote, branch)** — Push to remote. DANGEROUS: approval required.
+- **git_pull(repo, remote, branch)** — Pull from remote.
+- **git_stash(repo, action, message)** — list|push|pop|apply.
+- **git_revert(repo, commit, no_commit)** — Revert a commit. DANGEROUS: approval required.
+- **git_clone(url, dest, depth)** — Clone repo. DANGEROUS: approval required.
+
+### Dev Workflow
+- **run_tests(cwd, pattern, extra_args, timeout_s)** — Run pytest or unittest. DANGEROUS: approval required.
+- **tail_file(path, n)** — Last n lines of file (logs).
+- **clipboard_read()** — Read system clipboard. Requires pyperclip.
+- **clipboard_write(text)** — Write to clipboard. Approval required.
+- **search_replace(root, find, replace, file_glob, dry_run)** — Multi-file find/replace. dry_run=True lists only. DANGEROUS when dry_run=False.
+- **rename_symbol(root, old_name, new_name, symbol_type, file_glob, apply)** — Rename across Python files. apply=True writes. DANGEROUS when apply=True.
+- **pip_list(cwd)** — List installed packages.
+- **pip_install(packages, cwd, upgrade)** — Install packages. DANGEROUS: approval required.
+
+### Docker
+- **docker_ps(all_containers)** — List containers.
+- **docker_run(image, args, name, rm)** — Run container. DANGEROUS: approval required.
+
+### CI & Notifications
+- **check_ci(repo, provider)** — GitHub Actions status from local repo.
+- **send_webhook(url, payload, method)** — POST JSON to Slack/Discord/custom.
+- **github_issues(repo_slug, state, token)** — List GitHub issues.
+- **github_pr(repo_slug, title, head, base, body, token)** — Create PR. DANGEROUS: approval required. GITHUB_TOKEN needed.
+- **send_email(to, subject, body, smtp_host, ...)** — SMTP. DANGEROUS: approval required. Env: SMTP_HOST, SMTP_USER, SMTP_PASS.
+
+---
+
+## Tier 5: Code Format, Archive, System, Data (14 tools)
+
+### Code & Format
+- **code_format(path, formatter)** — Format Python with ruff or black. DANGEROUS: approval required.
+
+### Archive
+- **extract_archive(path, dest)** — Extract .zip, .tar, .tar.gz.
+- **create_archive(paths, output, format)** — Create zip from files/dirs.
+
+### System & Utilities
+- **uuid_generate(count)** — Generate UUID(s).
+- **random_string(length, charset)** — Random alphanumeric/hex.
+- **password_generate(length, symbols)** — Secure random password.
+- **disk_usage(path)** — Disk used/total/free in GB.
+- **process_list(limit)** — Top processes by CPU/memory. Requires psutil.
+
+### Data & Config
+- **generate_qr(data, output_path, size)** — QR code. Requires qrcode[pil].
+- **write_csv(path, rows, headers)** — Write CSV. DANGEROUS: approval required.
+- **json_schema(data)** — Infer JSON schema from sample.
+- **jwt_decode(token, verify, secret)** — Decode JWT header+payload.
+- **read_toml(path)** — Parse TOML (tomllib/tomli).
+- **merge_pdf(paths, output)** — Merge PDFs. Requires pypdf.
+
+---
+
+## Tier 6: Discord, Calendar, DB, Creative (no Gen AI)
+
+### Discord (easy setup)
+- **discord_send(content, embed, webhook_url)** — Send to Discord. Uses discord_webhook_url config or DISCORD_WEBHOOK_URL env. See docs/DISCORD_SETUP.md.
+
+### Calendar
+- **calendar_read(path)** — Read .ics file. Requires icalendar.
+- **calendar_add_event(path, summary, start, end, description)** — Add event. DANGEROUS: approval required.
+
+### Database
+- **db_backup(db_path, backup_path)** — Backup SQLite.
+
+### Creative (procedural, no Gen AI)
+- **create_svg(path, content)** — Write SVG. Procedural drawing.
+- **create_mermaid(path, content)** — Write Mermaid diagram (.mmd). DANGEROUS: approval required.

@@ -12,6 +12,7 @@ from __future__ import annotations
 import json as _json
 import logging
 import threading
+import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any, Generator
@@ -54,6 +55,18 @@ def _openai_compatible_url(url: str) -> str:
     return url.rstrip("/")
 
 
+def _openai_compatible_base_urls(cfg: dict) -> list[str]:
+    u = (cfg.get("llama_server_url") or "").strip().rstrip("/")
+    out: list[str] = []
+    if u:
+        out.append(u)
+    for x in cfg.get("inference_fallback_urls") or []:
+        sx = str(x).strip().rstrip("/")
+        if sx and sx not in out:
+            out.append(sx)
+    return out
+
+
 def run_completion_openai_compatible(
     cfg: dict,
     prompt: str,
@@ -66,12 +79,13 @@ def run_completion_openai_compatible(
     stream: bool,
     timeout: int,
     _llm_lock: threading.Lock,
+    model_name: str | None = None,
 ) -> dict | Generator[str, None, None]:
     """Run completion via OpenAI-compatible HTTP API (vLLM, LiteLLM, etc.)."""
-    url = (cfg.get("llama_server_url") or "").strip().rstrip("/")
-    if not url:
+    urls = _openai_compatible_base_urls(cfg)
+    if not urls:
         return {"choices": [{"message": {"content": "No llama_server_url configured."}}]}
-    model_name = cfg.get("remote_model_name") or "layla"
+    model_name = model_name or cfg.get("remote_model_name") or "layla"
     body = {
         "model": model_name,
         "messages": [{"role": "user", "content": prompt}],
@@ -84,14 +98,20 @@ def run_completion_openai_compatible(
         "top_k": top_k,
     }
     data = _json.dumps(body).encode("utf-8")
-    req = urllib.request.Request(
-        _openai_compatible_url(url) + "/v1/chat/completions",
-        data=data,
-        method="POST",
-        headers={"Content-Type": "application/json"},
-    )
+    primary_url = urls[0]
+
+    def _one_request(url: str) -> urllib.request.Request:
+        return urllib.request.Request(
+            _openai_compatible_url(url) + "/v1/chat/completions",
+            data=data,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+
     try:
         if stream:
+            req = _one_request(primary_url)
+
             def gen():
                 try:
                     with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -110,13 +130,32 @@ def run_completion_openai_compatible(
                 except Exception as e:
                     logger.exception("remote completion stream failed: %s", e)
                     yield ""
+
             return gen()
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read().decode("utf-8")
-        try:
-            return _json.loads(raw)
-        except _json.JSONDecodeError:
-            return {"choices": [{"message": {"content": "Remote server returned invalid JSON."}}]}
+        last_exc: Exception | None = None
+        for url in urls:
+            req = _one_request(url)
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    raw = resp.read().decode("utf-8")
+                try:
+                    return _json.loads(raw)
+                except _json.JSONDecodeError:
+                    return {"choices": [{"message": {"content": "Remote server returned invalid JSON."}}]}
+            except urllib.error.HTTPError as e:
+                last_exc = e
+                if e.code >= 500 and url != urls[-1]:
+                    logger.warning("openai_compatible %s HTTP %s; trying fallback", url, e.code)
+                    continue
+                break
+            except Exception as e:
+                last_exc = e
+                if url != urls[-1]:
+                    logger.warning("openai_compatible %s failed: %s; trying fallback", url, e)
+                    continue
+                break
+        err = last_exc or RuntimeError("unknown")
+        return {"choices": [{"message": {"content": f"Request failed: {err!s}. Is the model server running?"}}]}
     except Exception as e:
         logger.exception("remote completion failed: %s", e)
         return {"choices": [{"message": {"content": f"Request failed: {e!s}. Is the model server running?"}}]}
@@ -134,12 +173,13 @@ def run_completion_ollama(
     stream: bool,
     timeout: int,
     _llm_lock: threading.Lock,
+    model_name: str | None = None,
 ) -> dict | Generator[str, None, None]:
     """Run completion via Ollama. Uses /v1/chat/completions (OpenAI-compatible)."""
     url = (cfg.get("llama_server_url") or "").strip().rstrip("/")
     if not url:
         return {"choices": [{"message": {"content": "No llama_server_url configured."}}]}
-    model_name = cfg.get("remote_model_name") or "llama3.1"
+    model_name = model_name or cfg.get("remote_model_name") or "llama3.1"
     body = {
         "model": model_name,
         "messages": [{"role": "user", "content": prompt}],
@@ -202,41 +242,65 @@ def run_completion_llama_cpp(
     stream: bool,
     _get_llm: Any,
     _llm_lock: threading.Lock,
+    reasoning_budget: int | None = None,
 ) -> dict | Generator[str, None, None]:
-    """Run completion via local llama-cpp-python."""
+    """Run completion via local llama-cpp-python. reasoning_budget for thinking models."""
     llm = _get_llm()
+    extra_kw = {}
+    if reasoning_budget is not None:
+        extra_kw["reasoning_budget"] = reasoning_budget
+    # If llama-cpp-python doesn't support reasoning_budget, drop it (TypeError)
+    def _call_create_completion(stream_mode: bool = False, **kwargs):
+        try:
+            return llm.create_completion(prompt, stream=stream_mode, **kwargs)
+        except TypeError:
+            kwargs.pop("reasoning_budget", None)
+            return llm.create_completion(prompt, stream=stream_mode, **kwargs)
     if stream:
         def gen():
             with _llm_lock:
-                for chunk in llm.create_completion(
-                    prompt,
+                for chunk in _call_create_completion(
+                    stream_mode=True,
                     max_tokens=max_tokens,
                     temperature=temperature,
                     top_p=top_p,
                     repeat_penalty=repeat_penalty,
                     top_k=top_k,
-                    stream=True,
                     stop=stop,
+                    **extra_kw,
                 ):
                     t = (chunk.get("choices") or [{}])[0].get("text") or ""
                     if t:
                         yield t
         return gen()
     with _llm_lock:
-        out = llm.create_completion(
-            prompt,
+        out = _call_create_completion(
+            stream_mode=False,
             max_tokens=max_tokens,
             temperature=temperature,
             top_p=top_p,
             repeat_penalty=repeat_penalty,
             top_k=top_k,
-            stream=False,
             stop=stop,
+            **extra_kw,
         )
     if isinstance(out, dict):
         return out
     text = "".join((c.get("choices") or [{}])[0].get("text") or "" for c in out)
     return {"choices": [{"message": {"content": text}}]}
+
+
+def _resolve_model_override(override: str | None, cfg: dict) -> str | None:
+    """Resolve model_override (task type or raw name) to model name for remote backends."""
+    if not override or override == "default":
+        return None
+    if override in ("coding", "reasoning", "chat"):
+        try:
+            from services.model_router import route_model
+            return route_model(override)
+        except Exception:
+            return None
+    return override  # raw model name
 
 
 def run_completion(
@@ -249,10 +313,13 @@ def run_completion(
     *,
     _get_llm: Any = None,
     _llm_lock: threading.Lock | None = None,
+    model_override: str | None = None,
+    reasoning_budget: int | None = None,
 ) -> dict | Generator[str, None, None]:
     """
     Route completion to the configured backend.
     Returns dict or generator (when stream=True) in OpenAI-compatible format.
+    model_override: "default"|"coding"|"reasoning"|"chat" or raw model name (remote only).
     """
     import runtime_safety
     cfg = runtime_safety.load_config()
@@ -273,18 +340,28 @@ def run_completion(
         from services.llm_gateway import _get_llm
         get_llm = _get_llm
 
+    # Resolve model override for remote backends (local llama_cpp uses single model)
+    effective_model = None
+    if backend != "llama_cpp" and cfg.get("model_override_enabled", True):
+        effective_model = _resolve_model_override(model_override, cfg)
+    if effective_model is None:
+        effective_model = cfg.get("remote_model_name") or ("llama3.1" if backend == "ollama" else "layla")
+
     if backend == "ollama":
         return run_completion_ollama(
             cfg, prompt, max_tokens, temperature, top_p, repeat_penalty, top_k,
             stop, stream, timeout, lock,
+            model_name=effective_model,
         )
     if backend == "openai_compatible":
         return run_completion_openai_compatible(
             cfg, prompt, max_tokens, temperature, top_p, repeat_penalty, top_k,
             stop, stream, timeout, lock,
+            model_name=effective_model,
         )
     # llama_cpp
     return run_completion_llama_cpp(
         cfg, prompt, max_tokens, temperature, top_p, repeat_penalty, top_k,
         stop, stream, get_llm, lock,
+        reasoning_budget=reasoning_budget,
     )

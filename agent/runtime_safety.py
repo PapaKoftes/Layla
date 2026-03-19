@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -27,7 +28,7 @@ BACKUP_DIR = AGENT_DIR / ".backup"
 
 SAFE_TOOLS = ["git_status", "read_file", "list_dir"]
 DANGEROUS_TOOLS = [
-    "write_file", "shell", "run_python", "apply_patch", "git_commit",
+    "write_file", "shell", "shell_session_start", "run_python", "apply_patch", "git_commit",
     "git_push", "git_revert", "git_clone", "run_tests", "pip_install",
     "search_replace", "rename_symbol", "generate_gcode", "docker_run",
     "github_pr", "send_email", "clipboard_write", "browser_click", "browser_fill",
@@ -44,6 +45,7 @@ _config_cache: dict | None = None
 _config_mtime: float = 0.0
 _config_last_check: float = 0.0
 _CONFIG_CHECK_TTL: float = 2.0  # skip stat() for 2 s during hot loops
+_config_lock = threading.Lock()
 _hardware_probe_cache: dict | None = None
 
 
@@ -115,104 +117,133 @@ def load_config() -> dict:
     """Load runtime config. Cached: skips disk stat for _CONFIG_CHECK_TTL seconds during hot loops."""
     global _config_cache, _config_mtime, _config_last_check
     now = time.monotonic()
-    # Fast path: TTL not expired and cache warm — zero I/O
+    # Fast path: TTL not expired and cache warm — zero I/O, no lock needed (read-only reference)
     if _config_cache is not None and (now - _config_last_check) < _CONFIG_CHECK_TTL:
         return _config_cache
-    _config_last_check = now
-    try:
-        current_mtime = CONFIG_FILE.stat().st_mtime
-    except Exception as e:
-        logger.debug("runtime_safety config stat failed: %s", e)
-        current_mtime = 0.0
-    if _config_cache is not None and current_mtime == _config_mtime:
+    with _config_lock:
+        # Re-check inside lock to avoid redundant reloads from concurrent threads
+        now = time.monotonic()
+        if _config_cache is not None and (now - _config_last_check) < _CONFIG_CHECK_TTL:
+            return _config_cache
+        _config_last_check = now
+        try:
+            current_mtime = CONFIG_FILE.stat().st_mtime
+        except Exception as e:
+            logger.debug("runtime_safety config stat failed: %s", e)
+            current_mtime = 0.0
+        if _config_cache is not None and current_mtime == _config_mtime:
+            return _config_cache
+        # Static defaults (safe fallbacks)
+        defaults = {
+            "max_cpu_percent": 95,
+            "max_ram_percent": 95,
+            "max_runtime_seconds": 20,
+            "max_tool_calls": 5,
+            "tool_routing_enabled": True,
+            "tools_profile": "full",
+            "tools_allow": [],
+            "tools_deny": [],
+            "tool_groups": {},
+            "tools_by_provider": {},
+            "tool_loop_detection_enabled": False,
+            "tool_loop_history_size": 30,
+            "tool_loop_warning_threshold": 10,
+            "tool_loop_stop_threshold": 20,
+            "tool_loop_detect_repeat": True,
+            "tool_loop_detect_pingpong": True,
+            "http_cache_ttl_seconds": 0,
+            "http_cache_max_entries": 200,
+            "inference_fallback_urls": [],
+            "image_model": None,
+            "image_generation_model": None,
+            "markdown_skills_dir": None,
+            "markdown_skills_watch": False,
+            "browser_default_profile": "default",
+            "browser_profiles": {},
+            "browser_persistent_profiles": False,
+            "use_instructor_for_decisions": True,
+            "retrieval_cache_ttl_seconds": 60,
+            "auto_lint_test_fix": False,
+            "auto_lint_test_fix_run_tests": False,
+            "git_auto_commit": False,
+            "research_max_tool_calls": 20,
+            "research_max_runtime_seconds": 120,
+            "safe_mode": True,
+            "temperature": 0.2,
+            "n_ctx": 4096,
+            "n_gpu_layers": -1,  # full GPU offload by default; overridden by hardware probe
+            "n_batch": 512,
+            "n_threads": None,
+            "n_threads_batch": None,
+            "use_mlock": False,
+            "use_mmap": True,
+            "top_p": 0.95,
+            "repeat_penalty": 1.1,
+            "top_k": 40,
+            "model_filename": "your-model.gguf",
+            "models_dir": str(REPO_ROOT / "models"),  # repo models/ for backward compat; installer may set ~/.layla/models
+            "sandbox_root": str(Path.home()),
+            "web_allowlist": [],
+            "knowledge_sources": [],
+            "knowledge_max_bytes": 4000,
+            "knowledge_chunks_k": 5,
+            "learnings_n": 30,
+            "semantic_k": 5,
+            "aspect_memories_n": 10,
+            "convo_turns": 0,
+            "stop_sequences": ["\nUser:", " User:"],
+            "completion_max_tokens": 256,
+            "remote_model_name": "llama3.1",
+            "llama_server_url": None,
+            "inference_backend": "auto",
+            "coding_model": None,
+            "reasoning_model": None,
+            "chat_model": None,
+            "model_override_enabled": True,
+            "reasoning_budget": -1,
+            "scheduler_study_enabled": True,
+            "scheduler_interval_minutes": 30,
+            "scheduler_recent_activity_minutes": 90,
+            "wakeup_include_initiative": False,
+            "wakeup_include_discovery_line": False,
+            "remote_enabled": False,
+            "remote_api_key": None,
+            "remote_allow_endpoints": [],
+            "remote_mode": "observe",
+            "trace_id_enabled": False,
+            "use_chroma": True,
+            "uncensored": True,
+            "nsfw_allowed": True,
+            "knowledge_unrestricted": True,
+            "anonymous_access": True,
+            "enable_personality_expression": False,
+            "enable_cognitive_lens": False,
+            "enable_behavioral_rhythm": False,
+            "enable_ui_reflection": False,
+            "enable_lens_knowledge": False,
+            "enable_lens_refresh": False,
+            "lens_refresh_interval_days": 7,
+            "enable_operational_guidance": False,
+            "enable_cognitive_workspace": True,
+            "spotify_client_id": None,
+            "spotify_client_secret": None,
+            "slack_bot_token": None,
+            "slack_app_token": None,
+            "telegram_bot_token": None,
+            "transport_allowlist": "",
+            "transport_require_allowlist": False,
+            "openclaw_gateway_url": None,
+        }
+        defaults.update(_hardware_derived_defaults())
+        try:
+            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                defaults.update(data)
+        except Exception as e:
+            logger.debug("runtime_safety config load failed: %s", e)
+        _config_cache = defaults
+        _config_mtime = current_mtime
         return _config_cache
-    # Static defaults (safe fallbacks)
-    defaults = {
-        "max_cpu_percent": 95,
-        "max_ram_percent": 95,
-        "max_runtime_seconds": 20,
-        "max_tool_calls": 5,
-        "tool_routing_enabled": True,
-        "use_instructor_for_decisions": True,
-        "retrieval_cache_ttl_seconds": 60,
-        "auto_lint_test_fix": False,
-        "auto_lint_test_fix_run_tests": False,
-        "git_auto_commit": False,
-        "research_max_tool_calls": 20,
-        "research_max_runtime_seconds": 120,
-        "safe_mode": True,
-        "temperature": 0.2,
-        "n_ctx": 4096,
-        "n_gpu_layers": -1,  # full GPU offload by default; overridden by hardware probe
-        "n_batch": 512,
-        "n_threads": None,
-        "n_threads_batch": None,
-        "use_mlock": False,
-        "use_mmap": True,
-        "top_p": 0.95,
-        "repeat_penalty": 1.1,
-        "top_k": 40,
-        "model_filename": "your-model.gguf",
-        "models_dir": str(REPO_ROOT / "models"),  # repo models/ for backward compat; installer may set ~/.layla/models
-        "sandbox_root": str(Path.home()),
-        "web_allowlist": [],
-        "knowledge_sources": [],
-        "knowledge_max_bytes": 4000,
-        "knowledge_chunks_k": 5,
-        "learnings_n": 30,
-        "semantic_k": 5,
-        "aspect_memories_n": 10,
-        "convo_turns": 0,
-        "stop_sequences": ["\nUser:", " User:"],
-        "completion_max_tokens": 256,
-        "remote_model_name": "llama3.1",
-        "llama_server_url": None,
-        "inference_backend": "auto",
-        "coding_model": None,
-        "reasoning_model": None,
-        "chat_model": None,
-        "model_override_enabled": True,
-        "reasoning_budget": -1,
-        "scheduler_study_enabled": True,
-        "scheduler_interval_minutes": 30,
-        "scheduler_recent_activity_minutes": 90,
-        "wakeup_include_initiative": False,
-        "wakeup_include_discovery_line": False,
-        "remote_enabled": False,
-        "remote_api_key": None,
-        "remote_allow_endpoints": [],
-        "remote_mode": "observe",
-        "trace_id_enabled": False,
-        "use_chroma": True,
-        "uncensored": True,
-        "nsfw_allowed": True,
-        "knowledge_unrestricted": True,
-        "anonymous_access": True,
-        "enable_personality_expression": False,
-        "enable_cognitive_lens": False,
-        "enable_behavioral_rhythm": False,
-        "enable_ui_reflection": False,
-        "enable_lens_knowledge": False,
-        "enable_lens_refresh": False,
-        "lens_refresh_interval_days": 7,
-        "enable_operational_guidance": False,
-        "enable_cognitive_workspace": True,
-        "spotify_client_id": None,
-        "spotify_client_secret": None,
-        "slack_bot_token": None,
-        "slack_app_token": None,
-        "telegram_bot_token": None,
-    }
-    defaults.update(_hardware_derived_defaults())
-    try:
-        data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        if isinstance(data, dict):
-            defaults.update(data)
-    except Exception as e:
-        logger.debug("runtime_safety config load failed: %s", e)
-    _config_cache = defaults
-    _config_mtime = current_mtime
-    return _config_cache
 
 
 def resolve_model_path(cfg: dict | None = None) -> Path:

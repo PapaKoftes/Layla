@@ -25,8 +25,18 @@ Client
       /approve, /pending       → routers/approvals.py
       /voice/transcribe        → services/stt.py     (faster-whisper)
       /voice/speak             → services/tts.py     (kokoro-onnx)
-      /health, /v1/*, /ui      → main.py (inline)
+      /health, /usage, /undo   → main.py (inline)
+      /workspace/index         → main.py (semantic codebase indexing)
+      /v1/*, /ui               → main.py (inline)
 ```
+
+**Discord bot** (optional): `discord_bot/` — full bot with voice, TTS, music. Connects to localhost:8000 for chat. See `discord_bot/README.md`.
+
+**Slack / Telegram** (optional): `transports/` — Socket Mode Slack and Telegram polling; same `/agent` bridge as Discord.
+
+**Transport inbound policy** (optional, OpenClaw-style): `transports/base.py` — env `LAYLA_TRANSPORT_ALLOWLIST`, `LAYLA_TRANSPORT_PAIRING_SECRET` (`/pair`), config `transport_allowlist`, `transport_require_allowlist`. Paired ids: repo-root `.layla_transport_paired.json` (gitignored). See `docs/OPENCLAW_ALIGNMENT.md`, `docs/OPENCLAW_BRIDGE.md`.
+
+**OpenClaw-style core emulation** (optional): `services/tool_policy.py` (`tools_profile`, `tools_allow`/`tools_deny`, `group:*`, `tools_by_provider`) + intent filter + pre-exec guard in `agent_loop`; `services/tool_loop_detection.py`; `services/shell_sessions.py` (`shell_session_start` / `shell_session_manage`); `services/http_response_cache.py`; `services/markdown_skills.py` + repo `skills/`; `inference_fallback_urls` + non-stream retries in `inference_router.py`; `browser_persistent_profiles` in `services/browser.py`. See `docs/OPENCLAW_ALIGNMENT.md`.
 
 **agent_loop.autonomous_run():**
 1. `runtime_safety.load_config()` — TTL-cached, hot-path safe
@@ -42,6 +52,8 @@ Client
 8. `_save_outcome_memory()` — distill and store outcome; reflection engine (what worked/failed/improve)
 
 **Approval:** tool returns `approval_required` → queued in `shared_state.pending` → `POST /approve {"id": uuid}` → proceed
+
+**Capability parity (Layla plan):** Auto lint/test-fix loop, image context in agent, voice-to-code TUI, token usage (`/usage`), multi-model UI (`model_override`), git auto-commit + `/undo`, reasoning mode, `write_files_batch`, TUI `/add`/`/run`/`/diff`, semantic codebase index (`search_workspace` + `POST /workspace/index`).
 
 ---
 

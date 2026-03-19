@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import threading
 import time
 from pathlib import Path
@@ -23,10 +24,12 @@ _SCREENSHOT_DIR.mkdir(exist_ok=True)
 
 _playwright_lock = threading.Lock()
 _pw = None  # playwright instance
-_browser = None  # persistent browser
+_browser = None  # persistent browser (non-persistent mode)
 _context = None  # browser context with shared cookies/session
+_persistent_mode: bool = False  # True when using launch_persistent_context
 _loop: Optional[asyncio.AbstractEventLoop] = None
 _browser_thread: Optional[threading.Thread] = None
+_context_init_lock: Optional[asyncio.Lock] = None
 
 
 # ── SSRF mitigation ──────────────────────────────────────────────────────────
@@ -62,29 +65,64 @@ def _is_safe_url(url: str) -> bool:
 # ── Async internals ──────────────────────────────────────────────────────────
 
 async def _ensure_context():
-    global _pw, _browser, _context
+    global _pw, _browser, _context, _persistent_mode, _context_init_lock
     if _context is not None:
         return _context
+    if _context_init_lock is None:
+        _context_init_lock = asyncio.Lock()
+    async with _context_init_lock:
+        if _context is not None:  # re-check after acquiring lock
+            return _context
+        return await _init_context()
+
+
+async def _init_context():
+    global _pw, _browser, _context, _persistent_mode
+    try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        persistent = bool(cfg.get("browser_persistent_profiles"))
+        raw_prof = (cfg.get("browser_default_profile") or "default").strip() or "default"
+        profile = re.sub(r"[^\w\-]+", "_", raw_prof)[:64]
+    except Exception:
+        persistent, profile = False, "default"
+
     from playwright.async_api import async_playwright
+
     _pw = await async_playwright().start()
-    _browser = await _pw.chromium.launch(
-        headless=True,
-        args=[
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-            "--disable-blink-features=AutomationControlled",
-        ],
+    ua = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
     )
-    _context = await _browser.new_context(
-        user_agent=(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
-        ),
-        viewport={"width": 1280, "height": 800},
-        java_script_enabled=True,
-    )
+    launch_args = [
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-blink-features=AutomationControlled",
+    ]
+    if persistent:
+        ud = Path(__file__).resolve().parent.parent / ".browser_profiles" / profile
+        ud.mkdir(parents=True, exist_ok=True)
+        _context = await _pw.chromium.launch_persistent_context(
+            str(ud),
+            headless=True,
+            args=launch_args,
+            user_agent=ua,
+            viewport={"width": 1280, "height": 800},
+            java_script_enabled=True,
+        )
+        _browser = None
+        _persistent_mode = True
+    else:
+        _persistent_mode = False
+        _browser = await _pw.chromium.launch(headless=True, args=launch_args)
+        _context = await _browser.new_context(
+            user_agent=ua,
+            viewport={"width": 1280, "height": 800},
+            java_script_enabled=True,
+        )
     return _context
 
 
@@ -211,7 +249,7 @@ def _get_loop() -> asyncio.AbstractEventLoop:
         loop.run_forever()
 
     with _playwright_lock:
-        if _loop is None or not _loop.is_running():
+        if _loop is None or _browser_thread is None or not _browser_thread.is_alive():
             _loop = asyncio.new_event_loop()
             _browser_thread = threading.Thread(
                 target=_run_loop, args=(_loop,), daemon=True, name="layla-browser"
@@ -287,10 +325,10 @@ def search_web(query: str) -> dict:
 
 def close() -> None:
     """Shut down the browser and playwright instance cleanly."""
-    global _pw, _browser, _context
+    global _pw, _browser, _context, _persistent_mode
 
     async def _close():
-        global _pw, _browser, _context
+        global _pw, _browser, _context, _persistent_mode
         if _context:
             await _context.close()
         if _browser:
@@ -298,6 +336,7 @@ def close() -> None:
         if _pw:
             await _pw.stop()
         _context = _browser = _pw = None
+        _persistent_mode = False
 
     try:
         if _loop and _loop.is_running():
