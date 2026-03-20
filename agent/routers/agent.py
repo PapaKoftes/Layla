@@ -6,6 +6,8 @@ import logging
 import queue
 import re
 import threading
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter
@@ -18,11 +20,20 @@ from agent_loop import (
     truncate_at_next_user_turn,
 )
 from services.output_polish import polish_output
-from shared_state import get_append_history, get_history, get_touch_activity
+from services.resource_manager import PRIORITY_BACKGROUND, PRIORITY_CHAT, classify_load
+from shared_state import (
+    append_conv_history,
+    get_append_history,
+    get_conv_history,
+    get_history,
+    get_touch_activity,
+)
 
 logger = logging.getLogger("layla")
 router = APIRouter(tags=["agent"])
 _TRIVIAL_PATTERNS = re.compile(r"^(hi|hello|hey|yo|sup|ok|okay|sure|thanks|ty|lol|k|thx)\W*$", re.IGNORECASE)
+_TASKS: dict[str, dict] = {}
+_TASKS_LOCK = threading.Lock()
 
 
 @router.get("/memories")
@@ -258,6 +269,8 @@ async def agent(req: dict):
     stream = bool((req or {}).get("stream", False))
     model_override = (req or {}).get("model_override", "") or ""
     reasoning_effort = "high" if (req or {}).get("reasoning_effort") == "high" else None
+    conversation_id = ((req or {}).get("conversation_id") or "").strip() or str(uuid.uuid4())
+    conv_history = get_conv_history(conversation_id)
     cfg = {}
     try:
         import runtime_safety
@@ -288,6 +301,16 @@ async def agent(req: dict):
     # Fast path for trivial greetings/acks: avoid full orchestration overhead.
     fast_reply = _trivial_fast_reply(goal, aspect_id)
     if fast_reply and not context and not image_url and not image_base64 and not show_thinking:
+        append_conv_history(conversation_id, "user", goal)
+        append_conv_history(conversation_id, "assistant", fast_reply)
+        try:
+            from layla.memory.db import append_conversation_message, create_conversation
+
+            create_conversation(conversation_id, aspect_id=aspect_id or "morrigan")
+            append_conversation_message(conversation_id, "user", goal, aspect_id=aspect_id or "morrigan")
+            append_conversation_message(conversation_id, "assistant", fast_reply, aspect_id=aspect_id or "morrigan")
+        except Exception:
+            pass
         _append_history("user", goal)
         _append_history("assistant", fast_reply)
         return JSONResponse({
@@ -301,6 +324,7 @@ async def agent(req: dict):
             "memory_influenced": [],
             "cited_sources": [],
             "reasoning_mode": "none",
+            "conversation_id": conversation_id,
         }, status_code=200)
 
     cache_enabled = bool(cfg.get("response_cache_enabled", False))
@@ -338,13 +362,14 @@ async def agent(req: dict):
                     workspace_root=workspace_root,
                     allow_write=allow_write,
                     allow_run=allow_run,
-                    conversation_history=list(_history),
+                    conversation_history=list(conv_history) if conv_history else list(_history),
                     aspect_id=aspect_id,
                     show_thinking=show_thinking,
                     stream_final=True,
                     ux_state_queue=ux_state_queue,
                     model_override=model_override or None,
                     reasoning_effort=reasoning_effort,
+                    priority=PRIORITY_CHAT,
                 )
                 result_holder.append(r)
             except Exception as e:
@@ -392,7 +417,7 @@ async def agent(req: dict):
                     for token in stream_reason(
                         goal_for_stream,
                         context=context,
-                        conversation_history=list(_history),
+                        conversation_history=list(conv_history) if conv_history else list(_history),
                         aspect_id=aspect_id,
                         show_thinking=show_thinking,
                         model_override=model_override or None,
@@ -401,9 +426,19 @@ async def agent(req: dict):
                         full.append(token)
                         yield f"data: {json.dumps({'token': token})}\n\n"
                     text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply("".join(full))))
+                    append_conv_history(conversation_id, "user", goal)
+                    append_conv_history(conversation_id, "assistant", text)
+                    try:
+                        from layla.memory.db import append_conversation_message, create_conversation
+
+                        create_conversation(conversation_id, aspect_id=result.get("aspect", ""))
+                        append_conversation_message(conversation_id, "user", goal, aspect_id=result.get("aspect", ""))
+                        append_conversation_message(conversation_id, "assistant", text, aspect_id=result.get("aspect", ""))
+                    except Exception:
+                        pass
                     _append_history("user", goal)
                     _append_history("assistant", text)
-                    yield f"data: {json.dumps({'done': True, 'content': text, 'ux_states': result.get('ux_states', []), 'memory_influenced': result.get('memory_influenced', []), 'reasoning_mode': result.get('reasoning_mode')})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'content': text, 'ux_states': result.get('ux_states', []), 'memory_influenced': result.get('memory_influenced', []), 'reasoning_mode': result.get('reasoning_mode'), 'conversation_id': conversation_id})}\n\n"
                 else:
                     steps = result.get("steps") or []
                     final = steps[-1].get("result", "") if steps else ""
@@ -414,9 +449,19 @@ async def agent(req: dict):
                         response_text = "I couldn't understand the request. Please rephrase."
                     if not response_text:
                         response_text = "No response. Try again or rephrase."
+                    append_conv_history(conversation_id, "user", goal)
+                    append_conv_history(conversation_id, "assistant", response_text)
+                    try:
+                        from layla.memory.db import append_conversation_message, create_conversation
+
+                        create_conversation(conversation_id, aspect_id=result.get("aspect", ""))
+                        append_conversation_message(conversation_id, "user", goal, aspect_id=result.get("aspect", ""))
+                        append_conversation_message(conversation_id, "assistant", response_text, aspect_id=result.get("aspect", ""))
+                    except Exception:
+                        pass
                     _append_history("user", goal)
                     _append_history("assistant", response_text)
-                    yield f"data: {json.dumps({'done': True, 'content': response_text, 'ux_states': result.get('ux_states', []), 'memory_influenced': result.get('memory_influenced', []), 'reasoning_mode': result.get('reasoning_mode')})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'content': response_text, 'ux_states': result.get('ux_states', []), 'memory_influenced': result.get('memory_influenced', []), 'reasoning_mode': result.get('reasoning_mode'), 'conversation_id': conversation_id})}\n\n"
             except Exception as e:
                 logger.exception("stream_agent failed")
                 err = str(e)
@@ -438,12 +483,13 @@ async def agent(req: dict):
             workspace_root=workspace_root,
             allow_write=allow_write,
             allow_run=allow_run,
-            conversation_history=list(_history),
+            conversation_history=list(conv_history) if conv_history else list(_history),
             aspect_id=aspect_id,
             show_thinking=show_thinking,
             stream_final=stream,
             model_override=model_override or None,
             reasoning_effort=reasoning_effort,
+            priority=PRIORITY_CHAT,
         )
     except Exception as e:
         logger.exception("agent run failed")
@@ -481,6 +527,16 @@ async def agent(req: dict):
     if result.get("status") == "finished":
         response_text = polish_output(response_text)
 
+    append_conv_history(conversation_id, "user", goal)
+    append_conv_history(conversation_id, "assistant", response_text)
+    try:
+        from layla.memory.db import append_conversation_message, create_conversation
+
+        create_conversation(conversation_id, aspect_id=result.get("aspect", ""))
+        append_conversation_message(conversation_id, "user", goal, aspect_id=result.get("aspect", ""))
+        append_conversation_message(conversation_id, "assistant", response_text, aspect_id=result.get("aspect", ""))
+    except Exception:
+        pass
     _append_history("user", goal)
     if result.get("status") in ("system_busy", "timeout") and response_text:
         _append_history("assistant", "I couldn't reply just then.")
@@ -498,6 +554,8 @@ async def agent(req: dict):
         "memory_influenced": result.get("memory_influenced", []),
         "cited_sources": result.get("cited_knowledge_sources", []),
         "reasoning_mode": result.get("reasoning_mode"),
+        "conversation_id": conversation_id,
+        "load": classify_load(),
     }
     if cache_enabled and not stream and not allow_write and not allow_run and not context and not image_url and not image_base64:
         try:
@@ -506,3 +564,106 @@ async def agent(req: dict):
         except Exception:
             pass
     return JSONResponse(response_payload)
+
+
+def _run_background_task(task_id: str, payload: dict) -> None:
+    with _TASKS_LOCK:
+        t = _TASKS.get(task_id)
+        if not t:
+            return
+        t["status"] = "running"
+        t["started_at"] = datetime.now(timezone.utc).isoformat()
+    try:
+        result = autonomous_run(
+            payload.get("goal", ""),
+            context=payload.get("context", ""),
+            workspace_root=payload.get("workspace_root", ""),
+            allow_write=bool(payload.get("allow_write")),
+            allow_run=bool(payload.get("allow_run")),
+            conversation_history=list(get_conv_history(payload.get("conversation_id") or "")),
+            aspect_id=payload.get("aspect_id", ""),
+            show_thinking=bool(payload.get("show_thinking", False)),
+            priority=PRIORITY_BACKGROUND,
+        )
+        text = result.get("response") or ""
+        if not text:
+            steps = result.get("steps") or []
+            final = steps[-1].get("result", "") if steps else ""
+            text = final if isinstance(final, str) else json.dumps(final) if final else ""
+        with _TASKS_LOCK:
+            t = _TASKS.get(task_id)
+            if t and t["status"] != "cancelled":
+                t["status"] = "done"
+                t["result"] = text
+                t["state"] = result
+                t["finished_at"] = datetime.now(timezone.utc).isoformat()
+    except Exception as e:
+        with _TASKS_LOCK:
+            t = _TASKS.get(task_id)
+            if t:
+                t["status"] = "failed"
+                t["error"] = str(e)
+                t["finished_at"] = datetime.now(timezone.utc).isoformat()
+
+
+@router.post("/agent/background")
+def start_background(req: dict):
+    get_touch_activity()()
+    goal = ((req or {}).get("message") or (req or {}).get("goal") or "").strip()
+    if not goal:
+        return JSONResponse({"ok": False, "error": "message/goal required"})
+    task_id = str(uuid.uuid4())
+    conversation_id = ((req or {}).get("conversation_id") or "").strip() or str(uuid.uuid4())
+    payload = {
+        "goal": goal,
+        "context": (req or {}).get("context", "") or "",
+        "workspace_root": (req or {}).get("workspace_root", "") or "",
+        "allow_write": (req or {}).get("allow_write") is True,
+        "allow_run": (req or {}).get("allow_run") is True,
+        "aspect_id": (req or {}).get("aspect_id", "") or "",
+        "show_thinking": bool((req or {}).get("show_thinking", False)),
+        "conversation_id": conversation_id,
+    }
+    with _TASKS_LOCK:
+        _TASKS[task_id] = {
+            "task_id": task_id,
+            "conversation_id": conversation_id,
+            "goal": goal,
+            "aspect_id": payload["aspect_id"],
+            "status": "queued",
+            "priority": PRIORITY_BACKGROUND,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "result": "",
+        }
+    th = threading.Thread(target=_run_background_task, args=(task_id, payload), daemon=True, name=f"bg-task-{task_id[:8]}")
+    th.start()
+    return JSONResponse({"ok": True, "task_id": task_id, "conversation_id": conversation_id, "status": "queued"})
+
+
+@router.get("/agent/tasks")
+def list_background_tasks():
+    with _TASKS_LOCK:
+        items = list(_TASKS.values())
+    items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return JSONResponse({"ok": True, "tasks": items})
+
+
+@router.get("/agent/tasks/{task_id}")
+def get_background_task(task_id: str):
+    with _TASKS_LOCK:
+        item = _TASKS.get(task_id)
+    if not item:
+        return JSONResponse({"ok": False, "error": "task not found"}, status_code=404)
+    return JSONResponse({"ok": True, "task": item})
+
+
+@router.delete("/agent/tasks/{task_id}")
+def cancel_background_task(task_id: str):
+    with _TASKS_LOCK:
+        item = _TASKS.get(task_id)
+        if not item:
+            return JSONResponse({"ok": False, "error": "task not found"}, status_code=404)
+        if item.get("status") in ("done", "failed", "cancelled"):
+            return JSONResponse({"ok": True, "task": item, "idempotent": True})
+        item["status"] = "cancelled"
+    return JSONResponse({"ok": True, "task_id": task_id, "status": "cancelled"})
