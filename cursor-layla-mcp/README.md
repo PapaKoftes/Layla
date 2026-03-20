@@ -37,6 +37,19 @@ File lives at: `C:\Users\<you>\.cursor\mcp.json`
 
 > **Note**: Use the venv python so all MCP dependencies (`mcp`, `anyio`) are available.
 
+## Make Layla show in Cursor model dropdown
+
+This is separate from MCP tools. To use Layla as the **actual chat model** in Cursor:
+
+1. Open Cursor settings → Models
+2. Set OpenAI-compatible base URL to `http://127.0.0.1:8000`
+3. Enter any non-empty API key (for example: `layla-local`)
+4. Add/select model name `layla`
+
+Layla exposes OpenAI-compatible endpoints:
+- `GET /v1/models`
+- `POST /v1/chat/completions` (streaming supported)
+
 ---
 
 ## Environment variables
