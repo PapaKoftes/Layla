@@ -1,9 +1,18 @@
 {
-  "_comment": "Uncensored models only. Jinx + jailbroken (Dolphin, Hermes). No restrictions. Includes ultra-low-end for 4GB RAM.",
+  "_comment": "Uncensored/low-restriction models only. Jinx + Dolphin + Hermes + DeepSeek + Qwen + field-specialists. No refusal nannying. Operator picks the right tool for the task.",
+  "_categories": {
+    "general": "Strong all-round capability, low restrictions",
+    "coding": "Code generation, debugging, refactor specialists",
+    "reasoning": "Math, logic, step-by-step problem solving (DeepSeek R1 family)",
+    "creative": "Roleplay, fiction, long-form writing, minimal guardrails",
+    "fast": "Under 8GB VRAM; daily driver for low-end or secondary tasks",
+    "flagship": "40GB+ VRAM; maximum quality, no restrictions"
+  },
   "models": [
     {
       "name": "smolLM2-360M-Q2_K",
       "family": "smol",
+      "category": "fast",
       "size": "360M",
       "ram_required": 2,
       "vram_required": 2,
@@ -12,11 +21,12 @@
       "repo_id": "bartowski/SmolLM2-360M-Instruct-GGUF",
       "filename": "SmolLM2-360M-Instruct-Q2_K.gguf",
       "uncensored": false,
-      "desc": "SmolLM 360M Q2. Smallest option. 2GB RAM. For 4GB systems."
+      "desc": "SmolLM 360M Q2. Minimum viable model. 2GB RAM."
     },
     {
       "name": "smolLM2-360M-Q4_K_M",
       "family": "smol",
+      "category": "fast",
       "size": "360M",
       "ram_required": 3,
       "vram_required": 3,
@@ -25,11 +35,12 @@
       "repo_id": "bartowski/SmolLM2-360M-Instruct-GGUF",
       "filename": "SmolLM2-360M-Instruct-Q4_K_M.gguf",
       "uncensored": false,
-      "desc": "SmolLM 360M Q4. 3GB RAM. For low-end PCs."
+      "desc": "SmolLM 360M Q4. 3GB RAM. Entry-level hardware."
     },
     {
       "name": "tinydolphin-1.1b-Q4_K_M",
       "family": "dolphin",
+      "category": "fast",
       "size": "1.1B",
       "ram_required": 3,
       "vram_required": 3,
@@ -40,48 +51,11 @@
       "uncensored": true,
       "desc": "TinyDolphin 1.1B. Uncensored. 3GB RAM. Old/slow PCs."
     },
-    {
-      "name": "jinx-20b",
-      "family": "jinx",
-      "size": "20B",
-      "ram_required": 24,
-      "vram_required": 12,
-      "quant": "Q4_K_M",
-      "download_url": "https://huggingface.co/Jinx-org/Jinx-gpt-oss-20b-GGUF/resolve/main/jinx-gpt-oss-20b-Q4_K_M.gguf",
-      "repo_id": "Jinx-org/Jinx-gpt-oss-20b-GGUF",
-      "filename": "jinx-20b.gguf",
-      "uncensored": true,
-      "desc": "Jinx 20B. No restrictions. Default recommended. 12GB+ VRAM or 24GB RAM."
-    },
-    {
-      "name": "jinx-20b-Q5_K_M",
-      "family": "jinx",
-      "size": "20B",
-      "ram_required": 28,
-      "vram_required": 14,
-      "quant": "Q5_K_M",
-      "download_url": "https://huggingface.co/Jinx-org/Jinx-gpt-oss-20b-GGUF/resolve/main/jinx-gpt-oss-20b-Q5_K_M.gguf",
-      "repo_id": "Jinx-org/Jinx-gpt-oss-20b-GGUF",
-      "filename": "jinx-gpt-oss-20b-Q5_K_M.gguf",
-      "uncensored": true,
-      "desc": "Jinx 20B Q5. Higher quality. 14GB+ VRAM."
-    },
-    {
-      "name": "jinx-20b-Q2_K",
-      "family": "jinx",
-      "size": "20B",
-      "ram_required": 16,
-      "vram_required": 8,
-      "quant": "Q2_K",
-      "download_url": "https://huggingface.co/Jinx-org/Jinx-gpt-oss-20b-GGUF/resolve/main/jinx-gpt-oss-20b-Q2_K.gguf",
-      "repo_id": "Jinx-org/Jinx-gpt-oss-20b-GGUF",
-      "filename": "jinx-gpt-oss-20b-Q2_K.gguf",
-      "uncensored": true,
-      "desc": "Jinx 20B Q2. Smaller, 8GB VRAM. Quality tradeoff."
-    },
+
     {
       "name": "jinx-7b-v2-Q4_K_M",
       "family": "jinx",
+      "category": "general",
       "size": "7B",
       "ram_required": 6,
       "vram_required": 6,
@@ -90,11 +64,13 @@
       "repo_id": "jinxai/Jinx-7B-v2-GGUF",
       "filename": "jinx-7b-v2-Q4_K_M.gguf",
       "uncensored": true,
-      "desc": "Jinx 7B. No restrictions. 6GB+ VRAM."
+      "recommended": "8gb_vram",
+      "desc": "Jinx 7B. No restrictions. 6GB VRAM. Best for 8GB cards."
     },
     {
       "name": "jinx-7b-v2-Q5_K_M",
       "family": "jinx",
+      "category": "general",
       "size": "7B",
       "ram_required": 8,
       "vram_required": 8,
@@ -103,11 +79,70 @@
       "repo_id": "jinxai/Jinx-7B-v2-GGUF",
       "filename": "jinx-7b-v2-Q5_K_M.gguf",
       "uncensored": true,
-      "desc": "Jinx 7B Q5. Slightly better quality."
+      "desc": "Jinx 7B Q5. Higher quality, same base."
+    },
+    {
+      "name": "jinx-20b-Q4_K_M",
+      "family": "jinx",
+      "category": "general",
+      "size": "20B",
+      "ram_required": 24,
+      "vram_required": 12,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/Jinx-org/Jinx-gpt-oss-20b-GGUF/resolve/main/jinx-gpt-oss-20b-Q4_K_M.gguf",
+      "repo_id": "Jinx-org/Jinx-gpt-oss-20b-GGUF",
+      "filename": "jinx-20b.gguf",
+      "uncensored": true,
+      "recommended": "12gb_vram",
+      "desc": "Jinx 20B. No restrictions. Default pick. 12GB+ VRAM or 24GB RAM."
+    },
+    {
+      "name": "jinx-20b-Q5_K_M",
+      "family": "jinx",
+      "category": "general",
+      "size": "20B",
+      "ram_required": 28,
+      "vram_required": 14,
+      "quant": "Q5_K_M",
+      "download_url": "https://huggingface.co/Jinx-org/Jinx-gpt-oss-20b-GGUF/resolve/main/jinx-gpt-oss-20b-Q5_K_M.gguf",
+      "repo_id": "Jinx-org/Jinx-gpt-oss-20b-GGUF",
+      "filename": "jinx-gpt-oss-20b-Q5_K_M.gguf",
+      "uncensored": true,
+      "desc": "Jinx 20B Q5. Best quality tier for 14GB VRAM."
+    },
+    {
+      "name": "jinx-20b-Q2_K",
+      "family": "jinx",
+      "category": "general",
+      "size": "20B",
+      "ram_required": 16,
+      "vram_required": 8,
+      "quant": "Q2_K",
+      "download_url": "https://huggingface.co/Jinx-org/Jinx-gpt-oss-20b-GGUF/resolve/main/jinx-gpt-oss-20b-Q2_K.gguf",
+      "repo_id": "Jinx-org/Jinx-gpt-oss-20b-GGUF",
+      "filename": "jinx-gpt-oss-20b-Q2_K.gguf",
+      "uncensored": true,
+      "desc": "Jinx 20B Q2. Fits 8GB VRAM. Quality tradeoff."
+    },
+
+    {
+      "name": "dolphin-3.0-llama3.1-8b-Q4_K_M",
+      "family": "dolphin",
+      "category": "general",
+      "size": "8B",
+      "ram_required": 8,
+      "vram_required": 8,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/mradermacher/Dolphin3.0-Llama3.1-8B-GGUF/resolve/main/Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf",
+      "repo_id": "mradermacher/Dolphin3.0-Llama3.1-8B-GGUF",
+      "filename": "Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf",
+      "uncensored": true,
+      "desc": "Dolphin 3.0 Llama 3.1 8B. Latest Dolphin series. No restrictions."
     },
     {
       "name": "dolphin-2.9.4-llama3.1-8b-Q4_K_M",
       "family": "dolphin",
+      "category": "general",
       "size": "8B",
       "ram_required": 8,
       "vram_required": 8,
@@ -116,24 +151,12 @@
       "repo_id": "cognitivecomputations/dolphin-2.9.4-llama3.1-8b-gguf",
       "filename": "dolphin-2.9.4-llama3.1-8b-Q4_K_M.gguf",
       "uncensored": true,
-      "desc": "Dolphin 2.9.4 Llama 3.1 8B. Uncensored, function calling."
-    },
-    {
-      "name": "dolphin-2.9-llama3-8b-Q4_K_M",
-      "family": "dolphin",
-      "size": "8B",
-      "ram_required": 8,
-      "vram_required": 8,
-      "quant": "Q4_K_M",
-      "download_url": "https://huggingface.co/bartowski/dolphin-2.9-llama3-8b-GGUF/resolve/main/dolphin-2.9-llama3-8b-Q4_K_M.gguf",
-      "repo_id": "bartowski/dolphin-2.9-llama3-8b-GGUF",
-      "filename": "dolphin-2.9-llama3-8b-Q4_K_M.gguf",
-      "uncensored": true,
-      "desc": "Dolphin 2.9 Llama 3 8B. Uncensored, highly compliant."
+      "desc": "Dolphin 2.9.4 Llama 3.1 8B. Uncensored, strong function calling."
     },
     {
       "name": "dolphin-2.6-mistral-7b-Q4_K_M",
       "family": "dolphin",
+      "category": "fast",
       "size": "7B",
       "ram_required": 6,
       "vram_required": 6,
@@ -142,11 +165,26 @@
       "repo_id": "TheBloke/dolphin-2.6-mistral-7B-GGUF",
       "filename": "dolphin-2.6-mistral-7b.Q4_K_M.gguf",
       "uncensored": true,
-      "desc": "Dolphin 2.6 Mistral 7B. Uncensored, fast. 6GB VRAM."
+      "desc": "Dolphin 2.6 Mistral 7B. Fast, uncensored. 6GB VRAM."
+    },
+    {
+      "name": "dolphin-2.6-mistral-7b-Q3_K_M",
+      "family": "dolphin",
+      "category": "fast",
+      "size": "7B",
+      "ram_required": 5,
+      "vram_required": 5,
+      "quant": "Q3_K_M",
+      "download_url": "https://huggingface.co/TheBloke/dolphin-2.6-mistral-7B-GGUF/resolve/main/dolphin-2.6-mistral-7b.Q3_K_M.gguf",
+      "repo_id": "TheBloke/dolphin-2.6-mistral-7B-GGUF",
+      "filename": "dolphin-2.6-mistral-7b-Q3_K_M.gguf",
+      "uncensored": true,
+      "desc": "Dolphin 2.6 Mistral 7B Q3. 5GB VRAM. Smallest full uncensored."
     },
     {
       "name": "dolphin-2.9.3-mistral-nemo-12b-Q4_K_M",
       "family": "dolphin",
+      "category": "general",
       "size": "12B",
       "ram_required": 12,
       "vram_required": 12,
@@ -155,11 +193,12 @@
       "repo_id": "cognitivecomputations/dolphin-2.9.3-mistral-nemo-12b-gguf",
       "filename": "dolphin-2.9.3-mistral-nemo-12b-Q4_K_M.gguf",
       "uncensored": true,
-      "desc": "Dolphin 2.9.3 Mistral Nemo 12B. Uncensored, 128K context."
+      "desc": "Dolphin 2.9.3 Mistral Nemo 12B. Uncensored. 128K context window."
     },
     {
       "name": "dolphin-2.9-llama3-70b-Q4_K_M",
       "family": "dolphin",
+      "category": "flagship",
       "size": "70B",
       "ram_required": 40,
       "vram_required": 40,
@@ -168,11 +207,12 @@
       "repo_id": "bartowski/dolphin-2.9.1-llama-3-70b-GGUF",
       "filename": "dolphin-2.9.1-llama-3-70b-Q4_K_M.gguf",
       "uncensored": true,
-      "desc": "Dolphin 2.9 Llama 3 70B. Maximum uncensored. 40GB+ VRAM."
+      "desc": "Dolphin 2.9 Llama 3 70B. Flagship uncensored. 40GB+ VRAM."
     },
     {
       "name": "dolphin-2.9-llama3-70b-Q2_K",
       "family": "dolphin",
+      "category": "flagship",
       "size": "70B",
       "ram_required": 32,
       "vram_required": 32,
@@ -181,11 +221,28 @@
       "repo_id": "bartowski/dolphin-2.9.1-llama-3-70b-GGUF",
       "filename": "dolphin-2.9.1-llama-3-70b-Q2_K.gguf",
       "uncensored": true,
-      "desc": "Dolphin 2.9 Llama 3 70B Q2. Fits 32GB. Quality tradeoff."
+      "desc": "Dolphin 2.9 Llama 3 70B Q2. 32GB system RAM. Quality tradeoff."
     },
+    {
+      "name": "dolphin-3.0-llama3.3-70b-Q4_K_M",
+      "family": "dolphin",
+      "category": "flagship",
+      "size": "70B",
+      "ram_required": 40,
+      "vram_required": 40,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/mradermacher/Dolphin3.0-Llama3.3-70B-GGUF/resolve/main/Dolphin3.0-Llama3.3-70B-Q4_K_M.gguf",
+      "repo_id": "mradermacher/Dolphin3.0-Llama3.3-70B-GGUF",
+      "filename": "Dolphin3.0-Llama3.3-70B-Q4_K_M.gguf",
+      "uncensored": true,
+      "recommended": "48gb_vram",
+      "desc": "Dolphin 3.0 Llama 3.3 70B. Latest flagship. No restrictions. Best for 48GB VRAM."
+    },
+
     {
       "name": "hermes-3-llama-3.1-8b-Q4_K_M",
       "family": "hermes",
+      "category": "general",
       "size": "8B",
       "ram_required": 8,
       "vram_required": 8,
@@ -194,11 +251,12 @@
       "repo_id": "bartowski/Hermes-3-Llama-3.1-8B-GGUF",
       "filename": "Hermes-3-Llama-3.1-8B-Q4_K_M.gguf",
       "uncensored": true,
-      "desc": "Hermes 3 Llama 3.1 8B. Minimal refusals, strong instruction following."
+      "desc": "Hermes 3 Llama 3.1 8B. Minimal refusals. Strong instruction following."
     },
     {
       "name": "hermes-3-llama-3.1-8b-Q5_K_M",
       "family": "hermes",
+      "category": "general",
       "size": "8B",
       "ram_required": 10,
       "vram_required": 10,
@@ -212,6 +270,7 @@
     {
       "name": "hermes-3-llama-3.1-70b-uncensored-Q4_K_M",
       "family": "hermes",
+      "category": "flagship",
       "size": "70B",
       "ram_required": 40,
       "vram_required": 40,
@@ -222,9 +281,11 @@
       "uncensored": true,
       "desc": "Hermes 3 Llama 3.1 70B Uncensored. No restrictions. 40GB+ VRAM."
     },
+
     {
       "name": "mistral-nemo-12b-heretic-Q4_K_S",
       "family": "mistral",
+      "category": "general",
       "size": "12B",
       "ram_required": 12,
       "vram_required": 12,
@@ -236,47 +297,24 @@
       "desc": "Mistral Nemo 12B Heretic. Uncensored. 128K context."
     },
     {
-      "name": "dolphin-3.0-llama3.1-8b-Q4_K_M",
-      "family": "dolphin",
-      "size": "8B",
-      "ram_required": 8,
-      "vram_required": 8,
+      "name": "mistral-small-24b-instruct-Q4_K_M",
+      "family": "mistral",
+      "category": "general",
+      "size": "24B",
+      "ram_required": 20,
+      "vram_required": 16,
       "quant": "Q4_K_M",
-      "download_url": "https://huggingface.co/mradermacher/Dolphin3.0-Llama3.1-8B-GGUF/resolve/main/Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf",
-      "repo_id": "mradermacher/Dolphin3.0-Llama3.1-8B-GGUF",
-      "filename": "Dolphin3.0-Llama3.1-8B-Q4_K_M.gguf",
+      "download_url": "https://huggingface.co/bartowski/Mistral-Small-24B-Instruct-2501-GGUF/resolve/main/Mistral-Small-24B-Instruct-2501-Q4_K_M.gguf",
+      "repo_id": "bartowski/Mistral-Small-24B-Instruct-2501-GGUF",
+      "filename": "Mistral-Small-24B-Instruct-2501-Q4_K_M.gguf",
       "uncensored": true,
-      "desc": "Dolphin 3.0 Llama 3.1 8B. Uncensored, latest."
+      "desc": "Mistral Small 24B. Open weights, low restrictions. 16GB VRAM sweet spot."
     },
-    {
-      "name": "dolphin-2.6-mistral-7b-Q3_K_M",
-      "family": "dolphin",
-      "size": "7B",
-      "ram_required": 5,
-      "vram_required": 5,
-      "quant": "Q3_K_M",
-      "download_url": "https://huggingface.co/TheBloke/dolphin-2.6-mistral-7B-GGUF/resolve/main/dolphin-2.6-mistral-7b.Q3_K_M.gguf",
-      "repo_id": "TheBloke/dolphin-2.6-mistral-7B-GGUF",
-      "filename": "dolphin-2.6-mistral-7b-Q3_K_M.gguf",
-      "uncensored": true,
-      "desc": "Dolphin 2.6 Mistral 7B Q3. Smaller, 5GB VRAM. Uncensored."
-    },
-    {
-      "name": "dolphin-3.0-llama3.3-70b-Q4_K_M",
-      "family": "dolphin",
-      "size": "70B",
-      "ram_required": 40,
-      "vram_required": 40,
-      "quant": "Q4_K_M",
-      "download_url": "https://huggingface.co/mradermacher/Dolphin3.0-Llama3.3-70B-GGUF/resolve/main/Dolphin3.0-Llama3.3-70B-Q4_K_M.gguf",
-      "repo_id": "mradermacher/Dolphin3.0-Llama3.3-70B-GGUF",
-      "filename": "Dolphin3.0-Llama3.3-70B-Q4_K_M.gguf",
-      "uncensored": true,
-      "desc": "Dolphin 3.0 Llama 3.3 70B. Uncensored flagship for high-end systems."
-    },
+
     {
       "name": "deepseek-r1-distill-qwen-7b-Q4_K_M",
       "family": "deepseek",
+      "category": "reasoning",
       "size": "7B",
       "ram_required": 8,
       "vram_required": 8,
@@ -285,11 +323,84 @@
       "repo_id": "bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF",
       "filename": "DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
       "uncensored": true,
-      "desc": "DeepSeek R1 Distill Qwen 7B. Strong reasoning/coding on mid-range hardware."
+      "desc": "DeepSeek R1 Distill Qwen 7B. Reasoning/math/coding on mid-range hardware."
+    },
+    {
+      "name": "deepseek-r1-distill-qwen-14b-Q4_K_M",
+      "family": "deepseek",
+      "category": "reasoning",
+      "size": "14B",
+      "ram_required": 14,
+      "vram_required": 12,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+      "repo_id": "bartowski/DeepSeek-R1-Distill-Qwen-14B-GGUF",
+      "filename": "DeepSeek-R1-Distill-Qwen-14B-Q4_K_M.gguf",
+      "uncensored": true,
+      "recommended": "16gb_vram",
+      "desc": "DeepSeek R1 Distill Qwen 14B. Best reasoning below 16GB VRAM. Math, analysis, code."
+    },
+    {
+      "name": "deepseek-r1-distill-qwen-32b-Q4_K_M",
+      "family": "deepseek",
+      "category": "reasoning",
+      "size": "32B",
+      "ram_required": 28,
+      "vram_required": 24,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
+      "repo_id": "bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF",
+      "filename": "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf",
+      "uncensored": true,
+      "desc": "DeepSeek R1 Distill Qwen 32B. Elite reasoning. 24GB VRAM."
+    },
+    {
+      "name": "deepseek-r1-distill-llama-8b-Q4_K_M",
+      "family": "deepseek",
+      "category": "reasoning",
+      "size": "8B",
+      "ram_required": 8,
+      "vram_required": 8,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
+      "repo_id": "bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF",
+      "filename": "DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
+      "uncensored": true,
+      "desc": "DeepSeek R1 Distill Llama 8B. Reasoning on Llama base. 8GB VRAM."
+    },
+    {
+      "name": "deepseek-r1-distill-llama-70b-Q4_K_M",
+      "family": "deepseek",
+      "category": "reasoning",
+      "size": "70B",
+      "ram_required": 48,
+      "vram_required": 40,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
+      "repo_id": "bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF",
+      "filename": "DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
+      "uncensored": true,
+      "desc": "DeepSeek R1 Distill Llama 70B. Maximum reasoning quality. 40GB+ VRAM."
+    },
+
+    {
+      "name": "qwen2.5-coder-7b-instruct-Q4_K_M",
+      "family": "qwen",
+      "category": "coding",
+      "size": "7B",
+      "ram_required": 8,
+      "vram_required": 8,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
+      "repo_id": "bartowski/Qwen2.5-Coder-7B-Instruct-GGUF",
+      "filename": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
+      "uncensored": true,
+      "desc": "Qwen 2.5 Coder 7B. Dedicated code specialist. 8GB VRAM."
     },
     {
       "name": "qwen2.5-coder-14b-instruct-Q4_K_M",
       "family": "qwen",
+      "category": "coding",
       "size": "14B",
       "ram_required": 14,
       "vram_required": 10,
@@ -298,7 +409,139 @@
       "repo_id": "bartowski/Qwen2.5-Coder-14B-Instruct-GGUF",
       "filename": "Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf",
       "uncensored": true,
-      "desc": "Qwen2.5 Coder 14B Instruct. Strong code-generation and refactor quality."
+      "recommended": "12gb_vram",
+      "desc": "Qwen 2.5 Coder 14B. Top-tier code generation, refactor, review."
+    },
+    {
+      "name": "qwen2.5-coder-32b-instruct-Q4_K_M",
+      "family": "qwen",
+      "category": "coding",
+      "size": "32B",
+      "ram_required": 28,
+      "vram_required": 24,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/bartowski/Qwen2.5-Coder-32B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-32B-Instruct-Q4_K_M.gguf",
+      "repo_id": "bartowski/Qwen2.5-Coder-32B-Instruct-GGUF",
+      "filename": "Qwen2.5-Coder-32B-Instruct-Q4_K_M.gguf",
+      "uncensored": true,
+      "recommended": "24gb_vram",
+      "desc": "Qwen 2.5 Coder 32B. Best open coding model at 24GB VRAM. Rivals GPT-4 on code."
+    },
+    {
+      "name": "qwen2.5-14b-instruct-Q4_K_M",
+      "family": "qwen",
+      "category": "general",
+      "size": "14B",
+      "ram_required": 14,
+      "vram_required": 10,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_K_M.gguf",
+      "repo_id": "bartowski/Qwen2.5-14B-Instruct-GGUF",
+      "filename": "Qwen2.5-14B-Instruct-Q4_K_M.gguf",
+      "uncensored": true,
+      "desc": "Qwen 2.5 14B. Strong general model. Chinese + English bilingual. Low refusals."
+    },
+    {
+      "name": "qwen2.5-72b-instruct-Q4_K_M",
+      "family": "qwen",
+      "category": "flagship",
+      "size": "72B",
+      "ram_required": 48,
+      "vram_required": 40,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/bartowski/Qwen2.5-72B-Instruct-GGUF/resolve/main/Qwen2.5-72B-Instruct-Q4_K_M.gguf",
+      "repo_id": "bartowski/Qwen2.5-72B-Instruct-GGUF",
+      "filename": "Qwen2.5-72B-Instruct-Q4_K_M.gguf",
+      "uncensored": true,
+      "desc": "Qwen 2.5 72B. Flagship general model. Near GPT-4 class. 40GB+ VRAM."
+    },
+
+    {
+      "name": "fimbulvetr-11b-v2-Q4_K_M",
+      "family": "fimbulvetr",
+      "category": "creative",
+      "size": "11B",
+      "ram_required": 12,
+      "vram_required": 12,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/bartowski/Fimbulvetr-11B-v2-GGUF/resolve/main/Fimbulvetr-11B-v2-Q4_K_M.gguf",
+      "repo_id": "bartowski/Fimbulvetr-11B-v2-GGUF",
+      "filename": "Fimbulvetr-11B-v2-Q4_K_M.gguf",
+      "uncensored": true,
+      "desc": "Fimbulvetr 11B. No restrictions. Roleplay, creative writing, narrative specialist."
+    },
+    {
+      "name": "lumimaid-v0.2-12b-Q4_K_M",
+      "family": "lumimaid",
+      "category": "creative",
+      "size": "12B",
+      "ram_required": 12,
+      "vram_required": 12,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/bartowski/Lumimaid-v0.2-12B-GGUF/resolve/main/Lumimaid-v0.2-12B-Q4_K_M.gguf",
+      "repo_id": "bartowski/Lumimaid-v0.2-12B-GGUF",
+      "filename": "Lumimaid-v0.2-12B-Q4_K_M.gguf",
+      "uncensored": true,
+      "desc": "Lumimaid 12B. Uncensored creative/companion. Strong character work."
+    },
+    {
+      "name": "midnight-rose-70b-Q4_K_M",
+      "family": "midnight",
+      "category": "creative",
+      "size": "70B",
+      "ram_required": 48,
+      "vram_required": 40,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/bartowski/Midnight-Rose-70B-GGUF/resolve/main/Midnight-Rose-70B-Q4_K_M.gguf",
+      "repo_id": "bartowski/Midnight-Rose-70B-GGUF",
+      "filename": "Midnight-Rose-70B-Q4_K_M.gguf",
+      "uncensored": true,
+      "desc": "Midnight Rose 70B. Uncensored flagship for creative, narrative, and roleplay. 40GB+ VRAM."
+    },
+
+    {
+      "name": "deepseek-coder-v2-lite-instruct-Q4_K_M",
+      "family": "deepseek",
+      "category": "coding",
+      "size": "16B",
+      "ram_required": 16,
+      "vram_required": 16,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/bartowski/DeepSeek-Coder-V2-Lite-Instruct-GGUF/resolve/main/DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
+      "repo_id": "bartowski/DeepSeek-Coder-V2-Lite-Instruct-GGUF",
+      "filename": "DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
+      "uncensored": true,
+      "desc": "DeepSeek Coder V2 Lite 16B (MoE). Elite code model, 236B params active 16B. 16GB VRAM."
+    },
+
+    {
+      "name": "wizardlm-2-7b-Q4_K_M",
+      "family": "wizard",
+      "category": "general",
+      "size": "7B",
+      "ram_required": 8,
+      "vram_required": 8,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/bartowski/WizardLM-2-7B-GGUF/resolve/main/WizardLM-2-7B-Q4_K_M.gguf",
+      "repo_id": "bartowski/WizardLM-2-7B-GGUF",
+      "filename": "WizardLM-2-7B-Q4_K_M.gguf",
+      "uncensored": true,
+      "desc": "WizardLM 2 7B. Instruction-tuned, capable. Low restrictions. 8GB VRAM."
+    },
+
+    {
+      "name": "solar-10.7b-instruct-v1-Q4_K_M",
+      "family": "solar",
+      "category": "general",
+      "size": "10.7B",
+      "ram_required": 12,
+      "vram_required": 12,
+      "quant": "Q4_K_M",
+      "download_url": "https://huggingface.co/TheBloke/SOLAR-10.7B-Instruct-v1.0-GGUF/resolve/main/solar-10.7b-instruct-v1.0.Q4_K_M.gguf",
+      "repo_id": "TheBloke/SOLAR-10.7B-Instruct-v1.0-GGUF",
+      "filename": "solar-10.7b-instruct-v1.0.Q4_K_M.gguf",
+      "uncensored": true,
+      "desc": "Solar 10.7B. Strong 10B class model. Very capable for size. 12GB VRAM."
     }
   ]
 }
