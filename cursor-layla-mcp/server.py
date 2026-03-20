@@ -136,6 +136,27 @@ def _learn_sync(content: str, learning_type: str = "fact") -> str:
     return data.get("error", "Failed.")
 
 
+def _chat_sync(
+    message: str,
+    context: str = "",
+    workspace_root: str = "",
+    allow_write: bool = False,
+    allow_run: bool = False,
+    aspect_id: str = "",
+) -> str:
+    """Simple synchronous chat wrapper used internally by study/analyze tools."""
+    payload = {
+        "message": message,
+        "context": context,
+        "workspace_root": _normalize_workspace_root(workspace_root),
+        "allow_write": allow_write,
+        "allow_run": allow_run,
+        "aspect_id": aspect_id,
+    }
+    data = _agent_sync(payload, timeout=300)
+    return data.get("response", "")
+
+
 @app.list_tools()
 async def handle_list_tools() -> types.ListToolsResult:
     return types.ListToolsResult(
@@ -401,6 +422,131 @@ async def handle_list_tools() -> types.ListToolsResult:
                             "description": "Cron: 'min hour dom month dow' e.g. '*/5 * * * *' for every 5 min.",
                             "default": "",
                         },
+                    },
+                },
+            ),
+            types.Tool(
+                name="layla_status",
+                title="Layla server status",
+                description=(
+                    "Check if the Layla server is up and responding. Returns version, model loaded status, "
+                    "and uptime. Use this first if you are unsure whether Layla is running."
+                ),
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            types.Tool(
+                name="layla_wakeup",
+                title="Wake up Layla (session start)",
+                description=(
+                    "Trigger Layla's wakeup sequence. Echo greets, reports what was studied recently, "
+                    "and lists active study plans. Call at the start of a new session."
+                ),
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            types.Tool(
+                name="layla_health",
+                title="Layla full health check",
+                description=(
+                    "Return detailed health data: DB status, model loaded, tools registered, "
+                    "learnings count, study plans, vector store, token usage, cache stats. "
+                    "Use ?deep=true for a full Chroma vector probe."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "deep": {
+                            "type": "boolean",
+                            "description": "If true, also probe the Chroma vector store.",
+                            "default": False,
+                        },
+                    },
+                },
+            ),
+            types.Tool(
+                name="deliberate",
+                title="Force Layla multi-aspect deliberation",
+                description=(
+                    "Force all six Layla aspects to weigh in on a question before concluding. "
+                    "Morrigan, Nyx, Echo, Eris, Cassandra, and Lilith each speak, then Morrigan concludes. "
+                    "Use for architectural decisions, ethical questions, or anything worth thinking hard about."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["question"],
+                    "properties": {
+                        "question": {
+                            "type": "string",
+                            "description": "The question or decision to deliberate on.",
+                        },
+                        "context": {
+                            "type": "string",
+                            "description": "Optional context (code, file content, background).",
+                            "default": "",
+                        },
+                        "workspace_root": {"type": "string", "default": ""},
+                    },
+                },
+            ),
+            types.Tool(
+                name="run_code",
+                title="Run Python code via Layla sandbox",
+                description=(
+                    "Execute a Python snippet in Layla's sandboxed runner. "
+                    "Requires allow_run approval. Returns stdout, stderr, and exit code. "
+                    "Good for quick calculations, data transforms, or testing logic."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["code"],
+                    "properties": {
+                        "code": {
+                            "type": "string",
+                            "description": "Python code to run.",
+                        },
+                        "workspace_root": {"type": "string", "default": ""},
+                    },
+                },
+            ),
+            types.Tool(
+                name="get_model_catalog",
+                title="List Layla's available models",
+                description=(
+                    "Return the full model catalog with names, categories, hardware requirements, "
+                    "and download URLs. Categories: general, coding, reasoning, creative, fast, flagship."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "category": {
+                            "type": "string",
+                            "description": "Filter by category: general, coding, reasoning, creative, fast, flagship. Empty = all.",
+                            "default": "",
+                        },
+                    },
+                },
+            ),
+            types.Tool(
+                name="ask_aspect",
+                title="Ask a specific Layla aspect directly",
+                description=(
+                    "Route your message directly to one named aspect. "
+                    "morrigan=engineer/code, nyx=researcher/analysis, echo=companion/memory, "
+                    "eris=creative/chaos, cassandra=blunt oracle, lilith=ethics/authority/nsfw."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["aspect", "message"],
+                    "properties": {
+                        "aspect": {
+                            "type": "string",
+                            "description": "Aspect ID: morrigan, nyx, echo, eris, cassandra, lilith.",
+                        },
+                        "message": {"type": "string", "description": "Your message to that aspect."},
+                        "context": {"type": "string", "default": ""},
+                        "workspace_root": {"type": "string", "default": ""},
+                        "allow_write": {"type": "boolean", "default": False},
+                        "allow_run": {"type": "boolean", "default": False},
+                        "stream": {"type": "boolean", "default": False},
                     },
                 },
             ),
@@ -683,7 +829,6 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
             return [types.TextContent(type="text", text="No query provided.")]
         n = int(args.get("n") or 8)
         try:
-            import urllib.parse
             url = LAYLA_BASE + "/memories?" + urllib.parse.urlencode({"q": query, "n": n})
             resp = _get(url)
             items = resp.get("memories") or []
@@ -710,6 +855,152 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
             return [types.TextContent(type="text", text=f"Schedule failed: {result.get('error', result)}")]
         except Exception as e:
             return [types.TextContent(type="text", text=f"Schedule failed: {e}")]
+
+    # ── layla_status ──────────────────────────────────────
+    if name == "layla_status":
+        try:
+            data = _get(LAYLA_BASE + "/version", timeout=5)
+            version = data.get("version", "?")
+            health = _get(LAYLA_BASE + "/health", timeout=5)
+            model_loaded = health.get("model_loaded", False)
+            uptime = round(float(health.get("uptime_seconds", 0)), 1)
+            status = health.get("status", "?")
+            lines = [
+                f"Layla is UP (v{version})",
+                f"Status: {status}",
+                f"Model loaded: {model_loaded}",
+                f"Uptime: {uptime}s",
+                f"Tools registered: {health.get('tools_registered', '?')}",
+                f"Learnings: {health.get('learnings', '?')}",
+            ]
+            return [types.TextContent(type="text", text="\n".join(lines))]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"Layla appears to be DOWN or unreachable: {e}\nStart with: cd agent && uvicorn main:app --host 127.0.0.1 --port 8000")]
+
+    # ── layla_wakeup ──────────────────────────────────────
+    if name == "layla_wakeup":
+        try:
+            data = _get(LAYLA_BASE + "/wakeup", timeout=30)
+            greeting = data.get("greeting") or data.get("message") or ""
+            plans = data.get("study_plans") or []
+            lines = []
+            if greeting:
+                lines.append(greeting)
+            if plans:
+                lines.append(f"\nActive study plans ({len(plans)}):")
+                for p in plans[:5]:
+                    lines.append(f"  - {p.get('topic', '?')} [{p.get('status', '?')}]")
+            return [types.TextContent(type="text", text="\n".join(lines) or "Wakeup complete.")]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"Wakeup failed: {e}")]
+
+    # ── layla_health ──────────────────────────────────────
+    if name == "layla_health":
+        deep = bool(args.get("deep", False))
+        url = LAYLA_BASE + ("/health?deep=true" if deep else "/health")
+        try:
+            data = _get(url, timeout=30)
+            import json as _json
+            return [types.TextContent(type="text", text=_json.dumps(data, indent=2, ensure_ascii=False))]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"Health check failed: {e}")]
+
+    # ── deliberate ────────────────────────────────────────
+    if name == "deliberate":
+        question = (args.get("question", "") or "").strip()
+        if not question:
+            return [types.TextContent(type="text", text="No question provided.")]
+        context = args.get("context", "") or ""
+        workspace_root = args.get("workspace_root", "") or ""
+        msg = f"Show me your thinking. Deliberate on this: {question}"
+        payload = {
+            "message": msg,
+            "context": context,
+            "workspace_root": _normalize_workspace_root(workspace_root),
+            "allow_write": False,
+            "allow_run": False,
+            "aspect_id": "",
+            "show_thinking": True,
+        }
+        try:
+            data = await anyio.to_thread.run_sync(lambda: _agent_sync(payload, timeout=300))
+            return [types.TextContent(type="text", text=data.get("response", "") or "No response.")]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"Deliberation failed: {e}")]
+
+    # ── run_code ──────────────────────────────────────────
+    if name == "run_code":
+        code = (args.get("code", "") or "").strip()
+        if not code:
+            return [types.TextContent(type="text", text="No code provided.")]
+        workspace_root = args.get("workspace_root", "") or ""
+        msg = f"Run this Python code using the run_python tool and return the output:\n```python\n{code}\n```"
+        payload = {
+            "message": msg,
+            "workspace_root": _normalize_workspace_root(workspace_root),
+            "allow_write": False,
+            "allow_run": True,
+            "aspect_id": "morrigan",
+            "show_thinking": False,
+        }
+        try:
+            data = await anyio.to_thread.run_sync(lambda: _agent_sync(payload, timeout=120))
+            text = (data.get("response") or "") + _format_tool_trace(data.get("state") or {})
+            return [types.TextContent(type="text", text=text or "No output.")]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"run_code failed: {e}")]
+
+    # ── get_model_catalog ─────────────────────────────────
+    if name == "get_model_catalog":
+        category_filter = (args.get("category", "") or "").strip().lower()
+        try:
+            import json as _json
+            cat_path = Path(__file__).resolve().parent.parent / "agent" / "models" / "model_catalog.json"
+            catalog = _json.loads(cat_path.read_text(encoding="utf-8"))
+            models = catalog.get("models", [])
+            if category_filter:
+                models = [m for m in models if (m.get("category") or "").lower() == category_filter]
+            lines = [f"{'Name':<45} {'Cat':<10} {'Size':<8} {'VRAM':>5}GB  {'Uncensored':<12} Description"]
+            lines.append("-" * 120)
+            for m in models:
+                unc = "YES" if m.get("uncensored") else "no"
+                rec = " ★" if m.get("recommended") else ""
+                lines.append(
+                    f"{(m['name'] + rec):<45} {(m.get('category') or ''):<10} {(m.get('size') or ''):<8} "
+                    f"{str(m.get('vram_required', '?')):>5}    {unc:<12} {m.get('desc', '')}"
+                )
+            return [types.TextContent(type="text", text="\n".join(lines))]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"Catalog load failed: {e}")]
+
+    # ── ask_aspect ────────────────────────────────────────
+    if name == "ask_aspect":
+        aspect = (args.get("aspect", "") or "").strip().lower()
+        message = (args.get("message", "") or "").strip()
+        if not aspect or not message:
+            return [types.TextContent(type="text", text="aspect and message are required.")]
+        context = args.get("context", "") or ""
+        workspace_root = args.get("workspace_root", "") or ""
+        allow_write = args.get("allow_write") is True
+        allow_run = args.get("allow_run") is True
+        stream = bool(args.get("stream", False))
+        payload = {
+            "message": message,
+            "context": context,
+            "workspace_root": _normalize_workspace_root(workspace_root),
+            "allow_write": allow_write,
+            "allow_run": allow_run,
+            "aspect_id": aspect,
+            "show_thinking": False,
+        }
+        try:
+            if stream:
+                data = await anyio.to_thread.run_sync(lambda: _agent_stream_sync(payload))
+            else:
+                data = await anyio.to_thread.run_sync(lambda: _agent_sync(payload))
+            return [types.TextContent(type="text", text=data.get("response", "") or "")]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"ask_aspect failed: {e}")]
 
     return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
 
