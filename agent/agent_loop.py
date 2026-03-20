@@ -18,6 +18,12 @@ from layla.memory.db import save_aspect_memory as _db_save_aspect_memory  # noqa
 from layla.tools.registry import TOOLS, set_effective_sandbox  # noqa: E402
 from services.context_manager import DEFAULT_BUDGETS, build_system_prompt  # noqa: E402
 from services.llm_gateway import get_stop_sequences, llm_serialize_lock, run_completion  # noqa: E402
+from services.resource_manager import (  # noqa: E402
+    PRIORITY_AGENT,
+    PRIORITY_CHAT,
+    classify_load,
+    schedule_slot,
+)
 from services.output_polish import polish_output as _polish_output  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -982,7 +988,7 @@ _last_cpu: float = 0.0
 _last_ram: float = 0.0
 
 
-def system_overloaded() -> bool:
+def system_overloaded(priority: int = PRIORITY_AGENT) -> bool:
     global _last_cpu, _last_ram
     cfg = runtime_safety.load_config()  # noqa: F841
     cpu = psutil.cpu_percent(interval=0)
@@ -991,7 +997,12 @@ def system_overloaded() -> bool:
     smooth_cpu = (cpu + _last_cpu) / 2.0 if _last_cpu else cpu
     smooth_ram = (ram + _last_ram) / 2.0 if _last_ram else ram
     _last_cpu, _last_ram = cpu, ram
-    return smooth_cpu > cfg.get("max_cpu_percent", 95) or smooth_ram > cfg.get("max_ram_percent", 95)
+    # Chat should remain reactive even under pressure; background can be throttled.
+    if priority <= PRIORITY_CHAT:
+        return False
+    hard_cpu = float(cfg.get("hard_cpu_percent", cfg.get("max_cpu_percent", 95)))
+    hard_ram = float(cfg.get("max_ram_percent", 90))
+    return smooth_cpu > hard_cpu or smooth_ram > hard_ram
 
 
 # Valid tool names for LLM decision (must match TOOLS registry)
@@ -1779,13 +1790,31 @@ def autonomous_run(
     plan_depth: int = 0,
     model_override: str | None = None,
     reasoning_effort: str | None = None,
+    priority: int = PRIORITY_AGENT,
 ) -> dict:
-    with llm_serialize_lock:
-        return _autonomous_run_impl(
-            goal, context, workspace_root, allow_write, allow_run,
-            conversation_history, aspect_id, show_thinking, stream_final,
-            ux_state_queue, research_mode, plan_depth, model_override, reasoning_effort,
-        )
+    try:
+        with schedule_slot(priority=priority):
+            with llm_serialize_lock:
+                return _autonomous_run_impl(
+                    goal, context, workspace_root, allow_write, allow_run,
+                    conversation_history, aspect_id, show_thinking, stream_final,
+                    ux_state_queue, research_mode, plan_depth, model_override, reasoning_effort, priority,
+                )
+    except RuntimeError as e:
+        if "system_busy" in str(e):
+            active_aspect = orchestrator.select_aspect(goal, force_aspect=aspect_id)
+            return {
+                "status": "system_busy",
+                "steps": [],
+                "aspect": active_aspect.get("id", "layla"),
+                "aspect_name": active_aspect.get("name", "Layla"),
+                "refused": False,
+                "refusal_reason": "",
+                "ux_states": [],
+                "memory_influenced": [],
+                "reasoning_mode": "light",
+            }
+        raise
 
 
 def _autonomous_run_impl(
@@ -1803,6 +1832,7 @@ def _autonomous_run_impl(
     plan_depth: int = 0,
     model_override: str | None = None,
     reasoning_effort: str | None = None,
+    priority: int = PRIORITY_AGENT,
 ) -> dict:
     from services.llm_gateway import set_model_override, set_reasoning_effort
     set_model_override(model_override)
@@ -1821,7 +1851,7 @@ def _autonomous_run_impl(
         return _autonomous_run_impl_core(
             goal, context, workspace_root, allow_write, allow_run,
             conversation_history, aspect_id, show_thinking, stream_final,
-            ux_state_queue, research_mode, plan_depth,
+            ux_state_queue, research_mode, plan_depth, priority,
         )
     finally:
         set_model_override(None)
@@ -1841,6 +1871,7 @@ def _autonomous_run_impl_core(
     ux_state_queue: queue.Queue | None,
     research_mode: bool,
     plan_depth: int = 0,
+    priority: int = PRIORITY_AGENT,
 ) -> dict:
     base_cfg = runtime_safety.load_config()
     cfg = _get_effective_config(base_cfg)
@@ -1878,10 +1909,17 @@ def _autonomous_run_impl_core(
         except Exception:
             pass
 
+    def _overloaded_now() -> bool:
+        try:
+            return system_overloaded(priority=priority)
+        except TypeError:
+            # Backward-compatible for tests/monkeypatches that stub zero-arg function.
+            return system_overloaded()
+
     # Gate once at entry only: avoid refusing mid-run when our own LLM/embedder spiked CPU
-    if system_overloaded():
+    if _overloaded_now():
         time.sleep(2.0)
-        if system_overloaded():
+        if _overloaded_now():
             active_aspect = orchestrator.select_aspect(goal, force_aspect=aspect_id)
             _emit_run_telemetry({"reasoning_mode": reasoning_mode}, False)
             return {
@@ -2008,6 +2046,7 @@ def _autonomous_run_impl_core(
                     "memory_influenced": memory_influenced,
                     "reply": plan_result.get("summary", ""),
                     "reasoning_mode": reasoning_mode,
+        "load": classify_load(),
                 }
     except Exception:
         pass

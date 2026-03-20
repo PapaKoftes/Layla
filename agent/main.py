@@ -691,6 +691,12 @@ def health(request: Request):
     except Exception:
         pass
     try:
+        from services.resource_manager import classify_load
+
+        payload["resource_load"] = classify_load()
+    except Exception:
+        pass
+    try:
         from services.llm_gateway import get_token_usage
         payload["token_usage"] = get_token_usage()
     except Exception:
@@ -1226,11 +1232,13 @@ def v1_models():
 @app.post("/v1/chat/completions")
 async def v1_chat_completions(req: dict):
     messages = (req or {}).get("messages", [])
+    stream = bool((req or {}).get("stream", False))
     workspace_root = (req or {}).get("workspace_root", "") or ""
     allow_write = (req or {}).get("allow_write") is True
     allow_run = (req or {}).get("allow_run") is True
     aspect_id = (req or {}).get("aspect_id", "") or ""
     show_thinking = bool((req or {}).get("show_thinking", False))
+    conversation_id = ((req or {}).get("conversation_id") or "").strip() or str(uuid.uuid4())
 
     goal = ""
     system_ctx = ""
@@ -1251,6 +1259,57 @@ async def v1_chat_completions(req: dict):
             "choices": [{"index": 0, "message": {"role": "assistant", "content": ""}, "finish_reason": "stop"}],
         })
 
+    if stream:
+        async def gen():
+            result = await asyncio.to_thread(
+                autonomous_run,
+                goal,
+                context=system_ctx,
+                workspace_root=workspace_root,
+                allow_write=allow_write,
+                allow_run=allow_run,
+                conversation_history=list(_history),
+                aspect_id=aspect_id,
+                show_thinking=show_thinking,
+            )
+            response_text = (result.get("response") or "").strip()
+            if not response_text:
+                steps = result.get("steps") or []
+                final = steps[-1].get("result", "") if steps else ""
+                response_text = final if isinstance(final, str) else json.dumps(final) if final else ""
+            if not response_text:
+                response_text = "No response."
+            for chunk in [response_text[i:i + 120] for i in range(0, len(response_text), 120)]:
+                evt = {
+                    "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": f"layla-{result.get('aspect', aspect_id or 'morrigan')}",
+                    "choices": [{"index": 0, "delta": {"content": chunk}, "finish_reason": None}],
+                }
+                yield f"data: {json.dumps(evt)}\n\n"
+            done_evt = {
+                "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
+                "object": "chat.completion.chunk",
+                "created": int(time.time()),
+                "model": f"layla-{result.get('aspect', aspect_id or 'morrigan')}",
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+            }
+            _append_history("user", goal)
+            _append_history("assistant", response_text)
+            try:
+                from layla.memory.db import append_conversation_message, create_conversation
+
+                create_conversation(conversation_id, aspect_id=result.get("aspect", ""))
+                append_conversation_message(conversation_id, "user", goal, aspect_id=result.get("aspect", ""))
+                append_conversation_message(conversation_id, "assistant", response_text, aspect_id=result.get("aspect", ""))
+            except Exception:
+                pass
+            yield f"data: {json.dumps(done_evt)}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
+
     result = await asyncio.to_thread(
         autonomous_run,
         goal,
@@ -1263,18 +1322,28 @@ async def v1_chat_completions(req: dict):
         show_thinking=show_thinking,
     )
 
-    steps = result.get("steps") or []
-    final = steps[-1].get("result", "") if steps else ""
-    response_text = final if isinstance(final, str) else json.dumps(final) if final else ""
+    response_text = (result.get("response") or "").strip()
+    if not response_text:
+        steps = result.get("steps") or []
+        final = steps[-1].get("result", "") if steps else ""
+        response_text = final if isinstance(final, str) else json.dumps(final) if final else ""
 
     _append_history("user", goal)
     _append_history("assistant", response_text)
+    try:
+        from layla.memory.db import append_conversation_message, create_conversation
+
+        create_conversation(conversation_id, aspect_id=result.get("aspect", ""))
+        append_conversation_message(conversation_id, "user", goal, aspect_id=result.get("aspect", ""))
+        append_conversation_message(conversation_id, "assistant", response_text, aspect_id=result.get("aspect", ""))
+    except Exception:
+        pass
 
     return JSONResponse({
         "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
         "object": "chat.completion",
         "created": int(time.time()),
-        "model": "layla",
+        "model": f"layla-{result.get('aspect', aspect_id or 'morrigan')}",
         "choices": [
             {
                 "index": 0,
@@ -1284,7 +1353,80 @@ async def v1_chat_completions(req: dict):
         ],
         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         "aspect": result.get("aspect", ""),
+        "conversation_id": conversation_id,
     })
+
+
+@app.get("/conversations")
+def list_conversations_api(limit: int = 200):
+    try:
+        from layla.memory.db import list_conversations
+
+        return JSONResponse({"ok": True, "conversations": list_conversations(limit=limit)})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.get("/conversations/search")
+def search_conversations_api(q: str = "", limit: int = 50):
+    try:
+        from layla.memory.db import search_conversations
+
+        return JSONResponse({"ok": True, "conversations": search_conversations(q, limit=limit)})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.get("/conversations/{conversation_id}")
+def get_conversation_api(conversation_id: str):
+    try:
+        from layla.memory.db import get_conversation
+
+        row = get_conversation(conversation_id)
+        if not row:
+            return JSONResponse({"ok": False, "error": "Not found"}, status_code=404)
+        return JSONResponse({"ok": True, "conversation": row})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.get("/conversations/{conversation_id}/messages")
+def get_conversation_messages_api(conversation_id: str, limit: int = 300):
+    try:
+        from layla.memory.db import get_conversation_messages
+
+        return JSONResponse({"ok": True, "messages": get_conversation_messages(conversation_id, limit=limit)})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/conversations/{conversation_id}/rename")
+def rename_conversation_api(conversation_id: str, req: dict):
+    title = ((req or {}).get("title") or "").strip()
+    if not title:
+        return JSONResponse({"ok": False, "error": "title required"}, status_code=400)
+    try:
+        from layla.memory.db import rename_conversation
+
+        ok = rename_conversation(conversation_id, title)
+        if not ok:
+            return JSONResponse({"ok": False, "error": "Not found"}, status_code=404)
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.delete("/conversations/{conversation_id}")
+def delete_conversation_api(conversation_id: str):
+    try:
+        from layla.memory.db import delete_conversation
+
+        ok = delete_conversation(conversation_id)
+        if not ok:
+            return JSONResponse({"ok": False, "error": "Not found"}, status_code=404)
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

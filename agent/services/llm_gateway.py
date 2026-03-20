@@ -116,6 +116,20 @@ def _effective_model_filename(cfg: dict) -> str:
     Uses model_router.select_model (capability + benchmark aware) when a task type applies.
     """
     override = get_model_override()
+    # Optional dual-model routing: chat model for reactive turns, agent model for heavy work.
+    # Falls back to existing routing when unset or unavailable.
+    try:
+        from services.resource_manager import should_use_dual_models
+
+        if should_use_dual_models():
+            chat_path = (cfg.get("chat_model_path") or "").strip()
+            agent_path = (cfg.get("agent_model_path") or "").strip()
+            if override == "chat" and chat_path:
+                return Path(chat_path).name
+            if override in ("coding", "reasoning") and agent_path:
+                return Path(agent_path).name
+    except Exception:
+        pass
     rp = (_routing_prompt_var.get(None) or "").strip()
     task: str | None = override if override in ("coding", "reasoning", "chat") else None
     if task is None and rp and not _prompt_is_router_internal(rp):

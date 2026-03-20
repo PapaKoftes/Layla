@@ -29,6 +29,12 @@
     --text-base: 0.9rem;
     --text-lg: 1rem;
     --heading: 1.1rem;
+    --asp-morrigan: #8B0000;
+    --asp-nyx: #4B0082;
+    --asp-echo: #00308F;
+    --asp-eris: #8B4513;
+    --asp-cassandra: #004D4D;
+    --asp-lilith: #3D0C11;
   }
   body.theme-light {
     --bg: #f5f0f8;
@@ -52,6 +58,27 @@
     font-size: 14px;
     min-height: 100vh;
     overflow-x: hidden;
+  }
+  body[data-aspect="morrigan"] { --asp: var(--asp-morrigan); }
+  body[data-aspect="nyx"] { --asp: var(--asp-nyx); }
+  body[data-aspect="echo"] { --asp: var(--asp-echo); }
+  body[data-aspect="eris"] { --asp: var(--asp-eris); }
+  body[data-aspect="cassandra"] { --asp: var(--asp-cassandra); }
+  body[data-aspect="lilith"] { --asp: var(--asp-lilith); }
+
+  /* Aspect doodle overlay: css glyph + subtle ascii texture */
+  #doodle-overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.09;
+    font-size: 13px;
+    letter-spacing: 3px;
+    white-space: pre-wrap;
+    overflow: hidden;
+    color: var(--asp);
+    user-select: none;
   }
 
   /* ── Scanline overlay ── */
@@ -989,6 +1016,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js"></script>
 </head>
 <body>
+<div id="doodle-overlay"></div>
 <div id="warmup-bar">⧗ Loading model — <span id="warmup-detail">warming up, this may take a moment</span></div>
 <div id="connection-banner" style="display:none;background:#8b0000;color:#fff;padding:8px 20px;font-size:0.8rem;text-align:center">Cannot reach Layla — is the server running? <button onclick="location.reload()" style="margin-left:12px;padding:4px 12px;background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:4px;cursor:pointer">Retry</button></div>
 <div id="model-readiness-banner" style="display:none;background:#5a2040;color:#fff;padding:8px 20px;font-size:0.8rem;text-align:center">No model loaded — <a href="/docs/MODELS.md" target="_blank" style="color:#e0a0ff;text-decoration:underline">Configure</a> or run first setup</div>
@@ -1377,6 +1405,7 @@
 
 <script>
 let currentAspect = 'morrigan';
+let currentConversationId = localStorage.getItem('layla_current_conversation_id') || '';
 const sessionStart = Date.now();
 
 // Debug: localStorage.setItem('layla_debug','1') and reload; or ?layla_debug=1 in URL; or in console: window.LAYLA_DEBUG = true
@@ -1420,6 +1449,7 @@ function setAspect(id, force) {
   if (badge) { badge.textContent = sym + ' ' + id.toUpperCase(); badge.style.animation = 'none'; void badge.offsetWidth; badge.style.animation = ''; }
   const c = ASPECT_COLORS[id] || ASPECT_COLORS.morrigan;
   const root = document.documentElement.style;
+  document.body?.setAttribute('data-aspect', id);
   root.setProperty('--asp',      c.asp);
   root.setProperty('--asp-glow', c.glow);
   root.setProperty('--asp-mid',  c.mid);
@@ -1428,6 +1458,18 @@ function setAspect(id, force) {
     const name = (typeof ASPECTS !== 'undefined' && ASPECTS.find) ? ASPECTS.find(a => a.id === id)?.name : null;
     showToast('Now talking to ' + (name || id));
   }
+  try {
+    const doodles = {
+      morrigan: '⚔ ◈ ⚔ ◈ ⚔\n/\\\\ /\\\\ /\\\\',
+      nyx: '✦ ⊛ ∴ ✦ ⊛\n..::..::..',
+      echo: '◎ ∞ ◎ ∞ ◎\n==== ====',
+      eris: '⚡ ⊘ ⚡ ⊘ ⚡\n/\\/\\/\\/\\',
+      cassandra: '⌖ △ ⌖ △ ⌖\n<> <> <>',
+      lilith: '⊛ ♾ ✶ ⊛ ♾\n### ### ###',
+    };
+    const ov = document.getElementById('doodle-overlay');
+    if (ov) ov.textContent = (doodles[id] || doodles.morrigan).repeat(180);
+  } catch (_) {}
 }
 window.setAspect = setAspect;
 
@@ -2199,6 +2241,7 @@ async function send() {
   const payload = {
     message: msg,
     aspect_id: msgAspect,
+    conversation_id: currentConversationId || undefined,
     show_thinking: document.getElementById('show-thinking')?.checked ?? false,
     allow_write: document.getElementById('allow-write')?.checked ?? false,
     allow_run: document.getElementById('allow-run')?.checked ?? false,
@@ -2297,6 +2340,10 @@ async function send() {
               }
               if (obj.done) {
                 if (obj.content != null && String(obj.content).trim() !== '') full = String(obj.content).trim();
+                if (obj.conversation_id) {
+                  currentConversationId = String(obj.conversation_id);
+                  localStorage.setItem('layla_current_conversation_id', currentConversationId);
+                }
                 if (Array.isArray(obj.ux_states)) streamUxStates = obj.ux_states;
                 if (Array.isArray(obj.memory_influenced)) streamMemoryInfluenced = obj.memory_influenced;
                 try {
@@ -2379,6 +2426,10 @@ async function send() {
       return;
     }
     const replyText = (data.response != null && String(data.response).trim() !== '') ? data.response : 'No response from Layla.';
+    if (data.conversation_id) {
+      currentConversationId = String(data.conversation_id);
+      localStorage.setItem('layla_current_conversation_id', currentConversationId);
+    }
     try {
       const rmBadge = document.getElementById('reasoning-mode-badge');
       const rm = data.reasoning_mode || data.state?.reasoning_mode;
@@ -3334,10 +3385,34 @@ function _saveCurrentSession() {
   } catch {}
 }
 
-function _renderSessionList() {
+async function _renderSessionList() {
   const container = document.getElementById('session-history-list');
   const countEl = document.getElementById('session-count');
   if (!container) return;
+  try {
+    const r = await fetch('/conversations?limit=100');
+    const d = await r.json();
+    if (d.ok && Array.isArray(d.conversations) && d.conversations.length) {
+      const sessions = d.conversations;
+      if (countEl) countEl.textContent = `(${sessions.length})`;
+      container.innerHTML = '';
+      sessions.forEach(s => {
+        const item = document.createElement('div');
+        item.className = 'session-item';
+        item.innerHTML = `<span class="sess-preview">${escapeHtml((s.title || 'New chat').slice(0, 70))}</span><span class="sess-date">${escapeHtml(String((s.updated_at || '').replace('T',' ').slice(0,16)))}</span>`;
+        const delBtn = document.createElement('button');
+        delBtn.className = 'sess-del';
+        delBtn.title = 'Delete session';
+        delBtn.textContent = '✕';
+        delBtn.dataset.sessionId = String(s.id);
+        delBtn.addEventListener('click', async (ev) => { ev.stopPropagation(); await _deleteSession(ev.target.dataset.sessionId); });
+        item.appendChild(delBtn);
+        item.addEventListener('click', async () => await _restoreSession(s));
+        container.appendChild(item);
+      });
+      return;
+    }
+  } catch (_) {}
   let sessions = [];
   try { sessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]'); } catch {}
   if (countEl) countEl.textContent = sessions.length ? `(${sessions.length})` : '';
@@ -3362,17 +3437,38 @@ function _renderSessionList() {
   });
 }
 
-function _restoreSession(s) {
+async function _restoreSession(s) {
   const chat = document.getElementById('chat');
   if (!chat) return;
+  if (s && s.id && !s.html) {
+    try {
+      const r = await fetch('/conversations/' + encodeURIComponent(s.id) + '/messages?limit=500');
+      const d = await r.json();
+      if (d.ok && Array.isArray(d.messages)) {
+        if (!confirm('Restore this session? Current chat will be cleared.')) return;
+        chat.innerHTML = '';
+        d.messages.forEach(m => addMsg((m.role || '') === 'user' ? 'user' : 'layla', m.content || '', null, false, null));
+        hideEmpty();
+        chat.scrollTop = chat.scrollHeight;
+        currentConversationId = String(s.id);
+        localStorage.setItem('layla_current_conversation_id', currentConversationId);
+        return;
+      }
+    } catch (_) {}
+  }
   if (!confirm('Restore this session? Current chat will be cleared.')) return;
   chat.innerHTML = s.html;
   hideEmpty();
   chat.scrollTop = chat.scrollHeight;
 }
 
-function _deleteSession(id) {
+async function _deleteSession(id) {
   if (!confirm('Delete this saved session?')) return;
+  try {
+    const r = await fetch('/conversations/' + encodeURIComponent(id), { method: 'DELETE' });
+    const d = await r.json();
+    if (d.ok) { _renderSessionList(); return; }
+  } catch (_) {}
   try {
     let sessions = JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]');
     sessions = sessions.filter(s => String(s.id) !== String(id));

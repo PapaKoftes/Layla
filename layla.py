@@ -264,7 +264,8 @@ def cmd_doctor(_args: list) -> None:
 
 
 def cmd_tui(_args: list) -> None:
-    import subprocess, sys
+    import subprocess
+    import sys
     from pathlib import Path
     agent_dir = Path(__file__).resolve().parent / "agent"
     subprocess.run([sys.executable, "tui.py"], cwd=str(agent_dir))
@@ -294,6 +295,67 @@ def cmd_aspect(args: list) -> None:
     print(f"\n∴ {aspect_name.upper()}: {result.get('response', '')}\n")
 
 
+def cmd_agent(args: list) -> None:
+    """Start an agent task. Use --background for async execution."""
+    if not args:
+        print("Usage: layla agent <goal> [--aspect nyx] [--background]")
+        return
+    aspect = ""
+    background = False
+    clean = []
+    i = 0
+    while i < len(args):
+        if args[i] == "--aspect" and i + 1 < len(args):
+            aspect = args[i + 1]
+            i += 2
+            continue
+        if args[i] == "--background":
+            background = True
+            i += 1
+            continue
+        clean.append(args[i])
+        i += 1
+    goal = " ".join(clean).strip()
+    if not goal:
+        print("Goal required.")
+        return
+    if background:
+        result = _post("/agent/background", {"goal": goal, "aspect_id": aspect})
+        if result.get("ok"):
+            print(f"Queued: {result.get('task_id')}  conversation={result.get('conversation_id')}")
+        else:
+            print(f"Error: {result.get('error', result)}")
+        return
+    result = _post("/agent", {"message": goal, "aspect_id": aspect})
+    print(f"\n∴ {result.get('aspect_name', 'Layla').upper()}: {result.get('response', '')}\n")
+
+
+def cmd_tasks(_args: list) -> None:
+    result = _get("/agent/tasks")
+    tasks = result.get("tasks", [])
+    if not tasks:
+        print("No background tasks.")
+        return
+    for t in tasks:
+        print(f"[{t.get('status','?'):>9}] {t.get('task_id','')[:8]}  {t.get('aspect_id','')}  {t.get('goal','')[:80]}")
+
+
+def cmd_cancel(args: list) -> None:
+    if not args:
+        print("Usage: layla cancel <task_id>")
+        return
+    tid = args[0].strip()
+    try:
+        r = httpx.delete(f"{BASE_URL}/agent/tasks/{tid}", timeout=20)
+        data = r.json()
+        if data.get("ok"):
+            print(f"Cancelled: {tid}")
+        else:
+            print(f"Error: {data.get('error', data)}")
+    except Exception as e:
+        print(f"Cancel failed: {e}")
+
+
 COMMANDS = {
     "ask": cmd_ask,
     "status": cmd_status,
@@ -308,6 +370,9 @@ COMMANDS = {
     "pending": cmd_pending,
     "tui": cmd_tui,
     "aspect": cmd_aspect,
+    "agent": cmd_agent,
+    "tasks": cmd_tasks,
+    "cancel": cmd_cancel,
 }
 
 

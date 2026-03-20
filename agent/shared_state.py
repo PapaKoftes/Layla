@@ -6,6 +6,7 @@ from typing import Callable
 
 # Set by main after defining _history, touch_activity, etc.
 _history: deque | None = None
+_conv_histories: dict[str, deque] = {}
 
 # Last Layla auto-commit: for /undo
 _last_layla_commit_repo: str | None = None
@@ -41,6 +42,20 @@ def get_history() -> deque:
     if _history is None:
         raise RuntimeError("shared_state not initialized")
     return _history
+
+
+def get_conv_history(conversation_id: str, maxlen: int = 20) -> deque:
+    cid = (conversation_id or "").strip() or "default"
+    hist = _conv_histories.get(cid)
+    if hist is None:
+        hist = deque(maxlen=maxlen)
+        _conv_histories[cid] = hist
+    return hist
+
+
+def append_conv_history(conversation_id: str, role: str, content: str) -> None:
+    hist = get_conv_history(conversation_id)
+    hist.append({"role": role, "content": content})
 
 
 def get_touch_activity() -> Callable[[], None]:
