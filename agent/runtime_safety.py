@@ -137,6 +137,12 @@ def load_config() -> dict:
         defaults = {
             "max_cpu_percent": 95,
             "max_ram_percent": 95,
+            "warn_cpu_percent": 70,
+            "hard_cpu_percent": 85,
+            "max_active_runs": 1,
+            "dual_model_threshold_gb": 24,
+            "chat_model_path": "",
+            "agent_model_path": "",
             "max_runtime_seconds": 20,
             "max_tool_calls": 5,
             "tool_routing_enabled": True,
