@@ -23,6 +23,22 @@ def test_style_profile_update_and_summary():
     assert "topics" in profile
 
 
+def test_style_profile_collaboration_hints_non_clinical():
+    from layla.memory.db import get_style_profile, migrate
+    from services.style_profile import get_profile_summary, update_profile_from_interactions
+
+    migrate()
+    update_profile_from_interactions([
+        {"role": "user", "content": "be blunt — no sugarcoat. Tell me straight what's wrong with this design."},
+        {"role": "user", "content": "i'm struggling a bit; please be gentle with the review."},
+    ])
+    profile = get_profile_summary()
+    assert "collaboration" in profile
+    row = get_style_profile("collaboration")
+    assert row and "non-clinical" in (row.get("profile_snapshot") or "").lower()
+    assert "dsm" in (row.get("profile_snapshot") or "").lower()
+
+
 def test_conversation_summaries_still_work():
     from layla.memory.db import get_recent_conversation_summaries, migrate
     migrate()

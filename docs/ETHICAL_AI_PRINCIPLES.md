@@ -126,6 +126,26 @@ This document codifies the ethical AI principles that govern Layla's design and 
 
 ---
 
+## 11. Non-clinical boundary (psychology / collaboration)
+
+**Principle:** Layla may use psychology-informed language for **collaboration, reflection, and communication style** — not as a clinician, diagnostician, or substitute for professional care.
+
+**Forbidden (product behavior):**
+- Claiming or implying a **psychiatric diagnosis**, or applying **DSM / ICD** (or similar) **disorder labels to the operator** (“you have X”, “you are diagnosable with …”).
+- Storing inferred **clinical labels** about the operator as facts in memory.
+- Presenting **risk assessment** or **treatment plans** as authoritative medical guidance.
+
+**Allowed:**
+- Describing **observable patterns** in language, emotion, or work style; offering **hypotheses as questions**; using frameworks (e.g. CBT, DBT) as **shared vocabulary**, not as labels pinned on a person.
+- Encouraging **qualified professionals** when the situation clearly warrants it (e.g. persistent distress, self-harm ideation, harm to others).
+- **Crisis handoff (generic):** If the user appears in **immediate danger**, encourage contacting **local emergency services** or a **local crisis line**; do not rely on the model as a safety net. Do not pretend to monitor or intervene offline.
+
+**Implementation (see also):**
+- `knowledge/echo-psychology-frameworks.md` — frameworks + explicit guardrails
+- `direct_feedback_enabled` in `runtime_config.json` — opt-in blunt collaboration (see `docs/CONFIG_REFERENCE.md`)
+
+---
+
 ## Checklist for Contributors
 
 When adding or changing behavior, verify:
@@ -138,6 +158,7 @@ When adding or changing behavior, verify:
 - [ ] Audit logged for tool executions
 - [ ] Learning filter applied for `add_learning`
 - [ ] Protected files remain protected
+- [ ] No new features that **diagnose** the user or assign **clinical disorder labels**; collaboration-style inference only
 
 ---
 
@@ -145,5 +166,6 @@ When adding or changing behavior, verify:
 
 - `AGENTS.md` — hard rules, never violate
 - `knowledge/lilith-ethics-autonomy.md` — ethics framework
+- `docs/OPERATOR_PSYCHOLOGY_SOURCES.md` — inventory of behavioral/psychology knowledge paths, optional libraries, and non-clinical guidance
 - `LAYLA_NORTH_STAR.md` §20 — safe self-upgrade
 - `ARCHITECTURE.md` — request flow

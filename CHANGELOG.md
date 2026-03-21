@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- **Psychology / collaboration (non-clinical):** `docs/ETHICAL_AI_PRINCIPLES.md` §11; guardrails in `knowledge/echo-psychology-frameworks.md`; `direct_feedback_enabled` + `pin_psychology_framework_excerpt` (`runtime_safety` defaults, `runtime_config.example.json`, `config_schema` / Settings UI, `agent_loop._build_system_head`); wider `_needs_knowledge_rag` for reflective phrasing; `style_profile` **`collaboration`** snapshot (heuristic, no disorder labels); `docs/CONFIG_REFERENCE.md`, `docs/RUNBOOKS.md` (operator-local copyrighted texts); catalog [`docs/OPERATOR_PSYCHOLOGY_SOURCES.md`](docs/OPERATOR_PSYCHOLOGY_SOURCES.md) (in-repo knowledge, optional libs, research vs profiling).
 - **CI & quality:** Ruff lint in CI uses full `[tool.ruff]` rules (includes **I** / import order), not only E/F/W; optional Playwright **e2e_ui** job + `agent/requirements-e2e.txt`; main pytest matrix excludes `e2e_ui`.
 - **Web UI:** `BroadcastChannel('layla-health-v1')` syncs `/health` payload across tabs so header status stays fresh when another tab polls.
 - **Settings & potato preset:** `EDITABLE_SCHEMA` adds **Runtime limits** (`performance_mode`, `max_runtime_seconds`, `research_max_*`, moved `max_tool_calls`); **Memory** toggles `learning_quality_gate_enabled` / `learning_quality_min_score`; `POST /settings/preset` with `{"preset":"potato"}`; Web UI preset button + study panel presets/suggestions/derive-topic endpoints; `docs/POTATO_MODE.md`.
