@@ -113,6 +113,31 @@ Read [`PROJECT_BRAIN.md`](../PROJECT_BRAIN.md) first for stable context; use mod
 
 ---
 
+## Operator-local psychology texts (copyright + ethics)
+
+Layla can **retrieve** psychology-oriented material from `knowledge/` like any other doc, but **you** are responsible for **copyright and redistribution**.
+
+1. **Do not commit** full commercial manuals (e.g. DSM, proprietary textbooks) unless you have explicit rights and add a `!knowledge/...` exception in `.gitignore` on purpose. Default `knowledge/` is gitignored — keeping files **local-only** is the safe default.
+
+2. **Your own notes** (summaries in your words, study bullets, collaboration preferences) **can** be committed if you add the appropriate `!knowledge/filename.md` exception.
+
+3. **Indexing**: Same as [Add knowledge](#add-knowledge): with `use_chroma: true`, restart or touch files so `refresh_knowledge_if_changed` reindexes. Optional front matter:
+   ```yaml
+   ---
+   priority: core
+   domain: personality
+   ---
+   ```
+   Reflective user messages also widen Chroma retrieval (see `_needs_knowledge_rag` in `agent/agent_loop.py`).
+
+4. **Non-clinical boundary**: Layla is **not** a clinician. Product rules forbid assigning **psychiatric diagnoses** or **DSM/ICD labels** to the operator. See `docs/ETHICAL_AI_PRINCIPLES.md` §11 and `knowledge/echo-psychology-frameworks.md`.
+
+5. **Config**: `direct_feedback_enabled` (blunt collaboration, opt-in) and `pin_psychology_framework_excerpt` (Echo/Lilith pinned reminder) — see `docs/CONFIG_REFERENCE.md`.
+
+**Full reconsideration** (in-repo knowledge, optional libs, research tools, what to avoid): [`docs/OPERATOR_PSYCHOLOGY_SOURCES.md`](OPERATOR_PSYCHOLOGY_SOURCES.md).
+
+---
+
 ## Geometry programs (CAD-style ops)
 
 Layla can execute **versioned JSON programs** (`GeometryProgram` v1) that map to optional kernels: **ezdxf** (2D DXF), **cadquery** (3D export via subprocess), **OpenSCAD** (CLI), **trimesh** (mesh info), and an optional **HTTP bridge** for an operator-hosted CAD-sequence service.

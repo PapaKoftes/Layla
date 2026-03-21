@@ -214,6 +214,7 @@ Client → POST /agent → routers/agent.py
 | `agent/runtime_config.example.json` | New config keys added to `runtime_safety.py` defaults |
 | `CHANGELOG.md` | Any commit worth noting for users |
 | `docs/RUNBOOKS.md` | New "how to add X" procedures |
+| `docs/OPERATOR_PSYCHOLOGY_SOURCES.md` | Behavioral/psychology knowledge options, optional libraries, or non-clinical policy cross-links change |
 | `docs/FABRICATION_ASSIST.md` | Fabrication assist package or `BuildRunner` integration changes |
 
 **Values:** [VALUES.md](VALUES.md) — sovereignty, privacy, anti-surveillance, solidarity. All development aligns with these.

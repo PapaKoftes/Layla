@@ -286,6 +286,8 @@ def load_config() -> dict:
             "geometry_subprocess_timeout_seconds": 120.0,
             "geometry_external_bridge_url": "",
             "geometry_external_bridge_allow_insecure_localhost": False,
+            "direct_feedback_enabled": False,
+            "pin_psychology_framework_excerpt": True,
         }
         defaults.update(_hardware_derived_defaults())
         try:

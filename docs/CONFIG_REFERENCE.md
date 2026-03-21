@@ -67,6 +67,8 @@ For advanced users. Edit `agent/runtime_config.json` directly, or use **Settings
 | `anti_drift_prompt_enabled` | boolean | true | Inject global “minimize change / follow conventions” instructions into the system head. |
 | `enable_cot` | boolean | true | Chain-of-thought reasoning. |
 | `enable_self_reflection` | boolean | false | Post-response self-reflection. |
+| `direct_feedback_enabled` | boolean | false | **Opt-in blunt collaboration:** system head encourages direct, specific critique of work (not personal attacks). Does **not** override non-clinical rules — no psychiatric labeling. See `docs/ETHICAL_AI_PRINCIPLES.md` §11. |
+| `pin_psychology_framework_excerpt` | boolean | true | For **Echo** and **Lilith** aspects only, inject a short pinned reminder: collaboration-oriented psychology framing, observation-not-diagnosis, crisis handoff wording. |
 
 ---
 

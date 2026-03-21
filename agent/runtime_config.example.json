@@ -238,5 +238,10 @@
   "enable_lens_knowledge": false,
   "enable_ui_reflection": false,
   "enable_operational_guidance": false,
-  "enable_style_profile": false
+  "enable_style_profile": false,
+
+  "_comment_direct_feedback_enabled": "Opt-in: system head asks for honest, concise critique (still non-clinical; see ETHICAL_AI_PRINCIPLES §11).",
+  "direct_feedback_enabled": false,
+  "_comment_pin_psychology_framework_excerpt": "When true, Echo/Lilith turns get a short pinned non-clinical interaction-framework reminder (no Chroma required).",
+  "pin_psychology_framework_excerpt": true
 }

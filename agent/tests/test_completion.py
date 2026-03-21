@@ -57,6 +57,43 @@ def test_sub_goals_generate_for_broad_task():
         assert all(isinstance(s, str) for s in subs)
 
 
+def test_needs_knowledge_rag_reflective_goals():
+    import agent_loop
+
+    assert agent_loop._needs_knowledge_rag("I feel overwhelmed about work")
+    assert agent_loop._needs_knowledge_rag("Please explain what a cognitive distortion is")
+    assert not agent_loop._needs_knowledge_rag("fix the login bug in auth.py")
+
+
+def test_direct_feedback_and_psychology_pin_in_system_head():
+    from unittest.mock import patch
+
+    import agent_loop
+    import runtime_safety
+
+    base = runtime_safety.load_config()
+    merged = {
+        **base,
+        "direct_feedback_enabled": True,
+        "pin_psychology_framework_excerpt": True,
+        "prompt_budget_enabled": False,
+    }
+    with patch.object(runtime_safety, "load_config", return_value=merged):
+        head_echo = agent_loop._build_system_head(
+            goal="hi",
+            aspect={"id": "echo", "name": "Echo", "role": "Companion"},
+        )
+        head_m = agent_loop._build_system_head(
+            goal="hi",
+            aspect={"id": "morrigan", "name": "Morrigan", "role": "Engineer"},
+        )
+    pin_needle = "Interaction frameworks (non-clinical)"
+    assert "Collaboration mode" in head_echo and "direct feedback" in head_echo
+    assert pin_needle in head_echo
+    assert "Collaboration mode" in head_m and "direct feedback" in head_m
+    assert pin_needle not in head_m
+
+
 def test_workspace_context_appears_in_head():
     """_build_system_head includes Current working context when workspace_root and sub_goals given."""
     import agent_loop

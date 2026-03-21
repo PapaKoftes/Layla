@@ -31,6 +31,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENT_DIR = Path(__file__).resolve().parent
 RESEARCH_LAB_ROOT = AGENT_DIR / ".research_lab"
 
+# Pinned for Echo/Lilith when pin_psychology_framework_excerpt is true — non-clinical collaboration framing only.
+_INTERACTION_FRAMEWORK_PIN = (
+    "Interaction frameworks (non-clinical): Use psychology-informed language for collaboration and reflection only. "
+    "Describe observable patterns; offer hypotheses as questions — never assign psychiatric diagnoses, "
+    "DSM/ICD-style disorder labels, or clinical identities to the operator. "
+    "Prefer: situation → thought → emotion → behavior (CBT-style) as a shared vocabulary, not a verdict. "
+    "If someone may be in immediate danger, encourage local emergency services or a local crisis line; you are not a monitor or clinician. "
+    "Full reference when indexed: knowledge/echo-psychology-frameworks.md."
+)
+
 _SKIP_TOOL_OUTPUT_VALIDATION = frozenset({
     "approval_required", "tool_policy_denied", "tool_loop_detected",
 })
@@ -561,11 +571,45 @@ def _enrich_deliberation_context(context: str) -> str:
 
 
 def _needs_knowledge_rag(goal: str) -> bool:
-    """True if goal suggests research/search/explain — use full Chroma retrieval."""
+    """True if goal suggests research/search/explain or reflective/psychology-informed chat — use full Chroma retrieval."""
     if not (goal or "").strip():
         return False
     g = goal.lower()
-    return any(kw in g for kw in ("research", "search", "explain", "look up", "what is", "how does", "find out", "learn about"))
+    research_kw = (
+        "research",
+        "search",
+        "explain",
+        "look up",
+        "what is",
+        "how does",
+        "find out",
+        "learn about",
+    )
+    if any(kw in g for kw in research_kw):
+        return True
+    # Reflective / wellbeing phrasing — pulls psychology-framework knowledge when indexed (narrow list to limit noise on code chat).
+    reflective_kw = (
+        "reflect on",
+        "overwhelmed",
+        " i feel",
+        "i'm feeling",
+        "im feeling",
+        "feeling stuck",
+        "pattern i",
+        "why do i always",
+        "relationship to work",
+        "burnout",
+        "cognitive distortion",
+        "attachment style",
+        "window of tolerance",
+        "emotionally exhausted",
+        "mental health",
+        "talk to a therapist",
+        "panic attack",
+        "depressed about",
+        "anxious about",
+    )
+    return any(kw in g for kw in reflective_kw)
 
 
 def _needs_graph(goal: str) -> bool:
@@ -853,6 +897,16 @@ def _build_system_head(
             "do not rewrite entire files unless required; do not introduce new patterns unless they match "
             "existing code. Always minimize changes, preserve structure, and follow existing conventions."
         )
+    if cfg.get("direct_feedback_enabled"):
+        sys_parts.append(
+            "Collaboration mode — direct feedback (operator opt-in): Prefer honest, concise critique over hedging. "
+            "Name concrete issues and better alternatives. Avoid personal attacks; stay specific to behavior and work product. "
+            "Do not assign psychiatric diagnoses or DSM/ICD labels to the operator (non-clinical boundary)."
+        )
+    if cfg.get("pin_psychology_framework_excerpt", True) and aspect:
+        aid = (aspect.get("id") or "").strip().lower()
+        if aid in ("echo", "lilith"):
+            sys_parts.append(_INTERACTION_FRAMEWORK_PIN)
     if cfg.get("enable_personality_expression"):
         expr = runtime_safety.load_personality_expression()
         if expr:
@@ -861,7 +915,7 @@ def _build_system_head(
         try:
             from layla.memory.db import get_style_profile
             style_parts = []
-            for sk in ("writing", "coding", "reasoning", "structuring"):
+            for sk in ("writing", "coding", "reasoning", "structuring", "collaboration"):
                 row = get_style_profile(sk)
                 if row and (row.get("profile_snapshot") or "").strip():
                     snip = (row.get("profile_snapshot") or "").strip()[:600]
@@ -945,6 +999,8 @@ def _build_system_head(
                 profile_parts.append(profile["response_style"])
             if profile.get("topics"):
                 profile_parts.append(profile["topics"])
+            if profile.get("collaboration"):
+                profile_parts.append(profile["collaboration"])
             if profile_parts:
                 memory_parts.append("Conversation style (match these):\n" + "\n".join(profile_parts))
         except Exception:

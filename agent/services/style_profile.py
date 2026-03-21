@@ -36,6 +36,45 @@ def _extract_tone_hints(text: str) -> list[str]:
     return hints
 
 
+def _extract_collaboration_hints(text: str) -> list[str]:
+    """
+    Non-clinical collaboration signals only (pace, directness, support preference).
+    Never infer psychiatric labels or disorder names.
+    """
+    hints: list[str] = []
+    t = (text or "").lower().strip()
+    if not t:
+        return hints
+    blunt = (
+        "be blunt",
+        "don't sugarcoat",
+        "do not sugarcoat",
+        "tell me straight",
+        "brutal honesty",
+        "rip it apart",
+        "no fluff",
+        "just tell me",
+    )
+    if any(p in t for p in blunt):
+        hints.append("asks_for_direct_feedback")
+    gentle = (
+        "please be gentle",
+        "i'm struggling",
+        "im struggling",
+        "going through a hard time",
+        "don't be harsh",
+        "do not be harsh",
+        "sensitive about this",
+    )
+    if any(p in t for p in gentle):
+        hints.append("prefers_supportive_framing")
+    if any(w in t for w in ("step by step", "slowly", "break it down")):
+        hints.append("likes_gradual_explanation")
+    if any(w in t for w in ("tl;dr", "tldr", "too long", "short answer", "be brief")):
+        hints.append("prefers_brevity")
+    return hints
+
+
 def _extract_topic_keywords(text: str, min_len: int = 4) -> list[str]:
     """Extract likely topic words (simple heuristic: longer words, exclude common stopwords)."""
     stop = {"this", "that", "with", "from", "have", "been", "were", "what", "when", "where",
@@ -62,6 +101,7 @@ def update_profile_from_interactions(interactions: list[dict]) -> None:
     all_text = []
     tones: list[str] = []
     topics: Counter[str] = Counter()
+    collab_signals: list[str] = []
 
     for item in interactions:
         content = item.get("content") or item.get("user_event") or ""
@@ -70,6 +110,7 @@ def update_profile_from_interactions(interactions: list[dict]) -> None:
         all_text.append(content.strip())
         tones.extend(_extract_tone_hints(content))
         topics.update(_extract_topic_keywords(content))
+        collab_signals.extend(_extract_collaboration_hints(content))
 
     if not all_text:
         return
@@ -95,17 +136,25 @@ def update_profile_from_interactions(interactions: list[dict]) -> None:
         if response_style_parts:
             set_style_profile("response_style", "\n".join(response_style_parts))
         set_style_profile("topics", f"Frequent topics: {topic_snapshot}")
+        if collab_signals:
+            cc = Counter(collab_signals)
+            lines = [
+                "Collaboration inference (non-clinical — no diagnostic labels):",
+                "Signals from recent user messages: " + ", ".join(f"{k} ({v})" for k, v in cc.most_common(6)),
+                "Adapt tone and structure accordingly; do not assign psychiatric or DSM/ICD categories.",
+            ]
+            set_style_profile("collaboration", "\n".join(lines))
     except Exception as e:
         logger.debug("style_profile update: %s", e)
 
 
 def get_profile_summary() -> dict[str, Any]:
     """Return a summary of current style profile for injection."""
-    result: dict[str, Any] = {"tone": "", "response_style": "", "topics": ""}
+    result: dict[str, Any] = {"tone": "", "response_style": "", "topics": "", "collaboration": ""}
     try:
         from layla.memory.db import get_style_profile, migrate
         migrate()
-        for key in ("response_style", "topics"):
+        for key in ("response_style", "topics", "collaboration"):
             row = get_style_profile(key)
             if row and (row.get("profile_snapshot") or "").strip():
                 result[key] = (row.get("profile_snapshot") or "").strip()[:400]

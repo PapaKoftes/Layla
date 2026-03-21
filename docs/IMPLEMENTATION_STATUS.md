@@ -69,6 +69,7 @@ See [ETHICAL_AI_PRINCIPLES.md](ETHICAL_AI_PRINCIPLES.md) for the full ethical AI
 - **Study plans + usefulness**: New knowledge reinforces only when `usefulness_score` ≥ 0.3; low-value learning does not propagate.
 - **Lilith**: Gates autonomous execution and learning acceptance.
 - **Changes by Layla**: Proposed edits go through approval; no self-modification without user approval.
+- **Non-clinical psychology boundary** ([`docs/ETHICAL_AI_PRINCIPLES.md`](ETHICAL_AI_PRINCIPLES.md) §11): no diagnostic claims or DSM/ICD labels for the operator; `direct_feedback_enabled` + `pin_psychology_framework_excerpt` in config/UI; reflective-message RAG widen in `agent_loop._needs_knowledge_rag`; Echo/Lilith pinned framework excerpt; `style_profile` key `collaboration` via `services/style_profile.py`; RUNBOOKS operator-local psychology files; optional sources/libraries catalog [`docs/OPERATOR_PSYCHOLOGY_SOURCES.md`](OPERATOR_PSYCHOLOGY_SOURCES.md).
 
 ---
 

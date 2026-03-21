@@ -77,6 +77,20 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
     {"key": "uncensored", "type": "boolean", "category": "safety", "default": True, "hint": "Uncensored model behavior."},
     {"key": "enable_cot", "type": "boolean", "category": "safety", "default": True, "hint": "Chain-of-thought reasoning."},
     {"key": "enable_self_reflection", "type": "boolean", "category": "safety", "default": False, "hint": "Post-response self-reflection."},
+    {
+        "key": "direct_feedback_enabled",
+        "type": "boolean",
+        "category": "safety",
+        "default": False,
+        "hint": "Opt-in blunt collaboration: honest critique of work (not personal attacks). Non-clinical — no psychiatric labels. See ETHICAL_AI_PRINCIPLES §11.",
+    },
+    {
+        "key": "pin_psychology_framework_excerpt",
+        "type": "boolean",
+        "category": "safety",
+        "default": True,
+        "hint": "Echo/Lilith: inject short non-clinical interaction-framework reminder (observation not diagnosis).",
+    },
     {"key": "custom_system_prefix", "type": "string", "category": "safety", "multiline": True, "hint": "Custom system addition (e.g. Always respond in bullet points)."},
     # ── Remote ──
     {"key": "remote_enabled", "type": "boolean", "category": "remote", "default": False, "hint": "Allow remote API access."},
