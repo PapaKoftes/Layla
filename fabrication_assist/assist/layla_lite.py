@@ -35,7 +35,7 @@ from fabrication_assist.assist.variants import load_knowledge_dir, propose_varia
 log = logging.getLogger("fabrication_assist")
 
 _INTENT_KEYWORDS: dict[str, list[str]] = {
-    "assembly_simplicity": ("assembly", "simple", "snap", "easy build", "joinery easy"),
+    "assembly_simplicity": ("assembly", "simple", "snap", "easy build", "easy to assemble"),
     "material_efficiency": ("material", "waste", "yield", "sheet", "stock"),
     "machining_time": ("cnc", "mill", "lathe", "machining", "toolpath"),
     "precision": ("tight", "precision", "tolerance", "fit"),

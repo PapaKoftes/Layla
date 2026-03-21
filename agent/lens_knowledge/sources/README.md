@@ -3,7 +3,7 @@
 Curated reference material for lens refresh. Place one `.md` file per lens:
 
 - carpenter.md
-- joiner.md
+- assembly_lens.md
 - devops.md
 - geometry.md
 - product.md

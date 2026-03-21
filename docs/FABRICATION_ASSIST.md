@@ -3,7 +3,7 @@
 **Separation of roles**
 
 - **Assist** — interaction, variant exploration, comparison framing, explanation, local session memory. It does **not** replace a qualified manufacturing or design-of-record process.
-- **Deterministic kernel** — your own evaluator (internal pipeline, solver, vendor tool, subprocess, HTTP service, etc.). Truth for scores/feasibility lives **behind** a narrow adapter.
+- **Deterministic kernel** — your own evaluator (internal pipeline, FEA stack, vendor tool, subprocess, HTTP service, etc.). Truth for scores/feasibility lives **behind** a narrow adapter.
 
 On **`main`**, this repo ships **infrastructure only**: typed protocol (Pydantic schemas in `fabrication_assist/assist/schemas.py`), session JSON with load safety, heuristic variants, markdown summaries, **`StubRunner`**, and a **real subprocess path** via **`SubprocessJsonRunner`** + **`python -m fabrication_assist.assist.echo_kernel`** for tests and demos. No mandatory coupling to the FastAPI agent loop.
 
@@ -69,7 +69,7 @@ With **`--json`**, failures still print a JSON object with `"ok": false` and err
 ## Schemas
 
 - **Intent** — `raw` (max length `MAX_USER_TEXT_CHARS` in `schemas.py`), `goal`, `strategies`.
-- **Variant config** — required `id`, `label`; optional joinery/material fields; extra keys ignored.
+- **Variant config** — required `id`, `label`; optional `connection`/material fields; extra keys ignored.
 - **Product result** — required `variant_id`, `label`, `score`, `metrics` dict, `feasible`, `notes`; extra keys forbidden.
 
 ## Session safety

@@ -47,8 +47,8 @@ def load_knowledge_dir(directory: Path | None = None) -> dict[str, Any]:
 
 def propose_variants(intent: dict[str, Any], knowledge: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """
-    Emit 2–3 variant dicts (joinery / tolerance / material keys) from parsed intent.
-    Uses optional knowledge blocks: materials, joinery, machining_rules.
+    Emit 2–3 variant dicts (connection / tolerance / material keys) from parsed intent.
+    Uses optional knowledge blocks: materials, connection_hints, machining_rules.
     """
     k = knowledge or {}
     strategies = intent.get("strategies") or ["balanced"]
@@ -56,11 +56,11 @@ def propose_variants(intent: dict[str, Any], knowledge: dict[str, Any] | None = 
         strategies = [strategies]
 
     materials = k.get("materials") or {}
-    joinery = k.get("joinery") or {}
+    hints = k.get("connection_hints") or {}
     machining = k.get("machining_rules") or {}
 
     mat_keys = list(materials.keys()) if isinstance(materials, dict) else []
-    join_keys = list(joinery.keys()) if isinstance(joinery, dict) else []
+    conn_keys = list(hints.keys()) if isinstance(hints, dict) else []
     mach_keys = list(machining.keys()) if isinstance(machining, dict) else []
 
     variants: list[dict[str, Any]] = []
@@ -73,7 +73,7 @@ def propose_variants(intent: dict[str, Any], knowledge: dict[str, Any] | None = 
             "goal": intent.get("goal", "explore"),
             "strategy": "assembly_simplicity",
             "material": mat_keys[0] if mat_keys else "unspecified",
-            "joinery": join_keys[0] if join_keys else "unspecified",
+            "connection": conn_keys[0] if conn_keys else "unspecified",
             "tolerance_class": "standard",
             "machining_priority": mach_keys[0] if mach_keys else "general",
         }
@@ -87,7 +87,7 @@ def propose_variants(intent: dict[str, Any], knowledge: dict[str, Any] | None = 
             "goal": intent.get("goal", "explore"),
             "strategy": "material_efficiency",
             "material": mat_keys[1] if len(mat_keys) > 1 else (mat_keys[0] if mat_keys else "unspecified"),
-            "joinery": join_keys[1] if len(join_keys) > 1 else (join_keys[0] if join_keys else "unspecified"),
+            "connection": conn_keys[1] if len(conn_keys) > 1 else (conn_keys[0] if conn_keys else "unspecified"),
             "tolerance_class": "loose",
             "machining_priority": mach_keys[1] if len(mach_keys) > 1 else (mach_keys[0] if mach_keys else "general"),
         }
@@ -105,7 +105,7 @@ def propose_variants(intent: dict[str, Any], knowledge: dict[str, Any] | None = 
             "goal": intent.get("goal", "explore"),
             "strategy": "machining_time" if "speed" not in strategies else "fast_turn",
             "material": mat_keys[-1] if mat_keys else "unspecified",
-            "joinery": join_keys[-1] if join_keys else "unspecified",
+            "connection": conn_keys[-1] if conn_keys else "unspecified",
             "tolerance_class": tol,
             "machining_priority": mach_keys[-1] if mach_keys else "general",
         }

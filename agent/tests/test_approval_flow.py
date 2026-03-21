@@ -74,9 +74,9 @@ def test_approve_already_executed_idempotent(monkeypatch):
     """Approving the same id twice should not re-execute the tool."""
     from fastapi.testclient import TestClient
 
-    from main import app
-    import routers.approvals as approvals_router
     import layla.tools.registry as registry
+    import routers.approvals as approvals_router
+    from main import app
 
     pending = [{"id": "a1", "status": "pending", "tool": "fake_tool", "args": {"x": 1}}]
     calls = {"n": 0}
@@ -115,8 +115,8 @@ def test_approve_invalid_tool_returns_error(monkeypatch):
     """Unknown pending tool should return structured tool error."""
     from fastapi.testclient import TestClient
 
-    from main import app
     import routers.approvals as approvals_router
+    from main import app
 
     pending = [{"id": "a2", "status": "pending", "tool": "missing_tool", "args": {}}]
 

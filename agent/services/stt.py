@@ -42,9 +42,8 @@ def _get_model():
             try:
                 from faster_whisper import WhisperModel
             except ImportError:
-                from services.dependency_recovery import ensure_feature, merge_recovery_message
-
                 import runtime_safety
+                from services.dependency_recovery import ensure_feature, merge_recovery_message
 
                 _cfg = runtime_safety.load_config()
                 ok, rec = ensure_feature("faster_whisper", _cfg)

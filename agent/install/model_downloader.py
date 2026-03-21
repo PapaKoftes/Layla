@@ -9,8 +9,8 @@ Canonical models directory: ONE place for all models.
 """
 from __future__ import annotations
 
-import logging
 import hashlib
+import logging
 import urllib.request
 from pathlib import Path
 from typing import Any

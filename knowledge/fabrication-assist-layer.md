@@ -8,7 +8,7 @@ This note is indexed like other curated `knowledge/*.md` files. It describes **h
    Proposes variants, compares stub or real metrics, explains tradeoffs, keeps a **local JSON session** (`history`, `variants`, `outcomes`, `preferences`). It is a **guide and organizer**, not a certificate of manufacturability.
 
 2. **Deterministic kernel (operator-supplied)**  
-   Whatever produces authoritative or scored outcomes (your CAM rules, FEA, in-house solver, external service). Plug it in by implementing **`BuildRunner`** in `fabrication_assist/assist/runner.py`’s contract: `run_build(config: dict) -> dict` with a stable, documented shape (e.g. `variant_id`, `score`, `metrics`, `feasible`, `notes`).
+   Whatever produces authoritative or scored outcomes (your CAM rules, FEA, in-house evaluation engine, external service). Plug it in by implementing **`BuildRunner`** in `fabrication_assist/assist/runner.py`’s contract: `run_build(config: dict) -> dict` with a stable, documented shape (e.g. `variant_id`, `score`, `metrics`, `feasible`, `notes`).
 
 ## CLI and exit codes
 

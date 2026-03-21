@@ -64,14 +64,13 @@ def test_golden_chat_tool_approve_then_reason(tmp_path, monkeypatch, golden_pend
     from fastapi.testclient import TestClient
 
     import agent_loop
+    import layla.memory.distill as distill_mod
+    import layla.tools.registry as tools_registry
     import routers.agent as agent_router
     import runtime_safety
     import services.tool_policy as tool_policy
-    from services import model_router
-    from services import planner
-    import layla.memory.distill as distill_mod
-    import layla.tools.registry as tools_registry
     from main import app
+    from services import model_router, planner
 
     target = tmp_path / "golden_e2e.txt"
     # Path must contain ":" or "\\" for _extract_file_and_content
