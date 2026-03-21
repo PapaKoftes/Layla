@@ -3,7 +3,6 @@
 Run with:
     python cursor-layla-mcp/server.py
 """
-import anyio
 import json
 import os
 import subprocess
@@ -13,6 +12,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+import anyio
 from mcp import types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -200,6 +200,11 @@ async def handle_list_tools() -> types.ListToolsResult:
                         "aspect_id": {
                             "type": "string",
                             "description": "Aspect to invoke: morrigan (engineer), nyx (researcher), echo (companion), eris (chaos/banter), cassandra (unfiltered oracle/reactive), lilith (ethics/core/nsfw). Leave empty for auto-select.",
+                            "default": "",
+                        },
+                        "persona_focus": {
+                            "type": "string",
+                            "description": "Optional second aspect id to merge into the system prompt for extra depth (e.g. morrigan + persona_focus nyx for coding with research tone). Primary aspect_id still owns tools and display.",
                             "default": "",
                         },
                         "show_thinking": {
@@ -582,6 +587,7 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
         allow_write = args.get("allow_write") is True
         allow_run = args.get("allow_run") is True
         aspect_id = args.get("aspect_id", "") or ""
+        persona_focus = str(args.get("persona_focus", "") or "").strip()
         show_thinking = bool(args.get("show_thinking", False))
         stream = bool(args.get("stream", False))
         include_trace = bool(args.get("include_trace", True))
@@ -592,6 +598,7 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
             "allow_write": allow_write,
             "allow_run": allow_run,
             "aspect_id": aspect_id,
+            "persona_focus": persona_focus,
             "show_thinking": show_thinking,
         }
         try:
@@ -844,12 +851,17 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
         if not tool_name:
             return [types.TextContent(type="text", text="No tool_name provided.")]
         try:
-            result = _post(LAYLA_BASE + "/schedule", {
+            payload = {
                 "tool_name": tool_name,
                 "args": args.get("args") or {},
                 "delay_seconds": float(args.get("delay_seconds") or 0),
                 "cron_expr": (args.get("cron_expr") or "").strip(),
-            })
+            }
+            try:
+                result = _post(LAYLA_BASE + "/schedule", payload)
+            except Exception:
+                # Compatibility fallback for deployments mounting router under /agent.
+                result = _post(LAYLA_BASE + "/agent/schedule", payload)
             if result.get("ok"):
                 return [types.TextContent(type="text", text=f"Scheduled: {result.get('job_id', '?')} ({result.get('schedule', '')})")]
             return [types.TextContent(type="text", text=f"Schedule failed: {result.get('error', result)}")]

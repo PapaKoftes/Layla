@@ -1,6 +1,7 @@
 import json
 import logging
 import queue
+import re
 import time
 from pathlib import Path
 
@@ -18,13 +19,13 @@ from layla.memory.db import save_aspect_memory as _db_save_aspect_memory  # noqa
 from layla.tools.registry import TOOLS, set_effective_sandbox  # noqa: E402
 from services.context_manager import DEFAULT_BUDGETS, build_system_prompt  # noqa: E402
 from services.llm_gateway import get_stop_sequences, llm_serialize_lock, run_completion  # noqa: E402
+from services.output_polish import polish_output as _polish_output  # noqa: E402
 from services.resource_manager import (  # noqa: E402
     PRIORITY_AGENT,
     PRIORITY_CHAT,
     classify_load,
     schedule_slot,
 )
-from services.output_polish import polish_output as _polish_output  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENT_DIR = Path(__file__).resolve().parent
@@ -35,16 +36,31 @@ _SKIP_TOOL_OUTPUT_VALIDATION = frozenset({
 })
 
 
+def _log_tool_outcome(intent: str, result: object) -> None:
+    """Structured INFO log for observability (tool name, ok, reason)."""
+    if not isinstance(result, dict):
+        logger.info("tool=%s ok=unknown outcome=non_dict", intent)
+        return
+    ok = result.get("ok")
+    reason = result.get("reason") or result.get("error") or ""
+    logger.info("tool=%s ok=%s reason=%s", intent, ok, reason or "-")
+
+
 def _maybe_validate_tool_output(intent: str, result: object) -> object:
     if not isinstance(result, dict):
         from services.tool_output_validator import validate_tool_output
 
-        return validate_tool_output(intent, result)
+        out = validate_tool_output(intent, result)
+        _log_tool_outcome(intent, out if isinstance(out, dict) else {"ok": True})
+        return out
     if result.get("reason") in _SKIP_TOOL_OUTPUT_VALIDATION:
+        _log_tool_outcome(intent, result)
         return result
     from services.tool_output_validator import validate_tool_output
 
-    return validate_tool_output(intent, result)
+    out = validate_tool_output(intent, result)
+    _log_tool_outcome(intent, out if isinstance(out, dict) else result)
+    return out
 
 
 def _register_exact_tool_call(state: dict, intent: str, decision: dict | None) -> None:
@@ -132,6 +148,7 @@ def _emit_ux(state: dict, ux_state_queue: queue.Queue | None, label: str) -> Non
 
 def _emit_tool_start(ux_state_queue: queue.Queue | None, tool_name: str) -> None:
     """Emit a tool_start event so the UI can show 'Running tool_name...' during streaming."""
+    logger.info("tool start: %s", tool_name)
     if ux_state_queue is not None:
         try:
             ux_state_queue.put({"_type": "tool_start", "tool": tool_name}, block=False)
@@ -152,6 +169,46 @@ def _is_junk_reply(content: str) -> bool:
     if len(remainder) < 15 and ("assistant" in s and "i replied" in s):
         return True
     return False
+
+
+def _quick_reply_for_trivial_turn(goal: str) -> str:
+    """Return instant deterministic replies for tiny chat turns."""
+    g = (goal or "").strip()
+    if not g:
+        return ""
+    gl = g.lower()
+
+    # Common smoke-test directives.
+    if gl.startswith("reply exactly "):
+        exact = g[len("reply exactly ") :].strip().strip("\"'`")
+        return exact[:120]
+    if gl.startswith("say exactly "):
+        exact = g[len("say exactly ") :].strip().strip("\"'`")
+        return exact[:120]
+
+    if re.match(r"^(hi|hey|hello)\b", gl):
+        return "Hey."
+    if re.match(r"^(thanks|thank you)\b", gl):
+        return "You're welcome."
+    if gl in {"ok", "okay", "yes", "yep", "no", "nope"}:
+        return "Got it."
+    return ""
+
+
+def _is_lightweight_chat_turn(goal: str, reasoning_mode: str) -> bool:
+    """Heuristic for short non-code turns where heavy retrieval is usually wasted latency."""
+    if (reasoning_mode or "").strip().lower() not in {"none", "light"}:
+        return False
+    g = (goal or "").strip()
+    if not g:
+        return False
+    if len(g) > 120 or len(g.split()) > 20:
+        return False
+    gl = g.lower()
+    code_markers = ("def ", "class ", "import ", "traceback", "stack", "bug", "refactor", "pytest", "{", "}", "</", "/>")
+    if any(m in gl for m in code_markers):
+        return False
+    return True
 
 
 def truncate_at_next_user_turn(text: str) -> str:
@@ -213,6 +270,9 @@ def stream_reason(
     show_thinking: bool = False,
     model_override: str | None = None,
     skip_self_reflection: bool = False,
+    reasoning_mode_override: str | None = None,
+    precomputed_recall: str | None = None,
+    persona_focus: str = "",
 ):
     """
     Build the same prompt as the reason path and yield token strings from streaming completion.
@@ -226,15 +286,23 @@ def stream_reason(
         try:
             _cfg_route = runtime_safety.load_config()
             if _cfg_route.get("tool_routing_enabled", True):
-                from services.model_router import classify_task, is_routing_enabled
+                from services.model_router import classify_task_for_routing, is_routing_enabled
 
                 if is_routing_enabled():
-                    set_model_override(classify_task(goal, context or ""))
+                    set_model_override(classify_task_for_routing(goal, context or "", _cfg_route))
         except Exception:
             pass
     try:
         yield from _stream_reason_body(
-            goal, context, conversation_history, aspect_id, show_thinking, skip_self_reflection
+            goal,
+            context,
+            conversation_history,
+            aspect_id,
+            show_thinking,
+            skip_self_reflection,
+            reasoning_mode_override=reasoning_mode_override,
+            precomputed_recall=precomputed_recall,
+            persona_focus=persona_focus,
         )
     finally:
         set_model_override(None)
@@ -247,25 +315,31 @@ def _stream_reason_body(
     aspect_id: str = "",
     show_thinking: bool = False,
     skip_self_reflection: bool = False,
+    reasoning_mode_override: str | None = None,
+    precomputed_recall: str | None = None,
+    persona_focus: str = "",
 ):
     """Inner generator: prompt + streaming tokens (model override set by stream_reason)."""
     active_aspect = orchestrator.select_aspect(goal, force_aspect=aspect_id)
     # Classify reasoning need for the streaming path (same logic as the non-streaming path).
     # This gates expensive _build_system_head ops so "hi" doesn't trigger ChromaDB + graph + workspace.
-    try:
-        from services.reasoning_classifier import classify_reasoning_need, stabilize_reasoning_mode
+    if reasoning_mode_override in {"none", "light", "deep"}:
+        _stream_rmode = str(reasoning_mode_override)
+    else:
+        try:
+            from services.reasoning_classifier import classify_reasoning_need, stabilize_reasoning_mode
 
-        global _last_reasoning_mode
-        _stream_rmode = classify_reasoning_need(goal, context or "")
-        _cfg_sr = runtime_safety.load_config()
-        if _stream_rmode == "deep" and (_cfg_sr.get("performance_mode") or "").strip().lower() in ("low",):
+            global _last_reasoning_mode
+            _stream_rmode = classify_reasoning_need(goal, context or "")
+            _cfg_sr = runtime_safety.load_config()
+            if _stream_rmode == "deep" and (_cfg_sr.get("performance_mode") or "").strip().lower() in ("low",):
+                _stream_rmode = "light"
+            _stream_rmode = stabilize_reasoning_mode(_last_reasoning_mode, _stream_rmode)
+            _last_reasoning_mode = _stream_rmode
+        except Exception:
             _stream_rmode = "light"
-        _stream_rmode = stabilize_reasoning_mode(_last_reasoning_mode, _stream_rmode)
-        _last_reasoning_mode = _stream_rmode
-    except Exception:
-        _stream_rmode = "light"
-    _stream_recall = ""
-    if goal and _stream_rmode != "none":
+    _stream_recall = precomputed_recall or ""
+    if not _stream_recall and goal and _stream_rmode != "none":
         try:
             _stream_recall = _semantic_recall(goal, k=runtime_safety.load_config().get("semantic_k", 5)).strip()
         except Exception:
@@ -276,6 +350,7 @@ def _stream_reason_body(
         conversation_history=conversation_history or [],
         reasoning_mode=_stream_rmode,
         _precomputed_recall=_stream_recall,
+        persona_focus_id=(persona_focus or "").strip().lower(),
     )
     convo_block = ""
     try:
@@ -392,7 +467,10 @@ def _semantic_recall(query: str, k: int = 5) -> str:
         try:
             from layla.memory.db import search_learnings_fts
             results = search_learnings_fts(query, n=k)
-            return "\n".join(r.get("content", "") for r in results if r.get("content"))
+            lines = "\n".join(r.get("content", "") for r in results if r.get("content"))
+            if lines.strip():
+                logger.info("retrieval fallback: semantic recall using FTS (%d rows)", len(results))
+            return lines
         except Exception:
             return ""
 
@@ -498,6 +576,48 @@ def _needs_graph(goal: str) -> bool:
     return any(kw in g for kw in ("related", "context", "connection", "link", "associate", "connected"))
 
 
+def _aspect_dict_by_id(aspect_id: str) -> dict | None:
+    """Resolve personalities/*.json entry by id (lowercase)."""
+    aid = (aspect_id or "").strip().lower()
+    if not aid:
+        return None
+    try:
+        for a in orchestrator._load_aspects():
+            if (a.get("id") or "").strip().lower() == aid:
+                return a
+    except Exception:
+        pass
+    return None
+
+
+def _append_persona_focus_to_personality(
+    personality: str,
+    primary: dict | None,
+    persona_focus_id: str,
+    max_extra: int = 4500,
+) -> str:
+    """Inject a secondary aspect's prompt depth; primary aspect still owns routing/tools."""
+    pid = (persona_focus_id or "").strip().lower()
+    if not pid or not primary:
+        return personality
+    if (primary.get("id") or "").strip().lower() == pid:
+        return personality
+    sec = _aspect_dict_by_id(pid)
+    if not sec:
+        return personality
+    name = sec.get("name", pid)
+    role = (sec.get("role") or sec.get("voice") or "").strip()[:400]
+    add = (sec.get("systemPromptAddition") or "").strip()
+    if not add and not role:
+        return personality
+    chunk = add[:max_extra] if add else ""
+    block = (
+        f"\n\n---\nSecondary perspective (persona_focus={name}): blend this depth with the primary voice above; "
+        f"the primary aspect still owns tools, approvals, and final voice.\n{role}\n\n{chunk}"
+    )
+    return personality + block
+
+
 def _build_system_head(
     goal: str = "",
     aspect: dict | None = None,
@@ -507,11 +627,12 @@ def _build_system_head(
     conversation_history: list | None = None,
     reasoning_mode: str = "light",
     _precomputed_recall: str | None = None,
+    persona_focus_id: str = "",
 ) -> str:
     cfg = runtime_safety.load_config()  # noqa: F841
-    # Skip expensive retrieval operations for trivial/chat turns.
-    # "none" = greeting/yes-no, no benefit from vector search.
-    _skip_expensive = (reasoning_mode == "none")
+    # Skip expensive retrieval operations for trivial/lightweight chat turns.
+    # This keeps short conversational requests reactive.
+    _skip_expensive = _is_lightweight_chat_turn(goal, reasoning_mode)
     identity = runtime_safety.load_identity().strip()
     knowledge = ""
     # Lazy: full Chroma knowledge RAG only when research/search/explain keywords
@@ -565,6 +686,8 @@ def _build_system_head(
     else:
         raw = runtime_safety.load_personality().strip()
         personality = "Layla: default voice. Reply as her only. Do not output labels or repeat instructions." if (not raw or len(raw) > 200) else raw[:200] + ("." if len(raw) > 200 else "")
+
+    personality = _append_persona_focus_to_personality(personality, aspect, persona_focus_id)
 
     # Aspect memories: recent observations for this aspect
     aspect_memories = ""
@@ -724,6 +847,12 @@ def _build_system_head(
         og = runtime_safety.load_operational_guidance()
         if og:
             sys_parts.append(og)
+    if cfg.get("anti_drift_prompt_enabled", True):
+        sys_parts.append(
+            "Operational discipline (anti–AI drift): You must not create unnecessary files; "
+            "do not rewrite entire files unless required; do not introduce new patterns unless they match "
+            "existing code. Always minimize changes, preserve structure, and follow existing conventions."
+        )
     if cfg.get("enable_personality_expression"):
         expr = runtime_safety.load_personality_expression()
         if expr:
@@ -1791,6 +1920,7 @@ def autonomous_run(
     model_override: str | None = None,
     reasoning_effort: str | None = None,
     priority: int = PRIORITY_AGENT,
+    persona_focus: str = "",
 ) -> dict:
     try:
         with schedule_slot(priority=priority):
@@ -1799,6 +1929,7 @@ def autonomous_run(
                     goal, context, workspace_root, allow_write, allow_run,
                     conversation_history, aspect_id, show_thinking, stream_final,
                     ux_state_queue, research_mode, plan_depth, model_override, reasoning_effort, priority,
+                    persona_focus,
                 )
     except RuntimeError as e:
         if "system_busy" in str(e):
@@ -1833,6 +1964,7 @@ def _autonomous_run_impl(
     model_override: str | None = None,
     reasoning_effort: str | None = None,
     priority: int = PRIORITY_AGENT,
+    persona_focus: str = "",
 ) -> dict:
     from services.llm_gateway import set_model_override, set_reasoning_effort
     set_model_override(model_override)
@@ -1841,9 +1973,9 @@ def _autonomous_run_impl(
             import runtime_safety
             _cfg_route = runtime_safety.load_config()
             if _cfg_route.get("tool_routing_enabled", True):
-                from services.model_router import classify_task, is_routing_enabled
+                from services.model_router import classify_task_for_routing, is_routing_enabled
                 if is_routing_enabled():
-                    set_model_override(classify_task(goal, context or ""))
+                    set_model_override(classify_task_for_routing(goal, context or "", _cfg_route))
         except Exception:
             pass
     set_reasoning_effort(reasoning_effort)
@@ -1852,6 +1984,7 @@ def _autonomous_run_impl(
             goal, context, workspace_root, allow_write, allow_run,
             conversation_history, aspect_id, show_thinking, stream_final,
             ux_state_queue, research_mode, plan_depth, priority,
+            persona_focus,
         )
     finally:
         set_model_override(None)
@@ -1872,7 +2005,9 @@ def _autonomous_run_impl_core(
     research_mode: bool,
     plan_depth: int = 0,
     priority: int = PRIORITY_AGENT,
+    persona_focus: str = "",
 ) -> dict:
+    persona_focus_id = (persona_focus or "").strip().lower()
     base_cfg = runtime_safety.load_config()
     cfg = _get_effective_config(base_cfg)
     _prev_reasoning_mode = ""
@@ -1934,6 +2069,41 @@ def _autonomous_run_impl_core(
                 "reasoning_mode": reasoning_mode,
             }
     active_aspect = orchestrator.select_aspect(goal, force_aspect=aspect_id)
+    if reasoning_mode == "none" and not allow_write and not allow_run and not show_thinking:
+        quick = _quick_reply_for_trivial_turn(goal)
+        if quick:
+            _emit_run_telemetry({"reasoning_mode": reasoning_mode}, True)
+            return {
+                "goal": goal,
+                "original_goal": goal,
+                "objective": goal,
+                "objective_complete": True,
+                "depth": 0,
+                "steps": [{"action": "reason", "result": quick, "deliberated": False, "aspect": active_aspect.get("id", "layla")}],
+                "status": "finished",
+                "start_time": time.time(),
+                "tool_calls": 0,
+                "aspect": active_aspect.get("id", "layla"),
+                "aspect_name": active_aspect.get("name", "Layla"),
+                "refused": False,
+                "refusal_reason": "",
+                "last_verification": None,
+                "consecutive_no_progress": 0,
+                "environment_aligned": None,
+                "last_tool_used": None,
+                "strategy_shift_count": 0,
+                "priority_level": None,
+                "impact_estimate": None,
+                "effort_estimate": None,
+                "risk_estimate": None,
+                "ux_states": [],
+                "memory_influenced": [],
+                "cited_knowledge_sources": [],
+                "sub_goals": [],
+                "reflection_pending": False,
+                "reflection_asked": False,
+                "reasoning_mode": reasoning_mode,
+            }
     # Memory attribution: compute semantic recall ONCE here; pass it to _build_system_head
     # so it is not queried twice (eliminates double ChromaDB call per non-streaming turn).
     _precomputed_recall = ""
@@ -1979,6 +2149,7 @@ def _autonomous_run_impl_core(
         "last_reasoning_mode": _prev_reasoning_mode,
         "reasoning_mode": reasoning_mode,
         "_recent_exact_calls": set(),
+        "persona_focus_for_stream": persona_focus_id,
     }
     if research_mode:
         state["research_lab_root"] = str(RESEARCH_LAB_ROOT)
@@ -1989,6 +2160,9 @@ def _autonomous_run_impl_core(
     else:
         max_tool_calls = cfg.get("max_tool_calls", 5)
         max_runtime = cfg.get("max_runtime_seconds", 20)
+    # Keep normal chat reactive: lightweight non-tool turns should fail fast, not hang.
+    if not allow_write and not allow_run and _is_lightweight_chat_turn(goal, reasoning_mode):
+        max_runtime = min(int(max_runtime), int(cfg.get("chat_light_max_runtime_seconds", 8) or 8))
     temperature = cfg.get("temperature", 0.2)
 
     if research_mode and workspace:
@@ -2131,17 +2305,16 @@ def _autonomous_run_impl_core(
             _vt = _get_tools_for_goal(goal)
             if not tool_allowed(intent, _vt):
                 state["tool_calls"] += 1
-                state["steps"].append({
-                    "action": intent,
-                    "result": {
-                        "ok": False,
-                        "reason": "tool_policy_denied",
-                        "message": (
-                            f"Tool {intent} is not allowed this turn "
-                            "(tools_profile / tools_allow / tools_deny / intent filter)."
-                        ),
-                    },
-                })
+                _tpd = {
+                    "ok": False,
+                    "reason": "tool_policy_denied",
+                    "message": (
+                        f"Tool {intent} is not allowed this turn "
+                        "(tools_profile / tools_allow / tools_deny / intent filter)."
+                    ),
+                }
+                state["steps"].append({"action": intent, "result": _tpd})
+                _log_tool_outcome(intent, _tpd)
                 state["last_tool_used"] = intent
                 goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                 continue
@@ -2155,14 +2328,13 @@ def _autonomous_run_impl_core(
                 )
                 if _loop_ev and _loop_ev.startswith("STOP:"):
                     state["tool_calls"] += 1
-                    state["steps"].append({
-                        "action": intent,
-                        "result": {
-                            "ok": False,
-                            "reason": "tool_loop_detected",
-                            "message": _loop_ev[5:].strip(),
-                        },
-                    })
+                    _tlr = {
+                        "ok": False,
+                        "reason": "tool_loop_detected",
+                        "message": _loop_ev[5:].strip(),
+                    }
+                    state["steps"].append({"action": intent, "result": _tlr})
+                    _log_tool_outcome(intent, _tlr)
                     state["last_tool_used"] = intent
                     goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                     continue
@@ -2179,6 +2351,7 @@ def _autonomous_run_impl_core(
                 if _verr:
                     state["tool_calls"] += 1
                     state["steps"].append({"action": intent, "result": _verr})
+                    _log_tool_outcome(intent, _verr)
                     state["last_tool_used"] = intent
                     goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                     continue
@@ -2193,14 +2366,13 @@ def _autonomous_run_impl_core(
                 _seen = state.setdefault("_recent_exact_calls", set())
                 if _eck in _seen:
                     state["tool_calls"] += 1
-                    state["steps"].append({
-                        "action": intent,
-                        "result": {
-                            "ok": False,
-                            "reason": "tool_loop_detected",
-                            "message": "Exact duplicate tool invocation blocked for this run.",
-                        },
-                    })
+                    _tdup = {
+                        "ok": False,
+                        "reason": "tool_loop_detected",
+                        "message": "Exact duplicate tool invocation blocked for this run.",
+                    }
+                    state["steps"].append({"action": intent, "result": _tdup})
+                    _log_tool_outcome(intent, _tdup)
                     state["last_tool_used"] = intent
                     goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                     continue
@@ -2761,6 +2933,8 @@ def _autonomous_run_impl_core(
             if stream_final:
                 state["status"] = "stream_pending"
                 state["goal_for_stream"] = goal
+                state["reasoning_mode_for_stream"] = state.get("reasoning_mode", "light")
+                state["precomputed_recall_for_stream"] = _precomputed_recall
                 return state
             # Section 1: context compression when token count exceeds ~75% of n_ctx (before system head)
             effective_history = conversation_history or []
@@ -2780,6 +2954,7 @@ def _autonomous_run_impl_core(
                 conversation_history=effective_history,
                 reasoning_mode=state.get("reasoning_mode", "light"),
                 _precomputed_recall=_precomputed_recall,
+                persona_focus_id=persona_focus_id,
             )
 
             # Inject conversation history (sanitize assistant messages that are echoed instructions)

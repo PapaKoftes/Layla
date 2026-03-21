@@ -37,13 +37,17 @@ def main() -> int:
 
     failed = []
 
-    # Python
+    # Python (supported: 3.11–3.12 per pyproject.toml / CI)
     v = sys.version_info
-    if v >= (3, 11):
-        print(f"  [OK] Python {v.major}.{v.minor}.{v.micro}")
-    else:
-        print(f"  [FAIL] Python 3.11+ required, have {v.major}.{v.minor}.{v.micro}")
+    if v < (3, 11):
+        print(f"  [FAIL] Python 3.11 or 3.12 required, have {v.major}.{v.minor}.{v.micro}")
         failed.append("Python version")
+    elif v[:2] not in ((3, 11), (3, 12)):
+        print(f"  [WARN] Python {v.major}.{v.minor}.{v.micro} — Layla supports 3.11 and 3.12 only.")
+        print("         Use 3.12.x for best compatibility (Chroma, torch, sentence-transformers).")
+        print("         See pyproject.toml requires-python and repo .python-version.")
+    else:
+        print(f"  [OK] Python {v.major}.{v.minor}.{v.micro}")
 
     # Build tools (Linux)
     if sys.platform == "linux":

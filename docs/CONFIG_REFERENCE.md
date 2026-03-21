@@ -58,9 +58,27 @@ For advanced users. Edit `agent/runtime_config.json` directly, or use **Settings
 |-----|------|---------|-------------|
 | `safe_mode` | boolean | true | Require approval for file writes and code execution. |
 | `uncensored` | boolean | true | Uncensored model behavior. |
-| `max_tool_calls` | number | 5 | Max tool calls per agent turn. |
+| `max_tool_calls` | number | 2 | Max tool calls per agent turn (before effective-config / pressure tuning). |
+| `max_runtime_seconds` | number | 30 | Max wall-clock time for a normal agent turn (research uses `research_max_runtime_seconds`). |
+| `performance_mode` | string | auto | `low` / `mid` / `high` / `auto` — see `system_optimizer.get_effective_config()`. |
+| `completion_cache_enabled` | boolean | true | Short-lived cache for identical non-stream completion prompts (key includes model + temperature + max_tokens). |
+| `response_cache_enabled` | boolean | true | In-memory cache for repeated short chat turns (see `routers/agent.py`). |
+| `tool_loop_detection_enabled` | boolean | true | Block runaway / ping-pong tool repetition (`services/tool_loop_detection.py`). |
+| `anti_drift_prompt_enabled` | boolean | true | Inject global “minimize change / follow conventions” instructions into the system head. |
 | `enable_cot` | boolean | true | Chain-of-thought reasoning. |
 | `enable_self_reflection` | boolean | false | Post-response self-reflection. |
+
+---
+
+## Geometry (optional kernels)
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `geometry_frameworks_enabled` | object | ezdxf/cadquery/openscad/trimesh true | Per-kernel toggles for `layla.geometry` backends. |
+| `openscad_executable` | string | openscad | OpenSCAD CLI for `openscad_render` op. |
+| `geometry_subprocess_timeout_seconds` | number | 120 | Timeout for cadquery subprocess and OpenSCAD. |
+| `geometry_external_bridge_url` | string | "" | Base URL for optional CAD program bridge (`cad_bridge_fetch` op). |
+| `geometry_external_bridge_allow_insecure_localhost` | boolean | false | Allow localhost bridge URLs (dev only). |
 
 ---
 

@@ -81,16 +81,33 @@ def model_loaded_status() -> dict:
     """Return model status for /health. If path invalid, includes error message."""
     try:
         import runtime_safety
+        from services.dependency_recovery import missing_gguf_recovery
+
         cfg = runtime_safety.load_config()
         url = (cfg.get("llama_server_url") or "").strip()
         if url:
             return {"remote": True, "error": None}
-        model_filename = cfg.get("model_filename", "your-model.gguf")
+        try:
+            import llama_cpp  # noqa: F401
+        except ImportError as e:
+            from services.dependency_recovery import llama_cpp_import_recovery, merge_recovery_message
+
+            rec = llama_cpp_import_recovery(str(e))
+            return {"error": merge_recovery_message(rec), "recovery": rec}
+        model_filename = (cfg.get("model_filename") or "").strip() or "your-model.gguf"
         if not model_filename or model_filename == "your-model.gguf":
-            return {"error": "Model not loaded. Please configure model_filename in runtime_config.json"}
+            md_raw = cfg.get("models_dir")
+            md = Path(md_raw).expanduser().resolve() if md_raw else REPO_ROOT / "models"
+            rec = missing_gguf_recovery(str(model_filename), md)
+            return {"error": "Model not loaded. Set model_filename in runtime_config.json", "recovery": rec}
         model_path = runtime_safety.resolve_model_path(cfg)
         if not model_path.exists():
-            return {"error": "Model not loaded. Please configure model_path in runtime_config.json and place the .gguf file in models/"}
+            md = model_path.parent
+            rec = missing_gguf_recovery(str(model_filename), md, resolved_path=model_path)
+            return {
+                "error": f"GGUF not found at {model_path}",
+                "recovery": rec,
+            }
         if _llm is not None or _llm_by_path:
             return {"error": None}
         return {"error": None}
@@ -122,12 +139,13 @@ def _effective_model_filename(cfg: dict) -> str:
         from services.resource_manager import should_use_dual_models
 
         if should_use_dual_models():
-            chat_path = (cfg.get("chat_model_path") or "").strip()
-            agent_path = (cfg.get("agent_model_path") or "").strip()
-            if override == "chat" and chat_path:
-                return Path(chat_path).name
-            if override in ("coding", "reasoning") and agent_path:
-                return Path(agent_path).name
+            from services.model_router import resolve_dual_model_basenames
+
+            chat_fn, agent_fn = resolve_dual_model_basenames(cfg)
+            if override == "chat" and chat_fn:
+                return chat_fn
+            if override in ("coding", "reasoning") and agent_fn:
+                return agent_fn
     except Exception:
         pass
     rp = (_routing_prompt_var.get(None) or "").strip()
@@ -135,10 +153,10 @@ def _effective_model_filename(cfg: dict) -> str:
     if task is None and rp and not _prompt_is_router_internal(rp):
         if cfg.get("tool_routing_enabled", True):
             try:
-                from services.model_router import classify_task, is_routing_enabled
+                from services.model_router import classify_task_for_routing, is_routing_enabled
 
                 if is_routing_enabled():
-                    c = classify_task(rp[:4000], "")
+                    c = classify_task_for_routing(rp[:4000], "", cfg)
                     if c in ("coding", "reasoning", "chat"):
                         task = c
             except Exception:
@@ -167,7 +185,20 @@ def _effective_model_filename(cfg: dict) -> str:
 
 def _get_llm():
     global _llm
-    from llama_cpp import Llama
+    try:
+        from llama_cpp import Llama
+    except ImportError as e:
+        import runtime_safety
+        from services.dependency_recovery import ensure_feature, llama_cpp_import_recovery, merge_recovery_message
+
+        ok, rec = ensure_feature("llama_cpp", runtime_safety.load_config())
+        if ok:
+            from llama_cpp import Llama
+        else:
+            r = rec or llama_cpp_import_recovery(str(e))
+            msg = merge_recovery_message(r)
+            logger.error("llm_gateway: %s", msg)
+            raise RuntimeError(msg) from e
 
     import runtime_safety
     cfg = runtime_safety.load_config()
@@ -347,9 +378,8 @@ def run_completion(
     Sets routing prompt ContextVar so _effective_model_filename always has authority
     (override or classify-from-prompt + select_model); internal prompts are excluded.
     """
-    from services.inference_router import run_completion as _run
-
     import runtime_safety
+    from services.inference_router import run_completion as _run
 
     routing_tok = _routing_prompt_var.set((prompt or "")[:16000])
     prompt_tokens = _count_tokens(prompt)
@@ -475,3 +505,21 @@ def run_completion(
                 _routing_prompt_var.reset(routing_tok)
             except (ValueError, LookupError):
                 pass
+
+
+def run_completion_stream(
+    prompt: str,
+    max_tokens: int = 256,
+    temperature: float = 0.2,
+    stop: list | None = None,
+    timeout_seconds: int | None = None,
+):
+    """Explicit streaming helper for callers that always want token iterator semantics."""
+    return run_completion(
+        prompt=prompt,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        stream=True,
+        stop=stop,
+        timeout_seconds=timeout_seconds,
+    )

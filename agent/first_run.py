@@ -403,6 +403,18 @@ def run() -> int:
     # use_mlock: only beneficial if RAM is large
     cfg["use_mlock"] = ram_gb >= 24
 
+    if yn("  Apply low-resource 'potato' preset (tighter limits, Chroma off)? Recommended only for weak PCs.", False):
+        try:
+            from config_schema import SETTINGS_PRESETS, get_editable_keys
+
+            ek = get_editable_keys()
+            for k, v in SETTINGS_PRESETS.get("potato", {}).items():
+                if k in ek:
+                    cfg[k] = v
+            print("  ✓  Potato preset merged (see docs/POTATO_MODE.md).")
+        except Exception as e:
+            print(f"  [!] Potato preset skipped: {e}")
+
     save_config(cfg)
 
     print()

@@ -227,6 +227,7 @@ def call_layla_sync(
     aspect_id: str = "morrigan",
     timeout: int = 60,
     max_response_chars: int = 4000,
+    persona_focus: str = "",
 ) -> str:
     """Sync HTTP POST to Layla /agent. Uses urllib (no aiohttp)."""
     url = get_agent_url() + "/agent"
@@ -238,6 +239,9 @@ def call_layla_sync(
         "allow_run": allow_run,
         "aspect_id": aspect_id,
     }
+    pf = (persona_focus or "").strip()
+    if pf:
+        payload["persona_focus"] = pf
     try:
         import urllib.request
         raw = json.dumps(payload).encode("utf-8")
@@ -266,6 +270,7 @@ async def call_layla_async(
     aspect_id: str = "morrigan",
     timeout: int = 60,
     max_response_chars: int = 4000,
+    persona_focus: str = "",
 ) -> str:
     """Async HTTP POST to Layla /agent. For Discord, Slack, Telegram."""
     url = get_agent_url() + "/agent"
@@ -277,6 +282,9 @@ async def call_layla_async(
         "allow_run": allow_run,
         "aspect_id": aspect_id,
     }
+    pf = (persona_focus or "").strip()
+    if pf:
+        payload["persona_focus"] = pf
     try:
         import aiohttp
         async with aiohttp.ClientSession() as session:
@@ -291,3 +299,27 @@ async def call_layla_async(
     except Exception as e:
         logger.exception("Layla API call failed")
         return f"Could not reach Layla: {e}"
+
+
+async def save_learning_async(
+    content: str,
+    kind: str = "fact",
+    tags: str = "",
+    timeout: int = 30,
+) -> dict:
+    """POST /learn/ — explicit operator notes from transports (e.g. Discord /note)."""
+    url = get_agent_url().rstrip("/") + "/learn/"
+    payload: dict = {"content": content, "type": kind}
+    if (tags or "").strip():
+        payload["tags"] = tags.strip()[:500]
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
+                data = await resp.json()
+                if resp.status != 200:
+                    return {"ok": False, "error": data.get("error", f"HTTP {resp.status}")}
+                return data if isinstance(data, dict) else {"ok": False, "error": str(data)}
+    except Exception as e:
+        logger.exception("save_learning_async failed")
+        return {"ok": False, "error": str(e)}

@@ -68,7 +68,7 @@ def run_autonomous_study_for_plan(plan: dict) -> str | None:
                 if not fact.endswith(":"):  # skip section headers
                     save_learning(content=f"[{topic}] {fact}", kind="fact", confidence=0.9, source="study_service")
                     saved += 1
-            if saved >= 3:
+            if saved >= 5:
                 break
         # If no numbered items found, save the whole summary as one fact
         if saved == 0 and len(summary) >= 60:

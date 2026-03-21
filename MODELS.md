@@ -3,6 +3,8 @@
 Layla runs any GGUF-format model via llama.cpp.  
 Pick the right one for your hardware. Put the `.gguf` file in the `models/` folder.
 
+**Very tight hardware:** Use a small Tier 3–4 model *and* apply **potato mode** (Web UI → Settings → *Apply potato preset*, or `POST /settings/preset` with `{"preset":"potato"}`). See [docs/POTATO_MODE.md](docs/POTATO_MODE.md).
+
 ---
 
 ## How to pick
@@ -136,6 +138,23 @@ wget -P models/ "https://huggingface.co/.../resolve/main/model.Q4_K_M.gguf"
 | `completion_max_tokens` | Max tokens per reply. 256 is fast. 512–1024 for longer outputs. |
 | `temperature` | How creative/random. `0.1` = focused. `0.7` = creative. |
 | `uncensored` | `true` = no content filtering. Layla will respond to anything. |
+
+---
+
+## Boss / minion (dual GGUF)
+
+Use a **small fast** model for short chat turns and a **larger** model for coding and reasoning when you have enough RAM (or accept the risk of forcing dual load).
+
+1. Put both `.gguf` files under `models/` (or your configured `models_dir`).
+2. In `agent/runtime_config.json`:
+   - **`model_filename`** (or **`coding_model`**) — heavy / agent model.
+   - **`chat_model`** or **`models.fast`** — fast chat model basename.
+   - Optional: **`chat_model_path`** / **`agent_model_path`** — absolute paths to existing files (basename must still resolve under `models_dir` for loading unless you use the same filename there).
+   - **`dual_model_threshold_gb`** — minimum **free** system RAM (GB) before dual routing activates (default `24`). Lower it if you know both models fit.
+   - **`force_dual_models`** — if `true`, skip the RAM gate (operator accepts possible OOM). Default `false`.
+   - **`route_default_to_chat_model`** — if `true`, heuristic class `default` uses the fast chat model when a chat/fast model is configured. Default `false`.
+
+`GET /health` and `GET /platform/models` include a **`model_routing`** object (`routing_enabled`, `dual_models_active`, resolved `chat_basename` / `agent_basename`, etc.) for debugging.
 
 ---
 

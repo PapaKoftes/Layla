@@ -1,12 +1,16 @@
 # Architecture — One-Page Overview
 
-> For the full AI operations manual (file map, rules, style guide), see **`AGENTS.md`**.
+> For a **stable system summary** (before deep scans), see **`PROJECT_BRAIN.md`**.  
+> For the full AI operations manual (file map, rules, style guide), see **`AGENTS.md`**.  
+> **Production guarantees** (determinism boundaries, cost caps, safety, observability): **`docs/PRODUCTION_CONTRACT.md`**.  
+> **Canonical lifecycle** (request → tool → approval → memory): **`docs/GOLDEN_FLOW.md`**.  
+> **Subsystem technical depth:** **`docs/MODULE_SWEEP_STATUS.md`** (registry) and linked **`docs/*_MODULE_SECOND_SWEEP.md`** per cluster.
 
 ---
 
 ## Pinned versions and paths
 
-- **Python**: 3.11+ (tested 3.11–3.12). Dependencies: `agent/requirements.txt`.
+- **Python**: **3.11 or 3.12 only** (`requires-python` in `pyproject.toml`; CI tests 3.11–3.12). Dependencies: `agent/requirements.txt`.
 - **Database**: SQLite at **repo root** `layla.db`. All persistent memory (learnings, study_plans, wakeup_log, audit, aspect_memories, project_context, capabilities, **telemetry_events**) lives here.
 - **Config**: `agent/runtime_config.json` (gitignored). Template at `agent/runtime_config.example.json`.
 - **Model**: `models/<filename>.gguf` (gitignored). Set `model_filename` in config.
@@ -25,7 +29,8 @@ Client
       /approve, /pending       → routers/approvals.py
       /voice/transcribe        → services/stt.py     (faster-whisper)
       /voice/speak             → services/tts.py     (kokoro-onnx)
-      /health, /health?deep=true, /usage, /undo, /version, /update/* → main.py (inline)
+      /health, /health?deep=true, /health/deps, /usage, /undo, /version, /update/* → main.py (inline; `active_model`, `effective_config`, `features_enabled`, `dependencies`; `model_loaded_status` may include `recovery` for missing GGUF or `llama_cpp`; `knowledge_index_*`; `effective_limits`; `cache_stats` + `response_cache_stats`; see `docs/PRODUCTION_CONTRACT.md`, `docs/GOLDEN_FLOW.md`)
+      /settings, /settings/schema, /settings/preset → main.py (schema-driven UI + named config merges, e.g. potato preset)
       /knowledge/ingest, /knowledge/ingest/sources → main.py (doc ingestion)
       /workspace/index         → main.py (semantic codebase indexing)
       /v1/*, /ui               → main.py (inline)
@@ -35,7 +40,11 @@ Client
 
 **Slack / Telegram** (optional): `transports/` — Socket Mode Slack and Telegram polling; same `/agent` bridge as Discord.
 
-**Transport inbound policy** (optional, OpenClaw-style): `transports/base.py` — env `LAYLA_TRANSPORT_ALLOWLIST`, `LAYLA_TRANSPORT_PAIRING_SECRET` (`/pair`), config `transport_allowlist`, `transport_require_allowlist`. Paired ids: repo-root `.layla_transport_paired.json` (gitignored). See `docs/OPENCLAW_ALIGNMENT.md`, `docs/OPENCLAW_BRIDGE.md`.
+**Transport inbound policy** (optional, OpenClaw-style): `transports/base.py` — env `LAYLA_TRANSPORT_ALLOWLIST`, `LAYLA_TRANSPORT_PAIRING_SECRET` (`/pair`), config `transport_allowlist`, `transport_require_allowlist`. Paired ids: repo-root `.layla_transport_paired.json` (gitignored). See `docs/OPENCLAW_ALIGNMENT.md`, `docs/OPENCLAW_BRIDGE.md`. **Integrations sweep:** `docs/INTEGRATIONS_MODULE_SECOND_SWEEP.md`.
+
+**Operator surfaces (local):** **`cursor-layla-mcp/server.py`** — MCP stdio server; `LAYLA_BASE_URL` (default `http://127.0.0.1:8000`) → `POST /agent`, `/approve`, `/pending`, etc. **`layla.py`** (repo root) — CLI via httpx to `http://localhost:8000`. Deep pass: `docs/MCP_MODULE_SECOND_SWEEP.md`.
+
+**Geometry subsystem:** `agent/layla/geometry/` — versioned `GeometryProgram`, sandboxed `execute_program()`, optional HTTP CAD bridge (`geometry_external_bridge_url`). Sweep: `docs/GEOMETRY_MODULE_SECOND_SWEEP.md`.
 
 **Sandbox runners** (optional paths): `services/sandbox/shell_runner.py` and `services/sandbox/python_runner.py` — timeouts and optional shell allowlist; wired from `shell` / `run_python` tools.
 **Fast chat path**: `routers/agent.py` short-circuits trivial greeting/ack turns and can serve cached short responses via `services/response_cache.py` when enabled.
@@ -47,7 +56,7 @@ Client
 **agent_loop.autonomous_run():**
 1. `runtime_safety.load_config()` — TTL-cached, hot-path safe
 1a. **`services/reasoning_classifier.classify_reasoning_need()`** — heuristic `none` | `light` | `deep`; stored as `state["reasoning_mode"]`, returned in API/UI. On `performance_mode: low`, `deep` is capped to `light`. **`none`** skips planner (`should_plan` short-circuited); **`light`** and **`none`** skip streaming self-reflection (`stream_reason` `skip_self_reflection`).
-1b. **Task model routing** (when `tool_routing_enabled` and `model_router.is_routing_enabled()`): `classify_task(goal, context)` → `set_model_override` so `llm_gateway` loads task GGUFs via `resolve_model_path`. Additionally, every `run_completion()` sets a routing-prompt ContextVar so `_effective_model_filename()` applies `select_model` / `get_best_llm_filename_for_task` when override is unset (internal JSON/decision prompts are excluded). Multi-model cache `_llm_by_path`; serialize lock is `RLock`. Optional `completion_cache_enabled` caches non-stream dict responses briefly; cache key includes **model basename + temperature + max_tokens** + routing tag + prompt; `completion_cache_max_entries` caps size.
+1b. **Task model routing** (when `tool_routing_enabled` and `model_router.is_routing_enabled()`): `classify_task_for_routing(goal, context, cfg)` → `set_model_override` so `llm_gateway` loads task GGUFs via `resolve_model_path`. Dual-model mode: when `resource_manager.should_use_dual_models()` (free RAM ≥ `dual_model_threshold_gb` or `force_dual_models`), `_effective_model_filename()` picks chat vs agent basenames via `resolve_dual_model_basenames()` (`chat_model_path` / `agent_model_path` or `chat_model` / `coding_model` / `model_filename`). Every `run_completion()` sets a routing-prompt ContextVar so `_effective_model_filename()` applies the same classification when override is unset (internal JSON/decision prompts are excluded). Otherwise `select_model` / `get_best_llm_filename_for_task` apply. Multi-model cache `_llm_by_path`; serialize lock is `RLock`. Optional `completion_cache_enabled` caches non-stream dict responses briefly; cache key includes **model basename + temperature + max_tokens** + routing tag + prompt; `completion_cache_max_entries` caps size. **`GET /health`** and **`GET /platform/models`** expose `model_routing` (routing flags + resolved basenames).
 2. `orchestrator.select_aspect()` — keyword-based, loads `personalities/*.json`
 3. `_build_system_head()` — identity + knowledge RAG (BM25+vector+FTS5+rerank) + learnings + CoT; passes through `context_manager.build_system_prompt()` for token budgets and deduplication
 4. **Cognitive workspace** (if `enable_cognitive_workspace`): generate approaches → evaluate → choose best; inject `strategy_hint` into decision prompt and plan context
@@ -144,6 +153,9 @@ Client
 | `agent/routers/approvals.py` | `POST /approve`, `GET /pending` |
 | `agent/routers/study.py` | `GET /wakeup`, `/study_plans` |
 | `agent/ui/index.html` | Web UI: chat, aspect selector, panels (Health, Models, Knowledge, Plugins, Study, Memory, Research, Help) |
+| `agent/layla/geometry/executor.py` | `execute_program()`, `list_framework_status()` — sandbox + backends + optional `cad_bridge_fetch` |
+| `cursor-layla-mcp/server.py` | Cursor MCP: `chat_with_layla`, approvals, learn/study tools → localhost FastAPI |
+| `layla.py` | Operator CLI: `ask`, `wakeup`, `approve`, `pending`, `study`, … → httpx to agent |
 | `personalities/*.json` | Aspect definitions. Loaded dynamically — never hardcode the list. |
 
 ---

@@ -4,6 +4,7 @@ Resource manager for load-aware scheduling and hardware hints.
 from __future__ import annotations
 
 import heapq
+import logging
 import threading
 import time
 from contextlib import contextmanager
@@ -11,6 +12,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import runtime_safety
+
+logger = logging.getLogger("layla")
+_force_dual_models_warned = False
 
 PRIORITY_CHAT = 0
 PRIORITY_AGENT = 1
@@ -68,7 +72,15 @@ def classify_load() -> dict:
 
 
 def should_use_dual_models() -> bool:
+    global _force_dual_models_warned
     cfg = runtime_safety.load_config()
+    if cfg.get("force_dual_models"):
+        if not _force_dual_models_warned:
+            logger.warning(
+                "force_dual_models=true — dual GGUF routing enabled without RAM gate; OOM risk is operator-accepted"
+            )
+            _force_dual_models_warned = True
+        return True
     threshold = float(cfg.get("dual_model_threshold_gb", 24))
     available = _load_snapshot().get("available_ram_gb", 0.0)
     return available >= threshold
