@@ -2,6 +2,10 @@
 
 Procedures for common setup and extension tasks. See also README.md, ARCHITECTURE.md, and REMOTE_ARCHITECTURE.md.
 
+Read [`PROJECT_BRAIN.md`](../PROJECT_BRAIN.md) first for stable context; use module sweeps for subsystem depth.
+
+**Module second sweeps:** [MODULE_SWEEP_TEMPLATE.md](MODULE_SWEEP_TEMPLATE.md) — skeleton for `*_MODULE_SECOND_SWEEP.md` reports; tracking table [MODULE_SWEEP_STATUS.md](MODULE_SWEEP_STATUS.md).
+
 **Config:** [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — full list of `runtime_config.json` keys for advanced users.
 
 **Ethics:** [ETHICAL_AI_PRINCIPLES.md](ETHICAL_AI_PRINCIPLES.md) — core ethical AI principles; all behavior must align.
@@ -72,14 +76,20 @@ Procedures for common setup and extension tasks. See also README.md, ARCHITECTUR
 1. **Create personality file**: Add `personalities/<id>.json` (e.g. `personalities/nyx.json`) with at least:
    - `id`, `name`
    - `role` or `voice` (short description)
-   - `systemPromptAddition` (optional)
+   - `systemPromptAddition` (injected into the system head for that aspect)
    See existing files in `personalities/` for structure.
 
-2. **Register in orchestrator**: In `agent/orchestrator.py`, ensure the aspect is loaded (e.g. via `_load_aspects()` from the personalities directory). Add trigger phrases or explicit routing if needed (see `.cursor/rules/layla-assistant.mdc` for trigger table).
+2. **Voice contract & prompt shape** (recommended): At the top of `systemPromptAddition`, use a short **VOICE CONTRACT** (2–4 lines the model should embody). Then structured sections:
+   - **## Core** — what this facet is responsible for
+   - **## Chat style** — tone, pacing, formatting
+   - **## Hard limits** — approval/sandbox awareness, refusal boundaries, privacy/consent (especially for Echo-style continuity and Lilith ethics)
+   Optional fields like `traits`, `triggers`, `decision_bias`, `nsfw_triggers`, `systemPromptAdditionNsfw` stay as today; do not remove keys the orchestrator expects unless you update `agent/orchestrator.py`.
 
-3. **Optional**: Add to deliberation roster, study bias, or decision bias in the orchestrator so the aspect is used for multi-aspect prompts when `show_thinking` is true.
+3. **Register in orchestrator**: In `agent/orchestrator.py`, ensure the aspect is loaded (e.g. via `_load_aspects()` from the personalities directory). Add trigger phrases or explicit routing if needed (see `.cursor/rules/layla-assistant.mdc` for trigger table).
 
-4. **Docs**: Update `.cursor/rules/layla-assistant.mdc` (or equivalent) if the aspect is user-facing so Cursor/MCP knows the new aspect id.
+4. **Optional**: Add to deliberation roster, study bias, or decision bias in the orchestrator so the aspect is used for multi-aspect prompts when `show_thinking` is true.
+
+5. **Docs**: Update `.cursor/rules/layla-assistant.mdc` (or equivalent) if the aspect is user-facing so Cursor/MCP knows the new aspect id.
 
 ---
 
@@ -100,6 +110,18 @@ Procedures for common setup and extension tasks. See also README.md, ARCHITECTUR
 4. **PDF**: Place `.pdf` files under `knowledge/`. If `pypdf` is installed (`pip install pypdf`), they are indexed like `.md`/`.txt` (no front matter; first 50 pages). Without pypdf, PDFs are skipped.
 
 5. **Notion**: Export pages to Markdown and put the files under `knowledge/`. A future Notion API loader is optional (see MILESTONES M6).
+
+---
+
+## Geometry programs (CAD-style ops)
+
+Layla can execute **versioned JSON programs** (`GeometryProgram` v1) that map to optional kernels: **ezdxf** (2D DXF), **cadquery** (3D export via subprocess), **OpenSCAD** (CLI), **trimesh** (mesh info), and an optional **HTTP bridge** for an operator-hosted CAD-sequence service.
+
+1. **Schema**: `agent/layla/geometry/schema.py` — ops such as `dxf_begin`, `dxf_line`, `dxf_save`, `cq_box`, `openscad_render`, `mesh_info`, `cad_bridge_fetch`.
+2. **Tools**: `geometry_validate_program` (safe), `geometry_execute_program` (writes under workspace; **approval** + `dangerous` like `generate_gcode`), `geometry_list_frameworks` (import/CLI probes).
+3. **Config**: `geometry_frameworks_enabled`, `openscad_executable`, `geometry_subprocess_timeout_seconds`, `geometry_external_bridge_url`, `geometry_external_bridge_allow_insecure_localhost` in `runtime_config.json` (see `runtime_config.example.json`).
+4. **Capabilities**: `geometry_kernel_ezdxf`, `geometry_kernel_cadquery`, `geometry_kernel_trimesh` in `agent/capabilities/registry.py` for discovery.
+5. **Deps**: `pip install ezdxf` (minimum for DXF path); cadquery / trimesh / OpenSCAD are optional per op.
 
 ---
 

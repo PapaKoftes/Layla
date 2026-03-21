@@ -252,6 +252,60 @@
   .tab-btn.active { background: var(--violet); border-color: var(--asp); color: #fff; }
 
   .aspect-option { margin-bottom: 8px; }
+  .aspect-option .aspect-btn { margin-bottom: 0; }
+  .aspect-option.expandable .aspect-desc {
+    max-height: 0;
+    overflow: hidden;
+    margin-top: 0;
+    opacity: 0;
+    transform: translateY(-2px);
+    transition: max-height 0.22s ease, opacity 0.2s ease, margin-top 0.2s ease, transform 0.2s ease;
+  }
+  .aspect-option.expandable.expanded .aspect-desc {
+    max-height: 140px;
+    margin-top: 4px;
+    opacity: 0.85;
+    transform: translateY(0);
+  }
+  .option-card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--code-bg);
+    padding: 8px;
+    margin-top: 8px;
+  }
+  .option-card-title {
+    font-size: 0.62rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    font-family: 'Cinzel', serif;
+  }
+  .option-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    margin-bottom: 6px;
+    cursor: pointer;
+  }
+  .option-row:last-child { margin-bottom: 0; }
+  .option-row.disabled {
+    opacity: 0.45;
+    pointer-events: none;
+  }
+  .option-pill {
+    display: inline-block;
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--asp);
+    border: 1px solid var(--asp-mid);
+    border-radius: 10px;
+    padding: 1px 6px;
+    margin-left: 4px;
+  }
   .aspect-desc {
     display: block;
     font-size: 0.65rem;
@@ -507,6 +561,21 @@
   .msg:hover .msg-copy-btn { opacity: 1; }
   .msg-copy-btn:hover { color: var(--asp); border-color: var(--asp); }
   .msg-copy-btn.copied { color: #4dff88; border-color: #4dff88; }
+  .msg-remember-btn {
+    margin-left: 4px;
+    font-size: 0.6rem;
+    padding: 2px 6px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 2px;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+  }
+  .msg:hover .msg-remember-btn { opacity: 1; }
+  .msg-remember-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .msg-remember-btn:disabled { opacity: 0.4; cursor: wait; }
   .msg-search-hit .msg-bubble { outline: 2px solid var(--asp); box-shadow: 0 0 12px var(--asp-glow); }
 
   .msg-bubble {
@@ -1046,6 +1115,7 @@
       <option value="chat">Chat</option>
     </select>
     <span id="model-status-badge" title="LLM status" style="font-size:0.68rem;opacity:0.7"></span>
+    <span id="header-system-status" title="Server status from /health" style="font-size:0.65rem;opacity:0.72;margin-left:4px;white-space:nowrap">…</span>
     <span id="reasoning-mode-badge" title="Adaptive reasoning depth for this turn" style="font-size:0.68rem;opacity:0.75;margin-left:4px"></span>
     <span id="cache-stats-badge" title="Completion cache hit rate. Enable: localStorage.setItem('layla_show_cache_stats','1')" style="font-size:0.68rem;opacity:0.65;margin-left:4px;display:none"></span>
     <a href="/system_export" target="_blank" title="Full system export (JSON)">⊕ export</a>
@@ -1065,65 +1135,78 @@
     <div>
       <h3>Voices</h3>
       <p class="sidebar-hint">Talk to Layla or choose a voice. She remembers and grows with you.</p>
-      <div class="aspect-option">
-        <button class="aspect-btn active" onclick="setAspect('morrigan')" id="btn-morrigan">⚔ Morrigan</button>
+      <div class="aspect-option expandable expanded" id="aspect-opt-morrigan">
+        <button class="aspect-btn active" onclick="setAspect('morrigan');toggleAspectDescription('morrigan')" id="btn-morrigan">⚔ Morrigan</button>
         <span class="aspect-desc">Software engineering: coding, debugging, refactoring, and system architecture.</span>
       </div>
-      <div class="aspect-option">
-        <button class="aspect-btn" onclick="setAspect('nyx')" id="btn-nyx">✦ Nyx</button>
+      <div class="aspect-option expandable" id="aspect-opt-nyx">
+        <button class="aspect-btn" onclick="setAspect('nyx');toggleAspectDescription('nyx')" id="btn-nyx">✦ Nyx</button>
         <span class="aspect-desc">Research and analysis: deep dives, technical explanations, and synthesis.</span>
       </div>
-      <div class="aspect-option">
-        <button class="aspect-btn" onclick="setAspect('echo')" id="btn-echo">◎ Echo</button>
+      <div class="aspect-option expandable" id="aspect-opt-echo">
+        <button class="aspect-btn" onclick="setAspect('echo');toggleAspectDescription('echo')" id="btn-echo">◎ Echo</button>
         <span class="aspect-desc">Continuity and context: memory tracking, user patterns, and long-term consistency.</span>
       </div>
-      <div class="aspect-option">
-        <button class="aspect-btn" onclick="setAspect('eris')" id="btn-eris">⚡ Eris</button>
+      <div class="aspect-option expandable" id="aspect-opt-eris">
+        <button class="aspect-btn" onclick="setAspect('eris');toggleAspectDescription('eris')" id="btn-eris">⚡ Eris</button>
         <span class="aspect-desc">Creative ideation: brainstorming, unconventional options, and exploratory thinking.</span>
       </div>
-      <div class="aspect-option">
-        <button class="aspect-btn" onclick="setAspect('cassandra')" id="btn-cassandra">⌖ Cassandra</button>
+      <div class="aspect-option expandable" id="aspect-opt-cassandra">
+        <button class="aspect-btn" onclick="setAspect('cassandra');toggleAspectDescription('cassandra')" id="btn-cassandra">⌖ Cassandra</button>
         <span class="aspect-desc">Rapid critique: direct first-pass judgments and blunt feedback.</span>
       </div>
-      <div class="aspect-option">
-        <button class="aspect-btn" onclick="setAspect('lilith')" id="btn-lilith">⊛ Lilith</button>
+      <div class="aspect-option expandable" id="aspect-opt-lilith">
+        <button class="aspect-btn" onclick="setAspect('lilith');toggleAspectDescription('lilith')" id="btn-lilith">⊛ Lilith</button>
         <span class="aspect-desc">Safety and boundaries: ethics checks, refusal logic, and high-risk decision review.</span>
       </div>
     </div>
     <div>
       <h3>Options</h3>
-      <div style="font-size:0.65rem;color:var(--text-dim);letter-spacing:0.08em;margin-bottom:6px">Chat</div>
-      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;margin-bottom:6px" title="See her reply as it types">
-        <input type="checkbox" id="stream-toggle"> Stream
-      </label>
-      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;margin-bottom:6px" title="Let her think with her inner voices before answering">
-        <input type="checkbox" id="show-thinking"> Her thoughts
-      </label>
-      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;margin-bottom:6px" title="Use reasoning budget for thinking models (DeepSeek R1, Qwen QwQ)">
-        <input type="checkbox" id="reasoning-effort"> Think harder
-      </label>
-      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;margin-bottom:10px" title="Speak final reply (browser TTS)">
-        <input type="checkbox" id="tts-toggle"> Speak replies
-      </label>
-      <div style="font-size:0.65rem;color:#b04040;letter-spacing:0.08em;margin-bottom:6px">Permissions</div>
-      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;color:#dd6666;margin-bottom:4px" title="Allow Layla to modify files">
-        <input type="checkbox" id="allow-write"> Allow Write
-      </label>
-      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;color:#dd6666" title="Allow Layla to run commands">
-        <input type="checkbox" id="allow-run"> Allow Run
-      </label>
-      <label style="display:block;font-size:0.7rem;color:var(--text-dim);margin-top:10px;margin-bottom:4px">Workspace path</label>
-      <div style="display:flex;gap:4px;margin-bottom:4px">
-        <select id="workspace-presets" onchange="onWorkspacePresetSelect()" style="flex:1;max-width:140px;padding:4px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);font-size:0.7rem;border-radius:2px">
-          <option value="">— Preset —</option>
-        </select>
-        <button type="button" onclick="addWorkspacePreset()" style="font-size:0.65rem;padding:4px 8px;background:var(--asp-mid);border:1px solid var(--asp);color:var(--text);border-radius:2px;cursor:pointer">Add current</button>
-        <button type="button" onclick="removeWorkspacePreset()" style="font-size:0.65rem;padding:4px 8px;background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:2px;cursor:pointer">Remove</button>
+      <div class="option-card">
+        <div class="option-card-title">Enabled by default <span class="option-pill">quick</span></div>
+        <label class="option-row" title="See her reply as it types">
+          <input type="checkbox" id="stream-toggle"> Stream
+        </label>
+        <label class="option-row" title="Let her think with her inner voices before answering">
+          <input type="checkbox" id="show-thinking"> Her thoughts
+        </label>
+        <label class="option-row" title="Speak final reply (browser TTS)">
+          <input type="checkbox" id="tts-toggle"> Speak replies
+        </label>
       </div>
-      <input type="text" id="workspace-path" placeholder="e.g. C:\github\myproject" style="width:100%;padding:6px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);font-size:0.75rem;border-radius:2px">
-      <button type="button" class="aspect-btn" id="research-btn" onclick="sendResearch()" style="margin-top:8px;background:var(--violet);border-color:var(--accent)">&#128269; Research repo</button>
 
-      <details class="mission-details" style="margin-top:14px">
+      <div class="option-card">
+        <div class="option-card-title">Advanced Chat</div>
+        <label class="option-row" id="reasoning-effort-row" title="Use extra reasoning budget for harder prompts">
+          <input type="checkbox" id="reasoning-effort"> Think harder
+        </label>
+      </div>
+
+      <div class="option-card">
+        <div class="option-card-title">Permissions</div>
+        <label class="option-row" style="color:#dd6666" title="Allow Layla to modify files">
+          <input type="checkbox" id="allow-write"> Allow Write
+        </label>
+        <label class="option-row" style="color:#dd6666" title="Allow Layla to run commands">
+          <input type="checkbox" id="allow-run"> Allow Run
+        </label>
+      </div>
+
+      <div class="option-card">
+        <div class="option-card-title">Workspace</div>
+        <label style="display:block;font-size:0.7rem;color:var(--text-dim);margin-bottom:4px">Workspace path</label>
+        <div style="display:flex;gap:4px;margin-bottom:4px">
+          <select id="workspace-presets" onchange="onWorkspacePresetSelect()" style="flex:1;max-width:140px;padding:4px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);font-size:0.7rem;border-radius:2px">
+          <option value="">— Preset —</option>
+          </select>
+          <button type="button" id="workspace-add-btn" onclick="addWorkspacePreset()" style="font-size:0.65rem;padding:4px 8px;background:var(--asp-mid);border:1px solid var(--asp);color:var(--text);border-radius:2px;cursor:pointer">Add current</button>
+          <button type="button" id="workspace-remove-btn" onclick="removeWorkspacePreset()" style="font-size:0.65rem;padding:4px 8px;background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:2px;cursor:pointer">Remove</button>
+        </div>
+        <input type="text" id="workspace-path" placeholder="e.g. C:\github\myproject" style="width:100%;padding:6px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);font-size:0.75rem;border-radius:2px">
+        <button type="button" class="aspect-btn" id="research-btn" onclick="sendResearch()" style="margin-top:8px;background:var(--violet);border-color:var(--accent)">&#128269; Research repo</button>
+      </div>
+
+      <details class="mission-details option-card" style="margin-top:10px">
         <summary class="mission-summary">Research Mission</summary>
         <div style="font-size:0.7rem;color:var(--text-dim);margin:6px 0 4px">Depth:</div>
         <div style="display:flex;gap:10px;margin-bottom:6px">
@@ -1194,7 +1277,7 @@
       <button class="panel-tab" data-panel="plugins" onclick="showPanelTab('plugins');refreshPlatformPlugins()">Plugins</button>
       <button class="panel-tab" data-panel="projects" onclick="showPanelTab('projects');refreshPlatformProjects()">Projects</button>
       <button class="panel-tab" data-panel="timeline" onclick="showPanelTab('timeline');refreshPlatformTimeline()">Timeline</button>
-      <button class="panel-tab" data-panel="study" onclick="showPanelTab('study')">Study</button>
+      <button class="panel-tab" data-panel="study" onclick="showPanelTab('study');refreshStudyPlans();loadStudyPresetsAndSuggestions()">Study</button>
       <button class="panel-tab" data-panel="memory" onclick="showPanelTab('memory')">Memory</button>
       <button class="panel-tab" data-panel="research" onclick="showPanelTab('research')">Research</button>
       <button class="panel-tab" data-panel="help" onclick="showPanelTab('help')">Help</button>
@@ -1254,6 +1337,16 @@
     <div class="panel-pane" id="panel-study" data-panel="study">
       <div class="panel-title">Study Plans</div>
       <div id="study-list"><span style="color:var(--text-dim);font-size:0.75rem">Add a topic — Layla will study it when you're active</span></div>
+      <div id="study-presets-wrap" style="margin-top:8px">
+        <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:4px">Quick picks (presets)</div>
+        <div id="study-presets" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px"></div>
+        <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:4px">From workspace (sandbox root)</div>
+        <div id="study-suggestions" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+          <button type="button" class="approve-btn" style="font-size:0.65rem;padding:4px 8px" onclick="studyTopicFromChatInput()">Topic from chat input</button>
+          <button type="button" class="approve-btn" style="font-size:0.65rem;padding:4px 8px" onclick="studyTopicFromLastUserMessage()">Topic from last message</button>
+        </div>
+      </div>
       <div class="study-add">
         <input type="text" id="study-input" placeholder="New topic..." onkeydown="if(event.key==='Enter')addStudyPlan()">
         <button onclick="addStudyPlan()">+</button>
@@ -1262,7 +1355,7 @@
     <div class="panel-pane" id="panel-memory" data-panel="memory">
       <div class="panel-title">Memory Search</div>
       <input id="memory-search" placeholder="Search memories…" oninput="onMemorySearch(this.value)" autocomplete="off">
-      <div id="memory-search-results" style="font-size:0.72rem;max-height:220px;overflow-y:auto"></div>
+      <div id="memory-search-results" style="font-size:0.72rem;max-height:220px;overflow-y:auto"><span style="color:var(--text-dim);font-size:0.7rem">Type to search learnings (local filter)</span></div>
     </div>
     <div class="panel-pane" id="research-mission-panel" data-panel="research">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:6px">
@@ -1473,6 +1566,42 @@ function setAspect(id, force) {
 }
 window.setAspect = setAspect;
 
+function toggleAspectDescription(id) {
+  const all = document.querySelectorAll('.aspect-option.expandable');
+  all.forEach(el => {
+    const isTarget = el.id === ('aspect-opt-' + id);
+    el.classList.toggle('expanded', isTarget ? !el.classList.contains('expanded') : false);
+  });
+}
+window.toggleAspectDescription = toggleAspectDescription;
+
+function refreshOptionDependencies() {
+  const showThinking = document.getElementById('show-thinking')?.checked ?? false;
+  const reasoningRow = document.getElementById('reasoning-effort-row');
+  const reasoningBox = document.getElementById('reasoning-effort');
+  if (reasoningRow && reasoningBox) {
+    const disabled = !showThinking;
+    reasoningRow.classList.toggle('disabled', disabled);
+    reasoningBox.disabled = disabled;
+    if (disabled) reasoningBox.checked = false;
+  }
+
+  const wp = (document.getElementById('workspace-path')?.value || '').trim();
+  const addBtn = document.getElementById('workspace-add-btn');
+  const removeBtn = document.getElementById('workspace-remove-btn');
+  if (addBtn) {
+    addBtn.disabled = !wp;
+    addBtn.style.opacity = wp ? '1' : '0.45';
+    addBtn.style.pointerEvents = wp ? 'auto' : 'none';
+  }
+  if (removeBtn) {
+    removeBtn.disabled = !wp;
+    removeBtn.style.opacity = wp ? '1' : '0.45';
+    removeBtn.style.pointerEvents = wp ? 'auto' : 'none';
+  }
+}
+window.refreshOptionDependencies = refreshOptionDependencies;
+
 function cleanLaylaText(s) {
   if (typeof s !== 'string') return (s == null || s === undefined) ? '' : String(s);
   return s.replace(/\s*\[EARNED_TITLE:\s*[^\]]+\]\s*$/gi, '').trim();
@@ -1492,7 +1621,29 @@ const TTS_VOICE_STYLES = {
   cassandra: { rate: 1.1, pitch: 1.05 },
   lilith: { rate: 0.9, pitch: 0.98 },
 };
-const UX_STATE_LABELS = { thinking: 'Thinking', verifying: 'Verifying', changing_approach: 'Changing approach', reframing_objective: 'Reframing objective' };
+const UX_STATE_LABELS = {
+  connecting: 'Connecting',
+  waiting_first_token: 'Waiting for first token',
+  streaming: 'Streaming response',
+  tool_running: 'Running tool',
+  verifying: 'Verifying',
+  thinking: 'Thinking',
+  stalled: 'Stalled',
+  retry_hint: 'Retry suggested',
+  changing_approach: 'Changing approach',
+  reframing_objective: 'Reframing objective'
+};
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const merged = { ...options, signal: options.signal || ctrl.signal };
+    return await fetch(url, merged);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function speakReply(text, aspectId) {
   if (!text || typeof speechSynthesis === 'undefined') return;
@@ -1526,7 +1677,60 @@ function renderPromptTilesAndEmptyState() {
       </div>`;
 }
 
-function addMsg(role, text, aspectName, deliberated, steps, uxStates, memoryInfluenced) {
+function _renderReasoningTreeSummary(container, summary) {
+  if (!summary || !Array.isArray(summary.nodes) || summary.nodes.length === 0) return;
+  const wrap = document.createElement('details');
+  wrap.className = 'tool-trace';
+  const mode = summary.reasoning_mode ? (' • ' + summary.reasoning_mode) : '';
+  wrap.innerHTML = '<summary>Reasoning summary (' + summary.nodes.length + mode + ')</summary>';
+  const body = document.createElement('div');
+  body.className = 'tool-trace-content';
+  const lines = [];
+  if (summary.goal) lines.push('Goal: ' + summary.goal);
+  summary.nodes.forEach((n, i) => {
+    lines.push((i + 1) + '. [' + (n.phase || 'step') + '] ' + (n.action || 'reason') + ' -> ' + (n.outcome_summary || 'ok'));
+  });
+  if (summary.final_summary) lines.push('Final: ' + summary.final_summary);
+  body.textContent = lines.join('\n');
+  wrap.appendChild(body);
+  container.appendChild(wrap);
+}
+
+async function rememberLaylaBubble(bubble, btn) {
+  const txt = (bubble && (bubble.innerText || bubble.textContent) || '').trim();
+  if (!txt) {
+    showToast('Nothing to remember');
+    return;
+  }
+  if (txt.length > 12000) {
+    showToast('Message too long; copy a shorter excerpt');
+    return;
+  }
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch('/learn/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: txt, type: 'fact', tags: 'ui:remember' }),
+    });
+    const d = await res.json();
+    if (d.ok) {
+      showToast('Saved to learnings');
+      if (btn) {
+        btn.textContent = 'saved';
+        setTimeout(function() { btn.textContent = 'remember'; btn.disabled = false; }, 2000);
+      }
+    } else {
+      showToast(d.error || 'Save failed');
+      if (btn) btn.disabled = false;
+    }
+  } catch (e) {
+    showToast('Error: ' + (e && e.message || e));
+    if (btn) btn.disabled = false;
+  }
+}
+
+function addMsg(role, text, aspectName, deliberated, steps, uxStates, memoryInfluenced, reasoningTreeSummary) {
   hideEmpty();
   const chat = document.getElementById('chat');
   if (!chat) return;
@@ -1595,6 +1799,17 @@ function addMsg(role, text, aspectName, deliberated, steps, uxStates, memoryInfl
       if (txt) navigator.clipboard?.writeText(txt).then(() => { copyBtn.textContent = 'copied'; copyBtn.classList.add('copied'); setTimeout(() => { copyBtn.textContent = 'copy'; copyBtn.classList.remove('copied'); }, 1500); }).catch(() => {});
     };
     label.appendChild(copyBtn);
+    const rememberBtn = document.createElement('button');
+    rememberBtn.className = 'msg-remember-btn';
+    rememberBtn.type = 'button';
+    rememberBtn.textContent = 'remember';
+    rememberBtn.title = 'Save this reply as a learning';
+    rememberBtn.setAttribute('aria-label', 'Remember this message');
+    rememberBtn.onclick = (ev) => {
+      ev.stopPropagation();
+      rememberLaylaBubble(bubble, rememberBtn);
+    };
+    label.appendChild(rememberBtn);
   }
   div.appendChild(label);
   div.appendChild(bubble);
@@ -1637,6 +1852,7 @@ function addMsg(role, text, aspectName, deliberated, steps, uxStates, memoryInfl
     d.innerHTML = '<span class="deliberation-label">Her thoughts</span><br>She considered this with her inner voices before answering.';
     div.appendChild(d);
   }
+  _renderReasoningTreeSummary(div, reasoningTreeSummary);
   chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
 }
@@ -1988,7 +2204,7 @@ async function refreshMissionStatus() {
   const resumableEl = document.getElementById('mission-status-resumable');
   if (!lineEl) return;
   try {
-    const res = await fetch('/research_mission/state');
+    const res = await fetchWithTimeout('/research_mission/state', {}, 12000);
     let data = {};
     if (res.ok) try { data = await res.json(); } catch (_) {}
     const status = data.status ?? (Array.isArray(data.completed) && data.completed.length ? 'partial' : null);
@@ -2028,7 +2244,7 @@ async function showResearchTab(tab) {
   if (!contentEl) return;
   if (tab === 'last') {
     try {
-      const res = await fetch('/research_output/last');
+      const res = await fetchWithTimeout('/research_output/last', {}, 12000);
       const data = await res.ok ? res.json() : {};
       contentEl.textContent = data.content || '(no output yet)';
     } catch (_) { contentEl.textContent = '(failed to load)'; }
@@ -2037,7 +2253,7 @@ async function showResearchTab(tab) {
   const path = RESEARCH_BRAIN_PATHS[tab];
   if (!path) { contentEl.textContent = ''; return; }
   try {
-    const res = await fetch('/research_brain/file?path=' + encodeURIComponent(path));
+    const res = await fetchWithTimeout('/research_brain/file?path=' + encodeURIComponent(path), {}, 12000);
     const data = await res.ok ? res.json() : {};
     contentEl.textContent = data.content || '(no content yet)';
   } catch (_) { contentEl.textContent = '(failed to load)'; }
@@ -2189,6 +2405,7 @@ async function send() {
   if (!input) { _dbg('send() exit: no #msg-input'); return; }
   let msg = input.value.trim();
   if (!msg) { _dbg('send() exit: empty msg'); return; }
+  if (window._laylaSendBusy) { _dbg('send() exit: already in flight'); return; }
   _dbg('send() proceeding', 'msg length=' + msg.length);
 
   const ac = new AbortController();
@@ -2269,6 +2486,8 @@ async function send() {
   }
 
   const chatEl = document.getElementById('chat');
+  let _typingMetaTimer = null;
+  let _typingStartedAt = 0;
   function showTyping(uxLabel) {
     hideEmpty();
     const wrap = document.getElementById('typing-wrap');
@@ -2282,25 +2501,50 @@ async function send() {
         }
         labelEl.textContent = UX_STATE_LABELS[uxLabel] || uxLabel;
       }
+      let metaEl = wrap.querySelector('.memory-attribution');
+      if (!metaEl) {
+        metaEl = document.createElement('div');
+        metaEl.className = 'memory-attribution';
+        wrap.querySelector('.msg-bubble')?.appendChild(metaEl);
+      }
+      if (!_typingStartedAt) _typingStartedAt = Date.now();
+      const secs = Math.max(0, Math.floor((Date.now() - _typingStartedAt) / 1000));
+      metaEl.textContent = 'Status: ' + (UX_STATE_LABELS[uxLabel] || uxLabel || 'thinking') + ' | elapsed: ' + secs + 's';
       return;
     }
     const w = document.createElement('div');
     w.className = 'msg msg-layla';
     w.id = 'typing-wrap';
-    w.innerHTML = '<div class="msg-label"><span>Layla</span></div><div class="msg-bubble typing-indicator"><div class="typing-dots"><span></span><span></span><span></span></div></div>';
+    _typingStartedAt = Date.now();
+    w.innerHTML = '<div class="msg-label"><span>Layla</span></div><div class="msg-bubble typing-indicator"><div class="typing-dots"><span></span><span></span><span></span></div><div class="tool-status-label">' + (UX_STATE_LABELS.connecting || 'Connecting') + '</div><div class="memory-attribution">Status: connecting | elapsed: 0s</div></div>';
     chatEl.appendChild(w);
+    if (_typingMetaTimer) clearInterval(_typingMetaTimer);
+    _typingMetaTimer = setInterval(() => {
+      const active = document.getElementById('typing-wrap');
+      if (!active) return;
+      const metaEl = active.querySelector('.memory-attribution');
+      const status = active.querySelector('.tool-status-label')?.textContent || 'Thinking';
+      if (metaEl) {
+        const secs = Math.max(0, Math.floor((Date.now() - _typingStartedAt) / 1000));
+        metaEl.textContent = 'Status: ' + status + ' | elapsed: ' + secs + 's';
+      }
+    }, 500);
     chatEl.scrollTop = chatEl.scrollHeight;
   }
   function removeTyping() {
     const w = document.getElementById('typing-wrap');
     if (w) w.remove();
+    if (_typingMetaTimer) { clearInterval(_typingMetaTimer); _typingMetaTimer = null; }
+    _typingStartedAt = 0;
   }
 
   _dbg('send() calling fetch /agent', 'stream=' + !!streamMode);
+  window._laylaSendBusy = true;
+  try { if (typeof setHeaderAgentActivity === 'function') setHeaderAgentActivity(true); } catch (_) {}
   try {
     if (streamMode) {
       // No typing indicator in stream mode — stream div appears immediately and fills
-      const res = await fetch('/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: ac.signal });
+      const res = await fetchWithTimeout('/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: ac.signal }, 90000);
       if (!res.ok || !res.body) { let body = {}; try { const t = await res.text(); if (t) try { body = JSON.parse(t); } catch(_) { body = { response: t.length < 120 ? t : res.statusText }; } } catch(_) {} addMsg('layla', formatAgentError(res, body), null, false, null); refreshApprovals(); setCancelSendVisible(false); _activeAgentAbort = null; return; }
       const reader = res.body.getReader();
       const dec = new TextDecoder();
@@ -2314,6 +2558,30 @@ async function send() {
       div.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble" title="Click to copy"><div class="md-content"></div></div>';
       chatEl.appendChild(div);
       const bubble = div.querySelector('.md-content');
+      const streamMeta = document.createElement('div');
+      streamMeta.className = 'memory-attribution';
+      streamMeta.textContent = 'Status: connecting';
+      div.appendChild(streamMeta);
+      const streamStartedAt = Date.now();
+      let liveStatus = 'connecting';
+      const metaTimer = setInterval(() => {
+        const secs = Math.max(0, Math.floor((Date.now() - streamStartedAt) / 1000));
+        streamMeta.textContent = 'Status: ' + liveStatus + ' | elapsed: ' + secs + 's | chars: ' + (full || '').length;
+      }, 500);
+      let gotToken = false;
+      let firstTokenTimer = setTimeout(() => {
+        let statusEl = div.querySelector('.tool-status-label');
+        if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; div.querySelector('.msg-bubble')?.appendChild(statusEl); }
+        liveStatus = 'waiting_first_token';
+        statusEl.textContent = UX_STATE_LABELS.waiting_first_token;
+      }, 1200);
+      let stalledTimer = setTimeout(() => {
+        let statusEl = div.querySelector('.tool-status-label');
+        if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; div.querySelector('.msg-bubble')?.appendChild(statusEl); }
+        liveStatus = 'stalled';
+        statusEl.textContent = UX_STATE_LABELS.stalled + ' — ' + UX_STATE_LABELS.retry_hint;
+      }, 15000);
+      let streamReasoningTree = null;
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -2325,20 +2593,35 @@ async function send() {
               const obj = JSON.parse(line.slice(6));
               if (obj.ux_state) {
                 streamUxStates.push(obj.ux_state);
+                liveStatus = obj.ux_state;
                 let statusEl = div.querySelector('.tool-status-label');
                 if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; div.querySelector('.msg-bubble')?.appendChild(statusEl); }
                 statusEl.textContent = UX_STATE_LABELS[obj.ux_state] || obj.ux_state;
               }
               if (obj.tool_start) {
+                liveStatus = 'tool_running';
                 let statusEl = div.querySelector('.tool-status-label');
                 if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; div.querySelector('.msg-bubble')?.appendChild(statusEl); }
                 statusEl.textContent = (obj.tool_start === 'ddg_search' || obj.tool_start === 'web_search') ? 'Searching the web…' : ('Running ' + obj.tool_start + '…');
               }
               if (obj.token) {
-                div.querySelector('.tool-status-label')?.remove();
+                liveStatus = 'streaming';
+                if (!gotToken) {
+                  gotToken = true;
+                  clearTimeout(firstTokenTimer);
+                }
+                clearTimeout(stalledTimer);
+                stalledTimer = setTimeout(() => {
+                  let statusEl = div.querySelector('.tool-status-label');
+                  if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; div.querySelector('.msg-bubble')?.appendChild(statusEl); }
+                  liveStatus = 'stalled';
+                  statusEl.textContent = UX_STATE_LABELS.stalled + ' — ' + UX_STATE_LABELS.retry_hint;
+                }, 15000);
                 full += obj.token; let parsed = full; try { if (typeof marked !== 'undefined') parsed = sanitizeHtml(marked.parse(full)); } catch (_) {} bubble.innerHTML = parsed; bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); }); chatEl.scrollTop = chatEl.scrollHeight;
               }
               if (obj.done) {
+                clearTimeout(firstTokenTimer);
+                clearTimeout(stalledTimer);
                 if (obj.content != null && String(obj.content).trim() !== '') full = String(obj.content).trim();
                 if (obj.conversation_id) {
                   currentConversationId = String(obj.conversation_id);
@@ -2346,6 +2629,7 @@ async function send() {
                 }
                 if (Array.isArray(obj.ux_states)) streamUxStates = obj.ux_states;
                 if (Array.isArray(obj.memory_influenced)) streamMemoryInfluenced = obj.memory_influenced;
+                if (obj.reasoning_tree_summary) streamReasoningTree = obj.reasoning_tree_summary;
                 try {
                   const rmBadge = document.getElementById('reasoning-mode-badge');
                   if (rmBadge && obj.reasoning_mode) rmBadge.textContent = 'Thinking: ' + obj.reasoning_mode;
@@ -2359,6 +2643,8 @@ async function send() {
         if (gotDone) break;
       }
       removeTyping();
+      clearInterval(metaTimer);
+      streamMeta.textContent = 'Status: done | elapsed: ' + Math.max(0, Math.floor((Date.now() - streamStartedAt) / 1000)) + 's | chars: ' + (full || '').length;
       full = cleanLaylaText(full);
       let parsed = full; try { if (typeof marked !== 'undefined') parsed = sanitizeHtml(marked.parse(full)); } catch (_) {} bubble.innerHTML = parsed;
       bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); });
@@ -2391,6 +2677,7 @@ async function send() {
         mem.textContent = 'Used memory: ' + (streamMemoryInfluenced.includes('learnings') && streamMemoryInfluenced.includes('semantic_recall') ? 'learnings & recall' : streamMemoryInfluenced.includes('learnings') ? 'learnings' : 'recall');
         div.appendChild(mem);
       }
+      _renderReasoningTreeSummary(div, streamReasoningTree);
       chatEl.scrollTop = chatEl.scrollHeight;
       if (document.getElementById('tts-toggle')?.checked && full) { try { speakReply(full, currentAspect); } catch (_) {} }
       updateRetryButton();
@@ -2401,12 +2688,12 @@ async function send() {
       return;
     }
     showTyping();
-    const res = await fetch('/agent', {
+    const res = await fetchWithTimeout('/agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       signal: ac.signal,
-    });
+    }, 90000);
     removeTyping();
     if (!res.ok) {
       let body = {};
@@ -2435,7 +2722,7 @@ async function send() {
       const rm = data.reasoning_mode || data.state?.reasoning_mode;
       if (rmBadge) rmBadge.textContent = rm ? ('Thinking: ' + rm) : '';
     } catch (_) {}
-    addMsg('layla', replyText, data.aspect_name, data.state?.steps?.some(s => s.deliberated), data.state?.steps, data.ux_states, data.memory_influenced);
+    addMsg('layla', replyText, data.aspect_name, data.state?.steps?.some(s => s.deliberated), data.state?.steps, data.ux_states, data.memory_influenced, data.reasoning_tree_summary || data.state?.reasoning_tree_summary);
     updateRetryButton();
     if (data.refused && data.refusal_reason) {
       const refDiv = document.createElement('div');
@@ -2468,16 +2755,24 @@ async function send() {
     document.getElementById('msg-input')?.focus();
     setCancelSendVisible(false);
     _activeAgentAbort = null;
+  } finally {
+    window._laylaSendBusy = false;
+    try { if (typeof setHeaderAgentActivity === 'function') setHeaderAgentActivity(false); } catch (_) {}
   }
 }
 
 async function refreshApprovals() {
+  const list = document.getElementById('approvals-list');
   try {
-    const res = await fetch('/pending');
+    const res = await fetchWithTimeout('/pending', {}, 10000);
+    if (!res.ok) {
+      if (list) list.innerHTML = '<span style="color:#f90;font-size:0.75rem">Could not load approvals (' + res.status + ')</span>';
+      return;
+    }
     const data = await res.json();
-    const list = document.getElementById('approvals-list');
     const pending = (data.pending || []).filter(e => e.status === 'pending');
-    if (!pending.length) { list.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">Layla will ask here when she needs permission to act</span>'; return; }
+    if (!pending.length) { if (list) list.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">Layla will ask here when she needs permission to act</span>'; return; }
+    if (!list) return;
     list.innerHTML = '';
     pending.forEach(e => {
       const item = document.createElement('div');
@@ -2500,7 +2795,9 @@ async function refreshApprovals() {
       item.appendChild(btn);
       list.appendChild(item);
     });
-  } catch {}
+  } catch (e) {
+    if (list) list.innerHTML = '<span style="color:#f90;font-size:0.75rem">Approvals unavailable — check connection</span>';
+  }
 }
 
 async function approveId(id) {
@@ -2512,11 +2809,107 @@ async function approveId(id) {
   refreshApprovals();
 }
 
-async function refreshStudyPlans() {
+function _studyChipButton(label, onClick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'approve-btn';
+  b.style.cssText = 'font-size:0.62rem;padding:3px 6px;line-height:1.2;max-width:100%;text-align:left';
+  const short = label.length > 52 ? label.slice(0, 50) + '…' : label;
+  b.textContent = short;
+  b.title = label;
+  b.onclick = onClick;
+  return b;
+}
+
+function fillStudyTopicAndFocus(topic) {
+  const input = document.getElementById('study-input');
+  if (input) {
+    input.value = topic;
+    input.focus();
+  }
+}
+
+async function loadStudyPresetsAndSuggestions() {
+  const pre = document.getElementById('study-presets');
+  const sug = document.getElementById('study-suggestions');
+  if (!pre || !sug) return;
   try {
-    const res = await fetch('/study_plans');
+    const [rp, rs] = await Promise.all([
+      fetchWithTimeout('/study_plans/presets', {}, 8000),
+      fetchWithTimeout('/study_plans/suggestions', {}, 8000),
+    ]);
+    pre.innerHTML = '';
+    sug.innerHTML = '';
+    if (rp.ok) {
+      const d = await rp.json();
+      (d.topics || []).forEach(function(t) {
+        pre.appendChild(_studyChipButton(t, function() { fillStudyTopicAndFocus(t); }));
+      });
+    }
+    if (rs.ok) {
+      const d2 = await rs.json();
+      (d2.suggestions || []).forEach(function(t) {
+        sug.appendChild(_studyChipButton(t, function() { fillStudyTopicAndFocus(t); }));
+      });
+    }
+  } catch (e) {
+    console.warn('loadStudyPresetsAndSuggestions', e);
+  }
+}
+
+async function deriveAndFillStudyTopic(message) {
+  try {
+    const res = await fetch('/study_plans/derive_topic', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: message }),
+    });
+    const d = await res.json();
+    if (d.ok && d.topic) {
+      fillStudyTopicAndFocus(d.topic);
+      showToast('Topic filled — press + to add plan');
+    } else {
+      showToast(d.error || 'Could not derive topic');
+    }
+  } catch (e) {
+    showToast('Error: ' + e.message);
+  }
+}
+
+async function studyTopicFromChatInput() {
+  const inp = document.getElementById('msg-input');
+  const text = inp && inp.value.trim();
+  if (!text) {
+    showToast('Type in the main chat input first');
+    return;
+  }
+  await deriveAndFillStudyTopic(text);
+}
+
+async function studyTopicFromLastUserMessage() {
+  const bubbles = document.querySelectorAll('.msg-you .msg-bubble');
+  if (!bubbles.length) {
+    showToast('No sent messages in this chat yet');
+    return;
+  }
+  const text = bubbles[bubbles.length - 1].textContent.trim();
+  if (!text) {
+    showToast('Last message empty');
+    return;
+  }
+  await deriveAndFillStudyTopic(text);
+}
+
+async function refreshStudyPlans() {
+  loadStudyPresetsAndSuggestions().catch(function(e) { console.warn('study presets', e); });
+  const list = document.getElementById('study-list');
+  try {
+    const res = await fetchWithTimeout('/study_plans', {}, 12000);
+    if (!res.ok) {
+      if (list) list.innerHTML = '<span style="color:#f90;font-size:0.75rem">Could not load study plans (' + res.status + ')</span>';
+      return;
+    }
     const data = await res.json();
-    const list = document.getElementById('study-list');
     const plans = data.plans || [];
     if (!plans.length) { list.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">Add a topic — Layla will study it when you're active</span>'; return; }
     list.innerHTML = '';
@@ -2555,7 +2948,10 @@ async function refreshStudyPlans() {
       card.appendChild(studyBtn);
       list.appendChild(card);
     });
-  } catch (e) { console.warn('refreshStudyPlans failed:', e); }
+  } catch (e) {
+    console.warn('refreshStudyPlans failed:', e);
+    if (list) list.innerHTML = '<span style="color:#f90;font-size:0.75rem">Study plans unavailable</span>';
+  }
 }
 
 async function studyNow(topic) {
@@ -2584,9 +2980,10 @@ async function refreshPlatformHealth() {
   if (!el) return;
   el.innerHTML = '<div class="skeleton" style="height:12px;width:80%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:60%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:70%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:50%"></div>';
   try {
-    const r = await fetch('/health');
-    const d = await r.json();
-    if (!r.ok) { el.innerHTML = '<span style="color:#f90">' + formatAgentError(r, d) + '</span>'; return; }
+    let d = window.__laylaHealth.payload;
+    const stale = !d || (Date.now() - (window.__laylaHealth.lastFetch || 0) > 8000);
+    if (stale) d = await fetchHealthPayloadOnce();
+    if (!d) { el.innerHTML = '<span style="color:#f90">Health unavailable</span>'; return; }
     const opt = d.system_optimizer || {};
     const m = opt.metrics || {};
     const dbOk = d.db_ok !== false;
@@ -2597,21 +2994,34 @@ async function refreshPlatformHealth() {
     const uptimeStr = uh > 0 ? uh + 'h ' + um + 'm' : um + 'm';
     let html = `<div style="margin-bottom:6px">DB: ${dbOk ? '✓' : '✗'} | Chroma: ${chromaOk ? '✓' : '✗'} | Uptime: ${uptimeStr}</div>`;
     html += `<div style="margin-bottom:6px"><span style="color:${d.status==='ok'?'#4dff88':'#f90'}">●</span> ${d.status || 'unknown'}</div>`;
-    html += `<div>Model: ${d.model_loaded ? 'loaded' : 'not loaded'}</div>`;
+    html += `<div>Model: ${d.model_loaded ? 'loaded' : 'not loaded'}${d.active_model ? ' (' + String(d.active_model).replace(/</g, '') + ')' : ''}</div>`;
+    const dep = d.dependencies;
+    if (dep && typeof dep === 'object') {
+      const bits = Object.keys(dep).map((k) => k + ':' + dep[k]).join(' · ');
+      html += `<div style="margin-top:4px;font-size:0.68rem;color:var(--text-dim)">${String(bits).replace(/</g, '')}</div>`;
+    }
     html += `<div>Tools: ${d.tools_registered || 0}</div>`;
     html += `<div>Learnings: ${d.learnings || 0}</div>`;
     html += `<div>Study plans: ${d.study_plans || 0}</div>`;
     if (m.cpu_percent != null) html += `<div>CPU: ${m.cpu_percent}%</div>`;
     if (m.ram_percent != null) html += `<div>RAM: ${m.ram_percent}%</div>`;
+    const kis = d.knowledge_index_status;
+    if (kis != null && kis !== '') html += `<div style="margin-top:6px">Knowledge index: ${d.knowledge_index_ready === true ? '✓ ' : d.knowledge_index_ready === false ? '○ ' : ''}${String(kis).replace(/</g, '')}</div>`;
+    const elims = d.effective_limits;
+    if (elims && typeof elims === 'object') {
+      const mtc = elims.max_tool_calls;
+      const mrs = elims.max_runtime_seconds;
+      if (mtc != null || mrs != null) html += `<div style="margin-top:6px;font-size:0.68rem;color:var(--text-dim)">Limits: tools ${mtc != null ? mtc : '—'} · run ${mrs != null ? mrs + 's' : '—'}</div>`;
+    }
     el.innerHTML = html;
-  } catch (e) { el.innerHTML = '<span style="color:#f90">' + formatAgentError(null, null) + '</span>'; }
+  } catch (e) { el.innerHTML = '<span style="color:#f90">Health check timed out or failed.</span>'; }
 }
 
 async function refreshVersionInfo() {
   const el = document.getElementById('app-version');
   if (!el) return;
   try {
-    const r = await fetch('/version');
+    const r = await fetchWithTimeout('/version', {}, 12000);
     const d = await r.json();
     if (!r.ok || !d || !d.version) {
       el.textContent = 'Version: unknown';
@@ -2650,7 +3060,7 @@ async function refreshPlatformModels() {
   if (!el) return;
   el.innerHTML = '<div class="skeleton" style="height:12px;width:90%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:75%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:85%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:65%"></div>';
   try {
-    const r = await fetch('/platform/models');
+    const r = await fetchWithTimeout('/platform/models', {}, 12000);
     const d = await r.json();
     if (!r.ok) { el.innerHTML = '<span style="color:#f90">' + formatAgentError(r, d) + '</span>'; return; }
     let html = '';
@@ -2669,7 +3079,7 @@ async function refreshPlatformModels() {
     }
     if (!html) html = '<span style="color:var(--text-dim)">No models found</span>';
     el.innerHTML = html;
-  } catch (e) { el.innerHTML = '<span style="color:#f90">' + formatAgentError(null, null) + '</span>'; }
+  } catch (e) { el.innerHTML = '<span style="color:#f90">Model list timed out or failed.</span>'; }
 }
 
 async function refreshKnowledgeIngestList() {
@@ -2703,7 +3113,8 @@ async function refreshPlatformKnowledge() {
   refreshKnowledgeIngestList();
   el.innerHTML = '<div class="skeleton" style="height:12px;width:85%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:70%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:80%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:60%"></div>';
   try {
-    const r = await fetch('/platform/knowledge');
+    const r = await fetchWithTimeout('/platform/knowledge', {}, 12000);
+    if (!r.ok) { el.innerHTML = '<span style="color:#f90">' + formatAgentError(r, {}) + '</span>'; return; }
     const d = await r.json();
     let html = '<div style="margin-bottom:8px;font-weight:600;color:var(--asp)">Summaries</div>';
     (d.summaries || []).forEach(s => { html += `<div style="padding:4px 0;font-size:0.68rem;border-bottom:1px solid var(--border)">${(s.summary||'').slice(0,100)}…</div>`; });
@@ -2723,8 +3134,10 @@ async function refreshPlatformKnowledge() {
 async function refreshPlatformProjects() {
   const el = document.getElementById('platform-projects');
   if (!el) return;
+  el.innerHTML = '<div class="skeleton" style="height:12px;width:88%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:72%"></div>';
   try {
-    const r = await fetch('/platform/projects');
+    const r = await fetchWithTimeout('/platform/projects', {}, 12000);
+    if (!r.ok) { el.innerHTML = '<span style="color:#f90">' + formatAgentError(r, {}) + '</span>'; return; }
     const d = await r.json();
     let html = '';
     if (d.project_name) html += `<div style="margin-bottom:6px;font-weight:600;color:var(--asp)">${d.project_name}</div>`;
@@ -2741,8 +3154,10 @@ async function refreshPlatformProjects() {
 async function refreshPlatformTimeline() {
   const el = document.getElementById('platform-timeline');
   if (!el) return;
+  el.innerHTML = '<div class="skeleton" style="height:12px;width:90%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:75%"></div>';
   try {
-    const r = await fetch('/platform/knowledge');
+    const r = await fetchWithTimeout('/platform/knowledge', {}, 12000);
+    if (!r.ok) { el.innerHTML = '<span style="color:#f90">' + formatAgentError(r, {}) + '</span>'; return; }
     const d = await r.json();
     const timeline = d.timeline || [];
     let html = '';
@@ -2758,8 +3173,10 @@ async function refreshPlatformTimeline() {
 async function refreshPlatformPlugins() {
   const el = document.getElementById('platform-plugins');
   if (!el) return;
+  el.innerHTML = '<div class="skeleton" style="height:12px;width:70%;margin-bottom:8px"></div><div class="skeleton" style="height:12px;width:55%"></div>';
   try {
-    const r = await fetch('/platform/plugins');
+    const r = await fetchWithTimeout('/platform/plugins', {}, 12000);
+    if (!r.ok) { el.innerHTML = '<span style="color:#f90">' + formatAgentError(r, {}) + '</span>'; return; }
     const d = await r.json();
     let html = `<div>Skills added: ${d.skills_added || 0}</div>`;
     html += `<div>Tools added: ${d.tools_added || 0}</div>`;
@@ -2769,7 +3186,7 @@ async function refreshPlatformPlugins() {
       d.skills.forEach(s => { html += `<div style="font-size:0.68rem;padding:2px 0">${s.name||''}</div>`; });
     }
     el.innerHTML = html;
-  } catch (e) { el.innerHTML = '<span style="color:#f90">Failed to load</span>'; }
+  } catch (e) { el.innerHTML = '<span style="color:#f90">Plugin scan timed out or failed.</span>'; }
 }
 
 async function addStudyPlan() {
@@ -2862,6 +3279,9 @@ if (wpEl) {
   renderWorkspacePresets();
   const saved = localStorage.getItem(WS_KEY);
   if (saved) wpEl.value = saved;
+  wpEl.addEventListener('input', () => {
+    if (typeof refreshOptionDependencies === 'function') refreshOptionDependencies();
+  });
   wpEl.addEventListener('change', () => {
     const v = wpEl.value.trim();
     if (v) {
@@ -2884,6 +3304,13 @@ if (wpEl) {
     }
   } catch (_) {}
 }
+document.getElementById('show-thinking')?.addEventListener('change', () => {
+  if (typeof refreshOptionDependencies === 'function') refreshOptionDependencies();
+});
+document.getElementById('workspace-presets')?.addEventListener('change', () => {
+  if (typeof refreshOptionDependencies === 'function') refreshOptionDependencies();
+});
+if (typeof refreshOptionDependencies === 'function') refreshOptionDependencies();
 
 // ─── localStorage: persist conversation history ─────────────
 const HISTORY_KEY = 'layla_chat_history';
@@ -3176,7 +3603,7 @@ let _lastPendingCount = 0;
 // Override refreshApprovals to also inject inline approval cards
 async function refreshApprovals() {
   try {
-    const res = await fetch('/pending');
+    const res = await fetchWithTimeout('/pending', {}, 10000);
     const data = await res.json();
     const list = document.getElementById('approvals-list');
     const pending = (data.pending || []).filter(e => e.status === 'pending');
@@ -3276,15 +3703,88 @@ async function refreshApprovals() {
 })();
 
 
+// ─── Unified /health poller (status bar, platform panel, connection) ────────
+window.__laylaHealth = window.__laylaHealth || {
+  payload: null,
+  lastFetch: 0,
+  lastDeepFetch: 0,
+  deepIntervalMs: 60000,
+  inFlight: false,
+  agentRequestActive: false,
+};
+
+function laylaFormatDepsShort(deps) {
+  if (!deps || typeof deps !== 'object') return '';
+  const p = [];
+  const c = deps.chroma;
+  if (c) p.push('ch:' + (c === 'ok' ? '✓' : c === 'missing' ? '—' : '!'));
+  const st = deps.voice_stt;
+  const tt = deps.voice_tts;
+  if (st || tt) p.push('voc:' + (st === 'ok' ? '↤' : '·') + (tt === 'ok' ? '↦' : '·'));
+  const tst = deps.tree_sitter;
+  if (tst) p.push('ts:' + (tst === 'ok' ? '✓' : '—'));
+  return p.length ? (' · ' + p.join(' ')) : '';
+}
+
+function laylaApplyHeaderStatusFromHealth(d) {
+  const hs = document.getElementById('header-system-status');
+  if (!hs || !d) return;
+  const ok = d.status === 'ok';
+  const ki = d.knowledge_index_ready === true ? ' · idx✓' : d.knowledge_index_ready === false ? ' · idx…' : '';
+  const model = (d.active_model || '').replace(/</g, '');
+  const ml = d.model_loaded ? '●' : '○';
+  const pm = (d.effective_limits && d.effective_limits.performance_mode != null)
+    ? String(d.effective_limits.performance_mode)
+    : '';
+  const deps = laylaFormatDepsShort(d.dependencies);
+  const busy = window.__laylaHealth.agentRequestActive ? ' · agent…' : '';
+  let line = (ok ? '●' : '○') + ' ' + (d.status || 'unknown') + ki;
+  if (model) line += ' · ' + model;
+  if (pm) line += ' · pm:' + pm;
+  line += ' · ' + ml + 'llm' + deps + busy;
+  hs.textContent = line;
+  hs.style.color = ok ? '#6dcea0' : '#e8a030';
+}
+
+function setHeaderAgentActivity(on) {
+  window.__laylaHealth.agentRequestActive = !!on;
+  const d = window.__laylaHealth.payload;
+  if (d) laylaApplyHeaderStatusFromHealth(d);
+}
+
+async function fetchHealthPayloadOnce() {
+  const h = window.__laylaHealth;
+  const now = Date.now();
+  if (h.inFlight) return h.payload;
+  h.inFlight = true;
+  try {
+    const useDeep = !h.lastDeepFetch || (now - h.lastDeepFetch >= h.deepIntervalMs);
+    const url = useDeep ? '/health?deep=true' : '/health';
+    const r = await fetchWithTimeout(url, {}, 12000);
+    const d = await r.json();
+    if (useDeep) h.lastDeepFetch = now;
+    h.payload = d;
+    h.lastFetch = now;
+    return d;
+  } catch (_) {
+    return null;
+  } finally {
+    h.inFlight = false;
+  }
+}
+
 // ─── Warmup bar ─────────────────────────────────────────────────────────────
 let _warmupDone = false;
 let _connectionOk = true;
 async function pollWarmup() {
   try {
-    const r = await fetch('/health');
-    const d = await r.json();
+    const d = await fetchHealthPayloadOnce();
+    if (!d) throw new Error('health empty');
     _connectionOk = true;
     document.getElementById('connection-banner')?.style.setProperty('display', 'none');
+    try {
+      laylaApplyHeaderStatusFromHealth(d);
+    } catch (_) {}
     try {
       const cs = d.cache_stats;
       const cb = document.getElementById('cache-stats-badge');
@@ -3315,7 +3815,7 @@ async function pollWarmup() {
     const detail = document.getElementById('warmup-detail');
     const modelBanner = document.getElementById('model-readiness-banner');
     try {
-      const setupRes = await fetch('/setup_status');
+      const setupRes = await fetchWithTimeout('/setup_status', {}, 12000);
       if (setupRes.ok) {
         const setup = await setupRes.json();
         if (!setup.ready) {
@@ -3341,12 +3841,31 @@ async function pollWarmup() {
     _connectionOk = false;
     document.getElementById('connection-banner')?.style.setProperty('display', 'block');
     document.getElementById('model-readiness-banner')?.style.setProperty('display', 'none');
+    try {
+      const hs = document.getElementById('header-system-status');
+      if (hs) { hs.textContent = '○ offline'; hs.style.color = '#f90'; }
+    } catch (_) {}
   }
   setTimeout(pollWarmup, _warmupDone ? 10000 : 3000);
 }
 function pollConnectionStatus() {
   if (_warmupDone) {
-    fetch('/health').then(r => { if (r.ok) { _connectionOk = true; document.getElementById('connection-banner')?.style.setProperty('display', 'none'); } }).catch(() => { _connectionOk = false; document.getElementById('connection-banner')?.style.setProperty('display', 'block'); });
+    const d = window.__laylaHealth.payload;
+    if (d && d.status) {
+      _connectionOk = true;
+      document.getElementById('connection-banner')?.style.setProperty('display', 'none');
+    } else {
+      fetchHealthPayloadOnce().then((dd) => {
+        if (dd && dd.status) {
+          _connectionOk = true;
+          laylaApplyHeaderStatusFromHealth(dd);
+          document.getElementById('connection-banner')?.style.setProperty('display', 'none');
+        }
+      }).catch(() => {
+        _connectionOk = false;
+        document.getElementById('connection-banner')?.style.setProperty('display', 'block');
+      });
+    }
   }
   setTimeout(pollConnectionStatus, 10000);
 }
@@ -3721,16 +4240,18 @@ async function confirmApplyBatch() {
 
 // ─── Memory search ───────────────────────────────────────────────────────────
 let _memSearchTimer = null;
+const _MEMORY_SEARCH_EMPTY = '<span style="color:var(--text-dim);font-size:0.7rem">Type to search learnings (local filter)</span>';
 async function onMemorySearch(query) {
   clearTimeout(_memSearchTimer);
   const results = document.getElementById('memory-search-results');
-  if (!query.trim()) { if (results) results.innerHTML = ''; return; }
+  if (!query.trim()) { if (results) results.innerHTML = _MEMORY_SEARCH_EMPTY; return; }
   if (results) results.innerHTML = '<span style="color:var(--text-dim)">Searching…</span>';
   _memSearchTimer = setTimeout(async () => {
     if (!results) return;
     results.innerHTML = '<span style="color:var(--text-dim)">Searching…</span>';
     try {
-      const r = await fetch('/learnings?limit=100');
+      const r = await fetchWithTimeout('/learnings?limit=100', {}, 15000);
+      if (!r.ok) { results.innerHTML = '<span style="color:#f90">Could not load learnings (' + r.status + ')</span>'; return; }
       const d = await r.json();
       const q = query.toLowerCase();
       const matches = (d.items || []).filter(item =>
@@ -3750,7 +4271,10 @@ async function onMemorySearch(query) {
         el.innerHTML = `<span style="font-size:0.68rem;color:var(--text-dim);margin-right:6px">[${escapeHtml(item.type||'?')}]</span>${hi}`;
         results.appendChild(el);
       });
-    } catch { results.innerHTML = '<span style="color:var(--text-dim)">' + formatAgentError(null, null) + '</span>'; }
+    } catch (e) {
+      const msg = (e && e.name === 'AbortError') ? 'Search timed out' : (formatAgentError(null, null));
+      results.innerHTML = '<span style="color:#f90">' + msg + '</span>';
+    }
   }, 250);
 }
 
@@ -4103,7 +4627,7 @@ async function startModelDownload() {
 }
 
 // ─── Settings panel (schema-driven, full configurability) ─────────────────
-const CAT_LABELS = { core: 'Core', model: 'Model', memory: 'Memory', voice: 'Voice', scheduler: 'Scheduler', safety: 'Safety', remote: 'Remote' };
+const CAT_LABELS = { core: 'Core', model: 'Model', memory: 'Memory', voice: 'Voice', scheduler: 'Scheduler', limits: 'Runtime limits', safety: 'Safety', remote: 'Remote', integrations: 'Integrations' };
 
 function renderSettingField(f, val) {
   const id = 'set-' + f.key.replace(/_/g, '-');
@@ -4157,7 +4681,7 @@ async function openSettings() {
       if (!byCat[c]) byCat[c] = [];
       byCat[c].push(f);
     }
-    const order = ['core', 'model', 'memory', 'voice', 'scheduler', 'safety', 'remote'];
+    const order = ['core', 'model', 'memory', 'voice', 'scheduler', 'limits', 'safety', 'remote', 'integrations'];
     let html = '';
     for (const cat of order) {
       if (!byCat[cat]) continue;
@@ -4194,6 +4718,21 @@ function openCliHelp() {
   } else {
     showToast('TUI: from repo root run: ' + cmd);
   }
+}
+
+async function applySettingsPreset(preset) {
+  if (!preset) return;
+  if (!confirm('Apply preset "' + preset + '"? This overwrites matching settings in runtime_config.json.')) return;
+  try {
+    const res = await fetch('/settings/preset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ preset }) });
+    const data = await res.json();
+    if (data.ok) {
+      showToast('Preset applied: ' + (data.applied || []).join(', ') + ' — reopen Settings to review; restart server if needed');
+      await openSettings();
+    } else {
+      showToast('Preset failed: ' + (data.error || JSON.stringify(data)));
+    }
+  } catch (e) { showToast('Error: ' + e.message); }
 }
 
 async function saveSettings() {
@@ -4379,7 +4918,11 @@ if (typeof onMemorySearch === 'function') window.onMemorySearch = onMemorySearch
     </div>
     <div class="settings-config-ref">
       <a href="/system_export" target="_blank" title="Full config export">⊕ export config</a>
-      <span class="hint"> — Advanced: edit <code>agent/runtime_config.json</code> directly. <a href="/docs/CONFIG_REFERENCE.md" target="_blank">Config Reference</a></span>
+      <span class="hint"> — Advanced: edit <code>agent/runtime_config.json</code> directly. <a href="/docs/CONFIG_REFERENCE.md" target="_blank">Config Reference</a> · <a href="/docs/POTATO_MODE.md" target="_blank">Potato mode</a></span>
+    </div>
+    <div class="settings-presets" style="margin:8px 0;padding:8px;border:1px solid rgba(255,255,255,0.12);border-radius:8px">
+      <span class="hint">Low-resource preset (merges into config; restart server for full effect):</span>
+      <button type="button" class="settings-save" style="margin-left:8px" onclick="applySettingsPreset('potato')">Apply potato preset</button>
     </div>
     <div class="settings-btns">
       <button class="settings-save" onclick="saveSettings()">Save Settings</button>

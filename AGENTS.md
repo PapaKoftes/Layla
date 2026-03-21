@@ -66,6 +66,7 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 │   │   ├── browser.py       # Playwright browser (navigate, search, screenshot, fill)
 │   │   ├── capability_discovery.py  # PyPI, GitHub, HuggingFace candidate scan
 │   │   ├── benchmark_suite.py      # Latency, throughput, memory benchmarks
+│   │   ├── dependency_recovery.py # Optional pip install (allowlisted) + structured missing-dep / GGUF hints
 │   │   ├── sandbox_validator.py    # Import + benchmark before enabling capability
 │   │   └── performance_monitor.py  # Runtime metrics (tool latency, retrieval)
 │   │
@@ -78,6 +79,7 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 │   │   │   ├── db.py        # SQLite schema, migrate(), all DB access functions
 │   │   │   ├── vector_store.py  # ChromaDB, BM25, cross-encoder, HyDE, parent-doc
 │   │   │   └── distill.py   # Post-run memory distillation
+│   │   ├── geometry/        # Structured CAD-like programs (schema, executor, backends)
 │   │   └── file_understanding.py  # analyze_file()
 │   │
 │   ├── ui/index.html        # Standalone web UI (also served embedded from main.py)
@@ -100,10 +102,15 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 │
 ├── models/                  # GITIGNORED. Put .gguf model files here.
 │
+├── fabrication_assist/      # Fabrication assist utilities (NOT imported by agent on main)
+│   ├── assist/              # session, variants, explain, BuildRunner stub, layla_lite.assist(), CLI
+│   └── README.md            # adapter pattern + usage; see docs/FABRICATION_ASSIST.md
+│
 ├── cursor-layla-mcp/        # Cursor MCP server (chat_with_layla, add_learning, etc.)
 │   └── server.py
 │
 ├── AGENTS.md                # THIS FILE. Universal AI context.
+├── PROJECT_BRAIN.md         # Stable system summary (read before deep repo scans).
 ├── LAYLA_NORTH_STAR.md      # Canonical vision §1–§20. Source of truth for features.
 ├── ARCHITECTURE.md          # One-page request flow + state map. Keep updated.
 ├── MODELS.md                # Model selection guide with HuggingFace links.
@@ -112,10 +119,15 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 │
 ├── docs/
 │   ├── IMPLEMENTATION_STATUS.md  # Maps NORTH_STAR §§ to code files. Keep updated.
+│   ├── PRODUCTION_CONTRACT.md    # Operator guarantees: caps, safety, /health, logging
+│   ├── RULES.md                  # Naming, layout, allowed/forbidden patterns (AI + humans)
+│   ├── TASKS.md                  # Lightweight backlog pointer (avoid rot)
+│   ├── RELEASE_CHECKLIST.md      # Pre-publish verification (tests, UI, MCP, CLI)
 │   ├── RUNBOOKS.md               # How to add tools, aspects, knowledge
 │   ├── TECH_STACK_AND_CAPABILITIES.md
 │   ├── ROADMAP.md / MILESTONES.md
-│   └── REMOTE_ARCHITECTURE.md
+│   ├── REMOTE_ARCHITECTURE.md
+│   └── FABRICATION_ASSIST.md     # Assist vs deterministic kernel; stub runner; integration checklist
 │
 └── .cursor/rules/
     ├── layla-assistant.mdc  # Cursor AI: aspects, MCP tools, approval flow (alwaysApply)
@@ -131,7 +143,7 @@ Client → POST /agent → routers/agent.py
   → agent_loop.autonomous_run()
     → runtime_safety.load_config()        # TTL-cached, mtime-cached file reads
     → orchestrator.select_aspect()        # keyword-based, loads personalities/*.json
-    → _build_system_head()                # identity + knowledge RAG + learnings + CoT
+    → _build_system_head()                # identity + knowledge RAG + learnings + CoT + optional anti-drift block (`anti_drift_prompt_enabled`)
     → loop:
         _llm_decision() → parse JSON      # action: "tool" | "reason"
         if tool: registry.TOOLS[name]()   # gated by allow_write/allow_run + approval
@@ -140,14 +152,16 @@ Client → POST /agent → routers/agent.py
 ```
 
 **Voice endpoints**: `POST /voice/transcribe` (bytes → text via faster-whisper), `POST /voice/speak` (text → WAV via kokoro-onnx)  
-**Memory write**: `POST /learn/` → `db.add_learning()` + `vector_store.add_vector()`  
+**Memory write**: `POST /learn/` → `db.save_learning()` + `vector_store.add_vector()` (optional JSON `tags` for learnings)
+**Config presets**: `POST /settings/preset` with `{"preset":"potato"}` merges schema keys into `runtime_config.json`
+**Dual voice depth**: `POST /agent` optional `persona_focus` (second aspect id) merges into system head; primary `aspect_id` unchanged  
 **Approval**: tool returns `approval_required` → stored in `shared_state.pending` → `POST /approve {"id": uuid}` → re-run
 
 ---
 
 ## Code style
 
-- **Python 3.11+**. Type hints everywhere. `pathlib.Path` for all file ops.
+- **Python 3.11 or 3.12** (3.13+ unsupported until explicitly tested; see `pyproject.toml` / `.python-version`). Type hints everywhere. `pathlib.Path` for all file ops.
 - **FastAPI patterns**: `APIRouter`, `JSONResponse`, `StreamingResponse`. Async routes call `asyncio.to_thread()` for blocking work.
 - **Services are singletons** with module-level globals and `threading.Lock`. Use the pattern in `llm_gateway.py` and `stt.py`.
 - **DB access**: all SQLite via `db._conn()` context manager in `agent/layla/memory/db.py`. Never raw sqlite3 elsewhere.
@@ -188,11 +202,19 @@ Client → POST /agent → routers/agent.py
 | Document | Update when |
 |---|---|
 | `ARCHITECTURE.md` | Request flow changes, new routes, new state stores |
+| `docs/MODULE_SWEEP_TEMPLATE.md` / `docs/MODULE_SWEEP_STATUS.md` | New subsystem sweep doc or status row for a major area |
+| `PROJECT_BRAIN.md` | Top-level shape, doc roles, or pinned facts change |
 | `docs/IMPLEMENTATION_STATUS.md` | Any NORTH_STAR §§ are implemented or status changes |
+| `docs/PRODUCTION_CONTRACT.md` | Caps, safety invariants, or observability guarantees change |
+| `docs/GOLDEN_FLOW.md` | Request lifecycle, approval semantics, or cross-surface contracts change |
+| `docs/RULES.md` | Repo conventions or forbidden patterns change |
+| `docs/TASKS.md` | Optional: note release themes or cross-cutting backlog |
+| `docs/RELEASE_CHECKLIST.md` | Release steps or CI matrix change |
 | `docs/LAYLA_PREBUILT_PLATFORM.md` | Capability domains or prebuilt principles change |
 | `agent/runtime_config.example.json` | New config keys added to `runtime_safety.py` defaults |
 | `CHANGELOG.md` | Any commit worth noting for users |
 | `docs/RUNBOOKS.md` | New "how to add X" procedures |
+| `docs/FABRICATION_ASSIST.md` | Fabrication assist package or `BuildRunner` integration changes |
 
 **Values:** [VALUES.md](VALUES.md) — sovereignty, privacy, anti-surveillance, solidarity. All development aligns with these.
 
@@ -228,7 +250,7 @@ Tests live in `agent/tests/`. Key test files: `test_agent_loop.py`, `test_north_
 
 ## Quick orientation for a new AI session
 
-1. Read this file (done)
+1. Read **`PROJECT_BRAIN.md`** (stable summary), then this file (`AGENTS.md`). Deep dives live under `docs/*_MODULE_SECOND_SWEEP.md`, indexed by **`docs/MODULE_SWEEP_STATUS.md`**.
 2. **If resuming from prior AI session:** Read `docs/AI_HANDOFF_REPORT.md` for total state
 3. Read `ARCHITECTURE.md` for the request flow
 4. Read `docs/IMPLEMENTATION_STATUS.md` to know what's implemented vs planned

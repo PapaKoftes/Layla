@@ -31,6 +31,11 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Verify editable install (fabrication_assist + layla packages)
+        run: |
+          pip install -e .
+          python -c "import fabrication_assist; import layla"
+
       - name: Write CI runtime config
         working-directory: agent
         run: |
@@ -39,8 +44,8 @@ jobs:
             "model_filename": "ci-stub.gguf",
             "use_chroma": false,
             "sandbox_root": "/tmp/layla-ci",
-            "max_tool_calls": 5,
-            "max_runtime_seconds": 20,
+            "max_tool_calls": 2,
+            "max_runtime_seconds": 30,
             "n_ctx": 2048,
             "n_gpu_layers": 0,
             "scheduler_study_enabled": false
@@ -68,4 +73,4 @@ jobs:
         run: pip install ruff
 
       - name: Check with ruff
-        run: ruff check agent/ --select E,F,W --ignore E501
+        run: ruff check agent/ fabrication_assist/ --select E,F,W --ignore E501

@@ -1,0 +1,5 @@
+# Example domain knowledge — customize locally; committed samples only.
+materials:
+  baltic_birch_12mm: { density_kg_m3: 680, cost_tier: medium }
+  aluminum_6061_3mm: { density_kg_m3: 2700, cost_tier: high }
+  petg_sheet_6mm: { density_kg_m3: 1270, cost_tier: low }

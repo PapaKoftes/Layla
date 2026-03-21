@@ -1,6 +1,8 @@
 """Study plans, wakeup, aspect titles."""
 import logging
+import re
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -51,6 +53,102 @@ from shared_state import (  # noqa: E402
 
 logger = logging.getLogger("layla")
 router = APIRouter(tags=["study"])
+
+# Curated one-click topics for the Web UI (no network; safe to ship in-repo).
+STUDY_PRESET_TOPICS: list[str] = [
+    "Python type hints and pydantic models",
+    "FastAPI: routers, dependencies, and lifespan",
+    "SQLite migrations and forward-compatible schemas",
+    "Local LLM limits: context window, sampling, tool loops",
+    "Testing with pytest: fixtures and parametrize",
+    "Git workflow: branches, rebases, and clean history",
+]
+
+
+def _workspace_study_suggestions(root: Path, max_entries: int = 400) -> list[str]:
+    """Read-only, single-level scan + optional README title. No network."""
+    out: list[str] = []
+    if not root.is_dir():
+        return out
+    try:
+        children = list(root.iterdir())
+    except OSError:
+        return out
+    children = [p for p in children[:max_entries] if not p.name.startswith(".")]
+    readme = next((p for p in children if p.is_file() and p.name.lower() in ("readme.md", "readme.txt")), None)
+    if readme:
+        try:
+            text = readme.read_text(encoding="utf-8", errors="replace")
+            for raw in text.splitlines():
+                line = raw.strip()
+                if not line:
+                    continue
+                if line.startswith("#"):
+                    title = line.lstrip("#").strip()[:160]
+                    if title:
+                        out.append(f"Project overview: {title}")
+                        break
+                out.append(f"Project notes: {line[:160]}")
+                break
+        except OSError:
+            pass
+    exts: dict[str, int] = {}
+    for p in children:
+        if p.is_file() and p.suffix:
+            suf = p.suffix.lower()
+            exts[suf] = exts.get(suf, 0) + 1
+    if exts.get(".py", 0) >= 2:
+        out.append("Python architecture and modules in this workspace")
+    if exts.get(".ts", 0) + exts.get(".tsx", 0) >= 2:
+        out.append("TypeScript/React structure in this workspace")
+    if exts.get(".md", 0) >= 3:
+        out.append("Documentation set: how to navigate these markdown docs")
+    return out[:8]
+
+
+def _derive_topic_from_message(message: str) -> str:
+    """Turn last user text into a short study topic (heuristic, privacy-preserving)."""
+    raw = (message or "").strip()
+    if not raw:
+        return ""
+    raw = re.sub(r"\s+", " ", raw)
+    line = raw.split(".")[0].strip()
+    if len(line) > 200:
+        line = line[:200].rsplit(" ", 1)[0]
+    words = line.split()
+    if len(words) > 14:
+        line = " ".join(words[:14]) + "…"
+    return line[:500]
+
+
+@router.get("/study_plans/presets")
+def get_study_plan_presets():
+    return JSONResponse({"topics": STUDY_PRESET_TOPICS})
+
+
+@router.get("/study_plans/suggestions")
+def get_study_plan_suggestions():
+    """Safe local signals from configured sandbox_root only (single directory level)."""
+    try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        root = Path(str(cfg.get("sandbox_root") or Path.home())).expanduser().resolve()
+        topics = _workspace_study_suggestions(root)
+        return JSONResponse({"suggestions": topics, "root": str(root)})
+    except Exception as e:
+        logger.warning("get_study_plan_suggestions failed: %s", e)
+        return JSONResponse({"suggestions": [], "error": str(e)})
+
+
+@router.post("/study_plans/derive_topic")
+def derive_study_topic(req: dict):
+    """Derive a study topic string from chat text (no LLM)."""
+    msg = (req or {}).get("message") or (req or {}).get("text") or ""
+    topic = _derive_topic_from_message(str(msg))
+    if not topic:
+        return JSONResponse({"ok": False, "error": "empty_message"})
+    return JSONResponse({"ok": True, "topic": topic})
 
 
 @router.get("/study_plans")

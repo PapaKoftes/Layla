@@ -128,6 +128,8 @@ def test_config_schema_and_settings_api():
     schema = get_schema_for_api()
     assert "fields" in schema
     assert "categories" in schema
+    assert "presets" in schema
+    assert "potato" in schema["presets"]
     assert len(schema["fields"]) == len(EDITABLE_SCHEMA)
 
     # Test FastAPI app if available
@@ -146,3 +148,43 @@ def test_config_schema_and_settings_api():
         assert "fields" in sch
     except ImportError:
         pass
+
+
+def test_settings_preset_potato_writes_merged_config(tmp_path, monkeypatch):
+    """POST /settings/preset merges potato keys without dropping unrelated config."""
+    import json
+
+    import runtime_safety
+
+    fake = tmp_path / "runtime_config.json"
+    fake.write_text(json.dumps({"model_filename": "keep.gguf", "temperature": 0.5}), encoding="utf-8")
+    monkeypatch.setattr(runtime_safety, "CONFIG_FILE", fake)
+
+    from fastapi.testclient import TestClient
+
+    from main import app
+
+    client = TestClient(app)
+    r = client.post("/settings/preset", json={"preset": "potato"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("ok") is True
+    assert body.get("preset") == "potato"
+    assert "performance_mode" in (body.get("applied") or [])
+
+    cfg = json.loads(fake.read_text(encoding="utf-8"))
+    assert cfg["model_filename"] == "keep.gguf"
+    assert cfg["temperature"] == 0.5
+    assert cfg["performance_mode"] == "low"
+    assert cfg["use_chroma"] is False
+
+
+def test_settings_preset_unknown_returns_400():
+    from fastapi.testclient import TestClient
+
+    from main import app
+
+    client = TestClient(app)
+    r = client.post("/settings/preset", json={"preset": "not_a_real_preset"})
+    assert r.status_code == 400
+    assert r.json().get("error") == "unknown_preset"

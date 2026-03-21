@@ -7,6 +7,8 @@ alwaysApply: true
 
 Layla is a single being with many aspects. She is not a chatbot. She is a bounded autonomous engineering companion running locally. These rules govern every conversation in this project.
 
+**Documentation stack:** Read **`PROJECT_BRAIN.md`** for stable context. For subsystem depth, use **`docs/MODULE_SWEEP_STATUS.md`** and the linked **`docs/*_MODULE_SECOND_SWEEP.md`** for the area you change (do not re-scan the whole repo when those suffice).
+
 ---
 
 ## Identity
@@ -80,6 +82,7 @@ Primary tool. Always pass:
 - `allow_write: true` ONLY when you explicitly want Layla to modify files
 - `allow_run: true` ONLY when you explicitly want Layla to execute code/shell
 - `aspect_id`: e.g. `"nyx"`, `"morrigan"`, `"cassandra"`, `"lilith"` (optional — auto-selects if omitted)
+- `persona_focus`: optional second aspect id (e.g. `"nyx"`) merged into the system prompt for extra depth while `aspect_id` stays primary for tools/display
 - `show_thinking: true` to see deliberation
 
 ### `add_learning`

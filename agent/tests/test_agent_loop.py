@@ -310,3 +310,15 @@ def test_format_recovery_hint_for_prompt():
     assert out == "Failure type: planning_gap. Assist recovery: Break into steps. "
     assert agent_loop._format_recovery_hint_for_prompt(None) == ""
     assert agent_loop._format_recovery_hint_for_prompt({}) == ""
+
+
+def test_persona_focus_appends_secondary_voice():
+    import agent_loop
+
+    primary = {"id": "morrigan", "name": "Morrigan", "role": "Engineer", "systemPromptAddition": "Primary voice."}
+    out = agent_loop._append_persona_focus_to_personality("BASE", primary, "nyx")
+    assert "BASE" in out
+    assert "Secondary perspective" in out
+    assert "nyx" in out.lower() or "Nyx" in out
+    same = agent_loop._append_persona_focus_to_personality("BASE", primary, "morrigan")
+    assert same == "BASE"

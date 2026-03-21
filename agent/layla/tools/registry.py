@@ -2288,6 +2288,7 @@ def _build_tools_from_domains() -> dict[str, Any]:
         DATA_TOOLS,
         FILE_TOOLS,
         GENERAL_TOOLS,
+        GEOMETRY_TOOLS,
         GIT_TOOLS,
         MEMORY_TOOLS,
         SYSTEM_TOOLS,
@@ -2305,6 +2306,7 @@ def _build_tools_from_domains() -> dict[str, Any]:
         AUTOMATION_TOOLS,
         ANALYSIS_TOOLS,
         GENERAL_TOOLS,
+        GEOMETRY_TOOLS,
     ):
         for name, meta in domain_tools.items():
             meta = dict(meta)
@@ -2701,7 +2703,15 @@ def tool_recommend(task: str) -> dict:
         "compress token context": ["context_compress", "count_tokens"],
         "translate sql query": ["generate_sql", "sql_query", "schema_introspect"],
         "workspace project": ["workspace_map", "project_discovery", "get_project_context"],
-        "gcode dxf stl fabrication": ["parse_gcode", "stl_mesh_info", "understand_file", "generate_gcode"],
+        "gcode dxf stl fabrication cad geometry": [
+            "parse_gcode",
+            "stl_mesh_info",
+            "understand_file",
+            "generate_gcode",
+            "geometry_validate_program",
+            "geometry_execute_program",
+            "geometry_list_frameworks",
+        ],
         "clipboard copy paste": ["clipboard_read", "clipboard_write"],
         "search replace refactor": ["search_replace", "rename_symbol", "grep_code"],
         "pip install package": ["pip_list", "pip_install"],
@@ -4888,6 +4898,61 @@ def generate_gcode(dxf_path: str, output_path: str, layer: str = "", depth_mm: f
         return {"ok": True, "output_path": str(out), "moves": count, "lines": len(lines_out)}
     except ImportError:
         return {"ok": False, "error": "ezdxf not installed: pip install ezdxf"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ─── Geometry programs (structured CAD-like ops) ───────────────────────────────
+
+def geometry_validate_program(program: str | dict) -> dict:
+    """
+    Validate a GeometryProgram JSON (v1) without writing files.
+    program: JSON string or object with version + ops (see layla.geometry.schema).
+    """
+    try:
+        from layla.geometry.schema import validate_program_dict
+
+        ok, msg, p = validate_program_dict(program)
+        n = len(p.ops) if p else 0
+        return {"ok": ok, "message": msg, "ops_count": n}
+    except Exception as e:
+        return {"ok": False, "message": str(e), "ops_count": 0}
+
+
+def geometry_execute_program(
+    program: str | dict,
+    workspace_root: str,
+    output_basename: str = "geometry_out",
+) -> dict:
+    """
+    Execute a validated GeometryProgram; writes under workspace_root/output_basename/.
+    Requires ezdxf for DXF ops; optional cadquery, openscad, trimesh per op.
+    """
+    try:
+        from layla.geometry.executor import execute_program
+        from layla.geometry.schema import parse_program
+
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        ws = Path(workspace_root).expanduser().resolve()
+        if not inside_sandbox(ws):
+            return {"ok": False, "error": "workspace_root must be inside sandbox"}
+        p = parse_program(program)
+        return execute_program(p, str(ws), output_basename=output_basename, cfg=cfg)
+    except Exception as e:
+        return {"ok": False, "error": str(e), "steps": []}
+
+
+def geometry_list_frameworks() -> dict:
+    """Report which optional geometry libraries / OpenSCAD CLI are available."""
+    try:
+        from layla.geometry.executor import list_framework_status
+
+        import runtime_safety
+
+        st = list_framework_status(runtime_safety.load_config())
+        return {"ok": True, **st}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

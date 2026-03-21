@@ -2,6 +2,8 @@
 
 This document maps each section of the North Star to code, tests, and verification so we never stray from the plan.
 
+**Production contract (caps, safety, `/health`, logging):** [PRODUCTION_CONTRACT.md](PRODUCTION_CONTRACT.md) — maps operational guarantees to config and tests.
+
 ---
 
 | § | North Star | Implementation | Tests / verification |
@@ -9,8 +11,8 @@ This document maps each section of the North Star to code, tests, and verificati
 | 1 | Core purpose: partner system, grow with user, assist, structure, translate, improve, maintain identity | Identity in `.cursor/rules/layla-assistant.mdc`, `agent_loop.py` system head, learnings + style profile | E2E and agent loop tests |
 | 2 | User reality: programming, fabrication, geometry, automation, docs, research, planning; focus on friction points | Morrigan prompt (planning, docs, Python, DXF→fabrication); fabrication domains + study plans | Study plans seeded; capabilities test |
 | 3 | Project participation: project awareness, lifecycle (Idea→Planning→Prototype→Iteration→Execution→Reflection) | `project_context` table: project_name, domains, key_files, goals, **lifecycle_stage**, **progress**, **blockers**, **last_discussed**; `get_project_context` / `set_project_context`; injected in agent head; **GET/POST /project_context**, **GET /platform/projects** API | `test_north_star.py::test_project_context_lifecycle`, `test_platform_ui.py::test_platform_projects` |
-| 4 | File ecosystem: geometry, fabrication, programming, documentation, visual — interpret intent | `agent/layla/file_understanding.py`: all North Star extensions; `analyze_file()`, `get_supported_extensions()` | `test_north_star.py::test_file_understanding_*` |
-| 5 | Workflow translation: Geometry→Fabrication→Machine intent; DXF→machinable, parametric→geometry, Python→automation | Fabrication domains + dependencies; Morrigan/Nyx roles; file_understanding hints | Capability deps; study plans |
+| 4 | File ecosystem: geometry, fabrication, programming, documentation, visual — interpret intent | `agent/layla/file_understanding.py`: all North Star extensions; `analyze_file()`, `get_supported_extensions()`; **`agent/layla/geometry/`** — structured CAD-like programs (`geometry_validate_program`, `geometry_execute_program`) | `test_north_star.py::test_file_understanding_*`; `test_geometry_schema.py`, `test_geometry_executor.py`, **`test_geometry_bridge_security.py`**; deep pass [GEOMETRY_MODULE_SECOND_SWEEP.md](GEOMETRY_MODULE_SECOND_SWEEP.md) |
+| 5 | Workflow translation: Geometry→Fabrication→Machine intent; DXF→machinable, parametric→geometry, Python→automation | Fabrication domains + dependencies; Morrigan/Nyx roles; file_understanding hints; **geometry** stack + optional `geometry_external_bridge_url` | Capability deps; study plans; capabilities `geometry_kernel_*`; bridge + sandbox hazards: [GEOMETRY_MODULE_SECOND_SWEEP.md](GEOMETRY_MODULE_SECOND_SWEEP.md) §3–§5 |
 | 6 | Execution loop: Learn→Plan→Assist→Evaluate→Improve; applied learning | Study service, capability events, record_practice, reinforcement_priority, scheduler | `test_study_integration`, scheduler job |
 | 7 | Learning judgment: usefulness, transferability, real-world impact; selective learning | `usefulness_score`, `learning_quality_score` on capability_events; `run_learning_validation`; weak reinforce & no cross-domain when < 0.3 | `record_practice` with usefulness; validation in study flow |
 | 8 | Failure awareness: workflow breakdowns, planning gaps, execution issues; assist recovery | **Implemented:** `_classify_failure_and_recovery` sets structured `recovery_hint` (type, message, source); `_format_recovery_hint_for_prompt` stringifies at prompt assembly; `_run_verification_after_tool`; planning_gap, execution_issue, workflow_breakdown | `test_failure_classify_*`, `test_format_recovery_hint_for_prompt` |
@@ -26,6 +28,26 @@ This document maps each section of the North Star to code, tests, and verificati
 | 18 | Project discovery: detect opportunities, synthesize, evaluate feasibility | **Implemented:** `run_project_discovery()` in `agent/services/project_discovery.py`; timeout guard, strict JSON, safe fallback, max item length; **GET /project_discovery**; LLM via `services.llm_gateway` | test_project_discovery_returns_structure, test_project_discovery_malformed_completion_returns_safe_fallback |
 | 19 | Long-term growth: capability, alignment, partnership | Capabilities + domains; learnings; study plans; usefulness-weighted growth | Capability events; seed plans |
 | 20 | Ultimate goal: collaborative intelligence that grows, improves work, expands possibility | Whole system; North Star as single source of truth | Full E2E and integration tests |
+
+### Fabrication assist (scaffold, non–agent-loop)
+
+| Item | Role | Code / docs | Tests |
+|------|------|-------------|--------|
+| Fabrication assist boundary | Layla guides / explains; operator plugs a deterministic kernel via **`BuildRunner`**; subprocess **`echo_kernel`** + Pydantic schemas | `fabrication_assist/assist/` (`schemas`, `errors`, `echo_kernel`, `session`, `variants`, `explain`, `runner`, `layla_lite`); [FABRICATION_ASSIST.md](FABRICATION_ASSIST.md); `fabrication_assist/README.md`; [knowledge/fabrication-assist-layer.md](../knowledge/fabrication-assist-layer.md) | `test_fabrication_assist*.py` (core, runner, CLI, session edges, doc links) |
+
+**Note:** On `main`, `StubRunner` only; do not import `fabrication_assist` from `agent/main.py` or `agent_loop.py` unless deliberately integrating.
+
+---
+
+## Operator UX (roadmap-aligned)
+
+| Item | Where | Notes |
+|------|--------|--------|
+| Runtime limits + potato preset | `agent/config_schema.py`, `main.py` `/settings/preset`, Web UI Settings | `docs/POTATO_MODE.md` |
+| Study presets / workspace suggestions | `routers/study.py` `/study_plans/presets`, `/suggestions`, `/derive_topic`; Web UI Study panel | Local-only signals from `sandbox_root` |
+| Persona focus (dual voice depth) | `POST /agent` `persona_focus`, `agent_loop._build_system_head`, MCP `chat_with_layla` | Primary `aspect_id` unchanged |
+| Remember + learning tags | Web UI, `POST /learn/` `tags`, `db.py` `learnings.tags` | Discord `/note` uses `save_learning_async` |
+| Discord D1–D5 | `discord_bot/README.md`, `/note`, existing `/ask` + summon/TTS/music | Explicit notes only for codex-style memory |
 
 ---
 
@@ -138,7 +160,7 @@ Maps each capability domain to implemented modules and missing components. See [
 
 | Component | Module | Description |
 |-----------|--------|-------------|
-| Task model routing | `agent_loop._autonomous_run_impl`, `model_router.py`, `llm_gateway._get_llm` | When routing enabled: `classify_task(goal, context)` → per-task GGUF (`coding_model` / `reasoning_model` / `chat_model` or `models{}` block). `select_model()` + `llm_model_coding` capability for Magicoder vs default; benchmarks via `capability_implementations`. |
+| Task model routing | `agent_loop._autonomous_run_impl`, `model_router.py`, `llm_gateway._get_llm` | When routing enabled: `classify_task_for_routing(goal, context, cfg)` → per-task GGUF (`coding_model` / `reasoning_model` / `chat_model` or `models{}` block). Dual GGUF when `should_use_dual_models()` + `resolve_dual_model_basenames()` (`chat_model_path` / `agent_model_path` or basenames); `force_dual_models` bypasses RAM gate; optional `route_default_to_chat_model`. `select_model()` + `llm_model_coding` + benchmarks. `/health` + `/platform/models` → `model_routing`. |
 | `llm_model_coding` | `capabilities/registry.py` | `magicoder` + `default_coding` impls (`llama_cpp` module_path). |
 | Performance modes | `system_optimizer.get_effective_config()` | `performance_mode`: `low` / `mid` / `high` / `auto` (explicit `auto` only → hardware tiers; omitted = `mid`). Runtime overrides: `n_ctx`, tool limits, `retrieval_cross_encoder_limit`, `max_plan_depth`, `enable_cognitive_workspace`, `planning_enabled`. |
 | Plugin capabilities | `plugin_loader.py` | YAML `capabilities:` → `register_implementation`. |
@@ -167,7 +189,7 @@ Maps each capability domain to implemented modules and missing components. See [
 | Metrics | `system_optimizer.py` | CPU, RAM, GPU, token throughput, tool latency, retrieval latency, agent_decision_ms |
 | Adaptive config | `system_optimizer.py` | `get_effective_config()` — runtime overrides for n_ctx, max_tool_calls, semantic_k, etc. Never persists. |
 | Observability | `observability.py` | `log_agent_decision`, `log_tool_result`, `log_retrieval_cache_*` — structured logging + performance_monitor |
-| Health/doctor | `main.py`, `system_doctor.py` | `system_optimizer` summary in GET /health and GET /doctor |
+| Health/doctor | `main.py`, `system_doctor.py`, `services/health_snapshot.py` | `system_optimizer` summary; sanitized config snapshot + dependency matrix on GET /health; GET /doctor unchanged |
 
 ---
 
@@ -175,7 +197,7 @@ Maps each capability domain to implemented modules and missing components. See [
 
 | Panel | API | Description |
 |-------|-----|-------------|
-| Health | GET /health, GET /health?deep=true | Fast default health status; optional deep vector probe on demand |
+| Health | GET /health, GET /health?deep=true, GET /health/deps | `active_model`, `effective_config`, `features_enabled`, `dependencies`; Chroma vector probe on `?deep=true`; minimal deps on `/health/deps`. UI: unified poller. See `docs/GOLDEN_FLOW.md` |
 | Models | GET /platform/models | Active model, installed .gguf list, catalog (jinx/dolphin/hermes/qwen), benchmarks |
 | Knowledge | GET /platform/knowledge | Summaries, learnings, graph nodes, timeline, user identity |
 | Plugins | GET /platform/plugins | Loaded plugins, skills, tools |

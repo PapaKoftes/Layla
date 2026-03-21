@@ -6,6 +6,7 @@ from .code import TOOLS as CODE_TOOLS
 from .data import TOOLS as DATA_TOOLS
 from .file import TOOLS as FILE_TOOLS
 from .general import TOOLS as GENERAL_TOOLS
+from .geometry import TOOLS as GEOMETRY_TOOLS
 from .git import TOOLS as GIT_TOOLS
 from .memory import TOOLS as MEMORY_TOOLS
 from .system import TOOLS as SYSTEM_TOOLS
@@ -22,4 +23,5 @@ __all__ = [
     "AUTOMATION_TOOLS",
     "ANALYSIS_TOOLS",
     "GENERAL_TOOLS",
+    "GEOMETRY_TOOLS",
 ]

@@ -8,7 +8,8 @@ version = "1.0.0"
 description = "A local-first, multi-aspect AI companion and engineering agent"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.11"
+# 3.13+ not validated (Chroma/torch/sentence-transformers stack); use 3.11 or 3.12 only.
+requires-python = ">=3.11,<3.13"
 authors = [
   { name = "Layla Author(s)" },
 ]
@@ -25,7 +26,7 @@ classifiers = [
 [tool.ruff]
 line-length = 120
 target-version = "py311"
-src = ["agent"]
+src = ["agent", "fabrication_assist"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
@@ -37,6 +38,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "agent/tests/*" = ["F811"]   # redefined-while-unused (fixture names)
+"agent/tests/test_fabrication_assist*.py" = ["E402"]   # sys.path bootstrap before repo imports
 
 [tool.pytest.ini_options]
 testpaths = ["agent/tests"]
@@ -51,4 +53,14 @@ filterwarnings = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["agent"]
+where = [".", "agent"]
+include = [
+    "fabrication_assist*",
+    "layla*",
+    "routers*",
+    "services*",
+    "capabilities*",
+    "install*",
+    "skills*",
+]
+exclude = ["tests", "tests.*"]

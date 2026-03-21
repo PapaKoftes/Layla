@@ -1,6 +1,6 @@
 """
 Short-lived completion cache (prompt hash -> last non-stream response).
-Opt-in via runtime_config completion_cache_enabled. Never enabled by default.
+Controlled by `completion_cache_enabled` in runtime_config (default true in static defaults).
 
 Cache key includes model name, temperature, max_tokens so different inference
 parameters never collide.

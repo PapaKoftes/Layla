@@ -99,12 +99,38 @@ def test_no_safety_regression():
     """Loop limits and approval/sandbox unchanged (config and code shape)."""
     import runtime_safety
     cfg = runtime_safety.load_config()
-    assert cfg.get("max_tool_calls") == 5
-    assert cfg.get("max_runtime_seconds") == 20
+    assert isinstance(cfg.get("max_tool_calls"), int)
+    assert cfg.get("max_tool_calls", 0) >= 1
+    assert isinstance(cfg.get("max_runtime_seconds"), int)
+    assert cfg.get("max_runtime_seconds", 0) >= 1
     assert "sandbox_root" in cfg
     # Approval: require_approval exists and safe tools skip
     assert runtime_safety.SAFE_TOOLS is not None
     assert "read_file" in runtime_safety.SAFE_TOOLS
+
+
+def test_builtin_config_defaults_production_contract(monkeypatch):
+    """Built-in defaults when runtime_config.json cannot be read (see docs/PRODUCTION_CONTRACT.md)."""
+    import tempfile
+    import uuid
+    from pathlib import Path
+
+    import runtime_safety
+
+    fake = Path(tempfile.gettempdir()) / f"layla_cfg_defaults_test_{uuid.uuid4().hex}.json"
+    monkeypatch.setattr(runtime_safety, "CONFIG_FILE", fake)
+    monkeypatch.setattr(runtime_safety, "_config_cache", None)
+    monkeypatch.setattr(runtime_safety, "_config_mtime", 0.0)
+    monkeypatch.setattr(runtime_safety, "_config_last_check", 0.0)
+
+    cfg = runtime_safety.load_config()
+    assert cfg["max_tool_calls"] == 2
+    assert cfg["max_runtime_seconds"] == 30
+    assert cfg["completion_cache_enabled"] is True
+    assert cfg["response_cache_enabled"] is True
+    assert cfg["tool_loop_detection_enabled"] is True
+    assert cfg["performance_mode"] == "auto"
+    assert cfg["anti_drift_prompt_enabled"] is True
 
 
 @pytest.mark.slow

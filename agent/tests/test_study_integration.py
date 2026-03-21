@@ -149,6 +149,26 @@ def test_capabilities_get_and_record_practice():
     assert (c.get("practice_count") or 0) >= 1
 
 
+def test_study_presets_and_derive_topic():
+    from fastapi.testclient import TestClient
+
+    from main import app
+
+    client = TestClient(app)
+    r = client.get("/study_plans/presets")
+    assert r.status_code == 200
+    topics = r.json().get("topics") or []
+    assert len(topics) >= 3
+    r2 = client.get("/study_plans/suggestions")
+    assert r2.status_code == 200
+    assert "suggestions" in r2.json()
+    r3 = client.post("/study_plans/derive_topic", json={"message": "How do pytest fixtures work with async code?"})
+    assert r3.status_code == 200
+    body = r3.json()
+    assert body.get("ok") is True
+    assert "pytest" in (body.get("topic") or "").lower()
+
+
 if __name__ == "__main__":
     import pytest
     pytest.main([__file__, "-v"])

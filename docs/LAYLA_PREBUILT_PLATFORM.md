@@ -14,6 +14,8 @@ This document defines Layla's long-term architecture as a **fully prebuilt local
 
 4. **Hardware-aware defaults** — Model recommender, `n_ctx`, `n_gpu_layers`, acceleration backend. `first_run.py` and `runtime_safety._probe_hardware()` derive defaults from detected CPU, RAM, GPU, VRAM.
 
+4b. **Low-resource preset** — **Potato mode** merges conservative caps and disables Chroma via `POST /settings/preset` / Web UI Settings; documented in [POTATO_MODE.md](POTATO_MODE.md).
+
 5. **Open-source first** — Prefer chromadb, sentence-transformers, playwright, faster-whisper, kokoro-onnx, trafilatura, etc. Avoid reinventing; integrate proven OSS.
 
 6. **Local performance** — Optimize for local inference (llama-cpp-python), local vector search (ChromaDB), local embeddings (nomic-embed-text). Remote APIs are opt-in.
@@ -86,6 +88,7 @@ The platform is organized into 10 capability domains. Each domain has a purpose,
 | Module | Path | Role |
 |--------|------|------|
 | file_understanding | `agent/layla/file_understanding.py` | `analyze_file()`, `get_supported_extensions()` — geometry, fabrication, programming, docs, visual |
+| geometry | `agent/layla/geometry/` | Structured CAD-like programs (schema, executor, backends); tools `geometry_validate_program`, `geometry_execute_program`, `geometry_list_frameworks` |
 | registry (tools) | `agent/layla/tools/registry.py` | python_ast, grep_code, glob_files, diff_files, regex_test, understand_file, workspace_map, project_discovery, code_metrics, code_lint, git_blame, dependency_graph |
 
 **Open-source foundations:** stdlib ast, networkx, unidiff, PyMuPDF, pypdf, python-docx, openpyxl, bandit

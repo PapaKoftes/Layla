@@ -35,6 +35,17 @@ Summon Layla into a channel. Chat with her — she replies and speaks back when 
 | `/queue` | Show queue |
 | `/listen` | Start listening to voice — transcribe, reply, speak when done |
 | `/stop_listen` | Stop listening and process what you said |
+| `/note` | Save **your** text to Layla learnings (`POST /learn/`, tag `discord:explicit_note`) — operator-initiated only |
+
+### Roadmap slices (D1–D5)
+
+- **D1** — Token in env `DISCORD_BOT_TOKEN` or `discord_bot_token` in `runtime_config.json`; invite bot to **one** server; Layla API at `LAYLA_API_URL` (default `http://127.0.0.1:8000`).
+- **D2** — Channel-bound agent: `/summon` binds a text channel; @mention and `/ask` → `POST /agent` (see `transports/base.py`).
+- **D3** — TTS: `/chat_speak`, `/tts`, voice listen pipeline (rate-limit / opt-in per server policy is operator responsibility).
+- **D4** — Music: `/play` and queue commands + `music_resolver.py`.
+- **D5** — Bounded “pillars”: `/note` for explicit learnings; no passive scraping of member data — align with `docs/ETHICAL_AI_PRINCIPLES.md`.
+
+Optional: set `DISCORD_GUILD_ID` in docs/env for your own runbooks when locking automation to one guild (not required by the bot code).
 
 ---
 

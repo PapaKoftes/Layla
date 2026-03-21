@@ -230,6 +230,15 @@ def _migrate_impl() -> None:
             if "duplicate column" not in str(e).lower():
                 raise
 
+    # Optional comma-separated tags (e.g. ui:remember, topic:coding)
+    try:
+        with _conn() as db:
+            db.execute("ALTER TABLE learnings ADD COLUMN tags TEXT DEFAULT ''")
+            db.commit()
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
+
     # Evolution layer: study_plans optional domain_id and linked_capability_event_id
     for col, spec in [
         ("domain_id", "TEXT"),
@@ -268,6 +277,31 @@ def _migrate_impl() -> None:
             db.commit()
     except Exception as e:
         logger.warning("missions table migration failed: %s", e)
+
+    # Background tasks table (durable async task status across restarts)
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS background_tasks (
+                    id              TEXT PRIMARY KEY,
+                    conversation_id TEXT DEFAULT '',
+                    goal            TEXT NOT NULL,
+                    aspect_id       TEXT DEFAULT '',
+                    status          TEXT NOT NULL DEFAULT 'queued',
+                    priority        INTEGER DEFAULT 0,
+                    result          TEXT DEFAULT '',
+                    error           TEXT DEFAULT '',
+                    created_at      TEXT NOT NULL,
+                    started_at      TEXT DEFAULT '',
+                    finished_at     TEXT DEFAULT '',
+                    updated_at      TEXT NOT NULL
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_background_tasks_created ON background_tasks(created_at DESC)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_background_tasks_status ON background_tasks(status)")
+            db.commit()
+    except Exception as e:
+        logger.warning("background_tasks table migration failed: %s", e)
 
     # Conversation summary memory — prevents context overflow across sessions
     try:
@@ -779,6 +813,7 @@ def save_learning(
     confidence: float = 0.5,
     source: str = "",
     score: float = 1.0,
+    tags: str = "",
 ) -> int:
     """Save a learning. Uses content_hash for dedup. confidence: 0.9 study, 0.7 LLM, 0.4 heuristic.
     Hook: learning quality filter rejects short/uncertain entries; long content summarized before storing."""
@@ -813,21 +848,44 @@ def save_learning(
     learning_type = kind if kind in ("fact", "preference", "strategy", "identity") else "fact"
     content_hash = hashlib.sha1(content.encode("utf-8", errors="replace")).hexdigest()
     score = max(0.0, min(1.0, float(score)))
+    tags_s = (tags or "").strip()[:500]
     with _conn() as db:
         try:
             has_hash = any(r[1] == "content_hash" for r in db.execute("PRAGMA table_info(learnings)").fetchall())
         except Exception:
             has_hash = False
+        try:
+            has_tags = any(r[1] == "tags" for r in db.execute("PRAGMA table_info(learnings)").fetchall())
+        except Exception:
+            has_tags = False
         if has_hash:
             row = db.execute("SELECT id FROM learnings WHERE content_hash=? AND content_hash!=''", (content_hash,)).fetchone()
             if row:
                 return row[0]
         try:
-            cur = db.execute(
-                """INSERT INTO learnings (content, type, created_at, embedding_id, learning_type, confidence, source, content_hash, score)
-                   VALUES (?,?,?,?,?,?,?,?,?)""",
-                (content, learning_type, utcnow().isoformat(), embedding_id, learning_type, confidence, source, content_hash, score),
-            )
+            if has_tags:
+                cur = db.execute(
+                    """INSERT INTO learnings (content, type, created_at, embedding_id, learning_type, confidence, source, content_hash, score, tags)
+                       VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        content,
+                        learning_type,
+                        utcnow().isoformat(),
+                        embedding_id,
+                        learning_type,
+                        confidence,
+                        source,
+                        content_hash,
+                        score,
+                        tags_s,
+                    ),
+                )
+            else:
+                cur = db.execute(
+                    """INSERT INTO learnings (content, type, created_at, embedding_id, learning_type, confidence, source, content_hash, score)
+                       VALUES (?,?,?,?,?,?,?,?,?)""",
+                    (content, learning_type, utcnow().isoformat(), embedding_id, learning_type, confidence, source, content_hash, score),
+                )
         except sqlite3.OperationalError:
             cur = db.execute(
                 "INSERT INTO learnings (content, type, created_at, embedding_id, learning_type) VALUES (?,?,?,?,?)",
@@ -2032,6 +2090,89 @@ def get_missions(limit: int = 50, status_filter: str | None = None) -> list[dict
         if m:
             out.append(m)
     return out
+
+
+def save_background_task(task: dict) -> None:
+    """Create or replace a durable background task row."""
+    migrate()
+    now = utcnow().isoformat()
+    with _conn() as db:
+        db.execute(
+            """INSERT OR REPLACE INTO background_tasks
+               (id, conversation_id, goal, aspect_id, status, priority, result, error,
+                created_at, started_at, finished_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                task.get("task_id", ""),
+                task.get("conversation_id", "") or "",
+                task.get("goal", "") or "",
+                task.get("aspect_id", "") or "",
+                task.get("status", "queued") or "queued",
+                int(task.get("priority", 0) or 0),
+                task.get("result", "") or "",
+                task.get("error", "") or "",
+                task.get("created_at", now) or now,
+                task.get("started_at", "") or "",
+                task.get("finished_at", "") or "",
+                now,
+            ),
+        )
+        db.commit()
+
+
+def update_background_task(
+    task_id: str,
+    *,
+    status: str | None = None,
+    result: str | None = None,
+    error: str | None = None,
+    started_at: str | None = None,
+    finished_at: str | None = None,
+) -> None:
+    """Update mutable background task fields."""
+    migrate()
+    updates: list[str] = []
+    args: list = []
+    if status is not None:
+        updates.append("status=?")
+        args.append(status)
+    if result is not None:
+        updates.append("result=?")
+        args.append(result)
+    if error is not None:
+        updates.append("error=?")
+        args.append(error)
+    if started_at is not None:
+        updates.append("started_at=?")
+        args.append(started_at)
+    if finished_at is not None:
+        updates.append("finished_at=?")
+        args.append(finished_at)
+    updates.append("updated_at=?")
+    args.append(utcnow().isoformat())
+    args.append(task_id)
+    with _conn() as db:
+        db.execute(f"UPDATE background_tasks SET {', '.join(updates)} WHERE id=?", tuple(args))
+        db.commit()
+
+
+def get_background_task(task_id: str) -> dict | None:
+    """Fetch one persisted background task."""
+    migrate()
+    with _conn() as db:
+        row = db.execute("SELECT * FROM background_tasks WHERE id=?", (task_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def list_background_tasks(limit: int = 200) -> list[dict]:
+    """List persisted background tasks by newest first."""
+    migrate()
+    with _conn() as db:
+        rows = db.execute(
+            "SELECT * FROM background_tasks ORDER BY created_at DESC LIMIT ?",
+            (max(1, int(limit)),),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def get_project_context() -> dict:

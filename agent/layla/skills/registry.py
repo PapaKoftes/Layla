@@ -64,13 +64,23 @@ SKILLS: dict[str, dict[str, Any]] = {
     },
     "fabrication_workflow": {
         "description": "Analyze fabrication files: DXF, G-code, STL. Geometry to machine intent.",
-        "tools": ["understand_file", "parse_gcode", "stl_mesh_info", "read_file", "generate_gcode"],
+        "tools": [
+            "understand_file",
+            "parse_gcode",
+            "stl_mesh_info",
+            "read_file",
+            "generate_gcode",
+            "geometry_validate_program",
+            "geometry_execute_program",
+            "geometry_list_frameworks",
+        ],
         "sub_skills": [],
         "execution_steps": [
             "Use understand_file for DXF layers/entities",
             "Use parse_gcode for G-code moves, tools, bounds",
             "Use stl_mesh_info for mesh stats",
             "Use generate_gcode for DXF to G-code (approval required)",
+            "For parametric CAD-style sequences: geometry_validate_program then geometry_execute_program (approval); geometry_list_frameworks checks ezdxf/cadquery/openscad/trimesh",
         ],
     },
     "run_test_suite": {

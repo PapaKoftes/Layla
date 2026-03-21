@@ -30,7 +30,7 @@ try:
 except ImportError:
     discord = None  # type: ignore
 
-from transports.base import call_layla_async, check_transport_inbound
+from transports.base import call_layla_async, check_transport_inbound, save_learning_async
 from .state import (
     append_queue,
     clear_queue,
@@ -62,8 +62,21 @@ def _get_tts_bytes(text: str) -> bytes | None:
         return None
 
 
-async def _call_layla(message: str, aspect_id: str = "morrigan") -> str:
-    return await call_layla_async(message, aspect_id=aspect_id, max_response_chars=2000)
+async def _call_layla(message: str, aspect_id: str = "morrigan", persona_focus: str = "") -> str:
+    return await call_layla_async(
+        message,
+        aspect_id=aspect_id,
+        max_response_chars=2000,
+        persona_focus=persona_focus or "",
+    )
+
+
+async def _save_operator_note(content: str) -> str:
+    """Explicit learnings entry (ethics: user-initiated only)."""
+    data = await save_learning_async(content.strip(), kind="fact", tags="discord:explicit_note")
+    if data.get("ok"):
+        return "✓ Saved to Layla learnings."
+    return data.get("error", "Could not save note.") or "Could not save note."
 
 
 def _discord_inbound_ok(user_id: int, text: str | None) -> tuple[bool, str | None]:
@@ -274,6 +287,17 @@ def _create_bot() -> commands.Bot | None:
         await interaction.response.defer()
         reply = await _call_layla(message)
         await interaction.followup.send(reply[:2000])
+
+    @bot.tree.command(name="note", description="Save an explicit note to Layla learnings (you choose what is stored)")
+    @app_commands.describe(content="Text to remember")
+    async def note(interaction: discord.Interaction, content: str):
+        ok, deny = _discord_inbound_ok(interaction.user.id, content)
+        if not ok:
+            await interaction.response.send_message(deny or "Unauthorized.", ephemeral=True)
+            return
+        await interaction.response.defer()
+        msg = await _save_operator_note(content)
+        await interaction.followup.send(msg[:500])
 
     @bot.tree.command(name="chat_speak", description="Ask Layla and she speaks the reply in voice")
     @app_commands.describe(message="What to ask Layla")

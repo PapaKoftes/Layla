@@ -9,7 +9,10 @@ import re
 logger = logging.getLogger("layla")
 
 # Similarity threshold: word-set overlap ratio (0 = none, 1 = identical)
-_DISTILL_SIMILARITY_THRESHOLD = 0.35
+_DISTILL_SIMILARITY_THRESHOLD = 0.55
+_STOP_WORDS = frozenset({
+    "the", "a", "an", "in", "is", "of", "to", "and", "or", "for", "on", "at", "it", "as", "by",
+})
 
 
 def score_learning_content(content: str) -> float:
@@ -56,7 +59,7 @@ def _normalize_for_similarity(text: str) -> set:
     if not text or not isinstance(text, str):
         return set()
     cleaned = re.sub(r"[^a-z0-9\s]", " ", text.lower().strip())
-    return set(w for w in cleaned.split() if len(w) > 1)
+    return set(w for w in cleaned.split() if len(w) > 2 and w not in _STOP_WORDS)
 
 
 def _similarity(a: set, b: set) -> float:

@@ -8,6 +8,7 @@ __pycache__/
 *.py[cod]
 
 # Local runtime and data (do not commit)
+conversation_history.json
 layla.db
 layla.db-shm
 layla.db-wal
@@ -26,6 +27,9 @@ discord_bot/discord_bot_state.json
 
 # Temp image uploads (agent image context)
 .layla_temp_images/
+
+# Fabrication assist local sessions (JSON under repo)
+fabrication_assist/.assist_sessions/
 
 # Playwright persistent profiles (local browser state)
 agent/.browser_profiles/
@@ -89,6 +93,7 @@ knowledge/docs/
 !knowledge/KNOWLEDGE_LIBRARY_FULL.md
 !knowledge/layla-capabilities-map.md
 !knowledge/layla-expansion-roadmap.md
+!knowledge/fabrication-assist-layer.md
 
 # Repo-specific / handoff docs (keep locally if needed)
 REPO_ANALYSIS_FOR_HANDOFF.md

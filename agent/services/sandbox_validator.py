@@ -59,6 +59,9 @@ def validate_capability_impl(capability: str, implementation_id: str, package_na
         "sentence-transformers": "sentence_transformers",
         "trafilatura": "trafilatura",
         "beautifulsoup4": "bs4",
+        "ezdxf": "ezdxf",
+        "cadquery": "cadquery",
+        "trimesh": "trimesh",
     }
     module = module_map.get(pkg, pkg.replace("-", "_"))
     if not validate_import(pkg, module):
