@@ -1,0 +1,5 @@
+# Example machining priorities for assist framing only.
+machining_rules:
+  minimize_setups: { priority: high }
+  large_tool_radius_ok: { priority: medium }
+  five_axis_optional: { priority: low }

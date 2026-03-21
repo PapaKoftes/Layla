@@ -1,0 +1,5 @@
+# Example joinery hints for variant stubs (heuristics only, not authoritative CAM).
+joinery:
+  tab_slot: { complexity: low, disassembly: partial }
+  screw_boss: { complexity: medium, disassembly: full }
+  dovetail: { complexity: high, disassembly: difficult }

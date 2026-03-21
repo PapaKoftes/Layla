@@ -23,8 +23,11 @@ def filter_learning(content: str, summarize_fn=None) -> tuple[bool, str, str]:
     if len(c) < MIN_LENGTH:
         return False, "", f"too_short_{len(c)}"
     lower = c.lower()
+    lower_opening = lower[:60]
     for phrase in UNCERTAINTY_PHRASES:
-        if phrase in lower:
+        # Reject hedged statements only when they appear in the opening clause,
+        # not when factual content later contains words like "might".
+        if phrase in lower_opening:
             return False, "", "uncertainty_phrase"
     if len(c) > MAX_LENGTH_BEFORE_SUMMARIZE and summarize_fn:
         try:

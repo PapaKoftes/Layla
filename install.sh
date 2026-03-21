@@ -16,7 +16,7 @@ if ! command -v python3 &>/dev/null; then
   echo ""
   echo "  [!] python3 not found."
   echo ""
-  echo "  Install Python 3.11+ from https://www.python.org/downloads/"
+  echo "  Install Python 3.11 or 3.12 from https://www.python.org/downloads/"
   echo "  or via your package manager:"
   echo "    Debian/Ubuntu:  sudo apt install python3 python3-venv python3-dev"
   echo "    Fedora:         sudo dnf install python3 python3-pip python3-devel"
@@ -27,13 +27,13 @@ if ! command -v python3 &>/dev/null; then
 fi
 
 PYVER=$(python3 --version 2>&1 | awk '{print $2}')
-if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+if ! python3 -c 'import sys; sys.exit(0 if sys.version_info[:2] in ((3, 11), (3, 12)) else 1)' 2>/dev/null; then
   echo ""
-  echo "  [!] Python 3.11+ is required. You have $PYVER."
+  echo "  [!] Python 3.11 or 3.12 is required (3.13+ not supported yet). You have $PYVER."
   echo ""
-  echo "  Upgrade via your package manager or python.org"
-  echo "    Debian/Ubuntu:  sudo apt install python3.11 python3.11-venv"
-  echo "    Fedora:         sudo dnf install python3.11 python3-devel"
+  echo "  Upgrade via your package manager or python.org (use 3.11 or 3.12 only)"
+  echo "    Debian/Ubuntu:  sudo apt install python3.12 python3.12-venv"
+  echo "    Fedora:         sudo dnf install python3.12 python3-devel"
   echo ""
   exit 1
 fi

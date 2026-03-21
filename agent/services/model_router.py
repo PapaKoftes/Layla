@@ -5,6 +5,7 @@ coding → code model, reasoning → reasoning model, chat → chat model.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 logger = logging.getLogger("layla")
 
@@ -65,6 +66,37 @@ def _resolve_models_block_alias(raw: str) -> str:
     return s
 
 
+def _router_fields_from_cfg(cfg: dict) -> dict[str, str | None]:
+    """Derive routing fields from a config dict (no process-wide cache)."""
+    coding = (cfg.get("coding_model") or "").strip() or None
+    reasoning = (cfg.get("reasoning_model") or "").strip() or None
+    chat = (cfg.get("chat_model") or "").strip() or None
+    default_fn = (cfg.get("model_filename") or "").strip() or None
+    fallback_m: str | None = None
+
+    models_block = cfg.get("models")
+    if isinstance(models_block, dict):
+        m_def = (_resolve_models_block_alias(str(models_block.get("default") or "")) or "").strip() or None
+        m_code = (_resolve_models_block_alias(str(models_block.get("code") or "")) or "").strip() or None
+        m_fast = (_resolve_models_block_alias(str(models_block.get("fast") or "")) or "").strip() or None
+        m_fb = (_resolve_models_block_alias(str(models_block.get("fallback") or "")) or "").strip() or None
+        if m_code:
+            coding = coding or m_code
+        if m_def:
+            default_fn = m_def
+        if m_fast:
+            chat = chat or m_fast
+        fallback_m = m_fb
+
+    return {
+        "coding": coding,
+        "reasoning": reasoning,
+        "chat": chat,
+        "default": default_fn,
+        "fallback_model": fallback_m,
+    }
+
+
 def _load_router_config() -> dict[str, str | None]:
     """Load model routing from config. Keys: coding_model, reasoning_model, chat_model, models{}."""
     global _ROUTER_CONFIG
@@ -72,32 +104,9 @@ def _load_router_config() -> dict[str, str | None]:
         return _ROUTER_CONFIG
     try:
         import runtime_safety
+
         cfg = runtime_safety.load_config()
-        coding = (cfg.get("coding_model") or "").strip() or None
-        reasoning = (cfg.get("reasoning_model") or "").strip() or None
-        chat = (cfg.get("chat_model") or "").strip() or None
-        default_fn = (cfg.get("model_filename") or "").strip() or None
-        fallback_m: str | None = None
-
-        models_block = cfg.get("models")
-        if isinstance(models_block, dict):
-            m_def = (_resolve_models_block_alias(str(models_block.get("default") or "")) or "").strip() or None
-            m_code = (_resolve_models_block_alias(str(models_block.get("code") or "")) or "").strip() or None
-            m_fast = (_resolve_models_block_alias(str(models_block.get("fast") or "")) or "").strip() or None
-            m_fb = (_resolve_models_block_alias(str(models_block.get("fallback") or "")) or "").strip() or None
-            if m_code:
-                coding = coding or m_code
-            if m_def:
-                default_fn = m_def
-            if m_fast:
-                chat = chat or m_fast
-            fallback_m = m_fb
-
-        _ROUTER_CONFIG["coding"] = coding
-        _ROUTER_CONFIG["reasoning"] = reasoning
-        _ROUTER_CONFIG["chat"] = chat
-        _ROUTER_CONFIG["default"] = default_fn
-        _ROUTER_CONFIG["fallback_model"] = fallback_m
+        _ROUTER_CONFIG = _router_fields_from_cfg(cfg)
     except Exception:
         _ROUTER_CONFIG = {
             "coding": None, "reasoning": None, "chat": None,
@@ -127,6 +136,104 @@ def classify_task(text: str, context: str = "") -> str:
     if len(t) < 100 and not any(k in t for k in ("research", "investigate", "search")):
         return "chat"
     return "default"
+
+
+def _path_points_to_existing_file(path_str: str) -> str | None:
+    """Return basename if path exists and is a file."""
+    try:
+        p = Path(path_str).expanduser().resolve()
+        if p.is_file():
+            return p.name
+    except Exception:
+        pass
+    return None
+
+
+def _basename_file_exists(cfg: dict, basename: str | None) -> bool:
+    if not basename or not str(basename).strip():
+        return False
+    try:
+        import runtime_safety
+
+        probe = dict(cfg)
+        probe["model_filename"] = str(basename).strip()
+        return runtime_safety.resolve_model_path(probe).is_file()
+    except Exception:
+        return False
+
+
+def resolve_dual_model_basenames(cfg: dict | None = None) -> tuple[str | None, str | None]:
+    """
+    Resolve chat + agent GGUF basenames for dual-model mode (under models_dir).
+    Honors chat_model_path / agent_model_path when they point at existing files;
+    otherwise uses router chat / coding / default basenames when those files exist.
+    """
+    import runtime_safety
+
+    if cfg is None:
+        cfg = runtime_safety.load_config()
+    rf = _router_fields_from_cfg(cfg)
+    chat_b: str | None = None
+    agent_b: str | None = None
+
+    cp = (cfg.get("chat_model_path") or "").strip()
+    if cp:
+        chat_b = _path_points_to_existing_file(cp)
+    if not chat_b and rf.get("chat"):
+        bn = str(rf["chat"]).strip()
+        if bn and _basename_file_exists(cfg, bn):
+            chat_b = bn
+
+    ap = (cfg.get("agent_model_path") or "").strip()
+    if ap:
+        agent_b = _path_points_to_existing_file(ap)
+    if not agent_b:
+        for cand in (rf.get("coding"), rf.get("reasoning"), rf.get("default")):
+            if not cand:
+                continue
+            bn = str(cand).strip()
+            if bn and _basename_file_exists(cfg, bn):
+                agent_b = bn
+                break
+
+    return (chat_b, agent_b)
+
+
+def _fast_chat_configured(cfg: dict) -> bool:
+    """True if a fast/chat model is configured (path, chat_model, or models.fast)."""
+    p = (cfg.get("chat_model_path") or "").strip()
+    if p:
+        try:
+            if Path(p).expanduser().resolve().is_file():
+                return True
+        except Exception:
+            pass
+    rf = _router_fields_from_cfg(cfg)
+    if rf.get("chat"):
+        return True
+    mb = cfg.get("models")
+    if isinstance(mb, dict) and str(mb.get("fast") or "").strip():
+        return True
+    return False
+
+
+def classify_task_for_routing(text: str, context: str = "", cfg: dict | None = None) -> str:
+    """
+    Like classify_task, but optionally maps 'default' → 'chat' when route_default_to_chat_model
+    is set and a fast/chat model is configured.
+    """
+    import runtime_safety
+
+    if cfg is None:
+        cfg = runtime_safety.load_config()
+    t = classify_task(text, context)
+    if t != "default":
+        return t
+    if not cfg.get("route_default_to_chat_model"):
+        return t
+    if not _fast_chat_configured(cfg):
+        return t
+    return "chat"
 
 
 def route_model(task_type: str) -> str | None:
@@ -214,20 +321,46 @@ def get_model_for_task(task_text: str) -> str | None:
 
 
 def is_routing_enabled() -> bool:
-    """True if model routing is configured (any task-specific model or models{} block)."""
+    """True if model routing is configured (task models, models{}, dual paths, or force_dual_models)."""
     cfg = _load_router_config()
     if cfg.get("coding") or cfg.get("reasoning") or cfg.get("chat"):
         return True
     try:
         import runtime_safety
-        mb = runtime_safety.load_config().get("models")
+
+        raw = runtime_safety.load_config()
+        mb = raw.get("models")
         if isinstance(mb, dict) and any(
             str(mb.get(k) or "").strip() for k in ("default", "code", "fast", "fallback")
         ):
             return True
+        if (raw.get("chat_model_path") or "").strip() or (raw.get("agent_model_path") or "").strip():
+            return True
+        if raw.get("force_dual_models"):
+            chat_b, agent_b = resolve_dual_model_basenames(raw)
+            return bool(chat_b and agent_b)
     except Exception:
         pass
     return False
+
+
+def get_model_routing_summary(cfg: dict | None = None) -> dict:
+    """Read-only snapshot for /health and /platform/models (no LLM load)."""
+    import runtime_safety
+    from services.resource_manager import should_use_dual_models
+
+    if cfg is None:
+        cfg = runtime_safety.load_config()
+    chat_b, agent_b = resolve_dual_model_basenames(cfg)
+    return {
+        "routing_enabled": is_routing_enabled(),
+        "dual_models_active": should_use_dual_models(),
+        "force_dual_models": bool(cfg.get("force_dual_models")),
+        "route_default_to_chat_model": bool(cfg.get("route_default_to_chat_model")),
+        "chat_basename": chat_b,
+        "agent_basename": agent_b,
+        "dual_model_threshold_gb": cfg.get("dual_model_threshold_gb", 24),
+    }
 
 
 def get_fastest_benchmarked(available: list[str] | None = None) -> str | None:

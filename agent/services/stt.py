@@ -21,6 +21,7 @@ logger = logging.getLogger("layla.stt")
 _model = None
 _model_lock = threading.Lock()
 _model_failed = False
+_stt_recovery: dict | None = None
 
 # Use "base" for speed (~50 MB), "small" for better accuracy (~150 MB),
 # "medium" or "large-v3" for near-perfect accuracy.
@@ -29,7 +30,7 @@ _DEFAULT_MODEL = "base"
 
 
 def _get_model():
-    global _model, _model_failed
+    global _model, _model_failed, _stt_recovery
     if _model_failed:
         return None
     if _model is not None:
@@ -38,7 +39,22 @@ def _get_model():
         if _model is not None:
             return _model
         try:
-            from faster_whisper import WhisperModel
+            try:
+                from faster_whisper import WhisperModel
+            except ImportError:
+                from services.dependency_recovery import ensure_feature, merge_recovery_message
+
+                import runtime_safety
+
+                _cfg = runtime_safety.load_config()
+                ok, rec = ensure_feature("faster_whisper", _cfg)
+                _stt_recovery = rec
+                if ok:
+                    from faster_whisper import WhisperModel
+                else:
+                    logger.warning("STT unavailable: %s", merge_recovery_message(rec or {}))
+                    _model_failed = True
+                    return None
             try:
                 import runtime_safety
                 cfg = runtime_safety.load_config()
@@ -51,12 +67,19 @@ def _get_model():
             compute = "float16" if device == "cuda" else "int8"
             _model = WhisperModel(model_size, device=device, compute_type=compute)
             logger.info("Whisper model loaded: %s (%s)", model_size, compute)
-        except ImportError:
-            logger.warning("faster-whisper not installed. Run: pip install faster-whisper")
-            _model_failed = True
+            _stt_recovery = None
         except Exception as e:
             logger.warning("Whisper model load failed: %s", e)
             _model_failed = True
+            _stt_recovery = {
+                "what_failed": "Whisper model failed to load after import succeeded",
+                "exception": str(e),
+                "next_steps": [
+                    "Check disk space and Hugging Face cache (~/.cache/huggingface).",
+                    "Try a smaller whisper_model in runtime_config.json (e.g. base).",
+                    "See agent/runtime_config.example.json for whisper_model / whisper_device.",
+                ],
+            }
     return _model
 
 
@@ -162,3 +185,15 @@ def prewarm() -> None:
     """Load the Whisper model in a background thread at startup."""
     t = threading.Thread(target=_get_model, daemon=True, name="whisper-prewarm")
     t.start()
+
+
+def get_stt_recovery() -> dict | None:
+    """Last structured recovery info when STT is unavailable (for API/UI)."""
+    return _stt_recovery
+
+
+def is_stt_ready() -> bool:
+    """False when faster-whisper cannot be loaded (import or model init failure)."""
+    if _model_failed:
+        return False
+    return _get_model() is not None

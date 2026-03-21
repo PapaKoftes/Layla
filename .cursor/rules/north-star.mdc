@@ -7,7 +7,7 @@ alwaysApply: true
 
 ## For any AI working on this repo
 
-Read **`AGENTS.md`** first. It contains:
+Read **`PROJECT_BRAIN.md`** for a stable system summary, then **`AGENTS.md`**. For subsystem depth, see **`docs/MODULE_SWEEP_STATUS.md`** and the linked **`docs/*_MODULE_SECOND_SWEEP.md`** for the area you change. `AGENTS.md` contains:
 - The complete file map (where everything lives)
 - Hard rules (what never to break)
 - Code style guide

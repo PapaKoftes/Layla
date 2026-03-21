@@ -100,6 +100,33 @@ CAPABILITIES: dict[str, list[CapabilityImpl]] = {
             description="BeautifulSoup HTML parsing",
         ),
     ],
+    "geometry_kernel_ezdxf": [
+        CapabilityImpl(
+            id="ezdxf",
+            package="ezdxf",
+            module_path="layla.geometry.backends.ezdxf_backend",
+            description="2D DXF generation (layla.geometry)",
+            is_default=True,
+        ),
+    ],
+    "geometry_kernel_cadquery": [
+        CapabilityImpl(
+            id="cadquery",
+            package="cadquery",
+            module_path="layla.geometry.backends.cadquery_backend",
+            description="3D solids export via cadquery (subprocess)",
+            is_default=True,
+        ),
+    ],
+    "geometry_kernel_trimesh": [
+        CapabilityImpl(
+            id="trimesh",
+            package="trimesh",
+            module_path="layla.geometry.backends.mesh_backend",
+            description="Mesh load / info via trimesh",
+            is_default=True,
+        ),
+    ],
     # Local GGUF code specialist vs default stack (llama_cpp always importable when installed)
     "llm_model_coding": [
         CapabilityImpl(

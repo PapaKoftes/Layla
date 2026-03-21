@@ -19,16 +19,16 @@ try {
     Write-Host ""
     Write-Host "  [!] Python not found." -ForegroundColor Red
     Write-Host ""
-    Write-Host "  Install Python 3.11+ from https://www.python.org/downloads/"
+    Write-Host "  Install Python 3.11 or 3.12 from https://www.python.org/downloads/"
     Write-Host "  IMPORTANT: Check 'Add Python to PATH' during install."
     Write-Host ""
     exit 1
 }
 
-$verCheck = python -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)" 2>$null
+$verCheck = python -c "import sys; sys.exit(0 if sys.version_info[:2] in ((3, 11), (3, 12)) else 1)" 2>$null
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
-    Write-Host "  [!] Python 3.11+ is required." -ForegroundColor Red
+    Write-Host "  [!] Python 3.11 or 3.12 is required (3.13+ not supported yet)." -ForegroundColor Red
     Write-Host ""
     exit 1
 }
