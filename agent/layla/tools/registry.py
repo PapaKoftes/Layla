@@ -2362,7 +2362,7 @@ def vector_store(text: str, metadata: dict | None = None, collection: str = "mem
         save_learning(content=text[:800], kind=kind)
         # Also embed into vector store
         try:
-            from layla.memory.vector_store import embed, add_vector
+            from layla.memory.vector_store import add_vector, embed
             vec = embed(text[:800])
             meta_with_content = {**meta, "content": text[:800]}
             add_vector(vec, meta_with_content)
@@ -4929,10 +4929,9 @@ def geometry_execute_program(
     Requires ezdxf for DXF ops; optional cadquery, openscad, trimesh per op.
     """
     try:
+        import runtime_safety
         from layla.geometry.executor import execute_program
         from layla.geometry.schema import parse_program
-
-        import runtime_safety
 
         cfg = runtime_safety.load_config()
         ws = Path(workspace_root).expanduser().resolve()
@@ -4947,9 +4946,8 @@ def geometry_execute_program(
 def geometry_list_frameworks() -> dict:
     """Report which optional geometry libraries / OpenSCAD CLI are available."""
     try:
-        from layla.geometry.executor import list_framework_status
-
         import runtime_safety
+        from layla.geometry.executor import list_framework_status
 
         st = list_framework_status(runtime_safety.load_config())
         return {"ok": True, **st}

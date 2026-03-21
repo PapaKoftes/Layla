@@ -1,5 +1,5 @@
 {
-  "objective": "Analyze architecture: layers, boundaries, dependencies, and coherence. Evaluate from Carpenter, Joiner, DevOps, Geometry, Product, Strategist lenses. Read-only.",
+  "objective": "Analyze architecture: layers, boundaries, dependencies, and coherence. Evaluate from Carpenter, Assembly, DevOps, Geometry, Product, Strategist lenses. Read-only.",
   "output_structure": [
     "System Understanding",
     "Weakness Map",

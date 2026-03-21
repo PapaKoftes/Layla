@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+- **CI & quality:** Ruff lint in CI uses full `[tool.ruff]` rules (includes **I** / import order), not only E/F/W; optional Playwright **e2e_ui** job + `agent/requirements-e2e.txt`; main pytest matrix excludes `e2e_ui`.
+- **Web UI:** `BroadcastChannel('layla-health-v1')` syncs `/health` payload across tabs so header status stays fresh when another tab polls.
 - **Settings & potato preset:** `EDITABLE_SCHEMA` adds **Runtime limits** (`performance_mode`, `max_runtime_seconds`, `research_max_*`, moved `max_tool_calls`); **Memory** toggles `learning_quality_gate_enabled` / `learning_quality_min_score`; `POST /settings/preset` with `{"preset":"potato"}`; Web UI preset button + study panel presets/suggestions/derive-topic endpoints; `docs/POTATO_MODE.md`.
 - **Persona focus:** `POST /agent` optional `persona_focus` merges a second aspect into the system head; streaming path + Cursor MCP `persona_focus` field; transport `call_layla_*` passes it through.
 - **Learnings:** optional `tags` column on `learnings`; `POST /learn/` accepts `tags`; Web UI **remember** on assistant bubbles; Discord `/note` → `/learn/` with `discord:explicit_note`.

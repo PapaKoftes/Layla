@@ -34,7 +34,7 @@ class VariantConfigModel(BaseModel):
     goal: str | None = Field(None, max_length=256)
     strategy: str | None = Field(None, max_length=256)
     material: str | None = Field(None, max_length=256)
-    joinery: str | None = Field(None, max_length=256)
+    connection: str | None = Field(None, max_length=256)
     tolerance_class: str | None = Field(None, max_length=64)
     machining_priority: str | None = Field(None, max_length=256)
 

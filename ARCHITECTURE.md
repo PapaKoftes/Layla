@@ -152,7 +152,7 @@ Client
 | `agent/routers/agent.py` | `POST /learn/`, `POST /agent` |
 | `agent/routers/approvals.py` | `POST /approve`, `GET /pending` |
 | `agent/routers/study.py` | `GET /wakeup`, `/study_plans` |
-| `agent/ui/index.html` | Web UI: chat, aspect selector, panels (Health, Models, Knowledge, Plugins, Study, Memory, Research, Help) |
+| `agent/ui/index.html` | Web UI: chat, aspect selector, panels (Health, Models, Knowledge, Plugins, Study, Memory, Research, Help); unified `/health` poller + `BroadcastChannel('layla-health-v1')` to sync header status across tabs |
 | `agent/layla/geometry/executor.py` | `execute_program()`, `list_framework_status()` — sandbox + backends + optional `cad_bridge_fetch` |
 | `cursor-layla-mcp/server.py` | Cursor MCP: `chat_with_layla`, approvals, learn/study tools → localhost FastAPI |
 | `layla.py` | Operator CLI: `ask`, `wakeup`, `approve`, `pending`, `study`, … → httpx to agent |

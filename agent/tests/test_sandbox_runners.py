@@ -32,10 +32,10 @@ def test_shell_runner_blocks_rm(tmp_path):
 
 def test_shell_runner_echo(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", "")
-    from services.sandbox.shell_runner import run_shell_argv
-
     # Windows may not have echo as argv[0]; use Python -c
     import sys
+
+    from services.sandbox.shell_runner import run_shell_argv
 
     r = run_shell_argv([sys.executable, "-c", "print('hi')"], tmp_path, inside_sandbox_check=lambda p: True)
     assert r.get("ok") is True
