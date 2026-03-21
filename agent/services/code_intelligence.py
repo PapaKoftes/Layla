@@ -30,7 +30,7 @@ def search_symbols(
     matches: list[dict[str, Any]] = []
     seen: set[str] = set()
     try:
-        from services.workspace_index import build_workspace_graph, search_workspace, _workspace_graph
+        from services.workspace_index import _workspace_graph, build_workspace_graph, search_workspace
     except Exception as e:
         logger.debug("code_intelligence import workspace_index: %s", e)
         return {"ok": False, "error": "workspace_index unavailable", "matches": []}

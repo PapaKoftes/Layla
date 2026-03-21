@@ -8,7 +8,7 @@ Carpenter — prevents fragility
 Sees structures under stress.
 Asks: Will this survive real use?
 
-Joiner — prevents friction
+Assembly — prevents friction
 Sees steps and effort.
 Asks: Can this be done repeatedly?
 

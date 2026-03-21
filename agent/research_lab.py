@@ -16,7 +16,7 @@ RESEARCH_OUTPUT = AGENT_DIR / ".research_output"
 
 _DEFAULT_OUTPUT_STRUCTURE = (
     "Produce: System Understanding, Weakness Map, Upgrade Opportunities, "
-    "Lens Case Study (Carpenter, Joiner, DevOps, Geometry, Product, Strategist), Suggested Roadmap."
+    "Lens Case Study (Carpenter, Assembly, DevOps, Geometry, Product, Strategist), Suggested Roadmap."
 )
 
 _ALLOWED_BRAIN_FILES = {
