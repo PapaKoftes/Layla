@@ -3713,6 +3713,27 @@ window.__laylaHealth = window.__laylaHealth || {
   agentRequestActive: false,
 };
 
+// Cross-tab /health freshness: other tabs' fetches update this tab's header without waiting for poll.
+(function laylaInitHealthBroadcastChannel() {
+  try {
+    if (typeof BroadcastChannel === 'undefined') return;
+    const ch = new BroadcastChannel('layla-health-v1');
+    window.__laylaHealthChannel = ch;
+    ch.onmessage = function (ev) {
+      try {
+        const m = ev.data;
+        if (!m || m.type !== 'layla-health' || typeof m.ts !== 'number' || !m.payload) return;
+        const h = window.__laylaHealth;
+        if (m.ts <= (h.lastFetch || 0)) return;
+        h.payload = m.payload;
+        h.lastFetch = m.ts;
+        if (typeof m.lastDeepFetch === 'number') h.lastDeepFetch = m.lastDeepFetch;
+        laylaApplyHeaderStatusFromHealth(m.payload);
+      } catch (_) {}
+    };
+  } catch (_) {}
+})();
+
 function laylaFormatDepsShort(deps) {
   if (!deps || typeof deps !== 'object') return '';
   const p = [];
@@ -3765,6 +3786,17 @@ async function fetchHealthPayloadOnce() {
     if (useDeep) h.lastDeepFetch = now;
     h.payload = d;
     h.lastFetch = now;
+    try {
+      const bc = window.__laylaHealthChannel;
+      if (bc && typeof bc.postMessage === 'function') {
+        bc.postMessage({
+          type: 'layla-health',
+          ts: now,
+          payload: d,
+          lastDeepFetch: h.lastDeepFetch,
+        });
+      }
+    } catch (_) {}
     return d;
   } catch (_) {
     return null;

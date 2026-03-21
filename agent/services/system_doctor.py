@@ -126,10 +126,11 @@ def run_diagnostics(include_llm: bool = False) -> dict[str, Any]:
 
     # Optional OpenClaw / sidecar gateway reachability (config-gated)
     try:
-        import runtime_safety
         import urllib.error
         import urllib.parse
         import urllib.request
+
+        import runtime_safety
 
         _cfg = runtime_safety.load_config()
         gw_raw = (_cfg.get("openclaw_gateway_url") or "").strip()

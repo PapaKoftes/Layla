@@ -3,7 +3,7 @@
 This tree holds **infrastructure** for a pattern where:
 
 - **Assist layer** — interaction, variant exploration, comparison framing, explanation, local session memory. It does **not** assert fabrication truth.
-- **Deterministic kernel** — your own solver/evaluator, invoked only through **`BuildRunner`** ([`fabrication_assist/assist/runner.py`](assist/runner.py)).
+- **Deterministic kernel** — your own deterministic evaluator, invoked only through **`BuildRunner`** ([`fabrication_assist/assist/runner.py`](assist/runner.py)).
 
 On **`main`**:
 

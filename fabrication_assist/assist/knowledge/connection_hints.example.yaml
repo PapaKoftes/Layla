@@ -1,5 +1,5 @@
-# Example joinery hints for variant stubs (heuristics only, not authoritative CAM).
-joinery:
+# Example connection-style hints for variant stubs (heuristics only, not authoritative CAM).
+connection_hints:
   tab_slot: { complexity: low, disassembly: partial }
   screw_boss: { complexity: medium, disassembly: full }
   dovetail: { complexity: high, disassembly: difficult }

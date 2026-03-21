@@ -285,7 +285,7 @@ See [docs/DEBUG_AND_UPGRADE_ANALYSIS.md](DEBUG_AND_UPGRADE_ANALYSIS.md) for:
 
 ## How to verify
 
-1. **Run tests**: `cd agent && python -m pytest tests/ -v`
+1. **Run tests**: `cd agent && python -m pytest tests/ -v -m "not slow and not e2e_ui"` (default CI slice). Optional UI e2e: `pip install -r requirements-e2e.txt`, `python -m playwright install chromium`, then `pytest tests/e2e_ui/ -m e2e_ui`. **Lint**: `ruff check agent fabrication_assist` (full rules from `pyproject.toml`, including import order **I**).
 2. **Wakeup**: `python layla.py wakeup` — Echo greets, study plans listed.
 3. **Project context**: Set via API or DB; check agent context includes project + lifecycle.
 4. **File understanding**: Call `analyze_file(path)` for .dxf, .py, .md, .json, .ipynb and binary extensions; expect format + intent.

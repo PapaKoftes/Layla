@@ -45,6 +45,10 @@ testpaths = ["agent/tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+markers = [
+  "slow: tests that take noticeably longer",
+  "e2e_ui: Playwright browser tests against live uvicorn (install requirements-e2e.txt + playwright browsers)",
+]
 asyncio_mode = "auto"
 filterwarnings = [
   "ignore::DeprecationWarning",

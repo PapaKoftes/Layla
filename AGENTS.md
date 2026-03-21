@@ -244,6 +244,24 @@ cd agent
 pytest tests/ -x -q
 ```
 
+**Default unit/integration** (excludes slow + browser e2e — same as CI):
+
+```bash
+cd agent
+pytest tests/ -m "not slow and not e2e_ui"
+```
+
+**Playwright UI e2e** (Chromium; needs extra deps):
+
+```bash
+cd agent
+pip install -r requirements-e2e.txt
+python -m playwright install chromium
+pytest tests/e2e_ui/ -m e2e_ui
+```
+
+If Playwright is not installed, `e2e_ui` tests are **skipped** (not failed).
+
 Tests live in `agent/tests/`. Key test files: `test_agent_loop.py`, `test_north_star.py`, `test_approval_flow.py`, `test_sandbox.py`. CI runs on push via `.github/workflows/ci.yml`.
 
 ---
