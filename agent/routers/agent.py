@@ -4,7 +4,6 @@ import base64
 import json
 import logging
 import queue
-import re
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -14,6 +13,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from agent_loop import (
+    _quick_reply_for_trivial_turn,
     autonomous_run,
     stream_reason,
     strip_junk_from_reply,
@@ -31,9 +31,52 @@ from shared_state import (
 
 logger = logging.getLogger("layla")
 router = APIRouter(tags=["agent"])
-_TRIVIAL_PATTERNS = re.compile(r"^(hi|hello|hey|yo|sup|ok|okay|sure|thanks|ty|lol|k|thx)\W*$", re.IGNORECASE)
 _TASKS: dict[str, dict] = {}
 _TASKS_LOCK = threading.Lock()
+
+
+def _build_reasoning_tree_summary(state: dict) -> dict:
+    """Summary-only reasoning tree; no chain-of-thought text."""
+    st = state or {}
+    steps = st.get("steps") or []
+    nodes: list[dict] = []
+    for idx, step in enumerate(steps):
+        action = str(step.get("action", "")).strip()
+        raw = step.get("result")
+        if isinstance(raw, dict):
+            outcome = str(raw.get("message") or raw.get("error") or raw.get("ok") or "completed")
+        else:
+            outcome = str(raw or "")
+        nodes.append(
+            {
+                "id": f"step_{idx + 1}",
+                "phase": "tool" if action and action != "reason" else "reasoning",
+                "action": action or "reason",
+                "outcome_summary": outcome[:200],
+            }
+        )
+    return {
+        "mode": "summary_only",
+        "goal": str(st.get("original_goal") or st.get("goal") or "")[:300],
+        "status": str(st.get("status") or ""),
+        "reasoning_mode": str(st.get("reasoning_mode") or ""),
+        "ux_states": [str(x) for x in (st.get("ux_states") or [])[:20]],
+        "nodes": nodes[:30],
+        "final_summary": (str(steps[-1].get("result"))[:280] if steps else ""),
+    }
+
+
+def _json_safe(value):
+    """Convert common non-JSON Python objects into JSON-safe values."""
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, set):
+        return [_json_safe(v) for v in sorted(value, key=lambda x: str(x))]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
 
 
 @router.get("/memories")
@@ -90,6 +133,7 @@ def learn(req: dict):
     get_touch_activity()()
     content = (req or {}).get("content", "").strip()
     kind = (req or {}).get("type", "fact") or "fact"
+    tags = str((req or {}).get("tags") or "").strip()[:500]
     if not content:
         return JSONResponse({"ok": False, "error": "No content"})
     try:
@@ -97,11 +141,14 @@ def learn(req: dict):
         try:
             from layla.memory.vector_store import add_vector, embed
             vec = embed(content)
-            embedding_id = add_vector(vec, {"content": content, "type": kind})
+            meta = {"content": content, "type": kind}
+            if tags:
+                meta["tags"] = tags
+            embedding_id = add_vector(vec, meta)
         except Exception as e:
             logger.warning("vector_store add_vector failed: %s", e)
         from layla.memory.db import save_learning
-        save_learning(content=content, kind=kind, embedding_id=embedding_id)
+        save_learning(content=content, kind=kind, embedding_id=embedding_id, tags=tags)
         try:
             from layla.memory.memory_graph import add_node
             add_node(label=content[:80], metadata={"type": kind, "content": content})
@@ -241,17 +288,6 @@ def _no_model_response(message: str) -> JSONResponse:
     )
 
 
-def _trivial_fast_reply(goal: str, aspect_id: str) -> str | None:
-    text = (goal or "").strip()
-    if not text or len(text) > 20:
-        return None
-    if not _TRIVIAL_PATTERNS.match(text):
-        return None
-    if text.lower().startswith(("thanks", "thx", "ty")):
-        return "Anytime. Want to keep going?"
-    return "Hey. I am here. What do you want to work on?"
-
-
 @router.post("/agent")
 async def agent(req: dict):
     get_touch_activity()()
@@ -265,6 +301,7 @@ async def agent(req: dict):
     allow_write = (req or {}).get("allow_write") is True
     allow_run = (req or {}).get("allow_run") is True
     aspect_id = (req or {}).get("aspect_id", "") or ""
+    persona_focus = ((req or {}).get("persona_focus") or (req or {}).get("personaFocus") or "").strip()
     show_thinking = bool((req or {}).get("show_thinking", False))
     stream = bool((req or {}).get("stream", False))
     model_override = (req or {}).get("model_override", "") or ""
@@ -299,8 +336,17 @@ async def agent(req: dict):
         }, status_code=200)
 
     # Fast path for trivial greetings/acks: avoid full orchestration overhead.
-    fast_reply = _trivial_fast_reply(goal, aspect_id)
+    fast_reply = _quick_reply_for_trivial_turn(goal)
     if fast_reply and not context and not image_url and not image_base64 and not show_thinking:
+        fast_summary = {
+            "mode": "summary_only",
+            "goal": (goal or "")[:300],
+            "status": "fast_path",
+            "reasoning_mode": "none",
+            "ux_states": ["fast_path"],
+            "nodes": [{"id": "step_1", "phase": "reasoning", "action": "reason", "outcome_summary": (fast_reply or "")[:200]}],
+            "final_summary": (fast_reply or "")[:280],
+        }
         append_conv_history(conversation_id, "user", goal)
         append_conv_history(conversation_id, "assistant", fast_reply)
         try:
@@ -315,7 +361,7 @@ async def agent(req: dict):
         _append_history("assistant", fast_reply)
         return JSONResponse({
             "response": fast_reply,
-            "state": {"status": "fast_path", "reasoning_mode": "none"},
+            "state": {"status": "fast_path", "reasoning_mode": "none", "reasoning_tree_summary": fast_summary},
             "aspect": aspect_id or "morrigan",
             "aspect_name": "Layla",
             "refused": False,
@@ -325,6 +371,7 @@ async def agent(req: dict):
             "cited_sources": [],
             "reasoning_mode": "none",
             "conversation_id": conversation_id,
+            "reasoning_tree_summary": fast_summary,
         }, status_code=200)
 
     cache_enabled = bool(cfg.get("response_cache_enabled", False))
@@ -370,6 +417,7 @@ async def agent(req: dict):
                     model_override=model_override or None,
                     reasoning_effort=reasoning_effort,
                     priority=PRIORITY_CHAT,
+                    persona_focus=persona_focus,
                 )
                 result_holder.append(r)
             except Exception as e:
@@ -422,10 +470,14 @@ async def agent(req: dict):
                         show_thinking=show_thinking,
                         model_override=model_override or None,
                         skip_self_reflection=(result.get("reasoning_mode") or "light") in ("none", "light"),
+                        reasoning_mode_override=result.get("reasoning_mode_for_stream"),
+                        precomputed_recall=result.get("precomputed_recall_for_stream"),
+                        persona_focus=result.get("persona_focus_for_stream") or "",
                     ):
                         full.append(token)
                         yield f"data: {json.dumps({'token': token})}\n\n"
                     text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply("".join(full))))
+                    result["reasoning_tree_summary"] = _build_reasoning_tree_summary(result)
                     append_conv_history(conversation_id, "user", goal)
                     append_conv_history(conversation_id, "assistant", text)
                     try:
@@ -438,7 +490,7 @@ async def agent(req: dict):
                         pass
                     _append_history("user", goal)
                     _append_history("assistant", text)
-                    yield f"data: {json.dumps({'done': True, 'content': text, 'ux_states': result.get('ux_states', []), 'memory_influenced': result.get('memory_influenced', []), 'reasoning_mode': result.get('reasoning_mode'), 'conversation_id': conversation_id})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'content': text, 'ux_states': result.get('ux_states', []), 'memory_influenced': result.get('memory_influenced', []), 'reasoning_mode': result.get('reasoning_mode'), 'conversation_id': conversation_id, 'reasoning_tree_summary': result.get('reasoning_tree_summary')})}\n\n"
                 else:
                     steps = result.get("steps") or []
                     final = steps[-1].get("result", "") if steps else ""
@@ -449,6 +501,7 @@ async def agent(req: dict):
                         response_text = "I couldn't understand the request. Please rephrase."
                     if not response_text:
                         response_text = "No response. Try again or rephrase."
+                    result["reasoning_tree_summary"] = _build_reasoning_tree_summary(result)
                     append_conv_history(conversation_id, "user", goal)
                     append_conv_history(conversation_id, "assistant", response_text)
                     try:
@@ -461,7 +514,7 @@ async def agent(req: dict):
                         pass
                     _append_history("user", goal)
                     _append_history("assistant", response_text)
-                    yield f"data: {json.dumps({'done': True, 'content': response_text, 'ux_states': result.get('ux_states', []), 'memory_influenced': result.get('memory_influenced', []), 'reasoning_mode': result.get('reasoning_mode'), 'conversation_id': conversation_id})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'content': response_text, 'ux_states': result.get('ux_states', []), 'memory_influenced': result.get('memory_influenced', []), 'reasoning_mode': result.get('reasoning_mode'), 'conversation_id': conversation_id, 'reasoning_tree_summary': result.get('reasoning_tree_summary')})}\n\n"
             except Exception as e:
                 logger.exception("stream_agent failed")
                 err = str(e)
@@ -490,6 +543,7 @@ async def agent(req: dict):
             model_override=model_override or None,
             reasoning_effort=reasoning_effort,
             priority=PRIORITY_CHAT,
+            persona_focus=persona_focus,
         )
     except Exception as e:
         logger.exception("agent run failed")
@@ -526,6 +580,7 @@ async def agent(req: dict):
 
     if result.get("status") == "finished":
         response_text = polish_output(response_text)
+    result["reasoning_tree_summary"] = _build_reasoning_tree_summary(result)
 
     append_conv_history(conversation_id, "user", goal)
     append_conv_history(conversation_id, "assistant", response_text)
@@ -545,17 +600,18 @@ async def agent(req: dict):
 
     response_payload = {
         "response": response_text,
-        "state": result,
+        "state": _json_safe(result),
         "aspect": result.get("aspect", ""),
         "aspect_name": result.get("aspect_name", "Layla"),
         "refused": result.get("refused", False),
-        "refusal_reason": result.get("refusal_reason", ""),
-        "ux_states": result.get("ux_states", []),
-        "memory_influenced": result.get("memory_influenced", []),
-        "cited_sources": result.get("cited_knowledge_sources", []),
+        "refusal_reason": _json_safe(result.get("refusal_reason", "")),
+        "ux_states": _json_safe(result.get("ux_states", [])),
+        "memory_influenced": _json_safe(result.get("memory_influenced", [])),
+        "cited_sources": _json_safe(result.get("cited_knowledge_sources", [])),
         "reasoning_mode": result.get("reasoning_mode"),
         "conversation_id": conversation_id,
-        "load": classify_load(),
+        "load": _json_safe(classify_load()),
+        "reasoning_tree_summary": _json_safe(result.get("reasoning_tree_summary", {})),
     }
     if cache_enabled and not stream and not allow_write and not allow_run and not context and not image_url and not image_base64:
         try:
@@ -567,12 +623,19 @@ async def agent(req: dict):
 
 
 def _run_background_task(task_id: str, payload: dict) -> None:
+    now_started = datetime.now(timezone.utc).isoformat()
     with _TASKS_LOCK:
         t = _TASKS.get(task_id)
         if not t:
             return
         t["status"] = "running"
-        t["started_at"] = datetime.now(timezone.utc).isoformat()
+        t["started_at"] = now_started
+    try:
+        from layla.memory.db import update_background_task
+
+        update_background_task(task_id, status="running", started_at=now_started, error="")
+    except Exception:
+        pass
     try:
         result = autonomous_run(
             payload.get("goal", ""),
@@ -584,6 +647,7 @@ def _run_background_task(task_id: str, payload: dict) -> None:
             aspect_id=payload.get("aspect_id", ""),
             show_thinking=bool(payload.get("show_thinking", False)),
             priority=PRIORITY_BACKGROUND,
+            persona_focus=str(payload.get("persona_focus") or "").strip(),
         )
         text = result.get("response") or ""
         if not text:
@@ -597,13 +661,30 @@ def _run_background_task(task_id: str, payload: dict) -> None:
                 t["result"] = text
                 t["state"] = result
                 t["finished_at"] = datetime.now(timezone.utc).isoformat()
+                finished_at = t["finished_at"]
+            else:
+                finished_at = datetime.now(timezone.utc).isoformat()
+        try:
+            from layla.memory.db import update_background_task
+
+            update_background_task(task_id, status="done", result=text, finished_at=finished_at, error="")
+        except Exception:
+            pass
     except Exception as e:
+        err = str(e)
+        finished_at = datetime.now(timezone.utc).isoformat()
         with _TASKS_LOCK:
             t = _TASKS.get(task_id)
             if t:
                 t["status"] = "failed"
-                t["error"] = str(e)
-                t["finished_at"] = datetime.now(timezone.utc).isoformat()
+                t["error"] = err
+                t["finished_at"] = finished_at
+        try:
+            from layla.memory.db import update_background_task
+
+            update_background_task(task_id, status="failed", error=err, finished_at=finished_at)
+        except Exception:
+            pass
 
 
 @router.post("/agent/background")
@@ -621,11 +702,12 @@ def start_background(req: dict):
         "allow_write": (req or {}).get("allow_write") is True,
         "allow_run": (req or {}).get("allow_run") is True,
         "aspect_id": (req or {}).get("aspect_id", "") or "",
+        "persona_focus": str((req or {}).get("persona_focus") or "").strip(),
         "show_thinking": bool((req or {}).get("show_thinking", False)),
         "conversation_id": conversation_id,
     }
     with _TASKS_LOCK:
-        _TASKS[task_id] = {
+        task_row = {
             "task_id": task_id,
             "conversation_id": conversation_id,
             "goal": goal,
@@ -635,6 +717,13 @@ def start_background(req: dict):
             "created_at": datetime.now(timezone.utc).isoformat(),
             "result": "",
         }
+        _TASKS[task_id] = task_row
+    try:
+        from layla.memory.db import save_background_task
+
+        save_background_task(task_row)
+    except Exception:
+        pass
     th = threading.Thread(target=_run_background_task, args=(task_id, payload), daemon=True, name=f"bg-task-{task_id[:8]}")
     th.start()
     return JSONResponse({"ok": True, "task_id": task_id, "conversation_id": conversation_id, "status": "queued"})
@@ -644,6 +733,36 @@ def start_background(req: dict):
 def list_background_tasks():
     with _TASKS_LOCK:
         items = list(_TASKS.values())
+    # Merge persisted rows so completed tasks survive restarts.
+    try:
+        from layla.memory.db import list_background_tasks as _list_background_tasks_db
+
+        db_items = _list_background_tasks_db(limit=200)
+        merged: dict[str, dict] = {}
+        for row in db_items:
+            rid = row.get("id", "")
+            if not rid:
+                continue
+            merged[rid] = {
+                "task_id": rid,
+                "conversation_id": row.get("conversation_id", ""),
+                "goal": row.get("goal", ""),
+                "aspect_id": row.get("aspect_id", ""),
+                "status": row.get("status", "queued"),
+                "priority": row.get("priority", PRIORITY_BACKGROUND),
+                "created_at": row.get("created_at", ""),
+                "started_at": row.get("started_at", ""),
+                "finished_at": row.get("finished_at", ""),
+                "result": row.get("result", ""),
+                "error": row.get("error", ""),
+            }
+        for item in items:
+            tid = item.get("task_id", "")
+            if tid:
+                merged[tid] = item
+        items = list(merged.values())
+    except Exception:
+        pass
     items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return JSONResponse({"ok": True, "tasks": items})
 
@@ -652,6 +771,27 @@ def list_background_tasks():
 def get_background_task(task_id: str):
     with _TASKS_LOCK:
         item = _TASKS.get(task_id)
+    if not item:
+        try:
+            from layla.memory.db import get_background_task as _get_background_task_db
+
+            row = _get_background_task_db(task_id)
+            if row:
+                item = {
+                    "task_id": row.get("id", task_id),
+                    "conversation_id": row.get("conversation_id", ""),
+                    "goal": row.get("goal", ""),
+                    "aspect_id": row.get("aspect_id", ""),
+                    "status": row.get("status", "queued"),
+                    "priority": row.get("priority", PRIORITY_BACKGROUND),
+                    "created_at": row.get("created_at", ""),
+                    "started_at": row.get("started_at", ""),
+                    "finished_at": row.get("finished_at", ""),
+                    "result": row.get("result", ""),
+                    "error": row.get("error", ""),
+                }
+        except Exception:
+            pass
     if not item:
         return JSONResponse({"ok": False, "error": "task not found"}, status_code=404)
     return JSONResponse({"ok": True, "task": item})
@@ -666,4 +806,11 @@ def cancel_background_task(task_id: str):
         if item.get("status") in ("done", "failed", "cancelled"):
             return JSONResponse({"ok": True, "task": item, "idempotent": True})
         item["status"] = "cancelled"
+        item["finished_at"] = datetime.now(timezone.utc).isoformat()
+    try:
+        from layla.memory.db import update_background_task
+
+        update_background_task(task_id, status="cancelled", finished_at=item.get("finished_at", ""))
+    except Exception:
+        pass
     return JSONResponse({"ok": True, "task_id": task_id, "status": "cancelled"})

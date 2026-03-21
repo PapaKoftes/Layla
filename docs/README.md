@@ -18,10 +18,23 @@ Central index for Layla’s documentation. Links are relative so they work on Gi
 
 | Document | Description |
 |----------|-------------|
+| [../PROJECT_BRAIN.md](../PROJECT_BRAIN.md) | Stable system summary—read before deep repo scans |
 | [../ARCHITECTURE.md](../ARCHITECTURE.md) | One-page data flow, request path, where state lives |
+| [PRODUCTION_CONTRACT.md](PRODUCTION_CONTRACT.md) | Cost caps, safety invariants, observability (`/health`, logging) |
+| [RULES.md](RULES.md) | Repo naming, layout, allowed/forbidden patterns |
+| [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) | Pre-publish verification |
 | [LAYLA_SYSTEM_OVERVIEW.md](LAYLA_SYSTEM_OVERVIEW.md) | What Layla is, how she works, what you can do |
 | [TECH_STACK_AND_CAPABILITIES.md](TECH_STACK_AND_CAPABILITIES.md) | Tech stack, current and planned capabilities |
 | [REMOTE_ARCHITECTURE.md](REMOTE_ARCHITECTURE.md) | Remote trigger (wakeup, one-shot) with auth |
+
+### Technical depth (module sweeps)
+
+| Document | Description |
+|----------|-------------|
+| [MODULE_SWEEP_STATUS.md](MODULE_SWEEP_STATUS.md) | Registry of covered clusters; links to each `*_MODULE_SECOND_SWEEP.md` |
+| [MODULE_SWEEP_TEMPLATE.md](MODULE_SWEEP_TEMPLATE.md) | Skeleton for new or refreshed sweep reports |
+
+Read **[../PROJECT_BRAIN.md](../PROJECT_BRAIN.md)** first; open a sweep only for the subsystem you change.
 
 ---
 

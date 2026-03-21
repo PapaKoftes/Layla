@@ -23,6 +23,7 @@ _tts_engine = None
 _tts_lock = threading.Lock()
 _tts_type: str = ""  # "kokoro" | "pyttsx3" | ""
 _tts_failed = False
+_tts_recovery: dict | None = None
 
 # Voice selection for kokoro-onnx.
 # Available voices: af_heart, af_bella, af_sarah, am_adam, am_michael,
@@ -80,7 +81,7 @@ def _init_pyttsx3():
 
 
 def _get_tts():
-    global _tts_engine, _tts_failed
+    global _tts_engine, _tts_failed, _tts_recovery
     if _tts_failed:
         return None
     if _tts_engine is not None:
@@ -89,18 +90,75 @@ def _get_tts():
         if _tts_engine is not None:
             return _tts_engine
         try:
-            _init_kokoro()
-        except ImportError:
-            try:
-                _init_pyttsx3()
-            except ImportError:
-                logger.warning(
-                    "No TTS engine available. Install: pip install kokoro-onnx soundfile"
-                )
-                _tts_failed = True
+            import runtime_safety
+            from services.dependency_recovery import ensure_feature, merge_recovery_message
+
+            _cfg = runtime_safety.load_config()
+            _tts_recovery = None
+
+            ok_k, rec_k = ensure_feature("kokoro_tts", _cfg)
+            if not ok_k:
+                _tts_recovery = rec_k
+            else:
+                try:
+                    _init_kokoro()
+                    return _tts_engine
+                except Exception as e:
+                    logger.warning("TTS kokoro init failed: %s", e)
+                    _tts_recovery = {
+                        "what_failed": "kokoro-onnx failed to initialize after import",
+                        "exception": str(e),
+                        "next_steps": [
+                            "Try: pip install --upgrade kokoro-onnx soundfile",
+                            "Or use system TTS: pip install pyttsx3",
+                            "See agent/runtime_config.example.json (tts_voice).",
+                        ],
+                    }
+
+            ok_p, rec_p = ensure_feature("pyttsx3_tts", _cfg)
+            if ok_p:
+                try:
+                    _init_pyttsx3()
+                    _tts_recovery = None
+                    return _tts_engine
+                except Exception as e:
+                    logger.warning("TTS pyttsx3 init failed: %s", e)
+                    _tts_recovery = {
+                        "what_failed": "pyttsx3 failed to initialize",
+                        "exception": str(e),
+                        "kokoro_recovery": rec_k,
+                        "next_steps": [
+                            "pip install pyttsx3",
+                            "Or fix kokoro: pip install kokoro-onnx soundfile",
+                            "Run: cd agent && python diagnose_startup.py",
+                        ],
+                    }
+            else:
+                _tts_recovery = {
+                    "what_failed": "No TTS engine available",
+                    "kokoro": rec_k if not ok_k else _tts_recovery,
+                    "pyttsx3": rec_p,
+                    "install_command_primary": "pip install kokoro-onnx soundfile",
+                    "install_command_fallback": "pip install pyttsx3",
+                    "next_steps": [
+                        "1) pip install kokoro-onnx soundfile  (recommended)",
+                        "2) pip install pyttsx3  (system voice)",
+                        "3) Restart Layla after install.",
+                        "4) cd agent && python diagnose_startup.py",
+                    ],
+                }
+                logger.warning("No TTS engine: %s", merge_recovery_message(_tts_recovery))
+            _tts_failed = True
         except Exception as e:
             logger.warning("TTS init failed: %s", e)
             _tts_failed = True
+            _tts_recovery = {
+                "what_failed": str(e),
+                "next_steps": [
+                    "cd agent && python diagnose_startup.py",
+                    "GET http://127.0.0.1:8000/doctor (when server runs)",
+                ],
+            }
     return _tts_engine
 
 
@@ -150,6 +208,11 @@ def speak_to_bytes(text: str) -> bytes | None:
 def get_voice_options() -> list[dict]:
     """Return available TTS voices for config/UI. Set tts_voice in runtime_config.json."""
     return [{"id": v[0], "label": v[1]} for v in AVAILABLE_VOICES]
+
+
+def get_tts_recovery() -> dict | None:
+    """Structured recovery when TTS is unavailable (for API/UI)."""
+    return _tts_recovery
 
 
 def prewarm() -> None:

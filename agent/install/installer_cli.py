@@ -236,6 +236,18 @@ def run() -> int:
 
     cfg = _generate_runtime_config(hardware, model_filename or "", models_dir_str, sandbox)
 
+    if _yn("  Apply low-resource 'potato' preset (tighter limits, Chroma off)? Only for weak PCs.", False):
+        try:
+            from config_schema import SETTINGS_PRESETS, get_editable_keys
+
+            ek = get_editable_keys()
+            for k, v in SETTINGS_PRESETS.get("potato", {}).items():
+                if k in ek:
+                    cfg[k] = v
+            print("      ✓  Potato preset merged (docs/POTATO_MODE.md).")
+        except Exception as e:
+            print(f"      [!] Potato preset skipped: {e}")
+
     # Merge non-overwritten keys from existing
     for key, val in existing_cfg.items():
         if key not in ("n_ctx", "n_threads", "n_gpu_layers", "n_batch", "completion_max_tokens",

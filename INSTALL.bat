@@ -23,7 +23,7 @@ if errorlevel 1 (
     echo.
     echo  [!] Python not found.
     echo.
-    echo  Please install Python 3.11 or newer from:
+    echo  Please install Python 3.11 or 3.12 from:
     echo     https://www.python.org/downloads/
     echo.
     echo  IMPORTANT: During install, check "Add Python to PATH".
@@ -44,7 +44,16 @@ if %PY_MAJOR% LSS 3 (
     pause & exit /b 1
 )
 if %PY_MAJOR% EQU 3 if %PY_MINOR% LSS 11 (
-    echo  [!] Python 3.11+ is required. You have %PYVER%.
+    echo  [!] Python 3.11 or 3.12 is required. You have %PYVER%.
+    pause & exit /b 1
+)
+if %PY_MAJOR% GTR 3 (
+    echo  [!] Python 3.11 or 3.12 is required. You have %PYVER%.
+    pause & exit /b 1
+)
+if %PY_MAJOR% EQU 3 if %PY_MINOR% GEQ 13 (
+    echo  [!] Layla supports Python 3.11 or 3.12 only — not 3.13+. You have %PYVER%.
+    echo      Install Python 3.12 from python.org and use it for this venv.
     pause & exit /b 1
 )
 echo.
