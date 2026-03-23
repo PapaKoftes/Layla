@@ -161,15 +161,15 @@ def record_outcome_feedback(
 
     if usefulness_score is not None:
         try:
-            from layla.memory.db import add_capability_event
-            add_capability_event(
+            from layla.memory.db import insert_capability_event
+            insert_capability_event(
                 domain_id="self_maintenance",
                 event_type="tool_feedback",
                 notes=f"rl:{tool_name}",
                 usefulness_score=float(usefulness_score),
             )
         except Exception as e:
-            logger.debug("record_outcome_feedback: add_capability_event failed: %s", e)
+            logger.debug("record_outcome_feedback: insert_capability_event failed: %s", e)
 
 
 def run_preference_update_job() -> None:
