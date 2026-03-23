@@ -9,6 +9,8 @@ import psutil
 
 logger = logging.getLogger("layla")
 
+import threading as _threading  # noqa: E402
+
 import orchestrator  # noqa: E402
 import runtime_safety  # noqa: E402
 from decision_schema import parse_decision as _parse_decision  # noqa: E402
@@ -18,7 +20,18 @@ from layla.memory.db import migrate as _db_migrate  # noqa: E402
 from layla.memory.db import save_aspect_memory as _db_save_aspect_memory  # noqa: E402
 from layla.tools.registry import TOOLS, set_effective_sandbox  # noqa: E402
 from services.context_manager import DEFAULT_BUDGETS, build_system_prompt  # noqa: E402
-from services.llm_gateway import get_stop_sequences, llm_serialize_lock, run_completion  # noqa: E402
+from services.llm_gateway import get_stop_sequences, run_completion  # noqa: E402
+
+# Per-thread cancel_event storage so inner helpers can check without passing the event everywhere.
+_tl = _threading.local()
+
+
+def _rc(prompt, **kwargs):
+    """run_completion wrapper that pre-checks the thread-local cancel_event."""
+    ev = getattr(_tl, 'cancel_event', None)
+    if ev is not None and ev.is_set():
+        raise RuntimeError("cancelled")
+    return run_completion(prompt, **kwargs)
 from services.output_polish import polish_output as _polish_output  # noqa: E402
 from services.resource_manager import (  # noqa: E402
     PRIORITY_AGENT,
@@ -407,7 +420,7 @@ def _stream_reason_body(
     temperature = cfg.get("temperature", 0.2)
     max_tok = cfg.get("completion_max_tokens", 256)
     stop = get_stop_sequences()
-    gen = run_completion(prompt, max_tokens=max_tok, temperature=temperature, stream=True, stop=stop)
+    gen = _rc(prompt, max_tokens=max_tok, temperature=temperature, stream=True, stop=stop)
     buffer = ""
     for token in gen:
         buffer += token
@@ -426,24 +439,26 @@ def _write_pending(tool: str, args: dict) -> str:
     import uuid as _uuid
 
     from layla.time_utils import utcnow
+    from shared_state import pending_file_lock
     gov_path = Path(__file__).resolve().parent / ".governance"
     gov_path.mkdir(parents=True, exist_ok=True)
     pending_file = gov_path / "pending.json"
-    try:
-        data = json.loads(pending_file.read_text(encoding="utf-8")) if pending_file.exists() else []
-    except Exception:
-        data = []
-    entry_id = str(_uuid.uuid4())
-    risk = (TOOLS.get(tool) or {}).get("risk_level") or "medium"
-    data.append({
-        "id": entry_id,
-        "tool": tool,
-        "args": args,
-        "requested_at": utcnow().isoformat(),
-        "status": "pending",
-        "risk_level": risk,
-    })
-    pending_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    with pending_file_lock:
+        try:
+            data = json.loads(pending_file.read_text(encoding="utf-8")) if pending_file.exists() else []
+        except Exception:
+            data = []
+        entry_id = str(_uuid.uuid4())
+        risk = (TOOLS.get(tool) or {}).get("risk_level") or "medium"
+        data.append({
+            "id": entry_id,
+            "tool": tool,
+            "args": args,
+            "requested_at": utcnow().isoformat(),
+            "status": "pending",
+            "risk_level": risk,
+        })
+        pending_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return entry_id
 
 
@@ -504,7 +519,7 @@ def _decompose_goal(goal: str) -> list:
             "Output exactly one JSON line: a JSON array of 2-3 concrete sub-objectives (short strings). "
             "Example: [\"Add tests\", \"Fix lint\", \"Update README\"]. No other text.\n"
         )
-        out = run_completion(prompt, max_tokens=120, temperature=0.2, stream=False)
+        out = _rc(prompt, max_tokens=120, temperature=0.2, stream=False)
         if isinstance(out, dict):
             raw = (out.get("choices") or [{}])[0].get("message", {}).get("content") or (out.get("choices") or [{}])[0].get("text") or ""
         else:
@@ -1143,7 +1158,6 @@ def _reflect_on_response(goal: str, response: str, aspect: dict | None = None) -
     if len(response.strip()) < 80:  # too short to bother reflecting
         return None
     try:
-        from services.llm_gateway import run_completion
         aspect_name = (aspect.get("name") or "Layla") if aspect else "Layla"
         critic_prompt = (
             f"You are a response quality critic for {aspect_name}.\n\n"
@@ -1153,7 +1167,7 @@ def _reflect_on_response(goal: str, response: str, aspect: dict | None = None) -
             f"Reply with only a number (1-10) on the first line, then 'GOOD' if score >= 7 "
             f"or a rewritten better response if score < 7. Do NOT repeat the original if it was good."
         )
-        result = run_completion(critic_prompt, max_tokens=600, temperature=0.1)
+        result = _rc(critic_prompt, max_tokens=600, temperature=0.1)
         if not isinstance(result, dict):
             return None
         critique = ((result.get("choices") or [{}])[0].get("message") or {}).get("content", "").strip()
@@ -1329,7 +1343,7 @@ def _verify_tool_progress(
         "retry_suggested true only if a different approach might help.\n"
     )
     try:
-        out = run_completion(prompt, max_tokens=60, temperature=0.1, stream=False)
+        out = _rc(prompt, max_tokens=60, temperature=0.1, stream=False)
         if isinstance(out, dict):
             text = (out.get("choices") or [{}])[0].get("message", {}).get("content") or (out.get("choices") or [{}])[0].get("text") or ""
         else:
@@ -1687,7 +1701,7 @@ def _llm_decision(
         # Fallback: plain completion + parse
         retry_prompt_suffix = " Output only a single JSON line, no other text or commentary.\n"
         for attempt in range(2):
-            out = run_completion(
+            out = _rc(
                 prompt + (retry_prompt_suffix if attempt > 0 else ""),
                 max_tokens=max_tok,
                 temperature=0.1,
@@ -1907,14 +1921,13 @@ def _auto_extract_learnings(user_msg: str, response: str, aspect_id: str) -> Non
 
         # ── Attempt 1: LLM extraction (fast short prompt) ──────────────────────
         try:
-            from services.llm_gateway import run_completion
             prompt = (
                 "Extract 1-2 concise, standalone, reusable insights from this exchange. "
                 "Output only a valid JSON array of strings. Max 100 chars each. No explanation.\n\n"
                 f"User: {user_msg[:250]}\n"
                 f"Response: {resp_clean[:500]}"
             )
-            raw = (run_completion(prompt=prompt, max_tokens=140, temperature=0.1) or "").strip()
+            raw = (_rc(prompt=prompt, max_tokens=140, temperature=0.1) or "").strip()
             import json as _json
             import re as _re_al
             m = _re_al.search(r'\[.*?\]', raw, _re_al.DOTALL)
@@ -2013,13 +2026,12 @@ def autonomous_run(
 ) -> dict:
     try:
         with schedule_slot(priority=priority):
-            with llm_serialize_lock:
-                return _autonomous_run_impl(
-                    goal, context, workspace_root, allow_write, allow_run,
-                    conversation_history, aspect_id, show_thinking, stream_final,
-                    ux_state_queue, research_mode, plan_depth, model_override, reasoning_effort, priority,
-                    persona_focus, cancel_event,
-                )
+            return _autonomous_run_impl(
+                goal, context, workspace_root, allow_write, allow_run,
+                conversation_history, aspect_id, show_thinking, stream_final,
+                ux_state_queue, research_mode, plan_depth, model_override, reasoning_effort, priority,
+                persona_focus, cancel_event,
+            )
     except RuntimeError as e:
         if "system_busy" in str(e):
             active_aspect = orchestrator.select_aspect(goal, force_aspect=aspect_id)
@@ -2056,6 +2068,7 @@ def _autonomous_run_impl(
     persona_focus: str = "",
     cancel_event=None,
 ) -> dict:
+    _tl.cancel_event = cancel_event  # make cancel_event available to _rc() throughout this thread
     from services.llm_gateway import set_model_override, set_reasoning_effort
     set_model_override(model_override)
     if not model_override:
@@ -3125,7 +3138,7 @@ def _autonomous_run_impl_core(
                 )
 
             max_tok = cfg.get("completion_max_tokens", 256)
-            out = run_completion(prompt, max_tokens=max_tok, temperature=temperature, stream=False)
+            out = _rc(prompt, max_tokens=max_tok, temperature=temperature, stream=False)
             if isinstance(out, str):
                 out = {"choices": [{"text": out}]}
             if isinstance(out, dict):
