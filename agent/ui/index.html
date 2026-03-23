@@ -1115,6 +1115,7 @@
       <option value="chat">Chat</option>
     </select>
     <span id="model-status-badge" title="LLM status" style="font-size:0.68rem;opacity:0.7"></span>
+    <span id="perf-mode-badge" title="Performance mode (Lite/Mid/Full)" style="font-size:0.65rem;opacity:0.85;margin-left:4px;display:none"></span>
     <span id="header-system-status" title="Server status from /health" style="font-size:0.65rem;opacity:0.72;margin-left:4px;white-space:nowrap">…</span>
     <span id="reasoning-mode-badge" title="Adaptive reasoning depth for this turn" style="font-size:0.68rem;opacity:0.75;margin-left:4px"></span>
     <span id="cache-stats-badge" title="Completion cache hit rate. Enable: localStorage.setItem('layla_show_cache_stats','1')" style="font-size:0.68rem;opacity:0.65;margin-left:4px;display:none"></span>
@@ -2438,9 +2439,18 @@ async function sendResearch(customMessage) {
 
 let _lastDisplayMsg = null;
 let _activeAgentAbort = null;
+let _activeConvIdForCancel = null;
 
 function cancelActiveSend() {
   try {
+    // Try server-side cancellation first (graceful stop)
+    if (_activeConvIdForCancel) {
+      fetch('/agent/cancel/' + encodeURIComponent(_activeConvIdForCancel), { method: 'POST' }).catch(() => {});
+    } else {
+      // Fallback: cancel most recent via DELETE
+      fetch('/agent', { method: 'DELETE' }).catch(() => {});
+    }
+    // Also abort the fetch/SSE connection
     if (_activeAgentAbort) _activeAgentAbort.abort();
   } catch (_) {}
 }
@@ -2648,11 +2658,12 @@ async function send() {
         liveStatus = 'waiting_first_token';
         statusEl.textContent = UX_STATE_LABELS.waiting_first_token;
       }, 1200);
+      // At 15s with no token, show "Model thinking..." — keep waiting, don't timeout client-side
       let stalledTimer = setTimeout(() => {
         let statusEl = div.querySelector('.tool-status-label');
         if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; div.querySelector('.msg-bubble')?.appendChild(statusEl); }
-        liveStatus = 'stalled';
-        statusEl.textContent = UX_STATE_LABELS.stalled + ' — ' + UX_STATE_LABELS.retry_hint;
+        liveStatus = 'model_thinking';
+        statusEl.textContent = 'Model thinking...';
       }, 15000);
       let streamReasoningTree = null;
       while (true) {
@@ -2692,12 +2703,24 @@ async function send() {
                 }, 15000);
                 full += obj.token; let parsed = full; try { if (typeof marked !== 'undefined') parsed = sanitizeHtml(marked.parse(full)); } catch (_) {} bubble.innerHTML = parsed; bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); }); chatEl.scrollTop = chatEl.scrollHeight;
               }
+              if (obj.status === 'queued' && obj.position != null) {
+                liveStatus = 'queued';
+                let statusEl = div.querySelector('.tool-status-label');
+                if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; div.querySelector('.msg-bubble')?.appendChild(statusEl); }
+                statusEl.textContent = 'Waiting in queue (position ' + obj.position + ')...';
+              }
+              if (obj.conversation_id) {
+                currentConversationId = String(obj.conversation_id);
+                _activeConvIdForCancel = currentConversationId;
+                localStorage.setItem('layla_current_conversation_id', currentConversationId);
+              }
               if (obj.done) {
                 clearTimeout(firstTokenTimer);
                 clearTimeout(stalledTimer);
                 if (obj.content != null && String(obj.content).trim() !== '') full = String(obj.content).trim();
                 if (obj.conversation_id) {
                   currentConversationId = String(obj.conversation_id);
+                  _activeConvIdForCancel = currentConversationId;
                   localStorage.setItem('layla_current_conversation_id', currentConversationId);
                 }
                 if (Array.isArray(obj.ux_states)) streamUxStates = obj.ux_states;
@@ -2788,6 +2811,7 @@ async function send() {
     const replyText = (data.response != null && String(data.response).trim() !== '') ? data.response : 'No response from Layla.';
     if (data.conversation_id) {
       currentConversationId = String(data.conversation_id);
+      _activeConvIdForCancel = currentConversationId;
       localStorage.setItem('layla_current_conversation_id', currentConversationId);
     }
     try {
@@ -3838,6 +3862,16 @@ function laylaApplyHeaderStatusFromHealth(d) {
   line += ' · ' + ml + 'llm' + deps + busy;
   hs.textContent = line;
   hs.style.color = ok ? '#6dcea0' : '#e8a030';
+  // Update performance mode badge in header
+  try {
+    const pmBadge = document.getElementById('perf-mode-badge');
+    if (pmBadge && pm) {
+      const pmLabel = pm === 'low' ? '🐢 Lite' : pm === 'mid' ? '🔋 Mid' : pm === 'high' ? '⚡ Full' : (pm === 'auto' ? '⚡ Full' : pm);
+      pmBadge.textContent = pmLabel;
+      pmBadge.style.display = 'inline';
+      pmBadge.style.color = pm === 'low' ? '#e8a030' : pm === 'mid' ? '#a0c8e8' : '#6dcea0';
+    }
+  } catch (_) {}
 }
 
 function setHeaderAgentActivity(on) {

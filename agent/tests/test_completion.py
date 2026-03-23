@@ -161,7 +161,7 @@ def test_builtin_config_defaults_production_contract(monkeypatch):
     monkeypatch.setattr(runtime_safety, "_config_last_check", 0.0)
 
     cfg = runtime_safety.load_config()
-    assert cfg["max_tool_calls"] == 2
+    assert cfg["max_tool_calls"] == 5  # updated from 2: schema default is 5
     assert cfg["max_runtime_seconds"] == 30
     assert cfg["completion_cache_enabled"] is True
     assert cfg["response_cache_enabled"] is True
