@@ -2222,23 +2222,23 @@ async def voice_speak(request: Request):
                 status_code=503,
             )
         from fastapi.responses import Response
-        return Response(content=wav, media_type=”audio/wav”)
+        return Response(content=wav, media_type="audio/wav")
     except Exception as e:
-        logger.warning(“TTS error: %s”, e)
-        return JSONResponse({“ok”: False, “error”: str(e)}, status_code=500)
+        logger.warning("TTS error: %s", e)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
-@app.websocket(“/voice/stream”)
+@app.websocket("/voice/stream")
 async def voice_stream_ws(websocket: WebSocket):
-    “””
+    """
     WebSocket endpoint for streaming voice input.
     Client sends raw audio chunks (WebM/PCM 16kHz int16 mono).
     Server sends back partial transcription tokens as JSON:
-      {“text”: “...”, “is_final”: false}
-    Final message: {“text”: “...”, “is_final”: true}
-    Error message: {“error”: “...”, “is_final”: true}
-    Send “END” as a text message to signal end of audio stream.
-    “””
+      {"text": "...", "is_final": false}
+    Final message: {"text": "...", "is_final": true}
+    Error message: {"error": "...", "is_final": true}
+    Send "END" as a text message to signal end of audio stream.
+    """
     await websocket.accept()
 
     # Check STT availability upfront
@@ -2254,8 +2254,8 @@ async def voice_stream_ws(websocket: WebSocket):
 
     if not _stt_ready or _transcribe_streaming is None:
         await websocket.send_json({
-            “error”: “STT not available. Install faster-whisper: pip install faster-whisper”,
-            “is_final”: True,
+            "error": "STT not available. Install faster-whisper: pip install faster-whisper",
+            "is_final": True,
         })
         await websocket.close()
         return
@@ -2263,7 +2263,7 @@ async def voice_stream_ws(websocket: WebSocket):
     # Audio accumulation — 16kHz int16 mono = 32000 bytes/second; collect ~2 s per chunk
     _CHUNK_BYTES = 32000 * 2  # 2 seconds of 16kHz int16
     audio_buffer = bytearray()
-    final_text = “”
+    final_text = ""
 
     try:
         while True:
@@ -2272,32 +2272,32 @@ async def voice_stream_ws(websocket: WebSocket):
             except asyncio.TimeoutError:
                 break
 
-            if message[“type”] == “websocket.disconnect”:
+            if message["type"] == "websocket.disconnect":
                 break
 
-            if message[“type”] == “websocket.receive”:
+            if message["type"] == "websocket.receive":
                 # Text control message
-                if message.get(“text”) is not None:
-                    text_msg = (message[“text”] or “”).strip()
-                    if text_msg.upper() == “END”:
+                if message.get("text") is not None:
+                    text_msg = (message["text"] or "").strip()
+                    if text_msg.upper() == "END":
                         # Process remaining buffer as final
                         if audio_buffer:
                             try:
                                 for partial, is_final in _transcribe_streaming(bytes(audio_buffer)):
                                     final_text = partial
                                     await websocket.send_json({
-                                        “text”: partial,
-                                        “is_final”: is_final,
+                                        "text": partial,
+                                        "is_final": is_final,
                                     })
                                 audio_buffer.clear()
                             except Exception as e:
-                                logger.warning(“voice_stream_ws transcription error: %s”, e)
+                                logger.warning("voice_stream_ws transcription error: %s", e)
                         break
                     continue
 
                 # Binary audio data
-                if message.get(“bytes”) is not None:
-                    chunk = message[“bytes”]
+                if message.get("bytes") is not None:
+                    chunk = message["bytes"]
                     if chunk:
                         audio_buffer.extend(chunk)
 
@@ -2310,21 +2310,21 @@ async def voice_stream_ws(websocket: WebSocket):
                             if partial:
                                 final_text = partial
                                 await websocket.send_json({
-                                    “text”: partial,
-                                    “is_final”: False,
+                                    "text": partial,
+                                    "is_final": False,
                                 })
                     except Exception as e:
-                        logger.warning(“voice_stream_ws partial transcription error: %s”, e)
+                        logger.warning("voice_stream_ws partial transcription error: %s", e)
 
         # Send final result
-        await websocket.send_json({“text”: final_text, “is_final”: True})
+        await websocket.send_json({"text": final_text, "is_final": True})
 
     except WebSocketDisconnect:
         pass
     except Exception as e:
-        logger.warning(“voice_stream_ws error: %s”, e)
+        logger.warning("voice_stream_ws error: %s", e)
         try:
-            await websocket.send_json({“error”: str(e), “is_final”: True})
+            await websocket.send_json({"error": str(e), "is_final": True})
         except Exception:
             pass
 
