@@ -111,8 +111,9 @@ def _get_chroma_collection():
     global _chroma_collection
     if _chroma_collection is not None:
         return _chroma_collection
-    import chromadb
     import logging as _log
+
+    import chromadb
     _vs_log = _log.getLogger("layla")
     client = chromadb.PersistentClient(path=str(CHROMA_PATH))
     coll = client.get_or_create_collection(

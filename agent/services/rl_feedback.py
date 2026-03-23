@@ -46,7 +46,7 @@ def compute_tool_preferences(db_path: str | None = None) -> dict[str, ToolPrefer
     # capability_events.domain_id is used as a proxy for tool identity when notes contains tool name
     usefulness_by_tool: dict[str, list[float]] = {}
     try:
-        from layla.memory.db import migrate, _conn  # type: ignore[attr-defined]
+        from layla.memory.db import _conn, migrate  # type: ignore[attr-defined]
         migrate()
         with _conn() as db:
             rows = db.execute(
@@ -178,7 +178,7 @@ def run_preference_update_job() -> None:
     Computes preferences, stores summary in rl_preferences SQLite table.
     """
     try:
-        from layla.memory.db import migrate, _conn, upsert_rl_preference  # type: ignore[attr-defined]
+        from layla.memory.db import _conn, migrate, upsert_rl_preference  # type: ignore[attr-defined]
         migrate()
 
         prefs = compute_tool_preferences()
