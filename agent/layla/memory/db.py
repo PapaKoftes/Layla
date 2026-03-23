@@ -527,6 +527,21 @@ def _migrate_impl() -> None:
     except Exception as e:
         logger.warning("goal_progress table migration failed: %s", e)
 
+    # rl_preferences — RL feedback loop preference cache
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS rl_preferences (
+                    tool_name  TEXT PRIMARY KEY,
+                    score      REAL,
+                    hint       TEXT,
+                    updated_at TEXT
+                )
+            """)
+            db.commit()
+    except Exception as e:
+        logger.warning("rl_preferences table migration failed: %s", e)
+
     # Migrate learnings.json
     _migrate_learnings_json()
 
@@ -2308,3 +2323,32 @@ def get_recent_telemetry_events(n: int = 50) -> list[dict]:
             "performance_mode": r["performance_mode"],
         })
     return out
+
+
+
+# ── RL preferences (rl_feedback loop) ─────────────────────────────────────────
+
+def get_rl_preferences() -> list[dict]:
+    """Return all rl_preferences rows as dicts."""
+    migrate()
+    with _conn() as db:
+        rows = db.execute(
+            "SELECT tool_name, score, hint, updated_at FROM rl_preferences ORDER BY score DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def upsert_rl_preference(tool_name: str, score: float, hint: str) -> None:
+    """Insert or update an rl_preference row."""
+    if not (tool_name or "").strip():
+        return
+    migrate()
+    now = utcnow().isoformat()
+    with _conn() as db:
+        db.execute(
+            """INSERT INTO rl_preferences (tool_name, score, hint, updated_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(tool_name) DO UPDATE SET score=excluded.score, hint=excluded.hint, updated_at=excluded.updated_at""",
+            (tool_name.strip(), float(score), (hint or ""), now),
+        )
+        db.commit()

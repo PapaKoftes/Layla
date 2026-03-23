@@ -2040,18 +2040,85 @@ async function toggleMic() {
   }
 }
 
+let _voiceWs = null;
+
 async function startMic() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     _audioChunks = [];
+
+    // Try streaming WebSocket first; fall back to batch /voice/transcribe
+    const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProto}//${location.host}/voice/stream`;
+    let useStreaming = false;
+    let wsResolve = null;
+    const wsReady = new Promise(res => { wsResolve = res; });
+
+    _voiceWs = new WebSocket(wsUrl);
+    _voiceWs.binaryType = 'arraybuffer';
+
+    _voiceWs.onopen = () => {
+      useStreaming = true;
+      wsResolve(true);
+    };
+    _voiceWs.onerror = () => {
+      useStreaming = false;
+      wsResolve(false);
+      _voiceWs = null;
+    };
+    _voiceWs.onmessage = (evt) => {
+      try {
+        const data = JSON.parse(evt.data);
+        const input = document.getElementById('msg-input');
+        if (data.error) {
+          // STT not available
+          showToast(data.error.includes('faster-whisper') ? 'Install faster-whisper for voice input' : data.error);
+          if (input) input.removeAttribute('data-voice-partial');
+          return;
+        }
+        if (input && data.text !== undefined) {
+          input.value = data.text;
+          input.setAttribute('data-voice-partial', '1');
+          if (typeof toggleSendButton === 'function') toggleSendButton();
+        }
+        if (data.is_final) {
+          if (input) {
+            input.removeAttribute('data-voice-partial');
+            if (data.text && data.text.trim()) {
+              if (typeof send === 'function') send();
+            }
+          }
+        }
+      } catch(e) {}
+    };
+    _voiceWs.onclose = () => { _voiceWs = null; };
+
+    // Use timeslice for streaming — send chunks every 500ms
     _mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-    _mediaRecorder.ondataavailable = e => { if (e.data.size > 0) _audioChunks.push(e.data); };
+    _mediaRecorder.ondataavailable = async (e) => {
+      if (e.data.size > 0) {
+        _audioChunks.push(e.data);
+        // Stream chunk to WebSocket if connected
+        if (_voiceWs && _voiceWs.readyState === WebSocket.OPEN) {
+          const buf = await e.data.arrayBuffer();
+          _voiceWs.send(buf);
+        }
+      }
+    };
     _mediaRecorder.onstop = async () => {
       stream.getTracks().forEach(t => t.stop());
-      const blob = new Blob(_audioChunks, { type: 'audio/webm' });
-      await transcribeAndSend(blob);
+      if (_voiceWs && _voiceWs.readyState === WebSocket.OPEN) {
+        // Signal end of stream
+        _voiceWs.send('END');
+      } else {
+        // Fallback: batch transcription
+        const blob = new Blob(_audioChunks, { type: 'audio/webm' });
+        await transcribeAndSendBatch(blob);
+      }
     };
-    _mediaRecorder.start();
+
+    // Start with 500ms timeslice for streaming
+    _mediaRecorder.start(500);
     _micActive = true;
     const micBtn = document.getElementById('mic-btn');
     if (micBtn) {
@@ -2079,6 +2146,10 @@ function stopMic() {
 }
 
 async function transcribeAndSend(blob) {
+  return transcribeAndSendBatch(blob);
+}
+
+async function transcribeAndSendBatch(blob) {
   const micBtn = document.getElementById('mic-btn');
   if (micBtn) { micBtn.textContent = '⌛'; micBtn.classList.remove('recording'); }
   try {
@@ -2097,6 +2168,8 @@ async function transcribeAndSend(blob) {
         // Auto-send after transcription
         send();
       }
+    } else if (data.error && data.error.includes('faster-whisper')) {
+      showToast('Install faster-whisper for voice input');
     } else {
       showToast('Could not transcribe audio');
     }

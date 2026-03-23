@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -282,6 +282,13 @@ async def lifespan(app: FastAPI):
                 sched.add_job(_intelligence_job, IntervalTrigger(minutes=60), id="intelligence")
             except Exception:
                 pass
+            # RL preference update job (every 30 min)
+            try:
+                from services.rl_feedback import run_preference_update_job as _rl_job
+                sched.add_job(_rl_job, IntervalTrigger(minutes=30), id="rl_preference_update")
+                logger.info("RL preference update scheduled every 30 min")
+            except Exception as e:
+                logger.debug("RL preference job not scheduled: %s", e)
             if cfg.get("enable_lens_refresh") and cfg.get("lens_refresh_interval_days"):
                 try:
                     days = max(1, min(365, int(cfg["lens_refresh_interval_days"])))
@@ -577,6 +584,17 @@ def usage():
 @app.get("/version")
 def version():
     return {"ok": True, "version": __version__}
+
+
+@app.get("/rl/preferences")
+def rl_preferences():
+    """Return current RL tool preference table as JSON."""
+    try:
+        from layla.memory.db import get_rl_preferences
+        prefs = get_rl_preferences()
+        return {"ok": True, "preferences": prefs}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
 
 
 @app.get("/update/check")
@@ -2140,10 +2158,111 @@ async def voice_speak(request: Request):
                 status_code=503,
             )
         from fastapi.responses import Response
-        return Response(content=wav, media_type="audio/wav")
+        return Response(content=wav, media_type=”audio/wav”)
     except Exception as e:
-        logger.warning("TTS error: %s", e)
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+        logger.warning(“TTS error: %s”, e)
+        return JSONResponse({“ok”: False, “error”: str(e)}, status_code=500)
+
+
+@app.websocket(“/voice/stream”)
+async def voice_stream_ws(websocket: WebSocket):
+    “””
+    WebSocket endpoint for streaming voice input.
+    Client sends raw audio chunks (WebM/PCM 16kHz int16 mono).
+    Server sends back partial transcription tokens as JSON:
+      {“text”: “...”, “is_final”: false}
+    Final message: {“text”: “...”, “is_final”: true}
+    Error message: {“error”: “...”, “is_final”: true}
+    Send “END” as a text message to signal end of audio stream.
+    “””
+    await websocket.accept()
+
+    # Check STT availability upfront
+    _stt_ready = False
+    _transcribe_streaming = None
+    try:
+        from services.stt import is_stt_ready as _is_stt_ready
+        from services.stt import transcribe_streaming as _ts
+        _stt_ready = _is_stt_ready()
+        _transcribe_streaming = _ts
+    except Exception:
+        pass
+
+    if not _stt_ready or _transcribe_streaming is None:
+        await websocket.send_json({
+            “error”: “STT not available. Install faster-whisper: pip install faster-whisper”,
+            “is_final”: True,
+        })
+        await websocket.close()
+        return
+
+    # Audio accumulation — 16kHz int16 mono = 32000 bytes/second; collect ~2 s per chunk
+    _CHUNK_BYTES = 32000 * 2  # 2 seconds of 16kHz int16
+    audio_buffer = bytearray()
+    final_text = “”
+
+    try:
+        while True:
+            try:
+                message = await asyncio.wait_for(websocket.receive(), timeout=30.0)
+            except asyncio.TimeoutError:
+                break
+
+            if message[“type”] == “websocket.disconnect”:
+                break
+
+            if message[“type”] == “websocket.receive”:
+                # Text control message
+                if message.get(“text”) is not None:
+                    text_msg = (message[“text”] or “”).strip()
+                    if text_msg.upper() == “END”:
+                        # Process remaining buffer as final
+                        if audio_buffer:
+                            try:
+                                for partial, is_final in _transcribe_streaming(bytes(audio_buffer)):
+                                    final_text = partial
+                                    await websocket.send_json({
+                                        “text”: partial,
+                                        “is_final”: is_final,
+                                    })
+                                audio_buffer.clear()
+                            except Exception as e:
+                                logger.warning(“voice_stream_ws transcription error: %s”, e)
+                        break
+                    continue
+
+                # Binary audio data
+                if message.get(“bytes”) is not None:
+                    chunk = message[“bytes”]
+                    if chunk:
+                        audio_buffer.extend(chunk)
+
+                # Process when we have enough audio (~2 seconds)
+                if len(audio_buffer) >= _CHUNK_BYTES:
+                    try:
+                        chunk_data = bytes(audio_buffer[:_CHUNK_BYTES])
+                        audio_buffer = audio_buffer[_CHUNK_BYTES:]
+                        for partial, is_final_seg in _transcribe_streaming(chunk_data):
+                            if partial:
+                                final_text = partial
+                                await websocket.send_json({
+                                    “text”: partial,
+                                    “is_final”: False,
+                                })
+                    except Exception as e:
+                        logger.warning(“voice_stream_ws partial transcription error: %s”, e)
+
+        # Send final result
+        await websocket.send_json({“text”: final_text, “is_final”: True})
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.warning(“voice_stream_ws error: %s”, e)
+        try:
+            await websocket.send_json({“error”: str(e), “is_final”: True})
+        except Exception:
+            pass
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
