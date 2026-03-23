@@ -1,9 +1,11 @@
 """
 Shared LLM completion gateway. Single point of access for local Llama or remote
-OpenAI-compatible server. Serializes all completion calls so they never run concurrently.
+OpenAI-compatible server. Serializes all completion calls via asyncio queue.
 """
 from __future__ import annotations
 
+import asyncio
+import dataclasses
 import logging
 import os
 import threading
@@ -17,12 +19,131 @@ logger = logging.getLogger("layla")
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _llm = None  # legacy: first loaded instance (health/UI)
 _llm_by_path: dict[str, Any] = {}  # resolved model path -> Llama (task-based routing)
-# RLock: autonomous_run holds llm_serialize_lock for the whole run; nested _get_llm()
-# may load an alternate GGUF (coding_model) without deadlocking the same thread.
+# RLock: kept for legacy sync callers (e.g. prewarm_llm) and _get_llm internal locking.
 _llm_lock = threading.RLock()
-# Held for the entire autonomous_run to prevent concurrent LLM runs.
-# Safe for single-user local use; multi-user concurrency requires per-run queuing.
+# llm_serialize_lock is kept as a shim for legacy sync callers (agent_loop imports it).
+# All async paths use LLMRequestQueue instead.
 llm_serialize_lock = _llm_lock
+
+# Priority constants for queue-based submission
+PRIORITY_CHAT = 0
+PRIORITY_BACKGROUND = 1
+
+
+class LLMTimeoutError(Exception):
+    """Raised when an LLM request times out."""
+
+
+@dataclasses.dataclass
+class _LLMRequest:
+    prompt: str
+    params: dict
+    future: asyncio.Future
+    cancel_event: asyncio.Event | None
+    priority: int
+
+
+class LLMRequestQueue:
+    """
+    Asyncio-based request queue for serialised LLM access.
+    Replaces the threading.RLock bottleneck for async paths.
+    """
+
+    def __init__(self, maxsize: int = 20) -> None:
+        self._queue: asyncio.Queue[_LLMRequest] = asyncio.Queue(maxsize=maxsize)
+        self._worker_task: asyncio.Task | None = None
+
+    def start(self) -> None:
+        """Start background worker. Call from FastAPI lifespan startup."""
+        loop = asyncio.get_event_loop()
+        self._worker_task = loop.create_task(self._worker(), name="llm-queue-worker")
+
+    async def stop(self) -> None:
+        if self._worker_task and not self._worker_task.done():
+            self._worker_task.cancel()
+            try:
+                await self._worker_task
+            except asyncio.CancelledError:
+                pass
+
+    async def _worker(self) -> None:
+        """Single worker that processes requests one at a time."""
+        while True:
+            try:
+                req: _LLMRequest = await self._queue.get()
+                try:
+                    if req.cancel_event and req.cancel_event.is_set():
+                        if not req.future.done():
+                            req.future.cancel()
+                        continue
+                    loop = asyncio.get_event_loop()
+                    try:
+                        result = await loop.run_in_executor(
+                            None,
+                            lambda r=req: run_completion(
+                                r.prompt,
+                                **r.params,
+                            ),
+                        )
+                        if not req.future.done():
+                            req.future.set_result(result)
+                    except Exception as exc:
+                        if not req.future.done():
+                            req.future.set_exception(exc)
+                finally:
+                    self._queue.task_done()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning("LLMRequestQueue worker error: %s", e)
+
+    async def submit(
+        self,
+        prompt: str,
+        params: dict | None = None,
+        priority: int = PRIORITY_CHAT,
+        cancel_event: asyncio.Event | None = None,
+    ) -> Any:
+        """Submit a completion request and await the result."""
+        loop = asyncio.get_event_loop()
+        future: asyncio.Future = loop.create_future()
+        req = _LLMRequest(
+            prompt=prompt,
+            params=params or {},
+            future=future,
+            cancel_event=cancel_event,
+            priority=priority,
+        )
+        await self._queue.put(req)
+        return await future
+
+
+# Global queue instance — started in FastAPI lifespan
+llm_request_queue: LLMRequestQueue = LLMRequestQueue()
+
+
+async def run_completion_async(
+    prompt: str,
+    params: dict | None = None,
+    cancel_event: asyncio.Event | None = None,
+    priority: int = PRIORITY_CHAT,
+) -> Any:
+    """
+    Submit a completion to the async queue and await the result.
+    Raises asyncio.CancelledError if cancel_event is set before/during processing.
+    """
+    import runtime_safety
+    p = params or {}
+    timeout_sec = runtime_safety.load_config().get("llm_timeout_seconds", 120)
+    if cancel_event and cancel_event.is_set():
+        raise asyncio.CancelledError("Request cancelled before submission")
+    try:
+        return await asyncio.wait_for(
+            llm_request_queue.submit(prompt, p, priority=priority, cancel_event=cancel_event),
+            timeout=timeout_sec,
+        )
+    except asyncio.TimeoutError:
+        raise LLMTimeoutError(f"LLM request timed out after {timeout_sec}s")
 
 # Per-request model override: "default" | "coding" | "reasoning" | "chat" (for remote backends)
 _model_override_var: ContextVar[str | None] = ContextVar("model_override", default=None)
@@ -369,11 +490,13 @@ def run_completion(
     stream: bool = False,
     stop: list | None = None,
     timeout_seconds: int | None = None,
+    _retry_on_transient: bool = True,
 ):
     """
     Run completion via inference_router (llama_cpp, openai_compatible, or ollama).
     If stream=True, yields token strings; else returns {"choices": [{"message": {"content": text}}]}.
     timeout_seconds: used for remote HTTP only; local Llama has no timeout in this call.
+    Includes exponential backoff retry (max 2 retries) for transient errors.
     Token usage is tracked for /usage endpoint.
     Sets routing prompt ContextVar so _effective_model_filename always has authority
     (override or classify-from-prompt + select_model); internal prompts are excluded.
@@ -456,8 +579,13 @@ def run_completion(
 
             return _counting_gen()
 
+        # Determine effective timeout from config when not explicitly provided
+        import runtime_safety as _rs_retry
+        _cfg_retry = _rs_retry.load_config()
+        effective_timeout = timeout_seconds if timeout_seconds is not None else _cfg_retry.get("llm_timeout_seconds", 120)
+        _MAX_RETRIES = 2 if _retry_on_transient else 0
         out = None
-        for attempt in range(2):
+        for attempt in range(_MAX_RETRIES + 1):
             try:
                 out = _run(
                     prompt=prompt,
@@ -465,16 +593,20 @@ def run_completion(
                     temperature=temperature,
                     stream=False,
                     stop=stop,
-                    timeout_seconds=timeout_seconds,
+                    timeout_seconds=effective_timeout,
                     _get_llm=_get_llm,
                     _llm_lock=_llm_lock,
                     model_override=model_override,
                     reasoning_budget=reasoning_budget,
                 )
                 break
-            except Exception:
-                if attempt == 0:
-                    time.sleep(1)
+            except LLMTimeoutError:
+                raise
+            except Exception as _retry_exc:
+                if attempt < _MAX_RETRIES:
+                    backoff = 2 ** attempt  # 1s, 2s
+                    logger.warning("LLM transient error (attempt %d/%d), retrying in %ds: %s", attempt + 1, _MAX_RETRIES + 1, backoff, _retry_exc)
+                    time.sleep(backoff)
                     continue
                 raise
         text = ""
