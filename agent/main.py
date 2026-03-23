@@ -407,7 +407,7 @@ def _get_cached_plugins(cfg: dict) -> dict:
 
 
 # Lock for pending.json reads+writes — shared with agent_loop._write_pending via shared_state
-from shared_state import pending_file_lock as _pending_file_lock
+from shared_state import pending_file_lock as _pending_file_lock  # noqa: E402
 
 
 def _read_pending() -> list:

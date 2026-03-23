@@ -31,5 +31,7 @@ def test_ui_shell_loads(page: Page, base_url: str) -> None:
 
 def test_settings_modal_opens(page: Page, base_url: str) -> None:
     page.goto(f"{base_url}/ui", wait_until="domcontentloaded", timeout=90000)
-    page.get_by_role("button", name="Settings").click()
-    expect(page.locator("#settings-overlay.visible")).to_be_visible(timeout=15000)
+    # Use the aria-label locator directly — more reliable than get_by_role in headless mode
+    page.locator('[aria-label="Settings"]').click()
+    # openSettings() adds class="visible" which switches display from none to flex
+    expect(page.locator("#settings-overlay")).to_be_visible(timeout=15000)

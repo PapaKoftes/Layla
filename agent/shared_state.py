@@ -2,6 +2,7 @@
 Shared state and refs for routers. Populated by main at startup to avoid circular imports.
 """
 import asyncio
+import threading as _threading
 from collections import deque
 from typing import Callable
 
@@ -147,5 +148,4 @@ def get_most_recent_conv_id() -> str | None:
 # Used by both agent_loop._write_pending AND main._read_pending/_write_pending_list
 # so that concurrent approval creation (agent_loop) and approval reads (main router)
 # never corrupt .governance/pending.json.
-import threading as _threading
 pending_file_lock: _threading.Lock = _threading.Lock()
