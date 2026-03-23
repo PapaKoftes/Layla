@@ -204,7 +204,14 @@ async def lifespan(app: FastAPI):
                 logger.warning("Plugin error: %s", err)
         except Exception as e:
             logger.warning("Plugin load failed: %s", e)
-        # Pre-warm LLM in background thread â€” first request will be instant
+        # Start async LLM request queue worker
+        try:
+            from services.llm_gateway import llm_request_queue
+            llm_request_queue.start()
+            logger.info("LLM request queue worker started")
+        except Exception as e:
+            logger.warning("LLM request queue start failed: %s", e)
+        # Pre-warm LLM in background thread - first request will be instant
         try:
             from services.llm_gateway import prewarm_llm
             prewarm_llm()
@@ -312,6 +319,11 @@ async def lifespan(app: FastAPI):
         pass
     if hasattr(app.state, "scheduler"):
         app.state.scheduler.shutdown(wait=False)
+    try:
+        from services.llm_gateway import llm_request_queue
+        await llm_request_queue.stop()
+    except Exception:
+        pass
 
 
 app = FastAPI(
@@ -394,19 +406,25 @@ def _get_cached_plugins(cfg: dict) -> dict:
     return _plugins_cache
 
 
+# Lock for pending.json reads+writes to prevent race conditions from concurrent requests
+_pending_file_lock = threading.Lock()
+
+
 def _read_pending() -> list:
-    try:
-        if PENDING_FILE.exists():
-            data = json.loads(PENDING_FILE.read_text(encoding="utf-8"))
-            return data if isinstance(data, list) else []
-    except Exception as e:
-        logger.debug("_read_pending failed: %s", e)
-    return []
+    with _pending_file_lock:
+        try:
+            if PENDING_FILE.exists():
+                data = json.loads(PENDING_FILE.read_text(encoding="utf-8"))
+                return data if isinstance(data, list) else []
+        except Exception as e:
+            logger.debug("_read_pending failed: %s", e)
+        return []
 
 
 def _write_pending_list(data: list) -> None:
-    GOV_PATH.mkdir(parents=True, exist_ok=True)
-    PENDING_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    with _pending_file_lock:
+        GOV_PATH.mkdir(parents=True, exist_ok=True)
+        PENDING_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def _audit(tool: str, args_summary: str, approved_by: str, result_ok: bool) -> None:
@@ -467,9 +485,9 @@ if DOCS_DIR.exists():
     app.mount("/docs", StaticFiles(directory=str(DOCS_DIR)), name="docs")
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 # Â§16 Remote: auth and endpoint allowlist (production-safe, minimal)
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 def _remote_allowed_paths(cfg: dict) -> list[str]:
     """Derive allowlist from remote_mode if remote_allow_endpoints not set."""
     explicit = cfg.get("remote_allow_endpoints") or []
@@ -548,9 +566,9 @@ async def trace_id_middleware(request: Request, call_next):
     return response
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 # Health
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 def _health_checks() -> tuple[bool, str]:
     """Returns (ok, detail). Config and DB must pass; model/remote not checked (slow)."""
     try:
@@ -650,6 +668,52 @@ def undo():
     except Exception as e:
         logger.debug("undo failed: %s", e)
         return JSONResponse({"ok": False, "error": str(e)})
+
+
+@app.post("/agent/cancel/{conversation_id}")
+async def cancel_agent(conversation_id: str):
+    """Signal cancellation for the given conversation_id. Returns immediately."""
+    from shared_state import set_cancel
+    found = set_cancel(conversation_id)
+    return JSONResponse({"ok": True, "found": found, "conversation_id": conversation_id})
+
+
+@app.delete("/agent")
+async def cancel_agent_latest():
+    """Cancel the most recently active agent request."""
+    from shared_state import get_most_recent_conv_id, set_cancel
+    conv_id = get_most_recent_conv_id()
+    if conv_id:
+        found = set_cancel(conv_id)
+        return JSONResponse({"ok": True, "found": found, "conversation_id": conv_id})
+    return JSONResponse({"ok": False, "error": "No active request"})
+
+
+@app.get("/aspects/reload")
+def aspects_reload():
+    """Force-reload all aspect JSON files and return count of loaded aspects."""
+    try:
+        import orchestrator as _orch
+        aspects = _orch.reload_aspects()
+        return JSONResponse({"ok": True, "loaded": len(aspects)})
+    except Exception as e:
+        logger.warning("aspects reload failed: %s", e)
+        return JSONResponse({"ok": False, "error": str(e), "loaded": 0})
+
+
+@app.post("/memory/rebuild")
+async def memory_rebuild():
+    """Trigger async rebuild of the ChromaDB vector collection from SQLite learnings."""
+    async def _do_rebuild():
+        try:
+            from layla.memory.vector_store import rebuild_collection
+            rebuild_collection()
+            logger.info("memory rebuild complete")
+        except Exception as e:
+            logger.warning("memory rebuild failed: %s", e)
+
+    asyncio.create_task(_do_rebuild())
+    return JSONResponse({"ok": True, "status": "rebuilding"})
 
 
 @app.get("/health")
@@ -778,9 +842,9 @@ def health(request: Request):
     return payload
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 # Setup status + settings (for first-run overlay and settings panel)
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @app.get("/health/deps")
 def health_deps(request: Request):
@@ -1262,9 +1326,9 @@ async def apply_runtime_preset(req: Request):
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 # Project context (North Star Â§3)
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 @app.get("/project_context")
 def get_project_context_api():
     """Return current project context: name, domains, key_files, goals, lifecycle_stage. Read-only for Layla."""
@@ -1348,9 +1412,9 @@ def get_project_discovery_api():
         )
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 # OpenAI-compatible model list
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 @app.get("/v1/models")
 def v1_models():
     base = {
@@ -1408,9 +1472,9 @@ def _parse_v1_model(model_name: str) -> tuple[str, str]:
     raise ValueError(f"Unsupported model '{raw}'. Use 'layla' or 'layla-<aspect_id>'.")
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 # OpenAI-compatible chat completions
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 @app.post("/v1/chat/completions")
 async def v1_chat_completions(req: dict):
     body = req or {}
@@ -1745,9 +1809,9 @@ def delete_conversation_api(conversation_id: str):
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 # System export
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 @app.get("/system_export")
 def system_export():
     import runtime_safety
@@ -1815,7 +1879,7 @@ def system_export():
             text=True,
             timeout=5,
         )
-        git_branch = (r.stdout or "").strip() or "â€”"
+        git_branch = (r.stdout or "").strip() or ""
     except Exception as e:
         git_branch = str(e)
     try:
@@ -1847,9 +1911,9 @@ def system_export():
     })
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Learnings API â€” paginated read + delete
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# Learnings API â€" paginated read + delete
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @app.get("/learnings")
 def list_learnings(page: int = 1, limit: int = 20, type: str = ""):
@@ -1958,7 +2022,7 @@ def list_audit(page: int = 1, limit: int = 50, tool: str = ""):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 # Study plans API
 
@@ -2008,7 +2072,7 @@ def delete_study_plan(plan_id: int):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-# Missions API (v1.1 — long-running research/engineering tasks)
+# Missions API (v1.1 - long-running research/engineering tasks)
 
 @app.post("/mission")
 async def create_mission_api(req: Request):
@@ -2090,7 +2154,7 @@ def read_file_content(path: str = ""):
 
 
 # Voice endpoints
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @app.post("/voice/transcribe")
 async def voice_transcribe(request: Request):
@@ -2265,9 +2329,9 @@ async def voice_stream_ws(websocket: WebSocket):
             pass
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Rich occult web UI â€” served at /ui
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+# Rich occult web UI â€" served at /ui
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 @app.get("/manifest.json")
 def manifest():
     """PWA manifest."""
@@ -2704,7 +2768,7 @@ function addMsg(role, text, aspectName, deliberated, steps) {
   if (role !== 'you' && aspectName) {
     const asp = document.createElement('div');
     asp.className = 'msg-aspect';
-    asp.textContent = 'â€” ' + aspectName;
+    asp.textContent = 'â€" ' + aspectName;
     div.appendChild(asp);
   }
   if (steps && steps.length > 0) {
@@ -2731,7 +2795,7 @@ function addSeparator() {
   const chat = document.getElementById('chat');
   const sep = document.createElement('div');
   sep.className = 'separator';
-  sep.textContent = 'â”€â”€â”€ âœ¦ â”€â”€â”€';
+  sep.textContent = 'â"€â"€â"€ âœ¦ â"€â"€â"€';
   chat.appendChild(sep);
 }
 
@@ -2801,7 +2865,7 @@ async function send() {
       bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); });
       const asp = document.createElement('div');
       asp.className = 'msg-aspect';
-      asp.textContent = 'â€” ' + (currentAspect || '');
+      asp.textContent = 'â€" ' + (currentAspect || '');
       div.appendChild(asp);
       chatEl.scrollTop = chatEl.scrollHeight;
       refreshApprovals();
@@ -2830,7 +2894,7 @@ async function send() {
     let msg = data.response;
     if (!msg && data.state?.status === 'system_busy') msg = 'System is under load. Try again in a moment.';
     if (!msg && data.state?.status === 'timeout') msg = 'Request took too long. Try again.';
-    if (!msg) msg = data.response || 'No response â€” try again.';
+    if (!msg) msg = data.response || 'No response â€" try again.';
     addMsg('layla', msg, data.aspect_name, data.state?.steps?.some(s => s.deliberated), data.state?.steps);
     if (data.refused && data.refusal_reason) {
       const refDiv = document.createElement('div');
@@ -2843,7 +2907,7 @@ async function send() {
     removeTyping();
     const err = ((e && (e.message || e.reason)) || String(e || '')).toLowerCase();
     const isNetwork = err.includes('fetch') || err.includes('network') || err.includes('load failed');
-    const msg = isNetwork ? "Can't reach Layla â€” is the server running at http://127.0.0.1:8000?" : ('Something went wrong: ' + (e && (e.message || e.reason)) || 'unknown error');
+    const msg = isNetwork ? "Can't reach Layla â€" is the server running at http://127.0.0.1:8000?" : ('Something went wrong: ' + (e && (e.message || e.reason)) || 'unknown error');
     addMsg('layla', msg);
   }
 }
@@ -2939,7 +3003,7 @@ async function doWakeup() {
       const chat = document.getElementById('chat');
       const banner = document.createElement('div');
       banner.className = 'greeting-banner';
-      banner.innerHTML = '<div class="from">â€” Echo (session start)</div>' + data.greeting;
+      banner.innerHTML = '<div class="from">â€" Echo (session start)</div>' + data.greeting;
       chat.appendChild(banner);
     }
   } catch {}

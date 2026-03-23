@@ -104,6 +104,22 @@ def write_file(path: str, content: str) -> dict:
                     }
             except Exception:
                 pass
+        else:
+            # First write (new file): enforce write_file_max_bytes limit explicitly
+            try:
+                import runtime_safety as _rs_wf
+                _cfg_wf = _rs_wf.load_config()
+                _max_new = max(1024, int(_cfg_wf.get("write_file_max_bytes", 5_000_000)))
+            except Exception:
+                _max_new = 5_000_000
+            new_size = len(raw)
+            if new_size > _max_new:
+                return {
+                    "ok": False,
+                    "error": f"Content too large for new file ({new_size} bytes, max {_max_new}). Reduce content size.",
+                    "new_bytes": new_size,
+                    "limit_bytes": _max_new,
+                }
     except Exception:
         pass
     target.parent.mkdir(parents=True, exist_ok=True)

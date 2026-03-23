@@ -53,3 +53,62 @@ class TestInsideSandbox:
         with _make_sandbox(child):
             from layla.tools.registry import inside_sandbox
             assert inside_sandbox(sibling) is False
+
+
+class TestSandboxRootDefault:
+    def test_sandbox_root_default_is_layla_workspace(self):
+        """sandbox_root default must be ~/layla-workspace, not ~."""
+        from pathlib import Path
+        from unittest.mock import patch
+        import runtime_safety as rs
+
+        expected_default = str(Path.home() / "layla-workspace")
+
+        # Patch at the module level (json.loads and CONFIG_FILE.stat via builtins)
+        with patch.object(rs, "_config_cache", None):
+            rs._config_cache = None
+            rs._config_last_check = 0.0
+            # Force fallback path: patch json.loads to raise so config file isn't loaded
+            import builtins
+            orig_open = builtins.open
+
+            def mock_open(file, *args, **kwargs):
+                if "runtime_config" in str(file):
+                    raise FileNotFoundError("no config")
+                return orig_open(file, *args, **kwargs)
+
+            with patch("builtins.open", side_effect=mock_open):
+                with patch("pathlib.Path.mkdir", return_value=None):
+                    with patch("pathlib.Path.stat", side_effect=FileNotFoundError):
+                        rs._config_cache = None
+                        rs._config_last_check = 0.0
+                        cfg = rs.load_config()
+
+        assert cfg["sandbox_root"] == expected_default, (
+            f"sandbox_root should be {expected_default!r}, got {cfg['sandbox_root']!r}"
+        )
+
+    def test_sandbox_root_not_bare_home(self):
+        """sandbox_root default must NOT be the bare home directory."""
+        from pathlib import Path
+        import runtime_safety as rs
+        from unittest.mock import patch
+        import builtins
+
+        orig_open = builtins.open
+
+        def mock_open(file, *args, **kwargs):
+            if "runtime_config" in str(file):
+                raise FileNotFoundError("no config")
+            return orig_open(file, *args, **kwargs)
+
+        with patch("builtins.open", side_effect=mock_open):
+            with patch("pathlib.Path.mkdir", return_value=None):
+                with patch("pathlib.Path.stat", side_effect=FileNotFoundError):
+                    rs._config_cache = None
+                    rs._config_last_check = 0.0
+                    cfg = rs.load_config()
+
+        assert cfg["sandbox_root"] != str(Path.home()), (
+            "sandbox_root should not default to bare home directory"
+        )

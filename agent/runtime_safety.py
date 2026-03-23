@@ -140,6 +140,7 @@ def load_config() -> dict:
             "warn_cpu_percent": 70,
             "hard_cpu_percent": 85,
             "max_active_runs": 1,
+            "lite_mode_auto": True,  # auto-detect low hardware and enable lite mode
             "dual_model_threshold_gb": 24,
             "force_dual_models": False,
             "route_default_to_chat_model": False,
@@ -149,7 +150,10 @@ def load_config() -> dict:
             "chat_model_path": "",
             "agent_model_path": "",
             "max_runtime_seconds": 30,
-            "max_tool_calls": 2,
+            "max_tool_calls": 5,  # schema default is also 5; was 2 for conservative initial deployment
+            "llm_timeout_seconds": 120,  # per-request LLM timeout in seconds
+            "agent_timeout_seconds": 300,  # overall agent run timeout in seconds
+            "tool_timeout_seconds": 30,  # per-tool-call timeout in seconds
             "tool_routing_enabled": True,
             "tools_profile": "full",
             "tools_allow": [],
@@ -219,7 +223,7 @@ def load_config() -> dict:
             "top_k": 40,
             "model_filename": "your-model.gguf",
             "models_dir": str(REPO_ROOT / "models"),  # repo models/ for backward compat; installer may set ~/.layla/models
-            "sandbox_root": str(Path.home()),
+            "sandbox_root": str(Path.home() / "layla-workspace"),
             "web_allowlist": [],
             "knowledge_sources": [],
             "knowledge_max_bytes": 4000,
@@ -273,7 +277,7 @@ def load_config() -> dict:
             "sandbox_python_memory_limit_mb": 0,
             "max_chars_per_source": 500,
             "retrieval_line_overlap_threshold": 0.7,
-            "write_file_max_bytes": 500_000,
+            "write_file_max_bytes": 5_000_000,  # 5MB for new files; existing files use explosion_factor
             "write_file_explosion_factor": 5,
             "max_patch_lines": 0,
             "doc_injection_guard_enabled": True,
@@ -289,13 +293,25 @@ def load_config() -> dict:
             "direct_feedback_enabled": False,
             "pin_psychology_framework_excerpt": True,
         }
-        defaults.update(_hardware_derived_defaults())
+        hw_defaults = _hardware_derived_defaults()
+        defaults.update(hw_defaults)
+        # Auto-enable lite mode based on hardware when lite_mode_auto is true
+        # (only if performance_mode is still "auto" — user override wins)
+        if defaults.get("lite_mode_auto", True) and defaults.get("performance_mode", "auto") == "auto":
+            h = _probe_hardware()
+            if h["ram_gb"] < 8 or h["vram_gb"] < 4:
+                defaults["performance_mode"] = "low"
         try:
             data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
             if isinstance(data, dict):
                 defaults.update(data)
         except Exception as e:
             logger.debug("runtime_safety config load failed: %s", e)
+        # Ensure sandbox_root directory exists
+        try:
+            Path(defaults["sandbox_root"]).mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            logger.debug("sandbox_root mkdir failed: %s", e)
         _config_cache = defaults
         _config_mtime = current_mtime
         return _config_cache
