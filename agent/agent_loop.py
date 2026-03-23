@@ -1969,6 +1969,29 @@ def _auto_extract_learnings(user_msg: str, response: str, aspect_id: str) -> Non
         logger.debug("auto-learn failed: %s", e)
 
 
+def _apply_lite_mode_overrides(cfg: dict) -> dict:
+    """
+    Return a modified copy of cfg with lite-mode overrides applied based on performance_mode.
+    Does NOT mutate the input dict or persist to disk.
+    """
+    import copy as _copy
+    cfg = _copy.copy(cfg)
+    pm = (cfg.get("performance_mode") or "auto").strip().lower()
+    if pm == "low":
+        cfg["max_tool_calls"] = min(cfg.get("max_tool_calls", 5), 2)
+        cfg["enable_cognitive_workspace"] = False
+        cfg["planning_enabled"] = False
+        cfg["retrieval_k"] = 3
+        cfg["skip_deliberation"] = True
+        cfg["skip_self_reflection"] = True
+    elif pm == "mid":
+        cfg["max_tool_calls"] = min(cfg.get("max_tool_calls", 5), 4)
+        cfg["enable_cognitive_workspace"] = False
+        cfg["planning_enabled"] = cfg.get("planning_enabled", True)
+    # "high" or "auto" with high hardware: use all features as configured
+    return cfg
+
+
 def autonomous_run(
     goal: str,
     context: str = "",
@@ -1986,6 +2009,7 @@ def autonomous_run(
     reasoning_effort: str | None = None,
     priority: int = PRIORITY_AGENT,
     persona_focus: str = "",
+    cancel_event=None,
 ) -> dict:
     try:
         with schedule_slot(priority=priority):
@@ -1994,7 +2018,7 @@ def autonomous_run(
                     goal, context, workspace_root, allow_write, allow_run,
                     conversation_history, aspect_id, show_thinking, stream_final,
                     ux_state_queue, research_mode, plan_depth, model_override, reasoning_effort, priority,
-                    persona_focus,
+                    persona_focus, cancel_event,
                 )
     except RuntimeError as e:
         if "system_busy" in str(e):
@@ -2030,6 +2054,7 @@ def _autonomous_run_impl(
     reasoning_effort: str | None = None,
     priority: int = PRIORITY_AGENT,
     persona_focus: str = "",
+    cancel_event=None,
 ) -> dict:
     from services.llm_gateway import set_model_override, set_reasoning_effort
     set_model_override(model_override)
@@ -2049,7 +2074,7 @@ def _autonomous_run_impl(
             goal, context, workspace_root, allow_write, allow_run,
             conversation_history, aspect_id, show_thinking, stream_final,
             ux_state_queue, research_mode, plan_depth, priority,
-            persona_focus,
+            persona_focus, cancel_event,
         )
     finally:
         set_model_override(None)
@@ -2071,10 +2096,13 @@ def _autonomous_run_impl_core(
     plan_depth: int = 0,
     priority: int = PRIORITY_AGENT,
     persona_focus: str = "",
+    cancel_event=None,
 ) -> dict:
     persona_focus_id = (persona_focus or "").strip().lower()
     base_cfg = runtime_safety.load_config()
     cfg = _get_effective_config(base_cfg)
+    # Apply lite mode overrides based on performance_mode (low/mid/high/auto)
+    cfg = _apply_lite_mode_overrides(cfg)
     _prev_reasoning_mode = ""
     try:
         from services.reasoning_classifier import classify_reasoning_need, stabilize_reasoning_mode
@@ -2291,6 +2319,22 @@ def _autonomous_run_impl_core(
         pass
 
     while state["depth"] < 5:
+        # Cancellation check: stop gracefully if cancel_event is set
+        if cancel_event is not None:
+            try:
+                if cancel_event.is_set():
+                    state["status"] = "cancelled"
+                    if not state.get("steps"):
+                        state.setdefault("steps", []).append({
+                            "action": "reason",
+                            "result": "[Stopped by user]",
+                            "deliberated": False,
+                            "aspect": active_aspect.get("id", "layla"),
+                        })
+                    break
+            except Exception:
+                pass
+
         if time.time() - state["start_time"] > max_runtime:
             state["status"] = "timeout"
             break
