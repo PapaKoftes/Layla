@@ -46,6 +46,9 @@ Each aspect is a facet of the same being. Loaded dynamically from `personalities
 - The message routes to that aspect for that single message only — your session aspect doesn't change
 - Autocomplete dropdown appears when you type `@` — arrow keys + Enter to pick
 - **Aspect Lock** (🔓 button next to the badge): click to lock the current aspect; it won't auto-route until unlocked
+- **Performance badge** (top-right header): `🐢 Lite` (low hardware) / `🔋 Mid` / `⚡ Full` — shows current mode
+- **Stop button**: appears while a response is generating; immediately cancels the active request server-side
+- **Mic button** (🎤 in input area): click to speak — live transcription streams into the input box; requires `faster-whisper` installed
 
 ---
 
@@ -102,6 +105,18 @@ List all actions Layla is waiting for approval on. Returns IDs and what each act
 
 ### `approve_action`
 Approve a pending action by ID. Use `get_pending_approvals` first to see what's waiting.
+
+### `cancel_request`
+Stop a running response mid-generation. Pass `conversation_id` or omit to cancel the most recent active request.
+
+### `get_rl_preferences`
+Show Layla's learned tool preferences — which tools she considers preferred, unreliable, or to avoid based on past outcomes.
+
+### `rebuild_memory`
+Rebuild ChromaDB vector store from scratch. Use after changing the embedding model or on dimension-mismatch errors.
+
+### `reload_aspects`
+Force-reload all `personalities/*.json` files immediately without restarting the server.
 
 ---
 
