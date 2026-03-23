@@ -211,7 +211,7 @@ class DXFBuildRunner:
                                 end_angle=angle_deg + 90,
                             )
                         else:
-                            warnings.append(f"cut_slot: missing start/end; skipped")
+                            warnings.append("cut_slot: missing start/end; skipped")
 
                     elif op_type == "pocket":
                         if op.path_points and len(op.path_points) >= 3:

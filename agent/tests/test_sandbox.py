@@ -60,6 +60,7 @@ class TestSandboxRootDefault:
         """sandbox_root default must be ~/layla-workspace, not ~."""
         from pathlib import Path
         from unittest.mock import patch
+
         import runtime_safety as rs
 
         expected_default = str(Path.home() / "layla-workspace")
@@ -90,10 +91,11 @@ class TestSandboxRootDefault:
 
     def test_sandbox_root_not_bare_home(self):
         """sandbox_root default must NOT be the bare home directory."""
-        from pathlib import Path
-        import runtime_safety as rs
-        from unittest.mock import patch
         import builtins
+        from pathlib import Path
+        from unittest.mock import patch
+
+        import runtime_safety as rs
 
         orig_open = builtins.open
 

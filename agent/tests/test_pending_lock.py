@@ -14,7 +14,7 @@ def test_concurrent_pending_writes_do_not_corrupt(tmp_path):
     Result should be a valid JSON list, not corrupted.
     """
     import main  # noqa: F401 (sets up _pending_file_lock)
-    from main import _write_pending_list, _read_pending
+    from main import _read_pending, _write_pending_list
 
     pending_file = tmp_path / "pending.json"
 
@@ -53,6 +53,7 @@ def test_concurrent_pending_writes_do_not_corrupt(tmp_path):
 def test_pending_lock_exists():
     """Verify that _pending_file_lock is a threading.Lock."""
     import threading
+
     import main
     lock = main._pending_file_lock
     assert isinstance(lock, type(threading.Lock()))

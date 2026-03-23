@@ -23,10 +23,12 @@ from services.output_polish import polish_output
 from services.resource_manager import PRIORITY_BACKGROUND, PRIORITY_CHAT, classify_load
 from shared_state import (
     append_conv_history,
+    clear_cancel,
     get_append_history,
     get_conv_history,
     get_history,
     get_touch_activity,
+    new_cancel_event,
 )
 
 logger = logging.getLogger("layla")
@@ -400,6 +402,7 @@ async def agent(req: dict):
         ux_state_queue = queue.Queue()
         result_holder = []
         error_holder = []
+        cancel_ev = new_cancel_event(conversation_id)
 
         def run_agent():
             try:
@@ -418,10 +421,13 @@ async def agent(req: dict):
                     reasoning_effort=reasoning_effort,
                     priority=PRIORITY_CHAT,
                     persona_focus=persona_focus,
+                    cancel_event=cancel_ev,
                 )
                 result_holder.append(r)
             except Exception as e:
                 error_holder.append(e)
+            finally:
+                clear_cancel(conversation_id)
 
         thread = threading.Thread(target=run_agent)
         thread.start()
@@ -528,6 +534,7 @@ async def agent(req: dict):
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    cancel_ev = new_cancel_event(conversation_id)
     try:
         result = await asyncio.to_thread(
             autonomous_run,
@@ -544,8 +551,10 @@ async def agent(req: dict):
             reasoning_effort=reasoning_effort,
             priority=PRIORITY_CHAT,
             persona_focus=persona_focus,
+            cancel_event=cancel_ev,
         )
     except Exception as e:
+        clear_cancel(conversation_id)
         logger.exception("agent run failed")
         err_msg = str(e)
         if "model" in err_msg.lower() or "path" in err_msg.lower() or "file" in err_msg.lower():
@@ -563,6 +572,8 @@ async def agent(req: dict):
             "memory_influenced": [],
             "cited_sources": [],
         })
+    else:
+        clear_cancel(conversation_id)
 
     steps = result.get("steps") or []
     final = steps[-1].get("result", "") if steps else ""
