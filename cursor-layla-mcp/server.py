@@ -62,11 +62,11 @@ def _get(url: str, timeout: int = 30) -> dict[str, Any]:
         return json.loads(r.read().decode())
 
 
-def _agent_sync(payload: dict[str, Any], timeout: int = 300) -> dict[str, Any]:
+def _agent_sync(payload: dict[str, Any], timeout: int = 600) -> dict[str, Any]:
     return _post(LAYLA_BASE + "/agent", payload, timeout=timeout)
 
 
-def _agent_stream_sync(payload: dict[str, Any], timeout: int = 300) -> dict[str, Any]:
+def _agent_stream_sync(payload: dict[str, Any], timeout: int = 600) -> dict[str, Any]:
     """Call /agent with stream=true and collect SSE chunks into final text + metadata."""
     stream_payload = dict(payload)
     stream_payload["stream"] = True
@@ -529,6 +529,52 @@ async def handle_list_tools() -> types.ListToolsResult:
                         },
                     },
                 },
+            ),
+            types.Tool(
+                name="cancel_request",
+                title="Cancel Layla's current response",
+                description=(
+                    "Stop a running Layla response mid-generation. "
+                    "Pass the conversation_id from a previous chat_with_layla call, "
+                    "or omit to cancel whatever is currently running."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "conversation_id": {
+                            "type": "string",
+                            "description": "Conversation ID to cancel. Omit to cancel the most recent active request.",
+                            "default": "",
+                        },
+                    },
+                },
+            ),
+            types.Tool(
+                name="get_rl_preferences",
+                title="Get Layla's tool performance preferences",
+                description=(
+                    "Return Layla's learned tool preferences from past experience: "
+                    "which tools she prefers, avoids, or considers unreliable based on success rate and latency."
+                ),
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            types.Tool(
+                name="rebuild_memory",
+                title="Rebuild Layla's vector memory",
+                description=(
+                    "Rebuild the ChromaDB vector store from scratch. "
+                    "Use when you see embedding dimension mismatch errors or after changing the embedding model."
+                ),
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            types.Tool(
+                name="reload_aspects",
+                title="Reload Layla's personality aspects",
+                description=(
+                    "Force-reload all personality JSON files from personalities/. "
+                    "Use after editing a personality file to apply changes immediately without restarting."
+                ),
+                inputSchema={"type": "object", "properties": {}},
             ),
             types.Tool(
                 name="ask_aspect",
@@ -1013,6 +1059,57 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
             return [types.TextContent(type="text", text=data.get("response", "") or "")]
         except Exception as e:
             return [types.TextContent(type="text", text=f"ask_aspect failed: {e}")]
+
+    # ── cancel_request ────────────────────────────────────
+    if name == "cancel_request":
+        conv_id = (args.get("conversation_id", "") or "").strip()
+        try:
+            if conv_id:
+                result = _post(LAYLA_BASE + f"/agent/cancel/{conv_id}", {}, timeout=5)
+            else:
+                req = urllib.request.Request(LAYLA_BASE + "/agent", method="DELETE")
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    result = json.loads(r.read().decode())
+            ok = result.get("ok", False)
+            return [types.TextContent(type="text", text="Cancelled." if ok else f"Cancel result: {result}")]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"Cancel failed: {e}")]
+
+    # ── get_rl_preferences ────────────────────────────────
+    if name == "get_rl_preferences":
+        try:
+            data = _get(LAYLA_BASE + "/rl/preferences", timeout=10)
+            prefs = data.get("preferences") or data if isinstance(data, list) else []
+            if not prefs:
+                return [types.TextContent(type="text", text="No RL preferences yet — Layla needs more interactions to learn tool preferences.")]
+            lines = ["Tool preferences (from past experience):"]
+            for p in prefs:
+                hint = p.get("hint", "")
+                score = p.get("score", 0)
+                tool = p.get("tool_name", "?")
+                marker = {"preferred": "✓", "avoid": "✗", "unreliable": "⚠"}.get(hint, "·")
+                lines.append(f"  {marker} {tool:<35} score={score:.2f}  {hint or 'neutral'}")
+            return [types.TextContent(type="text", text="\n".join(lines))]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"RL preferences unavailable: {e}")]
+
+    # ── rebuild_memory ────────────────────────────────────
+    if name == "rebuild_memory":
+        try:
+            result = _post(LAYLA_BASE + "/memory/rebuild", {}, timeout=10)
+            status = result.get("status", "?")
+            return [types.TextContent(type="text", text=f"Memory rebuild triggered. Status: {status}. This runs in the background — check /health after a minute.")]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"Rebuild failed: {e}")]
+
+    # ── reload_aspects ────────────────────────────────────
+    if name == "reload_aspects":
+        try:
+            data = _get(LAYLA_BASE + "/aspects/reload", timeout=10)
+            loaded = data.get("loaded", "?")
+            return [types.TextContent(type="text", text=f"Aspects reloaded. {loaded} personality files active.")]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"Aspect reload failed: {e}")]
 
     return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
 
