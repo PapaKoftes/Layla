@@ -406,8 +406,8 @@ def _get_cached_plugins(cfg: dict) -> dict:
     return _plugins_cache
 
 
-# Lock for pending.json reads+writes to prevent race conditions from concurrent requests
-_pending_file_lock = threading.Lock()
+# Lock for pending.json reads+writes — shared with agent_loop._write_pending via shared_state
+from shared_state import pending_file_lock as _pending_file_lock
 
 
 def _read_pending() -> list:
@@ -2283,7 +2283,10 @@ async def voice_stream_ws(websocket: WebSocket):
                         # Process remaining buffer as final
                         if audio_buffer:
                             try:
-                                for partial, is_final in _transcribe_streaming(bytes(audio_buffer)):
+                                _ts_fn = _transcribe_streaming
+                                _buf = bytes(audio_buffer)
+                                segments = await asyncio.to_thread(lambda: list(_ts_fn(_buf)))
+                                for partial, is_final in segments:
                                     final_text = partial
                                     await websocket.send_json({
                                         "text": partial,
@@ -2306,7 +2309,9 @@ async def voice_stream_ws(websocket: WebSocket):
                     try:
                         chunk_data = bytes(audio_buffer[:_CHUNK_BYTES])
                         audio_buffer = audio_buffer[_CHUNK_BYTES:]
-                        for partial, is_final_seg in _transcribe_streaming(chunk_data):
+                        _ts_fn = _transcribe_streaming
+                        segments = await asyncio.to_thread(lambda: list(_ts_fn(chunk_data)))
+                        for partial, is_final_seg in segments:
                             if partial:
                                 final_text = partial
                                 await websocket.send_json({
