@@ -1024,6 +1024,15 @@ def _build_system_head(
                 memory_parts.append("Personal context (relevant):\n" + pkg_ctx)
         except Exception:
             pass
+    # RL tool performance hints (from past experience)
+    if not _skip_expensive:
+        try:
+            from services.rl_feedback import get_rl_hint_for_prompt
+            rl_hint = get_rl_hint_for_prompt()
+            if rl_hint:
+                memory_parts.append(rl_hint)
+        except Exception:
+            pass
     # Reasoning strategies for complex goals
     if goal and len(goal) > 100:
         try:
@@ -2946,6 +2955,7 @@ def _autonomous_run_impl_core(
                     args["path"] = path
             if "root" not in args and intent in ("search_replace", "rename_symbol", "search_codebase"):
                 args["root"] = workspace
+            _tool_t0 = time.perf_counter()
             try:
                 fn = meta.get("fn")
                 if fn:
@@ -2954,6 +2964,13 @@ def _autonomous_run_impl_core(
                     result = {"ok": False, "error": "Tool not found"}
             except TypeError as e:
                 result = {"ok": False, "error": str(e)}
+            _tool_elapsed_ms = (time.perf_counter() - _tool_t0) * 1000.0
+            _tool_ok = isinstance(result, dict) and result.get("ok", True) is not False
+            try:
+                from services.rl_feedback import record_outcome_feedback as _rl_record
+                _rl_record(intent, success=_tool_ok, latency_ms=_tool_elapsed_ms)
+            except Exception:
+                pass
             runtime_safety.log_execution(intent, args)
             state["tool_calls"] += 1
             _register_exact_tool_call(state, intent, decision)
