@@ -159,14 +159,14 @@ Behavior is defined by: `agent_loop.py` > `runtime_safety.py` > `layla/tools/reg
 ### Known Gaps / Planned
 | Gap | Status | Notes |
 |-----|--------|-------|
-| RL feedback loop | Not implemented | `IMPLEMENTATION_STATUS.md` lists as missing |
+| RL feedback loop | **DONE** | `services/rl_feedback.py`; scheduler job; `/rl/preferences`; injected into system head |
+| Streaming STT | **DONE** | `/voice/stream` WebSocket + mic button in UI |
+| `fabrication_assist` real runner | **DONE** | `DXFBuildRunner` handles cut_rect/circle/slot/pocket/profile via ezdxf |
 | OpenTelemetry | Not implemented | Local telemetry only (SQLite `telemetry_events`) |
 | DAG skill composition + skill metrics | Not implemented | Basic skills work; no DAG wiring |
 | Model A/B comparison | Not implemented | Listed as missing in model management domain |
 | faiss-cpu / qdrant alternatives | Not implemented | ChromaDB + BM25 only |
-| Streaming STT | Partial | `transcribe_streaming` exists; wire-up TUI incomplete |
 | Matrix / WhatsApp transports | Not implemented | Noted as optional |
-| `fabrication_assist` core integration | Intentional boundary | Must NOT be imported by main.py unless explicitly wired |
 
 ### Doc/Code Drift Detected
 1. **`task_graph.py` location**: `ARCHITECTURE.md` references `services/task_graph.py`, but the actual file is at `agent/services/task_graph.py` (correct) — and there is no root-level `agent/task_graph.py` (the task_graph.py path in the system prompt was wrong; file lives at `agent/services/task_graph.py`).
@@ -277,12 +277,12 @@ The single mechanism preventing autonomous destructive action. Three-part invari
 
 ## 8. Risks / Weak Points
 
-### Critical
-1. **LLM serialization bottleneck**: Single `RLock` means one LLM call blocks all others. Under concurrent UI tabs or multiple transport clients, requests queue behind each other. No queuing priority beyond `PRIORITY_CHAT` vs `PRIORITY_BACKGROUND` classification.
-2. **Sandbox root defaults to `~`**: All files under home directory are in-scope. Operators who don't configure `sandbox_root` could allow reads/writes across their entire home. Should default to a narrower path like `~/layla-workspace`.
-3. **`autonomous_run` is recursive via planner**: `execute_plan()` calls `autonomous_run()` for each plan step. Combined with `max_plan_depth`, this can still reach significant recursion depth. The `RLock` is reentrant, so same thread can re-enter. However, token/wall-time budgets are per-step, not cumulative.
-4. **Pending approval file race**: `_write_pending()` reads, appends, rewrites `pending.json` without file lock. Concurrent approval requests from multiple transports could corrupt the file.
-5. **ChromaDB dimension mismatch after embedder change**: If operator switches from nomic (768d) to MiniLM (384d) or vice versa, existing Chroma collection is incompatible and will error silently or fail queries. No migration path documented.
+### Critical (resolved 2026-03-23)
+1. ~~**LLM serialization bottleneck**~~ **FIXED**: `LLMRequestQueue` (asyncio.Queue, maxsize=20) with priority levels; `run_completion_async()`; cancellation via cancel_event.
+2. ~~**Sandbox root defaults to `~`**~~ **FIXED**: Default now `~/layla-workspace`; directory auto-created on startup.
+3. **`autonomous_run` is recursive via planner**: Still present. Token/wall-time budgets are per-step; `agent_timeout_seconds=300` wraps the whole run. Monitor recursion depth in production.
+4. ~~**Pending approval file race**~~ **FIXED**: `_pending_file_lock = threading.Lock()` wraps all `_read_pending`/`_write_pending_list` calls.
+5. ~~**ChromaDB dimension mismatch**~~ **FIXED**: `rebuild_collection()` + `POST /memory/rebuild`; startup logs clear warning with instructions.
 
 ### Moderate
 6. **`conversation_history` poisoning check on load**: `_load_history()` in `main.py` checks for junk assistant messages and clears history. This check is heuristic (`_is_junk_reply`, "you are layla" pattern). Edge cases exist where legitimate history could be cleared.
@@ -521,3 +521,4 @@ The single mechanism preventing autonomous destructive action. Three-part invari
 | Date | Author | Description |
 |------|--------|-------------|
 | 2026-03-23 | Claude Sonnet 4.6 (automated analysis) | Initial MAX-DEPTH analysis: full repo read (150+ files), all core Python source, all major docs, test coverage, CI config. Established canonical system description, invariants, risks, expansion points, and file index. Branch: claude/xenodochial-feistel at commit d937bd7. |
+| 2026-03-23 | Claude Sonnet 4.6 | **Milestone: Full platform solidification** (commits 2e10258–e9ec2b6). Discord bot fully implemented (13 slash commands, voice/TTS/music, reconnection, 41 tests). RL feedback loop implemented (rl_feedback.py, preference scoring, scheduler job, /rl/preferences endpoint, db rl_preferences table). DXFBuildRunner real fabrication impl (cut_rect/circle/slot/pocket/profile ops, 16 tests). Streaming STT WebSocket (/voice/stream, mic button in UI). Async LLM request queue replacing RLock (LLMRequestQueue, PRIORITY_CHAT/BACKGROUND, cancel support). Cancellation API (POST /agent/cancel/{conv_id}, DELETE /agent, shared_state cancel events). Lite mode overrides (_apply_lite_mode_overrides: low→max_tool_calls=2,no workspace/planner; mid→max_tool_calls=4,no workspace). sandbox_root default changed to ~/layla-workspace. max_tool_calls default raised 2→5. pending.json file lock added. ChromaDB dimension mismatch detection + rebuild_collection() + POST /memory/rebuild. write_file_max_bytes check on new files. /aspects/reload endpoint. Web UI: stop→cancel endpoint, queued status, 15s think indicator, perf mode badge. All 273 agent tests + 16 fabrication tests pass. Ruff clean. **Previously-noted gaps now resolved:** RLock bottleneck, sandbox_root~, pending race, max_tool_calls drift, Discord stub, RL loop missing, STT unwired, StubRunner only, write_file first-write gap, ChromaDB migration path. **Remaining open:** OpenTelemetry, DAG skill composition, model A/B, faiss/qdrant, Matrix/WhatsApp transports. |
