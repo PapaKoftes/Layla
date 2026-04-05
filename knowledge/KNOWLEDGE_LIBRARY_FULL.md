@@ -72,6 +72,32 @@ All curated knowledge files available to Layla. These are indexed into ChromaDB 
 
 ---
 
+## Domain — CAD/CAM/CNC/Fabrication
+
+| File | Content |
+|------|---------|
+| `ncam-polyboard-optinest.md` | PolyBoard (parametric cabinet design), OptiNest (2D nesting/sheet optimization), NcHops (CNC post-processor), guillotine nesting algorithm, 32mm system, hardware dimensions, Python automation with ezdxf |
+| `cad-cam-advanced.md` | CAD kernels (ACIS/Parasolid/OCCT), B-Rep, NURBS, STEP/IGES, CAM toolpath strategies, feeds/speeds, climb vs conventional, G-code generation in Python, coordinate systems and transforms |
+| `robotics-arduino-cnc.md` | Arduino (ATmega/ESP32/RP2040), stepper motor control, AccelStepper, GRBL configuration, G-code reference, CNC feeds/speeds, robot forward kinematics, PID control, ROS2, key Python libraries for robotics/CNC |
+
+---
+
+## Domain — AI, Safety, and Ethics
+
+| File | Content |
+|------|---------|
+| `ai-safety-ethics-systems.md` | AI alignment problem, failure taxonomies, safety techniques (RLHF/CAI/DPO), Anthropic's approach, ethics frameworks (consequentialism/deontology/virtue/care), functional safety standards (IEC 61508/ISO 26262/EN 13849), SIL/PL levels, safety design patterns (fail-safe/redundancy/e-stop), circuit breaker pattern, prompt injection defense, interpretability |
+
+---
+
+## Domain — Psychology (Advanced)
+
+| File | Content |
+|------|---------|
+| `psychology-advanced.md` | Cognitive psychology (working memory, attention, schema, memory systems, encoding), social psychology (influence, attribution, groupthink), motivational psychology (SDT, mindset, MI techniques, procrastination), behavioral/learning patterns (operant conditioning schedules, habit loop, flow), interpersonal dynamics (TA, drama triangle, NVC), AI-human interaction psychology (parasocial, trust calibration, sycophancy) |
+
+---
+
 ## Infrastructure Reference
 
 | File | Content |
@@ -81,6 +107,7 @@ All curated knowledge files available to Layla. These are indexed into ChromaDB 
 | `troubleshooting.md` | Common issues and fixes |
 | `local-ai-models-guide.md` | GGUF models, quantization, GPU offloading, llama-cpp-python settings |
 | `python-best-practices.md` | Additional Python best practices |
+| `advanced-python-patterns.md` | Advanced Python: concurrency (threading/asyncio/multiprocessing), data structures, type system (Protocols/Generic/dataclasses), context managers, descriptors, memory management (__slots__, weakref), NumPy/SciPy for engineering, FFT, packaging, Ruff config |
 
 ---
 

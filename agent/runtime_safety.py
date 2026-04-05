@@ -28,11 +28,12 @@ BACKUP_DIR = AGENT_DIR / ".backup"
 
 SAFE_TOOLS = ["git_status", "read_file", "list_dir"]
 DANGEROUS_TOOLS = [
-    "write_file", "shell", "shell_session_start", "run_python", "apply_patch", "git_commit",
-    "git_push", "git_revert", "git_clone", "run_tests", "pip_install",
+    "write_file", "shell", "shell_session_start", "run_python", "apply_patch", "git_commit", "mcp_tools_call",
+    "git_push", "git_revert", "git_clone", "git_worktree_add", "git_worktree_remove", "run_tests", "pip_install",
     "search_replace", "rename_symbol", "generate_gcode", "geometry_execute_program", "docker_run",
     "github_pr", "send_email", "clipboard_write", "browser_click", "browser_fill",
     "code_format", "write_csv", "calendar_add_event", "create_svg", "create_mermaid",
+    "notebook_edit_cell",
 ]
 
 PROTECTED_FILES = [
@@ -46,7 +47,18 @@ _config_mtime: float = 0.0
 _config_last_check: float = 0.0
 _CONFIG_CHECK_TTL: float = 2.0  # skip stat() for 2 s during hot loops
 _config_lock = threading.Lock()
+_file_cache_lock = threading.Lock()
+_hw_lock = threading.Lock()
 _hardware_probe_cache: dict | None = None
+
+
+def invalidate_config_cache() -> None:
+    """Clear the TTL config cache under lock. Use after writing runtime_config.json."""
+    global _config_cache, _config_mtime, _config_last_check
+    with _config_lock:
+        _config_cache = None
+        _config_mtime = 0.0
+        _config_last_check = 0.0
 
 
 def _probe_hardware() -> dict:
@@ -54,41 +66,46 @@ def _probe_hardware() -> dict:
     global _hardware_probe_cache
     if _hardware_probe_cache is not None:
         return _hardware_probe_cache
-    try:
-        from services.hardware_detect import detect_hardware
-        h = detect_hardware()
-        _hardware_probe_cache = {
-            "ram_gb": h["ram_gb"],
-            "vram_gb": h["vram_gb"],
-            "cpu_logical": h["cpu_cores"],
-        }
-    except Exception as e:
-        logger.debug("runtime_safety hardware_detect failed: %s", e)
-        cpu_count = os.cpu_count() or 4
-        ram_gb = 16.0
-        vram_gb = 0.0
+    with _hw_lock:
+        if _hardware_probe_cache is not None:
+            return _hardware_probe_cache
+        result: dict
         try:
-            import psutil
-            mem = psutil.virtual_memory()
-            ram_gb = round(mem.total / (1024**3), 1)
-        except Exception as pe:
-            logger.debug("runtime_safety psutil fallback failed: %s", pe)
-        try:
-            r = subprocess.run(
-                ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
-                capture_output=True, text=True, timeout=10, encoding="utf-8", errors="replace",
-            )
-            if r.returncode == 0 and r.stdout.strip():
-                raw = r.stdout.strip().split("\n")[0].strip().replace("MiB", "").replace("MB", "").strip()
-                try:
-                    vram_mb = int(raw)
-                    vram_gb = round(vram_mb / 1024.0, 1)
-                except ValueError:
-                    pass
-        except Exception as ne:
-            logger.debug("runtime_safety nvidia-smi failed: %s", ne)
-        _hardware_probe_cache = {"ram_gb": ram_gb, "vram_gb": vram_gb, "cpu_logical": cpu_count}
-    return _hardware_probe_cache
+            from services.hardware_detect import detect_hardware
+            h = detect_hardware()
+            result = {
+                "ram_gb": h["ram_gb"],
+                "vram_gb": h["vram_gb"],
+                "cpu_logical": h["cpu_cores"],
+            }
+        except Exception as e:
+            logger.debug("runtime_safety hardware_detect failed: %s", e)
+            cpu_count = os.cpu_count() or 4
+            ram_gb = 16.0
+            vram_gb = 0.0
+            try:
+                import psutil
+                mem = psutil.virtual_memory()
+                ram_gb = round(mem.total / (1024**3), 1)
+            except Exception as pe:
+                logger.debug("runtime_safety psutil fallback failed: %s", pe)
+            try:
+                r = subprocess.run(
+                    ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+                    capture_output=True, text=True, timeout=10, encoding="utf-8", errors="replace",
+                )
+                if r.returncode == 0 and r.stdout.strip():
+                    raw = r.stdout.strip().split("\n")[0].strip().replace("MiB", "").replace("MB", "").strip()
+                    try:
+                        vram_mb = int(raw)
+                        vram_gb = round(vram_mb / 1024.0, 1)
+                    except ValueError:
+                        pass
+            except Exception as ne:
+                logger.debug("runtime_safety nvidia-smi failed: %s", ne)
+            result = {"ram_gb": ram_gb, "vram_gb": vram_gb, "cpu_logical": cpu_count}
+        _hardware_probe_cache = result
+        return _hardware_probe_cache
 
 
 def _hardware_derived_defaults() -> dict:
@@ -140,6 +157,30 @@ def load_config() -> dict:
             "warn_cpu_percent": 70,
             "hard_cpu_percent": 85,
             "max_active_runs": 1,
+            "response_pacing_ms": 0,
+            "repo_cognition_inject_enabled": True,
+            "repo_cognition_max_chars": 6000,
+            "project_memory_enabled": True,
+            "project_memory_max_bytes": 1_500_000,
+            "project_memory_inject_max_chars": 4000,
+            "project_memory_max_file_entries": 500,
+            "project_memory_max_list_entries": 200,
+            "project_memory_persist_plan": True,
+            "planning_strict_mode": False,
+            "in_loop_plan_governance_enabled": True,
+            "in_loop_plan_default_max_retries": 1,
+            "plan_governance_require_nonempty_step_tools": False,
+            "plan_governance_reject_auto_filled_tools": False,
+            "plan_governance_strict_tool_evidence": False,
+            "plan_governance_hard_mode": False,
+            "llm_serialize_per_workspace": False,
+            "plan_step_default_read_tools": ["read_file", "list_dir", "grep_code"],
+            "file_plan_refinement_enabled": False,
+            "ui_agent_stream_timeout_seconds": 900,
+            "ui_agent_json_timeout_seconds": 720,
+            "ui_stream_keepalive_seconds": 20,
+            "ui_stalled_silence_ms": 0,
+            "honesty_and_boundaries_enabled": True,
             "dual_model_threshold_gb": 24,
             "force_dual_models": False,
             "route_default_to_chat_model": False,
@@ -148,8 +189,15 @@ def load_config() -> dict:
             "anti_drift_prompt_enabled": True,
             "chat_model_path": "",
             "agent_model_path": "",
-            "max_runtime_seconds": 30,
-            "max_tool_calls": 2,
+            "max_runtime_seconds": 900,
+            "chat_light_max_runtime_seconds": 90,
+            "max_tool_calls": 20,
+            "tool_call_timeout_seconds": 60,
+            "approval_ttl_seconds": 3600,
+            "hyde_enabled": False,
+            "ollama_base_url": "",
+            "inference_backend": "llama_cpp",
+            "context_auto_compact_ratio": 0.75,
             "tool_routing_enabled": True,
             "tools_profile": "full",
             "tools_allow": [],
@@ -204,8 +252,35 @@ def load_config() -> dict:
             "github_repo": "",
             "auto_update_check_enabled": False,
             "research_max_tool_calls": 20,
-            "research_max_runtime_seconds": 120,
+            "research_max_runtime_seconds": 1800,
             "safe_mode": True,
+            "mcp_client_enabled": False,
+            "mcp_stdio_servers": [],
+            "mcp_inject_tool_summary_in_decisions": False,
+            "mcp_tool_summary_ttl_seconds": 300,
+            "agent_hooks_enabled": True,
+            "hooks_require_allow_run": True,
+            "agent_hooks": [],
+            "background_use_subprocess_workers": False,
+            "background_subprocess_local_gguf_policy": "warn",
+            "background_worker_grace_seconds": 4.0,
+            "background_job_max_stdout_bytes": 8000000,
+            "background_worker_force_sandbox_only": False,
+            "background_worker_rlimits_enabled": False,
+            "background_worker_rlimit_as_bytes": 0,
+            "background_worker_windows_job_limits_enabled": False,
+            "background_worker_windows_job_memory_mb": 0,
+            "background_worker_windows_job_cpu_percent": 0,
+            "background_worker_rlimit_cpu_seconds": 0,
+            "background_worker_wrapper_command": [],
+            "background_progress_stream_enabled": True,
+            "background_progress_min_interval_seconds": 0.35,
+            "background_progress_max_events": 200,
+            "background_progress_tail_max": 50,
+            "background_job_max_stderr_bytes": 2_000_000,
+            "background_worker_cgroup_auto_enabled": False,
+            "background_worker_cgroup_memory_max_bytes": 0,
+            "background_worker_cgroup_cpu_max": "",
             "temperature": 0.2,
             "n_ctx": 4096,
             "n_gpu_layers": -1,  # full GPU offload by default; overridden by hardware probe
@@ -288,6 +363,13 @@ def load_config() -> dict:
             "geometry_external_bridge_allow_insecure_localhost": False,
             "direct_feedback_enabled": False,
             "pin_psychology_framework_excerpt": True,
+            "file_checkpoint_enabled": True,
+            "file_checkpoint_max_count": 200,
+            "file_checkpoint_max_bytes": 209_715_200,
+            "elasticsearch_enabled": False,
+            "elasticsearch_url": "",
+            "elasticsearch_index_prefix": "layla",
+            "elasticsearch_api_key": None,
         }
         defaults.update(_hardware_derived_defaults())
         try:
@@ -324,19 +406,20 @@ _file_cache: dict[str, tuple[float, str]] = {}  # path -> (mtime, content)
 def _read_cached(path: Path) -> str:
     """Read a file with mtime caching — safe to call on every inference turn."""
     key = str(path)
-    try:
-        mtime = path.stat().st_mtime
-    except Exception:
-        return _file_cache.get(key, (0.0, ""))[1]
-    cached = _file_cache.get(key)
-    if cached and cached[0] == mtime:
-        return cached[1]
-    try:
-        content = path.read_text(encoding="utf-8")
-    except Exception:
-        content = ""
-    _file_cache[key] = (mtime, content)
-    return content
+    with _file_cache_lock:
+        try:
+            mtime = path.stat().st_mtime
+        except Exception:
+            return _file_cache.get(key, (0.0, ""))[1]
+        cached = _file_cache.get(key)
+        if cached and cached[0] == mtime:
+            return cached[1]
+        try:
+            content = path.read_text(encoding="utf-8")
+        except Exception:
+            content = ""
+        _file_cache[key] = (mtime, content)
+        return content
 
 
 def load_identity() -> str:

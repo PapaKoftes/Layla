@@ -164,7 +164,10 @@ The platform is organized into 10 capability domains. Each domain has a purpose,
 | shared_state | `agent/shared_state.py` | history deque, pending approvals, touch_activity, audit |
 | decision_schema | `agent/decision_schema.py` | Pydantic parse_decision() |
 | mission_manager | `agent/services/mission_manager.py` | Multi-step mission execution |
-| routers | `agent/routers/agent.py`, `approvals.py`, `study.py`, `research.py`, `memory.py` | HTTP endpoints |
+| routers | `agent/routers/agent.py`, `approvals.py`, `study.py`, `research.py`, `memory.py`, **`plans.py`** | HTTP endpoints |
+| engine plans | `agent/routers/plans.py`, `agent/layla/memory/db.py` (`layla_plans`), `agent/services/engine_plans.py` | Draft → approve → execute; **`plan_id`** on `POST /agent`; optional **`planning_strict_mode`** |
+
+**Planning-first (integrated):** Operators can capture goals as **SQLite-backed plans** (not only ephemeral JSON in project memory), approve them in the Web UI (**Workspace → Plans**), and execute with the same **`allow_write`** / **`allow_run`** semantics as chat. Per-workspace **`.layla/project_memory.json`** (schema v2) can mirror **`modules`**, **`issues`**, and **`plans`** summaries for long-horizon context.
 
 **Open-source foundations:** FastAPI, pydantic, tenacity (retry in llm_gateway)
 
@@ -357,6 +360,6 @@ flowchart TB
 - [ARCHITECTURE.md](../ARCHITECTURE.md) — Request flow, state locations
 - [docs/IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) — North Star mapping, prebuilt domains table
 - [LAYLA_NORTH_STAR.md](../LAYLA_NORTH_STAR.md) — Canonical vision
-- [knowledge/layla-capabilities-map.md](../knowledge/layla-capabilities-map.md) — 109 tools inventory
+- [knowledge/layla-capabilities-map.md](../knowledge/layla-capabilities-map.md) — capabilities inventory (authoritative tool count: **179**, `agent/tests/test_registered_tools_count.py` → `EXPECTED_TOOL_COUNT`)
 - [docs/CAPABILITIES.md](CAPABILITIES.md) — Capability registry, discovery, benchmark
 - [docs/TECH_STACK_AND_CAPABILITIES.md](TECH_STACK_AND_CAPABILITIES.md) — Tech stack reference

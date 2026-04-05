@@ -319,6 +319,10 @@ def run() -> int:
     print("  ∴  Layla — First-Run Setup")
     print("  ──────────────────────────────")
     print()
+    print("  Layla is local-first: chats and memory stay on this machine unless you export them.")
+    print("  File writes and shell commands require explicit approval in the Web UI or MCP.")
+    print(f"  Read {REPO_ROOT / 'VALUES.md'} and {REPO_ROOT / 'docs' / 'ETHICAL_AI_PRINCIPLES.md'} for values and safety framing.")
+    print()
 
     # Detect hardware
     try:
@@ -414,6 +418,13 @@ def run() -> int:
             print("  ✓  Potato preset merged (see docs/POTATO_MODE.md).")
         except Exception as e:
             print(f"  [!] Potato preset skipped: {e}")
+
+    if yn("  Customize voice defaults (TTS / Whisper) now?", False):
+        cfg["tts_voice"] = ask("  tts_voice (kokoro voice id)", cfg.get("tts_voice", "af_heart"))
+        cfg["whisper_model"] = ask("  whisper_model (tiny|base|small|medium)", cfg.get("whisper_model", "base"))
+
+    if yn("  Save a Web UI theme hint in config (optional)?", False):
+        cfg["ui_theme_preset"] = ask("  ui_theme_preset (gothic|dark|light)", "gothic").strip().lower() or "gothic"
 
     save_config(cfg)
 

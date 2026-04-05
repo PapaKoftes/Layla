@@ -7,7 +7,7 @@
 ## What We Have (Strengths)
 
 - **Beautiful, functional UI** — dark occult aesthetic, aspect color theming, markdown/code rendering, voice I/O, streaming, SSE
-- **Rich agent loop** — 109 registered tools, tool-dispatch loop, approval flow, audit log, sandbox enforcement
+- **Rich agent loop** — 179 registered tools (see `agent/tests/test_registered_tools_count.py`), tool-dispatch loop, approval flow, audit log, sandbox enforcement
 - **6 personality aspects** — rich character definitions, auto-routing, deliberation, earned titles
 - **Solid memory system** — SQLite + ChromaDB RAG, learnings, study plans, capabilities/evolution, memory graph
 - **Voice I/O** — faster-whisper STT, kokoro-onnx TTS, both wired into the UI

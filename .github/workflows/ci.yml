@@ -52,9 +52,54 @@ jobs:
           }
           EOF
 
-      - name: Run tests
+      - name: Run tests with coverage floor
         working-directory: agent
-        run: pytest tests/ -v --tb=short -m "not slow and not e2e_ui" --timeout=60
+        run: pytest tests/ -v --tb=short -m "not slow and not e2e_ui" --timeout=60 --cov=. --cov-config=.coveragerc --cov-report=term-missing:skip-covered
+
+  test-windows:
+    name: Test (Windows, Python 3.12)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        working-directory: agent
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify editable install (fabrication_assist + layla packages)
+        run: |
+          pip install -e .
+          python -c "import fabrication_assist; import layla"
+
+      - name: Write CI runtime config
+        working-directory: agent
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/layla-ci" | Out-Null
+          $sand = (($env:RUNNER_TEMP -replace '\\', '/') + '/layla-ci')
+          $obj = @{
+            model_filename = 'ci-stub.gguf'
+            use_chroma = $false
+            sandbox_root = $sand
+            max_tool_calls = 2
+            max_runtime_seconds = 30
+            n_ctx = 2048
+            n_gpu_layers = 0
+            scheduler_study_enabled = $false
+          }
+          $obj | ConvertTo-Json -Compress | Set-Content -Encoding utf8 runtime_config.json
+
+      - name: Run tests (no coverage floor)
+        working-directory: agent
+        run: python -m pytest tests/ -v --tb=short -m "not slow and not e2e_ui" --timeout=120
 
   e2e-ui:
     name: E2E UI (Playwright)

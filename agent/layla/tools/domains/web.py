@@ -1,12 +1,12 @@
 """Web, HTTP, browser, and search tools."""
 
 TOOLS = {
-    "fetch_url": {"fn_key": "fetch_url_tool", "dangerous": False, "require_approval": False, "risk_level": "low"},
-    "fetch_article": {"dangerous": False, "require_approval": False, "risk_level": "low"},
-    "wiki_search": {"dangerous": False, "require_approval": False, "risk_level": "low"},
-    "ddg_search": {"dangerous": False, "require_approval": False, "risk_level": "low"},
-    "arxiv_search": {"dangerous": False, "require_approval": False, "risk_level": "low"},
-    "http_request": {"dangerous": False, "require_approval": False, "risk_level": "low"},
+    "fetch_url": {"fn_key": "fetch_url_tool", "dangerous": False, "require_approval": False, "risk_level": "low", "concurrency_safe": True},
+    "fetch_article": {"dangerous": False, "require_approval": False, "risk_level": "low", "concurrency_safe": True},
+    "wiki_search": {"dangerous": False, "require_approval": False, "risk_level": "low", "concurrency_safe": True},
+    "ddg_search": {"dangerous": False, "require_approval": False, "risk_level": "low", "concurrency_safe": True},
+    "arxiv_search": {"dangerous": False, "require_approval": False, "risk_level": "low", "concurrency_safe": True},
+    "http_request": {"dangerous": False, "require_approval": False, "risk_level": "low", "concurrency_safe": True},
     "browser_navigate": {"dangerous": False, "require_approval": False, "risk_level": "low"},
     "browser_search": {"dangerous": False, "require_approval": False, "risk_level": "low"},
     "browser_screenshot": {"dangerous": False, "require_approval": False, "risk_level": "low"},

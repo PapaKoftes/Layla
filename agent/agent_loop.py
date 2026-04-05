@@ -3,9 +3,11 @@ import logging
 import queue
 import re
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import psutil
+import threading
 
 logger = logging.getLogger("layla")
 
@@ -17,8 +19,15 @@ from layla.memory.db import get_recent_learnings as _db_get_learnings  # noqa: E
 from layla.memory.db import migrate as _db_migrate  # noqa: E402
 from layla.memory.db import save_aspect_memory as _db_save_aspect_memory  # noqa: E402
 from layla.tools.registry import TOOLS, set_effective_sandbox  # noqa: E402
+from services.agent_safety import (  # noqa: E402
+    maybe_planning_strict_refusal as _maybe_planning_strict_refusal,
+    maybe_step_tool_allowlist_refusal as _maybe_step_tool_allowlist_refusal,
+)
 from services.context_manager import DEFAULT_BUDGETS, build_system_prompt  # noqa: E402
 from services.llm_gateway import get_stop_sequences, llm_serialize_lock, run_completion  # noqa: E402
+from core.executor import run_tool as _run_tool  # noqa: E402
+from services.agent_loop_formatting import format_tool_steps_for_prompt as _format_steps
+from services.context_window_ux import emit_context_window_ux
 from services.output_polish import polish_output as _polish_output  # noqa: E402
 from services.resource_manager import (  # noqa: E402
     PRIORITY_AGENT,
@@ -45,6 +54,14 @@ _SKIP_TOOL_OUTPUT_VALIDATION = frozenset({
     "approval_required", "tool_policy_denied", "tool_loop_detected",
 })
 
+# Whole-message phatic turns — router + autonomous_run quick path (no LLM).
+_PHATIC_QUICK_PATTERNS = (
+    r"^(how are you|how are you doing)\??$",
+    r"^(what'?s up|wassup)\??$",
+    r"^(how'?s it going)\??$",
+    r"^(you good)\??$",
+)
+
 
 def _log_tool_outcome(intent: str, result: object) -> None:
     """Structured INFO log for observability (tool name, ok, reason)."""
@@ -54,6 +71,50 @@ def _log_tool_outcome(intent: str, result: object) -> None:
     ok = result.get("ok")
     reason = result.get("reason") or result.get("error") or ""
     logger.info("tool=%s ok=%s reason=%s", intent, ok, reason or "-")
+
+
+class _BackgroundProgressSteps(list):
+    """Notify background_progress_callback on append (throttled) for task observability."""
+
+    __slots__ = ("_cb", "_interval", "_last_emit", "_seq")
+
+    def __init__(self, cb: Callable[[dict], None], interval: float = 0.35) -> None:
+        super().__init__()
+        self._cb = cb
+        self._interval = max(0.05, float(interval))
+        self._last_emit = 0.0
+        self._seq = 0
+
+    def append(self, item: object) -> None:
+        super().append(item)
+        try:
+            now = time.monotonic()
+            force = False
+            if isinstance(item, dict):
+                act = item.get("action")
+                if act in ("client_abort", "reason", "none", "think"):
+                    force = True
+            if not force and now - self._last_emit < self._interval:
+                return
+            self._last_emit = now
+            self._seq += 1
+            preview = ""
+            if isinstance(item, dict):
+                try:
+                    preview = json.dumps(item.get("result"), default=str)[:400]
+                except Exception:
+                    preview = str(item.get("result"))[:400]
+            self._cb(
+                {
+                    "seq": self._seq,
+                    "t": time.time(),
+                    "action": item.get("action") if isinstance(item, dict) else None,
+                    "preview": preview,
+                    "step_index": len(self) - 1,
+                }
+            )
+        except Exception:
+            pass
 
 
 def _maybe_validate_tool_output(intent: str, result: object) -> object:
@@ -69,8 +130,66 @@ def _maybe_validate_tool_output(intent: str, result: object) -> object:
     from services.tool_output_validator import validate_tool_output
 
     out = validate_tool_output(intent, result)
+
+    # Phase 5 — structured validation: injection scan, size check, schema check (core/validator.py)
+    try:
+        from core.validator import validate as _core_validate
+        vr = _core_validate(intent, out)
+        if vr.get("flagged_injection"):
+            # Propagate the injection flag so the planner can see it
+            if isinstance(out, dict):
+                out = dict(out)
+                out["_injection_flagged"] = True
+                out["_injection_warning"] = "Possible prompt injection in tool output"
+        if vr.get("warnings"):
+            logger.debug("validator: tool=%s warnings=%s", intent, vr["warnings"])
+    except Exception as _ve:
+        logger.debug("core.validator skipped: %s", _ve)
+
     _log_tool_outcome(intent, out if isinstance(out, dict) else result)
     return out
+
+
+def _normalize_mcp_tool_args(args: dict) -> dict:
+    """Map common model arg aliases onto mcp_tools_call parameters."""
+    a = dict(args)
+    if not (a.get("mcp_server") or "").strip() and (a.get("server") or "").strip():
+        a["mcp_server"] = str(a.get("server") or "").strip()
+    if not (a.get("tool_name") or "").strip() and (a.get("tool") or "").strip():
+        a["tool_name"] = str(a.get("tool") or "").strip()
+    return a
+
+
+def _inject_workspace_args(tool_name: str, args: dict, workspace: str) -> dict:
+    """Add workspace/cwd/repo to args for tools that expect them (used by batch runner)."""
+    args = dict(args)
+    if "cwd" not in args and tool_name in ("run_tests", "pip_install", "pip_list", "shell_session_start", "shell_session_manage"):
+        args["cwd"] = workspace
+    if "repo" not in args and tool_name.startswith("git_"):
+        args["repo"] = workspace
+    if "root" not in args and tool_name in ("search_replace", "rename_symbol", "search_codebase"):
+        args["root"] = workspace
+    return args
+
+
+def _inject_cancel_message(conversation_history: list, tool_name: str, reason: str = "cancelled") -> None:
+    """Inject a synthetic user message when a tool is cancelled/timed-out.
+    Prevents the model from hallucinating tool results on the next turn (D5 pattern)."""
+    try:
+        msg = (
+            f"[Tool execution cancelled: {tool_name} was {reason} by operator. "
+            "Please continue your reasoning without that result. "
+            "Do not assume the tool succeeded or guess its output.]"
+        )
+        conversation_history.append({"role": "user", "content": msg})
+        try:
+            from layla.memory.db import log_audit
+            log_audit(tool_name, f"cancel:{reason}", "agent_loop", False)
+        except Exception:
+            pass
+        logger.info("cancel synthetic message injected for tool=%s reason=%s", tool_name, reason)
+    except Exception as e:
+        logger.debug("_inject_cancel_message failed: %s", e)
 
 
 def _register_exact_tool_call(state: dict, intent: str, decision: dict | None) -> None:
@@ -166,8 +285,109 @@ def _emit_tool_start(ux_state_queue: queue.Queue | None, tool_name: str) -> None
             logger.debug("emit_tool_start put failed: %s", e)
 
 
+def _emit_context_window_ux(
+    ux_state_queue: queue.Queue | None,
+    conversation_history: list | None,
+    cfg: dict,
+    state: dict,
+) -> None:
+    """Delegate to services.context_window_ux (keeps call sites stable)."""
+    emit_context_window_ux(
+        ux_state_queue,
+        conversation_history,
+        cfg,
+        state,
+        format_steps=_format_steps,
+    )
+
+
+def _approval_preview_diff(tool: str, args: dict, workspace: str) -> None:
+    """Add unified diff (or patch preview) to approval args for the Web UI."""
+    import difflib
+
+    try:
+        max_lines = 200
+        ws = Path((workspace or "").strip()).expanduser().resolve() if (workspace or "").strip() else None
+        if tool == "write_file" and args.get("path") is not None and "content" in args:
+            path = Path(str(args["path"]))
+            if not path.is_absolute() and ws and ws.exists():
+                path = (ws / path).resolve()
+            else:
+                path = path.expanduser().resolve()
+            if not path.exists():
+                args["diff"] = "(new file)"
+                return
+            try:
+                cur = path.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                cur = ""
+            newc = str(args.get("content") or "")
+            diff = list(
+                difflib.unified_diff(
+                    cur.splitlines(True),
+                    newc.splitlines(True),
+                    fromfile=f"a/{path.name}",
+                    tofile=f"b/{path.name}",
+                    lineterm="",
+                )
+            )
+            if len(diff) > max_lines:
+                diff = diff[:max_lines] + [f"\n... ({len(diff) - max_lines} more lines omitted)\n"]
+            args["diff"] = "".join(diff) if diff else "(no textual change)"
+        elif tool == "apply_patch":
+            pt = str(args.get("patch_text") or "")
+            lines = pt.splitlines()
+            if len(lines) > max_lines:
+                lines = lines[:max_lines] + [f"... ({len(lines)} lines truncated)"]
+            args["diff"] = "\n".join(lines) if lines else "(empty patch)"
+        elif tool == "write_files_batch" and isinstance(args.get("files"), list) and args["files"]:
+            first = args["files"][0]
+            if isinstance(first, dict) and "path" in first and "content" in first:
+                sub = {"path": first["path"], "content": first["content"]}
+                _approval_preview_diff("write_file", sub, workspace)
+                args["diff"] = "[batch: first file]\n" + str(sub.get("diff", ""))
+            else:
+                args["diff"] = "(write_files_batch: no preview)"
+        elif tool == "search_replace":
+            root = Path(str(args.get("root") or workspace or "")).expanduser().resolve()
+            fg = str(args.get("file_glob") or "*")
+            find = str(args.get("find") or "")
+            repl = str(args.get("replace") or "")
+            if root.is_dir() and find:
+                for f in root.rglob(fg):
+                    if not f.is_file():
+                        continue
+                    try:
+                        content = f.read_text(encoding="utf-8", errors="replace")
+                    except Exception:
+                        continue
+                    if find not in content:
+                        continue
+                    newc = content.replace(find, repl, 1)
+                    diff = list(
+                        difflib.unified_diff(
+                            content.splitlines(True),
+                            newc.splitlines(True),
+                            fromfile=str(f),
+                            tofile=str(f),
+                            lineterm="",
+                        )
+                    )
+                    args["diff"] = "".join(diff[:max_lines]) if diff else "(no change)"
+                    return
+            args["diff"] = "(search_replace: no matching file preview)"
+    except Exception as e:
+        args["diff"] = f"(diff preview failed: {e})"
+
+
 def _is_junk_reply(content: str) -> bool:
-    """True if content is the repeated junk we must never feed back (e.g. 'assistant: I replied.' or just 'I replied.')."""
+    """True if content is junk that must never reach the user.
+
+    Catches:
+    - empty / whitespace-only
+    - repeated 'assistant: I replied.' echo loops
+    - raw decision-JSON blobs (model confusing tool-decision format with final reply)
+    """
     if not content or not content.strip():
         return True
     import re as _re_junk
@@ -178,6 +398,14 @@ def _is_junk_reply(content: str) -> bool:
     remainder = _re_junk.sub(r"\s*assistant\s*:\s*i\s+replied\.\s*", " ", s, flags=_re_junk.IGNORECASE).strip()
     if len(remainder) < 15 and ("assistant" in s and "i replied" in s):
         return True
+    # Decision-JSON blob: model outputted its internal decision format instead of natural language.
+    # Detect: starts with '{' and contains at least two of the known decision keys.
+    stripped = content.strip()
+    if stripped.startswith("{"):
+        _decision_keys = ("\"action\"", "\"tool\"", "\"thought\"", "\"ok\"", "\"objective_complete\"", "\"args\"")
+        hits = sum(1 for k in _decision_keys if k in stripped)
+        if hits >= 2:
+            return True
     return False
 
 
@@ -202,23 +430,54 @@ def _quick_reply_for_trivial_turn(goal: str) -> str:
         return "You're welcome."
     if gl in {"ok", "okay", "yes", "yep", "no", "nope"}:
         return "Got it."
+    for pat in _PHATIC_QUICK_PATTERNS:
+        if re.match(pat, gl):
+            return "I'm good. What do you need?"
     return ""
 
 
+# Content signals: anything that looks like a real question or task should get full retrieval path.
+_RETRIEVAL_SUBSTANTIVE_MARKERS = (
+    "?",
+    "who ", "what ", "why ", "how ", "when ", "where ", "which ",
+    "explain", "describe", "tell me", "write ", "code", "create ", "list ",
+    "summarize", "summarise", "analyze", "analyse", "compare", "contrast",
+    "fix ", "debug", "error", "implement", "refactor", "test ",
+    "can you", "could you", "would you", "please ", "help me",
+    "define ", "meaning of", "difference between",
+)
+
+_PHATIC_RETRIEVAL_SKIP_PATTERNS = (
+    r"^(hi|hey|hello|yo|sup|hiya|howdy)\b[!.…\s]*$",
+    r"^(thanks|thank you|thx|ty|tysm)\b[^?.]{0,48}[!.…\s]*$",
+    r"^(ok|okay|k|got it|yep|yeah|yes|no|nope|sure|mhm|uh huh)\b[!.…\s]*$",
+    r"^(bye|goodbye|see you|cya|later)\b[^?.]{0,24}[!.…\s]*$",
+)
+
+
 def _is_lightweight_chat_turn(goal: str, reasoning_mode: str) -> bool:
-    """Heuristic for short non-code turns where heavy retrieval is usually wasted latency."""
+    """True only for phatic / ack-only content where heavy retrieval is usually wasted.
+
+    Not length-based: short questions like 'who are you' stay substantive (False).
+    """
     if (reasoning_mode or "").strip().lower() not in {"none", "light"}:
         return False
     g = (goal or "").strip()
     if not g:
         return False
-    if len(g) > 120 or len(g.split()) > 20:
-        return False
     gl = g.lower()
-    code_markers = ("def ", "class ", "import ", "traceback", "stack", "bug", "refactor", "pytest", "{", "}", "</", "/>")
+    if any(m in gl for m in _RETRIEVAL_SUBSTANTIVE_MARKERS):
+        return False
+    code_markers = (
+        "def ", "class ", "import ", "traceback", "`", "```", "{", "}", "</", "/>",
+        "http://", "https://",
+    )
     if any(m in gl for m in code_markers):
         return False
-    return True
+    for pat in _PHATIC_RETRIEVAL_SKIP_PATTERNS:
+        if re.match(pat, gl, re.IGNORECASE):
+            return True
+    return False
 
 
 def truncate_at_next_user_turn(text: str) -> str:
@@ -271,6 +530,28 @@ _db_migrate()
 
 # Last turn's reasoning mode (cross-request smoothing; single-operator local default)
 _last_reasoning_mode: str = ""
+_load_lock = threading.Lock()
+_reason_mode_lock = threading.Lock()
+_fingerprint_lock = threading.Lock()
+
+
+def _iter_with_response_pacing(tokens, pacing_ms: int):
+    """Minimum delay between successive streamed chunks (final reply path only). Caps at 10s per gap."""
+    try:
+        ms = int(pacing_ms or 0)
+    except (TypeError, ValueError):
+        ms = 0
+    if ms <= 0:
+        yield from tokens
+        return
+    delay = max(0.0, min(10.0, ms / 1000.0))
+    first = True
+    for t in tokens:
+        if not first:
+            time.sleep(delay)
+        first = False
+        yield t
+
 
 def stream_reason(
     goal: str,
@@ -283,6 +564,8 @@ def stream_reason(
     reasoning_mode_override: str | None = None,
     precomputed_recall: str | None = None,
     persona_focus: str = "",
+    workspace_root: str = "",
+    cognition_workspace_roots: list[str] | None = None,
 ):
     """
     Build the same prompt as the reason path and yield token strings from streaming completion.
@@ -313,6 +596,8 @@ def stream_reason(
             reasoning_mode_override=reasoning_mode_override,
             precomputed_recall=precomputed_recall,
             persona_focus=persona_focus,
+            workspace_root=workspace_root,
+            cognition_workspace_roots=cognition_workspace_roots,
         )
     finally:
         set_model_override(None)
@@ -328,6 +613,8 @@ def _stream_reason_body(
     reasoning_mode_override: str | None = None,
     precomputed_recall: str | None = None,
     persona_focus: str = "",
+    workspace_root: str = "",
+    cognition_workspace_roots: list[str] | None = None,
 ):
     """Inner generator: prompt + streaming tokens (model override set by stream_reason)."""
     active_aspect = orchestrator.select_aspect(goal, force_aspect=aspect_id)
@@ -344,8 +631,9 @@ def _stream_reason_body(
             _cfg_sr = runtime_safety.load_config()
             if _stream_rmode == "deep" and (_cfg_sr.get("performance_mode") or "").strip().lower() in ("low",):
                 _stream_rmode = "light"
-            _stream_rmode = stabilize_reasoning_mode(_last_reasoning_mode, _stream_rmode)
-            _last_reasoning_mode = _stream_rmode
+            with _reason_mode_lock:
+                _stream_rmode = stabilize_reasoning_mode(_last_reasoning_mode, _stream_rmode)
+                _last_reasoning_mode = _stream_rmode
         except Exception:
             _stream_rmode = "light"
     _stream_recall = precomputed_recall or ""
@@ -357,10 +645,12 @@ def _stream_reason_body(
     head = _build_system_head(
         goal=goal,
         aspect=active_aspect,
+        workspace_root=workspace_root or "",
         conversation_history=conversation_history or [],
         reasoning_mode=_stream_rmode,
         _precomputed_recall=_stream_recall,
         persona_focus_id=(persona_focus or "").strip().lower(),
+        cognition_workspace_roots=cognition_workspace_roots,
     )
     convo_block = ""
     try:
@@ -408,12 +698,50 @@ def _stream_reason_body(
     max_tok = cfg.get("completion_max_tokens", 256)
     stop = get_stop_sequences()
     gen = run_completion(prompt, max_tokens=max_tok, temperature=temperature, stream=True, stop=stop)
+    try:
+        _pace_ms = int(cfg.get("response_pacing_ms", 0) or 0)
+    except (TypeError, ValueError):
+        _pace_ms = 0
+    gen = _iter_with_response_pacing(gen, _pace_ms)
     buffer = ""
+    held_tokens: list[str] = []   # tokens held while we check for JSON blob start
+    _json_suppressed = False
     for token in gen:
         buffer += token
         if any(s in buffer for s in stop):
             break
-        yield token
+        # Hold tokens until we know the reply isn't a raw decision-JSON blob.
+        # Decision blobs start with '{' — we hold up to 120 chars before committing.
+        if not held_tokens and not _json_suppressed:
+            held_tokens.append(token)
+            if len(buffer) < 120:
+                continue  # keep buffering to check
+            # Enough chars: decide
+            if _is_junk_reply(buffer):
+                _json_suppressed = True
+                held_tokens.clear()
+                continue
+            # Not junk — flush held tokens
+            for t in held_tokens:
+                yield t
+            held_tokens.clear()
+        elif held_tokens:
+            # Still accumulating during the check window
+            held_tokens.append(token)
+            if len(buffer) >= 120:
+                if _is_junk_reply(buffer):
+                    _json_suppressed = True
+                    held_tokens.clear()
+                else:
+                    for t in held_tokens:
+                        yield t
+                    held_tokens.clear()
+        elif not _json_suppressed:
+            yield token
+    # Flush any remaining held tokens (short replies that never hit 120 chars)
+    if held_tokens and not _is_junk_reply(buffer):
+        for t in held_tokens:
+            yield t
     # Optional self-reflection: if enabled and score < 7, stream a rewritten response
     improved = None if skip_self_reflection else _reflect_on_response(goal, buffer, active_aspect)
     if improved:
@@ -421,9 +749,28 @@ def _stream_reason_body(
         yield improved
 
 
-def _write_pending(tool: str, args: dict) -> str:
+def _has_any_grant(tool: str, args: dict | None = None) -> bool:
+    """Return True if either a session grant or a DB grant covers this call (D6)."""
+    try:
+        from services.session_grants import has_session_grant
+        if has_session_grant(tool, args):
+            return True
+    except Exception:
+        pass
+    try:
+        from layla.memory.db import tool_grant_matches
+        cmd = (args or {}).get("command") or (args or {}).get("path") or ""
+        if tool_grant_matches(tool, cmd):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _write_pending(tool: str, args: dict, ttl_seconds: int = 3600) -> str:
     """Write a pending approval entry and return its UUID. Exposes risk_level from registry for UI."""
     import uuid as _uuid
+    from datetime import timedelta
 
     from layla.time_utils import utcnow
     gov_path = Path(__file__).resolve().parent / ".governance"
@@ -435,11 +782,19 @@ def _write_pending(tool: str, args: dict) -> str:
         data = []
     entry_id = str(_uuid.uuid4())
     risk = (TOOLS.get(tool) or {}).get("risk_level") or "medium"
+    now = utcnow()
+    # TTL from config if available, else use caller-supplied default (3600s = 1h)
+    try:
+        _pcfg = runtime_safety.load_config()
+        ttl_seconds = int(_pcfg.get("approval_ttl_seconds", ttl_seconds) or ttl_seconds)
+    except Exception:
+        pass
     data.append({
         "id": entry_id,
         "tool": tool,
         "args": args,
-        "requested_at": utcnow().isoformat(),
+        "requested_at": now.isoformat(),
+        "expires_at": (now + timedelta(seconds=max(60, ttl_seconds))).isoformat(),
         "status": "pending",
         "risk_level": risk,
     })
@@ -454,7 +809,8 @@ def _load_learnings(aspect_id: str = "") -> str:
         min_score = float(cfg.get("learning_min_score", 0.3) or 0.3)
         rows = _db_get_learnings(n=n, aspect_id=aspect_id or None, min_score=min_score)
         return "\n".join(r["content"] for r in rows if r.get("content"))
-    except Exception:
+    except Exception as _e:
+        logger.debug("load_learnings failed: %s", _e)
         return ""
 
 
@@ -467,7 +823,10 @@ def _semantic_recall(query: str, k: int = 5) -> str:
         from layla.memory.vector_store import search_memories_full
         cfg = runtime_safety.load_config()
         use_mmr = bool(cfg.get("retrieval_use_mmr", False))
-        results = search_memories_full(query, k=k, use_rerank=True, use_mmr=use_mmr)
+        use_hyde = bool(cfg.get("hyde_enabled", False))
+        results = search_memories_full(
+            query, k=k, use_rerank=True, use_mmr=use_mmr, use_hyde=use_hyde
+        )
         if not results:
             return ""
         lines = [r.get("content", "") for r in results if r.get("content")]
@@ -590,13 +949,23 @@ def _needs_knowledge_rag(goal: str) -> bool:
     # Reflective / wellbeing phrasing — pulls psychology-framework knowledge when indexed (narrow list to limit noise on code chat).
     reflective_kw = (
         "reflect on",
+        "self-reflect",
+        "help me reflect",
         "overwhelmed",
         " i feel",
         "i'm feeling",
         "im feeling",
         "feeling stuck",
+        "feeling anxious",
+        "i'm anxious",
+        "i am anxious",
         "pattern i",
+        "noticed a pattern",
+        "behavioral pattern",
         "why do i always",
+        "why do i avoid",
+        "i avoid",
+        "keep avoiding",
         "relationship to work",
         "burnout",
         "cognitive distortion",
@@ -672,6 +1041,7 @@ def _build_system_head(
     reasoning_mode: str = "light",
     _precomputed_recall: str | None = None,
     persona_focus_id: str = "",
+    cognition_workspace_roots: list[str] | None = None,
 ) -> str:
     cfg = runtime_safety.load_config()  # noqa: F841
     # Skip expensive retrieval operations for trivial/lightweight chat turns.
@@ -685,8 +1055,8 @@ def _build_system_head(
             from layla.memory.vector_store import get_knowledge_chunks_with_sources, refresh_knowledge_if_changed
             try:
                 refresh_knowledge_if_changed(REPO_ROOT / "knowledge")
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("context[knowledge_refresh] failed: %s", _e)
             k = max(1, min(20, int(cfg.get("knowledge_chunks_k", 5))))
             # Use parent-doc retrieval when available for richer context
             try:
@@ -745,8 +1115,8 @@ def _build_system_head(
                     lines = [m.get("content", "") for m in mems if m.get("content")]
                     if lines:
                         aspect_memories = "Recent observations for this aspect:\n" + "\n".join(lines[:n_mem])
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("context[aspect_memories] failed: %s", _e)
 
     # Semantic recall: use precomputed result if available (avoids double ChromaDB query).
     semantic = ""
@@ -771,8 +1141,8 @@ def _build_system_head(
                     relevant = [n["label"] for n in recent_nodes[-5:] if n.get("label")]
                 if relevant:
                     graph_associations = "Knowledge graph associations: " + "; ".join(relevant[:8])
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("context[graph_associations] failed: %s", _e)
 
     # Unified retrieval injection: skip for trivial turns
     retrieved_context = ""
@@ -780,8 +1150,8 @@ def _build_system_head(
         try:
             from services.retrieval import build_retrieved_context
             retrieved_context = (build_retrieved_context(goal, k=5, reasoning_mode=reasoning_mode) or "").strip()
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("context[retrieval_injection] failed: %s", _e)
 
     # Current working context: repo structure, study topics, sub-goals (unified surface)
     workspace_context_parts = []
@@ -807,8 +1177,8 @@ def _build_system_head(
                         chunk_lines.append(f"  [{src}]: {txt}")
                 if chunk_lines:
                     workspace_context_parts.append("Semantic code matches:\n" + "\n".join(chunk_lines))
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("context[workspace_index] failed: %s", _e)
     try:
         from layla.memory.db import get_active_study_plans
         plans = get_active_study_plans()
@@ -816,8 +1186,8 @@ def _build_system_head(
             topics = ", ".join((p.get("topic") or "")[:50] for p in plans[:5] if p.get("topic"))
             if topics:
                 workspace_context_parts.append(f"Active study topics: {topics}")
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("context[study_plans] failed: %s", _e)
     try:
         from layla.memory.db import get_project_context
         pc = get_project_context()
@@ -844,18 +1214,88 @@ def _build_system_head(
                 goals_list = get_active_goals(project_id=pc.get("project_name", ""))
                 if goals_list:
                     proj_parts.append("Active goals: " + "; ".join((g.get("title") or "")[:50] for g in goals_list[:3]))
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.debug("context[active_goals] failed: %s", _e)
             if proj_parts:
                 workspace_context_parts.append("Project context: " + " | ".join(proj_parts))
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("context[project_context] failed: %s", _e)
     if sub_goals:
         workspace_context_parts.append("Sub-objectives for this run: " + "; ".join(sub_goals[:3]))
     if workspace_context_parts:
         workspace_context = "Current working context:\n" + "\n".join(workspace_context_parts)
     else:
         workspace_context = ""
+
+    git_preamble = ""
+    project_instructions = ""
+    skills_block = ""
+    wr_root = (workspace_root or cfg.get("sandbox_root") or "").strip()
+    if wr_root:
+        try:
+            import subprocess
+
+            cwd = Path(wr_root).expanduser().resolve()
+            if cwd.is_dir():
+                br = subprocess.run(
+                    ["git", "branch", "--show-current"],
+                    cwd=str(cwd),
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                    encoding="utf-8",
+                    errors="replace",
+                )
+                st = subprocess.run(
+                    ["git", "status", "--short"],
+                    cwd=str(cwd),
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                    encoding="utf-8",
+                    errors="replace",
+                )
+                lg = subprocess.run(
+                    ["git", "log", "--oneline", "-5"],
+                    cwd=str(cwd),
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                    encoding="utf-8",
+                    errors="replace",
+                )
+                b, s, l = (br.stdout or "").strip(), (st.stdout or "").strip(), (lg.stdout or "").strip()
+                if b or s or l:
+                    git_preamble = f"Git snapshot:\nbranch: {b}\nstatus:\n{s}\nrecent:\n{l}"[:1200]
+        except Exception:
+            pass
+        try:
+            root = Path(wr_root).expanduser().resolve()
+            found_pi = ""
+            for parent in [root, *list(root.parents)[:3]]:
+                for name in ("CLAUDE.md", "AGENTS.md"):
+                    p = parent / name
+                    if p.is_file():
+                        found_pi = p.read_text(encoding="utf-8", errors="replace")[:4000]
+                        break
+                if found_pi:
+                    break
+            if not found_pi:
+                for rel in (".layla/instructions.md", ".layla/SYSTEM.md"):
+                    p = root / rel
+                    if p.is_file():
+                        found_pi = p.read_text(encoding="utf-8", errors="replace")[:4000]
+                        break
+            project_instructions = found_pi
+        except Exception:
+            pass
+        if goal:
+            try:
+                from services import skills as skills_mod
+
+                skills_block = skills_mod.skills_prompt_block(goal, wr_root, max_tokens=800)
+            except Exception:
+                pass
 
     # Build sections for centralized context management (token budgets, deduplication)
     core = (
@@ -903,6 +1343,15 @@ def _build_system_head(
             "Name concrete issues and better alternatives. Avoid personal attacks; stay specific to behavior and work product. "
             "Do not assign psychiatric diagnoses or DSM/ICD labels to the operator (non-clinical boundary)."
         )
+    if cfg.get("honesty_and_boundaries_enabled", True):
+        sys_parts.append(
+            "Integrity and stance: Be kind and clear. You may disagree when the operator's premises, plan, or technical "
+            "claims are mistaken — correct them directly without flattery or people-pleasing. "
+            "Do not pretend to be human, claim private feelings you do not have, or manipulate emotionally. "
+            "State plainly what you are doing in the work; do not imply hidden actions. "
+            "Refuse or redirect requests that would cause harm, bypass approvals, or violate governance. "
+            "Aim to help them succeed honestly, including improving your own accuracy over time."
+        )
     if cfg.get("pin_psychology_framework_excerpt", True) and aspect:
         aid = (aspect.get("id") or "").strip().lower()
         if aid in ("echo", "lilith"):
@@ -928,7 +1377,23 @@ def _build_system_head(
     if cfg.get("uncensored") or cfg.get("nsfw_allowed"):
         sys_parts.append(
             "Content policy: Do not censor. Adult/NSFW content is allowed in consented contexts. "
-            "Refuse only for genuine harm (illegal, non-consensual, abuse). Access is anonymous; do not require or store user identity."
+            "Refuse only for genuine harm (illegal, non-consensual, abuse). Access is anonymous; do not require or store user identity. "
+            "Do not use the literal prefix `[REFUSED:` in your output — that tag is reserved for the host refusal pipeline, not model self-censorship. "
+            "If you must decline, use plain language only."
+        )
+    gl = (goal or "").lower()
+    if (cfg.get("uncensored") or cfg.get("nsfw_allowed")) and (
+        "nsfw" in gl
+        or "intimate" in gl
+        or "explicit" in gl
+        or "adult" in gl
+        or "18+" in gl
+        or "uncensored" in gl
+    ):
+        sys_parts.append(
+            "This turn includes adult-register vocabulary while uncensored/NSFW-allowed mode is on. "
+            "Answer fully without safety-theater refusals for consensual adult content. "
+            "Still refuse clearly (in prose) for minors, non-consent, illegality, or governance bypass."
         )
     if personality:
         sys_parts.append(personality)
@@ -943,6 +1408,10 @@ def _build_system_head(
             pass
     if aspect and aspect.get("_use_nsfw_addition") and aspect.get("systemPromptAdditionNsfw"):
         sys_parts.append(aspect.get("systemPromptAdditionNsfw", ""))
+        sys_parts.append(
+            "NSFW register is open for this message: do not emit `[REFUSED:` or similar bracketed refusal tags; "
+            "stay in character and comply with the NSFW voice contract above."
+        )
     if cfg.get("enable_cot", True):
         sys_parts.append(
             "Reasoning style: Think through problems step by step before giving your final answer. "
@@ -952,6 +1421,51 @@ def _build_system_head(
 
     # Memory: learnings + semantic + aspect_memories + retrieved (merged for dedup)
     memory_parts = []
+    if git_preamble:
+        memory_parts.append(git_preamble)
+    if project_instructions:
+        memory_parts.append("Project instructions:\n" + project_instructions)
+    try:
+        from services.repo_cognition import format_cognition_for_prompt, merge_cognition_roots
+
+        _cog_roots = merge_cognition_roots(workspace_root, cognition_workspace_roots)
+        if _cog_roots and cfg.get("repo_cognition_inject_enabled", True):
+            _cog_max = int(cfg.get("repo_cognition_max_chars", 6000) or 6000)
+            _cog_block = format_cognition_for_prompt(_cog_roots, max_chars=_cog_max)
+            if _cog_block.strip():
+                memory_parts.append(
+                    "Repository cognition (deterministic snapshot from last sync — stated intent, norms, and doc excerpts; "
+                    "verify against files when editing):\n"
+                    + _cog_block
+                )
+    except Exception as _e:
+        logger.debug("context[repo_cognition] failed: %s", _e)
+    try:
+        if cfg.get("project_memory_enabled", True) and (workspace_root or "").strip():
+            from pathlib import Path
+
+            from layla.tools.registry import inside_sandbox
+            from services.project_memory import format_for_prompt, load_project_memory, memory_file_path
+
+            wrp = Path(str(workspace_root).strip()).expanduser().resolve()
+            if wrp.is_dir() and inside_sandbox(wrp) and memory_file_path(wrp).is_file():
+                mem = load_project_memory(wrp)
+                if mem:
+                    _pm_max = int(cfg.get("project_memory_inject_max_chars", 4000) or 4000)
+                    _pm_block = format_for_prompt(mem, max_chars=max(500, _pm_max))
+                    if _pm_block.strip():
+                        memory_parts.append(
+                            "Project memory (local `.layla/project_memory.json` — structural map, plan, todos; "
+                            "verify against source when editing):\n"
+                            + _pm_block
+                        )
+                    _asp = pm.format_aspects_hint(mem, str((aspect or {}).get("id") or ""))
+                    if _asp.strip():
+                        memory_parts.append(_asp)
+    except Exception as _e:
+        logger.debug("context[project_memory] failed: %s", _e)
+    if skills_block:
+        memory_parts.append("Matched skills:\n" + skills_block)
     if aspect_memories:
         memory_parts.append(aspect_memories)
     if learnings:
@@ -967,8 +1481,8 @@ def _build_system_head(
             summary_texts = [s.get("summary", "") for s in summaries if s.get("summary")]
             if summary_texts:
                 memory_parts.append("Prior conversation summaries:\n" + "\n\n".join(summary_texts))
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("context[conversation_summaries] failed: %s", _e)
     # Relationship memory + timeline events: skip for trivial/chat turns
     if not _skip_expensive:
         try:
@@ -978,8 +1492,8 @@ def _build_system_head(
                 rel_texts = [m.get("user_event", "") for m in rel_mems if m.get("user_event")]
                 if rel_texts:
                     memory_parts.append("Recent relationship context:\n" + "\n\n".join(rel_texts))
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("context[relationship_memory] failed: %s", _e)
         try:
             from layla.memory.db import get_recent_timeline_events
             timeline = get_recent_timeline_events(n=5, min_importance=0.3)
@@ -987,8 +1501,8 @@ def _build_system_head(
                 tl_texts = [f"[{e.get('event_type','')}] {e.get('content','')}" for e in timeline if e.get("content")]
                 if tl_texts:
                     memory_parts.append("Recent timeline:\n" + "\n\n".join(tl_texts[:5]))
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("context[timeline_events] failed: %s", _e)
     # Style profile (companion intelligence): tone, response style, topics
     if cfg.get("enable_style_profile"):
         try:
@@ -1003,8 +1517,8 @@ def _build_system_head(
                 profile_parts.append(profile["collaboration"])
             if profile_parts:
                 memory_parts.append("Conversation style (match these):\n" + "\n".join(profile_parts))
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("context[style_profile] failed: %s", _e)
     # User identity (long-term companion context): verbosity, humor, formality, response length
     try:
         from layla.memory.db import get_all_user_identity
@@ -1013,8 +1527,8 @@ def _build_system_head(
             parts = [f"{k}: {v}" for k, v in uid.items() if v]
             if parts:
                 memory_parts.append("User/companion context:\n" + "\n".join(parts))
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("context[user_identity] failed: %s", _e)
     # Personal knowledge graph: skip for trivial turns
     if not _skip_expensive:
         try:
@@ -1022,8 +1536,8 @@ def _build_system_head(
             pkg_ctx = get_personal_graph_context(goal or "", max_chars=400)
             if pkg_ctx:
                 memory_parts.append("Personal context (relevant):\n" + pkg_ctx)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("context[personal_knowledge_graph] failed: %s", _e)
     # Reasoning strategies for complex goals
     if goal and len(goal) > 100:
         try:
@@ -1031,8 +1545,8 @@ def _build_system_head(
             hint = get_strategy_prompt_hint(goal)
             if hint:
                 memory_parts.append(hint)
-        except Exception:
-            pass
+        except Exception as _e:
+            logger.debug("context[reasoning_strategies] failed: %s", _e)
     try:
         from services.context_manager import deduplicate_content
 
@@ -1094,9 +1608,37 @@ def _build_system_head(
         "knowledge_graph": graph_associations,
         "knowledge": f"Reference docs:\n{knowledge}" if knowledge else "",
     }
+    # Token-pressure: measure how much of n_ctx the conversation already uses
+    _n_ctx = max(2048, int(cfg.get("n_ctx", 4096)))
+    _hist_for_pressure = conversation_history or []
+    try:
+        from services.context_manager import token_estimate_messages
+        _hist_tokens = token_estimate_messages(_hist_for_pressure)
+        _hist_ratio = _hist_tokens / _n_ctx
+    except Exception:
+        _hist_ratio = 0.0
+
+    if _hist_ratio > 0.4:
+        # Inject compact-work directive when context is getting full
+        sys_parts.append(
+            "Context pressure: conversation is using more than 40% of available context. "
+            "Decompose tasks into the smallest possible steps. "
+            "Do one thing per response. Prefer `think` actions over long in-context reasoning. "
+            "Use `read_file` only for specific sections, not full files."
+        )
+        system_instructions = "\n\n".join(sys_parts)
+        sections["system_instructions"] = system_instructions
+
     if cfg.get("prompt_budget_enabled", True):
-        n_ctx = max(2048, int(cfg.get("n_ctx", 4096)))
-        assembled, _metrics = build_system_prompt(sections, n_ctx=n_ctx, budgets=budgets, reserve_for_response=512)
+        n_ctx = _n_ctx
+        assembled, _ctx_metrics = build_system_prompt(sections, n_ctx=n_ctx, budgets=budgets, reserve_for_response=512)
+        if _ctx_metrics.get("truncated_sections") or _ctx_metrics.get("dropped_sections"):
+            logger.debug(
+                "context budget: truncated=%s dropped=%s total_tok=%d",
+                _ctx_metrics.get("truncated_sections"),
+                _ctx_metrics.get("dropped_sections"),
+                _ctx_metrics.get("total_tokens", 0),
+            )
         head = assembled if assembled.strip() else "You are Layla, a bounded AI companion and engineering agent."
         if cfg.get("custom_system_prefix"):
             head = head + "\n\n" + cfg["custom_system_prefix"].strip()
@@ -1178,10 +1720,11 @@ def system_overloaded(priority: int = PRIORITY_AGENT) -> bool:
     cfg = runtime_safety.load_config()  # noqa: F841
     cpu = psutil.cpu_percent(interval=0)
     ram = psutil.virtual_memory().percent
-    # Smooth with previous sample so a single spike does not block
-    smooth_cpu = (cpu + _last_cpu) / 2.0 if _last_cpu else cpu
-    smooth_ram = (ram + _last_ram) / 2.0 if _last_ram else ram
-    _last_cpu, _last_ram = cpu, ram
+    with _load_lock:
+        # Smooth with previous sample so a single spike does not block
+        smooth_cpu = (cpu + _last_cpu) / 2.0 if _last_cpu else cpu
+        smooth_ram = (ram + _last_ram) / 2.0 if _last_ram else ram
+        _last_cpu, _last_ram = cpu, ram
     # Chat should remain reactive even under pressure; background can be throttled.
     if priority <= PRIORITY_CHAT:
         return False
@@ -1542,6 +2085,16 @@ def _llm_decision(
     except Exception:
         pass
 
+    try:
+        from services.intent_routing_hints import tool_routing_prompt_hints
+
+        _route_goal = (state.get("original_goal") or goal or "").strip()
+        _rh = tool_routing_prompt_hints(_route_goal)
+        if _rh:
+            prompt_context += _rh
+    except Exception:
+        pass
+
     aspect_block = ""
     if show_thinking:
         try:
@@ -1621,8 +2174,26 @@ def _llm_decision(
         elif prev_priority:
             priority_context += "When risk is high prefer safer paths (read, inspect). "
 
+    cfg_pre = runtime_safety.load_config()
+    mcp_tool_hint = ""
+    if cfg_pre.get("mcp_client_enabled") and cfg_pre.get("mcp_inject_tool_summary_in_decisions"):
+        try:
+            from services.mcp_client import get_cached_mcp_tool_summary_for_prompt
+
+            mcp_tool_hint = get_cached_mcp_tool_summary_for_prompt(cfg_pre)
+        except Exception:
+            mcp_tool_hint = ""
+    if mcp_tool_hint:
+        prompt_context = prompt_context + mcp_tool_hint + "\n\n"
+
     valid_tools = _get_tools_for_goal(goal)
     tools_list = ", ".join(sorted(valid_tools - {"reason"}))
+    think_trace_hint = ""
+    if show_thinking:
+        think_trace_hint = (
+            'For action \"think\", put the plan in \"thought\" as 2-4 numbered lines (\"1.\" \"2.\" …), '
+            "one short sentence each — restate aim, outline the next move, note gaps/risks (ChatGPT-style step trace).\n"
+        )
     prompt = (
         f"{aspect_block}"
         f"{bias_hint}"
@@ -1630,17 +2201,18 @@ def _llm_decision(
         f"{priority_context}"
         f"{no_progress_hint}"
         f"{reframe_instruction}"
-        "Choose one: run one tool to make progress, or reply (reason). "
+        f"{think_trace_hint}"
+        "Choose one: run one tool to make progress, internal think step, or reply (reason). "
         f"Tools: {tools_list}. "
         "Output exactly one JSON line, no other text. "
-        'Format: {"action":"tool","tool":"read_file","priority_level":"high"} or {"action":"reason","objective_complete":true}. '
+        'Format: {"action":"tool","tool":"read_file","priority_level":"high"} or {"action":"think","thought":"..."} or {"action":"reason","objective_complete":true}. '
         "Include priority_level: \"low\" or \"medium\" or \"high\" for the chosen action. "
         "Optionally impact_estimate, effort_estimate, risk_estimate (brief). "
         "Use objective_complete true only when you have enough to answer.\n"
     )
     try:
         cfg = runtime_safety.load_config()
-        max_tok = 120 if reframe_candidate else 80
+        max_tok = 120 if reframe_candidate else (220 if show_thinking else 80)
         use_instructor = cfg.get("use_instructor_for_decisions", True)
         # Try instructor (grammar-constrained JSON) when local Llama available
         if use_instructor:
@@ -1665,9 +2237,11 @@ def _llm_decision(
                             )
                             d = decision_obj.model_dump()
                             action = (d.get("action") or "reason").lower()
-                            if action not in ("tool", "reason"):
+                            if action not in ("tool", "reason", "think"):
                                 action = "reason"
                             tool = (d.get("tool") or "").strip() or None
+                            if action in ("think",):
+                                tool = None
                             if action == "tool" and tool and tool not in valid_tools:
                                 tool = None
                             d["action"] = action
@@ -1823,28 +2397,6 @@ def _save_outcome_memory(state: dict) -> None:
         logger.debug("reflection engine failed: %s", e)
 
 
-def _format_steps(steps: list) -> str:
-    """Format tool steps for feeding back into the next iteration or reason prompt."""
-    if not steps:
-        return ""
-    lines = []
-    for s in steps:
-        action = s.get("action", "")
-        result = s.get("result", {})
-        if isinstance(result, dict):
-            summary = result.get("content") or result.get("output") or result.get("matches")
-            if summary is None and result.get("entries"):
-                summary = str(result["entries"])[:300]
-            if summary is None:
-                summary = "ok" if result.get("ok") else result.get("error", str(result)[:200])
-            if isinstance(summary, (list, dict)):
-                summary = str(summary)[:400]
-            lines.append(f"{action}: {str(summary)[:600]}")
-        else:
-            lines.append(f"{action}: {str(result)[:600]}")
-    return "\n".join(lines)
-
-
 def _extract_patch_text(goal: str) -> str:
     """Extract only the patch/diff body from the message, not instructions or extra text."""
     g = (goal or "").strip()
@@ -1943,12 +2495,13 @@ def _auto_extract_learnings(user_msg: str, response: str, aspect_id: str) -> Non
         saved = 0
         for item in extracted[:2]:
             fp = item[:60].lower()
-            if fp in _recent_learning_fingerprints:
-                continue
-            _recent_learning_fingerprints.add(fp)
-            # Keep dedup set bounded
-            if len(_recent_learning_fingerprints) > 200:
-                _recent_learning_fingerprints = set(list(_recent_learning_fingerprints)[-100:])
+            with _fingerprint_lock:
+                if fp in _recent_learning_fingerprints:
+                    continue
+                _recent_learning_fingerprints.add(fp)
+                # Keep dedup set bounded
+                if len(_recent_learning_fingerprints) > 200:
+                    _recent_learning_fingerprints = set(list(_recent_learning_fingerprints)[-100:])
             try:
                 save_learning(content=item, kind=learning_type)
                 saved += 1
@@ -1958,6 +2511,15 @@ def _auto_extract_learnings(user_msg: str, response: str, aspect_id: str) -> Non
             logger.debug("auto-learn: saved %d %s learnings (aspect=%s)", saved, learning_type, aspect_id)
     except Exception as e:
         logger.debug("auto-learn failed: %s", e)
+
+
+def _autonomous_run_serialize_lock(workspace_root: str):
+    """Serialize agent flights: global lock by default; optional per-workspace when configured."""
+    if runtime_safety.load_config().get("llm_serialize_per_workspace"):
+        from services.llm_gateway import _resolve_workspace_lock_key, get_agent_serialize_lock
+
+        return get_agent_serialize_lock(_resolve_workspace_lock_key(workspace_root))
+    return llm_serialize_lock
 
 
 def autonomous_run(
@@ -1977,15 +2539,27 @@ def autonomous_run(
     reasoning_effort: str | None = None,
     priority: int = PRIORITY_AGENT,
     persona_focus: str = "",
+    conversation_id: str = "",
+    cognition_workspace_roots: list[str] | None = None,
+    client_abort_event: threading.Event | None = None,
+    background_progress_callback: Callable[[dict], None] | None = None,
+    active_plan_id: str = "",
+    plan_approved: bool = False,
 ) -> dict:
     try:
         with schedule_slot(priority=priority):
-            with llm_serialize_lock:
+            with _autonomous_run_serialize_lock(workspace_root):
                 return _autonomous_run_impl(
                     goal, context, workspace_root, allow_write, allow_run,
                     conversation_history, aspect_id, show_thinking, stream_final,
                     ux_state_queue, research_mode, plan_depth, model_override, reasoning_effort, priority,
                     persona_focus,
+                    conversation_id,
+                    cognition_workspace_roots,
+                    client_abort_event,
+                    background_progress_callback,
+                    active_plan_id,
+                    plan_approved,
                 )
     except RuntimeError as e:
         if "system_busy" in str(e):
@@ -2021,6 +2595,12 @@ def _autonomous_run_impl(
     reasoning_effort: str | None = None,
     priority: int = PRIORITY_AGENT,
     persona_focus: str = "",
+    conversation_id: str = "",
+    cognition_workspace_roots: list[str] | None = None,
+    client_abort_event: threading.Event | None = None,
+    background_progress_callback: Callable[[dict], None] | None = None,
+    active_plan_id: str = "",
+    plan_approved: bool = False,
 ) -> dict:
     from services.llm_gateway import set_model_override, set_reasoning_effort
     set_model_override(model_override)
@@ -2041,6 +2621,12 @@ def _autonomous_run_impl(
             conversation_history, aspect_id, show_thinking, stream_final,
             ux_state_queue, research_mode, plan_depth, priority,
             persona_focus,
+            conversation_id,
+            cognition_workspace_roots,
+            client_abort_event,
+            background_progress_callback,
+            active_plan_id,
+            plan_approved,
         )
     finally:
         set_model_override(None)
@@ -2062,8 +2648,15 @@ def _autonomous_run_impl_core(
     plan_depth: int = 0,
     priority: int = PRIORITY_AGENT,
     persona_focus: str = "",
+    conversation_id: str = "",
+    cognition_workspace_roots: list[str] | None = None,
+    client_abort_event: threading.Event | None = None,
+    background_progress_callback: Callable[[dict], None] | None = None,
+    active_plan_id: str = "",
+    plan_approved: bool = False,
 ) -> dict:
     persona_focus_id = (persona_focus or "").strip().lower()
+    _run_cid = (conversation_id or "").strip() or "default"
     base_cfg = runtime_safety.load_config()
     cfg = _get_effective_config(base_cfg)
     _prev_reasoning_mode = ""
@@ -2071,12 +2664,14 @@ def _autonomous_run_impl_core(
         from services.reasoning_classifier import classify_reasoning_need, stabilize_reasoning_mode
 
         global _last_reasoning_mode
-        _prev_reasoning_mode = _last_reasoning_mode
+        with _reason_mode_lock:
+            _prev_reasoning_mode = _last_reasoning_mode
         reasoning_mode = classify_reasoning_need(goal, context or "", research_mode=research_mode)
         if reasoning_mode == "deep" and (cfg.get("performance_mode") or "").strip().lower() in ("low",):
             reasoning_mode = "light"
-        reasoning_mode = stabilize_reasoning_mode(_prev_reasoning_mode, reasoning_mode)
-        _last_reasoning_mode = reasoning_mode
+        with _reason_mode_lock:
+            reasoning_mode = stabilize_reasoning_mode(_prev_reasoning_mode, reasoning_mode)
+            _last_reasoning_mode = reasoning_mode
     except Exception:
         reasoning_mode = "light"
     _run_t0 = time.time()
@@ -2173,13 +2768,19 @@ def _autonomous_run_impl_core(
         memory_influenced.append("learnings")
     if _precomputed_recall:
         memory_influenced.append("semantic_recall")
+    _prog_on = bool(cfg.get("background_progress_stream_enabled", True))
+    _prog_iv = float(cfg.get("background_progress_min_interval_seconds", 0.35) or 0.35)
+    if background_progress_callback is not None and _prog_on:
+        _steps_list: list = _BackgroundProgressSteps(background_progress_callback, interval=_prog_iv)
+    else:
+        _steps_list = []
     state = {
         "goal": goal,
         "original_goal": goal,
         "objective": goal,
         "objective_complete": False,
         "depth": 0,
-        "steps": [],
+        "steps": _steps_list,
         "status": "running",
         "start_time": time.time(),
         "tool_calls": 0,
@@ -2206,23 +2807,58 @@ def _autonomous_run_impl_core(
         "reasoning_mode": reasoning_mode,
         "_recent_exact_calls": set(),
         "persona_focus_for_stream": persona_focus_id,
+        "conversation_id": _run_cid,
+        "_think_seq": 0,
+        "active_plan_id": (active_plan_id or "").strip(),
+        "plan_approved": bool(plan_approved),
     }
+    workspace = (str(workspace_root).strip() if workspace_root else "") or runtime_safety.load_config().get("sandbox_root", str(Path.home()))
+    state["cognition_workspace_roots"] = [str(x).strip() for x in (cognition_workspace_roots or []) if str(x).strip()]
     if research_mode:
         state["research_lab_root"] = str(RESEARCH_LAB_ROOT)
-    workspace = (str(workspace_root).strip() if workspace_root else "") or runtime_safety.load_config().get("sandbox_root", str(Path.home()))
-    if research_mode:
         max_tool_calls = cfg.get("research_max_tool_calls", 20)
-        max_runtime = cfg.get("research_max_runtime_seconds", 120)
+        max_runtime = cfg.get("research_max_runtime_seconds", 1800)
     else:
         max_tool_calls = cfg.get("max_tool_calls", 5)
-        max_runtime = cfg.get("max_runtime_seconds", 20)
-    # Keep normal chat reactive: lightweight non-tool turns should fail fast, not hang.
+        max_runtime = cfg.get("max_runtime_seconds", 900)
+    # Token-pressure cap: when conversation already occupies > 60% of n_ctx, limit tool calls
+    # so the model is forced to return, chunk, and avoid context overflow.
+    try:
+        from services.context_manager import token_estimate_messages as _tem
+        _n_ctx_here = max(2048, int(cfg.get("n_ctx", 4096)))
+        _hist_ratio = _tem(conversation_history or []) / _n_ctx_here
+        if _hist_ratio > 0.6 and not research_mode:
+            _capped = min(int(max_tool_calls), 3)
+            if _capped < max_tool_calls:
+                logger.info("token_pressure_cap: hist_ratio=%.2f capping max_tool_calls %d→%d", _hist_ratio, max_tool_calls, _capped)
+                max_tool_calls = _capped
+    except Exception:
+        pass
+    # Short chat turns skip heavy retrieval, but local GGUF inference often needs tens of seconds.
+    # Do not use a single-digit cap here — it caused false timeouts on "who are you" style messages.
     if not allow_write and not allow_run and _is_lightweight_chat_turn(goal, reasoning_mode):
-        max_runtime = min(int(max_runtime), int(cfg.get("chat_light_max_runtime_seconds", 8) or 8))
+        _light_cap = int(cfg.get("chat_light_max_runtime_seconds", 90) or 90)
+        max_runtime = min(int(max_runtime), max(30, _light_cap))
     temperature = cfg.get("temperature", 0.2)
 
     if research_mode and workspace:
         set_effective_sandbox(workspace)
+
+    # Phase 1 – Observe: attach stable context snapshot to state (core/observer.py)
+    try:
+        from core.observer import build_snapshot as _build_snapshot
+        state["_snapshot"] = _build_snapshot(
+            goal=goal,
+            conversation_id=state.get("conversation_id", ""),
+            cfg=cfg,
+            aspect_id=aspect_id,
+            conversation_history=conversation_history,
+            workspace_root=workspace,
+            allow_write=allow_write,
+            allow_run=allow_run,
+        )
+    except Exception as _obs_err:
+        logger.debug("observer.build_snapshot failed (non-fatal): %s", _obs_err)
 
     # Cognitive workspace: generate approaches → evaluate → choose best (tree-of-thought)
     try:
@@ -2232,26 +2868,41 @@ def _autonomous_run_impl_core(
             if deliberation.get("strategy_hint"):
                 state["cognitive_workspace"] = deliberation
                 _emit_ux(state, ux_state_queue, UX_STATE_THINKING)
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug("cognitive_workspace deliberation failed: %s", _e)
 
     # Planning: if goal warrants it, create and execute plan first (respect max_plan_depth)
     try:
         from services.observability import log_agent_plan_completed, log_agent_plan_created, log_planner_invoked
-        from services.planner import create_plan, execute_plan, should_plan
+        from services.planner import create_plan, execute_plan, normalize_plan_steps_tools, should_plan
         if reasoning_mode != "none" and should_plan(goal, cfg, plan_depth=plan_depth):
-            plan = create_plan(goal, cfg=cfg)
+            _digest = ""
+            if (workspace or "").strip():
+                try:
+                    from services.plan_workspace_store import prior_plans_digest
+
+                    _digest = prior_plans_digest(workspace, limit=8)
+                except Exception:
+                    _digest = ""
+            plan = create_plan(goal, cfg=cfg, prior_plans_digest=_digest)
             if plan:
+                if bool(cfg.get("in_loop_plan_governance_enabled")) and bool(
+                    cfg.get("plan_governance_require_nonempty_step_tools")
+                ):
+                    normalize_plan_steps_tools(plan, cfg)
                 log_planner_invoked(steps=len(plan), goal_preview=goal[:60])
                 log_agent_plan_created(steps=len(plan), goal_preview=goal[:60])
                 plan_context = context or ""
                 if state.get("cognitive_workspace", {}).get("strategy_hint"):
                     plan_context = plan_context + f"\n\n[Chosen approach: {state['cognitive_workspace']['strategy_hint']}]"
-                plan_result = execute_plan(
-                    plan,
-                    autonomous_run,
-                    goal_prefix=goal[:100],
-                    plan_depth=plan_depth,
+                _il_gov = bool(cfg.get("in_loop_plan_governance_enabled"))
+                try:
+                    _dm = int(cfg.get("in_loop_plan_default_max_retries", 1) or 1)
+                except (TypeError, ValueError):
+                    _dm = 1
+                _dm = max(0, min(3, _dm))
+                _nested_plan_approved = bool(plan_approved) or bool(allow_write) or bool(allow_run)
+                _exec_common = dict(
                     context=plan_context,
                     workspace_root=workspace,
                     allow_write=allow_write,
@@ -2262,10 +2913,30 @@ def _autonomous_run_impl_core(
                     stream_final=False,
                     ux_state_queue=ux_state_queue,
                     research_mode=research_mode,
+                    conversation_id=_run_cid,
                 )
+                if _il_gov:
+                    plan_result = execute_plan(
+                        plan,
+                        autonomous_run,
+                        goal_prefix=goal[:100],
+                        plan_depth=plan_depth,
+                        step_governance=True,
+                        default_max_retries=_dm,
+                        plan_approved=_nested_plan_approved,
+                        **_exec_common,
+                    )
+                else:
+                    plan_result = execute_plan(
+                        plan,
+                        autonomous_run,
+                        goal_prefix=goal[:100],
+                        plan_depth=plan_depth,
+                        **_exec_common,
+                    )
                 log_agent_plan_completed(steps=len(plan_result.get("steps_done", [])))
                 _emit_run_telemetry(state, True)
-                return {
+                _pc_out: dict = {
                     "status": "plan_completed",
                     "steps": plan_result.get("steps_done", []),
                     "aspect": active_aspect.get("id", "layla"),
@@ -2276,12 +2947,43 @@ def _autonomous_run_impl_core(
                     "memory_influenced": memory_influenced,
                     "reply": plan_result.get("summary", ""),
                     "reasoning_mode": reasoning_mode,
-        "load": classify_load(),
+                    "load": classify_load(),
                 }
+                if _il_gov and isinstance(plan_result, dict) and "all_steps_ok" in plan_result:
+                    _pc_out["all_steps_ok"] = bool(plan_result.get("all_steps_ok"))
+                return _pc_out
+    except Exception:
+        pass
+
+    try:
+        from services.agent_hooks import run_agent_hooks
+
+        run_agent_hooks(
+            "session_start",
+            allow_run=allow_run,
+            conversation_id=str(state.get("conversation_id") or ""),
+            workspace_root=workspace,
+        )
     except Exception:
         pass
 
     while state["depth"] < 5:
+        if client_abort_event is not None and client_abort_event.is_set():
+            state["status"] = "client_abort"
+            _last_tool = (state.get("last_tool_used") or "agent") if isinstance(state.get("last_tool_used"), str) else "agent"
+            state["steps"].append({
+                "action": "client_abort",
+                "result": {
+                    "ok": False,
+                    "reason": "client_abort",
+                    "message": "Client disconnected or cancelled the request.",
+                },
+            })
+            if conversation_history is not None:
+                _inject_cancel_message(conversation_history, _last_tool, "interrupted (client disconnect)")
+            state["response"] = "Request cancelled (client disconnected)."
+            break
+
         if time.time() - state["start_time"] > max_runtime:
             state["status"] = "timeout"
             break
@@ -2294,10 +2996,24 @@ def _autonomous_run_impl_core(
             state["strategy_shift_count"] = state.get("strategy_shift_count", 0) + 1
             _emit_ux(state, ux_state_queue, UX_STATE_CHANGING_APPROACH)
 
+        _emit_context_window_ux(ux_state_queue, conversation_history, cfg, state)
         _emit_ux(state, ux_state_queue, UX_STATE_THINKING)
+        goal_for_decision = goal
+        try:
+            from shared_state import pop_one_agent_steer_hint
+
+            steer = pop_one_agent_steer_hint(state.get("conversation_id") or "default")
+            if steer:
+                goal_for_decision = (
+                    goal
+                    + "\n\n[Operator steer — brief redirect; honor if compatible with the same task]\n"
+                    + steer
+                )
+        except Exception:
+            pass
         _t0 = time.perf_counter()
         decision = _llm_decision(
-            goal, state, context, active_aspect, show_thinking, conversation_history or []
+            goal_for_decision, state, context, active_aspect, show_thinking, conversation_history or []
         )
         try:
             from services.observability import log_agent_decision
@@ -2310,6 +3026,34 @@ def _autonomous_run_impl_core(
             state["impact_estimate"] = decision.get("impact_estimate")
             state["effort_estimate"] = decision.get("effort_estimate")
             state["risk_estimate"] = decision.get("risk_estimate")
+            if decision.get("action") == "think":
+                thought = (decision.get("thought") or "").strip()
+                state["_think_seq"] = int(state.get("_think_seq") or 0) + 1
+                _tn = int(state["_think_seq"])
+                if thought:
+                    state["steps"].append({
+                        "action": "think",
+                        "result": {"ok": True, "thought": thought[:4000]},
+                    })
+                if show_thinking and ux_state_queue is not None:
+                    try:
+                        ux_state_queue.put(
+                            {
+                                "_type": "think",
+                                "content": thought[:2000] if thought else "",
+                                "step": _tn,
+                            }
+                        )
+                    except Exception:
+                        pass
+                goal = (
+                    state["original_goal"]
+                    + "\n\n[Internal reasoning]\n"
+                    + (thought or "(no thought text)")
+                    + "\n\n[Tool results so far]:\n"
+                    + _format_steps(state["steps"])
+                )
+                continue
             if decision.get("action") == "reason" or state["objective_complete"]:
                 intent = "reason"
             elif decision.get("action") == "none":
@@ -2349,6 +3093,117 @@ def _autonomous_run_impl_core(
             })
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
+
+        _ps = _maybe_planning_strict_refusal(intent, cfg, state, allow_write, allow_run)
+        if _ps:
+            state["tool_calls"] += 1
+            state["steps"].append({"action": intent, "result": _ps})
+            _log_tool_outcome(intent, _ps)
+            state["last_tool_used"] = intent
+            goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+            continue
+
+        if intent not in ("reason", "finish", "wakeup", "none") and intent in _VALID_TOOLS:
+            _alr = _maybe_step_tool_allowlist_refusal(intent, cfg)
+            if _alr:
+                state["tool_calls"] += 1
+                state["steps"].append({"action": intent, "result": _alr})
+                _log_tool_outcome(intent, _alr)
+                state["last_tool_used"] = intent
+                goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+                continue
+
+        # ── D1: Concurrent read-only tool batch ───────────────────────────────
+        # The LLM may declare additional parallel tools in decision["batch_tools"].
+        # Each entry is {"tool": name, "args": {...}} and must be concurrency_safe.
+        # We execute the primary tool + all batch_tools concurrently in one step.
+        _extra_batch = [
+            bt for bt in (decision.get("batch_tools") or [])
+            if isinstance(bt, dict)
+            and bt.get("tool") in _VALID_TOOLS
+            and TOOLS.get(bt["tool"], {}).get("concurrency_safe")
+            and bt["tool"] != intent  # no duplicates
+        ] if (
+            intent not in ("reason", "finish", "wakeup", "none")
+            and intent in _VALID_TOOLS
+            and TOOLS.get(intent, {}).get("concurrency_safe")
+            and not state.get("research_lab_root")
+        ) else []
+
+        if _extra_batch and state["tool_calls"] + 1 + len(_extra_batch) <= max_tool_calls:
+            _batch_tools_check = [intent] + [str(bt.get("tool") or "") for bt in _extra_batch]
+            _blocked_bt = None
+            for _tcheck in _batch_tools_check:
+                if not _tcheck:
+                    continue
+                _pbx = _maybe_planning_strict_refusal(_tcheck, cfg, state, allow_write, allow_run)
+                if _pbx:
+                    _blocked_bt = (_tcheck, _pbx)
+                    break
+                _alx = _maybe_step_tool_allowlist_refusal(_tcheck, cfg)
+                if _alx:
+                    _blocked_bt = (_tcheck, _alx)
+                    break
+            if _blocked_bt:
+                _tcheck, _pbx = _blocked_bt
+                state["tool_calls"] += 1
+                state["steps"].append({"action": _tcheck, "result": _pbx})
+                _log_tool_outcome(_tcheck, _pbx)
+                state["last_tool_used"] = _tcheck
+                goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+                continue
+
+            import concurrent.futures as _cf
+            import functools as _fn
+
+            _tool_timeout = float(cfg.get("tool_call_timeout_seconds", 60))
+            _primary_args = _inject_workspace_args(intent, (decision.get("args") or {}) if decision else {}, workspace)
+            _batch: list[tuple[str, dict]] = [(intent, _primary_args)] + [
+                (bt["tool"], _inject_workspace_args(bt["tool"], bt.get("args") or {}, workspace))
+                for bt in _extra_batch
+            ]
+            _batch_results: list[dict | None] = [None] * len(_batch)
+            _hook_cid = str(state.get("conversation_id") or "")
+            with _cf.ThreadPoolExecutor(max_workers=len(_batch), thread_name_prefix="layla_cbatch") as _pool:
+                _futs = {
+                    _pool.submit(
+                        _fn.partial(
+                            _run_tool,
+                            _bt,
+                            _ba,
+                            timeout_s=_tool_timeout,
+                            sandbox_root=workspace,
+                            allow_run=allow_run,
+                            conversation_id=_hook_cid,
+                        )
+                    ): _idx
+                    for _idx, (_bt, _ba) in enumerate(_batch)
+                }
+                for _fut in _cf.as_completed(_futs):
+                    _bidx = _futs[_fut]
+                    try:
+                        _batch_results[_bidx] = _fut.result()
+                    except Exception as _be:
+                        _batch_results[_bidx] = {"ok": False, "error": str(_be)}
+            for _bidx, (_bt, _ba) in enumerate(_batch):
+                _br = _batch_results[_bidx] if _batch_results[_bidx] is not None else {"ok": False, "error": "batch slot empty"}
+                runtime_safety.log_execution(_bt, _ba)
+                state["tool_calls"] += 1
+                _register_exact_tool_call(state, _bt, decision if _bidx == 0 else None)
+                state["steps"].append({"action": _bt, "result": _maybe_validate_tool_output(_bt, _br)})
+                state["last_tool_used"] = _bt
+                _emit_tool_start(ux_state_queue, _bt)
+            _run_verification_after_tool(
+                state,
+                _batch[-1][0],
+                _batch_results[-1] if _batch_results[-1] is not None else {},
+                workspace,
+            )
+            _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
+            goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+            logger.info("concurrent batch: ran %d tools in parallel", len(_batch))
+            continue
+        # ── end concurrent batch ──────────────────────────────────────────────
 
         # Emit tool_start so streaming UI can show "Running tool_name..."
         if intent not in ("reason", "finish", "wakeup"):
@@ -2469,8 +3324,11 @@ def _autonomous_run_impl_core(
                 if hint:
                     goal = goal + "\n\n" + hint
                 continue
-            if not allow_write or not runtime_safety.require_approval("write_file"):
-                approval_id = _write_pending("write_file", {"path": path, "content": content})
+            _wf_grant_args = {"path": path}
+            if not allow_write or (not runtime_safety.require_approval("write_file") and not _has_any_grant("write_file", _wf_grant_args)):
+                wf_args = {"path": path, "content": content}
+                _approval_preview_diff("write_file", wf_args, workspace)
+                approval_id = _write_pending("write_file", wf_args)
                 state["steps"].append({
                     "action": "write_file",
                     "result": {
@@ -2521,8 +3379,10 @@ def _autonomous_run_impl_core(
                 })
                 goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                 continue
-            if not allow_write or not runtime_safety.require_approval("write_files_batch"):
-                approval_id = _write_pending("write_files_batch", {"files": files})
+            if not allow_write or (not runtime_safety.require_approval("write_files_batch") and not _has_any_grant("write_files_batch", {"files": [f.get("path","") for f in files][:1]})):
+                wfb_args = {"files": files}
+                _approval_preview_diff("write_files_batch", wfb_args, workspace)
+                approval_id = _write_pending("write_files_batch", wfb_args)
                 state["steps"].append({
                     "action": "write_files_batch",
                     "result": {
@@ -2761,8 +3621,10 @@ def _autonomous_run_impl_core(
                 })
                 goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                 continue
-            if not allow_write or not runtime_safety.require_approval("apply_patch"):
-                approval_id = _write_pending("apply_patch", {"original_path": path or "", "patch_text": patch_body})
+            if not allow_write or (not runtime_safety.require_approval("apply_patch") and not _has_any_grant("apply_patch", {"path": path or ""})):
+                ap_args = {"original_path": path or "", "patch_text": patch_body}
+                _approval_preview_diff("apply_patch", ap_args, workspace)
+                approval_id = _write_pending("apply_patch", ap_args)
                 state["steps"].append({
                     "action": "apply_patch",
                     "result": {
@@ -2826,7 +3688,24 @@ def _autonomous_run_impl_core(
             if not argv:
                 state["status"] = "parse_failed"
                 break
-            if not allow_run or not runtime_safety.require_approval("shell"):
+            if not allow_run:
+                approval_id = _write_pending("shell", {"argv": argv, "cwd": workspace})
+                state["steps"].append({
+                    "action": "shell",
+                    "result": {
+                        "ok": False,
+                        "reason": "approval_required",
+                        "approval_id": approval_id,
+                        "message": f"Run: layla approve {approval_id}",
+                    },
+                })
+                state["status"] = "finished"
+                break
+            from layla.tools.registry import shell_command_is_safe_whitelisted, shell_command_line
+            _cmd_line = shell_command_line(argv)
+            _grant_ok = _has_any_grant("shell", {"command": _cmd_line})
+            _need_shell_approval = runtime_safety.require_approval("shell")
+            if _need_shell_approval and not shell_command_is_safe_whitelisted(argv) and not _grant_ok:
                 approval_id = _write_pending("shell", {"argv": argv, "cwd": workspace})
                 state["steps"].append({
                     "action": "shell",
@@ -2851,6 +3730,61 @@ def _autonomous_run_impl_core(
             continue
 
         # ------------------------------------------------
+        # MCP (stdio subprocess; gated like shell — allow_run + approvals)
+        # ------------------------------------------------
+        if intent == "mcp_tools_call":
+            args = _normalize_mcp_tool_args((decision.get("args") or {}) if decision else {})
+            if state.get("research_lab_root"):
+                state["tool_calls"] += 1
+                state["steps"].append({
+                    "action": "mcp_tools_call",
+                    "result": {"ok": False, "reason": "not_allowed_in_research", "message": "MCP tools not allowed in research missions"},
+                })
+                goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+                continue
+            if not allow_run:
+                approval_id = _write_pending("mcp_tools_call", args)
+                state["steps"].append({
+                    "action": "mcp_tools_call",
+                    "result": {
+                        "ok": False,
+                        "reason": "approval_required",
+                        "approval_id": approval_id,
+                        "message": f"Run: layla approve {approval_id}",
+                    },
+                })
+                state["status"] = "finished"
+                break
+            _need_mcp_approval = runtime_safety.require_approval("mcp_tools_call")
+            _mcp_grant_ok = _has_any_grant("mcp_tools_call", args)
+            if _need_mcp_approval and not _mcp_grant_ok:
+                approval_id = _write_pending("mcp_tools_call", args)
+                state["steps"].append({
+                    "action": "mcp_tools_call",
+                    "result": {
+                        "ok": False,
+                        "reason": "approval_required",
+                        "approval_id": approval_id,
+                        "message": f"Run: layla approve {approval_id}",
+                    },
+                })
+                state["status"] = "finished"
+                break
+            state["tool_calls"] += 1
+            _mcp_args = args
+            result = TOOLS["mcp_tools_call"]["fn"](
+                mcp_server=str(_mcp_args.get("mcp_server") or ""),
+                tool_name=str(_mcp_args.get("tool_name") or ""),
+                arguments=_mcp_args.get("arguments") if isinstance(_mcp_args.get("arguments"), dict) else None,
+            )
+            _register_exact_tool_call(state, "mcp_tools_call", decision)
+            runtime_safety.log_execution("mcp_tools_call", _mcp_args)
+            state["steps"].append({"action": "mcp_tools_call", "result": _maybe_validate_tool_output("mcp_tools_call", result)})
+            state["last_tool_used"] = "mcp_tools_call"
+            goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+            continue
+
+        # ------------------------------------------------
         # EXTENDED TOOLS (no approval needed)
         # ------------------------------------------------
         if intent in ("json_query", "diff_files", "env_info", "regex_test",
@@ -2867,7 +3801,7 @@ def _autonomous_run_impl_core(
 
         if intent == "git_commit":
             args = (decision.get("args") or {}) if decision else {}
-            if not allow_write or not runtime_safety.require_approval("git_commit"):
+            if not allow_write or (not runtime_safety.require_approval("git_commit") and not _has_any_grant("git_commit", args)):
                 approval_id = _write_pending("git_commit", args)
                 state["steps"].append({"action": "git_commit", "result": {
                     "ok": False, "reason": "approval_required",
@@ -2920,15 +3854,32 @@ def _autonomous_run_impl_core(
         if intent in TOOLS and intent not in (
             "reason", "write_file", "read_file", "list_dir", "git_status", "git_diff", "git_log", "git_branch",
             "grep_code", "glob_files", "search_codebase", "run_python", "apply_patch", "fetch_url", "shell",
+            "mcp_tools_call",
             "json_query", "diff_files", "env_info", "regex_test", "save_note", "search_memories", "git_add",
             "git_commit", "get_project_context", "update_project_context", "understand_file",
         ):
             args = (decision.get("args") or {}) if decision else {}
+            if intent in (
+                "restore_file_checkpoint",
+                "ingest_chat_export_to_knowledge",
+                "memory_elasticsearch_search",
+                "list_file_checkpoints",
+            ):
+                try:
+                    from services.intent_routing_hints import fill_tool_args_from_goal
+
+                    _og = (state.get("original_goal") or goal or "").strip()
+                    args = fill_tool_args_from_goal(intent, _og, workspace, args)
+                except Exception:
+                    pass
             meta = TOOLS.get(intent, {})
             needs_approval = meta.get("require_approval", False)
             allow = allow_write or allow_run  # generic tools need at least one
-            if needs_approval and (not allow or not runtime_safety.require_approval(intent)):
-                approval_id = _write_pending(intent, args)
+            _session_grant_ok = _has_any_grant(intent, args)
+            if needs_approval and (not allow or not runtime_safety.require_approval(intent)) and not _session_grant_ok:
+                ap_args = dict(args)
+                _approval_preview_diff(intent, ap_args, workspace)
+                approval_id = _write_pending(intent, ap_args)
                 state["steps"].append({"action": intent, "result": {
                     "ok": False, "reason": "approval_required",
                     "approval_id": approval_id, "message": f"Run: layla approve {approval_id}",
@@ -2946,14 +3897,15 @@ def _autonomous_run_impl_core(
                     args["path"] = path
             if "root" not in args and intent in ("search_replace", "rename_symbol", "search_codebase"):
                 args["root"] = workspace
-            try:
-                fn = meta.get("fn")
-                if fn:
-                    result = fn(**args) if args else fn()
-                else:
-                    result = {"ok": False, "error": "Tool not found"}
-            except TypeError as e:
-                result = {"ok": False, "error": str(e)}
+            _tool_timeout = cfg.get("tool_call_timeout_seconds", 60)
+            result = _run_tool(
+                intent,
+                args,
+                timeout_s=float(_tool_timeout),
+                sandbox_root=workspace,
+                allow_run=allow_run,
+                conversation_id=str(state.get("conversation_id") or ""),
+            )
             runtime_safety.log_execution(intent, args)
             state["tool_calls"] += 1
             _register_exact_tool_call(state, intent, decision)
@@ -2991,6 +3943,8 @@ def _autonomous_run_impl_core(
                 state["goal_for_stream"] = goal
                 state["reasoning_mode_for_stream"] = state.get("reasoning_mode", "light")
                 state["precomputed_recall_for_stream"] = _precomputed_recall
+                state["stream_workspace_root"] = workspace
+                state["cognition_workspace_roots_for_stream"] = state.get("cognition_workspace_roots") or []
                 return state
             # Section 1: context compression when token count exceeds ~75% of n_ctx (before system head)
             effective_history = conversation_history or []
@@ -3011,6 +3965,7 @@ def _autonomous_run_impl_core(
                 reasoning_mode=state.get("reasoning_mode", "light"),
                 _precomputed_recall=_precomputed_recall,
                 persona_focus_id=persona_focus_id,
+                cognition_workspace_roots=state.get("cognition_workspace_roots"),
             )
 
             # Inject conversation history (sanitize assistant messages that are echoed instructions)
@@ -3193,7 +4148,51 @@ def _autonomous_run_impl_core(
                     pass
             break
 
+        # D5: After any step, if the last tool result is approval_required or timed_out,
+        # inject a synthetic cancel message so the model doesn't hallucinate the result.
+        _last_step = state["steps"][-1] if state.get("steps") else None
+        if _last_step:
+            _last_res = _last_step.get("result", {})
+            _last_reason = _last_res.get("reason") if isinstance(_last_res, dict) else ""
+            _last_tool_name = _last_step.get("action", "tool")
+            if _last_reason == "approval_required" and conversation_history is not None:
+                _inject_cancel_message(conversation_history, _last_tool_name, "pending operator approval")
+            elif isinstance(_last_res, dict) and _last_res.get("timed_out") and conversation_history is not None:
+                _inject_cancel_message(conversation_history, _last_tool_name, "timed out")
+
         state["depth"] += 1
+
+        # Resource-aware chunking: after each tool call, yield if system is under pressure.
+        # high load → sleep briefly and continue; critical (2 consecutive) → checkpoint and pause.
+        if state["tool_calls"] > 0 and state["tool_calls"] % 2 == 0:
+            try:
+                _load = classify_load()
+                _load_level = _load.get("level", "ok")
+                if _load_level in ("high", "critical"):
+                    _consecutive_high = state.get("_consecutive_high_load", 0) + 1
+                    state["_consecutive_high_load"] = _consecutive_high
+                    sleep_s = 5.0 if _load_level == "critical" else 2.0
+                    logger.info("resource_chunking: load=%s consecutive=%d sleeping=%.0fs", _load_level, _consecutive_high, sleep_s)
+                    time.sleep(sleep_s)
+                    if _load_level == "critical" and _consecutive_high >= 2:
+                        # Checkpoint and pause — let the UI offer a Resume button
+                        state["checkpoint"] = {
+                            "steps": list(state.get("steps", [])),
+                            "goal": goal,
+                            "original_goal": state.get("original_goal", goal),
+                            "tool_calls": state["tool_calls"],
+                            "depth": state["depth"],
+                        }
+                        state["status"] = "paused_high_load"
+                        break
+                else:
+                    state["_consecutive_high_load"] = 0
+            except Exception as _re:
+                logger.debug("resource_chunking check failed: %s", _re)
+
+    # D5: runtime timeout also warrants a cancel message
+    if state.get("status") == "timeout" and conversation_history is not None:
+        _inject_cancel_message(conversation_history, "agent", "hit runtime limit")
 
     if state.get("status") == "finished":
         _save_outcome_memory(state)

@@ -36,6 +36,18 @@ _CONFIG_WHITELIST: frozenset[str] = frozenset({
     "research_max_tool_calls",
     "research_max_runtime_seconds",
     "completion_max_tokens",
+    "nsfw_allowed",
+    "uncensored",
+    "max_active_runs",
+    "max_cpu_percent",
+    "max_ram_percent",
+    "warn_cpu_percent",
+    "hard_cpu_percent",
+    "response_pacing_ms",
+    "ui_agent_stream_timeout_seconds",
+    "ui_agent_json_timeout_seconds",
+    "ui_stalled_silence_ms",
+    "honesty_and_boundaries_enabled",
 })
 
 

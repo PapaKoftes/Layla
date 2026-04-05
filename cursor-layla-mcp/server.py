@@ -555,6 +555,94 @@ async def handle_list_tools() -> types.ListToolsResult:
                     },
                 },
             ),
+            # ── Multi-agent tools ──────────────────────────────
+            types.Tool(
+                name="delegate_task",
+                title="Delegate a task to Layla as a background agent",
+                description=(
+                    "Send a goal to Layla as a background agent task. "
+                    "Returns a task_id immediately. Use poll_task to check status and get the result. "
+                    "Enables Cursor AI + Layla multi-agent workflows: Cursor orchestrates, Layla executes."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["goal"],
+                    "properties": {
+                        "goal": {"type": "string", "description": "The task or goal for Layla to work on."},
+                        "aspect_id": {
+                            "type": "string",
+                            "description": "Which aspect should handle this task (default: morrigan).",
+                            "default": "morrigan",
+                        },
+                        "context": {"type": "string", "default": ""},
+                        "workspace_root": {"type": "string", "default": ""},
+                        "allow_write": {"type": "boolean", "default": False},
+                        "allow_run": {"type": "boolean", "default": False},
+                    },
+                },
+            ),
+            types.Tool(
+                name="poll_task",
+                title="Check status of a delegated Layla task",
+                description="Poll the status and result of a task previously delegated to Layla via delegate_task.",
+                inputSchema={
+                    "type": "object",
+                    "required": ["task_id"],
+                    "properties": {
+                        "task_id": {"type": "string", "description": "The task_id returned by delegate_task."},
+                    },
+                },
+            ),
+            types.Tool(
+                name="parallel_aspects",
+                title="Ask multiple Layla aspects simultaneously",
+                description=(
+                    "Send the same question to multiple aspects in parallel and get all responses. "
+                    "Cursor AI can synthesize the perspectives. "
+                    "Example: ask morrigan + nyx for code review + research context at the same time. "
+                    "Always read-only (allow_write and allow_run are disabled for safety)."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["message"],
+                    "properties": {
+                        "message": {"type": "string", "description": "The question or task to send to all aspects."},
+                        "aspects": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of aspect IDs to query (max 4). Default: [morrigan, nyx].",
+                            "default": ["morrigan", "nyx"],
+                        },
+                        "context": {"type": "string", "default": ""},
+                        "workspace_root": {"type": "string", "default": ""},
+                    },
+                },
+            ),
+            types.Tool(
+                name="agent_handoff",
+                title="Hand off context and start a new Layla conversation",
+                description=(
+                    "Pass accumulated context from the current conversation to a new Layla task. "
+                    "Creates a fresh conversation_id so the new task starts clean but informed. "
+                    "Use when pivoting: 'take what we discussed about X and now do Y'."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "required": ["goal"],
+                    "properties": {
+                        "goal": {"type": "string", "description": "The new goal for the handed-off task."},
+                        "context": {
+                            "type": "string",
+                            "description": "Context from the prior conversation to carry forward.",
+                            "default": "",
+                        },
+                        "aspect_id": {"type": "string", "default": "morrigan"},
+                        "workspace_root": {"type": "string", "default": ""},
+                        "allow_write": {"type": "boolean", "default": False},
+                        "allow_run": {"type": "boolean", "default": False},
+                    },
+                },
+            ),
         ]
     )
 
@@ -1013,6 +1101,156 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
             return [types.TextContent(type="text", text=data.get("response", "") or "")]
         except Exception as e:
             return [types.TextContent(type="text", text=f"ask_aspect failed: {e}")]
+
+    # ── delegate_task ─────────────────────────────────────
+    # Send a task to Layla as a background agent job. Returns a task_id.
+    # Cursor AI (or another agent) can then poll with poll_task.
+    if name == "delegate_task":
+        goal = (args.get("goal", "") or "").strip()
+        if not goal:
+            return [types.TextContent(type="text", text="goal is required.")]
+        aspect_id = (args.get("aspect_id", "") or "").strip()
+        allow_write = args.get("allow_write") is True
+        allow_run = args.get("allow_run") is True
+        workspace_root = _normalize_workspace_root(args.get("workspace_root", "") or "")
+        context = (args.get("context", "") or "").strip()
+        try:
+            payload = {
+                "message": goal,
+                "context": context,
+                "workspace_root": workspace_root,
+                "allow_write": allow_write,
+                "allow_run": allow_run,
+                "aspect_id": aspect_id or "morrigan",
+                "background": True,
+            }
+            result = _post(LAYLA_BASE + "/agent/tasks", payload, timeout=15)
+            task_id = result.get("task_id") or result.get("id")
+            if task_id:
+                return [types.TextContent(
+                    type="text",
+                    text=f"Task delegated. task_id={task_id}\nUse poll_task to check status.",
+                )]
+            # Fallback: run synchronously if background tasks not supported
+            data = await anyio.to_thread.run_sync(
+                lambda: _agent_sync({
+                    "message": goal,
+                    "context": context,
+                    "workspace_root": workspace_root,
+                    "allow_write": allow_write,
+                    "allow_run": allow_run,
+                    "aspect_id": aspect_id or "morrigan",
+                }, timeout=300)
+            )
+            return [types.TextContent(type="text", text=data.get("response", "") or "Task completed.")]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"delegate_task failed: {e}")]
+
+    # ── poll_task ──────────────────────────────────────────
+    if name == "poll_task":
+        task_id = (args.get("task_id", "") or "").strip()
+        if not task_id:
+            return [types.TextContent(type="text", text="task_id is required.")]
+        try:
+            import json as _json
+            data = _get(LAYLA_BASE + f"/agent/tasks/{task_id}", timeout=10)
+            status = data.get("status", "?")
+            result = data.get("result") or data.get("response") or ""
+            error = data.get("error", "")
+            lines = [f"Task {task_id}: {status}"]
+            if result:
+                lines.append(f"\nResult:\n{result[:2000]}")
+            if error:
+                lines.append(f"\nError: {error}")
+            return [types.TextContent(type="text", text="\n".join(lines))]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"poll_task failed: {e}")]
+
+    # ── parallel_aspects ──────────────────────────────────
+    # Ask the same question to multiple aspects simultaneously.
+    # Returns merged responses labeled by aspect. Useful for multi-perspective
+    # analysis where Cursor AI orchestrates the synthesis.
+    if name == "parallel_aspects":
+        message = (args.get("message", "") or "").strip()
+        if not message:
+            return [types.TextContent(type="text", text="message is required.")]
+        aspects = args.get("aspects") or ["morrigan", "nyx"]
+        if isinstance(aspects, str):
+            aspects = [a.strip() for a in aspects.split(",") if a.strip()]
+        aspects = aspects[:4]  # cap at 4 to avoid overwhelming the local LLM
+        context = (args.get("context", "") or "").strip()
+        workspace_root = _normalize_workspace_root(args.get("workspace_root", "") or "")
+        allow_write = False  # parallel calls are always read-only
+        allow_run = False
+
+        import threading as _threading
+
+        results: dict[str, str] = {}
+        errors: dict[str, str] = {}
+
+        def _ask_one(aspect: str) -> None:
+            try:
+                payload = {
+                    "message": message,
+                    "context": context,
+                    "workspace_root": workspace_root,
+                    "allow_write": allow_write,
+                    "allow_run": allow_run,
+                    "aspect_id": aspect,
+                    "show_thinking": False,
+                }
+                data = _agent_sync(payload, timeout=120)
+                results[aspect] = (data.get("response") or "").strip()
+            except Exception as exc:
+                errors[aspect] = str(exc)
+
+        threads = [_threading.Thread(target=_ask_one, args=(a,), daemon=True) for a in aspects]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=130)
+
+        lines = [f"Parallel responses for: {message[:120]}"]
+        for aspect in aspects:
+            lines.append(f"\n── {aspect.upper()} ──")
+            if aspect in errors:
+                lines.append(f"[ERROR: {errors[aspect]}]")
+            else:
+                lines.append(results.get(aspect, "[no response]"))
+        return [types.TextContent(type="text", text="\n".join(lines))]
+
+    # ── agent_handoff ─────────────────────────────────────
+    # Pass context + goal from one conversation/agent to a new Layla run.
+    # Enables clean handoffs: "take what we've discussed and start a new task."
+    if name == "agent_handoff":
+        handoff_context = (args.get("context", "") or "").strip()
+        new_goal = (args.get("goal", "") or "").strip()
+        if not new_goal:
+            return [types.TextContent(type="text", text="goal is required for handoff.")]
+        aspect_id = (args.get("aspect_id", "") or "").strip()
+        workspace_root = _normalize_workspace_root(args.get("workspace_root", "") or "")
+        allow_write = args.get("allow_write") is True
+        allow_run = args.get("allow_run") is True
+        import uuid as _uuid
+        new_conversation_id = str(_uuid.uuid4())
+        payload = {
+            "message": new_goal,
+            "context": handoff_context,
+            "workspace_root": workspace_root,
+            "allow_write": allow_write,
+            "allow_run": allow_run,
+            "aspect_id": aspect_id or "morrigan",
+            "conversation_id": new_conversation_id,
+        }
+        try:
+            data = await anyio.to_thread.run_sync(lambda: _agent_sync(payload, timeout=300))
+            text = (data.get("response") or "")
+            return [types.TextContent(
+                type="text",
+                text=f"[Handoff → conversation {new_conversation_id}]\n\n{text}",
+            )]
+        except Exception as e:
+            return [types.TextContent(type="text", text=f"agent_handoff failed: {e}")]
 
     return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
 

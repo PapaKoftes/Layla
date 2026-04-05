@@ -28,7 +28,7 @@ Repository rules for humans and AIs: [RULES.md](RULES.md).
 **Guaranteed:**
 
 - **Max tool calls per request**: `max_tool_calls` (research missions: `research_max_tool_calls`).
-- **Max runtime per request**: `max_runtime_seconds` (research: `research_max_runtime_seconds`). Light chat may further cap via `chat_light_max_runtime_seconds` in the agent loop.
+- **Max runtime per request**: `max_runtime_seconds` (research: `research_max_runtime_seconds`). Short non-tool chat may further cap via `chat_light_max_runtime_seconds` (default 90s, floor 30s; still bounded by `max_runtime_seconds`).
 - **Max completion tokens**: `completion_max_tokens`.
 
 **Runtime scaling:** `services/system_optimizer.get_effective_config()` may lower `max_tool_calls` and context under `performance_mode` or CPU/RAM pressure — effective values are surfaced on **`GET /health`** in `effective_limits`.
@@ -44,6 +44,14 @@ Repository rules for humans and AIs: [RULES.md](RULES.md).
 - **No writes without approval** (or explicit `allow_write` + governance): tools that mutate the filesystem or run code return `approval_required` until `POST /approve` / MCP approve / CLI approve.
 - **Sandbox and path policy**: `sandbox_root`, protected paths, research lab boundaries — enforced in `runtime_safety` and tools (`layla/tools/registry.py`).
 - **No arbitrary shell/exec without gates**: `shell` / `run_python` and related paths respect `allow_run`, approval, timeouts, and optional allowlists.
+
+**Background subprocess workers (when `background_use_subprocess_workers` is true):**
+
+- **Enforcement scope (what Layla attaches in-process):** Optional limits apply to the **subprocess worker child** (`background_job_worker.py`) when subprocess mode is on — **not** to synchronous foreground `POST /agent` runs or to **thread-mode** background (same process as uvicorn). Thread-mode and foreground runs rely on existing caps (`max_tool_calls`, `max_runtime_seconds`, load gates), not OS job/cgroup attachment.
+- **Windows Job Objects vs Linux cgroups:** In-repo Windows support uses a Job Object for **memory** (`JobMemoryLimit`) and optionally a **CPU hard cap** (`JobObjectCpuRateControlInformation`, best-effort). That is **not** equivalent to Linux **cgroups v2** (multi-controller hierarchy, I/O, accounting). Optional Linux helper `background_worker_cgroup_auto_enabled` writes `memory.max` / `cpu.max` under a delegated cgroup when permissions allow: it checks a **unified v2 root** (`cgroup.controllers` under `/sys/fs/cgroup`) and a **writable parent** cgroup before `mkdir`; after the worker exits, Layla **best-effort** `rmdir`s the leaf — see [`RUNBOOKS.md`](RUNBOOKS.md).
+- **OS limits in-app are best-effort**: POSIX `RLIMIT_AS` / optional `RLIMIT_CPU` (see `background_worker_rlimits_*`) may not cap mmap-backed GGUF RAM predictably. **Hard** containment remains an operator concern: systemd, cgroups, Docker/Podman, or `background_worker_wrapper_command`.
+- **Shared inference (centralized service):** With local `llama_cpp`, each worker can load its own GGUF. Prefer a **single** HTTP inference endpoint (`llama_server_url`, `ollama_base_url`) so parent and workers are thin clients — **no duplicate GGUF**. Optional `background_subprocess_local_gguf_policy`: `warn` | `reject` | `allow`.
+- **Background progress:** When `background_progress_stream_enabled` is true (default), tool-step progress is persisted on the task row (`progress_json`) and returned from `GET /agent/tasks` / `GET /agent/tasks/{id}` as `progress_events`, `progress` (full list, alias), and `progress_tail` (last *N* events per `background_progress_tail_max`) — orthogonal to foreground `POST /agent` SSE streaming.
 
 **Tests:** `agent/tests/test_approval_flow.py`, `agent/tests/test_sandbox.py`, and related agent loop tests.
 
@@ -72,6 +80,10 @@ Repository rules for humans and AIs: [RULES.md](RULES.md).
 - **Tool outcomes**: `INFO` lines with tool name, `ok`, and `reason` after tool execution (via validated tool paths).
 - **Fallbacks**: e.g. semantic memory path logs Chroma failure at `WARNING` and successful FTS retrieval fallback at `INFO`.
 
+**CI test coverage**
+
+- The default GitHub Actions matrix runs `pytest` with `pytest-cov` and a **minimum line coverage** floor configured in [`agent/.coveragerc`](../agent/.coveragerc). See [`docs/VERIFICATION.md`](VERIFICATION.md) for the local command. The floor is a ratchet, not a guarantee of full-path coverage.
+
 ---
 
 ## 5. Reasoning depth vs "reasoning_default"
@@ -90,8 +102,8 @@ Baseline behavior is **light-oriented** for normal turns; coding-heavy text tend
 See merged defaults in `agent/runtime_safety.py` and the annotated template `agent/runtime_config.example.json`. Typical production-oriented defaults include:
 
 - `performance_mode`: `"auto"`
-- `max_tool_calls`: tightened (e.g. `2`) — raise for heavy coding sessions if needed.
-- `max_runtime_seconds`: bounded (e.g. `30`)
+- `max_tool_calls`: default `20` (lower in constrained environments via `performance_mode` / effective caps).
+- `max_runtime_seconds`: default `180` (chat-light path may cap lower in `agent_loop`).
 - `completion_cache_enabled` / `response_cache_enabled`: enabled when duplicate-turn latency should drop (tradeoff: cached replies for identical prompts).
 - `learning_quality_gate_enabled`: `true`
 - `auto_pip_install_optional`: `false`

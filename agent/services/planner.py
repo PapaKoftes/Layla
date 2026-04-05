@@ -5,7 +5,78 @@ Supports agent roles: planner, executor, researcher, debugger, memory_curator.
 """
 import json
 import re
+from types import SimpleNamespace
 from typing import Any
+
+# Keyword args forwarded to agent_loop.autonomous_run (must stay in sync with its signature).
+_AUTONOMOUS_KW_KEYS = frozenset({
+    "context",
+    "workspace_root",
+    "allow_write",
+    "allow_run",
+    "conversation_history",
+    "aspect_id",
+    "show_thinking",
+    "stream_final",
+    "ux_state_queue",
+    "research_mode",
+    "plan_depth",
+    "model_override",
+    "reasoning_effort",
+    "priority",
+    "persona_focus",
+    "conversation_id",
+    "cognition_workspace_roots",
+    "client_abort_event",
+    "background_progress_callback",
+    "active_plan_id",
+    "plan_approved",
+})
+
+
+def _filter_autonomous_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in kwargs.items() if k in _AUTONOMOUS_KW_KEYS}
+
+
+def _synthetic_step_for_exec_row(s: dict[str, Any]) -> Any:
+    role = str(s.get("role") or "").strip().lower()
+    valid = frozenset({"analysis", "planning", "refactor", "edit", "test", "build", "cad", "research"})
+    if role in valid:
+        stype = role
+    elif role in ("", "task"):
+        stype = "analysis"
+    else:
+        stype = "analysis"
+    tl = s.get("tools") if isinstance(s.get("tools"), list) else []
+    tools = [str(t).strip() for t in tl if str(t).strip()]
+    auto_filled = bool(s.get("_tools_auto_filled") or s.get("tools_auto_filled"))
+    return SimpleNamespace(type=stype, id=str(s.get("step", "")), tools=tools, tools_auto_filled=auto_filled)
+
+
+def _run_agent_step(
+    agent_run_fn: Any,
+    step_goal: str,
+    base_kwargs: dict[str, Any],
+    tools_list: list[str],
+) -> dict[str, Any]:
+    """Set thread-local tool allowlist when tools_list non-empty; filter kwargs for autonomous_run."""
+    from services.engine_plans import _is_low_quality
+    from services.tool_allowlist_context import clear_plan_step_tool_allowlist, set_plan_step_tool_allowlist
+
+    names = [str(t).strip() for t in (tools_list or []) if str(t).strip()]
+    if names:
+        set_plan_step_tool_allowlist(frozenset(names))
+    else:
+        clear_plan_step_tool_allowlist()
+    try:
+        kw = _filter_autonomous_kwargs(base_kwargs)
+        r1 = agent_run_fn(step_goal, **kw)
+        if _is_low_quality(r1):
+            improve = f"Improve this answer:\n{r1.get('response', '')}\nBe precise and concise."
+            return agent_run_fn(improve, **kw)
+        return r1
+    finally:
+        clear_plan_step_tool_allowlist()
 
 ROLE_TOOL_HINTS = {
     "researcher": "Prefer: ddg_search, fetch_article, wiki_search, arxiv_search",
@@ -54,7 +125,12 @@ def should_plan(goal: str, cfg: dict | None = None, plan_depth: int = 0) -> bool
     return any(kw in g for kw in PLAN_KEYWORDS)
 
 
-def create_plan(goal: str, max_steps: int = 6, cfg: dict | None = None) -> list[dict]:
+def create_plan(
+    goal: str,
+    max_steps: int = 6,
+    cfg: dict | None = None,
+    prior_plans_digest: str = "",
+) -> list[dict]:
     """
     Use LLM to produce a structured plan.
     Each step: {"step": int, "task": str, "tools": list[str]}
@@ -76,8 +152,12 @@ def create_plan(goal: str, max_steps: int = 6, cfg: dict | None = None) -> list[
         except Exception:
             pass
         reliability_hint = get_tool_reliability_hint()
+        extra_ctx = ""
+        if (prior_plans_digest or "").strip():
+            extra_ctx = f"\n{prior_plans_digest.strip()[:3500]}\n\n"
         prompt = (
             f"Given this goal:\n\n{goal[:800]}\n\n"
+            f"{extra_ctx}"
             f"Produce a step-by-step plan. Output only a JSON array of objects. "
             f"Each object: {{\"step\": 1, \"task\": \"short description\", \"tools\": [\"tool1\", \"tool2\"]}}. "
             f"Use 3-6 steps. Choose tools from: {tools_list}. "
@@ -123,6 +203,41 @@ def create_plan(goal: str, max_steps: int = 6, cfg: dict | None = None) -> list[
         return []
 
 
+def normalize_plan_steps_tools(plan: list[dict], cfg: dict | None) -> list[dict]:
+    """
+    When plan_governance_require_nonempty_step_tools is on: fill empty tools on analysis-like
+    in-loop plan rows (create_plan shape) with plan_step_default_read_tools (must exist in TOOLS).
+    Skips steps whose type/role is edit|test|build|refactor|cad (no silent widen).
+    """
+    if not plan or not cfg or not cfg.get("plan_governance_require_nonempty_step_tools"):
+        return plan
+    mutating = frozenset({"edit", "test", "build", "refactor", "cad"})
+    raw_defaults = cfg.get("plan_step_default_read_tools")
+    if not isinstance(raw_defaults, list) or not raw_defaults:
+        raw_defaults = ["read_file", "list_dir", "grep_code"]
+    try:
+        from layla.tools.registry import TOOLS as _TOOLS
+
+        allowed = [str(t).strip() for t in raw_defaults if str(t).strip() and str(t).strip() in _TOOLS]
+    except Exception:
+        allowed = [str(t).strip() for t in raw_defaults if str(t).strip()]
+    if not allowed:
+        allowed = ["read_file", "list_dir", "grep_code"]
+    allowed = allowed[:12]
+    for s in plan:
+        if not isinstance(s, dict):
+            continue
+        role = str(s.get("role") or s.get("type") or "").strip().lower()
+        if role in mutating:
+            continue
+        tools = s.get("tools") if isinstance(s.get("tools"), list) else []
+        if tools:
+            continue
+        s["tools"] = list(allowed)
+        s["_tools_auto_filled"] = True
+    return plan
+
+
 def _infer_role(task: str) -> str:
     """Infer agent role from task keywords. Returns role name or empty string."""
     t = (task or "").lower()
@@ -135,12 +250,100 @@ def _infer_role(task: str) -> str:
     return ""
 
 
-def execute_plan(plan: list[dict], agent_run_fn: Any, goal_prefix: str = "", plan_depth: int = 0, **agent_kwargs: Any) -> dict:
+def run_governed_plan_step(
+    step_row: dict[str, Any],
+    step_goal: str,
+    *,
+    agent_run_fn: Any | None = None,
+    agent_kwargs: dict[str, Any] | None = None,
+    agent_result_fn: Any | None = None,
+    default_max_retries: int = 1,
+    retry_suffix_fn: Any | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """
+    Single step with governance (allowlist, validate_step_outcome, retries).
+    Shared by execute_plan and file-backed engine_plans.
+    Either agent_result_fn(goal) -> dict (file-plan path) or agent_run_fn + agent_kwargs (SQLite path).
+    """
+    from services.plan_step_governance import low_confidence_response, validate_step_outcome
+
+    ak = agent_kwargs if isinstance(agent_kwargs, dict) else {}
+    dm = max(0, min(3, int(default_max_retries) if isinstance(default_max_retries, int) else 1))
+    try:
+        mr = int(step_row.get("max_retries", dm) or dm)
+    except (TypeError, ValueError):
+        mr = dm
+    mr = max(0, min(3, mr))
+    max_attempts = max(1, mr + 1)
+    synth = _synthetic_step_for_exec_row(step_row)
+    tools_hint = step_row.get("tools", [])
+    if not isinstance(tools_hint, list):
+        tools_hint = []
+
+    if retry_suffix_fn is None:
+        from services.plan_execution_prompts import sqlite_step_retry_suffix as _suffix
+
+        retry_suffix_fn = _suffix
+
+    last: dict[str, Any] = {}
+    success = False
+    attempt = 0
+    verr = ""
+    refused = False
+    lc = False
+    try:
+        for attempt in range(max_attempts):
+            use_goal = step_goal
+            if attempt > 0:
+                use_goal = step_goal + retry_suffix_fn(attempt, mr)
+            if agent_result_fn is not None:
+                last = agent_result_fn(use_goal)
+            elif agent_run_fn is not None:
+                last = _run_agent_step(agent_run_fn, use_goal, ak, tools_hint)
+            else:
+                last = {"status": "error", "response": "no_agent_fn", "refused": True}
+            refused = bool(last.get("refused"))
+            vok, verr = validate_step_outcome(synth, last)
+            lc = low_confidence_response(last)
+            if not refused and vok and not lc:
+                success = True
+                break
+    except Exception as ex:
+        last = {"status": "error", "response": str(ex), "refused": True}
+        verr = f"executor_exception:{ex}"
+        refused = True
+
+    row = {
+        "step": step_row.get("step"),
+        "task": step_row.get("task", ""),
+        "result_status": "ok" if success else "step_failed",
+        "governance_ok": success,
+        "validation_error": "" if success else (verr or ("low_confidence" if lc else "refused" if refused else "unknown")),
+        "low_confidence": bool(not success and lc),
+        "refused": bool(last.get("refused")),
+        "attempts": attempt + 1,
+        "agent_status": last.get("status", ""),
+    }
+    return row, last
+
+
+def execute_plan(
+    plan: list[dict],
+    agent_run_fn: Any,
+    goal_prefix: str = "",
+    plan_depth: int = 0,
+    *,
+    step_governance: bool = False,
+    default_max_retries: int = 1,
+    **agent_kwargs: Any,
+) -> dict:
     """
     Execute each plan step sequentially via agent_run_fn(step_goal, ...).
     agent_run_fn is autonomous_run or a compatible callable.
     plan_depth: current planning depth; steps run at plan_depth+1 to respect max_plan_depth.
     agent_kwargs: context, workspace_root, allow_write, allow_run, etc. (forwarded from caller)
+    When step_governance=True (SQLite /plans execute): per-step tool allowlist, validate_step_outcome,
+    low_confidence_response, bounded retries, and richer steps_done rows.
     Returns combined result with steps executed and final summary.
     """
     if not plan:
@@ -153,29 +356,60 @@ def execute_plan(plan: list[dict], agent_run_fn: Any, goal_prefix: str = "", pla
         "conversation_history": [],
         "aspect_id": "morrigan",
         "show_thinking": False,
+        "active_plan_id": "",
+        "plan_approved": False,
     }
     defaults.update(agent_kwargs)
     defaults["plan_depth"] = plan_depth + 1  # enforce depth increment; agent_kwargs must not override
-    steps_done = []
+
+    dm = max(0, min(3, int(default_max_retries) if isinstance(default_max_retries, int) else 1))
+
+    steps_done: list[dict[str, Any]] = []
     for s in plan:
         task = s.get("task", "")
         tools_hint = s.get("tools", [])
+        if not isinstance(tools_hint, list):
+            tools_hint = []
         role = s.get("role", "")
         step_goal = task
         if tools_hint:
-            step_goal += f" (consider: {', '.join(tools_hint[:3])})"
+            step_goal += f" (consider: {', '.join(str(t) for t in tools_hint[:3])})"
         if role and role in ROLE_TOOL_HINTS:
             step_goal += f" [{ROLE_TOOL_HINTS[role]}]"
         if goal_prefix:
             step_goal = f"{goal_prefix}\n\nStep {s.get('step', len(steps_done)+1)}: {step_goal}"
-        try:
-            result = agent_run_fn(step_goal, **defaults)
-            steps_done.append({
-                "step": s.get("step"),
-                "task": task,
-                "result_status": result.get("status", ""),
-            })
-        except Exception as e:
-            steps_done.append({"step": s.get("step"), "task": task, "result_status": "error", "error": str(e)})
+
+        if not step_governance:
+            try:
+                result = agent_run_fn(step_goal, **_filter_autonomous_kwargs(defaults))
+                steps_done.append({
+                    "step": s.get("step"),
+                    "task": task,
+                    "result_status": result.get("status", ""),
+                })
+            except Exception as e:
+                steps_done.append({"step": s.get("step"), "task": task, "result_status": "error", "error": str(e)})
+            continue
+
+        exec_row = {
+            "step": s.get("step"),
+            "task": task,
+            "tools": tools_hint,
+            "role": role,
+            "max_retries": s.get("max_retries", dm),
+        }
+        done_row, _last = run_governed_plan_step(
+            exec_row,
+            step_goal,
+            agent_run_fn=agent_run_fn,
+            agent_kwargs=defaults,
+            default_max_retries=dm,
+        )
+        done_row["task"] = task
+        steps_done.append(done_row)
+
     summary = "\n".join(f"{d.get('step')}. {d.get('task')}: {d.get('result_status', '')}" for d in steps_done)
-    return {"status": "plan_completed", "steps_done": steps_done, "summary": summary}
+    out: dict[str, Any] = {"status": "plan_completed", "steps_done": steps_done, "summary": summary}
+    if step_governance:
+        out["all_steps_ok"] = all(d.get("governance_ok") for d in steps_done)
+    return out

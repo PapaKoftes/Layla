@@ -26,6 +26,7 @@ def test_health_fast_shape():
     el = payload["effective_limits"]
     assert isinstance(el, dict)
     assert "max_tool_calls" in el
+    assert "max_runtime_seconds" in el
     assert "response_cache_stats" in payload
     rs = payload["response_cache_stats"]
     assert isinstance(rs, dict)

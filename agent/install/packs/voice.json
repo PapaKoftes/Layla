@@ -1,0 +1,4 @@
+{
+  "description": "Optional voice stack (faster-whisper STT, kokoro TTS deps where applicable)",
+  "pip": ["sounddevice"]
+}

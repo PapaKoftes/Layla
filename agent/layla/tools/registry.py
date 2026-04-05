@@ -15,6 +15,39 @@ _effective_sandbox = threading.local()
 _sandbox_cache: dict[int, tuple[Path, float]] = {}
 _SANDBOX_CACHE_TTL = 2.0  # seconds
 
+# Read-before-write: mtime recorded after read_file; write/apply_patch reject if file changed (Claude Code pattern)
+_file_read_ts_lock = threading.Lock()
+_FILE_READ_MTIMES: dict[str, float] = {}
+
+
+def _set_read_freshness(path: Path) -> None:
+    try:
+        mt = path.resolve().stat().st_mtime
+        with _file_read_ts_lock:
+            _FILE_READ_MTIMES[str(path.resolve())] = mt
+    except Exception:
+        pass
+
+
+def _check_read_freshness(path: Path) -> str | None:
+    key = str(path.resolve())
+    with _file_read_ts_lock:
+        exp = _FILE_READ_MTIMES.get(key)
+    if exp is None or not path.exists():
+        return None
+    try:
+        if path.stat().st_mtime != exp:
+            return "file changed since last read — re-read before editing"
+    except Exception:
+        pass
+    return None
+
+
+def _clear_read_freshness(path: Path) -> None:
+    with _file_read_ts_lock:
+        _FILE_READ_MTIMES.pop(str(path.resolve()), None)
+
+
 def set_effective_sandbox(path: str | None) -> None:
     """Set the effective sandbox root for this thread (e.g. .research_lab/workspace). Used by research missions so read_file/list_dir accept lab paths. Clear with None when run ends."""
     _effective_sandbox.path = path
@@ -56,6 +89,59 @@ _SHELL_BLOCKLIST = [
     "netsh", "sc", "taskkill", "cipher",
 ]
 
+# Network / remote tooling blocked at shell layer (inspired by Claude Code bash policy)
+_SHELL_NETWORK_DENYLIST = frozenset({
+    "curl", "wget", "nc", "ncat", "netcat", "socat",
+    "ssh", "scp", "sftp", "ftp", "telnet", "nmap",
+    "tcpdump", "tshark", "dig", "nslookup",
+})
+
+_SHELL_INJECTION_WARN = (
+    r";\s*rm\s",
+    r";\s*curl\s",
+    r";\s*wget\s",
+    r"\$\([^)]*\)",
+    r"`[^`]*`",
+    r">\s*/etc/",
+    r">\s*/bin/",
+)
+
+_SHELL_SAFE_LINE = (
+    r"^git (status|diff|log|branch|show|blame)(\s|$)",
+    r"^pwd$",
+    r"^which\s",
+    r"^date$",
+    r"^tree(\s|$)",
+    r"^ls(\s|$)",
+    r"^echo\s",
+    r"^cat\s",
+    r"^head\s",
+    r"^tail\s",
+)
+
+
+def shell_command_line(argv: list) -> str:
+    return " ".join(str(x) for x in (argv or [])).strip()
+
+
+def shell_command_is_safe_whitelisted(argv: list) -> bool:
+    """Read-only / introspection commands that may skip approval when policy allows."""
+    line = shell_command_line(argv)
+    if not line:
+        return False
+    import re
+    for pat in _SHELL_SAFE_LINE:
+        if re.match(pat, line, re.IGNORECASE):
+            return True
+    return False
+
+
+def _shell_executable_base(argv: list) -> str:
+    if not argv:
+        return ""
+    a0 = str(argv[0])
+    return a0.replace("\\", "/").split("/")[-1].lower().lstrip("./")
+
 
 def inside_sandbox(path: Path) -> bool:
     """Check whether path is inside the configured sandbox using Path.relative_to (no string prefix tricks)."""
@@ -66,6 +152,29 @@ def inside_sandbox(path: Path) -> bool:
         return True
     except (ValueError, Exception):
         return False
+
+
+def _agent_registry_dir() -> Path:
+    return Path(__file__).resolve().parent.parent.parent
+
+
+def _maybe_file_checkpoint(target: Path, tool_name: str) -> None:
+    try:
+        import runtime_safety
+        from services.file_checkpoints import create_checkpoint
+
+        cfg = runtime_safety.load_config()
+        if not cfg.get("file_checkpoint_enabled", True):
+            return
+        create_checkpoint(
+            path=target,
+            workspace_root=_get_sandbox(),
+            agent_dir=_agent_registry_dir(),
+            tool_name=tool_name,
+            cfg=cfg,
+        )
+    except Exception:
+        pass
 
 
 def _write_file_limits() -> tuple[int, int]:
@@ -86,6 +195,9 @@ def write_file(path: str, content: str) -> dict:
         target = (Path(_effective_sandbox.path) / path).resolve()
     if not inside_sandbox(target):
         return {"ok": False, "error": "Outside sandbox"}
+    stale = _check_read_freshness(target)
+    if stale:
+        return {"ok": False, "error": stale, "hint": "use read_file first"}
     try:
         max_bytes, explosion = _write_file_limits()
         raw = (content or "").encode("utf-8", errors="replace")
@@ -106,8 +218,10 @@ def write_file(path: str, content: str) -> dict:
                 pass
     except Exception:
         pass
+    _maybe_file_checkpoint(target, "write_file")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
+    _clear_read_freshness(target)
     return {"ok": True, "path": str(target)}
 
 
@@ -136,6 +250,7 @@ def write_files_batch(files: list) -> dict:
             errors.append(f"{path}: outside sandbox")
             continue
         try:
+            _maybe_file_checkpoint(target, "write_files_batch")
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
             written.append(str(target))
@@ -158,6 +273,7 @@ def read_file(path: str) -> dict:
         return {"ok": False, "error": "Not a file"}
     try:
         content = target.read_text(encoding="utf-8", errors="replace")
+        _set_read_freshness(target)
         return {"ok": True, "path": str(target), "content": content[:8000]}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -199,15 +315,29 @@ def git_status(repo: str) -> dict:
 
 
 def shell(argv: list, cwd: str) -> dict:
+    if not argv:
+        return {"ok": False, "error": "Empty command"}
+    base = _shell_executable_base(argv)
+    if base in _SHELL_NETWORK_DENYLIST:
+        return {"ok": False, "error": f"command blocked by network denylist: {base}"}
+    line = shell_command_line(argv)
+    import re
+    inj_warn = None
+    if not shell_command_is_safe_whitelisted(argv):
+        for pat in _SHELL_INJECTION_WARN:
+            if re.search(pat, line):
+                inj_warn = "potential command injection detected — operator review recommended"
+                break
     try:
         from services.sandbox.shell_runner import run_shell_argv
 
         cwd_path = Path(cwd)
-        return run_shell_argv(list(argv or []), cwd_path, inside_sandbox_check=inside_sandbox)
+        out = run_shell_argv(list(argv or []), cwd_path, inside_sandbox_check=inside_sandbox)
+        if inj_warn and isinstance(out, dict) and out.get("ok"):
+            out = {**out, "warning": inj_warn, "risk_level": "high"}
+        return out
     except Exception as e:
         logger.debug("shell runner failed, fallback: %s", e)
-    if not argv:
-        return {"ok": False, "error": "Empty command"}
     cmd = argv[0].lower().lstrip("./\\")
     for blocked in _SHELL_BLOCKLIST:
         if cmd == blocked or cmd.endswith(blocked):
@@ -225,12 +355,16 @@ def shell(argv: list, cwd: str) -> dict:
             errors="replace",
             timeout=60,
         )
-        return {
+        out = {
             "ok": proc.returncode == 0,
             "stdout": (proc.stdout or "")[:4000],
             "stderr": (proc.stderr or "")[:2000],
             "returncode": proc.returncode,
         }
+        if inj_warn and out.get("ok"):
+            out["warning"] = inj_warn
+            out["risk_level"] = "high"
+        return out
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "Command timed out (60s)"}
     except Exception as e:
@@ -333,6 +467,91 @@ def search_codebase(symbol: str, root: str = "") -> dict:
     if not inside_sandbox(root_path):
         return {"ok": False, "error": "Workspace outside sandbox", "matches": []}
     return search_symbols(root_path, symbol, k=25)
+
+
+def sync_repo_cognition(
+    workspace_roots: str | list | None = None,
+    index_semantic: bool = False,
+) -> dict:
+    """
+    Scan canonical docs under each workspace root, build a deterministic cognition pack,
+    and persist it for system-head injection (multi-repo supported). Sandbox-restricted.
+    workspace_roots: list of paths, JSON array string, or comma-separated paths; default = current sandbox root.
+    index_semantic: also run workspace semantic index (slower).
+    """
+    import json as _json
+
+    roots: list[str] = []
+    if workspace_roots is None:
+        roots = [str(_get_sandbox())]
+    elif isinstance(workspace_roots, list):
+        roots = [str(x).strip() for x in workspace_roots if str(x).strip()]
+    elif isinstance(workspace_roots, str):
+        s = workspace_roots.strip()
+        if s.startswith("["):
+            try:
+                roots = [str(x).strip() for x in _json.loads(s) if str(x).strip()]
+            except Exception:
+                roots = []
+        else:
+            roots = [p.strip() for p in s.split(",") if p.strip()]
+    if not roots:
+        return {"ok": False, "error": "no workspace roots"}
+    for r in roots:
+        p = Path(r).expanduser().resolve()
+        if not inside_sandbox(p):
+            return {"ok": False, "error": f"Outside sandbox: {r}"}
+    try:
+        from services.repo_cognition import sync_repo_cognition as _sync
+
+        return _sync(roots, index_semantic=index_semantic)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def scan_repo(workspace_root: str = "", dry_run: bool = False, max_files: int = 0) -> dict:
+    """
+    Scan workspace tree, write `.layla/project_memory.json` (file map + structure).
+    Merges with existing memory; preserves purpose/complexity/issues when re-scanning.
+    Requires allow_write + approval (writes under workspace).
+    """
+    import runtime_safety
+
+    from services import project_memory as pm
+
+    cfg = runtime_safety.load_config()
+    wr = (workspace_root or "").strip()
+    root = Path(wr).expanduser().resolve() if wr else _get_sandbox()
+    if not inside_sandbox(root):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not root.is_dir():
+        return {"ok": False, "error": "Path not found or not a directory"}
+    mf = int(max_files) if int(max_files or 0) > 0 else int(cfg.get("project_memory_max_file_entries", 500) or 500)
+    mb = int(cfg.get("project_memory_max_bytes", pm.DEFAULT_MAX_BYTES) or pm.DEFAULT_MAX_BYTES)
+    return pm.scan_workspace_into_memory(root, dry_run=bool(dry_run), max_files=max(1, min(5000, mf)), max_bytes=mb)
+
+
+def update_project_memory(workspace_root: str = "", patch: dict | None = None) -> dict:
+    """Merge a JSON patch into `.layla/project_memory.json` (plan, todos, decisions, file notes)."""
+    import runtime_safety
+
+    from services import project_memory as pm
+
+    cfg = runtime_safety.load_config()
+    wr = (workspace_root or "").strip()
+    root = Path(wr).expanduser().resolve() if wr else _get_sandbox()
+    if not inside_sandbox(root):
+        return {"ok": False, "error": "Outside sandbox"}
+    p = patch if isinstance(patch, dict) else {}
+    base = pm.load_project_memory(root) or pm.empty_document(str(root))
+    mf = int(cfg.get("project_memory_max_file_entries", 500) or 500)
+    ml = int(cfg.get("project_memory_max_list_entries", 200) or 200)
+    merged = pm.merge_patch(base, p, max_files=max(1, min(5000, mf)), max_list=max(10, min(2000, ml)))
+    mb = int(cfg.get("project_memory_max_bytes", pm.DEFAULT_MAX_BYTES) or pm.DEFAULT_MAX_BYTES)
+    ok, err = pm.save_project_memory(root, merged, max_bytes=mb)
+    if not ok:
+        return {"ok": False, "error": err or "save_failed"}
+    return {"ok": True, "path": str(pm.memory_file_path(root))}
 
 
 def run_python(code: str, cwd: str) -> dict:
@@ -603,6 +822,7 @@ def search_replace(root: str, find: str, replace: str, file_glob: str = "*", dry
         if n:
             matches.append({"path": str(f), "count": n})
             if not dry_run:
+                _maybe_file_checkpoint(f, "search_replace")
                 f.write_text(new_content, encoding="utf-8")
     return {"ok": True, "dry_run": dry_run, "matches": matches[:100], "total_files": len(matches)}
 
@@ -667,6 +887,10 @@ def apply_patch(original_path: str, patch_text: str) -> dict:
         return {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
         return {"ok": False, "error": "File not found"}
+    stale = _check_read_freshness(target)
+    if stale:
+        return {"ok": False, "error": stale, "hint": "use read_file first"}
+    _maybe_file_checkpoint(target, "apply_patch")
     import shutil
 
     from layla.time_utils import utcnow
@@ -689,6 +913,7 @@ def apply_patch(original_path: str, patch_text: str) -> dict:
                 result_lines[src_start: src_start + len(removed)] = added
                 offset += len(added) - len(removed)
         target.write_text("".join(result_lines), encoding="utf-8")
+        _clear_read_freshness(target)
         return {"ok": True, "path": str(target), "backup": str(backup)}
     except Exception as e:
         return {"ok": False, "error": str(e), "backup": str(backup)}
@@ -1179,6 +1404,65 @@ def git_clone(url: str, dest: str, depth: int = 0) -> dict:
     return {"ok": result.returncode == 0, "output": (result.stdout or result.stderr or "")[:2000]}
 
 
+def git_worktree_add(repo: str, path: str, branch: str = "", new_branch: str = "") -> dict:
+    """Add a git worktree at path (sandboxed). branch: existing ref to checkout; if empty, default branch tip. new_branch: if set, create and checkout new branch at path (optional start ref in branch)."""
+    repo_path = Path(repo).resolve()
+    if not inside_sandbox(repo_path):
+        return {"ok": False, "error": "Repo outside sandbox"}
+    wt = Path(path).expanduser().resolve()
+    if not inside_sandbox(wt):
+        return {"ok": False, "error": "Worktree path outside sandbox"}
+    try:
+        wt.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        return {"ok": False, "error": str(e)}
+    nb = (new_branch or "").strip()
+    br = (branch or "").strip()
+    if nb:
+        argv = ["git", "-C", str(repo_path), "worktree", "add", "-b", nb, str(wt)]
+        if br:
+            argv.append(br)
+    else:
+        argv = ["git", "-C", str(repo_path), "worktree", "add", str(wt)]
+        if br:
+            argv.append(br)
+    result = subprocess.run(
+        argv,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=120,
+    )
+    return {
+        "ok": result.returncode == 0,
+        "path": str(wt),
+        "output": (result.stdout or result.stderr or "")[:4000],
+    }
+
+
+def git_worktree_remove(repo: str, path: str, force: bool = False) -> dict:
+    """Remove a git worktree directory registration (path must match an existing worktree)."""
+    repo_path = Path(repo).resolve()
+    if not inside_sandbox(repo_path):
+        return {"ok": False, "error": "Repo outside sandbox"}
+    wt = Path(path).expanduser().resolve()
+    if not inside_sandbox(wt):
+        return {"ok": False, "error": "Worktree path outside sandbox"}
+    argv = ["git", "-C", str(repo_path), "worktree", "remove", str(wt)]
+    if force:
+        argv.append("--force")
+    result = subprocess.run(
+        argv,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=120,
+    )
+    return {"ok": result.returncode == 0, "output": (result.stdout or result.stderr or "")[:4000]}
+
+
 def save_note(content: str, tag: str = "note") -> dict:
     """
     Save a note directly to Layla's memory as a learning.
@@ -1258,6 +1542,209 @@ def structured_llm_task(
         return {"ok": True, "json": obj, "raw": text[:2000]}
     except Exception:
         return {"ok": True, "json": None, "raw": text[:4000], "parse_error": True}
+
+
+def mcp_tools_call(
+    mcp_server: str = "",
+    tool_name: str = "",
+    arguments: dict | None = None,
+) -> dict:
+    """Call one tool on a configured MCP stdio server (short session: initialize → tools/call)."""
+    import runtime_safety
+
+    from services.mcp_client import load_mcp_stdio_servers, mcp_session_call_tool
+
+    cfg = runtime_safety.load_config()
+    if not cfg.get("mcp_client_enabled"):
+        return {
+            "ok": False,
+            "error": "mcp_client_enabled is false; enable it and configure mcp_stdio_servers in runtime_config.json",
+        }
+    specs = load_mcp_stdio_servers(cfg)
+    name = (mcp_server or "").strip()
+    tname = (tool_name or "").strip()
+    if not name or not tname:
+        return {"ok": False, "error": "mcp_server and tool_name are required"}
+    spec = next((s for s in specs if s.name == name), None)
+    if spec is None:
+        return {
+            "ok": False,
+            "error": f"unknown MCP server {name!r}; add it to mcp_stdio_servers with a matching name",
+        }
+    out = mcp_session_call_tool(spec, tname, arguments)
+    if out.get("ok"):
+        return {"ok": True, "mcp": out.get("mcp"), "server": name, "tool": tname}
+    return {"ok": False, "error": out.get("error", "mcp call failed"), "detail": out}
+
+
+def mcp_list_mcp_tools(mcp_server: str = "") -> dict:
+    """List tools advertised by a configured MCP stdio server (tools/list). Read-only discovery."""
+    import runtime_safety
+
+    from services.mcp_client import load_mcp_stdio_servers, mcp_session_list_tools
+
+    cfg = runtime_safety.load_config()
+    if not cfg.get("mcp_client_enabled"):
+        return {
+            "ok": False,
+            "error": "mcp_client_enabled is false; enable it and configure mcp_stdio_servers in runtime_config.json",
+        }
+    specs = load_mcp_stdio_servers(cfg)
+    name = (mcp_server or "").strip()
+    if not name:
+        return {"ok": False, "error": "mcp_server name is required"}
+    spec = next((s for s in specs if s.name == name), None)
+    if spec is None:
+        return {
+            "ok": False,
+            "error": f"unknown MCP server {name!r}; add it to mcp_stdio_servers with a matching name",
+        }
+    out = mcp_session_list_tools(spec)
+    if out.get("ok"):
+        mcp = out.get("mcp") or {}
+        tools = mcp.get("tools") if isinstance(mcp, dict) else None
+        return {"ok": True, "server": name, "tools": tools if isinstance(tools, list) else [], "raw": mcp}
+    return {"ok": False, "error": out.get("error", "mcp tools/list failed"), "detail": out}
+
+
+def mcp_list_mcp_resources(mcp_server: str = "") -> dict:
+    """List resources advertised by a configured MCP stdio server (resources/list). Read-only discovery."""
+    import runtime_safety
+
+    from services.mcp_client import load_mcp_stdio_servers, mcp_session_list_resources
+
+    cfg = runtime_safety.load_config()
+    if not cfg.get("mcp_client_enabled"):
+        return {
+            "ok": False,
+            "error": "mcp_client_enabled is false; enable it and configure mcp_stdio_servers in runtime_config.json",
+        }
+    specs = load_mcp_stdio_servers(cfg)
+    name = (mcp_server or "").strip()
+    if not name:
+        return {"ok": False, "error": "mcp_server name is required"}
+    spec = next((s for s in specs if s.name == name), None)
+    if spec is None:
+        return {
+            "ok": False,
+            "error": f"unknown MCP server {name!r}; add it to mcp_stdio_servers with a matching name",
+        }
+    out = mcp_session_list_resources(spec)
+    if out.get("ok"):
+        mcp = out.get("mcp") or {}
+        resources = mcp.get("resources") if isinstance(mcp, dict) else None
+        return {
+            "ok": True,
+            "server": name,
+            "resources": resources if isinstance(resources, list) else [],
+            "raw": mcp,
+        }
+    return {"ok": False, "error": out.get("error", "mcp resources/list failed"), "detail": out}
+
+
+def mcp_read_mcp_resource(mcp_server: str = "", uri: str = "") -> dict:
+    """Read one resource from a configured MCP stdio server (resources/read)."""
+    import runtime_safety
+
+    from services.mcp_client import load_mcp_stdio_servers, mcp_session_read_resource
+
+    cfg = runtime_safety.load_config()
+    if not cfg.get("mcp_client_enabled"):
+        return {
+            "ok": False,
+            "error": "mcp_client_enabled is false; enable it and configure mcp_stdio_servers in runtime_config.json",
+        }
+    specs = load_mcp_stdio_servers(cfg)
+    name = (mcp_server or "").strip()
+    u = (uri or "").strip()
+    if not name or not u:
+        return {"ok": False, "error": "mcp_server and uri are required"}
+    spec = next((s for s in specs if s.name == name), None)
+    if spec is None:
+        return {
+            "ok": False,
+            "error": f"unknown MCP server {name!r}; add it to mcp_stdio_servers with a matching name",
+        }
+    out = mcp_session_read_resource(spec, u)
+    if out.get("ok"):
+        return {"ok": True, "server": name, "uri": u, "mcp": out.get("mcp")}
+    return {"ok": False, "error": out.get("error", "mcp resources/read failed"), "detail": out}
+
+
+def mcp_operator_auth_hint() -> dict:
+    """
+    Discoverability: Layla does not perform OAuth inside the agent. Operators authenticate
+    with each MCP server (CLI, browser, env) then configure mcp_stdio_servers in runtime_config.
+    """
+    return {
+        "ok": True,
+        "in_agent_oauth": False,
+        "message": (
+            "Authenticate with your MCP server using its documented flow (often a CLI login or browser). "
+            "Then set mcp_client_enabled and mcp_stdio_servers (name, command, args) in runtime_config.json. "
+            "Use mcp_list_mcp_tools / mcp_tools_call after the server process can start authenticated."
+        ),
+        "see_also": "docs/CCUNPACKED_ALIGNMENT.md (MCP / OAuth row), agent/runtime_config.example.json",
+    }
+
+
+def notebook_read_cells(path: str, max_cells: int = 80) -> dict:
+    """Return code/markdown cell sources from a .ipynb (nbformat). Requires: pip install nbformat."""
+    target = Path(path).expanduser().resolve()
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if target.suffix.lower() != ".ipynb":
+        return {"ok": False, "error": "Expected a .ipynb notebook path"}
+    if not target.is_file():
+        return {"ok": False, "error": "File not found"}
+    try:
+        import nbformat
+    except ImportError:
+        return {"ok": False, "error": "nbformat not installed; pip install nbformat"}
+    try:
+        nb = nbformat.read(str(target), as_version=4)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    cells_out: list[dict] = []
+    for i, cell in enumerate(nb.cells):
+        if i >= max(1, min(int(max_cells), 200)):
+            break
+        ct = getattr(cell, "cell_type", "") or ""
+        src = getattr(cell, "source", "") or ""
+        if not isinstance(src, str):
+            src = str(src)
+        cells_out.append({"index": i, "cell_type": ct, "source": src[:8000]})
+    return {"ok": True, "path": str(target), "n_cells": len(nb.cells), "cells": cells_out}
+
+
+def notebook_edit_cell(path: str, cell_index: int = 0, source: str = "") -> dict:
+    """Replace source of one code/markdown cell in a .ipynb. Requires approval when writes are gated."""
+    target = Path(path).expanduser().resolve()
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if target.suffix.lower() != ".ipynb":
+        return {"ok": False, "error": "Expected a .ipynb notebook path"}
+    if not target.is_file():
+        return {"ok": False, "error": "File not found"}
+    try:
+        import nbformat
+    except ImportError:
+        return {"ok": False, "error": "nbformat not installed; pip install nbformat"}
+    idx = int(cell_index)
+    if idx < 0:
+        return {"ok": False, "error": "cell_index must be >= 0"}
+    try:
+        nb = nbformat.read(str(target), as_version=4)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    if idx >= len(nb.cells):
+        return {"ok": False, "error": f"cell_index {idx} out of range (len={len(nb.cells)})"}
+    nb.cells[idx].source = source or ""
+    try:
+        nbformat.write(nb, str(target))
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "path": str(target), "cell_index": idx, "written": True}
 
 
 # ─── Research & Information tools ─────────────────────────────────────────────
@@ -2697,6 +3184,9 @@ def tool_recommend(task: str) -> dict:
         "chart graph plot": ["plot_chart"],
         "sql database": ["sql_query", "schema_introspect"],
         "memory remember": ["save_note", "search_memories", "vector_search", "vector_store"],
+        "checkpoint restore revert": ["list_file_checkpoints", "restore_file_checkpoint"],
+        "chat export import jsonl": ["ingest_chat_export_to_knowledge"],
+        "elasticsearch keyword learnings": ["memory_elasticsearch_search", "search_memories"],
         "security scan": ["security_scan"],
         "stock finance crypto": ["stock_data"],
         "nlp entities keywords": ["nlp_analyze"],
@@ -4885,10 +5375,11 @@ def generate_gcode(dxf_path: str, output_path: str, layer: str = "", depth_mm: f
                 points = list(e.get_points())
                 if len(points) < 2:
                     continue
-                x, y = points[0][0], points[0][1]
-                lines_out.append(f"G0 X{x:.3f} Y{y:.3f}")
+                x0, y0 = float(points[0][0]), float(points[0][1])
+                lines_out.append(f"G0 X{x0:.3f} Y{y0:.3f}")
                 lines_out.append(f"G1 Z{depth_mm:.3f}")
-                for x, y in points[1:]:
+                for pt in points[1:]:
+                    x, y = float(pt[0]), float(pt[1])
                     lines_out.append(f"G1 X{x:.3f} Y{y:.3f}")
                 lines_out.append(f"G0 Z{safe_z}")
                 count += 1
@@ -4903,6 +5394,93 @@ def generate_gcode(dxf_path: str, output_path: str, layer: str = "", depth_mm: f
 
 
 # ─── Geometry programs (structured CAD-like ops) ───────────────────────────────
+
+
+def gencad_generate_toolpath(
+    file: str = "",
+    strategy: str = "pocket",
+    workspace_root: str = "",
+) -> dict:
+    """
+    Plugin-style CAM hook: POST JSON to `geometry_external_bridge_url` (operator-hosted service).
+
+    Expected: bridge returns JSON with at least `ok` (bool). Common fields: `output_path`, `message`, `gcode` snippet.
+    Layla does not ship a default remote; configure the URL to your CAM microservice.
+    """
+    import runtime_safety
+
+    cfg = runtime_safety.load_config()
+    bridge = str(cfg.get("geometry_external_bridge_url") or "").strip()
+    wr = (workspace_root or "").strip()
+    if wr:
+        p = Path(wr).expanduser().resolve()
+        if not inside_sandbox(p):
+            return {"ok": False, "error": "workspace_root outside sandbox"}
+    if not bridge:
+        return {
+            "ok": False,
+            "error": "gencad_not_configured",
+            "hint": "Set geometry_external_bridge_url to your CAM bridge HTTPS endpoint (POST JSON).",
+            "file": file,
+            "strategy": strategy,
+        }
+    from urllib.parse import urlparse
+
+    allow_insecure = bool(cfg.get("geometry_external_bridge_allow_insecure_localhost"))
+    try:
+        bu = urlparse(bridge)
+        h = (bu.hostname or "").lower()
+    except Exception:
+        return {"ok": False, "error": "gencad_invalid_bridge_url", "bridge": bridge[:120]}
+    if h in ("127.0.0.1", "localhost", "::1") and not allow_insecure:
+        return {
+            "ok": False,
+            "error": "geometry_bridge_localhost_disabled",
+            "hint": "Set geometry_external_bridge_allow_insecure_localhost to true for local dev bridges only.",
+            "file": file,
+            "strategy": strategy,
+        }
+    payload = {
+        "op": "gencad_generate_toolpath",
+        "file": (file or "").strip(),
+        "strategy": (strategy or "pocket").strip(),
+        "workspace_root": wr,
+    }
+    try:
+        import httpx
+
+        verify = not allow_insecure
+        with httpx.Client(timeout=120.0, follow_redirects=True, verify=verify) as client:
+            r = client.post(bridge, json=payload)
+        txt = (r.text or "")[:4000]
+        if r.status_code >= 400:
+            return {
+                "ok": False,
+                "error": "gencad_bridge_http_error",
+                "status_code": r.status_code,
+                "body_preview": txt,
+            }
+        try:
+            data = r.json()
+        except Exception:
+            return {
+                "ok": True,
+                "raw_text": txt,
+                "note": "Bridge returned non-JSON body",
+            }
+        if isinstance(data, dict):
+            if data.get("ok") is False:
+                return dict(data)
+            return dict(data)
+        return {"ok": True, "data": data}
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": "gencad_bridge_request_failed",
+            "detail": str(e),
+            "bridge": bridge[:120],
+        }
+
 
 def geometry_validate_program(program: str | dict) -> dict:
     """
@@ -5548,6 +6126,66 @@ def send_email(to: str, subject: str, body: str, smtp_host: str = "", smtp_port:
                 s.login(user, pwd)
             s.send_message(msg)
         return {"ok": True, "to": to, "subject": subject[:50]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def list_file_checkpoints(path_filter: str = "", limit: int = 50) -> dict:
+    """List recent file checkpoints (pre-write snapshots). Optional path_filter limits to one file."""
+    from services.file_checkpoints import list_checkpoints
+
+    pf: str | None = None
+    raw = (path_filter or "").strip()
+    if raw:
+        p = Path(raw)
+        if not p.is_absolute():
+            p = (_get_sandbox() / raw).resolve()
+        else:
+            p = p.expanduser().resolve()
+        pf = str(p)
+    return list_checkpoints(
+        workspace_root=_get_sandbox(),
+        agent_dir=_agent_registry_dir(),
+        path_filter=pf,
+        limit=limit,
+    )
+
+
+def restore_file_checkpoint(checkpoint_id: str) -> dict:
+    """Restore a file from a checkpoint id (see list_file_checkpoints). Overwrites current file."""
+    from services.file_checkpoints import restore_checkpoint
+
+    cid = (checkpoint_id or "").strip()
+    if not cid:
+        return {"ok": False, "error": "checkpoint_id required"}
+    return restore_checkpoint(
+        checkpoint_id=cid,
+        workspace_root=_get_sandbox(),
+        agent_dir=_agent_registry_dir(),
+        sandbox_root=_get_sandbox(),
+    )
+
+
+def memory_elasticsearch_search(query: str, limit: int = 20) -> dict:
+    """Search learnings in Elasticsearch when elasticsearch_enabled (read-only)."""
+    try:
+        import runtime_safety
+        from services.elasticsearch_bridge import search_learnings
+
+        return search_learnings(runtime_safety.load_config(), query, limit=limit)
+    except Exception as e:
+        return {"ok": False, "error": str(e), "hits": []}
+
+
+def ingest_chat_export_to_knowledge(export_path: str, label: str = "") -> dict:
+    """
+    Ingest chat export JSON/JSONL from sandbox into repo knowledge/_ingested/chats/ for RAG.
+    Export file must be under sandbox_root; output is always under knowledge/_ingested/chats/.
+    """
+    try:
+        from services.doc_ingestion import ingest_chat_export
+
+        return ingest_chat_export(export_path, label=label)
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

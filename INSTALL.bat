@@ -162,6 +162,11 @@ echo.
 echo   When you have a model:  double-click  START.bat
 echo   Layla opens at:        http://localhost:8000/ui
 echo.
+echo   Repair deps:  python agent\install\installer_cli.py repair
+echo   Health check: python agent\install\installer_cli.py doctor
+echo   Optional packs: python agent\install\installer_cli.py packs list
+echo   Force model URL: python agent\install\installer_cli.py download "https://...file.gguf"
+echo.
 echo   Linux/macOS users: run  bash install.sh
 echo.
 echo  ================================================================

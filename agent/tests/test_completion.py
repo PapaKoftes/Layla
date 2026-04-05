@@ -62,6 +62,8 @@ def test_needs_knowledge_rag_reflective_goals():
 
     assert agent_loop._needs_knowledge_rag("I feel overwhelmed about work")
     assert agent_loop._needs_knowledge_rag("Please explain what a cognitive distortion is")
+    assert agent_loop._needs_knowledge_rag("I keep avoiding hard conversations")
+    assert agent_loop._needs_knowledge_rag("Can you help me reflect on this week")
     assert not agent_loop._needs_knowledge_rag("fix the login bug in auth.py")
 
 
@@ -161,8 +163,8 @@ def test_builtin_config_defaults_production_contract(monkeypatch):
     monkeypatch.setattr(runtime_safety, "_config_last_check", 0.0)
 
     cfg = runtime_safety.load_config()
-    assert cfg["max_tool_calls"] == 2
-    assert cfg["max_runtime_seconds"] == 30
+    assert cfg["max_tool_calls"] == 20
+    assert cfg["max_runtime_seconds"] == 900
     assert cfg["completion_cache_enabled"] is True
     assert cfg["response_cache_enabled"] is True
     assert cfg["tool_loop_detection_enabled"] is True

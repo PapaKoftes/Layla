@@ -34,4 +34,11 @@ TOOLS = {
     "crypto_prices": {"dangerous": False, "require_approval": False, "risk_level": "low"},
     "economic_indicators": {"dangerous": False, "require_approval": False, "risk_level": "low"},
     "structured_llm_task": {"fn_key": "structured_llm_task", "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "mcp_tools_call": {"fn_key": "mcp_tools_call", "dangerous": True, "require_approval": True, "risk_level": "high"},
+    "mcp_list_mcp_tools": {"fn_key": "mcp_list_mcp_tools", "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "mcp_list_mcp_resources": {"fn_key": "mcp_list_mcp_resources", "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "mcp_read_mcp_resource": {"fn_key": "mcp_read_mcp_resource", "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "mcp_operator_auth_hint": {"fn_key": "mcp_operator_auth_hint", "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "notebook_read_cells": {"fn_key": "notebook_read_cells", "dangerous": False, "require_approval": False, "risk_level": "low"},
+    "notebook_edit_cell": {"fn_key": "notebook_edit_cell", "dangerous": True, "require_approval": True, "risk_level": "medium"},
 }

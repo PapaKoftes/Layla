@@ -28,6 +28,46 @@ def classify_intent(goal: str) -> str:
         return "git_branch"
     if any(kw in g for kw in ("grep ", "search code", "find in code", "grep_code")):
         return "grep_code"
+    if any(
+        kw in g
+        for kw in (
+            "restore checkpoint",
+            "restore_file_checkpoint",
+            "revert file",
+            "rollback file",
+            "undo file",
+            "undo the write",
+            "revert my changes",
+        )
+    ):
+        return "restore_file_checkpoint"
+    if any(
+        kw in g
+        for kw in (
+            "import chat",
+            "import chats",
+            "ingest chat",
+            "chat export",
+            "import logs",
+            "import conversation",
+            "import my messages",
+            "ingest_chat_export",
+        )
+    ):
+        return "ingest_chat_export_to_knowledge"
+    if any(
+        kw in g
+        for kw in (
+            "search past learnings",
+            "keyword search learnings",
+            "memory_elasticsearch_search",
+            "search learnings in elasticsearch",
+            "full-text learnings",
+        )
+    ) or ("elasticsearch" in g and ("search" in g or "learn" in g)):
+        return "memory_elasticsearch_search"
+    if any(kw in g for kw in ("list checkpoint", "list checkpoints", "show checkpoints", "file checkpoints")):
+        return "list_file_checkpoints"
     if any(kw in g for kw in ("glob ", "find files", "glob files")):
         return "glob_files"
     if any(kw in g for kw in ("run python", "execute python", "run script", "run_python")):

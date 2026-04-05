@@ -5,6 +5,7 @@ Detects hardware, recommends model, downloads it, generates runtime_config.json.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -17,6 +18,88 @@ for p in (AGENT_DIR, REPO_ROOT):
         sys.path.insert(0, str(p))
 
 CONFIG_PATH = AGENT_DIR / "runtime_config.json"
+PACKS_DIR = Path(__file__).resolve().parent / "packs"
+
+
+def run_doctor() -> int:
+    print()
+    print("  ∴  Layla — doctor")
+    print("  ─────────────────")
+    r = subprocess.run([sys.executable, "-m", "pip", "check"], capture_output=True, text=True, timeout=120)
+    out = (r.stdout or r.stderr or "").strip() or "pip check: no output"
+    print(" ", out.replace("\n", "\n  "))
+    print(f"  runtime_config.json: {'OK ' + str(CONFIG_PATH) if CONFIG_PATH.is_file() else 'MISSING'}")
+    try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        print(f"  model_filename: {cfg.get('model_filename', '')!r}")
+    except Exception as e:
+        print(f"  config load: {e}")
+    print()
+    return 0
+
+
+def run_repair() -> int:
+    print()
+    print("  ∴  Layla — repair (pip install -r requirements)")
+    print("  ────────────────────────────────────────────────")
+    req = AGENT_DIR / "requirements.txt"
+    if not req.is_file():
+        req = REPO_ROOT / "agent" / "requirements.txt"
+    if not req.is_file():
+        print("  [!] requirements.txt not found")
+        return 1
+    subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(req)], check=False)
+    print("  Done.")
+    return 0
+
+
+def run_download(argv: list[str]) -> int:
+    """Non-interactive direct .gguf download (HTTPS URL only; SSRF rules in model_downloader)."""
+    if len(argv) < 1:
+        print("  Usage: installer_cli.py download <direct_https_gguf_url> [filename.gguf]")
+        return 1
+    url = argv[0].strip()
+    optional_name = (argv[1].strip() if len(argv) > 1 else "") or None
+    from install.model_downloader import download_model
+
+    fname = optional_name or url.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1]
+    r = download_model({"download_url": url, "filename": fname}, progress=True)
+    if r.get("ok"):
+        print(f"  ✓  Saved: {r.get('path')}")
+        return 0
+    print(f"  [!] {r.get('error')}")
+    return 1
+
+
+def run_packs(argv: list[str]) -> int:
+    if not argv or argv[0].lower() == "list":
+        print("  Optional packs (agent/install/packs/*.json):")
+        for f in sorted(PACKS_DIR.glob("*.json")):
+            try:
+                m = json.loads(f.read_text(encoding="utf-8"))
+                print(f"    - {f.stem}: {m.get('description', '')}")
+            except Exception:
+                print(f"    - {f.stem}: (invalid json)")
+        return 0
+    if argv[0].lower() != "install" or len(argv) < 2:
+        print("  Usage: installer_cli.py packs list | packs install <name>")
+        return 1
+    name = argv[1].strip()
+    manifest = PACKS_DIR / f"{name}.json"
+    if not manifest.is_file():
+        print(f"  [!] Unknown pack: {name}")
+        return 1
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    pkgs = data.get("pip") or []
+    if pkgs:
+        subprocess.run([sys.executable, "-m", "pip", "install", *pkgs], check=False)
+    post = data.get("post_pip")
+    if isinstance(post, list) and post:
+        subprocess.run(post, check=False)
+    print(f"  Pack '{name}' install step finished.")
+    return 0
 
 
 def _yn(prompt: str, default: bool = True) -> bool:
@@ -309,4 +392,14 @@ def run() -> int:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        cmd = sys.argv[1].lower().strip()
+        if cmd == "doctor":
+            sys.exit(run_doctor())
+        if cmd == "repair":
+            sys.exit(run_repair())
+        if cmd == "packs":
+            sys.exit(run_packs(sys.argv[2:]))
+        if cmd == "download":
+            sys.exit(run_download(sys.argv[2:]))
     sys.exit(run())

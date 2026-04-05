@@ -12,9 +12,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import Body, FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from agent_loop import _is_junk_reply, _quick_reply_for_trivial_turn, autonomous_run, stream_reason
@@ -272,13 +272,28 @@ async def lifespan(app: FastAPI):
                     try:
                         from services.knowledge_distiller import run_periodic_distillation
                         run_periodic_distillation()
-                    except Exception:
-                        pass
+                    except Exception as _e:
+                        logger.warning("intelligence_job: knowledge_distiller failed: %s", _e)
                     try:
                         from services.experience_replay import run_experience_replay
-                        run_experience_replay()
-                    except Exception:
-                        pass
+                        replay_summary = run_experience_replay()
+                        if replay_summary:
+                            logger.info("experience_replay summary: %s", replay_summary)
+                    except Exception as _e:
+                        logger.warning("intelligence_job: experience_replay failed: %s", _e)
+                    try:
+                        from services.curiosity_engine import get_curiosity_suggestions
+                        from layla.memory.db import save_learning
+                        suggestions = get_curiosity_suggestions()
+                        for suggestion in suggestions[:3]:
+                            if suggestion and len(suggestion.strip()) > 10:
+                                save_learning(
+                                    content=f"Curiosity: {suggestion.strip()}",
+                                    kind="curiosity",
+                                    source="curiosity_engine",
+                                )
+                    except Exception as _e:
+                        logger.warning("intelligence_job: curiosity_engine failed: %s", _e)
                 sched.add_job(_intelligence_job, IntervalTrigger(minutes=60), id="intelligence")
             except Exception:
                 pass
@@ -374,6 +389,28 @@ def _append_history(role: str, content: str) -> None:
     _save_history()
 
 
+def _sync_compact_history() -> dict:
+    """Summarize in-memory chat history when over context threshold; persists via _save_history."""
+    import runtime_safety
+    from services.context_manager import summarize_history
+
+    cfg = runtime_safety.load_config()
+    n_ctx = int(cfg.get("n_ctx", 4096))
+    ratio = float(cfg.get("context_auto_compact_ratio", 0.75))
+    dict_msgs = [{"role": m.get("role"), "content": m.get("content", "")} for m in _history if isinstance(m, dict)]
+    if not dict_msgs:
+        return {"ok": True, "summary": "", "messages_remaining": 0}
+    new_msgs = summarize_history(dict_msgs, n_ctx=n_ctx, threshold_ratio=ratio)
+    summary = ""
+    if new_msgs and str(new_msgs[0].get("role", "")).lower() == "system":
+        summary = str(new_msgs[0].get("content", ""))
+    _history.clear()
+    for m in new_msgs:
+        _history.append(m)
+    _save_history()
+    return {"ok": True, "summary": summary[:12000], "messages_remaining": len(_history)}
+
+
 def _get_cached_plugins(cfg: dict) -> dict:
     """Avoid rescanning plugins on every UI refresh."""
     global _plugins_cache, _plugins_cache_ts
@@ -435,6 +472,7 @@ def _read_wakeup_log() -> dict:
 _load_history()
 
 from routers import agent as agent_router  # noqa: E402
+from routers import agents as agents_router  # noqa: E402
 from routers import approvals, study  # noqa: E402
 from routers import memory as memory_router  # noqa: E402
 from routers import research as research_router  # noqa: E402
@@ -453,11 +491,33 @@ set_refs(
 app.include_router(study.router)
 app.include_router(approvals.router)
 app.include_router(agent_router.router)
+app.include_router(agents_router.router)
 app.include_router(research_router.router)
 app.include_router(memory_router.router)
+from routers import projects as projects_router
+from routers import plan_file as plan_file_router
+from routers import plans as plans_router
+
+app.include_router(projects_router.router)
+app.include_router(plans_router.router)
+app.include_router(plan_file_router.router)
 
 if DOCS_DIR.exists():
     app.mount("/docs", StaticFiles(directory=str(DOCS_DIR)), name="docs")
+
+
+@app.get("/values.md", include_in_schema=False)
+def serve_values_md():
+    """Serve repo-root VALUES.md for Web UI / onboarding links (local-first framing)."""
+    p = REPO_ROOT / "VALUES.md"
+    if not p.is_file():
+        return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
+    return FileResponse(str(p), media_type="text/markdown; charset=utf-8")
+
+
+_UI_DIR = (AGENT_DIR / "ui").resolve()
+if _UI_DIR.is_dir():
+    app.mount("/layla-ui", StaticFiles(directory=str(_UI_DIR)), name="layla_ui_assets")
 
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -470,7 +530,20 @@ def _remote_allowed_paths(cfg: dict) -> list[str]:
         return [str(p).strip() for p in explicit if p]
     mode = (cfg.get("remote_mode") or "observe").strip().lower()
     if mode == "interactive":
-        return ["/wakeup", "/project_discovery", "/health", "/agent", "/v1/chat/completions", "/learn/"]
+        return [
+            "/wakeup",
+            "/project_discovery",
+            "/health",
+            "/agent",
+            "/v1/chat/completions",
+            "/learn/",
+            "/conversations",
+            "/local_access_info",
+            "/ui",
+            "/projects",
+            "/session/export",
+            "/values.md",
+        ]
     return ["/wakeup", "/project_discovery", "/health"]
 
 
@@ -572,6 +645,99 @@ def usage():
     except Exception as e:
         logger.debug("usage endpoint: %s", e)
         return {"error": str(e)}
+
+
+@app.post("/compact")
+async def compact_conversation():
+    """Compact server in-memory conversation history (same deque as /agent append)."""
+    return await asyncio.to_thread(_sync_compact_history)
+
+
+@app.get("/ctx_viz")
+def ctx_viz():
+    """Rough token breakdown for debugging context (conversation slice of server history)."""
+    import runtime_safety
+    from services.context_budget import get_budgets
+    from services.context_manager import token_estimate_messages
+
+    cfg = runtime_safety.load_config()
+    n_ctx = int(cfg.get("n_ctx", 4096))
+    budgets = get_budgets(n_ctx, cfg)
+    dict_msgs = [{"role": m.get("role"), "content": m.get("content", "")} for m in _history if isinstance(m, dict)]
+    conv = token_estimate_messages(dict_msgs)
+    return {"n_ctx": n_ctx, "budgets": budgets, "sections": {"conversation_history": conv}}
+
+
+@app.get("/session/stats")
+def session_stats():
+    """Alias-style session metrics (token_usage includes tool_calls, elapsed, tok/s)."""
+    try:
+        from services.llm_gateway import get_token_usage
+        return get_token_usage()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/session/export")
+def session_export(conversation_id: str | None = None):
+    """Operator-owned JSON checkpoint: DB messages for a thread, pending approvals, server history tail."""
+    from datetime import datetime, timezone
+
+    cid = (conversation_id or "").strip()
+    out: dict[str, Any] = {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "version": __version__,
+        "conversation_id": cid or None,
+    }
+    if cid:
+        try:
+            from layla.memory.db import get_conversation, get_conversation_messages
+
+            out["conversation"] = get_conversation(cid)
+            out["messages"] = get_conversation_messages(cid, limit=500)
+        except Exception as e:
+            logger.debug("session_export conversation %s: %s", cid, e)
+            out["conversation_error"] = str(e)
+    try:
+        out["server_history_tail"] = list(_history)[-50:]
+    except Exception:
+        out["server_history_tail"] = []
+    try:
+        out["pending_approvals"] = [p for p in _read_pending() if p.get("status") == "pending"]
+    except Exception as e:
+        out["pending_approvals"] = []
+        out["pending_error"] = str(e)
+    return JSONResponse(out)
+
+
+@app.get("/history")
+def session_prompt_history(limit: int = 50):
+    """Recent user prompts stored from /agent (for UI recall)."""
+    try:
+        from layla.memory.db import get_recent_session_prompts
+        return {"prompts": get_recent_session_prompts(limit=limit)}
+    except Exception as e:
+        return JSONResponse({"error": str(e), "prompts": []}, status_code=500)
+
+
+@app.get("/skills")
+def list_skills_api():
+    """Markdown skills under workspace .layla/skills, skills/, .claude/skills."""
+    try:
+        import runtime_safety
+        from services import skills as skills_mod
+
+        cfg = runtime_safety.load_config()
+        wr = (cfg.get("sandbox_root") or str(REPO_ROOT)).strip()
+        loaded = skills_mod.load_skills(wr)
+        return {
+            "skills": [
+                {"name": s.name, "triggers": s.triggers, "description": s.description, "path": s.path}
+                for s in loaded
+            ]
+        }
+    except Exception as e:
+        return JSONResponse({"error": str(e), "skills": []}, status_code=500)
 
 
 @app.get("/version")
@@ -681,6 +847,24 @@ def health(request: Request):
         "knowledge_index_ready": getattr(request.app.state, "knowledge_index_ready", None),
         "knowledge_index_status": getattr(request.app.state, "knowledge_index_status", None),
     }
+    try:
+        import urllib.error
+        import urllib.request
+
+        ollama_url = (cfg.get("ollama_base_url") or "").strip().rstrip("/")
+        ollama_st = "not_configured"
+        if ollama_url:
+            try:
+                urllib.request.urlopen(f"{ollama_url}/api/tags", timeout=2)
+                ollama_st = "ok"
+            except (urllib.error.URLError, TimeoutError, OSError):
+                ollama_st = "unreachable"
+        payload["backends"] = {
+            "llama_cpp": {"status": "ok" if model_loaded else "not_loaded"},
+            "ollama": {"status": ollama_st, "url": ollama_url or None},
+        }
+    except Exception:
+        pass
     _kie = getattr(request.app.state, "knowledge_index_error", None)
     if _kie:
         payload["knowledge_index_error"] = _kie
@@ -734,6 +918,17 @@ def health(request: Request):
             "completion_cache_enabled": bool(_eff.get("completion_cache_enabled")),
             "response_cache_enabled": bool(_eff.get("response_cache_enabled")),
             "anti_drift_prompt_enabled": bool(_eff.get("anti_drift_prompt_enabled", True)),
+            "max_active_runs": cfg.get("max_active_runs"),
+            "max_cpu_percent": cfg.get("max_cpu_percent"),
+            "max_ram_percent": cfg.get("max_ram_percent"),
+            "warn_cpu_percent": cfg.get("warn_cpu_percent"),
+            "hard_cpu_percent": cfg.get("hard_cpu_percent"),
+            "chat_light_max_runtime_seconds": _eff.get("chat_light_max_runtime_seconds")
+            if _eff.get("chat_light_max_runtime_seconds") is not None
+            else cfg.get("chat_light_max_runtime_seconds"),
+            "ui_agent_stream_timeout_seconds": cfg.get("ui_agent_stream_timeout_seconds"),
+            "ui_agent_json_timeout_seconds": cfg.get("ui_agent_json_timeout_seconds"),
+            "ui_stalled_silence_ms": cfg.get("ui_stalled_silence_ms"),
         }
         try:
             mf = (cfg.get("model_filename") or "")
@@ -752,6 +947,18 @@ def health(request: Request):
         from services.model_router import get_model_routing_summary
 
         payload["model_routing"] = get_model_routing_summary()
+    except Exception:
+        pass
+    try:
+        if not getattr(request.app.state, "subproc_gguf_operator_hint_shown", False):
+            from services.inference_router import inference_backend_uses_local_gguf
+
+            if bool(cfg.get("background_use_subprocess_workers")) and inference_backend_uses_local_gguf(cfg):
+                request.app.state.subproc_gguf_operator_hint_shown = True
+                payload.setdefault("operator_hints", []).append(
+                    "background_use_subprocess_workers with local llama_cpp loads a GGUF per worker process; "
+                    "set llama_server_url or ollama_base_url for centralized HTTP inference."
+                )
     except Exception:
         pass
     if not ok:
@@ -774,6 +981,38 @@ def health_deps(request: Request):
         return {"dependencies": build_dependency_status(probe_chroma=deep)}
     except Exception as e:
         return {"dependencies": {}, "error": str(e)}
+
+
+@app.get("/local_access_info")
+def local_access_info():
+    """Return LAN URL for phone/remote access. Safe to call from the UI."""
+    import socket
+    cfg = runtime_safety.load_config()
+    port = int(cfg.get("port", 8000))
+    try:
+        # Get the LAN-facing IP (not 127.0.0.1)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0)
+        s.connect(("8.8.8.8", 80))
+        lan_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        try:
+            lan_ip = socket.gethostbyname(socket.gethostname())
+        except Exception:
+            lan_ip = "127.0.0.1"
+    url = f"http://{lan_ip}:{port}"
+    remote_enabled = bool(cfg.get("remote_enabled", False))
+    api_key_set = bool(cfg.get("remote_api_key", "").strip())
+    return {
+        "ok": True,
+        "url": url,
+        "lan_ip": lan_ip,
+        "port": port,
+        "remote_enabled": remote_enabled,
+        "api_key_required": api_key_set,
+        "ui_url": url + "/ui",
+    }
 
 
 @app.get("/doctor")
@@ -1132,15 +1371,12 @@ def get_settings():
     """Return all editable settings. Missing keys use schema defaults."""
     import runtime_safety as _rs
     from config_schema import EDITABLE_SCHEMA
-    try:
-        cfg = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8")) if _rs.CONFIG_FILE.exists() else {}
-    except Exception:
-        cfg = {}
+    full_cfg = _rs.load_config()
     out = {}
     for e in EDITABLE_SCHEMA:
         k = e["key"]
-        if k in cfg:
-            out[k] = cfg[k]
+        if k in full_cfg:
+            out[k] = full_cfg[k]
         elif "default" in e:
             out[k] = e["default"]
         else:
@@ -1173,35 +1409,98 @@ def _coerce_setting_value(key: str, v: Any, schema: list[dict]) -> Any:
     return v
 
 
+def _sync_save_settings(body: dict) -> dict:
+    """Blocking: merge editable keys into runtime_config.json and invalidate config cache."""
+    import runtime_safety as _rs
+    from config_schema import EDITABLE_SCHEMA, get_editable_keys
+    editable = get_editable_keys()
+    cfg = {}
+    if _rs.CONFIG_FILE.exists():
+        try:
+            cfg = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    saved = []
+    for k, v in body.items():
+        if k in editable:
+            coerced = _coerce_setting_value(k, v, EDITABLE_SCHEMA)
+            cfg[k] = coerced
+            saved.append(k)
+    _rs.CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _rs.CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    _rs.invalidate_config_cache()
+    return {"ok": True, "saved": saved}
+
+
+def _sync_apply_runtime_preset(name: str) -> dict:
+    """Blocking: merge named preset into runtime_config.json."""
+    import runtime_safety as _rs
+    from config_schema import EDITABLE_SCHEMA, SETTINGS_PRESETS, apply_settings_preset
+    if name.lower() not in SETTINGS_PRESETS:
+        raise ValueError("unknown_preset")
+    cfg: dict = {}
+    if _rs.CONFIG_FILE.exists():
+        try:
+            cfg = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    merged, applied = apply_settings_preset(cfg, name)
+    if merged is None:
+        raise ValueError("unknown_preset")
+    for k in applied:
+        merged[k] = _coerce_setting_value(k, merged[k], EDITABLE_SCHEMA)
+    _rs.CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _rs.CONFIG_FILE.write_text(json.dumps(merged, indent=2), encoding="utf-8")
+    _rs.invalidate_config_cache()
+    return {"ok": True, "preset": name.lower(), "applied": applied}
+
+
+def _sync_set_project_context(body: dict) -> dict:
+    from layla.memory.db import PROJECT_LIFECYCLE_STAGES, set_project_context
+    set_project_context(
+        project_name=body.get("project_name", ""),
+        domains=body.get("domains"),
+        key_files=body.get("key_files"),
+        goals=body.get("goals", ""),
+        lifecycle_stage=body.get("lifecycle_stage", ""),
+        progress=body.get("progress", ""),
+        blockers=body.get("blockers", ""),
+        last_discussed=body.get("last_discussed", ""),
+    )
+    return {"ok": True, "lifecycle_stages": list(PROJECT_LIFECYCLE_STAGES)}
+
+
+def _sync_ingest_docs(source: str, label: str) -> dict:
+    from services.doc_ingestion import ingest_docs
+    return ingest_docs(source, label)
+
+
+def _sync_create_and_run_mission(body: dict) -> dict:
+    from services.mission_manager import create_mission, run_mission
+    goal = (body.get("goal") or "").strip()
+    if not goal:
+        raise ValueError("goal required")
+    mission = create_mission(
+        goal=goal,
+        workspace_root=(body.get("workspace_root") or "").strip(),
+        allow_write=bool(body.get("allow_write")),
+        allow_run=bool(body.get("allow_run")),
+    )
+    if not mission:
+        raise ValueError("mission creation failed (plan empty or planner error)")
+    run_mission(mission["id"])
+    return {"ok": True, "mission": mission}
+
+
 @app.post("/settings")
 async def save_settings(req: Request):
     """Update runtime_config.json. Merges with existing config. Only editable keys accepted."""
-    import runtime_safety as _rs
-    from config_schema import EDITABLE_SCHEMA, get_editable_keys
     try:
         body = await req.json()
     except Exception:
         return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
-    editable = get_editable_keys()
     try:
-        cfg = {}
-        if _rs.CONFIG_FILE.exists():
-            try:
-                cfg = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-        saved = []
-        for k, v in body.items():
-            if k in editable:
-                coerced = _coerce_setting_value(k, v, EDITABLE_SCHEMA)
-                cfg[k] = coerced
-                saved.append(k)
-        # Preserve full config: merge with existing, write complete file
-        _rs.CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        _rs.CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
-        if hasattr(_rs, "_config_cache"):
-            _rs._config_cache = None
-        return {"ok": True, "saved": saved}
+        return await asyncio.to_thread(_sync_save_settings, body)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
@@ -1222,24 +1521,12 @@ async def apply_runtime_preset(req: Request):
             {"ok": False, "error": "unknown_preset", "known": list(SETTINGS_PRESETS.keys())},
             status_code=400,
         )
-    import runtime_safety as _rs
     try:
-        cfg: dict = {}
-        if _rs.CONFIG_FILE.exists():
-            try:
-                cfg = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-        merged, applied = apply_settings_preset(cfg, name)
-        if merged is None:
+        return await asyncio.to_thread(_sync_apply_runtime_preset, name)
+    except ValueError as ve:
+        if str(ve) == "unknown_preset":
             return JSONResponse({"ok": False, "error": "unknown_preset"}, status_code=400)
-        for k in applied:
-            merged[k] = _coerce_setting_value(k, merged[k], EDITABLE_SCHEMA)
-        _rs.CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        _rs.CONFIG_FILE.write_text(json.dumps(merged, indent=2), encoding="utf-8")
-        if hasattr(_rs, "_config_cache"):
-            _rs._config_cache = None
-        return {"ok": True, "preset": name.lower(), "applied": applied}
+        return JSONResponse({"ok": False, "error": str(ve)}, status_code=400)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
@@ -1275,22 +1562,13 @@ def get_file_intent_api(path: str = ""):
 async def set_project_context_api(req: Request):
     """Update project context. Body: project_name?, domains?, key_files?, goals?, lifecycle_stage?, progress?, blockers?, last_discussed?."""
     try:
-        from layla.memory.db import PROJECT_LIFECYCLE_STAGES, set_project_context
         try:
             body = await req.json()
         except Exception:
             body = {}
-        set_project_context(
-            project_name=body.get("project_name", ""),
-            domains=body.get("domains"),
-            key_files=body.get("key_files"),
-            goals=body.get("goals", ""),
-            lifecycle_stage=body.get("lifecycle_stage", ""),
-            progress=body.get("progress", ""),
-            blockers=body.get("blockers", ""),
-            last_discussed=body.get("last_discussed", ""),
-        )
-        return {"ok": True, "lifecycle_stages": list(PROJECT_LIFECYCLE_STAGES)}
+        if not isinstance(body, dict):
+            body = {}
+        return await asyncio.to_thread(_sync_set_project_context, body)
     except Exception as e:
         logger.warning("set_project_context failed: %s", e)
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
@@ -1314,6 +1592,42 @@ def workspace_index(req: dict):
     except Exception as e:
         logger.debug("workspace index failed: %s", e)
         return JSONResponse({"ok": False, "error": str(e)})
+
+
+@app.post("/workspace/cognition/sync")
+def workspace_cognition_sync(req: dict):
+    """Build durable repo cognition packs for one or more roots. body: { workspace_roots: [path, ...], index_semantic?: bool, labels?: {path: name} }."""
+    body = req or {}
+    roots = body.get("workspace_roots")
+    if isinstance(roots, str):
+        roots = [roots]
+    if not isinstance(roots, list) or not roots:
+        return JSONResponse({"ok": False, "error": "workspace_roots (non-empty list) required"}, status_code=400)
+    index_semantic = bool(body.get("index_semantic", False))
+    labels = body.get("labels") if isinstance(body.get("labels"), dict) else {}
+    try:
+        from services.repo_cognition import sync_repo_cognition
+
+        out = sync_repo_cognition(
+            [str(x) for x in roots if str(x).strip()],
+            index_semantic=index_semantic,
+            labels={str(k): str(v) for k, v in labels.items()},
+        )
+        return JSONResponse(out)
+    except Exception as e:
+        logger.warning("workspace cognition sync failed: %s", e)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.get("/workspace/cognition")
+def workspace_cognition_list(limit: int = 50):
+    """List stored repo cognition snapshots (newest first)."""
+    try:
+        from layla.memory.db import list_repo_cognition_snapshots
+
+        return JSONResponse({"ok": True, "snapshots": list_repo_cognition_snapshots(limit=limit)})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 @app.get("/project_discovery")
@@ -1480,15 +1794,31 @@ async def v1_chat_completions(req: dict):
                         "layla_progress": {"state": "waiting_first_token"},
                     }
                     yield f"data: {json.dumps(progress_evt)}\n\n"
-                    # True incremental streaming for normal chat path.
-                    gen_tokens = stream_reason(
-                        goal=goal,
-                        context=system_ctx,
-                        conversation_history=conversation_history,
-                        aspect_id=aspect_id,
-                        show_thinking=show_thinking,
-                    )
-                    for token in gen_tokens:
+                    # True incremental streaming: iterate generator in a worker thread (non-blocking event loop).
+                    tok_q: queue.Queue = queue.Queue()
+
+                    def _stream_worker() -> None:
+                        try:
+                            gen_tokens = stream_reason(
+                                goal=goal,
+                                context=system_ctx,
+                                conversation_history=conversation_history,
+                                aspect_id=aspect_id,
+                                show_thinking=show_thinking,
+                            )
+                            for t in gen_tokens:
+                                tok_q.put(t)
+                        except Exception as ex:
+                            logger.warning("v1 stream worker: %s", ex)
+                        finally:
+                            tok_q.put(None)
+
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(None, _stream_worker)
+                    while True:
+                        token = await asyncio.to_thread(tok_q.get)
+                        if token is None:
+                            break
                         if not token:
                             continue
                         response_text += token
@@ -1512,6 +1842,7 @@ async def v1_chat_completions(req: dict):
                     conversation_history=conversation_history,
                     aspect_id=aspect_id,
                     show_thinking=show_thinking,
+                    conversation_id=conversation_id,
                 )
                 model_name = f"layla-{result.get('aspect', aspect_id or 'morrigan')}"
                 response_text = (result.get("response") or "").strip()
@@ -1601,6 +1932,7 @@ async def v1_chat_completions(req: dict):
             conversation_history=conversation_history,
             aspect_id=aspect_id,
             show_thinking=show_thinking,
+            conversation_id=conversation_id,
         )
     except Exception as e:
         logger.exception("/v1/chat/completions failed")
@@ -1653,6 +1985,24 @@ async def v1_chat_completions(req: dict):
         "aspect": result.get("aspect", ""),
         "conversation_id": conversation_id,
     })
+
+
+@app.post("/conversations")
+def create_conversation_api(req: dict = Body(default={})):
+    """Create an empty conversation row (for New chat in UI)."""
+    import uuid
+
+    try:
+        from layla.memory.db import create_conversation
+
+        body = req if isinstance(req, dict) else {}
+        cid = (body.get("conversation_id") or "").strip() or str(uuid.uuid4())
+        title = (body.get("title") or "").strip()
+        aspect_id = (body.get("aspect_id") or "").strip()
+        row = create_conversation(cid, title=title, aspect_id=aspect_id)
+        return JSONResponse({"ok": True, "conversation": row})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 @app.get("/conversations")
@@ -1879,10 +2229,14 @@ async def knowledge_ingest_run(request: Request):
         body = await request.json()
     except Exception:
         body = {}
+    if not isinstance(body, dict):
+        body = {}
     try:
-        from services.doc_ingestion import ingest_docs
-
-        out = ingest_docs(str(body.get("source") or ""), str(body.get("label") or ""))
+        out = await asyncio.to_thread(
+            _sync_ingest_docs,
+            str(body.get("source") or ""),
+            str(body.get("label") or ""),
+        )
         return JSONResponse(out)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
@@ -1999,20 +2353,14 @@ async def create_mission_api(req: Request):
         body = await req.json() if req.headers.get("content-type", "").startswith("application/json") else {}
         if not isinstance(body, dict):
             body = {}
-        from services.mission_manager import create_mission, run_mission
-        goal = (body.get("goal") or "").strip()
-        if not goal:
-            return JSONResponse({"error": "goal required"}, status_code=400)
-        mission = create_mission(
-            goal=goal,
-            workspace_root=(body.get("workspace_root") or "").strip(),
-            allow_write=bool(body.get("allow_write")),
-            allow_run=bool(body.get("allow_run")),
-        )
-        if not mission:
-            return JSONResponse({"error": "mission creation failed (plan empty or planner error)"}, status_code=500)
-        run_mission(mission["id"])
-        return JSONResponse({"ok": True, "mission": mission})
+        try:
+            result = await asyncio.to_thread(_sync_create_and_run_mission, body)
+            return JSONResponse(result)
+        except ValueError as ve:
+            msg = str(ve)
+            if msg == "goal required":
+                return JSONResponse({"error": msg}, status_code=400)
+            return JSONResponse({"error": msg}, status_code=500)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -2098,7 +2446,7 @@ async def voice_transcribe(request: Request):
                 },
                 status_code=503,
             )
-        text = transcribe_bytes(audio_bytes)
+        text = await asyncio.to_thread(transcribe_bytes, audio_bytes)
         return JSONResponse({"ok": True, "text": text})
     except Exception as e:
         logger.warning("STT error: %s", e)
@@ -2124,7 +2472,7 @@ async def voice_speak(request: Request):
             text = body.decode("utf-8", errors="replace").strip()
         if not text:
             return JSONResponse({"ok": False, "error": "No text provided"}, status_code=400)
-        wav = speak_to_bytes(text)
+        wav = await asyncio.to_thread(speak_to_bytes, text)
         if wav is None:
             rec = get_tts_recovery()
             return JSONResponse(
@@ -2191,656 +2539,9 @@ def ui_root():
     return HTMLResponse(_INLINE_UI, headers=_UI_NO_CACHE)
 
 
-_INLINE_UI = """<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>âˆ´ LAYLA</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Cinzel:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
-<style>
-  :root {
-    --bg: #0a0008;
-    --bg2: #100010;
-    --crimson: #8b0000;
-    --violet: #3d0050;
-    --accent: #c0006a;
-    --text: #d4c5e2;
-    --text-dim: #7a6a8a;
-    --code-bg: #1a001a;
-    --border: #3d0050;
-    --glow: #8b000088;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 14px;
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
-  /* Scanline overlay */
-  body::after {
-    content: '';
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0,0,0,0.08) 2px,
-      rgba(0,0,0,0.08) 4px
-    );
-    pointer-events: none;
-    z-index: 9999;
-  }
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 24px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg2);
-  }
-  .title { font-family: 'Cinzel', serif; color: var(--crimson); font-size: 1.3rem; letter-spacing: 0.2em; }
-  .aspect-badge {
-    font-size: 0.75rem;
-    color: var(--accent);
-    border: 1px solid var(--accent);
-    padding: 3px 10px;
-    border-radius: 2px;
-    letter-spacing: 0.15em;
-  }
-  .layout {
-    display: flex;
-    height: calc(100vh - 56px);
-  }
-  .sidebar {
-    width: 220px;
-    min-width: 180px;
-    border-right: 1px solid var(--border);
-    background: var(--bg2);
-    padding: 16px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-    overflow-y: auto;
-  }
-  .sidebar h3 {
-    font-family: 'Cinzel', serif;
-    font-size: 0.7rem;
-    color: var(--text-dim);
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    margin-bottom: 8px;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 4px;
-  }
-  .aspect-btn {
-    display: block;
-    width: 100%;
-    padding: 7px 10px;
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.8rem;
-    cursor: pointer;
-    text-align: left;
-    border-radius: 2px;
-    margin-bottom: 4px;
-    transition: all 0.15s;
-  }
-  .aspect-btn:hover, .aspect-btn.active { background: var(--violet); border-color: var(--accent); color: #fff; }
-  .aspect-option { margin-bottom: 10px; }
-  .aspect-desc { display: block; font-size: 0.68rem; color: var(--text-dim); margin-top: 2px; margin-left: 2px; line-height: 1.25; }
-  .main-area {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-  }
-  #chat {
-    flex: 1;
-    overflow-y: auto;
-    padding: 20px 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-  .msg { max-width: 720px; }
-  .msg-you { align-self: flex-end; }
-  .msg-layla { align-self: flex-start; }
-  .msg-label {
-    font-size: 0.72rem;
-    color: var(--text-dim);
-    margin-bottom: 4px;
-    letter-spacing: 0.08em;
-  }
-  .msg-bubble {
-    padding: 14px 18px;
-    border-radius: 4px;
-    line-height: 1.65;
-    font-size: 0.95rem;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-  .msg-you .msg-bubble { background: var(--violet); border-left: 3px solid var(--accent); }
-  .msg-layla .msg-bubble { background: var(--code-bg); border-left: 3px solid var(--crimson); }
-  .msg-aspect { font-size: 0.68rem; color: var(--accent); margin-top: 6px; letter-spacing: 0.08em; font-style: italic; }
-  .deliberation { background: #1a001a; border: 1px solid var(--border); padding: 10px 12px; margin-top: 8px; font-size: 0.82rem; color: var(--text-dim); border-radius: 4px; }
-  .deliberation .deliberation-label { font-style: italic; margin-bottom: 4px; }
-  .tool-trace { font-size: 0.72rem; color: var(--text-dim); margin-top: 6px; cursor: pointer; }
-  .typing-indicator { padding: 10px 16px; color: var(--text-dim); font-style: italic; font-size: 0.88rem; }
-  .sidebar-hint { font-size: 0.7rem; color: var(--text-dim); line-height: 1.4; margin-top: 8px; }
-  .tool-trace summary { list-style: none; }
-  .tool-trace summary::-webkit-details-marker { display: none; }
-  .tool-trace-content { margin-top: 6px; padding: 8px; background: var(--bg); border-radius: 2px; font-size: 0.7rem; max-height: 120px; overflow-y: auto; }
-  .msg-bubble .md-content { white-space: normal; }
-  .msg-bubble .md-content pre { margin: 8px 0; overflow-x: auto; }
-  .msg-bubble .md-content code { padding: 2px 6px; }
-  .separator { text-align: center; color: var(--border); font-size: 0.8rem; margin: 4px 0; }
-  .input-area {
-    border-top: 1px solid var(--border);
-    padding: 14px 20px;
-    background: var(--bg2);
-    display: flex;
-    gap: 10px;
-    align-items: center;
-  }
-  .toggles { display: flex; gap: 8px; align-items: center; }
-  .toggle-label { font-size: 0.7rem; color: var(--text-dim); }
-  .toggle-danger { color: #ff4444; }
-  input[type=checkbox] { accent-color: var(--crimson); }
-  #msg-input {
-    flex: 1;
-    padding: 10px 14px;
-    background: var(--code-bg);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.9rem;
-    border-radius: 2px;
-    outline: none;
-  }
-  #msg-input:focus { border-color: var(--crimson); }
-  #send-btn {
-    padding: 10px 18px;
-    background: var(--crimson);
-    border: none;
-    color: #fff;
-    font-family: 'Cinzel', serif;
-    font-size: 0.8rem;
-    letter-spacing: 0.1em;
-    cursor: pointer;
-    border-radius: 2px;
-    transition: background 0.15s;
-  }
-  #send-btn:hover { background: var(--accent); }
-  .panels {
-    width: 240px;
-    border-left: 1px solid var(--border);
-    background: var(--bg2);
-    padding: 14px 12px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-  }
-  .panel-title {
-    font-family: 'Cinzel', serif;
-    font-size: 0.7rem;
-    color: var(--text-dim);
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 4px;
-    margin-bottom: 8px;
-  }
-  .panel-item {
-    font-size: 0.75rem;
-    color: var(--text);
-    padding: 6px 8px;
-    border: 1px solid var(--border);
-    border-radius: 2px;
-    margin-bottom: 4px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 6px;
-  }
-  .approve-btn {
-    padding: 3px 8px;
-    background: var(--crimson);
-    border: none;
-    color: #fff;
-    font-size: 0.65rem;
-    cursor: pointer;
-    border-radius: 2px;
-    font-family: 'JetBrains Mono', monospace;
-  }
-  .study-add { display: flex; gap: 6px; margin-top: 6px; }
-  .study-add input {
-    flex: 1;
-    padding: 5px 8px;
-    background: var(--code-bg);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.75rem;
-    border-radius: 2px;
-  }
-  .study-add button {
-    padding: 5px 8px;
-    background: var(--violet);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-size: 0.75rem;
-    cursor: pointer;
-    border-radius: 2px;
-  }
-  ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: var(--bg); }
-  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-  .greeting-banner {
-    background: var(--code-bg);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 14px 18px;
-    font-size: 0.92rem;
-    line-height: 1.5;
-    color: var(--text);
-    align-self: flex-start;
-    max-width: 720px;
-  }
-  .greeting-banner .from { font-size: 0.72rem; color: var(--accent); margin-bottom: 6px; letter-spacing: 0.06em; font-style: italic; }
-  code { background: var(--code-bg); padding: 1px 5px; border-radius: 2px; font-family: 'JetBrains Mono', monospace; color: #ff4466; }
-</style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-</head>
-<body>
-<header>
-  <div class="title">âˆ´ LAYLA</div>
-  <div id="aspect-badge" class="aspect-badge">âˆ´ MORRIGAN</div>
-  <div style="display:flex;gap:12px;font-size:0.72rem;color:var(--text-dim)">
-    <span id="session-time"></span>
-    <a href="/system_export" target="_blank" style="color:var(--text-dim);text-decoration:none">âŠ• export</a>
-  </div>
-</header>
-
-<div class="layout">
-  <!-- Aspect sidebar -->
-  <div class="sidebar">
-    <div>
-      <h3>Voices</h3>
-      <p class="sidebar-hint">Talk to Layla or choose a voice. She remembers and grows with you.</p>
-      <div class="aspect-option">
-        <button class="aspect-btn active" onclick="setAspect('morrigan')" id="btn-morrigan">&#9876; Morrigan</button>
-        <span class="aspect-desc">Code, debug, review. The blade. Default for engineering.</span>
-      </div>
-      <div class="aspect-option">
-        <button class="aspect-btn" onclick="setAspect('nyx')" id="btn-nyx">&#9733; Nyx</button>
-        <span class="aspect-desc">Research, study sessions, depth and patterns.</span>
-      </div>
-      <div class="aspect-option">
-        <button class="aspect-btn" onclick="setAspect('echo')" id="btn-echo">&#9678; Echo</button>
-        <span class="aspect-desc">Companion, growth tracker, session greeter.</span>
-      </div>
-      <div class="aspect-option">
-        <button class="aspect-btn" onclick="setAspect('eris')" id="btn-eris">&#9889; Eris</button>
-        <span class="aspect-desc">Chaos, banter, games, music. Unhinged in the best way.</span>
-      </div>
-      <div class="aspect-option">
-        <button class="aspect-btn" onclick="setAspect('lilith')" id="btn-lilith">&#8859; Lilith</button>
-        <span class="aspect-desc">Core authority, ethics. NSFW register: use keyword (e.g. intimate, nsfw) in message.</span>
-      </div>
-    </div>
-    <div>
-      <h3>Options</h3>
-      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;margin-bottom:8px" title="See her reply as it types">
-        <input type="checkbox" id="stream-toggle"> Stream
-      </label>
-      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;margin-bottom:8px" title="Let her think with her inner voices before answering">
-        <input type="checkbox" id="show-thinking"> Her thoughts
-      </label>
-      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;color:#ff4444;margin-bottom:4px">
-        <input type="checkbox" id="allow-write"> Allow Write
-      </label>
-      <label style="display:flex;gap:8px;align-items:center;font-size:0.75rem;cursor:pointer;color:#ff4444">
-        <input type="checkbox" id="allow-run"> Allow Run
-      </label>
-    </div>
-  </div>
-
-  <!-- Chat area -->
-  <div class="main-area">
-    <div id="chat"></div>
-    <div class="input-area">
-      <input type="text" id="msg-input" placeholder="What's on your mind?" onkeydown="if(event.key==='Enter')send()">
-      <button id="send-btn" onclick="send()">Send</button>
-    </div>
-  </div>
-
-  <!-- Panels -->
-  <div class="panels">
-    <div>
-      <div class="panel-title">Pending Approvals</div>
-      <div id="approvals-list"><span style="color:var(--text-dim);font-size:0.75rem">none</span></div>
-    </div>
-    <div>
-      <div class="panel-title">Study Plans</div>
-      <div id="study-list"><span style="color:var(--text-dim);font-size:0.75rem">none</span></div>
-      <div class="study-add">
-        <input type="text" id="study-input" placeholder="New topic...">
-        <button onclick="addStudyPlan()">+</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script>
-let currentAspect = 'morrigan';
-const sessionStart = Date.now();
-
-function setAspect(id) {
-  currentAspect = id;
-  document.querySelectorAll('.aspect-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('btn-' + id)?.classList.add('active');
-  document.getElementById('aspect-badge').textContent = 'âˆ´ ' + id.toUpperCase();
-}
-
-function cleanLaylaText(s) {
-  if (typeof s !== 'string') return (s == null || s === undefined) ? '' : String(s);
-  return s.replace(/\\s*\\[EARNED_TITLE:\\s*[^\\]]+\\]\\s*$/gi, '').trim();
-}
-
-function addMsg(role, text, aspectName, deliberated, steps) {
-  const chat = document.getElementById('chat');
-  const div = document.createElement('div');
-  div.className = 'msg msg-' + (role === 'you' ? 'you' : 'layla');
-  const label = document.createElement('div');
-  label.className = 'msg-label';
-  label.textContent = role === 'you' ? 'You' : 'Layla';
-  const bubble = document.createElement('div');
-  bubble.className = 'msg-bubble';
-  if (role === 'layla') {
-    text = cleanLaylaText(text || '');
-    if (typeof marked !== 'undefined') {
-      const md = document.createElement('div');
-      md.className = 'md-content';
-      md.innerHTML = marked.parse(text || '');
-      bubble.appendChild(md);
-      bubble.querySelectorAll('pre code').forEach((el) => { if (window.hljs) hljs.highlightElement(el); });
-    } else {
-      bubble.textContent = text;
-    }
-  } else {
-    bubble.textContent = text;
-  }
-  div.appendChild(label);
-  div.appendChild(bubble);
-  if (role !== 'you' && aspectName) {
-    const asp = document.createElement('div');
-    asp.className = 'msg-aspect';
-    asp.textContent = 'â€” ' + aspectName;
-    div.appendChild(asp);
-  }
-  if (steps && steps.length > 0) {
-    const trace = document.createElement('details');
-    trace.className = 'tool-trace';
-    trace.innerHTML = '<summary>What she did (' + steps.length + ')</summary>';
-    const pre = document.createElement('div');
-    pre.className = 'tool-trace-content';
-    pre.textContent = steps.map(s => s.action + ': ' + JSON.stringify(s.result).slice(0, 200)).join('\n');
-    trace.appendChild(pre);
-    div.appendChild(trace);
-  }
-  if (deliberated) {
-    const d = document.createElement('div');
-    d.className = 'deliberation';
-    d.innerHTML = '<span class="deliberation-label">Her thoughts</span><br>She considered this with her inner voices before answering.';
-    div.appendChild(d);
-  }
-  chat.appendChild(div);
-  chat.scrollTop = chat.scrollHeight;
-}
-
-function addSeparator() {
-  const chat = document.getElementById('chat');
-  const sep = document.createElement('div');
-  sep.className = 'separator';
-  sep.textContent = 'â”€â”€â”€ âœ¦ â”€â”€â”€';
-  chat.appendChild(sep);
-}
-
-async function send() {
-  const input = document.getElementById('msg-input');
-  const msg = input.value.trim();
-  if (!msg) return;
-  input.value = '';
-  addMsg('you', msg);
-  addSeparator();
-
-  const streamMode = document.getElementById('stream-toggle')?.checked || false;
-  const payload = {
-    message: msg,
-    aspect_id: currentAspect,
-    show_thinking: document.getElementById('show-thinking').checked,
-    allow_write: document.getElementById('allow-write').checked,
-    allow_run: document.getElementById('allow-run').checked,
-    stream: streamMode,
-  };
-
-  const chatEl = document.getElementById('chat');
-  function showTyping() {
-    const wrap = document.createElement('div');
-    wrap.className = 'msg msg-layla';
-    wrap.id = 'typing-wrap';
-    wrap.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble typing-indicator">Thinkingâ€¦</div>';
-    chatEl.appendChild(wrap);
-    chatEl.scrollTop = chatEl.scrollHeight;
-  }
-  function removeTyping() {
-    const w = document.getElementById('typing-wrap');
-    if (w) w.remove();
-  }
-
-  try {
-    if (streamMode) {
-      showTyping();
-      const res = await fetch('/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (!res.ok || !res.body) { removeTyping(); let errMsg = res.statusText; try { const t = await res.text(); if (t) try { const d = JSON.parse(t); errMsg = d.response || errMsg; } catch(_) { errMsg = t.length < 120 ? t : errMsg; } } catch(_) {} addMsg('layla', errMsg, null, false, null); refreshApprovals(); return; }
-      removeTyping();
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let full = '';
-      const div = document.createElement('div');
-      div.className = 'msg msg-layla';
-      div.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble"><div class="md-content"></div></div>';
-      chatEl.appendChild(div);
-      const bubble = div.querySelector('.md-content');
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        const chunk = dec.decode(value, { stream: true });
-        const lines = chunk.split('\n');
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const obj = JSON.parse(line.slice(6));
-              if (obj.token) { full += obj.token; bubble.innerHTML = typeof marked !== 'undefined' ? marked.parse(full) : full; bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); }); }
-              if (obj.done) break;
-            } catch (_) {}
-          }
-        }
-      }
-      full = cleanLaylaText(full);
-      bubble.innerHTML = typeof marked !== 'undefined' ? marked.parse(full) : full;
-      bubble.querySelectorAll('pre code').forEach(el => { if (window.hljs) hljs.highlightElement(el); });
-      const asp = document.createElement('div');
-      asp.className = 'msg-aspect';
-      asp.textContent = 'â€” ' + (currentAspect || '');
-      div.appendChild(asp);
-      chatEl.scrollTop = chatEl.scrollHeight;
-      refreshApprovals();
-      return;
-    }
-    showTyping();
-    const res = await fetch('/agent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    removeTyping();
-    if (!res.ok) {
-      let errBody = '';
-      try { errBody = await res.text(); } catch (_) {}
-      addMsg('layla', 'Error ' + res.status + (errBody && errBody.length < 150 ? ': ' + errBody : ''));
-      refreshApprovals();
-      return;
-    }
-    let data = {};
-    try { data = await res.json(); } catch (_) {
-      addMsg('layla', 'Invalid response from server (non-JSON).');
-      refreshApprovals();
-      return;
-    }
-    let msg = data.response;
-    if (!msg && data.state?.status === 'system_busy') msg = 'System is under load. Try again in a moment.';
-    if (!msg && data.state?.status === 'timeout') msg = 'Request took too long. Try again.';
-    if (!msg) msg = data.response || 'No response â€” try again.';
-    addMsg('layla', msg, data.aspect_name, data.state?.steps?.some(s => s.deliberated), data.state?.steps);
-    if (data.refused && data.refusal_reason) {
-      const refDiv = document.createElement('div');
-      refDiv.className = 'deliberation';
-      refDiv.innerHTML = '<span class="deliberation-label">She declined</span><br>' + (data.refusal_reason || '').replace(/</g, '&lt;');
-      document.getElementById('chat').lastElementChild?.appendChild(refDiv);
-    }
-    refreshApprovals();
-  } catch (e) {
-    removeTyping();
-    const err = ((e && (e.message || e.reason)) || String(e || '')).toLowerCase();
-    const isNetwork = err.includes('fetch') || err.includes('network') || err.includes('load failed');
-    const msg = isNetwork ? "Can't reach Layla â€” is the server running at http://127.0.0.1:8000?" : ('Something went wrong: ' + (e && (e.message || e.reason)) || 'unknown error');
-    addMsg('layla', msg);
-  }
-}
-
-async function refreshApprovals() {
-  try {
-    const res = await fetch('/pending');
-    const data = await res.json();
-    const list = document.getElementById('approvals-list');
-    const pending = (data.pending || []).filter(e => e.status === 'pending');
-    if (!pending.length) { list.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">none</span>'; return; }
-    list.innerHTML = '';
-    pending.forEach(e => {
-      const item = document.createElement('div');
-      item.className = 'panel-item';
-      item.innerHTML = '<span style="font-size:0.7rem">' + e.tool + '<br><span style="color:var(--text-dim)">' + e.id.slice(0,8) + '</span></span>';
-      const btn = document.createElement('button');
-      btn.className = 'approve-btn';
-      btn.textContent = 'Approve';
-      btn.onclick = () => approveId(e.id);
-      item.appendChild(btn);
-      list.appendChild(item);
-    });
-  } catch {}
-}
-
-async function approveId(id) {
-  await fetch('/approve', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id }),
-  });
-  refreshApprovals();
-}
-
-async function refreshStudyPlans() {
-  try {
-    const res = await fetch('/study_plans');
-    const data = await res.json();
-    const list = document.getElementById('study-list');
-    const plans = (data.plans || []).filter(p => p.status === 'active');
-    if (!plans.length) { list.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">none</span>'; return; }
-    list.innerHTML = '';
-    plans.forEach(p => {
-      const item = document.createElement('div');
-      item.className = 'panel-item';
-      item.style.display = 'flex';
-      item.style.justifyContent = 'space-between';
-      item.style.alignItems = 'center';
-      item.style.gap = '6px';
-      item.innerHTML = '<span style="font-size:0.72rem">' + (p.topic || '').replace(/</g, '&lt;') + '</span>';
-      const studyBtn = document.createElement('button');
-      studyBtn.className = 'approve-btn';
-      studyBtn.textContent = 'Study now';
-      studyBtn.onclick = () => studyNow(p.topic);
-      item.appendChild(studyBtn);
-      list.appendChild(item);
-    });
-  } catch {}
-}
-
-async function studyNow(topic) {
-  if (!topic) return;
-  const payload = { message: 'Study session on: ' + topic + '. Explain key concepts, list important points, and suggest resources.', aspect_id: 'nyx', show_thinking: false, allow_write: false, allow_run: false };
-  addMsg('you', 'Study now: ' + topic);
-  addSeparator();
-  try {
-    const res = await fetch('/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const data = await res.json();
-    addMsg('layla', data.response || '', data.aspect_name, data.state?.steps?.some(s => s.deliberated), data.state?.steps);
-  } catch (e) { addMsg('layla', 'Error: ' + e.message); }
-  refreshStudyPlans();
-}
-
-async function addStudyPlan() {
-  const input = document.getElementById('study-input');
-  const topic = input.value.trim();
-  if (!topic) return;
-  input.value = '';
-  await fetch('/study_plans', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ topic }),
-  });
-  refreshStudyPlans();
-}
-
-async function doWakeup() {
-  try {
-    const res = await fetch('/wakeup');
-    const data = await res.json();
-    if (data.greeting) {
-      const chat = document.getElementById('chat');
-      const banner = document.createElement('div');
-      banner.className = 'greeting-banner';
-      banner.innerHTML = '<div class="from">â€” Echo (session start)</div>' + data.greeting;
-      chat.appendChild(banner);
-    }
-  } catch {}
-}
-
-// Session timer
-setInterval(() => {
-  const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
-  const m = Math.floor(elapsed / 60).toString().padStart(2,'0');
-  const s = (elapsed % 60).toString().padStart(2,'0');
-  document.getElementById('session-time').textContent = m + ':' + s;
-}, 1000);
-
-// Init
-doWakeup();
-refreshApprovals();
-refreshStudyPlans();
-</script>
-</body>
-</html>
-"""
+_INLINE_UI = """<!DOCTYPE html><html><head><meta charset="utf-8"><title>Layla</title></head><body>
+<h2>Layla UI unavailable</h2>
+<p>The UI file <code>agent/ui/index.html</code> could not be read. Check that the file exists and the server has read access.</p>
+</body></html>"""
 
 

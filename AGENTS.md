@@ -7,7 +7,7 @@ Read this before touching any file. It tells you what this project is, where thi
 
 ## What this project is
 
-Layla is a **self-hosted AI companion and engineering agent** that runs on the user's own hardware via a local GGUF model (llama-cpp-python). No cloud. No API keys required. She has six personality aspects, persistent memory (SQLite + ChromaDB), 109 registered tools, voice I/O, and browser automation. The FastAPI server lives at `localhost:8000`. The web UI is at `/ui`.
+Layla is a **self-hosted AI companion and engineering agent** that runs on the user's own hardware via a local GGUF model (llama-cpp-python). No cloud. No API keys required. She has six personality aspects, persistent memory (SQLite + ChromaDB), **186 registered tools** (authoritative count: `agent/tests/test_registered_tools_count.py` → `EXPECTED_TOOL_COUNT`), voice I/O, and browser automation. The FastAPI server lives at `localhost:8000`. The web UI is at `/ui`.
 
 **The operator chooses their model.** Layla is uncensored by default. Everything is configurable via `agent/runtime_config.json`.
 
@@ -57,7 +57,9 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 │   │   ├── agent.py         # POST /agent, POST /learn/
 │   │   ├── approvals.py     # POST /approve, GET /pending
 │   │   ├── study.py         # GET /wakeup, /study_plans
-│   │   └── research.py      # Research mission endpoints
+│   │   ├── research.py      # Research mission endpoints
+│   │   ├── plans.py         # GET/POST /plans, PATCH/approve/execute — SQLite layla_plans
+│   │   └── plan_file.py     # /plan/* — Pydantic file plans under `.layla_plans/` (optional parallel to SQLite)
 │   │
 │   ├── services/            # Infrastructure services (singleton pattern)
 │   │   ├── llm_gateway.py   # run_completion(), prewarm_llm(), auto-thread detection
@@ -68,7 +70,13 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 │   │   ├── benchmark_suite.py      # Latency, throughput, memory benchmarks
 │   │   ├── dependency_recovery.py # Optional pip install (allowlisted) + structured missing-dep / GGUF hints
 │   │   ├── sandbox_validator.py    # Import + benchmark before enabling capability
-│   │   └── performance_monitor.py  # Runtime metrics (tool latency, retrieval)
+│   │   ├── performance_monitor.py  # Runtime metrics (tool latency, retrieval)
+│   │   ├── engine_plans.py         # Plan step normalization, mirror into project_memory; run_plan_iteration / file-plan loop
+│   │   ├── plan_schema.py          # Pydantic Plan / PlanStep for file-backed `.layla_plans/*.json`
+│   │   ├── plan_service.py         # CRUD for `.layla_plans/` (separate from SQLite layla_plans)
+│   │   ├── plan_executor.py        # execute_next_step + continuous loop for file plans
+│   │   ├── plan_refinement.py      # Optional one-pass LLM tighten (file_plan_refinement_enabled)
+│   │   └── relationship_codex.py   # Optional `.layla/relationship_codex.json` (not injected by default)
 │   │
 │   ├── capabilities/        # Capability registry (vector_search, embedding, etc.)
 │   │   └── registry.py     # Multiple impls per capability; dynamic selection
@@ -213,7 +221,7 @@ Client → POST /agent → routers/agent.py
 | `docs/LAYLA_PREBUILT_PLATFORM.md` | Capability domains or prebuilt principles change |
 | `agent/runtime_config.example.json` | New config keys added to `runtime_safety.py` defaults |
 | `CHANGELOG.md` | Any commit worth noting for users |
-| `docs/RUNBOOKS.md` | New "how to add X" procedures |
+| `docs/RUNBOOKS.md` | New "how to add X" procedures; background workers / shared inference / OS limits / containers |
 | `docs/OPERATOR_PSYCHOLOGY_SOURCES.md` | Behavioral/psychology knowledge options, optional libraries, or non-clinical policy cross-links change |
 | `docs/FABRICATION_ASSIST.md` | Fabrication assist package or `BuildRunner` integration changes |
 
@@ -270,7 +278,7 @@ Tests live in `agent/tests/`. Key test files: `test_agent_loop.py`, `test_north_
 ## Quick orientation for a new AI session
 
 1. Read **`PROJECT_BRAIN.md`** (stable summary), then this file (`AGENTS.md`). Deep dives live under `docs/*_MODULE_SECOND_SWEEP.md`, indexed by **`docs/MODULE_SWEEP_STATUS.md`**.
-2. **If resuming from prior AI session:** Read `docs/AI_HANDOFF_REPORT.md` for total state
+2. **If resuming from prior AI session:** Read `docs/AI_HANDOFF_REPORT.md` for historical cumulative state; **latest session handoff (2026-04-02 — Web UI, `/health`, chat UX, integrations zips):** `docs/AI_HANDOFF_SESSION_2026-04-02.md`
 3. Read `ARCHITECTURE.md` for the request flow
 4. Read `docs/IMPLEMENTATION_STATUS.md` to know what's implemented vs planned
 5. Read the specific file you're about to change

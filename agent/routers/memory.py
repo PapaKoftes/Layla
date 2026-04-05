@@ -10,7 +10,7 @@ import json
 import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
 router = APIRouter(prefix="/memory", tags=["memory"])
@@ -175,3 +175,68 @@ async def import_bundle(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Invalid ZIP file")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/elasticsearch/search")
+async def memory_elasticsearch_search_route(
+    q: str = Query("", description="Search query"),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """Full-text search over learnings mirrored to Elasticsearch (optional; requires elasticsearch package + server)."""
+    try:
+        import sys
+
+        sys.path.insert(0, str(AGENT_DIR))
+        import runtime_safety
+        from services.elasticsearch_bridge import search_learnings
+
+        out = search_learnings(runtime_safety.load_config(), q, limit=limit)
+        return JSONResponse(out)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e), "hits": []})
+
+
+@router.get("/file_checkpoints")
+async def list_file_checkpoints_http(limit: int = Query(40, ge=1, le=200)):
+    """List recent pre-write file checkpoints for the configured sandbox (newest first)."""
+    import sys
+
+    sys.path.insert(0, str(AGENT_DIR))
+    import runtime_safety
+    from services.file_checkpoints import list_checkpoints
+
+    cfg = runtime_safety.load_config()
+    sandbox = Path(cfg.get("sandbox_root", str(Path.home()))).expanduser().resolve()
+    out = list_checkpoints(workspace_root=sandbox, agent_dir=AGENT_DIR, path_filter=None, limit=limit)
+    return JSONResponse(out)
+
+
+@router.post("/file_checkpoints/restore")
+async def restore_file_checkpoint_http(request: Request):
+    """
+    Queue restore_file_checkpoint for approval (safe_mode) or run immediately when safe_mode is false.
+    """
+    import sys
+
+    sys.path.insert(0, str(AGENT_DIR))
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    cid = str(body.get("checkpoint_id") or "").strip()
+    if not cid:
+        return JSONResponse({"ok": False, "error": "checkpoint_id required"}, status_code=400)
+    import runtime_safety
+
+    cfg = runtime_safety.load_config()
+    if cfg.get("safe_mode", True):
+        from agent_loop import _write_pending
+
+        aid = _write_pending("restore_file_checkpoint", {"checkpoint_id": cid})
+        return JSONResponse({"ok": True, "approval_required": True, "approval_id": aid})
+    from layla.tools.registry import restore_file_checkpoint
+
+    res = restore_file_checkpoint(checkpoint_id=cid)
+    return JSONResponse(res)

@@ -2,11 +2,11 @@
 
 **Your own AI. On your machine. No cloud. No leash.**
 
-Layla is a self-hosted AI companion and engineering agent. She runs entirely on your hardware using any GGUF model you choose — no API keys, no subscriptions, no data leaving your machine. She grows with you: she remembers things, studies topics on her own, uses tools, browses the web, and talks back if you want her to.
+Layla is a **local-first, tool-heavy, approval-gated** AI companion and engineering agent. She runs on your hardware using any GGUF model you choose — no API keys, no subscriptions, no data leaving your machine unless you opt in. She remembers, studies, uses a large native tool surface, can browse the web, and supports voice I/O.
 
-She has six distinct aspects (voices/personalities) you can switch between. She can write and run code, read and modify files, research repos, search the web, and hold a real conversation. She is designed to be as capable as any commercial AI assistant — and unlike those, she belongs entirely to you.
+She has six distinct aspects (voices/personalities) you can switch between. She can write and run code, read and modify files, research repos, search the web, and hold a real conversation. **Positioning:** Layla is an open, self-hosted **agent platform** (HTTP API + Web UI + optional MCP), not a drop-in clone of any single vendor coding product — expectations should match local inference, governance, and your chosen model.
 
-**Why Layla exists:** Built as a sovereign alternative to corporate AI — privacy-focused, local-first, anti-surveillance. Your data stays yours. See [VALUES.md](VALUES.md) for the principles behind the project.
+**Why Layla exists:** Sovereign alternative to corporate AI — privacy-focused, local-first, anti-surveillance. Your data stays yours. See [VALUES.md](VALUES.md) for the principles behind the project.
 
 ---
 

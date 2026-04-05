@@ -24,6 +24,34 @@ _llm_lock = threading.RLock()
 # Safe for single-user local use; multi-user concurrency requires per-run queuing.
 llm_serialize_lock = _llm_lock
 
+# When llm_serialize_per_workspace is true: agent runs hold per-workspace RLocks; local llama_cpp
+# generation uses this global Lock so two workspaces never call create_completion concurrently.
+llm_generation_lock = threading.Lock()
+
+_workspace_agent_locks: dict[str, threading.RLock] = {}
+_workspace_agent_locks_guard = threading.Lock()
+
+
+def get_agent_serialize_lock(workspace_key: str) -> threading.RLock:
+    """RLock for one autonomous_run flight; key should be resolved workspace path or '__default__'."""
+    key = (workspace_key or "").strip() or "__default__"
+    with _workspace_agent_locks_guard:
+        lock = _workspace_agent_locks.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _workspace_agent_locks[key] = lock
+        return lock
+
+
+def _resolve_workspace_lock_key(workspace_root: str) -> str:
+    raw = (workspace_root or "").strip()
+    if not raw:
+        return "__default__"
+    try:
+        return str(Path(raw).expanduser().resolve())
+    except Exception:
+        return raw[:512]
+
 # Per-request model override: "default" | "coding" | "reasoning" | "chat" (for remote backends)
 _model_override_var: ContextVar[str | None] = ContextVar("model_override", default=None)
 # Per-request reasoning: "high" = use reasoning_budget from config for thinking models
@@ -73,6 +101,7 @@ _token_usage = {
     "completion_tokens": 0,
     "total_tokens": 0,
     "request_count": 0,
+    "tool_calls": 0,
     "session_start": time.time(),
 }
 
@@ -350,15 +379,26 @@ def _add_usage(prompt_tokens: int, completion_tokens: int) -> None:
         _token_usage["request_count"] += 1
 
 
+def record_tool_call() -> None:
+    """Increment session tool-call counter (exposed via /health token_usage)."""
+    with _token_usage_lock:
+        _token_usage["tool_calls"] = int(_token_usage.get("tool_calls", 0)) + 1
+
+
 def get_token_usage() -> dict:
     """Return session token usage for /usage or /health."""
     with _token_usage_lock:
+        elapsed = max(0.001, time.time() - float(_token_usage["session_start"]))
+        tout = int(_token_usage["completion_tokens"])
         return {
             "prompt_tokens": _token_usage["prompt_tokens"],
             "completion_tokens": _token_usage["completion_tokens"],
             "total_tokens": _token_usage["total_tokens"],
             "request_count": _token_usage["request_count"],
+            "tool_calls": int(_token_usage.get("tool_calls", 0)),
             "session_start": _token_usage["session_start"],
+            "elapsed_seconds": round(elapsed),
+            "tokens_per_second": round(tout / elapsed, 2),
         }
 
 
@@ -402,6 +442,8 @@ def run_completion(
     except Exception:
         pass
 
+    infer_lock = llm_generation_lock if cfg.get("llm_serialize_per_workspace") else llm_serialize_lock
+
     try:
         if (
             not stream
@@ -441,7 +483,7 @@ def run_completion(
                         stop=stop,
                         timeout_seconds=timeout_seconds,
                         _get_llm=_get_llm,
-                        _llm_lock=_llm_lock,
+                        _llm_lock=infer_lock,
                         model_override=model_override,
                         reasoning_budget=reasoning_budget,
                     )
@@ -467,7 +509,7 @@ def run_completion(
                     stop=stop,
                     timeout_seconds=timeout_seconds,
                     _get_llm=_get_llm,
-                    _llm_lock=_llm_lock,
+                    _llm_lock=infer_lock,
                     model_override=model_override,
                     reasoning_budget=reasoning_budget,
                 )

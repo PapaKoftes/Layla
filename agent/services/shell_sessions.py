@@ -17,7 +17,7 @@ _lock = threading.Lock()
 _sessions: dict[str, dict[str, Any]] = {}
 
 _MAX_OUT_LINES = 500
-_MAX_SESSIONS = 20
+_MAX_SESSIONS = 5
 _ARGV_BLOCKLIST = (
     "rm",
     "del",

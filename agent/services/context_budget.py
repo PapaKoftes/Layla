@@ -29,18 +29,36 @@ DEFAULT_BUDGETS: dict[str, int] = {
 }
 
 
-def get_budgets(cfg: dict | None = None) -> dict[str, int]:
+def get_budgets(n_ctx: int = 4096, cfg: dict | None = None) -> dict[str, int]:
     """
-    Return token budgets for each prompt section.
-    Merges config prompt_budgets over defaults.
+    Return token budgets for each prompt section, scaled to n_ctx.
+
+    When n_ctx is provided (from the loaded model), budgets are computed
+    proportionally so the system prompt never exceeds 75% of the context window.
+    Operator overrides via config prompt_budgets are applied on top.
     """
-    budgets = dict(DEFAULT_BUDGETS)
     if cfg is None:
         try:
             import runtime_safety
             cfg = runtime_safety.load_config()
         except Exception:
             cfg = {}
+
+    # Scale DEFAULT_BUDGETS proportionally to n_ctx.
+    # Default total is ~4900 tokens (sum of DEFAULT_BUDGETS).
+    _default_total = sum(v for v in DEFAULT_BUDGETS.values() if v > 0)
+    _context_use_ratio = 0.75
+    available = max(512, int(n_ctx * _context_use_ratio))
+    scale = min(1.0, available / max(_default_total, 1))
+
+    budgets: dict[str, int] = {}
+    for k, v in DEFAULT_BUDGETS.items():
+        if v <= 0:
+            budgets[k] = 0
+        else:
+            budgets[k] = max(50, int(v * scale))
+
+    # Operator overrides from config always win
     overrides = cfg.get("prompt_budgets") or {}
     for k, v in overrides.items():
         if k in budgets and v is not None:

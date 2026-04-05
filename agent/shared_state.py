@@ -1,8 +1,36 @@
 """
 Shared state and refs for routers. Populated by main at startup to avoid circular imports.
 """
+import threading
 from collections import deque
 from typing import Callable
+
+# Operator "steer" hints during an in-flight agent run (FIFO per conversation).
+_steer_lock = threading.Lock()
+_steer_hints: dict[str, deque[str]] = {}
+
+
+def push_agent_steer_hint(conversation_id: str, text: str) -> None:
+    """Queue a short redirect for the next decision tick of this conversation's run."""
+    cid = (conversation_id or "").strip() or "default"
+    t = (text or "").strip()[:280]
+    if not t:
+        return
+    with _steer_lock:
+        dq = _steer_hints.setdefault(cid, deque())
+        dq.append(t)
+        while len(dq) > 8:
+            dq.popleft()
+
+
+def pop_one_agent_steer_hint(conversation_id: str) -> str:
+    """Pop one pending steer hint (non-blocking)."""
+    cid = (conversation_id or "").strip() or "default"
+    with _steer_lock:
+        dq = _steer_hints.get(cid)
+        if not dq:
+            return ""
+        return dq.popleft()
 
 # Set by main after defining _history, touch_activity, etc.
 _history: deque | None = None
@@ -56,6 +84,24 @@ def get_conv_history(conversation_id: str, maxlen: int = 20) -> deque:
 def append_conv_history(conversation_id: str, role: str, content: str) -> None:
     hist = get_conv_history(conversation_id)
     hist.append({"role": role, "content": content})
+    if role == "assistant":
+        # Run compaction in a daemon thread — LLM summarization must never block
+        # the response path (llm_serialize_lock contention otherwise stalls streaming).
+        import threading as _t
+
+        def _compact_bg(h: list) -> None:
+            try:
+                import runtime_safety
+                from services.context_manager import maybe_auto_compact
+
+                cfg = runtime_safety.load_config()
+                n_ctx = max(2048, int(cfg.get("n_ctx", 4096)))
+                compacted = maybe_auto_compact(h, n_ctx=n_ctx, cfg=cfg)
+                h[:] = compacted
+            except Exception:
+                pass
+
+        _t.Thread(target=_compact_bg, args=(hist,), daemon=True, name="auto-compact").start()
 
 
 def get_touch_activity() -> Callable[[], None]:

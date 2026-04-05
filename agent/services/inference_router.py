@@ -24,11 +24,21 @@ _BACKENDS = ("llama_cpp", "openai_compatible", "ollama")
 _AUTO = "auto"
 
 
+def ollama_http_base(cfg: dict) -> str:
+    """Ollama API base URL: ollama_base_url wins, else llama_server_url (legacy)."""
+    u = (cfg.get("ollama_base_url") or "").strip().rstrip("/")
+    if u:
+        return u
+    return (cfg.get("llama_server_url") or "").strip().rstrip("/")
+
+
 def _detect_backend(cfg: dict) -> str:
     """Detect backend from config. Returns one of _BACKENDS."""
     explicit = (cfg.get("inference_backend") or "").strip().lower()
     if explicit and explicit != _AUTO and explicit in _BACKENDS:
         return explicit
+    if (cfg.get("ollama_base_url") or "").strip():
+        return "ollama"
     url = (cfg.get("llama_server_url") or "").strip().rstrip("/")
     if not url:
         return "llama_cpp"
@@ -45,9 +55,14 @@ def _get_backend(cfg: dict) -> str:
     return _detect_backend(cfg)
 
 
-def _ollama_base_url(url: str) -> str:
-    """Ollama uses /v1/chat/completions (OpenAI-compatible) since 0.3.x."""
-    return url.rstrip("/")
+def effective_inference_backend(cfg: dict) -> str:
+    """Public alias for the resolved backend: llama_cpp | openai_compatible | ollama."""
+    return _get_backend(cfg)
+
+
+def inference_backend_uses_local_gguf(cfg: dict) -> bool:
+    """True when completions load GGUF in-process (subprocess workers would duplicate RAM)."""
+    return _get_backend(cfg) == "llama_cpp"
 
 
 def _openai_compatible_url(url: str) -> str:
@@ -176,9 +191,9 @@ def run_completion_ollama(
     model_name: str | None = None,
 ) -> dict | Generator[str, None, None]:
     """Run completion via Ollama. Uses /v1/chat/completions (OpenAI-compatible)."""
-    url = (cfg.get("llama_server_url") or "").strip().rstrip("/")
+    url = ollama_http_base(cfg)
     if not url:
-        return {"choices": [{"message": {"content": "No llama_server_url configured."}}]}
+        return {"choices": [{"message": {"content": "No ollama_base_url or llama_server_url configured."}}]}
     model_name = model_name or cfg.get("remote_model_name") or "llama3.1"
     body = {
         "model": model_name,
@@ -193,7 +208,7 @@ def run_completion_ollama(
     }
     data = _json.dumps(body).encode("utf-8")
     req = urllib.request.Request(
-        _ollama_base_url(url) + "/v1/chat/completions",
+        url + "/v1/chat/completions",
         data=data,
         method="POST",
         headers={"Content-Type": "application/json"},

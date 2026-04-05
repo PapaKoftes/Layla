@@ -14,6 +14,8 @@ Read [`PROJECT_BRAIN.md`](../PROJECT_BRAIN.md) first for stable context; use mod
 
 **OpenClaw (optional sidecar):** [OPENCLAW_ALIGNMENT.md](OPENCLAW_ALIGNMENT.md) maps OpenClaw concepts to Layla. [OPENCLAW_BRIDGE.md](OPENCLAW_BRIDGE.md) describes pointing an OpenClaw-style gateway at `POST /agent`. Layla-native onboarding is under **First run** below; no Node stack required for core use.
 
+**Claude Code Unpacked (slash → HTTP):** [CCUNPACKED_ALIGNMENT.md](CCUNPACKED_ALIGNMENT.md) section 3 maps common Claude Code–style commands to Layla routes and tools.
+
 **Tool policy & markdown skills:** `tools_profile`, `tools_allow`, `tools_deny`, `tool_loop_detection_enabled`, `http_cache_ttl_seconds`, `inference_fallback_urls`, `browser_persistent_profiles` — see `agent/runtime_config.example.json` and [OPENCLAW_ALIGNMENT.md](OPENCLAW_ALIGNMENT.md). Optional AgentSkills-style files: repo [`skills/`](../skills/README.md) or `markdown_skills_dir` in config.
 
 ---
@@ -54,6 +56,32 @@ Read [`PROJECT_BRAIN.md`](../PROJECT_BRAIN.md) first for stable context; use mod
 2. Run `python agent/install/installer_cli.py` or `python agent/first_run.py` for config
 3. Download a `.gguf` into `~/.layla/models/` or `models/`. See `MODELS.md`.
 4. Start: `cd agent && uvicorn main:app --host 127.0.0.1 --port 8000`
+
+---
+
+## Project memory and long-horizon repo work
+
+Layla can keep a **versioned JSON map** under each workspace: **`.layla/project_memory.json`** (sandbox-scoped). It holds a structural file listing, optional **plan** / **todos** / **decisions**, optional schema-v2 **`modules`**, **`issues`**, and **`plans`** (mirrored plan metadata), and is summarized into the system head when the file exists (`project_memory_*` keys in `runtime_config.example.json`).
+
+**Typical flow (planning-first)**
+
+1. **Cognition digest** (optional): `sync_repo_cognition` or `POST /workspace/cognition/sync` — doc-first snapshot in SQLite (injected when `repo_cognition_inject_enabled`).
+2. **Structural scan**: tool **`scan_repo`** (or **`POST /agent`** with **`understand_mode: true`** and **`workspace_root`**) — writes/updates `.layla/project_memory.json` without running the full agent loop. Optional **`understand_index_semantic: true`** enables semantic indexing during the bundled cognition sync.
+3. **Draft plan**: **`plan_mode: true`** on `POST /agent` — returns **`plan`** (legacy list) plus **`plan_id`** and **`plan_steps`**; a row is stored in SQLite **`layla_plans`**. Edit via **`PATCH /plans/{id}`** if needed. When `project_memory_persist_plan` is true and `workspace_root` is set, the plan is also stored under `project_memory.plan`.
+4. **Review / approve**: Web UI **Workspace → Plans**, or **`POST /plans/{id}/approve`**. Approving mirrors a short summary into **`project_memory.plans`** when the workspace is sandbox-allowed.
+5. **Execute**: **`POST /plans/{id}/execute`** — body: **`allow_write`**, **`allow_run`**, optional **`default_max_retries`** or **`step_max_retries`** (0–3, default 1) for governance retries when a step fails validation or looks low-confidence; stored plan steps may also set **`max_retries`** per step (capped 0–3). The server runs **`execute_plan(..., step_governance=True)`**: non-empty **`tools`** on a step become a **hard allowlist** for that step’s `autonomous_run`; **`validate_step_outcome`** and **`low_confidence_response`** gate success; JSON response includes **`all_steps_ok`** and the SQLite row ends **`done`** only if all steps pass, otherwise **`blocked`**. For **`POST /execute_plan`** / **`POST /agent`** with **`plan_id`**, behavior follows those routes. Use **`POST /agent`** with **`plan_id`** under **`planning_strict_mode`** for durable-plan tool gating.
+   - **Ephemeral in-loop plans** (long goal → `should_plan` → `create_plan` → `execute_plan` inside **`autonomous_run`**): **`in_loop_plan_governance_enabled`** defaults **true** — same governance/retries as **`/execute_plan`** (**`in_loop_plan_default_max_retries`**); nested steps receive **`plan_approved`** when the outer request already set **`plan_approved`** or **`allow_write`** or **`allow_run`**. Response may include **`all_steps_ok`**. Set **`in_loop_plan_governance_enabled: false`** for legacy in-loop behavior (no per-step governance).
+   - **`plan_governance_require_nonempty_step_tools`**: when **true**, **`POST /plans/{id}/approve`** and **`POST /plan/{id}/approve`** reject steps of type **edit** / **test** / **build** / **refactor** / **cad** with an empty **`tools`** list. With **`in_loop_plan_governance_enabled`** enabled, in-loop **`create_plan`** rows that are analysis-like get default read-only **`tools`** from **`plan_step_default_read_tools`** (mutating types are not auto-filled); steps are tagged **`_tools_auto_filled`** for transparency.
+   - **Edit/test validation**: when the agent run recorded **`state.steps`**, governed **edit** steps require a successful **`apply_patch`**, **`write_file`**, or **`write_files_batch`** tool with **`result.ok: true`**; **test** steps require **`run_tests`** with **`ok`** or **shell**/**run_python** output that mentions **pytest**/**unittest**/**tox**. If there were no tool steps, Layla still uses text heuristics on the final reply. **`plan_governance_reject_auto_filled_tools`**: set **true** to refuse any step whose **`tools`** were auto-filled (forces explicit tool lists).
+6. **Continuous worker**: **`POST /agent/background`** (or **`POST /agents/spawn`**) with **`continuous: true`**, optional **`plan_id`**, **`max_iterations`** (default 20, capped), **`iteration_delay_seconds`** — repeats `autonomous_run` until iterations exhausted, cooperative cancel, or **`plan.status`** is **`done`** or **`blocked`**. Works in **thread** mode and **subprocess** mode (`background_job_worker.py`).
+
+**Strict planning mode:** Set **`planning_strict_mode: true`** in `runtime_config.json` when you want mutating / run-class tools to be refused unless the run is bound to an **approved** plan (`plan_id` on `POST /agent` or execution via **`/plans/.../execute`** / **`execute_plan`**). Exceptions for repo mapping: **`scan_repo`**, **`update_project_memory`**.
+
+### File-backed plans (`/plan/*`, optional)
+
+For JSON-on-disk plans with rich **Pydantic** steps (deps, tool hints, `paused`/`failed` states), use **`POST /plan/create`** with **`workspace_root`**, then **`POST /plan/{id}/add_steps`**, **`POST /plan/{id}/approve?workspace_root=`**, **`POST /plan/{id}/execute_next`** (foreground), or **`POST /plan/{id}/run_continuous`** (background). **`run_continuous` is rejected with HTTP 400** (`error`: **`file_plan_continuous_requires_thread_workers`**) when **`background_use_subprocess_workers`** is **true** — use in-process thread workers for file-plan step loops, or disable subprocess background mode. Plans live under **`.layla_plans/{plan_id}.json`**. Background jobs that set **`file_plan_id`** use **`services/engine_plans.run_plan_iteration`**: each tick either refines the plan (draft, or **`planning_strict_mode`** while not approved — analysis-only) or runs the next approved step via **`autonomous_run`**, then updates **`.layla/project_memory.json`** (`last_iteration`, `signals.last_step_count`). This is **separate** from SQLite **`/plans`** and **`layla_plans`**; pick one model per workflow or use both for different clients. Optional **`.layla/relationship_codex.json`**: helpers in **`services/relationship_codex.py`** (not loaded into prompts unless you wire it).
+
+Tools **`scan_repo`** and **`update_project_memory`** are **dangerous** / **approval-gated** like other workspace writes.
 
 ---
 
@@ -110,6 +138,8 @@ Read [`PROJECT_BRAIN.md`](../PROJECT_BRAIN.md) first for stable context; use mod
 4. **PDF**: Place `.pdf` files under `knowledge/`. If `pypdf` is installed (`pip install pypdf`), they are indexed like `.md`/`.txt` (no front matter; first 50 pages). Without pypdf, PDFs are skipped.
 
 5. **Notion**: Export pages to Markdown and put the files under `knowledge/`. A future Notion API loader is optional (see MILESTONES M6).
+
+6. **Chat exports / backups**: Put JSON or JSONL under your **sandbox**, then use tool **`ingest_chat_export_to_knowledge`** (or see [BACKUP_INGESTION_AND_ELASTICSEARCH.md](BACKUP_INGESTION_AND_ELASTICSEARCH.md)). Output is `knowledge/_ingested/chats/*.md` for normal indexing. Audio: transcribe with **`stt_file`**, then ingest or paste into `knowledge/`.
 
 ---
 
@@ -194,6 +224,88 @@ Layla can execute **versioned JSON programs** (`GeometryProgram` v1) that map to
 ## Trace ID (debugging)
 
 Set `"trace_id_enabled": true` in `agent/runtime_config.json`. Every response will include an `X-Trace-Id` header (propagated from request or newly generated). Use it to correlate logs and requests across services.
+
+---
+
+## Background workers: OS resources, shared inference, containers
+
+Applies when `background_use_subprocess_workers` is `true` in `runtime_config.json` (`POST /agent/background`, `/agents/spawn`). Default remains in-process threads with cooperative cancel.
+
+### Enforcement scope (Job Objects, cgroups, foreground)
+
+| Surface | Subprocess worker | Thread background | Foreground `/agent` |
+|---------|-------------------|-------------------|---------------------|
+| Windows Job Object (memory / optional CPU %) | Yes, when `background_worker_windows_job_limits_enabled` | No | No |
+| POSIX `RLIMIT_AS` / optional `RLIMIT_CPU` in worker | Yes, in child before LLM load | No | No |
+| Linux cgroup v2 helper (`background_worker_cgroup_auto_enabled`) | Yes, parent moves child PID into a leaf cgroup when writable | No | No |
+
+**cgroups are not Job Objects:** cgroups v2 can combine memory, CPU, and (with controllers) I/O; Windows Job Object limits in Layla are **best-effort ctypes** and may not match cgroup semantics. For production hard caps, prefer **systemd**, **Docker/Podman**, or a **delegated cgroup** subtree.
+
+### Centralized inference service (zero duplicate GGUF)
+
+Run **one** OpenAI-compatible or Ollama server (e.g. `llama-server`, vLLM, LiteLLM, Ollama) and set `llama_server_url` and/or `ollama_base_url` so `inference_backend` resolves to HTTP. The FastAPI process and every `background_job_worker.py` child then use **the same remote model** — no second GGUF load per worker. This is the supported architecture for subprocess-heavy setups.
+
+### Shared inference (avoid duplicate GGUF per worker)
+
+Each `background_job_worker.py` process reads the same `runtime_config.json` and runs `autonomous_run`. If inference resolves to **local** `llama_cpp` (no `llama_server_url` / `ollama_base_url`, or explicit `inference_backend: "llama_cpp"`), **every worker loads its own GGUF** into RAM.
+
+**Recommended:** Run a single shared inference server and point Layla at it:
+
+- **llama.cpp server / vLLM / LiteLLM / OpenAI-compatible**: set `llama_server_url` to the base URL (see `inference_backend` auto-detection in `services/inference_router.py`).
+- **Ollama**: set `ollama_base_url` or a `llama_server_url` that includes port `11434`.
+
+**Policy:** `background_subprocess_local_gguf_policy` — `warn` (log), `reject` (refuse enqueue), or `allow` (silent). Use `reject` if you require HTTP inference only.
+
+### External CPU and memory limits (hard containment)
+
+In-app limits are **best-effort** (see below). For **hard** caps, wrap the server or the worker with OS or container limits:
+
+**Linux (systemd):**
+
+```bash
+systemd-run --user -p MemoryMax=8G -p CPUQuota=200% \
+  --working-directory=/path/to/local-jinx-agent/agent \
+  /path/to/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+```
+
+**Docker / Podman** (see repo root `Dockerfile`; mount models, data, and workspace):
+
+```bash
+docker build -t layla:local .
+docker run --cpus=4 --memory=8g -p 8000:8000 \
+  -v layla-models:/app/models -v layla-data:/app/data \
+  -v /your/workspace:/data/workspace:rw \
+  layla:local
+```
+
+Set `sandbox_root` in `runtime_config.json` to a directory inside the mounted workspace (e.g. `/data/workspace`). Layla does not ship a default seccomp profile; dropping capabilities and read-only root are operator choices.
+
+**Windows:** Use Job Objects externally, or run under WSL2 with the Linux patterns above. Optional in-repo: `background_worker_windows_job_limits_enabled` + `background_worker_windows_job_memory_mb` (best-effort).
+
+**Why not rely on Python `RLIMIT_AS` alone?** On many systems, **mmap**’d model weights do not behave like a simple heap cap. Prefer **cgroups v2** (`MemoryMax`) or container memory limits for predictable RAM enforcement.
+
+### Optional in-repo worker limits
+
+| Key | Purpose |
+|-----|---------|
+| `background_worker_rlimits_enabled` | Linux/macOS: `setrlimit(RLIMIT_AS)` in the worker **before** `llama_cpp` import |
+| `background_worker_rlimit_as_bytes` | Address-space cap in bytes |
+| `background_worker_windows_job_limits_enabled` | Windows Job Object limits (ctypes): **memory** + optional **CPU %** hard cap |
+| `background_worker_windows_job_memory_mb` | Job memory limit (MiB) |
+| `background_worker_windows_job_cpu_percent` | Optional CPU hard cap (1–100); uses `JobObjectCpuRateControlInformation` when supported |
+| `background_worker_rlimit_cpu_seconds` | POSIX worker: optional `RLIMIT_CPU` soft cap (seconds) before LLM import |
+| `background_worker_cgroup_auto_enabled` | Linux: try to create a leaf cgroup and set `memory.max` / `cpu.max` (needs delegation) |
+| `background_worker_cgroup_memory_max_bytes` | e.g. `8589934592` for 8GiB; empty to skip |
+| `background_worker_cgroup_cpu_max` | cgroup v2 `cpu.max` string, e.g. `50000 100000` for 50% of one CPU |
+| `background_worker_wrapper_command` | Argv prefix, e.g. `bubblewrap` / `firejail` — **operator-supplied** profile; Layla concatenates `wrapper + python + background_job_worker.py` |
+| `background_progress_stream_enabled` | Default **true**: persist step progress on tasks (`progress_json`); subprocess workers emit NDJSON `type=progress` lines on **stderr** |
+| `background_progress_min_interval_seconds` | Throttle for in-process step notifications |
+| `background_progress_max_events` | Max events retained per task (trim oldest) |
+| `background_job_max_stderr_bytes` | Cap stderr read while draining worker progress lines |
+
+### Background progress vs foreground streaming
+
+Foreground `POST /agent` with `stream: true` streams the **final** assistant reply over SSE. **Background** tasks expose **incremental tool-step progress** via `GET /agent/tasks` and `GET /agent/tasks/{id}`: `progress_events` (full list), `progress` (same list), and `progress_tail` (last *N* events, `background_progress_tail_max`), backed by SQLite `progress_json`. Subprocess workers write progress as **NDJSON on stderr**; **stdout** remains a single final JSON object. After a subprocess worker exits, Layla **best-effort** removes the leaf cgroup directory when cgroup auto-attach was used.
 
 ---
 

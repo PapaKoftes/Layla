@@ -5,8 +5,11 @@ Context compression and prompt assembly.
 - Prompt assembly: centralized layer for token budgets, deduplication, structured prompts.
   All model calls should pass through build_system_prompt() for consistency.
 """
+import logging
 from pathlib import Path
 from typing import Any
+
+_logger = logging.getLogger("layla")
 
 AGENT_DIR = Path(__file__).resolve().parent.parent
 
@@ -69,20 +72,31 @@ def summarize_history(messages: list, n_ctx: int = 4096, threshold_ratio: float 
                 tl_id = add_timeline_event(summary, event_type="conversation_summary", importance=0.5)
                 ep_id = create_episode(summary=summary[:200])
                 add_episode_event(ep_id, "conversation_summary", str(tl_id) if tl_id > 0 else "", "timeline_events")
-            except Exception:
-                pass
+            except Exception as _e:
+                _logger.debug("summarize_history companion-intel write failed: %s", _e)
             try:
                 from services.style_profile import update_profile_from_interactions
                 update_profile_from_interactions(to_compress)
-            except Exception:
-                pass
+            except Exception as _e:
+                _logger.debug("summarize_history style_profile update failed: %s", _e)
         compressed = [{"role": "system", "content": summary}]
         return compressed + rest
     return rest
 
 
+def maybe_auto_compact(messages: list, n_ctx: int = 4096, cfg: dict | None = None) -> list:
+    """Wrapper: summarize_history using context_auto_compact_ratio from cfg; logs token drop."""
+    ratio = float((cfg or {}).get("context_auto_compact_ratio", 0.75))
+    before = token_estimate_messages(messages)
+    out = summarize_history(list(messages), n_ctx=n_ctx, threshold_ratio=ratio)
+    after = token_estimate_messages(out)
+    if after < before:
+        _logger.info("auto-compact: conversation tokens %s→%s", before, after)
+    return out
+
+
 def _compress_to_summary(messages: list) -> str:
-    """Summarize oldest messages into a compact note. Preserve facts, decisions, tool results."""
+    """Summarize oldest messages via LLM. Falls back to truncation if LLM unavailable."""
     if not messages:
         return ""
     parts = []
@@ -100,13 +114,23 @@ def _compress_to_summary(messages: list) -> str:
         return ""
     raw = "\n".join(parts)
     try:
-        from services.llm_gateway import run_completion
-        prompt = (
-            "Summarize this conversation excerpt into 3-5 bullet points. "
-            "Preserve: key facts, decisions made, tool results mentioned, user preferences. "
-            "Be concise. Output only the bullets.\n\n" + raw
-        )
-        out = run_completion(prompt, max_tokens=300, temperature=0.1, stream=False)
+        import runtime_safety
+        from services.llm_gateway import llm_generation_lock, llm_serialize_lock, run_completion
+
+        cfg = runtime_safety.load_config()
+        busy_lock = llm_generation_lock if cfg.get("llm_serialize_per_workspace") else llm_serialize_lock
+        acquired = busy_lock.acquire(blocking=False)
+        if not acquired:
+            raise RuntimeError("llm busy")
+        try:
+            prompt = (
+                "Summarize this conversation excerpt into 3-5 bullet points. "
+                "Preserve: key facts, decisions made, tool results, user preferences. "
+                "Be concise. Output only the bullets.\n\n" + raw
+            )
+            out = run_completion(prompt, max_tokens=300, temperature=0.1, stream=False)
+        finally:
+            busy_lock.release()
         if isinstance(out, dict):
             text = ((out.get("choices") or [{}])[0].get("message") or {}).get("content", "")
         else:
@@ -170,7 +194,7 @@ def build_system_prompt(
     if budgets is None:
         try:
             from services.context_budget import get_budgets
-            budgets = get_budgets()
+            budgets = get_budgets(n_ctx)
         except Exception:
             budgets = DEFAULT_BUDGETS.copy()
     total_budget = max(512, n_ctx - reserve_for_response)
@@ -191,6 +215,7 @@ def build_system_prompt(
         "section_tokens": {},
         "total_tokens": 0,
         "truncated_sections": [],
+        "dropped_sections": [],
         "dedup_removed": 0,
     }
     remaining = total_budget
@@ -202,6 +227,8 @@ def build_system_prompt(
         max_tok = budgets.get(key, 400)
         max_tok = min(max_tok, remaining)
         if max_tok <= 0:
+            metrics["dropped_sections"].append(key)
+            _logger.debug("context_budget: dropped section=%s (budget exhausted, remaining=%d)", key, remaining)
             break
         truncated = truncate_to_tokens(raw, max_tok)
         tok = token_estimate(truncated)

@@ -62,6 +62,7 @@ Thumbs.db
 *~
 
 # Knowledge: personal content not committed by default; curated project docs are exceptions below
+# Curated starter pack (onboarding only): knowledge/starter/*.md — not matched by knowledge/*.md; keep personal files out of starter/
 knowledge/*.txt
 knowledge/*.md
 knowledge/fetched/
@@ -103,3 +104,30 @@ llama.cpp/
 
 # Cursor / IDE (optional; uncomment if you don't want to share)
 # .cursor/
+
+# Claude Code / AI agent worktrees and settings (local)
+.claude/
+
+# Reference zip archives (checked-out locally, not needed in repo)
+*.zip
+
+# Extracted reference source trees (local research copies)
+integrations/claude-code-sourcemap-main/
+integrations/claw-code-main/
+integrations/openclaude-main/
+# Same archives sometimes extracted at repo root (zip default path)
+/claude-code-sourcemap-main/
+/claw-code-main/
+/openclaude-main/
+
+# Coverage (pytest-cov)
+.coverage
+agent/.coverage
+htmlcov/
+
+# Runtime logs (auto-generated)
+*.log
+logs/
+
+# Empty scaffolding dirs
+sandbox/

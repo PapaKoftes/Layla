@@ -40,11 +40,11 @@ This document traces the full path from page load to sending a message and lists
 
 ---
 
-## 4. Panel tabs: inline only
+## 4. Right control center: tabs
 
-**Location:** `index.html` — each `.panel-tab` has inline `onclick` (e.g. `showPanelTab('health'); refreshPlatformHealth()`).
+**Location:** `index.html` — `#layla-right-panel` with `.rcp-tab` / `.rcp-subtab` (inline `onclick` + bootstrap delegated click on `#layla-right-panel .rcp-tab` and `.rcp-subtab`).
 
-**What it does:** No delegated click on `.panels` in `bindChatInputNow`. Panel tabs work via inline handlers only, so they work even if `bindChatInputNow` never runs or throws.
+**What it does:** `showMainPanel` / `showWorkspaceSubtab` scope to `#layla-right-panel` and toggle `.active` + `hidden` on `.rcp-page` / `.rcp-subpage`. Works even if later script throws, as long as the bootstrap block registered the delegate listener.
 
 ---
 
