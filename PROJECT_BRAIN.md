@@ -1,12 +1,12 @@
 # PROJECT_BRAIN — Layla (stable system summary)
 
-**Purpose:** One place to load **context before** scanning the whole tree. Use this with **`AGENTS.md`** (full manual), **`ARCHITECTURE.md`** (flow), and **`docs/RULES.md`** (conventions). Update this file when the *shape* of the system changes (major routes, layout, or doc roles)—not every small commit.
+**Purpose:** One place to load **context before** scanning the whole tree. Use this with **`AGENTS.md`** (full manual), **`ARCHITECTURE.md`** (flow), and **`docs/RULES.md`** (conventions). For a **ground-truth technical audit** (gaps, risks, route inventory), see **`docs/FULL_TECHNICAL_AUDIT.md`**. Update this file when the *shape* of the system changes (major routes, layout, or doc roles)—not every small commit.
 
 ---
 
 ## What this repo is
 
-**Layla** is a **local-first** AI companion and engineering agent: FastAPI on **localhost:8000**, **Web UI** at **`/ui`**, optional **MCP** (`cursor-layla-mcp/`). Core loop: **`POST /agent`** → **`agent/agent_loop.autonomous_run()`** → LLM decisions → tools (gated) → streaming reply. Six **aspects** load from **`personalities/*.json`** (never hardcode the list). **Memory:** SQLite **`layla.db`** + optional Chroma; **config:** **`agent/runtime_config.json`** (gitignored), template **`agent/runtime_config.example.json`**.
+**Layla** is a **local-first**, **planning-first** AI companion and engineering agent: FastAPI on **localhost:8000**, **Web UI** at **`/ui`**, optional **MCP** (`cursor-layla-mcp/`). Core loop: **`POST /agent`** → **`agent/agent_loop.autonomous_run()`** → LLM decisions → tools (gated) → streaming reply. **Plans:** durable **`layla_plans`** in SQLite + **`/plans`** API; optional file-backed **`/plan/*`** (`.layla_plans/*.json`, Pydantic steps); optional **`planning_strict_mode`** so mutating tools require an **approved** bound plan (default off). **Tools:** **186** registered in **`layla.tools.registry.TOOLS`** (authoritative count: **`EXPECTED_TOOL_COUNT`** in **`agent/tests/test_registered_tools_count.py`**). Six **aspects** load from **`personalities/*.json`** (never hardcode the list). **Memory:** SQLite **`layla.db`** + optional Chroma; **config:** **`agent/runtime_config.json`** (gitignored), template **`agent/runtime_config.example.json`**.
 
 ---
 
@@ -22,7 +22,7 @@
 | Backlog pointer (keep thin) | **`docs/TASKS.md`** |
 | Ethics / refusal framing in product | **`docs/ETHICAL_AI_PRINCIPLES.md`** |
 
-**Never commit:** `agent/runtime_config.json`, `layla.db`, personal `knowledge/` (unless explicitly excepted in `.gitignore`).
+**Never commit:** `agent/runtime_config.json`, `layla.db`, personal `knowledge/` (unless explicitly excepted in `.gitignore`). **Shipped onboarding text:** `knowledge/starter/*.md` (curated, no personal data).
 
 ---
 

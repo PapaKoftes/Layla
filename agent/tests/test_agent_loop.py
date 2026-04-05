@@ -52,6 +52,16 @@ def test_classify_intent_reason_fallback():
     assert classify_intent("explain how it works") == "reason"
 
 
+def test_classify_intent_checkpoints_and_ingest():
+    from agent_loop import classify_intent
+
+    assert classify_intent("restore checkpoint abc") == "restore_file_checkpoint"
+    assert classify_intent("revert file foo.py") == "restore_file_checkpoint"
+    assert classify_intent("import chats from backup") == "ingest_chat_export_to_knowledge"
+    assert classify_intent("search past learnings for postgres") == "memory_elasticsearch_search"
+    assert classify_intent("list checkpoints") == "list_file_checkpoints"
+
+
 def test_decision_parsing_valid_tool():
     """Parse a valid JSON line with action=tool returns structured dict."""
     # We can't call _llm_decision easily without mocking run_completion. So test the parsing
@@ -322,3 +332,53 @@ def test_persona_focus_appends_secondary_voice():
     assert "nyx" in out.lower() or "Nyx" in out
     same = agent_loop._append_persona_focus_to_personality("BASE", primary, "morrigan")
     assert same == "BASE"
+
+
+def test_iter_with_response_pacing_zero_passthrough():
+    import time
+    from agent_loop import _iter_with_response_pacing
+
+    assert list(_iter_with_response_pacing(iter(["a", "b", "c"]), 0)) == ["a", "b", "c"]
+    t0 = time.monotonic()
+    list(_iter_with_response_pacing(iter(["x", "y"]), 40))
+    assert time.monotonic() - t0 >= 0.03
+
+
+def test_client_abort_event_stops_before_llm(monkeypatch, tmp_path):
+    """Pre-set client_abort_event exits the main loop before any _llm_decision call."""
+    import threading
+
+    import agent_loop
+
+    monkeypatch.setattr(agent_loop, "system_overloaded", lambda: False)
+    monkeypatch.setattr(agent_loop.runtime_safety, "load_config", lambda: _minimal_cfg(str(tmp_path)))
+    monkeypatch.setattr(agent_loop.runtime_safety, "load_identity", lambda: "")
+    monkeypatch.setattr(agent_loop.runtime_safety, "load_personality", lambda: "")
+
+    called: list[int] = []
+    monkeypatch.setattr(agent_loop, "_llm_decision", lambda *a, **k: called.append(1) or {"action": "reason"})
+
+    ev = threading.Event()
+    ev.set()
+    hist: list[dict] = []
+    result = agent_loop.autonomous_run(
+        goal="anything that is not trivial quick-reply",
+        context="",
+        workspace_root=str(tmp_path),
+        allow_write=True,
+        allow_run=False,
+        conversation_history=hist,
+        aspect_id="",
+        show_thinking=False,
+        client_abort_event=ev,
+    )
+    assert called == []
+    assert result.get("status") == "client_abort"
+    assert any(s.get("action") == "client_abort" for s in (result.get("steps") or []))
+    assert any("Tool execution cancelled" in (m.get("content") or "") for m in hist if m.get("role") == "user")
+
+
+def test_normalize_mcp_tool_args_aliases():
+    from agent_loop import _normalize_mcp_tool_args
+
+    assert _normalize_mcp_tool_args({"server": "s", "tool": "t"}) == {"server": "s", "tool": "t", "mcp_server": "s", "tool_name": "t"}

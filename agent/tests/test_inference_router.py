@@ -3,6 +3,8 @@
 from services.inference_router import (
     _BACKENDS,
     _detect_backend,
+    effective_inference_backend,
+    inference_backend_uses_local_gguf,
 )
 
 
@@ -40,3 +42,18 @@ def test_backends_constant():
     assert "llama_cpp" in _BACKENDS
     assert "openai_compatible" in _BACKENDS
     assert "ollama" in _BACKENDS
+
+
+def test_effective_inference_backend_alias():
+    cfg = {"llama_server_url": "", "inference_backend": "auto"}
+    assert effective_inference_backend(cfg) == "llama_cpp"
+
+
+def test_inference_backend_uses_local_gguf():
+    assert inference_backend_uses_local_gguf({"llama_server_url": "", "inference_backend": "auto"}) is True
+    assert (
+        inference_backend_uses_local_gguf(
+            {"llama_server_url": "http://localhost:8000", "inference_backend": "auto"}
+        )
+        is False
+    )

@@ -19,4 +19,10 @@ TOOLS = {
         "risk_level": "low",
         "category": "fabrication",
     },
+    "gencad_generate_toolpath": {
+        "dangerous": True,
+        "require_approval": True,
+        "risk_level": "medium",
+        "category": "fabrication",
+    },
 }

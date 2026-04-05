@@ -1,10 +1,30 @@
 """Tests for platform UI API endpoints and chat repair verification."""
 
+from __future__ import annotations
+
+from pathlib import Path
+
+AGENT_UI = Path(__file__).resolve().parent.parent / "ui"
+
+
+def _aggregate_ui_chat_contract_text() -> str:
+    """Shell HTML plus all UI JS under agent/ui/js (bootstrap + app live here after extraction)."""
+    parts: list[str] = []
+    index = AGENT_UI / "index.html"
+    if index.is_file():
+        parts.append(index.read_text(encoding="utf-8"))
+    js_dir = AGENT_UI / "js"
+    if js_dir.is_dir():
+        for p in sorted(js_dir.glob("*.js")):
+            parts.append(p.read_text(encoding="utf-8"))
+    return "\n".join(parts)
+
 
 def test_platform_models():
     from fastapi.testclient import TestClient
 
     from main import app
+
     client = TestClient(app)
     r = client.get("/platform/models")
     assert r.status_code == 200
@@ -20,6 +40,7 @@ def test_platform_plugins():
     from fastapi.testclient import TestClient
 
     from main import app
+
     client = TestClient(app)
     r = client.get("/platform/plugins")
     assert r.status_code == 200
@@ -34,6 +55,7 @@ def test_platform_knowledge():
     from fastapi.testclient import TestClient
 
     from main import app
+
     client = TestClient(app)
     r = client.get("/platform/knowledge")
     assert r.status_code == 200
@@ -49,6 +71,7 @@ def test_platform_projects():
     from fastapi.testclient import TestClient
 
     from main import app
+
     client = TestClient(app)
     r = client.get("/platform/projects")
     assert r.status_code == 200
@@ -64,6 +87,7 @@ def test_ui_loads():
     from fastapi.testclient import TestClient
 
     from main import app
+
     client = TestClient(app)
     r = client.get("/ui")
     assert r.status_code == 200
@@ -72,51 +96,57 @@ def test_ui_loads():
 
 
 def test_ui_chat_repair_verification():
-    """Verify chat/Enter/Send repair markers are present in served UI."""
+    """GET /ui must expose chat shell; wiring verified via aggregated static UI sources."""
     from fastapi.testclient import TestClient
 
     from main import app
+
     client = TestClient(app)
     r = client.get("/ui")
     assert r.status_code == 200, "GET /ui must return 200"
     html = r.text
 
-    # Must serve full UI from file (not minimal fallback) for repair to apply
     assert 'id="msg-input"' in html, "UI must contain #msg-input"
     assert 'id="send-btn"' in html, "UI must contain #send-btn"
-
-    # Single entry point: triggerSend (bootstrap); Enter and Send use it
-    assert "triggerSend" in html, "single send entry point triggerSend must be present"
-    assert "window.triggerSend" in html, "triggerSend exposed on window"
-    assert 'id="send-btn"' in html and "triggerSend" in html, "Send button uses triggerSend (inline or ref)"
-
-    # Early Enter listener (document keydown, capture)
-    assert "document.addEventListener('keydown'" in html or 'document.addEventListener("keydown"' in html, "early keydown listener"
-    assert "activeElement" in html and "msg-input" in html, "Enter checks activeElement and msg-input"
-
-    # try/finally so bindChatInputNow always runs
-    assert "} finally {" in html, "script must use finally block"
-    assert "bindChatInputNow" in html, "bindChatInputNow must be present"
-    assert "getElementById('msg-input')" in html or 'getElementById("msg-input")' in html, "bindChatInputNow looks up msg-input"
-    assert "getElementById('send-btn')" in html or 'getElementById("send-btn")' in html, "bindChatInputNow looks up send-btn"
-
-    # Cache-Control so browser does not use stale UI
     assert "no-store" in r.headers.get("cache-control", "").lower(), "Cache-Control: no-store for /ui"
+
+    contract = _aggregate_ui_chat_contract_text()
+    assert "triggerSend" in contract, "triggerSend must be present in UI sources"
+    assert "window.triggerSend" in contract, "triggerSend exposed on window"
+    assert "document.addEventListener('keydown'" in contract or 'document.addEventListener("keydown"' in contract, (
+        "keydown listener"
+    )
+    assert "activeElement" in contract and "msg-input" in contract, "Enter checks activeElement and msg-input"
+    assert "} finally {" in contract, "script must use finally block for bindChatInputNow"
+    assert "bindChatInputNow" in contract, "bindChatInputNow must be present"
+    assert "getElementById('msg-input')" in contract or 'getElementById("msg-input")' in contract, "msg-input lookup"
+    assert "getElementById('send-btn')" in contract or 'getElementById("send-btn")' in contract, "send-btn lookup"
+    assert "window._mentionActive" in contract, "mention overlay flag"
 
 
 def test_ui_chat_repair_in_file():
-    """Verify chat repair markers exist in the UI file on disk (no server)."""
-    from pathlib import Path
+    """On-disk UI sources must still contain chat repair markers."""
+    contract = _aggregate_ui_chat_contract_text()
+    assert 'id="msg-input"' in contract
+    assert 'id="send-btn"' in contract
+    assert "} finally {" in contract
+    assert "bindChatInputNow" in contract
+    assert "window.triggerSend" in contract
+    assert "triggerSend" in contract
+    assert "window._mentionActive" in contract
+    assert "document.addEventListener('keydown'" in contract or 'document.addEventListener("keydown"' in contract
 
-    ui_file = Path(__file__).resolve().parent.parent / "ui" / "index.html"
-    assert ui_file.is_file(), f"UI file missing: {ui_file}"
-    html = ui_file.read_text(encoding="utf-8")
 
-    assert 'id="msg-input"' in html
-    assert 'id="send-btn"' in html
-    assert "} finally {" in html
-    assert "bindChatInputNow" in html
-    assert "window.triggerSend" in html
-    assert "triggerSend" in html
-    assert "window._mentionActive" in html
-    assert "document.addEventListener('keydown'" in html or 'document.addEventListener("keydown"' in html
+def test_layla_ui_static_assets_served():
+    """CSS and JS extracted under agent/ui must be reachable via /layla-ui."""
+    from fastapi.testclient import TestClient
+
+    from main import app
+
+    client = TestClient(app)
+    r = client.get("/layla-ui/css/layla.css")
+    assert r.status_code == 200, "layla.css must be served"
+    assert len(r.text) > 100
+    r2 = client.get("/layla-ui/js/layla-app.js")
+    assert r2.status_code == 200, "layla-app.js must be served"
+    assert len(r2.text) > 100
