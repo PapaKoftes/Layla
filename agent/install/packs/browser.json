@@ -1,0 +1,5 @@
+{
+  "description": "Playwright for browser automation tools",
+  "pip": ["playwright"],
+  "post_pip": ["python", "-m", "playwright", "install", "chromium"]
+}

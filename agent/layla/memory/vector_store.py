@@ -539,6 +539,7 @@ def search_memories_full(
     use_mmr: bool = False,
     cross_encoder_limit: int | None = None,
     coding_boost: bool = False,
+    use_hyde: bool | None = None,
 ) -> list[dict]:
     """
     Two-stage retrieval pipeline:
@@ -549,16 +550,32 @@ def search_memories_full(
     cross_encoder_limit: max candidates to run cross-encoder on (config: retrieval_cross_encoder_limit).
     """
     # Resolve cross_encoder_limit from config if not passed
+    cfg_local: dict = {}
     if cross_encoder_limit is None:
         try:
             import runtime_safety
-            cfg = runtime_safety.load_config()
-            cross_encoder_limit = int(cfg.get("retrieval_cross_encoder_limit", 10))
+            cfg_local = runtime_safety.load_config()
+            cross_encoder_limit = int(cfg_local.get("retrieval_cross_encoder_limit", 10))
         except Exception:
             cross_encoder_limit = 10
 
+    if use_hyde is None:
+        try:
+            import runtime_safety
+            cfg_local = cfg_local or runtime_safety.load_config()
+            use_hyde = bool(cfg_local.get("hyde_enabled", False))
+        except Exception:
+            use_hyde = False
+
     # Step 1: hybrid vector + BM25 → top 20
     results = search_hybrid(query, k=20, coding_boost=coding_boost)
+    if use_hyde:
+        try:
+            hyde_hits = search_with_hyde(query, k=15, fallback=True)
+            if hyde_hits:
+                results = _reciprocal_rank_fusion([results, hyde_hits], k=20)
+        except Exception:
+            pass
 
     # Step 2: merge FTS5 keyword results
     try:

@@ -1,16 +1,16 @@
 """Code search, execution, analysis, and refactoring tools."""
 
 TOOLS = {
-    "search_codebase": {"dangerous": False, "require_approval": False, "risk_level": "low"},
-    "grep_code": {"dangerous": False, "require_approval": False, "risk_level": "low"},
+    "search_codebase": {"dangerous": False, "require_approval": False, "risk_level": "low", "concurrency_safe": True},
+    "grep_code": {"dangerous": False, "require_approval": False, "risk_level": "low", "concurrency_safe": True},
     "run_python": {"dangerous": True, "require_approval": True, "risk_level": "high"},
     "run_tests": {"dangerous": True, "require_approval": True, "risk_level": "medium"},
-    "python_ast": {"dangerous": False, "require_approval": False, "risk_level": "low"},
+    "python_ast": {"dangerous": False, "require_approval": False, "risk_level": "low", "concurrency_safe": True},
     "project_discovery": {"fn_key": "project_discovery_tool", "dangerous": False, "require_approval": False, "risk_level": "low"},
     "security_scan": {"dangerous": False, "require_approval": False, "risk_level": "low"},
     "code_symbols": {"dangerous": False, "require_approval": False, "risk_level": "low"},
     "find_todos": {"dangerous": False, "require_approval": False, "risk_level": "low"},
-    "dependency_graph": {"dangerous": False, "require_approval": False, "risk_level": "low"},
+    "dependency_graph": {"dangerous": False, "require_approval": False, "risk_level": "low", "concurrency_safe": True},
     "code_metrics": {"dangerous": False, "require_approval": False, "risk_level": "low"},
     "code_lint": {"dangerous": False, "require_approval": False, "risk_level": "low"},
     "rename_symbol": {"dangerous": True, "require_approval": True, "risk_level": "medium"},

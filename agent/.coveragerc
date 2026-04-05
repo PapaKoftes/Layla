@@ -1,0 +1,23 @@
+# Used when pytest runs with cwd=agent/ (CI and docs/VERIFICATION.md).
+# Measure application code only; omit tests and UI e2e harness.
+
+[run]
+branch = True
+source = .
+omit =
+    tests/*
+    tests/**/*
+    e2e_ui/*
+    tui.py
+    */__pycache__/*
+
+[report]
+# Ratchet upward as tests grow (branch coverage is stricter than line-only).
+fail_under = 28
+precision = 0
+show_missing = false
+skip_covered = true
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    raise NotImplementedError

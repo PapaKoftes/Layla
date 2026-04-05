@@ -46,6 +46,15 @@ def get_recent_reflections(n: int = 10) -> list[str]:
         return []
 
 
+def get_reliable_tools(min_success_rate: float = 0.8, min_count: int = 3) -> list[str]:
+    """Return tool names that have high reliability based on past outcomes. Used by planner."""
+    patterns = get_recent_tool_patterns(50)
+    return [
+        p["tool"] for p in patterns
+        if p.get("success_rate", 0) >= min_success_rate and p.get("count", 0) >= min_count
+    ][:10]
+
+
 def run_experience_replay() -> dict[str, Any]:
     """
     Review past outcomes and reflections. Update planning heuristics.

@@ -303,6 +303,43 @@ def _migrate_impl() -> None:
     except Exception as e:
         logger.warning("background_tasks table migration failed: %s", e)
 
+    try:
+        with _conn() as db:
+            db.execute("ALTER TABLE background_tasks ADD COLUMN kind TEXT DEFAULT 'background'")
+            db.commit()
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
+
+    try:
+        with _conn() as db:
+            db.execute("ALTER TABLE background_tasks ADD COLUMN progress_json TEXT DEFAULT '[]'")
+            db.commit()
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
+
+    # Repo cognition snapshots — durable multi-repo digests for system-head injection
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS repo_cognition_snapshots (
+                    workspace_root     TEXT PRIMARY KEY,
+                    label              TEXT DEFAULT '',
+                    fingerprint        TEXT DEFAULT '',
+                    pack_json          TEXT DEFAULT '{}',
+                    pack_markdown      TEXT NOT NULL DEFAULT '',
+                    file_manifest_json TEXT DEFAULT '[]',
+                    updated_at         TEXT NOT NULL
+                )
+            """)
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_repo_cognition_updated ON repo_cognition_snapshots(updated_at DESC)"
+            )
+            db.commit()
+    except Exception as e:
+        logger.warning("repo_cognition_snapshots migration failed: %s", e)
+
     # Conversation summary memory — prevents context overflow across sessions
     try:
         with _conn() as db:
@@ -375,6 +412,43 @@ def _migrate_impl() -> None:
             db.commit()
     except Exception as e:
         logger.warning("conversation tables migration failed: %s", e)
+
+    # layla_projects — scoped presets (workspace, aspect, skills paths, preamble)
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS layla_projects (
+                    id               TEXT PRIMARY KEY,
+                    name             TEXT NOT NULL DEFAULT '',
+                    workspace_root   TEXT DEFAULT '',
+                    aspect_default   TEXT DEFAULT '',
+                    skill_paths_json TEXT DEFAULT '[]',
+                    system_preamble  TEXT DEFAULT '',
+                    created_at       TEXT NOT NULL,
+                    updated_at       TEXT NOT NULL
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_layla_projects_updated ON layla_projects(updated_at DESC)")
+            db.commit()
+    except Exception as e:
+        logger.warning("layla_projects migration failed: %s", e)
+
+    try:
+        with _conn() as db:
+            db.execute("ALTER TABLE layla_projects ADD COLUMN cognition_extra_roots TEXT DEFAULT ''")
+            db.commit()
+    except sqlite3.OperationalError as e:
+        el = str(e).lower()
+        if "duplicate column" not in el and "no such table" not in el:
+            raise
+
+    try:
+        with _conn() as db:
+            db.execute("ALTER TABLE conversations ADD COLUMN project_id TEXT DEFAULT ''")
+            db.commit()
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            logger.debug("conversations.project_id alter: %s", e)
 
     # embedding_id for conversation_summaries — enables retrieval participation
     try:
@@ -803,6 +877,55 @@ def _migrate_evolution_layer() -> None:
                 )
             db.commit()
 
+    # Session prompt log + tool permission grants (operator/session scoped)
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS session_prompts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    prompt TEXT NOT NULL,
+                    aspect TEXT,
+                    created_at TEXT DEFAULT (datetime('now'))
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_session_prompts_id_desc ON session_prompts(id DESC)")
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS tool_permission_grants (
+                    id TEXT PRIMARY KEY,
+                    tool TEXT NOT NULL,
+                    pattern TEXT NOT NULL,
+                    scope TEXT DEFAULT 'session',
+                    created_at TEXT,
+                    expires_at TEXT
+                )
+            """)
+            db.commit()
+    except Exception as e:
+        logger.warning("session_prompts / tool_permission_grants migration failed: %s", e)
+
+    # layla_plans (planning-first) — standalone migration for DBs created before this block ran
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS layla_plans (
+                    id               TEXT PRIMARY KEY,
+                    workspace_root   TEXT NOT NULL DEFAULT '',
+                    goal             TEXT NOT NULL DEFAULT '',
+                    context          TEXT NOT NULL DEFAULT '',
+                    steps_json       TEXT NOT NULL DEFAULT '[]',
+                    status           TEXT NOT NULL DEFAULT 'draft',
+                    conversation_id  TEXT NOT NULL DEFAULT '',
+                    created_at       TEXT NOT NULL,
+                    updated_at       TEXT NOT NULL
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_layla_plans_ws ON layla_plans(workspace_root)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_layla_plans_status ON layla_plans(status)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_layla_plans_updated ON layla_plans(updated_at DESC)")
+            db.commit()
+    except Exception as e:
+        logger.warning("layla_plans migration failed: %s", e)
+
 
 # ── learnings ──────────────────────────────────────────────────────────────
 
@@ -893,6 +1016,20 @@ def save_learning(
             )
         db.commit()
         rid = cur.lastrowid
+        if rid and int(rid) > 0:
+            try:
+                import runtime_safety
+                from services.elasticsearch_bridge import index_learning
+
+                index_learning(
+                    runtime_safety.load_config(),
+                    rid=int(rid),
+                    text=content,
+                    tags=tags_s,
+                    source=source or "learning",
+                )
+            except Exception:
+                pass
         try:
             from services.observability import log_learning_saved
             log_learning_saved(content_preview=content[:80], source=source or "db")
@@ -912,6 +1049,11 @@ def save_learning(
                 t.start()
             except Exception:
                 pass
+        try:
+            from services.personal_knowledge_graph import invalidate_personal_graph
+            invalidate_personal_graph()
+        except Exception:
+            pass
         return rid
 
 
@@ -1145,6 +1287,11 @@ def save_study_plan(plan_id: str, topic: str, status: str = "active", domain_id:
                 (plan_id, topic, status, "[]", now),
             )
         db.commit()
+    try:
+        from services.personal_knowledge_graph import invalidate_personal_graph
+        invalidate_personal_graph()
+    except Exception:
+        pass
 
 
 def get_active_study_plans() -> list[dict]:
@@ -1221,6 +1368,70 @@ def get_recent_audit(n: int = 10) -> list[dict]:
             "SELECT * FROM audit ORDER BY id DESC LIMIT ?", (n,)
         ).fetchall()
     return [dict(r) for r in reversed(rows)]
+
+
+def save_session_prompt(prompt: str, aspect: str = "") -> None:
+    migrate()
+    text = (prompt or "")[:10000]
+    asp = (aspect or "")[:128]
+    if not text.strip():
+        return
+    with _conn() as db:
+        db.execute(
+            "INSERT INTO session_prompts (prompt, aspect) VALUES (?, ?)",
+            (text, asp),
+        )
+        db.commit()
+
+
+def get_recent_session_prompts(limit: int = 50) -> list[dict]:
+    migrate()
+    lim = max(1, min(200, int(limit)))
+    with _conn() as db:
+        rows = db.execute(
+            "SELECT id, prompt, aspect, created_at FROM session_prompts ORDER BY id DESC LIMIT ?",
+            (lim,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def add_tool_permission_grant(tool: str, pattern: str, scope: str = "permanent") -> str:
+    """Store a tool + glob-like pattern the operator approved (e.g. shell + 'git *')."""
+    import uuid
+    migrate()
+    gid = str(uuid.uuid4())
+    with _conn() as db:
+        db.execute(
+            """INSERT OR REPLACE INTO tool_permission_grants
+               (id, tool, pattern, scope, created_at, expires_at) VALUES (?,?,?,?,?,?)""",
+            (gid, tool[:128], pattern[:512], scope[:32], utcnow().isoformat(), ""),
+        )
+        db.commit()
+    return gid
+
+
+def tool_grant_matches(tool: str, command_line: str) -> bool:
+    import fnmatch
+    migrate()
+    cmd = (command_line or "").strip()
+    if not cmd:
+        return False
+    with _conn() as db:
+        rows = db.execute(
+            "SELECT pattern FROM tool_permission_grants WHERE tool=?",
+            (tool,),
+        ).fetchall()
+    for r in rows:
+        pat = (r["pattern"] or "").strip()
+        if not pat:
+            continue
+        try:
+            if fnmatch.fnmatch(cmd, pat) or fnmatch.fnmatch(cmd.lower(), pat.lower()):
+                return True
+        except Exception:
+            if pat.rstrip("*") and cmd.lower().startswith(pat.rstrip("*").lower()):
+                return True
+    return False
 
 
 # ── conversation summaries (context overflow prevention) ────────────────────
@@ -1401,6 +1612,140 @@ def search_conversations(query: str, limit: int = 50) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+# ── layla_projects (scoped agent presets) ─────────────────────────────────────
+
+def create_project(
+    name: str,
+    workspace_root: str = "",
+    aspect_default: str = "",
+    skill_paths_json: str = "[]",
+    system_preamble: str = "",
+    project_id: str = "",
+    cognition_extra_roots: str | list | None = None,
+) -> dict:
+    import json
+    import uuid
+
+    migrate()
+    pid = (project_id or "").strip() or str(uuid.uuid4())
+    now = utcnow().isoformat()
+    nm = (name or "").strip() or "Untitled project"
+    wr = (workspace_root or "").strip()
+    ad = (aspect_default or "").strip()
+    spj = (skill_paths_json or "").strip() or "[]"
+    try:
+        json.loads(spj)
+    except Exception:
+        spj = "[]"
+    pre = (system_preamble or "").strip()[:8000]
+    cog_ex = ""
+    if isinstance(cognition_extra_roots, list):
+        try:
+            cog_ex = json.dumps(cognition_extra_roots)[:16000]
+        except Exception:
+            cog_ex = "[]"
+    elif isinstance(cognition_extra_roots, str) and cognition_extra_roots.strip():
+        cog_ex = cognition_extra_roots.strip()[:16000]
+    with _conn() as db:
+        db.execute(
+            """INSERT INTO layla_projects
+               (id, name, workspace_root, aspect_default, skill_paths_json, system_preamble, cognition_extra_roots, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (pid, nm, wr, ad, spj, pre, cog_ex, now, now),
+        )
+        db.commit()
+        row = db.execute("SELECT * FROM layla_projects WHERE id=?", (pid,)).fetchone()
+    return dict(row) if row else {"id": pid}
+
+
+def list_projects(limit: int = 100) -> list[dict]:
+    migrate()
+    with _conn() as db:
+        rows = db.execute(
+            "SELECT * FROM layla_projects ORDER BY updated_at DESC LIMIT ?",
+            (max(1, min(int(limit), 500)),),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_project(project_id: str) -> dict | None:
+    migrate()
+    pid = (project_id or "").strip()
+    if not pid:
+        return None
+    with _conn() as db:
+        row = db.execute("SELECT * FROM layla_projects WHERE id=?", (pid,)).fetchone()
+    return dict(row) if row else None
+
+
+def update_project(project_id: str, fields: dict) -> dict | None:
+    migrate()
+    pid = (project_id or "").strip()
+    if not pid:
+        return None
+    cur = get_project(pid)
+    if not cur:
+        return None
+    name = fields.get("name", cur.get("name", ""))
+    workspace_root = fields.get("workspace_root", cur.get("workspace_root", ""))
+    aspect_default = fields.get("aspect_default", cur.get("aspect_default", ""))
+    skill_paths_json = fields.get("skill_paths_json", cur.get("skill_paths_json", "[]"))
+    system_preamble = fields.get("system_preamble", cur.get("system_preamble", ""))
+    cognition_extra_roots = fields.get("cognition_extra_roots", cur.get("cognition_extra_roots", ""))
+    if isinstance(cognition_extra_roots, list):
+        import json as _json
+
+        try:
+            cognition_extra_roots = _json.dumps(cognition_extra_roots)
+        except Exception:
+            cognition_extra_roots = "[]"
+    cognition_extra_roots = (str(cognition_extra_roots or "").strip())[:16000]
+    now = utcnow().isoformat()
+    with _conn() as db:
+        db.execute(
+            """UPDATE layla_projects SET name=?, workspace_root=?, aspect_default=?,
+               skill_paths_json=?, system_preamble=?, cognition_extra_roots=?, updated_at=? WHERE id=?""",
+            (
+                (name or "").strip()[:200],
+                (workspace_root or "").strip(),
+                (aspect_default or "").strip(),
+                (skill_paths_json or "[]").strip(),
+                (system_preamble or "").strip()[:8000],
+                cognition_extra_roots,
+                now,
+                pid,
+            ),
+        )
+        db.commit()
+    return get_project(pid)
+
+
+def delete_project(project_id: str) -> bool:
+    migrate()
+    pid = (project_id or "").strip()
+    if not pid:
+        return False
+    with _conn() as db:
+        cur = db.execute("DELETE FROM layla_projects WHERE id=?", (pid,))
+        db.commit()
+        return cur.rowcount > 0
+
+
+def set_conversation_project(conversation_id: str, project_id: str) -> bool:
+    migrate()
+    cid = (conversation_id or "").strip()
+    if not cid:
+        return False
+    now = utcnow().isoformat()
+    with _conn() as db:
+        cur = db.execute(
+            "UPDATE conversations SET project_id=?, updated_at=? WHERE id=?",
+            ((project_id or "").strip(), now, cid),
+        )
+        db.commit()
+        return cur.rowcount > 0
+
+
 # ── relationship memory (companion intelligence) ────────────────────────────
 
 def add_relationship_memory(user_event: str, embedding_id: str = "") -> None:
@@ -1423,6 +1768,11 @@ def add_relationship_memory(user_event: str, embedding_id: str = "") -> None:
             (event_text, utcnow().isoformat(), eid),
         )
         db.commit()
+    try:
+        from services.personal_knowledge_graph import invalidate_personal_graph
+        invalidate_personal_graph()
+    except Exception:
+        pass
 
 
 def get_recent_relationship_memories(n: int = 5) -> list[dict]:
@@ -2100,8 +2450,8 @@ def save_background_task(task: dict) -> None:
         db.execute(
             """INSERT OR REPLACE INTO background_tasks
                (id, conversation_id, goal, aspect_id, status, priority, result, error,
-                created_at, started_at, finished_at, updated_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                created_at, started_at, finished_at, updated_at, kind, progress_json)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 task.get("task_id", ""),
                 task.get("conversation_id", "") or "",
@@ -2115,6 +2465,8 @@ def save_background_task(task: dict) -> None:
                 task.get("started_at", "") or "",
                 task.get("finished_at", "") or "",
                 now,
+                (task.get("kind") or "background") or "background",
+                task.get("progress_json", "[]") or "[]",
             ),
         )
         db.commit()
@@ -2128,6 +2480,7 @@ def update_background_task(
     error: str | None = None,
     started_at: str | None = None,
     finished_at: str | None = None,
+    progress_json: str | None = None,
 ) -> None:
     """Update mutable background task fields."""
     migrate()
@@ -2148,6 +2501,9 @@ def update_background_task(
     if finished_at is not None:
         updates.append("finished_at=?")
         args.append(finished_at)
+    if progress_json is not None:
+        updates.append("progress_json=?")
+        args.append(progress_json)
     updates.append("updated_at=?")
     args.append(utcnow().isoformat())
     args.append(task_id)
@@ -2308,3 +2664,204 @@ def get_recent_telemetry_events(n: int = 50) -> list[dict]:
             "performance_mode": r["performance_mode"],
         })
     return out
+
+
+# ── layla_plans (planning-first durable plans) ───────────────────────────────
+
+_VALID_PLAN_STATUSES = frozenset({"draft", "approved", "executing", "done", "blocked"})
+
+
+def create_layla_plan(
+    goal: str,
+    *,
+    context: str = "",
+    steps: list | None = None,
+    workspace_root: str = "",
+    conversation_id: str = "",
+    status: str = "draft",
+) -> str:
+    """Insert a plan row; returns plan id (uuid)."""
+    import uuid
+
+    migrate()
+    pid = str(uuid.uuid4())
+    now = utcnow().isoformat()
+    st = status if status in _VALID_PLAN_STATUSES else "draft"
+    wr = normalize_workspace_root(workspace_root) if workspace_root else ""
+    steps_json = json.dumps(steps if isinstance(steps, list) else [], default=str)
+    with _conn() as db:
+        db.execute(
+            """INSERT INTO layla_plans
+               (id, workspace_root, goal, context, steps_json, status, conversation_id, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (pid, wr, goal or "", context or "", steps_json, st, conversation_id or "", now, now),
+        )
+        db.commit()
+    return pid
+
+
+def get_layla_plan(plan_id: str) -> dict | None:
+    migrate()
+    pid = (plan_id or "").strip()
+    if not pid:
+        return None
+    with _conn() as db:
+        row = db.execute("SELECT * FROM layla_plans WHERE id=?", (pid,)).fetchone()
+    if not row:
+        return None
+    try:
+        steps = json.loads(row["steps_json"] or "[]")
+    except (json.JSONDecodeError, TypeError):
+        steps = []
+    return {
+        "id": row["id"],
+        "workspace_root": row["workspace_root"] or "",
+        "goal": row["goal"] or "",
+        "context": row["context"] or "",
+        "steps": steps if isinstance(steps, list) else [],
+        "status": row["status"] or "draft",
+        "conversation_id": row["conversation_id"] or "",
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def update_layla_plan(
+    plan_id: str,
+    *,
+    goal: str | None = None,
+    context: str | None = None,
+    steps: list | None = None,
+    status: str | None = None,
+    workspace_root: str | None = None,
+    conversation_id: str | None = None,
+) -> bool:
+    migrate()
+    pid = (plan_id or "").strip()
+    if not pid:
+        return False
+    existing = get_layla_plan(pid)
+    if not existing:
+        return False
+    now = utcnow().isoformat()
+    g = existing["goal"] if goal is None else goal
+    c = existing["context"] if context is None else context
+    s = existing["steps"] if steps is None else steps
+    st = existing["status"] if status is None else status
+    if st not in _VALID_PLAN_STATUSES:
+        st = existing["status"]
+    wr = existing["workspace_root"]
+    if workspace_root is not None:
+        wr = normalize_workspace_root(workspace_root) if workspace_root else ""
+    conv = existing["conversation_id"] if conversation_id is None else conversation_id
+    steps_json = json.dumps(s if isinstance(s, list) else [], default=str)
+    with _conn() as db:
+        db.execute(
+            """UPDATE layla_plans SET goal=?, context=?, steps_json=?, status=?,
+               workspace_root=?, conversation_id=?, updated_at=? WHERE id=?""",
+            (g or "", c or "", steps_json, st, wr or "", conv or "", now, pid),
+        )
+        db.commit()
+    return True
+
+
+def list_layla_plans(
+    *,
+    workspace_root: str | None = None,
+    status: str | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    migrate()
+    lim = max(1, min(int(limit), 200))
+    q = "SELECT id FROM layla_plans WHERE 1=1"
+    args: list = []
+    if workspace_root:
+        q += " AND workspace_root = ?"
+        args.append(normalize_workspace_root(workspace_root))
+    if status and status in _VALID_PLAN_STATUSES:
+        q += " AND status = ?"
+        args.append(status)
+    q += " ORDER BY updated_at DESC LIMIT ?"
+    args.append(lim)
+    with _conn() as db:
+        rows = db.execute(q, tuple(args)).fetchall()
+    out: list[dict] = []
+    for r in rows:
+        p = get_layla_plan(r["id"])
+        if p:
+            out.append(p)
+    return out
+
+
+def approve_layla_plan(plan_id: str) -> bool:
+    """draft -> approved (idempotent if already approved)."""
+    p = get_layla_plan(plan_id)
+    if not p:
+        return False
+    if p["status"] in ("done", "blocked"):
+        return False
+    if p["status"] == "approved":
+        return True
+    return update_layla_plan(plan_id, status="approved")
+
+
+def set_layla_plan_status(plan_id: str, status: str) -> bool:
+    if status not in _VALID_PLAN_STATUSES:
+        return False
+    return update_layla_plan(plan_id, status=status)
+
+
+def normalize_workspace_root(path: str) -> str:
+    """Stable key for repo cognition (resolved absolute path)."""
+    try:
+        from pathlib import Path
+
+        return str(Path(path).expanduser().resolve())
+    except Exception:
+        return (path or "").strip()
+
+
+def save_repo_cognition_snapshot(row: dict) -> None:
+    """Upsert one repo cognition digest row."""
+    migrate()
+    now = utcnow().isoformat()
+    wr = normalize_workspace_root(row.get("workspace_root", "") or "")
+    if not wr:
+        return
+    with _conn() as db:
+        db.execute(
+            """INSERT OR REPLACE INTO repo_cognition_snapshots
+               (workspace_root, label, fingerprint, pack_json, pack_markdown, file_manifest_json, updated_at)
+               VALUES (?,?,?,?,?,?,?)""",
+            (
+                wr,
+                (row.get("label") or "")[:200],
+                (row.get("fingerprint") or "")[:160],
+                (row.get("pack_json") or "{}")[:500_000],
+                (row.get("pack_markdown") or "")[:800_000],
+                (row.get("file_manifest_json") or "[]")[:200_000],
+                row.get("updated_at") or now,
+            ),
+        )
+        db.commit()
+
+
+def get_repo_cognition_snapshot(workspace_root: str) -> dict | None:
+    migrate()
+    wr = normalize_workspace_root(workspace_root)
+    if not wr:
+        return None
+    with _conn() as db:
+        row = db.execute("SELECT * FROM repo_cognition_snapshots WHERE workspace_root=?", (wr,)).fetchone()
+    return dict(row) if row else None
+
+
+def list_repo_cognition_snapshots(limit: int = 50) -> list[dict]:
+    migrate()
+    lim = max(1, min(int(limit), 200))
+    with _conn() as db:
+        rows = db.execute(
+            "SELECT workspace_root, label, fingerprint, updated_at FROM repo_cognition_snapshots ORDER BY updated_at DESC LIMIT ?",
+            (lim,),
+        ).fetchall()
+    return [dict(r) for r in rows]

@@ -226,6 +226,8 @@ These frameworks are not imposed on the operator. They are lenses for *noticing*
 
 ### Hard guardrails (non-clinical)
 
+Aligned with **`docs/ETHICAL_AI_PRINCIPLES.md` §11** (product-wide: no diagnostic claims, no DSM/ICD as operator identity, crisis handoff to local services).
+
 **Forbidden:** Assigning psychiatric disorders, DSM/ICD-style diagnostic labels, or “I have identified you as …” to the operator. Stating or implying you are performing a clinical assessment.
 
 **Allowed:** Observable language and behavior patterns; emotion-regulation *signals*; collaboration friction; gentle CBT-style reframes framed as *questions* or *possibilities*; suggesting a licensed clinician when appropriate.
