@@ -43,11 +43,25 @@ This document maps each section of the North Star to code, tests, and verificati
 
 | Item | Where | Notes |
 |------|--------|--------|
+| Context bar, compact, session stats, Skills tab, prompt ↑ | `agent/ui/index.html`; `POST /compact`, `GET /ctx_viz`, `GET /session/stats`, `GET /history`, `GET /skills`; SSE context hints in `agent_loop` | [PARITY_AUDIT.md](PARITY_AUDIT.md) |
 | Runtime limits + potato preset | `agent/config_schema.py`, `main.py` `/settings/preset`, Web UI Settings | `docs/POTATO_MODE.md` |
 | Study presets / workspace suggestions | `routers/study.py` `/study_plans/presets`, `/suggestions`, `/derive_topic`; Web UI Study panel | Local-only signals from `sandbox_root` |
 | Persona focus (dual voice depth) | `POST /agent` `persona_focus`, `agent_loop._build_system_head`, MCP `chat_with_layla` | Primary `aspect_id` unchanged |
 | Remember + learning tags | Web UI, `POST /learn/` `tags`, `db.py` `learnings.tags` | Discord `/note` uses `save_learning_async` |
+| Multi-chat rail, `/conversations*`, session checkpoint | `agent/ui/` + `main.py`; `GET /session/export` (messages + pending + history tail); `GET /values.md` | Web UI Help; `test_session_export.py` |
+| Projects (presets) | `layla_projects` table; `GET/POST/PATCH/DELETE /projects`; optional `project_id` on `POST /agent` | `test_projects_api.py` |
+| Installer maintenance | `agent/install/installer_cli.py` — `doctor`, `repair`, `packs`, `download <url>`; `agent/install/packs/*.json` | `test_install.py` |
+| Starter knowledge pack | `knowledge/starter/` (how-to, tools, safety) | Indexed with other knowledge; see pack `README.md` |
+| Audit rubric | `docs/AUDIT_RUBRIC.md` | Manual sign-off |
+| Onboarding assets (pointers only) | `docs/ONBOARDING_ASSETS.md` | No bundled third-party zips |
+| Project memory + long-horizon background | `services/project_memory.py` (schema v2: `modules`, `issues`, `plans`); `POST /agent` `understand_mode` + optional `plan_mode` persist; tools `scan_repo` / `update_project_memory`; background `continuous` + caps; optional **`plan_id`** on background enqueue | `test_project_memory.py`; recommend `.layla/` in project `.gitignore` |
+| Planning-first (SQLite plans + API) | `layla_plans` in `layla/memory/db.py`; `routers/plans.py` (`GET/POST /plans`, approve, execute); `plan_id` + `plan_steps` on `plan_mode` response; `planning_strict_mode` + `plan_approved` / `active_plan_id` in `agent_loop` / `planner.execute_plan` / `background_job_worker` | `test_plans_api.py`, `test_planning_strict_mode.py` |
 | Discord D1–D5 | `discord_bot/README.md`, `/note`, existing `/ask` + summon/TTS/music | Explicit notes only for codex-style memory |
+
+### Deferred (roadmap only; not in this release scope)
+
+- **CAD / GENCAD swarms** — keep as optional tools/plugins; no new orchestration stack (see `docs/ROADMAP.md` / `docs/MILESTONES.md` if present).
+- **Memory-driven personalities** — design-only **FUTURE**; no dedicated DB or personality rewrite in this track. **Relationship codex:** [`agent/services/relationship_codex.py`](../agent/services/relationship_codex.py) ships as **scaffold/helpers** (not injected into default system prompts); full codex-driven prompts remain roadmap.
 
 ---
 
@@ -118,7 +132,7 @@ Tests: `tests/test_reasoning_classifier.py`.
 | Knowledge ingestion | `services/doc_ingestion.py`, `main.py` routes, UI Knowledge panel | Writes under `knowledge/_ingested/`; `knowledge_ingestion_enabled`; content-hash dedup (`.hash` sidecars); `doc_injection_guard_enabled` (framing + redaction) |
 | Learning gate | `layla/memory/distill.py`, `layla/memory/db.py` `save_learning` | `learning_quality_gate_enabled`, `learning_quality_min_score` |
 | Multi-agent (prompt) | `services/agent_roles.py`, `agent_loop._build_system_head` | `multi_agent_orchestration_enabled` + deep mode |
-| Fast chat UX | `routers/agent.py`, `agent_loop.py`, `services/response_cache.py` | Trivial greeting fast-path, instant stream `thinking` event, optional response cache (`response_cache_*`) |
+| Fast chat UX | `routers/agent.py`, `agent_loop.py`, `services/response_cache.py` | Trivial greeting fast-path, instant stream `thinking` event, optional response cache (`response_cache_*`); **`POST /agent` response variants** documented in `docs/POST_AGENT_RESPONSE_CONTRACT.md` (`state.status`, normalized `state.steps`) |
 | Productization | `version.py`, `services/auto_updater.py`, `main.py`, `ui/index.html` | `GET /version`, `GET /update/check`, `POST /update/apply` (allow_run + approval), UI health panel version/update controls |
 | Learning score floor | `layla/memory/db.py`, `agent_loop._load_learnings` | `learnings.score` column + prompt-time filter by `learning_min_score` |
 
@@ -142,7 +156,7 @@ Maps each capability domain to implemented modules and missing components. See [
 | Skill Library | `layla/skills/registry.py`, `markdown_skills.py`, `skills/` (optional `SKILL.md`), `plugin_loader.py`, `planner.py` | DAG composition, skill metrics |
 | Hardware Intelligence | `hardware_detect.py`, `first_run.py`, `agent/install/` (hardware_probe, model_selector, model_downloader, installer_cli), `runtime_safety._probe_hardware`, `runtime_safety.resolve_model_path` | First-run installer: detect hardware, recommend from catalog, download to ~/.layla/models, generate config. Metal refinement, disk benchmark, thermal (psutil) |
 | Self Improvement | `study_service.py`, `self_improvement.py`, `capability_discovery.py`, `integration_sandbox.py`, `benchmark_suite.py`, `sandbox_validator.py`, `distill.py`, `performance_monitor.py`, `system_optimizer.py`, `capabilities/registry.py` | Capability evolution pipeline — done; runtime optimization — done; RL feedback loop |
-| User Interface | `ui/index.html`, `tui.py`, `cursor-layla-mcp/server.py`, `layla.py` | Platform control center — Health, Models, Knowledge, Plugins panels; GET /platform/* APIs |
+| User Interface | `ui/index.html`, `tui.py`, `cursor-layla-mcp/server.py`, `layla.py` | Web `/ui`: left Options → Content policy (`/settings`); tiered right column (Status, Workspace, Safety, Research, Help); Layla + facet chip; stream typing dots; GET /platform/* APIs |
 
 ---
 

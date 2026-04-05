@@ -310,6 +310,15 @@ def wakeup():
                     greeting_parts.append("Discovery: " + line)
             except Exception as e:
                 logger.debug("wakeup project_discovery failed: %s", e)
+        # Curiosity suggestions: surface knowledge gaps at wakeup (gated — text only)
+        if cfg.get("wakeup_include_curiosity", False):
+            try:
+                from services.curiosity_engine import get_curiosity_suggestions
+                gaps = get_curiosity_suggestions()
+                if gaps:
+                    greeting_parts.append("Knowledge gap: " + gaps[0].strip())
+            except Exception as e:
+                logger.debug("wakeup curiosity_engine failed: %s", e)
     except Exception as e:
         logger.debug("wakeup initiative/discovery config failed: %s", e)
 

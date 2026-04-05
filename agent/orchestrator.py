@@ -5,6 +5,7 @@ Selects which aspect of Layla should respond, builds deliberation prompts,
 and decides whether to deliberate.
 """
 import json
+import threading
 import time
 from pathlib import Path
 
@@ -13,6 +14,9 @@ import numpy as np
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PERSONALITIES_DIR = REPO_ROOT / "personalities"
 
+_aspects_lock = threading.Lock()
+_embeddings_lock = threading.Lock()
+
 _ASPECTS_CACHE: list[dict] | None = None
 _ASPECTS_CACHE_TS: float = 0.0
 _ASPECTS_TTL: float = 60.0  # seconds — re-reads JSON files if a minute has passed
@@ -20,14 +24,15 @@ _ASPECTS_TTL: float = 60.0  # seconds — re-reads JSON files if a minute has pa
 # Embedding-based aspect routing: cached aspect embeddings
 _ASPECT_EMBEDDINGS: dict[str, np.ndarray] = {}
 _ASPECT_EMBEDDINGS_TS: float = 0.0
-_EMBED_COSINE_THRESHOLD: float = 0.15  # below this score → use default
+_EMBED_COSINE_THRESHOLD: float = 0.35  # below this score → use default
 
 
 def reload_aspects() -> list[dict]:
     """Force-reload all aspect JSON files from personalities/ immediately."""
     global _ASPECTS_CACHE, _ASPECTS_CACHE_TS
-    _ASPECTS_CACHE = None
-    _ASPECTS_CACHE_TS = 0.0
+    with _aspects_lock:
+        _ASPECTS_CACHE = None
+        _ASPECTS_CACHE_TS = 0.0
     return _load_aspects()
 
 
@@ -36,27 +41,31 @@ def _load_aspects() -> list[dict]:
     now = time.monotonic()
     if _ASPECTS_CACHE is not None and (now - _ASPECTS_CACHE_TS) < _ASPECTS_TTL:
         return _ASPECTS_CACHE
-    aspects = []
-    try:
-        from layla.memory.db import get_earned_title
-    except Exception:
-        def get_earned_title(_): return None  # noqa: E731
-    if PERSONALITIES_DIR.exists():
-        for f in sorted(PERSONALITIES_DIR.glob("*.json")):
-            try:
-                a = json.loads(f.read_text(encoding="utf-8"))
-                aid = a.get("id")
-                if aid:
-                    earned = get_earned_title(aid)
-                    if earned:
-                        a["title"] = earned
-                        a["earned_title"] = earned
-                aspects.append(a)
-            except Exception:
-                continue
-    _ASPECTS_CACHE = aspects
-    _ASPECTS_CACHE_TS = now
-    return aspects
+    with _aspects_lock:
+        now = time.monotonic()
+        if _ASPECTS_CACHE is not None and (now - _ASPECTS_CACHE_TS) < _ASPECTS_TTL:
+            return _ASPECTS_CACHE
+        aspects = []
+        try:
+            from layla.memory.db import get_earned_title
+        except Exception:
+            def get_earned_title(_): return None  # noqa: E731
+        if PERSONALITIES_DIR.exists():
+            for f in sorted(PERSONALITIES_DIR.glob("*.json")):
+                try:
+                    a = json.loads(f.read_text(encoding="utf-8"))
+                    aid = a.get("id")
+                    if aid:
+                        earned = get_earned_title(aid)
+                        if earned:
+                            a["title"] = earned
+                            a["earned_title"] = earned
+                    aspects.append(a)
+                except Exception:
+                    continue
+        _ASPECTS_CACHE = aspects
+        _ASPECTS_CACHE_TS = now
+        return aspects
 
 
 def _default_aspect() -> dict:
@@ -84,25 +93,29 @@ def _get_aspect_embeddings(aspects: list[dict]) -> dict[str, np.ndarray]:
     now = time.monotonic()
     if _ASPECT_EMBEDDINGS and (now - _ASPECT_EMBEDDINGS_TS) < _ASPECTS_TTL:
         return _ASPECT_EMBEDDINGS
-    try:
-        from layla.memory.vector_store import embed
-        embs: dict[str, np.ndarray] = {}
-        for a in aspects:
-            aid = a.get("id")
-            if not aid:
-                continue
-            desc = " ".join(filter(None, [
-                a.get("role") or "",
-                a.get("voice") or "",
-                " ".join(a.get("triggers", [])),
-            ]))
-            if desc.strip():
-                embs[aid] = embed(desc)
-        _ASPECT_EMBEDDINGS = embs
-        _ASPECT_EMBEDDINGS_TS = now
-        return embs
-    except Exception:
-        return {}
+    with _embeddings_lock:
+        now = time.monotonic()
+        if _ASPECT_EMBEDDINGS and (now - _ASPECT_EMBEDDINGS_TS) < _ASPECTS_TTL:
+            return _ASPECT_EMBEDDINGS
+        try:
+            from layla.memory.vector_store import embed
+            embs: dict[str, np.ndarray] = {}
+            for a in aspects:
+                aid = a.get("id")
+                if not aid:
+                    continue
+                desc = " ".join(filter(None, [
+                    a.get("role") or "",
+                    a.get("voice") or "",
+                    " ".join(a.get("triggers", [])),
+                ]))
+                if desc.strip():
+                    embs[aid] = embed(desc)
+            _ASPECT_EMBEDDINGS = embs
+            _ASPECT_EMBEDDINGS_TS = now
+            return embs
+        except Exception:
+            return {}
 
 
 def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
@@ -310,11 +323,14 @@ def build_deliberation_prompt(
     for name, symbol, cue in deliberation_lines:
         prompt += f"\n[{symbol} {name}] ({cue}):\n"
 
+    # Deliberation conclusion: only the active aspect's refusal authority determines if [REFUSED:] applies.
+    active_can_refuse = active_aspect.get("can_refuse") or active_aspect.get("will_refuse")
+    conclusion_refusal = "If you must refuse, start with [REFUSED: reason]. " if active_can_refuse else ""
     prompt += (
         f"\n[CONCLUSION — {concluder_name.upper()}]: "
         "One direct answer. Do not echo or repeat the aspect lines. "
-        "If you must refuse, start with [REFUSED: reason]. "
-        "If the user says you earned a title, end with [EARNED_TITLE: Title Name].\n"
+        + conclusion_refusal
+        + "If the user says you earned a title, end with [EARNED_TITLE: Title Name].\n"
         f"{concluder_name}:"
     )
     return prompt
@@ -338,13 +354,19 @@ def build_standard_prompt(
     # One-line character anchor so the model knows who is speaking, without echoing the full system head
     anchor = f"[Active aspect: {name}" + (f" — {title}" if title else "") + "]"
 
+    # Only aspects that have explicit refusal authority should see the [REFUSED:] tag instruction.
+    # For all others, the content-policy block in the system head already handles declining in plain language.
+    # Sending [REFUSED:] to non-refusal aspects causes the model to over-apply it on benign questions.
+    can_refuse = aspect.get("can_refuse") or aspect.get("will_refuse")
+    refusal_clause = "If you must refuse, start with [REFUSED: reason]. " if can_refuse else ""
+
     parts = []
     if head:
         parts.append(head)
     parts.append(
         anchor + " Reply as " + name + " only, in her voice. "
-        "If you must refuse, start with [REFUSED: reason]. "
-        "If the user says you earned a title, end with [EARNED_TITLE: Title Name]."
+        + refusal_clause
+        + "If the user says you earned a title, end with [EARNED_TITLE: Title Name]."
     )
     if convo_block:
         parts.append(f"Recent conversation:\n{convo_block}")

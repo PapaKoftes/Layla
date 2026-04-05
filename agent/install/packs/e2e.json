@@ -1,0 +1,5 @@
+{
+  "description": "pytest-playwright for agent/tests/e2e_ui/ — after install, run: python -m playwright install chromium",
+  "pip": ["pytest-playwright"],
+  "post_pip": []
+}

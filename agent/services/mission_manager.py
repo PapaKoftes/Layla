@@ -26,7 +26,15 @@ def create_mission(goal: str, workspace_root: str = "", allow_write: bool = Fals
         return None
     if not goal or not goal.strip():
         return None
-    plan = create_plan(goal, max_steps=MAX_MISSION_STEPS, cfg=cfg)
+    digest = ""
+    if (workspace_root or "").strip():
+        try:
+            from services.plan_workspace_store import prior_plans_digest
+
+            digest = prior_plans_digest(str(workspace_root).strip(), limit=8)
+        except Exception:
+            digest = ""
+    plan = create_plan(goal, max_steps=MAX_MISSION_STEPS, cfg=cfg, prior_plans_digest=digest)
     if not plan:
         return None
     mission_id = str(uuid.uuid4())

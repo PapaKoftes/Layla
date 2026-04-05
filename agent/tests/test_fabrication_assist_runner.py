@@ -85,3 +85,49 @@ def test_assist_strict_schema_rejects_bad_runner_output() -> None:
 
     with pytest.raises(SchemaValidationError):
         assist("bracket", runner=BadOutRunner())
+
+
+# ── DXF → G-code integration: end-to-end fabrication workflow path ────────────
+
+def _make_minimal_dxf(path: Path) -> None:
+    """Create a minimal DXF with one LINE and one LWPOLYLINE entity using ezdxf."""
+    import ezdxf
+    doc = ezdxf.new("R2010")
+    msp = doc.modelspace()
+    msp.add_line((0, 0, 0), (100, 0, 0), dxfattribs={"layer": "CUT"})
+    points = [(0, 0), (100, 0), (100, 50), (0, 50)]
+    msp.add_lwpolyline(points, dxfattribs={"layer": "CUT"})
+    doc.saveas(str(path))
+
+
+def test_generate_gcode_from_dxf(tmp_path: Path) -> None:
+    """
+    Full fabrication workflow path: DXF → G-code via generate_gcode tool.
+    Verifies ezdxf is installed, the tool parses entities, and emits correct G-code headers.
+    """
+    pytest.importorskip("ezdxf", reason="ezdxf not installed; run: pip install ezdxf")
+
+    import layla.tools.registry as registry
+    # Point the effective sandbox at tmp_path so both paths pass inside_sandbox.
+    registry.set_effective_sandbox(str(tmp_path))
+    try:
+        dxf_path = tmp_path / "test_part.dxf"
+        out_path = tmp_path / "output.nc"
+        _make_minimal_dxf(dxf_path)
+
+        result = registry.generate_gcode(
+            dxf_path=str(dxf_path),
+            output_path=str(out_path),
+            layer="CUT",
+            depth_mm=-3.0,
+            feed_rate=2000,
+        )
+        assert result.get("ok") is True, f"generate_gcode failed: {result.get('error')}"
+        assert out_path.exists(), "Output .nc file was not created"
+        gcode = out_path.read_text(encoding="utf-8")
+        assert "G21" in gcode, "G-code missing G21 (metric mode)"
+        assert "G90" in gcode, "G-code missing G90 (absolute positioning)"
+        assert "M2" in gcode, "G-code missing M2 (program end)"
+        assert result["moves"] >= 2, f"Expected >=2 moves (LINE + LWPOLYLINE), got {result['moves']}"
+    finally:
+        registry.set_effective_sandbox(None)

@@ -19,11 +19,18 @@ except ImportError:
 if _HAS_PYDANTIC and BaseModel is not None:
 
     class AgentDecision(BaseModel):
-        """Schema for one LLM decision (tool or reason)."""
+        """Schema for one LLM decision (tool, reason, or think).
+
+        batch_tools: optional list of additional concurrency_safe tool names to
+        run in parallel alongside the primary tool in this same step.
+        Each item is {"tool": name, "args": {…}}.
+        """
         model_config = {"extra": "ignore"}
         action: str = "reason"
         tool: str | None = None
         args: dict[str, Any] = Field(default_factory=dict)
+        batch_tools: list[dict[str, Any]] = Field(default_factory=list)
+        thought: str | None = None
         objective_complete: bool = False
         revised_objective: str | None = None
         priority_level: str = "medium"
@@ -73,10 +80,10 @@ def parse_decision(text: str, valid_tools: frozenset[str]) -> dict | None:
             return None
 
     action = (data.get("action") or "reason").lower().strip()
-    if action not in ("tool", "reason", "none"):
+    if action not in ("tool", "reason", "none", "think"):
         action = "reason"
     tool = (data.get("tool") or "").strip() or None
-    if action == "none":
+    if action in ("none", "think"):
         tool = None
     elif action == "tool" and tool and tool not in valid_tools:
         tool = None
@@ -88,10 +95,23 @@ def parse_decision(text: str, valid_tools: frozenset[str]) -> dict | None:
     if not isinstance(args, dict):
         args = {}
 
+    # batch_tools — list of {"tool": name, "args": {...}} for parallel execution
+    batch_raw = data.get("batch_tools")
+    batch_tools: list[dict] = []
+    if isinstance(batch_raw, list):
+        for bt in batch_raw:
+            if isinstance(bt, dict):
+                bt_name = (bt.get("tool") or "").strip()
+                bt_args = bt.get("args") if isinstance(bt.get("args"), dict) else {}
+                if bt_name and bt_name in valid_tools:
+                    batch_tools.append({"tool": bt_name, "args": bt_args})
+
     return {
         "action": action,
         "tool": tool,
         "args": args,
+        "batch_tools": batch_tools,
+        "thought": _str_opt(data.get("thought"), 4000),
         "objective_complete": bool(data.get("objective_complete", False)),
         "revised_objective": revised,
         "priority_level": pl,

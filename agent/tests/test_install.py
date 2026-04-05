@@ -188,3 +188,10 @@ def test_settings_preset_unknown_returns_400():
     r = client.post("/settings/preset", json={"preset": "not_a_real_preset"})
     assert r.status_code == 400
     assert r.json().get("error") == "unknown_preset"
+
+
+def test_installer_packs_include_e2e_voice_browser():
+    from install.installer_cli import PACKS_DIR
+
+    for name in ("e2e", "voice", "browser"):
+        assert (PACKS_DIR / f"{name}.json").is_file()

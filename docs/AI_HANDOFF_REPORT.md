@@ -13,7 +13,7 @@
 **Layla** is a self-hosted AI companion and engineering agent:
 - Local GGUF via llama-cpp-python (no cloud, no API keys)
 - 6 personality aspects (Morrigan, Nyx, Echo, Eris, Lilith, Cassandra)
-- 109 tools, SQLite + ChromaDB memory, voice I/O, browser automation
+- 179 registered tools (`EXPECTED_TOOL_COUNT` in `agent/tests/test_registered_tools_count.py`), SQLite + ChromaDB memory, voice I/O, browser automation
 - FastAPI at `localhost:8000`, Web UI at `/ui`
 - Approval gate for writes/execution; non-autonomous by design
 

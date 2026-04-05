@@ -5,7 +5,7 @@ Run before tagging or publishing binaries/docs as “ready.” See also **`docs/
 ## Automated
 
 - [ ] **Tests**: from repo root, `cd agent && pytest tests/ -x -q` (full suite).
-  - **CI** (`.github/workflows/ci.yml`) runs `pytest tests/ -m "not slow"` with a 60s per-test timeout — run **`not slow`** locally if you need CI parity; run **full** suite before release.
+  - **CI** (`.github/workflows/ci.yml`) runs `pytest tests/ -m "not slow and not e2e_ui"` with coverage (`pytest-cov`, floor in `agent/.coveragerc`) and a 60s per-test timeout on **Ubuntu**; a **Windows** job runs the same pytest marker set without the coverage floor — see **[VERIFICATION.md](VERIFICATION.md)** for the exact CI-parity command; run **full** suite before release.
 - [ ] **Lint**: `cd agent && ruff check .` (and any formatter the project uses).
 
 ## Manual smoke

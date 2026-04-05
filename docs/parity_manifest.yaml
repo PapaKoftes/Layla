@@ -1,0 +1,54 @@
+# Machine-readable anchors for docs/PARITY_AUDIT.md — verified by agent/tests/test_parity_manifest.py
+version: 1
+paths:
+  - relpath: agent/services/shell_sessions.py
+  - relpath: agent/services/repo_cognition.py
+  - relpath: agent/services/skills.py
+  - relpath: agent/services/inference_router.py
+  - relpath: agent/routers/approvals.py
+  - relpath: agent/services/session_grants.py
+  - relpath: agent/services/mcp_client.py
+  - relpath: agent/services/agent_hooks.py
+  - relpath: agent/background_job_worker.py
+  - relpath: agent/services/background_subprocess.py
+  - relpath: agent/shared_state.py
+  - relpath: agent/layla/memory/vector_store.py
+  - relpath: agent/services/context_window_ux.py
+  - relpath: agent/services/agent_loop_formatting.py
+symbols:
+  - module: services.mcp_client
+    attr: mcp_session_call_tool
+  - module: services.mcp_client
+    attr: mcp_session_list_tools
+  - module: services.mcp_client
+    attr: mcp_session_list_resources
+  - module: services.mcp_client
+    attr: mcp_session_read_resource
+  - module: services.mcp_client
+    attr: get_cached_mcp_tool_summary_for_prompt
+  - module: services.agent_hooks
+    attr: run_agent_hooks
+  - module: services.background_subprocess
+    attr: spawn_background_worker
+  - module: services.background_subprocess
+    attr: cancel_worker
+  - module: layla.tools.registry
+    attr: mcp_tools_call
+  - module: layla.tools.registry
+    attr: mcp_list_mcp_tools
+  - module: layla.tools.registry
+    attr: mcp_list_mcp_resources
+  - module: layla.tools.registry
+    attr: mcp_read_mcp_resource
+  - module: layla.tools.registry
+    attr: mcp_operator_auth_hint
+  - module: layla.tools.registry
+    attr: notebook_read_cells
+  - module: layla.tools.registry
+    attr: notebook_edit_cell
+  - module: agent_loop
+    attr: _approval_preview_diff
+  - module: shared_state
+    attr: append_conv_history
+  - module: services.context_manager
+    attr: maybe_auto_compact

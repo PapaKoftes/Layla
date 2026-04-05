@@ -276,7 +276,9 @@ Approval flow:
 
 ---
 
-## Tier 3 Tools (74 → 109)
+## Tier 3 Tools (extended domains)
+
+**Current total tool count:** **179** — see `agent/tests/test_registered_tools_count.py` (`EXPECTED_TOOL_COUNT`). The heading below is historical tier labeling, not a live count.
 
 ### Scheduling (APScheduler)
 - **schedule_task(tool_name, args, delay_seconds, cron_expr, job_id)** — Schedule any tool to run in background. delay_seconds for one-shot, cron_expr ('*/5 * * * *') for recurring.

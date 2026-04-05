@@ -5,6 +5,8 @@ Pick the right one for your hardware. Put the `.gguf` file in the `models/` fold
 
 **Very tight hardware:** Use a small Tier 3–4 model *and* apply **potato mode** (Web UI → Settings → *Apply potato preset*, or `POST /settings/preset` with `{"preset":"potato"}`). See [docs/POTATO_MODE.md](docs/POTATO_MODE.md).
 
+**Curated links** (VRAM calculators, benchmarks, discovery lists): [docs/EXTERNAL_RESOURCES.md](docs/EXTERNAL_RESOURCES.md).
+
 ---
 
 ## How to pick

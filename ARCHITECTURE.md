@@ -1,9 +1,11 @@
 # Architecture — One-Page Overview
 
-> For a **stable system summary** (before deep scans), see **`PROJECT_BRAIN.md`**.  
-> For the full AI operations manual (file map, rules, style guide), see **`AGENTS.md`**.  
-> **Production guarantees** (determinism boundaries, cost caps, safety, observability): **`docs/PRODUCTION_CONTRACT.md`**.  
-> **Canonical lifecycle** (request → tool → approval → memory): **`docs/GOLDEN_FLOW.md`**.  
+> For a **stable system summary** (before deep scans), see **`PROJECT_BRAIN.md`**.
+> For the full AI operations manual (file map, rules, style guide), see **`AGENTS.md`**.
+> **Production guarantees** (determinism boundaries, cost caps, safety, observability): **`docs/PRODUCTION_CONTRACT.md`**. **Local/CI verification** (pytest markers + coverage floor): **`docs/VERIFICATION.md`**.
+> **Canonical lifecycle** (request → tool → approval → memory): **`docs/GOLDEN_FLOW.md`**. **POST `/agent` response variants** (`state.status`, `state.steps`, fast path vs loop): **`docs/POST_AGENT_RESPONSE_CONTRACT.md`**.
+> **6-phase loop contract** (observe→plan→approve→execute→validate→update_state invariants): **`WORKFLOW.md`**.
+> **Core loop technical spec** (phase I/O, failure modes, config keys): **`docs/CORE_LOOP.md`**.
 > **Subsystem technical depth:** **`docs/MODULE_SWEEP_STATUS.md`** (registry) and linked **`docs/*_MODULE_SECOND_SWEEP.md`** per cluster.
 
 ---
@@ -24,21 +26,29 @@ Client
   → HTTP → FastAPI (agent/main.py, port 8000)
   → Router dispatch:
       /agent, /learn/          → routers/agent.py    → agent_loop.autonomous_run()
+      /agent/background, /agent/tasks*, POST /agent/tasks/{id}/cancel, DELETE /agent/tasks/{id} → routers/agent.py (default: in-process thread + cooperative `client_abort_event`; optional `background_use_subprocess_workers`: child process + hard terminate/kill on cancel via `services/background_subprocess.py` + `background_job_worker.py`). Optional **continuous** mode (`continuous: true`, `max_iterations`, `iteration_delay_seconds`) runs repeated `autonomous_run` until cap, cancel, or `project_memory.plan.status` in `done`/`blocked` (see `services/project_memory.py`). Subprocess + local `llama_cpp` loads a GGUF per worker; use `llama_server_url` / `ollama_base_url` for shared inference. Optional: `background_worker_rlimits_enabled` (POSIX), `background_worker_windows_job_limits_enabled` (Windows memory + optional CPU %), `background_worker_cgroup_auto_enabled` (Linux cgroup v2), `background_worker_wrapper_command`. **OS job/cgroup attachment applies to subprocess workers only**, not foreground `/agent`. **Background progress** (`progress_json`; task APIs expose `progress_events`, `progress`, `progress_tail`) is separate from foreground SSE streaming — see `docs/RUNBOOKS.md`. Linux cgroup leaves created for subprocess workers are **removed after exit** (best-effort).
+      `POST /agent` **`understand_mode`** (requires `workspace_root`): deterministic `scan_workspace_into_memory` + `sync_repo_cognition` without the full LLM loop — see `docs/POST_AGENT_RESPONSE_CONTRACT.md`.
+      **`/plans`**, **`/plans/{id}`**, **`PATCH /plans/{id}`**, **`POST /plans/{id}/approve`**, **`POST /plans/{id}/execute`** → `routers/plans.py` — durable **`layla_plans`** rows in SQLite (`draft` → `approved` → `executing` → **`done`** or **`blocked`**). Plan rows are mirrored to **`{workspace}/.layla/plan_store/`** (manifest + **`plans/{id}.json`** + **`history.jsonl`** on completion) via **`services/plan_workspace_store`** so structured state updates without re-LLM-ing whole plans; **`prior_plans_digest`** feeds **`planner.create_plan`** when a **`workspace_root`** is set. **`POST /plans/{id}/execute`** runs **`services.planner.execute_plan(..., step_governance=True)`** (each step uses **`run_governed_plan_step`**): per-step **tool allowlist** (when steps carry **`tools`**), **`plan_step_governance.validate_step_outcome`** + **`low_confidence_response`**, bounded retries (**`default_max_retries`** / **`step_max_retries`** in JSON body, per-step **`max_retries`** in stored steps, capped), optional short **refine** pass via **`engine_plans._is_low_quality`** inside **`planner._run_agent_step`**. Response includes **`all_steps_ok`**; plan row is **`done`** only if every step passes governance, else **`blocked`**. **`plan_mode`** on `POST /agent` also inserts a draft and returns **`plan_id`**. Optional **`planning_strict_mode`** (default off): `agent_loop` refuses dangerous / run-class tools unless the run is bound to an **approved** plan via **`plan_id`** on `POST /agent`, or execution was started through **`POST /plans/{id}/execute`** / **`POST /execute_plan`** (implicit approval for that payload). Repo-mapping exceptions: **`scan_repo`**, **`update_project_memory`**.
+      **`/plan/create`**, **`GET /plan/{id}?workspace_root=`**, **`POST /plan/{id}/approve`**, **`POST /plan/{id}/add_steps`**, **`POST /plan/{id}/execute_next`**, **`POST /plan/{id}/run_continuous`** → `routers/plan_file.py` — optional **Pydantic file plans** under **`{workspace}/.layla_plans/{id}.json`** (parallel to SQLite plans). **`save_plan`** updates **`plan_store` manifest** for cross-system cohesion. File-plan execution uses **`engine_plans.execute_next_file_plan_step`**, which calls **`planner.run_governed_plan_step`** (same retry/validation core as SQLite **`execute_plan`**) + hard **`step.tools`** allowlist in **`agent_loop`**. When **`file_plan_id`** is on a background payload (or non-continuous **`_run_once`**), the worker uses **`services/engine_plans.run_plan_iteration`** / **`run_file_plan_background_loop`** (purposeful step or plan-refine, **`planning_strict_mode`** analysis-only until approved) instead of only looping **`autonomous_run(message=goal)`**. **`run_continuous`** rejects subprocess workers when started from **`/plan/.../run_continuous`** (see `RUNBOOKS.md`).
+      /agents/spawn            → routers/agents.py     → same queue as /agent/background; poll GET /agent/tasks/{id}; JSON echoes allow_* / workspace_root / worker_mode + isolation note
       /research_mission        → routers/research.py → agent_loop (research_mode=True)
       /study_plans, /wakeup    → routers/study.py
       /approve, /pending       → routers/approvals.py
       /voice/transcribe        → services/stt.py     (faster-whisper)
       /voice/speak             → services/tts.py     (kokoro-onnx)
-      /health, /health?deep=true, /health/deps, /usage, /undo, /version, /update/* → main.py (inline; `active_model`, `effective_config`, `features_enabled`, `dependencies`; `model_loaded_status` may include `recovery` for missing GGUF or `llama_cpp`; `knowledge_index_*`; `effective_limits`; `cache_stats` + `response_cache_stats`; see `docs/PRODUCTION_CONTRACT.md`, `docs/GOLDEN_FLOW.md`)
+      /health, /health?deep=true, /health/deps, /usage, /undo, /version, /update/* → main.py (inline; `active_model`, `effective_config`, `features_enabled`, `dependencies`, **`backends`** llama_cpp/ollama; `model_loaded_status` may include `recovery` for missing GGUF or `llama_cpp`; `knowledge_index_*`; `effective_limits` (includes **`ui_agent_stream_timeout_seconds`**, **`ui_agent_json_timeout_seconds`**, **`ui_stalled_silence_ms`** for the Web UI client); `cache_stats` + `response_cache_stats`; `token_usage`; see `docs/PRODUCTION_CONTRACT.md`, `docs/GOLDEN_FLOW.md`)
+      /compact (POST), /ctx_viz, /session/stats, /session/export, /history, /skills, /values.md → main.py (context + observability + skills + operator session checkpoint)
+      /conversations*, /projects → main.py + `routers/projects.py` (SQLite-backed chats + project presets)
       /settings, /settings/schema, /settings/preset → main.py (schema-driven UI + named config merges, e.g. potato preset)
       /knowledge/ingest, /knowledge/ingest/sources → main.py (doc ingestion)
       /workspace/index         → main.py (semantic codebase indexing)
+      /workspace/cognition/sync, /workspace/cognition → main.py (durable multi-repo doc digests → SQLite; injected in agent_loop._build_system_head when enabled)
       /v1/*, /ui               → main.py (inline)
 ```
 
 **Discord bot** (optional): `discord_bot/` — full bot with voice, TTS, music. Connects to localhost:8000 for chat. See `discord_bot/README.md`.
 
-**Slack / Telegram** (optional): `transports/` — Socket Mode Slack and Telegram polling; same `/agent` bridge as Discord.
+**Slack / Telegram** (optional): `transports/` — Socket Mode Slack and Telegram polling; same `/agent` bridge as Discord. Note: transport files are referenced in docs but may not be present in all installations.
 
 **Transport inbound policy** (optional, OpenClaw-style): `transports/base.py` — env `LAYLA_TRANSPORT_ALLOWLIST`, `LAYLA_TRANSPORT_PAIRING_SECRET` (`/pair`), config `transport_allowlist`, `transport_require_allowlist`. Paired ids: repo-root `.layla_transport_paired.json` (gitignored). See `docs/OPENCLAW_ALIGNMENT.md`, `docs/OPENCLAW_BRIDGE.md`. **Integrations sweep:** `docs/INTEGRATIONS_MODULE_SECOND_SWEEP.md`.
 
@@ -58,13 +68,14 @@ Client
 1a. **`services/reasoning_classifier.classify_reasoning_need()`** — heuristic `none` | `light` | `deep`; stored as `state["reasoning_mode"]`, returned in API/UI. On `performance_mode: low`, `deep` is capped to `light`. **`none`** skips planner (`should_plan` short-circuited); **`light`** and **`none`** skip streaming self-reflection (`stream_reason` `skip_self_reflection`).
 1b. **Task model routing** (when `tool_routing_enabled` and `model_router.is_routing_enabled()`): `classify_task_for_routing(goal, context, cfg)` → `set_model_override` so `llm_gateway` loads task GGUFs via `resolve_model_path`. Dual-model mode: when `resource_manager.should_use_dual_models()` (free RAM ≥ `dual_model_threshold_gb` or `force_dual_models`), `_effective_model_filename()` picks chat vs agent basenames via `resolve_dual_model_basenames()` (`chat_model_path` / `agent_model_path` or `chat_model` / `coding_model` / `model_filename`). Every `run_completion()` sets a routing-prompt ContextVar so `_effective_model_filename()` applies the same classification when override is unset (internal JSON/decision prompts are excluded). Otherwise `select_model` / `get_best_llm_filename_for_task` apply. Multi-model cache `_llm_by_path`; serialize lock is `RLock`. Optional `completion_cache_enabled` caches non-stream dict responses briefly; cache key includes **model basename + temperature + max_tokens** + routing tag + prompt; `completion_cache_max_entries` caps size. **`GET /health`** and **`GET /platform/models`** expose `model_routing` (routing flags + resolved basenames).
 2. `orchestrator.select_aspect()` — keyword-based, loads `personalities/*.json`
-3. `_build_system_head()` — identity + knowledge RAG (BM25+vector+FTS5+rerank) + learnings + CoT; passes through `context_manager.build_system_prompt()` for token budgets and deduplication
+3. `_build_system_head()` — identity + knowledge RAG (BM25+vector+FTS5+rerank) + learnings + CoT; optional repo cognition digest + **bounded `project_memory`** from `{workspace}/.layla/project_memory.json` when `project_memory_enabled`; optional **`honesty_and_boundaries_enabled`** integrity block (disagree kindly, no manipulation/human pretense); passes through `context_manager.build_system_prompt()` for token budgets and deduplication
 4. **Cognitive workspace** (if `enable_cognitive_workspace`): generate approaches → evaluate → choose best; inject `strategy_hint` into decision prompt and plan context
-5. **Planning** (if `should_plan`): `create_plan` → `execute_plan`; each step runs `autonomous_run` recursively
+5. **Planning** (if `should_plan`): `create_plan` → `execute_plan`. **`in_loop_plan_governance_enabled`** defaults **true**: **`step_governance=True`**, **`in_loop_plan_default_max_retries`** (0–3), nested **`plan_approved=(outer plan_approved or allow_write or allow_run)`** for **`planning_strict_mode`** compatibility; early return may include **`all_steps_ok`**. **`validate_step_outcome`** (`plan_step_governance.py`): for **edit**/**test** steps, if `state.steps` is non-empty, success requires a **successful tool trace** (e.g. `apply_patch`/`write_file`/`write_files_batch` with `result.ok` for edit; `run_tests` or shell/run_python evidence of pytest/unittest with `ok` for test). **`plan_governance_strict_tool_evidence`**: require **substantive** tool payloads (e.g. `path`/`written`/`count` for writes; pytest/unittest output or pass/fail counts + `returncode` for `run_tests`). With strict evidence, **edit**/**test** steps **without** `state.steps` fail (**no text-only proof**). **`plan_governance_hard_mode`**: enables strict evidence + **`plan_governance_reject_auto_filled_tools`** + **`plan_governance_require_nonempty_step_tools`** on mutating steps. **`plan_governance_reject_auto_filled_tools`** alone rejects steps whose tools were injected by in-loop normalize (`_tools_auto_filled`). If there are no tool steps and strict evidence is off, legacy **text** heuristics still apply. Set **`in_loop_plan_governance_enabled: false`** for legacy in-loop behavior. **`POST /execute_plan`** and **`POST /plans/{id}/execute`** always use **`step_governance=True`** with body **`default_max_retries`** / **`step_max_retries`** (capped 0–3).
 6. **Decision loop** (up to `max_tool_calls`):
-   - `_llm_decision()` → parse JSON `{action, tool_name, objective_complete, ...}` (`decision_schema.parse_decision`; `action` may be `none` | `tool` | `reason`)
+   - `_llm_decision()` → parse JSON `{action, tool_name, objective_complete, ...}` (`decision_schema.parse_decision`; `action` may be `none` | `tool` | `think` | `reason`)
    - If `action=none`: append no-op step and continue
-   - If `action=tool`: `registry.TOOLS[name]()` — gated by `allow_write`/`allow_run` + approval; optional `max_patch_lines` gate for `apply_patch`
+   - If `action=think`: log thought, optional SSE `think` event, continue (not a tool call)
+   - If `action=tool`: `registry.TOOLS[name]()` — gated by `allow_write`/`allow_run` + approval; optional `max_patch_lines` gate for `apply_patch`; approval payloads may include a `diff` preview (stripped before tool `fn()` in `routers/approvals.py`). **`mcp_tools_call`** (opt-in `mcp_client_enabled` + `mcp_stdio_servers`) runs a short MCP stdio session via `services/mcp_client.mcp_session_call_tool`, gated like **`shell`** (`allow_run` + dangerous-tool approvals). **`mcp_list_mcp_tools`** calls `mcp_session_list_tools` (`tools/list`) for discovery without `allow_run`.
    - If `action=reason` or `objective_complete`: `_completion()` → stream final reply
 7. Optional self-reflection (`enable_self_reflection`) — score + rewrite if < 7/10
 8. `_save_outcome_memory()` — distill and store outcome; reflection engine (what worked/failed/improve)
@@ -72,11 +83,13 @@ Client
 
 **Performance modes:** `system_optimizer.get_effective_config()` applies `performance_mode` (`low` / `mid` / `high` / `auto`) before CPU/RAM pressure tiers. Omitted key = `mid`. Explicit `auto` uses `hardware_detect.detect_hardware()` with VRAM/RAM numeric thresholds (GPU VRAM: 6 GB and 12 GB boundaries; CPU-only: system RAM 8 GB and 24 GB boundaries). Never writes to `runtime_config.json`.
 
-**Streaming final reply:** When `stream_final` returns `stream_pending`, `routers/agent.py` calls `stream_reason(..., model_override=..., skip_self_reflection=...)` so task routing matches the main run and reflection respects `reasoning_mode` (ContextVar is cleared after `autonomous_run` returns). SSE `done` payloads include `reasoning_mode`.
+**Streaming final reply:** When `stream_final` returns `stream_pending`, `routers/agent.py` calls `stream_reason(..., model_override=..., skip_self_reflection=...)` so task routing matches the main run and reflection respects `reasoning_mode` (ContextVar is cleared after `autonomous_run` returns). SSE `done` payloads include `reasoning_mode`. Optional **`response_pacing_ms`** throttles successive streamed chunks in `agent_loop._stream_reason_body` (`_iter_with_response_pacing`; first chunk immediate; max 10s gap). Streaming **`POST /agent`** passes a `threading.Event` into `autonomous_run(..., client_abort_event=...)` while an async task watches `Request.is_disconnected()`; when set, the decision loop exits with `status=client_abort` and `_inject_cancel_message` updates conversation history for the next turn.
 
-**LLM run lock scope:** `services/llm_gateway.llm_serialize_lock` is held for the entire `autonomous_run` lifecycle (not just completion calls) to avoid concurrent local LLM runs.
+**LLM run lock scope:** By default `services/llm_gateway.llm_serialize_lock` is held for the entire `autonomous_run` lifecycle. When **`llm_serialize_per_workspace`** is true, **`get_agent_serialize_lock(resolved_workspace)`** serializes per workspace; local **`llama_cpp`** **`create_completion`** uses **`llm_generation_lock`** so only one GPU generation runs at a time per process. **`services/agent_safety`** owns **`planning_strict_mode`** and per-step tool-allowlist refusals (**`agent_loop`** imports).
 
 **First-run UI:** `GET /setup_status` (`performance_mode`, `model_valid`, `ready`), `GET /setup/models` (catalog + `recommended_key`) — setup overlay in `agent/ui/index.html`. **`POST /agent`** returns `error: no_model`, `action: open_setup` when the model is missing.
+
+**Web UI (`/ui`, `agent/ui/index.html`):** Modals/overlays (setup, settings, chat search, diff viewers) live **once**, **before** the main `<script>` so sync init and `getElementById` are deterministic; a small **bootstrap** script defines `window.showMainPanel` / `window.showWorkspaceSubtab` / `triggerSend` so tabs and send work even if the large script throws mid-load. The main script uses a large `try/finally`; **inline** `onclick`/`oninput` handlers resolve on **`window`**, so any handler they call must be assigned to `window.*` (block-scoped `function` inside `try` is not a global). **`fetchHealthPayloadOnce()`** deduplicates concurrent `/health` requests (shared promise) so panels and pollers don’t race to `null`. Chat uses shared **typing-indicator** helpers + **SSE** `ux_state` / `tool_start` for stream mode (optional periodic **`pulse`** keepalives during silence — `ui_stream_keepalive_seconds` — reset the client stall warning; default **Stream** on in the UI); non-stream uses timed phase labels until JSON returns. Default **`max_runtime_seconds`** aligns with **`ui_agent_stream_timeout_seconds`** so the server rarely stops a turn before the browser wait cap. Left sidebar **Options** includes **Content policy** (`uncensored` / `nsfw_allowed` → `runtime_config.json` via `POST /settings`). Right column is a **tiered control center** — **Status** (version, updates, `/health` summary, **Runtime & options** snapshot), **Workspace** (sub-tabs: models, knowledge, plugins, projects, timeline, study, memory), **Safety** (mirrored write/run toggles + approvals), **Research**, **Help**. Assistant rows show **Layla** + a **facet chip**; streaming shows **typing dots** until the first token.
 
 **Capability LLM routing:** `capabilities/registry.py` includes `llm_model_coding` (Magicoder vs default); `model_router.select_model()` consults `get_active_implementation("llm_model_coding", cfg)` and stored benchmarks. **`models` config block** and `coding_model` remain the source of GGUF filenames.
 
@@ -107,6 +120,8 @@ Client
 | Knowledge index | ChromaDB `agent/chroma/` (collection: `knowledge`) |
 | Research lab / output | `agent/.research_lab/`, `agent/.research_output/`, `agent/.research_brain/` |
 | Config | `agent/runtime_config.json` |
+| Project memory (per workspace) | `{workspace_root}/.layla/project_memory.json` — structural file map, optional plan/todos/decisions; tools `scan_repo`, `update_project_memory`; operator repos often add `.layla/` to `.gitignore` |
+| Engine plans (planning-first) | SQLite **`layla_plans`** in `layla.db` — goal, steps JSON, status; Web UI **Workspace → Plans**; see `routers/plans.py` |
 
 ---
 
@@ -139,6 +154,7 @@ Client
 | `agent/services/graph_reasoning.py` | Entity extraction (spaCy) + graph expansion (networkx) for query context |
 | `agent/services/cognitive_workspace.py` | Tree-of-thought: generate approaches (search/reasoning/tools) → evaluate → choose best; inject strategy_hint |
 | `agent/services/workspace_index.py` | Semantic search + code intelligence (tree-sitter: functions, classes, imports, calls) |
+| `agent/services/project_memory.py` | Load/save/merge `.layla/project_memory.json`; `scan_workspace_into_memory`, `format_for_prompt`, `persist_plan_to_memory` |
 | `agent/services/stt.py` | faster-whisper STT; detect_voice_mode, transcribe_streaming |
 | `agent/services/tts.py` | kokoro-onnx TTS with pyttsx3 fallback; get_voice_options, configurable tts_voice |
 | `agent/services/style_profile.py` | Tone, response style, topics; embeddings + clustering; updates db.style_profile |
@@ -150,9 +166,11 @@ Client
 | `agent/services/plugin_loader.py` | Load plugins from `plugins/` |
 | `agent/layla/skills/registry.py` | Skills (named tool workflows) |
 | `agent/routers/agent.py` | `POST /learn/`, `POST /agent` |
+| `agent/routers/plans.py` | `GET/POST /plans`, approve + execute stored plans |
 | `agent/routers/approvals.py` | `POST /approve`, `GET /pending` |
 | `agent/routers/study.py` | `GET /wakeup`, `/study_plans` |
-| `agent/ui/index.html` | Web UI: chat, aspect selector, panels (Health, Models, Knowledge, Plugins, Study, Memory, Research, Help); unified `/health` poller + `BroadcastChannel('layla-health-v1')` to sync header status across tabs |
+| `agent/routers/memory.py` | `GET /memory/export`, `POST /memory/import`, `GET /memory/stats`, **`GET /memory/elasticsearch/search`**, **`GET /memory/file_checkpoints`**, **`POST /memory/file_checkpoints/restore`** |
+| `agent/ui/index.html` + `agent/ui/css/layla.css` + `agent/ui/js/*.js` | Web UI shell; static assets served at **`/layla-ui`** (`StaticFiles` on `agent/ui` in `main.py`). Chat, aspects, panels; bootstrap `layla-bootstrap.js` keeps Send/tabs working if `layla-app.js` fails mid-parse |
 | `agent/layla/geometry/executor.py` | `execute_program()`, `list_framework_status()` — sandbox + backends + optional `cad_bridge_fetch` |
 | `cursor-layla-mcp/server.py` | Cursor MCP: `chat_with_layla`, approvals, learn/study tools → localhost FastAPI |
 | `layla.py` | Operator CLI: `ask`, `wakeup`, `approve`, `pending`, `study`, … → httpx to agent |
@@ -243,7 +261,7 @@ Layla is organized into 10 capability domains. Each maps to specific modules. Se
 
 ## Platform UI components
 
-Control center panels (right sidebar, tabbed):
+Control center (right sidebar): isolated shell `#layla-right-panel` — main tabs (`.rcp-tab` / `.rcp-page`) and Workspace subtabs (`.rcp-subtab` / `.rcp-subpage`); single scroll root `.rcp-body`; `showMainPanel` / `showWorkspaceSubtab` toggle `hidden` + `aria-selected` for stable flex/scroll.
 
 | Panel | API | Content |
 |-------|-----|---------|
