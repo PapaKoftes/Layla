@@ -40,6 +40,9 @@ def test_in_loop_execute_plan_passes_governance_when_enabled(monkeypatch, _patch
         d["in_loop_plan_governance_enabled"] = True
         d["in_loop_plan_default_max_retries"] = 2
         d["planning_strict_mode"] = True
+        d["engineering_pipeline_enabled"] = False
+        d["max_runtime_seconds"] = max(int(d.get("max_runtime_seconds", 900) or 900), 180)
+        d["max_tool_calls"] = max(int(d.get("max_tool_calls", 5) or 5), 12)
         return d
 
     monkeypatch.setattr(runtime_safety, "load_config", _load_gov_on)
@@ -47,7 +50,9 @@ def test_in_loop_execute_plan_passes_governance_when_enabled(monkeypatch, _patch
     monkeypatch.setattr("services.planner.should_plan", lambda *a, **k: True)
     monkeypatch.setattr(
         "services.planner.create_plan",
-        lambda goal, max_steps=6, cfg=None: [{"step": 1, "task": "analyze and refactor the module", "tools": [], "role": ""}],
+        lambda goal, max_steps=6, cfg=None, prior_plans_digest="", **kwargs: [
+            {"step": 1, "task": "analyze and refactor the module", "tools": [], "role": ""}
+        ],
     )
     monkeypatch.setattr("services.planner.execute_plan", fake_execute_plan)
 
@@ -91,6 +96,9 @@ def test_in_loop_execute_plan_nested_plan_approved_false_when_read_only(monkeypa
         d["in_loop_plan_governance_enabled"] = True
         d["in_loop_plan_default_max_retries"] = 1
         d["planning_strict_mode"] = True
+        d["engineering_pipeline_enabled"] = False
+        d["max_runtime_seconds"] = max(int(d.get("max_runtime_seconds", 900) or 900), 180)
+        d["max_tool_calls"] = max(int(d.get("max_tool_calls", 5) or 5), 12)
         return d
 
     monkeypatch.setattr(runtime_safety, "load_config", _load_gov_on)
@@ -98,7 +106,9 @@ def test_in_loop_execute_plan_nested_plan_approved_false_when_read_only(monkeypa
     monkeypatch.setattr("services.planner.should_plan", lambda *a, **k: True)
     monkeypatch.setattr(
         "services.planner.create_plan",
-        lambda goal, max_steps=6, cfg=None: [{"step": 1, "task": "analyze the repository", "tools": [], "role": ""}],
+        lambda goal, max_steps=6, cfg=None, prior_plans_digest="", **kwargs: [
+            {"step": 1, "task": "analyze the repository", "tools": [], "role": ""}
+        ],
     )
     monkeypatch.setattr("services.planner.execute_plan", fake_execute_plan)
 
@@ -129,6 +139,9 @@ def test_in_loop_execute_plan_legacy_no_step_governance_when_disabled(monkeypatc
     def _load_gov_off():
         d = dict(_orig_load())
         d["in_loop_plan_governance_enabled"] = False
+        d["engineering_pipeline_enabled"] = False
+        d["max_runtime_seconds"] = max(int(d.get("max_runtime_seconds", 900) or 900), 180)
+        d["max_tool_calls"] = max(int(d.get("max_tool_calls", 5) or 5), 12)
         return d
 
     monkeypatch.setattr(runtime_safety, "load_config", _load_gov_off)
@@ -136,7 +149,9 @@ def test_in_loop_execute_plan_legacy_no_step_governance_when_disabled(monkeypatc
     monkeypatch.setattr("services.planner.should_plan", lambda *a, **k: True)
     monkeypatch.setattr(
         "services.planner.create_plan",
-        lambda goal, max_steps=6, cfg=None: [{"step": 1, "task": "build something", "tools": [], "role": ""}],
+        lambda goal, max_steps=6, cfg=None, prior_plans_digest="", **kwargs: [
+            {"step": 1, "task": "build something", "tools": [], "role": ""}
+        ],
     )
     monkeypatch.setattr("services.planner.execute_plan", fake_execute_plan)
 

@@ -25,8 +25,8 @@ File lives at: `C:\Users\<you>\.cursor\mcp.json`
 {
   "mcpServers": {
     "layla": {
-      "command": "C:\\Users\\minam\\local-jinx-agent\\agent\\venv\\Scripts\\python.exe",
-      "args": ["C:\\Users\\minam\\local-jinx-agent\\cursor-layla-mcp\\server.py"],
+      "command": "C:\\Users\\<you>\\<path-to-repo>\\agent\\venv\\Scripts\\python.exe",
+      "args": ["C:\\Users\\<you>\\<path-to-repo>\\cursor-layla-mcp\\server.py"],
       "env": {
         "LAYLA_BASE_URL": "http://127.0.0.1:8000"
       }

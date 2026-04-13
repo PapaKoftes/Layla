@@ -19,6 +19,18 @@ TOOLS = {
         "risk_level": "low",
         "category": "fabrication",
     },
+    "geometry_extract_machining_ir": {
+        "dangerous": False,
+        "require_approval": False,
+        "risk_level": "low",
+        "category": "fabrication",
+    },
+    "validate_fabrication_bundle": {
+        "dangerous": False,
+        "require_approval": False,
+        "risk_level": "low",
+        "category": "fabrication",
+    },
     "gencad_generate_toolpath": {
         "dangerous": True,
         "require_approval": True,
