@@ -234,6 +234,43 @@ def low_confidence_response(resp: dict[str, Any]) -> bool:
     return any(h in low for h in hedges)
 
 
+def _final_reply_text(resp: dict[str, Any]) -> str:
+    r = str(resp.get("response") or "").strip()
+    if r:
+        return r
+    st = resp.get("state") if isinstance(resp.get("state"), dict) else {}
+    steps = st.get("steps") or []
+    if not isinstance(steps, list):
+        return ""
+    for s in reversed(steps):
+        if isinstance(s, dict) and str(s.get("action") or "") == "reason":
+            t = s.get("result")
+            if isinstance(t, str) and t.strip():
+                return t.strip()
+    return ""
+
+
+def _check_success_criteria(criteria: str, text: str) -> tuple[bool, str]:
+    """Cheap deterministic checks for optional plan step success_criteria."""
+    crit_raw = (criteria or "").strip()
+    if not crit_raw:
+        return True, ""
+    blob = text.lower()
+    c = crit_raw.lower()
+    if c in ("nonempty", "nonempty_reply", "nonempty_response"):
+        if len(text.strip()) >= 20:
+            return True, ""
+        return False, "success_criteria:nonempty_failed"
+    if c.startswith("substring:"):
+        sub = crit_raw.split(":", 1)[1].strip()
+        if sub and sub.lower() in blob:
+            return True, ""
+        return False, f"success_criteria:substring_missing:{sub[:60]}"
+    if crit_raw.lower() in blob or crit_raw in text:
+        return True, ""
+    return False, "success_criteria:text_match_failed"
+
+
 def validate_step_outcome(step: Any, resp: dict[str, Any]) -> tuple[bool, str]:
     """Return (ok, reason). Requires tool traces to be successful; type-specific checks."""
     if resp.get("refused"):
@@ -258,6 +295,15 @@ def validate_step_outcome(step: Any, resp: dict[str, Any]) -> tuple[bool, str]:
     resp_body = str(resp.get("response") or "")
     if _fatal_error_signal_in_response(resp_body):
         return False, "signal:fatal_error_phrase_in_response"
+
+    sc = (getattr(step, "success_criteria", None) or "").strip()
+    if sc:
+        combined = resp_body or _final_reply_text(resp)
+        if _fatal_error_signal_in_response(combined):
+            return False, "success_criteria:blocked_by_fatal_phrase"
+        sok, sreason = _check_success_criteria(sc, combined)
+        if not sok:
+            return False, sreason
 
     req_tools = _required_tool_names(step)
     if req_tools:

@@ -222,6 +222,16 @@ async def handle_list_tools() -> types.ListToolsResult:
                             "description": "If true, include tool trace from state.steps in the returned text.",
                             "default": True,
                         },
+                        "engineering_pipeline_mode": {
+                            "type": "string",
+                            "description": "When runtime engineering_pipeline_enabled: chat (default), plan (clarifier+planner only), or execute (full pipeline). Ignored when feature off.",
+                            "default": "",
+                        },
+                        "clarification_reply": {
+                            "type": "string",
+                            "description": "Answers to prior clarification questions (same message/goal as before).",
+                            "default": "",
+                        },
                     },
                 },
             ),
@@ -679,6 +689,8 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
         show_thinking = bool(args.get("show_thinking", False))
         stream = bool(args.get("stream", False))
         include_trace = bool(args.get("include_trace", True))
+        _epm = str(args.get("engineering_pipeline_mode", "") or "").strip().lower()
+        _cr = str(args.get("clarification_reply", "") or "").strip()
         payload = {
             "message": message,
             "context": context,
@@ -689,14 +701,26 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
             "persona_focus": persona_focus,
             "show_thinking": show_thinking,
         }
+        if _epm in ("chat", "plan", "execute"):
+            payload["engineering_pipeline_mode"] = _epm
+        if _cr:
+            payload["clarification_reply"] = _cr
         try:
             if stream:
                 data = await anyio.to_thread.run_sync(lambda: _agent_stream_sync(payload))
             else:
                 data = await anyio.to_thread.run_sync(lambda: _agent_sync(payload))
             response = data.get("response", "")
+            state = data.get("state") or {}
+            if state.get("status") == "pipeline_needs_input":
+                qs = state.get("questions") or []
+                if isinstance(qs, list) and qs:
+                    response = (
+                        (response or "")
+                        + "\n\n[Pipeline needs input — send clarification_reply on next call with same goal]\n"
+                        + "\n".join(str(q) for q in qs if str(q).strip())
+                    )
             if include_trace:
-                state = data.get("state") or {}
                 response = (response or "") + _format_tool_trace(state)
             return [types.TextContent(type="text", text=response or "")]
         except Exception as e:

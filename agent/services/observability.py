@@ -45,6 +45,20 @@ def log_agent_response(aspect: str, duration_ms: float, status: str, **kw: Any) 
     _log_event("agent_response", aspect=aspect, duration_ms=round(duration_ms, 2), status=status, **kw)
 
 
+def log_run_budget_summary(**kw: Any) -> None:
+    """Single structured line per run: wall time, token estimates, tool counts, pipeline variant."""
+    _log_event("run_budget_summary", **kw)
+    try:
+        import runtime_safety
+
+        _cfg = runtime_safety.load_config()
+        from services.langfuse_export import maybe_emit_run_budget_span
+
+        maybe_emit_run_budget_span(_cfg, kw)
+    except Exception:
+        pass
+
+
 def log_tool_call(tool: str, duration_ms: float, status: str, **kw: Any) -> None:
     _log_event("tool_call", tool=tool, duration_ms=round(duration_ms, 2), status=status, **kw)
     if duration_ms > 0:

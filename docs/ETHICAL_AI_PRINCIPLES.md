@@ -8,6 +8,17 @@ This document codifies the ethical AI principles that govern Layla's design and 
 
 ---
 
+## 0. Policy invariants (system, not vibes)
+
+**Principle:** Operator safety and governance are **hard constraints**. Memory, codex, learnings, or subsystem hints must not override them.
+
+**Implementation:**
+- `operator_protection_policy_pin_enabled` injects an invariant block in `_build_system_head` (`agent_loop.py`).
+- `decision_policy.py` clamps tool allowlists from outcome and workspace signals but **cannot** disable `require_approval` or sandbox checks from SQLite content.
+- Approval flow and `inside_sandbox` remain authoritative. See `AGENTS.md` hard rules.
+
+---
+
 ## 1. Human-in-the-loop (Consent)
 
 **Principle:** Layla never modifies files or runs code without explicit user approval.

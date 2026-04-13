@@ -8,8 +8,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 def _make_sandbox(tmp_path):
     """Patch _get_sandbox to return tmp_path."""
-    from layla.tools import registry
-    return patch.object(registry, '_get_sandbox', return_value=tmp_path.resolve())
+    from layla.tools import sandbox_core
+    return patch.object(sandbox_core, "_get_sandbox", return_value=tmp_path.resolve())
 
 
 class TestInsideSandbox:
@@ -42,7 +42,7 @@ class TestInsideSandbox:
         sandbox = tmp_path / "foo"
         sandbox.mkdir()
         foobar = tmp_path / "foobar" / "file.txt"
-        with patch('layla.tools.registry._get_sandbox', return_value=sandbox.resolve()):
+        with patch("layla.tools.sandbox_core._get_sandbox", return_value=sandbox.resolve()):
             from layla.tools.registry import inside_sandbox
             assert inside_sandbox(foobar) is False
 

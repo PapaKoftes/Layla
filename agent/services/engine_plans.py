@@ -131,6 +131,14 @@ def _autonomous_kwargs_from_payload(payload: dict[str, Any], goal: str) -> dict[
         "background_progress_callback": payload.get("background_progress_callback"),
         "active_plan_id": str(payload.get("active_plan_id") or ""),
         "plan_approved": bool(payload.get("plan_approved")),
+        "skip_engineering_pipeline": bool(payload.get("skip_engineering_pipeline")),
+        "engineering_pipeline_mode": (
+            _epm
+            if (_epm := str(payload.get("engineering_pipeline_mode") or "chat").strip().lower())
+            in ("chat", "plan", "execute")
+            else "chat"
+        ),
+        "clarification_reply": str(payload.get("clarification_reply") or ""),
     }
 
 
@@ -335,6 +343,8 @@ def execute_next_file_plan_step(plan: Any, workspace_root: str, payload: dict[st
         "role": str(step.type or "analysis"),
         "max_retries": max_retries,
         "_tools_auto_filled": bool(getattr(step, "tools_auto_filled", False)),
+        "validation_hint": str(getattr(step, "validation_hint", None) or "").strip(),
+        "success_criteria": str(getattr(step, "success_criteria", None) or "").strip(),
     }
     done_row, last_resp = run_governed_plan_step(
         step_row,

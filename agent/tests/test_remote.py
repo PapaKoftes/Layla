@@ -132,7 +132,7 @@ def test_remote_mode_interactive_allows_agent(monkeypatch):
         "remote_mode": "interactive",
     })
     mock_result = {"status": "finished", "steps": [{"result": "ok"}], "aspect": "morrigan", "aspect_name": "Morrigan", "refused": False, "refusal_reason": "", "ux_states": [], "memory_influenced": []}
-    with patch("routers.agent.autonomous_run", return_value=mock_result):
+    with patch("agent_loop.autonomous_run", side_effect=lambda *_a, **_k: mock_result):
         client = TestClient(main.app)
         r = client.post("/agent", json={"message": "hi", "allow_write": False, "allow_run": False}, headers={"Authorization": "Bearer k"})
     assert r.status_code == 200

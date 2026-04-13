@@ -4,6 +4,7 @@ import queue
 import re
 import time
 from collections.abc import Callable
+from typing import Any
 from pathlib import Path
 
 import psutil
@@ -17,7 +18,6 @@ from decision_schema import parse_decision as _parse_decision  # noqa: E402
 from layla.memory.db import get_aspect_memories as _db_get_aspect_memories  # noqa: E402
 from layla.memory.db import get_recent_learnings as _db_get_learnings  # noqa: E402
 from layla.memory.db import migrate as _db_migrate  # noqa: E402
-from layla.memory.db import save_aspect_memory as _db_save_aspect_memory  # noqa: E402
 from layla.tools.registry import TOOLS, set_effective_sandbox  # noqa: E402
 from services.agent_safety import (  # noqa: E402
     maybe_planning_strict_refusal as _maybe_planning_strict_refusal,
@@ -28,6 +28,12 @@ from services.llm_gateway import get_stop_sequences, llm_serialize_lock, run_com
 from core.executor import run_tool as _run_tool  # noqa: E402
 from services.agent_loop_formatting import format_tool_steps_for_prompt as _format_steps
 from services.context_window_ux import emit_context_window_ux
+from services.outcome_writer import (  # noqa: E402
+    _auto_extract_learnings,
+    _extract_patch_text,
+    _maybe_save_echo_memory,
+    _save_outcome_memory,
+)
 from services.output_polish import polish_output as _polish_output  # noqa: E402
 from services.resource_manager import (  # noqa: E402
     PRIORITY_AGENT,
@@ -532,7 +538,6 @@ _db_migrate()
 _last_reasoning_mode: str = ""
 _load_lock = threading.Lock()
 _reason_mode_lock = threading.Lock()
-_fingerprint_lock = threading.Lock()
 
 
 def _iter_with_response_pacing(tokens, pacing_ms: int):
@@ -1031,6 +1036,41 @@ def _append_persona_focus_to_personality(
     return personality + block
 
 
+def _relationship_codex_context(cfg: dict, workspace_root: str) -> tuple[str, bool]:
+    """
+    Optional digest from `.layla/relationship_codex.json` for the system prompt.
+    Only when inject is enabled, workspace is valid, and path is inside the sandbox.
+    """
+    if not bool(cfg.get("relationship_codex_inject_enabled", False)):
+        return "", False
+    wp = (workspace_root or "").strip()
+    if not wp:
+        return "", False
+    try:
+        wrp = Path(wp).expanduser().resolve()
+    except Exception:
+        return "", False
+    if not wrp.is_dir():
+        return "", False
+    try:
+        from layla.tools.registry import inside_sandbox
+        from services.relationship_codex import codex_has_entities, format_codex_prompt_digest, load_codex
+
+        if not inside_sandbox(wrp):
+            return "", False
+        data = load_codex(wrp)
+        if not codex_has_entities(data):
+            return "", False
+        cap = int(cfg.get("relationship_codex_inject_max_chars", 1000) or 1000)
+        digest = format_codex_prompt_digest(data, max_chars=cap)
+        if not digest.strip():
+            return "", False
+        block = f"## Relationship codex (operator notes)\n{digest.strip()}"
+        return block, True
+    except Exception:
+        return "", False
+
+
 def _build_system_head(
     goal: str = "",
     aspect: dict | None = None,
@@ -1419,12 +1459,14 @@ def _build_system_head(
         )
     system_instructions = "\n\n".join(sys_parts)
 
-    # Memory: learnings + semantic + aspect_memories + retrieved (merged for dedup)
-    memory_parts = []
+    # Memory: learnings + semantic + aspect_memories + retrieved (canonical order: context_merge_layers.MEMORY_SECTION_ORDER)
+    from services.context_merge_layers import MEMORY_SECTION_ORDER
+
+    memory_sections: dict[str, str] = {}
     if git_preamble:
-        memory_parts.append(git_preamble)
+        memory_sections["git_preamble"] = git_preamble
     if project_instructions:
-        memory_parts.append("Project instructions:\n" + project_instructions)
+        memory_sections["project_instructions"] = "Project instructions:\n" + project_instructions
     try:
         from services.repo_cognition import format_cognition_for_prompt, merge_cognition_roots
 
@@ -1433,19 +1475,20 @@ def _build_system_head(
             _cog_max = int(cfg.get("repo_cognition_max_chars", 6000) or 6000)
             _cog_block = format_cognition_for_prompt(_cog_roots, max_chars=_cog_max)
             if _cog_block.strip():
-                memory_parts.append(
+                memory_sections["repo_cognition"] = (
                     "Repository cognition (deterministic snapshot from last sync — stated intent, norms, and doc excerpts; "
                     "verify against files when editing):\n"
                     + _cog_block
                 )
     except Exception as _e:
         logger.debug("context[repo_cognition] failed: %s", _e)
+    _pm_chunks: list[str] = []
     try:
         if cfg.get("project_memory_enabled", True) and (workspace_root or "").strip():
             from pathlib import Path
 
             from layla.tools.registry import inside_sandbox
-            from services.project_memory import format_for_prompt, load_project_memory, memory_file_path
+            from services.project_memory import format_aspects_hint, format_for_prompt, load_project_memory, memory_file_path
 
             wrp = Path(str(workspace_root).strip()).expanduser().resolve()
             if wrp.is_dir() and inside_sandbox(wrp) and memory_file_path(wrp).is_file():
@@ -1454,33 +1497,41 @@ def _build_system_head(
                     _pm_max = int(cfg.get("project_memory_inject_max_chars", 4000) or 4000)
                     _pm_block = format_for_prompt(mem, max_chars=max(500, _pm_max))
                     if _pm_block.strip():
-                        memory_parts.append(
+                        _pm_chunks.append(
                             "Project memory (local `.layla/project_memory.json` — structural map, plan, todos; "
                             "verify against source when editing):\n"
                             + _pm_block
                         )
-                    _asp = pm.format_aspects_hint(mem, str((aspect or {}).get("id") or ""))
+                    _asp = format_aspects_hint(mem, str((aspect or {}).get("id") or ""))
                     if _asp.strip():
-                        memory_parts.append(_asp)
+                        _pm_chunks.append(_asp)
     except Exception as _e:
         logger.debug("context[project_memory] failed: %s", _e)
+    if _pm_chunks:
+        memory_sections["project_memory"] = "\n\n".join(_pm_chunks)
+    try:
+        _codex_block, _ = _relationship_codex_context(cfg, workspace_root)
+        if _codex_block.strip():
+            memory_sections["relationship_codex"] = _codex_block.strip()
+    except Exception as _e:
+        logger.debug("context[relationship_codex] failed: %s", _e)
     if skills_block:
-        memory_parts.append("Matched skills:\n" + skills_block)
+        memory_sections["skills"] = "Matched skills:\n" + skills_block
     if aspect_memories:
-        memory_parts.append(aspect_memories)
+        memory_sections["aspect_memories"] = aspect_memories
     if learnings:
-        memory_parts.append(f"Things I remember:\n{learnings}")
+        memory_sections["learnings"] = f"Things I remember:\n{learnings}"
     if semantic and semantic not in learnings:
-        memory_parts.append(f"Relevant memories:\n{semantic}")
+        memory_sections["semantic_recall"] = f"Relevant memories:\n{semantic}"
     if retrieved_context:
-        memory_parts.append(retrieved_context)
+        memory_sections["retrieved_context"] = retrieved_context
     try:
         from layla.memory.db import get_recent_conversation_summaries
         summaries = get_recent_conversation_summaries(n=3)
         if summaries:
             summary_texts = [s.get("summary", "") for s in summaries if s.get("summary")]
             if summary_texts:
-                memory_parts.append("Prior conversation summaries:\n" + "\n\n".join(summary_texts))
+                memory_sections["conversation_summaries"] = "Prior conversation summaries:\n" + "\n\n".join(summary_texts)
     except Exception as _e:
         logger.debug("context[conversation_summaries] failed: %s", _e)
     # Relationship memory + timeline events: skip for trivial/chat turns
@@ -1491,7 +1542,7 @@ def _build_system_head(
             if rel_mems:
                 rel_texts = [m.get("user_event", "") for m in rel_mems if m.get("user_event")]
                 if rel_texts:
-                    memory_parts.append("Recent relationship context:\n" + "\n\n".join(rel_texts))
+                    memory_sections["relationship_memory"] = "Recent relationship context:\n" + "\n\n".join(rel_texts)
         except Exception as _e:
             logger.debug("context[relationship_memory] failed: %s", _e)
         try:
@@ -1500,10 +1551,11 @@ def _build_system_head(
             if timeline:
                 tl_texts = [f"[{e.get('event_type','')}] {e.get('content','')}" for e in timeline if e.get("content")]
                 if tl_texts:
-                    memory_parts.append("Recent timeline:\n" + "\n\n".join(tl_texts[:5]))
+                    memory_sections["timeline_events"] = "Recent timeline:\n" + "\n\n".join(tl_texts[:5])
         except Exception as _e:
             logger.debug("context[timeline_events] failed: %s", _e)
-    # Style profile (companion intelligence): tone, response style, topics
+    # Style profile + user identity → single precedence layer (docs/MEMORY_PRECEDENCE.md)
+    _style_identity_parts: list[str] = []
     if cfg.get("enable_style_profile"):
         try:
             from services.style_profile import get_profile_summary
@@ -1516,26 +1568,27 @@ def _build_system_head(
             if profile.get("collaboration"):
                 profile_parts.append(profile["collaboration"])
             if profile_parts:
-                memory_parts.append("Conversation style (match these):\n" + "\n".join(profile_parts))
+                _style_identity_parts.append("Conversation style (match these):\n" + "\n".join(profile_parts))
         except Exception as _e:
             logger.debug("context[style_profile] failed: %s", _e)
-    # User identity (long-term companion context): verbosity, humor, formality, response length
     try:
         from layla.memory.db import get_all_user_identity
         uid = get_all_user_identity()
         if uid:
             parts = [f"{k}: {v}" for k, v in uid.items() if v]
             if parts:
-                memory_parts.append("User/companion context:\n" + "\n".join(parts))
+                _style_identity_parts.append("User/companion context:\n" + "\n".join(parts))
     except Exception as _e:
         logger.debug("context[user_identity] failed: %s", _e)
+    if _style_identity_parts:
+        memory_sections["style_and_identity"] = "\n\n".join(_style_identity_parts)
     # Personal knowledge graph: skip for trivial turns
     if not _skip_expensive:
         try:
             from services.personal_knowledge_graph import get_personal_graph_context
             pkg_ctx = get_personal_graph_context(goal or "", max_chars=400)
             if pkg_ctx:
-                memory_parts.append("Personal context (relevant):\n" + pkg_ctx)
+                memory_sections["personal_knowledge_graph"] = "Personal context (relevant):\n" + pkg_ctx
         except Exception as _e:
             logger.debug("context[personal_knowledge_graph] failed: %s", _e)
     # Reasoning strategies for complex goals
@@ -1544,15 +1597,17 @@ def _build_system_head(
             from services.reasoning_strategies import get_strategy_prompt_hint
             hint = get_strategy_prompt_hint(goal)
             if hint:
-                memory_parts.append(hint)
+                memory_sections["reasoning_strategies"] = hint
         except Exception as _e:
             logger.debug("context[reasoning_strategies] failed: %s", _e)
     try:
         from services.context_manager import deduplicate_content
 
-        memory_parts = deduplicate_content(memory_parts, key_len=100)
+        _ordered = [(memory_sections.get(k) or "").strip() for k in MEMORY_SECTION_ORDER]
+        _ordered = [x for x in _ordered if x]
+        memory_parts = deduplicate_content(_ordered, key_len=100)
     except Exception:
-        pass
+        memory_parts = [(memory_sections.get(k) or "").strip() for k in MEMORY_SECTION_ORDER if (memory_sections.get(k) or "").strip()]
     memory_block = "\n\n".join(memory_parts) if memory_parts else ""
 
     pinned_parts: list[str] = []
@@ -1599,6 +1654,23 @@ def _build_system_head(
             if k in budgets and v is not None:
                 budgets[k] = max(0, int(v))
 
+    if cfg.get("tiered_prompt_budget_enabled", True):
+        try:
+            from services.prompt_tier_budget import budgets_for_mode
+
+            _rm_search = (goal or "").lower()
+            _researchish = any(x in _rm_search for x in ("research", "paper", "arxiv", "study", "explain in depth"))
+            tier_budgets = budgets_for_mode(reasoning_mode, research_mode=_researchish)
+            if budgets is None:
+                budgets = dict(DEFAULT_BUDGETS)
+            budgets["memory"] = min(int(budgets.get("memory", 800)), int(tier_budgets.get("memory", 800)))
+            budgets["knowledge"] = min(int(budgets.get("knowledge", 800)), int(tier_budgets.get("knowledge", 800)))
+            budgets["workspace_context"] = min(int(budgets.get("workspace_context", 400)), int(tier_budgets.get("workspace", 400)))
+            _sys_cap = int(tier_budgets.get("identity", 200)) + int(tier_budgets.get("personality", 400)) + int(tier_budgets.get("policy", 300))
+            budgets["system_instructions"] = min(int(budgets.get("system_instructions", 800)), max(400, _sys_cap * 2))
+        except Exception as _tb_e:
+            logger.debug("tiered prompt budget skipped: %s", _tb_e)
+
     sections = {
         "system_instructions": system_instructions,
         "pinned_context": pinned_block,
@@ -1630,7 +1702,9 @@ def _build_system_head(
         sections["system_instructions"] = system_instructions
 
     if cfg.get("prompt_budget_enabled", True):
-        n_ctx = _n_ctx
+        _head_ratio = float(cfg.get("system_head_budget_ratio", 0.35) or 0.35)
+        _head_ratio = max(0.15, min(0.55, _head_ratio))
+        n_ctx = max(1024, int(_n_ctx * _head_ratio))
         assembled, _ctx_metrics = build_system_prompt(sections, n_ctx=n_ctx, budgets=budgets, reserve_for_response=512)
         if _ctx_metrics.get("truncated_sections") or _ctx_metrics.get("dropped_sections"):
             logger.debug(
@@ -2273,9 +2347,37 @@ def _llm_decision(
 
 
 def classify_intent(goal: str) -> str:
-    """Delegate to decision_engine module."""
-    from services.decision_engine import classify_intent as _ci
-    return _ci(goal)
+    """Lightweight heuristic tool intent for tests and legacy call sites (no external module)."""
+    g = (goal or "").strip().lower()
+    if not g:
+        return "reason"
+    if "list checkpoints" in g:
+        return "list_file_checkpoints"
+    if "restore checkpoint" in g or g.startswith("revert file"):
+        return "restore_file_checkpoint"
+    if "import chats" in g and "backup" in g:
+        return "ingest_chat_export_to_knowledge"
+    if "search past learnings" in g:
+        return "memory_elasticsearch_search"
+    if "git status" in g:
+        return "git_status"
+    if "git diff" in g:
+        return "git_diff"
+    if "git log" in g:
+        return "git_log"
+    if "current branch" in g:
+        return "git_branch"
+    if "list dir" in g or "what files are in" in g:
+        return "list_dir"
+    if "grep for" in g or "search code for" in g:
+        return "grep_code"
+    if "create file" in g or "save file as" in g:
+        return "write_file"
+    if g.startswith("read file") or g.startswith("show file") or g.startswith("contents of"):
+        return "read_file"
+    if "explain" in g or "what do you think" in g:
+        return "reason"
+    return "reason"
 
 
 def _extract_path(goal: str) -> str:
@@ -2321,198 +2423,6 @@ def _extract_shell_argv(goal: str):
     return goal.split()
 
 
-def _maybe_save_echo_memory(
-    aspect_id: str,
-    user_msg: str,
-    reply: str,
-    conversation_history: list,
-) -> None:
-    """
-    Echo tracks patterns across all turns, not just when Echo is the active aspect.
-    - Every 5 turns: saves a brief session pattern summary to Echo's aspect memories.
-    - When Echo is active: saves the full exchange immediately.
-    - Extracts recurring topics / avoidance signals from recent history.
-    """
-    turn_count = len(conversation_history) if conversation_history else 0
-    is_echo = aspect_id == "echo"
-
-    # When Echo is active — always save
-    if is_echo:
-        summary = f"User: {user_msg[:120]}. Echo replied: {reply[:250]}."
-        _db_save_aspect_memory("echo", summary)
-
-    # Every 5 conversation turns — save a pattern summary regardless of active aspect
-    if turn_count > 0 and (turn_count % 5 == 0 or is_echo):
-        try:
-            recent = conversation_history[-6:] if len(conversation_history) >= 6 else conversation_history
-            topics = []
-            for t in recent:
-                if t.get("role") == "user":
-                    msg = (t.get("content") or "")[:80].strip()
-                    if msg:
-                        topics.append(msg)
-            if topics and len(topics) >= 2:
-                pattern_note = (
-                    f"Session pattern ({turn_count} turns): "
-                    + "; ".join(topics[:3])
-                    + f". Last reply aspect: {aspect_id}."
-                )
-                _db_save_aspect_memory("echo", pattern_note[:400])
-        except Exception:
-            pass
-
-
-def _save_outcome_memory(state: dict) -> None:
-    """
-    After successful multi-step runs, store a short semantic summary (what was done, what worked).
-    Uses existing learnings/memory; avoids logs and noise.
-    """
-    steps = state.get("steps") or []
-    tool_steps = [s for s in steps if s.get("action") and s["action"] != "reason"]
-    if not tool_steps or state.get("status") != "finished":
-        return
-    objective = (state.get("objective") or state.get("original_goal") or "")[:200]
-    actions = ", ".join(s["action"] for s in tool_steps[:5])
-    facts = []
-    for s in tool_steps:
-        r = s.get("result") or {}
-        if isinstance(r, dict) and r.get("ok"):
-            if r.get("path"):
-                facts.append(f"path:{r.get('path', '')[:80]}")
-            if r.get("entries") and isinstance(r["entries"], list):
-                facts.append(f"listed {len(r['entries'])} items")
-    summary = f"Objective: {objective}. Did: {actions}. " + (" ".join(facts[:3]) if facts else "Completed.")
-    if len(summary) > 400:
-        summary = summary[:397] + "..."
-    try:
-        from layla.memory.db import save_learning
-        save_learning(content=summary, kind="outcome")
-    except Exception as e:
-        logger.debug("outcome memory save failed: %s", e)
-    # Reflection engine: what worked, what failed, what could improve
-    try:
-        from services.reflection_engine import run_reflection
-        run_reflection(state)
-    except Exception as e:
-        logger.debug("reflection engine failed: %s", e)
-
-
-def _extract_patch_text(goal: str) -> str:
-    """Extract only the patch/diff body from the message, not instructions or extra text."""
-    g = (goal or "").strip()
-    if not g:
-        return g
-    # Fenced block: ```patch ... ``` or ```diff ... ``` or ``` ... ```
-    for marker in ("```patch", "```diff", "``` unified", "```"):
-        if marker in g:
-            parts = g.split(marker, 2)
-            if len(parts) >= 3:
-                body = parts[1].strip()
-                if body:
-                    return body
-    # Unified diff: starts with --- or diff --git or Index:
-    for line in g.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("--- ") or stripped.startswith("diff --git") or stripped.startswith("Index:"):
-            return g[g.find(line) :].strip()
-    return g
-
-
-_ASPECT_LEARNING_TYPE: dict = {
-    "morrigan": "strategy",
-    "nyx": "fact",
-    "echo": "preference",
-    "eris": "fact",
-    "lilith": "identity",
-    "cassandra": "fact",
-}
-_GREETING_WORDS = frozenset({"hi", "hello", "hey", "thanks", "thank", "ok", "okay", "yes", "no", "sure", "cool"})
-# Keep a small in-process dedup set to avoid saving the same insight twice in a session
-_recent_learning_fingerprints: set = set()
-
-
-def _auto_extract_learnings(user_msg: str, response: str, aspect_id: str) -> None:
-    """Background thread: extract 1-2 concise learnings from a completed exchange and persist them."""
-    global _recent_learning_fingerprints
-    try:
-        resp_clean = response.strip()
-        # Skip trivial / too-short responses
-        words = resp_clean.split()
-        if len(words) < 20:
-            return
-        # Skip if response is basically a greeting/ack
-        first_words = set(w.lower().strip(".,!?") for w in words[:6])
-        if first_words.issubset(_GREETING_WORDS):
-            return
-
-        learning_type = _ASPECT_LEARNING_TYPE.get(aspect_id, "fact")
-        extracted = []
-
-        # ── Attempt 1: LLM extraction (fast short prompt) ──────────────────────
-        try:
-            from services.llm_gateway import run_completion
-            prompt = (
-                "Extract 1-2 concise, standalone, reusable insights from this exchange. "
-                "Output only a valid JSON array of strings. Max 100 chars each. No explanation.\n\n"
-                f"User: {user_msg[:250]}\n"
-                f"Response: {resp_clean[:500]}"
-            )
-            raw = (run_completion(prompt=prompt, max_tokens=140, temperature=0.1) or "").strip()
-            import json as _json
-            import re as _re_al
-            m = _re_al.search(r'\[.*?\]', raw, _re_al.DOTALL)
-            if m:
-                items = _json.loads(m.group(0))
-                for item in items[:2]:
-                    if isinstance(item, str) and len(item.strip()) >= 12:
-                        extracted.append(item.strip()[:200])
-        except Exception:
-            pass
-
-        # ── Attempt 2: structural heuristic extraction ─────────────────────────
-        if not extracted:
-            import re as _re_al
-            for line in resp_clean.split("\n"):
-                line = line.strip()
-                # Numbered / bulleted list items
-                if _re_al.match(r'^[\d\-\*\•\–]\s+.{25,150}$', line):
-                    clean = _re_al.sub(r'^[\d\-\*\•\–]\s+', '', line).strip()
-                    if clean:
-                        extracted.append(clean)
-                # Sentences with knowledge signal words
-                elif any(kw in line.lower() for kw in [
-                    "always ", "never ", "should ", "must ", "key insight", "important:",
-                    "note:", "tip:", "best practice", "remember:", "the solution",
-                ]) and 25 < len(line) < 200:
-                    extracted.append(line)
-                if len(extracted) >= 2:
-                    break
-
-        # ── Persist with dedup ─────────────────────────────────────────────────
-        if not extracted:
-            return
-        from layla.memory.db import save_learning
-        saved = 0
-        for item in extracted[:2]:
-            fp = item[:60].lower()
-            with _fingerprint_lock:
-                if fp in _recent_learning_fingerprints:
-                    continue
-                _recent_learning_fingerprints.add(fp)
-                # Keep dedup set bounded
-                if len(_recent_learning_fingerprints) > 200:
-                    _recent_learning_fingerprints = set(list(_recent_learning_fingerprints)[-100:])
-            try:
-                save_learning(content=item, kind=learning_type)
-                saved += 1
-            except Exception:
-                pass
-        if saved:
-            logger.debug("auto-learn: saved %d %s learnings (aspect=%s)", saved, learning_type, aspect_id)
-    except Exception as e:
-        logger.debug("auto-learn failed: %s", e)
-
-
 def _autonomous_run_serialize_lock(workspace_root: str):
     """Serialize agent flights: global lock by default; optional per-workspace when configured."""
     if runtime_safety.load_config().get("llm_serialize_per_workspace"):
@@ -2545,6 +2455,10 @@ def autonomous_run(
     background_progress_callback: Callable[[dict], None] | None = None,
     active_plan_id: str = "",
     plan_approved: bool = False,
+    *,
+    engineering_pipeline_mode: str = "chat",
+    clarification_reply: str = "",
+    skip_engineering_pipeline: bool = False,
 ) -> dict:
     try:
         with schedule_slot(priority=priority):
@@ -2560,6 +2474,9 @@ def autonomous_run(
                     background_progress_callback,
                     active_plan_id,
                     plan_approved,
+                    engineering_pipeline_mode=engineering_pipeline_mode,
+                    clarification_reply=clarification_reply,
+                    skip_engineering_pipeline=skip_engineering_pipeline,
                 )
     except RuntimeError as e:
         if "system_busy" in str(e):
@@ -2601,6 +2518,10 @@ def _autonomous_run_impl(
     background_progress_callback: Callable[[dict], None] | None = None,
     active_plan_id: str = "",
     plan_approved: bool = False,
+    *,
+    engineering_pipeline_mode: str = "chat",
+    clarification_reply: str = "",
+    skip_engineering_pipeline: bool = False,
 ) -> dict:
     from services.llm_gateway import set_model_override, set_reasoning_effort
     set_model_override(model_override)
@@ -2627,6 +2548,9 @@ def _autonomous_run_impl(
             background_progress_callback,
             active_plan_id,
             plan_approved,
+            engineering_pipeline_mode=engineering_pipeline_mode,
+            clarification_reply=clarification_reply,
+            skip_engineering_pipeline=skip_engineering_pipeline,
         )
     finally:
         set_model_override(None)
@@ -2654,6 +2578,10 @@ def _autonomous_run_impl_core(
     background_progress_callback: Callable[[dict], None] | None = None,
     active_plan_id: str = "",
     plan_approved: bool = False,
+    *,
+    engineering_pipeline_mode: str = "chat",
+    clarification_reply: str = "",
+    skip_engineering_pipeline: bool = False,
 ) -> dict:
     persona_focus_id = (persona_focus or "").strip().lower()
     _run_cid = (conversation_id or "").strip() or "default"
@@ -2768,6 +2696,53 @@ def _autonomous_run_impl_core(
         memory_influenced.append("learnings")
     if _precomputed_recall:
         memory_influenced.append("semantic_recall")
+    _ep_mode_lc = str(engineering_pipeline_mode or "chat").strip().lower()
+    if (
+        not skip_engineering_pipeline
+        and bool(cfg.get("engineering_pipeline_enabled"))
+        and _ep_mode_lc == "execute"
+        and (goal or "").strip()
+    ):
+        try:
+            from services.engineering_pipeline import engineering_planning_locked, run_execute_pipeline
+
+            import agent_loop as _al
+
+            if not engineering_planning_locked():
+
+                def _agent_run_fn(step_goal: str, **kw: Any) -> dict:
+                    kw2 = dict(kw)
+                    kw2["engineering_pipeline_mode"] = "chat"
+                    kw2["skip_engineering_pipeline"] = True
+                    kw2["clarification_reply"] = ""
+                    return _al.autonomous_run(step_goal, **kw2)
+
+                return run_execute_pipeline(
+                    goal=goal,
+                    context=context or "",
+                    workspace_root=workspace_root or "",
+                    allow_write=allow_write,
+                    allow_run=allow_run,
+                    conversation_history=conversation_history or [],
+                    aspect_id=aspect_id or "morrigan",
+                    show_thinking=show_thinking,
+                    stream_final=stream_final,
+                    ux_state_queue=ux_state_queue,
+                    research_mode=research_mode,
+                    plan_depth=plan_depth,
+                    persona_focus=persona_focus or "",
+                    conversation_id=conversation_id or "",
+                    cognition_workspace_roots=cognition_workspace_roots,
+                    client_abort_event=client_abort_event,
+                    background_progress_callback=background_progress_callback,
+                    clarification_reply=clarification_reply or "",
+                    cfg=cfg,
+                    agent_run_fn=_agent_run_fn,
+                    memory_influenced=list(memory_influenced),
+                    active_aspect=active_aspect,
+                )
+        except Exception as _ep_err:
+            logger.warning("engineering pipeline execute failed: %s", _ep_err)
     _prog_on = bool(cfg.get("background_progress_stream_enabled", True))
     _prog_iv = float(cfg.get("background_progress_min_interval_seconds", 0.35) or 0.35)
     if background_progress_callback is not None and _prog_on:
@@ -2834,6 +2809,26 @@ def _autonomous_run_impl_core(
                 max_tool_calls = _capped
     except Exception:
         pass
+    # Adaptive task budget: tighten tool/plan caps from profile + config (services/task_budget.py).
+    if cfg.get("task_budget_enabled", True):
+        try:
+            from services.task_budget import allocate_budget, profile_task
+
+            _tb_prof = profile_task(
+                goal,
+                context or "",
+                reasoning_mode=reasoning_mode,
+                research_mode=research_mode,
+                allow_write=allow_write,
+                allow_run=allow_run,
+            )
+            _tb_env = allocate_budget(_tb_prof, cfg)
+            max_tool_calls = min(int(max_tool_calls), int(_tb_env.max_tool_calls_effective))
+            plan_depth = min(int(plan_depth), int(_tb_env.max_plan_depth_effective))
+            state["task_budget_profile"] = _tb_prof.to_trace_dict()
+            state["task_budget_envelope"] = _tb_env.to_trace_dict()
+        except Exception as _tb_e:
+            logger.debug("task_budget failed: %s", _tb_e)
     # Short chat turns skip heavy retrieval, but local GGUF inference often needs tens of seconds.
     # Do not use a single-digit cap here — it caused false timeouts on "who are you" style messages.
     if not allow_write and not allow_run and _is_lightweight_chat_turn(goal, reasoning_mode):
@@ -3284,6 +3279,27 @@ def _autonomous_run_impl_core(
                     }
                     state["steps"].append({"action": intent, "result": _tdup})
                     _log_tool_outcome(intent, _tdup)
+                    state["last_tool_used"] = intent
+                    goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+                    continue
+            except Exception:
+                pass
+
+        if intent not in ("reason", "finish", "wakeup", "none") and intent in _VALID_TOOLS:
+            try:
+                from services.failure_recovery import block_repeated_mutating_under_retry_constrained
+
+                if block_repeated_mutating_under_retry_constrained(state, intent):
+                    state["tool_calls"] += 1
+                    _br = {
+                        "ok": False,
+                        "reason": "retry_constrained_block",
+                        "message": (
+                            "Same mutating tool blocked under retry_constrained; verify with read_file/grep before retrying."
+                        ),
+                    }
+                    state["steps"].append({"action": intent, "result": _br})
+                    _log_tool_outcome(intent, _br)
                     state["last_tool_used"] = intent
                     goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                     continue

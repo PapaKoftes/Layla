@@ -18,6 +18,18 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _clear_background_tasks_between_spawn_tests():
+    """Daemon threads from /agents/spawn can finish after a test ends; drain store for isolation."""
+    from services import agent_task_runner as atr
+
+    with atr._TASKS_LOCK:
+        atr._TASKS.clear()
+    yield
+    with atr._TASKS_LOCK:
+        atr._TASKS.clear()
+
+
 def test_agents_spawn_requires_message(client):
     r = client.post("/agents/spawn", json={})
     assert r.status_code == 400
@@ -55,15 +67,17 @@ def test_agents_spawn_task_ids_are_unique(client):
 
 
 def test_agents_spawn_defaults_allow_write_allow_run_false(monkeypatch, client):
-    import routers.agent as ra
+    import agent_loop
 
     done = threading.Event()
     captured: dict = {}
+    marker = "ping-allow-flags-unit-test"
 
     def fake_autonomous_run(goal, context="", workspace_root="", allow_write=False, allow_run=False, **kwargs):
-        captured["allow_write"] = allow_write
-        captured["allow_run"] = allow_run
-        done.set()
+        if goal == marker:
+            captured["allow_write"] = allow_write
+            captured["allow_run"] = allow_run
+            done.set()
         return {
             "status": "finished",
             "response": "ok",
@@ -74,8 +88,8 @@ def test_agents_spawn_defaults_allow_write_allow_run_false(monkeypatch, client):
             "memory_influenced": [],
         }
 
-    monkeypatch.setattr(ra, "autonomous_run", fake_autonomous_run)
-    r = client.post("/agents/spawn", json={"message": "ping"})
+    monkeypatch.setattr(agent_loop, "autonomous_run", fake_autonomous_run)
+    r = client.post("/agents/spawn", json={"message": marker})
     assert r.status_code == 200
     assert done.wait(timeout=20)
     assert captured.get("allow_write") is False
@@ -102,14 +116,16 @@ def test_spawn_response_includes_effective_flags_and_workspace(client):
 
 
 def test_agents_spawn_passes_workspace_root_to_autonomous_run(monkeypatch, client):
-    import routers.agent as ra
+    import agent_loop
 
     done = threading.Event()
     captured: dict = {}
+    marker = "ping-ws-root-unit-test"
 
     def fake_autonomous_run(goal, workspace_root="", **kwargs):
-        captured["workspace_root"] = workspace_root
-        done.set()
+        if goal == marker:
+            captured["workspace_root"] = workspace_root
+            done.set()
         return {
             "status": "finished",
             "response": "ok",
@@ -120,9 +136,9 @@ def test_agents_spawn_passes_workspace_root_to_autonomous_run(monkeypatch, clien
             "memory_influenced": [],
         }
 
-    monkeypatch.setattr(ra, "autonomous_run", fake_autonomous_run)
+    monkeypatch.setattr(agent_loop, "autonomous_run", fake_autonomous_run)
     ws = "/tmp/spawn-ws-unit-test"
-    r = client.post("/agents/spawn", json={"message": "ping", "workspace_root": ws})
+    r = client.post("/agents/spawn", json={"message": marker, "workspace_root": ws})
     assert r.status_code == 200
     assert done.wait(timeout=20)
     assert captured.get("workspace_root") == ws
@@ -130,15 +146,26 @@ def test_agents_spawn_passes_workspace_root_to_autonomous_run(monkeypatch, clien
 
 def test_spawn_uses_fresh_history_for_new_conversation_id(monkeypatch, client):
     """Separate conversation_id ⇒ separate deque in shared_state (no cross-leak by default)."""
-    import routers.agent as ra
+    import agent_loop
     from shared_state import append_conv_history, get_conv_history
 
     append_conv_history("parent-session-xyz", "user", "SECRET_PARENT_ONLY")
 
     done = threading.Event()
     captured: dict = {}
+    marker = "ping-fresh-history-unit-test"
 
     def fake_autonomous_run(goal, conversation_history=None, conversation_id="", **kwargs):
+        if goal != marker:
+            return {
+                "status": "finished",
+                "response": "ok",
+                "steps": [],
+                "aspect": "morrigan",
+                "aspect_name": "Morrigan",
+                "ux_states": [],
+                "memory_influenced": [],
+            }
         captured["conversation_id"] = conversation_id
         captured["history_len"] = len(conversation_history or [])
         captured["has_secret"] = any(
@@ -155,8 +182,8 @@ def test_spawn_uses_fresh_history_for_new_conversation_id(monkeypatch, client):
             "memory_influenced": [],
         }
 
-    monkeypatch.setattr(ra, "autonomous_run", fake_autonomous_run)
-    r = client.post("/agents/spawn", json={"message": "ping", "conversation_id": "child-worker-abc"})
+    monkeypatch.setattr(agent_loop, "autonomous_run", fake_autonomous_run)
+    r = client.post("/agents/spawn", json={"message": marker, "conversation_id": "child-worker-abc"})
     assert r.status_code == 200
     assert r.json().get("conversation_id") == "child-worker-abc"
     assert done.wait(timeout=20)
@@ -168,15 +195,18 @@ def test_spawn_uses_fresh_history_for_new_conversation_id(monkeypatch, client):
 
 
 def test_agents_spawn_passes_explicit_conversation_id(monkeypatch, client):
-    import routers.agent as ra
+    import agent_loop
 
     done = threading.Event()
     captured: dict = {}
     cid = "spawn-test-conversation-id"
 
+    cid_marker = "ping-explicit-conv-id-unit-test"
+
     def fake_autonomous_run(goal, **kwargs):
-        captured["conversation_id"] = kwargs.get("conversation_id")
-        done.set()
+        if goal == cid_marker:
+            captured["conversation_id"] = kwargs.get("conversation_id")
+            done.set()
         return {
             "status": "finished",
             "response": "ok",
@@ -187,8 +217,8 @@ def test_agents_spawn_passes_explicit_conversation_id(monkeypatch, client):
             "memory_influenced": [],
         }
 
-    monkeypatch.setattr(ra, "autonomous_run", fake_autonomous_run)
-    r = client.post("/agents/spawn", json={"message": "ping", "conversation_id": cid})
+    monkeypatch.setattr(agent_loop, "autonomous_run", fake_autonomous_run)
+    r = client.post("/agents/spawn", json={"message": cid_marker, "conversation_id": cid})
     assert r.status_code == 200
     assert r.json().get("conversation_id") == cid
     assert done.wait(timeout=20)

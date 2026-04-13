@@ -31,6 +31,9 @@ _AUTONOMOUS_KW_KEYS = frozenset({
     "background_progress_callback",
     "active_plan_id",
     "plan_approved",
+    "skip_engineering_pipeline",
+    "engineering_pipeline_mode",
+    "clarification_reply",
 })
 
 
@@ -50,7 +53,16 @@ def _synthetic_step_for_exec_row(s: dict[str, Any]) -> Any:
     tl = s.get("tools") if isinstance(s.get("tools"), list) else []
     tools = [str(t).strip() for t in tl if str(t).strip()]
     auto_filled = bool(s.get("_tools_auto_filled") or s.get("tools_auto_filled"))
-    return SimpleNamespace(type=stype, id=str(s.get("step", "")), tools=tools, tools_auto_filled=auto_filled)
+    vh = s.get("validation_hint")
+    sc = s.get("success_criteria")
+    return SimpleNamespace(
+        type=stype,
+        id=str(s.get("step", "")),
+        tools=tools,
+        tools_auto_filled=auto_filled,
+        validation_hint=str(vh).strip() if isinstance(vh, str) else "",
+        success_criteria=str(sc).strip() if isinstance(sc, str) else "",
+    )
 
 
 def _run_agent_step(
@@ -106,19 +118,125 @@ def get_tool_reliability_hint() -> str:
         pass
     return ""
 
+
+def get_tool_low_reliability_warning() -> str:
+    """Warn about tools with enough samples and low success — planning should add verification."""
+    try:
+        from layla.memory.db import get_tool_reliability
+
+        stats = get_tool_reliability()
+        bad = [
+            n
+            for n, s in stats.items()
+            if s.get("count", 0) >= 5 and float(s.get("success_rate", 1.0) or 0.0) < 0.45
+        ]
+        if bad:
+            return (
+                "Lower reliability (from past outcomes) — plan a read/verify step before relying on: "
+                + ", ".join(bad[:8])
+            )
+    except Exception:
+        pass
+    return ""
+
+
+def personality_planner_bias(aspect_id: str) -> str:
+    """Map active aspect to planner ordering / depth nudges (North Star §11–13)."""
+    aid = (aspect_id or "morrigan").strip().lower()
+    if aid == "morrigan":
+        return (
+            "Persona planner weight (Morrigan): increase effective planning depth — explicit verification "
+            "after writes; keep steps minimal and shippable."
+        )
+    if aid == "nyx":
+        return (
+            "Persona planner weight (Nyx): increase exploration — allow an early broad read or map step "
+            "before narrowing to edits."
+        )
+    if aid == "lilith":
+        return (
+            "Persona planner weight (Lilith): lower risk tolerance — prefer read-only steps first; "
+            "mutate only after checks; call out approval-sensitive steps."
+        )
+    if aid == "echo":
+        return "Persona planner weight (Echo): include one checkpoint step that ties work to the user's stated goal."
+    if aid == "eris":
+        return "Persona planner weight (Eris): one lateral or non-obvious step is acceptable if it reduces repeated failure."
+    if aid == "cassandra":
+        return "Persona planner weight (Cassandra): name the riskiest assumption in an early step."
+    return ""
+
+
+def build_planning_bias_prompt(conversation_id: str, aspect_id: str, cfg: dict | None) -> str:
+    """Prior-turn evaluation + recent tool failures + persona + toolchain hint for create_plan."""
+    if cfg is not None and not cfg.get("planning_outcome_bias_enabled", True):
+        return ""
+    parts: list[str] = []
+    try:
+        from shared_state import get_last_outcome_evaluation
+
+        ev = get_last_outcome_evaluation(conversation_id)
+        if isinstance(ev, dict) and ev.get("score") is not None:
+            iss = ev.get("issues") if isinstance(ev.get("issues"), list) else []
+            parts.append(
+                f"Last run outcome (heuristic): score={ev.get('score')}, success={ev.get('success')}. "
+                f"Issues: {'; '.join(str(x) for x in iss[:5]) or 'none'}. "
+                "Adjust steps to avoid repeating the same failure mode."
+            )
+            try:
+                from services.outcome_evaluation import policy_caps_trace_from_evaluation
+
+                _caps_tr = policy_caps_trace_from_evaluation(ev)
+                if _caps_tr.get("require_verify_before_mutate"):
+                    parts.append(
+                        "Structured policy from last outcome: require read/verify-class tools before mutating steps in this plan."
+                    )
+            except Exception:
+                pass
+    except Exception:
+        pass
+    try:
+        from layla.memory.db import get_recent_tool_outcome_failures
+
+        fails = get_recent_tool_outcome_failures(6)
+        if fails:
+            bits = []
+            for r in fails[:5]:
+                tn = r.get("tool_name") or "?"
+                ctx = (r.get("context") or "")[:72]
+                bits.append(f"{tn}" + (f" ({ctx})" if ctx else ""))
+            parts.append("Recent tool failures (SQLite): " + "; ".join(bits) + ". Add verification or alternate tools.")
+    except Exception:
+        pass
+    pb = personality_planner_bias(aspect_id)
+    if pb:
+        parts.append(pb)
+    try:
+        from services.toolchain_awareness import toolchain_planning_hint
+
+        th = toolchain_planning_hint()
+        if th:
+            parts.append(th)
+    except Exception:
+        pass
+    return "\n".join(parts).strip()
+
 PLAN_KEYWORDS = frozenset(
     {"analyze", "build", "research", "investigate", "plan", "implement", "refactor", "audit"}
 )
 MIN_GOAL_LEN = 80
 
 
-def should_plan(goal: str, cfg: dict | None = None, plan_depth: int = 0) -> bool:
+def should_plan(goal: str, cfg: dict | None = None, plan_depth: int = 0, state: dict | None = None) -> bool:
     """True if goal warrants a structured plan (long or planning keywords). Respects max_plan_depth."""
     if cfg is not None and not cfg.get("planning_enabled", True):
         return False
     max_depth = int(cfg.get("max_plan_depth", 3)) if cfg else 3
     if plan_depth >= max_depth:
         return False
+    # Recovery: replan bypasses length/keyword gate so macro-plan can restructure after stagnation.
+    if state and str(state.get("recovery_strategy") or "") == "replan":
+        return True
     g = (goal or "").strip().lower()
     if len(g) < MIN_GOAL_LEN:
         return False
@@ -130,6 +248,9 @@ def create_plan(
     max_steps: int = 6,
     cfg: dict | None = None,
     prior_plans_digest: str = "",
+    *,
+    conversation_id: str = "",
+    aspect_id: str = "",
 ) -> list[dict]:
     """
     Use LLM to produce a structured plan.
@@ -139,11 +260,22 @@ def create_plan(
     if not goal or not goal.strip():
         return []
     try:
+        from services.plan_templates import fill_open_plan_steps, match_skeleton_plan, skeleton_with_open_slots
+
+        sk = match_skeleton_plan(goal, cfg)
+        if sk:
+            return sk[:max_steps]
+        sk2 = skeleton_with_open_slots(goal, cfg)
+        if sk2:
+            return fill_open_plan_steps(goal, sk2, max_steps=max_steps)[:max_steps]
+    except Exception:
+        pass
+    try:
         from services.llm_gateway import run_completion
         tools_list = (
             "list_dir, read_file, grep_code, python_ast, security_scan, fetch_url, "
             "ddg_search, search_memories, write_file, apply_patch, workspace_map, "
-            "project_discovery, fetch_article, wiki_search, arxiv_search"
+            "project_discovery, geometry_extract_machining_ir, codex_suggest_update, fetch_article, wiki_search, arxiv_search"
         )
         skills_hint = ""
         try:
@@ -152,9 +284,11 @@ def create_plan(
         except Exception:
             pass
         reliability_hint = get_tool_reliability_hint()
+        low_rel = get_tool_low_reliability_warning()
         extra_ctx = ""
         if (prior_plans_digest or "").strip():
             extra_ctx = f"\n{prior_plans_digest.strip()[:3500]}\n\n"
+        bias_block = build_planning_bias_prompt(conversation_id or "", aspect_id or "", cfg)
         prompt = (
             f"Given this goal:\n\n{goal[:800]}\n\n"
             f"{extra_ctx}"
@@ -164,6 +298,10 @@ def create_plan(
         )
         if reliability_hint:
             prompt += f"\n{reliability_hint}\n"
+        if low_rel:
+            prompt += f"\n{low_rel}\n"
+        if bias_block:
+            prompt += f"\nPlanning bias (past outcomes + persona + toolchain — honor when compatible):\n{bias_block}\n"
         if skills_hint:
             prompt += f"\n{skills_hint}\n"
         prompt += "Output only the JSON array, no other text."
@@ -397,6 +535,8 @@ def execute_plan(
             "tools": tools_hint,
             "role": role,
             "max_retries": s.get("max_retries", dm),
+            "validation_hint": str(s.get("validation_hint") or "").strip(),
+            "success_criteria": str(s.get("success_criteria") or "").strip(),
         }
         done_row, _last = run_governed_plan_step(
             exec_row,

@@ -65,6 +65,7 @@ def test_golden_chat_tool_approve_then_reason(tmp_path, monkeypatch, golden_pend
 
     import agent_loop
     import layla.memory.distill as distill_mod
+    import layla.tools.impl.file_ops as file_ops_mod
     import layla.tools.registry as tools_registry
     import routers.agent as agent_router
     import runtime_safety
@@ -99,6 +100,8 @@ def test_golden_chat_tool_approve_then_reason(tmp_path, monkeypatch, golden_pend
     monkeypatch.setattr(planner, "should_plan", lambda *a, **k: False)
     monkeypatch.setattr(distill_mod, "run_distill_after_outcome", lambda *a, **k: None)
     monkeypatch.setattr(tools_registry, "inside_sandbox", lambda _p: True)
+    # Approvals call TOOLS fn directly; file_ops binds sandbox_core.inside_sandbox at import time.
+    monkeypatch.setattr(file_ops_mod, "inside_sandbox", lambda _p: True)
     monkeypatch.setattr(agent_router, "_model_ready_message", lambda: None)
 
     client = TestClient(app)

@@ -146,3 +146,110 @@ def set_last_layla_commit(repo: str, commit_hash: str) -> None:
 
 def get_last_layla_commit() -> tuple[str | None, str | None]:
     return _last_layla_commit_repo, _last_layla_commit_hash
+
+
+# Last heuristic outcome evaluation per conversation (feeds next-turn planning bias).
+_outcome_eval_lock = threading.Lock()
+_last_outcome_evaluation: dict[str, dict] = {}
+
+
+def set_last_outcome_evaluation(conversation_id: str, data: dict) -> None:
+    cid = (conversation_id or "").strip() or "default"
+    if not isinstance(data, dict):
+        return
+    with _outcome_eval_lock:
+        _last_outcome_evaluation[cid] = dict(data)
+
+
+def get_last_outcome_evaluation(conversation_id: str) -> dict | None:
+    cid = (conversation_id or "").strip() or "default"
+    with _outcome_eval_lock:
+        v = _last_outcome_evaluation.get(cid)
+        return dict(v) if isinstance(v, dict) else None
+
+
+def clear_last_outcome_evaluation(conversation_id: str) -> None:
+    cid = (conversation_id or "").strip() or "default"
+    with _outcome_eval_lock:
+        _last_outcome_evaluation.pop(cid, None)
+
+
+# Last decision policy trace per conversation (for /agent/decision_trace)
+_decision_trace_lock = threading.Lock()
+_last_decision_trace: dict[str, list] = {}
+
+
+def set_last_decision_trace(conversation_id: str, traces: list) -> None:
+    cid = (conversation_id or "").strip() or "default"
+    if not isinstance(traces, list):
+        return
+    with _decision_trace_lock:
+        _last_decision_trace[cid] = list(traces)
+
+
+def get_last_decision_trace(conversation_id: str) -> list | None:
+    cid = (conversation_id or "").strip() or "default"
+    with _decision_trace_lock:
+        v = _last_decision_trace.get(cid)
+        return list(v) if isinstance(v, list) else None
+
+
+# Namespaced blackboard for spawned agents / jobs (thread-safe, in-process)
+_bb_lock = threading.Lock()
+_blackboard: dict[str, dict[str, object]] = {}
+
+
+def blackboard_put(job_id: str, key: str, value: object, holder: str = "") -> None:
+    jid = (job_id or "").strip() or "default"
+    k = (key or "").strip()[:200]
+    if not k:
+        return
+    with _bb_lock:
+        slot = _blackboard.setdefault(jid, {"_holder": "", "_updated": 0.0})
+        slot[k] = value
+        if holder:
+            slot["_holder"] = holder[:120]
+
+
+def blackboard_get(job_id: str) -> dict[str, object]:
+    jid = (job_id or "").strip() or "default"
+    with _bb_lock:
+        raw = _blackboard.get(jid)
+        return dict(raw) if isinstance(raw, dict) else {}
+
+
+def blackboard_clear(job_id: str) -> None:
+    jid = (job_id or "").strip() or "default"
+    with _bb_lock:
+        _blackboard.pop(jid, None)
+
+
+_workspace_lease_lock = threading.Lock()
+_workspace_lease: dict[str, tuple[str, float]] = {}
+
+
+def try_acquire_workspace_lease(workspace: str, holder: str, ttl_seconds: float = 3600.0) -> bool:
+    """Single-writer hint per workspace path (best-effort, in-process)."""
+    import time as _time
+
+    ws = (workspace or "").strip()
+    h = (holder or "").strip()[:120]
+    if not ws or not h:
+        return False
+    now = _time.monotonic()
+    ttl = max(30.0, float(ttl_seconds))
+    with _workspace_lease_lock:
+        cur = _workspace_lease.get(ws)
+        if cur is None or cur[1] < now:
+            _workspace_lease[ws] = (h, now + ttl)
+            return True
+        return cur[0] == h
+
+
+def release_workspace_lease(workspace: str, holder: str) -> None:
+    ws = (workspace or "").strip()
+    h = (holder or "").strip()[:120]
+    with _workspace_lease_lock:
+        cur = _workspace_lease.get(ws)
+        if cur and cur[0] == h:
+            _workspace_lease.pop(ws, None)

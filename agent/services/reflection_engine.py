@@ -19,6 +19,9 @@ def generate_reflections(state: dict) -> dict[str, str]:
     tool_steps = [s for s in steps if s.get("action") and s["action"] != "reason"]
     objective = (state.get("objective") or state.get("original_goal") or "")[:300]
     status = state.get("status", "")
+    oe = state.get("outcome_evaluation") if isinstance(state.get("outcome_evaluation"), dict) else {}
+    oe_score = oe.get("score")
+    oe_issues = oe.get("issues") if isinstance(oe.get("issues"), list) else []
 
     what_worked: list[str] = []
     what_failed: list[str] = []
@@ -42,9 +45,14 @@ def generate_reflections(state: dict) -> dict[str, str]:
     # Try LLM for richer reflections when available
     try:
         from services.llm_gateway import run_completion
+        oe_line = ""
+        if oe_score is not None:
+            iss = "; ".join(str(x) for x in oe_issues[:5]) if oe_issues else "none"
+            oe_line = f"Outcome evaluation (heuristic): score={oe_score}, issues: {iss}\n"
         prompt = (
             f"Task: {objective}\n"
             f"Steps: {len(tool_steps)} tool calls. Worked: {', '.join(what_worked[:5])}. Failed: {', '.join(what_failed[:5])}.\n"
+            f"{oe_line}"
             "Output exactly 3 lines:\n"
             "What worked: <one short phrase>\n"
             "What failed: <one short phrase>\n"
@@ -72,7 +80,12 @@ def generate_reflections(state: dict) -> dict[str, str]:
     }
 
 
-def store_reflections_as_learnings(reflections: dict[str, str], objective: str = "") -> None:
+def store_reflections_as_learnings(
+    reflections: dict[str, str],
+    objective: str = "",
+    *,
+    outcome_evaluation: dict | None = None,
+) -> None:
     """Persist reflections as learnings for future retrieval."""
     if not reflections:
         return
@@ -87,6 +100,9 @@ def store_reflections_as_learnings(reflections: dict[str, str], objective: str =
             parts.append(f"Improve: {reflections['what_could_improve']}")
         if parts:
             content = f"Reflection ({objective[:80]}): " + " | ".join(parts)
+            oe = outcome_evaluation if isinstance(outcome_evaluation, dict) else {}
+            if oe.get("score") is not None:
+                content += f" | outcome_score={oe.get('score')}"
             save_learning(content=content[:500], kind="strategy", source="reflection_engine")
     except Exception as e:
         logger.debug("store reflections failed: %s", e)
@@ -104,5 +120,9 @@ def run_reflection(state: dict) -> dict[str, str] | None:
     if not tool_steps:
         return None
     reflections = generate_reflections(state)
-    store_reflections_as_learnings(reflections, state.get("objective", "")[:100])
+    store_reflections_as_learnings(
+        reflections,
+        state.get("objective", "")[:100],
+        outcome_evaluation=state.get("outcome_evaluation") if isinstance(state.get("outcome_evaluation"), dict) else None,
+    )
     return reflections

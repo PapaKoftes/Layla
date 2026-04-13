@@ -78,10 +78,10 @@ def test_update_project_memory_merges_plan(tmp_path):
 
 
 def test_continuous_background_respects_max_iterations(monkeypatch, tmp_path):
+    import agent_loop
     import layla.memory.db as db_mod
     from layla.tools.registry import set_effective_sandbox
-
-    import routers.agent as ra
+    from services import agent_task_runner as atr
 
     monkeypatch.setattr(db_mod, "update_background_task", lambda *a, **k: None)
 
@@ -97,14 +97,14 @@ def test_continuous_background_respects_max_iterations(monkeypatch, tmp_path):
             "aspect_name": "Morrigan",
         }
 
-    monkeypatch.setattr(ra, "autonomous_run", fake_run)
+    monkeypatch.setattr(agent_loop, "autonomous_run", fake_run)
 
     set_effective_sandbox(str(tmp_path))
     try:
         tid = "test-cont-max"
         cancel_ev = threading.Event()
-        with ra._TASKS_LOCK:
-            ra._TASKS[tid] = {
+        with atr._TASKS_LOCK:
+            atr._TASKS[tid] = {
                 "task_id": tid,
                 "status": "queued",
                 "progress_events": [],
@@ -122,25 +122,25 @@ def test_continuous_background_respects_max_iterations(monkeypatch, tmp_path):
             "_cancel_event": cancel_ev,
             "_schedule_priority": 2,
         }
-        ra._run_background_task(tid, payload)
+        atr._run_background_task(tid, payload)
         assert len(calls) == 4
-        with ra._TASKS_LOCK:
-            st = ra._TASKS.get(tid) or {}
+        with atr._TASKS_LOCK:
+            st = atr._TASKS.get(tid) or {}
         assert st.get("status") == "done"
         state = st.get("state") or {}
         assert state.get("continuous_iterations") == 4
     finally:
-        with ra._TASKS_LOCK:
-            ra._TASKS.pop("test-cont-max", None)
+        with atr._TASKS_LOCK:
+            atr._TASKS.pop("test-cont-max", None)
         set_effective_sandbox(None)
 
 
 def test_continuous_background_stops_on_plan_done(monkeypatch, tmp_path):
+    import agent_loop
     import layla.memory.db as db_mod
     from layla.tools.registry import set_effective_sandbox
+    from services import agent_task_runner as atr
     from services import project_memory as pm
-
-    import routers.agent as ra
 
     monkeypatch.setattr(db_mod, "update_background_task", lambda *a, **k: None)
 
@@ -156,7 +156,7 @@ def test_continuous_background_stops_on_plan_done(monkeypatch, tmp_path):
             "aspect_name": "Morrigan",
         }
 
-    monkeypatch.setattr(ra, "autonomous_run", fake_run)
+    monkeypatch.setattr(agent_loop, "autonomous_run", fake_run)
 
     root = tmp_path / "ws"
     root.mkdir()
@@ -168,8 +168,8 @@ def test_continuous_background_stops_on_plan_done(monkeypatch, tmp_path):
     try:
         tid = "test-cont-plan"
         cancel_ev = threading.Event()
-        with ra._TASKS_LOCK:
-            ra._TASKS[tid] = {
+        with atr._TASKS_LOCK:
+            atr._TASKS[tid] = {
                 "task_id": tid,
                 "status": "queued",
                 "progress_events": [],
@@ -187,9 +187,9 @@ def test_continuous_background_stops_on_plan_done(monkeypatch, tmp_path):
             "_cancel_event": cancel_ev,
             "_schedule_priority": 2,
         }
-        ra._run_background_task(tid, payload)
+        atr._run_background_task(tid, payload)
         assert len(calls) == 1
-        with ra._TASKS_LOCK:
-            ra._TASKS.pop("test-cont-plan", None)
+        with atr._TASKS_LOCK:
+            atr._TASKS.pop("test-cont-plan", None)
     finally:
         set_effective_sandbox(None)

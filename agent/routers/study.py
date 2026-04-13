@@ -153,12 +153,55 @@ def derive_study_topic(req: dict):
 
 @router.get("/study_plans")
 def get_study_plans():
+    """List active study plans with session counts from audit (single source; replaces legacy main.py route)."""
     try:
-        from layla.memory.db import get_active_study_plans
-        return JSONResponse({"plans": get_active_study_plans()})
+        from layla.memory.db import _conn, get_active_study_plans, migrate
+
+        migrate()
+        plans = get_active_study_plans()
+        enriched = []
+        with _conn() as db:
+            for p in plans:
+                topic_snip = (p.get("topic") or "")[:30]
+                try:
+                    row = db.execute(
+                        "SELECT COUNT(*) as cnt, MAX(timestamp) as last FROM audit WHERE tool='study' AND args_summary LIKE ?",
+                        (f"%{topic_snip}%",),
+                    ).fetchone()
+                    sessions = row["cnt"] if row else 0
+                    last = row["last"] if row else None
+                except Exception:
+                    sessions = 0
+                    last = None
+                # last_studied: audit trail when study tool ran; else column from record_progress / DB
+                _ls = p.get("last_studied")
+                last_studied = last or _ls or ""
+                enriched.append({
+                    "id": p.get("id"),
+                    "topic": p.get("topic", ""),
+                    "notes": p.get("notes", "") or "",
+                    "created_at": p.get("created_at", ""),
+                    "study_sessions": sessions,
+                    "last_studied": last_studied,
+                })
+        return JSONResponse({"plans": enriched})
     except Exception as e:
         logger.exception("get_study_plans failed")
         return JSONResponse({"plans": [], "error": str(e)})
+
+
+@router.delete("/study_plans/{plan_id}")
+def delete_study_plan(plan_id: int):
+    try:
+        from layla.memory.db import _conn, migrate
+
+        migrate()
+        with _conn() as db:
+            db.execute("DELETE FROM study_plans WHERE id=?", (plan_id,))
+            db.commit()
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @router.get("/capabilities")
