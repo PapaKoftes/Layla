@@ -17,7 +17,7 @@ keywords = ["ai", "agent", "llm", "local", "companion", "llama-cpp"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
-  "License :: Other/Proprietary License",
+  "License :: Free for non-commercial use",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",

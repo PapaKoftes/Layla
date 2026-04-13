@@ -3,15 +3,16 @@
 # - Only Cursor is visible. Select "layla" in the model dropdown to use it.
 # - When Cursor closes, Layla stops automatically.
 #
-# Run: powershell -ExecutionPolicy Bypass -File "C:\Users\minam\local-jinx-agent\Start-Cursor-With-Layla.ps1"
+# Run: powershell -ExecutionPolicy Bypass -File "<repo-root>\Start-Cursor-With-Layla.ps1"
 # Or create a shortcut to this script.
 
 $ErrorActionPreference = "Stop"
+$RepoRoot     = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 $CursorExe    = "$env:LOCALAPPDATA\Programs\Cursor\Cursor.exe"
-$AgentDir     = "$env:USERPROFILE\local-jinx-agent\agent"
-$VenvPython   = "$env:USERPROFILE\local-jinx-agent\.venv\Scripts\python.exe"
+$AgentDir     = Join-Path $RepoRoot "agent"
+$VenvPython   = Join-Path $RepoRoot ".venv\Scripts\python.exe"
 $LaylaUrl     = "http://127.0.0.1:8000/v1/models"
-$LaylaLog     = "$env:USERPROFILE\local-jinx-agent\layla-server.log"
+$LaylaLog     = Join-Path $RepoRoot "layla-server.log"
 
 if (-not (Test-Path $CursorExe)) {
     Write-Error "Cursor not found at $CursorExe"

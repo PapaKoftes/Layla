@@ -30,6 +30,30 @@ Clients (Web UI, MCP, CLI, tests) should not assume a single flat shape: the rou
 
 Plan mode (`plan_mode: true`) returns a **different top-level shape** (`status: plan_ready`, `plan`, `goal`, …) without the usual full-loop `state` object — see router. It also persists a draft in SQLite and returns **`plan_id`** (UUID string) plus **`plan_steps`** (normalized step list). Clients should prefer **`plan_id`** for **`POST /plans/{id}/approve`** and follow-up **`POST /agent`** requests with **`plan_id`** when **`planning_strict_mode`** is enabled.
 
+When **`engineering_pipeline_enabled`** is true in config:
+
+- **`engineering_pipeline_mode`** on the request body selects **`chat`** | **`plan`** | **`execute`** (default from **`engineering_pipeline_default_mode`** when the field is omitted).
+- **`plan_mode: true`** **or** mode **`plan`** uses the **light pipeline** path: blocking **clarifier** → **`create_plan`** → persist **`layla_plans`** (same top-level `plan_ready` shape, plus **`pipeline_status`**). Legacy direct `create_plan` without clarifier applies only when the flag is **off** and `plan_mode` is true.
+- Mode **`execute`** runs the **full pipeline** inside **`autonomous_run`** (clarifier → plan → critics → refiner → governed **`execute_plan`** → mandatory validator). Legacy in-loop **`should_plan` → create_plan → execute_plan`** is **not** used for that outer turn.
+- **`clarification_reply`**: free-text answers appended for the clarifier on the **next** request when the prior response was **`pipeline_needs_input`** (stateless carryover; no server-side draft session required in v1).
+
+**Fast path** (`_quick_reply_for_trivial_turn`) and **response cache** are **skipped** when the pipeline is enabled and mode is **`plan`** or **`execute`**, so short messages still run the clarifier.
+
+### Pipeline response fields (JSON)
+
+| Key | When |
+|-----|------|
+| **`status`** | **`pipeline_needs_input`** — clarifier needs more info; **`plan_ready`** — light path; from full loop: **`pipeline_completed`**, **`pipeline_failed`**, **`pipeline_validator_failed`** (in `state.status` when returned via `autonomous_run`). |
+| **`pipeline_status`** | **`needs_input`**, **`plan_ready`**, **`completed`**, **`validator_failed`**, **`planner_empty`**, etc. |
+| **`questions`** | List of strings when **`pipeline_needs_input`**. |
+| **`clarification_reply`** | Request field: operator answers on the follow-up **`POST /agent`**. |
+| **`pipeline_plan_id`** | Durable SQLite plan id when the execute pipeline persisted a plan (also in successful **`plan_ready`** from light path as **`plan_id`**). |
+| **`failure_report`** | Validator text when validation fails (execute mode). |
+
+### Streaming (`stream: true`)
+
+If the run ends at clarification, the server may emit a final SSE payload with **`done: true`**, **`status: pipeline_needs_input`**, and **`questions`**. Full execute mode otherwise follows the normal stream for the narrative phase after the pipeline prelude (see **`docs/STRUCTURED_ENGINEERING_PARTNER.md`**).
+
 **Understand mode** (`understand_mode: true`, requires `workspace_root` inside sandbox): deterministic scan + cognition sync — **no full LLM loop**. Top-level keys include `status` / `state.status` **`understand_done`**, `scan_repo` (tool-shaped result dict from `scan_workspace_into_memory`), `sync_repo_cognition` (same shape as the cognition sync tool). Optional `understand_index_semantic: true` enables semantic indexing during sync.
 
 ---
@@ -63,5 +87,6 @@ Tests: [`agent/tests/test_runtime_validation_plan.py`](../agent/tests/test_runti
 
 ## Related
 
+- [STRUCTURED_ENGINEERING_PARTNER.md](STRUCTURED_ENGINEERING_PARTNER.md) — pipeline stages, contracts, latency modes.
 - [GOLDEN_FLOW.md](GOLDEN_FLOW.md) — lifecycle and approvals.
 - [ARCHITECTURE.md](../ARCHITECTURE.md) — router entrypoints.

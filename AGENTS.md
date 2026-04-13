@@ -7,7 +7,7 @@ Read this before touching any file. It tells you what this project is, where thi
 
 ## What this project is
 
-Layla is a **self-hosted AI companion and engineering agent** that runs on the user's own hardware via a local GGUF model (llama-cpp-python). No cloud. No API keys required. She has six personality aspects, persistent memory (SQLite + ChromaDB), **186 registered tools** (authoritative count: `agent/tests/test_registered_tools_count.py` → `EXPECTED_TOOL_COUNT`), voice I/O, and browser automation. The FastAPI server lives at `localhost:8000`. The web UI is at `/ui`.
+Layla is a **self-hosted AI companion and engineering agent** that runs on the user's own hardware via a local GGUF model (llama-cpp-python). No cloud. No API keys required. She has six personality aspects, persistent memory (SQLite + ChromaDB), **189 registered tools** (authoritative count: `agent/tests/test_registered_tools_count.py` → `EXPECTED_TOOL_COUNT`), voice I/O, and browser automation. The FastAPI server lives at `localhost:8000`. The web UI is at `/ui`.
 
 **The operator chooses their model.** Layla is uncensored by default. Everything is configurable via `agent/runtime_config.json`.
 
@@ -34,7 +34,7 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 4. **Never hardcode paths**. Use `Path(__file__).resolve().parent` chains. Always `.expanduser().resolve()` on config paths from `runtime_config.json`.
 5. **Never break the approval gate.** File writes (`write_file`, `apply_patch`) and code execution (`shell`, `run_python`) must remain gated by `allow_write`/`allow_run` + the approval flow.
 6. **Personalities are loaded dynamically** from `personalities/*.json`. Never hardcode an aspect list — always use `_load_aspects()` from `orchestrator.py`. The `systemPromptAddition` field is the character voice — it IS injected into every system head when that aspect is active. Do not truncate it. The `role` field is just a short label for routing and display.
-7. **The DB schema must migrate forward.** Add columns via `db.execute("ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...")` in the `migrate()` function in `agent/layla/memory/db.py`. Never drop columns.
+7. **The DB schema must migrate forward.** Add columns via `db.execute("ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...")` inside `_migrate_impl()` in `agent/layla/memory/migrations.py` (loaded by `migrate()`). `db.py` is a barrel that re-exports `migrate` / `_conn`. Never drop columns.
 8. **Keep `ARCHITECTURE.md` and `docs/IMPLEMENTATION_STATUS.md` updated** when you change the request flow, add routes, or implement a section from `LAYLA_NORTH_STAR.md`.
 9. **Ethical AI** — All behavior must align with `docs/ETHICAL_AI_PRINCIPLES.md`. Never bypass approval, sandbox, or refusal.
 
@@ -54,14 +54,20 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 │   ├── first_run.py         # Hardware wizard, writes runtime_config.json
 │   │
 │   ├── routers/             # FastAPI routers (mounted in main.py)
-│   │   ├── agent.py         # POST /agent, POST /learn/
+│   │   ├── system.py        # /health, /usage, /version, /update/*, /doctor, /skills, …
+│   │   ├── agent.py         # POST /agent (+ includes learn + agent_tasks routers)
+│   │   ├── learn.py         # GET /memories, POST /schedule, POST /learn/
+│   │   ├── agent_tasks.py   # /resume, /execute_plan, /agent/background, /agent/tasks*
 │   │   ├── approvals.py     # POST /approve, GET /pending
 │   │   ├── study.py         # GET /wakeup, /study_plans
 │   │   ├── research.py      # Research mission endpoints
 │   │   ├── plans.py         # GET/POST /plans, PATCH/approve/execute — SQLite layla_plans
-│   │   └── plan_file.py     # /plan/* — Pydantic file plans under `.layla_plans/` (optional parallel to SQLite)
+│   │   ├── plan_file.py     # /plan/* — Pydantic file plans under `.layla_plans/` (optional parallel to SQLite)
+│   │   └── codex.py         # GET/PUT /codex/relationship — workspace relationship_codex.json (sandbox-gated)
 │   │
 │   ├── services/            # Infrastructure services (singleton pattern)
+│   │   ├── agent_task_runner.py  # Background task queue, threaded/subprocess workers, task store
+│   │   ├── outcome_writer.py # Post-run outcome memory, Echo aspect memories, patch extract, auto-learnings
 │   │   ├── llm_gateway.py   # run_completion(), prewarm_llm(), auto-thread detection
 │   │   ├── stt.py           # faster-whisper STT (transcribe_bytes, prewarm)
 │   │   ├── tts.py           # kokoro-onnx TTS (speak_to_bytes, prewarm)
@@ -76,15 +82,21 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 │   │   ├── plan_service.py         # CRUD for `.layla_plans/` (separate from SQLite layla_plans)
 │   │   ├── plan_executor.py        # execute_next_step + continuous loop for file plans
 │   │   ├── plan_refinement.py      # Optional one-pass LLM tighten (file_plan_refinement_enabled)
-│   │   └── relationship_codex.py   # Optional `.layla/relationship_codex.json` (not injected by default)
+│   │   └── relationship_codex.py   # `.layla/relationship_codex.json`; optional inject via relationship_codex_inject_enabled
 │   │
 │   ├── capabilities/        # Capability registry (vector_search, embedding, etc.)
 │   │   └── registry.py     # Multiple impls per capability; dynamic selection
 │   ├── layla/
 │   │   ├── tools/
-│   │   │   └── registry.py  # ALL tools live here + TOOLS dict. Add tools here.
+│   │   │   ├── registry.py # TOOLS assembly, validation, metrics wrap, re-exports
+│   │   │   ├── registry_body.py  # Re-exports tool callables from impl/*.py
+│   │   │   ├── sandbox_core.py   # Sandbox path, read-freshness, shell policy helpers
+│   │   │   └── impl/             # Tool implementations by domain (file_ops, code, git, …)
 │   │   ├── memory/
-│   │   │   ├── db.py        # SQLite schema, migrate(), all DB access functions
+│   │   │   ├── db.py # Barrel: re-exports domain DB APIs + `_conn`, `migrate`, `_DB_PATH`, `_MIGRATED` (tests patch these)
+│   │   │   ├── db_connection.py  # `_DB_PATH`, `_conn()`
+│   │   │   ├── migrations.py   # `migrate()`, `_migrate_impl()`, schema DDL
+│   │   │   ├── learnings.py, plans_db.py, projects_db.py, conversations.py, …
 │   │   │   ├── vector_store.py  # ChromaDB, BM25, cross-encoder, HyDE, parent-doc
 │   │   │   └── distill.py   # Post-run memory distillation
 │   │   ├── geometry/        # Structured CAD-like programs (schema, executor, backends)
@@ -172,7 +184,7 @@ Client → POST /agent → routers/agent.py
 - **Python 3.11 or 3.12** (3.13+ unsupported until explicitly tested; see `pyproject.toml` / `.python-version`). Type hints everywhere. `pathlib.Path` for all file ops.
 - **FastAPI patterns**: `APIRouter`, `JSONResponse`, `StreamingResponse`. Async routes call `asyncio.to_thread()` for blocking work.
 - **Services are singletons** with module-level globals and `threading.Lock`. Use the pattern in `llm_gateway.py` and `stt.py`.
-- **DB access**: all SQLite via `db._conn()` context manager in `agent/layla/memory/db.py`. Never raw sqlite3 elsewhere.
+- **DB access**: all SQLite via `db._conn()` from `agent/layla/memory/db.py` (re-export of `db_connection._conn`). Never raw sqlite3 elsewhere.
 - **Config**: always `runtime_safety.load_config()`. Never read `runtime_config.json` directly. Never hardcode config values.
 - **Logging**: `logging.getLogger("layla")` everywhere. No `print()` in production paths.
 - **Error handling**: catch specific exceptions. Use `try/except Exception: pass` only for optional features with a fallback.
@@ -184,8 +196,8 @@ Client → POST /agent → routers/agent.py
 ## How to add things
 
 ### Add a tool
-1. Define function in `agent/layla/tools/registry.py`
-2. Add to `TOOLS` dict: `"tool_name": {"fn": fn, "dangerous": bool, "require_approval": bool, "risk_level": "low"|"medium"|"high"}`
+1. Define function in `agent/layla/tools/registry_body.py` (or a new module imported into it)
+2. Register metadata in `agent/layla/tools/domains/<domain>.py` (`fn_key` if name differs)
 3. No restart needed if server reloads; otherwise restart.
 
 ### Add an aspect
@@ -213,6 +225,9 @@ Client → POST /agent → routers/agent.py
 | `docs/MODULE_SWEEP_TEMPLATE.md` / `docs/MODULE_SWEEP_STATUS.md` | New subsystem sweep doc or status row for a major area |
 | `PROJECT_BRAIN.md` | Top-level shape, doc roles, or pinned facts change |
 | `docs/IMPLEMENTATION_STATUS.md` | Any NORTH_STAR §§ are implemented or status changes |
+| `docs/STRUCTURED_ENGINEERING_PARTNER.md` | Engineering pipeline contracts, modes, or terminology change |
+| `docs/FABRICATION_IR_AND_TOOLCHAIN.md` | DXF→IR→G-code chain, machining_ir, or fabrication scope changes |
+| `docs/POST_AGENT_RESPONSE_CONTRACT.md` | `POST /agent` response shapes (pipeline, plans, fast path) change |
 | `docs/PRODUCTION_CONTRACT.md` | Caps, safety invariants, or observability guarantees change |
 | `docs/GOLDEN_FLOW.md` | Request lifecycle, approval semantics, or cross-surface contracts change |
 | `docs/RULES.md` | Repo conventions or forbidden patterns change |
@@ -239,7 +254,7 @@ Client → POST /agent → routers/agent.py
 | Hardcoding aspect list | `_load_aspects()` from `orchestrator.py` |
 | Reading config directly | `runtime_safety.load_config()` |
 | Blocking async route | `await asyncio.to_thread(blocking_fn)` |
-| `ALTER TABLE ... ADD COLUMN` | Must be in `migrate()` in `db.py`, wrapped in try/except |
+| `ALTER TABLE ... ADD COLUMN` | Must be in `_migrate_impl()` in `migrations.py`, wrapped in try/except |
 | Committing `runtime_config.json` | It's gitignored for a reason — local paths inside |
 | `import json; open("runtime_config.json")` | Never. Use `runtime_safety.load_config()` |
 | Adding `personalities/*.json` as hardcoded | Always dynamic: `glob("personalities/*.json")` |

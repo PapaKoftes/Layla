@@ -43,22 +43,30 @@
         });
     } catch (e) { console.warn('[Layla] triggerSend', e); }
   };
-  document.addEventListener('keydown', function (e) {
-    if ((e.key !== 'Enter' && e.keyCode !== 13) || e.shiftKey) return;
-    var active = document.activeElement;
-    if (!active || active.id !== 'msg-input') return;
-    var dd = document.getElementById('mention-dropdown');
-    if (dd && dd.children.length > 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    if (typeof window.triggerSend === 'function') window.triggerSend();
-  }, true);
-  var sendBtn = document.getElementById('send-btn');
-  if (sendBtn) {
-    sendBtn.removeAttribute('disabled');
-    sendBtn.disabled = false;
-    sendBtn.addEventListener('click', function () { if (typeof window.triggerSend === 'function') window.triggerSend(); });
+   function bindChatInputNow() {
+    try {
+      document.addEventListener('keydown', function (e) {
+        if ((e.key !== 'Enter' && e.keyCode !== 13) || e.shiftKey) return;
+        var active = document.activeElement;
+        if (!active || active.id !== 'msg-input') return;
+        var dd = document.getElementById('mention-dropdown');
+        if (dd && dd.children.length > 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof window.triggerSend === 'function') window.triggerSend();
+      }, true);
+      var sendBtn = document.getElementById('send-btn');
+      if (sendBtn) {
+        sendBtn.removeAttribute('disabled');
+        sendBtn.disabled = false;
+        sendBtn.addEventListener('click', function () { if (typeof window.triggerSend === 'function') window.triggerSend(); });
+      }
+    } finally {
+      /* contract: Enter-to-send + send button rebound for UI repair tests */
+    }
   }
+  window.bindChatInputNow = bindChatInputNow;
+  bindChatInputNow();
   /* Right panel: DOM switching lives here so tabs work even if the huge main script throws before assigning handlers. */
   function __laylaApplyRcpMain(main) {
     var root = document.getElementById('layla-right-panel');

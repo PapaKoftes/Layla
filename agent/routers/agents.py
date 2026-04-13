@@ -11,6 +11,13 @@ from shared_state import get_touch_activity
 router = APIRouter(prefix="/agents", tags=["agents"])
 
 
+@router.get("/blackboard/{job_id}")
+def agents_blackboard_get(job_id: str):
+    from shared_state import blackboard_get
+
+    return {"ok": True, "job_id": job_id, "data": blackboard_get(job_id)}
+
+
 @router.post("/spawn")
 def spawn_tiny_agent(req: dict):
     """Queue an autonomous run in a daemon thread (kind=tiny_agent). Body matches /agent/background."""

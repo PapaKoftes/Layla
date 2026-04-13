@@ -228,9 +228,10 @@ def test_mcp_tools_call_in_autonomous_run_http(tmp_path, monkeypatch):
     ],
 )
 def test_agent_router_maps_limited_status_to_user_text(status, needle, monkeypatch):
+    import agent_loop
     import routers.agent as ra
 
-    def fake_run(*_a, **_k):
+    def fake_run(*_a, **_k):  # accepts engineering_pipeline_mode etc. from router
         return {
             "status": status,
             "response": "",
@@ -243,7 +244,7 @@ def test_agent_router_maps_limited_status_to_user_text(status, needle, monkeypat
             "memory_influenced": [],
         }
 
-    monkeypatch.setattr(ra, "autonomous_run", fake_run)
+    monkeypatch.setattr(agent_loop, "autonomous_run", fake_run)
     monkeypatch.setattr(ra, "_model_ready_message", lambda: None)
 
     from main import app

@@ -62,9 +62,11 @@ Each phase has defined inputs, outputs, invariants, and failure modes. No phase 
 
 ---
 
-## Phase 2 — Plan
+## Phase 2 — Plan (micro-decision)
 
-**Module:** `agent/core/planner.py` (extracted from `agent_loop.py`)
+> **Naming note:** This phase is the **per-iteration** tool/reason decision inside `agent_loop`. **Macro-plans** live in `services.planner` / `layla_plans`. The optional **engineering pipeline** (clarifier → planner → critics → refiner → execute → validator) is documented in **`docs/STRUCTURED_ENGINEERING_PARTNER.md`**.
+
+**Module:** `agent_loop._llm_decision` (see also `decision_schema`)
 **Trigger:** Each iteration of the decision loop.
 
 **Purpose:** Call the LLM once and produce a single validated Decision.

@@ -212,6 +212,26 @@ def get_decision_bias(aspect: dict) -> list:
     return []
 
 
+def decision_bias_prompt_extension(bias: list[str], *, relationship_codex_active: bool = False) -> str:
+    """Concrete tool-behavior nudges from personality decision_bias (North Star §11–13)."""
+    parts: list[str] = []
+    bset = set(bias or [])
+    if "efficient" in bset:
+        parts.append("Bias efficient: minimal tool calls; read_file/grep before write; avoid redundant list_dir.")
+    if "risk_averse" in bset:
+        parts.append("Bias risk-averse: prefer read-only inspection and small reversible steps before mutating tools.")
+    if "exploratory" in bset:
+        parts.append("Bias exploratory: workspace_map or list_dir early is acceptable when the goal is unclear.")
+    if "human_aligned" in bset:
+        parts.append("Bias human-aligned: name tradeoffs briefly; one clarifying question beats silent guessing.")
+    if relationship_codex_active:
+        parts.append(
+            "Relationship codex is active: weight named people/entities and their traits in tool choice and tone; "
+            "if unsure about someone named there, acknowledge uncertainty instead of inventing."
+        )
+    return (" ".join(parts) + "\n") if parts else ""
+
+
 def should_deliberate(message: str, aspect: dict | None = None) -> bool:
     """
     True when the message is complex, ambiguous, or explicitly asks for deliberation.
@@ -375,3 +395,28 @@ def build_standard_prompt(
     parts.append(f"User: {message}\n{name}:")
 
     return "\n\n".join(parts)
+
+
+# Tool shortlist ordering after policy clamp (deterministic; complements prompt bias).
+_ASPECT_TOOL_WEIGHT: dict[str, dict[str, float]] = {
+    "nyx": {"ddg_search": 1.35, "fetch_article": 1.35, "wiki_search": 1.25, "arxiv_search": 1.2, "read_file": 1.08},
+    "morrigan": {"run_tests": 1.25, "apply_patch": 1.2, "grep_code": 1.15, "read_file": 1.05},
+    "lilith": {"read_file": 1.2, "list_dir": 1.1, "grep_code": 1.1, "git_diff": 1.08},
+    "echo": {"search_memories": 1.15, "read_file": 1.08},
+    "eris": {"grep_code": 1.1, "read_file": 1.05},
+    "cassandra": {"read_file": 1.12, "grep_code": 1.1},
+}
+
+
+def order_tools_for_aspect(names: list[str], aspect_id: str, cfg: dict | None) -> list[str]:
+    if not names:
+        return []
+    if cfg is not None and not cfg.get("aspect_tool_ordering_enabled", True):
+        return sorted(names)
+    aid = (aspect_id or "morrigan").strip().lower()
+    wmap = _ASPECT_TOOL_WEIGHT.get(aid, {})
+
+    def sort_key(t: str) -> tuple:
+        return (-float(wmap.get(t, 1.0)), t)
+
+    return sorted(names, key=sort_key)
