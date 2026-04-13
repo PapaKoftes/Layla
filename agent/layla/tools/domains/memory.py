@@ -12,4 +12,11 @@ TOOLS = {
     "schedule_learning_review": {"dangerous": False, "require_approval": False, "risk_level": "low"},
     "memory_elasticsearch_search": {"dangerous": False, "require_approval": False, "risk_level": "low", "concurrency_safe": True},
     "ingest_chat_export_to_knowledge": {"dangerous": True, "require_approval": True, "risk_level": "medium"},
+    "codex_suggest_update": {
+        "fn_key": "codex_suggest_update",
+        "dangerous": False,
+        "require_approval": False,
+        "risk_level": "low",
+        "concurrency_safe": True,
+    },
 }

@@ -103,6 +103,13 @@ def main() -> int:
                     planning_strict_mode=bool(_worker_cfg.get("planning_strict_mode")),
                     payload=pl,
                 )
+            _bgm = str(job.get("engineering_pipeline_mode") or "").strip().lower()
+            if _bgm not in ("chat", "plan", "execute"):
+                _bgm = str(_worker_cfg.get("engineering_pipeline_default_mode") or "chat").strip().lower()
+            if _bgm not in ("chat", "plan", "execute"):
+                _bgm = "chat"
+            if not bool(_worker_cfg.get("engineering_pipeline_enabled")):
+                _bgm = "chat"
             return autonomous_run(
                 str(job.get("goal") or ""),
                 context=str(job.get("context") or ""),
@@ -122,6 +129,8 @@ def main() -> int:
                 background_progress_callback=_prog_cb,
                 active_plan_id=str(job.get("active_plan_id") or ""),
                 plan_approved=bool(job.get("plan_approved")),
+                engineering_pipeline_mode=_bgm,
+                clarification_reply=str(job.get("clarification_reply") or "").strip(),
             )
 
         continuous = bool(job.get("continuous"))

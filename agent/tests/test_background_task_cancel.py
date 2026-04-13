@@ -23,7 +23,7 @@ def client():
 
 
 def test_post_cancel_sets_cooperative_abort(monkeypatch, client):
-    import routers.agent as ra
+    import agent_loop
 
     def slow_autonomous_run(*_a, client_abort_event=None, **_k):
         for _ in range(200):
@@ -48,7 +48,7 @@ def test_post_cancel_sets_cooperative_abort(monkeypatch, client):
             "memory_influenced": [],
         }
 
-    monkeypatch.setattr(ra, "autonomous_run", slow_autonomous_run)
+    monkeypatch.setattr(agent_loop, "autonomous_run", slow_autonomous_run)
     r = client.post("/agents/spawn", json={"message": "long task"})
     assert r.status_code == 200
     tid = r.json().get("task_id")
@@ -71,7 +71,7 @@ def test_post_cancel_sets_cooperative_abort(monkeypatch, client):
 
 
 def test_delete_cancel_idempotent(monkeypatch, client):
-    import routers.agent as ra
+    import agent_loop
 
     done = threading.Event()
 
@@ -87,7 +87,7 @@ def test_delete_cancel_idempotent(monkeypatch, client):
             "memory_influenced": [],
         }
 
-    monkeypatch.setattr(ra, "autonomous_run", fast_run)
+    monkeypatch.setattr(agent_loop, "autonomous_run", fast_run)
     r = client.post("/agents/spawn", json={"message": "quick"})
     assert r.status_code == 200
     tid = r.json()["task_id"]

@@ -291,33 +291,48 @@ def test_failure_classify_sets_structured_recovery_hint():
     rh = state.get("recovery_hint")
     assert isinstance(rh, dict)
     assert rh.get("type") == "planning_gap"
+    assert rh.get("recovery_strategy") == "replan"
+    assert state.get("recovery_strategy") == "replan"
     assert (rh.get("message") or "").strip()
     assert rh.get("source") == "failure_classifier"
 
     state2 = {"consecutive_no_progress": 2, "last_tool_used": "write_file"}
     agent_loop._classify_failure_and_recovery(state2)
     assert state2.get("recovery_hint", {}).get("type") == "execution_issue"
+    assert state2.get("recovery_strategy") == "retry_constrained"
 
     state3 = {"consecutive_no_progress": 1, "last_tool_used": "unknown_tool"}
     agent_loop._classify_failure_and_recovery(state3)
     assert state3.get("recovery_hint", {}).get("type") == "workflow_breakdown"
+    assert state3.get("recovery_strategy") == "escalate_user"
 
 
 def test_failure_classify_clears_when_no_progress_zero():
     """When consecutive_no_progress is 0, recovery_hint is cleared."""
     import agent_loop
-    state = {"consecutive_no_progress": 0, "last_tool_used": "read_file", "recovery_hint": {"type": "x", "message": "y", "source": "failure_classifier"}}
+    state = {
+        "consecutive_no_progress": 0,
+        "last_tool_used": "read_file",
+        "recovery_hint": {"type": "x", "message": "y", "source": "failure_classifier"},
+        "recovery_strategy": "replan",
+    }
     agent_loop._classify_failure_and_recovery(state)
     assert state.get("recovery_hint") is None
+    assert state.get("recovery_strategy") is None
 
 
 def test_format_recovery_hint_for_prompt():
     """Structured recovery hint is stringified correctly for prompt injection."""
     import agent_loop
-    out = agent_loop._format_recovery_hint_for_prompt({"type": "planning_gap", "message": "Break into steps.", "source": "failure_classifier"})
+    out = agent_loop._format_recovery_hint_for_prompt({
+        "type": "planning_gap",
+        "recovery_strategy": "replan",
+        "message": "Break into steps.",
+        "source": "failure_classifier",
+    })
     assert "planning_gap" in out
     assert "Break into steps" in out
-    assert out == "Failure type: planning_gap. Assist recovery: Break into steps. "
+    assert "Next step: replan" in out
     assert agent_loop._format_recovery_hint_for_prompt(None) == ""
     assert agent_loop._format_recovery_hint_for_prompt({}) == ""
 

@@ -6,7 +6,7 @@
 
 ## What this repo is
 
-**Layla** is a **local-first**, **planning-first** AI companion and engineering agent: FastAPI on **localhost:8000**, **Web UI** at **`/ui`**, optional **MCP** (`cursor-layla-mcp/`). Core loop: **`POST /agent`** → **`agent/agent_loop.autonomous_run()`** → LLM decisions → tools (gated) → streaming reply. **Plans:** durable **`layla_plans`** in SQLite + **`/plans`** API; optional file-backed **`/plan/*`** (`.layla_plans/*.json`, Pydantic steps); optional **`planning_strict_mode`** so mutating tools require an **approved** bound plan (default off). **Tools:** **186** registered in **`layla.tools.registry.TOOLS`** (authoritative count: **`EXPECTED_TOOL_COUNT`** in **`agent/tests/test_registered_tools_count.py`**). Six **aspects** load from **`personalities/*.json`** (never hardcode the list). **Memory:** SQLite **`layla.db`** + optional Chroma; **config:** **`agent/runtime_config.json`** (gitignored), template **`agent/runtime_config.example.json`**.
+**Layla** is a **local-first**, **planning-first** AI companion and engineering agent: FastAPI on **localhost:8000**, **Web UI** at **`/ui`**, optional **MCP** (`cursor-layla-mcp/`). Core loop: **`POST /agent`** → **`agent/agent_loop.autonomous_run()`** → LLM decisions → tools (gated) → streaming reply. **Plans:** durable **`layla_plans`** in SQLite + **`/plans`** API; optional file-backed **`/plan/*`** (`.layla_plans/*.json`, Pydantic steps); optional **`planning_strict_mode`** so mutating tools require an **approved** bound plan (default off). **Optional engineering pipeline** (config **`engineering_pipeline_enabled`**): modes **`chat` / `plan` / `execute`** with blocking clarifier, forced critics, refiner overwrite, governed execute, mandatory validator in execute mode — see **`docs/STRUCTURED_ENGINEERING_PARTNER.md`** and North Star **§21**. **Tools:** **189** registered in **`layla.tools.registry.TOOLS`** (authoritative count: **`EXPECTED_TOOL_COUNT`** in **`agent/tests/test_registered_tools_count.py`**). Six **aspects** load from **`personalities/*.json`** (never hardcode the list). **Memory:** SQLite **`layla.db`** + optional Chroma; **config:** **`agent/runtime_config.json`** (gitignored), template **`agent/runtime_config.example.json`**.
 
 ---
 
@@ -29,8 +29,8 @@
 ## Pinned technical facts
 
 - **Python:** **3.11 or 3.12** (`pyproject.toml`, CI). Dependencies: **`agent/requirements.txt`**.
-- **Entry:** **`agent/main.py`** (lifespan, routes, embedded UI).
-- **Core loop:** **`agent/agent_loop.py`**; config **`agent/runtime_safety.py`**; tools **`agent/layla/tools/registry.py`**.
+- **Entry:** **`agent/main.py`** (lifespan, middleware, UI/static; most HTTP routes in **`agent/routers/`**).
+- **Core loop:** **`agent/agent_loop.py`**; config **`agent/runtime_safety.py`**; tools **`agent/layla/tools/registry.py`** + **`agent/layla/tools/impl/*.py`**. **SQLite:** **`layla/memory/migrations.py`** (schema) + domain modules (`learnings.py`, `plans_db.py`, …) re-exported from **`layla/memory/db.py`**. **Background tasks:** **`services/agent_task_runner.py`**; HTTP surface split as **`routers/learn.py`** + **`routers/agent_tasks.py`** (included from **`routers/agent.py`**).
 - **Tests:** **`agent/tests/`** — `cd agent && python -m pytest tests/ -q` (CI uses `-m "not slow"`).
 - **Observability:** **`GET /health`** — `model_loaded`, `model_routing`, `knowledge_index_*`, `effective_limits`, `cache_stats`, `response_cache_stats`.
 - **Anti–AI drift (runtime prompt):** config **`anti_drift_prompt_enabled`** (default on) injects minimize-change instructions in **`_build_system_head()`**.
@@ -44,7 +44,8 @@
 Client → agent/main.py
   → routers/agent.py::POST /agent
   → agent_loop.autonomous_run()
-       load_config → aspect select → _build_system_head() → decision loop
+       load_config → aspect select → optional engineering execute pipeline (when enabled + mode execute)
+       → _build_system_head() → decision loop (micro-decisions: tool / reason / think)
        tools → registry.TOOLS (allow_write / allow_run / approval)
   → stream or JSON result
 ```

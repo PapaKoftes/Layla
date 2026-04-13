@@ -43,7 +43,9 @@ No phase may be skipped. Each phase has defined inputs, outputs, and invariants.
 
 ---
 
-### PHASE 2 — PLAN
+### PHASE 2 — PLAN (micro-decision)
+
+> **Naming note:** This phase is the **per-iteration LLM decision** (tool vs reason). It is **not** the same as **macro-planning** (`services.planner.create_plan`, durable `layla_plans`, or the optional **engineering pipeline** in `docs/STRUCTURED_ENGINEERING_PARTNER.md`).
 
 **Trigger:** Each iteration of the decision loop.
 

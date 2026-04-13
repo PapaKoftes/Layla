@@ -139,7 +139,7 @@ Tools **`scan_repo`** and **`update_project_memory`** are **dangerous** / **appr
 
 5. **Notion**: Export pages to Markdown and put the files under `knowledge/`. A future Notion API loader is optional (see MILESTONES M6).
 
-6. **Chat exports / backups**: Put JSON or JSONL under your **sandbox**, then use tool **`ingest_chat_export_to_knowledge`** (or see [BACKUP_INGESTION_AND_ELASTICSEARCH.md](BACKUP_INGESTION_AND_ELASTICSEARCH.md)). Output is `knowledge/_ingested/chats/*.md` for normal indexing. Audio: transcribe with **`stt_file`**, then ingest or paste into `knowledge/`.
+6. **Chat exports / backups**: Put JSON or JSONL under your **sandbox** (same tree as **Prefs → workspace path**). There is no dedicated “upload chat” button in the Web UI yet; either (a) save the export file into the workspace and ask Layla in chat to run **`ingest_chat_export_to_knowledge`** with that path (requires **allow write** and usually **approval** for the tool), or (b) call the tool from MCP/CLI with the path. Output is `knowledge/_ingested/chats/*.md` for normal indexing. See [BACKUP_INGESTION_AND_ELASTICSEARCH.md](BACKUP_INGESTION_AND_ELASTICSEARCH.md). Audio: transcribe with **`stt_file`**, then ingest or paste into `knowledge/`.
 
 ---
 
@@ -224,6 +224,22 @@ Layla can execute **versioned JSON programs** (`GeometryProgram` v1) that map to
 ## Trace ID (debugging)
 
 Set `"trace_id_enabled": true` in `agent/runtime_config.json`. Every response will include an `X-Trace-Id` header (propagated from request or newly generated). Use it to correlate logs and requests across services.
+
+---
+
+## Optional cloud tracing (Langfuse)
+
+Layla stays **local-first**: there is **no** default dependency on Langfuse. To experiment with cloud traces:
+
+1. `pip install langfuse` in the same environment as the agent.
+2. Set in `runtime_config.json`: `langfuse_enabled: true`, `langfuse_public_key`, `langfuse_secret_key`, and optionally `langfuse_host` (default `https://cloud.langfuse.com`).
+3. Each `run_budget_summary` log may emit a best-effort span when the installed SDK exposes `start_as_current_observation` on the client (`services/langfuse_export.py`). Failures are swallowed (debug log only).
+
+---
+
+## Dev/eval stacks (DSPy, Ragas) — optional
+
+**DSPy** and **Ragas** are useful for **offline** prompt/program optimization and retrieval metrics. They are **not** part of the default install or CI matrix. Add them only in a dedicated venv when you are running eval notebooks or scripts; do not require them for operator installs. See `docs/ADAPTIVE_EXECUTION_ENGINE.md` for how the runtime budget layer relates to evaluation.
 
 ---
 
