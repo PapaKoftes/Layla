@@ -277,6 +277,50 @@ def llama_cpp_import_recovery(exc: str | None = None) -> dict[str, Any]:
     return r
 
 
+def get_optional_features(cfg: dict | None = None) -> list[dict[str, Any]]:
+    """List known optional feature bundles and whether imports resolve."""
+    if cfg is None:
+        try:
+            import runtime_safety
+
+            cfg = runtime_safety.load_config()
+        except Exception:
+            cfg = {}
+    out: list[dict[str, Any]] = []
+    for fid, spec in FEATURES.items():
+        pip_names = list(spec.get("pip") or [])
+        import_names = list(spec.get("imports") or [])
+        installed = _imports_available(import_names)
+        out.append(
+            {
+                "id": fid,
+                "label": str(spec.get("label") or fid),
+                "installed": installed,
+                "pip": pip_names,
+                "detail": str(spec.get("detail") or ""),
+                "auto_pip_enabled": _auto_pip_enabled(cfg),
+            }
+        )
+    return out
+
+
+def install_feature(feature_id: str, cfg: dict | None = None) -> dict[str, Any]:
+    """
+    Run allowlisted pip install for a feature id. Does not require auto_pip_install_optional
+    (operator explicitly requested install via UI/API).
+    """
+    spec = FEATURES.get((feature_id or "").strip())
+    if not spec:
+        return {"ok": False, "error": "unknown_feature", "feature": feature_id}
+    pip_names = list(spec.get("pip") or [])
+    import_names = list(spec.get("imports") or [])
+    if _imports_available(import_names):
+        return {"ok": True, "already_installed": True, "feature": feature_id}
+    attempt = try_pip_install(pip_names)
+    ok = bool(attempt.get("ok")) and _imports_available(import_names)
+    return {"ok": ok, "feature": feature_id, "pip_attempt": attempt}
+
+
 def merge_recovery_message(d: dict[str, Any]) -> str:
     """Single string for logs or simple error fields."""
     parts = [d.get("what_failed") or d.get("error") or "Setup incomplete"]

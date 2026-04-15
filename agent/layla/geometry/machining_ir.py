@@ -251,21 +251,100 @@ def validate_machining_ir_dict(ir: dict[str, Any]) -> dict[str, Any]:
 
 def validate_gcode_text(gcode: str) -> dict[str, Any]:
     """Cheap structural checks — does not prove collision-free or machine-safe motion."""
-    issues: list[str] = []
+    errors: list[str] = []
+    warnings: list[str] = []
     text = (gcode or "").strip()
     if not text:
-        return {"ok": False, "issues": ["empty_gcode"], "machine_readiness": "not_validated"}
-    lines = [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.strip().startswith(";")]
+        return {
+            "ok": False,
+            "issues": ["empty_gcode"],
+            "errors": ["empty_gcode"],
+            "warnings": [],
+            "machine_readiness": "not_validated",
+        }
+    lines = []
+    for raw in text.splitlines():
+        ln = raw.strip()
+        if not ln:
+            continue
+        if ln.startswith(";"):
+            continue
+        # Strip trailing ';' comments.
+        if ";" in ln:
+            ln = ln.split(";", 1)[0].strip()
+        if ln:
+            lines.append(ln)
     if not lines:
-        issues.append("no_executable_lines")
-    motion = sum(1 for ln in lines if ln.upper().startswith("G0") or ln.upper().startswith("G1"))
-    if motion == 0:
-        issues.append("no_g0_g1_motion")
-    if "F" not in text.upper():
-        issues.append("no_feed_word")
-    ok = len(issues) == 0
+        errors.append("no_executable_lines")
+
+    safe_g = {0, 1, 2, 3, 17, 18, 19, 20, 21, 28, 90, 91}
+    safe_m = {0, 1, 2, 3, 4, 5, 6, 30}
+    saw_units = False
+    saw_spindle_on = False
+    saw_spindle_off = False
+    saw_feed = False
+    saw_motion = False
+    feed_before_first_cut_ok = True
+
+    import re
+
+    for ln in lines:
+        up = ln.upper()
+        # Units: G20 (inches) or G21 (mm)
+        if "G20" in up or "G21" in up:
+            saw_units = True
+        # Spindle: M3/M4 on, M5 off
+        if "M3" in up or "M4" in up:
+            saw_spindle_on = True
+        if "M5" in up:
+            saw_spindle_off = True
+        # Feed word
+        if "F" in up:
+            saw_feed = True
+        # Unknown G/M codes outside safe subset
+        for m in re.findall(r"\bG(\d{1,3})\b", up):
+            try:
+                code = int(m)
+            except ValueError:
+                continue
+            if code not in safe_g:
+                errors.append(f"unknown_g{code}")
+        for m in re.findall(r"\bM(\d{1,3})\b", up):
+            try:
+                code = int(m)
+            except ValueError:
+                continue
+            if code not in safe_m:
+                errors.append(f"unknown_m{code}")
+
+        # Motion presence + feed-before-cut heuristic (first G1/G2/G3 should have feed set)
+        if up.startswith("G0") or up.startswith("G00") or up.startswith("G1") or up.startswith("G01") or up.startswith("G2") or up.startswith("G02") or up.startswith("G3") or up.startswith("G03"):
+            saw_motion = True
+        if (up.startswith("G1") or up.startswith("G01") or up.startswith("G2") or up.startswith("G02") or up.startswith("G3") or up.startswith("G03")) and not saw_feed:
+            # Allow feed on same line (e.g., "G1 X.. Y.. F300")
+            if "F" not in up:
+                feed_before_first_cut_ok = False
+
+    if not saw_units:
+        warnings.append("missing_units_g20_g21")
+    if not saw_motion:
+        errors.append("no_motion_g0_g1_g2_g3")
+    if not saw_feed:
+        errors.append("no_feed_word")
+    if not feed_before_first_cut_ok:
+        errors.append("feed_not_set_before_first_cut_move")
+    if saw_spindle_on and not saw_spindle_off:
+        warnings.append("spindle_on_without_m5")
+    if not saw_spindle_on:
+        warnings.append("missing_spindle_on_m3_m4")
+
+    # Back-compat: keep `issues` (combined) for existing callers.
+    issues = (errors + warnings)[:40]
+    ok = len(errors) == 0
     return {
         "ok": ok,
         "issues": issues[:20],
+        "errors": errors[:20],
+        "warnings": warnings[:20],
         "machine_readiness": "interpretive_preview" if ok else "not_validated",
     }

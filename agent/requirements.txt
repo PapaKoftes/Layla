@@ -28,6 +28,9 @@ chromadb>=0.6.0,<1
 unidiff>=0.7
 langchain-text-splitters>=0.3,<1
 
+# Optional structured JSON for agent decisions (prebuilt wheels: Python 3.11–3.12; requires Rust to build from source)
+outlines>=1.0.0,<2.0.0; python_version < "3.13"
+
 # RAG upgrades
 rank-bm25>=0.2                  # BM25 hybrid search (used alongside dense vectors)
 

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect width="256" height="256" fill="none"/>
+  <g stroke="rgba(255,255,255,0.10)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- lightning fractures -->
+    <path d="M40 40l40 28-24 28 40 24-24 28 56 32"/>
+    <path d="M216 32l-32 40 28 24-40 24 24 28-40 32"/>
+    <path d="M32 216l56-40-24-24 40-24-24-28 40-32"/>
+    <!-- dice -->
+    <rect x="180" y="172" width="44" height="44" rx="6"/>
+    <g fill="rgba(255,255,255,0.12)" stroke="none">
+      <circle cx="194" cy="186" r="3"/>
+      <circle cx="210" cy="202" r="3"/>
+      <circle cx="194" cy="218" r="3"/>
+      <circle cx="210" cy="186" r="3"/>
+      <circle cx="226" cy="202" r="3"/>
+    </g>
+  </g>
+</svg>

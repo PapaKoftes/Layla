@@ -6,4 +6,9 @@
   <path d="M100 168 Q70 175 52 162"/>
   <path d="M100 168 Q130 175 148 162"/>
   <path d="M100 58 L100 28 M88 48 L72 32 M112 48 L128 32"/>
+  <!-- crown/thorns -->
+  <path d="M56 72l12 10 12-16 12 16 12-18 12 18 12-16 12 16 12-10" />
+  <!-- sacred geometry hint -->
+  <circle cx="100" cy="110" r="40" opacity="0.7"/>
+  <path d="M100 70l34 58H66z" opacity="0.7"/>
 </svg>

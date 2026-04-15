@@ -351,6 +351,7 @@ def test_persona_focus_appends_secondary_voice():
 
 def test_iter_with_response_pacing_zero_passthrough():
     import time
+
     from agent_loop import _iter_with_response_pacing
 
     assert list(_iter_with_response_pacing(iter(["a", "b", "c"]), 0)) == ["a", "b", "c"]

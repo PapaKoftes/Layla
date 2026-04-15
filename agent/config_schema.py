@@ -225,7 +225,43 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
     },
     # ── Remote ──
     {"key": "remote_enabled", "type": "boolean", "category": "remote", "default": False, "hint": "Allow remote API access."},
+    {
+        "key": "remote_api_key",
+        "type": "string",
+        "category": "remote",
+        "default": "",
+        "hint": "Bearer token required for non-localhost clients when remote_enabled (store via UI or edit runtime_config.json).",
+    },
+    {
+        "key": "remote_rate_limit_per_minute",
+        "type": "number",
+        "category": "remote",
+        "default": 100,
+        "hint": "When remote_enabled, max requests per minute per non-localhost IP (0 = unlimited).",
+    },
     {"key": "llama_server_url", "type": "string", "category": "remote", "hint": "External llama.cpp server URL. Overrides local model."},
+    # ── Admin mode (trusted operator) ──
+    {
+        "key": "admin_mode",
+        "type": "boolean",
+        "category": "safety",
+        "default": False,
+        "hint": "Auto-approve dangerous tools (still audited; shell blocklists apply unless admin_blocklist_override).",
+    },
+    {
+        "key": "admin_auto_checkpoint",
+        "type": "boolean",
+        "category": "safety",
+        "default": True,
+        "hint": "When admin_mode, best-effort git commit before mutating file/shell tools.",
+    },
+    {
+        "key": "admin_blocklist_override",
+        "type": "boolean",
+        "category": "safety",
+        "default": False,
+        "hint": "DANGEROUS: allow shell blocklist bypass when admin_mode. Do not enable on shared machines.",
+    },
     # ── Integrations (Discord, Slack, etc.) ──
     {
         "key": "mcp_client_enabled",

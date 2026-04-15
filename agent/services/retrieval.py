@@ -192,6 +192,83 @@ def _build_retrieved_context_impl(query: str, k: int, *, coding_boost: bool = Fa
     return "Relevant knowledge:\n" + "\n".join(lines)
 
 
+def _build_retrieved_context_impl_with_ids(query: str, k: int, *, coding_boost: bool = False) -> tuple[str, list[str]]:
+    """Like _build_retrieved_context_impl, but also returns learning ids included in the context."""
+    k = max(1, min(int(k), MAX_K))
+    learnings, docs, graph = [], [], []
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        f_learn = ex.submit(retrieve_learnings, query, k, coding_boost=coding_boost)
+        f_docs = ex.submit(retrieve_documents, query, k)
+        f_graph = ex.submit(retrieve_graph_context, query, k)
+        learnings = f_learn.result()
+        docs = f_docs.result()
+        graph = f_graph.result()
+    lines: list[str] = []
+    line_word_sets: list[set[str]] = []
+    learning_ids: list[str] = []
+    remaining = MAX_RETRIEVED_CHARS - len("Relevant knowledge:\n")
+    per_cap, overlap_th = _retrieval_guard_config()
+
+    def _append_line(line: str) -> bool:
+        nonlocal remaining
+        if remaining <= 40 or not line.strip():
+            return False
+        cap_body = per_cap
+        if len(line) > cap_body:
+            line = line[:cap_body].rsplit(" ", 1)[0]
+        ws = _word_set(line)
+        for prev_ws in line_word_sets:
+            if _jaccard(ws, prev_ws) > overlap_th:
+                return False
+        if len(line) > remaining:
+            line = line[:remaining].rsplit(" ", 1)[0]
+        if not line.strip():
+            return False
+        lines.append(line)
+        line_word_sets.append(ws)
+        remaining -= len(line) + 1
+        return True
+
+    for r in learnings:
+        content = (r.get("content") or r.get("text") or "").strip()
+        if len(content) > per_cap:
+            content = content[:per_cap].rsplit(" ", 1)[0]
+        kind = (r.get("type") or r.get("learning_type") or "fact")
+        if content and remaining > 40:
+            line = f"* {kind}: {content}"
+            if not _append_line(line):
+                break
+            _lid = r.get("id")
+            if _lid is not None:
+                s = str(_lid).strip()
+                if s:
+                    learning_ids.append(s)
+    for d in docs:
+        if remaining <= 40:
+            break
+        text = (d.get("text") or "").strip()
+        if len(text) > per_cap:
+            text = text[:per_cap].rsplit(" ", 1)[0]
+        src = d.get("source", "")
+        if text:
+            line = f"* doc excerpt ({src}): {text}"
+            if not _append_line(line):
+                break
+    for g in graph:
+        if remaining <= 40:
+            break
+        label = (g.get("label") or "").strip()
+        if len(label) > per_cap:
+            label = label[:per_cap]
+        if label:
+            line = f"* graph relation: {label}"
+            if not _append_line(line):
+                break
+    if not lines:
+        return "", []
+    return "Relevant knowledge:\n" + "\n".join(lines), learning_ids
+
+
 def build_retrieved_context(query: str, k: int = TOP_K, reasoning_mode: str = "light") -> str:
     """
     Merge learnings, documents, and graph into one block. Cached 60s.
@@ -216,3 +293,17 @@ def build_retrieved_context(query: str, k: int = TOP_K, reasoning_mode: str = "l
     if len(result) > MAX_RETRIEVED_CHARS:
         result = result[:MAX_RETRIEVED_CHARS].rsplit("\n", 1)[0] + "\n"
     return result
+
+
+def build_retrieved_context_with_ids(query: str, k: int = TOP_K, reasoning_mode: str = "light") -> tuple[str, list[str]]:
+    """
+    Like build_retrieved_context, but returns (context_text, learning_ids_used).
+    This is used for learning reinforcement and does not use the cached string path.
+    """
+    rm = (reasoning_mode or "light").strip().lower()
+    coding_boost = rm in ("heavy", "deep", "reasoning")
+    try:
+        return _build_retrieved_context_impl_with_ids(query, k, coding_boost=coding_boost)
+    except Exception as e:
+        logger.debug("build_retrieved_context_with_ids failed: %s", e)
+        return "", []

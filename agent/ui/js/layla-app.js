@@ -64,12 +64,12 @@ function setAspect(id, force) {
   try { updateContextChip(); } catch (_) {}
   try {
     const doodles = {
-      morrigan: '⚔ ◈ ⚔ ◈ ⚔\n/\\\\ /\\\\ /\\\\',
-      nyx: '✦ ⊛ ∴ ✦ ⊛\n..::..::..',
-      echo: '◎ ∞ ◎ ∞ ◎\n==== ====',
-      eris: '⚡ ⊘ ⚡ ⊘ ⚡\n/\\/\\/\\/\\',
-      cassandra: '⌖ △ ⌖ △ ⌖\n<> <> <>',
-      lilith: '⊛ ♾ ✶ ⊛ ♾\n### ### ###',
+      morrigan: '⚔ ⟁ ⚔ ⎔ ⚔ ◈\n/\\\\==/\\\\  ─┼─  /\\\\==/\\\\\n⎔  ◈  ⟁  ⚔  ⟁  ◈',
+      nyx: '✦ ⊛ ∴ ✦ ⌁ ✦\n..✦..::..✦..::..\n⌁  ✦  ⊛  ∴  ✦  ⌁',
+      echo: '◎ ∞ ◎ ⟡ ◎ ∞\n====  ~~~  ====\n⟡  ◎  ∞  ◎  ⟡',
+      eris: '⚡ ⊘ ⚡ ⌇ ⚡ ⊘\n/\\/\\/\\/\\  ╱╲  /\\/\\/\\/\\\n⌇  ⚡  ⊘  ⚡  ⌇',
+      cassandra: '⌖ △ ⌖ ⟟ ⌖ △\n<>  /\\  <>  /\\  <>\n⟟  ⌖  △  ⌖  ⟟',
+      lilith: '⊛ ♾ ✶ ⊛ ⟁ ⊛\n###  ╳  ###  ╳  ###\n✶  ⊛  ♾  ⊛  ✶',
     };
     const ov = document.getElementById('doodle-overlay');
     if (ov) ov.textContent = (doodles[id] || doodles.morrigan).repeat(180);
@@ -79,6 +79,45 @@ function setAspect(id, force) {
   } catch (_) {}
 }
 window.setAspect = setAspect;
+
+// ── Layla v3: Maturity / Mastery rank UI ────────────────────────────────────
+async function refreshMaturityCard(showCeremony) {
+  try {
+    const r = await fetch('/operator/profile');
+    const d = await r.json();
+    if (!d || !d.ok) return;
+    const rank = (d.maturity && d.maturity.rank != null) ? Number(d.maturity.rank) : 0;
+    const xp = (d.maturity && d.maturity.xp != null) ? Number(d.maturity.xp) : 0;
+    const phase = String((d.maturity && d.maturity.phase) || 'nascent').toUpperCase();
+    const elRank = document.getElementById('maturity-rank');
+    const elPhase = document.getElementById('maturity-phase');
+    const elXp = document.getElementById('maturity-xp');
+    const fill = document.getElementById('maturity-bar-fill');
+    if (elRank) elRank.textContent = isFinite(rank) ? String(rank) : '0';
+    if (elPhase) elPhase.textContent = phase;
+    // Best-effort next-rank thresholds; server is authoritative.
+    const thresholds = [500,1000,2000,3000,5000,8000,12000,18000,26000,36000,50000,70000,100000];
+    const need = (rank >= 0 && rank < thresholds.length) ? thresholds[rank] : 0;
+    if (elXp) elXp.textContent = need ? (xp + ' / ' + need) : (String(xp) + ' / —');
+    if (fill) fill.style.width = need ? (Math.max(0, Math.min(100, Math.floor((xp / need) * 100))) + '%') : '0%';
+
+    try {
+      const lastRank = Number(localStorage.getItem('layla_last_maturity_rank') || '0');
+      localStorage.setItem('layla_last_maturity_rank', String(rank));
+      if (showCeremony && isFinite(lastRank) && rank > lastRank) {
+        const ov = document.getElementById('rankup-overlay');
+        const detail = document.getElementById('rankup-detail');
+        if (detail) detail.textContent = 'Mastery Rank increased to ' + rank + ' (' + phase + ').';
+        if (ov) {
+          ov.classList.add('visible');
+          setTimeout(function () { ov.classList.remove('visible'); }, 2200);
+        }
+        if (typeof showToast === 'function') showToast('Rank up: MR ' + rank);
+      }
+    } catch (_) {}
+  } catch (_) {}
+}
+window.refreshMaturityCard = refreshMaturityCard;
 
 function toggleAspectDescription(id) {
   const all = document.querySelectorAll('.aspect-option.expandable');
@@ -122,6 +161,426 @@ function refreshOptionDependencies() {
   }
 }
 window.refreshOptionDependencies = refreshOptionDependencies;
+
+// ── First-run setup + onboarding (GET /setup_status, /setup/models, /setup/download SSE) ──
+var _setupSelectedModel = null;
+var _setupEventSource = null;
+
+function stopModelDownloadStream() {
+  try {
+    if (_setupEventSource) {
+      _setupEventSource.close();
+      _setupEventSource = null;
+    }
+  } catch (_) {}
+}
+
+function _setupRefreshDownloadButton() {
+  var btn = document.getElementById('setup-download-btn');
+  if (!btn) return;
+  var customEl = document.getElementById('setup-custom-url');
+  var custom = (customEl && customEl.value || '').trim();
+  btn.disabled = !((_setupSelectedModel && _setupSelectedModel.url) || custom);
+}
+
+async function saveSetupWorkspaceIfNeeded() {
+  var inp = document.getElementById('setup-workspace-path');
+  var path = (inp && inp.value || '').trim();
+  if (!path) return;
+  try {
+    await fetch('/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sandbox_root: path }),
+    });
+  } catch (_) {}
+}
+
+function renderSetupHardware(hw) {
+  var el = document.getElementById('setup-hw');
+  if (!el) return;
+  if (!hw || !Object.keys(hw).length) {
+    el.textContent = 'Hardware details unavailable — you can tune the model in Settings after setup.';
+    return;
+  }
+  var lines = [];
+  if (hw.ram_gb != null) lines.push('RAM: ~' + hw.ram_gb + ' GB');
+  if (hw.gpu_vendor && hw.gpu_vendor !== 'none') {
+    lines.push('GPU: ' + hw.gpu_vendor + (hw.vram_gb != null ? ' (~' + hw.vram_gb + ' GB VRAM)' : ''));
+  } else lines.push('GPU: not detected (CPU inference)');
+  if (hw.suggestion) lines.push('Hint: ' + hw.suggestion);
+  el.innerHTML = lines.map(function (l) { return escapeHtml(l); }).join('<br>');
+}
+
+function renderSetupExistingModels(list) {
+  var wrap = document.getElementById('setup-existing-models');
+  var lst = document.getElementById('setup-existing-list');
+  if (!wrap || !lst) return;
+  if (!list || !list.length) {
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = 'block';
+  lst.innerHTML = list.map(function (name) {
+    return '<button type="button" class="tab-btn setup-model-pick" style="margin:4px 4px 4px 0" data-filename="' + String(name).replace(/"/g, '&quot;') + '">Use ' + escapeHtml(String(name)) + '</button>';
+  }).join(' ');
+  lst.querySelectorAll('.setup-model-pick').forEach(function (btn) {
+    btn.onclick = function () { useExistingSetupModel(btn.getAttribute('data-filename')); };
+  });
+}
+
+async function useExistingSetupModel(filename) {
+  await saveSetupWorkspaceIfNeeded();
+  stopModelDownloadStream();
+  try {
+    var res = await fetch('/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model_filename: filename }),
+    });
+    if (res.ok) {
+      var o = document.getElementById('setup-overlay');
+      if (o) o.classList.remove('visible');
+      showToast('Model selected');
+      await checkSetupStatus();
+    } else showToast('Could not save model setting');
+  } catch (_) {
+    showToast('Save failed');
+  }
+}
+
+async function loadSetupCatalog() {
+  var container = document.getElementById('setup-model-list');
+  if (!container) return;
+  container.innerHTML = '<div style="color:var(--text-dim);font-size:0.8rem">Loading catalog…</div>';
+  try {
+    var res = await fetch('/setup/models');
+    var data = await res.json();
+    if (!data.ok || !data.catalog) {
+      container.textContent = (data && data.error) || 'Could not load catalog';
+      return;
+    }
+    container.innerHTML = '';
+    data.catalog.forEach(function (m) {
+      var div = document.createElement('div');
+      div.className = 'setup-catalog-row';
+      div.style.cssText = 'margin:8px 0;padding:8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;opacity:' + (m.viable ? '1' : '0.55');
+      div.innerHTML = '<strong>' + escapeHtml(m.name || '') + '</strong> <span style="font-size:0.7rem;color:var(--text-dim)">' + (m.recommended ? '(recommended) ' : '') + (m.viable ? '' : ' — may need more RAM') + '</span><br><span style="font-size:0.72rem;color:var(--text-dim)">' + escapeHtml(m.desc || '') + '</span>';
+      div.onclick = function () {
+        if (!m.viable && !confirm('This model may exceed your detected RAM. Download anyway?')) return;
+        _setupSelectedModel = m;
+        container.querySelectorAll('.setup-catalog-row').forEach(function (el) { el.style.outline = ''; });
+        div.style.outline = '2px solid var(--asp)';
+        _setupRefreshDownloadButton();
+      };
+      container.appendChild(div);
+    });
+    _setupRefreshDownloadButton();
+  } catch (e) {
+    container.textContent = 'Failed to load catalog';
+  }
+}
+
+async function prefillSetupWorkspaceFromSettings() {
+  var inp = document.getElementById('setup-workspace-path');
+  if (!inp || inp.getAttribute('data-user-edited') === '1') return;
+  try {
+    var r = await fetch('/settings');
+    if (!r.ok) return;
+    var cfg = await r.json();
+    var sr = (cfg.sandbox_root || '').trim();
+    if (sr && !inp.value) inp.value = sr;
+  } catch (_) {}
+}
+
+async function checkSetupStatus() {
+  try {
+    var res = await fetch('/setup_status');
+    var s = await res.json();
+    var overlay = document.getElementById('setup-overlay');
+    if (s.ready && s.model_found) {
+      if (overlay) overlay.classList.remove('visible');
+      maybeStartOnboarding();
+      return;
+    }
+    if (overlay) overlay.classList.add('visible');
+    await prefillSetupWorkspaceFromSettings();
+    renderSetupHardware(s.hardware || {});
+    renderSetupExistingModels(s.available_models || []);
+    await loadSetupCatalog();
+    _setupRefreshDownloadButton();
+  } catch (e) {
+    _dbg('checkSetupStatus failed', e);
+    if (typeof showToast === 'function') showToast('Setup check failed — is Layla running?');
+  }
+}
+window.checkSetupStatus = checkSetupStatus;
+
+async function openSettings() {
+  var ov = document.getElementById('settings-overlay');
+  if (!ov) return;
+  ov.classList.add('visible');
+  var loadEl = document.getElementById('settings-loading');
+  var formEl = document.getElementById('settings-form');
+  if (loadEl) { loadEl.style.display = 'block'; loadEl.textContent = 'Loading…'; }
+  if (formEl) formEl.style.display = 'none';
+  try {
+    var res = await fetch('/settings/schema');
+    var schema = await res.json();
+    var r2 = await fetch('/settings');
+    var cfg = await r2.json();
+    if (loadEl) loadEl.style.display = 'none';
+    if (formEl) {
+      formEl.style.display = 'block';
+      var fields = schema.fields || [];
+      var html = '';
+      fields.forEach(function (f) {
+        var k = f.key;
+        var v = cfg[k];
+        var id = 'cfg_' + String(k).replace(/[^a-zA-Z0-9_]/g, '_');
+        var hint = String(f.hint || '').replace(/</g, '&lt;');
+        if (f.type === 'boolean') {
+          html += '<div class="settings-row settings-section"><label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;text-transform:none;color:var(--text)"><input type="checkbox" id="' + id + '" ' + (v ? 'checked' : '') + '/> ' + escapeHtml(k) + '</label><div class="hint">' + hint + '</div></div>';
+        } else if (f.type === 'number') {
+          html += '<div class="settings-row settings-section"><label>' + escapeHtml(k) + '</label><input type="number" id="' + id + '" value="' + (v != null ? String(v) : '') + '" step="any"/><div class="hint">' + hint + '</div></div>';
+        } else {
+          html += '<div class="settings-row settings-section"><label>' + escapeHtml(k) + '</label><input type="text" id="' + id + '" value="' + escapeHtml(String(v != null ? v : '')) + '"/><div class="hint">' + hint + '</div></div>';
+        }
+      });
+      formEl.innerHTML = html;
+    }
+  } catch (e) {
+    if (loadEl) loadEl.textContent = 'Could not load settings';
+  }
+}
+function closeSettings() {
+  var ov = document.getElementById('settings-overlay');
+  if (ov) ov.classList.remove('visible');
+}
+async function saveSettings() {
+  var schemaRes = await fetch('/settings/schema');
+  var schema = await schemaRes.json();
+  var body = {};
+  (schema.fields || []).forEach(function (f) {
+    var id = 'cfg_' + String(f.key).replace(/[^a-zA-Z0-9_]/g, '_');
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (f.type === 'boolean') body[f.key] = el.checked;
+    else if (f.type === 'number') body[f.key] = parseFloat(el.value);
+    else body[f.key] = el.value;
+  });
+  try {
+    var res = await fetch('/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    var msg = document.getElementById('settings-save-msg');
+    if (res.ok) {
+      if (msg) { msg.style.display = 'inline'; setTimeout(function () { msg.style.display = 'none'; }, 2200); }
+      if (typeof showToast === 'function') showToast('Settings saved');
+    } else if (typeof showToast === 'function') showToast('Save failed');
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('Save failed');
+  }
+}
+async function laylaLoadOptionalFeatures() {
+  var box = document.getElementById('optional-features-list');
+  if (!box) return;
+  box.textContent = 'Loading…';
+  try {
+    var r = await fetch('/settings/optional_features');
+    var d = await r.json();
+    if (!d.ok || !d.features) { box.textContent = 'Could not load'; return; }
+    box.innerHTML = d.features.map(function (f) {
+      var st = f.installed ? 'ok' : '—';
+      return '<div style="margin:4px 0;padding:4px;border-bottom:1px solid rgba(255,255,255,0.08)">' + st + ' <strong>' + escapeHtml(f.id) + '</strong> — ' + escapeHtml(f.label) +
+        (!f.installed ? ' <button type="button" class="settings-save" style="padding:2px 8px;font-size:0.65rem" data-fid="' + escapeHtml(f.id) + '">Install</button>' : '') + '</div>';
+    }).join('');
+    box.querySelectorAll('button[data-fid]').forEach(function (btn) {
+      btn.onclick = function () { laylaInstallFeature(btn.getAttribute('data-fid')); };
+    });
+  } catch (e) { box.textContent = 'Error'; }
+}
+async function laylaInstallFeature(fid) {
+  if (!fid || !confirm('Install feature ' + fid + ' via pip (allowlisted packages)?')) return;
+  try {
+    var r = await fetch('/settings/install_feature', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ feature_id: fid }) });
+    var d = await r.json();
+    var note = d.ok ? 'Install finished' : ((d.pip_attempt && d.pip_attempt.error) || d.error || 'failed');
+    if (typeof showToast === 'function') showToast(note);
+    laylaLoadOptionalFeatures();
+  } catch (e) { if (typeof showToast === 'function') showToast('Install failed'); }
+}
+async function laylaImportChat() {
+  var ta = document.getElementById('import-chat-text');
+  var title = document.getElementById('import-chat-title');
+  var msg = document.getElementById('import-chat-msg');
+  var text = (ta && ta.value || '').trim();
+  if (!text) { if (msg) msg.textContent = 'Paste export text first'; return; }
+  try {
+    var r = await fetch('/knowledge/import_chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ format: 'whatsapp', text: text, title: (title && title.value) || 'import' }) });
+    var d = await r.json();
+    if (msg) msg.textContent = d.ok ? ('Saved ' + d.path) : (d.error || 'failed');
+    if (d.ok && ta) ta.value = '';
+  } catch (e) { if (msg) msg.textContent = 'Request failed'; }
+}
+async function laylaGitUndoCheckpoint() {
+  var winp = document.getElementById('admin-undo-workspace');
+  var ws = (winp && winp.value || '').trim();
+  var msg = document.getElementById('admin-undo-msg');
+  if (!ws) { if (msg) msg.textContent = 'Set workspace path'; return; }
+  if (!confirm('Revert the last Layla checkpoint commit in this repo?')) return;
+  try {
+    var r = await fetch('/settings/git_undo_checkpoint', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workspace_root: ws }) });
+    var d = await r.json();
+    if (msg) msg.textContent = d.ok ? 'Reverted' : (d.error || 'failed');
+  } catch (e) { if (msg) msg.textContent = 'Request failed'; }
+}
+window.openSettings = openSettings;
+window.closeSettings = closeSettings;
+window.saveSettings = saveSettings;
+window.laylaLoadOptionalFeatures = laylaLoadOptionalFeatures;
+window.laylaInstallFeature = laylaInstallFeature;
+window.laylaImportChat = laylaImportChat;
+window.laylaGitUndoCheckpoint = laylaGitUndoCheckpoint;
+
+function startModelDownload() {
+  var url = '';
+  var filename = '';
+  if (_setupSelectedModel && _setupSelectedModel.url) {
+    url = _setupSelectedModel.url;
+    filename = _setupSelectedModel.filename || '';
+  } else {
+    var customEl = document.getElementById('setup-custom-url');
+    url = (customEl && customEl.value || '').trim();
+  }
+  if (!url) {
+    showToast('Select a model or paste a .gguf URL');
+    return;
+  }
+  stopModelDownloadStream();
+  var bar = document.getElementById('setup-progress-bar');
+  var label = document.getElementById('setup-progress-label');
+  var doneMsg = document.getElementById('setup-done-msg');
+  var retryBtn = document.getElementById('setup-retry-btn');
+  if (bar) bar.style.width = '0%';
+  if (label) label.textContent = 'Starting download…';
+  if (doneMsg) doneMsg.textContent = '';
+  if (retryBtn) retryBtn.style.display = 'none';
+
+  saveSetupWorkspaceIfNeeded().then(function () {
+    var qs = '/setup/download?url=' + encodeURIComponent(url);
+    if (filename) qs += '&filename=' + encodeURIComponent(filename);
+    try {
+      _setupEventSource = new EventSource(qs);
+    } catch (err) {
+      showToast('Download could not start');
+      return;
+    }
+    _setupEventSource.onmessage = function (ev) {
+      try {
+        var d = JSON.parse(ev.data);
+        if (d.error) {
+          stopModelDownloadStream();
+          if (label) label.textContent = 'Error: ' + d.error;
+          if (retryBtn) retryBtn.style.display = '';
+          showToast('Download failed');
+          return;
+        }
+        if (typeof d.pct === 'number' && bar) bar.style.width = d.pct + '%';
+        if (label && typeof d.dl_mb === 'number' && typeof d.tot_mb === 'number') {
+          label.textContent = 'Downloading… ' + d.pct + '% (' + d.dl_mb + ' / ' + d.tot_mb + ' MB)';
+        } else if (label) label.textContent = 'Downloading…';
+        if (d.done) {
+          stopModelDownloadStream();
+          if (doneMsg) doneMsg.textContent = 'Done — ' + (d.filename || 'model saved');
+          showToast('Model ready');
+          setTimeout(function () {
+            var o = document.getElementById('setup-overlay');
+            if (o) o.classList.remove('visible');
+            checkSetupStatus();
+          }, 400);
+        }
+      } catch (_) {}
+    };
+    _setupEventSource.onerror = function () {
+      stopModelDownloadStream();
+      if (label) label.textContent = 'Connection lost — try Retry';
+      if (retryBtn) retryBtn.style.display = '';
+    };
+  });
+}
+window.startModelDownload = startModelDownload;
+
+function retryModelDownload() {
+  var retryBtn = document.getElementById('setup-retry-btn');
+  if (retryBtn) retryBtn.style.display = 'none';
+  startModelDownload();
+}
+window.retryModelDownload = retryModelDownload;
+
+function dismissSetupOverlay(isSkip) {
+  var o = document.getElementById('setup-overlay');
+  if (o) o.classList.remove('visible');
+  if (isSkip === true) saveSetupWorkspaceIfNeeded();
+  maybeStartOnboarding();
+}
+window.dismissSetupOverlay = dismissSetupOverlay;
+
+var _onboardingStep = 0;
+
+function highlightAspectSidebar(on) {
+  var el = document.querySelector('.layout .sidebar');
+  if (!el) return;
+  el.classList.toggle('onboarding-highlight', !!on);
+}
+
+function renderOnboardingStep() {
+  var text = document.getElementById('onboarding-text');
+  var nextBtn = document.getElementById('onboarding-next');
+  var doneBtn = document.getElementById('onboarding-done');
+  if (!text) return;
+  highlightAspectSidebar(false);
+  if (_onboardingStep <= 0) {
+    text.textContent = 'Layla only reads and writes inside your workspace folder (set in First Setup or Prefs). File changes and shell commands stay behind approval gates.';
+    if (doneBtn) doneBtn.style.display = 'none';
+    if (nextBtn) nextBtn.style.display = '';
+    return;
+  }
+  if (_onboardingStep === 1) {
+    text.textContent = 'Pick a voice (facet) in the sidebar — Morrigan for engineering, Nyx for research, Echo for continuity, and more.';
+    highlightAspectSidebar(true);
+    if (doneBtn) doneBtn.style.display = 'none';
+    if (nextBtn) nextBtn.style.display = '';
+    return;
+  }
+  text.textContent = 'Use the padlock next to the aspect badge to lock routing. You can revisit VALUES.md and ethics from Help anytime.';
+  if (nextBtn) nextBtn.style.display = 'none';
+  if (doneBtn) doneBtn.style.display = '';
+}
+
+function maybeStartOnboarding() {
+  try {
+    if (localStorage.getItem('layla_onboarding_v1_done') === '1') return;
+    var ov = document.getElementById('onboarding-overlay');
+    if (!ov) return;
+    _onboardingStep = 0;
+    renderOnboardingStep();
+    ov.classList.add('visible');
+  } catch (_) {}
+}
+
+function onboardingNext() {
+  _onboardingStep++;
+  if (_onboardingStep > 2) _onboardingStep = 2;
+  renderOnboardingStep();
+}
+window.onboardingNext = onboardingNext;
+
+function dismissOnboarding() {
+  var ov = document.getElementById('onboarding-overlay');
+  if (ov) ov.classList.remove('visible');
+  try { localStorage.setItem('layla_onboarding_v1_done', '1'); } catch (_) {}
+  highlightAspectSidebar(false);
+}
+window.dismissOnboarding = dismissOnboarding;
 
 function cleanLaylaText(s) {
   if (typeof s !== 'string') return (s == null || s === undefined) ? '' : String(s);
@@ -197,7 +656,7 @@ function laylaStalledSilenceMs() {
   const mrs = Number(t.maxRuntimeSeconds) > 0 ? Number(t.maxRuntimeSeconds) : 900;
   const pm = t.performanceMode || 'auto';
   const mult = pm === 'low' ? 2.5 : pm === 'mid' ? 1.65 : 1;
-  return Math.min(240000, Math.max(22000, Math.round(mrs * 1000 * 0.42 * mult)));
+  return Math.min(240000, Math.max(38000, Math.round(mrs * 1000 * 0.42 * mult)));
 }
 function laylaHeaderProgressStart() {
   const row = document.getElementById('header-progress-row');
@@ -613,6 +1072,159 @@ window.__laylaRefreshAfterWorkspaceSubtab = function (sub) {
   if (typeof fn === 'function') fn();
 };
 
+// ── Workspace → Library refreshers (minimal, no frameworks) ─────────────────
+async function refreshPlatformModels() {
+  const box = document.getElementById('platform-models');
+  if (!box) return;
+  box.innerHTML = '<span style="color:var(--text-dim)">Loading…</span>';
+  try {
+    const r = await fetch('/platform/models');
+    const d = await r.json();
+    const active = (d && d.active) ? String(d.active) : '';
+    const models = Array.isArray(d && d.models) ? d.models : [];
+    box.innerHTML =
+      '<div><strong>Active</strong>: ' + escapeHtml(active || '—') + '</div>' +
+      '<div style="margin-top:6px"><strong>Available</strong>: ' + escapeHtml(models.slice(0, 10).join(', ') || '—') + '</div>';
+  } catch (_) {
+    box.innerHTML = '<span style="color:var(--text-dim)">Could not load models</span>';
+  }
+}
+
+async function refreshPlatformKnowledge() {
+  const box = document.getElementById('platform-knowledge');
+  if (!box) return;
+  box.innerHTML = '<span style="color:var(--text-dim)">Loading…</span>';
+  try {
+    const r = await fetch('/platform/knowledge');
+    const d = await r.json();
+    const learnings = Array.isArray(d && d.learnings) ? d.learnings : [];
+    const summaries = Array.isArray(d && d.summaries) ? d.summaries : [];
+    box.innerHTML =
+      '<div><strong>Recent learnings</strong>:</div>' +
+      '<div style="margin-top:4px;color:var(--text-dim)">' + escapeHtml(learnings.map(x => x.content || '').slice(0, 5).join(' · ') || '—') + '</div>' +
+      '<div style="margin-top:10px"><strong>Conversation summaries</strong>:</div>' +
+      '<div style="margin-top:4px;color:var(--text-dim)">' + escapeHtml(summaries.map(x => x.summary || '').slice(0, 3).join(' · ') || '—') + '</div>';
+  } catch (_) {
+    box.innerHTML = '<span style="color:var(--text-dim)">Could not load knowledge</span>';
+  }
+}
+
+async function refreshPlatformPlugins() {
+  const box = document.getElementById('platform-plugins');
+  if (!box) return;
+  box.innerHTML = '<span style="color:var(--text-dim)">Loading…</span>';
+  try {
+    const r = await fetch('/platform/plugins');
+    const d = await r.json();
+    box.innerHTML =
+      '<div><strong>Skills</strong>: ' + escapeHtml(String((d && d.skills_added) || 0)) + '</div>' +
+      '<div><strong>Tools</strong>: ' + escapeHtml(String((d && d.tools_added) || 0)) + '</div>' +
+      '<div><strong>Capabilities</strong>: ' + escapeHtml(String((d && d.capabilities_added) || 0)) + '</div>';
+  } catch (_) {
+    box.innerHTML = '<span style="color:var(--text-dim)">Could not load plugins</span>';
+  }
+}
+
+async function refreshPlatformProjects() {
+  const box = document.getElementById('platform-projects');
+  if (!box) return;
+  box.innerHTML = '<span style="color:var(--text-dim)">Loading…</span>';
+  let ctx = null;
+  try {
+    const r = await fetch('/platform/projects');
+    ctx = await r.json();
+  } catch (_) { ctx = null; }
+
+  let preset = null;
+  const pid = (typeof localStorage !== 'undefined' ? (localStorage.getItem('layla_active_project_id') || '') : '').trim();
+  if (pid) {
+    try {
+      const r2 = await fetch('/projects/' + encodeURIComponent(pid));
+      const d2 = await r2.json();
+      if (d2 && d2.ok && d2.project) preset = d2.project;
+    } catch (_) {}
+  }
+
+  const html = [];
+  html.push('<div class="panel-title">Project context</div>');
+  if (ctx && (ctx.project_name || ctx.goals || ctx.lifecycle_stage || ctx.progress || ctx.blockers)) {
+    html.push('<div><strong>Name</strong>: ' + escapeHtml(String(ctx.project_name || '—')) + '</div>');
+    html.push('<div><strong>Stage</strong>: ' + escapeHtml(String(ctx.lifecycle_stage || '—')) + '</div>');
+    html.push('<div style="margin-top:6px"><strong>Goals</strong>: <span style="color:var(--text-dim)">' + escapeHtml(String(ctx.goals || '')) + '</span></div>');
+    html.push('<div style="margin-top:6px"><strong>Progress</strong>: <span style="color:var(--text-dim)">' + escapeHtml(String(ctx.progress || '')) + '</span></div>');
+    html.push('<div style="margin-top:6px"><strong>Blockers</strong>: <span style="color:var(--text-dim)">' + escapeHtml(String(ctx.blockers || '')) + '</span></div>');
+  } else {
+    html.push('<div style="color:var(--text-dim)">No project context set yet.</div>');
+  }
+
+  html.push('<hr style="border:none;border-top:1px solid rgba(255,255,255,0.08);margin:10px 0">');
+  html.push('<div><strong>Active preset</strong>: ' + escapeHtml(preset ? (preset.name || preset.id || '—') : (pid || '—')) + '</div>');
+  if (preset) {
+    html.push('<div style="color:var(--text-dim);margin-top:4px">WS: ' + escapeHtml(String(preset.workspace_root || '')) + '</div>');
+    html.push('<div style="color:var(--text-dim)">Aspect default: ' + escapeHtml(String(preset.aspect_default || '')) + '</div>');
+  } else {
+    html.push('<div style="color:var(--text-dim);margin-top:4px">Select a preset in Prefs → Project preset.</div>');
+  }
+
+  // Minimal editor for project_context (uses existing POST /project_context)
+  html.push('<div style="margin-top:10px"><strong>Edit project context</strong></div>');
+  html.push('<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">');
+  html.push('<input id="pc_name" placeholder="Project name" value="' + escapeHtml(String((ctx && ctx.project_name) || '')) + '" />');
+  html.push('<input id="pc_stage" placeholder="Lifecycle stage (idea/planning/prototype/iteration/execution/reflection)" value="' + escapeHtml(String((ctx && ctx.lifecycle_stage) || '')) + '" />');
+  html.push('<textarea id="pc_goals" placeholder="Goals" style="min-height:60px">' + escapeHtml(String((ctx && ctx.goals) || '')) + '</textarea>');
+  html.push('<textarea id="pc_progress" placeholder="Progress" style="min-height:50px">' + escapeHtml(String((ctx && ctx.progress) || '')) + '</textarea>');
+  html.push('<textarea id="pc_blockers" placeholder="Blockers" style="min-height:50px">' + escapeHtml(String((ctx && ctx.blockers) || '')) + '</textarea>');
+  html.push('<button type="button" class="tab-btn" id="pc_save_btn" style="margin-top:4px">Save</button>');
+  html.push('<span id="pc_save_msg" style="color:var(--text-dim);font-size:0.7rem"></span>');
+  html.push('</div>');
+
+  box.innerHTML = html.join('');
+  try {
+    const btn = document.getElementById('pc_save_btn');
+    if (btn) btn.onclick = async function() {
+      const body = {
+        project_name: (document.getElementById('pc_name')?.value || '').trim(),
+        lifecycle_stage: (document.getElementById('pc_stage')?.value || '').trim(),
+        goals: (document.getElementById('pc_goals')?.value || '').trim(),
+        progress: (document.getElementById('pc_progress')?.value || '').trim(),
+        blockers: (document.getElementById('pc_blockers')?.value || '').trim(),
+      };
+      const msgEl = document.getElementById('pc_save_msg');
+      if (msgEl) msgEl.textContent = 'Saving…';
+      try {
+        const r3 = await fetch('/project_context', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const d3 = await r3.json().catch(() => ({}));
+        if (msgEl) msgEl.textContent = (d3 && d3.ok) ? 'Saved' : ('Save failed');
+        try { updateContextChip(); } catch (_) {}
+      } catch (_) {
+        if (msgEl) msgEl.textContent = 'Save failed';
+      }
+    };
+  } catch (_) {}
+}
+
+async function refreshPlatformTimeline() {
+  const box = document.getElementById('platform-timeline');
+  if (!box) return;
+  box.innerHTML = '<span style="color:var(--text-dim)">Loading…</span>';
+  try {
+    const r = await fetch('/platform/knowledge');
+    const d = await r.json();
+    const tl = Array.isArray(d && d.timeline) ? d.timeline : [];
+    box.innerHTML = tl.length
+      ? tl.slice(0, 8).map(t => '<div style=\"margin:4px 0\"><span style=\"color:var(--text-dim)\">' + escapeHtml(String(t.event_type || '')) + '</span> ' + escapeHtml(String(t.content || '')) + '</div>').join('')
+      : '<span style=\"color:var(--text-dim)\">No timeline yet.</span>';
+  } catch (_) {
+    box.innerHTML = '<span style="color:var(--text-dim)">Could not load timeline</span>';
+  }
+}
+
+window.refreshPlatformModels = refreshPlatformModels;
+window.refreshPlatformKnowledge = refreshPlatformKnowledge;
+window.refreshPlatformPlugins = refreshPlatformPlugins;
+window.refreshPlatformProjects = refreshPlatformProjects;
+window.refreshPlatformTimeline = refreshPlatformTimeline;
+
 /** Back-compat for shortcuts and old links: maps old tab id → new UI. */
 function showPanelTab(tab) {
   const m = _LEGACY_PANEL_TO_RTA[tab];
@@ -643,6 +1255,28 @@ function toggleSendButton() {
     btn.classList.toggle('send-empty', !(input.value && input.value.trim()));
   }
 }
+
+function laylaSyncChatChromeFromFSM(state) {
+  try {
+    const st = String(state || (window.laylaChatFSM && window.laylaChatFSM.getState && window.laylaChatFSM.getState()) || '');
+    const canSend = !(window.laylaChatFSM && window.laylaChatFSM.canSend) ? true : !!window.laylaChatFSM.canSend();
+    const inFlight = st === 'sending' || st === 'streaming';
+    setCancelSendVisible(!!inFlight);
+    toggleSendButton();
+    if (!canSend && st !== 'sending' && st !== 'streaming') {
+      window._laylaSendBusy = false;
+    }
+  } catch (_) {}
+}
+window.laylaSyncChatChromeFromFSM = laylaSyncChatChromeFromFSM;
+window.laylaOnChatState = function (st) {
+  laylaSyncChatChromeFromFSM(st);
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('layla_debug_fsm') === '1') {
+      try { sessionStorage.setItem('layla_chat_fsm_state', String(st || '')); } catch (_) {}
+    }
+  } catch (_) {}
+};
 
 // ── Aspect registry for @mention ────────────────────────────────────────────
 const ASPECTS = [
@@ -940,6 +1574,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const asp = typeof currentAspect !== 'undefined' ? currentAspect : 'morrigan';
     if (typeof window.laylaSetAspectSprite === 'function') window.laylaSetAspectSprite(asp);
   } catch (_) {}
+  try { refreshMaturityCard(false); } catch (_) {}
 });
 
 async function toggleMic() {
@@ -1141,6 +1776,80 @@ async function refreshMissionStatus() {
 }
 function escapeHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
+async function refreshApprovals() {
+  const box = document.getElementById('approvals-list');
+  if (!box) return;
+  try {
+    const res = await fetchWithTimeout('/pending', {}, 8000);
+    let data = {};
+    if (res && res.ok) {
+      try { data = await res.json(); } catch (_) {}
+    }
+    const pending = Array.isArray(data && data.pending) ? data.pending : [];
+    const todo = pending.filter(e => (e && e.status) === 'pending');
+    if (!todo.length) {
+      box.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">No pending approvals</span>';
+      return;
+    }
+    const html = [];
+    todo.forEach(function (e) {
+      const id = String(e.id || '');
+      const tool = String(e.tool || '');
+      const args = e.args || {};
+      const argsPreview = (() => { try { return JSON.stringify(args, null, 2); } catch (_) { return String(args); } })();
+      html.push(
+        '<div style="margin:8px 0;padding:8px;border:1px solid var(--border);border-radius:6px;background:rgba(0,0,0,0.12)">' +
+          '<div style="font-size:0.72rem"><strong>' + escapeHtml(tool || 'tool') + '</strong> <span style="color:var(--text-dim)">(' + escapeHtml(id.slice(0, 8) || 'id') + '…)</span></div>' +
+          '<pre style="margin:6px 0 8px;white-space:pre-wrap;word-break:break-word;font-size:0.65rem;background:var(--code-bg);padding:6px;border-radius:4px;border:1px solid rgba(255,255,255,0.06);max-height:160px;overflow:auto">' + escapeHtml(argsPreview) + '</pre>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+            '<button type="button" class="approve-btn" data-approve-id="' + escapeHtml(id) + '">Approve</button>' +
+            '<button type="button" class="approve-btn" style="background:transparent;border-color:var(--border);color:var(--text-dim)" data-deny-id="' + escapeHtml(id) + '">Deny</button>' +
+          '</div>' +
+        '</div>'
+      );
+    });
+    box.innerHTML = html.join('');
+    box.querySelectorAll('button[data-approve-id]').forEach(function (btn) {
+      btn.addEventListener('click', async function () {
+        const id = btn.getAttribute('data-approve-id') || '';
+        btn.disabled = true;
+        try {
+          const r = await fetchWithTimeout('/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) }, 15000);
+          let body = {};
+          try { body = await r.json(); } catch (_) {}
+          if (!r.ok || !body.ok) showToast((body && body.error) ? ('Approve failed: ' + body.error) : ('Approve failed: ' + r.status));
+          else showToast('Approved');
+        } catch (e) {
+          showToast('Approve error: ' + (e && e.message || e));
+        } finally {
+          btn.disabled = false;
+          refreshApprovals();
+        }
+      });
+    });
+    box.querySelectorAll('button[data-deny-id]').forEach(function (btn) {
+      btn.addEventListener('click', async function () {
+        const id = btn.getAttribute('data-deny-id') || '';
+        btn.disabled = true;
+        try {
+          const r = await fetchWithTimeout('/deny', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) }, 15000);
+          let body = {};
+          try { body = await r.json(); } catch (_) {}
+          if (!r.ok || !body.ok) showToast((body && body.error) ? ('Deny failed: ' + body.error) : ('Deny failed: ' + r.status));
+          else showToast('Denied');
+        } catch (e) {
+          showToast('Deny error: ' + (e && e.message || e));
+        } finally {
+          btn.disabled = false;
+          refreshApprovals();
+        }
+      });
+    });
+  } catch (_) {
+    box.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">Could not load approvals</span>';
+  }
+}
+
 const RESEARCH_BRAIN_PATHS = { summary: 'summaries/24h_summary.md', actions: 'actions/action_queue.md', patterns: 'patterns/patterns.md', risks: 'risk/risk_model.md' };
 
 async function showResearchTab(tab) {
@@ -1174,6 +1883,32 @@ document.addEventListener('DOMContentLoaded', function() {
   refreshMissionStatus();
   showResearchTab('summary');
   toggleSendButton();
+  try {
+    var sw = document.getElementById('setup-workspace-path');
+    if (sw) {
+      sw.addEventListener('input', function () { sw.setAttribute('data-user-edited', '1'); });
+    }
+    var cu = document.getElementById('setup-custom-url');
+    if (cu) {
+      cu.addEventListener('input', _setupRefreshDownloadButton);
+    }
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Escape') return;
+      var so = document.getElementById('setup-overlay');
+      if (so && so.classList.contains('visible')) {
+        if (typeof dismissSetupOverlay === 'function') dismissSetupOverlay(true);
+        else so.classList.remove('visible');
+        ev.preventDefault();
+        return;
+      }
+      var ob = document.getElementById('onboarding-overlay');
+      if (ob && ob.classList.contains('visible')) {
+        if (typeof dismissOnboarding === 'function') dismissOnboarding();
+        ev.preventDefault();
+      }
+    });
+  } catch (_) {}
+  if (typeof checkSetupStatus === 'function') checkSetupStatus();
 });
 
 async function sendResearch(customMessage) {
@@ -1418,6 +2153,7 @@ function laylaAppendReasoningStep(msgLaylaDiv, text, stepNum) {
 
 function retryLastMessage() {
   if (!_lastDisplayMsg) return;
+  if (window.laylaChatFSM && !window.laylaChatFSM.canSend()) return;
   const chat = document.getElementById('chat');
   const input = document.getElementById('msg-input');
   if (!chat || !input) return;
@@ -1441,72 +2177,67 @@ async function send() {
   _dbg('send() called');
   _hideMentionDropdown();
   const input = document.getElementById('msg-input');
-  if (!input) { _dbg('send() exit: no #msg-input'); return; }
-  let msg = input.value.trim();
-  if (!msg) { _dbg('send() exit: empty msg'); return; }
-  if (window._laylaSendBusy) { _dbg('send() exit: already in flight'); return; }
-  _dbg('send() proceeding', 'msg length=' + msg.length);
+  if (!input) return;
+  let msg = (input.value || '').trim();
+  if (!msg) return;
+  if (window._laylaSendBusy) return;
+  window._laylaSendBusy = true;
+  if (window.laylaChatFSM && !window.laylaChatFSM.beginSend()) {
+    window._laylaSendBusy = false;
+    return;
+  }
 
   const ac = new AbortController();
   _activeAgentAbort = ac;
-  setCancelSendVisible(true);
+  // Chat chrome is rendered from FSM state via window.laylaOnChatState.
   try { laylaHeaderProgressStart(); } catch (_) {}
   try { operatorTraceClear(); } catch (_) {}
 
-  // Parse @mention — extract aspect override for this message only
   let msgAspect = currentAspect;
   const mentionMatch = msg.match(/^@([a-z]+)\s*/i);
   if (mentionMatch) {
-    const mentioned = mentionMatch[1].toLowerCase();
-    const found = ASPECTS.find(a => a.id === mentioned || a.name.toLowerCase() === mentioned);
-    if (found) {
-      msgAspect = found.id;
-      msg = msg.slice(mentionMatch[0].length).trim() || msg; // strip @mention from message body
-    }
+    try {
+      const mentioned = mentionMatch[1].toLowerCase();
+      const found = (typeof ASPECTS !== 'undefined' && ASPECTS.find)
+        ? ASPECTS.find(a => a.id === mentioned || (a.name || '').toLowerCase() === mentioned)
+        : null;
+      if (found) {
+        msgAspect = found.id;
+        msg = msg.slice(mentionMatch[0].length).trim() || msg;
+      }
+    } catch (_) {}
   }
-
-  // If aspect locked, always use currentAspect
   if (_aspectLocked) msgAspect = currentAspect;
 
-  // Visual flash when routing to a different aspect than current
-  if (msgAspect !== currentAspect) {
-    const a = ASPECTS.find(x => x.id === msgAspect);
-    if (a) {
-      const badge = document.getElementById('aspect-badge');
-      const prev = badge?.textContent;
-      if (badge) { badge.textContent = a.sym + ' ' + a.name.toUpperCase() + ' ↩'; badge.style.opacity = '0.7'; }
-      setTimeout(() => { if (badge) { badge.textContent = prev; badge.style.opacity = ''; } }, 2200);
-    }
-  }
-
-  const hadImages = _attachedImages.length > 0;
   input.value = '';
   toggleSendButton();
-  let displayMsg = mentionMatch && msgAspect !== currentAspect
-    ? `@${msgAspect} ${msg}`
-    : msg;
-  if (hadImages) displayMsg += ' [📎 image attached]';
+  const displayMsg = mentionMatch && msgAspect !== currentAspect ? ('@' + msgAspect + ' ' + msg) : msg;
   addMsg('you', displayMsg);
   addSeparator();
   _lastDisplayMsg = displayMsg;
-  try {
-    const rmBadge = document.getElementById('reasoning-mode-badge');
-    if (rmBadge) rmBadge.textContent = '';
-  } catch (_) {}
 
   ensureLaylaConversationId();
 
+  const chatEl = document.getElementById('chat');
   const streamMode = document.getElementById('stream-toggle')?.checked || false;
   const modelOverride = (document.getElementById('model-override')?.value || '').trim();
+  const workspacePath = (document.getElementById('workspace-path')?.value || '').trim();
+  const projectId = (typeof localStorage !== 'undefined' ? (localStorage.getItem('layla_active_project_id') || '') : '').trim();
+  const composeDraft = (document.getElementById('compose-draft')?.value || '').trim();
+
   const payload = {
     message: msg,
+    context: composeDraft || '',
+    workspace_root: workspacePath || '',
+    project_id: projectId || '',
     aspect_id: msgAspect,
     conversation_id: currentConversationId,
     show_thinking: document.getElementById('show-thinking')?.checked ?? false,
     allow_write: document.getElementById('allow-write')?.checked ?? false,
     allow_run: document.getElementById('allow-run')?.checked ?? false,
-    stream: streamMode,
+    stream: !!streamMode,
   };
+  if (modelOverride) payload.model_override = modelOverride;
   const _epSel = document.getElementById('engineering-pipeline-mode');
   if (_epSel && _epSel.value && _epSel.value !== 'chat') payload.engineering_pipeline_mode = _epSel.value;
   const _clarTa = document.getElementById('pipeline-clarify-answers');
@@ -1516,3 +2247,168 @@ async function send() {
     const _cp = document.getElementById('pipeline-clarify-panel');
     if (_cp) _cp.style.display = 'none';
   }
+
+  try { laylaShowTypingIndicator(msgAspect, streamMode ? 'connecting' : 'preparing_reply'); } catch (_) {}
+
+  try {
+    if (streamMode) {
+      const res = await fetchWithTimeout(
+        '/agent',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: ac.signal },
+        Math.max(laylaAgentStreamTimeoutMs(), 300000)
+      );
+      if (!res.ok || !res.body) {
+        let body = {};
+        try { const t = await res.text(); if (t) try { body = JSON.parse(t); } catch(_) {} } catch(_) {}
+        try { laylaRemoveTypingIndicator(); } catch (_) {}
+        addMsg('layla', formatAgentError(res, body));
+        try { if (window.laylaChatFSM) window.laylaChatFSM.finishError(); } catch (_) {}
+        return;
+      }
+      try { laylaRemoveTypingIndicator(); } catch (_) {}
+      try { if (window.laylaChatFSM) window.laylaChatFSM.beginStream(); } catch (_) {}
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let full = '';
+      hideEmpty();
+      const div = document.createElement('div');
+      div.className = 'msg msg-layla';
+      div.innerHTML = '<div class=\"msg-label msg-label-layla\">' + formatLaylaLabelHtml(msgAspect) + '</div><div class=\"msg-bubble\" title=\"Click to copy\"><div class=\"md-content stream-md-placeholder\"><div class=\"typing-indicator\" style=\"min-height:36px\"><div class=\"typing-dots\"><span></span><span></span><span></span></div></div><div class=\"tool-status-label\">' + (UX_STATE_LABELS.connecting || 'Connecting') + '</div></div></div>';
+      if (chatEl) chatEl.appendChild(div);
+      const bubble = div.querySelector('.md-content');
+      const streamMeta = document.createElement('div');
+      streamMeta.className = 'memory-attribution';
+      streamMeta.textContent = 'Status: ' + (UX_STATE_LABELS.connecting || 'Connecting') + ' · 0s · 0 chars';
+      div.appendChild(streamMeta);
+      const streamStartedAt = Date.now();
+      let liveStatus = 'connecting';
+      laylaNotifyStreamPhase(div, 'connecting');
+      const metaTimer = setInterval(() => {
+        const secs = Math.max(0, Math.floor((Date.now() - streamStartedAt) / 1000));
+        streamMeta.textContent = 'Status: ' + (UX_STATE_LABELS[liveStatus] || liveStatus) + ' · ' + secs + 's · ' + (full || '').length + ' chars';
+      }, 500);
+      let gotToken = false;
+      let firstTokenTimer = setTimeout(() => {
+        liveStatus = 'waiting_first_token';
+        let statusEl = div.querySelector('.tool-status-label');
+        if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; div.querySelector('.msg-bubble')?.appendChild(statusEl); }
+        statusEl.textContent = UX_STATE_LABELS.waiting_first_token;
+        laylaNotifyStreamPhase(div, liveStatus);
+      }, 1800);
+      const stallMs = laylaStalledSilenceMs();
+      let stalledTimer = setTimeout(() => {
+        liveStatus = 'stalled';
+        let statusEl = div.querySelector('.tool-status-label');
+        if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; div.querySelector('.msg-bubble')?.appendChild(statusEl); }
+        statusEl.textContent = UX_STATE_LABELS.stalled + ' — ' + UX_STATE_LABELS.retry_hint;
+        laylaNotifyStreamPhase(div, 'stalled');
+      }, stallMs);
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = dec.decode(value, { stream: true });
+        const lines = chunk.split('\\n');
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let obj = null;
+          try { obj = JSON.parse(line.slice(6)); } catch (_) { obj = null; }
+          if (!obj) continue;
+          if (obj.pulse === true) {
+            clearTimeout(stalledTimer);
+            stalledTimer = setTimeout(() => {
+              liveStatus = 'stalled';
+              let statusEl = div.querySelector('.tool-status-label');
+              if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; div.querySelector('.msg-bubble')?.appendChild(statusEl); }
+              statusEl.textContent = UX_STATE_LABELS.stalled + ' — ' + UX_STATE_LABELS.retry_hint;
+              laylaNotifyStreamPhase(div, 'stalled');
+            }, stallMs);
+          }
+          if (obj.error) {
+            clearTimeout(firstTokenTimer);
+            clearTimeout(stalledTimer);
+            clearInterval(metaTimer);
+            try { div.remove(); } catch (_) {}
+            try { laylaRemoveTypingIndicator(); } catch (_) {}
+            addMsg('layla', String(obj.error));
+            try { if (window.laylaChatFSM) window.laylaChatFSM.finishError(); } catch (_) {}
+            return;
+          }
+          if (obj.ux_state) {
+            liveStatus = String(obj.ux_state);
+            laylaNotifyStreamPhase(div, liveStatus);
+            const statusEl = div.querySelector('.tool-status-label');
+            if (statusEl) statusEl.textContent = UX_STATE_LABELS[liveStatus] || liveStatus;
+          }
+          if (obj.token) {
+            liveStatus = 'streaming';
+            laylaNotifyStreamPhase(div, 'streaming');
+            if (!gotToken) {
+              gotToken = true;
+              clearTimeout(firstTokenTimer);
+              if (bubble && bubble.classList.contains('stream-md-placeholder')) {
+                bubble.classList.remove('stream-md-placeholder');
+                bubble.innerHTML = '';
+              }
+            }
+            clearTimeout(stalledTimer);
+            stalledTimer = setTimeout(() => {
+              liveStatus = 'stalled';
+              let statusEl = div.querySelector('.tool-status-label');
+              if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; div.querySelector('.msg-bubble')?.appendChild(statusEl); }
+              statusEl.textContent = UX_STATE_LABELS.stalled + ' — ' + UX_STATE_LABELS.retry_hint;
+              laylaNotifyStreamPhase(div, 'stalled');
+            }, stallMs);
+            full += String(obj.token);
+            if (bubble) bubble.textContent = full;
+          }
+          if (obj.done) {
+            clearTimeout(firstTokenTimer);
+            clearTimeout(stalledTimer);
+            clearInterval(metaTimer);
+            liveStatus = 'done';
+            laylaNotifyStreamPhase(div, 'done');
+            if (bubble) bubble.textContent = full;
+            if (_ttsEnabled && full) { try { speakText(full).catch(() => {}); } catch (_) {} }
+            try { refreshMaturityCard(true); } catch (_) {}
+          }
+        }
+      }
+    } else {
+      const res = await fetchWithTimeout(
+        '/agent',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: ac.signal },
+        Math.max(laylaAgentTimeoutMs(), 120000)
+      );
+      let data = {};
+      try { data = await res.json(); } catch (_) { data = {}; }
+      if (!res.ok || !data || data.ok === false) {
+        try { laylaRemoveTypingIndicator(); } catch (_) {}
+        addMsg('layla', formatAgentError(res, data || {}));
+        try { if (window.laylaChatFSM) window.laylaChatFSM.finishError(); } catch (_) {}
+        return;
+      }
+      try { laylaRemoveTypingIndicator(); } catch (_) {}
+      const resp = (data && (data.response || data.reply)) || '(no output)';
+      const replyAspect = (data && (data.aspect || (data.state && data.state.aspect))) || msgAspect;
+      addMsg('layla', resp, replyAspect, data?.state?.steps?.some(s => s.deliberated), data?.state?.steps, data?.state?.ux_states, data?.state?.memory_influenced);
+      if (_ttsEnabled && resp && resp !== '(no output)') { speakText(resp).catch(() => {}); }
+      try { refreshMaturityCard(true); } catch (_) {}
+    }
+  } catch (e) {
+    try { laylaRemoveTypingIndicator(); } catch (_) {}
+    addMsg('layla', 'Error: ' + (e && e.message ? e.message : String(e)));
+    try { if (window.laylaChatFSM) window.laylaChatFSM.finishError(); } catch (_) {}
+  } finally {
+    window._laylaSendBusy = false;
+    try { laylaRemoveTypingIndicator(); } catch (_) {}
+    try { if (window.laylaChatFSM) window.laylaChatFSM.finishOk(); } catch (_) {}
+    try { laylaHeaderProgressStop(); } catch (_) {}
+    try { refreshApprovals(); } catch (_) {}
+    try { updateContextChip(); } catch (_) {}
+    try { if (typeof laylaScrollActiveConversationIntoView === 'function') laylaScrollActiveConversationIntoView(); } catch (_) {}
+  }
+}
+
+} catch (_) {
+  // UI script should fail soft; server still usable.
+}

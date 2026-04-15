@@ -389,7 +389,6 @@ def _json_safe(value):
 def _run_background_subprocess_task(task_id: str, payload: dict) -> None:
     """Run job in a child process; hard cancel via terminate/kill on worker_proc."""
     import runtime_safety
-
     from services.background_subprocess import (
         cancel_worker,
         cleanup_worker_cgroup,
@@ -809,7 +808,6 @@ def _run_background_task(task_id: str, payload: dict) -> None:
 
 def _cancel_background_task_impl(task_id: str) -> JSONResponse:
     import runtime_safety
-
     from services.background_subprocess import cancel_worker
 
     grace = float(runtime_safety.load_config().get("background_worker_grace_seconds", 4.0))

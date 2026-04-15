@@ -12,7 +12,7 @@ For advanced users. Edit `agent/runtime_config.json` directly, or use **Settings
 |-----|------|---------|-------------|
 | `model_filename` | string | — | GGUF filename in `models_dir`. Required. |
 | `models_dir` | string | `~/.layla/models` or `repo/models/` | Path to folder containing .gguf files. |
-| `sandbox_root` | string | `~` | Workspace root. Layla can only read/write within this path. |
+| `sandbox_root` | string | `~` (schema fallback) | Workspace root. Layla can only read/write within this path. **Shipped UX:** set this to a **dedicated project folder** (first-run CLI/Web setup); avoid pointing at your entire home directory unless you intend that scope. |
 | `temperature` | number | 0.2 | Sampling temperature. Lower = deterministic, higher = creative. |
 | `completion_max_tokens` | number | 256 | Max tokens per response. |
 
@@ -64,12 +64,25 @@ For advanced users. Edit `agent/runtime_config.json` directly, or use **Settings
 | `tool_call_timeout_seconds` | number | 60 | Max seconds a single tool call may run before being killed (5–600). |
 | `approval_ttl_seconds` | number | 3600 | Seconds before a pending approval expires and returns 410 (60–86400). Default: 1 hour. |
 | `chat_light_max_runtime_seconds` | number | 90 | Wall-clock cap for short non-tool chat (`_is_lightweight_chat_turn`); bounded by `max_runtime_seconds`, floor 30s. |
+| `context_aggressive_compress_enabled` | boolean | true | Earlier / tighter conversation compaction and smaller tool-step blobs in prompts (good for low `n_ctx`). |
+| `context_sliding_keep_messages` | number | 0 | When >0, keep this many newest chat messages verbatim during compaction; 0 uses an automatic default when aggressive mode is on. |
+| `tool_step_context_max_tokens` | number | 500 | Max estimated tokens per tool result line fed back into the decision loop. |
+| `structured_generation_enabled` | boolean | true | Prefer optional **outlines** JSON for agent decisions on local llama_cpp when installed; falls back to instructor / plain JSON. |
+| `worker_pool_enabled` | boolean | true | Cap parallel **read-only** tool batch threads by hardware tier. |
+| `max_workers` | number | 0 | Override worker cap (0 = auto from hardware). |
+| `admin_mode` | boolean | false | Skip approval prompts for dangerous tools (still audited; sandbox blocklists remain unless `admin_blocklist_override`). |
+| `admin_auto_checkpoint` | boolean | true | Best-effort `git commit` before mutating tools when `admin_mode`. |
+| `admin_blocklist_override` | boolean | false | **Dangerous:** do not enable unless you accept full shell risk. |
+| `remote_cors_origins` | array | `[]` | When non-empty, enables CORS for listed origins (remote / tunnel UIs). |
+| `cloudflared_path` | string | "" | Optional path to `cloudflared` binary for `/remote/tunnel/start`. |
+| `dynamic_tool_generation_enabled` | boolean | false | Reserved for generated tools (not yet implemented end-to-end). |
 | `hyde_enabled` | boolean | false | Enable HyDE retrieval — generates a hypothetical answer before embedding for improved recall. Adds one extra LLM call per retrieval query. Disable on low-resource hardware. |
 | `performance_mode` | string | auto | `low` / `mid` / `high` / `auto` — see `system_optimizer.get_effective_config()`. |
 | `completion_cache_enabled` | boolean | true | Short-lived cache for identical non-stream completion prompts (key includes model + temperature + max_tokens). |
 | `response_cache_enabled` | boolean | true | In-memory cache for repeated short chat turns (see `routers/agent.py`). |
 | `tool_loop_detection_enabled` | boolean | true | Block runaway / ping-pong tool repetition (`services/tool_loop_detection.py`). |
 | `anti_drift_prompt_enabled` | boolean | true | Inject global “minimize change / follow conventions” instructions into the system head. |
+| `operator_protection_policy_pin_enabled` | boolean | true | Inject **operator protection** instructions into `_build_system_head` (`agent_loop.py`): serve the operator honestly, no manipulation, explicit directives win on conflict, surface conflicts transparently. |
 | `enable_cot` | boolean | true | Chain-of-thought reasoning. |
 | `enable_self_reflection` | boolean | false | Post-response self-reflection. |
 | `direct_feedback_enabled` | boolean | false | **Opt-in blunt collaboration:** system head encourages direct, specific critique of work (not personal attacks). Does **not** override non-clinical rules — no psychiatric labeling. See `docs/ETHICAL_AI_PRINCIPLES.md` §11. |
@@ -115,6 +128,9 @@ For advanced users. Edit `agent/runtime_config.json` directly, or use **Settings
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `remote_enabled` | boolean | false | Allow remote API access. |
+| `remote_api_key` | string | "" | Bearer secret for non-localhost clients (set in UI editable settings or JSON). |
+| `remote_rate_limit_per_minute` | number | 100 | When `remote_enabled`, max requests per minute per non-localhost IP (`0` = unlimited). |
+| `remote_cors_origins` | array | `[]` | Non-empty list enables CORS for tunnel / phone browser origins. |
 | `llama_server_url` | string | null | External llama.cpp server. Overrides local model. |
 | `inference_backend` | string | auto | auto, local, remote. |
 

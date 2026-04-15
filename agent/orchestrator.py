@@ -36,6 +36,27 @@ def reload_aspects() -> list[dict]:
     return _load_aspects()
 
 
+def _build_style_card(a: dict) -> str:
+    """Turn structured JSON fields into a short block merged into systemPromptAddition."""
+    parts: list[str] = []
+    traits = a.get("traits")
+    if isinstance(traits, list) and traits:
+        parts.append("Traits: " + ", ".join(str(t) for t in traits[:14]))
+    sp = a.get("speech_patterns")
+    if isinstance(sp, list) and sp:
+        parts.append("Speech patterns: " + "; ".join(str(x) for x in sp[:8]))
+    dnd = a.get("do_not_do")
+    if isinstance(dnd, list) and dnd:
+        parts.append("Do not: " + "; ".join(str(x) for x in dnd[:10]))
+    arch = (a.get("archetype") or "").strip()
+    if arch:
+        parts.append(f"Archetype: {arch}")
+    tropes = a.get("tropes")
+    if isinstance(tropes, list) and tropes:
+        parts.append("Tropes: " + ", ".join(str(t) for t in tropes[:6]))
+    return "\n".join(parts)
+
+
 def _load_aspects() -> list[dict]:
     global _ASPECTS_CACHE, _ASPECTS_CACHE_TS
     now = time.monotonic()
@@ -50,6 +71,15 @@ def _load_aspects() -> list[dict]:
             from layla.memory.db import get_earned_title
         except Exception:
             def get_earned_title(_): return None  # noqa: E731
+        # Layla v3: maturity phase can influence aspect voice evolution (best-effort).
+        maturity_phase = ""
+        try:
+            from layla.memory.db import get_all_user_identity
+
+            uid = get_all_user_identity() or {}
+            maturity_phase = str(uid.get("maturity_phase") or "").strip().lower()
+        except Exception:
+            maturity_phase = ""
         if PERSONALITIES_DIR.exists():
             for f in sorted(PERSONALITIES_DIR.glob("*.json")):
                 try:
@@ -60,6 +90,20 @@ def _load_aspects() -> list[dict]:
                         if earned:
                             a["title"] = earned
                             a["earned_title"] = earned
+                    card = _build_style_card(a)
+                    if card:
+                        base = (a.get("systemPromptAddition") or "").rstrip()
+                        a["systemPromptAddition"] = base + "\n\n— Style card —\n" + card
+                    # Optional voice evolution line (light novel growth): keep short, phase-aware.
+                    try:
+                        ve = a.get("voice_evolution")
+                        if maturity_phase and isinstance(ve, dict):
+                            vline = str(ve.get(maturity_phase) or "").strip()
+                            if vline:
+                                base2 = (a.get("systemPromptAddition") or "").rstrip()
+                                a["systemPromptAddition"] = base2 + f"\n\nVoice evolution ({maturity_phase}): {vline}"
+                    except Exception:
+                        pass
                     aspects.append(a)
                 except Exception:
                     continue
@@ -152,6 +196,16 @@ def select_aspect(message: str, force_aspect: str = "") -> dict:
         for a in aspects:
             if a.get("id") == force_aspect:
                 return _maybe_add_nsfw_mode(a, msg_lower)
+        try:
+            import logging
+
+            logging.getLogger("layla").warning("force_aspect not found: %s", force_aspect)
+        except Exception:
+            pass
+        d = dict(_default_aspect())
+        d["_force_aspect_requested"] = force_aspect
+        d["_force_aspect_miss"] = True
+        return _maybe_add_nsfw_mode(d, msg_lower)
 
     # 2. Keyword/name trigger scoring
     scores: list[tuple[int, dict]] = []
@@ -319,23 +373,36 @@ def build_deliberation_prompt(
     }
 
     deliberation_lines = []
+
+    concluder_id = (active_aspect or {}).get("id") or _DELIBERATION_CONCLUSION_ASPECT
+    if concluder_id not in aspect_map:
+        concluder_id = _DELIBERATION_CONCLUSION_ASPECT
+    concluder = aspect_map.get(concluder_id) or active_aspect
+    concluder_name = concluder.get("name", "Morrigan")
+
     for aid in roster:
         a = aspect_map.get(aid)
         if not a:
             continue
         name = a.get("name", aid).upper()
         symbol, cue = _DELIB_VOICE_CUES.get(aid, ("·", a.get("role", "")[:40]))
-        deliberation_lines.append((name, symbol, cue))
-
-    concluder_id = _DELIBERATION_CONCLUSION_ASPECT
-    concluder = aspect_map.get(concluder_id) or active_aspect
-    concluder_name = concluder.get("name", "Morrigan")
+        # Layla v3: relationship flavor (light-novel character web). If the aspect has a relationship
+        # note about the concluding aspect, include it as subtext for the line's register.
+        try:
+            rels = a.get("relationships")
+            if isinstance(rels, dict):
+                rel = rels.get(concluder_id)
+                if isinstance(rel, str) and rel.strip():
+                    cue = (cue + " Subtext: " + rel.strip()).strip()
+        except Exception:
+            pass
+        deliberation_lines.append((name, symbol, cue[:220]))
 
     ctx_block = f"\nContext:\n{context[:800]}\n" if context.strip() else ""
 
     prompt = (
         "You are Layla. All aspects are facets of one consciousness. "
-        "Each speaks one short line in their own voice, then Morrigan concludes.\n"
+        "Each speaks one short line in their own voice, then the active aspect concludes.\n"
         f"{ctx_block}\n"
         f"User: {message}\n"
         "---\n"

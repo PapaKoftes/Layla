@@ -14,6 +14,7 @@ TOOLS = {
     "clipboard_read": {"dangerous": False, "require_approval": False, "risk_level": "low"},
     "clipboard_write": {"dangerous": False, "require_approval": True, "risk_level": "medium"},
     "search_replace": {"dangerous": True, "require_approval": True, "risk_level": "medium"},
+    "replace_in_file": {"dangerous": True, "require_approval": True, "risk_level": "medium"},
     "apply_patch": {"dangerous": True, "require_approval": True, "risk_level": "medium"},
     "json_query": {"dangerous": False, "require_approval": False, "risk_level": "low", "concurrency_safe": True},
     "understand_file": {"fn_key": "understand_file_tool", "dangerous": False, "require_approval": False, "risk_level": "low"},

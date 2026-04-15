@@ -16,7 +16,7 @@ if str(AGENT_DIR) not in sys.path:
 from layla.tools import registry  # noqa: E402
 
 # Bump when domain TOOLS dicts change (see layla/tools/domains/*.py).
-EXPECTED_TOOL_COUNT = 189
+EXPECTED_TOOL_COUNT = 194
 
 
 def test_tools_dict_count_matches_manifest():

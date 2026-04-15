@@ -3,6 +3,13 @@
   <path d="M70 95 L48 78 L62 108"/>
   <path d="M130 95 L152 78 L138 108"/>
   <path d="M100 48 L100 32"/>
+  <!-- lightning crown -->
+  <path d="M72 44l14 14 14-20 14 20 14-14" />
+  <!-- dice / chaos mark -->
+  <rect x="132" y="128" width="28" height="28" rx="5"/>
+  <circle cx="146" cy="142" r="2.6" fill="#c084fc"/>
+  <circle cx="140" cy="136" r="2.2" fill="#c084fc"/>
+  <circle cx="152" cy="148" r="2.2" fill="#c084fc"/>
   <circle cx="88" cy="108" r="5"/>
   <circle cx="112" cy="108" r="5"/>
   <path d="M92 128 Q100 138 108 128"/>

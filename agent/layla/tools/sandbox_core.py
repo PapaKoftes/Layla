@@ -127,7 +127,6 @@ def shell_command_is_safe_whitelisted(argv: list) -> bool:
     line = shell_command_line(argv)
     if not line:
         return False
-    import re
     for pat in _SHELL_SAFE_LINE:
         if re.match(pat, line, re.IGNORECASE):
             return True

@@ -14,9 +14,8 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def test_autonomous_run_concurrent_batch_read_and_list_dir(tmp_path, monkeypatch):
-    import runtime_safety
-
     import agent_loop
+    import runtime_safety
     from layla.tools.registry import set_effective_sandbox
 
     f1 = tmp_path / "a.txt"

@@ -14,6 +14,16 @@ except ImportError:
         allow_module_level=True,
     )
 
+# playwright may be importable without the pytest plugin providing the `page` fixture.
+try:
+    import pytest_playwright  # noqa: F401
+except Exception:
+    pytest.skip(
+        "e2e_ui: pytest-playwright plugin not installed (missing `page` fixture). "
+        "Install via requirements-e2e.txt to enable UI tests.",
+        allow_module_level=True,
+    )
+
 pytestmark = pytest.mark.e2e_ui
 
 

@@ -5,6 +5,7 @@ Uses Pydantic when available for validation; normalizes action/tool/priority.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 try:
@@ -39,15 +40,63 @@ if _HAS_PYDANTIC and BaseModel is not None:
         risk_estimate: str | None = None
 
 
-def _first_json_line(text: str) -> str | None:
-    """Return the first line that looks like a JSON object."""
-    if not (text or "").strip():
+_FENCE_RE = re.compile(r"```(?:json)?\s*", re.IGNORECASE)
+
+
+def _extract_json_object(text: str) -> str | None:
+    """
+    Extract a JSON object substring from arbitrary model output.
+
+    Handles:
+    - JSON wrapped in ```json fences
+    - Multi-line JSON objects
+    - Trailing text after the closing brace
+    """
+    cleaned = (text or "").strip()
+    if not cleaned:
         return None
-    for line in (text or "").strip().splitlines():
-        line = line.strip()
-        if line.startswith("{"):
-            return line
-    return None
+    # Remove markdown fences but keep content
+    cleaned = _FENCE_RE.sub("", cleaned).replace("```", "").strip()
+    start = cleaned.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    in_str = False
+    esc = False
+    for i in range(start, len(cleaned)):
+        ch = cleaned[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return cleaned[start : i + 1]
+    # Unterminated: return what we have; json.loads will fail, caller may repair
+    return cleaned[start:]
+
+
+_TRAILING_COMMA_RE = re.compile(r",\s*([}\]])")
+
+
+def _repair_json_like(raw: str) -> str:
+    """Small best-effort repairs for common LLM JSON mistakes."""
+    s = (raw or "").strip()
+    if not s:
+        return s
+    # Remove trailing commas before } or ]
+    s = _TRAILING_COMMA_RE.sub(r"\1", s)
+    return s
 
 
 def _str_opt(val: Any, max_len: int = 80) -> str | None:
@@ -63,13 +112,16 @@ def parse_decision(text: str, valid_tools: frozenset[str]) -> dict | None:
     Parse LLM output into a decision dict. Optionally validates with Pydantic.
     Normalizes action, tool, priority_level; returns None if no valid JSON.
     """
-    raw = _first_json_line(text)
+    raw = _extract_json_object(text)
     if not raw:
         return None
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        return None
+        try:
+            data = json.loads(_repair_json_like(raw))
+        except json.JSONDecodeError:
+            return None
     if not isinstance(data, dict):
         return None
 

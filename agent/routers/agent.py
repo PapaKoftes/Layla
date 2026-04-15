@@ -33,11 +33,12 @@ logger = logging.getLogger("layla")
 router = APIRouter(tags=["agent"])
 
 
-def _dispatch_autonomous_run(*args, **kwargs):
-    """Late-bind to agent_loop.autonomous_run so monkeypatch on agent_loop.autonomous_run affects HTTP paths."""
+def _dispatch_autonomous_run(goal, **kwargs):
+    """Late-bind to agent_loop.autonomous_run; coordinator.run is the outer HTTP entry (resume, worktree, consolidation)."""
     import agent_loop as _al
+    from services.coordinator import run as coordinator_run
 
-    return _al.autonomous_run(*args, **kwargs)
+    return coordinator_run(_al.autonomous_run, goal, **kwargs)
 
 
 async def _watch_client_disconnect(http_request: Request, ev: threading.Event) -> None:
@@ -61,8 +62,9 @@ from services.agent_task_runner import (
     enqueue_threaded_autonomous,
 )
 from services.resource_manager import PRIORITY_BACKGROUND
-from .learn import router as _learn_router
+
 from .agent_tasks import router as _agent_tasks_router
+from .learn import router as _learn_router
 
 router.include_router(_learn_router)
 router.include_router(_agent_tasks_router)
@@ -738,7 +740,16 @@ async def agent(req: dict, request: Request):
                         _last_tok_activity = time.monotonic()
                         full.append(token)
                         yield f"data: {json.dumps({'token': token})}\n\n"
-                    text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply("".join(full))))
+                    try:
+                        import runtime_safety
+
+                        cfg = runtime_safety.load_config()
+                    except Exception:
+                        cfg = {}
+                    text = polish_output(
+                        truncate_at_next_user_turn(strip_junk_from_reply("".join(full))),
+                        cfg,
+                    )
                     result["reasoning_tree_summary"] = _build_reasoning_tree_summary(result)
                     append_conv_history(conversation_id, "user", goal)
                     append_conv_history(conversation_id, "assistant", text)
@@ -897,7 +908,13 @@ async def agent(req: dict, request: Request):
         response_text = "No response. Try again or rephrase."
 
     if result.get("status") == "finished":
-        response_text = polish_output(response_text)
+        try:
+            import runtime_safety
+
+            cfg = runtime_safety.load_config()
+        except Exception:
+            cfg = {}
+        response_text = polish_output(response_text, cfg)
     result["reasoning_tree_summary"] = _build_reasoning_tree_summary(result)
 
     append_conv_history(conversation_id, "user", goal)
