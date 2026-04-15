@@ -2,6 +2,8 @@
 
 Thank you for your interest in contributing. Layla is a local-first AI companion and engineering agent. Contributions of all kinds are welcome: bug fixes, features, docs, tests, and ideas.
 
+**Skill packs:** Add a folder under `skill_packs/<id>/` with `manifest.json` (see existing packs). Optional dynamic install via `POST /skill_packs/install` clones into `.layla/skill_packs_installed/`.
+
 > **License note:** Layla is released under the [Layla Non-Commercial Source License](LICENSE). By contributing you agree your contribution is licensed under the same terms. Commercial use requires explicit written permission from the project maintainer(s).
 
 ---
@@ -9,7 +11,7 @@ Thank you for your interest in contributing. Layla is a local-first AI companion
 ## Development setup
 
 ```bash
-git clone https://github.com/your-org/layla.git
+git clone <YOUR_REPO_URL>
 cd layla/agent
 
 # Create a virtual environment

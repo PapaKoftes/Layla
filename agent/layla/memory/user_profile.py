@@ -3,10 +3,9 @@ import json
 import logging
 import sqlite3
 
-from layla.time_utils import utcnow
-
 from layla.memory.db_connection import _conn
 from layla.memory.migrations import migrate
+from layla.time_utils import utcnow
 
 logger = logging.getLogger("layla")
 
@@ -193,6 +192,14 @@ def record_tool_outcome(tool_name: str, success: bool, context: str = "", latenc
             (tool_name.strip(), (context or "")[:500], 1 if success else 0, max(0, float(latency_ms)), max(0, min(1, float(quality_score))), now),
         )
         db.commit()
+    # Layla v3: maturity XP for successful tool usage (best-effort; never raise).
+    if success:
+        try:
+            from services.maturity_engine import award_xp
+
+            award_xp(5, reason=f"tool_success:{tool_name.strip()[:60]}")
+        except Exception:
+            pass
 
 
 def get_tool_reliability(tool_name: str | None = None, n: int = 100) -> dict[str, dict]:
@@ -221,6 +228,21 @@ def get_tool_reliability(tool_name: str | None = None, n: int = 100) -> dict[str
             "count": int(r["count"] or 0),
         }
     return result
+
+
+def get_recent_tool_outcome_failures(limit: int = 10) -> list[dict]:
+    """Return recent tool failures: [{tool_name, context, latency_ms, created_at}]."""
+    migrate()
+    lim = max(1, min(50, int(limit or 10)))
+    try:
+        with _conn() as db:
+            rows = db.execute(
+                "SELECT tool_name, context, latency_ms, created_at FROM tool_outcomes WHERE success=0 ORDER BY created_at DESC LIMIT ?",
+                (lim,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
 
 
 # ── goals (goal engine) ─────────────────────────────────────────────────────

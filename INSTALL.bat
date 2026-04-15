@@ -115,6 +115,8 @@ if errorlevel 1 (
     echo      Run: python agent\diagnose_startup.py
     echo      See: knowledge\troubleshooting.md
     echo.
+    pause
+    exit /b 1
 )
 echo.
 
@@ -127,7 +129,7 @@ if not exist "START.bat" (
     echo title Layla >> START.bat
     echo cd /d "%%~dp0" >> START.bat
     echo call .venv\Scripts\activate.bat >> START.bat
-    echo python -c "import json,pathlib; c=pathlib.Path('agent/runtime_config.json'); cfg=json.loads(c.read_text()) if c.exists() else {}; m=cfg.get('model_filename',''); md=cfg.get('models_dir',''); p=pathlib.Path(md).expanduser()/m if md and m else pathlib.Path('models')/m if m else None; exit(0 if p and p.exists() else 1)" ^>nul 2^>^&1 >> START.bat
+    echo python -c "import sys; sys.path.insert(0,'agent'); import runtime_safety; p = runtime_safety.resolve_model_path(runtime_safety.load_config()); sys.exit(0 if p and p.exists() else 1)" ^>nul 2^>^&1 >> START.bat
     echo if errorlevel 1 ^( >> START.bat
     echo   echo. >> START.bat
     echo   echo   [!] No model found. Run python agent\install\installer_cli.py or see MODELS.md >> START.bat
@@ -140,7 +142,7 @@ if not exist "START.bat" (
     echo echo. >> START.bat
     echo start "" http://localhost:8000/ui >> START.bat
     echo cd agent >> START.bat
-    echo uvicorn main:app --host 127.0.0.1 --port 8000 >> START.bat
+    echo uvicorn main:app --host 127.0.0.1 --port 8000 --reload >> START.bat
 )
 echo      START.bat ready.
 echo.

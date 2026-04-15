@@ -24,7 +24,7 @@ These are **out of scope** for scoring “Layla correctness” and should not be
 
 ## 1. Executive Truth Summary
 
-**What this system actually is (verified):** A **self-hosted FastAPI** application ([`agent/main.py`](../agent/main.py)) exposing `/agent`, background task APIs, approvals, memory/study/research routes, static `/ui`, and health. Core cognition is [`agent_loop.autonomous_run()`](../agent/agent_loop.py) — JSON **decision** loop (tool vs reason) with optional streaming, gated writes/runs, SQLite + optional Chroma memory, and a large in-process [`layla.tools.registry.TOOLS`](../agent/layla/tools/registry.py) surface. Tool count is **machine-enforced** as **187** ([`EXPECTED_TOOL_COUNT`](../agent/tests/test_registered_tools_count.py)).
+**What this system actually is (verified):** A **self-hosted FastAPI** application ([`agent/main.py`](../agent/main.py)) exposing `/agent`, background task APIs, approvals, memory/study/research routes, static `/ui`, and health. Core cognition is [`agent_loop.autonomous_run()`](../agent/agent_loop.py) — JSON **decision** loop (tool vs reason) with optional streaming, gated writes/runs, SQLite + optional Chroma memory, and a large in-process [`layla.tools.registry.TOOLS`](../agent/layla/tools/registry.py) surface. Tool count is **machine-enforced** as **191** ([`EXPECTED_TOOL_COUNT`](../agent/tests/test_registered_tools_count.py)).
 
 **What it is not (verified):** Not a multi-tenant cloud service; **not** an Ink/TUI-primary product (HTTP-first; TUI/CLI exist per docs but not re-audited here — **UNVERIFIED: CLI surface**); **not** a nested multi-agent orchestration graph (CCUNPACKED explicitly: no teams/ListPeers); **not** in-process seccomp/container isolation (operator-level containers/wrappers only — see [`docs/PRODUCTION_CONTRACT.md`](PRODUCTION_CONTRACT.md)).
 
@@ -184,11 +184,11 @@ sequenceDiagram
 | Source | Alignment |
 |--------|-----------|
 | [README.md](../README.md) | **local-first, tool-heavy, approval-gated agent platform** — matches code |
-| [AGENTS.md](../AGENTS.md) | **187 tools** — matches `EXPECTED_TOOL_COUNT` |
+| [AGENTS.md](../AGENTS.md) | **191 tools** — matches `EXPECTED_TOOL_COUNT` |
 | [PARITY_AUDIT.md](PARITY_AUDIT.md) | Background cancel: thread + subprocess — consistent |
 | [CCUNPACKED_ALIGNMENT.md](CCUNPACKED_ALIGNMENT.md) | **PARTIAL** for agents/teams — honest |
 
-**Stale tool counts in `knowledge/`:** Scan for literal `109` in `knowledge/**/*.md` (2026-04-03): **no matches**. Re-scan for `179` when bumping `EXPECTED_TOOL_COUNT`; sample product docs should track **187** (same as `test_registered_tools_count.py`).
+**Stale tool counts in `knowledge/`:** Scan for literal `109` in `knowledge/**/*.md` (2026-04-03): **no matches**. Re-scan for stale counts when bumping `EXPECTED_TOOL_COUNT`; sample product docs should track **191** (same as `test_registered_tools_count.py`).
 
 **Parity honesty score:** **0.82 / 1.0**
 
@@ -390,7 +390,7 @@ for r in sorted(app.routes, key=lambda x: getattr(x,'path','')):
 ## Appendix B — Maintenance
 
 - **Regenerate route appendix** when adding/removing FastAPI routes.
-- **Re-run knowledge stale scan:** `rg '\\b109\\b' knowledge --glob '*.md'` (legacy tool count); also `rg '\\b179\\b'` after bumps to `EXPECTED_TOOL_COUNT` (currently **187**).
+- **Re-run knowledge stale scan:** `rg '\\b109\\b' knowledge --glob '*.md'` (legacy tool count); also `rg '\\b179\\b'` after bumps to `EXPECTED_TOOL_COUNT` (currently **191**).
 
 ---
 

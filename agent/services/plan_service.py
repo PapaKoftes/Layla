@@ -6,7 +6,6 @@ import logging
 from pathlib import Path
 
 from layla.tools.registry import inside_sandbox
-
 from services.plan_schema import Plan, PlanStep
 
 logger = logging.getLogger("layla")

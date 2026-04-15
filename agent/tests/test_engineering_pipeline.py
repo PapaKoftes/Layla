@@ -5,7 +5,11 @@ import pytest
 
 
 def test_engineering_planning_locked_default_false():
-    from services.engineering_pipeline import engineering_planning_locked, lock_engineering_planning, unlock_engineering_planning
+    from services.engineering_pipeline import (
+        engineering_planning_locked,
+        lock_engineering_planning,
+        unlock_engineering_planning,
+    )
 
     assert engineering_planning_locked() is False
     tok = lock_engineering_planning()

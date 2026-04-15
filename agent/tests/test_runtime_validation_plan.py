@@ -88,7 +88,6 @@ def test_subprocess_background_cancel_hard_kill(monkeypatch, tmp_path):
     """worker_mode subprocess + cancel while wait_worker_result blocks; task ends cancelled."""
     import runtime_safety
     import services.background_subprocess as bgsp
-
     from main import app
 
     orig_load = runtime_safety.load_config

@@ -1,0 +1,7 @@
+{
+  "id": "translation",
+  "name": "Translation & terminology",
+  "version": "1.0.0",
+  "description": "Glossary-first translation and consistency checks (local LLM).",
+  "tags": ["i18n", "glossary"]
+}

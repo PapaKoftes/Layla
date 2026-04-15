@@ -288,17 +288,31 @@ def run_completion_llama_cpp(
                     if t:
                         yield t
         return gen()
+    import concurrent.futures as _cf
+    timeout_s = int(cfg.get("llm_local_timeout_seconds", 180) or 180)
     with _llm_lock:
-        out = _call_create_completion(
-            stream_mode=False,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            repeat_penalty=repeat_penalty,
-            top_k=top_k,
-            stop=stop,
-            **extra_kw,
-        )
+        with _cf.ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(
+                _call_create_completion,
+                False,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                repeat_penalty=repeat_penalty,
+                top_k=top_k,
+                stop=stop,
+                **extra_kw,
+            )
+            try:
+                out = fut.result(timeout=max(10, timeout_s))
+            except _cf.TimeoutError:
+                try:
+                    from services.llm_gateway import invalidate_llm_cache
+
+                    invalidate_llm_cache()
+                except Exception:
+                    pass
+                return {"choices": [{"message": {"content": "Local LLM timed out. Cache invalidated; retry."}}]}
     if isinstance(out, dict):
         return out
     text = "".join((c.get("choices") or [{}])[0].get("text") or "" for c in out)
@@ -326,6 +340,7 @@ def run_completion(
     stop: list[str] | None = None,
     timeout_seconds: int | None = None,
     *,
+    cfg_override: dict | None = None,
     _get_llm: Any = None,
     _llm_lock: threading.Lock | None = None,
     model_override: str | None = None,
@@ -337,7 +352,7 @@ def run_completion(
     model_override: "default"|"coding"|"reasoning"|"chat" or raw model name (remote only).
     """
     import runtime_safety
-    cfg = runtime_safety.load_config()
+    cfg = cfg_override if isinstance(cfg_override, dict) else runtime_safety.load_config()
     if stop is None:
         from services.llm_gateway import get_stop_sequences
         stop = get_stop_sequences()

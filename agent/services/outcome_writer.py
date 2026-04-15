@@ -23,6 +23,7 @@ _ASPECT_LEARNING_TYPE: dict = {
 }
 _GREETING_WORDS = frozenset({"hi", "hello", "hey", "thanks", "thank", "ok", "okay", "yes", "no", "sure", "cool"})
 _recent_learning_fingerprints: set = set()
+_recent_tool_pattern_fingerprints: set = set()
 
 
 def _maybe_save_echo_memory(
@@ -69,21 +70,32 @@ def _save_outcome_memory(state: dict) -> None:
     After successful multi-step runs, store a short semantic summary (what was done, what worked).
     Uses existing learnings/memory; avoids logs and noise.
     """
+    global _recent_tool_pattern_fingerprints
     steps = state.get("steps") or []
     tool_steps = [s for s in steps if s.get("action") and s["action"] != "reason"]
-    if not tool_steps or state.get("status") != "finished":
+    if state.get("status") != "finished":
         return
     objective = (state.get("objective") or state.get("original_goal") or "")[:200]
-    actions = ", ".join(s["action"] for s in tool_steps[:5])
-    facts = []
-    for s in tool_steps:
-        r = s.get("result") or {}
-        if isinstance(r, dict) and r.get("ok"):
-            if r.get("path"):
-                facts.append(f"path:{r.get('path', '')[:80]}")
-            if r.get("entries") and isinstance(r["entries"], list):
-                facts.append(f"listed {len(r['entries'])} items")
-    summary = f"Objective: {objective}. Did: {actions}. " + (" ".join(facts[:3]) if facts else "Completed.")
+    if tool_steps:
+        actions = ", ".join(s["action"] for s in tool_steps[:5])
+        facts = []
+        for s in tool_steps:
+            r = s.get("result") or {}
+            if isinstance(r, dict) and r.get("ok"):
+                if r.get("path"):
+                    facts.append(f"path:{r.get('path', '')[:80]}")
+                if r.get("entries") and isinstance(r["entries"], list):
+                    facts.append(f"listed {len(r['entries'])} items")
+        summary = f"Objective: {objective}. Did: {actions}. " + (" ".join(facts[:3]) if facts else "Completed.")
+    else:
+        final_text = ""
+        for s in reversed(steps):
+            if s.get("action") == "reason":
+                r = s.get("result", "")
+                final_text = r if isinstance(r, str) else ""
+                break
+        snippet = (final_text.strip()[:140] + ("..." if len(final_text.strip()) > 140 else "")) if final_text else ""
+        summary = f"Objective: {objective}. Replied. " + (f"Snippet: {snippet}" if snippet else "Completed.")
     if len(summary) > 400:
         summary = summary[:397] + "..."
     try:
@@ -92,12 +104,98 @@ def _save_outcome_memory(state: dict) -> None:
         save_learning(content=summary, kind="outcome")
     except Exception as e:
         logger.debug("outcome memory save failed: %s", e)
+
+    # Layla v3: tool success patterns (high precision, deterministic).
+    # Persist compact "what worked" snippets from successful tool steps.
+    try:
+        from layla.memory.db import save_learning
+
+        saved = 0
+        for s in tool_steps[:30]:
+            action = str(s.get("action") or "").strip()
+            if not action or action in ("think", "reason", "none", "client_abort", "pre_read_probe"):
+                continue
+            r = s.get("result") or {}
+            if not (isinstance(r, dict) and r.get("ok")):
+                continue
+            path = str(r.get("path") or "").strip()
+            hint = ""
+            if path:
+                hint = f" on {path}"
+            elif isinstance(r.get("entries"), list):
+                hint = f" returning {len(r.get('entries') or [])} entries"
+            elif r.get("message"):
+                hint = f" ({str(r.get('message') or '')[:80]})"
+            item = f"Tool pattern: {action}{hint} succeeded."
+            fp = (action + "|" + (path or "")).lower()[:120]
+            with _fingerprint_lock:
+                if fp in _recent_tool_pattern_fingerprints:
+                    continue
+                _recent_tool_pattern_fingerprints.add(fp)
+                if len(_recent_tool_pattern_fingerprints) > 300:
+                    _recent_tool_pattern_fingerprints = set(list(_recent_tool_pattern_fingerprints)[-160:])
+            try:
+                save_learning(content=item[:240], kind="strategy")
+                saved += 1
+            except Exception:
+                pass
+            if saved >= 3:
+                break
+    except Exception as e:
+        logger.debug("tool pattern auto-learn failed: %s", e)
     try:
         from services.reflection_engine import run_reflection
 
         run_reflection(state)
     except Exception as e:
         logger.debug("reflection engine failed: %s", e)
+
+    # Golden examples: persist small high-score patterns for future few-shot injection.
+    try:
+        ev = state.get("outcome_evaluation") if isinstance(state.get("outcome_evaluation"), dict) else {}
+        score = ev.get("score") if isinstance(ev, dict) else None
+        if score is not None and float(score) >= 0.85:
+            steps = state.get("steps") or []
+            toolish = [s for s in steps if s.get("action") and s.get("action") not in ("reason", "think", "none", "client_abort")]
+            pattern_lines: list[str] = []
+            for s in toolish[:3]:
+                act = str(s.get("action") or "").strip()
+                if not act:
+                    continue
+                args = s.get("args")
+                if isinstance(args, dict) and args:
+                    # Keep it short/deterministic; avoid leaking big payloads into the DB.
+                    arg_keys = ",".join(sorted(str(k) for k in list(args.keys())[:6]))
+                    pattern_lines.append(f'{{"action":"tool","tool":"{act}","args_keys":"{arg_keys}"}}')
+                else:
+                    pattern_lines.append(f'{{"action":"tool","tool":"{act}"}}')
+            if pattern_lines:
+                from services.golden_examples import store_golden_example
+
+                goal = (state.get("original_goal") or state.get("goal") or "").strip()
+                store_golden_example(
+                    task_type="agent",
+                    goal=goal,
+                    decision_pattern="\n".join(pattern_lines),
+                    score=float(score),
+                )
+    except Exception as e:
+        logger.debug("golden example save skipped: %s", e)
+
+    # Reinforce learnings that were retrieved and used during the run.
+    try:
+        from services.memory_consolidation import reinforce_learning
+
+        ev = state.get("outcome_evaluation") if isinstance(state.get("outcome_evaluation"), dict) else {}
+        ok = bool(ev.get("success", state.get("status") == "finished"))
+        used_ids = state.get("used_learning_ids") if isinstance(state.get("used_learning_ids"), list) else []
+        for lid in used_ids[:20]:
+            s = str(lid).strip()
+            if not s:
+                continue
+            reinforce_learning(s, success=ok)
+    except Exception as e:
+        logger.debug("reinforce_learning skipped: %s", e)
 
 
 def _extract_patch_text(goal: str) -> str:
@@ -190,6 +288,39 @@ def _auto_extract_learnings(user_msg: str, response: str, aspect_id: str) -> Non
         from layla.memory.db import save_learning
 
         saved = 0
+        # Operator correction detection (high precision heuristic)
+        try:
+            um = (user_msg or "").strip()
+            if um and any(k in um.lower() for k in ("actually", "that's wrong", "that is wrong", "no,", "not true", "correction")):
+                corr = um.replace("\n", " ").strip()[:180]
+                save_learning(content=f"Operator correction: {corr}", kind="preference")
+        except Exception:
+            pass
+
+        # Implicit preference detection (high precision, exact phrase triggers).
+        try:
+            um = (user_msg or "").strip()
+            ul = um.lower()
+            triggers = (
+                "i prefer ",
+                "i like ",
+                "i dislike ",
+                "always use ",
+                "never use ",
+                "don't use ",
+                "do not use ",
+            )
+            if um and any(t in ul for t in triggers) and len(um) <= 300:
+                pref = um.replace("\n", " ").strip()
+                fp = ("pref|" + pref[:80].lower()).strip()
+                with _fingerprint_lock:
+                    if fp not in _recent_learning_fingerprints:
+                        _recent_learning_fingerprints.add(fp)
+                        if len(_recent_learning_fingerprints) > 200:
+                            _recent_learning_fingerprints = set(list(_recent_learning_fingerprints)[-100:])
+                        save_learning(content=f"Operator preference: {pref}"[:240], kind="preference")
+        except Exception:
+            pass
         for item in extracted[:2]:
             fp = item[:60].lower()
             with _fingerprint_lock:

@@ -119,6 +119,7 @@ if ! python agent/install/run_first_time.py; then
   echo "      Run: python agent/diagnose_startup.py"
   echo "      See: knowledge/troubleshooting.md"
   echo ""
+  exit 1
 fi
 
 # ── Launchers ───────────────────────────────────────────────────────────────
@@ -135,7 +136,7 @@ echo ""
 echo "   If the setup wizard didn't download a model:"
 echo "   • Open MODELS.md to pick one for your hardware"
 echo "   • Put the .gguf file in  models/"
-echo "   • Run  python agent/first_run.py  to configure it"
+echo "   • Run  python agent/install/run_first_time.py  (or python agent/first_run.py) to configure"
 echo ""
 echo "   When you have a model:  bash start.sh"
 echo "   Layla opens at:         http://localhost:8000/ui"

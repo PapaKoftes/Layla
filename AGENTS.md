@@ -7,7 +7,7 @@ Read this before touching any file. It tells you what this project is, where thi
 
 ## What this project is
 
-Layla is a **self-hosted AI companion and engineering agent** that runs on the user's own hardware via a local GGUF model (llama-cpp-python). No cloud. No API keys required. She has six personality aspects, persistent memory (SQLite + ChromaDB), **189 registered tools** (authoritative count: `agent/tests/test_registered_tools_count.py` → `EXPECTED_TOOL_COUNT`), voice I/O, and browser automation. The FastAPI server lives at `localhost:8000`. The web UI is at `/ui`.
+Layla is a **self-hosted AI companion and engineering agent** that runs on the user's own hardware via a local GGUF model (llama-cpp-python). No cloud. No API keys required. She has six personality aspects, persistent memory (SQLite + ChromaDB), **194 registered tools** (authoritative count: `agent/tests/test_registered_tools_count.py` → `EXPECTED_TOOL_COUNT`), voice I/O, and browser automation. The FastAPI server lives at `localhost:8000`. The web UI is at `/ui`.
 
 **The operator chooses their model.** Layla is uncensored by default. Everything is configurable via `agent/runtime_config.json`.
 
@@ -47,25 +47,35 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 ├── agent/                   # All Python runtime code
 │   ├── main.py              # FastAPI app, lifespan, all routes, /ui, /v1, /health
 │   ├── agent_loop.py        # Core: autonomous_run(), decision/tool/reason loop, streaming
+│   ├── execution_state.py   # Dict-compatible ExecutionState factory + JSON helpers
 │   ├── orchestrator.py      # Aspect selection, deliberation prompt builder
-│   ├── runtime_safety.py    # Config load (TTL-cached), file caching, hardware probe
+│   ├── runtime_safety.py    # Config load (TTL-cached); `LAYLA_DATA_DIR` → per-user `runtime_config.json`; `default_models_dir()`
 │   ├── shared_state.py      # Shared refs: history, pending approvals, touch_activity
 │   ├── decision_schema.py   # Pydantic decision model, parse_decision()
 │   ├── first_run.py         # Hardware wizard, writes runtime_config.json
 │   │
 │   ├── routers/             # FastAPI routers (mounted in main.py)
-│   │   ├── system.py        # /health, /usage, /version, /update/*, /doctor, /skills, …
+│   │   ├── system.py        # /health, /usage, /debug/state, /debug/tasks, /version, /update/*, /doctor, /skills, …
 │   │   ├── agent.py         # POST /agent (+ includes learn + agent_tasks routers)
 │   │   ├── learn.py         # GET /memories, POST /schedule, POST /learn/
 │   │   ├── agent_tasks.py   # /resume, /execute_plan, /agent/background, /agent/tasks*
 │   │   ├── approvals.py     # POST /approve, GET /pending
-│   │   ├── study.py         # GET /wakeup, /study_plans
+│   │   ├── study.py         # GET /wakeup, /study_plans (includes v3 maturity fields + plan-report snippets)
 │   │   ├── research.py      # Research mission endpoints
 │   │   ├── plans.py         # GET/POST /plans, PATCH/approve/execute — SQLite layla_plans
 │   │   ├── plan_file.py     # /plan/* — Pydantic file plans under `.layla_plans/` (optional parallel to SQLite)
-│   │   └── codex.py         # GET/PUT /codex/relationship — workspace relationship_codex.json (sandbox-gated)
+│   │   ├── codex.py         # GET/PUT /codex/relationship + codex proposals (sandbox-gated)
+│   │   ├── conversations.py # /conversations* (includes v3 tags endpoints)
+│   │   ├── aspects.py       # GET /aspects/{aspect_id} — aspect character sheet (safe subset)
+│   │   ├── journal.py       # /journal* — operator journal entries
+│   │   └── improvements.py  # /improvements* — self-improvement proposals (approval applies allowlisted instructions)
 │   │
 │   ├── services/            # Infrastructure services (singleton pattern)
+│   │   ├── coordinator.py        # classify + run (HTTP entry) + dispatch_autonomous_run + optional task graph / parallel helpers
+│   │   ├── prompt_builder.py     # Static/dynamic system-head core + decision tool ordering
+│   │   ├── memory_consolidation.py  # Scheduled memory maintenance hooks
+│   │   ├── worktree_manager.py   # Optional git worktree isolation
+│   │   ├── otel_export.py        # Optional OpenTelemetry span helper
 │   │   ├── agent_task_runner.py  # Background task queue, threaded/subprocess workers, task store
 │   │   ├── outcome_writer.py # Post-run outcome memory, Echo aspect memories, patch extract, auto-learnings
 │   │   ├── llm_gateway.py   # run_completion(), prewarm_llm(), auto-thread detection
@@ -82,7 +92,9 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 │   │   ├── plan_service.py         # CRUD for `.layla_plans/` (separate from SQLite layla_plans)
 │   │   ├── plan_executor.py        # execute_next_step + continuous loop for file plans
 │   │   ├── plan_refinement.py      # Optional one-pass LLM tighten (file_plan_refinement_enabled)
-│   │   └── relationship_codex.py   # `.layla/relationship_codex.json`; optional inject via relationship_codex_inject_enabled
+│   │   ├── relationship_codex.py   # `.layla/relationship_codex.json`; optional inject via relationship_codex_inject_enabled
+│   │   ├── auto_updater.py         # GitHub latest check + `git pull --ff-only` (dev trees)
+│   │   └── release_updater.py      # Release ZIP merge into `agent/` when `LAYLA_DATA_DIR` set
 │   │
 │   ├── capabilities/        # Capability registry (vector_search, embedding, etc.)
 │   │   └── registry.py     # Multiple impls per capability; dynamic selection
@@ -94,9 +106,9 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 │   │   │   └── impl/             # Tool implementations by domain (file_ops, code, git, …)
 │   │   ├── memory/
 │   │   │   ├── db.py # Barrel: re-exports domain DB APIs + `_conn`, `migrate`, `_DB_PATH`, `_MIGRATED` (tests patch these)
-│   │   │   ├── db_connection.py  # `_DB_PATH`, `_conn()`
+│   │   │   ├── db_connection.py  # `_DB_PATH` (`LAYLA_DATA_DIR` / `layla.db` when set), `_conn()`
 │   │   │   ├── migrations.py   # `migrate()`, `_migrate_impl()`, schema DDL
-│   │   │   ├── learnings.py, plans_db.py, projects_db.py, conversations.py, …
+│   │   │   ├── learnings.py, plans_db.py, projects_db.py, tasks_db.py, conversations.py, …
 │   │   │   ├── vector_store.py  # ChromaDB, BM25, cross-encoder, HyDE, parent-doc
 │   │   │   └── distill.py   # Post-run memory distillation
 │   │   ├── geometry/        # Structured CAD-like programs (schema, executor, backends)
@@ -121,6 +133,9 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 │   └── (curated base docs are excepted in .gitignore)
 │
 ├── models/                  # GITIGNORED. Put .gguf model files here.
+│
+├── launcher/                # Desktop launcher: `layla_launcher.py`, `layla.spec` (PyInstaller → layla.exe)
+├── installer/               # Windows: `layla.iss` (Inno Setup), `build_installer.ps1`
 │
 ├── fabrication_assist/      # Fabrication assist utilities (NOT imported by agent on main)
 │   ├── assist/              # session, variants, explain, BuildRunner stub, layla_lite.assist(), CLI
@@ -160,7 +175,8 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 
 ```
 Client → POST /agent → routers/agent.py
-  → agent_loop.autonomous_run()
+ → services/coordinator.run(agent_loop.autonomous_run, …) → dispatch_autonomous_run(…)
+ → agent_loop.autonomous_run()
     → runtime_safety.load_config()        # TTL-cached, mtime-cached file reads
     → orchestrator.select_aspect()        # keyword-based, loads personalities/*.json
     → _build_system_head()                # identity + knowledge RAG + learnings + CoT + optional anti-drift block (`anti_drift_prompt_enabled`)

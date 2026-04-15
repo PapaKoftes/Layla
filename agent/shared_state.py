@@ -35,6 +35,7 @@ def pop_one_agent_steer_hint(conversation_id: str) -> str:
 # Set by main after defining _history, touch_activity, etc.
 _history: deque | None = None
 _conv_histories: dict[str, deque] = {}
+_conv_hist_lock = threading.Lock()
 
 # Last Layla auto-commit: for /undo
 _last_layla_commit_repo: str | None = None
@@ -74,34 +75,63 @@ def get_history() -> deque:
 
 def get_conv_history(conversation_id: str, maxlen: int = 20) -> deque:
     cid = (conversation_id or "").strip() or "default"
-    hist = _conv_histories.get(cid)
-    if hist is None:
-        hist = deque(maxlen=maxlen)
-        _conv_histories[cid] = hist
+    created = False
+    with _conv_hist_lock:
+        hist = _conv_histories.get(cid)
+        if hist is None:
+            hist = deque(maxlen=maxlen)
+            _conv_histories[cid] = hist
+            created = True
+    if created:
+        try:
+            from layla.memory.conversations import get_conversation_messages
+
+            rows = get_conversation_messages(cid, limit=maxlen)
+            if rows:
+                with _conv_hist_lock:
+                    h = _conv_histories.get(cid)
+                    if h is not None and len(h) == 0:
+                        for r in rows[-int(getattr(h, "maxlen", maxlen) or maxlen):]:
+                            role = (r.get("role") or "").strip()
+                            content = r.get("content")
+                            if role and isinstance(content, str) and content.strip():
+                                h.append({"role": role, "content": content})
+        except Exception:
+            pass
     return hist
 
 
 def append_conv_history(conversation_id: str, role: str, content: str) -> None:
     hist = get_conv_history(conversation_id)
-    hist.append({"role": role, "content": content})
+    with _conv_hist_lock:
+        hist.append({"role": role, "content": content})
     if role == "assistant":
         # Run compaction in a daemon thread — LLM summarization must never block
         # the response path (llm_serialize_lock contention otherwise stalls streaming).
         import threading as _t
 
-        def _compact_bg(h: list) -> None:
+        def _compact_bg(cid: str) -> None:
             try:
                 import runtime_safety
                 from services.context_manager import maybe_auto_compact
 
                 cfg = runtime_safety.load_config()
                 n_ctx = max(2048, int(cfg.get("n_ctx", 4096)))
-                compacted = maybe_auto_compact(h, n_ctx=n_ctx, cfg=cfg)
-                h[:] = compacted
+                with _conv_hist_lock:
+                    h0 = _conv_histories.get(cid)
+                    snapshot = list(h0) if h0 else []
+                compacted = maybe_auto_compact(snapshot, n_ctx=n_ctx, cfg=cfg)
+                with _conv_hist_lock:
+                    h1 = _conv_histories.get(cid)
+                    if h1 is None:
+                        return
+                    h1.clear()
+                    for item in compacted[-int(getattr(h1, "maxlen", 20) or 20):]:
+                        h1.append(item)
             except Exception:
                 pass
 
-        _t.Thread(target=_compact_bg, args=(hist,), daemon=True, name="auto-compact").start()
+        _t.Thread(target=_compact_bg, args=((conversation_id or "").strip() or "default",), daemon=True, name="auto-compact").start()
 
 
 def get_touch_activity() -> Callable[[], None]:
@@ -159,19 +189,89 @@ def set_last_outcome_evaluation(conversation_id: str, data: dict) -> None:
         return
     with _outcome_eval_lock:
         _last_outcome_evaluation[cid] = dict(data)
+    try:
+        from layla.memory.db import save_outcome_evaluation
+
+        save_outcome_evaluation(cid, data)
+    except Exception:
+        pass
 
 
 def get_last_outcome_evaluation(conversation_id: str) -> dict | None:
     cid = (conversation_id or "").strip() or "default"
     with _outcome_eval_lock:
         v = _last_outcome_evaluation.get(cid)
-        return dict(v) if isinstance(v, dict) else None
+        if isinstance(v, dict):
+            return dict(v)
+    try:
+        from layla.memory.db import get_last_outcome_evaluation_record
+
+        v2 = get_last_outcome_evaluation_record(cid)
+        if isinstance(v2, dict):
+            with _outcome_eval_lock:
+                _last_outcome_evaluation[cid] = dict(v2)
+            return dict(v2)
+    except Exception:
+        pass
+    return None
 
 
 def clear_last_outcome_evaluation(conversation_id: str) -> None:
     cid = (conversation_id or "").strip() or "default"
     with _outcome_eval_lock:
         _last_outcome_evaluation.pop(cid, None)
+
+
+# Coordinator classification trace (last run per conversation; UI / debug)
+_coordinator_trace_lock = threading.Lock()
+_last_coordinator_trace: dict[str, dict] = {}
+
+
+def set_last_coordinator_trace(conversation_id: str, data: dict) -> None:
+    cid = (conversation_id or "").strip() or "default"
+    if not isinstance(data, dict):
+        return
+    with _coordinator_trace_lock:
+        _last_coordinator_trace[cid] = dict(data)
+
+
+def get_last_coordinator_trace(conversation_id: str) -> dict | None:
+    cid = (conversation_id or "").strip() or "default"
+    with _coordinator_trace_lock:
+        v = _last_coordinator_trace.get(cid)
+        return dict(v) if isinstance(v, dict) else None
+
+
+def clear_last_coordinator_trace(conversation_id: str) -> None:
+    cid = (conversation_id or "").strip() or "default"
+    with _coordinator_trace_lock:
+        _last_coordinator_trace.pop(cid, None)
+
+
+# Last execution snapshot per conversation (debug / UI trace panel)
+_execution_snap_lock = threading.Lock()
+_last_execution_snapshot: dict[str, dict] = {}
+
+
+def set_last_execution_snapshot(conversation_id: str, data: dict) -> None:
+    cid = (conversation_id or "").strip() or "default"
+    if not isinstance(data, dict):
+        return
+    with _execution_snap_lock:
+        _last_execution_snapshot[cid] = dict(data)
+
+
+def get_last_execution_snapshot(conversation_id: str) -> dict | None:
+    cid = (conversation_id or "").strip() or "default"
+    with _execution_snap_lock:
+        v = _last_execution_snapshot.get(cid)
+        return dict(v) if isinstance(v, dict) else None
+
+
+def clear_last_execution_snapshot(conversation_id: str) -> None:
+    cid = (conversation_id or "").strip() or "default"
+    with _execution_snap_lock:
+        _last_execution_snapshot.pop(cid, None)
 
 
 # Last decision policy trace per conversation (for /agent/decision_trace)

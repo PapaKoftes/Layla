@@ -1,0 +1,7 @@
+{
+  "id": "research",
+  "name": "Research workflows",
+  "version": "1.0.0",
+  "description": "Literature search, synthesis, and citation hygiene prompts.",
+  "tags": ["arxiv", "papers", "summary"]
+}

@@ -1,6 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none" stroke="#c084fc" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke">
   <ellipse cx="100" cy="128" rx="42" ry="36"/>
   <circle cx="100" cy="78" r="32"/>
+  <!-- orbiting mirror shards -->
+  <path d="M40 68l18 6-6 18-18-6z"/>
+  <path d="M152 64l20 8-8 20-20-8z"/>
+  <path d="M48 152l22 6-6 22-22-6z"/>
+  <path d="M138 150l18 5-5 18-18-5z"/>
+  <!-- ripple rings -->
+  <circle cx="100" cy="78" r="46" opacity="0.7"/>
   <path d="M68 118 L52 128 L58 108"/>
   <path d="M132 118 L148 128 L142 108"/>
   <ellipse cx="88" cy="72" rx="8" ry="12"/>

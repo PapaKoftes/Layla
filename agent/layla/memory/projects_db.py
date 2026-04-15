@@ -3,10 +3,9 @@ import json
 import logging
 import sqlite3
 
-from layla.time_utils import utcnow
-
 from layla.memory.db_connection import _conn
 from layla.memory.migrations import migrate
+from layla.time_utils import utcnow
 
 logger = logging.getLogger("layla")
 

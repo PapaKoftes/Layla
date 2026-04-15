@@ -14,12 +14,12 @@ if not exist ".venv\Scripts\activate.bat" (
 )
 call .venv\Scripts\activate.bat
 
-REM Check for a model (uses models_dir from config, else repo/models)
-python -c "import json,pathlib; p=pathlib.Path('agent/runtime_config.json'); c=json.loads(p.read_text(encoding='utf-8-sig')) if p.exists() else {}; m=c.get('model_filename',''); md=c.get('models_dir',''); f=pathlib.Path(md).expanduser()/m if md and m else pathlib.Path('models')/m if m else None; exit(0 if f and f.exists() else 1)" >nul 2>&1
+REM Check for a model (uses runtime_safety resolution)
+python -c "import sys; sys.path.insert(0,'agent'); import runtime_safety; p = runtime_safety.resolve_model_path(runtime_safety.load_config()); sys.exit(0 if p and p.exists() else 1)" >nul 2>&1
 if errorlevel 1 (
     echo.
     echo  -----------------------------------------------
-    echo   No model found in the models\ folder.
+    echo   No model found.
     echo   Open MODELS.md to choose and download one.
     echo   Then update agent\runtime_config.json with
     echo   the filename and run START.bat again.

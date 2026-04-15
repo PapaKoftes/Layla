@@ -1,0 +1,7 @@
+{
+  "id": "cad_cam",
+  "name": "CAD / CAM",
+  "version": "1.0.0",
+  "description": "DXF, machining IR, and fabrication-adjacent workflows (see docs/FABRICATION_IR_AND_TOOLCHAIN.md).",
+  "tags": ["dxf", "gcode", "machining"]
+}

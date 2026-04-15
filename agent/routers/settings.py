@@ -36,7 +36,7 @@ def setup_status():
     model_filename = cfg.get("model_filename", "")
     placeholder = not model_filename or model_filename == "your-model.gguf"
     models_dir_raw = cfg.get("models_dir")
-    models_dir = Path(models_dir_raw).expanduser().resolve() if models_dir_raw else REPO_ROOT / "models"
+    models_dir = Path(models_dir_raw).expanduser().resolve() if models_dir_raw else _rs.default_models_dir()
     model_path = _rs.resolve_model_path(cfg)
     model_found = not placeholder and model_path.exists()
     available_models = [p.name for p in sorted(models_dir.glob("*.gguf"))] if models_dir.exists() else []
@@ -153,17 +153,39 @@ def setup_models():
         return {"ok": False, "error": str(e), "catalog": []}
 
 
+def _sse_error(msg: str) -> StreamingResponse:
+    async def _err():
+        yield f"data: {json.dumps({'error': msg})}\n\n"
+
+    return StreamingResponse(
+        _err(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.get("/setup/download")
 async def setup_download(url: str, filename: str = ""):
     """Stream model download progress as SSE events. url: HuggingFace direct .gguf URL."""
     cfg = _rs.load_config()
     models_dir_raw = cfg.get("models_dir")
-    models_dir = Path(models_dir_raw).expanduser().resolve() if models_dir_raw else REPO_ROOT / "models"
+    models_dir = Path(models_dir_raw).expanduser().resolve() if models_dir_raw else _rs.default_models_dir()
     models_dir.mkdir(parents=True, exist_ok=True)
-    fname = filename or url.rstrip("/").split("/")[-1]
+    raw = (filename or url.rstrip("/").split("/")[-1] or "").strip()
+    fname = Path(raw).name.strip()
+    if not fname or fname in (".", ".."):
+        return _sse_error("Invalid filename")
+    if "\x00" in fname or any(ord(c) < 32 for c in fname):
+        return _sse_error("Invalid filename")
     if not fname.endswith(".gguf"):
         fname += ".gguf"
     dest = models_dir / fname
+    try:
+        md_res = models_dir.resolve()
+        dest_res = dest.resolve()
+        dest_res.relative_to(md_res)
+    except (OSError, ValueError):
+        return _sse_error("Invalid destination path")
 
     async def _stream():
         try:
@@ -223,6 +245,7 @@ async def setup_download(url: str, filename: str = ""):
                     cfg2["model_filename"] = fname
                     cfg2["models_dir"] = str(models_dir)
                     _rs.CONFIG_FILE.write_text(json.dumps(cfg2, indent=2), encoding="utf-8")
+                    _rs.invalidate_config_cache()
                 except Exception as cfg_err:
                     logger.warning("setup_download: config save failed: %s", cfg_err)
                 yield f"data: {json.dumps({'pct': 100, 'done': True, 'filename': fname})}\n\n"
@@ -313,5 +336,141 @@ async def apply_runtime_preset(req: Request):
         if str(ve) == "unknown_preset":
             return JSONResponse({"ok": False, "error": "unknown_preset"}, status_code=400)
         return JSONResponse({"ok": False, "error": str(ve)}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.post("/setup/auto")
+async def setup_auto():
+    """Run idempotent auto-setup (doctor, config sanity) after the character creator / wizard."""
+    try:
+        from services.auto_setup import run_auto_setup
+
+        return await asyncio.to_thread(run_auto_setup)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.get("/settings/optional_features")
+def settings_optional_features():
+    """Optional Python feature bundles (voice, llama_cpp, etc.) for the Features panel."""
+    try:
+        from services.dependency_recovery import get_optional_features
+
+        return JSONResponse({"ok": True, "features": get_optional_features()})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.post("/settings/install_feature")
+async def settings_install_feature(req: Request):
+    """Allowlisted pip install for one feature id (explicit operator action)."""
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    fid = str((body or {}).get("feature_id") or "").strip()
+    if not fid:
+        return JSONResponse({"ok": False, "error": "feature_id required"}, status_code=400)
+    try:
+        from services.dependency_recovery import install_feature
+
+        return JSONResponse(install_feature(fid))
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.post("/settings/git_undo_checkpoint")
+async def settings_git_undo_checkpoint(req: Request):
+    """Revert the last Layla admin checkpoint commit in the given workspace (git)."""
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    ws = str((body or {}).get("workspace_root") or "").strip()
+    if not ws:
+        return JSONResponse({"ok": False, "error": "workspace_root required"}, status_code=400)
+    try:
+        from services.admin_checkpoint import git_revert_last_checkpoint
+
+        return JSONResponse(git_revert_last_checkpoint(ws))
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+# ── Operator quiz + profile (Layla v3) ───────────────────────────────────────
+
+
+@router.get("/operator/quiz/stage/{stage_idx}")
+def operator_quiz_stage(stage_idx: int):
+    """Return quiz questions for a stage (scenario-based, game-flavored)."""
+    try:
+        from services.operator_quiz import get_stage
+
+        return JSONResponse(get_stage(stage_idx))
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.post("/operator/quiz/submit")
+async def operator_quiz_submit(req: Request):
+    """
+    Submit quiz answers and optionally persist the resulting identity snapshot.
+
+    Body:
+      - answers: [{question_id, option_id}, ...]
+      - finalize: bool (default false). If true, stores stats/prefs in user_identity.
+    """
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    answers = (body or {}).get("answers") or []
+    finalize = bool((body or {}).get("finalize") or False)
+    if not isinstance(answers, list):
+        return JSONResponse({"ok": False, "error": "answers must be a list"}, status_code=400)
+    try:
+        from services.operator_quiz import load_profile, save_identity_kv, score_answers
+
+        seed = (load_profile() or {}).get("raw") or {}
+        preview, kv = score_answers(answers, seed_identity=seed)
+        if finalize:
+            save_identity_kv(kv)
+        return JSONResponse({"ok": True, "preview": preview, "stored": finalize})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.get("/operator/profile")
+def operator_profile():
+    """Return the current operator profile (stats, maturity seed, prefs) from user_identity."""
+    try:
+        from services.operator_quiz import load_profile
+
+        return JSONResponse(load_profile())
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.post("/operator/profile/stat")
+async def operator_profile_set_stat(req: Request):
+    """Manual override for one stat (1-10). Body: {stat: technical|creative|..., value: 1..10}."""
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    stat = str((body or {}).get("stat") or "").strip().lower()
+    value = (body or {}).get("value")
+    if not stat:
+        return JSONResponse({"ok": False, "error": "stat required"}, status_code=400)
+    try:
+        from layla.memory.db import set_user_identity
+        from services.operator_quiz import STAT_IDS, _clamp_int
+
+        if stat not in STAT_IDS:
+            return JSONResponse({"ok": False, "error": "unknown_stat", "known": list(STAT_IDS)}, status_code=400)
+        v = _clamp_int(value, 1, 10, 5)
+        set_user_identity(f"stat_{stat}", str(v))
+        return JSONResponse({"ok": True, "stat": stat, "value": v})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)

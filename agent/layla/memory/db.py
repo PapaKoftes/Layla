@@ -3,139 +3,169 @@ SQLite persistent memory for Layla — re-exports domain modules.
 
 Tables and behavior unchanged; see layla/memory/migrations.py for schema.
 """
-from layla.memory.db_connection import _DB_PATH, _conn
-from layla.memory.migrations import _MIGRATED, migrate
-
-from layla.memory.learnings import (
-    save_learning,
-    _ASPECT_LEARNING_PREFERENCE,
-    count_learnings,
-    get_recent_learnings,
-    _apply_confidence_decay,
-    search_learnings_fts,
-    get_learnings_by_embedding_ids,
-    delete_learnings_by_id,
-    get_learnings_due_for_review,
-    schedule_next_review,
-    set_learning_importance,
-)
-
-from layla.memory.plans_db import (
-    save_study_plan,
-    get_active_study_plans,
-    get_plan_by_topic,
-    update_study_progress,
-    _VALID_PLAN_STATUSES,
-    create_layla_plan,
-    get_layla_plan,
-    update_layla_plan,
-    list_layla_plans,
-    approve_layla_plan,
-    set_layla_plan_status,
-    normalize_workspace_root,
-    save_repo_cognition_snapshot,
-    get_repo_cognition_snapshot,
-    list_repo_cognition_snapshots,
-)
-
 from layla.memory.audit_session import (
-    log_wakeup,
-    get_last_wakeup,
-    log_audit,
-    get_recent_audit,
-    save_session_prompt,
-    get_recent_session_prompts,
     add_tool_permission_grant,
+    get_last_wakeup,
+    get_recent_audit,
+    get_recent_session_prompts,
+    log_audit,
+    log_wakeup,
+    save_session_prompt,
     tool_grant_matches,
 )
-
-from layla.memory.conversations import (
-    add_conversation_summary,
-    get_recent_conversation_summaries,
-    _auto_name_conversation,
-    create_conversation,
-    get_conversation,
-    list_conversations,
-    rename_conversation,
-    delete_conversation,
-    append_conversation_message,
-    get_conversation_messages,
-    search_conversations,
-)
-
-from layla.memory.projects_db import (
-    create_project,
-    list_projects,
-    get_project,
-    update_project,
-    delete_project,
-    set_conversation_project,
-    get_project_context,
-    PROJECT_LIFECYCLE_STAGES,
-    set_project_context,
-)
-
-from layla.memory.user_profile import (
-    add_relationship_memory,
-    get_recent_relationship_memories,
-    TIMELINE_EVENT_TYPES,
-    add_timeline_event,
-    get_recent_timeline_events,
-    USER_IDENTITY_KEYS,
-    get_user_identity,
-    get_all_user_identity,
-    set_user_identity,
-    create_episode,
-    add_episode_event,
-    get_recent_episodes,
-    record_tool_outcome,
-    get_tool_reliability,
-    add_goal,
-    add_goal_progress,
-    get_active_goals,
-    save_aspect_memory,
-    get_aspect_memories,
-    save_earned_title,
-    get_earned_title,
-)
-
 from layla.memory.capabilities_db import (
-    get_capability_domains,
+    append_scheduler_history,
+    get_best_capability_implementation,
     get_capabilities,
     get_capability,
-    insert_capability_event,
-    update_capability,
+    get_capability_dependencies,
+    get_capability_domains,
+    get_capability_implementation,
     get_recent_capability_events,
     get_scheduler_history,
-    append_scheduler_history,
-    get_capability_dependencies,
-    get_capability_implementation,
-    upsert_capability_implementation,
-    get_best_capability_implementation,
-    list_capability_implementations,
     get_style_profile,
+    insert_capability_event,
+    list_capability_implementations,
     set_style_profile,
+    update_capability,
+    upsert_capability_implementation,
 )
-
+from layla.memory.conversations import (
+    _auto_name_conversation,
+    add_conversation_summary,
+    append_conversation_message,
+    create_conversation,
+    delete_conversation,
+    get_conversation,
+    get_conversation_messages,
+    get_recent_conversation_summaries,
+    list_conversations,
+    list_conversations_filtered,
+    rename_conversation,
+    search_conversations,
+    search_conversations_filtered,
+    set_conversation_tags,
+    suggest_conversation_tags,
+)
+from layla.memory.db_connection import _DB_PATH, _conn
+from layla.memory.improvements import (
+    create_improvement,
+    get_improvements_by_ids,
+    list_improvements,
+    set_improvement_status,
+)
+from layla.memory.journal import (
+    add_journal_entry,
+    list_journal_entries,
+)
+from layla.memory.learnings import (
+    _ASPECT_LEARNING_PREFERENCE,
+    _apply_confidence_decay,
+    count_learnings,
+    delete_learnings_by_id,
+    get_last_outcome_evaluation_record,
+    get_learnings_by_embedding_ids,
+    get_learnings_due_for_review,
+    get_recent_learnings,
+    get_top_learnings_for_planning,
+    save_learning,
+    save_outcome_evaluation,
+    schedule_next_review,
+    search_learnings_fts,
+    set_learning_importance,
+)
+from layla.memory.migrations import _MIGRATED, migrate
 from layla.memory.missions_db import (
-    create_mission_chain,
-    get_pending_mission_chains,
     complete_mission_chain,
-    save_mission,
-    get_mission,
-    update_mission_status,
-    update_mission_progress,
+    create_mission_chain,
     get_active_missions,
-    get_missions,
-    save_background_task,
-    update_background_task,
     get_background_task,
+    get_mission,
+    get_missions,
+    get_pending_mission_chains,
     list_background_tasks,
+    save_background_task,
+    save_mission,
+    update_background_task,
+    update_mission_progress,
+    update_mission_status,
 )
-
+from layla.memory.plans_db import (
+    _VALID_PLAN_STATUSES,
+    approve_layla_plan,
+    create_layla_plan,
+    get_active_study_plans,
+    get_layla_plan,
+    get_plan_by_topic,
+    get_repo_cognition_snapshot,
+    list_layla_plans,
+    list_repo_cognition_snapshots,
+    normalize_workspace_root,
+    save_repo_cognition_snapshot,
+    save_study_plan,
+    set_layla_plan_status,
+    update_layla_plan,
+    update_study_progress,
+)
 from layla.memory.telemetry_db import (
-    log_telemetry_event,
+    get_model_success_rates,
+    log_model_outcome,
+)
+from layla.memory.projects_db import (
+    PROJECT_LIFECYCLE_STAGES,
+    create_project,
+    delete_project,
+    get_project,
+    get_project_context,
+    list_projects,
+    set_conversation_project,
+    set_project_context,
+    update_project,
+)
+from layla.memory.strategy_stats import (
+    get_preferred_strategy,
+    get_strategy_stat_row,
+    record_strategy_stat,
+)
+from layla.memory.tasks_db import (
+    create_task as create_persistent_task,
+)
+from layla.memory.tasks_db import (
+    get_task as get_persistent_task,
+)
+from layla.memory.tasks_db import (
+    list_tasks as list_persistent_tasks,
+)
+from layla.memory.tasks_db import (
+    update_task as update_persistent_task,
+)
+from layla.memory.telemetry_db import (
     get_recent_telemetry_events,
+    log_telemetry_event,
+)
+from layla.memory.user_profile import (
+    TIMELINE_EVENT_TYPES,
+    USER_IDENTITY_KEYS,
+    add_episode_event,
+    add_goal,
+    add_goal_progress,
+    add_relationship_memory,
+    add_timeline_event,
+    create_episode,
+    get_active_goals,
+    get_all_user_identity,
+    get_aspect_memories,
+    get_earned_title,
+    get_recent_episodes,
+    get_recent_relationship_memories,
+    get_recent_timeline_events,
+    get_recent_tool_outcome_failures,
+    get_tool_reliability,
+    get_user_identity,
+    record_tool_outcome,
+    save_aspect_memory,
+    save_earned_title,
+    set_user_identity,
 )
 
 __all__ = [
@@ -211,6 +241,7 @@ __all__ = [
     'get_recent_episodes',
     'record_tool_outcome',
     'get_tool_reliability',
+    'get_recent_tool_outcome_failures',
     'add_goal',
     'add_goal_progress',
     'get_active_goals',
@@ -248,5 +279,12 @@ __all__ = [
     'list_background_tasks',
     'log_telemetry_event',
     'get_recent_telemetry_events',
+    'record_strategy_stat',
+    'get_strategy_stat_row',
+    'get_preferred_strategy',
+    'create_persistent_task',
+    'update_persistent_task',
+    'get_persistent_task',
+    'list_persistent_tasks',
 ]
 

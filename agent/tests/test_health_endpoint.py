@@ -66,3 +66,14 @@ def test_health_deps_route():
     dep = data["dependencies"]
     assert isinstance(dep, dict)
     assert "llama_cpp" in dep
+
+
+def test_setup_download_rejects_invalid_filename():
+    """Filename must not contain NUL or control chars (path / trust boundary)."""
+    client = TestClient(app)
+    r = client.get(
+        "/setup/download",
+        params={"url": "https://example.com/files/x.gguf", "filename": "bad\x00x.gguf"},
+    )
+    assert r.status_code == 200
+    assert "Invalid filename" in r.text or '"error"' in r.text

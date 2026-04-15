@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import tempfile
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -25,13 +26,17 @@ def load_codex(workspace_root: str | Path) -> dict[str, Any]:
     root = Path(str(workspace_root)).expanduser().resolve()
     p = codex_path(root)
     if not p.is_file():
-        return {"entities": {}}
+        return {"entities": {}, "proposals": []}
     try:
         data = json.loads(p.read_text(encoding="utf-8", errors="replace"))
-        return data if isinstance(data, dict) else {"entities": {}}
+        if not isinstance(data, dict):
+            return {"entities": {}, "proposals": []}
+        data.setdefault("entities", {})
+        data.setdefault("proposals", [])
+        return data
     except Exception as e:
         logger.warning("relationship_codex load failed: %s", e)
-        return {"entities": {}}
+        return {"entities": {}, "proposals": []}
 
 
 def save_codex(workspace_root: str | Path, data: dict[str, Any]) -> tuple[bool, str]:
@@ -43,6 +48,7 @@ def save_codex(workspace_root: str | Path, data: dict[str, Any]) -> tuple[bool, 
         return False, str(e)
     data = dict(data)
     data.setdefault("entities", {})
+    data.setdefault("proposals", [])
     raw = json.dumps(data, indent=2, ensure_ascii=False, default=str).encode("utf-8")
     if len(raw) > 2_000_000:
         return False, "relationship_codex too large"
@@ -134,6 +140,140 @@ def suggest_codex_updates(
         "suggestions": suggestions[:12],
         "note": "Apply manually via Library → Workspace → Codex or approved writes; this tool does not save.",
     }
+
+
+def _detect_candidate_names(text: str) -> list[str]:
+    if not text:
+        return []
+    skip = frozenset(
+        {"the", "a", "an", "and", "or", "to", "for", "with", "from", "this", "that", "layla", "user", "file", "code"}
+    )
+    out: list[str] = []
+    seen: set[str] = set()
+    parts = str(text).replace(",", " ").replace("(", " ").replace(")", " ").split()
+    for i, raw in enumerate(parts):
+        w = raw.strip("\"'").strip()
+        if len(w) < 2:
+            continue
+        if w.lower() in skip:
+            continue
+        # Sentence capitalization noise: ignore the very first token.
+        if i == 0:
+            continue
+        if w[0].isupper():
+            key = w.strip()
+            if key.lower() in seen:
+                continue
+            seen.add(key.lower())
+            out.append(key[:40])
+    return out[:40]
+
+
+def list_proposals(workspace_root: str | Path) -> dict[str, Any]:
+    data = load_codex(workspace_root)
+    props = data.get("proposals")
+    return {"ok": True, "proposals": props if isinstance(props, list) else []}
+
+
+def generate_proposals(
+    workspace_root: str | Path,
+    *,
+    goal_or_context: str = "",
+    recent_actions: str = "",
+) -> dict[str, Any]:
+    """Write proposals (non-destructive) under codex['proposals']."""
+    root = Path(str(workspace_root)).expanduser().resolve()
+    data = load_codex(root)
+    entities = data.get("entities") if isinstance(data.get("entities"), dict) else {}
+    props = data.get("proposals") if isinstance(data.get("proposals"), list) else []
+
+    existing_entity = {str(k).lower() for k in entities.keys()} if isinstance(entities, dict) else set()
+    existing_prop = {str(p.get("name") or "").strip().lower() for p in props if isinstance(p, dict)}
+    text = f"{goal_or_context or ''}\n{recent_actions or ''}"
+    candidates = _detect_candidate_names(text)
+    added: list[dict[str, Any]] = []
+
+    for name in candidates:
+        key = name.strip().lower()
+        if not key or key in existing_entity or key in existing_prop:
+            continue
+        pr = {
+            "id": str(uuid.uuid4()),
+            "name": name.strip(),
+            "created_at": str(__import__("datetime").datetime.utcnow().isoformat()) + "Z",
+            "patch": {"notes": "", "traits": [], "history": []},
+            "status": "proposed",
+        }
+        props.append(pr)
+        added.append(pr)
+        existing_prop.add(key)
+        if len(added) >= 12:
+            break
+
+    data["entities"] = entities if isinstance(entities, dict) else {}
+    data["proposals"] = props
+    ok, err = save_codex(root, data)
+    if not ok:
+        return {"ok": False, "error": err or "save_failed"}
+    return {"ok": True, "added": added, "count_added": len(added)}
+
+
+def approve_proposal(workspace_root: str | Path, proposal_id: str) -> dict[str, Any]:
+    root = Path(str(workspace_root)).expanduser().resolve()
+    pid = (proposal_id or "").strip()
+    if not pid:
+        return {"ok": False, "error": "proposal_id required"}
+    data = load_codex(root)
+    props = data.get("proposals") if isinstance(data.get("proposals"), list) else []
+    hit = None
+    keep: list[dict[str, Any]] = []
+    for p in props:
+        if not isinstance(p, dict):
+            continue
+        if str(p.get("id") or "").strip() == pid:
+            hit = p
+            continue
+        keep.append(p)
+    if not hit:
+        return {"ok": False, "error": "not_found"}
+    name = str(hit.get("name") or "").strip()
+    patch = hit.get("patch") if isinstance(hit.get("patch"), dict) else {}
+    res = upsert_entity(root, name, patch)
+    if res.get("ok") is not True:
+        return res
+
+    # Reload to avoid clobbering entities written by upsert_entity.
+    data2 = load_codex(root)
+    data2["proposals"] = keep
+    ok, err = save_codex(root, data2)
+    if not ok:
+        return {"ok": False, "error": err or "save_failed"}
+    return {"ok": True, "approved": {"id": pid, "name": name}}
+
+
+def dismiss_proposal(workspace_root: str | Path, proposal_id: str) -> dict[str, Any]:
+    root = Path(str(workspace_root)).expanduser().resolve()
+    pid = (proposal_id or "").strip()
+    if not pid:
+        return {"ok": False, "error": "proposal_id required"}
+    data = load_codex(root)
+    props = data.get("proposals") if isinstance(data.get("proposals"), list) else []
+    keep: list[dict[str, Any]] = []
+    removed = False
+    for p in props:
+        if not isinstance(p, dict):
+            continue
+        if str(p.get("id") or "").strip() == pid:
+            removed = True
+            continue
+        keep.append(p)
+    if not removed:
+        return {"ok": False, "error": "not_found"}
+    data["proposals"] = keep
+    ok, err = save_codex(root, data)
+    if not ok:
+        return {"ok": False, "error": err or "save_failed"}
+    return {"ok": True}
 
 
 def format_codex_prompt_digest(data: dict[str, Any], max_chars: int = 1200) -> str:

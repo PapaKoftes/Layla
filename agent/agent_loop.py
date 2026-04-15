@@ -2,32 +2,34 @@ import json
 import logging
 import queue
 import re
+import threading
 import time
 from collections.abc import Callable
-from typing import Any
 from pathlib import Path
+from typing import Any
 
 import psutil
-import threading
 
 logger = logging.getLogger("layla")
 
 import orchestrator  # noqa: E402
 import runtime_safety  # noqa: E402
+from core.executor import run_tool as _run_tool  # noqa: E402
 from decision_schema import parse_decision as _parse_decision  # noqa: E402
 from layla.memory.db import get_aspect_memories as _db_get_aspect_memories  # noqa: E402
 from layla.memory.db import get_recent_learnings as _db_get_learnings  # noqa: E402
 from layla.memory.db import migrate as _db_migrate  # noqa: E402
 from layla.tools.registry import TOOLS, set_effective_sandbox  # noqa: E402
+from services.agent_loop_formatting import format_tool_steps_for_prompt as _format_steps_impl
 from services.agent_safety import (  # noqa: E402
     maybe_planning_strict_refusal as _maybe_planning_strict_refusal,
+)
+from services.agent_safety import (
     maybe_step_tool_allowlist_refusal as _maybe_step_tool_allowlist_refusal,
 )
 from services.context_manager import DEFAULT_BUDGETS, build_system_prompt  # noqa: E402
-from services.llm_gateway import get_stop_sequences, llm_serialize_lock, run_completion  # noqa: E402
-from core.executor import run_tool as _run_tool  # noqa: E402
-from services.agent_loop_formatting import format_tool_steps_for_prompt as _format_steps
 from services.context_window_ux import emit_context_window_ux
+from services.llm_gateway import get_stop_sequences, llm_serialize_lock, run_completion  # noqa: E402
 from services.outcome_writer import (  # noqa: E402
     _auto_extract_learnings,
     _extract_patch_text,
@@ -45,16 +47,6 @@ from services.resource_manager import (  # noqa: E402
 REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENT_DIR = Path(__file__).resolve().parent
 RESEARCH_LAB_ROOT = AGENT_DIR / ".research_lab"
-
-# Pinned for Echo/Lilith when pin_psychology_framework_excerpt is true — non-clinical collaboration framing only.
-_INTERACTION_FRAMEWORK_PIN = (
-    "Interaction frameworks (non-clinical): Use psychology-informed language for collaboration and reflection only. "
-    "Describe observable patterns; offer hypotheses as questions — never assign psychiatric diagnoses, "
-    "DSM/ICD-style disorder labels, or clinical identities to the operator. "
-    "Prefer: situation → thought → emotion → behavior (CBT-style) as a shared vocabulary, not a verdict. "
-    "If someone may be in immediate danger, encourage local emergency services or a local crisis line; you are not a monitor or clinician. "
-    "Full reference when indexed: knowledge/echo-psychology-frameworks.md."
-)
 
 _SKIP_TOOL_OUTPUT_VALIDATION = frozenset({
     "approval_required", "tool_policy_denied", "tool_loop_detected",
@@ -119,8 +111,8 @@ class _BackgroundProgressSteps(list):
                     "step_index": len(self) - 1,
                 }
             )
-        except Exception:
-            pass
+        except Exception as _exc:
+            logger.debug("agent_loop:L122: %s", _exc, exc_info=False)
 
 
 def _maybe_validate_tool_output(intent: str, result: object) -> object:
@@ -154,6 +146,53 @@ def _maybe_validate_tool_output(intent: str, result: object) -> object:
 
     _log_tool_outcome(intent, out if isinstance(out, dict) else result)
     return out
+
+
+def _apply_deterministic_tool_verification(
+    intent: str,
+    result: object,
+    *,
+    workspace: str,
+    cfg: dict,
+) -> tuple[object, bool, str]:
+    """
+    Deterministic post-tool semantic verification.
+    Returns (possibly-updated-result, verified_ok, reason).
+
+    When enabled, this can downgrade a tool success to a failure if verification fails.
+    """
+    if not isinstance(result, dict):
+        return result, True, "non_dict_result"
+    if not result.get("ok"):
+        return result, False, "tool_reported_failure"
+    try:
+        if not bool(cfg.get("deterministic_tool_verification_enabled", True)):
+            return result, True, "disabled"
+    except Exception:
+        return result, True, "disabled"
+    try:
+        from services.tool_output_validator import deterministic_verify_tool_result
+
+        vr = deterministic_verify_tool_result(intent, result, workspace_root=workspace or "")
+        ok = bool(vr.get("ok"))
+        reason = str(vr.get("reason") or ("ok" if ok else "failed"))
+        out = dict(result)
+        out["_deterministic_verify"] = vr
+        out["_deterministic_verified"] = True
+        if not ok:
+            # Treat as failure: prevents cascade based on a false-positive ok.
+            out["ok"] = False
+            out["error"] = out.get("error") or "deterministic_verification_failed"
+            out["reason"] = out.get("reason") or reason
+        return out, ok, reason
+    except Exception as _exc:
+        try:
+            out = dict(result)
+            out["_deterministic_verified"] = False
+            out["_deterministic_verify_error"] = str(_exc)[:240]
+            return out, True, "verifier_unavailable"
+        except Exception:
+            return result, True, "verifier_unavailable"
 
 
 def _normalize_mcp_tool_args(args: dict) -> dict:
@@ -191,8 +230,8 @@ def _inject_cancel_message(conversation_history: list, tool_name: str, reason: s
         try:
             from layla.memory.db import log_audit
             log_audit(tool_name, f"cancel:{reason}", "agent_loop", False)
-        except Exception:
-            pass
+        except Exception as _exc:
+            logger.debug("agent_loop:L194: %s", _exc, exc_info=False)
         logger.info("cancel synthetic message injected for tool=%s reason=%s", tool_name, reason)
     except Exception as e:
         logger.debug("_inject_cancel_message failed: %s", e)
@@ -201,12 +240,19 @@ def _inject_cancel_message(conversation_history: list, tool_name: str, reason: s
 def _register_exact_tool_call(state: dict, intent: str, decision: dict | None) -> None:
     if intent in ("reason", "finish", "wakeup", "none"):
         return
+    state["tool_attempted_this_turn"] = True
+    try:
+        tu = state.setdefault("tools_used", [])
+        if intent and intent not in tu:
+            tu.append(intent)
+    except Exception:
+        pass
     try:
         from services.tool_loop_detection import exact_call_key
 
         state.setdefault("_recent_exact_calls", set()).add(exact_call_key(intent, decision))
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("agent_loop:L208: %s", _exc, exc_info=False)
 
 
 def _get_effective_config(base_cfg: dict) -> dict:
@@ -354,6 +400,50 @@ def _approval_preview_diff(tool: str, args: dict, workspace: str) -> None:
                 args["diff"] = "[batch: first file]\n" + str(sub.get("diff", ""))
             else:
                 args["diff"] = "(write_files_batch: no preview)"
+        elif tool == "replace_in_file" and args.get("path") and "old_text" in args and "new_text" in args:
+            path = Path(str(args["path"]))
+            if not path.is_absolute() and ws and ws.exists():
+                path = (ws / path).resolve()
+            else:
+                path = path.expanduser().resolve()
+            if not path.exists():
+                args["diff"] = "(file missing)"
+                return
+            try:
+                cur = path.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                cur = ""
+            ot = str(args.get("old_text") or "")
+            nt = str(args.get("new_text") or "")
+            if ot not in cur:
+                args["diff"] = "(old_text not in file)"
+                return
+            try:
+                cnt = int(args.get("count") or 1)
+            except (TypeError, ValueError):
+                cnt = 1
+            newc = cur
+            replaced = 0
+            idx = 0
+            while replaced < cnt:
+                pos = newc.find(ot, idx)
+                if pos < 0:
+                    break
+                newc = newc[:pos] + nt + newc[pos + len(ot) :]
+                replaced += 1
+                idx = pos + len(nt)
+            diff = list(
+                difflib.unified_diff(
+                    cur.splitlines(True),
+                    newc.splitlines(True),
+                    fromfile=f"a/{path.name}",
+                    tofile=f"b/{path.name}",
+                    lineterm="",
+                )
+            )
+            if len(diff) > max_lines:
+                diff = diff[:max_lines] + [f"\n... ({len(diff) - max_lines} more lines omitted)\n"]
+            args["diff"] = "".join(diff) if diff else "(no textual change)"
         elif tool == "search_replace":
             root = Path(str(args.get("root") or workspace or "")).expanduser().resolve()
             fg = str(args.get("file_glob") or "*")
@@ -588,8 +678,8 @@ def stream_reason(
 
                 if is_routing_enabled():
                     set_model_override(classify_task_for_routing(goal, context or "", _cfg_route))
-        except Exception:
-            pass
+        except Exception as _exc:
+            logger.debug("agent_loop:L591: %s", _exc, exc_info=False)
     try:
         yield from _stream_reason_body(
             goal,
@@ -645,8 +735,8 @@ def _stream_reason_body(
     if not _stream_recall and goal and _stream_rmode != "none":
         try:
             _stream_recall = _semantic_recall(goal, k=runtime_safety.load_config().get("semantic_k", 5)).strip()
-        except Exception:
-            pass
+        except Exception as _exc:
+            logger.warning("agent_loop:L648: %s", _exc, exc_info=True)
     head = _build_system_head(
         goal=goal,
         aspect=active_aspect,
@@ -760,16 +850,35 @@ def _has_any_grant(tool: str, args: dict | None = None) -> bool:
         from services.session_grants import has_session_grant
         if has_session_grant(tool, args):
             return True
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("agent_loop:L763: %s", _exc, exc_info=False)
     try:
         from layla.memory.db import tool_grant_matches
         cmd = (args or {}).get("command") or (args or {}).get("path") or ""
         if tool_grant_matches(tool, cmd):
             return True
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("agent_loop:L770: %s", _exc, exc_info=False)
     return False
+
+
+def _admin_pre_mutate(cfg: dict, workspace: str, tool: str, summary: str) -> None:
+    """When admin_mode: git checkpoint + audit line before a mutating tool runs."""
+    if not (isinstance(cfg, dict) and cfg.get("admin_mode")):
+        return
+    if cfg.get("admin_auto_checkpoint", True):
+        try:
+            from services.admin_checkpoint import git_checkpoint_layla
+
+            git_checkpoint_layla(workspace, tool, summary)
+        except Exception as _exc:
+            logger.debug("agent_loop: admin checkpoint: %s", _exc, exc_info=False)
+    try:
+        from shared_state import get_audit
+
+        get_audit()(tool, f"admin_auto {summary[:200]}", "admin_mode", True)
+    except Exception as _exc:
+        logger.debug("agent_loop: admin audit: %s", _exc, exc_info=False)
 
 
 def _write_pending(tool: str, args: dict, ttl_seconds: int = 3600) -> str:
@@ -785,6 +894,26 @@ def _write_pending(tool: str, args: dict, ttl_seconds: int = 3600) -> str:
         data = json.loads(pending_file.read_text(encoding="utf-8")) if pending_file.exists() else []
     except Exception:
         data = []
+    # Prune old/non-pending approvals to keep file bounded.
+    try:
+        from datetime import datetime, timedelta
+
+        keep_days = 7
+        cutoff = (utcnow() - timedelta(days=keep_days)).isoformat()
+        pruned = []
+        for r in data if isinstance(data, list) else []:
+            if not isinstance(r, dict):
+                continue
+            st = str(r.get("status") or "pending")
+            if st != "pending":
+                continue
+            req = str(r.get("requested_at") or "")
+            if req and req < cutoff:
+                continue
+            pruned.append(r)
+        data = pruned[-500:]
+    except Exception:
+        pass
     entry_id = str(_uuid.uuid4())
     risk = (TOOLS.get(tool) or {}).get("risk_level") or "medium"
     now = utcnow()
@@ -792,8 +921,8 @@ def _write_pending(tool: str, args: dict, ttl_seconds: int = 3600) -> str:
     try:
         _pcfg = runtime_safety.load_config()
         ttl_seconds = int(_pcfg.get("approval_ttl_seconds", ttl_seconds) or ttl_seconds)
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("agent_loop:L795: %s", _exc, exc_info=False)
     data.append({
         "id": entry_id,
         "tool": tool,
@@ -919,16 +1048,16 @@ def _enrich_deliberation_context(context: str) -> str:
             if pc.get("goals"):
                 proj_parts.append(f"Goals: {(pc.get('goals') or '')[:200]}")
             extra.append("Project context: " + "; ".join(proj_parts))
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("agent_loop:L922: %s", _exc, exc_info=False)
     try:
         learnings = _db_get_learnings(n=5)
         if learnings:
             prefs = [ (ln.get("content") or "")[:80] for ln in learnings if (ln.get("content") or "").strip() ]
             if prefs:
                 extra.append("Echo (patterns/preferences): " + "; ".join(prefs[:3]))
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("agent_loop:L930: %s", _exc, exc_info=False)
     if not extra:
         return context or ""
     return (context or "").strip() + "\n\n" + "\n".join(extra)
@@ -1003,8 +1132,8 @@ def _aspect_dict_by_id(aspect_id: str) -> dict | None:
         for a in orchestrator._load_aspects():
             if (a.get("id") or "").strip().lower() == aid:
                 return a
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("agent_loop:L1006: %s", _exc, exc_info=False)
     return None
 
 
@@ -1098,12 +1227,30 @@ def _build_system_head(
             except Exception as _e:
                 logger.debug("context[knowledge_refresh] failed: %s", _e)
             k = max(1, min(20, int(cfg.get("knowledge_chunks_k", 5))))
+            _proj_domains: list[str] = []
+            try:
+                from layla.memory.db import get_project_context
+
+                _pc = get_project_context() or {}
+                _proj_domains = [str(d) for d in (_pc.get("domains") or []) if d]
+            except Exception as _pde:
+                logger.debug("context[project_domains_knowledge] failed: %s", _pde)
             # Use parent-doc retrieval when available for richer context
             try:
                 from layla.memory.vector_store import get_knowledge_chunks_with_parent
-                chunks_with_sources = get_knowledge_chunks_with_parent(goal, k=k)
+                chunks_with_sources = get_knowledge_chunks_with_parent(
+                    goal,
+                    k=k,
+                    aspect_id=(aspect.get("id") or "") if isinstance(aspect, dict) else "",
+                    project_domains=_proj_domains or None,
+                )
             except Exception:
-                chunks_with_sources = get_knowledge_chunks_with_sources(goal, k=k)
+                chunks_with_sources = get_knowledge_chunks_with_sources(
+                    goal,
+                    k=k,
+                    aspect_id=(aspect.get("id") or "") if isinstance(aspect, dict) else "",
+                    project_domains=_proj_domains or None,
+                )
             if chunks_with_sources:
                 knowledge = "Reference docs (relevant to this turn):\n" + "\n\n".join(c.get("text", "") for c in chunks_with_sources[:k])
                 if state is not None:
@@ -1115,7 +1262,6 @@ def _build_system_head(
         except Exception:
             if state is not None:
                 state["cited_knowledge_sources"] = []
-            pass
     if not knowledge.strip():
         # Fallback: lightweight docs when chroma disabled or non-research goal
         knowledge = runtime_safety.load_knowledge_docs(max_bytes=cfg.get("knowledge_max_bytes", 4000)).strip()
@@ -1142,6 +1288,16 @@ def _build_system_head(
         personality = "Layla: default voice. Reply as her only. Do not output labels or repeat instructions." if (not raw or len(raw) > 200) else raw[:200] + ("." if len(raw) > 200 else "")
 
     personality = _append_persona_focus_to_personality(personality, aspect, persona_focus_id)
+
+    if bool(cfg.get("voice_adjustment_inject_enabled", False)):
+        try:
+            from layla.memory.db import get_user_identity
+
+            vadj = (get_user_identity("voice_adjustment") or "").strip()
+            if vadj:
+                personality += "\n\nLearned voice adjustment (operator-curated, keep tone consistent):\n" + vadj[:900]
+        except Exception as _va:
+            logger.debug("context[voice_adjustment] failed: %s", _va)
 
     # Aspect memories: recent observations for this aspect
     aspect_memories = ""
@@ -1188,8 +1344,12 @@ def _build_system_head(
     retrieved_context = ""
     if not _skip_expensive and goal and cfg.get("retrieval_injection", True):
         try:
-            from services.retrieval import build_retrieved_context
-            retrieved_context = (build_retrieved_context(goal, k=5, reasoning_mode=reasoning_mode) or "").strip()
+            from services.retrieval import build_retrieved_context_with_ids
+
+            retrieved_context, _used_ids = build_retrieved_context_with_ids(goal, k=5, reasoning_mode=reasoning_mode)
+            retrieved_context = (retrieved_context or "").strip()
+            if _used_ids:
+                state["used_learning_ids"] = [str(x) for x in _used_ids if str(x).strip()]
         except Exception as _e:
             logger.debug("context[retrieval_injection] failed: %s", _e)
 
@@ -1274,6 +1434,7 @@ def _build_system_head(
     if wr_root:
         try:
             import subprocess
+            from pathlib import Path
 
             cwd = Path(wr_root).expanduser().resolve()
             if cwd.is_dir():
@@ -1307,8 +1468,8 @@ def _build_system_head(
                 b, s, l = (br.stdout or "").strip(), (st.stdout or "").strip(), (lg.stdout or "").strip()
                 if b or s or l:
                     git_preamble = f"Git snapshot:\nbranch: {b}\nstatus:\n{s}\nrecent:\n{l}"[:1200]
-        except Exception:
-            pass
+        except Exception as _exc:
+            logger.debug("agent_loop:L1310: %s", _exc, exc_info=False)
         try:
             root = Path(wr_root).expanduser().resolve()
             found_pi = ""
@@ -1327,136 +1488,28 @@ def _build_system_head(
                         found_pi = p.read_text(encoding="utf-8", errors="replace")[:4000]
                         break
             project_instructions = found_pi
-        except Exception:
-            pass
+        except Exception as _exc:
+            logger.debug("agent_loop:L1330: %s", _exc, exc_info=False)
         if goal:
             try:
                 from services import skills as skills_mod
 
                 skills_block = skills_mod.skills_prompt_block(goal, wr_root, max_tokens=800)
-            except Exception:
-                pass
+            except Exception as _exc:
+                logger.debug("agent_loop:L1337: %s", _exc, exc_info=False)
 
     # Build sections for centralized context management (token budgets, deduplication)
-    core = (
-        "You are Layla. Use the identity and rules below. Stay in character and follow the reference docs and memories."
-    )
-    sys_parts = [core]
-    if identity:
-        sys_parts.append(identity)
-    if aspect and aspect.get("id") == "lilith":
-        self_model_path = REPO_ROOT / ".identity" / "self_model.md"
-        if self_model_path.exists():
-            try:
-                sys_parts.append("Self model (internal):\n" + self_model_path.read_text(encoding="utf-8").strip()[:2000])
-            except Exception:
-                pass
-    if cfg.get("enable_cognitive_lens"):
-        cl = runtime_safety.load_cognitive_lens()
-        if cl:
-            sys_parts.append(cl)
-    if cfg.get("enable_lens_knowledge"):
-        lk = runtime_safety.load_lens_knowledge()
-        if lk:
-            sys_parts.append(lk)
-    if cfg.get("enable_behavioral_rhythm"):
-        br = runtime_safety.load_behavioral_rhythm()
-        if br:
-            sys_parts.append(br)
-    if cfg.get("enable_ui_reflection"):
-        ur = runtime_safety.load_ui_reflection()
-        if ur:
-            sys_parts.append(ur)
-    if cfg.get("enable_operational_guidance"):
-        og = runtime_safety.load_operational_guidance()
-        if og:
-            sys_parts.append(og)
-    if cfg.get("anti_drift_prompt_enabled", True):
-        sys_parts.append(
-            "Operational discipline (anti–AI drift): You must not create unnecessary files; "
-            "do not rewrite entire files unless required; do not introduce new patterns unless they match "
-            "existing code. Always minimize changes, preserve structure, and follow existing conventions."
-        )
-    if cfg.get("direct_feedback_enabled"):
-        sys_parts.append(
-            "Collaboration mode — direct feedback (operator opt-in): Prefer honest, concise critique over hedging. "
-            "Name concrete issues and better alternatives. Avoid personal attacks; stay specific to behavior and work product. "
-            "Do not assign psychiatric diagnoses or DSM/ICD labels to the operator (non-clinical boundary)."
-        )
-    if cfg.get("honesty_and_boundaries_enabled", True):
-        sys_parts.append(
-            "Integrity and stance: Be kind and clear. You may disagree when the operator's premises, plan, or technical "
-            "claims are mistaken — correct them directly without flattery or people-pleasing. "
-            "Do not pretend to be human, claim private feelings you do not have, or manipulate emotionally. "
-            "State plainly what you are doing in the work; do not imply hidden actions. "
-            "Refuse or redirect requests that would cause harm, bypass approvals, or violate governance. "
-            "Aim to help them succeed honestly, including improving your own accuracy over time."
-        )
-    if cfg.get("pin_psychology_framework_excerpt", True) and aspect:
-        aid = (aspect.get("id") or "").strip().lower()
-        if aid in ("echo", "lilith"):
-            sys_parts.append(_INTERACTION_FRAMEWORK_PIN)
-    if cfg.get("enable_personality_expression"):
-        expr = runtime_safety.load_personality_expression()
-        if expr:
-            sys_parts.append(expr)
-    if cfg.get("enable_style_profile"):
-        try:
-            from layla.memory.db import get_style_profile
-            style_parts = []
-            for sk in ("writing", "coding", "reasoning", "structuring", "collaboration"):
-                row = get_style_profile(sk)
-                if row and (row.get("profile_snapshot") or "").strip():
-                    snip = (row.get("profile_snapshot") or "").strip()[:600]
-                    if snip:
-                        style_parts.append(f"{sk}: {snip}")
-            if style_parts:
-                sys_parts.append("Style (stay consistent with these):\n" + "\n".join(style_parts))
-        except Exception:
-            pass
-    if cfg.get("uncensored") or cfg.get("nsfw_allowed"):
-        sys_parts.append(
-            "Content policy: Do not censor. Adult/NSFW content is allowed in consented contexts. "
-            "Refuse only for genuine harm (illegal, non-consensual, abuse). Access is anonymous; do not require or store user identity. "
-            "Do not use the literal prefix `[REFUSED:` in your output — that tag is reserved for the host refusal pipeline, not model self-censorship. "
-            "If you must decline, use plain language only."
-        )
-    gl = (goal or "").lower()
-    if (cfg.get("uncensored") or cfg.get("nsfw_allowed")) and (
-        "nsfw" in gl
-        or "intimate" in gl
-        or "explicit" in gl
-        or "adult" in gl
-        or "18+" in gl
-        or "uncensored" in gl
-    ):
-        sys_parts.append(
-            "This turn includes adult-register vocabulary while uncensored/NSFW-allowed mode is on. "
-            "Answer fully without safety-theater refusals for consensual adult content. "
-            "Still refuse clearly (in prose) for minors, non-consent, illegality, or governance bypass."
-        )
-    if personality:
-        sys_parts.append(personality)
-    if cfg.get("multi_agent_orchestration_enabled") and (reasoning_mode or "").strip().lower() == "deep":
-        try:
-            from services.agent_roles import deep_task_coordination_prompt
+    from services.prompt_builder import build_core_sys_parts
 
-            _dap = deep_task_coordination_prompt()
-            if _dap:
-                sys_parts.append(_dap)
-        except Exception:
-            pass
-    if aspect and aspect.get("_use_nsfw_addition") and aspect.get("systemPromptAdditionNsfw"):
-        sys_parts.append(aspect.get("systemPromptAdditionNsfw", ""))
-        sys_parts.append(
-            "NSFW register is open for this message: do not emit `[REFUSED:` or similar bracketed refusal tags; "
-            "stay in character and comply with the NSFW voice contract above."
-        )
-    if cfg.get("enable_cot", True):
-        sys_parts.append(
-            "Reasoning style: Think through problems step by step before giving your final answer. "
-            "For complex questions, break them down. Show your reasoning when it helps clarity."
-        )
+    sys_parts = build_core_sys_parts(
+        cfg=cfg,
+        aspect=aspect,
+        identity=identity,
+        personality=personality,
+        goal=goal,
+        reasoning_mode=reasoning_mode,
+        repo_root=REPO_ROOT,
+    )
     system_instructions = "\n\n".join(sys_parts)
 
     # Memory: learnings + semantic + aspect_memories + retrieved (canonical order: context_merge_layers.MEMORY_SECTION_ORDER)
@@ -1488,7 +1541,12 @@ def _build_system_head(
             from pathlib import Path
 
             from layla.tools.registry import inside_sandbox
-            from services.project_memory import format_aspects_hint, format_for_prompt, load_project_memory, memory_file_path
+            from services.project_memory import (
+                format_aspects_hint,
+                format_for_prompt,
+                load_project_memory,
+                memory_file_path,
+            )
 
             wrp = Path(str(workspace_root).strip()).expanduser().resolve()
             if wrp.is_dir() and inside_sandbox(wrp) and memory_file_path(wrp).is_file():
@@ -1578,6 +1636,74 @@ def _build_system_head(
             parts = [f"{k}: {v}" for k, v in uid.items() if v]
             if parts:
                 _style_identity_parts.append("User/companion context:\n" + "\n".join(parts))
+            try:
+                from services.operator_quiz import STAT_IDS
+
+                stats: dict[str, int] = {}
+                for sid in STAT_IDS:
+                    raw = uid.get(f"stat_{sid}")
+                    try:
+                        v = int(float(raw)) if raw is not None else 5
+                    except Exception:
+                        v = 5
+                    stats[sid] = max(1, min(10, v))
+                # Add a concise behavioral calibration line that changes how Layla responds.
+                # This is deliberately short; the raw user_identity already contains the full profile.
+                if stats:
+                    tech = stats.get("technical", 5)
+                    patience = stats.get("patience", 5)
+                    ambition = stats.get("ambition", 5)
+                    creative = stats.get("creative", 5)
+                    analytical = stats.get("analytical", 5)
+                    social = stats.get("social", 5)
+                    hints: list[str] = []
+                    if tech >= 8:
+                        hints.append("Assume high technical fluency: skip basics; use precise terminology; prefer succinct diffs.")
+                    elif tech <= 3:
+                        hints.append("Assume low technical fluency: explain terms, add small examples, avoid jargon.")
+                    if patience <= 3:
+                        hints.append("Be concise: minimal preamble; provide the answer then the smallest next steps.")
+                    elif patience >= 8:
+                        hints.append("Be thorough: explain reasoning and tradeoffs; teach back with structure.")
+                    if ambition >= 8:
+                        hints.append("High ambition: propose stretch improvements and proactive next steps (still approval-gated).")
+                    elif ambition <= 3:
+                        hints.append("Low ambition: keep scope tight; prefer stable, incremental wins.")
+                    if creative >= 8 and analytical <= 5:
+                        hints.append("Creativity-forward: suggest unconventional options; keep evaluation concrete.")
+                    if analytical >= 8:
+                        hints.append("Analysis-forward: quantify when possible; name risks explicitly.")
+                    if social >= 8:
+                        hints.append("People-forward: consider collaboration and communication impact.")
+                    if hints:
+                        _style_identity_parts.append("Behavioral calibration:\n- " + "\n- ".join(hints[:6]))
+            except Exception as _e2:
+                logger.debug("context[operator_stats] failed: %s", _e2)
+            # Layla v3: surface capability levels as a short training snapshot (skip for trivial turns).
+            if not _skip_expensive and cfg.get("capability_level_inject_enabled", True):
+                try:
+                    from layla.memory.db import get_capabilities, get_capability_domains
+
+                    caps = get_capabilities() or []
+                    domains = {d.get("id"): (d.get("name") or d.get("id")) for d in (get_capability_domains() or [])}
+                    scored: list[tuple[str, float]] = []
+                    for c in caps:
+                        did = c.get("domain_id")
+                        if did:
+                            scored.append((str(did), float(c.get("level") or 0.5)))
+                    if scored:
+                        scored.sort(key=lambda x: -x[1])
+                        top = scored[:3]
+                        low = list(reversed(scored[-3:])) if len(scored) >= 3 else scored
+                        top_s = ", ".join(f"{domains.get(d, d)} {lvl:.2f}" for d, lvl in top)
+                        low_s = ", ".join(f"{domains.get(d, d)} {lvl:.2f}" for d, lvl in low)
+                        _style_identity_parts.append(
+                            "Training snapshot:\n"
+                            + f"- Strong domains: {top_s}\n"
+                            + f"- Focus next: {low_s}"
+                        )
+                except Exception as _e3:
+                    logger.debug("context[capabilities] failed: %s", _e3)
     except Exception as _e:
         logger.debug("context[user_identity] failed: %s", _e)
     if _style_identity_parts:
@@ -1600,6 +1726,25 @@ def _build_system_head(
                 memory_sections["reasoning_strategies"] = hint
         except Exception as _e:
             logger.debug("context[reasoning_strategies] failed: %s", _e)
+    # Golden examples: inject small successful patterns for similar goals (token-bounded).
+    if not _skip_expensive:
+        try:
+            if cfg.get("golden_examples_enabled", True):
+                from services.golden_examples import (
+                    bump_usage as _ge_bump_usage,
+                    format_for_prompt as _ge_format,
+                    retrieve_relevant_examples as _ge_retrieve,
+                )
+
+                ex = _ge_retrieve(goal or "", "agent", k=2)
+                if ex:
+                    memory_sections["golden_examples"] = _ge_format(ex, max_chars=1200)
+                    try:
+                        _ge_bump_usage([int(x.get("id")) for x in ex if x.get("id") is not None])
+                    except Exception:
+                        pass
+        except Exception as _e:
+            logger.debug("context[golden_examples] failed: %s", _e)
     try:
         from services.context_manager import deduplicate_content
 
@@ -1629,16 +1774,16 @@ def _build_system_head(
             if res is not None:
                 rs = res if isinstance(res, str) else _json.dumps(res, default=str)[:900]
                 pinned_parts.append(f"Last tool ({act}): {rs}")
-        except Exception:
-            pass
+        except Exception as _exc:
+            logger.debug("agent_loop:L1632: %s", _exc, exc_info=False)
     try:
         from layla.memory.db import get_recent_conversation_summaries
 
         sums = get_recent_conversation_summaries(n=1)
         if sums and (sums[0].get("summary") or "").strip():
             pinned_parts.append("Session summary: " + (sums[0]["summary"] or "").strip()[:400])
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("agent_loop:L1640: %s", _exc, exc_info=False)
     pinned_block = "\n".join(pinned_parts) if pinned_parts else ""
 
     current_goal = ""
@@ -1747,10 +1892,24 @@ def _reflect_on_response(goal: str, response: str, aspect: dict | None = None) -
     cfg = runtime_safety.load_config()  # noqa: F841
     if not cfg.get("enable_self_reflection", False):
         return None
-    if len(response.strip()) < 80:  # too short to bother reflecting
-        return None
     try:
-        from services.llm_gateway import run_completion
+        min_len = int(cfg.get("self_reflection_min_length", 200) or 200)
+    except (TypeError, ValueError):
+        min_len = 200
+    if len(response.strip()) < max(80, min_len):  # too short to bother reflecting
+        return None
+    prev_override = None
+    try:
+        from services.llm_gateway import get_model_override, run_completion, set_model_override
+        try:
+            prev_override = get_model_override()
+            # Prefer the coding model for critique when the goal looks code-related.
+            from services.model_router import classify_task
+
+            if classify_task(goal or "", response or "") == "coding" and (cfg.get("coding_model") or "").strip():
+                set_model_override("coding")
+        except Exception:
+            pass
         aspect_name = (aspect.get("name") or "Layla") if aspect else "Layla"
         critic_prompt = (
             f"You are a response quality critic for {aspect_name}.\n\n"
@@ -1779,8 +1938,15 @@ def _reflect_on_response(goal: str, response: str, aspect: dict | None = None) -
             import logging
             logging.getLogger("layla").info("Self-reflection improved response (score was %d/10)", score)
             return rewritten
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("agent_loop:L1782: %s", _exc, exc_info=False)
+    finally:
+        try:
+            from services.llm_gateway import set_model_override
+
+            set_model_override(prev_override)
+        except Exception:
+            pass
     return None
 
 
@@ -1811,6 +1977,60 @@ def system_overloaded(priority: int = PRIORITY_AGENT) -> bool:
 _VALID_TOOLS = frozenset(TOOLS.keys())
 
 
+def _format_steps(steps: list) -> str:
+    """Window tool-step formatting to avoid unbounded prompt growth."""
+    try:
+        cfg = runtime_safety.load_config()
+        n = int(cfg.get("tool_steps_window", 25) or 25)
+    except Exception:
+        n = 25
+    try:
+        if n > 0 and isinstance(steps, list) and len(steps) > n:
+            steps = steps[-n:]
+    except Exception:
+        pass
+    return _format_steps_impl(steps)
+
+
+def _summarize_steps_deterministic(steps: list, *, keep_last: int = 5, max_lines: int = 10) -> str:
+    """
+    Deterministic step summarization (no LLM).
+    Summarizes older steps so weak models don't drown in long tool traces.
+    """
+    if not isinstance(steps, list) or len(steps) <= keep_last:
+        return ""
+    prefix = steps[: max(0, len(steps) - keep_last)]
+    lines: list[str] = []
+    n = 0
+    for s in prefix:
+        if not isinstance(s, dict):
+            continue
+        act = str(s.get("action") or "")
+        if not act:
+            continue
+        r = s.get("result")
+        ok = None
+        extra = ""
+        if isinstance(r, dict):
+            ok = r.get("ok")
+            p = r.get("path")
+            if isinstance(p, str) and p.strip():
+                extra = f" path={p.strip()}"
+            rc = r.get("returncode")
+            if rc is not None and act in ("shell", "run_python"):
+                extra = (extra + f" rc={rc}").strip()
+        elif isinstance(r, str) and act == "reason":
+            ok = True
+        status = "ok" if ok else "fail" if ok is False else "?"
+        lines.append(f"- {act} → {status}{extra}")
+        n += 1
+        if n >= max_lines:
+            break
+    if not lines:
+        return ""
+    return "Steps completed so far (compressed):\n" + "\n".join(lines)
+
+
 def _get_tools_for_goal(goal: str) -> frozenset:
     """
     Return tool names for this turn. Applies OpenClaw-style tool_policy (profile,
@@ -1818,24 +2038,48 @@ def _get_tools_for_goal(goal: str) -> frozenset:
     """
     try:
         cfg = runtime_safety.load_config()
-        from services.tool_policy import resolve_effective_tools
+        from services.tool_policy import deterministic_route_tools, resolve_effective_tools
 
         skip_intent = not cfg.get("tool_routing_enabled", True)
         names = set(resolve_effective_tools(cfg, goal, TOOLS, skip_intent_filter=skip_intent))
-        # Cap at 30 when routing narrows by intent (plan §7.3)
-        if cfg.get("tool_routing_enabled", True) and len(names) > 30:
+        # Deterministic routing (task-type toolset) — reduces degrees of freedom on weak models.
+        try:
+            det = deterministic_route_tools(cfg, goal, TOOLS)
+            if det:
+                names = set(names) & set(det)
+        except Exception:
+            pass
+        # Deterministic routing: prefer a stable chain for common goal types.
+        try:
+            from services.toolchain_graph import deterministic_toolchain_route
+
+            route = deterministic_toolchain_route(goal or "")
+            allowed = set(route.get("allowed_tools") or [])
+            if allowed:
+                names = (names & allowed) | {"reason", "read_file", "list_dir", "search_memories", "save_note"}
+        except Exception:
+            pass
+        # Visibility cap (default 15) when routing narrows by intent.
+        try:
+            cap = int(cfg.get("tool_visibility_cap", 15) or 15)
+        except (TypeError, ValueError):
+            cap = 15
+        cap = max(8, min(30, cap))
+        if cfg.get("tool_routing_enabled", True) and len(names) > cap:
             try:
                 from layla.tools.registry import tool_recommend
 
                 rec = tool_recommend(goal)
+                top_n = max(1, cap - 5)
                 top = [
                     r.get("tool")
-                    for r in (rec.get("recommendations") or [])[:25]
+                    for r in (rec.get("recommendations") or [])[: max(15, top_n + 6)]
                     if r.get("tool") in names
                 ]
-                names = set(top) | {"reason", "read_file", "list_dir", "search_memories", "save_note"}
+                names = set(top[:top_n]) | {"reason", "read_file", "list_dir", "search_memories", "save_note"}
             except Exception:
-                names = set(list(names)[:25]) | {"reason", "read_file", "list_dir", "search_memories", "save_note"}
+                top_n = max(1, cap - 5)
+                names = set(list(names)[:top_n]) | {"reason", "read_file", "list_dir", "search_memories", "save_note"}
         return frozenset(names)
     except Exception:
         return _VALID_TOOLS
@@ -1873,8 +2117,8 @@ def _maybe_preprobe_file(state: dict, path: str) -> dict | None:
     state.setdefault("steps", []).append({"action": "pre_read_probe", "path": path, "result": result})
     try:
         runtime_safety.log_execution("file_info", {"path": path, "tag": "pre_read_probe"})
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("agent_loop:L1876: %s", _exc, exc_info=False)
     return result
 
 
@@ -1890,7 +2134,7 @@ def _apply_probe_guidance(state: dict, intent: str, path: str, probe: dict | Non
     lines_sample = probe.get("line_count_sample")
 
     # Hard avoidance only for clearly binary files (avoid unsafe/bad UX).
-    if is_text is False and intent in ("read_file", "apply_patch"):
+    if is_text is False and intent in ("read_file", "apply_patch", "replace_in_file"):
         state.setdefault("steps", []).append({
             "action": intent,
             "result": {
@@ -1913,7 +2157,7 @@ def _apply_probe_guidance(state: dict, intent: str, path: str, probe: dict | Non
 
 # Tools that get a self-verification step (progress_made / retry_suggested)
 _VERIFY_TOOLS = frozenset({
-    "run_python", "apply_patch", "shell", "write_file",
+    "run_python", "apply_patch", "replace_in_file", "shell", "write_file",
     "git_status", "git_diff", "git_log", "git_branch",
 })
 
@@ -1991,6 +2235,14 @@ def _observe_environment(tool_name: str, result: dict, workspace: str) -> bool:
             if not path.is_absolute():
                 path = workspace_path / path
             return path.exists() and path.stat().st_size >= 0
+        if tool_name == "replace_in_file":
+            p = result.get("path")
+            if not p:
+                return True
+            path = Path(p)
+            if not path.is_absolute():
+                path = workspace_path / path
+            return path.exists()
         if tool_name in ("git_status", "git_diff", "git_log", "git_branch"):
             # Git: ok and we got output (or at least ok)
             return True
@@ -2098,9 +2350,16 @@ def _run_verification_after_tool(state: dict, tool_name: str, result: dict, work
     """If tool is verifiable and succeeded, run verification and environment observation; update state."""
     if tool_name not in _VERIFY_TOOLS or not (isinstance(result, dict) and result.get("ok")):
         return
+    # Deterministic verification already ran at tool capture time; if it downgraded ok→False,
+    # this function won't run. Keep LLM verification optional to avoid small-model noise.
     objective = state.get("objective") or state.get("original_goal") or ""
     steps_text = _format_steps(state.get("steps") or [])
-    ver = _verify_tool_progress(objective, steps_text, tool_name, result)
+    try:
+        cfg_v = runtime_safety.load_config()
+        llm_verify = bool(cfg_v.get("llm_tool_verification_enabled", True))
+    except Exception:
+        llm_verify = True
+    ver = _verify_tool_progress(objective, steps_text, tool_name, result) if llm_verify else None
     if ver is not None:
         state["last_verification"] = ver
         if not ver.get("progress_made", True):
@@ -2132,7 +2391,12 @@ def _llm_decision(
     """
     steps_text = _format_steps(state.get("steps") or [])
     objective = (state.get("objective") or goal).strip()
-    if steps_text:
+    steps_summary = str(state.get("steps_summary") or "").strip()
+    if steps_summary:
+        prompt_context = f"Objective: {objective[:500]}\n\n{steps_summary[:1200]}\n\n"
+        if steps_text:
+            prompt_context += f"Recent tool results (uncompressed tail):\n{steps_text[:900]}\n\n"
+    elif steps_text:
         prompt_context = f"Objective: {objective[:500]}\n\nTool results so far:\n{steps_text[:1200]}\n\n"
     else:
         prompt_context = f"Objective: {objective[:800]}\n\n"
@@ -2156,8 +2420,8 @@ def _llm_decision(
                     lines.append(f"- {p}: " + " ".join(str(x)[:160] for x in hs[:2]))
             if lines:
                 prompt_context += "File probe hints:\n" + "\n".join(lines) + "\n\n"
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("agent_loop:L2159: %s", _exc, exc_info=False)
 
     try:
         from services.intent_routing_hints import tool_routing_prompt_hints
@@ -2166,8 +2430,8 @@ def _llm_decision(
         _rh = tool_routing_prompt_hints(_route_goal)
         if _rh:
             prompt_context += _rh
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("agent_loop:L2169: %s", _exc, exc_info=False)
 
     aspect_block = ""
     if show_thinking:
@@ -2182,13 +2446,54 @@ def _llm_decision(
                     aspect_block += f"{name}: {role}\n"
             if aspect_block:
                 aspect_block = "Aspects may suggest a tool; unify to one decision.\n" + aspect_block + "\n"
-        except Exception:
-            pass
+        except Exception as _exc:
+            logger.debug("agent_loop:L2185: %s", _exc, exc_info=False)
 
     bias = orchestrator.get_decision_bias(active_aspect)
     bias_hint = ""
     if bias:
-        bias_hint = f"Decision bias: {', '.join(bias)}. Prefer tools and approach that match.\n"
+        try:
+            bias_hint = orchestrator.decision_bias_prompt_extension(bias)  # richer, concrete nudges
+        except Exception:
+            bias_hint = f"Decision bias: {', '.join(bias)}. Prefer tools and approach that match.\n"
+
+    # Layla v3: observation mode (trial phase). In nascent phase, bias toward answering/learning
+    # unless the operator explicitly asked for action.
+    observation_hint = ""
+    try:
+        cfg_obs = runtime_safety.load_config()
+        if cfg_obs.get("observation_mode_enabled", True):
+            from services.maturity_engine import get_state as _get_maturity_state
+
+            ms = _get_maturity_state()
+            if ms.phase == "nascent":
+                _goal_l = (goal or "").lower()
+                explicit_action = any(
+                    kw in _goal_l
+                    for kw in (
+                        "write ",
+                        "edit ",
+                        "modify ",
+                        "apply patch",
+                        "replace_in_file",
+                        "run ",
+                        "execute ",
+                        "install ",
+                        "delete ",
+                        "remove ",
+                        "create file",
+                        "add file",
+                        "commit",
+                        "push",
+                    )
+                )
+                if not explicit_action:
+                    observation_hint = (
+                        "Observation mode (nascent): prefer action=\"reason\" (explain, ask clarifiers, learn). "
+                        "Choose action=\"tool\" only if explicitly requested or necessary to answer.\n"
+                    )
+    except Exception as _exc:
+        logger.debug("agent_loop: observation_hint failed: %s", _exc, exc_info=False)
 
     no_progress_hint = ""
     try:
@@ -2197,8 +2502,8 @@ def _llm_decision(
         _tlh = consume_prompt_hint(state)
         if _tlh:
             no_progress_hint += f"[Loop guard] {_tlh} "
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("agent_loop:L2200: %s", _exc, exc_info=False)
     last_ver = state.get("last_verification")
     if last_ver and not last_ver.get("progress_made") and last_ver.get("retry_suggested"):
         no_progress_hint += "Last tool step did not make progress; consider a different approach or reply (reason). "
@@ -2261,33 +2566,113 @@ def _llm_decision(
         prompt_context = prompt_context + mcp_tool_hint + "\n\n"
 
     valid_tools = _get_tools_for_goal(goal)
-    tools_list = ", ".join(sorted(valid_tools - {"reason"}))
+    # Decision policy caps: enforce safety/verify gates and tool restrictions at the prompt boundary.
+    try:
+        if cfg_pre.get("decision_policy_enabled", True):
+            from services.decision_policy import (
+                apply_caps_to_valid_tools as _apply_caps_to_valid_tools,
+            )
+            from services.decision_policy import (
+                build_policy_caps as _build_policy_caps,
+            )
+            _cid = (state.get("conversation_id") or "").strip() or "unknown"
+            _caps = _build_policy_caps(state, cfg_pre, conversation_id=_cid)
+            state["policy_caps"] = _caps.to_trace_dict()
+            valid_tools = _apply_caps_to_valid_tools(valid_tools, _caps)
+    except Exception as _dp_exc:
+        logger.debug("decision_policy caps skipped: %s", _dp_exc)
+    from services.prompt_builder import build_decision_tool_hints
+
+    tools_list, _edit_hint_pb = build_decision_tool_hints(valid_tools, goal)
     think_trace_hint = ""
     if show_thinking:
         think_trace_hint = (
             'For action \"think\", put the plan in \"thought\" as 2-4 numbered lines (\"1.\" \"2.\" …), '
             "one short sentence each — restate aim, outline the next move, note gaps/risks (ChatGPT-style step trace).\n"
         )
+    _edit_hint = _edit_hint_pb
+    tool_first_hint = ""
+    if cfg_pre.get("tool_first_enforcement_enabled") and not observation_hint:
+        if not state.get("tool_attempted_this_turn") and not state.get("objective_complete"):
+            tool_first_hint = (
+                "Tool-first policy: for substantive questions about code, files, or the workspace, prefer action=\"tool\" "
+                "with a read-only inspection tool before action=\"reason\".\n"
+            )
+    pipeline_debug_hint = ""
+    if str(state.get("pipeline_stage") or "") == "DEBUG" and cfg_pre.get("pipeline_enforcement_enabled", True):
+        pipeline_debug_hint = (
+            "Pipeline DEBUG: stagnation recovery — narrow the next tool (different path or verify with read_file/grep) "
+            "before repeating writes or shell.\n"
+        )
     prompt = (
         f"{aspect_block}"
         f"{bias_hint}"
+        f"{observation_hint}"
+        f"{tool_first_hint}"
+        f"{pipeline_debug_hint}"
         f"{prompt_context}"
         f"{priority_context}"
         f"{no_progress_hint}"
         f"{reframe_instruction}"
         f"{think_trace_hint}"
+        f"{_edit_hint}"
         "Choose one: run one tool to make progress, internal think step, or reply (reason). "
         f"Tools: {tools_list}. "
         "Output exactly one JSON line, no other text. "
         'Format: {"action":"tool","tool":"read_file","priority_level":"high"} or {"action":"think","thought":"..."} or {"action":"reason","objective_complete":true}. '
+        'Examples: {"action":"tool","tool":"read_file","args":{"path":"agent/main.py"},"priority_level":"high","objective_complete":false} '
+        '{"action":"reason","priority_level":"medium","objective_complete":true} '
+        '{"action":"think","thought":"Suspect the failure is in router mounting; inspect main.py includes.","priority_level":"medium"}. '
         "Include priority_level: \"low\" or \"medium\" or \"high\" for the chosen action. "
         "Optionally impact_estimate, effort_estimate, risk_estimate (brief). "
         "Use objective_complete true only when you have enough to answer.\n"
     )
     try:
+        cfg_tmp = runtime_safety.load_config()
+        if cfg_tmp.get("decision_few_shot_enabled", True):
+            prompt += (
+                "Few-shot examples (copy the shape, adapt tool/args):\n"
+                '{"action":"tool","tool":"read_file","args":{"path":"agent/main.py"},"priority_level":"high","objective_complete":false}\n'
+                '{"action":"tool","tool":"grep_code","args":{"pattern":"def _llm_decision","path":"agent"},"priority_level":"medium","objective_complete":false}\n'
+                '{"action":"reason","thought":"I have enough context to answer.","priority_level":"medium","objective_complete":true}\n'
+            )
+    except Exception:
+        pass
+    prev_override = None
+    try:
         cfg = runtime_safety.load_config()
+        # Optionally route decision JSON generation to a dedicated structured-output model.
+        from services.llm_gateway import get_model_override, set_model_override
+
+        try:
+            prev_override = get_model_override()
+            if (cfg.get("decision_model") or "").strip():
+                set_model_override("decision")
+        except Exception:
+            pass
+
         max_tok = 120 if reframe_candidate else (220 if show_thinking else 80)
         use_instructor = cfg.get("use_instructor_for_decisions", True)
+        structured_on = bool(cfg.get("structured_generation_enabled", True))
+        # Optional outlines + llama-cpp (wheels on 3.11–3.12); no-op if package missing
+        if structured_on and not (cfg.get("llama_server_url") or "").strip():
+            try:
+                from services.llm_gateway import _get_llm
+                from services.structured_gen import run_outlines_agent_decision
+
+                _llm_local = _get_llm()
+                if _llm_local is not None:
+                    _od = run_outlines_agent_decision(
+                        _llm_local,
+                        prompt,
+                        max_tokens=max_tok,
+                        temperature=0.1,
+                        valid_tools=valid_tools,
+                    )
+                    if _od is not None:
+                        return _od
+            except Exception as _exc:
+                logger.debug("agent_loop: structured_gen outlines skipped: %s", _exc, exc_info=False)
         # Try instructor (grammar-constrained JSON) when local Llama available
         if use_instructor:
             for _attempt in range(2):  # 1 retry before falling back
@@ -2344,6 +2729,13 @@ def _llm_decision(
     except Exception as e:
         logger.debug("llm_decision parse failed: %s", e)
         return None
+    finally:
+        try:
+            from services.llm_gateway import set_model_override
+
+            set_model_override(prev_override)
+        except Exception:
+            pass
 
 
 def classify_intent(goal: str) -> str:
@@ -2410,8 +2802,8 @@ def _extract_shell_argv(goal: str):
             if delim in goal:
                 inner = goal.split(delim)[1]
                 return shlex.split(inner)
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("agent_loop:L2413: %s", _exc, exc_info=False)
     # Fallback: strip common preambles
     for prefix in ("run", "execute", "install", "please run", "please execute"):
         if goal.lower().startswith(prefix):
@@ -2455,6 +2847,8 @@ def autonomous_run(
     background_progress_callback: Callable[[dict], None] | None = None,
     active_plan_id: str = "",
     plan_approved: bool = False,
+    resume_execution_state: dict | None = None,
+    coordinator_trace: dict | None = None,
     *,
     engineering_pipeline_mode: str = "chat",
     clarification_reply: str = "",
@@ -2474,6 +2868,8 @@ def autonomous_run(
                     background_progress_callback,
                     active_plan_id,
                     plan_approved,
+                    resume_execution_state=resume_execution_state,
+                    coordinator_trace=coordinator_trace,
                     engineering_pipeline_mode=engineering_pipeline_mode,
                     clarification_reply=clarification_reply,
                     skip_engineering_pipeline=skip_engineering_pipeline,
@@ -2518,6 +2914,8 @@ def _autonomous_run_impl(
     background_progress_callback: Callable[[dict], None] | None = None,
     active_plan_id: str = "",
     plan_approved: bool = False,
+    resume_execution_state: dict | None = None,
+    coordinator_trace: dict | None = None,
     *,
     engineering_pipeline_mode: str = "chat",
     clarification_reply: str = "",
@@ -2533,8 +2931,8 @@ def _autonomous_run_impl(
                 from services.model_router import classify_task_for_routing, is_routing_enabled
                 if is_routing_enabled():
                     set_model_override(classify_task_for_routing(goal, context or "", _cfg_route))
-        except Exception:
-            pass
+        except Exception as _exc:
+            logger.debug("agent_loop:L2536: %s", _exc, exc_info=False)
     set_reasoning_effort(reasoning_effort)
     try:
         return _autonomous_run_impl_core(
@@ -2548,6 +2946,8 @@ def _autonomous_run_impl(
             background_progress_callback,
             active_plan_id,
             plan_approved,
+            resume_execution_state=resume_execution_state,
+            coordinator_trace=coordinator_trace,
             engineering_pipeline_mode=engineering_pipeline_mode,
             clarification_reply=clarification_reply,
             skip_engineering_pipeline=skip_engineering_pipeline,
@@ -2579,6 +2979,8 @@ def _autonomous_run_impl_core(
     active_plan_id: str = "",
     plan_approved: bool = False,
     *,
+    resume_execution_state: dict | None = None,
+    coordinator_trace: dict | None = None,
     engineering_pipeline_mode: str = "chat",
     clarification_reply: str = "",
     skip_engineering_pipeline: bool = False,
@@ -2609,19 +3011,33 @@ def _autonomous_run_impl_core(
             _cfg_t = runtime_safety.load_config()
             if not _cfg_t.get("telemetry_enabled", True):
                 return
-            from services.telemetry import log_event as _tel
+            from services.telemetry import log_event as _tel, log_model_outcome as _log_mo
 
             _lat_ms = max(0.0, (time.time() - _run_t0) * 1000.0)
+            _model_used = str(_cfg_t.get("model_filename") or "")
             _tel(
                 task_type="research" if research_mode else "agent",
                 reasoning_mode=str(st.get("reasoning_mode") or "light"),
-                model_used=str(_cfg_t.get("model_filename") or ""),
+                model_used=_model_used,
                 latency_ms=_lat_ms,
                 success=success,
                 performance_mode=str(_cfg_t.get("performance_mode") or "auto"),
             )
-        except Exception:
-            pass
+            # Record model outcome (adaptive routing); uses structured outcome score when available.
+            try:
+                oe = st.get("outcome_evaluation") if isinstance(st.get("outcome_evaluation"), dict) else {}
+                score = oe.get("score") if isinstance(oe, dict) else None
+            except Exception:
+                score = None
+            _log_mo(
+                model_used=_model_used,
+                task_type="research" if research_mode else "agent",
+                success=bool(success),
+                score=float(score) if score is not None else None,
+                latency_ms=_lat_ms,
+            )
+        except Exception as _exc:
+            logger.debug("agent_loop:L2623: %s", _exc, exc_info=False)
 
     def _overloaded_now() -> bool:
         try:
@@ -2635,12 +3051,15 @@ def _autonomous_run_impl_core(
         time.sleep(2.0)
         if _overloaded_now():
             active_aspect = orchestrator.select_aspect(goal, force_aspect=aspect_id)
+            _aspect_miss = bool(active_aspect.get("_force_aspect_miss")) if isinstance(active_aspect, dict) else False
+            _aspect_req = str(active_aspect.get("_force_aspect_requested") or "") if isinstance(active_aspect, dict) else ""
             _emit_run_telemetry({"reasoning_mode": reasoning_mode}, False)
             return {
                 "status": "system_busy",
                 "steps": [],
                 "aspect": active_aspect.get("id", "layla"),
                 "aspect_name": active_aspect.get("name", "Layla"),
+                "aspect_miss_warning": _aspect_req if _aspect_miss else "",
                 "refused": False,
                 "refusal_reason": "",
                 "ux_states": [],
@@ -2648,6 +3067,8 @@ def _autonomous_run_impl_core(
                 "reasoning_mode": reasoning_mode,
             }
     active_aspect = orchestrator.select_aspect(goal, force_aspect=aspect_id)
+    _aspect_miss = bool(active_aspect.get("_force_aspect_miss")) if isinstance(active_aspect, dict) else False
+    _aspect_req = str(active_aspect.get("_force_aspect_requested") or "") if isinstance(active_aspect, dict) else ""
     if reasoning_mode == "none" and not allow_write and not allow_run and not show_thinking:
         quick = _quick_reply_for_trivial_turn(goal)
         if quick:
@@ -2664,6 +3085,7 @@ def _autonomous_run_impl_core(
                 "tool_calls": 0,
                 "aspect": active_aspect.get("id", "layla"),
                 "aspect_name": active_aspect.get("name", "Layla"),
+                "aspect_miss_warning": _aspect_req if _aspect_miss else "",
                 "refused": False,
                 "refusal_reason": "",
                 "last_verification": None,
@@ -2704,9 +3126,8 @@ def _autonomous_run_impl_core(
         and (goal or "").strip()
     ):
         try:
-            from services.engineering_pipeline import engineering_planning_locked, run_execute_pipeline
-
             import agent_loop as _al
+            from services.engineering_pipeline import engineering_planning_locked, run_execute_pipeline
 
             if not engineering_planning_locked():
 
@@ -2749,44 +3170,60 @@ def _autonomous_run_impl_core(
         _steps_list: list = _BackgroundProgressSteps(background_progress_callback, interval=_prog_iv)
     else:
         _steps_list = []
-    state = {
-        "goal": goal,
-        "original_goal": goal,
-        "objective": goal,
-        "objective_complete": False,
-        "depth": 0,
-        "steps": _steps_list,
-        "status": "running",
-        "start_time": time.time(),
-        "tool_calls": 0,
-        "aspect": active_aspect.get("id", "layla"),
-        "aspect_name": active_aspect.get("name", "Layla"),
-        "refused": False,
-        "refusal_reason": "",
-        "last_verification": None,
-        "consecutive_no_progress": 0,
-        "environment_aligned": None,
-        "last_tool_used": None,
-        "strategy_shift_count": 0,
-        "priority_level": None,
-        "impact_estimate": None,
-        "effort_estimate": None,
-        "risk_estimate": None,
-        "ux_states": [],
-        "memory_influenced": memory_influenced,
-        "cited_knowledge_sources": [],
-        "sub_goals": _decompose_goal(goal),
-        "reflection_pending": False,
-        "reflection_asked": False,
-        "last_reasoning_mode": _prev_reasoning_mode,
-        "reasoning_mode": reasoning_mode,
-        "_recent_exact_calls": set(),
-        "persona_focus_for_stream": persona_focus_id,
-        "conversation_id": _run_cid,
-        "_think_seq": 0,
-        "active_plan_id": (active_plan_id or "").strip(),
-        "plan_approved": bool(plan_approved),
-    }
+    from execution_state import create_execution_state
+
+    state = create_execution_state(
+        goal=goal,
+        sub_goals=_decompose_goal(goal),
+        active_aspect=active_aspect,
+        memory_influenced=memory_influenced,
+        reasoning_mode=reasoning_mode,
+        last_reasoning_mode=_prev_reasoning_mode,
+        persona_focus_id=persona_focus_id,
+        conversation_id=_run_cid,
+        active_plan_id=active_plan_id or "",
+        plan_approved=plan_approved,
+        steps_container=_steps_list,
+    )
+    try:
+        from shared_state import get_last_coordinator_trace
+
+        _ctr = get_last_coordinator_trace(_run_cid)
+        if _ctr:
+            state["coordinator_trace"] = _ctr
+    except Exception as _cte:
+        logger.debug("coordinator_trace attach failed: %s", _cte)
+    if coordinator_trace and isinstance(coordinator_trace, dict) and coordinator_trace.get("complexity_score") is not None:
+        state["coordinator_trace"] = coordinator_trace
+    if resume_execution_state and isinstance(resume_execution_state, dict):
+        _rk = (
+            "depth",
+            "tool_calls",
+            "consecutive_no_progress",
+            "last_tool_used",
+            "strategy_shift_count",
+            "status",
+            "pipeline_stage",
+            "retries",
+        )
+        for k in _rk:
+            if k not in resume_execution_state:
+                continue
+            v = resume_execution_state[k]
+            if v is None:
+                continue
+            if k == "depth":
+                try:
+                    state["depth"] = int(v)
+                except (TypeError, ValueError):
+                    pass
+            elif k == "tool_calls":
+                try:
+                    state["tool_calls"] = int(v)
+                except (TypeError, ValueError):
+                    state["tool_calls"] = v
+            else:
+                state[k] = v
     workspace = (str(workspace_root).strip() if workspace_root else "") or runtime_safety.load_config().get("sandbox_root", str(Path.home()))
     state["cognition_workspace_roots"] = [str(x).strip() for x in (cognition_workspace_roots or []) if str(x).strip()]
     if research_mode:
@@ -2796,6 +3233,7 @@ def _autonomous_run_impl_core(
     else:
         max_tool_calls = cfg.get("max_tool_calls", 5)
         max_runtime = cfg.get("max_runtime_seconds", 900)
+    max_tool_calls_effective = int(max_tool_calls)
     # Token-pressure cap: when conversation already occupies > 60% of n_ctx, limit tool calls
     # so the model is forced to return, chunk, and avoid context overflow.
     try:
@@ -2807,8 +3245,9 @@ def _autonomous_run_impl_core(
             if _capped < max_tool_calls:
                 logger.info("token_pressure_cap: hist_ratio=%.2f capping max_tool_calls %d→%d", _hist_ratio, max_tool_calls, _capped)
                 max_tool_calls = _capped
-    except Exception:
-        pass
+                max_tool_calls_effective = int(max_tool_calls)
+    except Exception as _exc:
+        logger.debug("agent_loop:L2810: %s", _exc, exc_info=False)
     # Adaptive task budget: tighten tool/plan caps from profile + config (services/task_budget.py).
     if cfg.get("task_budget_enabled", True):
         try:
@@ -2824,6 +3263,7 @@ def _autonomous_run_impl_core(
             )
             _tb_env = allocate_budget(_tb_prof, cfg)
             max_tool_calls = min(int(max_tool_calls), int(_tb_env.max_tool_calls_effective))
+            max_tool_calls_effective = int(max_tool_calls)
             plan_depth = min(int(plan_depth), int(_tb_env.max_plan_depth_effective))
             state["task_budget_profile"] = _tb_prof.to_trace_dict()
             state["task_budget_envelope"] = _tb_env.to_trace_dict()
@@ -2858,7 +3298,12 @@ def _autonomous_run_impl_core(
     # Cognitive workspace: generate approaches → evaluate → choose best (tree-of-thought)
     try:
         from services.cognitive_workspace import run_deliberation, should_use_cognitive_workspace
-        if should_use_cognitive_workspace(goal, cfg, plan_depth):
+        # Avoid invoking LLM-only deliberation when no model/inference backend is configured
+        # (common in unit tests and fresh installs).
+        _llm_configured = bool((cfg.get("model_filename") or "").strip()) or bool(cfg.get("llama_server_url")) or bool(
+            (cfg.get("ollama_base_url") or "").strip()
+        )
+        if _llm_configured and should_use_cognitive_workspace(goal, cfg, plan_depth):
             deliberation = run_deliberation(goal, context or "")
             if deliberation.get("strategy_hint"):
                 state["cognitive_workspace"] = deliberation
@@ -2869,8 +3314,30 @@ def _autonomous_run_impl_core(
     # Planning: if goal warrants it, create and execute plan first (respect max_plan_depth)
     try:
         from services.observability import log_agent_plan_completed, log_agent_plan_created, log_planner_invoked
-        from services.planner import create_plan, execute_plan, normalize_plan_steps_tools, should_plan
-        if reasoning_mode != "none" and should_plan(goal, cfg, plan_depth=plan_depth):
+        from services.planner import (
+            create_plan,
+            execute_plan_with_optional_graph,
+            normalize_plan_steps_tools,
+            should_plan,
+            validate_plan_before_execution,
+        )
+        _ct_plan = state.get("coordinator_trace") or {}
+        try:
+            _thr = float(cfg.get("coordinator_plan_threshold", 0.45) or 0.45)
+        except (TypeError, ValueError):
+            _thr = 0.45
+        _cs = _ct_plan.get("complexity_score")
+        try:
+            _cs_f = float(_cs) if _cs is not None else 0.0
+        except (TypeError, ValueError):
+            _cs_f = 0.0
+        _force_plan = (
+            _cs_f >= _thr
+            and not _is_lightweight_chat_turn(goal, reasoning_mode)
+        )
+        # Behavior lock-in: when a goal is classified as non-trivial, enforce plan→execute→validate→debug.
+        _non_trivial = bool(should_plan(goal, cfg, plan_depth=plan_depth, state=state) or _force_plan)
+        if reasoning_mode != "none" and _non_trivial and bool(cfg.get("planning_enabled", True)):
             _digest = ""
             if (workspace or "").strip():
                 try:
@@ -2879,8 +3346,71 @@ def _autonomous_run_impl_core(
                     _digest = prior_plans_digest(workspace, limit=8)
                 except Exception:
                     _digest = ""
-            plan = create_plan(goal, cfg=cfg, prior_plans_digest=_digest)
-            if plan:
+            _pref_s = None
+            try:
+                _pref_s = (_ct_plan.get("preferred_strategy") or "").strip() or None
+            except Exception:
+                _pref_s = None
+            _attempts = 0
+            _last_plan_result: dict[str, Any] | None = None
+            try:
+                _max_levels = int(cfg.get("structured_retry_max_levels", 3) or 3)
+            except (TypeError, ValueError):
+                _max_levels = 3
+            _max_levels = max(1, min(3, _max_levels))
+            _structured_retry = bool(cfg.get("structured_retry_enabled", True))
+            max_attempts = _max_levels if _structured_retry else 2
+            while _attempts < max_attempts:
+                _attempts += 1
+                # Retry ladder:
+                # 1) normal plan
+                # 2) same plan goal + failure context (debug)
+                # 3) simplified plan (max 3 steps) + optional model override
+                _goal_for_plan = goal
+                _max_steps = 6
+                _model_override = None
+                if _attempts == 2 and _last_plan_result is not None:
+                    _goal_for_plan = (
+                        (state.get("original_goal") or goal)
+                        + "\n\n[Retry 1: Previous attempt failed. Fix ONLY the reported failure.]\n"
+                        + "\n[Last plan execution summary]:\n"
+                        + str(_last_plan_result.get("summary") or "")[:1200]
+                    )
+                if _attempts >= 3:
+                    _max_steps = 3
+                    _goal_for_plan = (
+                        (state.get("original_goal") or goal)
+                        + "\n\n[Retry 2/3: Simplify. Use at most 3 steps. Minimal viable solution only.]\n"
+                        + ("\n[Last plan execution summary]:\n" + str((_last_plan_result or {}).get("summary") or "")[:1200] if _last_plan_result else "")
+                    )
+                    # Retry 3: model switch (prefer coding model, else fallback alias when configured).
+                    if _attempts == 3:
+                        try:
+                            if (cfg.get("coding_model") or "").strip():
+                                _model_override = "coding"
+                            elif (cfg.get("models") or {}).get("fallback"):
+                                _model_override = "fallback"
+                        except Exception:
+                            _model_override = None
+
+                plan = create_plan(
+                    _goal_for_plan,
+                    cfg=cfg,
+                    prior_plans_digest=_digest,
+                    conversation_id=_run_cid,
+                    aspect_id=aspect_id or "morrigan",
+                    preferred_strategy=_pref_s,
+                    max_steps=_max_steps,
+                )
+                if not plan:
+                    break
+                plan, _plan_ok, _plan_reason = validate_plan_before_execution(
+                    plan, cfg=cfg, workspace_root=workspace
+                )
+                if not _plan_ok:
+                    # Force a simplified replan next attempt.
+                    _last_plan_result = {"summary": f"plan_pre_validation_failed:{_plan_reason}"}
+                    continue
                 if bool(cfg.get("in_loop_plan_governance_enabled")) and bool(
                     cfg.get("plan_governance_require_nonempty_step_tools")
                 ):
@@ -2910,8 +3440,10 @@ def _autonomous_run_impl_core(
                     research_mode=research_mode,
                     conversation_id=_run_cid,
                 )
+                if _model_override:
+                    _exec_common["model_override"] = _model_override
                 if _il_gov:
-                    plan_result = execute_plan(
+                    plan_result = execute_plan_with_optional_graph(
                         plan,
                         autonomous_run,
                         goal_prefix=goal[:100],
@@ -2919,16 +3451,33 @@ def _autonomous_run_impl_core(
                         step_governance=True,
                         default_max_retries=_dm,
                         plan_approved=_nested_plan_approved,
+                        cfg=cfg,
                         **_exec_common,
                     )
                 else:
-                    plan_result = execute_plan(
+                    plan_result = execute_plan_with_optional_graph(
                         plan,
                         autonomous_run,
                         goal_prefix=goal[:100],
                         plan_depth=plan_depth,
+                        cfg=cfg,
                         **_exec_common,
                     )
+                _last_plan_result = plan_result if isinstance(plan_result, dict) else None
+                # Mandatory validate→debug→retry: if governance says steps not OK, do one debug-driven replan.
+                if (
+                    _il_gov
+                    and bool(cfg.get("pipeline_enforcement_enabled", True))
+                    and isinstance(plan_result, dict)
+                    and plan_result.get("all_steps_ok") is False
+                    and _attempts < max_attempts
+                ):
+                    try:
+                        state["pipeline_stage"] = "DEBUG"
+                    except Exception:
+                        pass
+                    goal = (state.get("original_goal") or goal)
+                    continue
                 log_agent_plan_completed(steps=len(plan_result.get("steps_done", [])))
                 _emit_run_telemetry(state, True)
                 _pc_out: dict = {
@@ -2936,6 +3485,7 @@ def _autonomous_run_impl_core(
                     "steps": plan_result.get("steps_done", []),
                     "aspect": active_aspect.get("id", "layla"),
                     "aspect_name": active_aspect.get("name", "Layla"),
+                    "aspect_miss_warning": _aspect_req if _aspect_miss else "",
                     "refused": False,
                     "refusal_reason": "",
                     "ux_states": state.get("ux_states", []),
@@ -2947,8 +3497,9 @@ def _autonomous_run_impl_core(
                 if _il_gov and isinstance(plan_result, dict) and "all_steps_ok" in plan_result:
                     _pc_out["all_steps_ok"] = bool(plan_result.get("all_steps_ok"))
                 return _pc_out
-    except Exception:
-        pass
+            # If we broke out without returning, allow the loop path to handle response.
+    except Exception as _exc:
+        logger.warning("agent_loop:L2950: %s", _exc, exc_info=True)
 
     try:
         from services.agent_hooks import run_agent_hooks
@@ -2959,10 +3510,23 @@ def _autonomous_run_impl_core(
             conversation_id=str(state.get("conversation_id") or ""),
             workspace_root=workspace,
         )
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("agent_loop:L2962: %s", _exc, exc_info=False)
 
     while state["depth"] < 5:
+        state["tool_attempted_this_turn"] = False
+        # Decision policy caps can tighten tool-call budget after repeated failures.
+        try:
+            if cfg.get("decision_policy_enabled", True):
+                from services.decision_policy import build_policy_caps as _build_policy_caps
+                from services.decision_policy import effective_max_tool_calls as _effective_max_tool_calls
+
+                _cid = (state.get("conversation_id") or "").strip() or "unknown"
+                _caps = _build_policy_caps(state, cfg, conversation_id=_cid)
+                state["policy_caps"] = _caps.to_trace_dict()
+                max_tool_calls_effective = _effective_max_tool_calls(int(max_tool_calls), _caps)
+        except Exception:
+            max_tool_calls_effective = int(max_tool_calls)
         if client_abort_event is not None and client_abort_event.is_set():
             state["status"] = "client_abort"
             _last_tool = (state.get("last_tool_used") or "agent") if isinstance(state.get("last_tool_used"), str) else "agent"
@@ -2983,7 +3547,7 @@ def _autonomous_run_impl_core(
             state["status"] = "timeout"
             break
 
-        if state["tool_calls"] >= max_tool_calls:
+        if state["tool_calls"] >= max_tool_calls_effective:
             state["status"] = "tool_limit"
             break
 
@@ -3004,8 +3568,33 @@ def _autonomous_run_impl_core(
                     + "\n\n[Operator steer — brief redirect; honor if compatible with the same task]\n"
                     + steer
                 )
-        except Exception:
-            pass
+        except Exception as _exc:
+            logger.debug("agent_loop:L3007: %s", _exc, exc_info=False)
+        # Context protection: proactive compression when history exceeds threshold (default 60% of n_ctx).
+        try:
+            from services.context_manager import summarize_history, token_estimate_messages
+
+            n_ctx = max(2048, int(cfg.get("n_ctx", 4096)))
+            thr = float(cfg.get("context_protection_threshold", 0.60) or 0.60)
+            thr = max(0.35, min(0.85, thr))
+            ch = conversation_history or []
+            if ch and token_estimate_messages(ch) > int(n_ctx * thr):
+                conversation_history = summarize_history(
+                    list(ch),
+                    n_ctx=n_ctx,
+                    threshold_ratio=thr,
+                    keep_recent_messages=max(6, int(cfg.get("context_sliding_keep_messages", 0) or 0)),
+                )
+        except Exception as _exc:
+            logger.debug("context protection skipped: %s", _exc, exc_info=False)
+
+        # Step summarization: keep older steps compressed for decision prompts.
+        try:
+            step_thr = int(cfg.get("step_summarization_threshold", 8) or 8)
+        except (TypeError, ValueError):
+            step_thr = 8
+        if isinstance(state.get("steps"), list) and len(state["steps"]) > max(6, step_thr):
+            state["steps_summary"] = _summarize_steps_deterministic(state["steps"], keep_last=5, max_lines=12)
         _t0 = time.perf_counter()
         decision = _llm_decision(
             goal_for_decision, state, context, active_aspect, show_thinking, conversation_history or []
@@ -3013,8 +3602,8 @@ def _autonomous_run_impl_core(
         try:
             from services.observability import log_agent_decision
             log_agent_decision(duration_ms=(time.perf_counter() - _t0) * 1000)
-        except Exception:
-            pass
+        except Exception as _exc:
+            logger.debug("agent_loop:L3016: %s", _exc, exc_info=False)
         if decision:
             state["objective_complete"] = bool(decision.get("objective_complete", False))
             state["priority_level"] = decision.get("priority_level") or "medium"
@@ -3039,8 +3628,8 @@ def _autonomous_run_impl_core(
                                 "step": _tn,
                             }
                         )
-                    except Exception:
-                        pass
+                    except Exception as _exc:
+                        logger.debug("agent_loop:L3042: %s", _exc, exc_info=False)
                 goal = (
                     state["original_goal"]
                     + "\n\n[Internal reasoning]\n"
@@ -3058,11 +3647,19 @@ def _autonomous_run_impl_core(
             elif decision.get("action") == "tool":
                 # Model chose a tool but it was nulled by the policy filter; skip classify_intent
                 # (which is policy-unaware) to avoid burning tool budget on a denied tool.
+                try:
+                    chosen = str(decision.get("tool") or "").strip()
+                    if chosen and chosen not in _VALID_TOOLS:
+                        from services.skill_discovery import record_skill_gap
+
+                        record_skill_gap(state.get("original_goal") or goal, tool=chosen, err="unknown_tool")
+                except Exception:
+                    pass
                 intent = "reason"
             else:
-                intent = classify_intent(goal)
+                intent = classify_intent((state.get("original_goal") or goal or "").strip())
         else:
-            intent = classify_intent(goal)
+            intent = classify_intent((state.get("original_goal") or goal or "").strip())
 
         consecutive = state.get("consecutive_no_progress", 0)
         objective_complete = state.get("objective_complete", False)
@@ -3125,7 +3722,7 @@ def _autonomous_run_impl_core(
             and not state.get("research_lab_root")
         ) else []
 
-        if _extra_batch and state["tool_calls"] + 1 + len(_extra_batch) <= max_tool_calls:
+        if _extra_batch and state["tool_calls"] + 1 + len(_extra_batch) <= max_tool_calls_effective:
             _batch_tools_check = [intent] + [str(bt.get("tool") or "") for bt in _extra_batch]
             _blocked_bt = None
             for _tcheck in _batch_tools_check:
@@ -3151,6 +3748,8 @@ def _autonomous_run_impl_core(
             import concurrent.futures as _cf
             import functools as _fn
 
+            from services.worker_pool import tool_batch_max_workers
+
             _tool_timeout = float(cfg.get("tool_call_timeout_seconds", 60))
             _primary_args = _inject_workspace_args(intent, (decision.get("args") or {}) if decision else {}, workspace)
             _batch: list[tuple[str, dict]] = [(intent, _primary_args)] + [
@@ -3159,7 +3758,8 @@ def _autonomous_run_impl_core(
             ]
             _batch_results: list[dict | None] = [None] * len(_batch)
             _hook_cid = str(state.get("conversation_id") or "")
-            with _cf.ThreadPoolExecutor(max_workers=len(_batch), thread_name_prefix="layla_cbatch") as _pool:
+            _pool_workers = tool_batch_max_workers(cfg, len(_batch))
+            with _cf.ThreadPoolExecutor(max_workers=_pool_workers, thread_name_prefix="layla_cbatch") as _pool:
                 _futs = {
                     _pool.submit(
                         _fn.partial(
@@ -3185,13 +3785,21 @@ def _autonomous_run_impl_core(
                 runtime_safety.log_execution(_bt, _ba)
                 state["tool_calls"] += 1
                 _register_exact_tool_call(state, _bt, decision if _bidx == 0 else None)
-                state["steps"].append({"action": _bt, "result": _maybe_validate_tool_output(_bt, _br)})
+                _res = _maybe_validate_tool_output(_bt, _br)
+                _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                    _bt, _res, workspace=workspace, cfg=cfg
+                )
+                # Note: no automatic retry inside concurrent batch (would require rerunning the pool).
+                if not _ok_det and isinstance(_res, dict):
+                    _res["_deterministic_retry_skipped"] = True
+                    _res["_deterministic_retry_reason"] = _det_reason
+                state["steps"].append({"action": _bt, "result": _res})
                 state["last_tool_used"] = _bt
                 _emit_tool_start(ux_state_queue, _bt)
             _run_verification_after_tool(
                 state,
                 _batch[-1][0],
-                _batch_results[-1] if _batch_results[-1] is not None else {},
+                (state["steps"][-1].get("result") if state.get("steps") else {}) if isinstance(state.get("steps"), list) else (_batch_results[-1] if _batch_results[-1] is not None else {}),
                 workspace,
             )
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
@@ -3209,6 +3817,17 @@ def _autonomous_run_impl_core(
             from services.tool_policy import tool_allowed
 
             _vt = _get_tools_for_goal(goal)
+            try:
+                if cfg.get("decision_policy_enabled", True):
+                    from services.decision_policy import apply_caps_to_valid_tools as _apply_caps_to_valid_tools
+                    from services.decision_policy import build_policy_caps as _build_policy_caps
+
+                    _cid = (state.get("conversation_id") or "").strip() or "unknown"
+                    _caps = _build_policy_caps(state, cfg, conversation_id=_cid)
+                    state["policy_caps"] = _caps.to_trace_dict()
+                    _vt = _apply_caps_to_valid_tools(_vt, _caps)
+            except Exception as _dp_exc:
+                logger.debug("decision_policy caps skipped at dispatch: %s", _dp_exc)
             if not tool_allowed(intent, _vt):
                 state["tool_calls"] += 1
                 _tpd = {
@@ -3246,8 +3865,8 @@ def _autonomous_run_impl_core(
                     continue
                 if _loop_ev and _loop_ev.startswith("WARN:"):
                     state["tool_loop_prompt_hint"] = _loop_ev[5:].strip()
-            except Exception:
-                pass
+            except Exception as _exc:
+                logger.debug("agent_loop:L3249: %s", _exc, exc_info=False)
 
         if intent not in ("reason", "finish", "wakeup") and intent in _VALID_TOOLS:
             try:
@@ -3261,8 +3880,8 @@ def _autonomous_run_impl_core(
                     state["last_tool_used"] = intent
                     goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                     continue
-            except Exception:
-                pass
+            except Exception as _exc:
+                logger.debug("agent_loop:L3264: %s", _exc, exc_info=False)
 
         if intent not in ("reason", "finish", "wakeup", "none") and intent in _VALID_TOOLS:
             try:
@@ -3282,8 +3901,8 @@ def _autonomous_run_impl_core(
                     state["last_tool_used"] = intent
                     goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                     continue
-            except Exception:
-                pass
+            except Exception as _exc:
+                logger.debug("agent_loop:L3285: %s", _exc, exc_info=False)
 
         if intent not in ("reason", "finish", "wakeup", "none") and intent in _VALID_TOOLS:
             try:
@@ -3303,8 +3922,8 @@ def _autonomous_run_impl_core(
                     state["last_tool_used"] = intent
                     goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                     continue
-            except Exception:
-                pass
+            except Exception as _exc:
+                logger.debug("agent_loop:L3306: %s", _exc, exc_info=False)
 
         # ------------------------------------------------
         # WRITE FILE
@@ -3327,18 +3946,39 @@ def _autonomous_run_impl_core(
                     goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                     continue
                 state["tool_calls"] += 1
+                _admin_pre_mutate(cfg, workspace, "write_file", path)
                 result = TOOLS["write_file"]["fn"](path=path, content=content)
                 _register_exact_tool_call(state, "write_file", decision)
                 runtime_safety.log_execution("write_file", {"path": path})
-                state["steps"].append({"action": "write_file", "result": _maybe_validate_tool_output("write_file", result)})
+                _res = _maybe_validate_tool_output("write_file", result)
+                _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                    "write_file", _res, workspace=workspace, cfg=cfg
+                )
+                # One automatic retry for deterministic verification failures.
+                if not _ok_det and bool(cfg.get("deterministic_tool_verification_auto_retry", True)):
+                    state.setdefault("_deterministic_retry_counts", {})
+                    _cnt = int(state["_deterministic_retry_counts"].get("write_file") or 0)
+                    if _cnt < 1:
+                        state["_deterministic_retry_counts"]["write_file"] = _cnt + 1
+                        result = TOOLS["write_file"]["fn"](path=path, content=content)
+                        runtime_safety.log_execution("write_file", {"path": path, "_retry": True})
+                        _res = _maybe_validate_tool_output("write_file", result)
+                        _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                            "write_file", _res, workspace=workspace, cfg=cfg
+                        )
+                        if isinstance(_res, dict):
+                            _res["_deterministic_retry"] = True
+                            _res["_deterministic_retry_reason"] = _det_reason
+                state["steps"].append({"action": "write_file", "result": _res})
                 state["last_tool_used"] = "write_file"
-                _run_verification_after_tool(state, "write_file", result, workspace)
+                _run_verification_after_tool(state, "write_file", _res if isinstance(_res, dict) else result, workspace)
                 _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
                 _run_git_auto_commit("write_file", result, result.get("path") or path, workspace)
                 goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
-                hint = _run_auto_lint_test_fix(state, "write_file", result, result.get("path") or path, workspace)
-                if hint:
-                    goal = goal + "\n\n" + hint
+                if reasoning_mode != "none":
+                    hint = _run_auto_lint_test_fix(state, "write_file", result, result.get("path") or path, workspace)
+                    if hint:
+                        goal = goal + "\n\n" + hint
                 continue
             _wf_grant_args = {"path": path}
             if not allow_write or (not runtime_safety.require_approval("write_file") and not _has_any_grant("write_file", _wf_grant_args)):
@@ -3368,18 +4008,38 @@ def _autonomous_run_impl_core(
                     break
 
             state["tool_calls"] += 1
+            _admin_pre_mutate(cfg, workspace, "write_file", path)
             result = TOOLS["write_file"]["fn"](path=path, content=content)
             _register_exact_tool_call(state, "write_file", decision)
             runtime_safety.log_execution("write_file", {"path": path})
-            state["steps"].append({"action": "write_file", "result": _maybe_validate_tool_output("write_file", result)})
+            _res = _maybe_validate_tool_output("write_file", result)
+            _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                "write_file", _res, workspace=workspace, cfg=cfg
+            )
+            if not _ok_det and bool(cfg.get("deterministic_tool_verification_auto_retry", True)):
+                state.setdefault("_deterministic_retry_counts", {})
+                _cnt = int(state["_deterministic_retry_counts"].get("write_file") or 0)
+                if _cnt < 1:
+                    state["_deterministic_retry_counts"]["write_file"] = _cnt + 1
+                    result = TOOLS["write_file"]["fn"](path=path, content=content)
+                    runtime_safety.log_execution("write_file", {"path": path, "_retry": True})
+                    _res = _maybe_validate_tool_output("write_file", result)
+                    _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                        "write_file", _res, workspace=workspace, cfg=cfg
+                    )
+                    if isinstance(_res, dict):
+                        _res["_deterministic_retry"] = True
+                        _res["_deterministic_retry_reason"] = _det_reason
+            state["steps"].append({"action": "write_file", "result": _res})
             state["last_tool_used"] = "write_file"
-            _run_verification_after_tool(state, "write_file", result, workspace)
+            _run_verification_after_tool(state, "write_file", _res if isinstance(_res, dict) else result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
             _run_git_auto_commit("write_file", result, result.get("path") or path, workspace)
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
-            hint = _run_auto_lint_test_fix(state, "write_file", result, result.get("path") or path, workspace)
-            if hint:
-                goal = goal + "\n\n" + hint
+            if reasoning_mode != "none":
+                hint = _run_auto_lint_test_fix(state, "write_file", result, result.get("path") or path, workspace)
+                if hint:
+                    goal = goal + "\n\n" + hint
             continue
 
         # ------------------------------------------------
@@ -3414,7 +4074,32 @@ def _autonomous_run_impl_core(
             result = TOOLS["write_files_batch"]["fn"](files=files)
             _register_exact_tool_call(state, "write_files_batch", decision)
             runtime_safety.log_execution("write_files_batch", {"count": len(files)})
-            state["steps"].append({"action": "write_files_batch", "result": _maybe_validate_tool_output("write_files_batch", result)})
+            _res = _maybe_validate_tool_output("write_files_batch", result)
+            # Deterministically verify each written file exists (and is non-empty) by reusing write_file verifier.
+            try:
+                if isinstance(_res, dict) and _res.get("ok") and isinstance(_res.get("written"), list):
+                    from services.tool_output_validator import deterministic_verify_tool_result
+
+                    _batch_v: list[dict] = []
+                    _batch_ok = True
+                    for _p in [str(x) for x in (_res.get("written") or []) if str(x).strip()][:50]:
+                        vr = deterministic_verify_tool_result(
+                            "write_file",
+                            {"ok": True, "path": _p},
+                            workspace_root=workspace or "",
+                        )
+                        _batch_v.append({"path": _p, **(vr if isinstance(vr, dict) else {"ok": False, "reason": "bad_verifier_return"})})
+                        if not bool(vr.get("ok")):
+                            _batch_ok = False
+                    _res["_deterministic_verify_batch"] = _batch_v
+                    if not _batch_ok:
+                        _res["ok"] = False
+                        _res["error"] = _res.get("error") or "deterministic_batch_verification_failed"
+                        _res["reason"] = _res.get("reason") or "deterministic_batch_verification_failed"
+            except Exception as _exc:
+                if isinstance(_res, dict):
+                    _res["_deterministic_verify_batch_error"] = str(_exc)[:240]
+            state["steps"].append({"action": "write_files_batch", "result": _res})
             state["last_tool_used"] = "write_files_batch"
             if result.get("ok") and result.get("written"):
                 for p in result.get("written", [])[:1]:
@@ -3439,7 +4124,25 @@ def _autonomous_run_impl_core(
             result = TOOLS["read_file"]["fn"](path=path)
             _register_exact_tool_call(state, "read_file", decision)
             runtime_safety.log_execution("read_file", {"path": path})
-            state["steps"].append({"action": "read_file", "result": _maybe_validate_tool_output("read_file", result)})
+            _res = _maybe_validate_tool_output("read_file", result)
+            _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                "read_file", _res, workspace=workspace, cfg=cfg
+            )
+            if not _ok_det and bool(cfg.get("deterministic_tool_verification_auto_retry", True)):
+                state.setdefault("_deterministic_retry_counts", {})
+                _cnt = int(state["_deterministic_retry_counts"].get("read_file") or 0)
+                if _cnt < 1:
+                    state["_deterministic_retry_counts"]["read_file"] = _cnt + 1
+                    result = TOOLS["read_file"]["fn"](path=path)
+                    runtime_safety.log_execution("read_file", {"path": path, "_retry": True})
+                    _res = _maybe_validate_tool_output("read_file", result)
+                    _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                        "read_file", _res, workspace=workspace, cfg=cfg
+                    )
+                    if isinstance(_res, dict):
+                        _res["_deterministic_retry"] = True
+                        _res["_deterministic_retry_reason"] = _det_reason
+            state["steps"].append({"action": "read_file", "result": _res})
             state["last_tool_used"] = "read_file"
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -3453,7 +4156,25 @@ def _autonomous_run_impl_core(
             result = TOOLS["list_dir"]["fn"](path=path)
             _register_exact_tool_call(state, "list_dir", decision)
             runtime_safety.log_execution("list_dir", {"path": path})
-            state["steps"].append({"action": "list_dir", "result": _maybe_validate_tool_output("list_dir", result)})
+            _res = _maybe_validate_tool_output("list_dir", result)
+            _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                "list_dir", _res, workspace=workspace, cfg=cfg
+            )
+            if not _ok_det and bool(cfg.get("deterministic_tool_verification_auto_retry", True)):
+                state.setdefault("_deterministic_retry_counts", {})
+                _cnt = int(state["_deterministic_retry_counts"].get("list_dir") or 0)
+                if _cnt < 1:
+                    state["_deterministic_retry_counts"]["list_dir"] = _cnt + 1
+                    result = TOOLS["list_dir"]["fn"](path=path)
+                    runtime_safety.log_execution("list_dir", {"path": path, "_retry": True})
+                    _res = _maybe_validate_tool_output("list_dir", result)
+                    _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                        "list_dir", _res, workspace=workspace, cfg=cfg
+                    )
+                    if isinstance(_res, dict):
+                        _res["_deterministic_retry"] = True
+                        _res["_deterministic_retry_reason"] = _det_reason
+            state["steps"].append({"action": "list_dir", "result": _res})
             state["last_tool_used"] = "list_dir"
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -3526,7 +4247,25 @@ def _autonomous_run_impl_core(
             result = TOOLS["grep_code"]["fn"](pattern=pattern, path=grep_path)
             _register_exact_tool_call(state, "grep_code", decision)
             runtime_safety.log_execution("grep_code", {"pattern": pattern, "path": grep_path})
-            state["steps"].append({"action": "grep_code", "result": _maybe_validate_tool_output("grep_code", result)})
+            _res = _maybe_validate_tool_output("grep_code", result)
+            _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                "grep_code", _res, workspace=workspace, cfg=cfg
+            )
+            if not _ok_det and bool(cfg.get("deterministic_tool_verification_auto_retry", True)):
+                state.setdefault("_deterministic_retry_counts", {})
+                _cnt = int(state["_deterministic_retry_counts"].get("grep_code") or 0)
+                if _cnt < 1:
+                    state["_deterministic_retry_counts"]["grep_code"] = _cnt + 1
+                    result = TOOLS["grep_code"]["fn"](pattern=pattern, path=grep_path)
+                    runtime_safety.log_execution("grep_code", {"pattern": pattern, "path": grep_path, "_retry": True})
+                    _res = _maybe_validate_tool_output("grep_code", result)
+                    _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                        "grep_code", _res, workspace=workspace, cfg=cfg
+                    )
+                    if isinstance(_res, dict):
+                        _res["_deterministic_retry"] = True
+                        _res["_deterministic_retry_reason"] = _det_reason
+            state["steps"].append({"action": "grep_code", "result": _res})
             state["last_tool_used"] = "grep_code"
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -3538,7 +4277,25 @@ def _autonomous_run_impl_core(
             result = TOOLS["glob_files"]["fn"](pattern=pattern, root=workspace)
             _register_exact_tool_call(state, "glob_files", decision)
             runtime_safety.log_execution("glob_files", {"pattern": pattern, "root": workspace})
-            state["steps"].append({"action": "glob_files", "result": _maybe_validate_tool_output("glob_files", result)})
+            _res = _maybe_validate_tool_output("glob_files", result)
+            _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                "glob_files", _res, workspace=workspace, cfg=cfg
+            )
+            if not _ok_det and bool(cfg.get("deterministic_tool_verification_auto_retry", True)):
+                state.setdefault("_deterministic_retry_counts", {})
+                _cnt = int(state["_deterministic_retry_counts"].get("glob_files") or 0)
+                if _cnt < 1:
+                    state["_deterministic_retry_counts"]["glob_files"] = _cnt + 1
+                    result = TOOLS["glob_files"]["fn"](pattern=pattern, root=workspace)
+                    runtime_safety.log_execution("glob_files", {"pattern": pattern, "root": workspace, "_retry": True})
+                    _res = _maybe_validate_tool_output("glob_files", result)
+                    _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                        "glob_files", _res, workspace=workspace, cfg=cfg
+                    )
+                    if isinstance(_res, dict):
+                        _res["_deterministic_retry"] = True
+                        _res["_deterministic_retry_reason"] = _det_reason
+            state["steps"].append({"action": "glob_files", "result": _res})
             state["last_tool_used"] = "glob_files"
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -3567,12 +4324,31 @@ def _autonomous_run_impl_core(
                     continue
                 code = goal
                 state["tool_calls"] += 1
+                _admin_pre_mutate(cfg, workspace, "run_python", (code or "")[:120])
                 result = TOOLS["run_python"]["fn"](code=code, cwd=workspace)
                 _register_exact_tool_call(state, "run_python", decision)
                 runtime_safety.log_execution("run_python", {"cwd": workspace})
-                state["steps"].append({"action": "run_python", "result": _maybe_validate_tool_output("run_python", result)})
+                _res = _maybe_validate_tool_output("run_python", result)
+                _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                    "run_python", _res, workspace=workspace, cfg=cfg
+                )
+                if not _ok_det and bool(cfg.get("deterministic_tool_verification_auto_retry", True)):
+                    state.setdefault("_deterministic_retry_counts", {})
+                    _cnt = int(state["_deterministic_retry_counts"].get("run_python") or 0)
+                    if _cnt < 1:
+                        state["_deterministic_retry_counts"]["run_python"] = _cnt + 1
+                        result = TOOLS["run_python"]["fn"](code=code, cwd=workspace)
+                        runtime_safety.log_execution("run_python", {"cwd": workspace, "_retry": True})
+                        _res = _maybe_validate_tool_output("run_python", result)
+                        _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                            "run_python", _res, workspace=workspace, cfg=cfg
+                        )
+                        if isinstance(_res, dict):
+                            _res["_deterministic_retry"] = True
+                            _res["_deterministic_retry_reason"] = _det_reason
+                state["steps"].append({"action": "run_python", "result": _res})
                 state["last_tool_used"] = "run_python"
-                _run_verification_after_tool(state, "run_python", result, workspace)
+                _run_verification_after_tool(state, "run_python", _res if isinstance(_res, dict) else result, workspace)
                 _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
                 goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                 continue
@@ -3591,12 +4367,31 @@ def _autonomous_run_impl_core(
                 break
             code = goal
             state["tool_calls"] += 1
+            _admin_pre_mutate(cfg, workspace, "run_python", (code or "")[:120])
             result = TOOLS["run_python"]["fn"](code=code, cwd=workspace)
             _register_exact_tool_call(state, "run_python", decision)
             runtime_safety.log_execution("run_python", {"cwd": workspace})
-            state["steps"].append({"action": "run_python", "result": _maybe_validate_tool_output("run_python", result)})
+            _res = _maybe_validate_tool_output("run_python", result)
+            _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                "run_python", _res, workspace=workspace, cfg=cfg
+            )
+            if not _ok_det and bool(cfg.get("deterministic_tool_verification_auto_retry", True)):
+                state.setdefault("_deterministic_retry_counts", {})
+                _cnt = int(state["_deterministic_retry_counts"].get("run_python") or 0)
+                if _cnt < 1:
+                    state["_deterministic_retry_counts"]["run_python"] = _cnt + 1
+                    result = TOOLS["run_python"]["fn"](code=code, cwd=workspace)
+                    runtime_safety.log_execution("run_python", {"cwd": workspace, "_retry": True})
+                    _res = _maybe_validate_tool_output("run_python", result)
+                    _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                        "run_python", _res, workspace=workspace, cfg=cfg
+                    )
+                    if isinstance(_res, dict):
+                        _res["_deterministic_retry"] = True
+                        _res["_deterministic_retry_reason"] = _det_reason
+            state["steps"].append({"action": "run_python", "result": _res})
             state["last_tool_used"] = "run_python"
-            _run_verification_after_tool(state, "run_python", result, workspace)
+            _run_verification_after_tool(state, "run_python", _res if isinstance(_res, dict) else result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -3656,18 +4451,126 @@ def _autonomous_run_impl_core(
                 state["status"] = "parse_failed"
                 break
             state["tool_calls"] += 1
+            _admin_pre_mutate(cfg, workspace, "apply_patch", path)
             result = TOOLS["apply_patch"]["fn"](original_path=path, patch_text=patch_body)
             _register_exact_tool_call(state, "apply_patch", decision)
             runtime_safety.log_execution("apply_patch", {"path": path})
-            state["steps"].append({"action": "apply_patch", "result": _maybe_validate_tool_output("apply_patch", result)})
+            _res = _maybe_validate_tool_output("apply_patch", result)
+            _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                "apply_patch", _res, workspace=workspace, cfg=cfg
+            )
+            if not _ok_det and bool(cfg.get("deterministic_tool_verification_auto_retry", True)):
+                state.setdefault("_deterministic_retry_counts", {})
+                _cnt = int(state["_deterministic_retry_counts"].get("apply_patch") or 0)
+                if _cnt < 1:
+                    state["_deterministic_retry_counts"]["apply_patch"] = _cnt + 1
+                    result = TOOLS["apply_patch"]["fn"](original_path=path, patch_text=patch_body)
+                    runtime_safety.log_execution("apply_patch", {"path": path, "_retry": True})
+                    _res = _maybe_validate_tool_output("apply_patch", result)
+                    _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                        "apply_patch", _res, workspace=workspace, cfg=cfg
+                    )
+                    if isinstance(_res, dict):
+                        _res["_deterministic_retry"] = True
+                        _res["_deterministic_retry_reason"] = _det_reason
+            state["steps"].append({"action": "apply_patch", "result": _res})
             state["last_tool_used"] = "apply_patch"
-            _run_verification_after_tool(state, "apply_patch", result, workspace)
+            _run_verification_after_tool(state, "apply_patch", _res if isinstance(_res, dict) else result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
             _run_git_auto_commit("apply_patch", result, path, workspace)
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
-            hint = _run_auto_lint_test_fix(state, "apply_patch", result, path, workspace)
-            if hint:
-                goal = goal + "\n\n" + hint
+            if reasoning_mode != "none":
+                hint = _run_auto_lint_test_fix(state, "apply_patch", result, path, workspace)
+                if hint:
+                    goal = goal + "\n\n" + hint
+            continue
+
+        # ------------------------------------------------
+        # REPLACE IN FILE (surgical)
+        # ------------------------------------------------
+        if intent == "replace_in_file":
+            if state.get("research_lab_root"):
+                state["tool_calls"] += 1
+                state["steps"].append({
+                    "action": "replace_in_file",
+                    "result": {"ok": False, "reason": "not_allowed_in_research"},
+                })
+                goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+                continue
+            args = (decision.get("args") or {}) if decision else {}
+            path = str(args.get("path") or "").strip()
+            old_text = str(args.get("old_text") or "")
+            new_text = str(args.get("new_text") if args.get("new_text") is not None else "")
+            try:
+                rcount = int(args.get("count") or 1)
+            except (TypeError, ValueError):
+                rcount = 1
+            if not path or not old_text:
+                state["tool_calls"] += 1
+                state["steps"].append({
+                    "action": "replace_in_file",
+                    "result": {"ok": False, "error": "replace_in_file requires path and old_text in args"},
+                })
+                goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+                continue
+            if path:
+                probe = _maybe_preprobe_file(state, path)
+                if not _apply_probe_guidance(state, "replace_in_file", path, probe):
+                    goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+                    continue
+            if not allow_write or (
+                not runtime_safety.require_approval("replace_in_file")
+                and not _has_any_grant("replace_in_file", {"path": path})
+            ):
+                rif_args = {"path": path, "old_text": old_text, "new_text": new_text, "count": rcount}
+                _approval_preview_diff("replace_in_file", rif_args, workspace)
+                approval_id = _write_pending("replace_in_file", rif_args)
+                state["steps"].append({
+                    "action": "replace_in_file",
+                    "result": {
+                        "ok": False,
+                        "reason": "approval_required",
+                        "approval_id": approval_id,
+                        "message": f"Run: layla approve {approval_id}",
+                    },
+                })
+                state["status"] = "finished"
+                break
+            state["tool_calls"] += 1
+            _admin_pre_mutate(cfg, workspace, "replace_in_file", path)
+            result = TOOLS["replace_in_file"]["fn"](
+                path=path, old_text=old_text, new_text=new_text, count=rcount
+            )
+            _register_exact_tool_call(state, "replace_in_file", decision)
+            runtime_safety.log_execution("replace_in_file", {"path": path})
+            _res = _maybe_validate_tool_output("replace_in_file", result)
+            _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                "replace_in_file", _res, workspace=workspace, cfg=cfg
+            )
+            if not _ok_det and bool(cfg.get("deterministic_tool_verification_auto_retry", True)):
+                state.setdefault("_deterministic_retry_counts", {})
+                _cnt = int(state["_deterministic_retry_counts"].get("replace_in_file") or 0)
+                if _cnt < 1:
+                    state["_deterministic_retry_counts"]["replace_in_file"] = _cnt + 1
+                    result = TOOLS["replace_in_file"]["fn"](path=path, old_text=old_text, new_text=new_text, count=rcount)
+                    runtime_safety.log_execution("replace_in_file", {"path": path, "_retry": True})
+                    _res = _maybe_validate_tool_output("replace_in_file", result)
+                    _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                        "replace_in_file", _res, workspace=workspace, cfg=cfg
+                    )
+                    if isinstance(_res, dict):
+                        _res["_deterministic_retry"] = True
+                        _res["_deterministic_retry_reason"] = _det_reason
+            state["steps"].append({"action": "replace_in_file", "result": _res})
+            state["last_tool_used"] = "replace_in_file"
+            _run_verification_after_tool(state, "replace_in_file", _res if isinstance(_res, dict) else result, workspace)
+            _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
+            _run_git_auto_commit("replace_in_file", result, result.get("path") or path, workspace)
+            goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+            if reasoning_mode != "none":
+                hint = _run_auto_lint_test_fix(state, "replace_in_file", result, result.get("path") or path, workspace)
+                if hint:
+                    goal = goal + "\n\n" + hint
             continue
 
         # ------------------------------------------------
@@ -3683,7 +4586,25 @@ def _autonomous_run_impl_core(
             result = TOOLS["fetch_url"]["fn"](url=url)
             _register_exact_tool_call(state, "fetch_url", decision)
             runtime_safety.log_execution("fetch_url", {"url": url})
-            state["steps"].append({"action": "fetch_url", "result": _maybe_validate_tool_output("fetch_url", result)})
+            _res = _maybe_validate_tool_output("fetch_url", result)
+            _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                "fetch_url", _res, workspace=workspace, cfg=cfg
+            )
+            if not _ok_det and bool(cfg.get("deterministic_tool_verification_auto_retry", True)):
+                state.setdefault("_deterministic_retry_counts", {})
+                _cnt = int(state["_deterministic_retry_counts"].get("fetch_url") or 0)
+                if _cnt < 1:
+                    state["_deterministic_retry_counts"]["fetch_url"] = _cnt + 1
+                    result = TOOLS["fetch_url"]["fn"](url=url)
+                    runtime_safety.log_execution("fetch_url", {"url": url, "_retry": True})
+                    _res = _maybe_validate_tool_output("fetch_url", result)
+                    _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                        "fetch_url", _res, workspace=workspace, cfg=cfg
+                    )
+                    if isinstance(_res, dict):
+                        _res["_deterministic_retry"] = True
+                        _res["_deterministic_retry_reason"] = _det_reason
+            state["steps"].append({"action": "fetch_url", "result": _res})
             state["last_tool_used"] = "fetch_url"
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -3735,12 +4656,31 @@ def _autonomous_run_impl_core(
                 state["status"] = "finished"
                 break
             state["tool_calls"] += 1
+            _admin_pre_mutate(cfg, workspace, "shell", _cmd_line[:160])
             result = TOOLS["shell"]["fn"](argv=argv, cwd=workspace)
             _register_exact_tool_call(state, "shell", decision)
             runtime_safety.log_execution("shell", {"argv": argv, "cwd": workspace})
-            state["steps"].append({"action": "shell", "result": _maybe_validate_tool_output("shell", result)})
+            _res = _maybe_validate_tool_output("shell", result)
+            _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                "shell", _res, workspace=workspace, cfg=cfg
+            )
+            if not _ok_det and bool(cfg.get("deterministic_tool_verification_auto_retry", True)):
+                state.setdefault("_deterministic_retry_counts", {})
+                _cnt = int(state["_deterministic_retry_counts"].get("shell") or 0)
+                if _cnt < 1:
+                    state["_deterministic_retry_counts"]["shell"] = _cnt + 1
+                    result = TOOLS["shell"]["fn"](argv=argv, cwd=workspace)
+                    runtime_safety.log_execution("shell", {"argv": argv, "cwd": workspace, "_retry": True})
+                    _res = _maybe_validate_tool_output("shell", result)
+                    _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                        "shell", _res, workspace=workspace, cfg=cfg
+                    )
+                    if isinstance(_res, dict):
+                        _res["_deterministic_retry"] = True
+                        _res["_deterministic_retry_reason"] = _det_reason
+            state["steps"].append({"action": "shell", "result": _res})
             state["last_tool_used"] = "shell"
-            _run_verification_after_tool(state, "shell", result, workspace)
+            _run_verification_after_tool(state, "shell", _res if isinstance(_res, dict) else result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -3886,8 +4826,8 @@ def _autonomous_run_impl_core(
 
                     _og = (state.get("original_goal") or goal or "").strip()
                     args = fill_tool_args_from_goal(intent, _og, workspace, args)
-                except Exception:
-                    pass
+                except Exception as _exc:
+                    logger.debug("agent_loop:L3889: %s", _exc, exc_info=False)
             meta = TOOLS.get(intent, {})
             needs_approval = meta.get("require_approval", False)
             allow = allow_write or allow_run  # generic tools need at least one
@@ -3925,9 +4865,34 @@ def _autonomous_run_impl_core(
             runtime_safety.log_execution(intent, args)
             state["tool_calls"] += 1
             _register_exact_tool_call(state, intent, decision)
-            state["steps"].append({"action": intent, "result": _maybe_validate_tool_output(intent, result)})
+            _res = _maybe_validate_tool_output(intent, result)
+            _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                intent, _res, workspace=workspace, cfg=cfg
+            )
+            if not _ok_det and bool(cfg.get("deterministic_tool_verification_auto_retry", True)):
+                state.setdefault("_deterministic_retry_counts", {})
+                _cnt = int(state["_deterministic_retry_counts"].get(intent) or 0)
+                if _cnt < 1:
+                    state["_deterministic_retry_counts"][intent] = _cnt + 1
+                    result = _run_tool(
+                        intent,
+                        args,
+                        timeout_s=float(_tool_timeout),
+                        sandbox_root=workspace,
+                        allow_run=allow_run,
+                        conversation_id=str(state.get("conversation_id") or ""),
+                    )
+                    runtime_safety.log_execution(intent, dict(args) | {"_retry": True})
+                    _res = _maybe_validate_tool_output(intent, result)
+                    _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
+                        intent, _res, workspace=workspace, cfg=cfg
+                    )
+                    if isinstance(_res, dict):
+                        _res["_deterministic_retry"] = True
+                        _res["_deterministic_retry_reason"] = _det_reason
+            state["steps"].append({"action": intent, "result": _res})
             state["last_tool_used"] = intent
-            _run_verification_after_tool(state, intent, result, workspace)
+            _run_verification_after_tool(state, intent, _res if isinstance(_res, dict) else result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -3966,11 +4931,24 @@ def _autonomous_run_impl_core(
             effective_history = conversation_history or []
             if effective_history and cfg.get("context_compression", True) and reasoning_mode != "none":
                 try:
-                    from services.context_manager import summarize_history
+                    from services.context_manager import (
+                        effective_compact_threshold_ratio,
+                        summarize_history,
+                    )
+
                     n_ctx = max(2048, int(cfg.get("n_ctx", 4096)))
-                    effective_history = summarize_history(effective_history, n_ctx=n_ctx, threshold_ratio=0.75)
-                except Exception:
-                    pass
+                    ratio = effective_compact_threshold_ratio(cfg, n_ctx)
+                    keep = int(cfg.get("context_sliding_keep_messages", 0) or 0)
+                    if cfg.get("context_aggressive_compress_enabled") and keep <= 0:
+                        keep = 10
+                    effective_history = summarize_history(
+                        effective_history,
+                        n_ctx=n_ctx,
+                        threshold_ratio=ratio,
+                        keep_recent_messages=keep,
+                    )
+                except Exception as _exc:
+                    logger.debug("agent_loop:L3972: %s", _exc, exc_info=False)
             head = _build_system_head(
                 goal=goal,
                 aspect=active_aspect,
@@ -4127,8 +5105,8 @@ def _autonomous_run_impl_core(
                 from layla.memory.db import save_earned_title
                 try:
                     save_earned_title(active_aspect.get("id", ""), et_match.group(1).strip())
-                except Exception:
-                    pass
+                except Exception as _exc:
+                    logger.debug("agent_loop:L4130: %s", _exc, exc_info=False)
                 text = _re_et.sub(r"\s*\[EARNED_TITLE:\s*.+?\]\s*$", "", text, flags=_re_et.IGNORECASE).strip()
 
             # Research mission: treat question-to-user as incomplete; continue until full output
@@ -4142,7 +5120,67 @@ def _autonomous_run_impl_core(
                     )
                     continue
 
-            text = _polish_output(text)
+            text = _polish_output(text, cfg)
+            # Layla v3: optional inline initiative suggestion (no extra LLM call).
+            try:
+                cfg_inline = runtime_safety.load_config()
+                if cfg_inline.get("inline_initiative_enabled", False):
+                    from services.maturity_engine import get_state as _get_maturity_state
+
+                    ms = _get_maturity_state()
+                    if ms.phase in ("adept", "veteran", "transcendent"):
+                        from services.initiative_inline import maybe_append_inline_suggestion
+
+                        text = maybe_append_inline_suggestion(text, state=state, cfg=cfg_inline)
+            except Exception as _exc:
+                logger.debug("agent_loop:inline_initiative failed: %s", _exc, exc_info=False)
+
+            # Strict completion gate: retry instead of returning low-quality output.
+            try:
+                cfg_gate = runtime_safety.load_config()
+                if bool(cfg_gate.get("completion_gate_enabled", False)):
+                    from services.output_quality import passes_completion_gate
+
+                    ok_gate, reasons = passes_completion_gate(goal=state.get("original_goal") or goal, text=text, state=state, cfg=cfg_gate)
+                    state["completion_gate_passed"] = bool(ok_gate)
+                    state["completion_gate_reasons"] = reasons[:6]
+                    try:
+                        max_r = int(cfg_gate.get("completion_gate_max_retries", 1) or 1)
+                    except (TypeError, ValueError):
+                        max_r = 1
+                    max_r = max(0, min(2, max_r))
+                    cur_r = int(state.get("completion_gate_retries") or 0)
+                    if not ok_gate and cur_r < max_r and state.get("status") != "timeout":
+                        state["completion_gate_retries"] = cur_r + 1
+                        state.setdefault("steps", []).append(
+                            {
+                                "action": "completion_gate",
+                                "result": {
+                                    "ok": False,
+                                    "reason": "completion_gate_failed",
+                                    "reasons": reasons[:6],
+                                    "retry": True,
+                                },
+                            }
+                        )
+                        # Re-enter the loop with a strict instruction.
+                        goal = (
+                            (state.get("original_goal") or goal)
+                            + "\n\n[System: Your last response failed the completion gate for these reasons: "
+                            + ", ".join(reasons[:4])
+                            + ". Produce a correct, complete response now. Do not restate the goal.]\n"
+                        )
+                        continue
+                    if not ok_gate and cur_r >= max_r:
+                        # Hard stop: return structured failure instead of garbage.
+                        text = (
+                            "I couldn't meet the completion quality gate within the retry budget.\n\n"
+                            "Structured failure:\n"
+                            f"- reasons: {', '.join(reasons[:6]) or 'unknown'}\n"
+                            "- suggested_next: simplify the request, reduce scope, or provide a specific file/path/expected output.\n"
+                        )
+            except Exception as _exc:
+                logger.debug("completion gate failed open: %s", _exc, exc_info=False)
             state["steps"].append({
                 "action": "reason",
                 "result": text,
@@ -4160,8 +5198,8 @@ def _autonomous_run_impl_core(
                         reply=text,
                         conversation_history=conversation_history or [],
                     )
-                except Exception:
-                    pass
+                except Exception as _exc:
+                    logger.debug("agent_loop:L4163: %s", _exc, exc_info=False)
             break
 
         # D5: After any step, if the last tool result is approval_required or timed_out,
@@ -4211,6 +5249,32 @@ def _autonomous_run_impl_core(
         _inject_cancel_message(conversation_history, "agent", "hit runtime limit")
 
     if state.get("status") == "finished":
+        try:
+            if runtime_safety.load_config().get("pipeline_enforcement_enabled", True):
+                state["pipeline_stage"] = "REFLECT"
+        except Exception:
+            state["pipeline_stage"] = "REFLECT"
+        try:
+            from services.outcome_evaluation import evaluate_outcome_structured
+            from shared_state import set_last_outcome_evaluation
+
+            ev_struct = evaluate_outcome_structured(state)
+            state["outcome_evaluation"] = ev_struct
+            cid_fin = (state.get("conversation_id") or "").strip()
+            if cid_fin:
+                set_last_outcome_evaluation(cid_fin, ev_struct)
+            try:
+                from layla.memory import strategy_stats as _strategy_stats
+
+                _g = (state.get("original_goal") or state.get("goal") or "").strip()
+                _task_type = (_g.replace("\n", " ")[:120] if _g else "general") or "general"
+                _strat = str(active_aspect.get("id") or "morrigan")[:120]
+                _strategy_stats.record_strategy_stat(_task_type, _strat, success=bool(ev_struct.get("success")))
+                state["strategy_stats_recorded"] = True
+            except Exception as _ss_exc:
+                logger.debug("strategy_stats record failed: %s", _ss_exc)
+        except Exception as _ev_exc:
+            logger.debug("structured outcome eval / planner hook failed: %s", _ev_exc)
         _save_outcome_memory(state)
         try:
             from layla.memory.distill import run_distill_after_outcome
@@ -4236,5 +5300,16 @@ def _autonomous_run_impl_core(
         set_effective_sandbox(None)
 
     _emit_run_telemetry(state, state.get("status") in ("finished", "plan_completed"))
+
+    # Response envelope (stable keys for UI/API consumers).
+    try:
+        if state.get("status") in ("finished", "plan_completed"):
+            state["steps_taken"] = list(state.get("steps") or [])
+            if "completion_gate_passed" not in state:
+                state["completion_gate_passed"] = True
+            if "retry_count" not in state:
+                state["retry_count"] = int(state.get("completion_gate_retries") or 0)
+    except Exception:
+        pass
 
     return state

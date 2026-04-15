@@ -2,7 +2,7 @@
 import asyncio
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from services.agent_task_runner import (
@@ -53,6 +53,34 @@ async def resume_paused(req: dict):
     })
 
 
+@router.post("/agent/persistent_tasks/{task_id}/resume")
+async def resume_persistent_coordinator_task(task_id: str, request: Request):
+    """Re-enter autonomous_run via coordinator.run using SQLite tasks.execution_state_json."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    import agent_loop as _al
+    from services.coordinator import run as coordinator_run
+
+    result = await asyncio.to_thread(
+        coordinator_run,
+        _al.autonomous_run,
+        str(body.get("goal") or "").strip(),
+        context=str(body.get("context") or ""),
+        workspace_root=str(body.get("workspace_root") or ""),
+        allow_write=body.get("allow_write") is True,
+        allow_run=body.get("allow_run") is True,
+        conversation_id=str(body.get("conversation_id") or "").strip(),
+        aspect_id=str(body.get("aspect_id") or "").strip() or "morrigan",
+        show_thinking=body.get("show_thinking") is True,
+        resume_task_id=(task_id or "").strip(),
+    )
+    return JSONResponse({"ok": True, "result": result})
+
+
 @router.post("/execute_plan")
 async def execute_plan_route(req: dict):
     """Execute a pre-generated plan (from plan_mode). Steps run sequentially via autonomous_run."""
@@ -70,8 +98,8 @@ async def execute_plan_route(req: dict):
     if not plan_steps or not goal:
         return JSONResponse({"ok": False, "error": "plan and goal are required"}, status_code=400)
     try:
-        from services.planner import execute_plan as _exec_plan
         from agent_loop import autonomous_run
+        from services.planner import execute_plan as _exec_plan
         results = await asyncio.to_thread(
             _exec_plan,
             plan_steps,

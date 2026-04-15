@@ -11,17 +11,16 @@ import sys
 from pathlib import Path
 
 AGENT_DIR = Path(__file__).resolve().parent.parent
-CONFIG_PATH = AGENT_DIR / "runtime_config.json"
 EXAMPLE_PATH = AGENT_DIR / "runtime_config.example.json"
 
 
 def run() -> int:
     try:
-        from install.model_downloader import get_canonical_models_dir
+        from runtime_safety import CONFIG_FILE, default_models_dir
     except ImportError as e:
-        raise ImportError(f"Could not import model_downloader: {e}") from e
+        raise ImportError(f"Could not import runtime_safety: {e}") from e
 
-    canonical_dir = get_canonical_models_dir()
+    canonical_dir = default_models_dir()
     if not canonical_dir.exists():
         return 1
     models = list(canonical_dir.glob("*.gguf"))
@@ -45,12 +44,12 @@ def run() -> int:
 
     # Load existing config
     cfg = {}
-    if CONFIG_PATH.exists():
+    if CONFIG_FILE.exists():
         try:
-            cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8-sig"))
+            cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig"))
         except json.JSONDecodeError:
             try:
-                cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+                cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
             except Exception:
                 cfg = {}
     else:
@@ -69,9 +68,9 @@ def run() -> int:
     cfg["model_filename"] = chosen.name
     cfg["models_dir"] = str(canonical_dir.resolve())
     try:
-        CONFIG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+        CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     except OSError as e:
-        raise OSError(f"Could not write {CONFIG_PATH}: {e}") from e
+        raise OSError(f"Could not write {CONFIG_FILE}: {e}") from e
     print(f"  Configured model: {chosen.name} ({canonical_dir})")
     return 0
 

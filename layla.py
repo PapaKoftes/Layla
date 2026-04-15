@@ -34,6 +34,19 @@ except ImportError:
 def _post(path: str, payload: dict) -> dict:
     try:
         r = httpx.post(f"{BASE_URL}{path}", json=payload, timeout=120)
+        ct = (r.headers.get("content-type") or "").lower()
+        if not r.is_success:
+            body = (r.text or "")[:500]
+            print(f"Server returned {r.status_code} for {path}.")
+            if body:
+                print(body)
+            sys.exit(1)
+        if "application/json" not in ct:
+            body = (r.text or "")[:500]
+            print(f"Server returned non-JSON for {path}. Content-Type={ct or 'unknown'}")
+            if body:
+                print(body)
+            sys.exit(1)
         return r.json()
     except httpx.ConnectError:
         print("Cannot connect to Layla. Is the agent running? (cd agent && python -m uvicorn main:app)")
@@ -46,6 +59,19 @@ def _post(path: str, payload: dict) -> dict:
 def _get(path: str) -> dict:
     try:
         r = httpx.get(f"{BASE_URL}{path}", timeout=30)
+        ct = (r.headers.get("content-type") or "").lower()
+        if not r.is_success:
+            body = (r.text or "")[:500]
+            print(f"Server returned {r.status_code} for {path}.")
+            if body:
+                print(body)
+            sys.exit(1)
+        if "application/json" not in ct:
+            body = (r.text or "")[:500]
+            print(f"Server returned non-JSON for {path}. Content-Type={ct or 'unknown'}")
+            if body:
+                print(body)
+            sys.exit(1)
         return r.json()
     except httpx.ConnectError:
         print("Cannot connect to Layla. Is the agent running?")
@@ -90,7 +116,6 @@ def cmd_ask(args: list) -> None:
     # Check if --aspect, --think, or --voice flags are passed
     aspect = ""
     think = False
-    use_voice = False
     clean = []
     i = 0
     while i < len(args):

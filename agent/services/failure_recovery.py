@@ -35,32 +35,84 @@ def classify_failure_and_recovery(state: dict) -> None:
     if consecutive == 0:
         state.pop("recovery_hint", None)
         state.pop("recovery_strategy", None)
+        state.pop("failure_type", None)
         return
+    status = str(state.get("status") or "").strip().lower()
     last_tool = state.get("last_tool_used") or ""
-    if last_tool in ("read_file", "list_dir", "grep_code", "glob_files", "file_info", "get_project_context", "understand_file"):
+    if status in ("parse_failed",):
+        state["failure_type"] = "parse_failure"
+        state["recovery_strategy"] = "replan"
+        state["recovery_hint"] = {
+            # Back-compat: preserve legacy type categories expected by tests/prompts.
+            "type": "planning_gap",
+            "failure_type": "parse_failure",
+            "recovery_strategy": "replan",
+            "message": "Parsing failed. Simplify the request, restate required args explicitly, or switch to a simpler tool sequence (read_file/list_dir/grep_code).",
+            "source": "failure_classifier",
+        }
+    elif status in ("timeout", "system_busy"):
+        state["failure_type"] = "execution_failure"
+        state["recovery_strategy"] = "retry_constrained"
+        state["recovery_hint"] = {
+            "type": "execution_issue",
+            "failure_type": "execution_failure",
+            "recovery_strategy": "retry_constrained",
+            "message": "Execution was interrupted (timeout/busy). Reduce scope, add verification, or retry with fewer tools per step.",
+            "source": "failure_classifier",
+        }
+    elif status in ("tool_limit",):
+        state["failure_type"] = "planning_failure"
         state["recovery_strategy"] = "replan"
         state["recovery_hint"] = {
             "type": "planning_gap",
+            "failure_type": "planning_failure",
+            "recovery_strategy": "replan",
+            "message": "Hit tool call budget. Replan with fewer steps and more targeted tools; avoid exploratory loops.",
+            "source": "failure_classifier",
+        }
+    elif last_tool in ("read_file", "list_dir", "grep_code", "glob_files", "file_info", "get_project_context", "understand_file"):
+        state["failure_type"] = "planning_failure"
+        state["recovery_strategy"] = "replan"
+        state["recovery_hint"] = {
+            "type": "planning_gap",
+            "failure_type": "planning_failure",
             "recovery_strategy": "replan",
             "message": "Consider breaking the goal into smaller steps or asking the user to clarify. Try a different inspection or reply (reason).",
             "source": "failure_classifier",
         }
     elif last_tool in ("write_file", "run_python", "apply_patch", "shell"):
+        state["failure_type"] = "tool_failure" if state.get("environment_aligned") is False else "execution_failure"
         state["recovery_strategy"] = "retry_constrained"
         state["recovery_hint"] = {
             "type": "execution_issue",
+            "failure_type": state.get("failure_type") or "execution_failure",
             "recovery_strategy": "retry_constrained",
             "message": "Execution may have failed or been blocked. Check tool result; suggest a fix or ask the user. Prefer read_file to verify state before retrying.",
             "source": "failure_classifier",
         }
     else:
+        state["failure_type"] = "reasoning_failure"
         state["recovery_strategy"] = "escalate_user"
         state["recovery_hint"] = {
             "type": "workflow_breakdown",
+            "failure_type": "reasoning_failure",
             "recovery_strategy": "escalate_user",
             "message": "Workflow may be stuck. Consider replying (reason) to summarize what was tried and suggest next steps, or propose a revised objective.",
             "source": "failure_classifier",
         }
+    try:
+        import runtime_safety
+
+        if bool(runtime_safety.load_config().get("pipeline_enforcement_enabled", True)):
+            strat = str(state.get("recovery_strategy") or "")
+            if strat == "retry_constrained":
+                state["pipeline_stage"] = "DEBUG"
+            elif strat == "replan":
+                state["pipeline_stage"] = "PLAN"
+            elif strat == "escalate_user":
+                state["pipeline_stage"] = "VALIDATE"
+    except Exception:
+        pass
 
 
 def format_recovery_hint_for_prompt(recovery_hint: dict) -> str:

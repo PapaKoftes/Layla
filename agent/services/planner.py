@@ -4,9 +4,12 @@ Uses LLM to produce a structured plan (3–6 steps); each step has task + sugges
 Supports agent roles: planner, executor, researcher, debugger, memory_curator.
 """
 import json
+import logging
 import re
 from types import SimpleNamespace
 from typing import Any
+
+logger = logging.getLogger("layla")
 
 # Keyword args forwarded to agent_loop.autonomous_run (must stay in sync with its signature).
 _AUTONOMOUS_KW_KEYS = frozenset({
@@ -34,6 +37,8 @@ _AUTONOMOUS_KW_KEYS = frozenset({
     "skip_engineering_pipeline",
     "engineering_pipeline_mode",
     "clarification_reply",
+    "resume_execution_state",
+    "coordinator_trace",
 })
 
 
@@ -167,10 +172,15 @@ def personality_planner_bias(aspect_id: str) -> str:
     return ""
 
 
-def build_planning_bias_prompt(conversation_id: str, aspect_id: str, cfg: dict | None) -> str:
+def build_planning_bias_prompt(
+    conversation_id: str,
+    aspect_id: str,
+    cfg: dict | None,
+    *,
+    goal: str = "",
+    preferred_strategy: str | None = None,
+) -> str:
     """Prior-turn evaluation + recent tool failures + persona + toolchain hint for create_plan."""
-    if cfg is not None and not cfg.get("planning_outcome_bias_enabled", True):
-        return ""
     parts: list[str] = []
     try:
         from shared_state import get_last_outcome_evaluation
@@ -183,6 +193,20 @@ def build_planning_bias_prompt(conversation_id: str, aspect_id: str, cfg: dict |
                 f"Issues: {'; '.join(str(x) for x in iss[:5]) or 'none'}. "
                 "Adjust steps to avoid repeating the same failure mode."
             )
+            if ev.get("reason") and str(ev.get("reason")) != "ok":
+                parts.append(f"Last run reason: {ev.get('reason')}.")
+            imp = ev.get("improvement")
+            if isinstance(imp, str) and imp.strip():
+                parts.append(f"Suggested improvement: {imp.strip()[:400]}")
+            if ev.get("confidence") is not None:
+                parts.append(f"Outcome confidence (heuristic): {ev.get('confidence')}.")
+            if ev.get("cost_score") is not None:
+                parts.append(f"Cost-efficiency score (higher is better): {ev.get('cost_score')}.")
+            m = ev.get("metrics")
+            if isinstance(m, dict) and m.get("wall_time_seconds") is not None:
+                parts.append(
+                    f"Last run wall time ~{m.get('wall_time_seconds')}s, tool steps: {m.get('tool_step_count', '?')}."
+                )
             try:
                 from services.outcome_evaluation import policy_caps_trace_from_evaluation
 
@@ -208,6 +232,23 @@ def build_planning_bias_prompt(conversation_id: str, aspect_id: str, cfg: dict |
             parts.append("Recent tool failures (SQLite): " + "; ".join(bits) + ". Add verification or alternate tools.")
     except Exception:
         pass
+    # Reinforced learnings: surface top high-confidence items so they influence next plan, not just storage.
+    try:
+        from layla.memory.db import get_top_learnings_for_planning
+
+        top = get_top_learnings_for_planning(limit=5, min_confidence=0.66)
+        if top:
+            lines = []
+            for r in top[:5]:
+                txt = (r.get("content") or "").strip().replace("\n", " ")
+                if len(txt) > 180:
+                    txt = txt[:180].rsplit(" ", 1)[0] + "..."
+                lid = r.get("id")
+                c = r.get("confidence")
+                lines.append(f"- (id={lid}, conf={c}) {txt}")
+            parts.append("Reinforced learnings (high confidence; treat as constraints/priors):\n" + "\n".join(lines))
+    except Exception:
+        pass
     pb = personality_planner_bias(aspect_id)
     if pb:
         parts.append(pb)
@@ -219,6 +260,20 @@ def build_planning_bias_prompt(conversation_id: str, aspect_id: str, cfg: dict |
             parts.append(th)
     except Exception:
         pass
+    try:
+        from services.toolchain_graph import planner_toolchain_cost_line
+
+        cg = planner_toolchain_cost_line(goal)
+        if cg:
+            parts.append(cg)
+    except Exception:
+        pass
+    ps = (preferred_strategy or "").strip()
+    if ps:
+        parts.append(
+            "Learned strategy preference (from past task outcomes — honor when compatible): "
+            f"{ps[:200]}."
+        )
     return "\n".join(parts).strip()
 
 PLAN_KEYWORDS = frozenset(
@@ -251,6 +306,7 @@ def create_plan(
     *,
     conversation_id: str = "",
     aspect_id: str = "",
+    preferred_strategy: str | None = None,
 ) -> list[dict]:
     """
     Use LLM to produce a structured plan.
@@ -288,7 +344,13 @@ def create_plan(
         extra_ctx = ""
         if (prior_plans_digest or "").strip():
             extra_ctx = f"\n{prior_plans_digest.strip()[:3500]}\n\n"
-        bias_block = build_planning_bias_prompt(conversation_id or "", aspect_id or "", cfg)
+        bias_block = build_planning_bias_prompt(
+            conversation_id or "",
+            aspect_id or "",
+            cfg,
+            goal=goal[:2000],
+            preferred_strategy=preferred_strategy,
+        )
         prompt = (
             f"Given this goal:\n\n{goal[:800]}\n\n"
             f"{extra_ctx}"
@@ -423,6 +485,13 @@ def run_governed_plan_step(
 
         retry_suffix_fn = _suffix
 
+    try:
+        import runtime_safety
+
+        _cfg_gov = runtime_safety.load_config()
+    except Exception:
+        _cfg_gov = {}
+
     last: dict[str, Any] = {}
     success = False
     attempt = 0
@@ -432,8 +501,33 @@ def run_governed_plan_step(
     try:
         for attempt in range(max_attempts):
             use_goal = step_goal
+            suffix = retry_suffix_fn(attempt, mr) if attempt > 0 else ""
+            if attempt > 0 and bool(_cfg_gov.get("autonomy_optimizer_enabled", False)):
+                try:
+                    from services.autonomy_optimizer import (
+                        last_failed_tool_from_agent_response,
+                        propose_step_recovery,
+                    )
+
+                    _failed_tool = last_failed_tool_from_agent_response(last)
+                    if _failed_tool or verr:
+                        _prop = propose_step_recovery(
+                            failed_tool=_failed_tool,
+                            validation_reason=verr,
+                            step_tools=tools_hint,
+                            cfg=_cfg_gov,
+                        )
+                        if _prop.get("action") == "suggest_tool" and _prop.get("tool"):
+                            suffix += (
+                                f"\n\n[Plan recovery hint: try `{_prop['tool']}` next — "
+                                f"{str(_prop.get('rationale') or '').strip()[:400]}]"
+                            )
+                        elif _prop.get("action") == "retry" and _prop.get("rationale"):
+                            suffix += f"\n\n[Plan recovery: {str(_prop.get('rationale'))[:400]}]"
+                except Exception:
+                    pass
             if attempt > 0:
-                use_goal = step_goal + retry_suffix_fn(attempt, mr)
+                use_goal = step_goal + suffix
             if agent_result_fn is not None:
                 last = agent_result_fn(use_goal)
             elif agent_run_fn is not None:
@@ -552,4 +646,243 @@ def execute_plan(
     out: dict[str, Any] = {"status": "plan_completed", "steps_done": steps_done, "summary": summary}
     if step_governance:
         out["all_steps_ok"] = all(d.get("governance_ok") for d in steps_done)
+    return out
+
+
+def validate_plan_before_execution(
+    plan: list[dict],
+    *,
+    cfg: dict | None,
+    workspace_root: str = "",
+) -> tuple[list[dict], bool, str]:
+    """
+    Deterministic plan pre-validation (cheap checks before execution).
+    Returns (normalized_plan, ok, reason).
+    """
+    if not isinstance(plan, list) or not plan:
+        return [], False, "empty_plan"
+    c = cfg or {}
+    try:
+        max_steps = int(c.get("max_plan_steps", 6) or 6)
+    except (TypeError, ValueError):
+        max_steps = 6
+    max_steps = max(1, min(12, max_steps))
+
+    # Drop invalid/empty tasks.
+    cleaned: list[dict] = []
+    for s in plan:
+        if not isinstance(s, dict):
+            continue
+        task = (s.get("task") or s.get("description") or "").strip()
+        if not task:
+            continue
+        tools = s.get("tools") if isinstance(s.get("tools"), list) else []
+        tools = [str(t).strip() for t in tools if str(t).strip()]
+        cleaned.append(
+            {
+                **{k: v for k, v in s.items() if k not in ("task", "description", "tools", "step")},
+                "task": task[:240],
+                "tools": tools[:8],
+            }
+        )
+
+    if not cleaned:
+        return [], False, "no_valid_steps"
+
+    # Deduplicate consecutive identical steps (same task + same tools).
+    deduped: list[dict] = []
+    prev_key: tuple[str, tuple[str, ...]] | None = None
+    for s in cleaned:
+        key = (str(s.get("task") or "").strip().lower(), tuple(str(t).strip() for t in (s.get("tools") or []) if str(t).strip()))
+        if prev_key is not None and key == prev_key:
+            continue
+        prev_key = key
+        deduped.append(s)
+
+    # Ensure inspection before mutation: if any mutating tool appears and there is no read/grep/list step early, inject one.
+    mut_tools = {"write_file", "apply_patch", "replace_in_file", "write_files_batch"}
+    inspect_tools = {"read_file", "grep_code", "list_dir", "glob_files"}
+    has_mut = any(any(t in mut_tools for t in (s.get("tools") or [])) for s in deduped)
+    has_inspect_early = any(any(t in inspect_tools for t in (s.get("tools") or [])) for s in deduped[:2])
+    if has_mut and not has_inspect_early:
+        injected = {
+            "step": 1,
+            "task": "Inspect relevant files and current state before any mutation.",
+            "tools": ["read_file", "grep_code", "list_dir"],
+            "role": "analysis",
+            "_pre_validation_injected": True,
+            "_workspace_root_hint": (workspace_root or "")[:200],
+        }
+        deduped = [injected] + deduped
+
+    # Cap steps.
+    deduped = deduped[:max_steps]
+
+    # Re-number steps.
+    out: list[dict] = []
+    for i, s in enumerate(deduped, start=1):
+        d = dict(s)
+        d["step"] = i
+        out.append(d)
+
+    return out, True, "ok"
+
+
+def execute_plan_with_optional_graph(
+    plan: list[dict],
+    agent_run_fn: Any,
+    goal_prefix: str = "",
+    plan_depth: int = 0,
+    *,
+    step_governance: bool = False,
+    default_max_retries: int = 1,
+    cfg: dict | None = None,
+    **agent_kwargs: Any,
+) -> dict:
+    """
+    Like execute_plan, but when coordinator_graph_execution_enabled and len(plan) >= 2,
+    run steps through the task graph (parallel-ready waves). Falls back to sequential
+    execute_plan if the graph fails or is disabled.
+    """
+    import uuid
+
+    try:
+        import runtime_safety
+
+        c = cfg if isinstance(cfg, dict) else runtime_safety.load_config()
+    except Exception:
+        c = cfg if isinstance(cfg, dict) else {}
+
+    if not plan:
+        return {"status": "no_plan", "steps_done": [], "summary": ""}
+
+    # Behavior lock-in: graph execution is authoritative (no sequential fallback).
+    if not bool(c.get("coordinator_graph_execution_enabled", False)):
+        raise RuntimeError("graph_execution_disabled")
+
+    defaults = {
+        "context": "",
+        "workspace_root": "",
+        "allow_write": False,
+        "allow_run": False,
+        "conversation_history": [],
+        "aspect_id": "morrigan",
+        "show_thinking": False,
+        "active_plan_id": "",
+        "plan_approved": False,
+    }
+    defaults.update(agent_kwargs)
+    defaults["plan_depth"] = plan_depth + 1
+
+    dm = max(0, min(3, int(default_max_retries) if isinstance(default_max_retries, int) else 1))
+
+    norm: list[dict] = []
+    for s in plan:
+        if not isinstance(s, dict):
+            continue
+        d = dict(s)
+        sid = str(d.get("id") or "").strip()
+        if not sid:
+            sid = str(uuid.uuid4())[:8]
+        d["id"] = sid
+        norm.append(d)
+
+    by_id: dict[str, dict[str, Any]] = {str(d["id"]): d for d in norm}
+
+    def _step_goal_for_base(base: dict[str, Any]) -> str:
+        task = base.get("task", "") or ""
+        tools_hint = base.get("tools", [])
+        if not isinstance(tools_hint, list):
+            tools_hint = []
+        role = base.get("role", "") or ""
+        step_goal = str(task)
+        if tools_hint:
+            step_goal += f" (consider: {', '.join(str(t) for t in tools_hint[:3])})"
+        if role and role in ROLE_TOOL_HINTS:
+            step_goal += f" [{ROLE_TOOL_HINTS[role]}]"
+        if goal_prefix:
+            step_goal = f"{goal_prefix}\n\nStep {base.get('step', '?')}: {step_goal}"
+        return step_goal
+
+    def step_runner(sd: dict[str, Any]) -> dict[str, Any]:
+        nid = str(sd.get("step") or "")
+        base = by_id.get(nid)
+        if not base:
+            base = {
+                "step": sd.get("step"),
+                "task": sd.get("task", ""),
+                "tools": sd.get("tools") if isinstance(sd.get("tools"), list) else [],
+                "role": sd.get("role", ""),
+            }
+        task = base.get("task", "") or ""
+        tools_hint = base.get("tools", [])
+        if not isinstance(tools_hint, list):
+            tools_hint = []
+        role = base.get("role", "") or ""
+        step_goal = _step_goal_for_base(base)
+
+        if not step_governance:
+            try:
+                result = agent_run_fn(step_goal, **_filter_autonomous_kwargs(defaults))
+                return {
+                    "step": base.get("step"),
+                    "task": task,
+                    "result_status": result.get("status", ""),
+                }
+            except Exception as e:
+                return {"step": base.get("step"), "task": task, "result_status": "error", "error": str(e)}
+
+        exec_row = {
+            "step": base.get("step"),
+            "task": task,
+            "tools": tools_hint,
+            "role": role,
+            "max_retries": base.get("max_retries", dm),
+            "validation_hint": str(base.get("validation_hint") or "").strip(),
+            "success_criteria": str(base.get("success_criteria") or "").strip(),
+        }
+        done_row, _last = run_governed_plan_step(
+            exec_row,
+            step_goal,
+            agent_run_fn=agent_run_fn,
+            agent_kwargs=defaults,
+            default_max_retries=dm,
+        )
+        done_row["task"] = task
+        return done_row
+
+    from services.coordinator import run_with_plan_graph
+    from services.otel_export import maybe_span
+
+    with maybe_span(c, "plan_execution", steps=len(norm), graph_enabled="true"):
+        try:
+            gres = run_with_plan_graph(plan_steps=norm, step_runner=step_runner, cfg=c)
+        except Exception as e:
+            logger.warning("execute_plan_with_optional_graph: graph executor raised: %s", e)
+            gres = {"ok": False, "error": str(e), "reason": "exception"}
+
+    if not gres.get("ok"):
+        # Hard-fail: do not fall back to sequential execution.
+        raise RuntimeError(f"graph_execution_failed:{str(gres.get('reason') or gres.get('error') or 'unknown')[:240]}")
+
+    raw: list[Any] = list(gres.get("results") or [])
+
+    def _sort_key(row: Any) -> tuple[int, Any]:
+        if not isinstance(row, dict):
+            return (2, 0)
+        st = row.get("step")
+        try:
+            return (0, int(st)) if st is not None else (1, 0)
+        except (TypeError, ValueError):
+            return (1, str(st))
+
+    steps_done = sorted(raw, key=_sort_key)
+    summary = "\n".join(
+        f"{d.get('step')}. {d.get('task')}: {d.get('result_status', '')}"
+        for d in steps_done
+        if isinstance(d, dict)
+    )
+    out: dict[str, Any] = {"status": "plan_completed", "steps_done": steps_done, "summary": summary}
+    if step_governance:
+        out["all_steps_ok"] = all(isinstance(d, dict) and bool(d.get("governance_ok")) for d in steps_done)
     return out

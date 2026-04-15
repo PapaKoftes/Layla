@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect width="256" height="256" fill="none"/>
+  <g stroke="rgba(255,255,255,0.10)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- constellation lines -->
+    <path d="M32 64l48-24 40 48 56-40 48 24"/>
+    <path d="M48 200l40-56 56 24 40-48 40 40"/>
+    <!-- stars -->
+    <g fill="rgba(255,255,255,0.12)" stroke="none">
+      <circle cx="32" cy="64" r="3"/>
+      <circle cx="80" cy="40" r="3"/>
+      <circle cx="120" cy="88" r="3"/>
+      <circle cx="176" cy="48" r="3"/>
+      <circle cx="224" cy="72" r="3"/>
+      <circle cx="48" cy="200" r="3"/>
+      <circle cx="88" cy="144" r="3"/>
+      <circle cx="144" cy="168" r="3"/>
+      <circle cx="184" cy="120" r="3"/>
+      <circle cx="224" cy="160" r="3"/>
+    </g>
+    <!-- subtle scroll arc -->
+    <path d="M40 116c28-18 64-18 92 0s64 18 92 0" opacity="0.8"/>
+  </g>
+</svg>

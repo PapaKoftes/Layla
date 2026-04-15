@@ -42,19 +42,46 @@ def token_estimate_messages(messages: list) -> int:
     return count_tokens_messages(messages)
 
 
-def summarize_history(messages: list, n_ctx: int = 4096, threshold_ratio: float = 0.75) -> list:
+def effective_compact_threshold_ratio(cfg: dict | None, n_ctx: int) -> float:
     """
-    If token_count > threshold (default 75% of n_ctx), compress oldest 50% of messages
-    into a compact system summary and replace them.
-    Returns the (possibly compressed) messages list.
+    Base ratio from context_auto_compact_ratio; lower (earlier) compaction when
+    context_aggressive_compress_enabled and small n_ctx.
+    """
+    base = float((cfg or {}).get("context_auto_compact_ratio", 0.75))
+    if (cfg or {}).get("context_aggressive_compress_enabled"):
+        if n_ctx < 8192:
+            return min(base, 0.52)
+        return min(base, 0.62)
+    return base
+
+
+def summarize_history(
+    messages: list,
+    n_ctx: int = 4096,
+    threshold_ratio: float = 0.75,
+    keep_recent_messages: int = 0,
+) -> list:
+    """
+    If token_count > threshold, compress oldest messages into a compact system summary.
+
+    When keep_recent_messages > 0, the last N messages are never merged into the
+    summary (sliding window): only the prefix is compressed.
     """
     threshold = int(n_ctx * threshold_ratio)
     total = token_estimate_messages(messages)
     if total <= threshold:
         return messages
-    half = max(1, len(messages) // 2)
-    to_compress = messages[:half]
-    rest = messages[half:]
+    if keep_recent_messages > 0 and len(messages) > keep_recent_messages:
+        suffix = messages[-keep_recent_messages:]
+        prefix = messages[:-keep_recent_messages]
+        if not prefix:
+            return messages
+        to_compress = prefix
+        rest = suffix
+    else:
+        half = max(1, len(messages) // 2)
+        to_compress = messages[:half]
+        rest = messages[half:]
     summary = _compress_to_summary(to_compress)
     if summary:
         # Persist to long-term memory to prevent context overflow across sessions
@@ -85,10 +112,18 @@ def summarize_history(messages: list, n_ctx: int = 4096, threshold_ratio: float 
 
 
 def maybe_auto_compact(messages: list, n_ctx: int = 4096, cfg: dict | None = None) -> list:
-    """Wrapper: summarize_history using context_auto_compact_ratio from cfg; logs token drop."""
-    ratio = float((cfg or {}).get("context_auto_compact_ratio", 0.75))
+    """Wrapper: summarize_history using effective threshold + optional keep-recent window."""
+    ratio = effective_compact_threshold_ratio(cfg, n_ctx)
+    keep = int((cfg or {}).get("context_sliding_keep_messages", 0) or 0)
+    if (cfg or {}).get("context_aggressive_compress_enabled") and keep <= 0:
+        keep = 10
     before = token_estimate_messages(messages)
-    out = summarize_history(list(messages), n_ctx=n_ctx, threshold_ratio=ratio)
+    out = summarize_history(
+        list(messages),
+        n_ctx=n_ctx,
+        threshold_ratio=ratio,
+        keep_recent_messages=keep,
+    )
     after = token_estimate_messages(out)
     if after < before:
         _logger.info("auto-compact: conversation tokens %s→%s", before, after)
@@ -268,3 +303,13 @@ def build_system_prompt(
         pass
 
     return final, metrics
+
+
+def truncate_tool_output_for_prompt(text: str, max_tokens: int = 500) -> str:
+    """Cap tool/step blobs so decision prompts stay small on low n_ctx."""
+    if not text:
+        return ""
+    t = str(text).strip()
+    if not t:
+        return ""
+    return truncate_to_tokens(t, max(64, max_tokens), suffix="\n...[truncated for context]\n")

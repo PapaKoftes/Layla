@@ -10,10 +10,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import runtime_safety as _rs
+
 AGENT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = AGENT_DIR.parent
-CONFIG_PATH = AGENT_DIR / "runtime_config.json"
-MODELS_DIR = REPO_ROOT / "models"
 
 
 # ── Hardware probing ───────────────────────────────────────────────────────
@@ -53,8 +53,9 @@ def detect_gpu() -> tuple[str, float]:
 
 
 def find_models() -> list[Path]:
-    MODELS_DIR.mkdir(exist_ok=True)
-    return sorted(MODELS_DIR.glob("*.gguf"))
+    d = _rs.default_models_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    return sorted(d.glob("*.gguf"))
 
 
 # ── Model recommendation ───────────────────────────────────────────────────
@@ -119,7 +120,7 @@ DEFAULTS: dict = {
     "repeat_penalty": 1.1,
     "completion_max_tokens": 256,
     "stop_sequences": ["\nUser:", " User:"],
-    "sandbox_root": str(Path.home()),
+    "sandbox_root": str(Path.home() / "LaylaWorkspace"),
     "safe_mode": True,
     "uncensored": True,
     "nsfw_allowed": True,
@@ -139,15 +140,17 @@ DEFAULTS: dict = {
 
 def load_existing() -> dict:
     try:
-        if CONFIG_PATH.exists():
-            return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        if _rs.CONFIG_FILE.exists():
+            return json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8"))
     except Exception:
         pass
     return {}
 
 
 def save_config(cfg: dict) -> None:
-    CONFIG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    _rs.CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _rs.CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    _rs.invalidate_config_cache()
 
 
 # ── Interactive prompts ────────────────────────────────────────────────────
@@ -284,7 +287,7 @@ def _offer_model_download(ram_gb: float) -> str:
         fname = url.rstrip("/").split("/")[-1]
         if not fname.endswith(".gguf"):
             fname = ask("  Filename to save as (include .gguf)", "my-model.gguf")
-        dest = MODELS_DIR / fname
+        dest = _rs.default_models_dir() / fname
         print(f"  Downloading {fname}...")
         if _download_with_progress(url, dest):
             print(f"  ✓  Saved: {dest}")
@@ -297,7 +300,7 @@ def _offer_model_download(ram_gb: float) -> str:
             print("  Invalid choice. Skipping.")
             return ""
         m = rows[idx]
-        dest = MODELS_DIR / m["filename"]
+        dest = _rs.default_models_dir() / m["filename"]
         print(f"  Downloading {m['name']} ({m['size_gb']} GB)...")
         print("  This may take several minutes depending on your connection.")
         print()
@@ -366,7 +369,7 @@ def run() -> int:
             if 0 <= idx < len(models):
                 model_filename = models[idx].name
         except ValueError:
-            if choice and (MODELS_DIR / choice).exists():
+            if choice and (_rs.default_models_dir() / choice).exists():
                 model_filename = choice
     else:
         print("  No .gguf models found in models/")
@@ -389,14 +392,12 @@ def run() -> int:
     elif existing.get("model_filename"):
         cfg["model_filename"] = existing["model_filename"]
 
-    # Set sandbox to user's home by default
-    cfg["sandbox_root"] = str(Path.home())
-
-    # Ask workspace
+    # Workspace: dedicated folder (not entire home) — operator can widen later in config
+    default_ws = str(Path.home() / "LaylaWorkspace")
     workspace = ask(
         "  Default workspace path (folder Layla can read/write tools in)",
-        str(Path.home())
-    )
+        default_ws,
+    ).strip() or default_ws
     cfg["sandbox_root"] = workspace
 
     # Merge any custom keys from existing config
@@ -429,7 +430,7 @@ def run() -> int:
     save_config(cfg)
 
     print()
-    print("  ✓  Config saved to agent/runtime_config.json")
+    print(f"  Config saved to {_rs.CONFIG_FILE}")
     if cfg.get("model_filename"):
         print(f"  ✓  Model set to: {cfg['model_filename']}")
     else:

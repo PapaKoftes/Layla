@@ -1,5 +1,6 @@
 """Tool implementations aggregated from :mod:`layla.tools.impl` submodules."""
 from __future__ import annotations
+
 from typing import Any
 
 # Injected by layla.tools.registry after TOOLS is assembled.
@@ -34,7 +35,7 @@ _IMPL_MODULES = (
 for _m in _IMPL_MODULES:
     for _name in dir(_m):
         if _name.startswith("_"):
-            continue
+                continue
         _obj = getattr(_m, _name)
         if callable(_obj):
             globals()[_name] = _obj

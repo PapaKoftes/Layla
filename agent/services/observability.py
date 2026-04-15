@@ -121,6 +121,46 @@ def log_tool_result(tool: str, ok: bool, duration_ms: float = 0, **kw: Any) -> N
         pass
 
 
+def tool_health_snapshot(*, slow_ms: float = 8000.0, min_samples: int = 8) -> dict[str, Any]:
+    """
+    Deterministic aggregation used by policy/routing:
+    - slow tools (avg latency above threshold)
+    - unreliable tools (success rate below 0.35 with enough samples)
+    - recent failure clusters by tool name
+    """
+    out: dict[str, Any] = {"slow_tools": [], "unreliable_tools": [], "failure_clusters": {}}
+    try:
+        from layla.memory.db import get_recent_tool_outcome_failures, get_tool_reliability
+
+        stats = get_tool_reliability()
+        slow = []
+        bad = []
+        for name, s in (stats or {}).items():
+            try:
+                cnt = int(s.get("count") or 0)
+                if cnt < int(min_samples):
+                    continue
+                sr = float(s.get("success_rate") or 0.0)
+                lat = float(s.get("avg_latency") or 0.0)
+                if lat >= float(slow_ms):
+                    slow.append({"tool": name, "avg_latency_ms": lat, "count": cnt})
+                if sr < 0.35:
+                    bad.append({"tool": name, "success_rate": sr, "count": cnt})
+            except Exception:
+                continue
+        out["slow_tools"] = sorted(slow, key=lambda r: float(r.get("avg_latency_ms") or 0), reverse=True)[:10]
+        out["unreliable_tools"] = sorted(bad, key=lambda r: float(r.get("success_rate") or 0))[:10]
+        fails = get_recent_tool_outcome_failures(30)
+        clusters: dict[str, int] = {}
+        for r in fails:
+            tn = str(r.get("tool_name") or "").strip() or "unknown"
+            clusters[tn] = clusters.get(tn, 0) + 1
+        out["failure_clusters"] = dict(sorted(clusters.items(), key=lambda kv: kv[1], reverse=True)[:10])
+    except Exception:
+        pass
+    return out
+
+
 def log_planner_invoked(steps: int = 0, goal_preview: str = "", duration_ms: float = 0, **kw: Any) -> None:
     _log_event("planner_invoked", steps=steps, goal_preview=goal_preview[:60], duration=duration_ms, **kw)
 
@@ -131,6 +171,21 @@ def log_agent_started(**kw: Any) -> None:
 
 def log_agent_shutdown(duration_ms: float = 0, **kw: Any) -> None:
     _log_event("agent_shutdown", duration=duration_ms, **kw)
+
+
+def log_execution_trace(state_summary: dict[str, Any], **kw: Any) -> None:
+    """Structured execution trace (steps, pipeline, tools) for ops / debug endpoints."""
+    steps = state_summary.get("steps") if isinstance(state_summary, dict) else None
+    n_steps = len(steps) if isinstance(steps, list) else 0
+    _log_event(
+        "execution_trace",
+        execution_id=str((state_summary or {}).get("execution_id") or ""),
+        status=str((state_summary or {}).get("status") or ""),
+        pipeline_stage=str((state_summary or {}).get("pipeline_stage") or ""),
+        tool_calls=int((state_summary or {}).get("tool_calls") or 0),
+        steps_n=n_steps,
+        **kw,
+    )
 
 
 def log_retrieval_cache_hit(query_preview: str = "", duration_ms: float = 0, **kw: Any) -> None:

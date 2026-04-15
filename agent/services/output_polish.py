@@ -21,7 +21,7 @@ def _looks_like_code_or_structured(text: str) -> bool:
     return False
 
 
-def polish_output(text: str) -> str:
+def polish_output(text: str, cfg: dict | None = None) -> str:
     """Strip edges and collapse blank lines — skips code/JSON to preserve structure."""
     if not text:
         return ""
@@ -31,4 +31,11 @@ def polish_output(text: str) -> str:
     if not t:
         return ""
     t = re.sub(r"\n{3,}", "\n\n", t)
+    try:
+        if cfg and bool(cfg.get("output_quality_gate_enabled", False)):
+            from services.output_quality import clean_output
+
+            return clean_output(t, cfg=cfg)
+    except Exception:
+        pass
     return t.strip()

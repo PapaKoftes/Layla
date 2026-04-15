@@ -265,3 +265,16 @@ def clear_cache() -> None:
     """Clear hardware cache (e.g. for tests)."""
     global _cache
     _cache = None
+
+
+def hardware_class(hw: dict | None = None) -> str:
+    """Coarse class for adaptive budgets: potato | mid | strong | workstation."""
+    h = hw if hw is not None else detect_hardware()
+    tier = str(h.get("machine_tier") or "tier2")
+    if tier == "tier1":
+        return "potato"
+    if tier == "tier2":
+        return "mid"
+    if tier == "tier3":
+        return "strong"
+    return "workstation"

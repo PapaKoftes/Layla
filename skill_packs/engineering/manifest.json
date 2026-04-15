@@ -1,0 +1,7 @@
+{
+  "id": "engineering",
+  "name": "Engineering workflows",
+  "version": "1.0.0",
+  "description": "Code review, tests, and refactor plan templates (prompt-level; extend with knowledge/*.md).",
+  "tags": ["code", "git", "ci"]
+}

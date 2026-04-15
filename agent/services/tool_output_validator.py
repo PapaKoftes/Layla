@@ -3,6 +3,8 @@ Normalize and annotate tool return dicts (safety / hygiene for agent loop).
 """
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import Any
 
 # Keys that indicate a non-empty successful payload (exclude bool `ok` itself).
@@ -62,3 +64,99 @@ def validate_tool_output(tool_name: str, result: Any) -> dict[str, Any]:
     if out.get("ok") and not _has_meaningful_payload(out) and not out.get("_empty_output"):
         out["_empty_output"] = True
     return out
+
+
+_STDERR_FATAL_PATTERNS = (
+    re.compile(r"\bTraceback\b", re.IGNORECASE),
+    re.compile(r"\bException\b", re.IGNORECASE),
+    re.compile(r"\bError\b", re.IGNORECASE),
+    re.compile(r"\bFAILED\b", re.IGNORECASE),
+)
+
+
+def deterministic_verify_tool_result(
+    tool_name: str,
+    result: Any,
+    *,
+    workspace_root: str = "",
+) -> dict[str, Any]:
+    """
+    Deterministic semantic verification for common tools.
+
+    Returns a dict:
+      {ok: bool, reason: str, details: {...}}
+
+    Never raises; failures are returned as ok=False.
+    """
+    if not isinstance(result, dict):
+        return {"ok": False, "reason": "non_dict_result", "details": {"type": type(result).__name__}}
+    if not result.get("ok"):
+        # Tool already reported failure; do not overwrite.
+        return {"ok": False, "reason": "tool_reported_failure", "details": {"error": result.get("error") or result.get("reason")}}
+
+    ws = Path(workspace_root).resolve() if workspace_root else None
+
+    def _resolve_path(p: str) -> Path | None:
+        if not p:
+            return None
+        try:
+            pp = Path(p)
+            if not pp.is_absolute() and ws is not None:
+                pp = ws / pp
+            return pp.resolve()
+        except Exception:
+            return None
+
+    tn = (tool_name or "").strip()
+    try:
+        if tn in ("write_file", "replace_in_file"):
+            p = str(result.get("path") or "")
+            rp = _resolve_path(p)
+            if rp is None:
+                return {"ok": False, "reason": "missing_path", "details": {}}
+            if not rp.exists():
+                return {"ok": False, "reason": "file_missing_after_write", "details": {"path": str(rp)}}
+            try:
+                if rp.stat().st_size <= 0:
+                    return {"ok": False, "reason": "file_empty_after_write", "details": {"path": str(rp)}}
+            except Exception:
+                # If stat fails but file exists, treat as ok.
+                pass
+            return {"ok": True, "reason": "ok", "details": {"path": str(rp)}}
+
+        if tn == "apply_patch":
+            p = str(result.get("path") or result.get("original_path") or "")
+            rp = _resolve_path(p)
+            if rp is None:
+                # Some patch tools may not return a path; accept ok.
+                return {"ok": True, "reason": "ok_no_path", "details": {}}
+            if not rp.exists():
+                return {"ok": False, "reason": "file_missing_after_patch", "details": {"path": str(rp)}}
+            return {"ok": True, "reason": "ok", "details": {"path": str(rp)}}
+
+        if tn in ("run_python", "shell"):
+            rc = result.get("returncode", None)
+            try:
+                rc_i = int(rc) if rc is not None else None
+            except Exception:
+                rc_i = None
+            if rc_i is None:
+                return {"ok": False, "reason": "missing_returncode", "details": {}}
+            if rc_i != 0:
+                return {"ok": False, "reason": "nonzero_returncode", "details": {"returncode": rc_i}}
+            stderr = str(result.get("stderr") or "")
+            if stderr:
+                for rx in _STDERR_FATAL_PATTERNS:
+                    if rx.search(stderr):
+                        return {"ok": False, "reason": "fatal_stderr_pattern", "details": {"pattern": rx.pattern}}
+            return {"ok": True, "reason": "ok", "details": {"returncode": rc_i}}
+
+        if tn in ("read_file", "list_dir", "grep_code", "glob_files", "fetch_url"):
+            if result.get("_empty_output"):
+                return {"ok": False, "reason": "empty_output", "details": {}}
+            return {"ok": True, "reason": "ok", "details": {}}
+
+        # Default: no deterministic verifier for this tool.
+        return {"ok": True, "reason": "no_verifier", "details": {}}
+    except Exception as ex:
+        return {"ok": False, "reason": "verifier_exception", "details": {"error": str(ex)[:240]}}

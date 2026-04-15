@@ -28,21 +28,45 @@ def create_conversation_api(req: dict = Body(default={})):
 
 
 @router.get("/conversations")
-def list_conversations_api(limit: int = 200):
+def list_conversations_api(limit: int = 200, tag: str = ""):
     try:
-        from layla.memory.db import list_conversations
+        from layla.memory.db import list_conversations_filtered
 
-        return JSONResponse({"ok": True, "conversations": list_conversations(limit=limit)})
+        return JSONResponse({"ok": True, "conversations": list_conversations_filtered(limit=limit, tag=tag or None)})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 @router.get("/conversations/search")
-def search_conversations_api(q: str = "", limit: int = 50):
+def search_conversations_api(q: str = "", limit: int = 50, tag: str = ""):
     try:
-        from layla.memory.db import search_conversations
+        from layla.memory.db import search_conversations_filtered
 
-        return JSONResponse({"ok": True, "conversations": search_conversations(q, limit=limit)})
+        return JSONResponse({"ok": True, "conversations": search_conversations_filtered(q, limit=limit, tag=tag or None)})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.post("/conversations/{conversation_id}/tags")
+def set_conversation_tags_api(conversation_id: str, req: dict):
+    try:
+        from layla.memory.db import set_conversation_tags
+
+        tags = (req or {}).get("tags", "")
+        ok = set_conversation_tags(conversation_id, tags)
+        if not ok:
+            return JSONResponse({"ok": False, "error": "Not found"}, status_code=404)
+        return JSONResponse({"ok": True})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.get("/conversations/tags/suggest")
+def suggest_conversation_tags_api(prefix: str = "", limit: int = 20):
+    try:
+        from layla.memory.db import suggest_conversation_tags
+
+        return JSONResponse({"ok": True, "tags": suggest_conversation_tags(prefix=prefix, limit=limit)})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 

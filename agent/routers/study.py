@@ -283,6 +283,108 @@ def wakeup():
     else:
         greeting_parts.append("Session starting.")
 
+    # Layla v3: explicitly frame the early trial phase.
+    maturity_payload: dict = {}
+    try:
+        from services.maturity_engine import get_state, xp_needed_for_next
+
+        ms = get_state()
+        need = xp_needed_for_next(ms.rank)
+        maturity_payload = {
+            "rank": int(ms.rank),
+            "xp": int(ms.xp),
+            "phase": str(ms.phase),
+            "xp_to_next": int(need) if need is not None else None,
+        }
+
+        # Layla v3: growth delta line (compare to last wakeup rank; store in user_identity)
+        try:
+            from layla.memory.db import get_user_identity, set_user_identity
+
+            prev_rank = get_user_identity("last_wakeup_rank") or ""
+            try:
+                prev_i = int(str(prev_rank).strip() or "0")
+            except Exception:
+                prev_i = 0
+            delta = int(ms.rank) - int(prev_i)
+            if delta > 0:
+                greeting_parts.append(f"Growth delta: +{delta} mastery rank since last wakeup (MR {prev_i} → {int(ms.rank)}).")
+            set_user_identity("last_wakeup_rank", str(int(ms.rank)))
+        except Exception:
+            pass
+
+        if ms.phase == "nascent":
+            greeting_parts.append(
+                "Trial phase: I'm in my learning phase. I'll mostly observe, ask clarifying questions, and build a profile of what you need."
+            )
+    except Exception:
+        pass
+
+    # Layla v3: cross-session continuity (journal + pending improvements)
+    try:
+        from layla.memory.db import list_improvements, list_journal_entries
+
+        recent = list_journal_entries(limit=3)
+        if recent:
+            greeting_parts.append("Recent journal:")
+            for e in recent[:3]:
+                greeting_parts.append(
+                    f"- {str(e.get('created_at') or '')[:16]} · {(e.get('entry_type') or 'note')}: {(e.get('content') or '')[:120]}"
+                )
+        pend = list_improvements(status="pending", limit=5)
+        if pend:
+            greeting_parts.append("Pending improvements:")
+            for p in pend[:5]:
+                greeting_parts.append(f"- #{p.get('id')}: {(p.get('title') or '')[:140]}")
+    except Exception:
+        pass
+
+    # Layla v3: surface up to 2 recent plan reports in greeting (sandbox_root scan)
+    try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        root = Path(str(cfg.get("sandbox_root") or Path.home())).expanduser().resolve()
+        candidate_roots: list[Path] = []
+        if root.is_dir():
+            candidate_roots.append(root)
+            try:
+                # Shallow scan: root + its immediate child dirs (avoid expensive recursion)
+                for p in list(root.iterdir())[:60]:
+                    if p.is_dir() and not p.name.startswith("."):
+                        candidate_roots.append(p)
+            except Exception:
+                pass
+
+        reports: list[Path] = []
+        for cr in candidate_roots:
+            d = cr / ".layla" / "plan_reports"
+            if not d.is_dir():
+                continue
+            try:
+                for f in list(d.glob("*.md"))[:200]:
+                    if f.is_file():
+                        reports.append(f)
+            except Exception:
+                continue
+
+        reports = sorted(reports, key=lambda p: p.stat().st_mtime if p.exists() else 0.0, reverse=True)[:2]
+        if reports:
+            greeting_parts.append("Recent plan reports:")
+            for f in reports:
+                try:
+                    txt = f.read_text(encoding="utf-8", errors="replace")
+                    lines = [ln.strip() for ln in txt.splitlines() if ln.strip()]
+                    title = lines[0].lstrip("#").strip() if lines else f.name
+                    status = next((ln for ln in lines if ln.lower().startswith("**status:**")), "")
+                    goal = next((ln for ln in lines if ln.lower().startswith("**goal:**")), "")
+                    snippet = " · ".join([x for x in (title, status, goal) if x])[:220]
+                    greeting_parts.append(f"- {snippet} ({f.name})")
+                except Exception:
+                    greeting_parts.append(f"- {f.name}")
+    except Exception:
+        pass
+
     last_notes = (last_row or {}).get("notes", "")
     if last_notes:
         greeting_parts.append(f"Since we last spoke: {last_notes}")
@@ -341,6 +443,32 @@ def wakeup():
             initiative = _wakeup_initiative_suggestion(active_plans, greeting_parts)
             if initiative:
                 greeting_parts.append("Suggestion: " + initiative)
+            if cfg.get("initiative_engine_enabled", False):
+                try:
+                    from services.initiative_engine import wakeup_engine_hints
+
+                    for h in wakeup_engine_hints(active_plans, cfg):
+                        if h:
+                            greeting_parts.append("Initiative: " + h)
+                except Exception as _ie:
+                    logger.debug("wakeup initiative_engine failed: %s", _ie)
+                if cfg.get("initiative_project_proposals_enabled", False):
+                    try:
+                        import runtime_safety
+                        from services.initiative_engine import generate_project_proposals
+
+                        props = generate_project_proposals(str(runtime_safety.REPO_ROOT), cfg)
+                        if props:
+                            p0 = props[0]
+                            title = str(p0.get("title") or "").strip()
+                            why = str(p0.get("why_now") or "").strip()
+                            if title:
+                                line = f"Project idea: {title}"
+                                if why:
+                                    line += f" — {why[:180]}"
+                                greeting_parts.append(line)
+                    except Exception as _pp:
+                        logger.debug("wakeup project proposals failed: %s", _pp)
         # Optional one-liner from project discovery (tighter use of discovery)
         if cfg.get("wakeup_include_discovery_line", False):
             try:
@@ -375,6 +503,10 @@ def wakeup():
         "active_study_plans": [p.get("topic") for p in active_plans],
         "elapsed_hours": elapsed_hours,
         "studied_this_wakeup": studied_topic_this_wakeup,
+        "maturity_rank": maturity_payload.get("rank") if isinstance(maturity_payload, dict) else None,
+        "maturity_xp": maturity_payload.get("xp") if isinstance(maturity_payload, dict) else None,
+        "maturity_phase": maturity_payload.get("phase") if isinstance(maturity_payload, dict) else None,
+        "maturity": maturity_payload,
     })
 
 

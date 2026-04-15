@@ -38,11 +38,6 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
         k, v = line.split(":", 1)
         k, v = k.strip(), v.strip().strip('"').strip("'")
         meta[k] = v
-    triggers_raw = meta.get("triggers", "")
-    if isinstance(triggers_raw, str):
-        triggers = [t.strip() for t in re.split(r"[,|]", triggers_raw) if t.strip()]
-    else:
-        triggers = []
     return meta, body
 
 

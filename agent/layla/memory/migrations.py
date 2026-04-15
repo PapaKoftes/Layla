@@ -5,8 +5,8 @@ import sqlite3
 import sys
 import threading
 
-from layla.time_utils import utcnow
 from layla.memory.db_connection import _conn, _resolve_db_path
+from layla.time_utils import utcnow
 
 logger = logging.getLogger("layla")
 
@@ -101,6 +101,15 @@ def _migrate_impl() -> None:
         db.execute("CREATE INDEX IF NOT EXISTS idx_audit_id_desc ON audit(id DESC)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_aspect_memories_aspect ON aspect_memories(aspect_id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_study_plans_status ON study_plans(status)")
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS outcome_evaluations (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL,
+                created_at      TEXT NOT NULL,
+                evaluation_json TEXT NOT NULL
+            )
+        """)
+        db.execute("CREATE INDEX IF NOT EXISTS idx_outcome_evaluations_cid_id_desc ON outcome_evaluations(conversation_id, id DESC)")
 
         # FTS5 virtual table for exact/keyword search over learnings content
         db.execute("""
@@ -160,6 +169,32 @@ def _migrate_impl() -> None:
             )
         """)
         db.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_ts ON telemetry_events(ts)")
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS model_outcomes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL,
+                model_used TEXT NOT NULL,
+                task_type TEXT,
+                success INTEGER DEFAULT 0,
+                score REAL,
+                latency_ms REAL
+            )
+        """)
+        db.execute("CREATE INDEX IF NOT EXISTS idx_model_outcomes_ts ON model_outcomes(ts)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_model_outcomes_model_task ON model_outcomes(model_used, task_type)")
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS golden_examples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL,
+                task_type TEXT NOT NULL,
+                goal_summary TEXT NOT NULL,
+                decision_pattern TEXT NOT NULL,
+                outcome_score REAL NOT NULL,
+                usage_count INTEGER DEFAULT 0
+            )
+        """)
+        db.execute("CREATE INDEX IF NOT EXISTS idx_golden_examples_ts ON golden_examples(ts)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_golden_examples_task_score ON golden_examples(task_type, outcome_score)")
         db.commit()
 
     # Optional: add learning_type (Phase 4). Backward compatible; existing rows default to fact.
@@ -396,6 +431,52 @@ def _migrate_impl() -> None:
     except Exception as e:
         logger.warning("conversation tables migration failed: %s", e)
 
+    # Operator journal (Layla v3) — lightweight durable entries (notes, recaps, threads)
+    try:
+        with _conn() as db:
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS operator_journal (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at    TEXT NOT NULL,
+                    entry_type    TEXT NOT NULL DEFAULT 'note',
+                    content       TEXT NOT NULL,
+                    tags          TEXT DEFAULT '',
+                    project_id    TEXT DEFAULT '',
+                    aspect_id     TEXT DEFAULT '',
+                    conversation_id TEXT DEFAULT ''
+                )
+                """
+            )
+            db.execute("CREATE INDEX IF NOT EXISTS idx_operator_journal_created ON operator_journal(created_at DESC)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_operator_journal_type ON operator_journal(entry_type)")
+            db.commit()
+    except Exception as e:
+        logger.warning("operator_journal migration failed: %s", e)
+
+    # Self-improvement proposals (Layla v3) — operator review queue (no auto-apply)
+    try:
+        with _conn() as db:
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS self_improvement_proposals (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at    TEXT NOT NULL,
+                    status        TEXT NOT NULL DEFAULT 'pending',
+                    title         TEXT NOT NULL,
+                    rationale     TEXT DEFAULT '',
+                    risk_level    TEXT DEFAULT 'low',
+                    domain        TEXT DEFAULT '',
+                    instructions  TEXT DEFAULT ''
+                )
+                """
+            )
+            db.execute("CREATE INDEX IF NOT EXISTS idx_improvements_created ON self_improvement_proposals(created_at DESC)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_improvements_status ON self_improvement_proposals(status)")
+            db.commit()
+    except Exception as e:
+        logger.warning("self_improvement_proposals migration failed: %s", e)
+
     # layla_projects — scoped presets (workspace, aspect, skills paths, preamble)
     try:
         with _conn() as db:
@@ -432,6 +513,15 @@ def _migrate_impl() -> None:
     except sqlite3.OperationalError as e:
         if "duplicate column" not in str(e).lower():
             logger.debug("conversations.project_id alter: %s", e)
+
+    # Optional: conversation tags (comma-separated, normalized)
+    try:
+        with _conn() as db:
+            db.execute("ALTER TABLE conversations ADD COLUMN tags TEXT DEFAULT ''")
+            db.commit()
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            logger.debug("conversations.tags alter: %s", e)
 
     # embedding_id for conversation_summaries — enables retrieval participation
     try:
@@ -583,6 +673,20 @@ def _migrate_impl() -> None:
             db.commit()
     except Exception as e:
         logger.warning("goal_progress table migration failed: %s", e)
+
+    # learnings.aspect_id — optional facet attribution (Echo / per-aspect memory)
+    try:
+        with _conn() as db:
+            db.execute("ALTER TABLE learnings ADD COLUMN aspect_id TEXT DEFAULT ''")
+            db.commit()
+    except Exception:
+        pass
+    try:
+        with _conn() as db:
+            db.execute("CREATE INDEX IF NOT EXISTS idx_learnings_aspect ON learnings(aspect_id)")
+            db.commit()
+    except Exception:
+        pass
 
     # Migrate learnings.json
     _migrate_learnings_json()
@@ -909,6 +1013,46 @@ def _migrate_evolution_layer() -> None:
     except Exception as e:
         logger.warning("layla_plans migration failed: %s", e)
 
+    # tasks — coordinator / execution persistence (architecture overhaul)
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id TEXT PRIMARY KEY,
+                    goal TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    plan_json TEXT DEFAULT '{}',
+                    results_json TEXT DEFAULT '[]',
+                    execution_state_json TEXT DEFAULT '{}',
+                    conversation_id TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_tasks_conv ON tasks(conversation_id)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_tasks_updated ON tasks(updated_at DESC)")
+            db.commit()
+    except Exception as e:
+        logger.warning("tasks table migration failed: %s", e)
+
+    # strategy_stats — task_type + strategy success/fail tallies (outcome loop)
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS strategy_stats (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_type TEXT NOT NULL,
+                    strategy TEXT NOT NULL,
+                    success_count INTEGER NOT NULL DEFAULT 0,
+                    fail_count INTEGER NOT NULL DEFAULT 0,
+                    last_updated_at TEXT NOT NULL,
+                    UNIQUE(task_type, strategy)
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_strategy_stats_task ON strategy_stats(task_type)")
+            db.commit()
+    except Exception as e:
+        logger.warning("strategy_stats migration failed: %s", e)
 
 
 __all__ = ["migrate", "_MIGRATED", "_MIGRATION_LOCK"]

@@ -23,12 +23,44 @@ BEHAVIORAL_RHYTHM_FILE = AGENT_DIR / "behavioral_rhythm.txt"
 UI_REFLECTION_FILE = AGENT_DIR / "ui_reflection.txt"
 LENS_KNOWLEDGE_DIR = AGENT_DIR / "lens_knowledge"
 OPERATIONAL_GUIDANCE_FILE = AGENT_DIR / "operational_guidance.txt"
-CONFIG_FILE = AGENT_DIR / "runtime_config.json"
+def resolve_layla_data_dir() -> Path | None:
+    """Per-user data root when `LAYLA_DATA_DIR` is set (Windows installer / launcher)."""
+    raw = (os.environ.get("LAYLA_DATA_DIR") or "").strip()
+    if not raw:
+        return None
+    return Path(raw).expanduser().resolve()
+
+
+def default_models_dir() -> Path:
+    """Models directory: `%LAYLA_DATA_DIR%/models` when installed, else `repo/models`."""
+    d = resolve_layla_data_dir()
+    if d:
+        p = d / "models"
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            logger.debug("default_models_dir mkdir failed: %s", e)
+        return p
+    return REPO_ROOT / "models"
+
+
+def _resolve_config_file() -> Path:
+    d = resolve_layla_data_dir()
+    if d:
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            logger.debug("resolve_config_file data dir mkdir failed: %s", e)
+        return d / "runtime_config.json"
+    return AGENT_DIR / "runtime_config.json"
+
+
+CONFIG_FILE = _resolve_config_file()
 BACKUP_DIR = AGENT_DIR / ".backup"
 
 SAFE_TOOLS = ["git_status", "read_file", "list_dir"]
 DANGEROUS_TOOLS = [
-    "write_file", "shell", "shell_session_start", "run_python", "apply_patch", "git_commit", "mcp_tools_call",
+    "write_file", "shell", "shell_session_start", "run_python", "apply_patch", "replace_in_file", "git_commit", "mcp_tools_call",
     "git_push", "git_revert", "git_clone", "git_worktree_add", "git_worktree_remove", "run_tests", "pip_install",
     "search_replace", "rename_symbol", "generate_gcode", "geometry_execute_program", "docker_run",
     "github_pr", "send_email", "clipboard_write", "browser_click", "browser_fill",
@@ -219,6 +251,9 @@ def load_config() -> dict:
             "ollama_base_url": "",
             "inference_backend": "llama_cpp",
             "context_auto_compact_ratio": 0.75,
+            "context_aggressive_compress_enabled": True,
+            "context_sliding_keep_messages": 0,
+            "tool_step_context_max_tokens": 500,
             "system_head_budget_ratio": 0.35,
             "tiered_prompt_budget_enabled": True,
             "tool_routing_enabled": True,
@@ -244,6 +279,15 @@ def load_config() -> dict:
             "browser_profiles": {},
             "browser_persistent_profiles": False,
             "use_instructor_for_decisions": True,
+            "structured_generation_enabled": True,
+            "worker_pool_enabled": True,
+            "max_workers": 0,
+            "admin_mode": False,
+            "admin_auto_checkpoint": True,
+            "admin_blocklist_override": False,
+            "remote_cors_origins": [],
+            "cloudflared_path": "",
+            "dynamic_tool_generation_enabled": False,
             "retrieval_cache_ttl_seconds": 60,
             "completion_cache_enabled": True,
             "completion_cache_ttl_seconds": 45,
@@ -269,8 +313,11 @@ def load_config() -> dict:
             "learning_quality_gate_enabled": True,
             "learning_quality_min_score": 0.35,
             "learning_min_score": 0.3,
-            "auto_lint_test_fix": False,
-            "auto_lint_test_fix_run_tests": False,
+            "auto_lint_test_fix": True,
+            "auto_lint_test_fix_run_tests": True,
+            "output_quality_gate_enabled": True,
+            "enable_self_reflection": True,
+            "self_reflection_min_length": 200,
             "git_auto_commit": False,
             "github_repo": "",
             "auto_update_check_enabled": False,
@@ -316,8 +363,8 @@ def load_config() -> dict:
             "repeat_penalty": 1.1,
             "top_k": 40,
             "model_filename": "your-model.gguf",
-            "models_dir": str(REPO_ROOT / "models"),  # repo models/ for backward compat; installer may set ~/.layla/models
-            "sandbox_root": str(Path.home()),
+            "models_dir": str(default_models_dir()),
+            "sandbox_root": str(Path.home() / "LaylaWorkspace"),
             "web_allowlist": [],
             "knowledge_sources": [],
             "knowledge_max_bytes": 4000,
@@ -325,7 +372,35 @@ def load_config() -> dict:
             "learnings_n": 30,
             "semantic_k": 5,
             "memory_retrieval_min_adjusted_confidence": 0.0,
+            "coordinator_enabled": True,
+            "coordinator_graph_execution_enabled": True,
+            "coordinator_plan_threshold": 0.45,
+            "coordinator_task_budget_hint_enabled": True,
+            "coordinator_dispatch_max_attempts": 1,
+            "coordinator_dispatch_retry_on_statuses": ["system_busy", "error"],
+            "coordinator_strategy_feedback_enabled": False,
+            "strategy_preference_min_samples": 5,
+            "pipeline_enforcement_enabled": True,
+            "tool_first_enforcement_enabled": False,
+            "parallel_execution_enabled": False,
+            "worktree_isolation_enabled": False,
+            "opentelemetry_enabled": False,
+            "background_reflection_interval_minutes": 5,
+            "background_codex_update_interval_minutes": 10,
+            "background_memory_consolidation_interval_minutes": 30,
+            "prompt_static_cache_enabled": True,
+            "task_persistence_enabled": True,
+            "execution_trace_log_enabled": True,
+            "knowledge_retrieval_domain_boost": 1.15,
+            "memory_cleanup_confidence_threshold": 0.08,
             "inline_initiative_enabled": False,
+            "initiative_engine_enabled": False,
+            "initiative_project_proposals_enabled": False,
+            "autonomy_optimizer_enabled": False,
+            "autonomy_trust_tiers_enabled": False,
+            "trust_tier_override": None,
+            "codex_semantic_enabled": False,
+            "voice_adjustment_inject_enabled": False,
             "planning_outcome_bias_enabled": True,
             "relationship_codex_inject_enabled": False,
             "relationship_codex_inject_max_chars": 1000,
@@ -336,7 +411,6 @@ def load_config() -> dict:
             "completion_max_tokens": 256,
             "remote_model_name": "llama3.1",
             "llama_server_url": None,
-            "inference_backend": "auto",
             "coding_model": None,
             "reasoning_model": None,
             "chat_model": None,
@@ -351,6 +425,7 @@ def load_config() -> dict:
             "remote_api_key": None,
             "remote_allow_endpoints": [],
             "remote_mode": "observe",
+            "remote_rate_limit_per_minute": 100,
             "trace_id_enabled": False,
             "use_chroma": True,
             "uncensored": True,
@@ -424,12 +499,12 @@ def resolve_model_path(cfg: dict | None = None) -> Path:
         cfg = load_config()
     model_filename = (cfg.get("model_filename") or "").strip()
     if not model_filename or model_filename == "your-model.gguf":
-        return REPO_ROOT / "models" / "your-model.gguf"  # placeholder
+        return default_models_dir() / "your-model.gguf"  # placeholder
     models_dir_raw = cfg.get("models_dir")
     if models_dir_raw:
         models_dir = Path(models_dir_raw).expanduser().resolve()
     else:
-        models_dir = REPO_ROOT / "models"
+        models_dir = default_models_dir()
     return models_dir / model_filename
 
 
@@ -553,6 +628,9 @@ def require_approval(tool_name: str) -> bool:
         return True
     if tool_name in DANGEROUS_TOOLS:
         try:
+            cfg = load_config()
+            if bool(cfg.get("admin_mode")) and not bool(cfg.get("admin_blocklist_override")):
+                return True
             data = json.loads(APPROVAL_FILE.read_text(encoding="utf-8"))
             return data.get(tool_name, False) if isinstance(data, dict) else False
         except Exception:
