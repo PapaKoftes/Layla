@@ -178,6 +178,13 @@ def _effective_model_filename(cfg: dict) -> str:
     except Exception:
         pass
     rp = (_routing_prompt_var.get(None) or "").strip()
+    # Hard override: allow internal callers to route decisions to a dedicated JSON/structured model.
+    if override == "decision":
+        dm = (cfg.get("decision_model") or "").strip()
+        if dm:
+            return dm
+        # If decision model isn't configured, fall through to normal routing.
+
     task: str | None = override if override in ("coding", "reasoning", "chat") else None
     if task is None and rp and not _prompt_is_router_internal(rp):
         if cfg.get("tool_routing_enabled", True):
@@ -236,17 +243,41 @@ def _get_llm():
     cfg_eff["model_filename"] = model_filename
     model_path = runtime_safety.resolve_model_path(cfg_eff)
     if not model_path.exists():
-        logger.warning(
-            "llm_gateway: routed model file not found at %s — falling back to default model_filename (%s)",
-            model_path,
-            (cfg.get("model_filename") or "your-model.gguf").strip(),
-        )
-        fallback_cfg = dict(cfg)
-        fallback_cfg["model_filename"] = (cfg.get("model_filename") or "your-model.gguf").strip()
-        model_path = runtime_safety.resolve_model_path(fallback_cfg)
-        model_filename = fallback_cfg["model_filename"]
-        cfg_eff = dict(cfg)
-        cfg_eff["model_filename"] = model_filename
+        wanted = model_filename
+        chain = cfg.get("model_fallback_chain") or []
+        if not isinstance(chain, list):
+            chain = []
+        candidates: list[str] = []
+        # Preserve existing behavior: always try default model_filename.
+        default_fn = (cfg.get("model_filename") or "your-model.gguf").strip()
+        for cand in list(chain) + [default_fn]:
+            sc = str(cand).strip()
+            if sc and sc not in candidates:
+                candidates.append(sc)
+        picked = None
+        for fallback_fn in candidates:
+            probe = dict(cfg)
+            probe["model_filename"] = fallback_fn
+            p = runtime_safety.resolve_model_path(probe)
+            if p.exists():
+                picked = (fallback_fn, p)
+                break
+        if picked is None:
+            logger.warning(
+                "llm_gateway: routed model missing (%s at %s) and no fallback candidates exist; keeping default path",
+                wanted,
+                model_path,
+            )
+        else:
+            model_filename, model_path = picked
+            logger.warning(
+                "llm_gateway: routed model missing (%s); falling back to %s at %s",
+                wanted,
+                model_filename,
+                model_path,
+            )
+            cfg_eff = dict(cfg)
+            cfg_eff["model_filename"] = model_filename
     try:
         path_key = str(model_path.resolve())
     except Exception:
@@ -299,6 +330,17 @@ def _get_llm():
             "n_keep": n_keep,
         }
 
+        # Speculative decoding (prompt lookup) can significantly increase throughput.
+        # Safe on older llama-cpp-python: unsupported kwargs are stripped by the TypeError fallback below.
+        if cfg.get("speculative_decoding_enabled", True):
+            try:
+                from llama_cpp.llama_speculative import LlamaPromptLookupDecoding
+
+                n_pred = int(cfg.get("speculative_num_pred_tokens", 10))
+                kwargs["draft_model"] = LlamaPromptLookupDecoding(num_pred_tokens=max(1, n_pred))
+            except Exception as e:
+                logger.debug("speculative decoding unavailable: %s", e)
+
         # Rope scaling for extended contexts
         if cfg.get("rope_freq_base"):
             kwargs["rope_freq_base"] = float(cfg["rope_freq_base"])
@@ -345,6 +387,18 @@ def prewarm_llm() -> None:
 
     t = threading.Thread(target=_load, daemon=True, name="llm-prewarm")
     t.start()
+
+
+def invalidate_llm_cache() -> None:
+    """Drop cached llama-cpp instances so next call reloads GGUF."""
+    global _llm, _llm_by_path
+    try:
+        with _llm_lock:
+            _llm = None
+            _llm_by_path = {}
+    except Exception:
+        _llm = None
+        _llm_by_path = {}
 
 
 def get_stop_sequences():
@@ -475,44 +529,52 @@ def run_completion(
             def _counting_gen():
                 completion_tokens = 0
                 try:
-                    inner = _run(
-                        prompt=prompt,
-                        max_tokens=max_tokens,
-                        temperature=temperature,
-                        stream=True,
-                        stop=stop,
-                        timeout_seconds=timeout_seconds,
-                        _get_llm=_get_llm,
-                        _llm_lock=infer_lock,
-                        model_override=model_override,
-                        reasoning_budget=reasoning_budget,
-                    )
-                    try:
-                        for chunk in inner:
-                            completion_tokens += _count_tokens(chunk)
-                            yield chunk
-                    finally:
-                        _add_usage(prompt_tokens, completion_tokens)
+                    from services.otel_export import maybe_span
+
+                    with maybe_span(cfg, "llm_completion", stream="true"):
+                        inner = _run(
+                            prompt=prompt,
+                            max_tokens=max_tokens,
+                            temperature=temperature,
+                            stream=True,
+                            stop=stop,
+                            timeout_seconds=timeout_seconds,
+                            cfg_override=cfg,
+                            _get_llm=_get_llm,
+                            _llm_lock=infer_lock,
+                            model_override=model_override,
+                            reasoning_budget=reasoning_budget,
+                        )
+                        try:
+                            for chunk in inner:
+                                completion_tokens += _count_tokens(chunk)
+                                yield chunk
+                        finally:
+                            _add_usage(prompt_tokens, completion_tokens)
                 finally:
                     _routing_prompt_var.reset(routing_tok)
 
             return _counting_gen()
 
         out = None
+        from services.otel_export import maybe_span
+
         for attempt in range(2):
             try:
-                out = _run(
-                    prompt=prompt,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    stream=False,
-                    stop=stop,
-                    timeout_seconds=timeout_seconds,
-                    _get_llm=_get_llm,
-                    _llm_lock=infer_lock,
-                    model_override=model_override,
-                    reasoning_budget=reasoning_budget,
-                )
+                with maybe_span(cfg, "llm_completion", stream="false"):
+                    out = _run(
+                        prompt=prompt,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        stream=False,
+                        stop=stop,
+                        timeout_seconds=timeout_seconds,
+                    cfg_override=cfg,
+                        _get_llm=_get_llm,
+                        _llm_lock=infer_lock,
+                        model_override=model_override,
+                        reasoning_budget=reasoning_budget,
+                    )
                 break
             except Exception:
                 if attempt == 0:

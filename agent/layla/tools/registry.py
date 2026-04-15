@@ -106,9 +106,22 @@ def _wrap_tool_with_metrics(name: str, fn: Any) -> Any:
     def wrapped(*args: Any, **kwargs: Any) -> Any:
         import time
 
+        import runtime_safety
+
+        try:
+            from services.otel_export import maybe_span
+
+            _cfg = runtime_safety.load_config()
+        except Exception:
+            maybe_span = None  # type: ignore
+            _cfg = {}
         start = time.perf_counter()
         result = None
         try:
+            if maybe_span is not None:
+                with maybe_span(_cfg, "tool_call", tool=name):
+                    result = fn(*args, **kwargs)
+                    return result
             result = fn(*args, **kwargs)
             return result
         finally:

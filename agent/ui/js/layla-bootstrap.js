@@ -1,5 +1,35 @@
 (function() {
   'use strict';
+  function __laylaIsNonLocalHost() {
+    try {
+      var h = location.hostname || '';
+      if (!h) return false;
+      return h !== '127.0.0.1' && h !== 'localhost';
+    } catch (_) { return false; }
+  }
+  function __laylaRemoteAuthHeader() {
+    try {
+      var k = localStorage.getItem('layla_remote_api_key') || '';
+      if (!k) return null;
+      return 'Bearer ' + k;
+    } catch (_) { return null; }
+  }
+  try {
+    var _nativeFetch = typeof fetch !== 'undefined' ? fetch.bind(window) : null;
+    if (_nativeFetch) {
+      window.fetch = function(input, init) {
+        init = init || {};
+        var u = typeof input === 'string' ? input : (input && input.url) || '';
+        if (__laylaIsNonLocalHost() && u.charAt(0) === '/') {
+          var h = new Headers(init.headers || undefined);
+          var bearer = __laylaRemoteAuthHeader();
+          if (bearer && !h.has('Authorization')) h.set('Authorization', bearer);
+          init.headers = h;
+        }
+        return _nativeFetch(input, init);
+      };
+    }
+  } catch (_) {}
   window.currentAspect = window.currentAspect || 'morrigan';
   window.triggerSend = function triggerSend() {
     try {

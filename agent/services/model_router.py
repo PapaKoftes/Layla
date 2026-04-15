@@ -9,7 +9,7 @@ from pathlib import Path
 
 logger = logging.getLogger("layla")
 
-TASK_TYPES = ("coding", "reasoning", "chat", "default")
+TASK_TYPES = ("coding", "reasoning", "chat", "decision", "default")
 
 
 def _warn_router_model_missing(model_fn: str | None, label: str) -> None:
@@ -71,6 +71,7 @@ def _router_fields_from_cfg(cfg: dict) -> dict[str, str | None]:
     coding = (cfg.get("coding_model") or "").strip() or None
     reasoning = (cfg.get("reasoning_model") or "").strip() or None
     chat = (cfg.get("chat_model") or "").strip() or None
+    decision = (cfg.get("decision_model") or "").strip() or None
     default_fn = (cfg.get("model_filename") or "").strip() or None
     fallback_m: str | None = None
 
@@ -92,6 +93,7 @@ def _router_fields_from_cfg(cfg: dict) -> dict[str, str | None]:
         "coding": coding,
         "reasoning": reasoning,
         "chat": chat,
+        "decision": decision,
         "default": default_fn,
         "fallback_model": fallback_m,
     }
@@ -308,6 +310,43 @@ def select_model(
                 return _select_return(chat_m, "telemetry_chat")
     except Exception as e:
         logger.debug("select_model telemetry bias: %s", e)
+
+    # Soft adaptive bias: prefer models with a materially higher historical success rate
+    # for this task type (when enough samples exist).
+    try:
+        from services.telemetry import get_model_success_rates
+
+        stats = get_model_success_rates(min_count=5)
+        if isinstance(stats, dict) and stats:
+            base = _select_return(route_model(tt), "route_model") or _select_return(cfg.get("model_filename"), "default")
+            if base:
+                best = base
+                best_sr = None
+                base_sr = None
+                for model_name, by_task in stats.items():
+                    if not isinstance(by_task, dict):
+                        continue
+                    row = by_task.get(tt) or by_task.get("default")
+                    if not isinstance(row, dict):
+                        continue
+                    sr = row.get("success_rate")
+                    if sr is None:
+                        continue
+                    try:
+                        sr_f = float(sr)
+                    except Exception:
+                        continue
+                    if model_name == base:
+                        base_sr = sr_f
+                    if best_sr is None or sr_f > best_sr:
+                        best_sr = sr_f
+                        best = model_name
+                if base_sr is not None and best_sr is not None:
+                    # Require a meaningful lift to avoid noise and oscillation.
+                    if (best_sr - base_sr) >= 0.20:
+                        return _select_return(best, "adaptive_success_rate")
+    except Exception:
+        pass
     return _select_return(route_model(tt), "route_model")
 
 

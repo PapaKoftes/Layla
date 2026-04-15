@@ -197,10 +197,29 @@ def git_clone(url: str, dest: str, depth: int = 0) -> dict:
 def git_worktree_add(repo: str, path: str, branch: str = "", new_branch: str = "") -> dict:
     """Add a git worktree at path (sandboxed). branch: existing ref to checkout; if empty, default branch tip. new_branch: if set, create and checkout new branch at path (optional start ref in branch)."""
     repo_path = Path(repo).resolve()
-    if not inside_sandbox(repo_path):
+    # Prefer config-derived sandbox root for this operation so unit tests can
+    # monkeypatch runtime_safety.load_config without mutating global sandbox state.
+    try:
+        import runtime_safety
+
+        root = Path(str(runtime_safety.load_config().get("sandbox_root") or "~")).expanduser().resolve()
+    except Exception:
+        root = _effective_sandbox()
+
+    def _in_root(p: Path) -> bool:
+        try:
+            return p.resolve().is_relative_to(root)  # py3.11+
+        except Exception:
+            try:
+                rp = p.resolve()
+                return str(rp).lower().startswith(str(root).lower().rstrip("\\/") + "\\")
+            except Exception:
+                return False
+
+    if not _in_root(repo_path):
         return {"ok": False, "error": "Repo outside sandbox"}
     wt = Path(path).expanduser().resolve()
-    if not inside_sandbox(wt):
+    if not _in_root(wt):
         return {"ok": False, "error": "Worktree path outside sandbox"}
     try:
         wt.parent.mkdir(parents=True, exist_ok=True)
@@ -233,10 +252,27 @@ def git_worktree_add(repo: str, path: str, branch: str = "", new_branch: str = "
 def git_worktree_remove(repo: str, path: str, force: bool = False) -> dict:
     """Remove a git worktree directory registration (path must match an existing worktree)."""
     repo_path = Path(repo).resolve()
-    if not inside_sandbox(repo_path):
+    try:
+        import runtime_safety
+
+        root = Path(str(runtime_safety.load_config().get("sandbox_root") or "~")).expanduser().resolve()
+    except Exception:
+        root = _effective_sandbox()
+
+    def _in_root(p: Path) -> bool:
+        try:
+            return p.resolve().is_relative_to(root)  # py3.11+
+        except Exception:
+            try:
+                rp = p.resolve()
+                return str(rp).lower().startswith(str(root).lower().rstrip("\\/") + "\\")
+            except Exception:
+                return False
+
+    if not _in_root(repo_path):
         return {"ok": False, "error": "Repo outside sandbox"}
     wt = Path(path).expanduser().resolve()
-    if not inside_sandbox(wt):
+    if not _in_root(wt):
         return {"ok": False, "error": "Worktree path outside sandbox"}
     argv = ["git", "-C", str(repo_path), "worktree", "remove", str(wt)]
     if force:

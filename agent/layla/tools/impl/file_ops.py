@@ -30,12 +30,28 @@ logger = logging.getLogger("layla")
 
 # Injected by layla.tools.registry with the assembled TOOLS dict (same object in every module).
 TOOLS: dict = {}
-def write_file(path: str, content: str) -> dict:
-    target = Path(path)
-    if not target.is_absolute() and getattr(_effective_sandbox, "path", None):
-        target = (Path(_effective_sandbox.path) / path).resolve()
+
+
+def _resolve_sandboxed_path(path: str) -> Path:
+    p = Path(path)
+    if p.is_absolute():
+        return p.resolve()
+    base = getattr(_effective_sandbox, "path", None)
+    root = Path(base) if base else _get_sandbox()
+    return (Path(root) / path).resolve()
+
+
+def _ensure_inside_sandbox(target: Path) -> tuple[bool, dict | None]:
     if not inside_sandbox(target):
-        return {"ok": False, "error": "Outside sandbox"}
+        return False, {"ok": False, "error": "Outside sandbox"}
+    return True, None
+
+
+def write_file(path: str, content: str) -> dict:
+    target = _resolve_sandboxed_path(path)
+    ok, err = _ensure_inside_sandbox(target)
+    if not ok:
+        return err or {"ok": False, "error": "Outside sandbox"}
     stale = _check_read_freshness(target)
     if stale:
         return {"ok": False, "error": stale, "hint": "use read_file first"}
@@ -101,28 +117,32 @@ def write_files_batch(files: list) -> dict:
     return {"ok": True, "written": written, "count": len(written)}
 
 def read_file(path: str) -> dict:
-    target = Path(path)
-    if not target.is_absolute() and getattr(_effective_sandbox, "path", None):
-        target = (Path(_effective_sandbox.path) / path).resolve()
-    if not inside_sandbox(target):
-        return {"ok": False, "error": "Outside sandbox"}
+    target = _resolve_sandboxed_path(path)
+    ok, err = _ensure_inside_sandbox(target)
+    if not ok:
+        return err or {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
         return {"ok": False, "error": "File not found"}
     if not target.is_file():
         return {"ok": False, "error": "Not a file"}
     try:
-        content = target.read_text(encoding="utf-8", errors="replace")
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        max_bytes = int(cfg.get("file_read_max_bytes", 2_000_000) or 2_000_000)
+        with open(target, "rb") as f:
+            raw = f.read(max(1, max_bytes))
+        content = raw.decode("utf-8", errors="replace")
         _set_read_freshness(target)
         return {"ok": True, "path": str(target), "content": content[:8000]}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 def list_dir(path: str) -> dict:
-    target = Path(path)
-    if not target.is_absolute() and getattr(_effective_sandbox, "path", None):
-        target = (Path(_effective_sandbox.path) / path).resolve()
-    if not inside_sandbox(target):
-        return {"ok": False, "error": "Outside sandbox"}
+    target = _resolve_sandboxed_path(path)
+    ok, err = _ensure_inside_sandbox(target)
+    if not ok:
+        return err or {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
         return {"ok": False, "error": "Path not found"}
     try:
@@ -137,11 +157,10 @@ def list_dir(path: str) -> dict:
         return {"ok": False, "error": str(e)}
 
 def glob_files(pattern: str, root: str) -> dict:
-    root_path = Path(root)
-    if not root_path.is_absolute() and getattr(_effective_sandbox, "path", None):
-        root_path = (Path(_effective_sandbox.path) / root).resolve()
-    if not inside_sandbox(root_path):
-        return {"ok": False, "error": "Outside sandbox"}
+    root_path = _resolve_sandboxed_path(root)
+    ok, err = _ensure_inside_sandbox(root_path)
+    if not ok:
+        return err or {"ok": False, "error": "Outside sandbox"}
     if not root_path.exists():
         return {"ok": False, "error": "Path not found"}
     try:
@@ -196,7 +215,6 @@ def scan_repo(workspace_root: str = "", dry_run: bool = False, max_files: int = 
     Requires allow_write + approval (writes under workspace).
     """
     import runtime_safety
-
     from services import project_memory as pm
 
     cfg = runtime_safety.load_config()
@@ -213,7 +231,6 @@ def scan_repo(workspace_root: str = "", dry_run: bool = False, max_files: int = 
 def update_project_memory(workspace_root: str = "", patch: dict | None = None) -> dict:
     """Merge a JSON patch into `.layla/project_memory.json` (plan, todos, decisions, file notes)."""
     import runtime_safety
-
     from services import project_memory as pm
 
     cfg = runtime_safety.load_config()
@@ -237,13 +254,20 @@ def parse_gcode(path: str) -> dict:
     Parse G-code / NC file: moves, tools, units, bounds, feed rates.
     Supports .gcode, .nc, .tap, .sbp.
     """
-    target = Path(path)
-    if not inside_sandbox(target):
-        return {"ok": False, "error": "Outside sandbox"}
+    target = _resolve_sandboxed_path(path)
+    ok, err = _ensure_inside_sandbox(target)
+    if not ok:
+        return err or {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
         return {"ok": False, "error": "File not found"}
     try:
-        content = target.read_text(encoding="utf-8", errors="replace")
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        max_bytes = int(cfg.get("file_read_max_bytes", 2_000_000) or 2_000_000)
+        with open(target, "rb") as f:
+            raw = f.read(max(1, max_bytes))
+        content = raw.decode("utf-8", errors="replace")
     except Exception as e:
         return {"ok": False, "error": str(e)}
     # Parse G-code patterns
@@ -290,9 +314,10 @@ def parse_gcode(path: str) -> dict:
 
 def stl_mesh_info(path: str) -> dict:
     """STL mesh stats: vertex count, bounds, volume. Requires trimesh or numpy."""
-    target = Path(path)
-    if not inside_sandbox(target):
-        return {"ok": False, "error": "Outside sandbox"}
+    target = _resolve_sandboxed_path(path)
+    ok, err = _ensure_inside_sandbox(target)
+    if not ok:
+        return err or {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
         return {"ok": False, "error": "File not found"}
     try:
@@ -331,14 +356,28 @@ def stl_mesh_info(path: str) -> dict:
 
 def tail_file(path: str, n: int = 50) -> dict:
     """Return last n lines of a file. Useful for logs."""
-    target = Path(path)
-    if not inside_sandbox(target):
-        return {"ok": False, "error": "Outside sandbox"}
+    target = _resolve_sandboxed_path(path)
+    ok, err = _ensure_inside_sandbox(target)
+    if not ok:
+        return err or {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
         return {"ok": False, "error": "File not found"}
     try:
-        with open(target, encoding="utf-8", errors="replace") as f:
-            lines = f.readlines()
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        max_bytes = int(cfg.get("file_tail_max_bytes", 256_000) or 256_000)
+        n = max(1, min(5000, int(n or 50)))
+        with open(target, "rb") as f:
+            try:
+                f.seek(0, 2)
+                size = f.tell()
+                f.seek(max(0, size - max_bytes), 0)
+            except Exception:
+                pass
+            raw = f.read(max_bytes)
+        text = raw.decode("utf-8", errors="replace")
+        lines = text.splitlines(keepends=True)
         tail = lines[-n:] if len(lines) > n else lines
         return {"ok": True, "path": str(target), "lines": "".join(tail)[:8000], "total_lines": len(lines)}
     except Exception as e:
@@ -364,13 +403,57 @@ def clipboard_write(text: str) -> dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+def replace_in_file(path: str, old_text: str, new_text: str, count: int = 1) -> dict:
+    """
+    Surgical single-file edit: replace up to ``count`` occurrences of ``old_text``
+    with ``new_text``. Prefer this over ``write_file`` when changing part of a file.
+    """
+    if not (old_text or "").strip():
+        return {"ok": False, "error": "old_text required"}
+    target = _resolve_sandboxed_path(path)
+    ok, err = _ensure_inside_sandbox(target)
+    if not ok:
+        return err or {"ok": False, "error": "Outside sandbox"}
+    if not target.exists() or not target.is_file():
+        return {"ok": False, "error": "File not found"}
+    stale = _check_read_freshness(target)
+    if stale:
+        return {"ok": False, "error": stale, "hint": "use read_file first"}
+    try:
+        content = target.read_text(encoding="utf-8", errors="replace")
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    if old_text not in content:
+        return {"ok": False, "error": "old_text not found in file", "path": str(target)}
+    n_total = content.count(old_text)
+    lim = int(count) if int(count) > 0 else n_total
+    lim = min(lim, n_total)
+    new_content = content
+    replaced = 0
+    idx = 0
+    while replaced < lim:
+        pos = new_content.find(old_text, idx)
+        if pos < 0:
+            break
+        new_content = new_content[:pos] + new_text + new_content[pos + len(old_text) :]
+        replaced += 1
+        idx = pos + len(new_text)
+    if replaced == 0:
+        return {"ok": False, "error": "no replacement performed", "path": str(target)}
+    _maybe_file_checkpoint(target, "replace_in_file")
+    target.write_text(new_content, encoding="utf-8")
+    _clear_read_freshness(target)
+    return {"ok": True, "path": str(target), "replacements": replaced, "occurrences_total": n_total}
+
+
 def search_replace(root: str, find: str, replace: str, file_glob: str = "*", dry_run: bool = True) -> dict:
     """
     Multi-file find/replace. dry_run=True lists matches without changing. Uses regex if find contains regex chars.
     """
-    root_path = Path(root)
-    if not inside_sandbox(root_path):
-        return {"ok": False, "error": "Outside sandbox"}
+    root_path = _resolve_sandboxed_path(root)
+    ok, err = _ensure_inside_sandbox(root_path)
+    if not ok:
+        return err or {"ok": False, "error": "Outside sandbox"}
     if not root_path.exists():
         return {"ok": False, "error": "Path not found"}
     use_regex = bool(re.search(r"[.*+?^${}()|[\]\\]", find))
@@ -397,9 +480,10 @@ def search_replace(root: str, find: str, replace: str, file_glob: str = "*", dry
 
 def apply_patch(original_path: str, patch_text: str) -> dict:
     """Apply a unified diff patch using unidiff (pure Python, Windows-safe). Creates a backup first."""
-    target = Path(original_path)
-    if not inside_sandbox(target):
-        return {"ok": False, "error": "Outside sandbox"}
+    target = _resolve_sandboxed_path(original_path)
+    ok, err = _ensure_inside_sandbox(target)
+    if not ok:
+        return err or {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
         return {"ok": False, "error": "File not found"}
     stale = _check_read_freshness(target)
@@ -435,27 +519,30 @@ def apply_patch(original_path: str, patch_text: str) -> dict:
 
 def file_info(path: str) -> dict:
     """Return size, line count (approx), and whether file looks text. Read-only; no approval."""
-    target = Path(path)
-    if not target.is_absolute() and getattr(_effective_sandbox, "path", None):
-        target = (Path(_effective_sandbox.path) / path).resolve()
-    if not inside_sandbox(target):
-        return {"ok": False, "error": "Outside sandbox"}
+    target = _resolve_sandboxed_path(path)
+    ok, err = _ensure_inside_sandbox(target)
+    if not ok:
+        return err or {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
         return {"ok": False, "error": "Path not found"}
     if not target.is_file():
         return {"ok": False, "error": "Not a file"}
     try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        max_sample = int(cfg.get("file_info_sample_max_bytes", 64_000) or 64_000)
         size = target.stat().st_size
-        # Sample first 8k to guess text vs binary and count newlines
-        raw = target.read_bytes()
-        sample = raw[:8192]
+        # Sample first N bytes to guess text vs binary and count newlines (never read whole file).
+        with open(target, "rb") as f:
+            sample = f.read(max(1, max_sample))
         try:
             sample.decode("utf-8", errors="strict")
             is_text = True
         except Exception:
             is_text = False
         line_count = sample.count(b"\n") if is_text else None
-        note = "from first 8k only" if is_text and len(raw) > len(sample) else None
+        note = f"from first {len(sample)} bytes only" if is_text and size > len(sample) else None
         return {"ok": True, "path": str(target), "size_bytes": size, "is_text": is_text, "line_count_sample": line_count, "note": note}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -463,12 +550,17 @@ def file_info(path: str) -> dict:
 def understand_file_tool(path: str, content: str | None = None) -> dict:
     """Interpret file intent (read-only). path: file path; optional content for in-memory analysis."""
     try:
+        if content is None:
+            target = _resolve_sandboxed_path(path)
+            ok, err = _ensure_inside_sandbox(target)
+            if not ok:
+                return err or {"ok": False, "error": "Outside sandbox"}
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
         from layla.file_understanding import analyze_file
         if content is not None:
             return {"ok": True, **analyze_file(file_path=path, content=content)}
-        return {"ok": True, **analyze_file(file_path=path)}
+        return {"ok": True, **analyze_file(file_path=str(target))}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -650,7 +742,10 @@ def workspace_map(root: str = "", max_files: int = 500, include_content_preview:
     - Key documentation (README, CHANGELOG, AGENTS.md, etc.)
     - Large files + recently modified files
     """
-    root_path = Path(root).expanduser().resolve() if root else Path.cwd()
+    root_path = _resolve_sandboxed_path(root) if root else _get_sandbox()
+    ok, err = _ensure_inside_sandbox(root_path)
+    if not ok:
+        return err or {"ok": False, "error": "Outside sandbox"}
     if not root_path.exists():
         return {"ok": False, "error": "Path not found"}
 

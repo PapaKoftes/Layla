@@ -4,14 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>∴ LAYLA</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Cinzel:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<link rel="stylesheet" href="/layla-ui/vendor/css/fonts.css">
+<link rel="stylesheet" href="/layla-ui/vendor/css/github-dark.min.css">
 <link rel="manifest" href="/manifest.json">
 <link rel="stylesheet" href="/layla-ui/css/layla.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js"></script>
+<script src="/layla-ui/vendor/js/marked.min.js"></script>
+<script src="/layla-ui/vendor/js/highlight.min.js"></script>
+<script src="/layla-ui/vendor/js/purify.min.js"></script>
 </head>
 <body>
 <div id="layla-sprite-field" aria-hidden="true"></div>
@@ -19,16 +18,65 @@
 <div id="doodle-overlay"></div>
 <div id="warmup-bar">⧗ Loading model — <span id="warmup-detail">warming up, this may take a moment</span></div>
 <div id="connection-banner" style="display:none;background:#8b0000;color:#fff;padding:8px 20px;font-size:0.8rem;text-align:center">Cannot reach Layla — is the server running? <button onclick="location.reload()" style="margin-left:12px;padding:4px 12px;background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:4px;cursor:pointer">Retry</button></div>
+<div id="remote-key-banner" style="display:none;background:#1a3a5c;color:#e8f4ff;padding:8px 16px;font-size:0.78rem;text-align:center;border-bottom:1px solid rgba(255,255,255,0.15)">Remote access: enter the same <strong>remote_api_key</strong> you set in <code>runtime_config.json</code> (stored only in this browser). <input type="password" id="remote-api-key-input" placeholder="API key" style="margin:0 8px;padding:4px 8px;max-width:220px;border-radius:4px;border:1px solid #4a7ab0;background:#0d1b2a;color:#e8f4ff" autocomplete="off" /> <button type="button" onclick="(function(){try{var v=document.getElementById('remote-api-key-input');if(v&&v.value){localStorage.setItem('layla_remote_api_key',v.value);document.getElementById('remote-key-banner').style.display='none';location.reload();}}catch(_){}})()" style="padding:4px 12px;background:#4a7ab0;border:none;color:#fff;border-radius:4px;cursor:pointer">Save &amp; reload</button></div>
+<script>
+(function(){
+  function _loadScript(src) {
+    return new Promise(function(resolve, reject) {
+      try {
+        var s = document.createElement('script');
+        s.src = src;
+        s.async = true;
+        s.onload = function(){ resolve(true); };
+        s.onerror = function(){ reject(new Error('failed:'+src)); };
+        document.head.appendChild(s);
+      } catch (e) { reject(e); }
+    });
+  }
+  function _loadCss(href) {
+    return new Promise(function(resolve, reject) {
+      try {
+        var l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = href;
+        l.onload = function(){ resolve(true); };
+        l.onerror = function(){ reject(new Error('failed:'+href)); };
+        document.head.appendChild(l);
+      } catch (e) { reject(e); }
+    });
+  }
+  try {
+    var needMarked = (typeof window.marked === 'undefined');
+    var needHl = (typeof window.hljs === 'undefined');
+    var needPurify = (typeof window.DOMPurify === 'undefined');
+    if (needMarked) _loadScript('https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js').catch(function(){});
+    if (needHl) {
+      _loadCss('https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css').catch(function(){});
+      _loadScript('https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js').catch(function(){});
+    }
+    if (needPurify) _loadScript('https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js').catch(function(){});
+  } catch (_) {}
+})();
+(function(){
+  try {
+    var h = location.hostname || '';
+    if (h && h !== '127.0.0.1' && h !== 'localhost') {
+      var k = localStorage.getItem('layla_remote_api_key');
+      if (!k) { var b = document.getElementById('remote-key-banner'); if (b) b.style.display = 'block'; }
+    }
+  } catch (_) {}
+})();
+</script>
 <div id="model-readiness-banner" style="display:none;background:#5a2040;color:#fff;padding:8px 20px;font-size:0.8rem;text-align:center">No model loaded — <a href="/docs/MODELS.md" target="_blank" style="color:#e0a0ff;text-decoration:underline">Configure</a> or run first setup</div>
 <div id="context-limit-banner" style="display:none;background:#664400;color:#fff;padding:6px 16px;font-size:0.72rem;text-align:center">Context usage high — use <strong>⊙ Compact</strong> or POST <code>/compact</code>.</div>
-<div id="onboarding-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10003;align-items:center;justify-content:center" onclick="if(event.target===this)typeof dismissOnboarding==='function'&&dismissOnboarding()">
-  <div class="onboarding-modal" style="background:var(--bg2);border:1px solid var(--asp);border-radius:8px;padding:24px;max-width:360px;text-align:center" onclick="event.stopPropagation()">
-    <p id="onboarding-text" style="font-size:0.95rem;line-height:1.5;margin-bottom:20px">Choose a voice in the sidebar.</p>
-    <div style="display:flex;gap:12px;justify-content:center">
-      <button id="onboarding-next" onclick="onboardingNext()" style="padding:8px 20px;background:var(--asp);border:none;color:#fff;border-radius:4px;cursor:pointer">Next</button>
-      <button id="onboarding-done" onclick="dismissOnboarding()" style="display:none;padding:8px 20px;background:var(--asp);border:none;color:#fff;border-radius:4px;cursor:pointer">Done</button>
+<div id="onboarding-overlay" onclick="if(event.target===this)typeof dismissOnboarding==='function'&&dismissOnboarding()">
+  <div class="onboarding-modal" onclick="event.stopPropagation()">
+    <p id="onboarding-text" class="onboarding-text">Choose a voice in the sidebar.</p>
+    <div class="onboarding-actions">
+      <button id="onboarding-next" onclick="onboardingNext()">Next</button>
+      <button id="onboarding-done" onclick="dismissOnboarding()" style="display:none">Done</button>
     </div>
-    <p style="font-size:0.75rem;color:var(--text-dim);margin-top:14px">Press Escape to skip</p>
+    <p class="onboarding-hint">Press Escape to skip</p>
   </div>
 </div>
 <header>
@@ -59,7 +107,9 @@
     <button onclick="openSettings()" title="Settings" aria-label="Settings">⚙</button>
     <button type="button" onclick="toggleComposePanel()" title="Working notes (merged into request context)" aria-label="Working notes">📝 Notes</button>
     <button type="button" id="chat-rail-toggle" onclick="toggleChatRailMobile()" title="Chats" aria-label="Open chats">💬 Chats</button>
-    <button onclick="clearChat()" title="Clear chat history" aria-label="Clear chat" style="background:transparent;border-color:var(--border)">✕ clear</button>
+    <button type="button" onclick="typeof retryLastMessage==='function'&&retryLastMessage()" title="Remove last exchange and resend" aria-label="Retry last message">retry</button>
+
+    <button onclick="clearChat()" title="Clear chat history" aria-label="Clear chat" style="background:transparent;border-color:var(--border)">clear</button>
     <button type="button" id="open-cli-btn" onclick="openCliHelp()" title="Copy command to open terminal UI (TUI)">⌘ Terminal</button>
   </div>
   <div id="header-progress-row" class="header-progress-row" aria-hidden="true"><div id="header-progress-fill"></div></div>
@@ -77,6 +127,18 @@
         <span style="color:var(--text-dim);font-size:0.7rem;padding:4px;display:block">Loading…</span>
       </div>
     </aside>
+    <!-- Layla v3: Mastery rank / maturity card (Warframe-inspired). -->
+    <div id="maturity-card" class="maturity-card" role="button" tabindex="0" onclick="typeof refreshMaturityCard==='function'&&refreshMaturityCard(true)">
+      <div class="maturity-card-top">
+        <div class="maturity-rank-badge"><span class="maturity-rank-label">MR</span> <span id="maturity-rank">0</span></div>
+        <div class="maturity-phase">
+          <div id="maturity-phase">NASCENT</div>
+          <div id="maturity-xp" class="maturity-xp">0 / 500</div>
+        </div>
+      </div>
+      <div class="maturity-bar"><div id="maturity-bar-fill" class="maturity-bar-fill"></div></div>
+      <div class="maturity-hint">Growth is real. Click to refresh.</div>
+    </div>
     <div>
       <h3>Voices</h3>
       <p class="sidebar-hint">Talk to Layla or choose a voice. She remembers and grows with you.</p>
@@ -107,6 +169,13 @@
     </div>
     <p class="sidebar-hint" style="font-size:0.68rem;margin:0;line-height:1.4">Chat options, workspace, permissions, and research controls are in the right column → <button type="button" class="tab-btn" style="margin-top:6px;width:100%;box-sizing:border-box" onclick="typeof showMainPanel==='function'&&showMainPanel('prefs')">Open Prefs</button></p>
 
+  </div>
+
+  <div id="rankup-overlay" class="rankup-overlay" aria-hidden="true">
+    <div class="rankup-modal">
+      <div class="rankup-title">Rank up</div>
+      <div class="rankup-detail"><span id="rankup-detail">Mastery increased.</span></div>
+    </div>
   </div>
 
   <div id="chat-rail-backdrop" onclick="closeChatRailMobile()" aria-hidden="true"></div>
@@ -193,6 +262,18 @@
         <p class="rta-muted" style="margin:0 0 6px">Enabled features, limits, optional dependencies (STT/TTS/Chroma/GPU), and a safe snapshot of config from the server.</p>
         <div class="rta-card">
           <div id="runtime-options-panel"><span style="color:var(--text-dim);font-size:0.7rem">Loading…</span></div>
+        </div>
+        <div class="rta-section-title">Execution trace</div>
+        <p class="rta-muted" style="margin:0 0 6px">Last agent run for this chat (<code>/debug/state</code>).</p>
+        <div class="rta-card">
+          <button type="button" class="tab-btn" onclick="typeof laylaRefreshExecutionPanels==='function'&&laylaRefreshExecutionPanels()">Refresh trace</button>
+          <pre id="exec-trace-json" style="font-size:0.65rem;max-height:200px;overflow:auto;margin-top:8px">—</pre>
+        </div>
+        <div class="rta-section-title">Coordinator tasks</div>
+        <p class="rta-muted" style="margin:0 0 6px">Persisted runs (<code>/debug/tasks</code>).</p>
+        <div class="rta-card">
+          <button type="button" class="tab-btn" onclick="typeof laylaRefreshExecutionPanels==='function'&&laylaRefreshExecutionPanels()">Refresh tasks</button>
+          <pre id="tasks-list-json" style="font-size:0.65rem;max-height:220px;overflow:auto;margin-top:8px">—</pre>
         </div>
       </section>
 
@@ -522,9 +603,19 @@
 
 <!-- ── Setup Overlay ───────────────────────────────────────────────────── -->
 <div id="setup-overlay">
+  <div class="setup-creator-intro" style="text-align:center;margin-bottom:14px;padding:10px;border:1px solid rgba(255,255,255,0.12);border-radius:10px;background:rgba(0,0,0,0.2)">
+    <div style="font-size:1.05rem;letter-spacing:0.06em">Meet Layla</div>
+    <div style="font-size:0.72rem;color:var(--text-dim);margin-top:6px;line-height:1.45">Hardware → model → workspace. You can revisit any time from <strong>Help</strong> or <strong>Settings</strong>.</div>
+  </div>
   <div class="setup-modal">
     <h2>∴ LAYLA — First Setup</h2>
     <div class="setup-subtitle">No model found. Choose one to download or point to an existing .gguf file. Layla is local-first: your chats and files stay on this machine. Writes and shell commands require explicit approval. Read <a href="/values.md" target="_blank" rel="noopener">VALUES.md</a> and <a href="/docs/ETHICAL_AI_PRINCIPLES.md" target="_blank" rel="noopener">ethical AI principles</a> anytime.</div>
+
+    <div class="setup-section-title">Workspace folder</div>
+    <p style="font-size:0.75rem;color:var(--text-dim);line-height:1.45;margin:0 0 8px">File tools can only access paths inside this directory. Use a dedicated folder (recommended), not your whole user profile.</p>
+    <div class="setup-custom-url">
+      <input type="text" id="setup-workspace-path" placeholder="e.g. C:\Users\you\LaylaWorkspace" autocomplete="off">
+    </div>
 
     <div class="setup-section-title">Your Hardware</div>
     <div class="setup-hw" id="setup-hw">Detecting…</div>
@@ -549,7 +640,7 @@
     <div class="setup-btns">
       <button class="setup-btn primary" id="setup-download-btn" onclick="startModelDownload()" disabled>Download Selected</button>
       <button class="setup-btn" type="button" id="setup-retry-btn" style="display:none" onclick="retryModelDownload()">Retry download</button>
-      <button class="setup-btn skip" onclick="document.getElementById('setup-overlay').classList.remove('visible')">Skip for now</button>
+      <button class="setup-btn skip" onclick="typeof dismissSetupOverlay==='function'?dismissSetupOverlay(true):document.getElementById('setup-overlay').classList.remove('visible')">Skip for now</button>
     </div>
 
     <div style="margin-top:18px;font-size:0.72rem;color:var(--text-dim);line-height:1.8">
@@ -574,6 +665,25 @@
     <div class="settings-presets" style="margin:8px 0;padding:8px;border:1px solid rgba(255,255,255,0.12);border-radius:8px">
       <span class="hint">Low-resource preset (merges into config; restart server for full effect):</span>
       <button type="button" class="settings-save" style="margin-left:8px" onclick="applySettingsPreset('potato')">Apply potato preset</button>
+    </div>
+    <div class="settings-admin" style="margin:8px 0;padding:8px;border:1px solid rgba(255,255,255,0.12);border-radius:8px">
+      <div class="hint" style="margin-bottom:6px"><strong>Admin mode</strong> — toggle <code>admin_mode</code> / <code>admin_auto_checkpoint</code> / <code>admin_blocklist_override</code> in the settings form above (save applies).</div>
+      <div style="margin-top:8px;font-size:0.7rem;color:var(--text-dim)">Undo last Layla git checkpoint (needs git repo + last commit subject contains <code>layla-checkpoint</code>):</div>
+      <input type="text" id="admin-undo-workspace" placeholder="Workspace root path" style="width:100%;max-width:420px;margin-top:4px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--code-bg);color:var(--text)" />
+      <button type="button" class="settings-save" style="margin-top:6px" onclick="typeof laylaGitUndoCheckpoint==='function'&&laylaGitUndoCheckpoint()">Git undo last checkpoint</button>
+      <span id="admin-undo-msg" class="hint" style="margin-left:8px"></span>
+    </div>
+    <div class="settings-features" style="margin:8px 0;padding:8px;border:1px solid rgba(255,255,255,0.12);border-radius:8px">
+      <div class="hint" style="margin-bottom:6px"><strong>Optional features</strong> — install missing Python packages (allowlisted).</div>
+      <button type="button" class="settings-save" onclick="typeof laylaLoadOptionalFeatures==='function'&&laylaLoadOptionalFeatures()">Refresh list</button>
+      <div id="optional-features-list" style="margin-top:8px;font-size:0.72rem;max-height:180px;overflow-y:auto"></div>
+    </div>
+    <div class="settings-import" style="margin:8px 0;padding:8px;border:1px solid rgba(255,255,255,0.12);border-radius:8px">
+      <div class="hint" style="margin-bottom:6px"><strong>Import chat export</strong> (WhatsApp <code>_chat.txt</code> paste) → <code>knowledge/imports/</code></div>
+      <input type="text" id="import-chat-title" placeholder="Title / filename stem" style="width:100%;max-width:320px;margin-bottom:6px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--code-bg);color:var(--text)" />
+      <textarea id="import-chat-text" placeholder="Paste export text…" style="width:100%;min-height:90px;font-size:0.72rem;border-radius:4px;border:1px solid var(--border);background:var(--code-bg);color:var(--text);padding:6px"></textarea>
+      <button type="button" class="settings-save" style="margin-top:6px" onclick="typeof laylaImportChat==='function'&&laylaImportChat()">Import to knowledge</button>
+      <span id="import-chat-msg" class="hint" style="margin-left:8px"></span>
     </div>
     <div class="settings-appearance" style="margin:8px 0;padding:8px;border:1px solid rgba(255,255,255,0.12);border-radius:8px">
       <div class="hint" style="margin-bottom:6px">Appearance / lite mode (writes <code>runtime_config.json</code>)</div>
@@ -627,9 +737,19 @@
   </div>
 </div>
 
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(function () {});
+}
+</script>
 <script src="/layla-ui/js/layla-ui-phases.js"></script>
 <script src="/layla-ui/js/layla-sprites.js"></script>
 <script src="/layla-ui/js/layla-bootstrap.js"></script>
+<script src="/layla-ui/js/state.js"></script>
+<script src="/layla-ui/js/api.js"></script>
+<script src="/layla-ui/js/chat.js"></script>
+<script src="/layla-ui/js/sidebar.js"></script>
+<script src="/layla-ui/js/panels.js"></script>
 <script src="/layla-ui/js/layla-app.js"></script>
 <script src="/layla-ui/js/layla-conversations.js"></script>
 </body>

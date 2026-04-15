@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect width="256" height="256" fill="none"/>
+  <g stroke="rgba(255,255,255,0.10)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- circuit traces -->
+    <path d="M16 48h56v32h48v32h48v32h72"/>
+    <path d="M16 192h80v-40h40v-40h40v-40h64"/>
+    <path d="M64 16v56h32v48h32v48h32v72"/>
+    <!-- nodes -->
+    <circle cx="72" cy="48" r="4"/>
+    <circle cx="120" cy="80" r="4"/>
+    <circle cx="168" cy="112" r="4"/>
+    <circle cx="216" cy="144" r="4"/>
+    <circle cx="96" cy="192" r="4"/>
+    <!-- blade motif -->
+    <path d="M208 32l24 24-64 64-24-24z"/>
+    <path d="M144 96l24 24-16 16-24-24z"/>
+  </g>
+</svg>

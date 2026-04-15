@@ -917,8 +917,8 @@ async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent
     # ── get_pending_approvals ─────────────────────────────
     if name == "get_pending_approvals":
         try:
-            resp = _get(LAYLA_BASE + "/approvals")
-            items = resp.get("approvals") or resp.get("items") or []
+            resp = _get(LAYLA_BASE + "/pending")
+            items = resp.get("pending") or resp.get("items") or []
             if not items:
                 return [types.TextContent(type="text", text="No pending approvals.")]
             lines = []

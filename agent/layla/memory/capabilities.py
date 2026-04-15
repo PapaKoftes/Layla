@@ -141,6 +141,13 @@ def record_practice(
     cap = _db.get_capability(domain_id)
     if not cap:
         return event_id
+    # Layla v3: maturity XP for capability practice (best-effort; never raise).
+    try:
+        from services.maturity_engine import award_xp
+
+        award_xp(30, reason=f"capability_practice:{domain_id.strip()[:60]}")
+    except Exception:
+        pass
     level = min(1.0, max(0.0, (cap.get("level") or 0.5) + effective_delta_level))
     confidence = min(1.0, max(0.0, (cap.get("confidence") or 0.5) + effective_delta_confidence))
     practice_count = (cap.get("practice_count") or 0) + 1

@@ -88,11 +88,15 @@ class TaskGraph:
         for nid, node in self.nodes.items():
             if node.status != TaskStatus.PENDING:
                 continue
-            deps_ok = all(
-                self.nodes.get(d).status == TaskStatus.COMPLETED
-                for d in node.dependencies
-                if d in self.nodes
-            )
+            deps_ok = True
+            for d in node.dependencies:
+                dep = self.nodes.get(d)
+                if dep is None:
+                    deps_ok = False
+                    break
+                if dep.status != TaskStatus.COMPLETED:
+                    deps_ok = False
+                    break
             if deps_ok:
                 ready.append(nid)
         return ready
@@ -115,6 +119,10 @@ class TaskGraph:
                     in_degree[other_id] -= 1
                     if in_degree[other_id] == 0:
                         queue.append(other_id)
+        if len(result) != len(self.nodes):
+            # Cycle or missing deps: surface deterministic error for callers.
+            missing = [nid for nid in self.nodes.keys() if nid not in set(result)]
+            raise ValueError(f"task_graph_cycle_or_unsatisfied_deps:{missing[:10]}")
         self._sorted = result
         return result
 
@@ -140,8 +148,19 @@ class GraphExecutor:
                 result = self.executor_fn(node_id, node.task, node.tools)
             else:
                 result = {"status": "no_executor", "task": node.task}
-            node.status = TaskStatus.COMPLETED
             node.result = result
+            # Treat explicit failures as FAILED so dependents do not unblock.
+            if isinstance(result, dict):
+                if result.get("ok") is False:
+                    node.status = TaskStatus.FAILED
+                    node.error = str(result.get("error") or result.get("reason") or "failed")
+                    return result
+                st = str(result.get("status") or "").lower()
+                if st in ("error", "failed", "failure"):
+                    node.status = TaskStatus.FAILED
+                    node.error = str(result.get("error") or result.get("reason") or st)
+                    return result
+            node.status = TaskStatus.COMPLETED
             return result
         except Exception as e:
             logger.exception("task_graph step %s failed", node_id)
@@ -225,3 +244,28 @@ class GraphExecutor:
                 break
             results.extend(wave)
         return results
+
+
+def plan_steps_to_task_graph(steps: list[dict[str, Any]]) -> TaskGraph:
+    """
+    Build a TaskGraph from plan-like dicts with keys: id, task/title, tools, depends_on, role.
+    """
+    g = TaskGraph()
+    for s in steps:
+        if not isinstance(s, dict):
+            continue
+        sid = str(s.get("id") or "").strip()
+        if not sid:
+            continue
+        task = str(s.get("task") or s.get("title") or s.get("description") or "").strip()
+        tools = s.get("tools") if isinstance(s.get("tools"), list) else []
+        deps = s.get("depends_on") if isinstance(s.get("depends_on"), list) else []
+        role = str(s.get("role") or "").strip()
+        g.add_node(
+            task=task or sid,
+            tools=[str(x) for x in tools],
+            dependencies=[str(d) for d in deps],
+            role=role,
+            node_id=sid,
+        )
+    return g

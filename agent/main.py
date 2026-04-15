@@ -3,7 +3,21 @@ import json
 import logging
 import os
 import queue
+import shutil
 import sys
+
+# Enforce supported Python for production; set LAYLA_ALLOW_UNSUPPORTED_PYTHON=1 for best-effort dev/test on 3.13+.
+if sys.version_info >= (3, 13) and os.environ.get("LAYLA_ALLOW_UNSUPPORTED_PYTHON", "").lower() not in (
+    "1",
+    "true",
+    "yes",
+):
+    sys.stderr.write(
+        "Layla requires Python 3.11 or 3.12 (see pyproject.toml requires-python). "
+        f"This interpreter is {sys.version.split()[0]}.\n"
+        "Set LAYLA_ALLOW_UNSUPPORTED_PYTHON=1 only if you accept an unsupported configuration.\n"
+    )
+    raise SystemExit(1)
 import threading
 import time
 import uuid
@@ -173,8 +187,19 @@ async def lifespan(app: FastAPI):
                 from layla.memory.vector_store import index_knowledge_docs
                 knowledge_dir = REPO_ROOT / "knowledge"
                 if knowledge_dir.exists():
-                    index_knowledge_docs(knowledge_dir)
-                    logger.info("knowledge docs indexed for Chroma")
+                    def _bg_index_knowledge() -> None:
+                        try:
+                            index_knowledge_docs(knowledge_dir)
+                            logger.info("knowledge docs indexed for Chroma")
+                        except Exception as _e:
+                            logger.warning("knowledge index failed: %s", _e)
+
+                    threading.Thread(
+                        target=_bg_index_knowledge,
+                        daemon=True,
+                        name="knowledge-index-startup",
+                    ).start()
+                    logger.info("knowledge indexing thread started")
             except Exception as e:
                 logger.warning("knowledge index failed: %s", e)
         # Run DB migration once at startup (not on every DB call)
@@ -204,6 +229,23 @@ async def lifespan(app: FastAPI):
                 logger.warning("Plugin error: %s", err)
         except Exception as e:
             logger.warning("Plugin load failed: %s", e)
+        # Sweep orphaned worktrees from prior crashes (best-effort).
+        try:
+            max_age_s = int(float(cfg.get("worktree_orphan_max_age_seconds", 3600) or 3600))
+            if max_age_s > 0:
+                wt_root = REPO_ROOT.parent / ".layla_worktrees"
+                if wt_root.exists():
+                    cutoff = time.time() - max_age_s
+                    for d in wt_root.iterdir():
+                        try:
+                            if not d.is_dir():
+                                continue
+                            if d.stat().st_mtime < cutoff:
+                                shutil.rmtree(str(d), ignore_errors=True)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
         # Pre-warm LLM in background thread â€” first request will be instant
         try:
             from services.llm_gateway import prewarm_llm
@@ -260,6 +302,120 @@ async def lifespan(app: FastAPI):
             logger.info("mission_worker scheduled every %s min", mission_interval_min)
         except (TypeError, ValueError):
             sched.add_job(_mission_worker_job, IntervalTrigger(minutes=2), id="mission_worker")
+        # Architecture overhaul: background intelligence + consolidation
+        try:
+            def _bg_reflect():
+                try:
+                    from services.background_intelligence import run_reflection_scan
+
+                    run_reflection_scan()
+                except Exception as _e:
+                    logger.warning("background_reflection: %s", _e)
+
+            def _bg_codex():
+                try:
+                    from services.background_intelligence import run_codex_entity_nudge
+
+                    run_codex_entity_nudge()
+                except Exception as _e:
+                    logger.warning("background_codex: %s", _e)
+
+            def _bg_memory():
+                try:
+                    from services.memory_consolidation import consolidate_periodic
+
+                    consolidate_periodic()
+                except Exception as _e:
+                    logger.warning("background_memory_consolidation: %s", _e)
+
+            def _bg_initiative():
+                try:
+                    import runtime_safety as _rs
+                    from services.initiative_engine import generate_project_proposals
+                    from services.maturity_engine import get_trust_tier
+
+                    _c = _rs.load_config()
+                    if not bool(_c.get("initiative_project_proposals_enabled", False)):
+                        return
+                    if int(get_trust_tier(_c)) < 2:
+                        return
+                    _ = generate_project_proposals()
+                except Exception as _e:
+                    logger.warning("background_initiative: %s", _e)
+
+            def _bg_cleanup():
+                try:
+                    import runtime_safety as _rs
+                    from services.memory_consolidation import apply_retention_policies, prune_low_confidence_learnings
+
+                    _c = _rs.load_config()
+                    th = float(_c.get("memory_cleanup_confidence_threshold", 0.08) or 0.08)
+                    prune_low_confidence_learnings(threshold=th)
+                    apply_retention_policies(_c)
+                    try:
+                        # Keep flat audit log bounded (best-effort). If it's too large, keep only the tail.
+                        max_bytes = int(_c.get("audit_log_max_bytes", 2_000_000) or 2_000_000)
+                        if max_bytes > 0 and AUDIT_LOG.exists():
+                            try:
+                                sz = int(AUDIT_LOG.stat().st_size)
+                            except Exception:
+                                sz = 0
+                            if sz > max_bytes:
+                                try:
+                                    with open(str(AUDIT_LOG), "rb") as f:
+                                        f.seek(-max_bytes, 2)
+                                        tail = f.read(max_bytes)
+                                    # Ensure we start at a line boundary if possible.
+                                    try:
+                                        i = tail.find(b"\n")
+                                        if i > 0 and i < len(tail) - 1:
+                                            tail = tail[i + 1 :]
+                                    except Exception:
+                                        pass
+                                    with open(str(AUDIT_LOG), "wb") as f:
+                                        f.write(tail)
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+                    try:
+                        # Research output retention (best-effort): remove old timestamped markdown files.
+                        days = int(_c.get("retention_research_output_days", 90) or 90)
+                        if days > 0:
+                            cutoff_ts = time.time() - (days * 86400)
+                            out_dir = REPO_ROOT / ".research_output"
+                            if out_dir.exists():
+                                for p in out_dir.glob("*.md"):
+                                    if p.name == "last_research.md":
+                                        continue
+                                    try:
+                                        if p.stat().st_mtime < cutoff_ts:
+                                            p.unlink(missing_ok=True)
+                                    except Exception:
+                                        pass
+                    except Exception:
+                        pass
+                except Exception as _e:
+                    logger.warning("background_memory_cleanup: %s", _e)
+
+            _rmin = max(1, int(float(cfg.get("background_reflection_interval_minutes", 5) or 5)))
+            _cmin = max(1, int(float(cfg.get("background_codex_update_interval_minutes", 10) or 10)))
+            _mmin = max(5, int(float(cfg.get("background_memory_consolidation_interval_minutes", 30) or 30)))
+            _imin = max(5, int(float(cfg.get("background_initiative_interval_minutes", 30) or 30)))
+            sched.add_job(_bg_reflect, IntervalTrigger(minutes=_rmin), id="background_reflection")
+            sched.add_job(_bg_codex, IntervalTrigger(minutes=_cmin), id="background_codex")
+            sched.add_job(_bg_memory, IntervalTrigger(minutes=_mmin), id="background_memory_consolidation")
+            sched.add_job(_bg_initiative, IntervalTrigger(minutes=_imin), id="background_initiative")
+            sched.add_job(_bg_cleanup, IntervalTrigger(hours=24), id="background_memory_cleanup")
+            logger.info(
+                "background jobs: reflection %s min, codex %s min, memory %s min, initiative %s min, cleanup daily",
+                _rmin,
+                _cmin,
+                _mmin,
+                _imin,
+            )
+        except Exception as _bg_e:
+            logger.warning("background intelligence schedule not started: %s", _bg_e)
         if cfg.get("scheduler_study_enabled", True):
             try:
                 interval_min = max(5, min(120, int(float(cfg.get("scheduler_interval_minutes", 30)))))
@@ -282,8 +438,8 @@ async def lifespan(app: FastAPI):
                     except Exception as _e:
                         logger.warning("intelligence_job: experience_replay failed: %s", _e)
                     try:
-                        from services.curiosity_engine import get_curiosity_suggestions
                         from layla.memory.db import save_learning
+                        from services.curiosity_engine import get_curiosity_suggestions
                         suggestions = get_curiosity_suggestions()
                         for suggestion in suggestions[:3]:
                             if suggestion and len(suggestion.strip()) > 10:
@@ -329,6 +485,23 @@ app = FastAPI(
     version=__version__,
 )
 app.add_middleware(GZipMiddleware, minimum_size=500)  # compress responses > 500 bytes
+
+try:
+    import runtime_safety as _cors_rs
+
+    _origins = _cors_rs.load_config().get("remote_cors_origins") or []
+    if isinstance(_origins, list) and any(str(o).strip() for o in _origins):
+        from fastapi.middleware.cors import CORSMiddleware
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=[str(o).strip() for o in _origins if str(o).strip()],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+except Exception:
+    pass
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENT_DIR = Path(__file__).resolve().parent
@@ -406,7 +579,13 @@ def _audit(tool: str, args_summary: str, approved_by: str, result_ok: bool) -> N
         with open(str(AUDIT_LOG), "a", encoding="utf-8") as f:
             f.write(line)
     except Exception as e:
-        logger.debug("_audit write failed: %s", e)
+        logger.debug("_audit flat write failed: %s", e)
+    try:
+        from layla.memory.db import log_audit as _log_audit_sql
+
+        _log_audit_sql(tool, args_summary, approved_by, result_ok)
+    except Exception as e:
+        logger.debug("_audit sqlite write failed: %s", e)
 
 
 def _read_study_plans() -> list:
@@ -433,9 +612,10 @@ _load_history()
 
 from routers import agent as agent_router  # noqa: E402
 from routers import agents as agents_router  # noqa: E402
-from routers import approvals, study, system as system_router  # noqa: E402
+from routers import approvals, study  # noqa: E402
 from routers import memory as memory_router  # noqa: E402
 from routers import research as research_router  # noqa: E402
+from routers import system as system_router
 from services import study_service  # noqa: E402
 from shared_state import set_refs  # noqa: E402
 
@@ -455,24 +635,44 @@ app.include_router(agent_router.router)
 app.include_router(agents_router.router)
 app.include_router(research_router.router)
 app.include_router(memory_router.router)
-from routers import projects as projects_router
+from routers import aspects as aspects_router
+from routers import codex as codex_router
+from routers import improvements as improvements_router
+from routers import journal as journal_router
 from routers import plan_file as plan_file_router
 from routers import plans as plans_router
-from routers import codex as codex_router
+from routers import projects as projects_router
 
 app.include_router(codex_router.router)
+app.include_router(aspects_router.router)
+app.include_router(journal_router.router)
+app.include_router(improvements_router.router)
 app.include_router(projects_router.router)
 app.include_router(plans_router.router)
 app.include_router(plan_file_router.router)
 
 from routers import (  # noqa: E402
     conversations as conversations_router,
+)
+from routers import (
     knowledge as knowledge_router,
+)
+from routers import (
     missions as missions_router,
+)
+from routers import (
     openai_compat as openai_compat_router,
+)
+from routers import (
     session as session_router,
+)
+from routers import (
     settings as settings_router,
+)
+from routers import (
     voice as voice_router,
+)
+from routers import (
     workspace as workspace_router,
 )
 
@@ -503,6 +703,15 @@ if _UI_DIR.is_dir():
     app.mount("/layla-ui", StaticFiles(directory=str(_UI_DIR)), name="layla_ui_assets")
 
 
+@app.get("/sw.js", include_in_schema=False)
+def serve_service_worker():
+    """PWA service worker (offline-friendly UI assets)."""
+    p = _UI_DIR / "sw.js"
+    if not p.is_file():
+        return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
+    return FileResponse(str(p), media_type="application/javascript; charset=utf-8")
+
+
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Â§16 Remote: auth and endpoint allowlist (production-safe, minimal)
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -517,15 +726,50 @@ def _remote_allowed_paths(cfg: dict) -> list[str]:
             "/wakeup",
             "/project_discovery",
             "/health",
+            "/health/",
             "/agent",
             "/v1/chat/completions",
             "/learn/",
+            "/memories",
+            "/schedule",
             "/conversations",
             "/local_access_info",
             "/ui",
             "/projects",
             "/session/export",
+            "/session/",
+            "/compact",
+            "/ctx_viz",
+            "/audit",
+            "/learnings",
+            "/system_export",
             "/values.md",
+            "/settings",
+            "/setup_status",
+            "/setup/models",
+            "/setup/download",
+            "/setup/auto",
+            "/approve",
+            "/pending",
+            "/doctor",
+            "/usage",
+            "/undo",
+            "/version",
+            "/knowledge/",
+            "/workspace/",
+            "/plan/",
+            "/plans",
+            "/skill_packs",
+            "/remote/",
+            "/codex/",
+            "/research_mission",
+            "/voice/",
+            "/agents/",
+            "/execute_plan",
+            "/manifest.json",
+            "/sw.js",
+            "/layla-ui",
+            "/update/",
         ]
     return ["/wakeup", "/project_discovery", "/health"]
 
@@ -577,6 +821,42 @@ async def remote_auth_middleware(request: Request, call_next):
             status_code=403,
         )
 
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def remote_rate_limit_middleware(request: Request, call_next):
+    """When remote_enabled: cap requests per minute per client IP (non-localhost only)."""
+    try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        if not cfg.get("remote_enabled"):
+            return await call_next(request)
+    except Exception:
+        return await call_next(request)
+    client_host = request.client.host if request.client else None
+    if _is_localhost(client_host):
+        return await call_next(request)
+    try:
+        lim = int(float(cfg.get("remote_rate_limit_per_minute", 100)))
+    except (TypeError, ValueError):
+        lim = 100
+    try:
+        from services.remote_rate_limit import check_rate_limit
+
+        ok, reason = check_rate_limit(client_host or "unknown", lim)
+        if not ok:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": reason,
+                    "detail": "Too many requests from this address. Try again in a minute.",
+                },
+                status_code=429,
+            )
+    except Exception:
+        pass
     return await call_next(request)
 
 

@@ -39,6 +39,7 @@ def approve(req: dict):
         if expires_at:
             try:
                 from datetime import datetime, timezone
+
                 from layla.time_utils import utcnow
                 exp = datetime.fromisoformat(expires_at)
                 if exp.tzinfo is None:
@@ -101,6 +102,14 @@ def approve(req: dict):
         entry["result"] = tool_result
         write_pending_list(pending)
         audit(tool_name, str(args)[:80], "user", result_ok)
+        # Layla v3: maturity XP for approvals (trust signal).
+        if result_ok:
+            try:
+                from services.maturity_engine import award_xp
+
+                award_xp(15, reason="approval_executed")
+            except Exception:
+                pass
 
     return JSONResponse({"ok": True, "result": tool_result})
 

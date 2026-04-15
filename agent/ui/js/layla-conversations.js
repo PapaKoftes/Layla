@@ -125,6 +125,23 @@ async function _renderSessionList() {
   const container = document.getElementById('chat-rail-list');
   if (!container) return;
   const q = (document.getElementById('chat-rail-search')?.value || '').trim();
+  function _getPinned() {
+    try {
+      const raw = JSON.parse(localStorage.getItem('layla_pinned_conversations') || '[]');
+      return Array.isArray(raw) ? raw.map(String) : [];
+    } catch (_) { return []; }
+  }
+  function _setPinned(ids) {
+    try { localStorage.setItem('layla_pinned_conversations', JSON.stringify(ids.map(String))); } catch (_) {}
+  }
+  function _togglePinned(id) {
+    const ids = _getPinned();
+    const sid = String(id);
+    const idx = ids.indexOf(sid);
+    if (idx >= 0) ids.splice(idx, 1);
+    else ids.unshift(sid);
+    _setPinned(ids.slice(0, 50));
+  }
   try {
     const url = q ? '/conversations/search?q=' + encodeURIComponent(q) + '&limit=80' : '/conversations?limit=100';
     const r = await fetch(url);
@@ -134,13 +151,33 @@ async function _renderSessionList() {
         container.innerHTML = '<span style="color:var(--text-dim);font-size:0.7rem">No chats match. Try New chat.</span>';
         return;
       }
+      const pinned = _getPinned();
+      const conversations = d.conversations.slice().sort(function(a, b) {
+        const ap = pinned.indexOf(String(a.id)) >= 0 ? 0 : 1;
+        const bp = pinned.indexOf(String(b.id)) >= 0 ? 0 : 1;
+        if (ap !== bp) return ap - bp;
+        // newest first fallback
+        return String(b.updated_at || '').localeCompare(String(a.updated_at || ''));
+      });
       container.innerHTML = '';
-      d.conversations.forEach((s) => {
+      conversations.forEach((s) => {
         const item = document.createElement('div');
         const active = String(s.id) === String(currentConversationId);
         item.className = 'session-item chat-rail-item' + (active ? ' active' : '');
+        try { item.setAttribute('data-conv-id', String(s.id || '')); } catch (_) {}
+        const asp = String(s.aspect_id || '').toLowerCase();
+        const isPinned = pinned.indexOf(String(s.id)) >= 0;
+        const proj = String(s.project_id || '').trim();
+        const tagsRaw = String(s.tags || '').trim();
+        const tags = tagsRaw ? tagsRaw.split(',').map(t => (t || '').trim()).filter(Boolean).slice(0, 3) : [];
         item.innerHTML =
           '<span class="sess-preview">' +
+          '<span class="conv-meta">' +
+          '<span class="conv-asp-dot" data-asp="' + escapeHtml(asp || 'morrigan') + '"></span>' +
+          (isPinned ? '<span class="conv-pin">⟡</span>' : '') +
+          (proj ? '<span class="conv-proj">' + escapeHtml(proj.slice(0, 16)) + '</span>' : '') +
+          (tags.length ? ('<span class="conv-proj" title="Tags">' + escapeHtml(tags.join(' · ').slice(0, 28)) + '</span>') : '') +
+          '</span>' +
           escapeHtml((s.title || 'New chat').slice(0, 72)) +
           '</span><span class="sess-date">' +
           escapeHtml(String((s.updated_at || '').replace('T', ' ').slice(0, 16))) +
@@ -176,11 +213,48 @@ async function _renderSessionList() {
         });
         item.appendChild(renBtn);
         item.appendChild(delBtn);
+        const pinBtn = document.createElement('button');
+        pinBtn.className = 'sess-del';
+        pinBtn.title = isPinned ? 'Unpin' : 'Pin';
+        pinBtn.textContent = isPinned ? '⟡' : '⟐';
+        pinBtn.type = 'button';
+        pinBtn.addEventListener('click', function(ev) {
+          ev.stopPropagation();
+          _togglePinned(s.id);
+          _renderSessionList();
+        });
+        item.appendChild(pinBtn);
         item.addEventListener('click', async () => {
           await loadConversationIntoChat(String(s.id), false);
         });
+        item.addEventListener('contextmenu', async (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const action = prompt('Chat actions: rename | delete | pin | tags', 'rename');
+          if (!action) return;
+          const a = action.trim().toLowerCase();
+          if (a === 'pin') { _togglePinned(s.id); _renderSessionList(); return; }
+          if (a === 'delete') { await _deleteSession(String(s.id)); return; }
+          if (a === 'rename') { renBtn.click(); return; }
+          if (a === 'tags') {
+            const nt = prompt('Tags (comma-separated)', String(s.tags || ''));
+            if (nt == null) return;
+            try {
+              const rr = await fetch('/conversations/' + encodeURIComponent(s.id) + '/tags', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tags: String(nt || '') }),
+              });
+              const dj = await rr.json();
+              if (dj.ok) _renderSessionList();
+              else showToast('Could not save tags');
+            } catch (_) { showToast('Network error'); }
+            return;
+          }
+        });
         container.appendChild(item);
       });
+      try { if (typeof laylaScrollActiveConversationIntoView === 'function') laylaScrollActiveConversationIntoView(); } catch (_) {}
       return;
     }
   } catch (_) {}

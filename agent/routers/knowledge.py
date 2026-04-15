@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from routers.paths import REPO_ROOT
 from services.route_helpers import sync_ingest_docs
 
 logger = logging.getLogger("layla")
@@ -94,5 +95,62 @@ def workspace_cognition_list(limit: int = 50):
         from layla.memory.db import list_repo_cognition_snapshots
 
         return JSONResponse({"ok": True, "snapshots": list_repo_cognition_snapshots(limit=limit)})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.post("/knowledge/import_chat_preview")
+async def knowledge_import_chat_preview(request: Request):
+    """Parse chat export text and return markdown preview stats (no disk write)."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    fmt = str((body or {}).get("format") or "whatsapp").strip().lower()
+    text = str((body or {}).get("text") or "")
+    title = str((body or {}).get("title") or "chat_import").strip()[:120]
+    try:
+        if fmt == "whatsapp":
+            from services.data_importers import parse_whatsapp_txt, whatsapp_export_to_markdown
+
+            rows = parse_whatsapp_txt(text)
+            md = whatsapp_export_to_markdown(text, title=title)
+            return JSONResponse({"ok": True, "format": fmt, "messages_parsed": len(rows), "markdown_chars": len(md)})
+        return JSONResponse({"ok": False, "error": "unsupported_format"}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.post("/knowledge/import_chat")
+async def knowledge_import_chat(request: Request):
+    """Write parsed chat export as Markdown under repo ``knowledge/imports/`` for RAG indexing."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    fmt = str((body or {}).get("format") or "whatsapp").strip().lower()
+    text = str((body or {}).get("text") or "")
+    title = str((body or {}).get("title") or "chat_import").strip()[:120]
+    if len(text) > 8_000_000:
+        return JSONResponse({"ok": False, "error": "payload_too_large"}, status_code=400)
+    try:
+        if fmt == "whatsapp":
+            from services.data_importers import whatsapp_export_to_markdown
+
+            md = whatsapp_export_to_markdown(text, title=title)
+        else:
+            return JSONResponse({"ok": False, "error": "unsupported_format"}, status_code=400)
+        safe = "".join(c for c in title if c.isalnum() or c in ("-", "_")).strip()[:64] or "import"
+        dest_dir = REPO_ROOT / "knowledge" / "imports"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        path = dest_dir / f"{safe}.md"
+        path.write_text(md, encoding="utf-8")
+        return JSONResponse(
+            {
+                "ok": True,
+                "path": str(path.relative_to(REPO_ROOT)),
+                "markdown_chars": len(md),
+            }
+        )
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)

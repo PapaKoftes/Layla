@@ -16,7 +16,8 @@ from __future__ import annotations
 import json
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
 from pathlib import Path
 from typing import Any
 
@@ -67,7 +68,23 @@ def run_tool(
     clean_args = {k: v for k, v in (args or {}).items() if k != "goal"}
 
     def _call() -> Any:
-        return fn(**clean_args)
+        # Ensure thread-local sandbox is set for this tool thread.
+        try:
+            from layla.tools.registry import set_effective_sandbox
+
+            if _ws:
+                set_effective_sandbox(_ws)
+        except Exception:
+            pass
+        try:
+            return fn(**clean_args)
+        finally:
+            try:
+                from layla.tools.registry import set_effective_sandbox
+
+                set_effective_sandbox(None)
+            except Exception:
+                pass
 
     _ws = sandbox_root or ""
     try:

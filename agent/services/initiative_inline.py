@@ -11,13 +11,16 @@ from typing import Any
 def maybe_append_inline_suggestion(text: str, state: dict[str, Any], cfg: dict[str, Any]) -> str:
     if not text or not isinstance(text, str):
         return text if isinstance(text, str) else ""
-    if not bool(cfg.get("inline_initiative_enabled", False)):
+    if not bool(cfg.get("inline_initiative_enabled", False)) and not bool(
+        cfg.get("initiative_engine_enabled", False)
+    ):
         return text
     if state.get("refused"):
         return text
     steps = state.get("steps") or []
     tool_steps = [s for s in steps if s.get("action") and s["action"] not in ("reason", "think", "client_abort")]
-    if len(tool_steps) < 2:
+    _min_tools = 1 if bool(cfg.get("initiative_engine_enabled", False)) else 2
+    if len(tool_steps) < _min_tools:
         return text
     goal = (state.get("original_goal") or state.get("objective") or "").lower()
     suggestion = ""
@@ -42,6 +45,16 @@ def maybe_append_inline_suggestion(text: str, state: dict[str, Any], cfg: dict[s
             "Next: checkpoint — restate the sub-goal for this multi-step workflow and confirm the last tool "
             "results match before adding more steps."
         )
+    if bool(cfg.get("initiative_engine_enabled", False)):
+        try:
+            from services.initiative_engine import collect_initiative_hints
+
+            eng_hints = collect_initiative_hints(state, cfg)
+            if eng_hints:
+                extra = eng_hints[0]
+                suggestion = (suggestion + " " + extra).strip() if suggestion else extra
+        except Exception:
+            pass
     if not suggestion:
         try:
             from services.outcome_evaluation import evaluate_outcome

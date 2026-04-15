@@ -40,6 +40,51 @@ def log_event(
         logger.debug("telemetry log_event: %s", e)
 
 
+def log_model_outcome(
+    model_used: str | None,
+    task_type: str | None,
+    *,
+    success: bool,
+    score: float | None,
+    latency_ms: float | None,
+) -> None:
+    """Record one model outcome row when enabled (privacy-safe; local DB only)."""
+    try:
+        import runtime_safety
+        from layla.memory.db import log_model_outcome as _db_log
+
+        cfg = runtime_safety.load_config()
+        if not cfg.get("model_outcome_tracking_enabled", True):
+            return
+        mu = (model_used or "").strip()
+        if not mu:
+            return
+        _db_log(
+            model_used=mu,
+            task_type=task_type,
+            success=1 if success else 0,
+            score=score,
+            latency_ms=latency_ms,
+        )
+    except Exception as e:
+        logger.debug("telemetry log_model_outcome: %s", e)
+
+
+def get_model_success_rates(min_count: int = 5) -> dict[str, dict[str, dict[str, Any]]]:
+    """Return model success stats from local DB (empty when disabled or unavailable)."""
+    try:
+        import runtime_safety
+        from layla.memory.db import get_model_success_rates as _db_get
+
+        cfg = runtime_safety.load_config()
+        if not cfg.get("model_outcome_tracking_enabled", True):
+            return {}
+        raw = _db_get(min_count=min_count)
+        return raw if isinstance(raw, dict) else {}
+    except Exception:
+        return {}
+
+
 def get_recent_events(n: int = 50) -> list[dict[str, Any]]:
     try:
         from layla.memory.db import get_recent_telemetry_events

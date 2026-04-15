@@ -31,6 +31,86 @@ _GROUP_TO_CATEGORIES: dict[str, tuple[str, ...]] = {
 _RUNTIME_TOOL_NAMES = frozenset({"shell", "run_python", "shell_session_start", "shell_session_manage"})
 
 
+_DEFAULT_DETERMINISTIC_TOOL_ROUTES: dict[str, tuple[str, ...]] = {
+    # Keep these small and stable; they are a confusion-reduction layer for weak models.
+    "coding": (
+        "read_file",
+        "write_file",
+        "replace_in_file",
+        "apply_patch",
+        "grep_code",
+        "list_dir",
+        "glob_files",
+        "shell",
+        "git_status",
+        "git_diff",
+    ),
+    "research": (
+        "read_file",
+        "grep_code",
+        "list_dir",
+        "glob_files",
+        "search_memories",
+        "fetch_url",
+    ),
+    "planning": (
+        "read_file",
+        "list_dir",
+        "grep_code",
+        "glob_files",
+        "search_memories",
+    ),
+    "file_ops": (
+        "read_file",
+        "write_file",
+        "replace_in_file",
+        "list_dir",
+        "glob_files",
+        "shell",
+        "apply_patch",
+    ),
+}
+
+
+def deterministic_route_tools(
+    cfg: dict[str, Any],
+    goal: str,
+    tools_dict: dict[str, Any],
+) -> frozenset[str] | None:
+    """
+    Deterministic tool routing by task type.
+    Returns a tool allow-set or None if disabled / unknown.
+    """
+    if not bool(cfg.get("deterministic_tool_routes_enabled", False)):
+        return None
+    try:
+        from services.model_router import classify_task
+
+        tt = str(classify_task(goal or "", "") or "").strip().lower()
+    except Exception:
+        tt = ""
+
+    raw_routes = cfg.get("deterministic_tool_routes")
+    routes: dict[str, Any] = raw_routes if isinstance(raw_routes, dict) else {}
+    default = dict(_DEFAULT_DETERMINISTIC_TOOL_ROUTES)
+    # Allow config override per route key.
+    for k, v in list(routes.items()):
+        if not isinstance(k, str):
+            continue
+        if isinstance(v, (list, tuple)):
+            default[k.strip().lower()] = tuple(str(x) for x in v if str(x).strip())
+
+    route = default.get(tt)
+    if not route:
+        return None
+    allowed = {t for t in route if t in tools_dict}
+    # Always include minimal safety net; agent_loop also enforces this.
+    for t in ("reason", "read_file", "list_dir"):
+        if t in tools_dict or t == "reason":
+            allowed.add(t)
+    return frozenset(allowed)
+
+
 def _tools_for_categories(tools_dict: dict[str, Any], categories: tuple[str, ...]) -> set[str]:
     out: set[str] = set()
     if not categories:

@@ -1,0 +1,7 @@
+{
+  "id": "writing",
+  "name": "Writing & editing",
+  "version": "1.0.0",
+  "description": "Structure-first drafting, line editing, and clarity passes.",
+  "tags": ["docs", "prose"]
+}

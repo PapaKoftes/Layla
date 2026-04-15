@@ -69,6 +69,7 @@ def test_golden_chat_tool_approve_then_reason(tmp_path, monkeypatch, golden_pend
     import layla.tools.registry as tools_registry
     import routers.agent as agent_router
     import runtime_safety
+    import services.coordinator as coordinator_mod
     import services.tool_policy as tool_policy
     from main import app
     from services import model_router, planner
@@ -98,6 +99,14 @@ def test_golden_chat_tool_approve_then_reason(tmp_path, monkeypatch, golden_pend
     monkeypatch.setattr(agent_loop, "_load_learnings", lambda *_a, **_k: "")
     monkeypatch.setattr(model_router, "is_routing_enabled", lambda *a, **k: False)
     monkeypatch.setattr(planner, "should_plan", lambda *a, **k: False)
+    _real_build_trace = coordinator_mod.build_coordinator_trace
+
+    def _trace_no_force_plan(goal: str, context: str, cfg: dict, **kw):
+        t = dict(_real_build_trace(goal, context, cfg, **kw))
+        t["complexity_score"] = min(float(t.get("complexity_score") or 0), 0.2)
+        return t
+
+    monkeypatch.setattr(coordinator_mod, "build_coordinator_trace", _trace_no_force_plan)
     monkeypatch.setattr(distill_mod, "run_distill_after_outcome", lambda *a, **k: None)
     monkeypatch.setattr(tools_registry, "inside_sandbox", lambda _p: True)
     # Approvals call TOOLS fn directly; file_ops binds sandbox_core.inside_sandbox at import time.

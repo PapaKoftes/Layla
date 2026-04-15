@@ -3,10 +3,9 @@ import json
 import logging
 import sqlite3
 
-from layla.time_utils import utcnow
-
 from layla.memory.db_connection import _conn
 from layla.memory.migrations import migrate
+from layla.time_utils import utcnow
 
 logger = logging.getLogger("layla")
 
@@ -130,6 +129,17 @@ def append_conversation_message(
     msg_id = str(uuid.uuid4())
     now = utcnow().isoformat()
     safe_content = (content or "").strip()
+    try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        max_chars = int(cfg.get("conversation_message_max_chars", 100_000) or 100_000)
+        if max_chars > 0 and len(safe_content) > max_chars:
+            safe_content = safe_content[:max_chars]
+    except Exception:
+        # Fallback: fixed cap to avoid unbounded DB writes.
+        if len(safe_content) > 100_000:
+            safe_content = safe_content[:100_000]
     safe_role = (role or "assistant").strip()
     with _conn() as db:
         db.execute(
@@ -185,6 +195,110 @@ def search_conversations(query: str, limit: int = 50) -> list[dict]:
                ORDER BY c.updated_at DESC
                LIMIT ?""",
             (f"%{q}%", f"%{q}%", max(1, min(int(limit), 500))),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _normalize_tags(tags: str | list[str]) -> list[str]:
+    if tags is None:
+        return []
+    if isinstance(tags, str):
+        raw = tags.replace(";", ",").replace("|", ",")
+        parts = [p.strip().lower() for p in raw.split(",")]
+    else:
+        parts = [str(p).strip().lower() for p in tags]
+    out: list[str] = []
+    seen: set[str] = set()
+    for p in parts:
+        if not p:
+            continue
+        # keep tags lightweight + safe for LIKE matching
+        safe = "".join(ch for ch in p if ch.isalnum() or ch in ("_", "-", "/"))[:32].strip()
+        if not safe or safe in seen:
+            continue
+        seen.add(safe)
+        out.append(safe)
+    return out
+
+
+def set_conversation_tags(conversation_id: str, tags: str | list[str]) -> bool:
+    """Set tags for a conversation. Stored as comma-separated normalized tags."""
+    migrate()
+    cid = (conversation_id or "").strip()
+    if not cid:
+        return False
+    norm = _normalize_tags(tags)
+    tags_s = ",".join(norm)
+    with _conn() as db:
+        cur = db.execute(
+            "UPDATE conversations SET tags=?, updated_at=? WHERE id=?",
+            (tags_s, utcnow().isoformat(), cid),
+        )
+        db.commit()
+        return cur.rowcount > 0
+
+
+def suggest_conversation_tags(prefix: str = "", limit: int = 20) -> list[str]:
+    migrate()
+    p = (prefix or "").strip().lower()
+    with _conn() as db:
+        rows = db.execute(
+            "SELECT tags FROM conversations WHERE tags IS NOT NULL AND tags != '' ORDER BY updated_at DESC LIMIT 800"
+        ).fetchall()
+    pool: list[str] = []
+    for r in rows:
+        ts = (r["tags"] or "").strip()
+        if not ts:
+            continue
+        pool.extend(_normalize_tags(ts))
+    uniq: list[str] = []
+    seen: set[str] = set()
+    for t in pool:
+        if p and not t.startswith(p):
+            continue
+        if t in seen:
+            continue
+        seen.add(t)
+        uniq.append(t)
+        if len(uniq) >= max(1, min(int(limit or 20), 100)):
+            break
+    return uniq
+
+
+def list_conversations_filtered(limit: int = 200, tag: str | None = None) -> list[dict]:
+    migrate()
+    t = (tag or "").strip().lower()
+    if not t:
+        return list_conversations(limit=limit)
+    with _conn() as db:
+        rows = db.execute(
+            "SELECT * FROM conversations WHERE (','||COALESCE(tags,'')||',') LIKE ? ORDER BY updated_at DESC LIMIT ?",
+            (f"%,{t},%", max(1, min(int(limit), 1000))),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def search_conversations_filtered(query: str, limit: int = 50, tag: str | None = None) -> list[dict]:
+    migrate()
+    q = (query or "").strip()
+    t = (tag or "").strip().lower()
+    if not q:
+        return list_conversations_filtered(limit=limit, tag=t or None)
+    tag_sql = ""
+    args: list = [f"%{q}%", f"%{q}%"]
+    if t:
+        tag_sql = " AND (','||COALESCE(c.tags,'')||',') LIKE ?"
+        args.append(f"%,{t},%")
+    args.append(max(1, min(int(limit), 500)))
+    with _conn() as db:
+        rows = db.execute(
+            f"""SELECT DISTINCT c.*
+               FROM conversations c
+               LEFT JOIN conversation_messages m ON m.conversation_id = c.id
+               WHERE (c.title LIKE ? OR m.content LIKE ?){tag_sql}
+               ORDER BY c.updated_at DESC
+               LIMIT ?""",
+            tuple(args),
         ).fetchall()
     return [dict(r) for r in rows]
 

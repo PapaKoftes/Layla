@@ -1,8 +1,17 @@
 """SQLite connection for Layla persistent memory."""
+import os
 import sqlite3
 from pathlib import Path
 
-_DB_PATH = Path(__file__).resolve().parent.parent.parent.parent / "layla.db"
+
+def _default_db_path() -> Path:
+    raw = (os.environ.get("LAYLA_DATA_DIR") or "").strip()
+    if raw:
+        return Path(raw).expanduser().resolve() / "layla.db"
+    return Path(__file__).resolve().parent.parent.parent.parent / "layla.db"
+
+
+_DB_PATH = _default_db_path()
 
 
 def _resolve_db_path() -> Path:

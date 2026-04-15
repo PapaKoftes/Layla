@@ -360,6 +360,6 @@ flowchart TB
 - [ARCHITECTURE.md](../ARCHITECTURE.md) — Request flow, state locations
 - [docs/IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) — North Star mapping, prebuilt domains table
 - [LAYLA_NORTH_STAR.md](../LAYLA_NORTH_STAR.md) — Canonical vision
-- [knowledge/layla-capabilities-map.md](../knowledge/layla-capabilities-map.md) — capabilities inventory (authoritative tool count: **179**, `agent/tests/test_registered_tools_count.py` → `EXPECTED_TOOL_COUNT`)
+- [knowledge/layla-capabilities-map.md](../knowledge/layla-capabilities-map.md) — capabilities inventory (authoritative tool count: **191**, `agent/tests/test_registered_tools_count.py` → `EXPECTED_TOOL_COUNT`)
 - [docs/CAPABILITIES.md](CAPABILITIES.md) — Capability registry, discovery, benchmark
 - [docs/TECH_STACK_AND_CAPABILITIES.md](TECH_STACK_AND_CAPABILITIES.md) — Tech stack reference

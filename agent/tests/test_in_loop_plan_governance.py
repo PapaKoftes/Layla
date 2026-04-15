@@ -23,9 +23,21 @@ def test_in_loop_execute_plan_passes_governance_when_enabled(monkeypatch, _patch
 
     kw_captured: dict = {}
 
-    def fake_execute_plan(plan, agent_run_fn, goal_prefix="", plan_depth=0, **kwargs):
+    def fake_execute_plan(
+        plan,
+        agent_run_fn,
+        goal_prefix="",
+        plan_depth=0,
+        *,
+        step_governance=False,
+        default_max_retries=1,
+        cfg=None,
+        **kwargs,
+    ):
         kw_captured.clear()
         kw_captured.update(kwargs)
+        kw_captured["step_governance"] = step_governance
+        kw_captured["default_max_retries"] = default_max_retries
         return {
             "status": "plan_completed",
             "steps_done": [{"step": 1, "task": "x", "result_status": "ok", "governance_ok": True}],
@@ -54,7 +66,7 @@ def test_in_loop_execute_plan_passes_governance_when_enabled(monkeypatch, _patch
             {"step": 1, "task": "analyze and refactor the module", "tools": [], "role": ""}
         ],
     )
-    monkeypatch.setattr("services.planner.execute_plan", fake_execute_plan)
+    monkeypatch.setattr("services.planner.execute_plan_with_optional_graph", fake_execute_plan)
 
     out = agent_loop.autonomous_run(
         "analyze and refactor the module with a full implementation plan " + ("x" * 80),
@@ -79,9 +91,21 @@ def test_in_loop_execute_plan_nested_plan_approved_false_when_read_only(monkeypa
 
     kw_captured: dict = {}
 
-    def fake_execute_plan(plan, agent_run_fn, goal_prefix="", plan_depth=0, **kwargs):
+    def fake_execute_plan(
+        plan,
+        agent_run_fn,
+        goal_prefix="",
+        plan_depth=0,
+        *,
+        step_governance=False,
+        default_max_retries=1,
+        cfg=None,
+        **kwargs,
+    ):
         kw_captured.clear()
         kw_captured.update(kwargs)
+        kw_captured["step_governance"] = step_governance
+        kw_captured["default_max_retries"] = default_max_retries
         return {
             "status": "plan_completed",
             "steps_done": [],
@@ -110,7 +134,7 @@ def test_in_loop_execute_plan_nested_plan_approved_false_when_read_only(monkeypa
             {"step": 1, "task": "analyze the repository", "tools": [], "role": ""}
         ],
     )
-    monkeypatch.setattr("services.planner.execute_plan", fake_execute_plan)
+    monkeypatch.setattr("services.planner.execute_plan_with_optional_graph", fake_execute_plan)
 
     agent_loop.autonomous_run(
         "analyze the repository and document findings " + ("y" * 80),
@@ -129,9 +153,21 @@ def test_in_loop_execute_plan_legacy_no_step_governance_when_disabled(monkeypatc
 
     kw_captured: dict = {}
 
-    def fake_execute_plan(plan, agent_run_fn, goal_prefix="", plan_depth=0, **kwargs):
+    def fake_execute_plan(
+        plan,
+        agent_run_fn,
+        goal_prefix="",
+        plan_depth=0,
+        *,
+        step_governance=False,
+        default_max_retries=1,
+        cfg=None,
+        **kwargs,
+    ):
         kw_captured.clear()
         kw_captured.update(kwargs)
+        kw_captured["step_governance"] = step_governance
+        kw_captured["default_max_retries"] = default_max_retries
         return {"status": "plan_completed", "steps_done": [], "summary": "ok"}
 
     _orig_load = runtime_safety.load_config
@@ -153,7 +189,7 @@ def test_in_loop_execute_plan_legacy_no_step_governance_when_disabled(monkeypatc
             {"step": 1, "task": "build something", "tools": [], "role": ""}
         ],
     )
-    monkeypatch.setattr("services.planner.execute_plan", fake_execute_plan)
+    monkeypatch.setattr("services.planner.execute_plan_with_optional_graph", fake_execute_plan)
 
     out = agent_loop.autonomous_run(
         "build something substantial with multiple phases " + ("z" * 80),
