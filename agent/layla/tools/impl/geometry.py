@@ -144,6 +144,107 @@ def geometry_extract_machining_ir(dxf_path: str) -> dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+def cam_feed_speed_hint(material: str = "aluminum", tool_diameter_mm: float = 3.0) -> dict:
+    """
+    Rule-based feeds/speeds nominal for planning (not machine certification).
+    """
+    try:
+        from layla.cam.feeds_speeds import lookup_sfm
+
+        data = lookup_sfm(material, tool_diameter_mm)
+        return {"ok": True, **data, "disclaimer": "Heuristic only — verify with tooling data and machine limits."}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def cam_estimate_time(path_length_mm: float = 0.0, feed_mm_per_min: float = 0.0) -> dict:
+    """Estimate rough runtime from path length and feed. Not collision-aware."""
+    try:
+        from layla.cam.simulator import estimate_rough_time_minutes
+
+        t = estimate_rough_time_minutes(path_length_mm=float(path_length_mm), feed_mm_per_min=float(feed_mm_per_min))
+        return {"ok": True, "estimated_time_minutes": t, "disclaimer": "Heuristic only — ignores rapids, accel, and machine limits."}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def cam_list_tool_types() -> dict:
+    """List built-in tool type hints (planning only)."""
+    try:
+        from layla.cam.tool_library import list_tool_types
+
+        return {"ok": True, "tool_types": list_tool_types()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def cam_build_machine_intent(
+    *,
+    ir_json: str = "",
+    gcode_path: str = "",
+    material: str = "aluminum",
+    tool_diameter_mm: float = 3.0,
+) -> dict:
+    """
+    Build a single machine-intent bundle from IR + G-code, including validation and a light simulation pass.
+    Deterministic; does not certify machine safety.
+    """
+    import json as _json
+
+    from layla.cam import build_machine_intent, lookup_sfm
+    from layla.cam.simulator import simulate_gcode
+    from layla.geometry.machining_ir import validate_gcode_text, validate_machining_ir_dict
+
+    ir: dict | None = None
+    if (ir_json or "").strip():
+        try:
+            parsed = _json.loads(ir_json)
+        except Exception as e:
+            return {"ok": False, "error": f"ir_json_parse:{e}"}
+        ir = parsed if isinstance(parsed, dict) else None
+
+    gtxt = ""
+    gp = (gcode_path or "").strip()
+    if gp:
+        p = Path(gp).expanduser().resolve()
+        if not inside_sandbox(p):
+            return {"ok": False, "error": "gcode path outside sandbox"}
+        if not p.is_file():
+            return {"ok": False, "error": "gcode file not found"}
+        try:
+            gtxt = p.read_text(encoding="utf-8", errors="replace")
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    if ir is None and not gtxt.strip():
+        return {"ok": False, "error": "provide ir_json and/or gcode_path"}
+
+    fs = lookup_sfm(material, tool_diameter_mm)
+    vir = validate_machining_ir_dict(ir or {}) if ir is not None else None
+    vg = validate_gcode_text(gtxt) if gtxt.strip() else None
+    sim = simulate_gcode(gtxt) if gtxt.strip() else None
+
+    bundle = build_machine_intent(
+        ir=ir,
+        gcode_text=gtxt,
+        feeds_speeds=fs,
+        ir_validation=vir,
+        gcode_validation=vg,
+        gcode_simulation=sim,
+    )
+    # Aggregate readiness
+    ok = True
+    if isinstance(vir, dict) and not vir.get("ok", True):
+        ok = False
+    if isinstance(vg, dict) and not vg.get("ok", True):
+        ok = False
+    if isinstance(sim, dict) and not sim.get("ok", True):
+        ok = False
+    bundle["ok"] = ok
+    bundle["machine_readiness"] = "interpretive_preview" if ok else "not_validated"
+    return bundle
+
+
 def validate_fabrication_bundle(ir_json: str = "", gcode_path: str = "") -> dict:
     """
     Deterministic validation of machining IR JSON and/or G-code file. Does not certify machine safety.

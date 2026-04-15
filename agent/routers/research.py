@@ -48,6 +48,7 @@ async def research_mission(request: Request):
     response_text = ""
     result = {}
     stages_to_run = []
+    report_format = "technical_report"
     try:
         get_touch_activity()()
         _history = get_history()
@@ -57,6 +58,7 @@ async def research_mission(request: Request):
         mission_type = (mission_type or "repo_analysis").strip() or "repo_analysis"
         _ctx = (req or {}).get("context") if isinstance(req, dict) else None
         context = (_ctx if isinstance(_ctx, str) else "") or ""
+        report_format = ((req or {}).get("report_format") or "technical_report").strip() if isinstance(req, dict) else "technical_report"
         raw_depth = (req or {}).get("mission_depth") if isinstance(req, dict) else None
         if raw_depth is not None and isinstance(raw_depth, str):
             raw_depth = raw_depth.strip().lower()
@@ -199,24 +201,49 @@ async def research_mission(request: Request):
             elif not response_text and result.get("status") == "timeout":
                 response_text = "Request took too long."
 
+        citations = {}
+        report = ""
         if response_text:
             out_dir = RESEARCH_OUTPUT
             out_dir.mkdir(parents=True, exist_ok=True)
             try:
-                out_dir.joinpath("last_research.md").write_text(
-                    f"# Research mission ({mission_type})\n\n**Workspace:** {workspace_root or 'lab only'}\n\n---\n\n{response_text}",
+                from services.research_report import extract_citations, format_research_report
+
+                citations = extract_citations(result if isinstance(result, dict) else {}, text_fallback=response_text)
+                report = format_research_report(
+                    response_text,
+                    (result.get("steps") or []) if isinstance(result, dict) else [],
+                    report_format,
+                    title=f"Research mission ({mission_type})",
+                    citations=citations,
+                )
+                out_dir.joinpath("last_research_raw.md").write_text(
+                    f"# Research mission ({mission_type}) — raw\n\n**Workspace:** {workspace_root or 'lab only'}\n\n---\n\n{response_text}",
                     encoding="utf-8",
                 )
+                out_dir.joinpath("last_research.md").write_text(report, encoding="utf-8")
                 ts = utcnow().strftime("%Y%m%d_%H%M%S")
                 out_dir.joinpath(f"research_{ts}.md").write_text(
-                    f"# Research mission ({mission_type}) {ts}\n\n**Workspace:** {workspace_root or 'lab only'}\n\n---\n\n{response_text}",
+                    report,
                     encoding="utf-8",
                 )
             except Exception as e:
                 logger.warning("save research mission output failed: %s", e)
 
+        # Layla v3: maturity XP for completing a research mission (best-effort).
+        if response_text:
+            try:
+                from services.maturity_engine import award_xp
+
+                award_xp(50, reason=f"research_mission:{(mission_type or 'mission')[:60]}")
+            except Exception:
+                pass
+
         return JSONResponse({
             "response": response_text,
+            "report": report or response_text,
+            "citations": citations,
+            "report_format": report_format,
             "state": result,
             "mission_type": mission_type,
             "workspace_root": workspace_root,
@@ -356,6 +383,7 @@ async def research(req: dict):
     aspect_id = (req or {}).get("aspect_id", "") or ""
     show_thinking = bool((req or {}).get("show_thinking", False))
     stream = bool((req or {}).get("stream", False))
+    report_format = ((req or {}).get("report_format") or "technical_report").strip()
     goal = (_RESEARCH_PREFIX + raw_message) if raw_message else "Research mode: explore the workspace (read-only) and summarize what you find."
     context = (req or {}).get("context", "") or ""
 
@@ -390,24 +418,44 @@ async def research(req: dict):
                     full.append(token)
                     yield f"data: {json.dumps({'token': token})}\n\n"
                 text = truncate_at_next_user_turn(strip_junk_from_reply("".join(full)))
+                report = ""
+                citations = {}
+                try:
+                    from services.research_report import extract_citations, format_research_report
+
+                    citations = extract_citations(result, text_fallback=text)
+                    report = format_research_report(
+                        text,
+                        (result.get("steps") or []) if isinstance(result, dict) else [],
+                        report_format,
+                        title="Research output",
+                        citations=citations,
+                    )
+                except Exception:
+                    report = ""
+                    citations = {}
                 _append_history("user", raw_message or "Research this repo.")
-                _append_history("assistant", text)
+                _append_history("assistant", report or text)
                 if text:
                     try:
                         out_dir = RESEARCH_OUTPUT
                         out_dir.mkdir(parents=True, exist_ok=True)
+                        out_dir.joinpath("last_research_raw.md").write_text(
+                            f"# Research output — raw\n\n**Request:** {raw_message[:200]}...\n\n---\n\n{text}",
+                            encoding="utf-8",
+                        )
                         out_dir.joinpath("last_research.md").write_text(
-                            f"# Research output\n\n**Request:** {raw_message[:200]}...\n\n---\n\n{text}",
+                            report or text,
                             encoding="utf-8",
                         )
                         ts = utcnow().strftime("%Y%m%d_%H%M%S")
                         out_dir.joinpath(f"research_{ts}.md").write_text(
-                            f"# Research output ({ts})\n\n**Request:** {raw_message[:200]}...\n\n---\n\n{text}",
+                            report or text,
                             encoding="utf-8",
                         )
                     except Exception as e:
                         logger.debug("save research output failed: %s", e)
-                yield f"data: {json.dumps({'done': True, 'content': text, 'reasoning_mode': result.get('reasoning_mode')})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'content': text, 'report': report or text, 'citations': citations, 'report_format': report_format, 'reasoning_mode': result.get('reasoning_mode')})}\n\n"
             except Exception as e:
                 logger.exception("stream_reason failed")
                 yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -427,22 +475,42 @@ async def research(req: dict):
         response_text = "Request took too long. Try a shorter message or try again."
 
     _append_history("user", raw_message or "Research this repo.")
+    citations = {}
+    report = ""
     if result.get("status") in ("system_busy", "timeout") and response_text:
         _append_history("assistant", "I couldn't reply just then.")
     else:
-        _append_history("assistant", response_text)
+        try:
+            from services.research_report import extract_citations, format_research_report
+
+            citations = extract_citations(result, text_fallback=response_text)
+            report = format_research_report(
+                response_text,
+                (result.get("steps") or []) if isinstance(result, dict) else [],
+                report_format,
+                title="Research output",
+                citations=citations,
+            )
+        except Exception:
+            citations = {}
+            report = ""
+        _append_history("assistant", report or response_text)
 
     if response_text and result.get("status") not in ("system_busy", "timeout"):
         try:
             out_dir = RESEARCH_OUTPUT
             out_dir.mkdir(parents=True, exist_ok=True)
+            out_dir.joinpath("last_research_raw.md").write_text(
+                f"# Research output — raw\n\n**Request:** {raw_message[:200]}...\n\n---\n\n{response_text}",
+                encoding="utf-8",
+            )
             out_dir.joinpath("last_research.md").write_text(
-                f"# Research output\n\n**Request:** {raw_message[:200]}...\n\n---\n\n{response_text}",
+                report or response_text,
                 encoding="utf-8",
             )
             ts = utcnow().strftime("%Y%m%d_%H%M%S")
             out_dir.joinpath(f"research_{ts}.md").write_text(
-                f"# Research output ({ts})\n\n**Request:** {raw_message[:200]}...\n\n---\n\n{response_text}",
+                report or response_text,
                 encoding="utf-8",
             )
         except Exception as e:
@@ -450,6 +518,9 @@ async def research(req: dict):
 
     return JSONResponse({
         "response": response_text,
+        "report": report or response_text,
+        "citations": citations,
+        "report_format": report_format,
         "state": result,
         "aspect": result.get("aspect", ""),
         "aspect_name": result.get("aspect_name", "Layla"),

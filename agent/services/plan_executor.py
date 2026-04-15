@@ -8,7 +8,6 @@ from services.engine_plans import run_file_plan_background_loop, run_plan_iterat
 
 def execute_next_step(workspace_root: str, plan_id: str) -> dict[str, Any]:
     import runtime_safety
-
     from services.plan_service import load_plan
 
     cfg = runtime_safety.load_config()

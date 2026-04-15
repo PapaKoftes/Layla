@@ -39,6 +39,34 @@ def _health_checks() -> tuple[bool, str]:
     return True, "ok"
 
 
+@router.get("/debug/state")
+def debug_execution_state(conversation_id: str = ""):
+    """Last execution snapshot for a conversation (coordinator / agent loop)."""
+    try:
+        from shared_state import get_last_execution_snapshot
+
+        cid = (conversation_id or "").strip() or "default"
+        snap = get_last_execution_snapshot(cid)
+        return {"ok": True, "conversation_id": cid, "snapshot": snap}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.get("/debug/tasks")
+def debug_tasks(conversation_id: str = "", limit: int = 40):
+    """Recent persisted coordinator tasks."""
+    try:
+        from layla.memory.db import list_persistent_tasks
+
+        rows = list_persistent_tasks(
+            limit=limit,
+            conversation_id=(conversation_id or "").strip() or None,
+        )
+        return {"ok": True, "tasks": rows}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e), "tasks": []}, status_code=500)
+
+
 @router.get("/usage")
 def usage():
     """Per-session token usage (prompt, completion, request count)."""
@@ -108,9 +136,12 @@ def update_apply(req: dict | None = None):
     try:
         import runtime_safety
         from services.auto_updater import apply_update
+        from services.release_updater import apply_release_update, is_installed_mode
 
         if not runtime_safety.require_approval("shell"):
             return JSONResponse({"ok": False, "error": "approval_required_for_shell"}, status_code=403)
+        if is_installed_mode():
+            return apply_release_update()
         return apply_update(REPO_ROOT)
     except Exception as e:
         return {"ok": False, "error": f"update_apply_failed: {e}"}
@@ -378,3 +409,69 @@ def session_stats():
         return get_token_usage()
     except Exception as e:
         return {"error": str(e)}
+
+
+@router.post("/remote/tunnel/start")
+def remote_tunnel_start():
+    """Start cloudflared quick tunnel (HTTPS URL) to this machine's Layla port."""
+    try:
+        import runtime_safety
+        from services.tunnel_manager import start_quick_tunnel
+
+        cfg = runtime_safety.load_config()
+        port = int(cfg.get("port", 8000))
+        local = f"http://127.0.0.1:{port}"
+        cf = (cfg.get("cloudflared_path") or "").strip() or None
+        return start_quick_tunnel(local_url=local, cloudflared=cf)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.get("/remote/tunnel/status")
+def remote_tunnel_status():
+    from services.tunnel_manager import tunnel_status
+
+    return tunnel_status()
+
+
+@router.post("/remote/tunnel/stop")
+def remote_tunnel_stop():
+    from services.tunnel_manager import stop_tunnel
+
+    return stop_tunnel()
+
+
+@router.get("/skill_packs")
+def skill_packs_list():
+    from services.skill_packs import list_installed
+
+    return {"packs": list_installed()}
+
+
+@router.post("/skill_packs/install")
+async def skill_packs_install(req: Request):
+    try:
+        body = await req.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+    url = (body.get("url") or "").strip()
+    name = (body.get("name") or "").strip() or None
+    if not url:
+        return JSONResponse({"ok": False, "error": "url required"}, status_code=400)
+    from services.skill_packs import install_from_git
+
+    return install_from_git(url, name=name)
+
+
+@router.post("/skill_packs/remove")
+async def skill_packs_remove(req: Request):
+    try:
+        body = await req.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+    pid = (body.get("id") or "").strip()
+    if not pid:
+        return JSONResponse({"ok": False, "error": "id required"}, status_code=400)
+    from services.skill_packs import remove_pack
+
+    return remove_pack(pid)

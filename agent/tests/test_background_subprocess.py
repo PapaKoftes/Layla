@@ -114,8 +114,8 @@ def test_enqueue_subprocess_rejects_local_gguf_when_policy_reject(monkeypatch, t
 
 
 def test_cleanup_worker_cgroup_calls_remove_and_clears_attr(monkeypatch):
-    from services import background_subprocess as bs
     import services.worker_cgroup_linux as wcl
+    from services import background_subprocess as bs
 
     seen: list[str | None] = []
 

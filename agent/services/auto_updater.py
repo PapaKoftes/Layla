@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -47,6 +48,11 @@ def check_update(current_version: str, github_repo: str) -> dict:
         }
     except Exception as e:
         return {"ok": False, "error": f"update_check_failed: {e}"}
+
+
+def is_installed_mode() -> bool:
+    """Packaged install sets ``LAYLA_DATA_DIR``; use release ZIP updater instead of git."""
+    return bool((os.environ.get("LAYLA_DATA_DIR") or "").strip())
 
 
 def apply_update(repo_root: Path) -> dict:

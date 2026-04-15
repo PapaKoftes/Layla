@@ -18,14 +18,15 @@ import json, pathlib, sys
 cfg_path = pathlib.Path("agent/runtime_config.json")
 cfg = json.loads(cfg_path.read_text()) if cfg_path.exists() else {}
 m = cfg.get("model_filename", "")
-f = pathlib.Path("models") / m if m else None
+models_dir = pathlib.Path(str(cfg.get("models_dir") or "models")).expanduser()
+f = models_dir / m if m else None
 if not (f and f.exists()):
     print("")
-    print("  [!] No model configured or found in models/")
+    print(f"  [!] No model configured or found in {models_dir}/")
     print("")
     print("  Quick fix:")
     print("    1. Run  python agent/first_run.py  — wizard can download a model")
-    print("    2. Or put a .gguf in models/ and run first_run.py to select it")
+    print(f"    2. Or put a .gguf in {models_dir}/ and run first_run.py to select it")
     print("    3. See MODELS.md for recommendations")
     print("")
     sys.exit(1)

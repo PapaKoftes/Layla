@@ -31,6 +31,30 @@ TOOLS = {
         "risk_level": "low",
         "category": "fabrication",
     },
+    "cam_feed_speed_hint": {
+        "dangerous": False,
+        "require_approval": False,
+        "risk_level": "low",
+        "category": "fabrication",
+    },
+    "cam_estimate_time": {
+        "dangerous": False,
+        "require_approval": False,
+        "risk_level": "low",
+        "category": "fabrication",
+    },
+    "cam_list_tool_types": {
+        "dangerous": False,
+        "require_approval": False,
+        "risk_level": "low",
+        "category": "fabrication",
+    },
+    "cam_build_machine_intent": {
+        "dangerous": False,
+        "require_approval": False,
+        "risk_level": "low",
+        "category": "fabrication",
+    },
     "gencad_generate_toolpath": {
         "dangerous": True,
         "require_approval": True,

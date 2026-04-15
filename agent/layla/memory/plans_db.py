@@ -3,10 +3,9 @@ import json
 import logging
 import sqlite3
 
-from layla.time_utils import utcnow
-
 from layla.memory.db_connection import _conn
 from layla.memory.migrations import migrate
+from layla.time_utils import utcnow
 
 logger = logging.getLogger("layla")
 
@@ -66,6 +65,12 @@ def update_study_progress(plan_id: str, note: str) -> None:
         if row:
             progress = json.loads(row["progress"] or "[]")
             progress.append({"note": note, "at": utcnow().isoformat()})
+            try:
+                max_entries = 50
+                if isinstance(progress, list) and len(progress) > max_entries:
+                    progress = progress[-max_entries:]
+            except Exception:
+                pass
             db.execute(
                 "UPDATE study_plans SET progress=?, last_studied=? WHERE id=?",
                 (json.dumps(progress), utcnow().isoformat(), plan_id),

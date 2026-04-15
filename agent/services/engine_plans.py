@@ -284,9 +284,9 @@ def generate_or_refine_plan(plan: Any, workspace_root: str, payload: dict[str, A
 
 
 def execute_next_file_plan_step(plan: Any, workspace_root: str, payload: dict[str, Any]) -> dict[str, Any]:
-    from services.plan_service import save_plan, set_step_status, touch_updated
     from services import project_memory as pm
     from services.plan_execution_prompts import file_plan_retry_suffix
+    from services.plan_service import save_plan, set_step_status, touch_updated
     from services.planner import run_governed_plan_step
 
     plan.memory_summary = pm.summarize_memory(pm.load_memory(workspace_root))
@@ -475,6 +475,7 @@ def run_file_plan_background_loop(
     completed = 0
 
     conv_hist = list(payload.get("conversation_history") or [])
+    started_at = time.time()
 
     for i in range(max_iter):
         if client_abort is not None and getattr(client_abort, "is_set", lambda: False)():
@@ -533,6 +534,15 @@ def run_file_plan_background_loop(
                 "response": r.get("response") or "plan_done",
                 "steps": aggregate[-300:],
             }
+            try:
+                _write_plan_completion_report(
+                    workspace_root=ws,
+                    file_plan_id=pid,
+                    result=result,
+                    started_at=started_at,
+                )
+            except Exception:
+                pass
             break
         if st in ("blocked", "failed", "paused"):
             result = {"status": st, "response": r.get("response", ""), "steps": aggregate[-300:]}
@@ -545,3 +555,48 @@ def run_file_plan_background_loop(
     result["continuous_iterations"] = completed
     result["file_plan_id"] = pid
     return result
+
+
+def _write_plan_completion_report(*, workspace_root: str, file_plan_id: str, result: dict[str, Any], started_at: float) -> None:
+    from pathlib import Path
+
+    from layla.time_utils import utcnow
+    from services.plan_service import load_plan
+
+    wr = Path(str(workspace_root)).expanduser().resolve()
+    pid = (file_plan_id or "").strip()
+    if not pid:
+        return
+    plan = load_plan(str(wr), pid)
+    if plan is None:
+        return
+    dur_s = max(0, int(time.time() - float(started_at or time.time())))
+    ts = utcnow().strftime("%Y%m%d_%H%M%S")
+    out_dir = wr / ".layla" / "plan_reports"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{pid}_{ts}.md"
+
+    # Best-effort: summarize steps without LLM.
+    steps = getattr(plan, "steps", []) or []
+    lines: list[str] = []
+    lines.append(f"# Plan report — {pid}")
+    lines.append("")
+    lines.append(f"**Status:** {getattr(plan, 'status', '')}")
+    lines.append(f"**Goal:** {getattr(plan, 'goal', '')}")
+    lines.append(f"**Completed at:** {utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')}")
+    lines.append(f"**Duration:** {dur_s}s")
+    lines.append("")
+    lines.append("## Steps")
+    for i, st in enumerate(steps[:200], start=1):
+        try:
+            title = (getattr(st, "title", "") or getattr(st, "name", "") or "").strip()
+            status = (getattr(st, "status", "") or "").strip()
+            lines.append(f"- {i}. [{status or '—'}] {title or '(step)'}")
+        except Exception:
+            continue
+    lines.append("")
+    lines.append("## Outcome")
+    lines.append(str((result or {}).get("response") or "done"))
+    lines.append("")
+
+    out_path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")

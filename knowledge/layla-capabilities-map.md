@@ -4,7 +4,7 @@ domain: architecture
 aspect: morrigan
 ---
 
-# Layla Capabilities Map — 179 tools
+# Layla Capabilities Map — 191 tools
 
 Full inventory of every tool Layla can call, organized by capability domain.
 All tools are defined in `agent/layla/tools/registry.py`. **Authoritative count:** `EXPECTED_TOOL_COUNT` in `agent/tests/test_registered_tools_count.py` (bump when adding/removing tools).

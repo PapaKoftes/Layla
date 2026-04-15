@@ -165,7 +165,6 @@ def mcp_tools_call(
 ) -> dict:
     """Call one tool on a configured MCP stdio server (short session: initialize → tools/call)."""
     import runtime_safety
-
     from services.mcp_client import load_mcp_stdio_servers, mcp_session_call_tool
 
     cfg = runtime_safety.load_config()
@@ -193,7 +192,6 @@ def mcp_tools_call(
 def mcp_list_mcp_tools(mcp_server: str = "") -> dict:
     """List tools advertised by a configured MCP stdio server (tools/list). Read-only discovery."""
     import runtime_safety
-
     from services.mcp_client import load_mcp_stdio_servers, mcp_session_list_tools
 
     cfg = runtime_safety.load_config()
@@ -222,7 +220,6 @@ def mcp_list_mcp_tools(mcp_server: str = "") -> dict:
 def mcp_list_mcp_resources(mcp_server: str = "") -> dict:
     """List resources advertised by a configured MCP stdio server (resources/list). Read-only discovery."""
     import runtime_safety
-
     from services.mcp_client import load_mcp_stdio_servers, mcp_session_list_resources
 
     cfg = runtime_safety.load_config()
@@ -256,7 +253,6 @@ def mcp_list_mcp_resources(mcp_server: str = "") -> dict:
 def mcp_read_mcp_resource(mcp_server: str = "", uri: str = "") -> dict:
     """Read one resource from a configured MCP stdio server (resources/read)."""
     import runtime_safety
-
     from services.mcp_client import load_mcp_stdio_servers, mcp_session_read_resource
 
     cfg = runtime_safety.load_config()
@@ -426,6 +422,7 @@ def tool_recommend(task: str) -> dict:
             "geometry_list_frameworks",
             "geometry_extract_machining_ir",
             "validate_fabrication_bundle",
+            "cam_feed_speed_hint",
         ],
         "clipboard copy paste": ["clipboard_read", "clipboard_write"],
         "search replace refactor": ["search_replace", "rename_symbol", "grep_code"],

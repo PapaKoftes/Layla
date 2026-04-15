@@ -31,6 +31,8 @@ She has six distinct aspects (voices/personalities) you can switch between. She 
 
 ## Install
 
+**First-time guide:** [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)
+
 **Prerequisite:** Python **3.11 or 3.12** only (3.13+ is not supported yet — dependency stack).
 
 ### Windows
@@ -41,7 +43,7 @@ She has six distinct aspects (voices/personalities) you can switch between. She 
 
 ### Linux / macOS
 ```bash
-git clone https://github.com/your-org/layla.git && cd layla
+git clone <YOUR_REPO_URL> && cd layla
 bash install.sh    # One command: venv, deps, Playwright, hardware wizard
 bash start.sh     # Launch when ready
 ```
@@ -254,7 +256,6 @@ See `.cursor/rules/layla-assistant.mdc` for full setup.
 
 ## License
 
-Layla is source-available and free for personal, educational, and non-commercial use.  
-Commercial use requires permission. See [LICENSE](LICENSE).
+Layla is released under the **Layla Non-Commercial Source License**. It is source-available and free for personal, educational, and non-commercial use. Commercial use requires permission. See [LICENSE](LICENSE).
 
 Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).

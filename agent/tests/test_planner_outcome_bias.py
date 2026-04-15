@@ -42,6 +42,35 @@ def test_personality_planner_bias_nonempty_for_core_aspects():
     assert "Lilith" in personality_planner_bias("lilith")
 
 
+def test_build_planning_bias_includes_structured_outcome_fields():
+    from services.planner import build_planning_bias_prompt
+    from shared_state import clear_last_outcome_evaluation, set_last_outcome_evaluation
+
+    cid = "test-cid-struct-bias"
+    clear_last_outcome_evaluation(cid)
+    set_last_outcome_evaluation(
+        cid,
+        {
+            "score": 0.4,
+            "success": False,
+            "issues": ["x"],
+            "reason": "tool_failed",
+            "improvement": "Verify path before write.",
+            "confidence": 0.35,
+            "cost_score": 0.12,
+            "metrics": {"wall_time_seconds": 3.5, "tool_step_count": 2},
+        },
+    )
+    try:
+        text = build_planning_bias_prompt(cid, "morrigan", {})
+        assert "tool_failed" in text or "reason" in text
+        assert "Verify path" in text
+        assert "confidence" in text.lower()
+        assert "3.5" in text or "wall time" in text.lower()
+    finally:
+        clear_last_outcome_evaluation(cid)
+
+
 def test_maybe_append_inline_state_aware_repetition():
     from services.initiative_inline import maybe_append_inline_suggestion
 

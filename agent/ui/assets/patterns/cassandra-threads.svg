@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect width="256" height="256" fill="none"/>
+  <g stroke="rgba(255,255,255,0.10)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- web threads -->
+    <path d="M128 16v224"/>
+    <path d="M16 128h224"/>
+    <path d="M44 44l168 168"/>
+    <path d="M212 44L44 212"/>
+    <circle cx="128" cy="128" r="84"/>
+    <circle cx="128" cy="128" r="44"/>
+    <!-- eye motif -->
+    <path d="M64 128c18-22 42-34 64-34s46 12 64 34c-18 22-42 34-64 34s-46-12-64-34z"/>
+    <circle cx="128" cy="128" r="10"/>
+  </g>
+</svg>

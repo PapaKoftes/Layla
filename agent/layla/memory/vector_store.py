@@ -5,12 +5,15 @@ Embedding model: nomic-embed-text (768 dim) via sentence-transformers,
 with fallback to all-MiniLM-L6-v2 (384 dim) if nomic is unavailable.
 """
 import hashlib
+import logging
 import time
 import uuid
 import warnings
 from pathlib import Path
 
 import numpy as np
+
+logger = logging.getLogger("layla")
 
 # TorchAO currently emits noisy deprecation warnings from internal re-exports.
 # They are upstream warnings (no behavior impact here), so suppress them locally.
@@ -31,6 +34,8 @@ CHROMA_PATH = MEMORY_DIR / "chroma_db"
 _embedder = None
 _embedder_dim: int = 768  # set when embedder loads
 _chroma_collection = None
+_embedder_lock = None
+_chroma_lock = None
 _knowledge_fingerprint: str = ""
 _knowledge_last_check_ts: float = 0.0
 
@@ -47,8 +52,16 @@ def _get_embedder():
     - int8 quantization via quantize_model when available (2× faster CPU, ~same quality)
     - half-precision on GPU via .half() (2× VRAM reduction, faster matmul)
     """
-    global _embedder, _embedder_dim
-    if _embedder is None:
+    global _embedder, _embedder_dim, _embedder_lock
+    if _embedder is not None:
+        return _embedder
+    if _embedder_lock is None:
+        import threading as _t
+
+        _embedder_lock = _t.Lock()
+    with _embedder_lock:
+        if _embedder is not None:
+            return _embedder
         import logging
 
         from sentence_transformers import SentenceTransformer
@@ -84,10 +97,10 @@ def _get_embedder():
                 except Exception as e:
                     # Skip quantization when torchao unavailable; avoid deprecated torch.quantization
                     log.info("Embedder: no quantization (torchao unavailable: %s)", e)
-        except Exception:
-            pass
+        except Exception as _exc:
+            logger.debug("vector_store:L91: %s", _exc, exc_info=False)
         _embedder = model
-    return _embedder
+        return _embedder
 
 
 @_functools.lru_cache(maxsize=_EMBED_CACHE_SIZE)
@@ -108,16 +121,23 @@ def embed_batch(texts: list[str]) -> list:
 
 
 def _get_chroma_collection():
-    global _chroma_collection
+    global _chroma_collection, _chroma_lock
     if _chroma_collection is not None:
         return _chroma_collection
-    import chromadb
-    client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-    _chroma_collection = client.get_or_create_collection(
-        name="learnings",
-        metadata={"hnsw:space": "cosine"},
-    )
-    return _chroma_collection
+    if _chroma_lock is None:
+        import threading as _t
+
+        _chroma_lock = _t.Lock()
+    with _chroma_lock:
+        if _chroma_collection is not None:
+            return _chroma_collection
+        import chromadb
+        client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+        _chroma_collection = client.get_or_create_collection(
+            name="learnings",
+            metadata={"hnsw:space": "cosine"},
+        )
+        return _chroma_collection
 
 
 def _use_chroma() -> bool:
@@ -143,8 +163,8 @@ def add_vector(vec: np.ndarray, metadata: dict) -> str:
         coll = _get_chroma_collection()
         meta_flat = {k: (v if isinstance(v, (str, int, float, bool)) else str(v)) for k, v in metadata.items()}
         coll.add(ids=[uid], embeddings=[vec.astype(float).tolist()], metadatas=[meta_flat])
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.warning("vector_store:L150: %s", _exc, exc_info=True)
     return uid
 
 
@@ -154,8 +174,8 @@ def upsert_vector(doc_id: str, vec: np.ndarray, metadata: dict) -> None:
         coll = _get_chroma_collection()
         meta_flat = {k: (v if isinstance(v, (str, int, float, bool)) else str(v)) for k, v in metadata.items()}
         coll.upsert(ids=[doc_id], embeddings=[vec.astype(float).tolist()], metadatas=[meta_flat])
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.warning("vector_store:L161: %s", _exc, exc_info=True)
 
 
 def delete_vectors_by_ids(ids: list[str]) -> None:
@@ -165,20 +185,28 @@ def delete_vectors_by_ids(ids: list[str]) -> None:
     try:
         coll = _get_chroma_collection()
         coll.delete(ids=ids)
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.warning("vector_store:L172: %s", _exc, exc_info=True)
 
 
 _knowledge_collection = None
+_knowledge_lock = None
 
 def _get_knowledge_collection():
-    global _knowledge_collection
+    global _knowledge_collection, _knowledge_lock
     if _knowledge_collection is not None:
         return _knowledge_collection
-    import chromadb
-    client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-    _knowledge_collection = client.get_or_create_collection(name="knowledge", metadata={"hnsw:space": "cosine"})
-    return _knowledge_collection
+    if _knowledge_lock is None:
+        import threading as _t
+
+        _knowledge_lock = _t.Lock()
+    with _knowledge_lock:
+        if _knowledge_collection is not None:
+            return _knowledge_collection
+        import chromadb
+        client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+        _knowledge_collection = client.get_or_create_collection(name="knowledge", metadata={"hnsw:space": "cosine"})
+        return _knowledge_collection
 
 
 def search_similar(query_vec: np.ndarray, k: int = 5) -> list:
@@ -204,8 +232,8 @@ def search_similar(query_vec: np.ndarray, k: int = 5) -> list:
                 item["embedding_id"] = ids[i]
             out.append(item)
         return out
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.warning("vector_store:L211: %s", _exc, exc_info=True)
     return []
 
 
@@ -214,22 +242,28 @@ def search_similar(query_vec: np.ndarray, k: int = 5) -> list:
 _bm25_index = None
 _bm25_docs: list[dict] = []
 _bm25_doc_count: int = -1
+_bm25_lock = None
 
 
 def _get_bm25_index():
     """Lazily build BM25 index over all learnings. Rebuilt when count changes."""
-    global _bm25_index, _bm25_docs, _bm25_doc_count
+    global _bm25_index, _bm25_docs, _bm25_doc_count, _bm25_lock
+    if _bm25_lock is None:
+        import threading as _t
+
+        _bm25_lock = _t.Lock()
     try:
         from layla.memory.db import get_recent_learnings
-        docs = get_recent_learnings(n=2000)
-        if len(docs) == _bm25_doc_count and _bm25_index is not None:
+        with _bm25_lock:
+            docs = get_recent_learnings(n=2000)
+            if len(docs) == _bm25_doc_count and _bm25_index is not None:
+                return _bm25_index, _bm25_docs
+            from rank_bm25 import BM25Okapi
+            tokenized = [d["content"].lower().split() for d in docs]
+            _bm25_index = BM25Okapi(tokenized)
+            _bm25_docs = docs
+            _bm25_doc_count = len(docs)
             return _bm25_index, _bm25_docs
-        from rank_bm25 import BM25Okapi
-        tokenized = [d["content"].lower().split() for d in docs]
-        _bm25_index = BM25Okapi(tokenized)
-        _bm25_docs = docs
-        _bm25_doc_count = len(docs)
-        return _bm25_index, _bm25_docs
     except Exception:
         return None, []
 
@@ -271,8 +305,8 @@ def search_hybrid(query: str, k: int = 5, *, coding_boost: bool = False) -> list
         wb = float(cfg.get("retrieval_hybrid_bm25_weight", 1.0))
         if coding_boost:
             wb *= float(cfg.get("retrieval_hybrid_coding_bm25_boost", 1.25))
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("vector_store:L278: %s", _exc, exc_info=False)
     query_vec = embed(query)
     vector_results = search_similar(query_vec, k=k * 3)
 
@@ -283,8 +317,8 @@ def search_hybrid(query: str, k: int = 5, *, coding_boost: bool = False) -> list
             scores = bm25.get_scores(query.lower().split())
             top_idx = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[: k * 3]
             bm25_results = [docs[i] for i in top_idx if scores[i] > 0]
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.warning("vector_store:L290: %s", _exc, exc_info=True)
 
     if not bm25_results:
         return vector_results[:k]
@@ -389,8 +423,8 @@ def rerank(query: str, docs: list[dict], k: int = 5) -> list[dict]:
                     scores = bce.predict(pairs, show_progress_bar=False)
                     ranked = sorted(zip(scores, docs), key=lambda x: x[0], reverse=True)
                     return [d for _, d in ranked[:k]]
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("vector_store:L396: %s", _exc, exc_info=False)
     ce = _get_cross_encoder()
     if ce is None:
         return docs[:k]
@@ -429,8 +463,8 @@ def search_with_hyde(query: str, k: int = 5, fallback: bool = True) -> list[dict
                 # Fuse with original query results for robustness
                 orig = search_similar(embed(query), k=k * 2)
                 return _reciprocal_rank_fusion([results, orig], k=k)
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("vector_store:L436: %s", _exc, exc_info=False)
     if fallback:
         return search_similar(embed(query), k=k)
     return []
@@ -438,16 +472,24 @@ def search_with_hyde(query: str, k: int = 5, fallback: bool = True) -> list[dict
 
 # ─── Parent-document retrieval ────────────────────────────────────────────────
 
-def get_knowledge_chunks_with_parent(query: str, k: int = 5) -> list[dict]:
+def get_knowledge_chunks_with_parent(
+    query: str,
+    k: int = 5,
+    *,
+    aspect_id: str = "",
+    project_domains: list[str] | None = None,
+) -> list[dict]:
     """
     Retrieve knowledge chunks and enrich with surrounding parent document context.
     Each chunk's metadata carries a 'source' field; we load the full source file
     and return the surrounding paragraph (up to 1200 chars) around the matched chunk.
     """
 
-    # Get initial chunks from standard search
+       # Get initial chunks from standard search
     try:
-        chunks = get_knowledge_chunks_with_sources(query, k=k * 2)
+        chunks = get_knowledge_chunks_with_sources(
+            query, k=k * 2, aspect_id=aspect_id, project_domains=project_domains
+        )
     except Exception:
         chunks = []
 
@@ -522,8 +564,8 @@ def _apply_confidence_recency_boost(items: list[dict], k: int) -> list[dict]:
                 dt_utc = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
                 age_days = (utcnow() - dt_utc).total_seconds() / 86400.0
                 recency = math.exp(-age_days / 90.0)
-            except Exception:
-                pass
+            except Exception as _exc:
+                logger.debug("vector_store:L529: %s", _exc, exc_info=False)
         return base * 0.6 + conf * 0.2 + recency * 0.2
 
     scored = [(score(i, it), it) for i, it in enumerate(items)]
@@ -574,8 +616,8 @@ def search_memories_full(
             hyde_hits = search_with_hyde(query, k=15, fallback=True)
             if hyde_hits:
                 results = _reciprocal_rank_fusion([results, hyde_hits], k=20)
-        except Exception:
-            pass
+        except Exception as _exc:
+            logger.debug("vector_store:L581: %s", _exc, exc_info=False)
 
     # Step 2: merge FTS5 keyword results
     try:
@@ -583,8 +625,8 @@ def search_memories_full(
         fts_hits = search_learnings_fts(query, n=20)
         if fts_hits:
             results = _reciprocal_rank_fusion([results, fts_hits], k=20)
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("vector_store:L590: %s", _exc, exc_info=False)
 
     # Step 2b: light rerank → top 10 (reduce before expensive cross-encoder)
     light_k = min(cross_encoder_limit, 10)
@@ -646,8 +688,8 @@ def index_knowledge_docs(knowledge_dir: Path) -> None:
                 m = metas[i] if i < len(metas) else {}
                 if isinstance(m, dict) and m.get("content_hash"):
                     existing_hash[cid] = str(m.get("content_hash"))
-        except Exception:
-            pass
+        except Exception as _exc:
+            logger.debug("vector_store:L653: %s", _exc, exc_info=False)
 
         chunks: list[tuple[str, str, dict]] = []
         for ext in ("*.md", "*.txt", "*.pdf"):
@@ -657,10 +699,10 @@ def index_knowledge_docs(knowledge_dir: Path) -> None:
                 try:
                     if f.suffix.lower() == ".pdf":
                         text = _read_pdf_text(f)
-                        priority, domain = "support", ""
+                        fm = {"priority": "support", "domain": "", "aspects": [], "difficulty": "", "related": []}
                     else:
                         text = f.read_text(encoding="utf-8", errors="replace")
-                        priority, domain = _parse_knowledge_front_matter(text)
+                        fm = _parse_knowledge_front_matter(text)
                         if text.strip().startswith("---"):
                             end = text.find("\n---", 3)
                             text = text[end + 4:].strip() if end >= 0 else text
@@ -671,15 +713,35 @@ def index_knowledge_docs(knowledge_dir: Path) -> None:
                         source = str(f.relative_to(knowledge_dir)).replace("\\", "/")
                         chunk_id = f"{source}_{i}"
                         content_hash = hashlib.sha1(part.encode("utf-8", errors="ignore")).hexdigest()
+                        aspects = fm.get("aspects") if isinstance(fm, dict) else []
+                        if isinstance(aspects, str):
+                            aspects = [a.strip() for a in aspects.split(",") if a.strip()]
+                        if not isinstance(aspects, list):
+                            aspects = []
+                        aspects_str = ",".join(str(a).strip().lower() for a in aspects if str(a).strip())[:200]
+                        related = fm.get("related") if isinstance(fm, dict) else []
+                        if isinstance(related, str):
+                            related = [a.strip() for a in related.split(",") if a.strip()]
+                        if not isinstance(related, list):
+                            related = []
+                        related_str = ",".join(str(a).strip() for a in related if str(a).strip())[:300]
                         meta = {
-                            "priority": priority,
-                            "domain": domain or "general",
+                            "priority": str((fm.get("priority") if isinstance(fm, dict) else "") or "support"),
+                            "domain": str((fm.get("domain") if isinstance(fm, dict) else "") or "") or "general",
+                            "aspects": aspects_str,
+                            "difficulty": str((fm.get("difficulty") if isinstance(fm, dict) else "") or "")[:40],
+                            "related": related_str,
                             "source": source,
                             "chunk_index": i,
                             "content_hash": content_hash,
                         }
                         chunks.append((chunk_id, part, meta))
-                except Exception:
+                except Exception as _e:
+                    try:
+                        rel = str(f.relative_to(knowledge_dir)).replace("\\", "/")
+                    except Exception:
+                        rel = str(f)
+                    logger.warning("knowledge index skipped file %s: %s", rel, _e)
                     continue
         if not chunks:
             return
@@ -690,8 +752,8 @@ def index_knowledge_docs(knowledge_dir: Path) -> None:
         if stale:
             try:
                 coll.delete(ids=stale)
-            except Exception:
-                pass
+            except Exception as _exc:
+                logger.debug("vector_store:L697: %s", _exc, exc_info=False)
 
         # Upsert changed/new chunks only
         upsert = [c for c in chunks if existing_hash.get(c[0]) != c[2].get("content_hash")]
@@ -708,28 +770,35 @@ def index_knowledge_docs(knowledge_dir: Path) -> None:
         else:
             try:
                 coll.delete(ids=ids)
-            except Exception:
-                pass
+            except Exception as _exc:
+                logger.debug("vector_store:L715: %s", _exc, exc_info=False)
             coll.add(ids=ids, embeddings=embs.tolist(), documents=documents, metadatas=metadatas)
         # Mark as up-to-date so the next request doesn't immediately reindex again.
         try:
             _knowledge_fingerprint = _knowledge_dir_fingerprint(knowledge_dir)
-        except Exception:
-            pass
-    except Exception:
-        pass
+        except Exception as _exc:
+            logger.debug("vector_store:L721: %s", _exc, exc_info=False)
+    except Exception as _exc:
+        logger.debug("vector_store:L723: %s", _exc, exc_info=False)
 
 
-def _parse_knowledge_front_matter(text: str) -> tuple[str, str]:
-    """Parse optional YAML front matter for priority and domain. Returns (priority, domain). Default priority=support."""
-    priority = "support"
-    domain = ""
+def _parse_knowledge_front_matter(text: str) -> dict[str, object]:
+    """
+    Parse optional YAML-ish front matter (single-level key:value lines; no nesting).
+    Supported keys:
+      - priority: core|support|flavor
+      - domain: short string
+      - aspects: comma-separated aspect ids
+      - difficulty: beginner|intermediate|advanced
+      - related: comma-separated doc names/paths
+    """
+    out: dict[str, object] = {"priority": "support", "domain": "", "aspects": [], "difficulty": "", "related": []}
     if not (text or "").strip().startswith("---"):
-        return priority, domain
+        return out
     try:
         first = (text or "").split("\n")
         if first[0].strip() != "---":
-            return priority, domain
+            return out
         i = 1
         while i < len(first):
             line = first[i].strip()
@@ -737,15 +806,25 @@ def _parse_knowledge_front_matter(text: str) -> tuple[str, str]:
                 break
             if ":" in line:
                 key, _, val = line.partition(":")
-                key, val = key.strip().lower(), val.strip().lower()
-                if key == "priority" and val in ("core", "support", "flavor"):
-                    priority = val
+                key = key.strip().lower()
+                raw_val = val.strip()
+                val_l = raw_val.lower()
+                if key == "priority" and val_l in ("core", "support", "flavor"):
+                    out["priority"] = val_l
                 elif key == "domain":
-                    domain = val[:100]
+                    out["domain"] = val_l[:100]
+                elif key == "aspects":
+                    parts = [p.strip().lower() for p in raw_val.split(",") if p.strip()]
+                    out["aspects"] = parts[:20]
+                elif key == "difficulty" and val_l in ("beginner", "intermediate", "advanced"):
+                    out["difficulty"] = val_l
+                elif key == "related":
+                    parts = [p.strip() for p in raw_val.split(",") if p.strip()]
+                    out["related"] = parts[:30]
             i += 1
-    except Exception:
-        pass
-    return priority, domain
+    except Exception as _exc:
+        logger.debug("vector_store:L750: %s", _exc, exc_info=False)
+    return out
 
 
 def _knowledge_dir_fingerprint(knowledge_dir: Path) -> str:
@@ -764,8 +843,8 @@ def _knowledge_dir_fingerprint(knowledge_dir: Path) -> str:
                     h.update(str(int(st.st_size)).encode("utf-8"))
                 except Exception:
                     continue
-    except Exception:
-        pass
+    except Exception as _exc:
+        logger.debug("vector_store:L771: %s", _exc, exc_info=False)
     return h.hexdigest()
 
 
@@ -813,7 +892,7 @@ def _chunk_text(text: str, max_chars: int = 600) -> list:
 _PRIORITY_ORDER = {"core": 0, "support": 1, "flavor": 2}
 
 
-def get_knowledge_chunks(query: str, k: int = 5) -> list:
+def get_knowledge_chunks(query: str, k: int = 5, *, aspect_id: str = "") -> list:
     """Return up to k text chunks from the knowledge collection most relevant to query. [] if not use_chroma.
     Retrieval priority: core > support > flavor (chunks with same relevance sorted by this)."""
     if not _use_chroma():
@@ -827,22 +906,41 @@ def get_knowledge_chunks(query: str, k: int = 5) -> list:
         res = coll.query(
             query_embeddings=[qvec.astype(float).tolist()],
             n_results=n_fetch,
-            include=["documents", "metadatas"],
+            include=["documents", "metadatas", "distances"],
         )
         if not res or not res.get("documents") or not res["documents"][0]:
             return []
         docs = res["documents"][0]
         metas = (res.get("metadatas") or [[]])[0] if res.get("metadatas") else []
+        dists = (res.get("distances") or [[]])[0] if res.get("distances") else []
         if not metas or len(metas) != len(docs):
             return list(docs)[:k]
-        combined = [(docs[i], metas[i] if i < len(metas) else {}) for i in range(len(docs))]
-        combined.sort(key=lambda x: _PRIORITY_ORDER.get((x[1].get("priority") or "support").lower(), 1))
-        return [c[0] for c in combined[:k]]
+        asp = (aspect_id or "").strip().lower()
+        combined = []
+        for i in range(len(docs)):
+            meta = metas[i] if i < len(metas) else {}
+            dist = float(dists[i]) if i < len(dists) and dists[i] is not None else None
+            sim = (1.0 - dist) if (dist is not None) else (1.0 / (1.0 + i))
+            pr = _PRIORITY_ORDER.get((str(meta.get("priority") or "support")).lower(), 1) if isinstance(meta, dict) else 1
+            score = sim - (0.03 * pr)
+            if asp and isinstance(meta, dict):
+                m_asp = str(meta.get("aspects") or "").lower()
+                if m_asp and (asp in [a.strip() for a in m_asp.split(",") if a.strip()]):
+                    score *= 1.3
+            combined.append((score, docs[i], meta))
+        combined.sort(key=lambda x: x[0], reverse=True)
+        return [c[1] for c in combined[:k]]
     except Exception:
         return []
 
 
-def get_knowledge_chunks_with_sources(query: str, k: int = 5) -> list[dict]:
+def get_knowledge_chunks_with_sources(
+    query: str,
+    k: int = 5,
+    *,
+    aspect_id: str = "",
+    project_domains: list[str] | None = None,
+) -> list[dict]:
     """Return up to k chunks with text and source for RAG citation. [] if not use_chroma.
     Each item: {"text": str, "source": str} (source from metadata, e.g. path relative to knowledge_dir)."""
     if not _use_chroma():
@@ -856,18 +954,43 @@ def get_knowledge_chunks_with_sources(query: str, k: int = 5) -> list[dict]:
         res = coll.query(
             query_embeddings=[qvec.astype(float).tolist()],
             n_results=n_fetch,
-            include=["documents", "metadatas"],
+            include=["documents", "metadatas", "distances"],
         )
         if not res or not res.get("documents") or not res["documents"][0]:
             return []
         docs = res["documents"][0]
         metas = (res.get("metadatas") or [[]])[0] if res.get("metadatas") else []
+        dists = (res.get("distances") or [[]])[0] if res.get("distances") else []
         if not metas or len(metas) != len(docs):
             return [{"text": d, "source": ""} for d in docs[:k]]
-        combined = [(docs[i], metas[i] if i < len(metas) else {}) for i in range(len(docs))]
-        combined.sort(key=lambda x: _PRIORITY_ORDER.get((x[1].get("priority") or "support").lower(), 1))
+        asp = (aspect_id or "").strip().lower()
+        dom_hints = [d.strip().lower() for d in (project_domains or []) if str(d).strip()]
+        dom_boost = 1.15
+        try:
+            import runtime_safety
+
+            dom_boost = float(runtime_safety.load_config().get("knowledge_retrieval_domain_boost", 1.15))
+        except Exception:
+            pass
+        combined = []
+        for i in range(len(docs)):
+            meta = metas[i] if i < len(metas) else {}
+            dist = float(dists[i]) if i < len(dists) and dists[i] is not None else None
+            sim = (1.0 - dist) if (dist is not None) else (1.0 / (1.0 + i))
+            pr = _PRIORITY_ORDER.get((str(meta.get("priority") or "support")).lower(), 1) if isinstance(meta, dict) else 1
+            score = sim - (0.03 * pr)
+            if asp and isinstance(meta, dict):
+                m_asp = str(meta.get("aspects") or "").lower()
+                if m_asp and (asp in [a.strip() for a in m_asp.split(",") if a.strip()]):
+                    score *= 1.3
+            if dom_hints and isinstance(meta, dict):
+                m_dom = str(meta.get("domain") or "").lower()
+                if m_dom and any(h in m_dom or m_dom in h for h in dom_hints):
+                    score *= dom_boost
+            combined.append((score, docs[i], meta))
+        combined.sort(key=lambda x: x[0], reverse=True)
         out = []
-        for doc, meta in combined[:k]:
+        for _score, doc, meta in combined[:k]:
             source = (meta.get("source") or "").strip() or "unknown"
             out.append({"text": doc, "source": source})
         return out

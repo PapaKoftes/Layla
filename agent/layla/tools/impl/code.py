@@ -627,6 +627,8 @@ def generate_gcode(dxf_path: str, output_path: str, layer: str = "", depth_mm: f
     if not target.exists():
         return {"ok": False, "error": "DXF file not found"}
     try:
+        import math
+
         import ezdxf
         doc = ezdxf.readfile(str(target))
         msp = doc.modelspace()
@@ -640,6 +642,34 @@ def generate_gcode(dxf_path: str, output_path: str, layer: str = "", depth_mm: f
                 lines_out.append(f"G0 X{start[0]:.3f} Y{start[1]:.3f}")
                 lines_out.append(f"G1 Z{depth_mm:.3f}")
                 lines_out.append(f"G1 X{end[0]:.3f} Y{end[1]:.3f}")
+                lines_out.append(f"G0 Z{safe_z}")
+                count += 1
+            elif e.dxftype() == "ARC":
+                c = e.dxf.center
+                r = float(e.dxf.radius)
+                sa = math.radians(float(e.dxf.start_angle))
+                ea = math.radians(float(e.dxf.end_angle))
+                sx, sy = float(c[0]) + r * math.cos(sa), float(c[1]) + r * math.sin(sa)
+                ex, ey = float(c[0]) + r * math.cos(ea), float(c[1]) + r * math.sin(ea)
+                # DXF ARC direction is CCW from start_angle to end_angle.
+                i, j = float(c[0]) - sx, float(c[1]) - sy
+                lines_out.append(f"G0 X{sx:.3f} Y{sy:.3f}")
+                lines_out.append(f"G1 Z{depth_mm:.3f}")
+                lines_out.append(f"G3 X{ex:.3f} Y{ey:.3f} I{i:.3f} J{j:.3f}")
+                lines_out.append(f"G0 Z{safe_z}")
+                count += 1
+            elif e.dxftype() == "CIRCLE":
+                c = e.dxf.center
+                r = float(e.dxf.radius)
+                # Emit as two CCW half-arcs.
+                sx, sy = float(c[0]) + r, float(c[1])
+                mx, my = float(c[0]) - r, float(c[1])
+                i1, j1 = float(c[0]) - sx, float(c[1]) - sy
+                i2, j2 = float(c[0]) - mx, float(c[1]) - my
+                lines_out.append(f"G0 X{sx:.3f} Y{sy:.3f}")
+                lines_out.append(f"G1 Z{depth_mm:.3f}")
+                lines_out.append(f"G3 X{mx:.3f} Y{my:.3f} I{i1:.3f} J{j1:.3f}")
+                lines_out.append(f"G3 X{sx:.3f} Y{sy:.3f} I{i2:.3f} J{j2:.3f}")
                 lines_out.append(f"G0 Z{safe_z}")
                 count += 1
             elif e.dxftype() == "LWPOLYLINE":

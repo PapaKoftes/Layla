@@ -67,11 +67,17 @@ class Plan(BaseModel):
     notes: List[str] = Field(default_factory=list)
 
     def next_ready_step(self) -> PlanStep | None:
+        ready = self.all_ready_steps()
+        return ready[0] if ready else None
+
+    def all_ready_steps(self) -> List[PlanStep]:
+        """All pending/ready steps whose dependencies are satisfied (topological wave)."""
         terminal_ok = frozenset({"done", "skipped"})
         done = {s.id for s in self.steps if s.status in terminal_ok}
+        out: List[PlanStep] = []
         for s in self.steps:
             if s.status in ("pending", "ready"):
                 deps = s.depends_on or []
                 if all(d in done for d in deps):
-                    return s
-        return None
+                    out.append(s)
+        return out

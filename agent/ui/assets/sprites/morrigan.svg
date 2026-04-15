@@ -1,6 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none" stroke="#c084fc" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke">
   <path d="M100 38 L62 88 L38 120 L52 145 L100 125 L148 145 L162 120 L138 88 Z"/>
   <path d="M78 88 L62 52 L100 62 L138 52 L122 88"/>
+  <!-- crossed blades -->
+  <path d="M58 54 L96 92"/>
+  <path d="M142 54 L104 92"/>
+  <path d="M52 60 L64 48"/>
+  <path d="M148 60 L136 48"/>
+  <!-- circuit wing accents -->
+  <path d="M38 118 h22 v-14 h18"/>
+  <path d="M162 118 h-22 v-14 h-18"/>
+  <circle cx="60" cy="104" r="2.6"/>
+  <circle cx="140" cy="104" r="2.6"/>
   <path d="M88 125 L100 165 L112 125"/>
   <circle cx="88" cy="102" r="4"/>
   <circle cx="112" cy="102" r="4"/>

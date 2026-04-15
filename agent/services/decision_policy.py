@@ -150,7 +150,7 @@ def caps_from_personal_knowledge_graph(state: dict, cfg: dict) -> PolicyCaps:
 
 
 def caps_from_tool_reliability(cfg: dict) -> PolicyCaps:
-    if not cfg.get("tool_replay_policy_enabled"):
+    if not cfg.get("tool_replay_policy_enabled", True):
         return PolicyCaps()
     try:
         from layla.memory.db import get_tool_reliability

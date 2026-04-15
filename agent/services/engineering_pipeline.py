@@ -279,8 +279,8 @@ def run_plan_light(
             "conversation_id": conversation_id,
         }
 
-    from services.planner import create_plan
     from services.engine_plans import normalize_planner_steps
+    from services.planner import create_plan
 
     digest = ""
     wr = (workspace_root or "").strip()
@@ -382,8 +382,8 @@ def run_execute_pipeline(
         qs = cl.get("questions") or []
         _qr = "\n".join(f"- {q}" for q in qs) if qs else "More information needed."
         try:
-            from services.telemetry import log_event
             import runtime_safety
+            from services.telemetry import log_event
 
             log_event(
                 "engineering_pipeline_execute",
@@ -462,7 +462,6 @@ def run_execute_pipeline(
 
     steps_norm = normalize_planner_steps(refined)
     strict = bool(cfg.get("planning_strict_mode"))
-    approved = (allow_write or allow_run) and not strict
     if strict:
         st = "draft"
     else:
@@ -573,8 +572,8 @@ def run_execute_pipeline(
         reply = f"{summary}\n\n[Validator]: {fr}"
 
     try:
-        from services.telemetry import log_event
         import runtime_safety
+        from services.telemetry import log_event
 
         log_event(
             "engineering_pipeline_execute",

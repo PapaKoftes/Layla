@@ -15,11 +15,24 @@
 | Subsystem | Module | Role |
 |-----------|--------|------|
 | **Task graph** | `services/task_graph.py` | TaskNode, TaskGraph, GraphExecutor — missions as dependency graphs |
+| **Coordinator** | `services/coordinator.py` | `classify` + trace (`task_budget`, `preferred_strategy`), **`run`** (HTTP outer entry: resume, worktree, post-task consolidate), `dispatch_autonomous_run`, optional `run_with_plan_graph` / `run_parallel_subtasks` |
+| **Execution state** | `execution_state.py` | Dict-compatible `ExecutionState` factory for `agent_loop` (`pipeline_stage`, coordinator trace merge) |
+| **Prompt builder** | `services/prompt_builder.py` | Static/dynamic system-head core + cached persona/policy layers; decision `tool_injection` ordering |
+| **Memory consolidation** | `services/memory_consolidation.py` | Scheduled hooks: session/periodic consolidate, learning reinforce, low-confidence prune batch |
+| **Worktree isolation** | `services/worktree_manager.py` | Optional `git worktree add` / remove for parallel file work |
+| **OTel stub** | `services/otel_export.py` | `maybe_span` when `opentelemetry_enabled` |
+| **Persisted tasks** | `layla/memory/tasks_db.py` (`tasks` table) | Coordinator persists run lifecycle when `task_persistence_enabled` |
 | **Model router** | `services/model_router.py` | Route by task type: coding, reasoning, chat |
+| **Decision model slot** | `agent_loop._llm_decision` + `services/llm_gateway._effective_model_filename` | Optional `decision_model` for higher JSON reliability on small models |
+| **Adaptive model outcomes** | `layla/memory/model_outcomes` + `services/telemetry.py` | Track model success/score to bias routing over time (local-only) |
+| **Golden examples** | `services/golden_examples.py` + `golden_examples` table | Store and inject small successful patterns as few-shot context |
+| **Deterministic quality enforcement** | `services/tool_output_validator.py`, `services/tool_policy.py`, `services/planner.validate_plan_before_execution`, `services/outcome_evaluation.evaluate_validation_matrix`, `services/output_quality.passes_completion_gate`, `agent_loop.py` | Deterministic verification after tools, reduced tool visibility, plan pre-validation, multi-dim validation matrix, strict completion gate, proactive context protection |
 | **Resource manager** | `services/resource_manager.py` | CPU/RAM/GPU tracking; suggest context size, parallel tasks |
 | **Workspace index** | `services/workspace_index.py` | Index projects with embeddings for semantic search |
 | **Prompt tier budgets** | `services/prompt_tier_budget.py` | Tiered caps for system-head memory/knowledge/workspace sections |
 | **Outcome / auto-learnings** | `services/outcome_writer.py` | Post-run outcome memory, Echo aspect memories, patch extract, auto-learnings |
+| **Outcome evaluation + planner feedback** | `services/outcome_evaluation.py` (`evaluate_outcome_structured`), `services/outcome_metrics.py`, `layla/memory/strategy_stats.py`, `shared_state` `last_outcome_evaluation` + SQLite `outcome_evaluations` | On `finished` runs, `agent_loop` stores structured eval on `state["outcome_evaluation"]`, persists last eval for restart continuity, feeds `build_planning_bias_prompt`, records `strategy_stats` |
+| **Initiative / governed retry hints** | `services/initiative_engine.py`, `services/autonomy_optimizer.py`, `services/toolchain_graph.py`, `services/maturity_engine.py` trust tier | Text-only suggestions (`initiative_engine_enabled`); optional text-only project proposals (`initiative_project_proposals_enabled`, gated by trust tier); plan-step retry suffix hints (`autonomy_optimizer_enabled`); toolchain DAG hints in planner bias |
 | **System doctor** | `services/system_doctor.py` | Full diagnostics — `layla doctor` or GET `/doctor` |
 | **Model benchmark** | `services/model_benchmark.py` | Store results in ~/.layla/benchmarks.json; `select_fastest_model()` |
 
@@ -28,8 +41,8 @@
 ## Pinned versions and paths
 
 - **Python**: **3.11 or 3.12 only** (`requires-python` in `pyproject.toml`; CI tests 3.11–3.12). Dependencies: `agent/requirements.txt`.
-- **Database**: SQLite at **repo root** `layla.db`. All persistent memory (learnings, study_plans, wakeup_log, audit, aspect_memories, project_context, capabilities, **telemetry_events**) lives here.
-- **Config**: `agent/runtime_config.json` (gitignored). Template at `agent/runtime_config.example.json`.
+- **Database**: SQLite **`layla.db`**. Dev/source tree: typically **repo root**. Packaged Windows / launcher: **`%LOCALAPPDATA%\Layla\layla.db`** when **`LAYLA_DATA_DIR`** is set (see `layla/memory/db_connection.py`). All persistent memory (learnings, study_plans, wakeup_log, audit, aspect_memories, project_context, capabilities, **telemetry_events**) lives here.
+- **Config**: `runtime_config.json` under `agent/` in dev, or under **`LAYLA_DATA_DIR`** when installed (gitignored). Template at `agent/runtime_config.example.json`.
 - **Model**: `models/<filename>.gguf` (gitignored). Set `model_filename` in config.
 
 ---
@@ -40,26 +53,29 @@
 Client
   → HTTP → FastAPI (agent/main.py, port 8000)
   → Router dispatch:
-      /agent                    → routers/agent.py (+ `learn` + `agent_tasks` sub-routers) → agent_loop.autonomous_run()
+      /agent                    → routers/agent.py (+ `learn` + `agent_tasks` sub-routers) → `services/coordinator.run(agent_loop.autonomous_run, …)` → `dispatch_autonomous_run` (trace + optional SQLite `tasks` row) → agent_loop.autonomous_run(); in-loop plans use `planner.execute_plan_with_optional_graph` → `run_with_plan_graph` when `coordinator_graph_execution_enabled` (fallback is explicit via `plan_execution_fallback`). Optional HTTP-level retries via `coordinator_dispatch_max_attempts`.
       /learn/, /memories, /schedule → routers/learn.py (included from `routers/agent.py`)
-      /agent/background, /agent/tasks*, POST /resume, POST /execute_plan, POST /agent/tasks/{id}/cancel, DELETE /agent/tasks/{id} → routers/agent_tasks.py (included from `routers/agent.py`; workers in `services/agent_task_runner.py`) (default: in-process thread + cooperative `client_abort_event`; optional `background_use_subprocess_workers`: child process + hard terminate/kill on cancel via `services/background_subprocess.py` + `background_job_worker.py`). Optional **continuous** mode (`continuous: true`, `max_iterations`, `iteration_delay_seconds`) runs repeated `autonomous_run` until cap, cancel, or `project_memory.plan.status` in `done`/`blocked` (see `services/project_memory.py`). Subprocess + local `llama_cpp` loads a GGUF per worker; use `llama_server_url` / `ollama_base_url` for shared inference. Optional: `background_worker_rlimits_enabled` (POSIX), `background_worker_windows_job_limits_enabled` (Windows memory + optional CPU %), `background_worker_cgroup_auto_enabled` (Linux cgroup v2), `background_worker_wrapper_command`. **OS job/cgroup attachment applies to subprocess workers only**, not foreground `/agent`. **Background progress** (`progress_json`; task APIs expose `progress_events`, `progress`, `progress_tail`) is separate from foreground SSE streaming — see `docs/RUNBOOKS.md`. Linux cgroup leaves created for subprocess workers are **removed after exit** (best-effort).
+      /agent/background, /agent/tasks*, POST /resume, POST /execute_plan, POST /agent/persistent_tasks/{id}/resume, POST /agent/tasks/{id}/cancel, DELETE /agent/tasks/{id} → routers/agent_tasks.py (included from `routers/agent.py`; workers in `services/agent_task_runner.py`) (default: in-process thread + cooperative `client_abort_event`; optional `background_use_subprocess_workers`: child process + hard terminate/kill on cancel via `services/background_subprocess.py` + `background_job_worker.py`). Optional **continuous** mode (`continuous: true`, `max_iterations`, `iteration_delay_seconds`) runs repeated `autonomous_run` until cap, cancel, or `project_memory.plan.status` in `done`/`blocked` (see `services/project_memory.py`). Subprocess + local `llama_cpp` loads a GGUF per worker; use `llama_server_url` / `ollama_base_url` for shared inference. Optional: `background_worker_rlimits_enabled` (POSIX), `background_worker_windows_job_limits_enabled` (Windows memory + optional CPU %), `background_worker_cgroup_auto_enabled` (Linux cgroup v2), `background_worker_wrapper_command`. **OS job/cgroup attachment applies to subprocess workers only**, not foreground `/agent`. **Background progress** (`progress_json`; task APIs expose `progress_events`, `progress`, `progress_tail`) is separate from foreground SSE streaming — see `docs/RUNBOOKS.md`. Linux cgroup leaves created for subprocess workers are **removed after exit** (best-effort).
       `POST /agent` **`understand_mode`** (requires `workspace_root`): deterministic `scan_workspace_into_memory` + `sync_repo_cognition` without the full LLM loop — see `docs/POST_AGENT_RESPONSE_CONTRACT.md`.
       **`/plans`**, **`/plans/{id}`**, **`PATCH /plans/{id}`**, **`POST /plans/{id}/approve`**, **`POST /plans/{id}/execute`** → `routers/plans.py` — durable **`layla_plans`** rows in SQLite (`draft` → `approved` → `executing` → **`done`** or **`blocked`**). Plan rows are mirrored to **`{workspace}/.layla/plan_store/`** (manifest + **`plans/{id}.json`** + **`history.jsonl`** on completion) via **`services/plan_workspace_store`** so structured state updates without re-LLM-ing whole plans; **`prior_plans_digest`** feeds **`planner.create_plan`** when a **`workspace_root`** is set. **`POST /plans/{id}/execute`** runs **`services.planner.execute_plan(..., step_governance=True)`** (each step uses **`run_governed_plan_step`**): per-step **tool allowlist** (when steps carry **`tools`**), **`plan_step_governance.validate_step_outcome`** + **`low_confidence_response`**, bounded retries (**`default_max_retries`** / **`step_max_retries`** in JSON body, per-step **`max_retries`** in stored steps, capped), optional short **refine** pass via **`engine_plans._is_low_quality`** inside **`planner._run_agent_step`**. Response includes **`all_steps_ok`**; plan row is **`done`** only if every step passes governance, else **`blocked`**. **`plan_mode`** on `POST /agent` also inserts a draft and returns **`plan_id`**. Optional **`planning_strict_mode`** (default off): `agent_loop` refuses dangerous / run-class tools unless the run is bound to an **approved** plan via **`plan_id`** on `POST /agent`, or execution was started through **`POST /plans/{id}/execute`** / **`POST /execute_plan`** (implicit approval for that payload). Repo-mapping exceptions: **`scan_repo`**, **`update_project_memory`**.
       **`/plan/create`**, **`GET /plan/{id}?workspace_root=`**, **`POST /plan/{id}/approve`**, **`POST /plan/{id}/add_steps`**, **`POST /plan/{id}/execute_next`**, **`POST /plan/{id}/run_continuous`** → `routers/plan_file.py` — optional **Pydantic file plans** under **`{workspace}/.layla_plans/{id}.json`** (parallel to SQLite plans). **`save_plan`** updates **`plan_store` manifest** for cross-system cohesion. File-plan execution uses **`engine_plans.execute_next_file_plan_step`**, which calls **`planner.run_governed_plan_step`** (same retry/validation core as SQLite **`execute_plan`**) + hard **`step.tools`** allowlist in **`agent_loop`**. When **`file_plan_id`** is on a background payload (or non-continuous **`_run_once`**), the worker uses **`services/engine_plans.run_plan_iteration`** / **`run_file_plan_background_loop`** (purposeful step or plan-refine, **`planning_strict_mode`** analysis-only until approved) instead of only looping **`autonomous_run(message=goal)`**. **`run_continuous`** rejects subprocess workers when started from **`/plan/.../run_continuous`** (see `RUNBOOKS.md`).
       /agents/spawn            → routers/agents.py     → same queue as /agent/background; poll GET /agent/tasks/{id}; JSON echoes allow_* / workspace_root / worker_mode + isolation note
       /research_mission        → routers/research.py → agent_loop (research_mode=True)
       /study_plans, /wakeup    → routers/study.py
+      /journal*                → routers/journal.py (v3 operator journal; SQLite `operator_journal`)
+      /improvements*           → routers/improvements.py (v3 self-improvement proposals; apply allowlisted instructions on approval)
       /approve, /pending       → routers/approvals.py
       /voice/transcribe        → services/stt.py     (faster-whisper)
       /voice/speak             → services/tts.py     (kokoro-onnx)
-      /health, /health?deep=true, /health/deps, /usage, /undo, /version, /update/*, /doctor, /local_access_info, /session/stats, /history, /skills → `routers/system.py` (same payloads as before; `active_model`, `effective_config`, `features_enabled`, `dependencies`, **`backends`**, etc.; see `docs/PRODUCTION_CONTRACT.md`, `docs/GOLDEN_FLOW.md`)
+      /health, /health?deep=true, /health/deps, /usage, /debug/state, /debug/tasks, /undo, /version, /update/*, /doctor, /local_access_info, /session/stats, /history, /skills → `routers/system.py` (same payloads as before; `active_model`, `effective_config`, `features_enabled`, `dependencies`, **`backends`**, etc.; see `docs/PRODUCTION_CONTRACT.md`, `docs/GOLDEN_FLOW.md`)
       /compact (POST), /ctx_viz, /session/export, /system_export, /learnings*, /audit → `routers/session.py`
-      /conversations* → `routers/conversations.py`; /projects → `routers/projects.py`
+      /conversations* → `routers/conversations.py` (includes v3 conversation tags endpoints); /projects → `routers/projects.py`
+      /aspects/{aspect_id} → `routers/aspects.py` (v3 aspect character sheet; safe subset)
       /codex/relationship → `routers/codex.py` (GET/PUT workspace `.layla/relationship_codex.json`; sandbox-gated)
-      /settings, /settings/schema, /settings/preset, /settings/appearance, /setup_* → `routers/settings.py`
+      /settings, /settings/schema, /settings/preset, /settings/appearance, /settings/optional_features, /settings/install_feature, /settings/git_undo_checkpoint, /setup_* → `routers/settings.py`
       GET /agent/decision_trace → routers/agent.py (last PolicyCaps trace per conversation)
       GET /agents/blackboard/{job_id} → routers/agents.py (in-process job blackboard)
-      /knowledge/ingest, /knowledge/ingest/sources, /workspace/index, /workspace/cognition*, /project_discovery → `routers/knowledge.py`
+      /knowledge/ingest, /knowledge/ingest/sources, /knowledge/import_chat, /knowledge/import_chat_preview, /workspace/index, /workspace/cognition*, /project_discovery → `routers/knowledge.py`
       /v1/*, /ui               → main.py (inline)
 ```
 
@@ -70,6 +86,8 @@ Client
 **Transport inbound policy** (optional, OpenClaw-style): `transports/base.py` — env `LAYLA_TRANSPORT_ALLOWLIST`, `LAYLA_TRANSPORT_PAIRING_SECRET` (`/pair`), config `transport_allowlist`, `transport_require_allowlist`. Paired ids: repo-root `.layla_transport_paired.json` (gitignored). See `docs/OPENCLAW_ALIGNMENT.md`, `docs/OPENCLAW_BRIDGE.md`. **Integrations sweep:** `docs/INTEGRATIONS_MODULE_SECOND_SWEEP.md`.
 
 **Operator surfaces (local):** **`cursor-layla-mcp/server.py`** — MCP stdio server; `LAYLA_BASE_URL` (default `http://127.0.0.1:8000`) → `POST /agent`, `/approve`, `/pending`, etc. **`layla.py`** (repo root) — CLI via httpx to `http://localhost:8000`. Deep pass: `docs/MCP_MODULE_SECOND_SWEEP.md`.
+
+**Packaged Windows layout:** **`launcher/layla_launcher.py`** (PyInstaller → `layla.exe`) sets **`LAYLA_DATA_DIR`** (default `%LOCALAPPDATA%\Layla`) and **`LAYLA_INSTALL_ROOT`** (folder containing `agent/`). User data: `runtime_config.json`, `layla.db`, `models/`, etc. **`POST /update/apply`** uses **`services/release_updater.py`** (release ZIP) when **`LAYLA_DATA_DIR`** is set; dev trees keep git pull via **`services/auto_updater.py`**.
 
 **Geometry subsystem:** `agent/layla/geometry/` — versioned `GeometryProgram`, sandboxed `execute_program()`, optional HTTP CAD bridge (`geometry_external_bridge_url`). Deterministic **machining IR** (`machining_ir.py`, tool `geometry_extract_machining_ir`) for DXF→features→ordered steps; not full CAM — `docs/FABRICATION_IR_AND_TOOLCHAIN.md`. Sweep: `docs/GEOMETRY_MODULE_SECOND_SWEEP.md`.
 
@@ -122,7 +140,7 @@ Client
 
 | What | Where |
 |---|---|
-| Learnings, study plans, wakeup log, audit | SQLite `layla.db` (repo root) |
+| Learnings, study plans, wakeup log, audit | SQLite `layla.db` (repo root in dev; `%LOCALAPPDATA%\Layla\` when **`LAYLA_DATA_DIR`** set) |
 | Run telemetry (local) | SQLite `layla.db` → `telemetry_events` |
 | FTS5 full-text search index | Virtual table in `layla.db` (auto-sync triggers) |
 | Semantic memory vectors | ChromaDB `agent/chroma/` (config-driven) |
@@ -138,7 +156,7 @@ Client
 | Pending approvals | `shared_state.pending` list + audit in DB |
 | Knowledge index | ChromaDB `agent/chroma/` (collection: `knowledge`) |
 | Research lab / output | `agent/.research_lab/`, `agent/.research_output/`, `agent/.research_brain/` |
-| Config | `agent/runtime_config.json` |
+| Config | `agent/runtime_config.json` in dev; under **`LAYLA_DATA_DIR`** when packaged (see `runtime_safety.py`) |
 | Project memory (per workspace) | `{workspace_root}/.layla/project_memory.json` — structural file map, optional plan/todos/decisions; tools `scan_repo`, `update_project_memory`; operator repos often add `.layla/` to `.gitignore` |
 | Engine plans (planning-first) | SQLite **`layla_plans`** in `layla.db` — goal, steps JSON, status; Web UI **Workspace → Plans**; see `routers/plans.py` |
 

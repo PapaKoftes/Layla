@@ -32,10 +32,12 @@ flowchart LR
 
 **Tool:** `geometry_extract_machining_ir(dxf_path)` — read-only IR JSON for the agent and UI.
 
+**Rule-based CAM hints (MVP):** `agent/layla/cam/` — nominal feeds/speeds tables and rough motion-time estimates for **planning copy only**. Tool **`cam_feed_speed_hint(material, tool_diameter_mm)`** returns heuristics, not manufacturer-certified data.
+
 ## Not modeled (by design in this layer)
 
 - Stock size, fixturing, work coordinate systems (beyond what the operator encodes in DXF)
-- Tool diameter, corner radius, stepdown, ramp, lead-in/out, feeds/speeds
+- Tool diameter, corner radius, stepdown, ramp, lead-in/out, production feeds/speeds (see **`cam_feed_speed_hint`** for non-certified nominal hints only)
 - 3D CAM, rest machining, adaptive clearing
 - Post-processor / machine-specific G-code dialect guarantees
 
