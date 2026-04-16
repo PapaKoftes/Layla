@@ -1,18 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <rect width="256" height="256" fill="none"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="none"/>
   <g stroke="rgba(255,255,255,0.10)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- hex-ish grid hints -->
+    <path d="M0 64h512M0 192h512M0 320h512M0 448h512" opacity="0.35"/>
+    <path d="M64 0v512M192 0v512M320 0v512M448 0v512" opacity="0.28"/>
+
     <!-- circuit traces -->
-    <path d="M16 48h56v32h48v32h48v32h72"/>
-    <path d="M16 192h80v-40h40v-40h40v-40h64"/>
-    <path d="M64 16v56h32v48h32v48h32v72"/>
+    <path d="M32 96h120v64h96v64h96v64h136"/>
+    <path d="M32 416h168v-96h80v-80h80v-80h80"/>
+    <path d="M96 32v160h64v96h64v96h64v96"/>
+    <path d="M480 128h-64v64h-64v64h-64v64h-64v64h-96"/>
+    <path d="M160 448h96v-64h64v-64h64v-64h64v-64h32"/>
+
     <!-- nodes -->
-    <circle cx="72" cy="48" r="4"/>
-    <circle cx="120" cy="80" r="4"/>
-    <circle cx="168" cy="112" r="4"/>
-    <circle cx="216" cy="144" r="4"/>
-    <circle cx="96" cy="192" r="4"/>
-    <!-- blade motif -->
-    <path d="M208 32l24 24-64 64-24-24z"/>
-    <path d="M144 96l24 24-16 16-24-24z"/>
+    <circle cx="152" cy="96" r="6"/>
+    <circle cx="248" cy="160" r="6"/>
+    <circle cx="344" cy="224" r="6"/>
+    <circle cx="440" cy="288" r="6"/>
+    <circle cx="200" cy="416" r="6"/>
+    <circle cx="96" cy="192" r="6"/>
+    <circle cx="320" cy="384" r="6"/>
+
+    <!-- blade motifs -->
+    <path d="M392 56l48 48-128 128-48-48z" opacity="0.85"/>
+    <path d="M256 200l40 40-32 32-40-40z" opacity="0.85"/>
+    <path d="M84 300l26 26-80 80-26-26z" opacity="0.55"/>
   </g>
 </svg>

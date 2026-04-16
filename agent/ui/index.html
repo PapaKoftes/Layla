@@ -69,14 +69,92 @@
 </script>
 <div id="model-readiness-banner" style="display:none;background:#5a2040;color:#fff;padding:8px 20px;font-size:0.8rem;text-align:center">No model loaded — <a href="/docs/MODELS.md" target="_blank" style="color:#e0a0ff;text-decoration:underline">Configure</a> or run first setup</div>
 <div id="context-limit-banner" style="display:none;background:#664400;color:#fff;padding:6px 16px;font-size:0.72rem;text-align:center">Context usage high — use <strong>⊙ Compact</strong> or POST <code>/compact</code>.</div>
-<div id="onboarding-overlay" onclick="if(event.target===this)typeof dismissOnboarding==='function'&&dismissOnboarding()">
-  <div class="onboarding-modal" onclick="event.stopPropagation()">
-    <p id="onboarding-text" class="onboarding-text">Choose a voice in the sidebar.</p>
-    <div class="onboarding-actions">
-      <button id="onboarding-next" onclick="onboardingNext()">Next</button>
-      <button id="onboarding-done" onclick="dismissOnboarding()" style="display:none">Done</button>
+<div id="wizard-overlay" class="wizard-overlay" aria-hidden="true">
+  <div class="wizard-modal" role="dialog" aria-modal="true" aria-label="Layla setup wizard" onclick="event.stopPropagation()">
+    <div class="wizard-head">
+      <div class="wizard-title">∴ LAYLA — Setup</div>
+      <div class="wizard-steps" aria-label="Wizard steps">
+        <span class="wizard-dot" data-step="0"></span>
+        <span class="wizard-dot" data-step="1"></span>
+        <span class="wizard-dot" data-step="2"></span>
+        <span class="wizard-dot" data-step="3"></span>
+        <span class="wizard-dot" data-step="4"></span>
+        <span class="wizard-dot" data-step="5"></span>
+      </div>
     </div>
-    <p class="onboarding-hint">Press Escape to skip</p>
+    <div class="wizard-body">
+      <div class="wizard-step" data-wstep="0">
+        <h2 style="margin:0 0 8px;color:var(--asp);font-family:'Cinzel',serif">Meet Layla</h2>
+        <p style="margin:0;color:var(--text-dim);line-height:1.6">Hardware → model → workspace → character creation → choose a voice. You can redo this any time later.</p>
+      </div>
+      <div class="wizard-step" data-wstep="1">
+        <!-- Reuse the existing setup UI (same ids + JS) inside the wizard -->
+        <div id="setup-overlay" style="position:static;inset:auto;display:block">
+          <div class="setup-creator-intro" style="text-align:center;margin-bottom:14px;padding:10px;border:1px solid rgba(255,255,255,0.12);border-radius:10px;background:rgba(0,0,0,0.2)">
+            <div style="font-size:1.05rem;letter-spacing:0.06em">Hardware &amp; model</div>
+            <div style="font-size:0.72rem;color:var(--text-dim);margin-top:6px;line-height:1.45">Choose a local GGUF model. Approvals stay on.</div>
+          </div>
+          <div class="setup-modal">
+            <h2>First Setup</h2>
+            <div class="setup-subtitle">No model found. Choose one to download or point to an existing .gguf file.</div>
+            <div class="setup-section-title">Workspace folder</div>
+            <p style="font-size:0.75rem;color:var(--text-dim);line-height:1.45;margin:0 0 8px">File tools can only access paths inside this directory.</p>
+            <div class="setup-custom-url">
+              <input type="text" id="setup-workspace-path" placeholder="e.g. C:\Users\you\LaylaWorkspace" autocomplete="off">
+            </div>
+            <div class="setup-section-title">Your Hardware</div>
+            <div class="setup-hw" id="setup-hw">Detecting…</div>
+            <div id="setup-existing-models" style="display:none">
+              <div class="setup-section-title">Models already downloaded</div>
+              <div id="setup-existing-list"></div>
+            </div>
+            <div class="setup-section-title">Download a Model</div>
+            <div id="setup-model-list"><div style="color:var(--text-dim);font-size:0.8rem">Loading catalog…</div></div>
+            <div class="setup-section-title">Or paste a direct HuggingFace .gguf URL</div>
+            <div class="setup-custom-url">
+              <input type="text" id="setup-custom-url" placeholder="https://huggingface.co/.../model.Q4_K_M.gguf">
+            </div>
+            <div class="setup-progress-label" id="setup-progress-label" style="margin-top:12px"></div>
+            <div class="setup-progress"><div class="setup-progress-bar" id="setup-progress-bar"></div></div>
+            <div id="setup-done-msg"></div>
+            <div class="setup-btns">
+              <button class="setup-btn primary" id="setup-download-btn" onclick="startModelDownload()" disabled>Download Selected</button>
+              <button class="setup-btn" type="button" id="setup-retry-btn" style="display:none" onclick="retryModelDownload()">Retry download</button>
+              <button class="setup-btn skip" onclick="typeof dismissSetupOverlay==='function'&&dismissSetupOverlay(true)">Skip for now</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="wizard-step" data-wstep="2">
+        <h2 style="margin:0 0 8px;color:var(--asp);font-family:'Cinzel',serif">Workspace</h2>
+        <p style="margin:0 0 10px;color:var(--text-dim);line-height:1.6">Pick the folder Layla can read/write inside. Use a dedicated project folder.</p>
+        <input id="wizard-workspace-path" type="text" placeholder="e.g. C:\Users\you\LaylaWorkspace" style="width:100%;box-sizing:border-box;padding:10px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);border-radius:6px" />
+        <div style="margin-top:10px;color:var(--text-dim);font-size:0.72rem">This sets the same workspace path used in Settings.</div>
+      </div>
+      <div class="wizard-step" data-wstep="3">
+        <h2 style="margin:0 0 8px;color:var(--asp);font-family:'Cinzel',serif">Character creation</h2>
+        <p style="margin:0 0 10px;color:var(--text-dim);line-height:1.6">Answer a few questions so Layla can adapt to you.</p>
+        <div id="wizard-quiz" style="border:1px solid rgba(255,255,255,0.10);border-radius:10px;padding:12px;background:rgba(0,0,0,0.18)">
+          <div id="wizard-quiz-prompt" style="font-size:0.9rem;line-height:1.5"></div>
+          <div id="wizard-quiz-options" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"></div>
+          <div id="wizard-quiz-progress" style="margin-top:10px;color:var(--text-dim);font-size:0.72rem"></div>
+        </div>
+      </div>
+      <div class="wizard-step" data-wstep="4">
+        <h2 style="margin:0 0 8px;color:var(--asp);font-family:'Cinzel',serif">Choose a voice</h2>
+        <p style="margin:0 0 10px;color:var(--text-dim);line-height:1.6">Pick your default facet. You can change per message with <code>@aspect</code>.</p>
+        <div id="wizard-aspects" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
+      </div>
+      <div class="wizard-step" data-wstep="5">
+        <h2 style="margin:0 0 8px;color:var(--asp);font-family:'Cinzel',serif">Ready</h2>
+        <p style="margin:0;color:var(--text-dim);line-height:1.6">Setup complete. Enter the app.</p>
+      </div>
+    </div>
+    <div class="wizard-actions">
+      <button type="button" class="tab-btn" id="wizard-back-btn">Back</button>
+      <button type="button" class="tab-btn" id="wizard-next-btn" style="background:var(--asp-mid);border-color:var(--asp)">Next</button>
+    </div>
+    <div class="wizard-hint">Tip: Escape won’t dismiss until the end.</div>
   </div>
 </div>
 <header>
@@ -130,13 +208,20 @@
     <!-- Layla v3: Mastery rank / maturity card (Warframe-inspired). -->
     <div id="maturity-card" class="maturity-card" role="button" tabindex="0" onclick="typeof refreshMaturityCard==='function'&&refreshMaturityCard(true)">
       <div class="maturity-card-top">
-        <div class="maturity-rank-badge"><span class="maturity-rank-label">MR</span> <span id="maturity-rank">0</span></div>
+        <div class="maturity-rank-badge">
+          <span class="maturity-rank-label">MR</span> <span id="maturity-rank">0</span>
+        </div>
+        <div id="maturity-sigil" class="maturity-sigil" aria-hidden="true"></div>
         <div class="maturity-phase">
-          <div id="maturity-phase">NASCENT</div>
+          <div id="maturity-phase">AWAKENING</div>
           <div id="maturity-xp" class="maturity-xp">0 / 500</div>
         </div>
       </div>
       <div class="maturity-bar"><div id="maturity-bar-fill" class="maturity-bar-fill"></div></div>
+      <details id="maturity-milestones" class="maturity-milestones" onclick="event.stopPropagation()">
+        <summary>Milestones</summary>
+        <div id="maturity-milestones-list" class="maturity-milestones-list"><span style="color:var(--text-dim);font-size:0.7rem">Open to load</span></div>
+      </details>
       <div class="maturity-hint">Growth is real. Click to refresh.</div>
     </div>
     <div>
@@ -239,12 +324,9 @@
   <aside id="layla-right-panel" class="layla-right-panel" aria-label="Layla control center">
     <div class="rcp-tabs" role="tablist">
       <button type="button" class="rcp-tab active" role="tab" aria-selected="true" data-rcp="status">Status</button>
-      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="prefs">Prefs</button>
+      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="prefs">Settings</button>
       <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="workspace">Library</button>
-      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="agents">Agents</button>
-      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="safety">Safety</button>
       <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="research">Research</button>
-      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="help">Help</button>
     </div>
     <div class="rcp-body">
       <section class="rcp-page active" data-rcp="status" role="tabpanel" aria-hidden="false">
@@ -273,7 +355,7 @@
         <p class="rta-muted" style="margin:0 0 6px">Persisted runs (<code>/debug/tasks</code>).</p>
         <div class="rta-card">
           <button type="button" class="tab-btn" onclick="typeof laylaRefreshExecutionPanels==='function'&&laylaRefreshExecutionPanels()">Refresh tasks</button>
-          <pre id="tasks-list-json" style="font-size:0.65rem;max-height:220px;overflow:auto;margin-top:8px">—</pre>
+          <div id="tasks-list-json" style="font-size:0.65rem;max-height:260px;overflow:auto;margin-top:8px;white-space:pre-wrap;word-break:break-word">—</div>
         </div>
       </section>
 
@@ -332,6 +414,10 @@
           </label>
         </div>
         <div class="option-card">
+          <div class="option-card-title">Pending approvals</div>
+          <div id="approvals-list"><span style="color:var(--text-dim);font-size:0.75rem">Layla will ask here when she needs permission to act</span></div>
+        </div>
+        <div class="option-card">
           <div class="option-card-title">Workspace</div>
           <label style="display:block;font-size:0.7rem;color:var(--text-dim);margin-bottom:4px">Workspace path</label>
           <div style="display:flex;gap:4px;margin-bottom:4px;flex-wrap:wrap">
@@ -374,14 +460,9 @@
         <div class="rcp-subtabs" role="tablist" aria-label="Workspace tools">
           <button type="button" class="rcp-subtab active" data-rcp-sub="models">Models</button>
           <button type="button" class="rcp-subtab" data-rcp-sub="knowledge">Knowledge</button>
-          <button type="button" class="rcp-subtab" data-rcp-sub="codex">Codex</button>
-          <button type="button" class="rcp-subtab" data-rcp-sub="plugins">Plugins</button>
-          <button type="button" class="rcp-subtab" data-rcp-sub="projects">Projects</button>
-          <button type="button" class="rcp-subtab" data-rcp-sub="timeline">Timeline</button>
-          <button type="button" class="rcp-subtab" data-rcp-sub="study">Study</button>
+          <button type="button" class="rcp-subtab" data-rcp-sub="study">Study &amp; plans</button>
           <button type="button" class="rcp-subtab" data-rcp-sub="memory">Memory</button>
-          <button type="button" class="rcp-subtab" data-rcp-sub="skills">Skills</button>
-          <button type="button" class="rcp-subtab" data-rcp-sub="plans">Plans</button>
+          <button type="button" class="rcp-subtab" data-rcp-sub="plugins">Plugins &amp; codex</button>
         </div>
         <div class="rcp-subpage active" data-rcp-sub="models">
           <div class="panel-title">Model manager</div>
@@ -397,28 +478,6 @@
           <div id="km-ingest-list" style="font-size:0.65rem;color:var(--text-dim);margin-bottom:10px;max-height:120px;overflow-y:auto"></div>
           <div class="panel-title" style="margin-top:4px">Knowledge explorer</div>
           <div id="platform-knowledge" style="font-size:0.72rem"><span style="color:var(--text-dim)">Loading…</span></div>
-        </div>
-        <div class="rcp-subpage" data-rcp-sub="codex">
-          <div class="panel-title">Relationship codex</div>
-          <p class="rta-muted" style="margin:0 0 8px;font-size:0.68rem">Operator notes about people and relationships, stored at <code>.layla/relationship_codex.json</code> under your <strong>workspace path</strong> (Prefs). Optional: set <code>relationship_codex_inject_enabled</code> in <code>runtime_config.json</code> to include a short digest in Layla&apos;s context.</p>
-          <p id="relationship-codex-status" style="font-size:0.68rem;color:var(--text-dim);margin:0 0 6px">Set workspace in Prefs, then Load.</p>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-            <button type="button" class="approve-btn" style="font-size:0.7rem" onclick="refreshRelationshipCodex()">Load</button>
-            <button type="button" class="approve-btn" style="font-size:0.7rem" onclick="saveRelationshipCodex()">Save JSON</button>
-          </div>
-          <textarea id="relationship-codex-json" style="width:100%;min-height:220px;box-sizing:border-box;font-family:ui-monospace,monospace;font-size:0.65rem;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border);border-radius:4px" spellcheck="false" placeholder='{ "entities": { } }'></textarea>
-        </div>
-        <div class="rcp-subpage" data-rcp-sub="plugins">
-          <div class="panel-title">Plugin status</div>
-          <div id="platform-plugins" style="font-size:0.72rem"><span style="color:var(--text-dim)">Loading…</span></div>
-        </div>
-        <div class="rcp-subpage" data-rcp-sub="projects">
-          <div class="panel-title">Project context</div>
-          <div id="platform-projects" style="font-size:0.72rem"><span style="color:var(--text-dim)">Loading…</span></div>
-        </div>
-        <div class="rcp-subpage" data-rcp-sub="timeline">
-          <div class="panel-title">Timeline</div>
-          <div id="platform-timeline" style="font-size:0.72rem"><span style="color:var(--text-dim)">Loading…</span></div>
         </div>
         <div class="rcp-subpage" data-rcp-sub="study">
           <div class="panel-title">Study plans</div>
@@ -437,6 +496,11 @@
             <input type="text" id="study-input" placeholder="New topic..." onkeydown="if(event.key==='Enter')addStudyPlan()">
             <button onclick="addStudyPlan()">+</button>
           </div>
+          <div class="panel-title" style="margin-top:14px">Engine plans</div>
+          <p class="rta-muted" style="margin:0 0 8px;font-size:0.68rem">Durable plans (draft → approve → execute). Uses workspace path from <strong>Settings</strong> when set.</p>
+          <button type="button" class="approve-btn" style="font-size:0.7rem;margin-bottom:8px" onclick="refreshLaylaPlansPanel()">Refresh list</button>
+          <div id="layla-plans-last-exec" style="font-size:0.68rem;margin-bottom:8px;color:var(--text-dim)"></div>
+          <div id="layla-plans-list" style="font-size:0.72rem"><span style="color:var(--text-dim)">Open this tab to load.</span></div>
         </div>
         <div class="rcp-subpage" data-rcp-sub="memory">
           <div class="panel-title">Memory search</div>
@@ -454,44 +518,22 @@
           <button type="button" class="approve-btn" style="font-size:0.65rem;margin-bottom:6px" onclick="refreshFileCheckpointsPanel()">Refresh list</button>
           <div id="file-checkpoints-list" style="font-size:0.68rem;max-height:220px;overflow-y:auto"><span style="color:var(--text-dim);font-size:0.7rem">Click Refresh to load</span></div>
         </div>
-        <div class="rcp-subpage" data-rcp-sub="skills">
-          <div class="panel-title">Skills</div>
-          <p class="rta-muted" style="margin:0 0 8px;font-size:0.68rem">Markdown files in <code>.layla/skills/</code>, <code>skills/</code>, or <code>.claude/skills/</code> (YAML frontmatter: name, triggers, description).</p>
+        <div class="rcp-subpage" data-rcp-sub="plugins">
+          <div class="panel-title">Plugin status</div>
+          <div id="platform-plugins" style="font-size:0.72rem"><span style="color:var(--text-dim)">Loading…</span></div>
+          <div class="panel-title" style="margin-top:12px">Relationship codex</div>
+          <p class="rta-muted" style="margin:0 0 8px;font-size:0.68rem">Operator notes about people and relationships, stored at <code>.layla/relationship_codex.json</code> under your <strong>workspace path</strong> (Settings). Optional: set <code>relationship_codex_inject_enabled</code> to include a short digest in Layla&apos;s context.</p>
+          <p id="relationship-codex-status" style="font-size:0.68rem;color:var(--text-dim);margin:0 0 6px">Set workspace in Settings, then Load.</p>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+            <button type="button" class="approve-btn" style="font-size:0.7rem" onclick="refreshRelationshipCodex()">Load</button>
+            <button type="button" class="approve-btn" style="font-size:0.7rem" onclick="saveRelationshipCodex()">Save JSON</button>
+          </div>
+          <textarea id="relationship-codex-json" style="width:100%;min-height:220px;box-sizing:border-box;font-family:ui-monospace,monospace;font-size:0.65rem;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border);border-radius:4px" spellcheck="false" placeholder='{ "entities": { } }'></textarea>
+          <div class="panel-title" style="margin-top:12px">Skills</div>
+          <p class="rta-muted" style="margin:0 0 8px;font-size:0.68rem">Markdown skills under <code>.layla/skills/</code>, <code>skills/</code>, or <code>.claude/skills/</code>.</p>
+          <button type="button" class="approve-btn" style="font-size:0.7rem;margin-bottom:8px" onclick="refreshSkillsList()">Refresh list</button>
           <div id="platform-skills" style="font-size:0.72rem"><span style="color:var(--text-dim)">Open this tab to load.</span></div>
         </div>
-        <div class="rcp-subpage" data-rcp-sub="plans">
-          <div class="panel-title">Engine plans</div>
-          <p class="rta-muted" style="margin:0 0 8px;font-size:0.68rem">Durable plans (draft → approve → execute). Uses workspace path from <strong>Prefs</strong> when set. Requires <code>planning_strict_mode</code> off or an approved <code>plan_id</code> on <code>/agent</code> for mutating tools.</p>
-          <button type="button" class="approve-btn" style="font-size:0.7rem;margin-bottom:8px" onclick="refreshLaylaPlansPanel()">Refresh list</button>
-          <div id="layla-plans-last-exec" style="font-size:0.68rem;margin-bottom:8px;color:var(--text-dim)"></div>
-          <div id="layla-plans-list" style="font-size:0.72rem"><span style="color:var(--text-dim)">Open this tab to load.</span></div>
-        </div>
-      </section>
-
-      <section class="rcp-page" data-rcp="agents" role="tabpanel" aria-hidden="true">
-        <div class="panel-title" style="margin-bottom:6px">Concurrency &amp; resources</div>
-        <p class="rta-muted" style="margin:0 0 8px">How hard Layla is allowed to push your machine. Values come from <code>/health</code> (effective config + limits). Edit <code>runtime_config.json</code> or re-run install / first_run to change caps.</p>
-        <div class="rta-card">
-          <div id="agents-resource-panel" style="font-size:0.72rem;line-height:1.5"><span style="color:var(--text-dim)">Open this tab to load.</span></div>
-        </div>
-        <div class="rta-section-title">Lightweight / parallel work</div>
-        <p class="rta-muted" style="margin:0 0 6px"><code>max_active_runs</code> caps overlapping agent-style work. <code>performance_mode</code> (<code>low</code> / <code>mid</code> / <code>high</code> / <code>auto</code>) scales timeouts and tool budgets with the system optimizer. CPU/RAM guardrails use <code>max_cpu_percent</code>, <code>max_ram_percent</code>, <code>warn_cpu_percent</code>, and <code>hard_cpu_percent</code>.</p>
-        <p class="rta-muted" style="margin:0">Future: paced streaming intervals (<code>response_pacing_ms</code> in <code>runtime_config.example.json</code>) — reserved hook; keep at <code>0</code> for now.</p>
-      </section>
-
-      <section class="rcp-page" data-rcp="safety" role="tabpanel" aria-hidden="true">
-        <div class="rta-card">
-          <div class="panel-title" style="margin-bottom:6px">Permissions</div>
-          <p class="rta-muted" style="margin:0 0 8px">Mirrors <strong>Prefs → Permissions</strong> — change either place.</p>
-          <label class="option-row" style="color:#dd6666;display:block;margin-bottom:6px;cursor:pointer">
-            <input type="checkbox" id="allow-write-rta"> Allow write (files / patches)
-          </label>
-          <label class="option-row" style="color:#dd6666;display:block;cursor:pointer">
-            <input type="checkbox" id="allow-run-rta"> Allow run (shell / code)
-          </label>
-        </div>
-        <div class="panel-title">Pending approvals</div>
-        <div id="approvals-list"><span style="color:var(--text-dim);font-size:0.75rem">Layla will ask here when she needs permission to act</span></div>
       </section>
 
       <section class="rcp-page" data-rcp="research" role="tabpanel" aria-hidden="true">
@@ -517,56 +559,6 @@
           <div id="research-tab-content" style="min-height:140px;max-height:min(280px,40vh);overflow:auto;padding:8px;background:var(--code-bg);border:1px solid var(--border);border-radius:4px;font-size:0.8rem;white-space:pre-wrap;word-break:break-word"></div>
         </div>
       </section>
-
-      <section class="rcp-page" data-rcp="help" role="tabpanel" aria-hidden="true">
-        <div class="panel-title">Help &amp; capabilities</div>
-        <div class="help-section">
-          <p><strong>Chat</strong> — Messages show <strong>Layla</strong> plus the active <em>facet</em> (Morrigan, Nyx, …). Use <code>@aspect</code> for one-shot routing.</p>
-          <p><strong>Left column</strong> — Conversation list + <strong>New chat</strong> first, then <strong>Voices</strong>. Open <strong>Prefs</strong> in the right column for stream/TTS, workspace path, permissions, and research buttons.</p>
-          <p><strong>Status</strong> — Version, health, optional stack (voice, vector DB, GPU), limits, and config snapshot from <code>/health</code>.</p>
-          <p><strong>Prefs</strong> — Chat toggles, content policy, sandbox path, projects, research mission controls.</p>
-          <p><strong>Library</strong> — Models, knowledge, plugins, project context, timeline, study, memory search (local + optional Elasticsearch), file checkpoints, skills.</p>
-          <p><strong>Agents</strong> — Concurrency and CPU/RAM caps from live <code>/health</code> (edit <code>runtime_config.json</code> to change).</p>
-          <p><strong>Safety</strong> — Approvals queue + mirrored write/run toggles.</p>
-          <p><strong>Research</strong> — Mission output; triggers live under <strong>Prefs</strong>.</p>
-          <p><strong>Voices</strong> — Morrigan (engineer), Nyx, Echo, Eris, Cassandra, Lilith. Lock with 🔒 to stop auto-routing.</p>
-          <p><strong>Content policy</strong> — <strong>Prefs</strong> tab (or ⚙ Settings → Safety): <code>uncensored</code> / <code>nsfw_allowed</code>.</p>
-          <p><strong>Settings</strong> — Gear: model paths, full config, hardware.</p>
-          <p><strong>Shortcuts</strong></p>
-          <ul style="font-size:0.85em;margin:4px 0 0 16px">
-            <li>Enter — Send · Shift+Enter — New line</li>
-            <li>Ctrl+K — Clear input</li>
-            <li>Ctrl+R — Regenerate last reply</li>
-            <li>Ctrl+/ — Open Help</li>
-            <li>Ctrl+F — Search in chat</li>
-            <li>Arrow Up / Down — Cycle recent prompts (when input focused)</li>
-            <li>Escape — Stop recording / close overlays</li>
-          </ul>
-          <p style="margin-top:8px"><button type="button" class="tab-btn" onclick="showKeyboardShortcutsSheet()">Shortcuts sheet</button></p>
-          <p style="font-size:0.8rem;color:var(--text-dim);margin-top:8px">Session backup: exports the active conversation (if any), pending approvals, and a short in-memory history tail.</p>
-          <p style="margin-top:6px"><button type="button" class="tab-btn" onclick="downloadSessionExport()">Download session checkpoint (JSON)</button></p>
-          <p style="font-size:0.8rem;color:var(--text-dim);margin-top:10px"><strong>Message edit / branch</strong> — Use <strong>Regenerate</strong> (Ctrl+R) or edit your text and resend; full branching UX is on the backlog.</p>
-          <p><strong>Troubleshooting</strong></p>
-          <ul style="font-size:0.85em;margin:4px 0 0 16px">
-            <li><b>Model not loading</b> — Settings, VRAM, <code>n_gpu_layers</code>. <a href="/docs/MODELS.md" target="_blank">MODELS.md</a>.</li>
-            <li><b>Health stuck</b> — Server must be up; open <strong>Status</strong> (or reload). Tabs use CSS only (no <code>hidden</code> attribute) so panels are not blank while data loads.</li>
-            <li><b>Voice</b> — <code>pip install sounddevice</code> or browser mic permissions.</li>
-          </ul>
-        </div>
-
-        <div class="panel-title" style="margin-top:16px">Phone / LAN Access</div>
-        <div class="help-section" id="phone-access-section">
-          <p style="font-size:0.8rem;color:var(--text-dim)">Connect from your phone or any device on the same WiFi.</p>
-          <div id="phone-access-url" style="margin:8px 0;font-size:0.85rem;font-family:monospace;background:var(--code-bg);padding:6px 10px;border-radius:3px;border:1px solid var(--border);word-break:break-all">Loading…</div>
-          <div style="display:flex;gap:6px;margin-bottom:8px">
-            <button type="button" onclick="copyPhoneUrl()" style="font-size:0.72rem;padding:4px 10px;background:var(--asp-mid);border:1px solid var(--asp);color:var(--text);border-radius:3px;cursor:pointer">Copy URL</button>
-            <button type="button" onclick="loadPhoneAccess()" style="font-size:0.72rem;padding:4px 10px;background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:3px;cursor:pointer">Refresh</button>
-          </div>
-          <div id="phone-access-status" style="font-size:0.72rem;color:var(--text-dim)"></div>
-          <div id="phone-qr-area" style="margin-top:8px"></div>
-          <p style="font-size:0.72rem;color:var(--text-dim);margin-top:8px">To enable: set <code>remote_enabled: true</code> and <code>remote_api_key: "yourkey"</code> in <code>runtime_config.json</code>, then restart Layla bound to <code>0.0.0.0</code>:<br><code style="font-size:0.68rem">uvicorn main:app --host 0.0.0.0 --port 8000</code></p>
-        </div>
-      </section>
     </div>
   </aside>
 </div>
@@ -587,66 +579,27 @@
 
 <div id="keyboard-shortcuts-sheet" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10005;align-items:center;justify-content:center;padding:20px" onclick="if (event.target === this) hideKeyboardShortcutsSheet()">
   <div style="max-width:440px;width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px 18px;max-height:85vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.35)" onclick="event.stopPropagation()">
-    <h3 style="margin:0 0 12px;font-size:1rem;font-family:'Cinzel',serif;color:var(--asp)">Keyboard shortcuts</h3>
+    <h3 style="margin:0 0 12px;font-size:1rem;font-family:'Cinzel',serif;color:var(--asp)">Help &amp; shortcuts</h3>
+    <div style="font-size:0.8rem;line-height:1.5;color:var(--text);margin:0 0 12px">
+      <div style="color:var(--text-dim)">Quick guide</div>
+      <ul style="margin:6px 0 0 16px;padding:0;font-size:0.82rem;line-height:1.6;color:var(--text)">
+        <li>Use <code>@aspect</code> for one-shot routing (e.g. <code>@nyx</code>).</li>
+        <li><strong>Settings</strong> controls streaming, permissions, workspace path, and content policy.</li>
+        <li><strong>Library</strong> is models, knowledge, study/plans, memory, plugins/codex.</li>
+        <li>Writes and shell commands require explicit approval.</li>
+      </ul>
+    </div>
+    <div style="color:var(--text-dim);font-size:0.78rem;margin:0 0 6px">Keyboard shortcuts</div>
     <ul style="margin:0;padding-left:18px;font-size:0.85rem;line-height:1.75;color:var(--text)">
       <li>Enter — Send · Shift+Enter — New line</li>
       <li>Ctrl+K — Clear input</li>
       <li>Ctrl+R — Regenerate last reply</li>
-      <li>Ctrl+/ — Open Help tab</li>
+      <li>Ctrl+/ — Open this sheet</li>
       <li>Ctrl+F — Search in chat</li>
       <li>Arrow Up / Down — Recent prompts (caret at start/end)</li>
       <li>Escape — Close overlays, stop mic</li>
     </ul>
     <button type="button" class="setup-btn primary" style="margin-top:16px;width:100%" onclick="hideKeyboardShortcutsSheet()">Close</button>
-  </div>
-</div>
-
-<!-- ── Setup Overlay ───────────────────────────────────────────────────── -->
-<div id="setup-overlay">
-  <div class="setup-creator-intro" style="text-align:center;margin-bottom:14px;padding:10px;border:1px solid rgba(255,255,255,0.12);border-radius:10px;background:rgba(0,0,0,0.2)">
-    <div style="font-size:1.05rem;letter-spacing:0.06em">Meet Layla</div>
-    <div style="font-size:0.72rem;color:var(--text-dim);margin-top:6px;line-height:1.45">Hardware → model → workspace. You can revisit any time from <strong>Help</strong> or <strong>Settings</strong>.</div>
-  </div>
-  <div class="setup-modal">
-    <h2>∴ LAYLA — First Setup</h2>
-    <div class="setup-subtitle">No model found. Choose one to download or point to an existing .gguf file. Layla is local-first: your chats and files stay on this machine. Writes and shell commands require explicit approval. Read <a href="/values.md" target="_blank" rel="noopener">VALUES.md</a> and <a href="/docs/ETHICAL_AI_PRINCIPLES.md" target="_blank" rel="noopener">ethical AI principles</a> anytime.</div>
-
-    <div class="setup-section-title">Workspace folder</div>
-    <p style="font-size:0.75rem;color:var(--text-dim);line-height:1.45;margin:0 0 8px">File tools can only access paths inside this directory. Use a dedicated folder (recommended), not your whole user profile.</p>
-    <div class="setup-custom-url">
-      <input type="text" id="setup-workspace-path" placeholder="e.g. C:\Users\you\LaylaWorkspace" autocomplete="off">
-    </div>
-
-    <div class="setup-section-title">Your Hardware</div>
-    <div class="setup-hw" id="setup-hw">Detecting…</div>
-
-    <div id="setup-existing-models" style="display:none">
-      <div class="setup-section-title">Models already downloaded</div>
-      <div id="setup-existing-list"></div>
-    </div>
-
-    <div class="setup-section-title">Download a Model</div>
-    <div id="setup-model-list"><div style="color:var(--text-dim);font-size:0.8rem">Loading catalog…</div></div>
-
-    <div class="setup-section-title">Or paste a direct HuggingFace .gguf URL</div>
-    <div class="setup-custom-url">
-      <input type="text" id="setup-custom-url" placeholder="https://huggingface.co/.../model.Q4_K_M.gguf">
-    </div>
-
-    <div class="setup-progress-label" id="setup-progress-label" style="margin-top:12px"></div>
-    <div class="setup-progress"><div class="setup-progress-bar" id="setup-progress-bar"></div></div>
-    <div id="setup-done-msg"></div>
-
-    <div class="setup-btns">
-      <button class="setup-btn primary" id="setup-download-btn" onclick="startModelDownload()" disabled>Download Selected</button>
-      <button class="setup-btn" type="button" id="setup-retry-btn" style="display:none" onclick="retryModelDownload()">Retry download</button>
-      <button class="setup-btn skip" onclick="typeof dismissSetupOverlay==='function'?dismissSetupOverlay(true):document.getElementById('setup-overlay').classList.remove('visible')">Skip for now</button>
-    </div>
-
-    <div style="margin-top:18px;font-size:0.72rem;color:var(--text-dim);line-height:1.8">
-      Already have a model? Place the .gguf file in the <code>models/</code> folder and enter its filename in <b>Settings ⚙</b>.
-      <br>Or run <code>python agent/first_run.py</code> for the terminal wizard.
-    </div>
   </div>
 </div>
 
@@ -750,6 +703,7 @@ if ('serviceWorker' in navigator) {
 <script src="/layla-ui/js/chat.js"></script>
 <script src="/layla-ui/js/sidebar.js"></script>
 <script src="/layla-ui/js/panels.js"></script>
+<script src="/layla-ui/js/layla-wizard.js"></script>
 <script src="/layla-ui/js/layla-app.js"></script>
 <script src="/layla-ui/js/layla-conversations.js"></script>
 </body>

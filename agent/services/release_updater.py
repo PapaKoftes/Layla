@@ -41,9 +41,28 @@ def fetch_latest_release(repo: str) -> dict | None:
         return None
 
 
-def _pick_zip_asset(assets: list) -> dict | None:
+def _pick_zip_asset(assets: list, *, preferred_version: str = "") -> dict | None:
+    """
+    Pick the best ZIP asset from a GitHub release.
+
+    Preference order:
+    - name contains the preferred_version (if provided)
+    - name contains 'layla'
+    - name contains 'agent'
+    - fallback: first .zip
+    """
     zips = [a for a in (assets or []) if str(a.get("name", "")).lower().endswith(".zip")]
-    return zips[0] if zips else None
+    if not zips:
+        return None
+    pv = (preferred_version or "").strip().lower()
+    def _score(a: dict) -> tuple[int, int, int]:
+        name = str(a.get("name", "")).lower()
+        return (
+            1 if pv and pv in name else 0,
+            1 if "layla" in name else 0,
+            1 if "agent" in name else 0,
+        )
+    return sorted(zips, key=_score, reverse=True)[0]
 
 
 def assert_zip_extract_safe(zf: zipfile.ZipFile, dest: Path) -> None:
@@ -89,7 +108,7 @@ def apply_release_update() -> dict:
     payload = fetch_latest_release(repo)
     if not payload:
         return {"ok": False, "error": "release_fetch_failed"}
-    asset = _pick_zip_asset(payload.get("assets") or [])
+    asset = _pick_zip_asset(payload.get("assets") or [], preferred_version=str(chk.get("latest_version") or ""))
     if not asset or not asset.get("browser_download_url"):
         return {"ok": False, "error": "no_zip_asset_in_release"}
 
@@ -126,12 +145,40 @@ def apply_release_update() -> dict:
             new_agent = find_agent_package_in_extract(tdp)
             if not new_agent:
                 return {"ok": False, "error": "agent_tree_not_found_in_zip"}
+            # Build manifest of new files for stale cleanup.
+            new_files: set[Path] = set()
+            for root, _dirs, files in os.walk(new_agent):
+                rel = Path(root).relative_to(new_agent)
+                for fn in files:
+                    new_files.add((rel / fn))
+
+            # Remove stale files in destination (safe subset).
+            # This avoids old modules lingering when a file is deleted in a new release.
+            try:
+                for root, _dirs, files in os.walk(dest_agent):
+                    rel_root = Path(root).relative_to(dest_agent)
+                    for fn in files:
+                        rel = rel_root / fn
+                        if rel in new_files:
+                            continue
+                        if rel.suffix.lower() not in (".py", ".json", ".md", ".txt", ".js", ".css", ".html", ".svg"):
+                            continue
+                        try:
+                            (dest_agent / rel).unlink(missing_ok=True)
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
             for root, _dirs, files in os.walk(new_agent):
                 rel = Path(root).relative_to(new_agent)
                 target_dir = dest_agent / rel
                 target_dir.mkdir(parents=True, exist_ok=True)
                 for fn in files:
-                    shutil.copy2(Path(root) / fn, target_dir / fn)
+                    try:
+                        shutil.copy2(Path(root) / fn, target_dir / fn)
+                    except PermissionError as pe:
+                        return {"ok": False, "error": f"permission_denied: {pe}", "hint": "Run Layla as Administrator or re-run the installer update."}
     finally:
         try:
             zpath.unlink(missing_ok=True)

@@ -107,10 +107,6 @@ from layla.memory.plans_db import (
     update_layla_plan,
     update_study_progress,
 )
-from layla.memory.telemetry_db import (
-    get_model_success_rates,
-    log_model_outcome,
-)
 from layla.memory.projects_db import (
     PROJECT_LIFECYCLE_STAGES,
     create_project,
@@ -140,7 +136,9 @@ from layla.memory.tasks_db import (
     update_task as update_persistent_task,
 )
 from layla.memory.telemetry_db import (
+    get_model_success_rates,
     get_recent_telemetry_events,
+    log_model_outcome,
     log_telemetry_event,
 )
 from layla.memory.user_profile import (

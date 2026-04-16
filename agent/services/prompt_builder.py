@@ -232,7 +232,8 @@ def tool_names_for_decision(valid_tools: set[str], goal: str) -> str:
         return (-score, name)
 
     names = sorted((valid_tools - {"reason"}), key=_score)
-    return ", ".join(names)
+    # Keep "reason" visible to weak models even though it is not a registry tool.
+    return ", ".join(["reason", *names])
 
 
 def build_decision_tool_hints(valid_tools: set[str], goal: str) -> tuple[str, str]:

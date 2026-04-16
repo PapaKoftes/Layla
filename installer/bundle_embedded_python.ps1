@@ -7,7 +7,7 @@
 
 param(
   [string]$PayloadDir = "",
-  [string]$PythonVersion = "3.12.7"
+  [string]$PythonVersion = "3.12.10"
 )
 
 $ErrorActionPreference = "Stop"
@@ -59,7 +59,7 @@ Write-Host "==> Bootstrap pip (get-pip)"
 $getPip = Join-Path $env:TEMP "get-pip.py"
 try {
   Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile $getPip -UseBasicParsing
-  & $pyExe $getPip --no-warn-script-location
+  & $pyExe $getPip --no-warn-script-location --disable-pip-version-check
 } catch {
   Write-Warning "get-pip failed: $_"
 } finally {
@@ -70,7 +70,7 @@ Write-Host "==> pip install Layla requirements (may take several minutes)"
 $req = Join-Path $PayloadDir "agent\requirements.txt"
 if (Test-Path $req) {
   try {
-    & $pyExe -m pip install -r $req
+    & $pyExe -m pip install -r $req --no-warn-script-location --disable-pip-version-check --no-cache-dir
   } catch {
     Write-Warning "pip install -r requirements failed: $_"
   }

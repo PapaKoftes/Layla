@@ -42,7 +42,7 @@ def setup_status():
     available_models = [p.name for p in sorted(models_dir.glob("*.gguf"))] if models_dir.exists() else []
     hw = {}
     try:
-        from first_run import detect_gpu, detect_ram_gb, recommend_model
+        from services.setup_engine import detect_gpu, detect_ram_gb, recommend_model
 
         ram = detect_ram_gb()
         vendor, vram = detect_gpu()
@@ -111,7 +111,8 @@ def setup_status():
 def setup_models():
     """Return the model catalog for the first-run picker."""
     try:
-        from first_run import _MODELS_CATALOG, detect_gpu, detect_ram_gb, recommend_model
+        from services.setup_engine import MODELS_CATALOG as _MODELS_CATALOG
+        from services.setup_engine import detect_gpu, detect_ram_gb, recommend_model
 
         ram = detect_ram_gb()
         vendor, vram = detect_gpu()
@@ -236,7 +237,7 @@ async def setup_download(url: str, filename: str = ""):
                         except Exception:
                             pass
                     if not cfg2:
-                        from first_run import DEFAULTS, detect_gpu, detect_ram_gb, recommend_model
+                        from services.setup_engine import DEFAULTS, detect_gpu, detect_ram_gb, recommend_model
 
                         ram = detect_ram_gb()
                         vendor, vram = detect_gpu()
@@ -445,9 +446,22 @@ async def operator_quiz_submit(req: Request):
 def operator_profile():
     """Return the current operator profile (stats, maturity seed, prefs) from user_identity."""
     try:
+        from services.maturity_engine import get_milestones_status, get_state, xp_needed_for_next
         from services.operator_quiz import load_profile
 
-        return JSONResponse(load_profile())
+        prof = load_profile() or {}
+        try:
+            ms = get_state()
+            need = xp_needed_for_next(ms.rank)
+            maturity = prof.get("maturity") if isinstance(prof.get("maturity"), dict) else {}
+            maturity["xp_to_next"] = int(need) if need is not None else None
+            maturity["milestones"] = get_milestones_status(ms.phase)
+            # Ensure phase reflects engine mapping even if older user_identity stored legacy labels.
+            maturity["phase"] = str(ms.phase)
+            prof["maturity"] = maturity
+        except Exception:
+            pass
+        return JSONResponse(prof)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 

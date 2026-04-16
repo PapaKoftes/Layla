@@ -4,7 +4,9 @@
 ; Prerequisites: Inno Setup installed, ISCC.exe on PATH.
 
 #define MyAppName "Layla"
-#define MyAppVersion "1.0.0"
+#ifndef MyAppVersion
+#define MyAppVersion "0.0.0"
+#endif
 #define MyPublisher "Layla"
 #define DefaultInstallDir "{pf}\Layla"
 
@@ -39,6 +41,10 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\layla.exe"; Tasks: desktopi
 [Run]
 Filename: "{app}\layla.exe"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
+[Registry]
+; Expose install root to launcher/updater without relying on heuristics.
+Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: string; ValueName: "LAYLA_INSTALL_ROOT"; ValueData: "{app}"; Flags: preservestringtype uninsdeletevalue
+
 [Code]
 procedure InitializeWizard;
 var
@@ -47,4 +53,18 @@ begin
   DataDir := ExpandConstant('{localappdata}\Layla');
   if not DirExists(DataDir) then
     CreateDir(DataDir);
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  DataDir: String;
+begin
+  if CurUninstallStep = usUninstall then begin
+    DataDir := ExpandConstant('{localappdata}\Layla');
+    if DirExists(DataDir) then begin
+      if MsgBox('Delete per-user Layla data at:' + #13#10 + DataDir + #13#10#13#10 + 'This includes runtime_config.json, layla.db, models, and logs.', mbConfirmation, MB_YESNO) = IDYES then begin
+        DelTree(DataDir, True, True, True);
+      end;
+    end;
+  end;
 end;

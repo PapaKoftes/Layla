@@ -211,6 +211,55 @@ def test_pre_read_probe_avoids_binary_reads(monkeypatch, tmp_path):
     assert called["read"] == 0
 
 
+def test_tool_preflight_redirects_missing_args_to_reason(monkeypatch, tmp_path):
+    import agent_loop
+
+    monkeypatch.setattr(agent_loop, "system_overloaded", lambda: False)
+    monkeypatch.setattr(
+        agent_loop.runtime_safety,
+        "load_config",
+        lambda: {**_minimal_cfg(str(tmp_path)), "max_runtime_seconds": 30, "completion_max_tokens": 200},
+    )
+    monkeypatch.setattr(agent_loop.runtime_safety, "load_identity", lambda: "")
+    monkeypatch.setattr(agent_loop.runtime_safety, "load_personality", lambda: "")
+
+    # Force a bad tool decision: read_file without a path-like goal.
+    decisions = iter(
+        [
+            {"action": "tool", "tool": "read_file", "args": {}, "objective_complete": False, "priority_level": "high"},
+        ]
+    )
+    monkeypatch.setattr(agent_loop, "_llm_decision", lambda *a, **k: next(decisions))
+    long_ok = "ok " + ("done. " * 60)
+    monkeypatch.setattr(agent_loop, "run_completion", lambda *a, **k: {"choices": [{"message": {"content": long_ok}}]})
+    monkeypatch.setattr(agent_loop.orchestrator, "select_aspect", lambda *a, **k: {"id": "morrigan", "name": "Morrigan"})
+    monkeypatch.setattr(agent_loop.orchestrator, "should_deliberate", lambda *a, **k: False)
+    monkeypatch.setattr(agent_loop, "_save_outcome_memory", lambda *a, **k: None)
+    monkeypatch.setattr(agent_loop, "_semantic_recall", lambda *a, **k: "")
+    monkeypatch.setattr(agent_loop, "_maybe_save_echo_memory", lambda *a, **k: None)
+
+    # If the actual read_file tool is called, fail.
+    def _boom(*_a, **_k):
+        raise AssertionError("read_file should not be executed when preflight fails")
+
+    monkeypatch.setitem(agent_loop.TOOLS["read_file"], "fn", _boom)
+
+    result = agent_loop.autonomous_run(
+        goal="please explain your full capabilities",
+        context="",
+        workspace_root=str(tmp_path),
+        allow_write=False,
+        allow_run=False,
+        conversation_history=[],
+        aspect_id="",
+        show_thinking=False,
+    )
+    assert result.get("status") == "finished"
+    steps = result.get("steps") or []
+    assert any(s.get("action") == "preflight" for s in steps)
+    assert any(s.get("action") == "reason" for s in steps)
+
+
 def test_pre_read_probe_runs_only_once_per_path(monkeypatch, tmp_path):
     import agent_loop
     from layla.tools.registry import set_effective_sandbox

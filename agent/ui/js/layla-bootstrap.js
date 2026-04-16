@@ -97,6 +97,45 @@
   }
   window.bindChatInputNow = bindChatInputNow;
   bindChatInputNow();
+  // ── Help & shortcuts sheet (Ctrl+/) ────────────────────────────────────────
+  function showKeyboardShortcutsSheet() {
+    var el = document.getElementById('keyboard-shortcuts-sheet');
+    if (!el) return;
+    el.style.display = 'flex';
+  }
+  function hideKeyboardShortcutsSheet() {
+    var el = document.getElementById('keyboard-shortcuts-sheet');
+    if (!el) return;
+    el.style.display = 'none';
+  }
+  window.showKeyboardShortcutsSheet = showKeyboardShortcutsSheet;
+  window.hideKeyboardShortcutsSheet = hideKeyboardShortcutsSheet;
+
+  document.addEventListener('keydown', function (e) {
+    try {
+      var k = (e.key || '').toLowerCase();
+      // Ctrl+/ opens help sheet
+      if ((e.ctrlKey || e.metaKey) && (k === '/' || e.code === 'Slash')) {
+        e.preventDefault();
+        e.stopPropagation();
+        showKeyboardShortcutsSheet();
+        return;
+      }
+      // Ctrl+K focuses the conversation search (spotlight-like)
+      if ((e.ctrlKey || e.metaKey) && k === 'k') {
+        e.preventDefault();
+        e.stopPropagation();
+        try { if (typeof window.toggleChatRailMobile === 'function') window.toggleChatRailMobile(); } catch (_) {}
+        var s = document.getElementById('chat-rail-search');
+        if (s) { s.focus(); s.select && s.select(); }
+        return;
+      }
+      // Escape closes overlays
+      if (k === 'escape') {
+        hideKeyboardShortcutsSheet();
+      }
+    } catch (_) {}
+  }, true);
   /* Right panel: DOM switching lives here so tabs work even if the huge main script throws before assigning handlers. */
   function __laylaApplyRcpMain(main) {
     var root = document.getElementById('layla-right-panel');

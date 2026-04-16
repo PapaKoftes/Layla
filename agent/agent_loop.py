@@ -337,6 +337,47 @@ def _emit_tool_start(ux_state_queue: queue.Queue | None, tool_name: str) -> None
             logger.debug("emit_tool_start put failed: %s", e)
 
 
+def _summarize_tool_result(result: object, max_len: int = 220) -> tuple[bool | None, str]:
+    """Small, UI-safe summary for streaming tool trace."""
+    ok: bool | None = None
+    try:
+        if isinstance(result, dict):
+            if "ok" in result:
+                ok = bool(result.get("ok"))
+            msg = (
+                result.get("message")
+                or result.get("error")
+                or result.get("reason")
+                or result.get("status")
+                or ""
+            )
+            s = msg if isinstance(msg, str) else str(msg)
+        elif isinstance(result, str):
+            s = result
+        else:
+            s = str(result)
+    except Exception:
+        s = ""
+    s = (s or "").strip().replace("\n", " ")
+    if len(s) > max_len:
+        s = s[: max_len - 3].rstrip() + "..."
+    return ok, s
+
+
+def _emit_tool_step(ux_state_queue: queue.Queue | None, tool_name: str, result: object) -> None:
+    """Emit a tool_step event so the UI can show step-by-step progress during streaming."""
+    if ux_state_queue is None:
+        return
+    ok, summary = _summarize_tool_result(result)
+    try:
+        ux_state_queue.put(
+            {"_type": "tool_step", "phase": "end", "tool": tool_name, "ok": ok, "summary": summary},
+            block=False,
+        )
+    except Exception as e:
+        logger.debug("emit_tool_step put failed: %s", e)
+
+
 def _emit_context_window_ux(
     ux_state_queue: queue.Queue | None,
     conversation_history: list | None,
@@ -520,10 +561,6 @@ def _quick_reply_for_trivial_turn(goal: str) -> str:
         exact = g[len("say exactly ") :].strip().strip("\"'`")
         return exact[:120]
 
-    if re.match(r"^(hi|hey|hello)\b", gl):
-        return "Hey."
-    if re.match(r"^(thanks|thank you)\b", gl):
-        return "You're welcome."
     if gl in {"ok", "okay", "yes", "yep", "no", "nope"}:
         return "Got it."
     for pat in _PHATIC_QUICK_PATTERNS:
@@ -1730,11 +1767,9 @@ def _build_system_head(
     if not _skip_expensive:
         try:
             if cfg.get("golden_examples_enabled", True):
-                from services.golden_examples import (
-                    bump_usage as _ge_bump_usage,
-                    format_for_prompt as _ge_format,
-                    retrieve_relevant_examples as _ge_retrieve,
-                )
+                from services.golden_examples import bump_usage as _ge_bump_usage
+                from services.golden_examples import format_for_prompt as _ge_format
+                from services.golden_examples import retrieve_relevant_examples as _ge_retrieve
 
                 ex = _ge_retrieve(goal or "", "agent", k=2)
                 if ex:
@@ -1811,6 +1846,8 @@ def _build_system_head(
             budgets["memory"] = min(int(budgets.get("memory", 800)), int(tier_budgets.get("memory", 800)))
             budgets["knowledge"] = min(int(budgets.get("knowledge", 800)), int(tier_budgets.get("knowledge", 800)))
             budgets["workspace_context"] = min(int(budgets.get("workspace_context", 400)), int(tier_budgets.get("workspace", 400)))
+            # Keep legacy section key in sync: build_system_prompt budgets are keyed by section name.
+            budgets["agent_state"] = int(budgets["workspace_context"])
             _sys_cap = int(tier_budgets.get("identity", 200)) + int(tier_budgets.get("personality", 400)) + int(tier_budgets.get("policy", 300))
             budgets["system_instructions"] = min(int(budgets.get("system_instructions", 800)), max(400, _sys_cap * 2))
         except Exception as _tb_e:
@@ -2031,20 +2068,36 @@ def _summarize_steps_deterministic(steps: list, *, keep_last: int = 5, max_lines
     return "Steps completed so far (compressed):\n" + "\n".join(lines)
 
 
-def _get_tools_for_goal(goal: str) -> frozenset:
+def _get_tools_for_goal(goal: str, *, context: str = "", workspace_root: str = "", state: dict | None = None) -> frozenset:
     """
     Return tool names for this turn. Applies OpenClaw-style tool_policy (profile,
     tools_allow/deny, groups) then intent-based subset when tool_routing_enabled.
     """
     try:
         cfg = runtime_safety.load_config()
-        from services.tool_policy import deterministic_route_tools, resolve_effective_tools
+        from services.intent_router import route_intent
+        from services.tool_policy import (
+            deterministic_route_tools_for_task_type,
+            resolve_effective_tools_for_route,
+        )
 
         skip_intent = not cfg.get("tool_routing_enabled", True)
-        names = set(resolve_effective_tools(cfg, goal, TOOLS, skip_intent_filter=skip_intent))
-        # Deterministic routing (task-type toolset) — reduces degrees of freedom on weak models.
+        rd = None
+        if state is not None and isinstance(state, dict):
+            existing = state.get("route_decision")
+            if isinstance(existing, dict) and (state.get("original_goal") or state.get("goal")) == goal:
+                rd = existing
+        if rd is None:
+            rd = route_intent(goal, context=context, workspace_root=workspace_root)
+            if state is not None and isinstance(state, dict):
+                state["route_decision"] = rd.to_dict()
+        else:
+            # convert back into an object-like shape for downstream
+            from services.intent_router import RouteDecision
+            rd = RouteDecision(**rd)
+        names = set(resolve_effective_tools_for_route(cfg, rd, goal, TOOLS, skip_intent_filter=skip_intent))
         try:
-            det = deterministic_route_tools(cfg, goal, TOOLS)
+            det = deterministic_route_tools_for_task_type(cfg, rd.task_type, TOOLS)
             if det:
                 names = set(names) & set(det)
         except Exception:
@@ -2495,6 +2548,15 @@ def _llm_decision(
     except Exception as _exc:
         logger.debug("agent_loop: observation_hint failed: %s", _exc, exc_info=False)
 
+    route_hint = ""
+    try:
+        rd = state.get("route_decision") if isinstance(state, dict) else None
+        hints = (rd or {}).get("routing_hints") if isinstance(rd, dict) else None
+        if isinstance(hints, list) and hints:
+            route_hint = "Routing hints:\n- " + "\n- ".join(str(x)[:220] for x in hints[:4]) + "\n"
+    except Exception as _exc:
+        logger.debug("agent_loop: route_hint failed: %s", _exc, exc_info=False)
+
     no_progress_hint = ""
     try:
         from services.tool_loop_detection import consume_prompt_hint
@@ -2565,7 +2627,7 @@ def _llm_decision(
     if mcp_tool_hint:
         prompt_context = prompt_context + mcp_tool_hint + "\n\n"
 
-    valid_tools = _get_tools_for_goal(goal)
+    valid_tools = _get_tools_for_goal(goal, context=context, workspace_root=state.get("workspace_root") or "", state=state)
     # Decision policy caps: enforce safety/verify gates and tool restrictions at the prompt boundary.
     try:
         if cfg_pre.get("decision_policy_enabled", True):
@@ -2608,6 +2670,7 @@ def _llm_decision(
         f"{aspect_block}"
         f"{bias_hint}"
         f"{observation_hint}"
+        f"{route_hint}"
         f"{tool_first_hint}"
         f"{pipeline_debug_hint}"
         f"{prompt_context}"
@@ -2616,12 +2679,12 @@ def _llm_decision(
         f"{reframe_instruction}"
         f"{think_trace_hint}"
         f"{_edit_hint}"
-        "Choose one: run one tool to make progress, internal think step, or reply (reason). "
-        f"Tools: {tools_list}. "
+        "Choose exactly one: reply (reason), internal plan (think), or run one tool. "
+        f"Available actions/tools: {tools_list}. "
         "Output exactly one JSON line, no other text. "
         'Format: {"action":"tool","tool":"read_file","priority_level":"high"} or {"action":"think","thought":"..."} or {"action":"reason","objective_complete":true}. '
-        'Examples: {"action":"tool","tool":"read_file","args":{"path":"agent/main.py"},"priority_level":"high","objective_complete":false} '
-        '{"action":"reason","priority_level":"medium","objective_complete":true} '
+        'Examples: {"action":"reason","priority_level":"medium","objective_complete":true} '
+        '{"action":"tool","tool":"read_file","args":{"path":"agent/main.py"},"priority_level":"high","objective_complete":false} '
         '{"action":"think","thought":"Suspect the failure is in router mounting; inspect main.py includes.","priority_level":"medium"}. '
         "Include priority_level: \"low\" or \"medium\" or \"high\" for the chosen action. "
         "Optionally impact_estimate, effort_estimate, risk_estimate (brief). "
@@ -2632,9 +2695,10 @@ def _llm_decision(
         if cfg_tmp.get("decision_few_shot_enabled", True):
             prompt += (
                 "Few-shot examples (copy the shape, adapt tool/args):\n"
+                '{"action":"reason","thought":"I have enough context to answer.","priority_level":"medium","objective_complete":true}\n'
                 '{"action":"tool","tool":"read_file","args":{"path":"agent/main.py"},"priority_level":"high","objective_complete":false}\n'
                 '{"action":"tool","tool":"grep_code","args":{"pattern":"def _llm_decision","path":"agent"},"priority_level":"medium","objective_complete":false}\n'
-                '{"action":"reason","thought":"I have enough context to answer.","priority_level":"medium","objective_complete":true}\n'
+                '{"action":"reason","thought":"Operator asked about Layla (capabilities/identity). Reply directly without tools.","priority_level":"medium","objective_complete":true}\n'
             )
     except Exception:
         pass
@@ -3011,7 +3075,8 @@ def _autonomous_run_impl_core(
             _cfg_t = runtime_safety.load_config()
             if not _cfg_t.get("telemetry_enabled", True):
                 return
-            from services.telemetry import log_event as _tel, log_model_outcome as _log_mo
+            from services.telemetry import log_event as _tel
+            from services.telemetry import log_model_outcome as _log_mo
 
             _lat_ms = max(0.0, (time.time() - _run_t0) * 1000.0)
             _model_used = str(_cfg_t.get("model_filename") or "")
@@ -3185,6 +3250,13 @@ def _autonomous_run_impl_core(
         plan_approved=plan_approved,
         steps_container=_steps_list,
     )
+    state["workspace_root"] = (workspace_root or "").strip()
+    try:
+        from services.intent_router import route_intent
+
+        state["route_decision"] = route_intent(goal, context=context or "", workspace_root=workspace_root or "").to_dict()
+    except Exception:
+        pass
     try:
         from shared_state import get_last_coordinator_trace
 
@@ -3599,6 +3671,8 @@ def _autonomous_run_impl_core(
         decision = _llm_decision(
             goal_for_decision, state, context, active_aspect, show_thinking, conversation_history or []
         )
+        if decision and isinstance(decision, dict):
+            state["last_decision"] = dict(decision)
         try:
             from services.observability import log_agent_decision
             log_agent_decision(duration_ms=(time.perf_counter() - _t0) * 1000)
@@ -3704,6 +3778,33 @@ def _autonomous_run_impl_core(
                 state["last_tool_used"] = intent
                 goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                 continue
+
+        # D0: Preflight — if the model picked an un-runnable tool (missing required args),
+        # redirect to a conversational reply instead of burning tool budget or producing parse_failed.
+        if intent not in ("reason", "finish", "wakeup", "none") and intent in _VALID_TOOLS:
+            try:
+                from services.tool_preflight import preflight_tool
+
+                pf = preflight_tool(intent=intent, decision=decision, goal=state.get("original_goal") or goal, workspace_root=workspace or "")
+                state["preflight_ok"] = bool(pf.ok)
+                state["preflight_reason"] = pf.reason if not pf.ok else ""
+                if not pf.ok:
+                    state.setdefault("steps", []).append(
+                        {
+                            "action": "preflight",
+                            "result": {
+                                "ok": False,
+                                "reason": "missing_required_args",
+                                "message": pf.reason,
+                                "suggested_action": pf.suggested_action,
+                                "missing": pf.missing or [],
+                                "tool": intent,
+                            },
+                        }
+                    )
+                    intent = "reason"
+            except Exception as _pf_exc:
+                logger.debug("tool_preflight skipped: %s", _pf_exc, exc_info=False)
 
         # ── D1: Concurrent read-only tool batch ───────────────────────────────
         # The LLM may declare additional parallel tools in decision["batch_tools"].
@@ -3816,7 +3917,7 @@ def _autonomous_run_impl_core(
         if intent not in ("reason", "finish", "wakeup") and intent in _VALID_TOOLS:
             from services.tool_policy import tool_allowed
 
-            _vt = _get_tools_for_goal(goal)
+            _vt = _get_tools_for_goal(goal, context=context or "", workspace_root=workspace or "", state=state)
             try:
                 if cfg.get("decision_policy_enabled", True):
                     from services.decision_policy import apply_caps_to_valid_tools as _apply_caps_to_valid_tools
@@ -4735,7 +4836,10 @@ def _autonomous_run_impl_core(
             )
             _register_exact_tool_call(state, "mcp_tools_call", decision)
             runtime_safety.log_execution("mcp_tools_call", _mcp_args)
-            state["steps"].append({"action": "mcp_tools_call", "result": _maybe_validate_tool_output("mcp_tools_call", result)})
+            _val = _maybe_validate_tool_output("mcp_tools_call", result)
+            state["steps"].append({"action": "mcp_tools_call", "result": _val})
+            if show_thinking:
+                _emit_tool_step(ux_state_queue, "mcp_tools_call", _val)
             state["last_tool_used"] = "mcp_tools_call"
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -4750,7 +4854,10 @@ def _autonomous_run_impl_core(
             result = TOOLS[intent]["fn"](**args) if args else TOOLS[intent]["fn"]()
             _register_exact_tool_call(state, intent, decision)
             runtime_safety.log_execution(intent, args)
-            state["steps"].append({"action": intent, "result": _maybe_validate_tool_output(intent, result)})
+            _val = _maybe_validate_tool_output(intent, result)
+            state["steps"].append({"action": intent, "result": _val})
+            if show_thinking:
+                _emit_tool_step(ux_state_queue, intent, _val)
             state["last_tool_used"] = intent
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -4769,7 +4876,10 @@ def _autonomous_run_impl_core(
             result = TOOLS["git_commit"]["fn"](**args)
             _register_exact_tool_call(state, "git_commit", decision)
             runtime_safety.log_execution("git_commit", args)
-            state["steps"].append({"action": "git_commit", "result": _maybe_validate_tool_output("git_commit", result)})
+            _val = _maybe_validate_tool_output("git_commit", result)
+            state["steps"].append({"action": "git_commit", "result": _val})
+            if show_thinking:
+                _emit_tool_step(ux_state_queue, "git_commit", _val)
             state["last_tool_used"] = "git_commit"
             _run_verification_after_tool(state, "git_commit", result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
@@ -4783,7 +4893,10 @@ def _autonomous_run_impl_core(
             state["tool_calls"] += 1
             result = TOOLS["get_project_context"]["fn"]()
             _register_exact_tool_call(state, "get_project_context", decision)
-            state["steps"].append({"action": "get_project_context", "result": _maybe_validate_tool_output("get_project_context", result)})
+            _val = _maybe_validate_tool_output("get_project_context", result)
+            state["steps"].append({"action": "get_project_context", "result": _val})
+            if show_thinking:
+                _emit_tool_step(ux_state_queue, "get_project_context", _val)
             state["last_tool_used"] = "get_project_context"
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -4799,7 +4912,10 @@ def _autonomous_run_impl_core(
                 lifecycle_stage=args.get("lifecycle_stage", ""),
             )
             _register_exact_tool_call(state, "update_project_context", decision)
-            state["steps"].append({"action": "update_project_context", "result": _maybe_validate_tool_output("update_project_context", result)})
+            _val = _maybe_validate_tool_output("update_project_context", result)
+            state["steps"].append({"action": "update_project_context", "result": _val})
+            if show_thinking:
+                _emit_tool_step(ux_state_queue, "update_project_context", _val)
             state["last_tool_used"] = "update_project_context"
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             continue
@@ -5244,6 +5360,60 @@ def _autonomous_run_impl_core(
             except Exception as _re:
                 logger.debug("resource_chunking check failed: %s", _re)
 
+    # Fallback: when a tool handler couldn't extract required arguments (e.g. file
+    # path from a conversational message), fall back to a proper LLM response instead
+    # of returning the opaque "I couldn't understand the request" error.
+    if state.get("status") == "parse_failed":
+        logger.info("parse_failed fallback: generating conversational response for %r", (state.get("original_goal") or "")[:120])
+        try:
+            _fb_head = _build_system_head(
+                goal=state.get("original_goal") or goal,
+                aspect=active_aspect,
+                workspace_root=workspace,
+                sub_goals=state.get("sub_goals"),
+                state=state,
+                conversation_history=conversation_history or [],
+                reasoning_mode=state.get("reasoning_mode", "light"),
+                _precomputed_recall=_precomputed_recall,
+                persona_focus_id=persona_focus_id,
+                cognition_workspace_roots=state.get("cognition_workspace_roots"),
+            )
+            _fb_prompt = orchestrator.build_standard_prompt(
+                message=state.get("original_goal") or goal,
+                aspect=active_aspect,
+                context=context,
+                head=_fb_head,
+                convo_block="",
+            )
+            if stream_final:
+                state["status"] = "stream_pending"
+                state["goal_for_stream"] = state.get("original_goal") or goal
+                state["reasoning_mode_for_stream"] = state.get("reasoning_mode", "light")
+                state["precomputed_recall_for_stream"] = _precomputed_recall
+                state["stream_workspace_root"] = workspace
+                state["cognition_workspace_roots_for_stream"] = state.get("cognition_workspace_roots") or []
+            else:
+                max_tok = cfg.get("completion_max_tokens", 256)
+                _fb_out = run_completion(_fb_prompt, max_tokens=max_tok, temperature=temperature, stream=False)
+                _fb_text = ""
+                if isinstance(_fb_out, str):
+                    _fb_text = _fb_out
+                elif isinstance(_fb_out, dict):
+                    _fb_text = (_fb_out.get("choices") or [{}])[0].get("text") or (_fb_out.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+                _fb_text = (_fb_text or "").strip()
+                _fb_text = truncate_at_next_user_turn(_fb_text)
+                _fb_text = _polish_output(_fb_text, cfg)
+                if _fb_text and not _is_junk_reply(_fb_text):
+                    state["steps"].append({
+                        "action": "reason",
+                        "result": _fb_text,
+                        "deliberated": False,
+                        "aspect": active_aspect.get("id"),
+                    })
+                    state["status"] = "finished"
+        except Exception as _fb_exc:
+            logger.warning("parse_failed fallback LLM call failed: %s", _fb_exc)
+
     # D5: runtime timeout also warrants a cancel message
     if state.get("status") == "timeout" and conversation_history is not None:
         _inject_cancel_message(conversation_history, "agent", "hit runtime limit")
@@ -5298,6 +5468,27 @@ def _autonomous_run_impl_core(
             ).start()
     if research_mode:
         set_effective_sandbox(None)
+
+    # Persist routing telemetry (local-only) for debugging misroutes and regressions.
+    try:
+        rd = state.get("route_decision") if isinstance(state.get("route_decision"), dict) else {}
+        from layla.memory.routing_telemetry import log_route_telemetry
+
+        log_route_telemetry(
+            conversation_id=str(state.get("conversation_id") or "") or None,
+            goal=str(state.get("original_goal") or state.get("goal") or ""),
+            task_type=str(rd.get("task_type") or ""),
+            is_meta_self=bool(rd.get("is_meta_self")),
+            has_workspace_signals=bool(rd.get("has_workspace_signals")),
+            decision_action=str((state.get("last_decision") or {}).get("action") or ""),
+            decision_tool=str((state.get("last_decision") or {}).get("tool") or ""),
+            preflight_ok=state.get("preflight_ok") if "preflight_ok" in state else None,
+            preflight_reason=str(state.get("preflight_reason") or "") or None,
+            final_status=str(state.get("status") or "") or None,
+            parse_failed=bool(state.get("status") == "parse_failed"),
+        )
+    except Exception:
+        pass
 
     _emit_run_telemetry(state, state.get("status") in ("finished", "plan_completed"))
 

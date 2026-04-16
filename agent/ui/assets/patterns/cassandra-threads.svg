@@ -1,15 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <rect width="256" height="256" fill="none"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="none"/>
   <g stroke="rgba(255,255,255,0.10)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <!-- web threads -->
-    <path d="M128 16v224"/>
-    <path d="M16 128h224"/>
-    <path d="M44 44l168 168"/>
-    <path d="M212 44L44 212"/>
-    <circle cx="128" cy="128" r="84"/>
-    <circle cx="128" cy="128" r="44"/>
+    <!-- oracle threads -->
+    <path d="M256 32v448" opacity="0.82"/>
+    <path d="M32 256h448" opacity="0.82"/>
+    <path d="M88 88l336 336" opacity="0.75"/>
+    <path d="M424 88L88 424" opacity="0.75"/>
+    <circle cx="256" cy="256" r="176" opacity="0.28"/>
+    <circle cx="256" cy="256" r="96" opacity="0.22"/>
+
     <!-- eye motif -->
-    <path d="M64 128c18-22 42-34 64-34s46 12 64 34c-18 22-42 34-64 34s-46-12-64-34z"/>
-    <circle cx="128" cy="128" r="10"/>
+    <path d="M120 256c36-42 84-66 136-66s100 24 136 66c-36 42-84 66-136 66s-100-24-136-66z"/>
+    <circle cx="256" cy="256" r="22"/>
+    <circle cx="256" cy="256" r="140" opacity="0.18"/>
+
+    <!-- thread knots -->
+    <path d="M156 132l42 16-16 42-42-16z" opacity="0.6"/>
+    <path d="M330 332l46 18-18 46-46-18z" opacity="0.6"/>
   </g>
 </svg>

@@ -195,6 +195,25 @@ def _migrate_impl() -> None:
         """)
         db.execute("CREATE INDEX IF NOT EXISTS idx_golden_examples_ts ON golden_examples(ts)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_golden_examples_task_score ON golden_examples(task_type, outcome_score)")
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS route_telemetry (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                conversation_id TEXT,
+                goal TEXT,
+                task_type TEXT,
+                is_meta_self INTEGER DEFAULT 0,
+                has_workspace_signals INTEGER DEFAULT 0,
+                decision_action TEXT,
+                decision_tool TEXT,
+                preflight_ok INTEGER,
+                preflight_reason TEXT,
+                final_status TEXT,
+                parse_failed INTEGER DEFAULT 0
+            )
+        """)
+        db.execute("CREATE INDEX IF NOT EXISTS idx_route_telemetry_created_at ON route_telemetry(created_at)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_route_telemetry_cid_id_desc ON route_telemetry(conversation_id, id DESC)")
         db.commit()
 
     # Optional: add learning_type (Phase 4). Backward compatible; existing rows default to fact.
