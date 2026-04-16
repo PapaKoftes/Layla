@@ -25,3 +25,24 @@ See `installer/build_installer.ps1` and `installer/layla.iss`. Data lives under 
 ## Skill packs
 
 Bundled manifests live under `skill_packs/`. Install more with `POST /skill_packs/install` `{ "url": "<git url>" }`.
+
+---
+
+## Quality enforcement (recommended)
+
+For **coding-agent style** reliability (completion gate + deterministic tool routing), ensure your real `runtime_config.json` — not only the example file — contains at least:
+
+```json
+{
+  "completion_gate_enabled": true,
+  "deterministic_tool_routes_enabled": true
+}
+```
+
+If these are omitted, older code paths default them off and enforcement is only partial. Copy from `agent/runtime_config.example.json` for the full template. Built-in `load_config()` defaults also enable both when the key is missing (see `agent/runtime_safety.py`), but an explicit `false` in your file still wins.
+
+---
+
+## Screenshots and demos for contributors
+
+To refresh README visuals, see [media/README.md](media/README.md).
