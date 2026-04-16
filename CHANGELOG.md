@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Documentation & GitHub presence
+
+- Professional root **README**: centered hero, CI badge, screenshots (`readme-assets/`), table of contents, quality-enforcement callout, clone URLs, doc hub link.
+- Expanded **docs/README.md** (documentation index) and **docs/media/README.md** (how to record demo GIFs/screenshots).
+- **docs/GETTING_STARTED.md**: quality enforcement keys; link to media guide.
+- **CONTRIBUTING.md**: canonical clone URL for GitHub.
+
 ### Quality parity hardening
 - **Speculative decoding (local llama.cpp):** `services/llm_gateway.py` now optionally enables prompt-lookup speculative decoding (`speculative_decoding_enabled`, `speculative_num_pred_tokens`) for faster local inference when supported.
 - **Decision reliability:** decision parsing now supports fenced/multiline JSON with simple repairs; optional `decision_model` routes decision JSON generation to a dedicated structured-output GGUF; decision prompt appends few-shot JSON shapes when `decision_few_shot_enabled` is enabled.

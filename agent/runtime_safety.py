@@ -257,6 +257,9 @@ def load_config() -> dict:
             "system_head_budget_ratio": 0.35,
             "tiered_prompt_budget_enabled": True,
             "tool_routing_enabled": True,
+            # Quality enforcement: match runtime_config.example.json; explicit false in runtime_config.json still overrides.
+            "deterministic_tool_routes_enabled": True,
+            "completion_gate_enabled": True,
             "tools_profile": "full",
             "tools_allow": [],
             "tools_deny": [],
