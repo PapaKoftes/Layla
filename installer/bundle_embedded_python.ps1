@@ -7,6 +7,7 @@
 
 param(
   [string]$PayloadDir = "",
+  # Default to 3.12 (embeddable distribution is available; matches supported runtime).
   [string]$PythonVersion = "3.12.10"
 )
 
@@ -16,7 +17,7 @@ if (-not $PayloadDir) {
 }
 $PyRoot = Join-Path $PayloadDir "python"
 if (-not (Test-Path $PayloadDir)) {
-  Write-Warning "PayloadDir not found: $PayloadDir — skip embedded Python bundle."
+  Write-Warning "PayloadDir not found: $PayloadDir - skip embedded Python bundle."
   exit 0
 }
 
@@ -25,16 +26,17 @@ $url = "https://www.python.org/ftp/python/$PythonVersion/$zipName"
 $null = New-Item -ItemType Directory -Force -Path $PyRoot
 $zipPath = Join-Path $env:TEMP $zipName
 
+$download_ok = $true
 try {
   Write-Host "==> Downloading embeddable Python $PythonVersion"
   Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
   Expand-Archive -Path $zipPath -DestinationPath $PyRoot -Force
 } catch {
-  Write-Warning "Embedded Python download/extract failed: $_ — build continues without bundle."
-  exit 0
-} finally {
-  if (Test-Path $zipPath) { Remove-Item $zipPath -Force -ErrorAction SilentlyContinue }
+  $download_ok = $false
+  Write-Warning "Embedded Python download/extract failed: $_ - build continues without bundle."
 }
+if (Test-Path $zipPath) { Remove-Item $zipPath -Force -ErrorAction SilentlyContinue }
+if (-not $download_ok) { exit 0 }
 
 $pth = Get-ChildItem -Path $PyRoot -Filter "python*._pth" | Select-Object -First 1
 if ($pth) {
@@ -62,15 +64,31 @@ try {
   & $pyExe $getPip --no-warn-script-location --disable-pip-version-check
 } catch {
   Write-Warning "get-pip failed: $_"
-} finally {
-  if (Test-Path $getPip) { Remove-Item $getPip -Force -ErrorAction SilentlyContinue }
 }
+if (Test-Path $getPip) { Remove-Item $getPip -Force -ErrorAction SilentlyContinue }
 
 Write-Host "==> pip install Layla requirements (may take several minutes)"
 $req = Join-Path $PayloadDir "agent\requirements.txt"
 if (Test-Path $req) {
   try {
-    & $pyExe -m pip install -r $req --no-warn-script-location --disable-pip-version-check --no-cache-dir
+    # llama-cpp-python is the most failure-prone dependency (native build toolchain).
+    # Prefer a prebuilt wheel; if none is available, warn and continue so the payload can still be built.
+    & $pyExe -m pip install scikit-build-core --no-warn-script-location --disable-pip-version-check --no-cache-dir
+    & $pyExe -m pip install "llama-cpp-python>=0.3.1,<0.4" --only-binary=:all: --no-warn-script-location --disable-pip-version-check --no-cache-dir
+
+    $tmpReq = Join-Path $env:TEMP ("layla_requirements_no_llama_" + [guid]::NewGuid().ToString("N") + ".txt")
+    try {
+      $lines = Get-Content -Path $req
+      $filtered = @()
+      foreach ($line in $lines) {
+        if ($line -match '^\s*llama-cpp-python\b') { continue }
+        $filtered += $line
+      }
+      Set-Content -Path $tmpReq -Value ($filtered -join "`r`n") -Encoding UTF8
+      & $pyExe -m pip install -r $tmpReq --no-warn-script-location --disable-pip-version-check --no-cache-dir
+    } finally {
+      if (Test-Path $tmpReq) { Remove-Item $tmpReq -Force -ErrorAction SilentlyContinue }
+    }
   } catch {
     Write-Warning "pip install -r requirements failed: $_"
   }
