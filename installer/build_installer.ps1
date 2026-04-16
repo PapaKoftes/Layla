@@ -52,7 +52,7 @@ On first launch, copy runtime_config.example.json to that folder as runtime_conf
 
 $iscc = Get-Command iscc -ErrorAction SilentlyContinue
 if (-not $iscc) {
-  Write-Warning "Inno Setup compiler (iscc.exe) not on PATH — payload ready at $Payload. Install Inno Setup and run: iscc installer\layla.iss"
+  Write-Warning ("Inno Setup compiler (iscc.exe) not on PATH - payload ready at {0}. Install Inno Setup and run: iscc installer\\layla.iss" -f $Payload)
   exit 0
 }
 
