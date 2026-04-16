@@ -1,15 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <rect width="256" height="256" fill="none"/>
-  <g stroke="rgba(255,255,255,0.10)" stroke-width="2" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="none"/>
+  <g stroke="rgba(255,255,255,0.10)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
     <!-- ripples -->
-    <circle cx="128" cy="128" r="20"/>
-    <circle cx="128" cy="128" r="48"/>
-    <circle cx="128" cy="128" r="80"/>
-    <circle cx="128" cy="128" r="112"/>
+    <circle cx="256" cy="256" r="36"/>
+    <circle cx="256" cy="256" r="86"/>
+    <circle cx="256" cy="256" r="140"/>
+    <circle cx="256" cy="256" r="196"/>
+    <circle cx="256" cy="256" r="244" opacity="0.4"/>
+
+    <!-- harmonic weave -->
+    <path d="M0 256c64-64 128-64 192 0s128 64 192 0 128-64 192 0" opacity="0.6"/>
+    <path d="M0 300c72-44 144-44 216 0s144 44 216 0 144-44 216 0" opacity="0.45"/>
+
     <!-- mirror shards -->
-    <path d="M48 64l24 8-8 24-24-8z" />
-    <path d="M192 56l32 12-12 32-32-12z" />
-    <path d="M40 176l36 10-10 36-36-10z" />
-    <path d="M176 184l28 8-8 28-28-8z" />
+    <path d="M84 112l54 18-18 54-54-18z" />
+    <path d="M380 96l72 26-26 72-72-26z" />
+    <path d="M64 352l84 24-24 84-84-24z" />
+    <path d="M352 368l64 18-18 64-64-18z" />
+    <path d="M232 64l46 14-14 46-46-14z" opacity="0.75"/>
   </g>
 </svg>

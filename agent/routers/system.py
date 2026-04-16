@@ -120,9 +120,13 @@ def update_check():
     try:
         import runtime_safety
         from services.auto_updater import check_update
+        from services.release_updater import is_installed_mode
 
         cfg = runtime_safety.load_config()
-        return check_update(__version__, str(cfg.get("github_repo") or ""))
+        out = check_update(__version__, str(cfg.get("github_repo") or ""))
+        if isinstance(out, dict):
+            out["update_channel"] = "release" if is_installed_mode() else "git"
+        return out
     except Exception as e:
         return {"ok": False, "error": f"update_check_failed: {e}"}
 

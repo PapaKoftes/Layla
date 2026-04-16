@@ -30,9 +30,10 @@ try {
 }
 finally { Pop-Location }
 
-# Optional embedded Python (zero local Python prereq for end users). Set env LAYLA_BUNDLE_EMBEDDED_PYTHON=1
-if ($env:LAYLA_BUNDLE_EMBEDDED_PYTHON -eq "1") {
-  Write-Host "==> Bundling embeddable Python (LAYLA_BUNDLE_EMBEDDED_PYTHON=1)"
+# Embedded Python (zero local Python prereq for end users).
+# Default: ON. Set env LAYLA_BUNDLE_EMBEDDED_PYTHON=0 to skip.
+if ($env:LAYLA_BUNDLE_EMBEDDED_PYTHON -ne "0") {
+  Write-Host "==> Bundling embeddable Python (set LAYLA_BUNDLE_EMBEDDED_PYTHON=0 to skip)"
   try {
     & (Join-Path $PSScriptRoot "bundle_embedded_python.ps1") -PayloadDir $Payload
   } catch {
@@ -56,5 +57,27 @@ if (-not $iscc) {
 }
 
 Write-Host "==> Compile installer with Inno Setup"
-& iscc (Join-Path $PSScriptRoot "layla.iss")
+$ver = ""
+try {
+  $ver = (python -c "import sys; sys.path.insert(0,'agent'); import version; print(version.__version__)" | Select-Object -First 1).Trim()
+} catch {
+  $ver = ""
+}
+if (-not $ver) { $ver = "0.0.0" }
+& iscc "/DMyAppVersion=$ver" (Join-Path $PSScriptRoot "layla.iss")
+
+try {
+  $outDir = Join-Path $PSScriptRoot "output"
+  if (Test-Path $outDir) {
+    $setup = Join-Path $outDir ("Layla-Setup-" + $ver + ".exe")
+    if (Test-Path $setup) {
+      $hash = (Get-FileHash -Algorithm SHA256 $setup).Hash.ToLower()
+      $sumFile = Join-Path $outDir "SHA256SUMS.txt"
+      ($hash + "  " + (Split-Path -Leaf $setup)) | Set-Content -Path $sumFile -Encoding ASCII
+      Write-Host "==> SHA256: $hash"
+    }
+  }
+} catch {
+  Write-Warning "Checksum generation failed: $_"
+}
 Write-Host "Done."

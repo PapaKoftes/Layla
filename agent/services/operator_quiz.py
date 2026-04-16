@@ -418,7 +418,7 @@ def score_answers(
     # Defaults for maturity seed (only set if missing by caller)
     kv.setdefault("maturity_xp", "0")
     kv.setdefault("maturity_rank", "0")
-    kv.setdefault("maturity_phase", "nascent")
+    kv.setdefault("maturity_phase", "awakening")
     kv.setdefault("quiz_completed_at", _utcnow_iso())
 
     preview = {
@@ -451,7 +451,7 @@ def load_profile() -> dict[str, Any]:
     maturity = {
         "xp": _clamp_int(uid.get("maturity_xp"), 0, 2_000_000_000, 0),
         "rank": _clamp_int(uid.get("maturity_rank"), 0, 10_000, 0),
-        "phase": (uid.get("maturity_phase") or "nascent").strip().lower() or "nascent",
+        "phase": (uid.get("maturity_phase") or "awakening").strip().lower() or "awakening",
     }
 
     # Work domains may be a JSON list, a string token, or missing.

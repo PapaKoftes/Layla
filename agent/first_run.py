@@ -441,5 +441,19 @@ def run() -> int:
     return 0
 
 
+# Ensure the Web setup flow and CLI wizard share one source of truth.
+# Rebind these names to the shared engine implementation (global lookup happens at call time).
+try:
+    from services.setup_engine import DEFAULTS as DEFAULTS  # type: ignore[no-redef]
+    from services.setup_engine import MODELS_CATALOG as _MODELS_CATALOG  # type: ignore[no-redef]
+    from services.setup_engine import detect_gpu as detect_gpu  # type: ignore[no-redef]
+    from services.setup_engine import detect_ram_gb as detect_ram_gb  # type: ignore[no-redef]
+    from services.setup_engine import load_existing as load_existing  # type: ignore[no-redef]
+    from services.setup_engine import recommend_model as recommend_model  # type: ignore[no-redef]
+    from services.setup_engine import save_config as save_config  # type: ignore[no-redef]
+except Exception:
+    pass
+
+
 if __name__ == "__main__":
     sys.exit(run())

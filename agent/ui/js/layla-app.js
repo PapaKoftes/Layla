@@ -88,18 +88,48 @@ async function refreshMaturityCard(showCeremony) {
     if (!d || !d.ok) return;
     const rank = (d.maturity && d.maturity.rank != null) ? Number(d.maturity.rank) : 0;
     const xp = (d.maturity && d.maturity.xp != null) ? Number(d.maturity.xp) : 0;
-    const phase = String((d.maturity && d.maturity.phase) || 'nascent').toUpperCase();
+    const phaseRaw = String((d.maturity && d.maturity.phase) || 'awakening').trim().toLowerCase() || 'awakening';
+    const phase = phaseRaw.toUpperCase();
+    const xpToNext = (d.maturity && d.maturity.xp_to_next != null) ? Number(d.maturity.xp_to_next) : null;
+    const milestones = (d.maturity && Array.isArray(d.maturity.milestones)) ? d.maturity.milestones : [];
     const elRank = document.getElementById('maturity-rank');
     const elPhase = document.getElementById('maturity-phase');
     const elXp = document.getElementById('maturity-xp');
     const fill = document.getElementById('maturity-bar-fill');
+    const sigil = document.getElementById('maturity-sigil');
+    const msList = document.getElementById('maturity-milestones-list');
     if (elRank) elRank.textContent = isFinite(rank) ? String(rank) : '0';
     if (elPhase) elPhase.textContent = phase;
-    // Best-effort next-rank thresholds; server is authoritative.
-    const thresholds = [500,1000,2000,3000,5000,8000,12000,18000,26000,36000,50000,70000,100000];
-    const need = (rank >= 0 && rank < thresholds.length) ? thresholds[rank] : 0;
+    const need = (xpToNext != null && isFinite(xpToNext) && xpToNext > 0) ? xpToNext : null;
     if (elXp) elXp.textContent = need ? (xp + ' / ' + need) : (String(xp) + ' / —');
     if (fill) fill.style.width = need ? (Math.max(0, Math.min(100, Math.floor((xp / need) * 100))) + '%') : '0%';
+
+    try {
+      if (sigil) {
+        // Phase sigils are optional assets; show a subtle ring when missing.
+        sigil.setAttribute('data-phase', phaseRaw);
+        const src = '/layla-ui/assets/sigils/' + encodeURIComponent(phaseRaw) + '.svg';
+        sigil.innerHTML = '<img src="' + src + '" alt="" onerror="this.remove()" />';
+      }
+    } catch (_) {}
+
+    try {
+      if (msList) {
+        if (!milestones.length) {
+          msList.innerHTML = '<span style="color:var(--text-dim);font-size:0.7rem">No milestones yet.</span>';
+        } else {
+          msList.innerHTML = milestones.slice(0, 8).map(function (m) {
+            const done = !!(m && m.completed);
+            const label = escapeHtml(String((m && (m.label || m.id)) || ''));
+            const prog = escapeHtml(String((m && (m.progress || '')) || ''));
+            return '<div class="maturity-milestone-row' + (done ? ' completed' : '') + '">' +
+              '<div class="maturity-milestone-label">' + (done ? '✓ ' : '○ ') + label + '</div>' +
+              '<div class="maturity-milestone-progress">' + prog + '</div>' +
+              '</div>';
+          }).join('');
+        }
+      }
+    } catch (_) {}
 
     try {
       const lastRank = Number(localStorage.getItem('layla_last_maturity_rank') || '0');
@@ -350,7 +380,15 @@ async function openSettings() {
       formEl.innerHTML = html;
     }
   } catch (e) {
-    if (loadEl) loadEl.textContent = 'Could not load settings';
+    if (loadEl) { loadEl.style.display = 'none'; }
+    if (formEl) {
+      formEl.style.display = 'block';
+      formEl.innerHTML =
+        '<div style="color:var(--text-dim);font-size:0.8rem;line-height:1.5">' +
+        'Could not load settings. Is Layla running?<br>' +
+        '<button type="button" class="tab-btn" style="margin-top:10px" onclick="openSettings()">Retry</button>' +
+        '</div>';
+    }
   }
 }
 function closeSettings() {
@@ -972,7 +1010,23 @@ function addMsg(role, text, aspectName, deliberated, steps, uxStates, memoryInfl
     trace.innerHTML = '<summary>What she did (' + steps.length + ')</summary>';
     const pre = document.createElement('div');
     pre.className = 'tool-trace-content';
-    pre.textContent = steps.map(s => { try { return s.action + ': ' + JSON.stringify(s.result).slice(0, 200); } catch (_) { return s.action + ': [unserializable]'; } }).join('\n');
+    pre.textContent = steps.map(s => {
+      const act = (s && (s.action || s.tool)) ? String(s.action || s.tool) : '?';
+      const r = (s && s.result != null) ? s.result : null;
+      try {
+        if (r && typeof r === 'object' && !Array.isArray(r)) {
+          const ok = (typeof r.ok === 'boolean') ? (r.ok ? 'ok' : 'fail') : '';
+          const msg = (r.message || r.error || r.reason || r.status || '');
+          const m = (typeof msg === 'string') ? msg : String(msg || '');
+          const tail = m ? (' — ' + m.replace(/\s+/g, ' ').trim().slice(0, 180)) : '';
+          return act + (ok ? (' [' + ok + ']') : '') + tail;
+        }
+        const txt = (typeof r === 'string') ? r : JSON.stringify(r);
+        return act + ': ' + String(txt || '').slice(0, 200);
+      } catch (_) {
+        return act + ': [unserializable]';
+      }
+    }).join('\n');
     trace.appendChild(pre);
     div.appendChild(trace);
   }
@@ -1003,19 +1057,14 @@ function getMissionDepth() {
 }
 
 const _LEGACY_PANEL_TO_RTA = {
-  approvals: ['safety'],
+  approvals: ['prefs'],
   health: ['status'],
   models: ['workspace', 'models'],
   knowledge: ['workspace', 'knowledge'],
-  codex: ['workspace', 'codex'],
   plugins: ['workspace', 'plugins'],
-  projects: ['workspace', 'projects'],
-  timeline: ['workspace', 'timeline'],
   study: ['workspace', 'study'],
   memory: ['workspace', 'memory'],
-  skills: ['workspace', 'skills'],
   research: ['research'],
-  help: ['help'],
 };
 
 /* Panel DOM is handled in bootstrap (window.showMainPanel). Main script only registers data refresh hooks. */
@@ -1027,10 +1076,8 @@ window.__laylaRefreshAfterShowMainPanel = function (main) {
   }
   if (main === 'prefs') {
     if (typeof refreshContentPolicyToggles === 'function') refreshContentPolicyToggles();
+    try { refreshApprovals(); } catch (_) {}
     try { loadProjectsIntoSelect(); } catch (_) {}
-  }
-  if (main === 'agents') {
-    if (typeof refreshAgentsPanel === 'function') refreshAgentsPanel();
   }
   if (main === 'workspace') {
     /* Subtab refresh only ran on subtab click; opening Workspace left default "Models" stuck on "Loading…" */
@@ -1040,9 +1087,6 @@ window.__laylaRefreshAfterShowMainPanel = function (main) {
     if (typeof window.__laylaRefreshAfterWorkspaceSubtab === 'function') {
       window.__laylaRefreshAfterWorkspaceSubtab(sub);
     }
-  }
-  if (main === 'safety') {
-    refreshApprovals();
   }
   if (main === 'research') {
     refreshMissionStatus().then(function () {
@@ -1055,18 +1099,15 @@ window.__laylaRefreshAfterWorkspaceSubtab = function (sub) {
   const refreshers = {
     models: refreshPlatformModels,
     knowledge: refreshPlatformKnowledge,
-    plugins: refreshPlatformPlugins,
-    projects: refreshPlatformProjects,
-    timeline: refreshPlatformTimeline,
-    study: function () { refreshStudyPlans(); loadStudyPresetsAndSuggestions(); },
+    study: function () { refreshStudyPlans(); loadStudyPresetsAndSuggestions(); try { refreshLaylaPlansPanel(); } catch (_) {} },
     memory: function () {
       if (typeof refreshFileCheckpointsPanel === 'function') refreshFileCheckpointsPanel();
     },
-    codex: function () {
-      if (typeof refreshRelationshipCodex === 'function') refreshRelationshipCodex();
+    plugins: function () {
+      refreshPlatformPlugins();
+      try { if (typeof refreshRelationshipCodex === 'function') refreshRelationshipCodex(); } catch (_) {}
+      try { refreshSkillsList(); } catch (_) {}
     },
-    skills: refreshSkillsList,
-    plans: refreshLaylaPlansPanel,
   };
   const fn = refreshers[sub];
   if (typeof fn === 'function') fn();
@@ -1233,7 +1274,7 @@ function showPanelTab(tab) {
     else window.showMainPanel(m[0]);
     return;
   }
-  window.showMainPanel('help');
+  window.showMainPanel('prefs');
 }
 window.showPanelTab = showPanelTab;
 
@@ -2189,6 +2230,9 @@ async function send() {
 
   const ac = new AbortController();
   _activeAgentAbort = ac;
+  let metaTimer = null;
+  let firstTokenTimer = null;
+  let stalledTimer = null;
   // Chat chrome is rendered from FSM state via window.laylaOnChatState.
   try { laylaHeaderProgressStart(); } catch (_) {}
   try { operatorTraceClear(); } catch (_) {}
@@ -2276,6 +2320,36 @@ async function send() {
       div.innerHTML = '<div class=\"msg-label msg-label-layla\">' + formatLaylaLabelHtml(msgAspect) + '</div><div class=\"msg-bubble\" title=\"Click to copy\"><div class=\"md-content stream-md-placeholder\"><div class=\"typing-indicator\" style=\"min-height:36px\"><div class=\"typing-dots\"><span></span><span></span><span></span></div></div><div class=\"tool-status-label\">' + (UX_STATE_LABELS.connecting || 'Connecting') + '</div></div></div>';
       if (chatEl) chatEl.appendChild(div);
       const bubble = div.querySelector('.md-content');
+      let thinkBox = null;
+      let thinkContent = null;
+      let thinkCount = 0;
+      function ensureThinkBox() {
+        if (thinkBox) return;
+        thinkBox = document.createElement('details');
+        thinkBox.className = 'tool-trace';
+        thinkBox.style.borderLeft = '2px solid var(--asp)';
+        thinkBox.open = true;
+        thinkBox.innerHTML = '<summary>Thinking (live)</summary>';
+        thinkContent = document.createElement('div');
+        thinkContent.className = 'tool-trace-content';
+        thinkContent.style.whiteSpace = 'pre-wrap';
+        thinkContent.style.maxHeight = '180px';
+        thinkContent.style.overflow = 'auto';
+        thinkBox.appendChild(thinkContent);
+        div.appendChild(thinkBox);
+      }
+      function appendThinkLine(txt) {
+        if (!txt) return;
+        ensureThinkBox();
+        thinkCount += 1;
+        if (thinkBox && thinkBox.querySelector('summary')) {
+          thinkBox.querySelector('summary').textContent = 'Thinking (live) · ' + thinkCount;
+        }
+        if (thinkContent) {
+          thinkContent.textContent += (thinkContent.textContent ? '\n' : '') + txt;
+          thinkContent.scrollTop = thinkContent.scrollHeight;
+        }
+      }
       const streamMeta = document.createElement('div');
       streamMeta.className = 'memory-attribution';
       streamMeta.textContent = 'Status: ' + (UX_STATE_LABELS.connecting || 'Connecting') + ' · 0s · 0 chars';
@@ -2283,12 +2357,12 @@ async function send() {
       const streamStartedAt = Date.now();
       let liveStatus = 'connecting';
       laylaNotifyStreamPhase(div, 'connecting');
-      const metaTimer = setInterval(() => {
+      metaTimer = setInterval(() => {
         const secs = Math.max(0, Math.floor((Date.now() - streamStartedAt) / 1000));
         streamMeta.textContent = 'Status: ' + (UX_STATE_LABELS[liveStatus] || liveStatus) + ' · ' + secs + 's · ' + (full || '').length + ' chars';
       }, 500);
       let gotToken = false;
-      let firstTokenTimer = setTimeout(() => {
+      firstTokenTimer = setTimeout(() => {
         liveStatus = 'waiting_first_token';
         let statusEl = div.querySelector('.tool-status-label');
         if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; div.querySelector('.msg-bubble')?.appendChild(statusEl); }
@@ -2296,7 +2370,7 @@ async function send() {
         laylaNotifyStreamPhase(div, liveStatus);
       }, 1800);
       const stallMs = laylaStalledSilenceMs();
-      let stalledTimer = setTimeout(() => {
+      stalledTimer = setTimeout(() => {
         liveStatus = 'stalled';
         let statusEl = div.querySelector('.tool-status-label');
         if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; div.querySelector('.msg-bubble')?.appendChild(statusEl); }
@@ -2307,7 +2381,7 @@ async function send() {
         const { value, done } = await reader.read();
         if (done) break;
         const chunk = dec.decode(value, { stream: true });
-        const lines = chunk.split('\\n');
+        const lines = chunk.split('\n');
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
           let obj = null;
@@ -2339,6 +2413,18 @@ async function send() {
             const statusEl = div.querySelector('.tool-status-label');
             if (statusEl) statusEl.textContent = UX_STATE_LABELS[liveStatus] || liveStatus;
           }
+          if (obj.type === 'thinking' || obj.think) {
+            const t = String(obj.text || obj.think || '').trim();
+            if (t) appendThinkLine('✦ ' + t);
+          }
+          if (obj.type === 'tool_step' || obj.tool_start) {
+            const tool = String(obj.tool || obj.tool_start || '').trim();
+            const phase = String(obj.phase || (obj.tool_start ? 'start' : 'end'));
+            const ok = (obj.ok === true ? 'ok' : obj.ok === false ? 'fail' : '');
+            const summary = String(obj.summary || '').trim();
+            const line = '▸ ' + tool + (phase ? (' [' + phase + ']') : '') + (ok ? (' ' + ok) : '') + (summary ? (' — ' + summary) : '');
+            if (tool) appendThinkLine(line);
+          }
           if (obj.token) {
             liveStatus = 'streaming';
             laylaNotifyStreamPhase(div, 'streaming');
@@ -2368,6 +2454,9 @@ async function send() {
             liveStatus = 'done';
             laylaNotifyStreamPhase(div, 'done');
             if (bubble) bubble.textContent = full;
+            if (thinkBox) {
+              try { thinkBox.open = false; } catch (_) {}
+            }
             if (_ttsEnabled && full) { try { speakText(full).catch(() => {}); } catch (_) {} }
             try { refreshMaturityCard(true); } catch (_) {}
           }
@@ -2400,6 +2489,9 @@ async function send() {
     try { if (window.laylaChatFSM) window.laylaChatFSM.finishError(); } catch (_) {}
   } finally {
     window._laylaSendBusy = false;
+    try { if (firstTokenTimer) clearTimeout(firstTokenTimer); } catch (_) {}
+    try { if (stalledTimer) clearTimeout(stalledTimer); } catch (_) {}
+    try { if (metaTimer) clearInterval(metaTimer); } catch (_) {}
     try { laylaRemoveTypingIndicator(); } catch (_) {}
     try { if (window.laylaChatFSM) window.laylaChatFSM.finishOk(); } catch (_) {}
     try { laylaHeaderProgressStop(); } catch (_) {}
@@ -2412,3 +2504,410 @@ async function send() {
 } catch (_) {
   // UI script should fail soft; server still usable.
 }
+
+// ── UI repair shims: prevent permanent "Loading…" states ─────────────────────
+//
+// The HTML template references some functions that may not exist in older
+// bundles. Provide minimal implementations so panels settle into either real
+// data or a clear "not available" message.
+
+const __esc = (typeof window.escapeHtml === 'function')
+  ? window.escapeHtml
+  : function (s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  };
+const __toast = (typeof window.showToast === 'function')
+  ? window.showToast
+  : function (t) { try { console.log('[Layla UI]', t); } catch (_) {} };
+
+function _setBoxHtml(id, html) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  el.innerHTML = html;
+  return el;
+}
+
+async function refreshVersionInfo() {
+  const el = document.getElementById('app-version');
+  if (!el) return;
+  el.textContent = 'Version: loading…';
+  try {
+    const r = await fetch('/version');
+    const d = await r.json().catch(() => ({}));
+    const v = (d && d.ok && d.version) ? String(d.version) : '';
+    el.textContent = 'Version: ' + (v || '—');
+  } catch (_) {
+    el.textContent = 'Version: (could not load)';
+  }
+}
+window.refreshVersionInfo = refreshVersionInfo;
+
+async function refreshPlatformHealth() {
+  const box = document.getElementById('platform-health');
+  if (!box) return;
+  box.innerHTML = '<span style="color:var(--text-dim)">Loading…</span>';
+  try {
+    const r = await fetch('/health');
+    const d = await r.json().catch(() => ({}));
+    const status = String((d && d.status) || 'unknown');
+    const html = [];
+    html.push('<div><strong>Status</strong>: ' + __esc(status) + '</div>');
+    html.push('<div><strong>Uptime</strong>: ' + __esc(String(Math.round((d && d.uptime_seconds) || 0))) + 's</div>');
+    html.push('<div><strong>Model</strong>: ' + __esc((d && d.model_loaded) ? 'loaded' : 'not loaded') + '</div>');
+    html.push('<div><strong>Tools</strong>: ' + __esc(String((d && d.tools_registered) || 0)) + '</div>');
+    html.push('<div><strong>Learnings</strong>: ' + __esc(String((d && d.learnings) || 0)) + '</div>');
+    html.push('<div><strong>Study plans</strong>: ' + __esc(String((d && d.study_plans) || 0)) + '</div>');
+    html.push('<div><strong>Vector store</strong>: ' + __esc(String((d && d.vector_store) || 'unknown')) + '</div>');
+    box.innerHTML = html.join('');
+  } catch (_) {
+    box.innerHTML = '<span style="color:var(--text-dim)">Could not load health</span>';
+  }
+}
+window.refreshPlatformHealth = refreshPlatformHealth;
+
+async function refreshRuntimeOptions() {
+  const box = document.getElementById('runtime-options-panel');
+  if (!box) return;
+  box.innerHTML = '<span style="color:var(--text-dim);font-size:0.7rem">Loading…</span>';
+  try {
+    const r = await fetch('/health?deep=true');
+    const d = await r.json().catch(() => ({}));
+    const html = [];
+    html.push('<div style="display:flex;flex-wrap:wrap;gap:6px">');
+    html.push('<span class="option-pill">safe_mode: ' + __esc(String(!!(d && d.safe_mode))) + '</span>');
+    html.push('<span class="option-pill">uncensored: ' + __esc(String(!!(d && d.uncensored))) + '</span>');
+    html.push('<span class="option-pill">nsfw_allowed: ' + __esc(String(!!(d && d.nsfw_allowed))) + '</span>');
+    html.push('<span class="option-pill">use_chroma: ' + __esc(String(!!(d && d.use_chroma))) + '</span>');
+    html.push('</div>');
+    if (d && d.limits) {
+      html.push('<div style="margin-top:8px"><strong>Limits</strong></div>');
+      html.push('<div style="color:var(--text-dim);font-size:0.7rem;line-height:1.5">');
+      html.push('max_active_runs: ' + __esc(String(d.limits.max_active_runs ?? '—')) + '<br>');
+      html.push('max_cpu_percent: ' + __esc(String(d.limits.max_cpu_percent ?? '—')) + '<br>');
+      html.push('max_ram_percent: ' + __esc(String(d.limits.max_ram_percent ?? '—')) + '<br>');
+      html.push('</div>');
+    }
+    box.innerHTML = html.join('');
+  } catch (_) {
+    box.innerHTML = '<span style="color:var(--text-dim)">Could not load runtime options</span>';
+  }
+}
+window.refreshRuntimeOptions = refreshRuntimeOptions;
+
+window.saveContentPolicySettings = async function saveContentPolicySettings() {
+  const btn = document.querySelector('button[onclick*="saveContentPolicySettings"]');
+  const unc = !!document.getElementById('opt-uncensored')?.checked;
+  const nsfw = !!document.getElementById('opt-nsfw-allowed')?.checked;
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uncensored: unc, nsfw_allowed: nsfw }),
+    });
+    const d = await r.json().catch(() => ({}));
+    __toast((d && d.ok) ? 'Saved content policy' : 'Save failed');
+  } catch (_) {
+    __toast('Save failed');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
+window.loadPhoneAccess = async function loadPhoneAccess() {
+  const urlEl = document.getElementById('phone-access-url');
+  const stEl = document.getElementById('phone-access-status');
+  if (urlEl) urlEl.textContent = 'Loading…';
+  if (stEl) stEl.textContent = '';
+  try {
+    const proto = location.protocol || 'http:';
+    const host = location.hostname || '127.0.0.1';
+    const port = location.port ? (':' + location.port) : '';
+    const url = proto + '//' + host + port + '/ui';
+    if (urlEl) urlEl.textContent = url;
+    if (stEl) stEl.textContent = (host === '127.0.0.1' || host === 'localhost')
+      ? 'Tip: for LAN access, start Layla with --host 0.0.0.0 and use your PC IP address.'
+      : 'If this is your LAN IP, open it on your phone (same WiFi).';
+  } catch (e) {
+    if (urlEl) urlEl.textContent = '(could not compute URL)';
+    if (stEl) stEl.textContent = String(e && e.message ? e.message : e);
+  }
+};
+
+window.copyPhoneUrl = async function copyPhoneUrl() {
+  const url = (document.getElementById('phone-access-url')?.textContent || '').trim();
+  if (!url) return;
+  try {
+    await navigator.clipboard.writeText(url);
+    __toast('Copied');
+  } catch (_) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      __toast('Copied');
+    } catch (_) {
+      __toast('Copy failed');
+    }
+  }
+};
+
+window.refreshAgentsPanel = async function refreshAgentsPanel() {
+  const box = document.getElementById('agents-resource-panel');
+  if (!box) return;
+  box.innerHTML = '<span style="color:var(--text-dim)">Loading…</span>';
+  try {
+    const r = await fetch('/health?deep=true');
+    const d = await r.json().catch(() => ({}));
+    const lim = d && d.limits ? d.limits : {};
+    box.innerHTML =
+      '<div><strong>max_active_runs</strong>: ' + __esc(String(lim.max_active_runs ?? '—')) + '</div>' +
+      '<div><strong>performance_mode</strong>: ' + __esc(String(lim.performance_mode ?? d.performance_mode ?? '—')) + '</div>' +
+      '<div><strong>CPU cap</strong>: ' + __esc(String(lim.max_cpu_percent ?? '—')) + '%</div>' +
+      '<div><strong>RAM cap</strong>: ' + __esc(String(lim.max_ram_percent ?? '—')) + '%</div>';
+  } catch (_) {
+    box.innerHTML = '<span style="color:var(--text-dim)">Could not load</span>';
+  }
+};
+
+window.refreshStudyPlans = async function refreshStudyPlans() {
+  const box = document.getElementById('study-list');
+  if (!box) return;
+  box.innerHTML = '<span style="color:var(--text-dim)">Loading…</span>';
+  try {
+    const r = await fetch('/study_plans');
+    const d = await r.json().catch(() => ({}));
+    const plans = Array.isArray(d && d.plans) ? d.plans : [];
+    if (!plans.length) {
+      box.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">No active study plans yet.</span>';
+      return;
+    }
+    box.innerHTML = plans.slice(0, 20).map(p => {
+      const topic = __esc(String(p.topic || ''));
+      const sessions = __esc(String(p.study_sessions ?? 0));
+      const last = __esc(String(p.last_studied || ''));
+      return '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06)">' +
+        '<div><strong>' + topic + '</strong></div>' +
+        '<div style="color:var(--text-dim);font-size:0.68rem">sessions: ' + sessions + (last ? (' · last: ' + last) : '') + '</div>' +
+        '</div>';
+    }).join('');
+  } catch (_) {
+    box.innerHTML = '<span style="color:var(--text-dim)">Could not load study plans</span>';
+  }
+};
+
+window.loadStudyPresetsAndSuggestions = async function loadStudyPresetsAndSuggestions() {
+  const presets = document.getElementById('study-presets');
+  const sug = document.getElementById('study-suggestions');
+  if (presets) presets.innerHTML = '';
+  if (sug) sug.innerHTML = '';
+  try {
+    const r1 = await fetch('/study_plans/presets');
+    const d1 = await r1.json().catch(() => ({}));
+    const topics = Array.isArray(d1 && d1.topics) ? d1.topics : [];
+    if (presets) presets.innerHTML = topics.slice(0, 16).map(t => '<button type="button" class="approve-btn" style="font-size:0.62rem" onclick="addStudyPlan(' + JSON.stringify(String(t)) + ')">' + __esc(String(t)) + '</button>').join('');
+  } catch (_) {}
+  try {
+    const r2 = await fetch('/study_plans/suggestions');
+    const d2 = await r2.json().catch(() => ({}));
+    const suggestions = Array.isArray(d2 && d2.suggestions) ? d2.suggestions : [];
+    if (sug) sug.innerHTML = suggestions.slice(0, 16).map(t => '<button type="button" class="approve-btn" style="font-size:0.62rem" onclick="addStudyPlan(' + JSON.stringify(String(t)) + ')">' + __esc(String(t)) + '</button>').join('');
+  } catch (_) {}
+};
+
+window.addStudyPlan = async function addStudyPlan(topicOverride) {
+  const inp = document.getElementById('study-input');
+  const topic = String(topicOverride || (inp && inp.value) || '').trim();
+  if (!topic) return;
+  if (inp) inp.value = '';
+  try {
+    const r = await fetch('/study_plans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic }) });
+    const d = await r.json().catch(() => ({}));
+    __toast((d && d.ok) ? 'Added' : 'Add failed');
+    try { refreshStudyPlans(); } catch (_) {}
+  } catch (_) {
+    __toast('Add failed');
+  }
+};
+
+window.studyTopicFromChatInput = async function studyTopicFromChatInput() {
+  const text = (document.getElementById('msg-input')?.value || '').trim();
+  if (!text) return;
+  try {
+    const r = await fetch('/study_plans/derive_topic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text }) });
+    const d = await r.json().catch(() => ({}));
+    if (d && d.ok && d.topic) addStudyPlan(String(d.topic));
+  } catch (_) {}
+};
+
+window.studyTopicFromLastUserMessage = function studyTopicFromLastUserMessage() {
+  try {
+    const chat = document.getElementById('chat');
+    if (!chat) return;
+    const rows = chat.querySelectorAll('.msg.msg-you .msg-bubble');
+    const last = rows && rows.length ? String(rows[rows.length - 1].textContent || '').trim() : '';
+    if (!last) return;
+    fetch('/study_plans/derive_topic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: last }) })
+      .then(r => r.json()).then(d => { if (d && d.ok && d.topic) addStudyPlan(String(d.topic)); })
+      .catch(() => {});
+  } catch (_) {}
+};
+
+window.refreshSkillsList = async function refreshSkillsList() {
+  const box = document.getElementById('platform-skills');
+  if (!box) return;
+  box.innerHTML = '<span style="color:var(--text-dim)">Loading…</span>';
+  try {
+    const r = await fetch('/skills');
+    const d = await r.json().catch(() => ({}));
+    const skills = Array.isArray(d && d.skills) ? d.skills : [];
+    box.innerHTML = skills.length
+      ? skills.slice(0, 40).map(s => '<div style="margin:4px 0"><strong>' + __esc(String(s.name || '')) + '</strong><div style="color:var(--text-dim);font-size:0.68rem">' + __esc(String(s.description || '')) + '</div></div>').join('')
+      : '<span style="color:var(--text-dim)">No skills found.</span>';
+  } catch (_) {
+    box.innerHTML = '<span style="color:var(--text-dim)">Could not load skills</span>';
+  }
+};
+
+window.refreshLaylaPlansPanel = async function refreshLaylaPlansPanel() {
+  const listEl = document.getElementById('layla-plans-list');
+  if (!listEl) return;
+  listEl.innerHTML = '<span style="color:var(--text-dim)">Loading…</span>';
+  try {
+    const r = await fetch('/plans?limit=30');
+    const d = await r.json().catch(() => ({}));
+    const plans = Array.isArray(d && d.plans) ? d.plans : [];
+    listEl.innerHTML = plans.length
+      ? plans.slice(0, 30).map(p => '<div style="margin:6px 0;padding:6px;border:1px solid rgba(255,255,255,0.06);border-radius:6px;background:rgba(0,0,0,0.15)"><div><strong>' + __esc(String(p.goal || p.title || p.plan_id || p.id || 'plan')) + '</strong></div><div style="color:var(--text-dim);font-size:0.68rem">status: ' + __esc(String(p.status || '')) + '</div></div>').join('')
+      : '<span style="color:var(--text-dim)">No plans yet.</span>';
+  } catch (_) {
+    listEl.innerHTML = '<span style="color:var(--text-dim)">Could not load plans</span>';
+  }
+};
+
+window.onMemorySearch = async function onMemorySearch(q) {
+  const box = document.getElementById('memory-search-results');
+  const query = String(q || '').trim();
+  if (!box) return;
+  if (!query) {
+    box.innerHTML = '<span style="color:var(--text-dim);font-size:0.7rem">Type to search learnings (semantic / FTS)</span>';
+    return;
+  }
+  box.innerHTML = '<span style="color:var(--text-dim)">Searching…</span>';
+  try {
+    const r = await fetch('/memories?q=' + encodeURIComponent(query) + '&n=8');
+    const d = await r.json().catch(() => ({}));
+    const items = Array.isArray(d && d.memories) ? d.memories : [];
+    box.innerHTML = items.length
+      ? items.map(m => '<div style="margin:6px 0;padding:6px;border-left:2px solid var(--asp);background:rgba(0,0,0,0.12)">' + __esc(String(m || '')) + '</div>').join('')
+      : '<span style="color:var(--text-dim)">No matches.</span>';
+  } catch (_) {
+    box.innerHTML = '<span style="color:var(--text-dim)">Search failed</span>';
+  }
+};
+
+window.runElasticsearchLearningSearch = async function runElasticsearchLearningSearch() {
+  const q = String(document.getElementById('es-learning-search')?.value || '').trim();
+  const box = document.getElementById('es-learning-results');
+  if (!box) return;
+  if (!q) { box.innerHTML = '<span style="color:var(--text-dim);font-size:0.7rem">Enter a keyword query.</span>'; return; }
+  box.innerHTML = '<span style="color:var(--text-dim)">Loading…</span>';
+  try {
+    const r = await fetch('/elasticsearch/search?q=' + encodeURIComponent(q) + '&limit=20');
+    const d = await r.json().catch(() => ({}));
+    const hits = Array.isArray(d && d.hits) ? d.hits : [];
+    box.innerHTML = hits.length
+      ? hits.map(h => '<div style="margin:6px 0"><strong>' + __esc(String(h.title || h.id || 'hit')) + '</strong><div style="color:var(--text-dim);font-size:0.68rem">' + __esc(String(h.snippet || h.content || '')) + '</div></div>').join('')
+      : '<span style="color:var(--text-dim)">' + __esc(String((d && d.error) || 'No hits')) + '</span>';
+  } catch (_) {
+    box.innerHTML = '<span style="color:var(--text-dim)">Search failed</span>';
+  }
+};
+
+window.refreshFileCheckpointsPanel = async function refreshFileCheckpointsPanel() {
+  const box = document.getElementById('file-checkpoints-list');
+  if (!box) return;
+  box.innerHTML = '<span style="color:var(--text-dim)">Loading…</span>';
+  try {
+    const r = await fetch('/file_checkpoints?limit=40');
+    const d = await r.json().catch(() => ({}));
+    const items = Array.isArray(d && d.items) ? d.items : (Array.isArray(d && d.checkpoints) ? d.checkpoints : []);
+    box.innerHTML = items.length
+      ? items.slice(0, 40).map(c => {
+        const id = __esc(String(c.id || c.checkpoint_id || ''));
+        const p = __esc(String(c.path || c.filepath || ''));
+        const ts = __esc(String(c.timestamp || c.created_at || ''));
+        return '<div style="margin:6px 0;padding:6px;border:1px solid rgba(255,255,255,0.06);border-radius:6px;background:rgba(0,0,0,0.12)">' +
+          '<div style="font-size:0.68rem;color:var(--text-dim)">' + ts + '</div>' +
+          '<div style="font-size:0.72rem"><strong>' + p + '</strong></div>' +
+          '<div style="font-size:0.62rem;color:var(--text-dim)">' + id + '</div>' +
+          '</div>';
+      }).join('')
+      : '<span style="color:var(--text-dim)">No checkpoints yet.</span>';
+  } catch (_) {
+    box.innerHTML = '<span style="color:var(--text-dim)">Could not load checkpoints</span>';
+  }
+};
+
+window.laylaRefreshExecutionPanels = async function laylaRefreshExecutionPanels() {
+  // Exec trace
+  try {
+    const pre = document.getElementById('exec-trace-json');
+    if (pre) pre.textContent = 'Loading…';
+    const r = await fetch('/debug/state');
+    const d = await r.json().catch(() => ({}));
+    if (pre) pre.textContent = JSON.stringify(d && (d.snapshot || d), null, 2);
+  } catch (_) {
+    try { const pre = document.getElementById('exec-trace-json'); if (pre) pre.textContent = 'Could not load'; } catch (_) {}
+  }
+  // Coordinator + background tasks
+  try {
+    const box = document.getElementById('tasks-list-json');
+    if (box) box.textContent = 'Loading…';
+    const [r1, r2] = await Promise.all([
+      fetch('/debug/tasks?limit=40').then(x => x.json().catch(() => ({}))),
+      fetch('/agent/tasks').then(x => x.json().catch(() => ({}))),
+    ]);
+    const persisted = Array.isArray(r1 && r1.tasks) ? r1.tasks : [];
+    const bg = Array.isArray(r2 && r2.tasks) ? r2.tasks : [];
+    if (!box) return;
+    const rows = [];
+    if (bg.length) {
+      rows.push('<div style="margin-bottom:6px"><strong>Background tasks</strong></div>');
+      rows.push(bg.slice(0, 25).map(t => {
+        const id = __esc(String(t.task_id || t.id || ''));
+        const st = __esc(String(t.status || ''));
+        const goal = __esc(String(t.goal || '').slice(0, 140));
+        const canCancel = (String(t.status || '').toLowerCase() === 'running' || String(t.status || '').toLowerCase() === 'queued');
+        return '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06)">' +
+          '<div><strong>' + st + '</strong> <span style="color:var(--text-dim)">' + id.slice(0, 10) + '</span></div>' +
+          (goal ? ('<div style="color:var(--text-dim)">' + goal + '</div>') : '') +
+          (canCancel ? ('<button type="button" class="approve-btn" style="margin-top:4px" onclick="cancelBackgroundTask(' + JSON.stringify(String(t.task_id || t.id || '')) + ')">Cancel</button>') : '') +
+          '</div>';
+      }).join(''));
+    }
+    if (persisted.length) {
+      rows.push('<div style="margin:10px 0 6px"><strong>Persisted coordinator tasks</strong></div>');
+      rows.push('<div style="color:var(--text-dim)">' + __esc(JSON.stringify(persisted.slice(0, 20), null, 2)).replace(/\\n/g, '<br/>') + '</div>');
+    }
+    box.innerHTML = rows.length ? rows.join('') : '<span style="color:var(--text-dim)">No tasks</span>';
+  } catch (_) {
+    try { const box = document.getElementById('tasks-list-json'); if (box) box.textContent = 'Could not load'; } catch (_) {}
+  }
+};
+
+window.cancelBackgroundTask = async function cancelBackgroundTask(taskId) {
+  const tid = String(taskId || '').trim();
+  if (!tid) return;
+  try {
+    await fetch('/agent/tasks/' + encodeURIComponent(tid), { method: 'DELETE' });
+  } catch (_) {}
+  try { laylaRefreshExecutionPanels(); } catch (_) {}
+};

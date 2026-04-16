@@ -1,18 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <rect width="256" height="256" fill="none"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="none"/>
   <g stroke="rgba(255,255,255,0.10)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <!-- lightning fractures -->
-    <path d="M40 40l40 28-24 28 40 24-24 28 56 32"/>
-    <path d="M216 32l-32 40 28 24-40 24 24 28-40 32"/>
-    <path d="M32 216l56-40-24-24 40-24-24-28 40-32"/>
-    <!-- dice -->
-    <rect x="180" y="172" width="44" height="44" rx="6"/>
-    <g fill="rgba(255,255,255,0.12)" stroke="none">
-      <circle cx="194" cy="186" r="3"/>
-      <circle cx="210" cy="202" r="3"/>
-      <circle cx="194" cy="218" r="3"/>
-      <circle cx="210" cy="186" r="3"/>
-      <circle cx="226" cy="202" r="3"/>
+    <!-- broken grid -->
+    <path d="M0 128h180M240 128h272M0 384h260M320 384h192" opacity="0.28"/>
+    <path d="M128 0v160M128 220v292M384 0v240M384 300v212" opacity="0.24"/>
+
+    <!-- lightning paths -->
+    <path d="M36 168l96 64-64 96 128 64-48 96" />
+    <path d="M496 108l-120 88 88 120-160 88 88 120" />
+    <path d="M220 36l48 96-96 48 96 64-48 96" opacity="0.85"/>
+
+    <!-- dice / card fragments -->
+    <rect x="84" y="64" width="54" height="54" rx="10"/>
+    <rect x="364" y="360" width="70" height="70" rx="12"/>
+    <rect x="300" y="96" width="60" height="44" rx="10" opacity="0.6"/>
+    <g fill="rgba(255,255,255,0.14)" stroke="none">
+      <circle cx="111" cy="91" r="4"/>
+      <circle cx="399" cy="395" r="4"/>
+      <circle cx="424" cy="420" r="4"/>
+      <circle cx="399" cy="420" r="4"/>
+      <circle cx="424" cy="395" r="4"/>
+      <circle cx="330" cy="118" r="3" opacity="0.75"/>
+      <circle cx="344" cy="118" r="3" opacity="0.75"/>
     </g>
   </g>
 </svg>
