@@ -256,12 +256,27 @@ def build_system_prompt(
         "dedup_removed": 0,
     }
     remaining = total_budget
+    # Reserve a small slice for critical context so large identity/personality blocks
+    # can't starve the workspace context entirely (important for tests + reliability).
+    _reserve_agent_state = max(60, int(budgets.get("agent_state", 120) or 120))
+    _reserve_current_goal = max(40, int(budgets.get("current_goal", 60) or 60))
 
     for key in order:
         raw = (sections.get(key) or "").strip()
         if not raw:
             continue
         max_tok = budgets.get(key, 400)
+        if key == "system_instructions":
+            # Leave room for goal + workspace context if they exist.
+            _need_goal = 1 if (sections.get("current_goal") or "").strip() else 0
+            _need_state = 1 if (sections.get("agent_state") or "").strip() else 0
+            reserve = (_reserve_current_goal if _need_goal else 0) + (_reserve_agent_state if _need_state else 0)
+            if remaining > reserve:
+                max_tok = min(int(max_tok), int(remaining - reserve))
+        elif key == "current_goal":
+            # Leave room for workspace context.
+            if (sections.get("agent_state") or "").strip() and remaining > _reserve_agent_state:
+                max_tok = min(int(max_tok), int(remaining - _reserve_agent_state))
         max_tok = min(max_tok, remaining)
         if max_tok <= 0:
             metrics["dropped_sections"].append(key)
