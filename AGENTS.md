@@ -135,7 +135,7 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 ├── models/                  # GITIGNORED. Put .gguf model files here.
 │
 ├── launcher/                # Desktop launcher: `layla_launcher.py`, `layla.spec` (PyInstaller → layla.exe)
-├── installer/               # Windows: `layla.iss` (Inno Setup), `build_installer.ps1`
+├── installer/               # Windows: see `installer/README.md` (`layla.iss`, `build_installer.ps1`, embedded python bundler)
 │
 ├── fabrication_assist/      # Fabrication assist utilities (NOT imported by agent on main)
 │   ├── assist/              # session, variants, explain, BuildRunner stub, layla_lite.assist(), CLI
