@@ -6,8 +6,8 @@
 block_cipher = None
 
 a = Analysis(
-    ["launcher/layla_launcher.py"],
-    pathex=[],
+    ["layla_launcher.py"],
+    pathex=["launcher"],
     binaries=[],
     datas=[],
     hiddenimports=["pystray", "PIL", "PIL.Image"],
