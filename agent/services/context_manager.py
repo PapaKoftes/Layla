@@ -238,8 +238,8 @@ def build_system_prompt(
         # Current goal/sub-objectives must be early so it survives token pressure.
         # This is especially important when identity/personality blocks are large.
         "current_goal",
-        "pinned_context",
         "agent_state",
+        "pinned_context",
         "memory",
         "knowledge_graph",
         "knowledge",
@@ -275,7 +275,7 @@ def build_system_prompt(
         metrics["section_tokens"][key] = tok
         if tok < token_estimate(raw):
             metrics["truncated_sections"].append(key)
-        remaining -= tok + 2  # newline overhead
+        remaining = max(0, remaining - tok - 2)  # newline overhead
         if truncated:
             built.append((key, truncated))
 
