@@ -267,7 +267,7 @@ def test_empty_and_fast_path_include_steps_array(client):
     assert s0.get("steps") == []
     assert s0.get("status") == "empty_message"
 
-    r1 = client.post("/agent", json={"message": "hi"})
+    r1 = client.post("/agent", json={"message": "ok"})
     assert r1.status_code == 200
     s1 = r1.json().get("state") or {}
     assert s1.get("steps") == []

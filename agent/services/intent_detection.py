@@ -60,7 +60,6 @@ _INTENT_MAP = {
     "search": ["web", "memory"],
     "look up": ["web", "memory"],
     "study": ["web", "memory"],
-    "explain": ["memory", "web"],
     "analyze": ["analysis", "code", "data"],
     "data": ["data", "analysis"],
     "chart": ["data", "analysis"],
@@ -98,6 +97,42 @@ def detect_intent(user_prompt: str) -> list[str]:
     for keywords, cats in _INTENT_MAP.items():
         if keywords in lower:
             return list(dict.fromkeys(cats + ["memory"]))
+    # "explain" is ambiguous: it can mean "explain this error/file" (toolable) or
+    # "explain your capabilities / explain yourself" (pure chat). Keep it conservative.
+    if "explain" in lower:
+        meta_self = any(
+            k in lower
+            for k in (
+                "your capabilities",
+                "full capabilities",
+                "what can you do",
+                "who are you",
+                "describe yourself",
+                "introduce yourself",
+                "your tools",
+                "what tools do you have",
+                "what tools can you use",
+                "list your tools",
+            )
+        )
+        code_signals = any(
+            k in lower
+            for k in (
+                "traceback",
+                "stack trace",
+                "error",
+                "exception",
+                "line ",
+                "file ",
+                "repo",
+                "workspace",
+                "agent/",
+            )
+        ) or any(ext in lower for ext in (".py", ".ts", ".tsx", ".js", ".json", ".toml", ".yml", ".yaml")) or ("```" in lower) or (
+            "/" in lower or "\\" in lower or ":" in lower
+        )
+        if not meta_self and code_signals:
+            return list(dict.fromkeys(["analysis", "code", "filesystem", "web", "memory"]))
     return _DEFAULT_CATEGORIES
 
 

@@ -61,7 +61,8 @@ Layla is a **local-first AI companion and engineering agent**. She runs on your 
 | <img src="readme-assets/hero-layla-ui.png" alt="Chat and sidebar" width="440"/> | <img src="readme-assets/approvals-panel.png" alt="Approvals panel" width="440"/> |
 | Chat-oriented Web UI (`/ui`) | Governance: pending writes & runs |
 
-**GIF / video:** Add `readme-assets/demo.gif` after recording locally — [step-by-step](docs/media/README.md).
+**GIF / video:** [Demo loop](readme-assets/demo.gif) (open `/ui`, dismiss wizard, send a quick message).
+![Demo](readme-assets/demo.gif)
 
 **Brand assets:** Aspect art lives under [`agent/ui/aspects/`](agent/ui/aspects/) (SVG).
 

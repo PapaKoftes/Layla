@@ -648,9 +648,13 @@ async def agent(req: dict, request: Request):
                         continue
                     _last_stream_activity = time.monotonic()
                     if isinstance(ux, dict) and ux.get("_type") == "tool_start":
-                        yield f"data: {json.dumps({'tool_start': ux['tool']})}\n\n"
+                        yield f"data: {json.dumps({'tool_start': ux['tool'], 'type': 'tool_step', 'phase': 'start', 'tool': ux['tool']})}\n\n"
                     elif isinstance(ux, dict) and ux.get("_type") == "think":
-                        yield f"data: {json.dumps({'think': ux.get('content', ''), 'think_step': ux.get('step', 0)})}\n\n"
+                        yield f"data: {json.dumps({'think': ux.get('content', ''), 'think_step': ux.get('step', 0), 'type': 'thinking', 'text': ux.get('content', ''), 'step': ux.get('step', 0)})}\n\n"
+                    elif isinstance(ux, dict) and ux.get("_type") == "tool_step":
+                        payload = {"type": "tool_step"}
+                        payload.update({k: v for k, v in ux.items() if k != "_type"})
+                        yield f"data: {json.dumps(payload)}\n\n"
                     elif isinstance(ux, dict) and ux.get("_type") == "ctx_warn":
                         yield f"data: {json.dumps({'ux_state': ux.get('ux_state'), 'ctx_pct': ux.get('ctx_pct')})}\n\n"
                     else:

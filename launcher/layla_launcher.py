@@ -18,6 +18,7 @@ Optional tray menu requires ``pystray`` and ``pillow``; otherwise the process bl
 from __future__ import annotations
 
 import atexit
+import argparse
 import os
 import shutil
 import signal
@@ -30,8 +31,10 @@ from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
 
-HOST = "127.0.0.1"
-PORT = 8000
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 8000
+HOST = DEFAULT_HOST
+PORT = DEFAULT_PORT
 HEALTH_URL = f"http://{HOST}:{PORT}/health"
 UI_URL = f"http://{HOST}:{PORT}/ui"
 
@@ -87,6 +90,7 @@ def _pick_python(install_root: Path) -> Path:
 
 
 def _health_ok() -> bool:
+    # Uses global HEALTH_URL, set in main() after arg parsing.
     try:
         with urlopen(HEALTH_URL, timeout=2) as r:
             return r.status == 200
@@ -95,10 +99,23 @@ def _health_ok() -> bool:
 
 
 def _open_ui() -> None:
+    # Uses global UI_URL, set in main() after arg parsing.
     webbrowser.open(UI_URL)
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(prog="layla", add_help=True)
+    parser.add_argument("--host", default=DEFAULT_HOST, help="Bind host (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Bind port (default: 8000)")
+    parser.add_argument("--no-tray", action="store_true", help="Disable system tray icon even if deps exist")
+    args = parser.parse_args()
+
+    global HEALTH_URL, UI_URL, HOST, PORT  # noqa: PLW0603 - simple launcher globals
+    HOST = str(args.host or DEFAULT_HOST)
+    PORT = int(args.port or DEFAULT_PORT)
+    HEALTH_URL = f"http://{HOST}:{PORT}/health"
+    UI_URL = f"http://{HOST}:{PORT}/ui"
+
     install_root = _resolve_install_root()
     os.environ.setdefault("LAYLA_INSTALL_ROOT", str(install_root))
     data_dir = _ensure_data_dir()
@@ -160,6 +177,8 @@ def main() -> int:
         _open_ui()
 
         def _tray() -> bool:
+            if args.no_tray:
+                return False
             try:
                 import pystray
                 from PIL import Image

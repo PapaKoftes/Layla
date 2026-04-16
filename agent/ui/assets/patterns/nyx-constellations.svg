@@ -1,23 +1,35 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <rect width="256" height="256" fill="none"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="none"/>
   <g stroke="rgba(255,255,255,0.10)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- celestial rings -->
+    <circle cx="256" cy="256" r="210" opacity="0.22"/>
+    <circle cx="256" cy="256" r="140" opacity="0.22"/>
+    <circle cx="256" cy="256" r="72" opacity="0.18"/>
+
     <!-- constellation lines -->
-    <path d="M32 64l48-24 40 48 56-40 48 24"/>
-    <path d="M48 200l40-56 56 24 40-48 40 40"/>
+    <path d="M64 136l104-56 88 96 120-88 104 56" />
+    <path d="M96 400l96-144 132 56 96-112 96 96" />
+    <path d="M80 248l84 40 92-44 92 56 96-52" opacity="0.85"/>
+
     <!-- stars -->
-    <g fill="rgba(255,255,255,0.12)" stroke="none">
-      <circle cx="32" cy="64" r="3"/>
-      <circle cx="80" cy="40" r="3"/>
-      <circle cx="120" cy="88" r="3"/>
-      <circle cx="176" cy="48" r="3"/>
-      <circle cx="224" cy="72" r="3"/>
-      <circle cx="48" cy="200" r="3"/>
-      <circle cx="88" cy="144" r="3"/>
-      <circle cx="144" cy="168" r="3"/>
-      <circle cx="184" cy="120" r="3"/>
-      <circle cx="224" cy="160" r="3"/>
+    <g fill="rgba(255,255,255,0.14)" stroke="none">
+      <circle cx="64" cy="136" r="5"/>
+      <circle cx="168" cy="80" r="4"/>
+      <circle cx="256" cy="176" r="5"/>
+      <circle cx="376" cy="88" r="4"/>
+      <circle cx="480" cy="144" r="5"/>
+      <circle cx="96" cy="400" r="5"/>
+      <circle cx="192" cy="256" r="4"/>
+      <circle cx="324" cy="312" r="5"/>
+      <circle cx="420" cy="200" r="4"/>
+      <circle cx="480" cy="344" r="5"/>
+      <circle cx="276" cy="448" r="4"/>
+      <circle cx="40" cy="300" r="3"/>
+      <circle cx="468" cy="260" r="3"/>
     </g>
-    <!-- subtle scroll arc -->
-    <path d="M40 116c28-18 64-18 92 0s64 18 92 0" opacity="0.8"/>
+
+    <!-- scroll arc -->
+    <path d="M76 232c56-36 128-36 184 0s128 36 184 0" opacity="0.8"/>
+    <path d="M88 284c52-26 118-26 170 0s118 26 170 0" opacity="0.55"/>
   </g>
 </svg>
