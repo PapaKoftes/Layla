@@ -61,6 +61,17 @@ def maybe_remove_worker_cgroup(rel_leaf: str | None) -> None:
     except OSError:
         pass
     try:
+        # In real cgroupfs, control files are virtual and don't block rmdir.
+        # In unit tests we simulate with real files, so clean them up best-effort.
+        try:
+            for child in leaf.iterdir():
+                if child.is_file():
+                    try:
+                        child.unlink()
+                    except OSError:
+                        pass
+        except OSError:
+            pass
         leaf.rmdir()
         logger.debug("cgroup cleanup: removed leaf %s", rel_leaf)
     except OSError as e:
