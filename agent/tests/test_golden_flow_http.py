@@ -87,7 +87,12 @@ def test_golden_chat_tool_approve_then_reason(tmp_path, monkeypatch, golden_pend
         return {"action": "reason", "objective_complete": True}
 
     def fake_run_completion(*_a, **_kw):
-        return "E2E final answer."
+        # Must be long enough to satisfy completion gate heuristics in production code paths.
+        return (
+            "E2E final answer.\n\n"
+            "This is a longer completion payload used by the golden-flow HTTP test to avoid triggering "
+            "the completion quality gate for being too short."
+        )
 
     monkeypatch.setattr(agent_loop, "_llm_decision", fake_llm_decision)
     monkeypatch.setattr(agent_loop, "run_completion", fake_run_completion)

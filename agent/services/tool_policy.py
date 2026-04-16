@@ -8,7 +8,7 @@ import fnmatch
 import logging
 from typing import Any
 
-from services.intent_detection import _get_tool_category, get_tool_names_for_goal
+from services.intent_detection import _get_tool_category, filter_tools_by_categories, get_tool_names_for_goal
 
 logger = logging.getLogger("layla")
 
@@ -69,6 +69,15 @@ _DEFAULT_DETERMINISTIC_TOOL_ROUTES: dict[str, tuple[str, ...]] = {
         "shell",
         "apply_patch",
     ),
+    # "reasoning" is a common task_type from model_router.classify_task() (e.g. "explain/compare").
+    # Keep it small; pure chat should usually choose action="reason" anyway.
+    "reasoning": (
+        "read_file",
+        "list_dir",
+        "search_memories",
+        "fetch_url",
+        "grep_code",
+    ),
 }
 
 
@@ -105,6 +114,40 @@ def deterministic_route_tools(
         return None
     allowed = {t for t in route if t in tools_dict}
     # Always include minimal safety net; agent_loop also enforces this.
+    for t in ("reason", "read_file", "list_dir"):
+        if t in tools_dict or t == "reason":
+            allowed.add(t)
+    return frozenset(allowed)
+
+
+def deterministic_route_tools_for_task_type(
+    cfg: dict[str, Any],
+    task_type: str,
+    tools_dict: dict[str, Any],
+) -> frozenset[str] | None:
+    """
+    Deterministic tool routing by an already-decided task_type.
+
+    This is the preferred entry point when an upstream router (services.intent_router)
+    provides a single source-of-truth task_type.
+    """
+    if not bool(cfg.get("deterministic_tool_routes_enabled", False)):
+        return None
+    tt = str(task_type or "").strip().lower()
+    if not tt:
+        return None
+    raw_routes = cfg.get("deterministic_tool_routes")
+    routes: dict[str, Any] = raw_routes if isinstance(raw_routes, dict) else {}
+    default = dict(_DEFAULT_DETERMINISTIC_TOOL_ROUTES)
+    for k, v in list(routes.items()):
+        if not isinstance(k, str):
+            continue
+        if isinstance(v, (list, tuple)):
+            default[k.strip().lower()] = tuple(str(x) for x in v if str(x).strip())
+    route = default.get(tt)
+    if not route:
+        return None
+    allowed = {t for t in route if t in tools_dict}
     for t in ("reason", "read_file", "list_dir"):
         if t in tools_dict or t == "reason":
             allowed.add(t)
@@ -322,6 +365,99 @@ def resolve_effective_tools(
         bool(cfg.get("tools_deny")),
         len(effective),
     )
+    return frozenset(effective)
+
+
+def resolve_effective_tools_for_route(
+    cfg: dict[str, Any],
+    route: Any,
+    goal: str,
+    tools_dict: dict[str, Any],
+    *,
+    skip_intent_filter: bool = False,
+) -> frozenset[str]:
+    """
+    Resolve tool names allowed for this turn using a precomputed RouteDecision.
+
+    This prevents multiple independent routers from disagreeing about task type and intent.
+    """
+    all_names = set(tools_dict.keys())
+    merged = _build_default_merged_groups(all_names, tools_dict)
+    merged = _apply_custom_groups(cfg, merged)
+
+    profile = cfg.get("tools_profile") or "full"
+    effective = _profile_base_set(profile, all_names, tools_dict, merged)
+
+    allow = cfg.get("tools_allow")
+    if isinstance(allow, list) and allow:
+        effective |= _expand_allow_deny_tokens(allow, all_names, tools_dict, merged, for_deny=False)
+
+    _deny_all = False
+    deny = cfg.get("tools_deny")
+    if isinstance(deny, list) and deny:
+        if any(isinstance(d, str) and d.strip() == "*" for d in deny):
+            effective.clear()
+            _deny_all = True
+        else:
+            to_remove = _expand_allow_deny_tokens(deny, all_names, tools_dict, merged, for_deny=True)
+            effective -= to_remove
+
+    # Provider narrowing (same as resolve_effective_tools)
+    tools_by_provider = cfg.get("tools_by_provider")
+    if isinstance(tools_by_provider, dict) and tools_by_provider:
+        model_hint = str(cfg.get("chat_model") or cfg.get("remote_model_name") or "").lower()
+        be = str(cfg.get("inference_backend") or "").lower()
+        for prov_key, pol in tools_by_provider.items():
+            if not isinstance(prov_key, str) or not isinstance(pol, dict):
+                continue
+            pk = prov_key.lower()
+            matched = pk in model_hint or (model_hint and model_hint in pk) or pk == be or pk in be
+            if not matched:
+                continue
+            p_allow = pol.get("tools_allow")
+            p_deny = pol.get("tools_deny")
+            if isinstance(p_allow, list) and p_allow:
+                allowed = _expand_allow_deny_tokens(p_allow, all_names, tools_dict, merged, for_deny=False)
+                effective &= allowed | {"reason"}
+            if isinstance(p_deny, list) and p_deny:
+                if any(isinstance(d, str) and d.strip() == "*" for d in p_deny):
+                    effective.clear()
+                    _deny_all = True
+                else:
+                    rem = _expand_allow_deny_tokens(p_deny, all_names, tools_dict, merged, for_deny=True)
+                    effective -= rem
+            break
+
+    # Intent filter: use route.intent_categories as a hint, unless explicitly skipped.
+    if skip_intent_filter:
+        intent_names = set(all_names) | {"reason"}
+    else:
+        cats = []
+        try:
+            cats = list(getattr(route, "intent_categories"))
+        except Exception:
+            try:
+                cats = list((route or {}).get("intent_categories") or [])
+            except Exception:
+                cats = []
+        if cats:
+            filtered = filter_tools_by_categories(tools_dict, cats)
+            intent_names = set(filtered.keys()) | {"reason"}
+        else:
+            intent_names = set(get_tool_names_for_goal(goal, tools_dict))
+
+    effective &= intent_names
+
+    SAFETY = frozenset({"read_file", "list_dir", "search_memories", "save_note"})
+    if effective and not (effective & SAFETY.intersection(all_names)):
+        effective |= {n for n in SAFETY if n in all_names}
+
+    if not effective and not _deny_all:
+        effective = {n for n in intent_names if n in all_names or n == "reason"}
+
+    if "reason" in intent_names:
+        effective.add("reason")
+
     return frozenset(effective)
 
 

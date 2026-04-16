@@ -52,14 +52,14 @@ def classify_reasoning_need(goal: str, context: str = "", *, research_mode: bool
     if len(g) < 40:
         if not g:
             return "light"
-        # yes/no style
-        yn = re.match(r"^(is|are|was|were|do|does|did|can|could|should|will|would|have|has)\s+", gl)
-        if yn or g.endswith("?") and len(g) < 35:
+        # Pure ack tokens — no LLM reasoning overhead needed
+        if gl in {"ok", "okay", "yes", "yep", "no", "nope", "got it", "sure", "thanks", "thank you"}:
             return "none"
-        # greeting / chat
-        if re.match(r"^(hi|hey|hello|thanks|thank you|ok|okay|yes|no|yep|nope)\b", gl):
+        # Bare greetings (1-2 words, no follow-up) — none; anything longer is a real request
+        if re.match(r"^(hi|hey|hello)$", gl) or re.match(r"^(hi|hey|hello)[!.]*$", gl):
             return "none"
-        if len(g.split()) <= 3 and "?" not in g and not any(ch in g for ch in "{}[]();"):
+        # Very short (1-2 word) non-question fragments
+        if len(g.split()) <= 2 and "?" not in g and not any(ch in g for ch in "{}[]();"):
             return "none"
 
     return "light"

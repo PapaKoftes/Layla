@@ -22,8 +22,8 @@
 | **Worktree isolation** | `services/worktree_manager.py` | Optional `git worktree add` / remove for parallel file work |
 | **OTel stub** | `services/otel_export.py` | `maybe_span` when `opentelemetry_enabled` |
 | **Persisted tasks** | `layla/memory/tasks_db.py` (`tasks` table) | Coordinator persists run lifecycle when `task_persistence_enabled` |
-| **Model router** | `services/model_router.py` | Route by task type: coding, reasoning, chat |
-| **Decision model slot** | `agent_loop._llm_decision` + `services/llm_gateway._effective_model_filename` | Optional `decision_model` for higher JSON reliability on small models |
+| **Model router** | `services/model_router.py` | Route by task type: coding, reasoning, chat (model selection). Unified intent routing lives in `services/intent_router.py` as a single source of truth for task_type + hints. |
+| **Decision model slot** | `agent_loop._llm_decision` + `services/llm_gateway._effective_model_filename` | Optional `decision_model` for higher JSON reliability on small models; decision prompt keeps `reason` visible and biases meta/self questions toward `action="reason"` |
 | **Adaptive model outcomes** | `layla/memory/model_outcomes` + `services/telemetry.py` | Track model success/score to bias routing over time (local-only) |
 | **Golden examples** | `services/golden_examples.py` + `golden_examples` table | Store and inject small successful patterns as few-shot context |
 | **Deterministic quality enforcement** | `services/tool_output_validator.py`, `services/tool_policy.py`, `services/planner.validate_plan_before_execution`, `services/outcome_evaluation.evaluate_validation_matrix`, `services/output_quality.passes_completion_gate`, `agent_loop.py` | Deterministic verification after tools, reduced tool visibility, plan pre-validation, multi-dim validation matrix, strict completion gate, proactive context protection |

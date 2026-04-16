@@ -124,7 +124,27 @@ async function tryLoadActiveConversationOnBoot() {
 async function _renderSessionList() {
   const container = document.getElementById('chat-rail-list');
   if (!container) return;
-  const q = (document.getElementById('chat-rail-search')?.value || '').trim();
+  const rawQ = (document.getElementById('chat-rail-search')?.value || '').trim();
+  // Lightweight query syntax:
+  // - tag:foo
+  // - after:YYYY-MM-DD
+  // - before:YYYY-MM-DD
+  let q = rawQ;
+  let tag = '';
+  let after = '';
+  let before = '';
+  try {
+    const parts = rawQ.split(/\s+/).filter(Boolean);
+    const rest = [];
+    parts.forEach((p) => {
+      const m = String(p || '');
+      if (m.toLowerCase().startsWith('tag:')) tag = m.slice(4).trim();
+      else if (m.toLowerCase().startsWith('after:')) after = m.slice(6).trim();
+      else if (m.toLowerCase().startsWith('before:')) before = m.slice(7).trim();
+      else rest.push(m);
+    });
+    q = rest.join(' ').trim();
+  } catch (_) {}
   function _getPinned() {
     try {
       const raw = JSON.parse(localStorage.getItem('layla_pinned_conversations') || '[]');
@@ -143,16 +163,36 @@ async function _renderSessionList() {
     _setPinned(ids.slice(0, 50));
   }
   try {
-    const url = q ? '/conversations/search?q=' + encodeURIComponent(q) + '&limit=80' : '/conversations?limit=100';
+    const base = q ? '/conversations/search?q=' + encodeURIComponent(q) + '&limit=80' : '/conversations?limit=120';
+    const url = tag ? (base + '&tag=' + encodeURIComponent(tag)) : base;
     const r = await fetch(url);
     const d = await r.json();
     if (d.ok && Array.isArray(d.conversations)) {
-      if (!d.conversations.length) {
+      let convs = d.conversations.slice();
+      // Client-side date filters (API doesn't currently expose range params).
+      function _parseDay(s) {
+        const t = String(s || '').trim();
+        if (!t) return null;
+        const dt = new Date(t);
+        return isNaN(dt.getTime()) ? null : dt.getTime();
+      }
+      const afterTs = after ? _parseDay(after) : null;
+      const beforeTs = before ? _parseDay(before) : null;
+      if (afterTs || beforeTs) {
+        convs = convs.filter((c) => {
+          const ts = _parseDay(c.updated_at || c.created_at || '');
+          if (!ts) return true;
+          if (afterTs && ts < afterTs) return false;
+          if (beforeTs && ts > beforeTs) return false;
+          return true;
+        });
+      }
+      if (!convs.length) {
         container.innerHTML = '<span style="color:var(--text-dim);font-size:0.7rem">No chats match. Try New chat.</span>';
         return;
       }
       const pinned = _getPinned();
-      const conversations = d.conversations.slice().sort(function(a, b) {
+      const conversations = convs.slice().sort(function(a, b) {
         const ap = pinned.indexOf(String(a.id)) >= 0 ? 0 : 1;
         const bp = pinned.indexOf(String(b.id)) >= 0 ? 0 : 1;
         if (ap !== bp) return ap - bp;
@@ -230,12 +270,30 @@ async function _renderSessionList() {
         item.addEventListener('contextmenu', async (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
-          const action = prompt('Chat actions: rename | delete | pin | tags', 'rename');
+          const action = prompt('Chat actions: rename | delete | pin | tags | export', 'rename');
           if (!action) return;
           const a = action.trim().toLowerCase();
           if (a === 'pin') { _togglePinned(s.id); _renderSessionList(); return; }
           if (a === 'delete') { await _deleteSession(String(s.id)); return; }
           if (a === 'rename') { renBtn.click(); return; }
+          if (a === 'export') {
+            try {
+              const rr = await fetch('/conversations/' + encodeURIComponent(s.id) + '/messages?limit=2000');
+              const dj = await rr.json();
+              if (!dj.ok || !Array.isArray(dj.messages)) { showToast('Could not export'); return; }
+              const blob = new Blob([JSON.stringify({ conversation: s, messages: dj.messages }, null, 2)], { type: 'application/json' });
+              const url = URL.createObjectURL(blob);
+              const ael = document.createElement('a');
+              const safe = String((s.title || 'chat') || 'chat').replace(/[^a-z0-9_-]+/gi, '_').slice(0, 48);
+              ael.href = url;
+              ael.download = 'layla_' + safe + '_' + String(s.id).slice(0, 8) + '.json';
+              document.body.appendChild(ael);
+              ael.click();
+              setTimeout(() => { try { URL.revokeObjectURL(url); } catch(_) {} try { ael.remove(); } catch(_) {} }, 250);
+              showToast('Exported');
+            } catch (_) { showToast('Network error'); }
+            return;
+          }
           if (a === 'tags') {
             const nt = prompt('Tags (comma-separated)', String(s.tags || ''));
             if (nt == null) return;

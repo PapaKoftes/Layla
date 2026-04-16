@@ -286,7 +286,7 @@ def wakeup():
     # Layla v3: explicitly frame the early trial phase.
     maturity_payload: dict = {}
     try:
-        from services.maturity_engine import get_state, xp_needed_for_next
+        from services.maturity_engine import get_milestones_status, get_state, xp_needed_for_next
 
         ms = get_state()
         need = xp_needed_for_next(ms.rank)
@@ -295,6 +295,7 @@ def wakeup():
             "xp": int(ms.xp),
             "phase": str(ms.phase),
             "xp_to_next": int(need) if need is not None else None,
+            "milestones": get_milestones_status(ms.phase),
         }
 
         # Layla v3: growth delta line (compare to last wakeup rank; store in user_identity)
@@ -313,9 +314,9 @@ def wakeup():
         except Exception:
             pass
 
-        if ms.phase == "nascent":
+        if ms.phase == "awakening":
             greeting_parts.append(
-                "Trial phase: I'm in my learning phase. I'll mostly observe, ask clarifying questions, and build a profile of what you need."
+                "Awakening: I'm in my early growth phase. I'll observe, ask clarifying questions, and build a profile of what you need."
             )
     except Exception:
         pass

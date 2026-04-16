@@ -16,7 +16,9 @@ def generate_reflections(state: dict) -> dict[str, str]:
     Uses heuristics when LLM unavailable; otherwise LLM for richer reflections.
     """
     steps = state.get("steps") or []
-    tool_steps = [s for s in steps if s.get("action") and s["action"] != "reason"]
+    # Internal bookkeeping steps (not actual tools) should not trigger reflection LLM calls.
+    _non_tool = {"reason", "think", "none", "preflight", "completion_gate", "pre_read_probe", "client_abort"}
+    tool_steps = [s for s in steps if s.get("action") and str(s.get("action")) not in _non_tool]
     objective = (state.get("objective") or state.get("original_goal") or "")[:300]
     status = state.get("status", "")
     oe = state.get("outcome_evaluation") if isinstance(state.get("outcome_evaluation"), dict) else {}
@@ -116,7 +118,8 @@ def run_reflection(state: dict) -> dict[str, str] | None:
     if state.get("status") != "finished":
         return None
     steps = state.get("steps") or []
-    tool_steps = [s for s in steps if s.get("action") and s["action"] != "reason"]
+    _non_tool = {"reason", "think", "none", "preflight", "completion_gate", "pre_read_probe", "client_abort"}
+    tool_steps = [s for s in steps if s.get("action") and str(s.get("action")) not in _non_tool]
     if not tool_steps:
         return None
     reflections = generate_reflections(state)

@@ -147,7 +147,7 @@
     pointer-events: none !important;
     z-index: 0;
     background-image: var(--asp-bg-pattern);
-    background-size: 256px 256px;
+    background-size: 512px 512px;
     background-repeat: repeat;
     opacity: calc(0.08 * var(--fx-strength));
     mix-blend-mode: screen;
@@ -250,6 +250,23 @@
   .maturity-phase { display: flex; flex-direction: column; gap: 2px; }
   #maturity-phase { font-size: 0.78rem; letter-spacing: 0.12em; }
   .maturity-xp { font-size: 0.68rem; color: var(--text-dim); }
+  .maturity-sigil {
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.10);
+    background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.10), rgba(0,0,0,0.18));
+    box-shadow: 0 0 calc(12px * var(--fx-strength)) var(--asp-glow);
+    flex: 0 0 auto;
+    opacity: 0.95;
+  }
+  .maturity-sigil img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    opacity: 0.9;
+    filter: drop-shadow(0 0 10px var(--asp-glow));
+  }
   .maturity-bar {
     margin-top: 8px;
     height: 8px;
@@ -264,6 +281,25 @@
     box-shadow: 0 0 calc(10px * var(--fx-strength)) var(--asp-glow);
     transition: width 0.35s ease;
   }
+  .maturity-milestones {
+    margin-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding-top: 8px;
+  }
+  .maturity-milestones > summary {
+    cursor: pointer;
+    font-size: 0.68rem;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    list-style: none;
+  }
+  .maturity-milestones > summary::-webkit-details-marker { display: none; }
+  .maturity-milestones-list { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .maturity-milestone-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .maturity-milestone-label { font-size: 0.7rem; color: var(--text); }
+  .maturity-milestone-progress { font-size: 0.65rem; color: var(--text-dim); white-space: nowrap; }
+  .maturity-milestone-row.completed .maturity-milestone-label { color: rgba(220,255,220,0.92); }
   .maturity-hint { margin-top: 6px; font-size: 0.64rem; color: var(--text-dim); }
 
   /* ── Rank-up ceremony overlay ───────────────────────────────────────── */
@@ -856,6 +892,71 @@
     backdrop-filter: blur(4px);
   }
   #setup-overlay.visible { display: flex; }
+  /* ── Wizard overlay (unified first-run) ── */
+  #wizard-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 10002;
+    background: rgba(0,0,0,0.82);
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(6px);
+    padding: 18px;
+  }
+  #wizard-overlay.visible { display: flex; }
+  .wizard-modal {
+    width: min(760px, 96vw);
+    max-height: 88vh;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(10, 0, 18, 0.92), rgba(0, 0, 0, 0.55));
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.06), 0 18px 80px rgba(0,0,0,0.6);
+    display: flex;
+    flex-direction: column;
+  }
+  .wizard-head {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .wizard-title { font-family: 'Cinzel', serif; letter-spacing: 0.14em; color: var(--asp); font-size: 0.95rem; }
+  .wizard-steps { display: flex; gap: 6px; align-items: center; }
+  .wizard-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.16);
+    background: rgba(255,255,255,0.06);
+    box-shadow: 0 0 12px transparent;
+  }
+  .wizard-dot.active {
+    background: var(--asp);
+    border-color: var(--asp);
+    box-shadow: 0 0 18px var(--asp-glow);
+  }
+  .wizard-body {
+    padding: 16px;
+    overflow: auto;
+  }
+  .wizard-step { display: none; }
+  .wizard-step.active { display: block; }
+  .wizard-actions {
+    padding: 12px 16px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .wizard-hint {
+    padding: 0 16px 14px;
+    color: var(--text-dim);
+    font-size: 0.68rem;
+  }
   #onboarding-overlay {
     display: none;
     position: fixed;
