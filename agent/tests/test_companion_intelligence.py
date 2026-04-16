@@ -135,6 +135,25 @@ def test_reflection_engine_produces_retrievable_learnings(monkeypatch, tmp_path)
     import layla.memory.db as db_mod
     _reset_db(monkeypatch, tmp_path)
     from services.reflection_engine import run_reflection
+    # Never call the real LLM in unit tests (would require a model + can hang).
+    import services.llm_gateway as llm_gateway
+
+    def _fake_completion(*_args, **_kwargs):
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": (
+                            "What worked: write_file and run_python\n"
+                            "What failed: nothing\n"
+                            "What could improve: add more assertions\n"
+                        )
+                    }
+                }
+            ]
+        }
+
+    monkeypatch.setattr(llm_gateway, "run_completion", _fake_completion)
     state = {
         "status": "finished",
         "objective": "Write hello.py and verify it runs",

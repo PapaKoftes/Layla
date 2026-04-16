@@ -10,6 +10,60 @@ $Root = Split-Path -Parent $PSScriptRoot
 $Payload = Join-Path $PSScriptRoot "payload\Layla"
 $null = New-Item -ItemType Directory -Force -Path $Payload
 
+function Resolve-PackagingPython {
+  # Prefer the Windows Python Launcher when present (common dev machines may have 3.14 as `python`).
+  $candidates = @(
+    @{ Name = "py -3.12"; Args = @("-3.12", "-c", "import sys; print(sys.executable)") },
+    @{ Name = "py -3.11"; Args = @("-3.11", "-c", "import sys; print(sys.executable)") },
+    @{ Name = "python"; Args = @("-c", "import sys; print(sys.executable)") }
+  )
+  foreach ($c in $candidates) {
+    try {
+      $exe = ""
+      if ($c.Name -like "py *") {
+        $exe = (& py @($c.Args) | Select-Object -First 1).Trim()
+      } else {
+        $exe = (& python @($c.Args) | Select-Object -First 1).Trim()
+      }
+      if ($exe -and (Test-Path $exe)) { return [pscustomobject]@{ Exe = $exe; Source = $c.Name } }
+    } catch {
+      # try next
+    }
+  }
+  return $null
+}
+
+$pyPick = Resolve-PackagingPython
+if (-not $pyPick) {
+  throw "Could not find a Python interpreter on PATH. Install Python 3.11 or 3.12 and retry."
+}
+$PythonExe = $pyPick.Exe
+Write-Host ("==> Packaging Python: {0} ({1})" -f $PythonExe, $pyPick.Source)
+
+$pyMajorMinor = ""
+try {
+  $pyMajorMinor = (& $PythonExe -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" | Select-Object -First 1).Trim()
+} catch {
+  $pyMajorMinor = ""
+}
+if ($pyMajorMinor -notin @("3.11", "3.12")) {
+  if ($env:LAYLA_ALLOW_PACKAGING_ON_UNSUPPORTED_PYTHON -in @("1", "true", "yes")) {
+    Write-Warning "Unsupported Python $pyMajorMinor for packaging; continuing because LAYLA_ALLOW_PACKAGING_ON_UNSUPPORTED_PYTHON is set."
+  } else {
+    throw @"
+Unsupported Python for Windows installer build: $pyMajorMinor
+
+Layla supports Python 3.11–3.12 for reliable PyInstaller + dependency resolution.
+Fix:
+  - Install Python 3.12 (recommended) and ensure `py -3.12` works, OR
+  - Put Python 3.11/3.12 earlier on PATH than newer interpreters.
+
+Emergency escape hatch (not recommended):
+  - set LAYLA_ALLOW_PACKAGING_ON_UNSUPPORTED_PYTHON=1
+"@
+  }
+}
+
 Write-Host "==> Sync agent + launcher assets into payload"
 Copy-Item -Path (Join-Path $Root "agent") -Destination $Payload -Recurse -Force
 Copy-Item -Path (Join-Path $Root "personalities") -Destination $Payload -Recurse -Force -ErrorAction SilentlyContinue
@@ -22,8 +76,8 @@ Copy-Item -Path (Join-Path $Root "agent\runtime_config.example.json") -Destinati
 Write-Host "==> Build layla.exe with PyInstaller"
 Push-Location $Root
 try {
-  python -m pip install pyinstaller --quiet
-  python -m PyInstaller launcher\layla.spec --noconfirm
+  & $PythonExe -m pip install pyinstaller --quiet
+  & $PythonExe -m PyInstaller launcher\layla.spec --noconfirm
   $exe = Join-Path $Root "dist\layla.exe"
   if (-not (Test-Path $exe)) { throw "PyInstaller did not produce dist\layla.exe" }
   Copy-Item $exe (Join-Path $Payload "layla.exe") -Force
@@ -59,7 +113,7 @@ if (-not $iscc) {
 Write-Host "==> Compile installer with Inno Setup"
 $ver = ""
 try {
-  $ver = (python -c "import sys; sys.path.insert(0,'agent'); import version; print(version.__version__)" | Select-Object -First 1).Trim()
+  $ver = (& $PythonExe -c "import sys; sys.path.insert(0,'agent'); import version; print(version.__version__)" | Select-Object -First 1).Trim()
 } catch {
   $ver = ""
 }

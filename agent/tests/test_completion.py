@@ -48,6 +48,17 @@ def test_sub_goals_generate_for_broad_task():
     import agent_loop
     _decompose_goal = agent_loop._decompose_goal
 
+    # Never call the real LLM in unit tests (would require a model + can hang).
+    import services.llm_gateway as llm_gateway
+
+    def _fake_completion(*_args, **_kwargs):
+        return {"choices": [{"message": {"content": "[\"Add tests\", \"Fix lint\", \"Update docs\"]"}}]}
+
+    # agent_loop imports run_completion into its module scope, so patch there too.
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(llm_gateway, "run_completion", _fake_completion)
+    monkeypatch.setattr(agent_loop, "run_completion", _fake_completion)
+
     # Broad goal: should trigger decomposition (may return [] if LLM unavailable)
     subs = _decompose_goal("Make this repo production ready")
     # Either we get sub_goals (list of 1-3) or [] on failure/skip
@@ -55,6 +66,7 @@ def test_sub_goals_generate_for_broad_task():
     assert len(subs) <= 3
     if subs:
         assert all(isinstance(s, str) for s in subs)
+    monkeypatch.undo()
 
 
 def test_needs_knowledge_rag_reflective_goals():
