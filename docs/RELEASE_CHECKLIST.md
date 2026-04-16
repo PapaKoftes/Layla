@@ -14,6 +14,7 @@ Run before tagging or publishing binaries/docs as “ready.” See also **`docs/
 | MCP smoke (if shipping): `chat_with_layla` against running server | Manual |
 | `GET /health`: status, `effective_limits`, `model_routing`, knowledge index fields | Manual |
 | Fresh venv: **`INSTALL.bat`** / **`install.sh`** → **`runtime_config.json`** / wizard | Manual |
+| Windows packaged install (VM): install → launch → `/health` + `/ui` → first-run/model → chat turn | Manual ([`installer/README.md`](../installer/README.md)) |
 | No startup import errors; tool runs log at INFO | Manual |
 | **`CHANGELOG.md`** version matches **`agent/version.py`** | Yes for1.2.0 |
 | **`docs/PRODUCTION_CONTRACT.md`** still matches `/health` if defaults changed | Review |

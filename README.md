@@ -90,7 +90,7 @@ Layla is a **local-first AI companion and engineering agent**. She runs on your 
 
 **First-time guide:** [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)
 
-**Prerequisite:** Python **3.11 or 3.12** (3.13+ not yet supported for the full dependency stack).
+**Prerequisite:** Python **3.11 or 3.12** (**3.13+** — including **3.14** — is not supported for the full dependency stack yet).
 
 ### Windows
 
@@ -108,7 +108,7 @@ bash install.sh    # venv, deps, optional Playwright, hardware wizard
 bash start.sh      # launch when ready
 ```
 
-**Packaged Windows installer:** see `installer/` ([Inno Setup](installer/layla.iss), `build_installer.ps1`). Data may live under `%LOCALAPPDATA%\Layla` via `LAYLA_DATA_DIR`.
+**Packaged Windows installer:** see [`installer/README.md`](installer/README.md) (payload build via `build_installer.ps1`, compile via [Inno Setup](installer/layla.iss)). End users get an **embedded CPython** under `python\\` (no system Python required). Build machines still need **Python 3.11/3.12** for PyInstaller (use `py -3.12` if `python` is newer). Runtime data may live under `%LOCALAPPDATA%\\Layla` via `LAYLA_DATA_DIR`.
 
 ---
 

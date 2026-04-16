@@ -1,14 +1,15 @@
-# Optional: bundle Python 3.12 embeddable + pip into installer payload for zero-prereq installs.
+# Optional: bundle embeddable CPython + pip into installer payload for zero-prereq installs.
 # Run from repo root after payload exists:
 #   .\installer\bundle_embedded_python.ps1 -PayloadDir .\installer\payload\Layla
 #
-# Requires: PowerShell 5+, internet. Edits python312._pth to enable site-packages.
+# Requires: PowerShell 5+, internet. Edits python*._pth to enable site-packages.
 # If download fails, script exits 0 with a warning (CI-friendly).
 
 param(
   [string]$PayloadDir = "",
-  # Default to 3.12 (embeddable distribution is available; matches supported runtime).
-  [string]$PythonVersion = "3.12.10"
+  # Pin to a CPython version that has published CPU wheels for llama-cpp-python via the
+  # abetlen wheel index (see install command below). 3.11.x is the safest default on Windows.
+  [string]$PythonVersion = "3.11.9"
 )
 
 $ErrorActionPreference = "Stop"
@@ -71,10 +72,15 @@ Write-Host "==> pip install Layla requirements (may take several minutes)"
 $req = Join-Path $PayloadDir "agent\requirements.txt"
 if (Test-Path $req) {
   try {
-    # llama-cpp-python is the most failure-prone dependency (native build toolchain).
-    # Prefer a prebuilt wheel; if none is available, warn and continue so the payload can still be built.
-    & $pyExe -m pip install scikit-build-core --no-warn-script-location --disable-pip-version-check --no-cache-dir
-    & $pyExe -m pip install "llama-cpp-python>=0.3.1,<0.4" --only-binary=:all: --no-warn-script-location --disable-pip-version-check --no-cache-dir
+    # llama-cpp-python: PyPI publishes sdist-only; use the maintainer CPU wheel index so we can
+    # `--only-binary` and avoid MSVC/CMake on operator machines.
+    $llamaIndex = "https://abetlen.github.io/llama-cpp-python/whl/cpu"
+    # torch (pulled transitively by some optional stacks) currently pins setuptools<82.
+    & $pyExe -m pip install "setuptools<82" --no-warn-script-location --disable-pip-version-check --no-cache-dir
+    & $pyExe -m pip install "llama-cpp-python==0.3.19" `
+      --only-binary=:all: `
+      --extra-index-url $llamaIndex `
+      --no-warn-script-location --disable-pip-version-check --no-cache-dir
 
     $tmpReq = Join-Path $env:TEMP ("layla_requirements_no_llama_" + [guid]::NewGuid().ToString("N") + ".txt")
     try {
@@ -89,6 +95,8 @@ if (Test-Path $req) {
     } finally {
       if (Test-Path $tmpReq) { Remove-Item $tmpReq -Force -ErrorAction SilentlyContinue }
     }
+
+    & $pyExe -c "import llama_cpp; print('llama_cpp import ok:', getattr(llama_cpp, '__version__', 'unknown'))" | Write-Host
   } catch {
     Write-Warning "pip install -r requirements failed: $_"
   }
