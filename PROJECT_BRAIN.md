@@ -1,6 +1,6 @@
 # PROJECT_BRAIN — Layla (stable system summary)
 
-**Purpose:** One place to load **context before** scanning the whole tree. Use this with **`AGENTS.md`** (full manual), **`ARCHITECTURE.md`** (flow), and **`docs/RULES.md`** (conventions). For a **ground-truth technical audit** (gaps, risks, route inventory), see **`docs/FULL_TECHNICAL_AUDIT.md`**. Update this file when the *shape* of the system changes (major routes, layout, or doc roles)—not every small commit.
+**Purpose:** One place to load **context before** scanning the whole tree. Use this with **`AGENTS.md`** (full manual), **`ARCHITECTURE.md`** (flow), **`docs/README.md`** (documentation hub / index), and **`docs/RULES.md`** (conventions). For a **ground-truth technical audit** (gaps, risks, route inventory), see **`docs/FULL_TECHNICAL_AUDIT.md`**. Update this file when the *shape* of the system changes (major routes, layout, or doc roles)—not every small commit.
 
 ---
 
