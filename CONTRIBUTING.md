@@ -11,8 +11,8 @@ Thank you for your interest in contributing. Layla is a local-first AI companion
 ## Development setup
 
 ```bash
-git clone <YOUR_REPO_URL>
-cd layla/agent
+git clone https://github.com/PapaKoftes/Layla.git
+cd Layla/agent
 
 # Create a virtual environment
 python -m venv venv
