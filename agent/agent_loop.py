@@ -2852,8 +2852,12 @@ def _extract_file_and_content(goal: str):
         content = parts[1].strip()
         words = left.split()
         for w in words:
-            if ":" in w or "\\" in w:
-                return w.strip("\"',"), content
+            ww = w.strip("\"',")
+            if not ww or ww.lower().startswith("http"):
+                continue
+            # Support Windows paths (C:\...), UNC (\\server\...), and POSIX absolute paths (/tmp/x).
+            if ":" in ww or "\\" in ww or ww.startswith("/"):
+                return ww, content
     return None, None
 
 

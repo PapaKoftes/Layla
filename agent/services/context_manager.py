@@ -235,9 +235,11 @@ def build_system_prompt(
     total_budget = max(512, n_ctx - reserve_for_response)
     order = [
         "system_instructions",
+        # Current goal/sub-objectives must be early so it survives token pressure.
+        # This is especially important when identity/personality blocks are large.
+        "current_goal",
         "pinned_context",
         "agent_state",
-        "current_goal",
         "memory",
         "knowledge_graph",
         "knowledge",
