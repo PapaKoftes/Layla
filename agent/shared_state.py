@@ -1,6 +1,7 @@
 """
 Shared state and refs for routers. Populated by main at startup to avoid circular imports.
 """
+import asyncio
 import threading
 from collections import deque
 from typing import Callable
@@ -353,3 +354,45 @@ def release_workspace_lease(workspace: str, holder: str) -> None:
         cur = _workspace_lease.get(ws)
         if cur and cur[0] == h:
             _workspace_lease.pop(ws, None)
+
+
+# ── Cancellation support (merged from PR #1) ─────────────────────────────────
+_cancel_events: dict[str, asyncio.Event] = {}
+_most_recent_conv_id: str | None = None
+
+
+def new_cancel_event(conv_id: str) -> asyncio.Event:
+    """Create (or reset) a cancel event for conv_id. Call at start of each run."""
+    global _most_recent_conv_id
+    ev = asyncio.Event()
+    _cancel_events[conv_id] = ev
+    _most_recent_conv_id = conv_id
+    return ev
+
+
+def get_cancel_event(conv_id: str) -> asyncio.Event | None:
+    """Return the cancel event for conv_id, or None if not found."""
+    return _cancel_events.get(conv_id)
+
+
+def set_cancel(conv_id: str) -> bool:
+    """Signal cancellation for conv_id. Returns True if event existed."""
+    ev = _cancel_events.get(conv_id)
+    if ev is not None:
+        ev.set()
+        return True
+    return False
+
+
+def clear_cancel(conv_id: str) -> None:
+    """Remove cancel event for conv_id (call after run completes)."""
+    _cancel_events.pop(conv_id, None)
+
+
+def get_most_recent_conv_id() -> str | None:
+    """Return the most recently started conversation_id."""
+    return _most_recent_conv_id
+
+
+# Shared pending-file lock: agent_loop pending writes vs main router reads
+pending_file_lock: threading.Lock = threading.Lock()

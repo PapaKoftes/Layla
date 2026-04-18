@@ -260,6 +260,13 @@ async def lifespan(app: FastAPI):
                 logger.warning("Plugin error: %s", err)
         except Exception as e:
             logger.warning("Plugin load failed: %s", e)
+        try:
+            from services.llm_gateway import llm_request_queue
+
+            llm_request_queue.start()
+            logger.info("LLM request queue worker started")
+        except Exception as e:
+            logger.warning("LLM request queue start failed: %s", e)
         # Sweep orphaned worktrees from prior crashes (best-effort).
         try:
             max_age_s = int(float(cfg.get("worktree_orphan_max_age_seconds", 3600) or 3600))
@@ -484,6 +491,20 @@ async def lifespan(app: FastAPI):
                 sched.add_job(_intelligence_job, IntervalTrigger(minutes=60), id="intelligence")
             except Exception:
                 pass
+            try:
+
+                def _rl_preference_job():
+                    try:
+                        from services.rl_feedback import run_preference_update_job
+
+                        run_preference_update_job()
+                    except Exception:
+                        pass
+
+                sched.add_job(_rl_preference_job, IntervalTrigger(minutes=30), id="rl_preference_update")
+                logger.info("RL preference update scheduled every 30 min")
+            except Exception as _rl_e:
+                logger.debug("RL preference job not scheduled: %s", _rl_e)
             if cfg.get("enable_lens_refresh") and cfg.get("lens_refresh_interval_days"):
                 try:
                     days = max(1, min(365, int(cfg["lens_refresh_interval_days"])))
@@ -507,6 +528,12 @@ async def lifespan(app: FastAPI):
         pass
     if hasattr(app.state, "scheduler"):
         app.state.scheduler.shutdown(wait=False)
+    try:
+        from services.llm_gateway import llm_request_queue
+
+        await llm_request_queue.stop()
+    except Exception:
+        pass
 
 
 app = FastAPI(
