@@ -279,15 +279,22 @@ async function useExistingSetupModel(filename) {
   }
 }
 
+function _renderSetupCatalogError(container, message) {
+  if (!container) return;
+  var msg = message || 'Could not load catalog';
+  container.innerHTML =
+    '<div style="color:var(--text-dim);font-size:0.8rem;line-height:1.45">' + escapeHtml(msg) + '</div>' +
+    '<button type="button" class="tab-btn" style="margin-top:10px" onclick="loadSetupCatalog()">Retry</button>';
+}
 async function loadSetupCatalog() {
   var container = document.getElementById('setup-model-list');
   if (!container) return;
   container.innerHTML = '<div style="color:var(--text-dim);font-size:0.8rem">Loading catalog…</div>';
   try {
-    var res = await fetch('/setup/models');
-    var data = await res.json();
-    if (!data.ok || !data.catalog) {
-      container.textContent = (data && data.error) || 'Could not load catalog';
+    var res = await fetchWithTimeout('/setup/models', {}, 20000);
+    var data = await res.json().catch(function () { return null; });
+    if (!res.ok || !data || !data.ok || !Array.isArray(data.catalog)) {
+      _renderSetupCatalogError(container, (data && data.error) || formatAgentError(res, data || {}));
       return;
     }
     container.innerHTML = '';
@@ -307,9 +314,11 @@ async function loadSetupCatalog() {
     });
     _setupRefreshDownloadButton();
   } catch (e) {
-    container.textContent = 'Failed to load catalog';
+    var timedOut = e && e.name === 'AbortError';
+    _renderSetupCatalogError(container, timedOut ? 'Catalog request timed out.' : 'Failed to load catalog');
   }
 }
+window.loadSetupCatalog = loadSetupCatalog;
 
 async function prefillSetupWorkspaceFromSettings() {
   var inp = document.getElementById('setup-workspace-path');
@@ -323,11 +332,30 @@ async function prefillSetupWorkspaceFromSettings() {
   } catch (_) {}
 }
 
+function _renderSetupStatusError(res, body, err) {
+  var overlay = document.getElementById('setup-overlay');
+  if (overlay) overlay.classList.add('visible');
+  var el = document.getElementById('setup-hw');
+  if (!el) return;
+  var msg =
+    err && err.name === 'AbortError'
+      ? 'Setup status timed out. Check that Layla is responding.'
+      : res
+        ? formatAgentError(res, body || {})
+        : 'Could not reach Layla. Is the server running?';
+  el.innerHTML =
+    '<span style="color:var(--text-dim)">' + escapeHtml(msg) + '</span><br>' +
+    '<button type="button" class="tab-btn" style="margin-top:8px" onclick="checkSetupStatus()">Retry</button>';
+}
 async function checkSetupStatus() {
+  var overlay = document.getElementById('setup-overlay');
   try {
-    var res = await fetch('/setup_status');
-    var s = await res.json();
-    var overlay = document.getElementById('setup-overlay');
+    var res = await fetchWithTimeout('/setup_status', {}, 15000);
+    var s = await res.json().catch(function () { return null; });
+    if (!res.ok || !s) {
+      _renderSetupStatusError(res, s, null);
+      return;
+    }
     if (s.ready && s.model_found) {
       if (overlay) overlay.classList.remove('visible');
       maybeStartOnboarding();
@@ -341,6 +369,7 @@ async function checkSetupStatus() {
     _setupRefreshDownloadButton();
   } catch (e) {
     _dbg('checkSetupStatus failed', e);
+    _renderSetupStatusError(null, null, e);
     if (typeof showToast === 'function') showToast('Setup check failed — is Layla running?');
   }
 }
@@ -766,6 +795,274 @@ function laylaFormatPlanJson(btn) {
     if (typeof showToast === 'function') showToast('Plan reformatted');
   } catch (e) {
     if (typeof showToast === 'function') showToast('Invalid JSON');
+  }
+}
+
+/** POST /execute_plan — runs stored plan steps on the server (blocking until done). */
+async function executePlan(plan, goal) {
+  const workspacePath = (document.getElementById('workspace-path')?.value || '').trim();
+  const allowWrite = document.getElementById('allow-write')?.checked ?? false;
+  const allowRun = document.getElementById('allow-run')?.checked ?? false;
+  try { ensureLaylaConversationId(); } catch (_) {}
+  try { laylaHeaderProgressStart(); } catch (_) {}
+  try {
+    const res = await fetchWithTimeout(
+      '/execute_plan',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan,
+          goal: goal || '',
+          workspace_root: workspacePath,
+          aspect_id: typeof currentAspect !== 'undefined' ? currentAspect : 'morrigan',
+          conversation_id: typeof currentConversationId !== 'undefined' ? currentConversationId : '',
+          allow_write: !!allowWrite,
+          allow_run: !!allowRun,
+        }),
+      },
+      600000
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) {
+      const err = (data && (data.error || data.detail)) ? String(data.error || data.detail) : ('HTTP ' + res.status);
+      if (typeof showToast === 'function') showToast(err);
+      else _dbg('executePlan failed', err);
+      return;
+    }
+    const okAll = !!data.all_steps_ok;
+    if (typeof showToast === 'function') showToast(okAll ? 'Plan finished' : 'Plan finished (some steps reported issues)');
+    try {
+      const summary = JSON.stringify(data.results || {}, null, 2);
+      addMsg('layla', '**Plan executed**\n```json\n' + summary.slice(0, 12000) + (summary.length > 12000 ? '\n…' : '') + '\n```');
+    } catch (_) {}
+  } catch (e) {
+    const msg = (e && e.message) ? String(e.message) : String(e);
+    if (typeof showToast === 'function') showToast('executePlan: ' + msg);
+    else _dbg('executePlan', e);
+  } finally {
+    try { laylaHeaderProgressStop(); } catch (_) {}
+  }
+}
+
+/** POST /compact — summarize in-memory history (shows remaining message count). */
+async function compactConversation() {
+  try {
+    const res = await fetchWithTimeout(
+      '/compact',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversation_id: typeof currentConversationId !== 'undefined' ? currentConversationId : '' }),
+      },
+      120000
+    );
+    const data = await res.json().catch(() => ({}));
+    const n = data && typeof data.messages_remaining === 'number' ? data.messages_remaining : null;
+    const tok = n != null ? String(n) : '?';
+    if (typeof showToast === 'function') showToast('Compacted · messages in buffer: ~' + tok);
+    try { if (typeof updateContextChip === 'function') updateContextChip(); } catch (_) {}
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('Compact failed: ' + ((e && e.message) || e));
+  }
+}
+
+function _guessPathFromCodeBlock(text) {
+  const lines = String(text || '').split(/\r?\n/).slice(0, 8);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const m = line.match(/(?:file|path)\s*[:=]\s*[`'"]?([^\s`'")\]]+)/i);
+    if (m && m[1]) return m[1].trim();
+  }
+  return '';
+}
+
+async function _laylaApprovePendingForCodeBlock(codeText) {
+  const res = await fetchWithTimeout('/pending', {}, 8000);
+  const data = await res.json().catch(() => ({}));
+  const pending = Array.isArray(data.pending) ? data.pending : [];
+  const todo = pending.filter(e => e && e.status === 'pending');
+  if (!todo.length) {
+    if (typeof showToast === 'function') showToast('No pending approvals — use the Approvals panel');
+    return;
+  }
+  let id = '';
+  if (todo.length === 1) {
+    id = String(todo[0].id || '');
+  } else {
+    const hint = _guessPathFromCodeBlock(codeText);
+    for (let i = 0; i < todo.length; i++) {
+      const e = todo[i];
+      const args = e.args || {};
+      const paths = [args.path, args.file, args.file_path, args.target_file].filter(function (x) { return x && String(x).trim(); }).map(function (x) { return String(x); });
+      for (let j = 0; j < paths.length; j++) {
+        const p = paths[j];
+        if (hint && (p === hint || p.endsWith(hint) || p.includes(hint))) {
+          id = String(e.id || '');
+          break;
+        }
+      }
+      if (id) break;
+    }
+    if (!id) id = String(todo[0].id || '');
+  }
+  if (!id) return;
+  const r = await fetchWithTimeout('/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) }, 15000);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok || !body.ok) {
+    if (typeof showToast === 'function') showToast((body && body.error) ? String(body.error) : ('Approve failed: ' + r.status));
+    return;
+  }
+  if (typeof showToast === 'function') showToast('Applied');
+  try { refreshApprovals(); } catch (_) {}
+}
+
+/** Per-code-block quick approve using GET /pending + POST /approve (matches path hint when multiple). */
+function _addApplyBtnToCodeBlock(wrap, codeEl) {
+  if (!wrap || !codeEl) return;
+  const applyBtn = document.createElement('button');
+  applyBtn.type = 'button';
+  applyBtn.className = 'copy-btn';
+  applyBtn.style.marginLeft = '4px';
+  applyBtn.textContent = 'apply';
+  applyBtn.title = 'Approve matching pending tool call (see Approvals panel for diff)';
+  applyBtn.onclick = function (ev) {
+    ev.stopPropagation();
+    const txt = (codeEl.innerText || codeEl.textContent || '').trim();
+    _laylaApprovePendingForCodeBlock(txt).catch(function (e) {
+      if (typeof showToast === 'function') showToast(String((e && e.message) || e));
+    });
+  };
+  wrap.appendChild(applyBtn);
+}
+
+function _workspacePresetStorageKey() {
+  try {
+    return 'layla_workspace_presets_' + String(location.origin || 'local');
+  } catch (_) {
+    return 'layla_workspace_presets_local';
+  }
+}
+function _loadWorkspacePresets() {
+  try {
+    const raw = localStorage.getItem(_workspacePresetStorageKey());
+    const a = raw ? JSON.parse(raw) : [];
+    return Array.isArray(a) ? a.filter(function (x) { return typeof x === 'string' && x.trim(); }) : [];
+  } catch (_) {
+    return [];
+  }
+}
+function _saveWorkspacePresets(paths) {
+  try {
+    localStorage.setItem(_workspacePresetStorageKey(), JSON.stringify(paths));
+  } catch (_) {}
+}
+function refreshWorkspacePresetsDropdown() {
+  const sel = document.getElementById('workspace-presets');
+  if (!sel) return;
+  const paths = _loadWorkspacePresets();
+  sel.innerHTML = '';
+  const opt0 = document.createElement('option');
+  opt0.value = '';
+  opt0.textContent = paths.length ? 'Presets…' : 'No presets';
+  sel.appendChild(opt0);
+  paths.forEach(function (p) {
+    const o = document.createElement('option');
+    o.value = p;
+    o.textContent = p.length > 52 ? '…' + p.slice(-48) : p;
+    sel.appendChild(o);
+  });
+}
+function addWorkspacePreset() {
+  const inp = document.getElementById('workspace-path');
+  const p = (inp && inp.value || '').trim();
+  if (!p) {
+    if (typeof showToast === 'function') showToast('Set workspace path first');
+    return;
+  }
+  let paths = _loadWorkspacePresets();
+  if (paths.indexOf(p) >= 0) {
+    if (typeof showToast === 'function') showToast('Already in list');
+    return;
+  }
+  paths.push(p);
+  _saveWorkspacePresets(paths);
+  refreshWorkspacePresetsDropdown();
+  if (typeof showToast === 'function') showToast('Preset saved');
+}
+function removeWorkspacePreset() {
+  const sel = document.getElementById('workspace-presets');
+  if (!sel || !sel.value) {
+    if (typeof showToast === 'function') showToast('Select a preset to remove');
+    return;
+  }
+  const p = sel.value;
+  const paths = _loadWorkspacePresets().filter(function (x) { return x !== p; });
+  _saveWorkspacePresets(paths);
+  refreshWorkspacePresetsDropdown();
+  if (typeof showToast === 'function') showToast('Removed preset');
+}
+function onWorkspacePresetSelect() {
+  const sel = document.getElementById('workspace-presets');
+  const inp = document.getElementById('workspace-path');
+  if (!sel || !inp || !sel.value) return;
+  inp.value = sel.value;
+  try {
+    inp.dispatchEvent(new Event('input', { bubbles: true }));
+  } catch (_) {}
+}
+
+async function refreshRelationshipCodex() {
+  const st = document.getElementById('relationship-codex-status');
+  const ta = document.getElementById('relationship-codex-json');
+  const workspacePath = (document.getElementById('workspace-path')?.value || '').trim();
+  if (!ta) return;
+  if (!workspacePath) {
+    if (st) st.textContent = 'Set workspace path first.';
+    if (typeof showToast === 'function') showToast('Set workspace first');
+    return;
+  }
+  if (st) st.textContent = 'Loading…';
+  try {
+    const url = '/codex/relationship?workspace_root=' + encodeURIComponent(workspacePath);
+    const res = await fetchWithTimeout(url, {}, 15000);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      const err = (data && data.error) ? String(data.error) : 'Not available';
+      if (st) st.textContent = err.length > 120 ? err.slice(0, 120) + '…' : err;
+      return;
+    }
+    ta.value = JSON.stringify(data.data != null ? data.data : {}, null, 2);
+    if (st) st.textContent = 'Loaded';
+  } catch (_) {
+    if (st) st.textContent = 'Not available';
+  }
+}
+
+async function saveRelationshipCodex() {
+  const ta = document.getElementById('relationship-codex-json');
+  const workspacePath = (document.getElementById('workspace-path')?.value || '').trim();
+  if (!ta || !workspacePath) {
+    if (typeof showToast === 'function') showToast('Workspace path required');
+    return;
+  }
+  let body;
+  try {
+    body = JSON.parse(ta.value || '{}');
+  } catch (_) {
+    if (typeof showToast === 'function') showToast('Invalid JSON');
+    return;
+  }
+  try {
+    const res = await fetchWithTimeout(
+      '/codex/relationship?workspace_root=' + encodeURIComponent(workspacePath),
+      { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+      20000
+    );
+    const data = await res.json().catch(() => ({}));
+    if (typeof showToast === 'function') showToast((data && data.ok) ? 'Saved codex' : ('Save failed: ' + ((data && data.error) || res.status)));
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('Save error: ' + ((e && e.message) || e));
   }
 }
 
@@ -1592,6 +1889,318 @@ function onInputKeydown(e) {
   // Enter-to-send is handled solely by document keydown (bootstrap); do not duplicate here.
 }
 
+// ── URL chip, attachments, theme, sidebar, chat export/search (index.html onclick) ──
+var _laylaPendingUrl = null;
+function _checkUrlInInput(val) {
+  var chip = document.getElementById('url-detect-chip');
+  if (!chip) return;
+  var s = String(val || '');
+  var m = s.match(/https?:\/\/[^\s<>"']{4,}/i);
+  if (m) {
+    _laylaPendingUrl = m[0];
+    try {
+      var u = new URL(m[0]);
+      var d = document.getElementById('url-chip-domain');
+      if (d) d.textContent = u.hostname;
+    } catch (_) {}
+    chip.style.display = 'flex';
+  } else {
+    _laylaPendingUrl = null;
+    chip.style.display = 'none';
+  }
+}
+function dismissUrlChip() {
+  var chip = document.getElementById('url-detect-chip');
+  if (chip) chip.style.display = 'none';
+  _laylaPendingUrl = null;
+}
+function acceptUrlFetch() {
+  if (!_laylaPendingUrl) {
+    if (typeof showToast === 'function') showToast('No URL detected in the input');
+    return;
+  }
+  var input = document.getElementById('msg-input');
+  if (input) {
+    var pre = String(input.value || '').replace(/https?:\/\/[^\s<>"']+/i, '').trim();
+    input.value = (pre ? pre + '\n\n' : '') + 'Fetch and summarize this URL:\n' + _laylaPendingUrl;
+    try { toggleSendButton(); } catch (_) {}
+  }
+  dismissUrlChip();
+  if (typeof showToast === 'function') showToast('URL added to message — press Send');
+}
+
+function attachFile(inp) {
+  var f = inp && inp.files && inp.files[0];
+  if (!f) return;
+  var r = new FileReader();
+  r.onload = function () {
+    var text = String(r.result || '').slice(0, 120000);
+    var mi = document.getElementById('msg-input');
+    if (mi) {
+      mi.value = (mi.value ? mi.value + '\n\n' : '') + '--- file: ' + f.name + ' ---\n' + text;
+      try { toggleSendButton(); } catch (_) {}
+    }
+    if (typeof showToast === 'function') showToast('Attached ' + f.name);
+  };
+  r.readAsText(f);
+  inp.value = '';
+}
+
+function handleFileDrop(ev) {
+  try { ev.preventDefault(); } catch (_) {}
+  var area = document.getElementById('input-area-drop');
+  if (area) area.style.borderColor = '';
+  var fl = ev.dataTransfer && ev.dataTransfer.files;
+  if (!fl || !fl.length) return;
+  var f = fl[0];
+  var r = new FileReader();
+  r.onload = function () {
+    var text = String(r.result || '').slice(0, 120000);
+    var mi = document.getElementById('msg-input');
+    if (mi) {
+      mi.value = (mi.value ? mi.value + '\n\n' : '') + '--- file: ' + f.name + ' ---\n' + text;
+      try { toggleSendButton(); } catch (_) {}
+    }
+    if (typeof showToast === 'function') showToast('Dropped ' + f.name);
+  };
+  r.readAsText(f);
+}
+
+function toggleTheme() {
+  document.body.classList.toggle('theme-light');
+  try {
+    localStorage.setItem('layla_theme', document.body.classList.contains('theme-light') ? 'light' : 'dark');
+  } catch (_) {}
+}
+
+function toggleSidebarCompact() {
+  var sb = document.querySelector('.sidebar');
+  if (sb) sb.classList.toggle('compact');
+}
+
+function toggleMobileSidebar() {
+  var sb = document.querySelector('.sidebar');
+  if (sb) sb.classList.toggle('mobile-sidebar-hidden');
+}
+
+function exportChat() {
+  var chat = document.getElementById('chat');
+  if (!chat) return;
+  var md = '# Layla chat export\n\n';
+  chat.querySelectorAll('.msg').forEach(function (row) {
+    var lab = row.querySelector('.msg-label');
+    var bub = row.querySelector('.msg-bubble');
+    var role = (lab && lab.textContent && lab.textContent.indexOf('You') >= 0) ? 'You' : 'Layla';
+    md += '## ' + role + '\n\n' + (bub ? String(bub.innerText || '').trim() : '') + '\n\n';
+  });
+  try {
+    var blob = new Blob([md], { type: 'text/markdown' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'layla-chat-export.md';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    if (typeof showToast === 'function') showToast('Export downloaded');
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('Export failed');
+  }
+}
+
+function clearChat() {
+  if (!confirm('Clear the chat panel?')) return;
+  var chat = document.getElementById('chat');
+  if (chat) {
+    chat.innerHTML = '<div id="chat-empty">' + renderPromptTilesAndEmptyState() + '</div>';
+  }
+}
+
+function fillPrompt(prefix) {
+  var inp = document.getElementById('msg-input');
+  if (!inp) return;
+  inp.value = String(prefix || '');
+  try {
+    inp.focus();
+    toggleSendButton();
+  } catch (_) {}
+}
+
+function openCliHelp() {
+  var t = 'Open a terminal in the Layla repo and start the server (see README Quick start). UI: Settings use /settings.';
+  if (typeof showToast === 'function') showToast(t);
+  else try { alert(t); } catch (_) {}
+}
+
+var _laylaChatSearchMatches = [];
+var _laylaChatSearchIdx = -1;
+function _clearSearchHighlights() {
+  document.querySelectorAll('.msg-bubble.search-hit').forEach(function (e) {
+    e.classList.remove('search-hit');
+  });
+}
+function openChatSearch() {
+  var o = document.getElementById('chat-search-overlay');
+  if (o) o.style.display = 'flex';
+  var inp = document.getElementById('chat-search-input');
+  if (inp) {
+    inp.value = '';
+    inp.focus();
+  }
+  _laylaChatSearchMatches = [];
+  _laylaChatSearchIdx = -1;
+  _clearSearchHighlights();
+}
+function closeChatSearch() {
+  var o = document.getElementById('chat-search-overlay');
+  if (o) o.style.display = 'none';
+  _clearSearchHighlights();
+}
+function onChatSearchInput(q) {
+  _laylaChatSearchMatches = [];
+  _laylaChatSearchIdx = -1;
+  _clearSearchHighlights();
+  var chat = document.getElementById('chat');
+  if (!chat) return;
+  var Q = String(q || '').trim().toLowerCase();
+  if (!Q) return;
+  var els = chat.querySelectorAll('.msg-bubble');
+  for (var i = 0; i < els.length; i++) {
+    var el = els[i];
+    if ((el.textContent || '').toLowerCase().indexOf(Q) >= 0) _laylaChatSearchMatches.push(el);
+  }
+  if (_laylaChatSearchMatches.length) {
+    _laylaChatSearchIdx = 0;
+    var cur = _laylaChatSearchMatches[_laylaChatSearchIdx];
+    if (cur) {
+      cur.classList.add('search-hit');
+      cur.scrollIntoView({ block: 'center' });
+    }
+  }
+}
+function chatSearchNext() {
+  if (!_laylaChatSearchMatches.length) return;
+  _clearSearchHighlights();
+  _laylaChatSearchIdx = (_laylaChatSearchIdx + 1) % _laylaChatSearchMatches.length;
+  var cur = _laylaChatSearchMatches[_laylaChatSearchIdx];
+  if (cur) {
+    cur.classList.add('search-hit');
+    cur.scrollIntoView({ block: 'center' });
+  }
+}
+
+var _laylaDiffApprovalId = '';
+function closeDiffViewer() {
+  var o = document.getElementById('diff-overlay');
+  if (o) o.style.display = 'none';
+  _laylaDiffApprovalId = '';
+}
+function confirmApplyFile() {
+  if (!_laylaDiffApprovalId) {
+    if (typeof showToast === 'function') showToast('Use Approvals panel — no preview approval id bound');
+    closeDiffViewer();
+    return;
+  }
+  fetchWithTimeout('/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: _laylaDiffApprovalId }) }, 20000)
+    .then(function (r) { return r.json().then(function (d) { return { r: r, d: d }; }); })
+    .then(function (x) {
+      if (x.r.ok && x.d && x.d.ok) {
+        if (typeof showToast === 'function') showToast('Applied');
+        closeDiffViewer();
+        try { refreshApprovals(); } catch (_) {}
+      } else if (typeof showToast === 'function') showToast((x.d && x.d.error) || 'Approve failed');
+    })
+    .catch(function () { if (typeof showToast === 'function') showToast('Approve failed'); });
+}
+
+function closeBatchDiffViewer() {
+  var o = document.getElementById('batch-diff-overlay');
+  if (o) o.style.display = 'none';
+}
+
+function confirmApplyBatch() {
+  if (typeof showToast === 'function') showToast('Approve each pending item in the Approvals panel (batch id wiring is server-side)');
+  closeBatchDiffViewer();
+}
+
+async function applySettingsPreset(name) {
+  try {
+    var r = await fetch('/settings/preset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ preset: String(name || 'potato') }),
+    });
+    var d = await r.json().catch(function () { return {}; });
+    if (typeof showToast === 'function') showToast(d.ok ? ('Preset applied: ' + String(name)) : String(d.error || 'failed'));
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('Preset request failed');
+  }
+}
+
+async function saveAppearanceLite() {
+  var body = {
+    ui_avatar_seed: (document.getElementById('ui_avatar_seed') || {}).value || '',
+    ui_avatar_style: (document.getElementById('ui_avatar_style') || {}).value || '',
+    chat_lite_mode: !!(document.getElementById('chat_lite_mode') && document.getElementById('chat_lite_mode').checked),
+    ui_decision_trace_enabled: !!(document.getElementById('ui_decision_trace_enabled') && document.getElementById('ui_decision_trace_enabled').checked),
+  };
+  var msg = document.getElementById('appearance-save-msg');
+  try {
+    var r = await fetch('/settings/appearance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    var d = await r.json().catch(function () { return {}; });
+    if (msg) msg.textContent = d.ok ? '✓ Saved' : String(d.error || 'failed');
+    if (typeof showToast === 'function') showToast(d.ok ? 'Appearance saved' : 'Save failed');
+  } catch (e) {
+    if (msg) msg.textContent = 'failed';
+    if (typeof showToast === 'function') showToast('Save failed');
+  }
+}
+
+async function runKnowledgeIngest() {
+  var srcEl = document.getElementById('km-source');
+  var labEl = document.getElementById('km-label');
+  var src = (srcEl && srcEl.value || '').trim();
+  var lab = (labEl && labEl.value || '').trim();
+  if (!src) {
+    if (typeof showToast === 'function') showToast('Enter a source URL or path');
+    return;
+  }
+  try {
+    var r = await fetch('/knowledge/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: src, label: lab }),
+    });
+    var d = await r.json().catch(function () { return {}; });
+    var box = document.getElementById('km-ingest-list');
+    if (box) {
+      try {
+        box.textContent = JSON.stringify(d, null, 2).slice(0, 3000);
+      } catch (_) {
+        box.textContent = String(d);
+      }
+    }
+    if (typeof showToast === 'function') showToast(d && d.ok !== false ? 'Ingest complete' : String(d.error || 'Ingest failed'));
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('Ingest request failed');
+  }
+}
+
+async function checkForUpdates() {
+  var el = document.getElementById('update-status');
+  if (el) el.textContent = 'Checking…';
+  try {
+    var r = await fetch('/version');
+    var d = await r.json().catch(function () { return {}; });
+    var v = d && d.version ? String(d.version) : '?';
+    if (el) el.textContent = 'Server version: ' + v;
+  } catch (e) {
+    if (el) el.textContent = 'Could not reach /version';
+  }
+}
+
 // ── Voice I/O ──────────────────────────────────────────────────────────────
 let _micActive = false;
 let _mediaRecorder = null;
@@ -1838,11 +2447,17 @@ async function refreshApprovals() {
       const tool = String(e.tool || '');
       const args = e.args || {};
       const argsPreview = (() => { try { return JSON.stringify(args, null, 2); } catch (_) { return String(args); } })();
+      const diffBlock = args && args.diff
+        ? ('<pre style="margin:6px 0 8px;white-space:pre-wrap;word-break:break-word;font-size:0.62rem;background:var(--bg);padding:6px;border-radius:4px;border:1px solid rgba(255,255,255,0.06);max-height:140px;overflow:auto">' + escapeHtml(String(args.diff)) + '</pre>')
+        : '';
       html.push(
-        '<div style="margin:8px 0;padding:8px;border:1px solid var(--border);border-radius:6px;background:rgba(0,0,0,0.12)">' +
+        '<div class="approval-card" style="margin:8px 0;padding:8px;border:1px solid var(--border);border-radius:6px;background:rgba(0,0,0,0.12)">' +
           '<div style="font-size:0.72rem"><strong>' + escapeHtml(tool || 'tool') + '</strong> <span style="color:var(--text-dim)">(' + escapeHtml(id.slice(0, 8) || 'id') + '…)</span></div>' +
+          diffBlock +
           '<pre style="margin:6px 0 8px;white-space:pre-wrap;word-break:break-word;font-size:0.65rem;background:var(--code-bg);padding:6px;border-radius:4px;border:1px solid rgba(255,255,255,0.06);max-height:160px;overflow:auto">' + escapeHtml(argsPreview) + '</pre>' +
-          '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+          '<label style="font-size:0.62rem;display:flex;gap:6px;align-items:center;margin:4px 0;color:var(--text-dim)"><input type="checkbox" class="grant-session-cb" /> Grant for session (same tool)</label>' +
+          '<label style="font-size:0.62rem;display:block;margin:4px 0;color:var(--text-dim)">grant_pattern <input type="text" class="grant-pattern-inp" style="width:100%;padding:4px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.62rem" placeholder="optional path glob" /></label>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' +
             '<button type="button" class="approve-btn" data-approve-id="' + escapeHtml(id) + '">Approve</button>' +
             '<button type="button" class="approve-btn" style="background:transparent;border-color:var(--border);color:var(--text-dim)" data-deny-id="' + escapeHtml(id) + '">Deny</button>' +
           '</div>' +
@@ -1855,7 +2470,13 @@ async function refreshApprovals() {
         const id = btn.getAttribute('data-approve-id') || '';
         btn.disabled = true;
         try {
-          const r = await fetchWithTimeout('/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) }, 15000);
+          const card = btn.closest('.approval-card');
+          const sess = card && card.querySelector('.grant-session-cb');
+          const gpi = card && card.querySelector('.grant-pattern-inp');
+          const payload = { id: id };
+          if (sess && sess.checked) payload.save_for_session = true;
+          if (gpi && (gpi.value || '').trim()) payload.grant_pattern = (gpi.value || '').trim();
+          const r = await fetchWithTimeout('/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }, 15000);
           let body = {};
           try { body = await r.json(); } catch (_) {}
           if (!r.ok || !body.ok) showToast((body && body.error) ? ('Approve failed: ' + body.error) : ('Approve failed: ' + r.status));
@@ -1921,9 +2542,49 @@ async function showResearchTab(tab) {
 
 setInterval(refreshMissionStatus, 5000);
 document.addEventListener('DOMContentLoaded', function() {
+  try {
+    var th = localStorage.getItem('layla_theme');
+    if (th === 'light') document.body.classList.add('theme-light');
+    else document.body.classList.remove('theme-light');
+  } catch (_) {}
   refreshMissionStatus();
   showResearchTab('summary');
+  try { refreshWorkspacePresetsDropdown(); } catch (_) {}
   toggleSendButton();
+  try {
+    function laylaPollHeaderDeep() {
+      var el = document.getElementById('header-system-status');
+      if (!el) return;
+      fetch('/health?deep=true', { cache: 'no-store' }).then(function (r) {
+        return r.json().then(function (d) { return { r: r, d: d }; });
+      }).then(function (x) {
+        if (!x.r.ok) { el.textContent = 'degraded'; return; }
+        var d = x.d || {};
+        var mode = (d.remote_mode ? 'remote' : 'local');
+        var mp = String(d.model_path || d.model || d.model_filename || '').trim();
+        var tail = mp ? mp.split(/[/\\\\]/).pop() : '';
+        el.textContent = mode + (tail ? ' · ' + tail.slice(0, 28) : '');
+      }).catch(function () { el.textContent = 'offline'; });
+    }
+    laylaPollHeaderDeep();
+    setInterval(laylaPollHeaderDeep, 20000);
+    var ban = document.getElementById('connection-banner');
+    function laylaPingConn() {
+      fetch('/health', { cache: 'no-store' }).then(function () {
+        if (navigator.onLine && ban) ban.style.display = 'none';
+      }).catch(function () {
+        if (ban) ban.style.display = 'block';
+      });
+    }
+    window.addEventListener('online', function () { if (ban) ban.style.display = 'none'; });
+    window.addEventListener('offline', function () { if (ban) ban.style.display = 'block'; });
+    setInterval(laylaPingConn, 15000);
+    laylaPingConn();
+  } catch (_) {}
+  try {
+    laylaRefreshHeaderContextRow();
+    setInterval(function () { try { laylaRefreshHeaderContextRow(); } catch (_) {} }, 12000);
+  } catch (_) {}
   try {
     var sw = document.getElementById('setup-workspace-path');
     if (sw) {
@@ -2144,8 +2805,33 @@ function setCancelSendVisible(visible) {
   if (b) b.style.display = visible ? 'inline-block' : 'none';
 }
 
+function laylaRefreshHeaderContextRow() {
+  try {
+    var cid = typeof currentConversationId !== 'undefined' ? String(currentConversationId || '').trim() : '';
+    var el = document.getElementById('header-conv-id');
+    if (el) {
+      el.textContent = cid ? ('conv ' + cid.slice(0, 8)) : 'new chat';
+      el.title = cid ? ('conversation_id: ' + cid) : 'No conversation id yet';
+    }
+  } catch (_) {}
+  fetch('/session/stats', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
+    var t = document.getElementById('header-session-tokens');
+    if (!t || !d || d.error) return;
+    var tt = d.total_tokens != null ? Number(d.total_tokens) : 0;
+    var tc = d.tool_calls != null ? Number(d.tool_calls) : 0;
+    var elapsed = d.elapsed_seconds != null ? Number(d.elapsed_seconds) : 0;
+    t.textContent = '\u03a3 ' + tt + ' tok \u00b7 ' + tc + ' tools \u00b7 ' + elapsed + 's';
+    t.title = 'GET /session/stats — prompt:' + (d.prompt_tokens != null ? d.prompt_tokens : '?') + ' completion:' + (d.completion_tokens != null ? d.completion_tokens : '?');
+  }).catch(function () {
+    var t = document.getElementById('header-session-tokens');
+    if (t) t.textContent = '';
+  });
+}
+window.laylaRefreshHeaderContextRow = laylaRefreshHeaderContextRow;
+
 function ensureLaylaConversationId() {
   if (typeof currentConversationId === 'string' && String(currentConversationId).trim()) {
+    try { laylaRefreshHeaderContextRow(); } catch (_) {}
     return String(currentConversationId).trim();
   }
   let id = '';
@@ -2158,6 +2844,7 @@ function ensureLaylaConversationId() {
   currentConversationId = id;
   try { localStorage.setItem('layla_current_conversation_id', id); } catch (_) {}
   try { if (typeof updateContextChip === 'function') updateContextChip(); } catch (_) {}
+  try { laylaRefreshHeaderContextRow(); } catch (_) {}
   return id;
 }
 
@@ -2501,6 +3188,8 @@ async function send() {
   }
 }
 
+window.send = send;
+
 } catch (_) {
   // UI script should fail soft; server still usable.
 }
@@ -2781,14 +3470,316 @@ window.refreshLaylaPlansPanel = async function refreshLaylaPlansPanel() {
   if (!listEl) return;
   listEl.innerHTML = '<span style="color:var(--text-dim)">Loading…</span>';
   try {
-    const r = await fetch('/plans?limit=30');
+    const wr = (document.getElementById('workspace-path')?.value || '').trim();
+    const q = wr ? ('?workspace_root=' + encodeURIComponent(wr) + '&limit=30') : '?limit=30';
+    const r = await fetch('/plans' + q);
     const d = await r.json().catch(() => ({}));
     const plans = Array.isArray(d && d.plans) ? d.plans : [];
-    listEl.innerHTML = plans.length
-      ? plans.slice(0, 30).map(p => '<div style="margin:6px 0;padding:6px;border:1px solid rgba(255,255,255,0.06);border-radius:6px;background:rgba(0,0,0,0.15)"><div><strong>' + __esc(String(p.goal || p.title || p.plan_id || p.id || 'plan')) + '</strong></div><div style="color:var(--text-dim);font-size:0.68rem">status: ' + __esc(String(p.status || '')) + '</div></div>').join('')
-      : '<span style="color:var(--text-dim)">No plans yet.</span>';
+    if (!plans.length) {
+      listEl.innerHTML = '<span style="color:var(--text-dim)">No plans for this workspace filter.</span>';
+      return;
+    }
+    listEl.innerHTML = plans.slice(0, 24).map(function (p) {
+      const id = String(p.id || '');
+      const g = __esc(String(p.goal || '').slice(0, 120));
+      const st = __esc(String(p.status || ''));
+      const sid = id.replace(/[^a-zA-Z0-9_-]/g, '_');
+      return '<div style="margin:6px 0;padding:8px;border:1px solid rgba(255,255,255,0.06);border-radius:6px;background:rgba(0,0,0,0.15)">' +
+        '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><strong>' + g + '</strong>' +
+        '<span style="color:var(--text-dim);font-size:0.68rem">' + st + '</span></div>' +
+        '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">' +
+        '<button type="button" class="approve-btn" onclick="laylaApprovePlan(' + JSON.stringify(id) + ')">Approve</button>' +
+        '<button type="button" class="approve-btn" onclick="laylaExecutePlan(' + JSON.stringify(id) + ')">Execute</button>' +
+        '<button type="button" class="approve-btn" style="background:transparent;border-color:var(--border);color:var(--text-dim)" onclick="laylaExpandPlan(' + JSON.stringify(id) + ', ' + JSON.stringify(sid) + ')">Detail</button>' +
+        '</div>' +
+        '<pre id="plan-detail-' + sid + '" style="display:none;margin-top:8px;font-size:0.62rem;max-height:200px;overflow:auto;white-space:pre-wrap"></pre>' +
+        '</div>';
+    }).join('');
   } catch (_) {
     listEl.innerHTML = '<span style="color:var(--text-dim)">Could not load plans</span>';
+  }
+};
+
+window.laylaApprovePlan = async function laylaApprovePlan(planId) {
+  try {
+    const r = await fetch('/plans/' + encodeURIComponent(planId) + '/approve', { method: 'POST' });
+    const d = await r.json().catch(() => ({}));
+    if (typeof showToast === 'function') showToast(d.ok ? 'Plan approved' : (d.error || 'failed'));
+    refreshLaylaPlansPanel();
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('Approve failed');
+  }
+};
+
+window.laylaExecutePlan = async function laylaExecutePlan(planId) {
+  const wp = (document.getElementById('workspace-path')?.value || '').trim();
+  const allowWrite = document.getElementById('allow-write')?.checked ?? false;
+  const allowRun = document.getElementById('allow-run')?.checked ?? false;
+  try { ensureLaylaConversationId(); } catch (_) {}
+  try { laylaHeaderProgressStart(); } catch (_) {}
+  try {
+    const r = await fetch('/plans/' + encodeURIComponent(planId) + '/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workspace_root: wp,
+        allow_write: allowWrite,
+        allow_run: allowRun,
+        aspect_id: typeof currentAspect !== 'undefined' ? currentAspect : 'morrigan',
+        conversation_id: typeof currentConversationId !== 'undefined' ? currentConversationId : '',
+      }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (typeof showToast === 'function') showToast(d.ok ? 'Execution finished' : (d.error || 'execute failed'));
+    refreshLaylaPlansPanel();
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('Execute failed');
+  } finally {
+    try { laylaHeaderProgressStop(); } catch (_) {}
+  }
+};
+
+window.laylaExpandPlan = async function laylaExpandPlan(planId, sid) {
+  const pre = document.getElementById('plan-detail-' + sid);
+  if (!pre) return;
+  const on = pre.style.display !== 'block';
+  pre.style.display = on ? 'block' : 'none';
+  if (!on) return;
+  pre.textContent = 'Loading…';
+  try {
+    const r = await fetch('/plans/' + encodeURIComponent(planId));
+    const d = await r.json().catch(() => ({}));
+    const p = d && d.plan;
+    pre.textContent = p ? JSON.stringify(p, null, 2) : JSON.stringify(d, null, 2);
+  } catch (_) {
+    pre.textContent = 'Failed to load';
+  }
+};
+
+window.laylaGitUndo = async function laylaGitUndo() {
+  try {
+    const r = await fetch('/undo', { method: 'POST' });
+    const d = await r.json().catch(() => ({}));
+    if (typeof showToast === 'function') showToast(d.ok ? (d.message || 'Undone') : (d.error || 'undo failed'));
+  } catch (_) {
+    if (typeof showToast === 'function') showToast('Undo failed');
+  }
+};
+
+window.laylaRunSetupAuto = async function laylaRunSetupAuto() {
+  try {
+    const r = await fetch('/setup/auto', { method: 'POST' });
+    const d = await r.json().catch(() => ({}));
+    if (typeof showToast === 'function') showToast((d && d.ok) ? 'Auto-setup finished' : String((d && d.error) || 'failed'));
+  } catch (_) {
+    if (typeof showToast === 'function') showToast('Auto-setup failed');
+  }
+};
+
+window.laylaRunDoctor = async function laylaRunDoctor() {
+  try {
+    const r = await fetch('/doctor');
+    const d = await r.json().catch(() => ({}));
+    addMsg('layla', '**Doctor snapshot**\n```json\n' + JSON.stringify(d, null, 2).slice(0, 8000) + '\n```');
+  } catch (_) {
+    if (typeof showToast === 'function') showToast('Doctor failed');
+  }
+};
+
+window.laylaRefreshWorkspaceAwareness = async function laylaRefreshWorkspaceAwareness() {
+  const wp = (document.getElementById('workspace-path')?.value || '').trim();
+  const pulse = document.getElementById('workspace-awareness-pulse');
+  const pulseTab = document.getElementById('workspace-awareness-tab-pulse');
+  if (!wp) {
+    if (typeof showToast === 'function') showToast('Set workspace path first');
+    return;
+  }
+  if (pulse) pulse.style.display = 'inline';
+  if (pulseTab) pulseTab.style.display = 'inline';
+  try {
+    const r = await fetch('/workspace/awareness/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspace_root: wp }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (typeof showToast === 'function') showToast(d.ok ? 'Awareness refresh started' : String(d.error || 'failed'));
+  } catch (_) {
+    if (typeof showToast === 'function') showToast('Awareness refresh failed');
+  } finally {
+    if (pulse) pulse.style.display = 'none';
+    if (pulseTab) pulseTab.style.display = 'none';
+  }
+};
+
+window.laylaLoadProjectMemoryInspector = async function laylaLoadProjectMemoryInspector() {
+  const pre = document.getElementById('project-memory-inspector');
+  const wp = (document.getElementById('workspace-path')?.value || '').trim();
+  if (!wp) {
+    if (typeof showToast === 'function') showToast('Set workspace path first');
+    return;
+  }
+  if (pre) pre.textContent = 'Loading…';
+  try {
+    const r = await fetch('/workspace/project_memory?workspace_root=' + encodeURIComponent(wp));
+    const d = await r.json().catch(() => ({}));
+    const sec = (d && d.project_memory) || {};
+    const pick = ['modules', 'issues', 'plans', 'todos'];
+    let out = '';
+    for (var i = 0; i < pick.length; i++) {
+      var k = pick[i];
+      out += '## ' + k + '\n' + JSON.stringify(sec[k] != null ? sec[k] : (d[k] != null ? d[k] : null), null, 2).slice(0, 6000) + '\n\n';
+    }
+    if (pre) pre.textContent = out.trim() || JSON.stringify(d, null, 2).slice(0, 12000);
+  } catch (e) {
+    if (pre) pre.textContent = String(e);
+  }
+};
+
+window.laylaWorkspaceSymbolSearch = async function laylaWorkspaceSymbolSearch() {
+  const q = String(document.getElementById('workspace-symbol-query')?.value || '').trim();
+  const wp = (document.getElementById('workspace-path')?.value || '').trim();
+  const box = document.getElementById('workspace-symbol-results');
+  if (!q) {
+    if (typeof showToast === 'function') showToast('Enter a symbol or phrase');
+    return;
+  }
+  if (box) box.textContent = 'Searching…';
+  try {
+    const url = '/workspace/symbol_search?q=' + encodeURIComponent(q) + (wp ? '&workspace_root=' + encodeURIComponent(wp) : '');
+    const r = await fetch(url);
+    const d = await r.json().catch(() => ({}));
+    if (box) box.textContent = JSON.stringify(d, null, 2).slice(0, 12000);
+  } catch (e) {
+    if (box) box.textContent = String(e);
+  }
+};
+
+window.laylaRunInvestigation = function laylaRunInvestigation() {
+  var g = document.getElementById('autonomous-goal');
+  if (g) {
+    g.value = 'Investigate this workspace for bugs, risky patterns, and inconsistencies. Trace logic across files where needed. Summarize root causes and cite paths/lines. Do not modify any files.';
+  }
+  var rm = document.getElementById('autonomous-research-mode');
+  if (rm) rm.checked = true;
+  var cf = document.getElementById('autonomous-confirm');
+  if (cf) cf.checked = true;
+  return laylaRunAutonomousResearch();
+};
+
+function _laylaAutonomousInvestigationPreset(goalText) {
+  var g = document.getElementById('autonomous-goal');
+  if (g) g.value = goalText;
+  var rm = document.getElementById('autonomous-research-mode');
+  if (rm) rm.checked = true;
+  var cf = document.getElementById('autonomous-confirm');
+  if (cf) cf.checked = true;
+}
+
+window.laylaInvestigationTemplateTrace = function laylaInvestigationTemplateTrace() {
+  _laylaAutonomousInvestigationPreset(
+    'Trace where the selected symbol, function, or public API is defined and used across this repository. Map call sites, key modules, and data flow between files. Summarize findings with file:line evidence. Do not modify any files.'
+  );
+  return laylaRunAutonomousResearch();
+};
+
+window.laylaInvestigationTemplateStructure = function laylaInvestigationTemplateStructure() {
+  _laylaAutonomousInvestigationPreset(
+    'Analyze the repository structure: top-level layout, main packages, entry points, configuration and CI workflows. Identify coupling risks and ambiguous boundaries across multiple directories. Summarize with cited paths. Do not modify any files.'
+  );
+  return laylaRunAutonomousResearch();
+};
+
+window.laylaInvestigationTemplateBug = function laylaInvestigationTemplateBug() {
+  _laylaAutonomousInvestigationPreset(
+    'Investigate likely sources of incorrect behavior: trace error paths, suspicious hotspots, and inconsistent assumptions across modules. Hypothesize root causes with evidence from code reads and search; propose verification steps only (no execution). Do not modify any files.'
+  );
+  return laylaRunAutonomousResearch();
+};
+
+window.laylaRunAutonomousResearch = async function laylaRunAutonomousResearch() {
+  const goal = String(document.getElementById('autonomous-goal')?.value || '').trim();
+  const confirmCb = document.getElementById('autonomous-confirm');
+  const out = document.getElementById('autonomous-result');
+  const wp = (document.getElementById('workspace-path')?.value || '').trim();
+  if (!goal) {
+    if (typeof showToast === 'function') showToast('Enter a goal');
+    return;
+  }
+  if (!confirmCb || !confirmCb.checked) {
+    if (typeof showToast === 'function') showToast('Check confirm_autonomous');
+    return;
+  }
+  var maxSteps = parseInt(String(document.getElementById('autonomous-max-steps')?.value || '30'), 10);
+  var timeoutS = parseInt(String(document.getElementById('autonomous-timeout')?.value || '120'), 10);
+  if (!(maxSteps >= 1 && maxSteps <= 500)) maxSteps = 30;
+  if (!(timeoutS >= 5 && timeoutS <= 7200)) timeoutS = 120;
+  const taskId = (window.crypto && typeof window.crypto.randomUUID === 'function')
+    ? window.crypto.randomUUID()
+    : ('au-' + String(Date.now()));
+  var sumOut = document.getElementById('autonomous-result-summary');
+  if (sumOut) sumOut.textContent = 'Running… (task ' + taskId.slice(0, 8) + ')';
+  if (out) out.textContent = 'Running (task ' + taskId.slice(0, 8) + '…)…\nPoll /agent/tasks for tool progress.';
+  var poll = setInterval(async function () {
+    try {
+      var r = await fetch('/agent/tasks/' + encodeURIComponent(taskId));
+      var d = await r.json().catch(function () { return {}; });
+      if (d && d.ok && d.task && Array.isArray(d.task.progress_tail) && d.task.progress_tail.length && out) {
+        var tail = d.task.progress_tail;
+        var last = tail[tail.length - 1];
+        out.textContent = 'progress: ' + JSON.stringify(last).slice(0, 1500) + '\n…';
+      }
+    } catch (_) {}
+  }, 500);
+  try {
+    var r = await fetch('/autonomous/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        goal: goal,
+        workspace_root: wp || '',
+        max_steps: maxSteps,
+        timeout_seconds: timeoutS,
+        research_mode: !!(document.getElementById('autonomous-research-mode') && document.getElementById('autonomous-research-mode').checked),
+        confirm_autonomous: true,
+        progress_task_id: taskId,
+      }),
+    });
+    clearInterval(poll);
+    var raw = await r.text();
+    var d = {};
+    try { d = JSON.parse(raw); } catch (_) { d = { _raw: raw }; }
+    if (sumOut && d && typeof d === 'object') {
+      var lines = [];
+      lines.push('Steps: ' + (d.steps_used != null ? d.steps_used : '—') + ' · Stopped: ' + (d.stopped_reason || '—'));
+      if (d.budget_detail) lines[lines.length - 1] += ' · budget: ' + d.budget_detail;
+      lines.push('Confidence: ' + (d.confidence != null ? d.confidence : '—'));
+      var src = String(d.source || '').trim();
+      if (src === 'reuse') lines.push('Source: reused knowledge (investigation_reuse.jsonl)');
+      else if (src === 'wiki') lines.push('Source: wiki markdown (prefetch)');
+      else if (src === 'fresh') lines.push('Source: fresh investigation');
+      else if (src === 'blocked') lines.push('Source: blocked (value gate)');
+      else if (src) lines.push('Source: ' + src);
+      if (d.reused === true) lines.push('Reused: yes');
+      else if (d.reused === false) lines.push('Reused: no');
+      var files = Array.isArray(d.files_accessed) ? d.files_accessed : [];
+      var show = files.slice(0, 12);
+      var more = files.length - show.length;
+      lines.push('Files accessed (' + files.length + '): ' + (show.length ? show.join(', ') : '—') + (more > 0 ? ' … +' + more + ' more' : ''));
+      var rs = String(d.investigation_trace || d.reasoning_summary || d.reasoning || '').trim();
+      if (rs) lines.push('Trace: ' + rs.slice(0, 1200) + (rs.length > 1200 ? '…' : ''));
+      sumOut.textContent = lines.join('\n');
+    } else if (sumOut) {
+      sumOut.textContent = '';
+    }
+    if (out) {
+      const pretty = typeof d === 'object' ? JSON.stringify(d, null, 2) : String(d);
+      out.textContent = pretty.slice(0, 16000);
+    }
+    if (typeof showToast === 'function') showToast(r.ok ? 'Autonomous run finished' : 'Autonomous run error');
+  } catch (e) {
+    clearInterval(poll);
+    if (out) out.textContent = String(e);
   }
 };
 

@@ -58,9 +58,30 @@ def _resolve_config_file() -> Path:
 CONFIG_FILE = _resolve_config_file()
 BACKUP_DIR = AGENT_DIR / ".backup"
 
+
+def workspace_under_layla_repository(workspace_root: str) -> bool:
+    """True when ``workspace_root`` resolves to a directory inside the Layla source tree (``REPO_ROOT``)."""
+    if not (workspace_root or "").strip():
+        return False
+    try:
+        wp = Path(workspace_root).expanduser().resolve()
+        rr = REPO_ROOT.resolve()
+        return wp == rr or rr in wp.parents
+    except Exception:
+        return False
+
+
+def effective_auto_lint_test_fix_ruff_fix(cfg: dict, workspace_root: str = "") -> bool:
+    """Effective ``auto_lint_test_fix_ruff_fix``: explicit bool in config wins; else True only under this repo."""
+    v = cfg.get("auto_lint_test_fix_ruff_fix", None)
+    if isinstance(v, bool):
+        return v
+    return workspace_under_layla_repository(workspace_root)
+
+
 SAFE_TOOLS = ["git_status", "read_file", "list_dir"]
 DANGEROUS_TOOLS = [
-    "write_file", "shell", "shell_session_start", "run_python", "apply_patch", "replace_in_file", "git_commit", "mcp_tools_call",
+    "write_file", "write_files_batch", "shell", "shell_session_start", "run_python", "apply_patch", "replace_in_file", "git_commit", "mcp_tools_call",
     "git_push", "git_revert", "git_clone", "git_worktree_add", "git_worktree_remove", "run_tests", "pip_install",
     "search_replace", "rename_symbol", "generate_gcode", "geometry_execute_program", "docker_run",
     "github_pr", "send_email", "clipboard_write", "browser_click", "browser_fill",
@@ -192,6 +213,8 @@ def load_config() -> dict:
             "response_pacing_ms": 0,
             "repo_cognition_inject_enabled": True,
             "repo_cognition_max_chars": 6000,
+            "workspace_awareness_auto_enabled": True,
+            "workspace_awareness_debounce_seconds": 5.0,
             "project_memory_enabled": True,
             "project_memory_max_bytes": 1_500_000,
             "project_memory_inject_max_chars": 4000,
@@ -291,6 +314,31 @@ def load_config() -> dict:
             "remote_cors_origins": [],
             "cloudflared_path": "",
             "dynamic_tool_generation_enabled": False,
+            # Autonomous Research v2 (Tier 0 only; proposal-only; local-first)
+            "autonomous_mode": False,
+            "autonomous_max_steps": 50,
+            "autonomous_timeout_seconds": 60,
+            "autonomous_max_subagents": 3,
+            "autonomous_research_mode": False,
+            "autonomous_allow_network": False,
+            "autonomous_tool_allowlist": [
+                "read_file",
+                "list_dir",
+                "grep_code",
+                "glob_files",
+                "file_info",
+                "python_ast",
+                "workspace_map",
+                "search_codebase",
+            ],
+            "autonomous_wiki_enabled": True,
+            "autonomous_wiki_export_enabled": False,
+            "autonomous_prefetch_enabled": True,
+            "autonomous_reuse_match_threshold": 0.22,
+            "autonomous_wiki_match_threshold": 0.18,
+            # Fabrication Assist (separate deterministic kernel; opt-in subprocess runner)
+            # Default: StubRunner only. Subprocess runner must be explicitly enabled by operator config.
+            "fabrication_assist": {"enable_subprocess": False},
             "retrieval_cache_ttl_seconds": 60,
             "completion_cache_enabled": True,
             "completion_cache_ttl_seconds": 45,
@@ -317,6 +365,7 @@ def load_config() -> dict:
             "learning_quality_min_score": 0.35,
             "learning_min_score": 0.3,
             "auto_lint_test_fix": True,
+            "auto_lint_test_fix_ruff_fix": False,
             "auto_lint_test_fix_run_tests": True,
             "output_quality_gate_enabled": True,
             "enable_self_reflection": True,
@@ -494,9 +543,53 @@ def load_config() -> dict:
         return _config_cache
 
 
+def model_search_roots(cfg: dict | None = None) -> list[Path]:
+    """
+    Ordered directories to scan for .gguf files (first match wins for duplicates).
+    1) configured models_dir (if set and exists)
+    2) default_models_dir() (per-user data or repo when LAYLA_DATA_DIR unset)
+    3) repo_root/models (always discoverable for dev clones when models live beside the repo)
+    """
+    if cfg is None:
+        cfg = load_config()
+    seen: set[str] = set()
+    roots: list[Path] = []
+    raw = (cfg.get("models_dir") or "").strip()
+    if raw:
+        try:
+            p = Path(raw).expanduser().resolve()
+            if p.is_dir():
+                key = str(p)
+                if key not in seen:
+                    seen.add(key)
+                    roots.append(p)
+        except OSError:
+            pass
+    try:
+        d = default_models_dir().resolve()
+        if d.is_dir():
+            key = str(d)
+            if key not in seen:
+                seen.add(key)
+                roots.append(d)
+    except OSError:
+        pass
+    try:
+        repo_m = (REPO_ROOT / "models").resolve()
+        if repo_m.is_dir():
+            key = str(repo_m)
+            if key not in seen:
+                seen.add(key)
+                roots.append(repo_m)
+    except OSError:
+        pass
+    return roots
+
+
 def resolve_model_path(cfg: dict | None = None) -> Path:
     """
-    Resolve full path to model file. Uses models_dir from config if set, else REPO_ROOT/models.
+    Resolve full path to model file. Uses models_dir from config if set, else default_models_dir.
+    If missing at the primary location, searches model_search_roots for the same basename.
     """
     if cfg is None:
         cfg = load_config()
@@ -508,7 +601,15 @@ def resolve_model_path(cfg: dict | None = None) -> Path:
         models_dir = Path(models_dir_raw).expanduser().resolve()
     else:
         models_dir = default_models_dir()
-    return models_dir / model_filename
+    primary = models_dir / model_filename
+    if primary.exists():
+        return primary.resolve()
+    basename = Path(model_filename).name
+    for root in model_search_roots(cfg):
+        cand = root / basename
+        if cand.exists():
+            return cand.resolve()
+    return primary
 
 
 _file_cache: dict[str, tuple[float, str]] = {}  # path -> (mtime, content)
@@ -626,7 +727,14 @@ def load_knowledge_docs(max_bytes: int = 6000) -> str:
     return "\n\n".join(parts)
 
 
-def require_approval(tool_name: str) -> bool:
+def is_tool_allowed(tool_name: str) -> bool:
+    """
+    Return True when a tool is currently allowed to execute without creating a new pending approval.
+
+    Naming note:
+    - This used to be called require_approval(), which was easy to misread.
+    - Semantics are "is allowed/approved" (via approvals.json), not "does this tool require approval?".
+    """
     if tool_name in SAFE_TOOLS:
         return True
     if tool_name in DANGEROUS_TOOLS:
@@ -639,6 +747,11 @@ def require_approval(tool_name: str) -> bool:
         except Exception:
             return False
     return False
+
+
+def require_approval(tool_name: str) -> bool:
+    """Back-compat alias for is_tool_allowed(tool_name)."""
+    return is_tool_allowed(tool_name)
 
 
 def is_protected(path: Path) -> bool:
