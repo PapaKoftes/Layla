@@ -255,14 +255,38 @@ def _register_exact_tool_call(state: dict, intent: str, decision: dict | None) -
         logger.debug("agent_loop:L208: %s", _exc, exc_info=False)
 
 
+def _apply_lite_mode_overrides(cfg: dict) -> dict:
+    """
+    Apply performance_mode-based lite overrides (PR #1).
+    Does NOT mutate the input dict; returns a shallow copy with adjusted keys.
+    """
+    import copy as _copy
+
+    cfg = _copy.copy(cfg)
+    pm = (cfg.get("performance_mode") or "auto").strip().lower()
+    if pm == "low":
+        cfg["max_tool_calls"] = min(int(cfg.get("max_tool_calls") or 5), 2)
+        cfg["enable_cognitive_workspace"] = False
+        cfg["planning_enabled"] = False
+        cfg["retrieval_k"] = 3
+        cfg["skip_deliberation"] = True
+        cfg["skip_self_reflection"] = True
+    elif pm == "mid":
+        cfg["max_tool_calls"] = min(int(cfg.get("max_tool_calls") or 5), 4)
+        cfg["enable_cognitive_workspace"] = False
+        cfg["planning_enabled"] = cfg.get("planning_enabled", True)
+    return cfg
+
+
 def _get_effective_config(base_cfg: dict) -> dict:
     """Apply system_optimizer runtime overrides. Never persists to disk."""
     try:
         from services.system_optimizer import get_effective_config
-        return get_effective_config(base_cfg)
+
+        return _apply_lite_mode_overrides(get_effective_config(base_cfg))
     except Exception as e:
         logger.debug("get_effective_config failed: %s", e)
-        return base_cfg
+        return _apply_lite_mode_overrides(base_cfg)
 
 
 def _path_under_lab(path: str | Path, lab_root: str) -> bool:

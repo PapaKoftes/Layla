@@ -615,19 +615,24 @@ def _append_history(role: str, content: str) -> None:
     _save_history()
 
 
+from shared_state import pending_file_lock as _pending_file_lock  # noqa: E402
+
+
 def _read_pending() -> list:
     try:
-        if PENDING_FILE.exists():
-            data = json.loads(PENDING_FILE.read_text(encoding="utf-8"))
-            return data if isinstance(data, list) else []
+        with _pending_file_lock:
+            if PENDING_FILE.exists():
+                data = json.loads(PENDING_FILE.read_text(encoding="utf-8"))
+                return data if isinstance(data, list) else []
     except Exception as e:
         logger.debug("_read_pending failed: %s", e)
     return []
 
 
 def _write_pending_list(data: list) -> None:
-    GOV_PATH.mkdir(parents=True, exist_ok=True)
-    PENDING_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    with _pending_file_lock:
+        GOV_PATH.mkdir(parents=True, exist_ok=True)
+        PENDING_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def _audit(tool: str, args_summary: str, approved_by: str, result_ok: bool) -> None:
