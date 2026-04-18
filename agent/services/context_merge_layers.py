@@ -21,6 +21,7 @@ MEMORY_SECTION_ORDER: tuple[str, ...] = (
     "timeline_events",
     "style_and_identity",
     "personal_knowledge_graph",
+    "rl_feedback",
     "reasoning_strategies",
 )
 
