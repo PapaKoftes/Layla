@@ -50,6 +50,13 @@
     if (back) back.style.visibility = (step === 0) ? 'hidden' : 'visible';
     if (next) next.textContent = (step === 5) ? 'Enter' : 'Next';
 
+    if (step === 1) {
+      try {
+        if (typeof window.checkSetupStatus === 'function') {
+          window.checkSetupStatus().catch(function () {});
+        }
+      } catch (_) {}
+    }
     if (step === 3) {
       renderQuizStage().catch(function () {});
     }
@@ -209,13 +216,18 @@
     setVisible(true);
     step = 0;
     applyStep();
+    const nextBtn = $('wizard-next-btn');
+    if (nextBtn) nextBtn.disabled = true;
     // Pre-fill workspace if present in Settings
     try {
       const existing = String($('workspace-path')?.value || '').trim();
       if (existing && $('wizard-workspace-path')) $('wizard-workspace-path').value = existing;
       if (existing && $('setup-workspace-path')) $('setup-workspace-path').value = existing;
     } catch (_) {}
-    try { if (typeof window.checkSetupStatus === 'function') await window.checkSetupStatus(); } catch (_) {}
+    try {
+      if (typeof window.checkSetupStatus === 'function') await window.checkSetupStatus();
+    } catch (_) {}
+    if (nextBtn) nextBtn.disabled = false;
   }
 
   window.laylaWizardStart = start;

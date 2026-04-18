@@ -811,6 +811,12 @@
     position: relative;
   }
 
+  .msg-bubble.search-hit {
+    outline: 2px solid var(--asp);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
   /* Empty state */
   #chat-empty {
     position: absolute;

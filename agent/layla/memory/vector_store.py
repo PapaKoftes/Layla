@@ -6,10 +6,12 @@ with fallback to all-MiniLM-L6-v2 (384 dim) if nomic is unavailable.
 """
 import hashlib
 import logging
+import os
 import time
 import uuid
 import warnings
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -142,6 +144,8 @@ def _get_chroma_collection():
 
 def _use_chroma() -> bool:
     """Return True if chromadb is importable and available."""
+    if (os.environ.get("LAYLA_CHROMA_DISABLED") or "").strip().lower() in ("1", "true", "yes"):
+        return False
     try:
         import chromadb  # noqa: F401
         return True
@@ -209,6 +213,13 @@ def _get_knowledge_collection():
         return _knowledge_collection
 
 
+def reset_chroma_clients() -> None:
+    """Clear cached Chroma client singletons (e.g. after deleting chroma_db during repair)."""
+    global _chroma_collection, _knowledge_collection
+    _chroma_collection = None
+    _knowledge_collection = None
+
+
 def search_similar(query_vec: np.ndarray, k: int = 5) -> list:
     """Return up to k items from ChromaDB learnings collection. Each item has id (embedding_id), content, type."""
     try:
@@ -235,6 +246,47 @@ def search_similar(query_vec: np.ndarray, k: int = 5) -> list:
     except Exception as _exc:
         logger.warning("vector_store:L211: %s", _exc, exc_info=True)
     return []
+
+
+def query_learnings_best_similarity(query: str, *, top_k: int = 5) -> tuple[float, dict[str, Any]] | None:
+    """
+    Best hit in the learnings collection with cosine similarity derived as (1 - distance),
+    matching convention used in get_knowledge_chunks. Read-only; no writes.
+    Returns (similarity, metadata_dict) or None if Chroma unavailable, empty, or on error.
+    """
+    if not _use_chroma():
+        return None
+    try:
+        coll = _get_chroma_collection()
+        if coll.count() == 0:
+            return None
+        n = min(max(1, int(top_k)), coll.count())
+        qvec = embed(query)
+        res = coll.query(
+            query_embeddings=[qvec.astype(float).tolist()],
+            n_results=n,
+            include=["metadatas", "distances"],
+        )
+        metas = (res.get("metadatas") or [[]])[0]
+        dists = (res.get("distances") or [[]])[0] if res.get("distances") else []
+        ids = (res.get("ids") or [[]])[0]
+        if not metas:
+            return None
+        best_i = 0
+        best_sim = -1.0
+        for i, _meta in enumerate(metas):
+            dist = float(dists[i]) if i < len(dists) and dists[i] is not None else None
+            sim = (1.0 - dist) if dist is not None else 0.0
+            if sim > best_sim:
+                best_sim = sim
+                best_i = i
+        out: dict[str, Any] = dict(metas[best_i]) if isinstance(metas[best_i], dict) else {}
+        if best_i < len(ids):
+            out["embedding_id"] = ids[best_i]
+        return (float(best_sim), out)
+    except Exception as _exc:
+        logger.debug("query_learnings_best_similarity: %s", _exc)
+    return None
 
 
 # ─── BM25 hybrid search ──────────────────────────────────────────────────────

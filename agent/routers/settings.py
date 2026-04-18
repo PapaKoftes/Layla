@@ -13,7 +13,6 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 import runtime_safety as _rs
-from routers.paths import REPO_ROOT
 from services.route_helpers import (
     sync_apply_runtime_preset,
     sync_save_appearance,
@@ -39,7 +38,18 @@ def setup_status():
     models_dir = Path(models_dir_raw).expanduser().resolve() if models_dir_raw else _rs.default_models_dir()
     model_path = _rs.resolve_model_path(cfg)
     model_found = not placeholder and model_path.exists()
-    available_models = [p.name for p in sorted(models_dir.glob("*.gguf"))] if models_dir.exists() else []
+    _search_roots = _rs.model_search_roots(cfg)
+    models_search_roots = [str(r) for r in _search_roots]
+    _seen_gguf: set[str] = set()
+    available_models: list[str] = []
+    for root in _search_roots:
+        if not root.is_dir():
+            continue
+        for p in sorted(root.glob("*.gguf")):
+            if p.name not in _seen_gguf:
+                _seen_gguf.add(p.name)
+                available_models.append(p.name)
+    available_models.sort()
     hw = {}
     try:
         from services.setup_engine import detect_gpu, detect_ram_gb, recommend_model
@@ -53,6 +63,14 @@ def setup_status():
     performance_mode = str(cfg.get("performance_mode", "auto") or "auto").strip()
     model_valid = bool(not placeholder and model_path.exists())
     resolved_model = model_path.name if model_found else (available_models[0] if available_models else "")
+
+    sandbox_raw = (cfg.get("sandbox_root") or "").strip()
+    sandbox_root = ""
+    if sandbox_raw:
+        try:
+            sandbox_root = str(Path(sandbox_raw).expanduser().resolve())
+        except Exception:
+            sandbox_root = sandbox_raw
 
     def _cfg_basename(key: str) -> str:
         raw = (cfg.get(key) or "").strip()
@@ -81,6 +99,8 @@ def setup_status():
         elif reason_n and reason_n == resolved_model:
             model_route_hint = "reasoning"
 
+    models_dir_str = str(models_dir)
+
     out = {
         "ready": model_found,
         "model_valid": model_valid,
@@ -90,6 +110,9 @@ def setup_status():
         "resolved_model": resolved_model,
         "model_route_hint": model_route_hint,
         "available_models": available_models,
+        "models_search_roots": models_search_roots,
+        "models_dir": models_dir_str,
+        "sandbox_root": sandbox_root,
         "hardware": hw,
         "performance_mode": performance_mode,
     }
