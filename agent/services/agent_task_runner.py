@@ -806,6 +806,63 @@ def _run_background_task(task_id: str, payload: dict) -> None:
             pass
 
 
+def register_inline_progress_task(task_id: str, *, goal: str = "", kind: str = "autonomous_tier0") -> None:
+    """Register an in-memory background task row so `_append_progress_event` works during synchronous runs."""
+    now = datetime.now(timezone.utc).isoformat()
+    with _TASKS_LOCK:
+        if task_id in _TASKS:
+            return
+        task_row = {
+            "task_id": task_id,
+            "conversation_id": "",
+            "goal": (goal or "")[:8000],
+            "aspect_id": "",
+            "status": "running",
+            "priority": PRIORITY_BACKGROUND,
+            "kind": kind,
+            "created_at": now,
+            "started_at": now,
+            "finished_at": "",
+            "result": "",
+            "error": "",
+            "progress_events": [],
+            "progress_json": "[]",
+            "worker_mode": "inline",
+        }
+        _TASKS[task_id] = task_row
+    try:
+        from layla.memory.db import save_background_task
+
+        save_background_task(task_row)
+    except Exception:
+        pass
+
+
+def finalize_inline_progress_task(task_id: str, *, result: dict | None = None, error: str | None = None) -> None:
+    finished_at = datetime.now(timezone.utc).isoformat()
+    status = "failed" if error else "done"
+    res_s = ""
+    if result is not None:
+        try:
+            res_s = json.dumps(result, default=str)[:800000]
+        except Exception:
+            res_s = str(result)[:8000]
+    err_s = (error or "")[:8000]
+    with _TASKS_LOCK:
+        t = _TASKS.get(task_id)
+        if t:
+            t["status"] = status
+            t["finished_at"] = finished_at
+            t["result"] = res_s
+            t["error"] = err_s
+    try:
+        from layla.memory.db import update_background_task
+
+        update_background_task(task_id, status=status, finished_at=finished_at, result=res_s, error=err_s)
+    except Exception:
+        pass
+
+
 def _cancel_background_task_impl(task_id: str) -> JSONResponse:
     import runtime_safety
     from services.background_subprocess import cancel_worker

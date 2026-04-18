@@ -14,4 +14,5 @@ TOOLS = {
     "screenshot_desktop": {"dangerous": False, "require_approval": False, "risk_level": "low"},
     "click_ui": {"dangerous": True, "require_approval": True, "risk_level": "high"},
     "type_text": {"dangerous": True, "require_approval": True, "risk_level": "high"},
+    "fabrication_assist_run": {"dangerous": True, "require_approval": True, "risk_level": "medium"},
 }

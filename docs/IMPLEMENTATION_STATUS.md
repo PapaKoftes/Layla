@@ -45,7 +45,8 @@ This document maps each section of the North Star to code, tests, and verificati
 
 | Item | Where | Notes |
 |------|--------|--------|
-| Context bar, compact, session stats, Skills tab, prompt ↑ | `agent/ui/index.html`; `POST /compact`, `GET /ctx_viz`, `GET /session/stats`, `GET /history`, `GET /skills`; SSE context hints in `agent_loop` | [PARITY_AUDIT.md](PARITY_AUDIT.md) |
+| **Onboarding map** | [AGENTS.md](../AGENTS.md) **Start here**, [GOLDEN_FLOW.md](GOLDEN_FLOW.md) §10, [WEB_UI_OPERATOR_RUBRIC.md](WEB_UI_OPERATOR_RUBRIC.md) | Single path: install → checklist → sandbox / MCP |
+| Context bar, compact, session stats, Skills tab, prompt ↑ | `agent/ui/index.html`; `POST /compact`, `GET /ctx_viz`, `GET /session/stats`, `GET /history`, `GET /skills`; SSE context hints in `agent_loop`; header conv + **Σ tok** + `ctx_viz` | [PARITY_AUDIT.md](PARITY_AUDIT.md) |
 | Runtime limits + potato preset | `agent/config_schema.py`, `main.py` `/settings/preset`, Web UI Settings | `docs/POTATO_MODE.md` |
 | Study presets / workspace suggestions | `routers/study.py` `/study_plans/presets`, `/suggestions`, `/derive_topic`; Web UI Study panel | Local-only signals from `sandbox_root` |
 | Persona focus (dual voice depth) | `POST /agent` `persona_focus`, `agent_loop._build_system_head`, MCP `chat_with_layla` | Primary `aspect_id` unchanged |
@@ -58,6 +59,7 @@ This document maps each section of the North Star to code, tests, and verificati
 | Audit rubric | `docs/AUDIT_RUBRIC.md` | Manual sign-off |
 | Onboarding assets (pointers only) | `docs/ONBOARDING_ASSETS.md` | No bundled third-party zips |
 | Relationship codex (UI + API) | `GET/PUT /codex/relationship?workspace_root=` ([`agent/routers/codex.py`](../agent/routers/codex.py)); Library → Workspace → **Codex**; tool **`codex_suggest_update`** (read-only hints) | Optional inject: `relationship_codex_inject_enabled` + `relationship_codex_inject_max_chars`; digest **after identity** in `_build_system_head`; **`decision_bias_prompt_extension`** + inline initiative when codex has entities |
+| Workspace awareness (daily-driver) | `services/workspace_awareness.refresh_for_workspace*`; `POST /workspace/awareness/refresh`; **`GET /workspace/project_memory`**, **`GET /workspace/symbol_search`** ([`agent/routers/workspace.py`](../agent/routers/workspace.py)); UI: Library → Workspace → **Awareness** | Debounced refresh + sandbox checks; symbol search wraps `search_codebase` |
 | Operator journal (v3) | `GET/POST /journal*` ([`agent/routers/journal.py`](../agent/routers/journal.py)) | Durable operator notes/recaps in SQLite `operator_journal` |
 | Conversation tags (v3) | `POST /conversations/{id}/tags`, `GET /conversations/tags/suggest` | Lightweight tagging to organize chats; shown in conversation rail |
 | Aspect sheet (v3) | `GET /aspects/{aspect_id}` ([`agent/routers/aspects.py`](../agent/routers/aspects.py)) | Safe subset of aspect character metadata for UI |
@@ -169,7 +171,7 @@ Maps each capability domain to implemented modules and missing components. See [
 | Domain | Implemented Modules | Missing Components |
 |--------|---------------------|--------------------|
 | Conversation Intelligence | `orchestrator.py`, `context_manager.py`, `stt.py`, `tts.py`, `llm_gateway.py`, `inference_router.py`, `token_count.py`, `db.conversation_summaries`, `db.relationship_memory`, `style_profile.py` | Companion intelligence — done; voice mode detection, streaming STT, configurable TTS — done |
-| Knowledge Intelligence | `vector_store.py`, `db.py`, `retrieval.py`, `graph_reasoning.py`, `distill.py`, `workspace_index.py` | graph_reasoning (spaCy + networkx) — done; faiss-cpu, qdrant |
+| Knowledge Intelligence | `vector_store.py`, `db.py`, `retrieval.py`, `graph_reasoning.py`, `distill.py`, `workspace_index.py` | graph_reasoning (spaCy + networkx) — done; qdrant (optional future) |
 | Code Intelligence | `file_understanding.py`, `workspace_index.py` (tree-sitter), `registry` (python_ast, grep_code, etc.) | tree-sitter: functions, classes, imports, calls — done |
 | Automation | `browser.py` (optional persistent profiles), `task_graph.py`, `planner.py`, `research_stages.py`, registry (shell, `shell_session_*`, run_python, schedule_*, crawl_site), `http_response_cache.py` | crawl4ai, docker SDK, pyperclip |
 | Chat Transports | `discord_bot/`, `transports/slack_bot.py`, `transports/telegram_bot.py`, `transports/base.py` (allowlist + `/pair`, `runtime_safety` keys `transport_*`) | Matrix, WhatsApp (optional); OpenClaw gateway sidecar — `docs/OPENCLAW_BRIDGE.md` |
@@ -322,7 +324,7 @@ See [docs/DEBUG_AND_UPGRADE_ANALYSIS.md](DEBUG_AND_UPGRADE_ANALYSIS.md) for:
 
 ## How to verify
 
-1. **Run tests**: `cd agent && python -m pytest tests/ -v -m "not slow and not e2e_ui"` (default CI slice). Optional UI e2e: `pip install -r requirements-e2e.txt`, `python -m playwright install chromium`, then `pytest tests/e2e_ui/ -m e2e_ui`. **Lint**: `ruff check agent fabrication_assist` (full rules from `pyproject.toml`, including import order **I**).
+1. **Run tests**: `cd agent && python -m pytest tests/ -v -m "not slow and not e2e_ui and not browser_smoke and not voice_smoke and not gpu_smoke"` (default CI slice). Optional UI e2e: `pip install -r requirements-e2e.txt`, `python -m playwright install chromium`, then `pytest tests/e2e_ui/ -m e2e_ui`. Deep/nightly: see [VERIFICATION.md](VERIFICATION.md) and `.github/workflows/verify-deep.yml`. **Capability probe**: `GET /doctor/capabilities` when the server is up. **Lint**: `ruff check agent fabrication_assist` (full rules from `pyproject.toml`, including import order **I**).
 2. **Wakeup**: `python layla.py wakeup` — Echo greets, study plans listed.
 3. **Project context**: Set via API or DB; check agent context includes project + lifecycle.
 4. **File understanding**: Call `analyze_file(path)` for .dxf, .py, .md, .json, .ipynb and binary extensions; expect format + intent.

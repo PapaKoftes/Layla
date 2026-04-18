@@ -36,6 +36,14 @@ jobs:
           pip install -e .
           python -c "import fabrication_assist; import layla"
 
+      - name: Check UI onclick/onchange symbols
+        working-directory: agent
+        run: python scripts/check_ui_symbols.py
+
+      - name: Daily-driver smoke (targeted pytest)
+        working-directory: agent
+        run: python -m pytest tests/test_edit_loop_tools.py tests/test_autonomous_v2.py -q --tb=line --timeout=60
+
       - name: Write CI runtime config
         working-directory: agent
         run: |
@@ -54,7 +62,7 @@ jobs:
 
       - name: Run tests with coverage floor
         working-directory: agent
-        run: pytest tests/ -v --tb=short -m "not slow and not e2e_ui" --timeout=60 --cov=. --cov-config=.coveragerc --cov-report=term-missing:skip-covered
+        run: pytest tests/ -v --tb=short -m "not slow and not e2e_ui and not browser_smoke and not voice_smoke and not gpu_smoke" --timeout=60 --cov=. --cov-config=.coveragerc --cov-report=term-missing:skip-covered
 
   test-windows:
     name: Test (Windows, Python 3.12)
@@ -79,6 +87,14 @@ jobs:
           pip install -e .
           python -c "import fabrication_assist; import layla"
 
+      - name: Check UI onclick/onchange symbols
+        working-directory: agent
+        run: python scripts/check_ui_symbols.py
+
+      - name: Daily-driver smoke (targeted pytest)
+        working-directory: agent
+        run: python -m pytest tests/test_edit_loop_tools.py tests/test_autonomous_v2.py -q --tb=line --timeout=120
+
       - name: Write CI runtime config
         working-directory: agent
         shell: pwsh
@@ -99,7 +115,7 @@ jobs:
 
       - name: Run tests (no coverage floor)
         working-directory: agent
-        run: python -m pytest tests/ -v --tb=short -m "not slow and not e2e_ui" --timeout=120
+        run: python -m pytest tests/ -v --tb=short -m "not slow and not e2e_ui and not browser_smoke and not voice_smoke and not gpu_smoke" --timeout=120
 
   e2e-ui:
     name: E2E UI (Playwright)
@@ -162,4 +178,4 @@ jobs:
         run: pip install ruff
 
       - name: Check with ruff
-        run: ruff check agent fabrication_assist
+        run: python -m ruff check agent fabrication_assist

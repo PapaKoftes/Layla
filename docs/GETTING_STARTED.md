@@ -1,15 +1,38 @@
 # Getting started with Layla
 
-## Quick path (developers)
+**Shortest path:** [ONBOARDING_15_MIN.md](ONBOARDING_15_MIN.md) (~15 minutes, one checklist).
 
-1. Install Python **3.11 or 3.12** (recommended).
-2. Run `INSTALL.bat` (Windows) or `./install.sh` (Linux/macOS).
-3. Start with `START.bat` / `./start.sh` or `uvicorn main:app` from the `agent/` folder.
-4. Open **http://127.0.0.1:8000/ui** and complete the setup overlay (model + workspace).
+## Quick Start (Windows — recommended)
+
+1. Install **Python 3.11+** from [python.org](https://www.python.org/downloads/) and enable **Add Python to PATH**.
+2. Clone this repository and double-click **`INSTALL.bat`** in the repo root (or run it from a terminal in that folder).
+3. Follow the prompts: setup installs dependencies, offers **model selection** (auto, by category, or multiple GGUFs from the bundled catalog), validates **semantic memory (Chroma)**, then installs **Playwright Chromium** for browser tools.
+4. The installer runs **`python scripts/run_layla.py`**, which starts the server and opens **http://127.0.0.1:8000/ui** (port may differ if set in `agent/runtime_config.json`).
+
+If anything fails, read the `[setup]` lines in the terminal — they report **model** status and **Semantic memory: ENABLED / DISABLED** (this line follows the in-process `LAYLA_CHROMA_DISABLED` flag and your `use_chroma` setting in `runtime_config.json`).
+
+### Model downloads (partial files + resume)
+
+When the installer downloads a **direct HTTP** `.gguf`, it writes to a `YourModel.gguf.part` file next to a small `YourModel.gguf.part.meta` sidecar. **Do not delete the `.part` or `.part.meta` file while a download is in progress** — re-running setup or the same download will **resume** with an HTTP `Range` request when the server supports it. The final `YourModel.gguf` appears only after the file passes a size/integrity check, then the partial is replaced atomically.
+
+### Start the server before a large model finishes (optional)
+
+1. Create `agent/.layla_pending_model.json` with: `{"name": "<exact name from model_catalog.json>"}`.
+2. Start the app with `LAYLA_BACKGROUND_MODEL=1` or `python scripts/run_layla.py --background-model` (other flags as needed). The server comes up first; a background job downloads the catalog entry, updates **`model_filename`** in `runtime_config.json` via an atomic write, deletes the pending JSON, and writes **`agent/.layla_model_ready.flag`** (small JSON listing the basename) when the GGUF is ready. Poll **/setup_status** or **/health** until `pending_background_model` is false and the GGUF resolves.
+
+## Advanced
+
+- **Setup only (no server):** `python scripts/setup_layla.py`  
+  Non-interactive / CI: `LAYLA_SETUP_NONINTERACTIVE=1` or `--yes` (auto model pick when no GGUF is present).
+- **Run server after setup:** `python scripts/run_layla.py`
+- **Desktop launcher:** `python scripts/build_launcher.py` builds **`Layla.exe`** (also copied to your Desktop on Windows). The launcher **does not embed the repo path**: it searches upward from the current working directory and the executable location for **`agent/main.py`** together with **`agent/runtime_safety.py`**, or uses **`LAYLA_REPO`** if the repo was moved.
+- **Manual dev server:** activate `.venv`, `cd agent`, `uvicorn main:app --host 127.0.0.1 --port 8000`
+
+Models are defined in **`agent/models/model_catalog.json`** (curated URLs only; no live scraping). See **[MODELS.md](../MODELS.md)** for hardware sizing context.
 
 ## Packaged Windows install
 
-See `installer/build_installer.ps1` and `installer/layla.iss`. Data lives under `%LOCALAPPDATA%\Layla` via `LAYLA_DATA_DIR`.
+See `installer/build_installer.ps1` and `installer/layla.iss`. Data can live under `%LOCALAPPDATA%\Layla` via `LAYLA_DATA_DIR`.
 
 ## Remote access (phone)
 

@@ -142,7 +142,7 @@ def update_apply(req: dict | None = None):
         from services.auto_updater import apply_update
         from services.release_updater import apply_release_update, is_installed_mode
 
-        if not runtime_safety.require_approval("shell"):
+        if not runtime_safety.is_tool_allowed("shell"):
             return JSONResponse({"ok": False, "error": "approval_required_for_shell"}, status_code=403)
         if is_installed_mode():
             return apply_release_update()
@@ -248,6 +248,35 @@ def health(request: Request):
         payload["knowledge_index_error"] = _kie
     if model_status:
         payload["model_error"] = model_status.get("error")
+    try:
+        mw = ""
+        if isinstance(model_status, dict):
+            mw = (model_status.get("error") or "").strip()
+        remote_ok = bool(isinstance(model_status, dict) and model_status.get("remote"))
+        http_backend = bool((cfg.get("llama_server_url") or "").strip() or (cfg.get("ollama_base_url") or "").strip())
+        pending_bg = (REPO_ROOT / "agent" / ".layla_pending_model.json").is_file()
+        payload["pending_background_model"] = pending_bg
+        model_on_disk = False
+        try:
+            import runtime_safety as _rs
+
+            model_on_disk = _rs.resolve_model_path(cfg).exists()
+        except Exception:
+            model_on_disk = False
+        try:
+            if model_on_disk:
+                (REPO_ROOT / "agent" / ".layla_model_ready.flag").unlink(missing_ok=True)
+        except Exception:
+            pass
+        if not mw and not model_loaded and not remote_ok and not http_backend:
+            mw = "Model not loaded into inference engine."
+        # Only soften warnings while a background download is in flight and the GGUF is not on disk yet.
+        if mw and pending_bg and not model_on_disk:
+            mw = ""
+        if mw:
+            payload["model_health_warning"] = mw
+    except Exception:
+        pass
     try:
         from services.system_optimizer import get_summary
 
@@ -400,6 +429,30 @@ def doctor():
         from services.system_doctor import run_diagnostics
 
         return run_diagnostics(include_llm=False)
+    except Exception as e:
+        return {"status": "error", "error": str(e), "checks": {}}
+
+
+@router.get("/doctor/capabilities")
+def doctor_capabilities(
+    browser_launch: bool = False,
+    voice_micro: bool = False,
+):
+    """
+    Extended capability probe (optional subsystems). Cheap by default.
+    Set browser_launch=true to verify Chromium can launch (Playwright).
+    Set voice_micro=true to run tiny STT/TTS calls (may download models; slow).
+    """
+    try:
+        from services.system_doctor import run_capability_probe, run_diagnostics
+
+        base = run_diagnostics(include_llm=False)
+        probe = run_capability_probe(
+            browser_launch=bool(browser_launch),
+            voice_micro=bool(voice_micro),
+        )
+        base["capability_probe"] = probe
+        return base
     except Exception as e:
         return {"status": "error", "error": str(e), "checks": {}}
 

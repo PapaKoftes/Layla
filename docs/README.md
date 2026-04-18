@@ -4,17 +4,29 @@ Central index for Layla’s documentation. Links are relative so they work on Gi
 
 ---
 
+## System-level technical reference (factual)
+
+| Path | Description |
+|------|-------------|
+| [system/](system/) | **Ground-truth** docs derived from `agent/` source: routes, config, execution paths, invariants. **Authoritative when narrative docs disagree.** Start with [system/README.md](system/README.md). |
+
+Other documents under `docs/` are primarily **explanatory** (onboarding, audits, roadmap, conventions). Use **`docs/system/`** when you need behavior-level precision.
+
+---
+
 ## Start here
 
 | Document | Description |
 |----------|-------------|
 | [../README.md](../README.md) | Product overview, install, screenshots, quick links |
+| [ONBOARDING_15_MIN.md](ONBOARDING_15_MIN.md) | **15-minute** operator checklist (single path) |
 | [GETTING_STARTED.md](GETTING_STARTED.md) | Fast path: install, start server, first-run UI |
 | [GETTING_THE_MODEL.md](GETTING_THE_MODEL.md) | GGUF choice, download, paths, hardware tiers |
 | [../MODELS.md](../MODELS.md) | Model catalog, Hugging Face links, config snippets |
 | [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) | Runtime keys and behavior |
 | [SECURITY.md](SECURITY.md) | Threat model, remote access, operator hygiene |
-| [media/README.md](media/README.md) | How to capture screenshots & demo GIFs for README |
+| [media/README.md](media/README.md) | Readme screenshots/GIF — automation + manual recording |
+| [VERIFICATION.md](VERIFICATION.md) | **CI parity:** pytest markers, coverage, Playwright / deep workflows |
 
 ---
 

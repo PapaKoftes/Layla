@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Maximum practical parity (daily driver + docs)
+
+- **Onboarding:** [`AGENTS.md`](AGENTS.md) **Start here** table; [`docs/GOLDEN_FLOW.md`](docs/GOLDEN_FLOW.md) §10 ten-minute checklist; [`README.md`](README.md) pointer.
+- **Web UI:** header shows truncated **conversation id**, **`GET /session/stats`** totals, link to **`/ctx_viz`**; [`docs/WEB_UI_OPERATOR_RUBRIC.md`](docs/WEB_UI_OPERATOR_RUBRIC.md).
+- **Quality:** `_run_edit_postchecks` in [`agent/agent_loop.py`](agent/agent_loop.py) for **`write_file`**; **`effective_auto_lint_test_fix_ruff_fix`** in [`agent/runtime_safety.py`](agent/runtime_safety.py) (explicit config wins; else ruff `--fix` only under Layla’s repo tree); tests in [`agent/tests/test_runtime_safety_ruff_workspace.py`](agent/tests/test_runtime_safety_ruff_workspace.py).
+- **Operator docs:** [`docs/CODING_AGENT_WORKFLOW.md`](docs/CODING_AGENT_WORKFLOW.md), [`docs/OPERATOR_SANDBOX.md`](docs/OPERATOR_SANDBOX.md), [`docs/OPERATOR_APPROVALS.md`](docs/OPERATOR_APPROVALS.md); [`docs/PARITY_AUDIT.md`](docs/PARITY_AUDIT.md) MCP latency note; [`docs/VERIFICATION.md`](docs/VERIFICATION.md) daily-driver smoke explanation.
+
+### Daily-driver Web UI (upgrade track)
+
+- **Workspace awareness:** `POST /workspace/awareness/refresh`, optional auto-refresh config (`workspace_awareness_*`); Library → Workspace → **Awareness** shows refresh, **project memory** inspector (`GET /workspace/project_memory`), and **symbol search** (`GET /workspace/symbol_search`).
+- **Tier-0 autonomous research UI:** Research tab form for `POST /autonomous/run`; optional **`progress_task_id`** registers an inline background task so tool steps append to **`GET /agent/tasks/{id}`** (`progress_tail`) while the request runs.
+- **Controller / UX:** wiki candidate dedupe by slug; autonomous JSON adds **`planner_model`** + **`budget_counters`**; header polls **`/health?deep=true`**; connection banner tracks **`navigator.onLine`** + **`/health`**.
+- **CI:** targeted pytest smoke (`test_edit_loop_tools`, `test_autonomous_v2`) after UI symbol check.
+
+### First-run / models
+
+- **Multi-root GGUF discovery:** `GET /setup_status` aggregates `*.gguf` from configured/default `models_dir` and repo-root `models/` (with `models_search_roots` in the JSON). `resolve_model_path()` falls back to the same roots by basename when the file is missing at the primary path.
+- **Setup UI:** `/setup_status` and `/setup/models` use timed fetches with error + Retry; catalog parsing requires `Array.isArray(catalog)`; onboarding wizard disables Next until the initial setup check finishes and refreshes setup when entering the hardware/model step.
+
+### Verification & diagnostics
+
+- **`GET /doctor/capabilities`**: optional capability probe (inference backend, `llama_cpp` import, Playwright import/optional Chromium launch, voice stack imports/optional micro STT-TTS) merged with base `run_diagnostics`; query params `browser_launch` and `voice_micro` (slow / may download models).
+- **`system_doctor`**: `python_ok` / `supported_runtime` / `unsupported_reason` aligned with `main.py` (3.11–3.12 production; 3.13+ only with `LAYLA_ALLOW_UNSUPPORTED_PYTHON`); human `layla doctor` output distinguishes production vs best-effort.
+- **Pytest markers**: `browser_smoke`, `voice_smoke`, `gpu_smoke` (excluded from default PR CI marker expression); tests under `agent/tests/integration_smoke/`.
+- **CI**: `.github/workflows/verify-deep.yml` — scheduled + `workflow_dispatch` deep jobs (UI e2e, browser smoke, voice smoke, doctor JSON artifact).
+- **Tool domain contracts**: `tests/test_tools_domain_registry.py`; optional inventory generator `agent/scripts/generate_tool_inventory.py`.
+
 ### Documentation & GitHub presence
 
 - Professional root **README**: centered hero, CI badge, screenshots (`readme-assets/`), table of contents, quality-enforcement callout, clone URLs, doc hub link.

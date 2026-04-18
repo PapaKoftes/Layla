@@ -10,9 +10,9 @@
 
 <br/>
 
-<img src="readme-assets/hero-layla-ui.png" alt="Layla Web UI — illustrative preview" width="920"/>
+<img src="readme-assets/hero-layla-ui.png" alt="Layla Web UI — captured from local /ui" width="920"/>
 
-<sub>Illustrative UI preview. Record a real session → <a href="docs/media/README.md">docs/media/README.md</a></sub>
+<sub>PNG/GIF assets are generated from a real headless Chromium session: <code>python scripts/capture_readme_assets.py</code> · <a href="docs/media/README.md">docs/media/README.md</a></sub>
 
 <br/>
 
@@ -61,7 +61,7 @@ Layla is a **local-first AI companion and engineering agent**. She runs on your 
 | <img src="readme-assets/hero-layla-ui.png" alt="Chat and sidebar" width="440"/> | <img src="readme-assets/approvals-panel.png" alt="Approvals panel" width="440"/> |
 | Chat-oriented Web UI (`/ui`) | Governance: pending writes & runs |
 
-**GIF / video:** [Demo loop](readme-assets/demo.gif) (open `/ui`, dismiss wizard, send a quick message).
+**GIF:** [demo.gif](readme-assets/demo.gif) — short scroll loop on `/ui` (regenerate via `scripts/capture_readme_assets.py`).
 ![Demo](readme-assets/demo.gif)
 
 **Brand assets:** Aspect art lives under [`agent/ui/aspects/`](agent/ui/aspects/) (SVG).
@@ -89,6 +89,8 @@ Layla is a **local-first AI companion and engineering agent**. She runs on your 
 ## Install
 
 **First-time guide:** [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)
+
+**10-minute green path** (health, `/ui`, first chat, optional approval): [docs/GOLDEN_FLOW.md](docs/GOLDEN_FLOW.md) — section *Ten-minute operator acceptance*.
 
 **Prerequisite:** Python **3.11 or 3.12** (**3.13+** — including **3.14** — is not supported for the full dependency stack yet).
 
@@ -293,7 +295,8 @@ Cursor integration via MCP — see [.cursor/rules/layla-assistant.mdc](.cursor/r
 | [VALUES.md](VALUES.md) | Principles |
 | [MODELS.md](MODELS.md) | Models & config |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribute |
-| [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) | First run |
+| [docs/ONBOARDING_15_MIN.md](docs/ONBOARDING_15_MIN.md) | **15-minute** first-run checklist |
+| [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) | First run (detailed) |
 | [docs/SECURITY.md](docs/SECURITY.md) | Security |
 | [docs/RUNBOOKS.md](docs/RUNBOOKS.md) | Operations |
 | [LICENSE](LICENSE) | Non-commercial source license |
@@ -305,7 +308,7 @@ Cursor integration via MCP — see [.cursor/rules/layla-assistant.mdc](.cursor/r
 - **Model not loading** — Path, VRAM, `n_gpu_layers`. See [MODELS.md](MODELS.md).  
 - **Approvals** — Enable Allow Write / Allow Run in the UI when you intend tool use.  
 - **Voice** — Optional deps; browser mic permissions for UI.  
-- **Tests** — `cd agent && pytest tests/ -m "not slow and not e2e_ui"`  
+- **Tests** — `cd agent && pytest tests/ -m "not slow and not e2e_ui and not browser_smoke and not voice_smoke and not gpu_smoke"` (see [docs/VERIFICATION.md](docs/VERIFICATION.md) for deep jobs).  
 
 ---
 

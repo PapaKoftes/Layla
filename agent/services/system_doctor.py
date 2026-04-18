@@ -16,18 +16,229 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 AGENT_DIR = Path(__file__).resolve().parent.parent
 
 
+def python_support_status() -> dict[str, Any]:
+    """
+    Match startup policy in main.py (see setup/python_compat.check_python_compatibility):
+    3.11–3.12 production-supported; 3.13+ allowed only when stack self-check passes (supported_unofficial).
+    """
+    try:
+        from setup.python_compat import BLOCKER_CHROMADB_INCOMPATIBLE, check_python_compatibility
+
+        r = check_python_compatibility()
+    except Exception as e:
+        logger.debug("python_support_status compat import failed: %s", e)
+        return {
+            "python_ok": False,
+            "supported_runtime": False,
+            "unsupported_reason": f"Compatibility check failed: {e}",
+        }
+
+    status = r.get("status")
+    issues = r.get("issues") or []
+    blockers = list(r.get("critical_blockers") or [])
+    safe_mode = bool(r.get("safe_mode"))
+
+    if status == "unsupported":
+        return {
+            "python_ok": False,
+            "supported_runtime": False,
+            "unsupported_reason": "; ".join(issues) if issues else "Unsupported Python/runtime.",
+            "critical_blockers": blockers,
+            "compatibility_safe_mode": safe_mode,
+            "semantic_memory_disabled": False,
+        }
+    if status == "supported":
+        return {
+            "python_ok": True,
+            "supported_runtime": True,
+            "unsupported_reason": None,
+            "critical_blockers": [],
+            "compatibility_safe_mode": False,
+            "semantic_memory_disabled": False,
+        }
+
+    semantic_off = BLOCKER_CHROMADB_INCOMPATIBLE in blockers
+    # supported_unofficial — full stack OK vs degraded (Chroma off)
+    detail = (
+        f"Python {r.get('version')} — CONDITIONALLY supported "
+        f"(critical_blockers={blockers}, safe_mode={safe_mode}); "
+        "prefer Python 3.11 or 3.12 for production."
+        if semantic_off or safe_mode
+        else (
+            f"Python {r.get('version')} is best-effort (3.13+ dependency stack OK); "
+            "prefer Python 3.11 or 3.12 for production."
+        )
+    )
+    return {
+        "python_ok": True,
+        "supported_runtime": False,
+        "unsupported_reason": detail,
+        "critical_blockers": blockers,
+        "compatibility_safe_mode": safe_mode,
+        "semantic_memory_disabled": semantic_off,
+    }
+
+
+def run_capability_probe(
+    *,
+    browser_launch: bool = False,
+    voice_micro: bool = False,
+) -> dict[str, Any]:
+    """
+    Optional subsystem checks for operators / deep verification.
+    Keeps imports cheap unless browser_launch or voice_micro requests heavier work.
+    """
+    out: dict[str, Any] = {"status": "ok", "checks": {}, "warnings": []}
+
+    # Inference backend + GPU vs config
+    try:
+        import runtime_safety
+        from services.inference_router import effective_inference_backend, inference_backend_uses_local_gguf
+
+        cfg = runtime_safety.load_config()
+        backend = effective_inference_backend(cfg)
+        n_gpu = int(cfg.get("n_gpu_layers", 0) or 0)
+        out["checks"]["inference"] = {
+            "backend": backend,
+            "n_gpu_layers": n_gpu,
+            "local_gguf": inference_backend_uses_local_gguf(cfg),
+        }
+        try:
+            from services.hardware_detect import detect_hardware
+
+            hw = detect_hardware()
+            accel = hw.get("acceleration_backend") or "none"
+            has_gpu = accel in ("cuda", "rocm") or (hw.get("vram_gb") or 0) > 0
+            if has_gpu and backend == "llama_cpp" and n_gpu == 0:
+                out["warnings"].append(
+                    "GPU detected but n_gpu_layers is 0; local llama_cpp will use CPU unless you raise n_gpu_layers."
+                )
+            if not has_gpu and backend == "llama_cpp" and n_gpu != 0:
+                out["warnings"].append(
+                    "n_gpu_layers is non-zero but no CUDA/ROCm GPU was detected; build may fall back or fail."
+                )
+        except Exception as e:
+            out["checks"]["inference"]["hardware_note"] = str(e)
+    except Exception as e:
+        out["checks"]["inference"] = {"error": str(e)}
+        out["status"] = "warnings"
+
+    # llama_cpp import (no model load)
+    try:
+        import llama_cpp  # noqa: F401
+
+        ver = getattr(llama_cpp, "__version__", None)
+        out["checks"]["llama_cpp"] = {"import_ok": True, "version": str(ver) if ver is not None else "unknown"}
+    except Exception as e:
+        out["checks"]["llama_cpp"] = {"import_ok": False, "error": str(e)}
+        out["warnings"].append("llama_cpp import failed — local GGUF inference unavailable.")
+        out["status"] = "warnings"
+
+    # Playwright
+    try:
+        from playwright.sync_api import sync_playwright
+
+        out["checks"]["playwright"] = {"import_ok": True, "chromium_launch_ok": None}
+        if browser_launch:
+            try:
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(headless=True)
+                    browser.close()
+                out["checks"]["playwright"]["chromium_launch_ok"] = True
+            except Exception as e:
+                out["checks"]["playwright"]["chromium_launch_ok"] = False
+                out["checks"]["playwright"]["chromium_error"] = str(e)
+                out["warnings"].append(
+                    "Playwright Chromium failed to launch — run: python -m playwright install chromium"
+                )
+                out["status"] = "warnings"
+    except ImportError as e:
+        out["checks"]["playwright"] = {"import_ok": False, "error": str(e)}
+        out["status"] = "warnings"
+    except Exception as e:
+        out["checks"]["playwright"] = {"import_ok": False, "error": str(e)}
+        out["status"] = "warnings"
+
+    # Voice stacks (import-only unless voice_micro)
+    fw_ok = False
+    try:
+        import faster_whisper  # noqa: F401
+
+        fw_ok = True
+    except Exception as e:
+        out["checks"]["faster_whisper"] = {"import_ok": False, "error": str(e)}
+    else:
+        out["checks"]["faster_whisper"] = {"import_ok": True, "micro_transcribe_ok": None}
+    ko_ok = False
+    try:
+        import kokoro_onnx  # noqa: F401
+
+        ko_ok = True
+    except Exception as e:
+        out["checks"]["kokoro_onnx"] = {"import_ok": False, "error": str(e)}
+    else:
+        out["checks"]["kokoro_onnx"] = {"import_ok": True, "micro_speak_ok": None}
+
+    if voice_micro and fw_ok:
+        try:
+            from services.stt import transcribe_bytes
+
+            # Minimal silent WAV (valid header); may return '' without loading heavy model if bytes invalid
+            silent_wav = (
+                b"RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00"
+                b"\x44\xac\x00\x00\x88\x58\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00"
+            )
+            text = transcribe_bytes(silent_wav)
+            out["checks"]["faster_whisper"]["micro_transcribe_ok"] = isinstance(text, str)
+            if not text and out["checks"]["faster_whisper"]["micro_transcribe_ok"]:
+                out["checks"]["faster_whisper"]["micro_transcribe_note"] = "empty transcript (expected for silence or if model not loaded)"
+        except Exception as e:
+            out["checks"]["faster_whisper"]["micro_transcribe_ok"] = False
+            out["checks"]["faster_whisper"]["micro_transcribe_error"] = str(e)
+            out["warnings"].append(f"faster_whisper micro transcribe failed: {e}")
+            out["status"] = "warnings"
+
+    if voice_micro and ko_ok:
+        try:
+            from services.tts import speak_to_bytes
+
+            raw = speak_to_bytes("ok")
+            out["checks"]["kokoro_onnx"]["micro_speak_ok"] = bool(raw and len(raw) > 100)
+            if not out["checks"]["kokoro_onnx"]["micro_speak_ok"]:
+                out["warnings"].append("kokoro TTS returned empty or very short audio")
+                out["status"] = "warnings"
+        except Exception as e:
+            out["checks"]["kokoro_onnx"]["micro_speak_ok"] = False
+            out["checks"]["kokoro_onnx"]["micro_speak_error"] = str(e)
+            out["warnings"].append(f"kokoro micro speak failed: {e}")
+            out["status"] = "warnings"
+
+    if out["warnings"]:
+        out["status"] = "warnings" if out["status"] == "ok" else out["status"]
+    return out
+
+
 def run_diagnostics(include_llm: bool = False) -> dict[str, Any]:
     """
     Run full system diagnostics. Returns structured report.
     include_llm: if True, may load LLM (slow); else skip.
     """
+    py = python_support_status()
     report: dict[str, Any] = {
         "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-        "python_ok": sys.version_info >= (3, 11),
+        "python_ok": py["python_ok"],
+        "supported_runtime": py["supported_runtime"],
+        "unsupported_reason": py.get("unsupported_reason"),
+        "critical_blockers": py.get("critical_blockers") or [],
+        "compatibility_safe_mode": py.get("compatibility_safe_mode", False),
+        "semantic_memory_disabled": py.get("semantic_memory_disabled", False),
         "checks": {},
         "status": "ok",
     }
     errors: list[str] = []
+    if not py["python_ok"]:
+        errors.append(py.get("unsupported_reason") or "Python version not acceptable for this runtime")
+        report["status"] = "warnings"
 
     # Dependencies
     deps = ["fastapi", "uvicorn", "chromadb", "sentence_transformers", "llama_cpp", "psutil"]
@@ -205,13 +416,28 @@ def run_diagnostics(include_llm: bool = False) -> dict[str, Any]:
 
 def format_diagnostics(report: dict[str, Any]) -> str:
     """Format diagnostics report as human-readable text."""
+    prod = report.get("supported_runtime")
+    py_note = "[OK]"
+    if not report.get("python_ok"):
+        py_note = "[!!] (not runnable under main.py policy)"
+    elif prod is False:
+        py_note = "[~~] (best-effort; not production-supported)"
     lines = [
         "",
         "  LAYLA - System Doctor",
         "  -------------------------",
-        f"  Python: {report.get('python_version', '?')} {'[OK]' if report.get('python_ok') else '[!!] (need 3.11+)'}",
+        f"  Python: {report.get('python_version', '?')} {py_note}",
         "",
     ]
+    if report.get("critical_blockers"):
+        lines.append(f"  critical_blockers: {report['critical_blockers']}")
+        lines.append("")
+    if report.get("semantic_memory_disabled"):
+        lines.append("  Semantic memory (Chroma): disabled for this interpreter / wheels.")
+        lines.append("")
+    if report.get("unsupported_reason"):
+        lines.append(f"  Note: {report['unsupported_reason']}")
+        lines.append("")
     for name, check in report.get("checks", {}).items():
         ok = check.get("ok", check.get("exists", "error" not in check))
         sym = "[OK]" if ok else "[!!]"

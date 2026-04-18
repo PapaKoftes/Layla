@@ -46,7 +46,27 @@
         you.innerHTML = '<div class="msg-label">You</div><div class="msg-bubble">' + String(msg).replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
         chat.appendChild(you);
       }
-      fetch('/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: msg, aspect_id: aspect, show_thinking: false, allow_write: false, allow_run: false, stream: false }) })
+      var conv = '';
+      var wp = '';
+      var aw = false;
+      var ar = false;
+      try {
+        conv = (typeof localStorage !== 'undefined') ? (localStorage.getItem('layla_current_conversation_id') || '') : '';
+        var wpe = document.getElementById('workspace-path');
+        wp = (wpe && wpe.value || '').trim();
+        aw = !!(document.getElementById('allow-write') && document.getElementById('allow-write').checked);
+        ar = !!(document.getElementById('allow-run') && document.getElementById('allow-run').checked);
+      } catch (_) {}
+      fetch('/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        message: msg,
+        aspect_id: aspect,
+        show_thinking: false,
+        allow_write: aw,
+        allow_run: ar,
+        stream: false,
+        workspace_root: wp,
+        conversation_id: conv,
+      }) })
         .then(function(r) { return r.json(); })
         .then(function(d) {
           var el = document.getElementById('chat');
