@@ -8,12 +8,12 @@ Single reference for **technologies in use** and **current vs planned capabiliti
 
 | Layer | Technology | Notes |
 |-------|------------|--------|
-| **Runtime** | Python 3.10+ | Tested on 3.10–3.12. See [README](../README.md#pinned-versions-and-paths). |
+| **Runtime** | Python 3.11–3.12 | Supported on 3.11–3.12 (see `pyproject.toml` `requires-python`). See [README](../README.md#pinned-versions-and-paths). |
 | **Server** | FastAPI | `agent/main.py`; mounts routers for agent, study, research, approvals. |
 | **LLM** | llama-cpp-python | Loads GGUF models. No cloud dependency for core chat/agent. |
 | **Database** | SQLite | Single file: repo root `layla.db`. Learnings, study plans, wakeup, audit, aspect memories, project context. |
 | **Vector store** | Chroma (optional) | When `use_chroma: true`, indexes `knowledge/` (`.md`, `.txt`, `.pdf` with pypdf). Used for RAG. |
-| **Embeddings** | sentence-transformers | For Chroma/FAISS. Model configurable. |
+| **Embeddings** | sentence-transformers | For Chroma. Model configurable. |
 | **Scheduler** | APScheduler | Optional background study when recent activity; config-driven. |
 | **CLI** | layla.py | Wakeup, ask, study, plans, approve, export, pending, tui. |
 | **TUI** | Textual | `agent/tui.py` — chat, wakeup, approve, aspect switch. |
@@ -28,7 +28,7 @@ Config: `agent/runtime_config.json` (+ hardware-derived defaults in `runtime_saf
 | Area | What’s implemented |
 |------|---------------------|
 | **Agent** | Local GGUF via llama-cpp-python; tool loop (read_file, write_file, list_dir, grep_code, glob_files, git_*, shell, run_python, apply_patch, fetch_url, file_info); approval gate for write/shell/run_python/patch; aspect selection (Morrigan, Nyx, Echo, Eris, Lilith, Cassandra); Lilith NSFW by keyword; optional deliberation; streaming. |
-| **Memory** | SQLite `layla.db` (learnings, study plans, wakeup log, audit, aspect memories, project context); optional Chroma/FAISS over `knowledge/`; conversation history in-memory + persisted. |
+| **Memory** | SQLite `layla.db` (learnings, study plans, wakeup log, audit, aspect memories, project context); optional Chroma over `knowledge/`; conversation history in-memory + persisted. |
 | **RAG** | Chroma indexes `knowledge/` (.md, .txt, optional .pdf with pypdf); top-k chunks in prompt; API returns `cited_sources` with answers. |
 | **Study** | Study plans in DB; wakeup greeting; optional one autonomous study step per wakeup; scheduler advances one plan when user is active (configurable). |
 | **Research** | Read-only agent run; research missions with staged pipeline (mapping → investigation → verification → distillation → synthesis); lab under `agent/.research_lab/`; brain files under `agent/.research_brain/`. |

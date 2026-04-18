@@ -1,6 +1,8 @@
 # Dependencies and venv
 .venv/
 venv/
+# Leftover when .venv rename/replace fails mid-delete (locks); do not commit
+.venv_broken_*/
 env/
 
 # Python bytecode (never commit)
@@ -28,6 +30,7 @@ data/
 
 # Local config (each user has their own model path / settings)
 agent/runtime_config.json
+agent/runtime_config.pre-audit-backup.json
 
 # Discord bot per-guild state (local)
 discord_bot/discord_bot_state.json
@@ -61,6 +64,8 @@ models/*
 # Chroma / vector store persistence (if at repo root)
 chroma/
 agent/layla/memory/chroma_db/
+# Stray Chroma dir if vector_store ever pointed at agent/chroma_db (do not commit index blobs)
+agent/chroma_db/
 *.sqlite3
 
 # OS and editor

@@ -42,6 +42,10 @@ def aggregate_prefetch_hit(
     elif source == "wiki":
         wp = meta.get("wiki_path") or ""
         trace_note = f"Prefetched from wiki markdown ({wp})"
+    elif source == "chroma":
+        eid = meta.get("embedding_id") or ""
+        ms = meta.get("match_score")
+        trace_note = f"Prefetched from Chroma learnings (embedding_id={eid}, match_score={ms})"
 
     pf = dict(prefetch_final)
     if trace_note:

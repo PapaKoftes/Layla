@@ -17,7 +17,7 @@ This document is the single place for the full product and engineering plan. Add
 
 | ID | Focus | Status | Notes |
 |----|--------|--------|--------|
-| M1 | Stabilize and document | Done | DB path, Python 3.10+, runbooks, first-run docs |
+| M1 | Stabilize and document | Done | DB path, Python 3.11–3.12, runbooks, first-run docs |
 | M2 | Research pipeline | Partial | Stages documented; stop/retry and tests can be extended |
 | M3 | Study and memory | Done | Study plans, wakeup, learnings, tests |
 | M4 | Approval and safety | Partial | Flow documented and tested; policy in runtime_safety.py |

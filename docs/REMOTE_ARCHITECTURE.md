@@ -16,7 +16,7 @@ This is **local-first**: the product is designed so that data and execution stay
 
 ## §16 Remote: implemented (production-safe, minimal)
 
-Remote access is **opt-in** and **does not introduce autonomy**. Same approval flow and tool gating as local.
+Remote access is **opt-in** and **does not introduce autonomy**. Same approval flow and tool gating as local. Writable paths are still constrained by the **sandbox** (see [OPERATOR_SANDBOX.md](OPERATOR_SANDBOX.md)) and [OPERATOR_APPROVALS.md](OPERATOR_APPROVALS.md) for the approval UI flow.
 
 ### Config (`runtime_config.json`)
 

@@ -187,6 +187,79 @@ def get_project_discovery_api():
         )
 
 
+@router.post("/workspace/awareness/refresh")
+async def workspace_awareness_refresh(request: Request):
+    """Force project memory re-scan + Chroma index for a workspace (no debounce)."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    root = str((body or {}).get("workspace_root") or "").strip()
+    if not root:
+        return JSONResponse({"ok": False, "error": "workspace_root required"}, status_code=400)
+    try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        from pathlib import Path
+
+        from layla.tools.registry import inside_sandbox
+
+        rp = Path(root).expanduser().resolve()
+        if not rp.is_dir() or not inside_sandbox(rp):
+            return JSONResponse({"ok": False, "error": "workspace_root invalid or outside sandbox"}, status_code=400)
+        from services.workspace_awareness import refresh_for_workspace_sync
+
+        out = refresh_for_workspace_sync(root, cfg)
+        return JSONResponse({"ok": True, **out})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.get("/workspace/project_memory")
+def workspace_project_memory(workspace_root: str = ""):
+    """Read-only view of `.layla/project_memory.json` for the active workspace."""
+    try:
+        from layla.tools.registry import inside_sandbox
+        from services import project_memory as pm
+
+        root = (workspace_root or "").strip()
+        if not root:
+            root = str(Path.cwd())
+        rp = Path(root).expanduser().resolve()
+        if not rp.is_dir() or not inside_sandbox(rp):
+            return JSONResponse({"ok": False, "error": "workspace_root invalid or outside sandbox"}, status_code=400)
+        doc = pm.load_project_memory(rp)
+        return JSONResponse({"ok": True, "project_memory": doc or {}, "workspace_root": str(rp)})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.get("/workspace/symbol_search")
+def workspace_symbol_search(q: str = "", workspace_root: str = ""):
+    """Thin read-only wrapper around `search_codebase` for the Web UI."""
+    try:
+        from layla.tools.impl.code import search_codebase
+        from layla.tools.registry import inside_sandbox
+
+        sym = (q or "").strip()
+        if not sym:
+            return JSONResponse({"ok": False, "error": "q required"}, status_code=400)
+        root = (workspace_root or "").strip()
+        if not root:
+            root = str(Path.cwd())
+        rp = Path(root).expanduser().resolve()
+        if not rp.is_dir() or not inside_sandbox(rp):
+            return JSONResponse({"ok": False, "error": "workspace_root invalid or outside sandbox"}, status_code=400)
+        out = search_codebase(symbol=sym, root=str(rp))
+        if isinstance(out, dict):
+            out.setdefault("ok", True)
+            return JSONResponse(out)
+        return JSONResponse({"ok": True, "result": out})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 @router.get("/file_content")
 def read_file_content(path: str = ""):
     if not path:

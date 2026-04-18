@@ -270,6 +270,96 @@ def calendar_add_event(path: str, summary: str, start: str, end: str = "", descr
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+
+def fabrication_assist_run(
+    objective: str,
+    session_path: str = "",
+    runner_request: str = "",
+    workspace_root: str = "",
+) -> dict:
+    """
+    Deterministic Fabrication Assist kernel entry.
+
+    Runner selection is operator-config driven:
+    - Default: StubRunner
+    - SubprocessJsonRunner: only when cfg.fabrication_assist.enable_subprocess is true AND runner_request == "subprocess"
+    """
+    try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+    except Exception:
+        cfg = {}
+
+    fa_cfg = cfg.get("fabrication_assist")
+    if not isinstance(fa_cfg, dict):
+        fa_cfg = {}
+
+    allow_subprocess = bool(fa_cfg.get("enable_subprocess"))
+    req = (runner_request or "").strip().lower()
+    wants_subprocess = req == "subprocess"
+
+    # Resolve workspace/sandbox for session file placement.
+    try:
+        if workspace_root:
+            base = Path(workspace_root).expanduser().resolve()
+        else:
+            base = Path(str(_get_sandbox())).expanduser().resolve()
+    except Exception:
+        base = Path.cwd()
+
+    if session_path:
+        sp = Path(session_path).expanduser().resolve()
+    else:
+        sp = (base / ".layla" / "fabrication_assist" / "session.json").expanduser().resolve()
+
+    if not inside_sandbox(sp):
+        return {"ok": False, "error": "Outside sandbox", "path": str(sp)}
+
+    try:
+        sp.parent.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        return {"ok": False, "error": f"cannot_create_session_dir: {e}", "path": str(sp)}
+
+    # Select runner deterministically: stub by default, subprocess only when explicitly enabled+requested.
+    runner_type = "stub"
+    subprocess_requested_but_disabled = False
+    try:
+        from fabrication_assist.assist import assist
+        from fabrication_assist.assist.runner import StubRunner, SubprocessJsonRunner
+
+        runner = StubRunner()
+        if wants_subprocess:
+            if allow_subprocess:
+                runner = SubprocessJsonRunner()
+                runner_type = "subprocess"
+            else:
+                subprocess_requested_but_disabled = True
+
+        result = assist(
+            objective=objective,
+            session_path=sp,
+            runner=runner,
+        )
+        if not isinstance(result, dict):
+            return {
+                "ok": False,
+                "error": "fabrication_assist_invalid_result",
+                "runner_type": runner_type,
+                "path": str(sp),
+            }
+        result = dict(result)
+        result.setdefault("ok", True)
+        result["runner_type"] = runner_type
+        result["session_path"] = str(sp)
+        if subprocess_requested_but_disabled:
+            result["subprocess_requested_but_disabled"] = True
+        return result
+    except ImportError as e:
+        return {"ok": False, "error": f"fabrication_assist_not_installed: {e}", "runner_type": runner_type, "session_path": str(sp)}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "runner_type": runner_type, "session_path": str(sp)}
+
 def github_issues(repo_slug: str, state: str = "open", token: str = "") -> dict:
     """List GitHub issues. repo_slug: owner/repo. token: optional GITHUB_TOKEN env or param."""
     token = token or __import__("os").environ.get("GITHUB_TOKEN", "")

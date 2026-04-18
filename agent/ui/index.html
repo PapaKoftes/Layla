@@ -175,6 +175,9 @@
     </select>
     <span id="model-status-badge" title="LLM status" style="font-size:0.68rem;opacity:0.7"></span>
     <span id="header-system-status" title="Server status from /health" style="font-size:0.76rem;opacity:0.9;margin-left:4px;white-space:nowrap;color:var(--text)">…</span>
+    <span id="header-conv-id" title="Current conversation_id (truncated)" style="font-size:0.65rem;opacity:0.82;margin-left:6px;font-family:ui-monospace,monospace;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">…</span>
+    <span id="header-session-tokens" title="Session totals from GET /session/stats" style="font-size:0.65rem;opacity:0.75;margin-left:4px;white-space:nowrap">…</span>
+    <a href="/ctx_viz" target="_blank" rel="noopener" title="Open context visualization (GET /ctx_viz)" style="font-size:0.65rem;margin-left:4px;opacity:0.85">ctx</a>
     <span id="reasoning-mode-badge" title="Adaptive reasoning depth for this turn" style="font-size:0.74rem;opacity:0.88;margin-left:4px;color:var(--asp)"></span>
     <span id="cache-stats-badge" title="Completion cache hit rate. Enable: localStorage.setItem('layla_show_cache_stats','1')" style="font-size:0.68rem;opacity:0.65;margin-left:4px;display:none"></span>
     <a href="/system_export" target="_blank" title="Full system export (JSON)">⊕ export</a>
@@ -333,7 +336,11 @@
         <div class="rta-card">
           <div class="panel-title" style="margin-bottom:6px">Build &amp; updates</div>
           <div id="app-version" style="margin-bottom:6px;color:var(--text-dim);font-size:0.72rem">Version: loading...</div>
-          <button type="button" class="tab-btn" onclick="checkForUpdates()">Check for updates</button>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">
+            <button type="button" class="tab-btn" onclick="checkForUpdates()">Check for updates</button>
+            <button type="button" class="tab-btn" onclick="laylaRunSetupAuto()">/setup/auto</button>
+            <button type="button" class="tab-btn" onclick="laylaRunDoctor()">/doctor</button>
+          </div>
           <div id="update-status" style="margin-top:6px;color:var(--text-dim);font-size:0.68rem"></div>
         </div>
         <div class="rta-section-title">System health</div>
@@ -428,6 +435,8 @@
             <button type="button" id="workspace-remove-btn" onclick="removeWorkspacePreset()" style="font-size:0.65rem;padding:4px 8px;background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:2px;cursor:pointer">Remove</button>
           </div>
           <input type="text" id="workspace-path" placeholder="e.g. C:\github\myproject" style="width:100%;box-sizing:border-box;padding:6px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);font-size:0.75rem;border-radius:2px">
+          <button type="button" class="tab-btn" style="font-size:0.65rem;margin-top:6px" onclick="laylaRefreshWorkspaceAwareness()">Refresh awareness</button>
+          <span id="workspace-awareness-pulse" style="display:none;font-size:0.62rem;color:var(--asp);margin-left:6px">Refreshing…</span>
           <label style="display:block;font-size:0.7rem;color:var(--text-dim);margin:8px 0 4px">Project preset</label>
           <select id="project-select" onchange="onProjectSelectChange()" style="width:100%;padding:5px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);font-size:0.72rem;border-radius:2px">
             <option value="">— None —</option>
@@ -459,6 +468,7 @@
       <section class="rcp-page" data-rcp="workspace" role="tabpanel" aria-hidden="true">
         <div class="rcp-subtabs" role="tablist" aria-label="Workspace tools">
           <button type="button" class="rcp-subtab active" data-rcp-sub="models">Models</button>
+          <button type="button" class="rcp-subtab" data-rcp-sub="awareness">Awareness</button>
           <button type="button" class="rcp-subtab" data-rcp-sub="knowledge">Knowledge</button>
           <button type="button" class="rcp-subtab" data-rcp-sub="study">Study &amp; plans</button>
           <button type="button" class="rcp-subtab" data-rcp-sub="memory">Memory</button>
@@ -467,6 +477,23 @@
         <div class="rcp-subpage active" data-rcp-sub="models">
           <div class="panel-title">Model manager</div>
           <div id="platform-models" style="font-size:0.72rem"><span style="color:var(--text-dim)">Loading…</span></div>
+        </div>
+        <div class="rcp-subpage" data-rcp-sub="awareness">
+          <div class="panel-title">Workspace awareness</div>
+          <p class="rta-muted" style="margin:0 0 8px;font-size:0.68rem">Uses the <strong>workspace path</strong> from Settings. Refreshes project discovery, project memory scan, and the code index.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+            <button type="button" class="approve-btn" style="font-size:0.7rem" onclick="laylaRefreshWorkspaceAwareness()">Refresh awareness</button>
+            <span id="workspace-awareness-tab-pulse" style="display:none;font-size:0.62rem;color:var(--asp)">Refreshing…</span>
+          </div>
+          <div class="panel-title">Project memory</div>
+          <button type="button" class="approve-btn" style="font-size:0.7rem;margin-bottom:6px" onclick="laylaLoadProjectMemoryInspector()">Load project_memory.json</button>
+          <pre id="project-memory-inspector" style="font-size:0.62rem;max-height:220px;overflow:auto;background:var(--code-bg);padding:8px;border-radius:4px;border:1px solid var(--border);margin:0 0 12px;white-space:pre-wrap">Set workspace path, then Load.</pre>
+          <div class="panel-title">Symbol search</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+            <input type="text" id="workspace-symbol-query" placeholder="Symbol or phrase…" style="flex:1;min-width:140px;padding:6px;box-sizing:border-box" onkeydown="if(event.key==='Enter')laylaWorkspaceSymbolSearch()">
+            <button type="button" class="approve-btn" style="font-size:0.65rem" onclick="laylaWorkspaceSymbolSearch()">Search</button>
+          </div>
+          <pre id="workspace-symbol-results" style="font-size:0.62rem;max-height:200px;overflow:auto;background:var(--code-bg);padding:8px;border-radius:4px;border:1px solid var(--border);white-space:pre-wrap;margin:0">—</pre>
         </div>
         <div class="rcp-subpage" data-rcp-sub="knowledge">
           <div class="panel-title">Knowledge manager</div>
@@ -538,6 +565,28 @@
 
       <section class="rcp-page" data-rcp="research" role="tabpanel" aria-hidden="true">
         <div id="research-mission-panel" data-panel="research">
+          <div class="option-card" style="margin-bottom:12px;padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(0,0,0,0.08)">
+            <div class="panel-title" style="margin-bottom:6px">Autonomous investigation (tier-0, read-only)</div>
+            <p class="rta-muted" style="margin:0 0 8px;font-size:0.65rem">POST <code>/autonomous/run</code> — investigate/analyze only (no writes, no shell). Requires <code>autonomous_mode</code>. Progress streams to <code>/agent/tasks/&lt;id&gt;</code> when a task id is generated.</p>
+            <input type="text" id="autonomous-goal" placeholder="Goal (required)" style="width:100%;box-sizing:border-box;padding:6px;margin-bottom:8px">
+            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;font-size:0.68rem;align-items:center">
+              <label><input type="checkbox" id="autonomous-confirm"> confirm_autonomous</label>
+              <label><input type="checkbox" id="autonomous-research-mode"> research_mode</label>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
+              <input type="number" id="autonomous-max-steps" placeholder="max_steps" value="30" style="width:100px;padding:6px;box-sizing:border-box" min="1" max="500">
+              <input type="number" id="autonomous-timeout" placeholder="timeout_s" value="120" style="width:110px;padding:6px;box-sizing:border-box" min="5" max="3600">
+              <button type="button" class="approve-btn" onclick="laylaRunInvestigation()" title="Preset goal for repo investigation" style="font-size:0.7rem">Run investigation</button>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
+              <button type="button" class="approve-btn" onclick="laylaInvestigationTemplateTrace()" title="Trace symbol/API usage across files" style="font-size:0.65rem;padding:4px 8px">Trace function usage</button>
+              <button type="button" class="approve-btn" onclick="laylaInvestigationTemplateStructure()" title="Map layout, packages, and entry points" style="font-size:0.65rem;padding:4px 8px">Analyze repo structure</button>
+              <button type="button" class="approve-btn" onclick="laylaInvestigationTemplateBug()" title="Hypothesize bug sources from evidence" style="font-size:0.65rem;padding:4px 8px">Find likely bug source</button>
+            </div>
+            <button type="button" class="aspect-btn" onclick="laylaRunAutonomousResearch()" style="font-size:0.75rem">Run autonomous</button>
+            <div id="autonomous-result-summary" style="margin-top:10px;font-size:0.68rem;line-height:1.45;color:var(--text);white-space:pre-wrap;word-break:break-word;border:1px solid var(--border);border-radius:4px;padding:8px;background:rgba(0,0,0,0.12)">—</div>
+            <pre id="autonomous-result" style="margin-top:8px;font-size:0.62rem;max-height:220px;overflow:auto;background:var(--code-bg);padding:8px;border-radius:4px;border:1px solid var(--border);white-space:pre-wrap">—</pre>
+          </div>
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:6px">
             <div class="panel-title" style="margin-bottom:0">Research mission</div>
             <button type="button" class="tab-btn" onclick="refreshMissionStatus().then(function(){ var t = document.querySelector('#research-mission-panel .tab-btn.active'); if(t) showResearchTab(t.getAttribute('data-tab')); })" title="Refresh status and current tab">Refresh</button>

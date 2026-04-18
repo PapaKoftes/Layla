@@ -33,7 +33,7 @@
 | **Outcome / auto-learnings** | `services/outcome_writer.py` | Post-run outcome memory, Echo aspect memories, patch extract, auto-learnings |
 | **Outcome evaluation + planner feedback** | `services/outcome_evaluation.py` (`evaluate_outcome_structured`), `services/outcome_metrics.py`, `layla/memory/strategy_stats.py`, `shared_state` `last_outcome_evaluation` + SQLite `outcome_evaluations` | On `finished` runs, `agent_loop` stores structured eval on `state["outcome_evaluation"]`, persists last eval for restart continuity, feeds `build_planning_bias_prompt`, records `strategy_stats` |
 | **Initiative / governed retry hints** | `services/initiative_engine.py`, `services/autonomy_optimizer.py`, `services/toolchain_graph.py`, `services/maturity_engine.py` trust tier | Text-only suggestions (`initiative_engine_enabled`); optional text-only project proposals (`initiative_project_proposals_enabled`, gated by trust tier); plan-step retry suffix hints (`autonomy_optimizer_enabled`); toolchain DAG hints in planner bias |
-| **System doctor** | `services/system_doctor.py` | Full diagnostics — `layla doctor` or GET `/doctor` |
+| **System doctor** | `services/system_doctor.py` | Full diagnostics — `layla doctor` or GET `/doctor`; optional capability probe GET `/doctor/capabilities` (`browser_launch`, `voice_micro` query params) |
 | **Model benchmark** | `services/model_benchmark.py` | Store results in ~/.layla/benchmarks.json; `select_fastest_model()` |
 
 ---
@@ -67,7 +67,7 @@ Client
       /approve, /pending       → routers/approvals.py
       /voice/transcribe        → services/stt.py     (faster-whisper)
       /voice/speak             → services/tts.py     (kokoro-onnx)
-      /health, /health?deep=true, /health/deps, /usage, /debug/state, /debug/tasks, /undo, /version, /update/*, /doctor, /local_access_info, /session/stats, /history, /skills → `routers/system.py` (same payloads as before; `active_model`, `effective_config`, `features_enabled`, `dependencies`, **`backends`**, etc.; see `docs/PRODUCTION_CONTRACT.md`, `docs/GOLDEN_FLOW.md`)
+      /health, /health?deep=true, /health/deps, /usage, /debug/state, /debug/tasks, /undo, /version, /update/*, /doctor, /doctor/capabilities, /local_access_info, /session/stats, /history, /skills → `routers/system.py` (same payloads as before; `active_model`, `effective_config`, `features_enabled`, `dependencies`, **`backends`**, etc.; see `docs/PRODUCTION_CONTRACT.md`, `docs/GOLDEN_FLOW.md`)
       /compact (POST), /ctx_viz, /session/export, /system_export, /learnings*, /audit → `routers/session.py`
       /conversations* → `routers/conversations.py` (includes v3 conversation tags endpoints); /projects → `routers/projects.py`
       /aspects/{aspect_id} → `routers/aspects.py` (v3 aspect character sheet; safe subset)
@@ -124,7 +124,7 @@ Client
 
 **LLM run lock scope:** By default `services/llm_gateway.llm_serialize_lock` is held for the entire `autonomous_run` lifecycle. When **`llm_serialize_per_workspace`** is true, **`get_agent_serialize_lock(resolved_workspace)`** serializes per workspace; local **`llama_cpp`** **`create_completion`** uses **`llm_generation_lock`** so only one GPU generation runs at a time per process. **`services/agent_safety`** owns **`planning_strict_mode`** and per-step tool-allowlist refusals (**`agent_loop`** imports).
 
-**First-run UI:** `GET /setup_status` (`performance_mode`, `model_valid`, `ready`), `GET /setup/models` (catalog + `recommended_key`) — setup overlay in `agent/ui/index.html`. **`POST /agent`** returns `error: no_model`, `action: open_setup` when the model is missing.
+**First-run UI:** `GET /setup_status` (`performance_mode`, `model_valid`, `ready`, `available_models` from **multi-root** scan: configured/default `models_dir` plus repo `models/`), `GET /setup/models` (catalog + `recommended_key`) — setup overlay in `agent/ui/index.html`. **`POST /agent`** returns `error: no_model`, `action: open_setup` when the model is missing.
 
 **Web UI (`/ui`, `agent/ui/index.html`):** Modals/overlays (setup, settings, chat search, diff viewers) live **once**, **before** the main `<script>` so sync init and `getElementById` are deterministic; a small **bootstrap** script defines `window.showMainPanel` / `window.showWorkspaceSubtab` / `triggerSend` so tabs and send work even if the large script throws mid-load. The main script uses a large `try/finally`; **inline** `onclick`/`oninput` handlers resolve on **`window`**, so any handler they call must be assigned to `window.*` (block-scoped `function` inside `try` is not a global). **`fetchHealthPayloadOnce()`** deduplicates concurrent `/health` requests (shared promise) so panels and pollers don’t race to `null`. Chat uses shared **typing-indicator** helpers + **SSE** `ux_state` / `tool_start` for stream mode (optional periodic **`pulse`** keepalives during silence — `ui_stream_keepalive_seconds` — reset the client stall warning; default **Stream** on in the UI); non-stream uses timed phase labels until JSON returns. Default **`max_runtime_seconds`** aligns with **`ui_agent_stream_timeout_seconds`** so the server rarely stops a turn before the browser wait cap. Left sidebar **Options** includes **Content policy** (`uncensored` / `nsfw_allowed` → `runtime_config.json` via `POST /settings`). Right column is a **tiered control center** — **Status** (version, updates, `/health` summary, **Runtime & options** snapshot), **Workspace** (sub-tabs: models, knowledge, plugins, projects, timeline, study, memory), **Safety** (mirrored write/run toggles + approvals), **Research**, **Help**. Assistant rows show **Layla** + a **facet chip**; streaming shows **typing dots** until the first token.
 
@@ -174,7 +174,7 @@ Client
 | File | Role |
 |---|---|
 | `agent/main.py` | FastAPI app, lifespan, all routes, `/ui`, `/v1`, `/health`, GZip middleware |
-| `agent/agent_loop.py` | `autonomous_run()` orchestrator. Delegates to decision_engine, failure_recovery, tool_orchestrator, context_builder |
+| `agent/agent_loop.py` | `autonomous_run()` orchestrator. Uses decision schema + policy caps, invokes tools from `layla/tools/registry.py`, and routes through services like `failure_recovery`, `prompt_builder`, and `tool_output_validator` |
 | `agent/orchestrator.py` | Aspect selection, deliberation prompt builder |
 | `agent/runtime_safety.py` | Config load (TTL-cached), file caching, hardware probe, sandbox validation |
 | `agent/shared_state.py` | Shared refs: history deque, pending approvals, touch_activity, audit |

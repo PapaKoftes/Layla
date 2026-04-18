@@ -6,6 +6,7 @@ Supports agent roles: planner, executor, researcher, debugger, memory_curator.
 import json
 import logging
 import re
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
 
@@ -567,6 +568,7 @@ def execute_plan(
     *,
     step_governance: bool = False,
     default_max_retries: int = 1,
+    progress_callback: Callable[[list[dict]], None] | None = None,
     **agent_kwargs: Any,
 ) -> dict:
     """
@@ -597,6 +599,24 @@ def execute_plan(
     dm = max(0, min(3, int(default_max_retries) if isinstance(default_max_retries, int) else 1))
 
     steps_done: list[dict[str, Any]] = []
+    def _emit_progress() -> None:
+        if not callable(progress_callback):
+            return
+        merged: list[dict[str, Any]] = []
+        for idx, base in enumerate(plan):
+            row = dict(base) if isinstance(base, dict) else {}
+            if idx < len(steps_done):
+                sd = steps_done[idx]
+                row["execution_status"] = sd.get("result_status") or sd.get("agent_status") or ""
+                row["result_summary"] = str(sd.get("error") or sd.get("validation_error") or "")[:500]
+                if "governance_ok" in sd:
+                    row["governance_ok"] = sd.get("governance_ok")
+            merged.append(row)
+        try:
+            progress_callback(merged)
+        except Exception:
+            logger.debug("execute_plan progress_callback failed", exc_info=False)
+
     for s in plan:
         task = s.get("task", "")
         tools_hint = s.get("tools", [])
@@ -621,6 +641,7 @@ def execute_plan(
                 })
             except Exception as e:
                 steps_done.append({"step": s.get("step"), "task": task, "result_status": "error", "error": str(e)})
+            _emit_progress()
             continue
 
         exec_row = {
@@ -641,6 +662,7 @@ def execute_plan(
         )
         done_row["task"] = task
         steps_done.append(done_row)
+        _emit_progress()
 
     summary = "\n".join(f"{d.get('step')}. {d.get('task')}: {d.get('result_status', '')}" for d in steps_done)
     out: dict[str, Any] = {"status": "plan_completed", "steps_done": steps_done, "summary": summary}

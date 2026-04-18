@@ -310,6 +310,10 @@ def notebook_read_cells(path: str, max_cells: int = 80) -> dict:
         nb = nbformat.read(str(target), as_version=4)
     except Exception as e:
         return {"ok": False, "error": str(e)}
+    try:
+        _set_read_freshness(target)
+    except Exception:
+        pass
     cells_out: list[dict] = []
     for i, cell in enumerate(nb.cells):
         if i >= max(1, min(int(max_cells), 200)):
@@ -343,9 +347,14 @@ def notebook_edit_cell(path: str, cell_index: int = 0, source: str = "") -> dict
         return {"ok": False, "error": str(e)}
     if idx >= len(nb.cells):
         return {"ok": False, "error": f"cell_index {idx} out of range (len={len(nb.cells)})"}
+    stale = _check_read_freshness(target)
+    if stale:
+        return {"ok": False, "error": stale, "hint": "call notebook_read_cells first"}
     nb.cells[idx].source = source or ""
     try:
+        _maybe_file_checkpoint(target, "notebook_edit_cell")
         nbformat.write(nb, str(target))
+        _clear_read_freshness(target)
     except Exception as e:
         return {"ok": False, "error": str(e)}
     return {"ok": True, "path": str(target), "cell_index": idx, "written": True}

@@ -6,18 +6,49 @@ import queue
 import shutil
 import sys
 
-# Enforce supported Python for production; set LAYLA_ALLOW_UNSUPPORTED_PYTHON=1 for best-effort dev/test on 3.13+.
-if sys.version_info >= (3, 13) and os.environ.get("LAYLA_ALLOW_UNSUPPORTED_PYTHON", "").lower() not in (
-    "1",
-    "true",
-    "yes",
-):
+# Python runtime gate: 3.11–3.12 supported; 3.13+ only if stack self-check passes (see setup/python_compat.py).
+try:
+    from setup.python_compat import (
+        BLOCKER_CHROMADB_INCOMPATIBLE,
+    )
+    from setup.python_compat import (
+        check_python_compatibility as _check_python_compatibility,
+    )
+except Exception as _compat_import_exc:
+    sys.stderr.write(f"Layla: failed to load setup.python_compat: {_compat_import_exc}\n")
+    raise SystemExit(1) from _compat_import_exc
+
+_compat_result = _check_python_compatibility()
+_compat_status = _compat_result.get("status")
+_compat_blockers = list(_compat_result.get("critical_blockers") or [])
+
+if _compat_status == "unsupported":
     sys.stderr.write(
-        "Layla requires Python 3.11 or 3.12 (see pyproject.toml requires-python). "
-        f"This interpreter is {sys.version.split()[0]}.\n"
-        "Set LAYLA_ALLOW_UNSUPPORTED_PYTHON=1 only if you accept an unsupported configuration.\n"
+        "Layla cannot start on this Python/runtime:\n"
+        + "\n".join(f"  - {x}" for x in (_compat_result.get("issues") or ["unknown issue"]))
+        + f"\nInterpreter: {_compat_result.get('version')}\n"
+        "Install dependencies (see agent/requirements.txt) or use Python 3.11 or 3.12.\n"
     )
     raise SystemExit(1)
+
+if _compat_status == "supported_unofficial":
+    if BLOCKER_CHROMADB_INCOMPATIBLE in _compat_blockers:
+        os.environ["LAYLA_CHROMA_DISABLED"] = "1"
+        sys.stderr.write(
+            "Layla: Semantic memory disabled (Chroma unavailable).\n"
+            "Vector learnings / Chroma-backed retrieval are off until the stack matches this interpreter.\n"
+        )
+        sys.stderr.write(
+            f"Layla: Python {_compat_result.get('version')} — CONDITIONALLY supported "
+            f"(critical_blockers={_compat_blockers}, safe_mode={_compat_result.get('safe_mode')}). "
+            "Prefer Python 3.11 or 3.12 for production.\n"
+        )
+    else:
+        sys.stderr.write(
+            f"Layla: Python {_compat_result.get('version')} — best-effort mode (dependency stack OK). "
+            "Prefer Python 3.11 or 3.12 for production.\n"
+        )
+
 import threading
 import time
 import uuid
@@ -613,6 +644,7 @@ _load_history()
 from routers import agent as agent_router  # noqa: E402
 from routers import agents as agents_router  # noqa: E402
 from routers import approvals, study  # noqa: E402
+from routers import autonomous as autonomous_router  # noqa: E402
 from routers import memory as memory_router  # noqa: E402
 from routers import research as research_router  # noqa: E402
 from routers import system as system_router
@@ -635,6 +667,7 @@ app.include_router(agent_router.router)
 app.include_router(agents_router.router)
 app.include_router(research_router.router)
 app.include_router(memory_router.router)
+app.include_router(autonomous_router.router)  # /autonomous/run
 from routers import aspects as aspects_router
 from routers import codex as codex_router
 from routers import improvements as improvements_router

@@ -81,7 +81,7 @@ def update_study_progress(plan_id: str, note: str) -> None:
 
 # ── layla_plans (planning-first durable plans) ───────────────────────────────
 
-_VALID_PLAN_STATUSES = frozenset({"draft", "approved", "executing", "done", "blocked"})
+_VALID_PLAN_STATUSES = frozenset({"draft", "approved", "executing", "paused", "done", "blocked"})
 
 
 def create_layla_plan(
@@ -222,6 +222,11 @@ def set_layla_plan_status(plan_id: str, status: str) -> bool:
     if status not in _VALID_PLAN_STATUSES:
         return False
     return update_layla_plan(plan_id, status=status)
+
+
+def update_layla_plan_steps(plan_id: str, steps: list) -> bool:
+    """Persist ``steps_json`` while preserving goal/context/status (used during execute_stored_plan)."""
+    return update_layla_plan(plan_id, steps=steps if isinstance(steps, list) else [])
 
 
 def normalize_workspace_root(path: str) -> str:

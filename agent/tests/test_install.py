@@ -57,14 +57,16 @@ def test_model_selector_recommends_for_hardware():
 
 
 def test_model_selector_picks_small_for_low_ram():
-    """4GB RAM gets a small model (SmolLM or TinyDolphin)."""
+    """4GB RAM gets a model within ~90% RAM headroom (install selector margin)."""
     from install.model_selector import recommend_model
 
     h = {"ram_gb": 4.0, "vram_gb": 0.0, "acceleration_backend": "none"}
     rec = recommend_model(h)
     assert rec is not None
     mem_req = rec.get("ram_required", 999)
-    assert mem_req <= 6, f"4GB RAM should get model with ram_required <= 6, got {mem_req}"
+    assert mem_req <= 4.0 * 0.9 + 0.02, (
+        f"4GB RAM should get model with ram_required <= 90% headroom, got {mem_req}"
+    )
 
 
 def test_resolve_model_path_uses_models_dir():
@@ -88,6 +90,51 @@ def test_resolve_model_path_fallback_to_repo_models():
     p = runtime_safety.resolve_model_path(cfg)
     assert p.name == "foo.gguf"
     assert "models" in str(p)
+
+
+def test_model_search_roots_ordered_and_deduped(tmp_path, monkeypatch):
+    """model_search_roots lists configured dir, default dir, repo models without duplicates."""
+    import runtime_safety
+
+    repo = tmp_path / "repo"
+    repo_models = repo / "models"
+    repo_models.mkdir(parents=True)
+    user_models = tmp_path / "user_models"
+    user_models.mkdir()
+    custom = tmp_path / "custom"
+    custom.mkdir()
+
+    monkeypatch.setattr(runtime_safety, "REPO_ROOT", repo)
+    monkeypatch.setattr(runtime_safety, "default_models_dir", lambda: user_models)
+
+    cfg = {"models_dir": str(custom)}
+    roots = runtime_safety.model_search_roots(cfg)
+    assert roots == [custom.resolve(), user_models.resolve(), repo_models.resolve()]
+
+    cfg_same = {"models_dir": str(user_models)}
+    roots2 = runtime_safety.model_search_roots(cfg_same)
+    assert roots2 == [user_models.resolve(), repo_models.resolve()]
+
+
+def test_resolve_model_path_finds_basename_in_repo_models(tmp_path, monkeypatch):
+    """When primary models_dir has no file, resolve_model_path uses repo models/ basename match."""
+    import runtime_safety
+
+    repo = tmp_path / "repo"
+    repo_models = repo / "models"
+    repo_models.mkdir(parents=True)
+    gguf = repo_models / "weights.gguf"
+    gguf.write_bytes(b"x")
+
+    primary_dir = tmp_path / "primary_models"
+    primary_dir.mkdir()
+
+    monkeypatch.setattr(runtime_safety, "REPO_ROOT", repo)
+    monkeypatch.setattr(runtime_safety, "default_models_dir", lambda: primary_dir)
+
+    cfg = {"model_filename": "weights.gguf", "models_dir": str(primary_dir)}
+    p = runtime_safety.resolve_model_path(cfg)
+    assert p.resolve() == gguf.resolve()
 
 
 def test_model_benchmark_stores_and_retrieves():
@@ -195,3 +242,66 @@ def test_installer_packs_include_e2e_voice_browser():
 
     for name in ("e2e", "voice", "browser"):
         assert (PACKS_DIR / f"{name}.json").is_file()
+
+
+def test_integrity_min_bytes_expected_fraction():
+    """Truncated-but-large files fail: floor uses ~95% of declared size when set."""
+    from install.model_downloader import _integrity_min_bytes
+
+    assert _integrity_min_bytes({"expected_size_bytes": 2000}) >= int(2000 * 0.95)
+    assert _integrity_min_bytes({"size_bytes": 4000}) >= int(4000 * 0.95)
+
+
+def test_resume_partial_download_guard():
+    """Resume safety: local .part larger than declared server total is corrupt / must restart."""
+    from install.model_downloader import part_exceeds_server_total
+
+    assert not part_exceeds_server_total(Path("/nonexistent/nope.part"), 1000)
+
+
+def test_resume_partial_download_guard_oversized_part(tmp_path):
+    from install.model_downloader import part_exceeds_server_total
+
+    part = tmp_path / "model.gguf.part"
+    part.write_bytes(b"x" * 5000)
+    assert part_exceeds_server_total(part, 4000)
+    assert not part_exceeds_server_total(part, 6000)
+    assert not part_exceeds_server_total(part, None)
+
+
+def test_model_selector_uses_vram_when_gpu_present():
+    from install.model_selector import recommend_model
+
+    h = {
+        "ram_gb": 64.0,
+        "vram_gb": 12.0,
+        "acceleration_backend": "cuda",
+        "gpu_name": "Test GPU",
+    }
+    rec = recommend_model(h)
+    assert rec is not None
+    assert float(rec.get("vram_required", 999)) <= 12.0 * 0.9 + 0.05
+
+
+def test_model_selector_gpu_without_vram_falls_back_to_ram():
+    from install.model_selector import recommend_model
+
+    h = {
+        "ram_gb": 16.0,
+        "vram_gb": 0.0,
+        "acceleration_backend": "cuda",
+        "gpu_name": "Unknown",
+    }
+    rec = recommend_model(h)
+    assert rec is not None
+    assert float(rec.get("ram_required", 999)) <= 16.0 * 0.9 + 0.05
+
+
+def test_meta_corruption_recovery(tmp_path):
+    from install.model_downloader import try_load_part_meta
+
+    bad = tmp_path / "x.gguf.part.meta"
+    bad.write_text("{not-json", encoding="utf-8")
+    assert try_load_part_meta(bad) is None
+    bad.write_text('{"url": "https://example.com/f.bin"}', encoding="utf-8")
+    assert try_load_part_meta(bad)["url"] == "https://example.com/f.bin"

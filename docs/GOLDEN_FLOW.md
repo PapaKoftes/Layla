@@ -19,9 +19,11 @@ Single reference for how a normal chat turn moves through Layla, where tools and
 
 ## 2. Tool gating and `approval_required`
 
-- **Mutating tools** (`write_file`, `apply_patch`, `shell`, `run_python`, `git_commit`, etc.) check `allow_write` / `allow_run` and `runtime_safety.require_approval(...)`.
+- **Mutating tools** (`write_file`, `apply_patch`, `shell`, `run_python`, `git_commit`, etc.) check `allow_write` / `allow_run` and `runtime_safety.is_tool_allowed(...)` (back-compat alias: `require_approval`).
 - When approval is required, the loop calls `_write_pending(tool, args)` → entries in [`agent/.governance/pending.json`](../agent/.governance/) (via [`agent/main.py`](../agent/main.py) `shared_state` readers).
 - Tool result shape includes `reason: approval_required`, `approval_id`, and a short message.
+
+**`POST /undo` note:** `/undo` is **git-only**: it reverts the last Layla auto-commit (`git revert HEAD --no-edit`). It does **not** “undo an approval id”.
 
 ---
 
@@ -70,3 +72,24 @@ Today the Web UI uses **polling** (`/health` on an interval) for global status. 
 ## 9. Regression test
 
 HTTP golden path (mocked LLM decision + completion only): [`agent/tests/test_golden_flow_http.py`](../agent/tests/test_golden_flow_http.py) — `POST /agent` → `write_file` + `approval_required` → `POST /approve` → follow-up `POST /agent`.
+
+---
+
+## 10. Ten-minute operator acceptance (“green path”)
+
+Use this after install before trusting the setup for real work. Times are approximate.
+
+| Step | Action | Pass criteria |
+|------|--------|----------------|
+| 1 | Start the server per [GETTING_STARTED.md](GETTING_STARTED.md) (`START.bat` / `start.sh` or `uvicorn` from `agent/`) | Process listens on port **8000** (or your chosen port); no import errors in logs |
+| 2 | Open **`GET /health?deep=true`** (browser or curl) | JSON **200**; `status` reflects your model/backend; no fatal dependency errors |
+| 3 | Open **`http://localhost:8000/ui`** | Page loads; wizard can be dismissed |
+| 4 | Set **workspace path** in Settings to a sandboxed folder you own | Path accepted (no error toast) |
+| 5 | Send one short chat message | Assistant reply appears (not blank / not stuck on “connecting” forever) |
+| 6 | Trigger **read-only** behavior | e.g. ask to list a file under workspace or use symbol search / awareness refresh if configured |
+| 7 | Optional write path | Enable **allow_write**, provoke a gated tool, complete **`POST /approve`** if prompted; confirm diff preview makes sense |
+| 8 | **`GET /doctor`** or Settings **Run diagnostics** | Snapshot loads; note any red items (voice/browser optional) |
+
+**Config minimum for “good enough” coding:** copy [`agent/runtime_config.example.json`](../agent/runtime_config.example.json) → `runtime_config.json`, set **`model_filename`** (or remote inference keys), **`sandbox_root`**, **`n_ctx`**, and review **`max_tool_calls`** / **`max_runtime_seconds`**. See the **`_section_minimum_operator`** comment block at the top of the example file.
+
+**Related checklists:** [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) (maintainers), [VERIFICATION.md](VERIFICATION.md) (CI parity commands).

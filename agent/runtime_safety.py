@@ -336,6 +336,9 @@ def load_config() -> dict:
             "autonomous_prefetch_enabled": True,
             "autonomous_reuse_match_threshold": 0.22,
             "autonomous_wiki_match_threshold": 0.18,
+            "autonomous_chroma_enabled": True,
+            "autonomous_chroma_match_threshold": 0.75,
+            "autonomous_chroma_top_k": 3,
             # Fabrication Assist (separate deterministic kernel; opt-in subprocess runner)
             # Default: StubRunner only. Subprocess runner must be explicitly enabled by operator config.
             "fabrication_assist": {"enable_subprocess": False},
@@ -415,6 +418,7 @@ def load_config() -> dict:
             "repeat_penalty": 1.1,
             "top_k": 40,
             "model_filename": "your-model.gguf",
+            "available_models": [],
             "models_dir": str(default_models_dir()),
             "sandbox_root": str(Path.home() / "LaylaWorkspace"),
             "web_allowlist": [],
@@ -538,6 +542,9 @@ def load_config() -> dict:
                 defaults.update(data)
         except Exception as e:
             logger.debug("runtime_safety config load failed: %s", e)
+        # Startup gate (main.py): Chroma wheels unusable on this interpreter — disable semantic layer only.
+        if (os.environ.get("LAYLA_CHROMA_DISABLED") or "").strip().lower() in ("1", "true", "yes"):
+            defaults["use_chroma"] = False
         _config_cache = defaults
         _config_mtime = current_mtime
         return _config_cache

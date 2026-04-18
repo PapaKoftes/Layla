@@ -133,10 +133,11 @@ def test_study_plan_progress_advances_correctly(monkeypatch, tmp_path):
 def test_reflection_engine_produces_retrievable_learnings(monkeypatch, tmp_path):
     """run_reflection must persist at least one learning that get_recent_learnings can retrieve."""
     import layla.memory.db as db_mod
-    _reset_db(monkeypatch, tmp_path)
-    from services.reflection_engine import run_reflection
-    # Never call the real LLM in unit tests (would require a model + can hang).
     import services.llm_gateway as llm_gateway
+    from services.reflection_engine import run_reflection
+
+    _reset_db(monkeypatch, tmp_path)
+    # Never call the real LLM in unit tests (would require a model + can hang).
 
     def _fake_completion(*_args, **_kwargs):
         return {

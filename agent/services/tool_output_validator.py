@@ -156,6 +156,66 @@ def deterministic_verify_tool_result(
                 return {"ok": False, "reason": "empty_output", "details": {}}
             return {"ok": True, "reason": "ok", "details": {}}
 
+        if tn == "search_replace":
+            if result.get("dry_run"):
+                return {"ok": True, "reason": "dry_run", "details": {}}
+            find = str(result.get("find") or "")
+            use_regex = bool(result.get("use_regex"))
+            matches = result.get("matches") or []
+            if use_regex or not find.strip():
+                return {"ok": True, "reason": "regex_or_empty_find", "details": {}}
+            failed: list[dict] = []
+            for m in matches if isinstance(matches, list) else []:
+                if not isinstance(m, dict):
+                    continue
+                p = str(m.get("path") or "").strip()
+                if not p:
+                    continue
+                rp = _resolve_path(p)
+                if rp is None or not rp.exists():
+                    failed.append({"path": p, "reason": "missing"})
+                    continue
+                try:
+                    txt = rp.read_text(encoding="utf-8", errors="replace")
+                except Exception:
+                    failed.append({"path": str(rp), "reason": "read_failed"})
+                    continue
+                if find in txt:
+                    failed.append({"path": str(rp), "reason": "find_still_present"})
+            if failed:
+                return {"ok": False, "reason": "search_replace_incomplete", "details": {"failed": failed[:8]}}
+            return {"ok": True, "reason": "ok", "details": {}}
+
+        if tn == "rename_symbol":
+            if not result.get("applied"):
+                return {"ok": True, "reason": "rename_dry_run", "details": {}}
+            old = str(result.get("old_name") or "")
+            if not old.strip():
+                return {"ok": True, "reason": "no_old_name", "details": {}}
+            rx_old = re.compile(r"\b" + re.escape(old) + r"\b")
+            changes = result.get("changes") or []
+            failed = []
+            for ch in changes if isinstance(changes, list) else []:
+                if not isinstance(ch, dict):
+                    continue
+                p = str(ch.get("path") or "").strip()
+                if not p:
+                    continue
+                rp = _resolve_path(p)
+                if rp is None or not rp.exists():
+                    failed.append({"path": p, "reason": "missing"})
+                    continue
+                try:
+                    txt = rp.read_text(encoding="utf-8", errors="replace")
+                except Exception:
+                    failed.append({"path": str(rp), "reason": "read_failed"})
+                    continue
+                if rx_old.search(txt):
+                    failed.append({"path": str(rp), "reason": "old_symbol_still_present"})
+            if failed:
+                return {"ok": False, "reason": "rename_symbol_incomplete", "details": {"failed": failed[:8]}}
+            return {"ok": True, "reason": "ok", "details": {}}
+
         # Default: no deterministic verifier for this tool.
         return {"ok": True, "reason": "no_verifier", "details": {}}
     except Exception as ex:

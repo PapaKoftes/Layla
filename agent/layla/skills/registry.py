@@ -83,6 +83,16 @@ SKILLS: dict[str, dict[str, Any]] = {
             "For parametric CAD-style sequences: geometry_validate_program then geometry_execute_program (approval); geometry_list_frameworks checks ezdxf/cadquery/openscad/trimesh",
         ],
     },
+    "fabrication_assist_kernel": {
+        "description": "Run Fabrication Assist deterministic kernel (StubRunner by default; subprocess runner only when operator enables fabrication_assist.enable_subprocess and the plan step explicitly requests it).",
+        "tools": ["fabrication_assist_run", "read_file", "write_file", "write_files_batch", "list_dir"],
+        "sub_skills": ["fabrication_workflow"],
+        "execution_steps": [
+            "Prepare objective and any inputs under the workspace sandbox",
+            "Run fabrication_assist_run (approval-gated; deterministic by default)",
+            "Write outputs to files via write_file/write_files_batch if needed",
+        ],
+    },
     "run_test_suite": {
         "description": "Run project test suite, summarize results, suggest fixes.",
         "tools": ["run_tests", "run_python", "glob_files", "read_file", "grep_code"],

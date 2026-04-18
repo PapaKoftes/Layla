@@ -301,6 +301,9 @@ async function loadSetupCatalog() {
     data.catalog.forEach(function (m) {
       var div = document.createElement('div');
       div.className = 'setup-catalog-row';
+      div.setAttribute('data-match-name', String(m.name || '').toLowerCase());
+      div.setAttribute('data-match-key', String(m.key || '').toLowerCase());
+      div.setAttribute('data-match-file', String(m.filename || m.gguf_filename || '').toLowerCase());
       div.style.cssText = 'margin:8px 0;padding:8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;opacity:' + (m.viable ? '1' : '0.55');
       div.innerHTML = '<strong>' + escapeHtml(m.name || '') + '</strong> <span style="font-size:0.7rem;color:var(--text-dim)">' + (m.recommended ? '(recommended) ' : '') + (m.viable ? '' : ' — may need more RAM') + '</span><br><span style="font-size:0.72rem;color:var(--text-dim)">' + escapeHtml(m.desc || '') + '</span>';
       div.onclick = function () {
@@ -320,16 +323,41 @@ async function loadSetupCatalog() {
 }
 window.loadSetupCatalog = loadSetupCatalog;
 
-async function prefillSetupWorkspaceFromSettings() {
+async function prefillSetupWorkspaceFromSettings(statusPayload) {
   var inp = document.getElementById('setup-workspace-path');
   if (!inp || inp.getAttribute('data-user-edited') === '1') return;
-  try {
-    var r = await fetch('/settings');
-    if (!r.ok) return;
-    var cfg = await r.json();
-    var sr = (cfg.sandbox_root || '').trim();
-    if (sr && !inp.value) inp.value = sr;
-  } catch (_) {}
+  var sr = '';
+  if (statusPayload && (statusPayload.sandbox_root || '').trim()) {
+    sr = String(statusPayload.sandbox_root || '').trim();
+  }
+  if (!sr) {
+    try {
+      var r = await fetch('/settings');
+      if (r.ok) {
+        var cfg = await r.json();
+        sr = (cfg.sandbox_root || '').trim();
+      }
+    } catch (_) {}
+  }
+  if (sr && !inp.value) inp.value = sr;
+}
+
+function trySelectSetupCatalogMatch(statusPayload) {
+  if (!statusPayload) return;
+  var want = String(statusPayload.resolved_model || statusPayload.model_filename || '').trim().toLowerCase();
+  if (!want) return;
+  var container = document.getElementById('setup-model-list');
+  if (!container) return;
+  var rows = container.querySelectorAll('.setup-catalog-row');
+  rows.forEach(function (div) {
+    var fn = String(div.getAttribute('data-match-file') || '').toLowerCase();
+    var nm = String(div.getAttribute('data-match-name') || '').toLowerCase();
+    var key = String(div.getAttribute('data-match-key') || '').toLowerCase();
+    if (!want) return;
+    if (fn === want || fn.indexOf(want) >= 0 || want.indexOf(fn) >= 0 || nm.indexOf(want) >= 0 || key === want) {
+      div.click();
+    }
+  });
 }
 
 function _renderSetupStatusError(res, body, err) {
@@ -362,10 +390,11 @@ async function checkSetupStatus() {
       return;
     }
     if (overlay) overlay.classList.add('visible');
-    await prefillSetupWorkspaceFromSettings();
+    await prefillSetupWorkspaceFromSettings(s);
     renderSetupHardware(s.hardware || {});
     renderSetupExistingModels(s.available_models || []);
     await loadSetupCatalog();
+    trySelectSetupCatalogMatch(s);
     _setupRefreshDownloadButton();
   } catch (e) {
     _dbg('checkSetupStatus failed', e);
@@ -2552,6 +2581,12 @@ document.addEventListener('DOMContentLoaded', function() {
   try { refreshWorkspacePresetsDropdown(); } catch (_) {}
   toggleSendButton();
   try {
+    function laylaBasenameDisplay(p) {
+      if (!p) return '';
+      var s = String(p).trim();
+      var i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
+      return i >= 0 ? s.slice(i + 1) : s;
+    }
     function laylaPollHeaderDeep() {
       var el = document.getElementById('header-system-status');
       if (!el) return;
@@ -2561,9 +2596,11 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!x.r.ok) { el.textContent = 'degraded'; return; }
         var d = x.d || {};
         var mode = (d.remote_mode ? 'remote' : 'local');
-        var mp = String(d.model_path || d.model || d.model_filename || '').trim();
-        var tail = mp ? mp.split(/[/\\\\]/).pop() : '';
-        el.textContent = mode + (tail ? ' · ' + tail.slice(0, 28) : '');
+        var raw = String(d.active_model || d.model_path || d.model || d.model_filename || '').trim();
+        var tail = laylaBasenameDisplay(raw);
+        el.title = raw ? raw : '';
+        if (tail.length > 28) tail = tail.slice(0, 28);
+        el.textContent = mode + (tail ? ' · ' + tail : '');
       }).catch(function () { el.textContent = 'offline'; });
     }
     laylaPollHeaderDeep();

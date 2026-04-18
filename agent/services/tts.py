@@ -48,6 +48,8 @@ AVAILABLE_VOICES = [
 def _init_kokoro():
     """Try to load kokoro-onnx TTS."""
     global _tts_engine, _tts_type
+    from inspect import signature
+
     from kokoro_onnx import Kokoro
     try:
         import runtime_safety
@@ -57,7 +59,28 @@ def _init_kokoro():
     except Exception:
         voice = _DEFAULT_VOICE
         speed = _DEFAULT_SPEED
-    _tts_engine = Kokoro(voice=voice, speed=speed)
+    kwargs = {}
+    try:
+        params = signature(Kokoro).parameters
+        if "voice" in params:
+            kwargs["voice"] = voice
+        elif "voice_name" in params:
+            kwargs["voice_name"] = voice
+        elif "speaker" in params:
+            kwargs["speaker"] = voice
+        if "speed" in params:
+            kwargs["speed"] = speed
+        elif "rate" in params:
+            kwargs["rate"] = speed
+    except Exception:
+        kwargs = {"voice": voice, "speed": speed}
+    _tts_engine = Kokoro(**kwargs)
+    # Back-compat: some versions configure voice after init.
+    try:
+        if hasattr(_tts_engine, "set_voice"):
+            _tts_engine.set_voice(voice)  # type: ignore[attr-defined]
+    except Exception:
+        pass
     _tts_type = "kokoro"
     logger.info("TTS: kokoro-onnx loaded (voice=%s speed=%.1f)", voice, speed)
 

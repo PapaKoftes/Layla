@@ -216,6 +216,16 @@ async def execute_stored_plan(plan_id: str, req: Request):
     if p_run:
         _persist_plan_workspace_files(p_run)
     from agent_loop import autonomous_run
+    from layla.memory.plans_db import update_layla_plan_steps
+
+    def _persist_step_progress(merged_steps: list) -> None:
+        try:
+            if update_layla_plan_steps(plan_id, merged_steps):
+                p2 = get_layla_plan(plan_id)
+                if p2:
+                    _persist_plan_workspace_files(p2)
+        except Exception:
+            pass
 
     try:
         results = await asyncio.to_thread(
@@ -234,6 +244,7 @@ async def execute_stored_plan(plan_id: str, req: Request):
             conversation_id=conversation_id,
             active_plan_id=plan_id,
             plan_approved=True,
+            progress_callback=_persist_step_progress,
         )
         all_ok = bool(results.get("all_steps_ok"))
         set_layla_plan_status(plan_id, "done" if all_ok else "blocked")

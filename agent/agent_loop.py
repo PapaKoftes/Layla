@@ -2384,6 +2384,15 @@ def _run_auto_lint_test_fix(state: dict, tool_name: str, result: dict, path: str
         if not isinstance(lint_result, dict) or not lint_result.get("ok"):
             return None
         violations = lint_result.get("violations", 0) or len(lint_result.get("details", []))
+        if violations > 0 and runtime_safety.effective_auto_lint_test_fix_ruff_fix(cfg, workspace):
+            try:
+                TOOLS["code_lint"]["fn"](path=path, fix=True)
+            except Exception as e:
+                logger.debug("auto_lint ruff --fix: %s", e)
+            lint_result = TOOLS["code_lint"]["fn"](path=path, fix=False)
+            if not isinstance(lint_result, dict) or not lint_result.get("ok"):
+                return None
+            violations = lint_result.get("violations", 0) or len(lint_result.get("details", []))
         if violations > 0:
             details = lint_result.get("details", [])[:5]
             lines = [f"- {d.get('file','')}:{d.get('line','')} {d.get('code','')}: {d.get('message','')}" for d in details if isinstance(d, dict)]
@@ -2397,6 +2406,49 @@ def _run_auto_lint_test_fix(state: dict, tool_name: str, result: dict, path: str
     except Exception as e:
         logger.debug("auto_lint_test_fix failed: %s", e)
     return None
+
+
+def _edit_tool_lint_path(intent: str, args: dict | None, workspace: str) -> str:
+    """Filesystem path hint for auto_lint_test_fix after mutating tools."""
+    ws = (workspace or "").strip()
+    a = args if isinstance(args, dict) else {}
+    if intent in ("code_format", "notebook_edit_cell"):
+        return str(a.get("path") or "").strip() or ws
+    if intent == "replace_in_file":
+        return str(a.get("path") or "").strip()
+    if intent in ("search_replace", "rename_symbol"):
+        return ws
+    return ""
+
+
+def _run_edit_postchecks(
+    state: dict,
+    intent: str,
+    raw_result: object,
+    *,
+    workspace: str,
+    cfg: dict,
+    re_execute: Callable[[], object] | None = None,
+) -> tuple[object, bool, str]:
+    """Validate tool output, deterministic verification, optional single retry (same pattern as mutating tools)."""
+    _res = _maybe_validate_tool_output(intent, raw_result)
+    _res, ok, reason = _apply_deterministic_tool_verification(intent, _res, workspace=workspace, cfg=cfg)
+    if (
+        not ok
+        and bool(cfg.get("deterministic_tool_verification_auto_retry", True))
+        and re_execute is not None
+    ):
+        state.setdefault("_deterministic_retry_counts", {})
+        cnt = int(state["_deterministic_retry_counts"].get(intent) or 0)
+        if cnt < 1:
+            state["_deterministic_retry_counts"][intent] = cnt + 1
+            raw2 = re_execute()
+            _res = _maybe_validate_tool_output(intent, raw2)
+            _res, ok, reason = _apply_deterministic_tool_verification(intent, _res, workspace=workspace, cfg=cfg)
+            if isinstance(_res, dict):
+                _res["_deterministic_retry"] = True
+                _res["_deterministic_retry_reason"] = reason
+    return _res, ok, reason
 
 
 def _run_verification_after_tool(state: dict, tool_name: str, result: dict, workspace: str = "") -> None:
@@ -2915,6 +2967,7 @@ def autonomous_run(
     background_progress_callback: Callable[[dict], None] | None = None,
     active_plan_id: str = "",
     plan_approved: bool = False,
+    fabrication_assist_runner_request: str = "",
     resume_execution_state: dict | None = None,
     coordinator_trace: dict | None = None,
     *,
@@ -2936,6 +2989,7 @@ def autonomous_run(
                     background_progress_callback,
                     active_plan_id,
                     plan_approved,
+                    fabrication_assist_runner_request=fabrication_assist_runner_request,
                     resume_execution_state=resume_execution_state,
                     coordinator_trace=coordinator_trace,
                     engineering_pipeline_mode=engineering_pipeline_mode,
@@ -2982,6 +3036,7 @@ def _autonomous_run_impl(
     background_progress_callback: Callable[[dict], None] | None = None,
     active_plan_id: str = "",
     plan_approved: bool = False,
+    fabrication_assist_runner_request: str = "",
     resume_execution_state: dict | None = None,
     coordinator_trace: dict | None = None,
     *,
@@ -3014,6 +3069,7 @@ def _autonomous_run_impl(
             background_progress_callback,
             active_plan_id,
             plan_approved,
+            fabrication_assist_runner_request=fabrication_assist_runner_request,
             resume_execution_state=resume_execution_state,
             coordinator_trace=coordinator_trace,
             engineering_pipeline_mode=engineering_pipeline_mode,
@@ -3047,6 +3103,7 @@ def _autonomous_run_impl_core(
     active_plan_id: str = "",
     plan_approved: bool = False,
     *,
+    fabrication_assist_runner_request: str = "",
     resume_execution_state: dict | None = None,
     coordinator_trace: dict | None = None,
     engineering_pipeline_mode: str = "chat",
@@ -3255,6 +3312,7 @@ def _autonomous_run_impl_core(
         steps_container=_steps_list,
     )
     state["workspace_root"] = (workspace_root or "").strip()
+    state["fabrication_assist_runner_request"] = (fabrication_assist_runner_request or "").strip().lower()
     try:
         from services.intent_router import route_intent
 
@@ -4055,25 +4113,14 @@ def _autonomous_run_impl_core(
                 result = TOOLS["write_file"]["fn"](path=path, content=content)
                 _register_exact_tool_call(state, "write_file", decision)
                 runtime_safety.log_execution("write_file", {"path": path})
-                _res = _maybe_validate_tool_output("write_file", result)
-                _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
-                    "write_file", _res, workspace=workspace, cfg=cfg
+                _res, _ok_det, _det_reason = _run_edit_postchecks(
+                    state,
+                    "write_file",
+                    result,
+                    workspace=workspace,
+                    cfg=cfg,
+                    re_execute=lambda: TOOLS["write_file"]["fn"](path=path, content=content),
                 )
-                # One automatic retry for deterministic verification failures.
-                if not _ok_det and bool(cfg.get("deterministic_tool_verification_auto_retry", True)):
-                    state.setdefault("_deterministic_retry_counts", {})
-                    _cnt = int(state["_deterministic_retry_counts"].get("write_file") or 0)
-                    if _cnt < 1:
-                        state["_deterministic_retry_counts"]["write_file"] = _cnt + 1
-                        result = TOOLS["write_file"]["fn"](path=path, content=content)
-                        runtime_safety.log_execution("write_file", {"path": path, "_retry": True})
-                        _res = _maybe_validate_tool_output("write_file", result)
-                        _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
-                            "write_file", _res, workspace=workspace, cfg=cfg
-                        )
-                        if isinstance(_res, dict):
-                            _res["_deterministic_retry"] = True
-                            _res["_deterministic_retry_reason"] = _det_reason
                 state["steps"].append({"action": "write_file", "result": _res})
                 state["last_tool_used"] = "write_file"
                 _run_verification_after_tool(state, "write_file", _res if isinstance(_res, dict) else result, workspace)
@@ -4086,7 +4133,7 @@ def _autonomous_run_impl_core(
                         goal = goal + "\n\n" + hint
                 continue
             _wf_grant_args = {"path": path}
-            if not allow_write or (not runtime_safety.require_approval("write_file") and not _has_any_grant("write_file", _wf_grant_args)):
+            if not allow_write or (not runtime_safety.is_tool_allowed("write_file") and not _has_any_grant("write_file", _wf_grant_args)):
                 wf_args = {"path": path, "content": content}
                 _approval_preview_diff("write_file", wf_args, workspace)
                 approval_id = _write_pending("write_file", wf_args)
@@ -4117,24 +4164,14 @@ def _autonomous_run_impl_core(
             result = TOOLS["write_file"]["fn"](path=path, content=content)
             _register_exact_tool_call(state, "write_file", decision)
             runtime_safety.log_execution("write_file", {"path": path})
-            _res = _maybe_validate_tool_output("write_file", result)
-            _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
-                "write_file", _res, workspace=workspace, cfg=cfg
+            _res, _ok_det, _det_reason = _run_edit_postchecks(
+                state,
+                "write_file",
+                result,
+                workspace=workspace,
+                cfg=cfg,
+                re_execute=lambda: TOOLS["write_file"]["fn"](path=path, content=content),
             )
-            if not _ok_det and bool(cfg.get("deterministic_tool_verification_auto_retry", True)):
-                state.setdefault("_deterministic_retry_counts", {})
-                _cnt = int(state["_deterministic_retry_counts"].get("write_file") or 0)
-                if _cnt < 1:
-                    state["_deterministic_retry_counts"]["write_file"] = _cnt + 1
-                    result = TOOLS["write_file"]["fn"](path=path, content=content)
-                    runtime_safety.log_execution("write_file", {"path": path, "_retry": True})
-                    _res = _maybe_validate_tool_output("write_file", result)
-                    _res, _ok_det, _det_reason = _apply_deterministic_tool_verification(
-                        "write_file", _res, workspace=workspace, cfg=cfg
-                    )
-                    if isinstance(_res, dict):
-                        _res["_deterministic_retry"] = True
-                        _res["_deterministic_retry_reason"] = _det_reason
             state["steps"].append({"action": "write_file", "result": _res})
             state["last_tool_used"] = "write_file"
             _run_verification_after_tool(state, "write_file", _res if isinstance(_res, dict) else result, workspace)
@@ -4160,7 +4197,7 @@ def _autonomous_run_impl_core(
                 })
                 goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                 continue
-            if not allow_write or (not runtime_safety.require_approval("write_files_batch") and not _has_any_grant("write_files_batch", {"files": [f.get("path","") for f in files][:1]})):
+            if not allow_write or (not runtime_safety.is_tool_allowed("write_files_batch") and not _has_any_grant("write_files_batch", {"files": [f.get("path","") for f in files][:1]})):
                 wfb_args = {"files": files}
                 _approval_preview_diff("write_files_batch", wfb_args, workspace)
                 approval_id = _write_pending("write_files_batch", wfb_args)
@@ -4211,6 +4248,17 @@ def _autonomous_run_impl_core(
                     _run_git_auto_commit("write_files_batch", result, p, workspace)
                     break
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+            if reasoning_mode != "none" and isinstance(_res, dict) and _res.get("ok"):
+                wp = ""
+                wlist = _res.get("written") if isinstance(_res.get("written"), list) else []
+                if wlist:
+                    wp = str(wlist[0] or "").strip()
+                if not wp:
+                    wp = workspace
+                if wp:
+                    lh = _run_auto_lint_test_fix(state, "write_files_batch", _res, wp, workspace)
+                    if lh:
+                        goal = goal + "\n\n" + lh
             continue
 
         # ------------------------------------------------
@@ -4457,7 +4505,7 @@ def _autonomous_run_impl_core(
                 _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
                 goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                 continue
-            if not allow_run or not runtime_safety.require_approval("run_python"):
+            if not allow_run or not runtime_safety.is_tool_allowed("run_python"):
                 approval_id = _write_pending("run_python", {"code": goal, "cwd": workspace})
                 state["steps"].append({
                     "action": "run_python",
@@ -4537,7 +4585,7 @@ def _autonomous_run_impl_core(
                 })
                 goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                 continue
-            if not allow_write or (not runtime_safety.require_approval("apply_patch") and not _has_any_grant("apply_patch", {"path": path or ""})):
+            if not allow_write or (not runtime_safety.is_tool_allowed("apply_patch") and not _has_any_grant("apply_patch", {"path": path or ""})):
                 ap_args = {"original_path": path or "", "patch_text": patch_body}
                 _approval_preview_diff("apply_patch", ap_args, workspace)
                 approval_id = _write_pending("apply_patch", ap_args)
@@ -4624,7 +4672,7 @@ def _autonomous_run_impl_core(
                     goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                     continue
             if not allow_write or (
-                not runtime_safety.require_approval("replace_in_file")
+                not runtime_safety.is_tool_allowed("replace_in_file")
                 and not _has_any_grant("replace_in_file", {"path": path})
             ):
                 rif_args = {"path": path, "old_text": old_text, "new_text": new_text, "count": rcount}
@@ -4746,7 +4794,7 @@ def _autonomous_run_impl_core(
             from layla.tools.registry import shell_command_is_safe_whitelisted, shell_command_line
             _cmd_line = shell_command_line(argv)
             _grant_ok = _has_any_grant("shell", {"command": _cmd_line})
-            _need_shell_approval = runtime_safety.require_approval("shell")
+            _need_shell_approval = runtime_safety.is_tool_allowed("shell")
             if _need_shell_approval and not shell_command_is_safe_whitelisted(argv) and not _grant_ok:
                 approval_id = _write_pending("shell", {"argv": argv, "cwd": workspace})
                 state["steps"].append({
@@ -4816,7 +4864,7 @@ def _autonomous_run_impl_core(
                 })
                 state["status"] = "finished"
                 break
-            _need_mcp_approval = runtime_safety.require_approval("mcp_tools_call")
+            _need_mcp_approval = runtime_safety.is_tool_allowed("mcp_tools_call")
             _mcp_grant_ok = _has_any_grant("mcp_tools_call", args)
             if _need_mcp_approval and not _mcp_grant_ok:
                 approval_id = _write_pending("mcp_tools_call", args)
@@ -4868,7 +4916,7 @@ def _autonomous_run_impl_core(
 
         if intent == "git_commit":
             args = (decision.get("args") or {}) if decision else {}
-            if not allow_write or (not runtime_safety.require_approval("git_commit") and not _has_any_grant("git_commit", args)):
+            if not allow_write or (not runtime_safety.is_tool_allowed("git_commit") and not _has_any_grant("git_commit", args)):
                 approval_id = _write_pending("git_commit", args)
                 state["steps"].append({"action": "git_commit", "result": {
                     "ok": False, "reason": "approval_required",
@@ -4935,6 +4983,15 @@ def _autonomous_run_impl_core(
             "git_commit", "get_project_context", "update_project_context", "understand_file",
         ):
             args = (decision.get("args") or {}) if decision else {}
+            if intent == "fabrication_assist_run":
+                # Runner selection is never LLM-decided. It is pinned from execution state
+                # (set by file-plan engine from step.inputs, and validated against config there).
+                pinned = (state.get("fabrication_assist_runner_request") or "").strip().lower()
+                if not isinstance(args, dict):
+                    args = {}
+                else:
+                    args = dict(args)
+                args["runner_request"] = pinned if pinned in ("stub", "subprocess") else "stub"
             if intent in (
                 "restore_file_checkpoint",
                 "ingest_chat_export_to_knowledge",
@@ -4950,9 +5007,9 @@ def _autonomous_run_impl_core(
                     logger.debug("agent_loop:L3889: %s", _exc, exc_info=False)
             meta = TOOLS.get(intent, {})
             needs_approval = meta.get("require_approval", False)
-            allow = allow_write or allow_run  # generic tools need at least one
+            allow = allow_run if intent == "fabrication_assist_run" else (allow_write or allow_run)  # generic tools need at least one
             _session_grant_ok = _has_any_grant(intent, args)
-            if needs_approval and (not allow or not runtime_safety.require_approval(intent)) and not _session_grant_ok:
+            if needs_approval and (not allow or not runtime_safety.is_tool_allowed(intent)) and not _session_grant_ok:
                 ap_args = dict(args)
                 _approval_preview_diff(intent, ap_args, workspace)
                 approval_id = _write_pending(intent, ap_args)
@@ -5015,6 +5072,12 @@ def _autonomous_run_impl_core(
             _run_verification_after_tool(state, intent, _res if isinstance(_res, dict) else result, workspace)
             _emit_ux(state, ux_state_queue, UX_STATE_VERIFYING)
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+            if reasoning_mode != "none":
+                lp = _edit_tool_lint_path(intent, args, workspace)
+                if lp and isinstance(_res, dict) and _res.get("ok"):
+                    lh = _run_auto_lint_test_fix(state, intent, _res, lp, workspace)
+                    if lh:
+                        goal = goal + "\n\n" + lh
             continue
 
         # ------------------------------------------------

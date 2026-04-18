@@ -7,7 +7,7 @@ Target shape for stabilize, research docs, study docs, approval docs, extensibil
 ## M1 — Stabilize and document
 
 - **DB path**: Documented. Database is **repo root** `layla.db` (see README, ARCHITECTURE, RUNBOOKS).
-- **Python**: 3.10+ documented in README and ARCHITECTURE; deps in `agent/requirements.txt`.
+- **Python**: 3.11–3.12 documented in README and ARCHITECTURE; deps in `agent/requirements.txt`.
 - **Smoke**: GET /health and POST /agent (with mock) covered by existing e2e tests.
 - **Runbook**: First run procedure in docs/RUNBOOKS.md.
 

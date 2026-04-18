@@ -131,6 +131,7 @@ def _autonomous_kwargs_from_payload(payload: dict[str, Any], goal: str) -> dict[
         "background_progress_callback": payload.get("background_progress_callback"),
         "active_plan_id": str(payload.get("active_plan_id") or ""),
         "plan_approved": bool(payload.get("plan_approved")),
+        "fabrication_assist_runner_request": str(payload.get("fabrication_assist_runner_request") or "").strip(),
         "skip_engineering_pipeline": bool(payload.get("skip_engineering_pipeline")),
         "engineering_pipeline_mode": (
             _epm
@@ -330,6 +331,44 @@ def execute_next_file_plan_step(plan: Any, workspace_root: str, payload: dict[st
     ]
     exec_payload = {**payload, "active_plan_id": plan.id, "plan_approved": True}
     exec_payload["_plan_step_tool_allowlist"] = step_tool_names if step_tool_names else None
+
+    # Fabrication Assist runner request: stub by default; subprocess only when explicitly enabled in config.
+    fa_req = ""
+    try:
+        raw_in = getattr(step, "inputs", None) or {}
+        if isinstance(raw_in, dict):
+            fa_req = str(raw_in.get("fabrication_assist_runner") or "").strip().lower()
+    except Exception:
+        fa_req = ""
+    if fa_req and fa_req not in ("stub", "subprocess"):
+        fa_req = ""
+    try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+    except Exception:
+        cfg = {}
+    _fa_cfg = cfg.get("fabrication_assist") if isinstance(cfg, dict) else {}
+    if not isinstance(_fa_cfg, dict):
+        _fa_cfg = {}
+    allow_subprocess = bool(_fa_cfg.get("enable_subprocess"))
+    if fa_req == "subprocess" and not allow_subprocess:
+        # Hard block: step explicitly asked for subprocess but operator hasn't enabled it.
+        set_step_status(plan, step.id, "blocked")
+        plan.status = "failed"
+        touch_updated(plan)
+        save_plan(workspace_root, plan)
+        return {
+            "ok": True,
+            "mode": "blocked",
+            "plan_status": plan.status,
+            "step_status": "blocked",
+            "step_id": step.id,
+            "response": "Fabrication Assist subprocess runner requested by plan step but disabled by config. Set fabrication_assist.enable_subprocess=true to allow.",
+            "steps": [],
+        }
+    # Pass request through payload so agent_loop can pin tool args deterministically (never LLM-decided).
+    exec_payload["fabrication_assist_runner_request"] = fa_req or "stub"
 
     max_retries = int(getattr(step, "max_retries", 1) or 0)
 

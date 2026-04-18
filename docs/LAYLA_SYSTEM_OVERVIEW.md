@@ -21,7 +21,7 @@ A single persistent “being” with different **modes** (aspects), a **memory**
 - **One server** on your computer: `agent/main.py` (FastAPI at `localhost:8000`).
 - **One database** on your computer: `layla.db` — learnings, study plans, project context, capabilities, audit log. Everything stays local.
 - **One AI model** (your own GGUF, via llama-cpp-python). No data is sent to the cloud for the core chat/agent loop.
-- **Optional:** A vector store (e.g. FAISS) for semantic search over memories; configurable.
+- **Optional:** A vector store (ChromaDB) for semantic search over memories and knowledge; configurable.
 
 So: **local-first**. Your machine, your data, your model.
 

@@ -26,7 +26,7 @@ This document codifies the ethical AI principles that govern Layla's design and 
 **Implementation:**
 - `allow_write` / `allow_run` required for write/run tools
 - `write_file`, `apply_patch`, `shell`, `run_python`, `git_commit` return `approval_required` → user must approve via `POST /approve` or CLI
-- `runtime_safety.require_approval()` gates dangerous tools
+- `runtime_safety.is_tool_allowed()` (back-compat alias: `require_approval`) gates dangerous tools
 - `agent/routers/approvals.py` — approval endpoint
 
 **Hard rule:** Never bypass the approval gate. See `AGENTS.md` §5.

@@ -713,6 +713,10 @@ def rename_symbol(root: str, old_name: str, new_name: str, symbol_type: str = "a
     apply=False: dry run, returns proposed changes. apply=True: writes changes.
     """
     root_path = Path(root)
+    if not root_path.is_absolute() and getattr(_effective_sandbox, "path", None):
+        root_path = (Path(_effective_sandbox.path) / root).resolve()
+    else:
+        root_path = root_path.resolve()
     if not inside_sandbox(root_path):
         return {"ok": False, "error": "Outside sandbox"}
     if not root_path.exists():
@@ -731,16 +735,44 @@ def rename_symbol(root: str, old_name: str, new_name: str, symbol_type: str = "a
             n = len(pattern.findall(content))
             changes.append({"path": str(f), "replacements": n})
             if apply:
+                stale = _check_read_freshness(f)
+                if stale:
+                    return {
+                        "ok": False,
+                        "error": stale,
+                        "path": str(f),
+                        "hint": "use read_file on this file first",
+                        "old_name": old_name,
+                        "new_name": new_name,
+                    }
+                _maybe_file_checkpoint(f, "rename_symbol")
                 f.write_text(new_content, encoding="utf-8")
-    return {"ok": True, "old_name": old_name, "new_name": new_name, "changes": changes[:50], "total_files": len(changes), "applied": apply}
+                _clear_read_freshness(f)
+    return {
+        "ok": True,
+        "old_name": old_name,
+        "new_name": new_name,
+        "changes": changes[:50],
+        "total_files": len(changes),
+        "applied": apply,
+    }
 
 def code_format(path: str, formatter: str = "ruff") -> dict:
     """Format Python code with ruff or black. path: file or directory."""
     target = Path(path)
+    if not target.is_absolute() and getattr(_effective_sandbox, "path", None):
+        target = (Path(_effective_sandbox.path) / path).resolve()
+    else:
+        target = target.resolve()
     if not inside_sandbox(target):
         return {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
         return {"ok": False, "error": "Path not found"}
+    if target.is_file():
+        stale = _check_read_freshness(target)
+        if stale:
+            return {"ok": False, "error": stale, "hint": "use read_file first"}
+        _maybe_file_checkpoint(target, "code_format")
     try:
         if formatter == "ruff":
             proc = subprocess.run(
@@ -752,7 +784,10 @@ def code_format(path: str, formatter: str = "ruff") -> dict:
                 [sys.executable, "-m", "black", str(target)],
                 capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
             )
-        return {"ok": proc.returncode == 0, "output": (proc.stdout or proc.stderr or "")[:2000]}
+        ok = proc.returncode == 0
+        if ok and target.is_file():
+            _clear_read_freshness(target)
+        return {"ok": ok, "output": (proc.stdout or proc.stderr or "")[:2000], "path": str(target)}
     except FileNotFoundError:
         return {"ok": False, "error": f"{formatter} not installed: pip install {formatter}"}
     except Exception as e:
