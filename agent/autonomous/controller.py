@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from pathlib import Path
 from typing import Any, Callable
@@ -7,6 +8,7 @@ from typing import Any, Callable
 from autonomous.aggregator import aggregate, aggregate_prefetch_hit
 from autonomous.audit import AuditLog
 from autonomous.budget import Budget, BudgetExceeded
+from autonomous.chroma_retrieval import try_chroma_retrieval
 from autonomous.context import ContextState, compress_tool_result, normalize_path_for_tracking
 from autonomous.investigation_reuse import maybe_append_investigation_reuse
 from autonomous.planner import Planner
@@ -18,6 +20,8 @@ from autonomous.value_gate import evaluate_value_gate
 from autonomous.wiki import build_candidate, write_wiki_entry
 from autonomous.wiki_retrieval import try_wiki_retrieval
 from layla.tools.registry import TOOLS
+
+logger = logging.getLogger("layla")
 
 
 def _budget_hint(budget: Budget) -> str:
@@ -124,6 +128,10 @@ def run_autonomous_task(
                 "timeout_seconds": task.timeout_seconds,
             }
             audit.write_final(run_id=run_id, final=final)
+            logger.debug(
+                "autonomous_prefetch: reuse_hit run_id=%s — wiki and chroma not evaluated this request",
+                run_id,
+            )
             return final
 
         w_hit = try_wiki_retrieval(goal=task.goal, workspace_root=task.workspace_root, cfg=cfg)
@@ -151,7 +159,47 @@ def run_autonomous_task(
                 "timeout_seconds": task.timeout_seconds,
             }
             audit.write_final(run_id=run_id, final=final)
+            logger.debug(
+                "autonomous_prefetch: wiki_hit run_id=%s — chroma not evaluated this request",
+                run_id,
+            )
             return final
+
+        c_hit = try_chroma_retrieval(goal=task.goal, workspace_root=task.workspace_root, cfg=cfg)
+        if c_hit:
+            meta_keys = frozenset({"embedding_id", "match_score"})
+            pf = {k: v for k, v in c_hit.items() if k not in meta_keys}
+            meta = {k: c_hit[k] for k in meta_keys if k in c_hit}
+            final = aggregate_prefetch_hit(
+                goal=task.goal,
+                value_gate=value_gate,
+                stopped_reason="chroma_hit",
+                prefetch_final=pf,
+                source="chroma",
+                prefetch_meta=meta,
+            )
+            try:
+                pm = str(cfg.get("model_filename") or cfg.get("model_path") or "")[:500]
+            except Exception:
+                pm = ""
+            final["planner_model"] = pm or "router_default"
+            final["budget_counters"] = {
+                "steps_used": 0,
+                "max_steps": task.max_steps,
+                "elapsed_seconds": 0.0,
+                "timeout_seconds": task.timeout_seconds,
+            }
+            audit.write_final(run_id=run_id, final=final)
+            logger.debug(
+                "autonomous_prefetch: chroma_hit run_id=%s — planner prefetch skipped",
+                run_id,
+            )
+            return final
+
+        logger.debug(
+            "autonomous_prefetch: miss on reuse, wiki, and chroma run_id=%s — continuing to planner",
+            run_id,
+        )
 
     budget = Budget(max_steps=task.max_steps, timeout_seconds=task.timeout_seconds)
     policy = Policy.from_config(cfg)

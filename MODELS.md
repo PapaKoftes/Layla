@@ -1,7 +1,7 @@
 # ∴ Model Guide — Which GGUF to Download
 
 Layla runs any GGUF-format model via llama.cpp.  
-Pick the right one for your hardware. Put the `.gguf` file in the `models/` folder.
+Pick the right one for your hardware. Put the `.gguf` file in a `models/` folder Layla scans: **repo root** `models/` (next to `agent/`) for dev/source installs, or **`%LOCALAPPDATA%\\Layla\\models`** (Windows) / under **`LAYLA_DATA_DIR/models`** when the launcher/installer sets a per-user data directory. Optional `models_dir` in `runtime_config.json` overrides the primary directory; setup still merges listings from those roots.
 
 **Very tight hardware:** Use a small Tier 3–4 model *and* apply **potato mode** (Web UI → Settings → *Apply potato preset*, or `POST /settings/preset` with `{"preset":"potato"}`). See [docs/POTATO_MODE.md](docs/POTATO_MODE.md).
 

@@ -7,9 +7,25 @@ Read this before touching any file. It tells you what this project is, where thi
 
 ## What this project is
 
-Layla is a **self-hosted AI companion and engineering agent** that runs on the user's own hardware via a local GGUF model (llama-cpp-python). No cloud. No API keys required. She has six personality aspects, persistent memory (SQLite + ChromaDB), **194 registered tools** (authoritative count: `agent/tests/test_registered_tools_count.py` → `EXPECTED_TOOL_COUNT`), voice I/O, and browser automation. The FastAPI server lives at `localhost:8000`. The web UI is at `/ui`.
+Layla is a **self-hosted AI companion and engineering agent** that runs on the user's own hardware via a local GGUF model (llama-cpp-python). No cloud. No API keys required. She has six personality aspects, persistent memory (SQLite + ChromaDB), **195 registered tools** (authoritative count: `agent/tests/test_registered_tools_count.py` → `EXPECTED_TOOL_COUNT`), voice I/O, and browser automation. The FastAPI server lives at `localhost:8000`. The web UI is at `/ui`.
 
 **The operator chooses their model.** Layla is uncensored by default. Everything is configurable via `agent/runtime_config.json`.
+
+---
+
+## Start here (operators vs contributors)
+
+| Goal | Path |
+|------|------|
+| Install and run today | [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) then [README.md](README.md) Install and **START.bat** / **start.sh** → `http://localhost:8000/ui` |
+| Ten-minute acceptance | [docs/GOLDEN_FLOW.md](docs/GOLDEN_FLOW.md) — section **Ten-minute operator acceptance** |
+| Sandbox + remote safety | [docs/OPERATOR_SANDBOX.md](docs/OPERATOR_SANDBOX.md), [docs/REMOTE_ARCHITECTURE.md](docs/REMOTE_ARCHITECTURE.md) |
+| Approvals / diff / grants | [docs/OPERATOR_APPROVALS.md](docs/OPERATOR_APPROVALS.md) |
+| Coding agent habits (spawn, MCP, approvals) | [docs/CODING_AGENT_WORKFLOW.md](docs/CODING_AGENT_WORKFLOW.md), [docs/PARITY_AUDIT.md](docs/PARITY_AUDIT.md) |
+| Web UI QA rubric | [docs/WEB_UI_OPERATOR_RUBRIC.md](docs/WEB_UI_OPERATOR_RUBRIC.md) |
+| CI / parity commands | [docs/VERIFICATION.md](docs/VERIFICATION.md) |
+
+Contributors: continue with **Repository map** below; update [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) when you change request flow.
 
 ---
 
@@ -68,6 +84,7 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 │   │   ├── conversations.py # /conversations* (includes v3 tags endpoints)
 │   │   ├── aspects.py       # GET /aspects/{aspect_id} — aspect character sheet (safe subset)
 │   │   ├── journal.py       # /journal* — operator journal entries
+│   │   ├── workspace.py     # /platform/*, /project_discovery, /workspace/awareness/refresh, /workspace/project_memory, /workspace/symbol_search, …
 │   │   └── improvements.py  # /improvements* — self-improvement proposals (approval applies allowlisted instructions)
 │   │
 │   ├── services/            # Infrastructure services (singleton pattern)
@@ -284,12 +301,14 @@ cd agent
 pytest tests/ -x -q
 ```
 
-**Default unit/integration** (excludes slow + browser e2e — same as CI):
+**Default unit/integration** (excludes slow + browser e2e + optional smokes — same as CI):
 
 ```bash
 cd agent
-pytest tests/ -m "not slow and not e2e_ui"
+pytest tests/ -m "not slow and not e2e_ui and not browser_smoke and not voice_smoke and not gpu_smoke"
 ```
+
+**Deep verification** (nightly / manual): `.github/workflows/verify-deep.yml` — UI e2e, `browser_smoke`, `voice_smoke`, doctor JSON artifact. See `docs/VERIFICATION.md`.
 
 **Playwright UI e2e** (Chromium; needs extra deps):
 

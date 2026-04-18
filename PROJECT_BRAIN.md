@@ -4,9 +4,19 @@
 
 ---
 
+## Ground Truth Reference
+
+For **exact current behavior** (routes, config defaults, Tier-0 prefetch order, execution wiring) use **`docs/system/`** — code-derived reference. **If any narrative doc conflicts with `docs/system`, trust `docs/system`.**
+
+- Use **`PROJECT_BRAIN.md`** (this file) for **entry point and workflow** (read order, discipline).
+- Use **`docs/MODULE_SWEEP_STATUS.md`** and **one** relevant **`docs/*_MODULE_SECOND_SWEEP.md`** for **scoped subsystem** work — do not drop sweeps for full-tree rescans.
+- Older explanatory docs **`ARCHITECTURE.md`**, **`docs/CONFIG_REFERENCE.md`**, etc. may drift; verify against **`docs/system`** when precision matters.
+
+---
+
 ## What this repo is
 
-**Layla** is a **local-first**, **planning-first** AI companion and engineering agent: FastAPI on **localhost:8000**, **Web UI** at **`/ui`**, optional **MCP** (`cursor-layla-mcp/`). Core loop: **`POST /agent`** → **`services/coordinator.dispatch_autonomous_run`** (classification trace, optional **`tasks`** persistence) → **`agent/agent_loop.autonomous_run()`** → LLM decisions → tools (gated) → streaming reply. **Plans:** durable **`layla_plans`** in SQLite + **`/plans`** API; optional file-backed **`/plan/*`** (`.layla_plans/*.json`, Pydantic steps); optional **`planning_strict_mode`** so mutating tools require an **approved** bound plan (default off). **Optional engineering pipeline** (config **`engineering_pipeline_enabled`**): modes **`chat` / `plan` / `execute`** with blocking clarifier, forced critics, refiner overwrite, governed execute, mandatory validator in execute mode — see **`docs/STRUCTURED_ENGINEERING_PARTNER.md`** and North Star **§21**. **Tools:** **191** registered in **`layla.tools.registry.TOOLS`** (authoritative count: **`EXPECTED_TOOL_COUNT`** in **`agent/tests/test_registered_tools_count.py`**). Six **aspects** load from **`personalities/*.json`** (never hardcode the list). **Memory:** SQLite **`layla.db`** + optional Chroma; **config:** **`agent/runtime_config.json`** (gitignored), template **`agent/runtime_config.example.json`**.
+**Layla** is a **local-first**, **planning-first** AI companion and engineering agent: FastAPI on **localhost:8000**, **Web UI** at **`/ui`**, optional **MCP** (`cursor-layla-mcp/`). Core loop: **`POST /agent`** → **`services/coordinator.dispatch_autonomous_run`** (classification trace, optional **`tasks`** persistence) → **`agent/agent_loop.autonomous_run()`** → LLM decisions → tools (gated) → streaming reply. **Plans:** durable **`layla_plans`** in SQLite + **`/plans`** API; optional file-backed **`/plan/*`** (`.layla_plans/*.json`, Pydantic steps); optional **`planning_strict_mode`** so mutating tools require an **approved** bound plan (default off). **Optional engineering pipeline** (config **`engineering_pipeline_enabled`**): modes **`chat` / `plan` / `execute`** with blocking clarifier, forced critics, refiner overwrite, governed execute, mandatory validator in execute mode — see **`docs/STRUCTURED_ENGINEERING_PARTNER.md`** and North Star **§21**. **Tools:** **195** registered in **`layla.tools.registry.TOOLS`** (authoritative count: **`EXPECTED_TOOL_COUNT`** in **`agent/tests/test_registered_tools_count.py`**). Six **aspects** load from **`personalities/*.json`** (never hardcode the list). **Memory:** SQLite **`layla.db`** + optional Chroma; **config:** **`agent/runtime_config.json`** (gitignored), template **`agent/runtime_config.example.json`**.
 
 ---
 
@@ -97,8 +107,9 @@ These documents provide:
 
 ## AI Usage Rules
 
-- **`PROJECT_BRAIN.md`** is the primary source of system understanding.
-- Module sweeps (`docs/*_MODULE_SECOND_SWEEP.md`) are secondary deep references.
+- **`PROJECT_BRAIN.md`** is the primary source of workflow and orientation.
+- **`docs/system/`** is the primary source for **exact** runtime behavior as implemented.
+- Module sweeps (`docs/*_MODULE_SECOND_SWEEP.md`) are scoped deep references.
 - Do **not** re-analyze the entire repository when these documents are sufficient for the task.
 
 ---

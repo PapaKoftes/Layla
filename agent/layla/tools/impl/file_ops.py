@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import subprocess
 import sys
@@ -83,13 +84,17 @@ def write_file(path: str, content: str) -> dict:
 
 def write_files_batch(files: list) -> dict:
     """
-    Write multiple files atomically. files: [{path, content}, ...].
+    Write multiple files atomically (per-file temp-then-rename). files: [{path, content}, ...].
     Returns approval_required when gated; otherwise applies all and returns ok.
     """
     if not isinstance(files, list) or not files:
         return {"ok": False, "error": "files must be a non-empty list of {path, content}"}
-    written = []
-    errors = []
+    try:
+        max_bytes, explosion = _write_file_limits()
+    except Exception:
+        max_bytes, explosion = 2_000_000, 50.0
+    written: list[str] = []
+    errors: list[str] = []
     for i, item in enumerate(files):
         if not isinstance(item, dict):
             errors.append(f"Item {i}: not a dict")
@@ -99,21 +104,48 @@ def write_files_batch(files: list) -> dict:
         if not path:
             errors.append(f"Item {i}: missing path")
             continue
-        target = Path(path)
-        if not target.is_absolute() and getattr(_effective_sandbox, "path", None):
-            target = (Path(_effective_sandbox.path) / path).resolve()
-        if not inside_sandbox(target):
-            errors.append(f"{path}: outside sandbox")
+        target = _resolve_sandboxed_path(path)
+        ok, err = _ensure_inside_sandbox(target)
+        if not ok:
+            errors.append(f"{path}: " + str((err or {}).get("error") or "outside sandbox"))
             continue
+        raw = (content if isinstance(content, str) else str(content)).encode("utf-8", errors="replace")
+        if len(raw) > max_bytes:
+            errors.append(f"{path}: content_too_large (limit {max_bytes})")
+            continue
+        if target.exists():
+            stale = _check_read_freshness(target)
+            if stale:
+                errors.append(f"{path}: {stale}")
+                continue
+            try:
+                existing_size = target.stat().st_size
+                new_size = len(raw)
+                if existing_size > 0 and new_size > existing_size * explosion:
+                    errors.append(f"{path}: size_explosion_detected")
+                    continue
+            except Exception:
+                pass
         try:
             _maybe_file_checkpoint(target, "write_files_batch")
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(content, encoding="utf-8")
+            fd, tmp_path = tempfile.mkstemp(prefix=".layla_wfb_", suffix=target.suffix or ".tmp", dir=str(target.parent))
+            try:
+                with os.fdopen(fd, "wb") as wf:
+                    wf.write(raw)
+                Path(tmp_path).replace(target)
+            except Exception:
+                try:
+                    Path(tmp_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
+                raise
+            _clear_read_freshness(target)
             written.append(str(target))
         except Exception as e:
             errors.append(f"{path}: {e}")
     if errors:
-        return {"ok": False, "error": "; ".join(errors[:5]), "written": written}
+        return {"ok": False, "error": "; ".join(errors[:8]), "written": written}
     return {"ok": True, "written": written, "count": len(written)}
 
 def read_file(path: str) -> dict:
@@ -474,9 +506,27 @@ def search_replace(root: str, find: str, replace: str, file_glob: str = "*", dry
         if n:
             matches.append({"path": str(f), "count": n})
             if not dry_run:
+                stale = _check_read_freshness(f)
+                if stale:
+                    return {
+                        "ok": False,
+                        "error": stale,
+                        "path": str(f),
+                        "hint": "use read_file first",
+                        "dry_run": dry_run,
+                        "find": find,
+                    }
                 _maybe_file_checkpoint(f, "search_replace")
                 f.write_text(new_content, encoding="utf-8")
-    return {"ok": True, "dry_run": dry_run, "matches": matches[:100], "total_files": len(matches)}
+                _clear_read_freshness(f)
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "matches": matches[:100],
+        "total_files": len(matches),
+        "find": find,
+        "use_regex": use_regex,
+    }
 
 def apply_patch(original_path: str, patch_text: str) -> dict:
     """Apply a unified diff patch using unidiff (pure Python, Windows-safe). Creates a backup first."""

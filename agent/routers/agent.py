@@ -250,6 +250,14 @@ async def agent(req: dict, request: Request):
     except Exception:
         cfg = {}
 
+    try:
+        if (workspace_root or "").strip():
+            from services.workspace_awareness import refresh_for_workspace
+
+            refresh_for_workspace(str(workspace_root).strip(), cfg)
+    except Exception:
+        pass
+
     _ep_enabled = bool(cfg.get("engineering_pipeline_enabled"))
     _raw_epm = (req or {}).get("engineering_pipeline_mode")
     if _raw_epm is None or (isinstance(_raw_epm, str) and not str(_raw_epm).strip()):
