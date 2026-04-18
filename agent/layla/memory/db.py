@@ -135,6 +135,10 @@ from layla.memory.tasks_db import (
 from layla.memory.tasks_db import (
     update_task as update_persistent_task,
 )
+from layla.memory.rl_preferences import (
+    get_rl_preferences,
+    upsert_rl_preference,
+)
 from layla.memory.telemetry_db import (
     get_model_success_rates,
     get_recent_telemetry_events,
@@ -284,5 +288,7 @@ __all__ = [
     'update_persistent_task',
     'get_persistent_task',
     'list_persistent_tasks',
+    'get_rl_preferences',
+    'upsert_rl_preference',
 ]
 
