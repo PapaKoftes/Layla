@@ -256,6 +256,7 @@ def load_config() -> dict:
             "ui_stream_keepalive_seconds": 20,
             "ui_stalled_silence_ms": 0,
             "honesty_and_boundaries_enabled": True,
+            "lite_mode_auto": True,  # PR #1: auto-detect low hardware → performance_mode low
             "dual_model_threshold_gb": 24,
             "force_dual_models": False,
             "route_default_to_chat_model": False,
@@ -279,6 +280,9 @@ def load_config() -> dict:
             "tool_step_context_max_tokens": 500,
             "system_head_budget_ratio": 0.35,
             "tiered_prompt_budget_enabled": True,
+            "llm_timeout_seconds": 120,
+            "agent_timeout_seconds": 300,
+            "tool_timeout_seconds": 30,
             "tool_routing_enabled": True,
             # Quality enforcement: match runtime_config.example.json; explicit false in runtime_config.json still overrides.
             "deterministic_tool_routes_enabled": True,
@@ -512,7 +516,7 @@ def load_config() -> dict:
             "sandbox_python_memory_limit_mb": 0,
             "max_chars_per_source": 500,
             "retrieval_line_overlap_threshold": 0.7,
-            "write_file_max_bytes": 500_000,
+            "write_file_max_bytes": 5_000_000,  # 5MB for new files; existing files use explosion_factor
             "write_file_explosion_factor": 5,
             "max_patch_lines": 0,
             "doc_injection_guard_enabled": True,
@@ -535,7 +539,14 @@ def load_config() -> dict:
             "elasticsearch_index_prefix": "layla",
             "elasticsearch_api_key": None,
         }
-        defaults.update(_hardware_derived_defaults())
+        hw_defaults = _hardware_derived_defaults()
+        defaults.update(hw_defaults)
+        # Auto-enable lite mode based on hardware when lite_mode_auto is true
+        # (only if performance_mode is still "auto" — user override wins)
+        if defaults.get("lite_mode_auto", True) and defaults.get("performance_mode", "auto") == "auto":
+            h = _probe_hardware()
+            if h["ram_gb"] < 8 or h["vram_gb"] < 4:
+                defaults["performance_mode"] = "low"
         try:
             data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
             if isinstance(data, dict):
@@ -545,6 +556,10 @@ def load_config() -> dict:
         # Startup gate (main.py): Chroma wheels unusable on this interpreter — disable semantic layer only.
         if (os.environ.get("LAYLA_CHROMA_DISABLED") or "").strip().lower() in ("1", "true", "yes"):
             defaults["use_chroma"] = False
+        try:
+            Path(defaults["sandbox_root"]).mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            logger.debug("sandbox_root mkdir failed: %s", e)
         _config_cache = defaults
         _config_mtime = current_mtime
         return _config_cache

@@ -68,3 +68,47 @@ class HistoryEntryModel(BaseModel):
     intent: dict[str, Any]
     variant_ids: list[str | None]
     result_scores: list[Any]
+
+
+class FabricationOperation(BaseModel):
+    """A single fabrication operation (cut, drill, slot, pocket, profile)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    type: str = Field(..., max_length=64)
+    # Geometry fields — all optional; used by the relevant operation types
+    x: float = Field(default=0.0)
+    y: float = Field(default=0.0)
+    width: float = Field(default=0.0)
+    height: float = Field(default=0.0)
+    radius: float = Field(default=0.0)
+    # For slots: start/end as [x, y] pairs
+    start: list[float] = Field(default_factory=list)
+    end: list[float] = Field(default_factory=list)
+    # For profiles/pockets: ordered list of [x, y] points
+    path_points: list[list[float]] = Field(default_factory=list)
+    # Optional label for annotation
+    label: str = Field(default="", max_length=256)
+
+
+class FabricationJob(BaseModel):
+    """A named fabrication job containing one or more operations."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str = Field(..., max_length=256)
+    operations: list[FabricationOperation] = Field(default_factory=list)
+    units: str = Field(default="mm", max_length=16)
+    material: str = Field(default="", max_length=256)
+    notes: str = Field(default="", max_length=4096)
+
+
+class BuildResult(BaseModel):
+    """Result returned by DXFBuildRunner.run()."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ok: bool
+    output_path: str = Field(default="")
+    error: str = Field(default="")
+    warnings: list[str] = Field(default_factory=list)

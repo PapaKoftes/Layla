@@ -1,6 +1,7 @@
 """Health, version, updates, diagnostics, usage, and related system endpoints (extracted from main)."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import subprocess
 import time
@@ -532,3 +533,71 @@ async def skill_packs_remove(req: Request):
     from services.skill_packs import remove_pack
 
     return remove_pack(pid)
+
+
+@router.get("/rl/preferences")
+def rl_preferences():
+    """Return current RL tool preference table (PR #1 integration)."""
+    try:
+        from layla.memory.db import get_rl_preferences
+
+        prefs = get_rl_preferences()
+        return {"ok": True, "preferences": prefs}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+
+
+@router.post("/memory/rebuild")
+async def memory_rebuild():
+    """Rebuild Chroma learnings collection from SQLite (async fire-and-forget)."""
+
+    async def _do_rebuild():
+        try:
+            from layla.memory.vector_store import rebuild_collection
+
+            rebuild_collection()
+            logger.info("memory rebuild complete")
+        except Exception as e:
+            logger.warning("memory rebuild failed: %s", e)
+
+    asyncio.create_task(_do_rebuild())
+    return JSONResponse({"ok": True, "status": "rebuilding"})
+
+
+@router.get("/aspects/reload")
+def aspects_reload():
+    """Hot-reload aspect JSON definitions."""
+    try:
+        import orchestrator as _orch
+
+        aspects = _orch.reload_aspects()
+        return JSONResponse({"ok": True, "loaded": len(aspects)})
+    except Exception as e:
+        logger.warning("aspects reload failed: %s", e)
+        return JSONResponse({"ok": False, "error": str(e), "loaded": 0})
+
+
+@router.post("/agent/cancel/{conversation_id}")
+def cancel_agent_run(conversation_id: str):
+    """Signal cooperative cancellation for an in-flight agent run."""
+    try:
+        from shared_state import set_cancel
+
+        cid = (conversation_id or "").strip() or "default"
+        return {"ok": bool(set_cancel(cid))}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.delete("/agent")
+def cancel_latest_agent_run():
+    """Cancel the most recently started conversation run (same as PR #1 DELETE /agent)."""
+    try:
+        from shared_state import get_most_recent_conv_id, set_cancel
+
+        cid = get_most_recent_conv_id()
+        if not cid:
+            return {"ok": False, "error": "no active conversation"}
+        return {"ok": bool(set_cancel(cid))}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)

@@ -1,4 +1,4 @@
-"""Agent and learn endpoints. Mounted at / by main."""
+﻿"""Agent and learn endpoints. Mounted at / by main."""
 import asyncio
 import base64
 import json
@@ -888,7 +888,7 @@ async def agent(req: dict, request: Request):
         if "model" in err_msg.lower() or "path" in err_msg.lower() or "file" in err_msg.lower():
             err_msg = f"Model error: {err_msg}. Configure model_filename in runtime_config.json and ensure the .gguf file exists. See MODELS.md."
         _append_history("user", goal)
-        _append_history("assistant", "I couldn't reply — see error below.")
+        _append_history("assistant", "I couldn't reply ÔÇö see error below.")
         return JSONResponse({
             "response": err_msg,
             "state": {"status": "error", "steps": []},

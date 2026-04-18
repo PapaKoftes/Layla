@@ -693,6 +693,21 @@ def _migrate_impl() -> None:
     except Exception as e:
         logger.warning("goal_progress table migration failed: %s", e)
 
+    # rl_preferences — RL feedback loop preference cache (PR #1)
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS rl_preferences (
+                    tool_name  TEXT PRIMARY KEY,
+                    score      REAL,
+                    hint       TEXT,
+                    updated_at TEXT
+                )
+            """)
+            db.commit()
+    except Exception as e:
+        logger.warning("rl_preferences table migration failed: %s", e)
+
     # learnings.aspect_id — optional facet attribution (Echo / per-aspect memory)
     try:
         with _conn() as db:

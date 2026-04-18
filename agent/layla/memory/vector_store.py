@@ -139,7 +139,67 @@ def _get_chroma_collection():
             name="learnings",
             metadata={"hnsw:space": "cosine"},
         )
+        try:
+            if _chroma_collection.count() > 0:
+                peek = _chroma_collection.peek(limit=1)
+                stored_embs = peek.get("embeddings") or []
+                if stored_embs and stored_embs[0]:
+                    stored_dim = len(stored_embs[0])
+                    _get_embedder()
+                    current_dim = _embedder_dim
+                    if stored_dim != current_dim:
+                        logger.warning(
+                            "ChromaDB dimension mismatch: stored=%d, current=%d. "
+                            "Run POST /memory/rebuild to rebuild the collection.",
+                            stored_dim,
+                            current_dim,
+                        )
+        except Exception as _dim_e:
+            logger.debug("ChromaDB dimension check failed: %s", _dim_e)
         return _chroma_collection
+
+
+def rebuild_collection() -> dict:
+    """
+    Delete and recreate the ChromaDB learnings collection, then re-index from SQLite learnings.
+    Call this after an embedder model change that causes a dimension mismatch.
+    """
+    global _chroma_collection
+    try:
+        import chromadb
+
+        client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+        try:
+            client.delete_collection("learnings")
+            logger.info("ChromaDB: deleted old 'learnings' collection for rebuild")
+        except Exception as _del_e:
+            logger.debug("ChromaDB delete collection failed (may not exist): %s", _del_e)
+        _chroma_collection = None
+        coll = _get_chroma_collection()
+        count = 0
+        try:
+            from layla.memory.db import get_recent_learnings
+
+            learnings = get_recent_learnings(n=10000)
+            for row in learnings:
+                content = row.get("content") or ""
+                if not content.strip():
+                    continue
+                vec = embed(content)
+                meta = {"content": content, "type": row.get("type", "fact")}
+                tags = row.get("tags")
+                if tags:
+                    meta["tags"] = str(tags)
+                uid = str(uuid.uuid4())
+                coll.add(ids=[uid], embeddings=[vec.astype(float).tolist()], metadatas=[meta])
+                count += 1
+        except Exception as _idx_e:
+            logger.warning("rebuild re-index failed: %s", _idx_e)
+        logger.info("ChromaDB rebuild complete: %d documents re-indexed", count)
+        return {"ok": True, "indexed": count}
+    except Exception as e:
+        logger.warning("rebuild_collection failed: %s", e)
+        return {"ok": False, "error": str(e)}
 
 
 def _use_chroma() -> bool:
