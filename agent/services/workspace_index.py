@@ -175,9 +175,12 @@ def index_workspace(workspace_root: str | Path, extensions: tuple[str, ...] = ("
     if coll is None:
         return {"indexed": 0, "skipped": 0, "errors": ["ChromaDB unavailable"]}
     try:
-        from layla.memory.vector_store import embed_batch
+        from services.embedding_service import embed_batch
     except ImportError:
-        return {"indexed": 0, "skipped": 0, "errors": ["vector_store unavailable"]}
+        try:
+            from layla.memory.vector_store import embed_batch
+        except ImportError:
+            return {"indexed": 0, "skipped": 0, "errors": ["embedding_service unavailable"]}
     indexed = 0
     skipped = 0
     errors: list[str] = []
@@ -214,7 +217,18 @@ def index_workspace(workspace_root: str | Path, extensions: tuple[str, ...] = ("
                         cid = hashlib.sha1(f"{rel}:class:{name}".encode()).hexdigest()[:16]
                         ids.append(cid)
                         docs.append(f"class {name}\n{chunk_text}")
-                        metas.append({"source": rel, "type": "class", "name": name})
+                        imp_bits = arch.get("imports") or []
+                        imports_snippet = "; ".join(
+                            (x.get("raw") or "")[:100] for x in imp_bits[:15] if isinstance(x, dict)
+                        )[:480]
+                        metas.append({
+                            "source": rel,
+                            "type": "class",
+                            "name": name,
+                            "imports": imports_snippet,
+                            "symbol": name,
+                            "kind": "class",
+                        })
                         indexed += 1
                         chunks_added = True
                 for fn in arch.get("functions", [])[:30]:
@@ -228,7 +242,18 @@ def index_workspace(workspace_root: str | Path, extensions: tuple[str, ...] = ("
                         cid = hashlib.sha1(f"{rel}:fn:{name}".encode()).hexdigest()[:16]
                         ids.append(cid)
                         docs.append(chunk_text)
-                        metas.append({"source": rel, "type": "function", "name": name})
+                        imp_bits = arch.get("imports") or []
+                        imports_snippet = "; ".join(
+                            (x.get("raw") or "")[:100] for x in imp_bits[:15] if isinstance(x, dict)
+                        )[:480]
+                        metas.append({
+                            "source": rel,
+                            "type": "function",
+                            "name": name,
+                            "imports": imports_snippet,
+                            "symbol": name,
+                            "kind": "function",
+                        })
                         indexed += 1
                         chunks_added = True
                 if not chunks_added:
@@ -239,7 +264,7 @@ def index_workspace(workspace_root: str | Path, extensions: tuple[str, ...] = ("
                             cid = hashlib.sha1(f"{rel}:{i}".encode()).hexdigest()[:16]
                             ids.append(cid)
                             docs.append(chunk)
-                            metas.append({"source": rel, "chunk_index": i // 600})
+                            metas.append({"source": rel, "chunk_index": i // 600, "kind": "slice", "symbol": "", "imports": ""})
                             indexed += 1
             else:
                 for i in range(0, len(text), 600):
@@ -249,7 +274,7 @@ def index_workspace(workspace_root: str | Path, extensions: tuple[str, ...] = ("
                     cid = hashlib.sha1(f"{rel}:{i}".encode()).hexdigest()[:16]
                     ids.append(cid)
                     docs.append(chunk)
-                    metas.append({"source": rel, "chunk_index": i // 600})
+                    metas.append({"source": rel, "chunk_index": i // 600, "kind": "slice", "symbol": "", "imports": ""})
                     indexed += 1
     if not docs:
         return {"indexed": 0, "skipped": skipped, "errors": errors}
@@ -369,8 +394,9 @@ def search_workspace(query: str, workspace_root: str | Path = "", k: int = 5) ->
     if coll is None:
         return []
     try:
-        from layla.memory.vector_store import embed
-        qvec = embed(query)
+        from services.embedding_service import embed_text
+
+        qvec = embed_text(query)
         res = coll.query(
             query_embeddings=[qvec.tolist()],
             n_results=min(k, coll.count()),
@@ -385,4 +411,44 @@ def search_workspace(query: str, workspace_root: str | Path = "", k: int = 5) ->
         return out
     except Exception as e:
         logger.debug("search_workspace failed: %s", e)
+        return []
+
+
+def retrieve_code_context(query: str, workspace_root: str | Path = "", k: int = 5) -> list[dict]:
+    """
+    Public API for semantic code retrieval over the workspace Chroma collection (name: workspace).
+    Alias: code_index in docs — same backing store, no second collection.
+    Each item: {text, score, metadata} where score is similarity in [0,1] when distances exist.
+    """
+    coll = _get_collection()
+    if coll is None:
+        return []
+    try:
+        from services.embedding_service import embed_text
+
+        qvec = embed_text(query)
+        n = min(max(k * 2, k), coll.count())
+        res = coll.query(
+            query_embeddings=[qvec.tolist()],
+            n_results=n,
+            include=["documents", "metadatas", "distances"],
+        )
+        docs = (res.get("documents") or [[]])[0]
+        metas = (res.get("metadatas") or [[]])[0]
+        dists = (res.get("distances") or [[]])[0]
+        out: list[dict] = []
+        for i, doc in enumerate(docs):
+            meta = dict(metas[i] if i < len(metas) else {})
+            if workspace_root:
+                try:
+                    meta["workspace_root"] = str(Path(workspace_root).expanduser().resolve())
+                except Exception:
+                    pass
+            dist = float(dists[i]) if i < len(dists) and dists[i] is not None else None
+            sim = max(0.0, min(1.0, 1.0 - dist)) if dist is not None else 0.5
+            out.append({"text": doc or "", "score": sim, "metadata": meta})
+        out.sort(key=lambda x: float(x.get("score") or 0), reverse=True)
+        return out[:k]
+    except Exception as e:
+        logger.debug("retrieve_code_context failed: %s", e)
         return []
