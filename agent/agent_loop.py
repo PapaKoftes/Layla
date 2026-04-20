@@ -3276,6 +3276,14 @@ def _autonomous_run_impl_core(
     _packed_ctx_run: dict | None = None
     _precomputed_recall = ""
     if goal and reasoning_mode != "none":
+        # Phase 0.3: invalidate stale semantic index when workspace files changed (checked once per call)
+        _ws_for_check = (str(workspace_root).strip() if workspace_root else "") or str(cfg.get("sandbox_root") or "")
+        if _ws_for_check:
+            try:
+                from services.workspace_index import invalidate_if_changed
+                invalidate_if_changed(_ws_for_check)
+            except Exception:
+                pass
         try:
             from services.context_builder import build_context
 

@@ -13,6 +13,22 @@ _logger = logging.getLogger("layla")
 
 AGENT_DIR = Path(__file__).resolve().parent.parent
 
+# Module-level store for last build_system_prompt() metrics (thread-safe via GIL for dict assignment)
+_last_prompt_metrics: dict = {}
+_last_prompt_n_ctx: int = 4096
+
+
+def record_prompt_metrics(metrics: dict, n_ctx: int = 4096) -> None:
+    """Store metrics from the most recent build_system_prompt() call for telemetry queries."""
+    global _last_prompt_metrics, _last_prompt_n_ctx
+    _last_prompt_metrics = dict(metrics)
+    _last_prompt_n_ctx = n_ctx
+
+
+def get_last_prompt_metrics() -> tuple[dict, int]:
+    """Retrieve the most recently recorded prompt assembly metrics and n_ctx."""
+    return _last_prompt_metrics.copy(), _last_prompt_n_ctx
+
 # Default token budgets per section (tunable via config)
 # Aligned with context_budget.DEFAULT_BUDGETS
 DEFAULT_BUDGETS = {
@@ -343,6 +359,7 @@ def build_system_prompt(
     except Exception:
         pass
 
+    record_prompt_metrics(metrics, n_ctx)
     return final, metrics
 
 

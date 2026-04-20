@@ -43,6 +43,31 @@ def _select_return(sel: str | None, label: str) -> str | None:
     return s
 _ROUTER_CONFIG: dict[str, str | None] = {}
 
+# Phase 0.4: module-level store for the most recent routing decision (GIL-safe dict replacement)
+_last_routing_decision: dict = {}
+
+
+def record_routing_decision(
+    task_type: str,
+    selected_model: str | None,
+    reason: str,
+    alternatives: list[dict] | None = None,
+) -> None:
+    """Persist the latest model routing decision for telemetry queries."""
+    global _last_routing_decision
+    _last_routing_decision = {
+        "task_type": task_type,
+        "selected_model": selected_model,
+        "reason": reason,
+        "alternatives": alternatives or [],
+    }
+
+
+def get_last_routing_decision() -> dict:
+    """Return the most recently recorded routing decision dict."""
+    return dict(_last_routing_decision)
+
+
 # Alias → common GGUF basename (resolved under models_dir; not a filesystem path)
 MODEL_ALIASES: dict[str, str] = {
     "magicoder": "Magicoder-S-DS-6.7B-Instruct.Q4_K_M.gguf",
@@ -223,19 +248,36 @@ def classify_task_for_routing(text: str, context: str = "", cfg: dict | None = N
     """
     Like classify_task, but optionally maps 'default' → 'chat' when route_default_to_chat_model
     is set and a fast/chat model is configured.
+
+    Phase 0.4: Records routing decision metadata for telemetry via get_last_routing_decision().
     """
     import runtime_safety
 
     if cfg is None:
         cfg = runtime_safety.load_config()
     t = classify_task(text, context)
-    if t != "default":
-        return t
-    if not cfg.get("route_default_to_chat_model"):
-        return t
-    if not _fast_chat_configured(cfg):
-        return t
-    return "chat"
+    reason = f"classify_task={t}"
+    final_task_type = t
+
+    if t == "default" and cfg.get("route_default_to_chat_model") and _fast_chat_configured(cfg):
+        final_task_type = "chat"
+        reason = "default→chat (route_default_to_chat_model=true + fast_chat_configured)"
+
+    selected = route_model(final_task_type)
+    # Build alternatives list for audit trail
+    all_types = [tt for tt in TASK_TYPES if tt != final_task_type]
+    alternatives = [
+        {"task_type": tt, "model": route_model(tt)}
+        for tt in all_types
+        if route_model(tt) != selected
+    ]
+    record_routing_decision(
+        task_type=final_task_type,
+        selected_model=selected,
+        reason=reason,
+        alternatives=alternatives[:4],
+    )
+    return final_task_type
 
 
 def route_model(task_type: str) -> str | None:

@@ -317,6 +317,33 @@ async def lifespan(app: FastAPI):
                 logger.info("embedder pre-warm thread started")
             except Exception as e:
                 logger.warning("embedder preload failed: %s", e)
+        # Phase 0.5: pre-embed recent learnings at startup so first-turn retrieval is fast
+        if cfg.get("embedding_cache_warmup_enabled", True):
+            def _warmup_embedding_cache() -> None:
+                try:
+                    from layla.memory.db import get_recent_learnings
+                    from layla.memory.vector_store import embed_batch
+
+                    learnings = get_recent_learnings(n=5000)
+                    texts = [
+                        l.get("content") or ""
+                        for l in (learnings or [])
+                        if (l.get("content") or "").strip()
+                    ][:2000]
+                    if not texts:
+                        return
+                    logger.info("embedding_cache_warmup: pre-embedding %d learnings", len(texts))
+                    embed_batch(texts)
+                    logger.info("embedding_cache_warmup: done")
+                except Exception as _we:
+                    logger.debug("embedding_cache_warmup failed (non-critical): %s", _we)
+
+            threading.Thread(
+                target=_warmup_embedding_cache,
+                daemon=True,
+                name="embedding-cache-warmup",
+            ).start()
+
         # Prewarm voice models (optional; default off to avoid startup spikes)
         if cfg.get("voice_stt_prewarm_enabled", False):
             try:
@@ -735,6 +762,9 @@ from routers import (
     settings as settings_router,
 )
 from routers import (
+    tools_history as tools_history_router,
+)
+from routers import (
     voice as voice_router,
 )
 from routers import (
@@ -749,6 +779,7 @@ app.include_router(workspace_router.router)
 app.include_router(openai_compat_router.router)
 app.include_router(missions_router.router)
 app.include_router(voice_router.router)
+app.include_router(tools_history_router.router)  # Phase 0.2: tool call history
 
 if DOCS_DIR.exists():
     app.mount("/docs", StaticFiles(directory=str(DOCS_DIR)), name="docs")
