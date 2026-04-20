@@ -247,6 +247,15 @@ def build_system_prompt(
         "conversation",
         "current_task",
     ]
+    use_structure_labels = True
+    try:
+        import runtime_safety
+
+        use_structure_labels = bool((runtime_safety.load_config() or {}).get("prompt_structure_labels", True))
+    except Exception:
+        pass
+    _hdr_task_done = False
+    _hdr_ctx_done = False
     built: list[tuple[str, str]] = []  # (key, content)
     metrics: dict[str, Any] = {
         "section_tokens": {},
@@ -265,6 +274,21 @@ def build_system_prompt(
         raw = (sections.get(key) or "").strip()
         if not raw:
             continue
+        if use_structure_labels:
+            if key == "system_instructions":
+                raw = "## SYSTEM\n\n" + raw
+            elif key in ("current_goal", "current_task"):
+                if not _hdr_task_done:
+                    raw = "## TASK\n\n" + raw
+                    _hdr_task_done = True
+                elif key == "current_task":
+                    raw = "### Task detail\n\n" + raw
+            elif key in ("pinned_context", "memory", "knowledge_graph", "knowledge"):
+                if not _hdr_ctx_done:
+                    raw = "## CONTEXT\n\n" + raw
+                    _hdr_ctx_done = True
+            elif key == "agent_state":
+                raw = "## SCRATCHPAD\n\n" + raw
         max_tok = budgets.get(key, 400)
         if key == "system_instructions":
             # Leave room for goal + workspace context if they exist.

@@ -228,6 +228,19 @@ def evaluate_outcome_structured(state: dict[str, Any]) -> dict[str, Any]:
     confidence = float(conf_h.get("value") if isinstance(conf_h, dict) else 0.5)
     confidence = max(0.0, min(1.0, confidence))
 
+    ok_n = int(base.get("tool_ok") or 0)
+    tc_all = max(1, ok_n + tf)
+    tool_usage_score = round(min(1.0, ok_n / float(tc_all)), 3)
+    eff_score = 0.85
+    try:
+        import runtime_safety
+
+        mt = float(metrics.get("wall_time_seconds") or 0)
+        mx = float(runtime_safety.load_config().get("max_runtime_seconds") or 900)
+        eff_score = max(0.0, min(1.0, 1.0 - min(1.0, mt / max(mx, 60.0))))
+    except Exception:
+        eff_score = 0.7
+    completion_score = round(1.0 if success else float(base.get("score") or 0.0), 3)
     out: dict[str, Any] = {
         **base,
         "success": success,
@@ -236,6 +249,12 @@ def evaluate_outcome_structured(state: dict[str, Any]) -> dict[str, Any]:
         "confidence": round(confidence, 3),
         "metrics": metrics,
         "cost_score": heuristic_cost_score(metrics, success),
+        "score_dimensions": {
+            "correctness": round(float(base.get("score") or 0.0), 3),
+            "efficiency": round(eff_score, 3),
+            "tool_usage": tool_usage_score,
+            "completion": completion_score,
+        },
     }
     # Deterministic validation matrix (optional). Kept separate from heuristic score.
     try:

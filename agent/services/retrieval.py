@@ -43,6 +43,72 @@ def _retrieval_guard_config() -> tuple[int, float]:
         return 500, 0.7
 
 
+def retrieve_relevant_memory(task: str, k: int = TOP_K, *, coding_boost: bool = False) -> list[dict]:
+    """
+    Canonical memory retrieval for context_builder / planners.
+    Uses the same hybrid pipeline as semantic recall (vector + BM25 + rerank path via search_memories_full).
+    """
+    k = max(1, min(int(k), MAX_K))
+    try:
+        cfg = __import__("runtime_safety", fromlist=[None]).load_config()
+        if cfg.get("use_chroma"):
+            from layla.memory.vector_store import search_memories_full
+
+            return search_memories_full(
+                task,
+                k=k,
+                use_rerank=True,
+                coding_boost=coding_boost,
+            )
+        from layla.memory.db import search_learnings_fts
+
+        return search_learnings_fts(task, n=k)
+    except Exception as e:
+        logger.debug("retrieve_relevant_memory failed: %s", e)
+    return []
+
+
+def retrieve_similar_failures(task: str, k: int = 5) -> list[dict]:
+    """Surface SQLite tool failures + semantic hints for reflection / recovery prompts."""
+    out: list[dict] = []
+    try:
+        from layla.memory.db import get_recent_tool_outcome_failures
+
+        fails = get_recent_tool_outcome_failures(max(8, k * 3))
+        words = {w.lower() for w in task.split() if len(w) > 2}
+        for r in fails:
+            ctx = (r.get("context") or "").lower()
+            if words and not any(w in ctx for w in words):
+                continue
+            out.append(
+                {
+                    "tool_name": r.get("tool_name"),
+                    "context": r.get("context"),
+                    "latency_ms": r.get("latency_ms"),
+                    "created_at": r.get("created_at"),
+                    "source": "tool_outcomes",
+                }
+            )
+            if len(out) >= k:
+                break
+    except Exception as e:
+        logger.debug("retrieve_similar_failures sqlite: %s", e)
+    if len(out) < k:
+        try:
+            from layla.memory.vector_store import search_memories_full
+
+            extra = search_memories_full(f"{task} failure error".strip(), k=k, use_rerank=False)
+            for row in extra:
+                c = (row.get("content") or "").lower()
+                if "fail" in c or "error" in c or "reflection" in c:
+                    out.append({"content": row.get("content"), "source": "memory"})
+                    if len(out) >= k:
+                        break
+        except Exception as e:
+            logger.debug("retrieve_similar_failures memory: %s", e)
+    return out[:k]
+
+
 def retrieve_learnings(query: str, k: int = TOP_K, *, coding_boost: bool = False) -> list[dict]:
     """Search vector memory (Chroma if enabled) and BM25. Returns top k items."""
     results = []
@@ -50,9 +116,11 @@ def retrieve_learnings(query: str, k: int = TOP_K, *, coding_boost: bool = False
         cfg = __import__("runtime_safety", fromlist=[None]).load_config()
         if cfg.get("use_chroma"):
             from layla.memory.vector_store import search_memories_full
+
             results = search_memories_full(query, k=k, use_rerank=False, coding_boost=coding_boost)
         if not results:
             from layla.memory.db import search_learnings_fts
+
             results = search_learnings_fts(query, n=k)
     except Exception as e:
         logger.debug("retrieve_learnings failed: %s", e)
