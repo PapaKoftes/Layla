@@ -188,12 +188,40 @@ def _save_outcome_memory(state: dict) -> None:
 
         ev = state.get("outcome_evaluation") if isinstance(state.get("outcome_evaluation"), dict) else {}
         ok = bool(ev.get("success", state.get("status") == "finished"))
+        score_hint = ev.get("score")
+        try:
+            sd = ev.get("score_dimensions") if isinstance(ev.get("score_dimensions"), dict) else {}
+            comp = sd.get("completion")
+            if comp is not None:
+                score_hint = comp
+        except Exception:
+            pass
         used_ids = state.get("used_learning_ids") if isinstance(state.get("used_learning_ids"), list) else []
         for lid in used_ids[:20]:
             s = str(lid).strip()
             if not s:
                 continue
-            reinforce_learning(s, success=ok)
+            try:
+                reinforce_learning(int(s), success=ok)
+            except (TypeError, ValueError):
+                continue
+            try:
+                from layla.memory.db_connection import _conn
+                from layla.memory.migrations import migrate
+                from layla.memory.vector_store import patch_learning_metadata
+
+                migrate()
+                with _conn() as db:
+                    row = db.execute(
+                        "SELECT embedding_id FROM learnings WHERE id=? AND embedding_id != ''",
+                        (int(s),),
+                    ).fetchone()
+                if row and score_hint is not None:
+                    eid = row["embedding_id"] if hasattr(row, "keys") else row[0]
+                    if eid:
+                        patch_learning_metadata(str(eid), {"success_score": float(score_hint)})
+            except Exception as _pe:
+                logger.debug("chroma success_score patch skipped: %s", _pe)
     except Exception as e:
         logger.debug("reinforce_learning skipped: %s", e)
 

@@ -29,6 +29,70 @@ DEFAULT_BUDGETS: dict[str, int] = {
 }
 
 
+# Default share of the *context window* for ratio mode (sum = 1.0)
+DEFAULT_CONTEXT_RATIOS: dict[str, float] = {
+    "task": 0.20,
+    "memory": 0.25,
+    "code": 0.35,
+    "tools": 0.10,
+    "identity": 0.10,
+}
+
+
+def get_ratio_budgets(
+    n_ctx: int = 4096,
+    cfg: dict | None = None,
+    reserve_for_response: int = 512,
+) -> dict[str, int]:
+    """
+    Map high-level buckets (task, memory, code, tools, identity) onto context_manager section keys.
+
+    Activated when tiered_prompt_budget_enabled and context_budget_ratio_mode are true.
+    """
+    if cfg is None:
+        try:
+            import runtime_safety
+
+            cfg = runtime_safety.load_config()
+        except Exception:
+            cfg = {}
+    available = max(512, int(n_ctx) - max(128, int(reserve_for_response)))
+    ratios = dict(DEFAULT_CONTEXT_RATIOS)
+    overrides = cfg.get("context_budget_ratios") if isinstance(cfg.get("context_budget_ratios"), dict) else {}
+    for k, v in overrides.items():
+        if k in ratios and v is not None:
+            try:
+                ratios[k] = float(v)
+            except (TypeError, ValueError):
+                pass
+    s = sum(max(0.0, float(ratios[k])) for k in ratios)
+    if s <= 0:
+        s = 1.0
+    # Map into existing section keys used by build_system_prompt
+    task_tokens = int(available * float(ratios.get("task", 0.2)) / s)
+    mem_tokens = int(available * float(ratios.get("memory", 0.25)) / s)
+    code_tokens = int(available * float(ratios.get("code", 0.35)) / s)
+    tool_tokens = int(available * float(ratios.get("tools", 0.10)) / s)
+    ident_tokens = int(available * float(ratios.get("identity", 0.10)) / s)
+
+    return {
+        "current_task": max(80, task_tokens // 2),
+        "current_goal": max(60, task_tokens // 2),
+        "memory": max(100, mem_tokens // 2),
+        "knowledge": max(100, mem_tokens - max(100, mem_tokens // 2)),
+        "workspace_context": max(120, code_tokens),
+        "tools": max(0, tool_tokens),
+        "system_instructions": max(120, ident_tokens // 2),
+        "pinned_context": max(80, ident_tokens // 2),
+        "identity": max(80, ident_tokens),
+        # Legacy aliases
+        "system_instructions_shadow": max(80, ident_tokens // 3),
+        "agent_state": max(80, task_tokens // 4),
+        "conversation": max(100, int(available * 0.15)),
+        "knowledge_graph": max(60, mem_tokens // 6),
+    }
+
+
 def get_budgets(n_ctx: int = 4096, cfg: dict | None = None) -> dict[str, int]:
     """
     Return token budgets for each prompt section, scaled to n_ctx.
@@ -43,6 +107,9 @@ def get_budgets(n_ctx: int = 4096, cfg: dict | None = None) -> dict[str, int]:
             cfg = runtime_safety.load_config()
         except Exception:
             cfg = {}
+
+    if cfg.get("context_budget_ratio_mode") and cfg.get("tiered_prompt_budget_enabled", True):
+        return get_ratio_budgets(n_ctx, cfg)
 
     # Scale DEFAULT_BUDGETS proportionally to n_ctx.
     # Default total is ~4900 tokens (sum of DEFAULT_BUDGETS).

@@ -51,9 +51,26 @@ def generate_reflections(state: dict) -> dict[str, str]:
         if oe_score is not None:
             iss = "; ".join(str(x) for x in oe_issues[:5]) if oe_issues else "none"
             oe_line = f"Outcome evaluation (heuristic): score={oe_score}, issues: {iss}\n"
+        fail_ctx = ""
+        try:
+            from services.retrieval import retrieve_similar_failures
+
+            fails = retrieve_similar_failures(objective or str(state.get("goal") or ""), k=4)
+            if fails:
+                bits = []
+                for f in fails[:4]:
+                    if isinstance(f, dict) and f.get("tool_name"):
+                        bits.append(str(f.get("tool_name")) + ":" + str(f.get("context") or "")[:80])
+                    elif isinstance(f, dict) and f.get("content"):
+                        bits.append(str(f.get("content"))[:120])
+                if bits:
+                    fail_ctx = "Similar past failures / signals:\n- " + "\n- ".join(bits) + "\n"
+        except Exception as _rf:
+            logger.debug("reflection failure retrieve: %s", _rf)
         prompt = (
             f"Task: {objective}\n"
             f"Steps: {len(tool_steps)} tool calls. Worked: {', '.join(what_worked[:5])}. Failed: {', '.join(what_failed[:5])}.\n"
+            f"{fail_ctx}"
             f"{oe_line}"
             "Output exactly 3 lines:\n"
             "What worked: <one short phrase>\n"

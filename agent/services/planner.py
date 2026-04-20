@@ -40,6 +40,7 @@ _AUTONOMOUS_KW_KEYS = frozenset({
     "clarification_reply",
     "resume_execution_state",
     "coordinator_trace",
+    "context_files",
 })
 
 
@@ -118,8 +119,18 @@ def get_tool_reliability_hint() -> str:
         ]
         ranked.sort(key=lambda x: -x[1])
         top = [n for n, _ in ranked[:5] if n]
+        slow = [
+            name
+            for name, st in stats.items()
+            if st.get("count", 0) >= 5 and float(st.get("avg_latency", 0) or 0) > 8000
+        ]
+        hint = ""
         if top:
-            return f"Higher reliability (from past outcomes): {', '.join(top)}"
+            hint = f"Higher reliability (from past outcomes): {', '.join(top)}"
+        if slow[:4]:
+            slow_bit = "High-latency tools (plan buffers): " + ", ".join(slow[:4])
+            hint = hint + ("\n" if hint else "") + slow_bit
+        return hint or ""
     except Exception:
         pass
     return ""
@@ -308,6 +319,7 @@ def create_plan(
     conversation_id: str = "",
     aspect_id: str = "",
     preferred_strategy: str | None = None,
+    packed_context: dict | None = None,
 ) -> list[dict]:
     """
     Use LLM to produce a structured plan.
@@ -352,9 +364,24 @@ def create_plan(
             goal=goal[:2000],
             preferred_strategy=preferred_strategy,
         )
+        pack_extra = ""
+        if isinstance(packed_context, dict) and packed_context:
+            mb = (packed_context.get("memory_block") or "").strip()[:2200]
+            cb = (packed_context.get("code_text") or "").strip()[:1600]
+            fb = (packed_context.get("files_text") or "").strip()[:1200]
+            bits = []
+            if mb:
+                bits.append("Memory retrieval:\n" + mb)
+            if cb:
+                bits.append("Code retrieval:\n" + cb)
+            if fb:
+                bits.append("Pinned files (excerpts):\n" + fb)
+            if bits:
+                pack_extra = "\nStructured context from unified retrieval (use when relevant):\n" + "\n\n".join(bits) + "\n\n"
         prompt = (
             f"Given this goal:\n\n{goal[:800]}\n\n"
             f"{extra_ctx}"
+            f"{pack_extra}"
             f"Produce a step-by-step plan. Output only a JSON array of objects. "
             f"Each object: {{\"step\": 1, \"task\": \"short description\", \"tools\": [\"tool1\", \"tool2\"]}}. "
             f"Use 3-6 steps. Choose tools from: {tools_list}. "

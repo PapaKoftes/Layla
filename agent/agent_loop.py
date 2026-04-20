@@ -1272,6 +1272,7 @@ def _build_system_head(
     _precomputed_recall: str | None = None,
     persona_focus_id: str = "",
     cognition_workspace_roots: list[str] | None = None,
+    packed_context: dict | None = None,
 ) -> str:
     cfg = runtime_safety.load_config()  # noqa: F841
     # Skip expensive retrieval operations for trivial/lightweight chat turns.
@@ -1401,18 +1402,16 @@ def _build_system_head(
         except Exception as _e:
             logger.debug("context[graph_associations] failed: %s", _e)
 
-    # Unified retrieval injection: skip for trivial turns
+    # Unified retrieval injection from packed_context (pre-assembled in autonomous_run)
     retrieved_context = ""
-    if not _skip_expensive and goal and cfg.get("retrieval_injection", True):
-        try:
-            from services.retrieval import build_retrieved_context_with_ids
-
-            retrieved_context, _used_ids = build_retrieved_context_with_ids(goal, k=5, reasoning_mode=reasoning_mode)
-            retrieved_context = (retrieved_context or "").strip()
-            if _used_ids:
-                state["used_learning_ids"] = [str(x) for x in _used_ids if str(x).strip()]
-        except Exception as _e:
-            logger.debug("context[retrieval_injection] failed: %s", _e)
+    _used_ids: list[str] = []
+    if packed_context and (packed_context.get("retrieved_knowledge_text") or "").strip():
+        retrieved_context = packed_context["retrieved_knowledge_text"].strip()
+        if state is not None and packed_context.get("chunks_meta", {}).get("memory_items"):
+            state["used_learning_ids"] = [
+                str(x.get("id") or "") for x in packed_context["chunks_meta"]["memory_items"]
+                if str(x.get("id") or "").strip()
+            ]
 
     # Current working context: repo structure, study topics, sub-goals (unified surface)
     workspace_context_parts = []
@@ -1423,21 +1422,14 @@ def _build_system_head(
     coding_keywords = ("code", "debug", "fix", "implement", "refactor", "function", "class", "module", "file", "grep", "read_file", "write_file")
     if not _skip_expensive and goal and workspace_root and any(kw in goal.lower() for kw in coding_keywords):
         try:
-            from services.workspace_index import get_workspace_dependency_context, search_workspace
+            from services.workspace_index import get_workspace_dependency_context
+
             dep_ctx = get_workspace_dependency_context(goal, workspace_root, max_chars=400)
             if dep_ctx:
                 workspace_context_parts.append(dep_ctx)
-            # Semantic codebase search: top-k chunks from indexed workspace
-            code_chunks = search_workspace(goal, workspace_root, k=5)
-            if code_chunks:
-                chunk_lines = []
-                for c in code_chunks[:5]:
-                    src = c.get("source", "")
-                    txt = (c.get("text") or "").strip()[:600]
-                    if txt:
-                        chunk_lines.append(f"  [{src}]: {txt}")
-                if chunk_lines:
-                    workspace_context_parts.append("Semantic code matches:\n" + "\n".join(chunk_lines))
+            # Use pre-assembled code context from packed_context
+            if packed_context and (packed_context.get("code_text") or "").strip():
+                workspace_context_parts.append("Semantic code matches:\n" + packed_context["code_text"][:6000])
         except Exception as _e:
             logger.debug("context[workspace_index] failed: %s", _e)
     try:
@@ -1852,6 +1844,16 @@ def _build_system_head(
             pinned_parts.append("Session summary: " + (sums[0]["summary"] or "").strip()[:400])
     except Exception as _exc:
         logger.debug("agent_loop:L1640: %s", _exc, exc_info=False)
+    try:
+        if packed_context:
+            ft = (packed_context.get("files_text") or "").strip()
+            if ft:
+                pinned_parts.append("Operator file context (ranked excerpts):\n" + ft[:4000])
+            ident = (packed_context.get("identity_snippet") or "").strip()
+            if ident:
+                pinned_parts.append("Identity hint:\n" + ident[:1200])
+    except Exception as _pe:
+        logger.debug("context[packed_pinned] failed: %s", _pe)
     pinned_block = "\n".join(pinned_parts) if pinned_parts else ""
 
     current_goal = ""
@@ -3007,6 +3009,7 @@ def autonomous_run(
     engineering_pipeline_mode: str = "chat",
     clarification_reply: str = "",
     skip_engineering_pipeline: bool = False,
+    context_files: list[str] | None = None,
 ) -> dict:
     try:
         with schedule_slot(priority=priority):
@@ -3028,6 +3031,7 @@ def autonomous_run(
                     engineering_pipeline_mode=engineering_pipeline_mode,
                     clarification_reply=clarification_reply,
                     skip_engineering_pipeline=skip_engineering_pipeline,
+                    context_files=context_files,
                 )
     except RuntimeError as e:
         if "system_busy" in str(e):
@@ -3076,6 +3080,7 @@ def _autonomous_run_impl(
     engineering_pipeline_mode: str = "chat",
     clarification_reply: str = "",
     skip_engineering_pipeline: bool = False,
+    context_files: list[str] | None = None,
 ) -> dict:
     from services.llm_gateway import set_model_override, set_reasoning_effort
     set_model_override(model_override)
@@ -3108,6 +3113,7 @@ def _autonomous_run_impl(
             engineering_pipeline_mode=engineering_pipeline_mode,
             clarification_reply=clarification_reply,
             skip_engineering_pipeline=skip_engineering_pipeline,
+            context_files=context_files,
         )
     finally:
         set_model_override(None)
@@ -3142,6 +3148,7 @@ def _autonomous_run_impl_core(
     engineering_pipeline_mode: str = "chat",
     clarification_reply: str = "",
     skip_engineering_pipeline: bool = False,
+    context_files: list[str] | None = None,
 ) -> dict:
     persona_focus_id = (persona_focus or "").strip().lower()
     _run_cid = (conversation_id or "").strip() or "default"
@@ -3266,12 +3273,30 @@ def _autonomous_run_impl_core(
             }
     # Memory attribution: compute semantic recall ONCE here; pass it to _build_system_head
     # so it is not queried twice (eliminates double ChromaDB call per non-streaming turn).
+    _packed_ctx_run: dict | None = None
     _precomputed_recall = ""
     if goal and reasoning_mode != "none":
         try:
-            _precomputed_recall = _semantic_recall(goal, k=cfg.get("semantic_k", 5)).strip()
-        except Exception:
-            _precomputed_recall = ""
+            from services.context_builder import build_context
+
+            wr = (str(workspace_root).strip() if workspace_root else "") or str(cfg.get("sandbox_root") or "")
+            _packed_ctx_run = build_context(
+                goal,
+                {
+                    "workspace_root": wr,
+                    "context_files": list(context_files or []),
+                    "reasoning_mode": reasoning_mode,
+                    "k_memory": int(cfg.get("semantic_k", 5)),
+                    "k_code": int(cfg.get("context_builder_code_k", 5)),
+                },
+            )
+            _precomputed_recall = (_packed_ctx_run.get("memory_recall_text") or "").strip()
+        except Exception as _uce:
+            logger.debug("context_builder failed: %s", _uce)
+            try:
+                _precomputed_recall = _semantic_recall(goal, k=cfg.get("semantic_k", 5)).strip()
+            except Exception:
+                _precomputed_recall = ""
     memory_influenced = []
     if _load_learnings(aspect_id=active_aspect.get("id") or "").strip():
         memory_influenced.append("learnings")
@@ -3344,6 +3369,10 @@ def _autonomous_run_impl_core(
         plan_approved=plan_approved,
         steps_container=_steps_list,
     )
+    if _packed_ctx_run:
+        state["packed_context"] = _packed_ctx_run
+    if context_files:
+        state["context_files"] = [str(x).strip() for x in context_files if str(x).strip()]
     state["workspace_root"] = (workspace_root or "").strip()
     state["fabrication_assist_runner_request"] = (fabrication_assist_runner_request or "").strip().lower()
     try:
@@ -3568,6 +3597,7 @@ def _autonomous_run_impl_core(
                     aspect_id=aspect_id or "morrigan",
                     preferred_strategy=_pref_s,
                     max_steps=_max_steps,
+                    packed_context=state.get("packed_context") if isinstance(state.get("packed_context"), dict) else None,
                 )
                 if not plan:
                     break
@@ -3737,6 +3767,18 @@ def _autonomous_run_impl_core(
                 )
         except Exception as _exc:
             logger.debug("agent_loop:L3007: %s", _exc, exc_info=False)
+        try:
+            if cfg.get("inject_packed_context_in_decisions", True) and state.get("packed_context"):
+                from services.context_builder import format_tool_context
+
+                _gh = format_tool_context(
+                    state["packed_context"],
+                    max_chars=int(cfg.get("tool_loop_packed_context_chars", 1200) or 1200),
+                )
+                if _gh:
+                    goal_for_decision = goal_for_decision + "\n\n[Retrieval context]\n" + _gh
+        except Exception as _gfc:
+            logger.debug("packed_context decision hint: %s", _gfc)
         # Context protection: proactive compression when history exceeds threshold (default 60% of n_ctx).
         try:
             from services.context_manager import summarize_history, token_estimate_messages
@@ -5185,6 +5227,7 @@ def _autonomous_run_impl_core(
                 _precomputed_recall=_precomputed_recall,
                 persona_focus_id=persona_focus_id,
                 cognition_workspace_roots=state.get("cognition_workspace_roots"),
+                packed_context=state.get("packed_context") if isinstance(state.get("packed_context"), dict) else None,
             )
 
             # Inject conversation history (sanitize assistant messages that are echoed instructions)
@@ -5486,6 +5529,7 @@ def _autonomous_run_impl_core(
                 _precomputed_recall=_precomputed_recall,
                 persona_focus_id=persona_focus_id,
                 cognition_workspace_roots=state.get("cognition_workspace_roots"),
+                packed_context=state.get("packed_context") if isinstance(state.get("packed_context"), dict) else None,
             )
             _fb_prompt = orchestrator.build_standard_prompt(
                 message=state.get("original_goal") or goal,
@@ -5542,6 +5586,7 @@ def _autonomous_run_impl_core(
             cid_fin = (state.get("conversation_id") or "").strip()
             if cid_fin:
                 set_last_outcome_evaluation(cid_fin, ev_struct)
+            # Mandatory outcome recording for feedback loop: persist strategy patterns
             try:
                 from layla.memory import strategy_stats as _strategy_stats
 
@@ -5551,9 +5596,9 @@ def _autonomous_run_impl_core(
                 _strategy_stats.record_strategy_stat(_task_type, _strat, success=bool(ev_struct.get("success")))
                 state["strategy_stats_recorded"] = True
             except Exception as _ss_exc:
-                logger.debug("strategy_stats record failed: %s", _ss_exc)
+                logger.warning("strategy_stats record failed (outcome feedback at risk): %s", _ss_exc)
         except Exception as _ev_exc:
-            logger.debug("structured outcome eval / planner hook failed: %s", _ev_exc)
+            logger.warning("outcome evaluation failed (feedback loop at risk): %s", _ev_exc)
         _save_outcome_memory(state)
         try:
             from layla.memory.distill import run_distill_after_outcome

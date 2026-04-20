@@ -3,6 +3,12 @@ Vector store for semantic search over learnings.
 Uses ChromaDB as the sole persistent store (FAISS removed).
 Embedding model: nomic-embed-text (768 dim) via sentence-transformers,
 with fallback to all-MiniLM-L6-v2 (384 dim) if nomic is unavailable.
+
+THREAD SAFETY:
+  - _embedder_lock (RLock): guards embedder initialization and use
+  - _chroma_lock (RLock): guards ChromaDB client and collection access
+  - _embed_cached (LRU): thread-safe (functools.lru_cache), increases from 256 to 1024
+  - embed_batch(): NOT locked; call only from context builder (single-threaded per goal)
 """
 import hashlib
 import logging
@@ -41,10 +47,10 @@ _chroma_lock = None
 _knowledge_fingerprint: str = ""
 _knowledge_last_check_ts: float = 0.0
 
-# Small LRU cache: avoid re-embedding identical strings during a single agent loop
+# LRU cache: avoid re-embedding identical strings (shared across agent loops)
 import functools as _functools  # noqa: E402
 
-_EMBED_CACHE_SIZE = 256
+_EMBED_CACHE_SIZE = 1024  # increased from 256; typical agent loops reuse learnings 2-5×
 
 
 def _get_embedder():
@@ -53,6 +59,8 @@ def _get_embedder():
     - nomic-embed-text-v1.5 (768d, best quality) with all-MiniLM fallback
     - int8 quantization via quantize_model when available (2× faster CPU, ~same quality)
     - half-precision on GPU via .half() (2× VRAM reduction, faster matmul)
+
+    Thread-safe: uses RLock to allow recursive acquisition in same thread.
     """
     global _embedder, _embedder_dim, _embedder_lock
     if _embedder is not None:
@@ -60,7 +68,7 @@ def _get_embedder():
     if _embedder_lock is None:
         import threading as _t
 
-        _embedder_lock = _t.Lock()
+        _embedder_lock = _t.RLock()
     with _embedder_lock:
         if _embedder is not None:
             return _embedder
@@ -123,13 +131,14 @@ def embed_batch(texts: list[str]) -> list:
 
 
 def _get_chroma_collection():
+    """Get or initialize ChromaDB learnings collection. Thread-safe with RLock."""
     global _chroma_collection, _chroma_lock
     if _chroma_collection is not None:
         return _chroma_collection
     if _chroma_lock is None:
         import threading as _t
 
-        _chroma_lock = _t.Lock()
+        _chroma_lock = _t.RLock()
     with _chroma_lock:
         if _chroma_collection is not None:
             return _chroma_collection
@@ -230,6 +239,37 @@ def add_vector(vec: np.ndarray, metadata: dict) -> str:
     except Exception as _exc:
         logger.warning("vector_store:L150: %s", _exc, exc_info=True)
     return uid
+
+
+def patch_learning_metadata(embedding_id: str, updates: dict) -> None:
+    """Merge updates into Chroma metadata for a learning vector (e.g. success_score)."""
+    if not embedding_id or not updates:
+        return
+    try:
+        coll = _get_chroma_collection()
+        got = coll.get(ids=[embedding_id], include=["metadatas", "embeddings", "documents"])
+        ids = got.get("ids") or []
+        if not ids:
+            return
+        meta = dict((got.get("metadatas") or [None])[0] or {})
+        for k, v in updates.items():
+            if isinstance(v, (str, int, float, bool)):
+                meta[k] = v
+            else:
+                meta[k] = str(v)
+        emb = (got.get("embeddings") or [None])[0]
+        doc = (got.get("documents") or [None])[0]
+        if emb is not None:
+            coll.upsert(
+                ids=[embedding_id],
+                embeddings=[emb],
+                documents=[doc if doc is not None else meta.get("content", "")],
+                metadatas=[meta],
+            )
+        else:
+            coll.update(ids=[embedding_id], metadatas=[meta])
+    except Exception as _exc:
+        logger.debug("patch_learning_metadata: %s", _exc)
 
 
 def upsert_vector(doc_id: str, vec: np.ndarray, metadata: dict) -> None:
@@ -401,6 +441,155 @@ def _reciprocal_rank_fusion(
     return [content_map[kk] for kk in sorted_keys[:k]]
 
 
+def retrieval_fusion_mode() -> str:
+    """rrf (default) or weighted linear blend — see search_hybrid."""
+    try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        m = (
+            os.environ.get("LAYLA_RETRIEVAL_FUSION")
+            or cfg.get("retrieval_fusion")
+            or "rrf"
+        )
+        m = str(m).strip().lower()
+        return m if m in ("rrf", "weighted") else "rrf"
+    except Exception:
+        return "rrf"
+
+
+def _bm25_norm_map(query: str) -> dict[str, float]:
+    """Map learnings content prefix (120 chars) → normalized BM25 score in [0,1]."""
+    try:
+        bm25, docs = _get_bm25_index()
+        if not bm25 or not docs:
+            return {}
+        scores = bm25.get_scores(query.lower().split())
+        if not scores:
+            return {}
+        mx, mn = max(scores), min(scores)
+        span = (mx - mn) if mx != mn else 1.0
+        out: dict[str, float] = {}
+        for i, d in enumerate(docs):
+            if i >= len(scores):
+                break
+            key = (d.get("content") or "")[:120]
+            val = (scores[i] - mn) / span if span else 1.0
+            out[key] = max(0.0, min(1.0, float(val)))
+        return out
+    except Exception:
+        return {}
+
+
+def _vector_candidates_with_distances(query_vec: np.ndarray, k: int) -> list[dict]:
+    """Dense retrieval with cosine distances for weighted fusion."""
+    try:
+        coll = _get_chroma_collection()
+        if coll.count() == 0:
+            return []
+        n = min(max(k, 1), coll.count())
+        res = coll.query(
+            query_embeddings=[query_vec.astype(float).tolist()],
+            n_results=n,
+            include=["metadatas", "distances"],
+        )
+        ids = (res.get("ids") or [[]])[0]
+        metas = (res.get("metadatas") or [[]])[0]
+        dists = (res.get("distances") or [[]])[0]
+        out: list[dict] = []
+        for i, meta in enumerate(metas):
+            item = dict(meta) if isinstance(meta, dict) else {}
+            if i < len(ids):
+                item["embedding_id"] = ids[i]
+            if i < len(dists) and dists[i] is not None:
+                item["_distance"] = float(dists[i])
+            out.append(item)
+        return out
+    except Exception as _exc:
+        logger.debug("vector_candidates_with_distances: %s", _exc)
+        return []
+
+
+def _search_hybrid_weighted(query: str, k: int, *, coding_boost: bool = False) -> list[dict]:
+    """
+    Linear fusion: w_e * emb_sim + w_k * bm25 + w_r * recency + w_s * success_proxy.
+    success_proxy uses adjusted_confidence from SQLite when available.
+    """
+    import math
+
+    from layla.memory.db import get_learnings_by_embedding_ids
+    from layla.time_utils import utcnow
+
+    try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        w_e = float(cfg.get("retrieval_weighted_w_emb", 0.6))
+        w_k = float(cfg.get("retrieval_weighted_w_kw", 0.2))
+        w_r = float(cfg.get("retrieval_weighted_w_recency", 0.1))
+        w_s = float(cfg.get("retrieval_weighted_w_success", 0.1))
+        if coding_boost:
+            w_k *= float(cfg.get("retrieval_hybrid_coding_bm25_boost", 1.25))
+        s = abs(w_e) + abs(w_k) + abs(w_r) + abs(w_s)
+        if s > 0:
+            w_e, w_k, w_r, w_s = w_e / s, w_k / s, w_r / s, w_s / s
+    except Exception:
+        w_e, w_k, w_r, w_s = 0.6, 0.2, 0.1, 0.1
+
+    fetch_n = max(k * 12, 24)
+    query_vec = embed(query)
+    candidates = _vector_candidates_with_distances(query_vec, fetch_n)
+    if not candidates:
+        return []
+    bm_map = _bm25_norm_map(query)
+    emb_ids = [c.get("embedding_id") for c in candidates if c.get("embedding_id")]
+    conf_map = get_learnings_by_embedding_ids([str(e) for e in emb_ids if e]) if emb_ids else {}
+
+    def _recency_norm(created: str) -> float:
+        if not created:
+            return 0.5
+        try:
+            from datetime import datetime, timezone
+
+            dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            dt_utc = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+            age_days = (utcnow() - dt_utc).total_seconds() / 86400.0
+            return float(math.exp(-age_days / 90.0))
+        except Exception:
+            return 0.5
+
+    scored: list[tuple[float, dict]] = []
+    for c in candidates:
+        dist = c.pop("_distance", None)
+        if dist is not None:
+            emb_sim = max(0.0, min(1.0, 1.0 - float(dist)))
+        else:
+            emb_sim = 0.5
+        content = (c.get("content") or "")[:120]
+        kw = bm_map.get(content, 0.0)
+        eid = c.get("embedding_id")
+        row = conf_map.get(str(eid), {}) if eid else {}
+        created = str(c.get("created_at") or row.get("created_at") or "")
+        rec_d = _recency_norm(created)
+        succ = row.get("adjusted_confidence")
+        if succ is None:
+            try:
+                meta_ss = c.get("success_score")
+                if meta_ss is not None:
+                    succ = float(meta_ss)
+            except Exception:
+                succ = None
+        if succ is None:
+            succ = 0.5
+        else:
+            succ = max(0.0, min(1.0, float(succ)))
+        total = w_e * emb_sim + w_k * kw + w_r * rec_d + w_s * succ
+        scored.append((total, c))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [c for _, c in scored[:k]]
+
+
 def search_hybrid(query: str, k: int = 5, *, coding_boost: bool = False) -> list[dict]:
     """
     Hybrid BM25 + dense vector search fused via Reciprocal Rank Fusion.
@@ -408,6 +597,9 @@ def search_hybrid(query: str, k: int = 5, *, coding_boost: bool = False) -> list
     Falls back gracefully to pure vector search if BM25 index is unavailable.
     coding_boost: when True, up-weight BM25 (exact tokens / symbols) via config.
     """
+    if retrieval_fusion_mode() == "weighted":
+        return _search_hybrid_weighted(query, k, coding_boost=coding_boost)
+
     wv, wb = 1.0, 1.0
     try:
         import runtime_safety
@@ -756,8 +948,8 @@ def search_memories_full(
     else:
         results = results[:k]
 
-    # Step 4: confidence + recency boost
-    if use_confidence_boost and results:
+    # Step 4: confidence + recency boost (skip if weighted fusion already blended recency/success)
+    if use_confidence_boost and results and retrieval_fusion_mode() != "weighted":
         results = _apply_confidence_recency_boost(results, k)
     return results
 
