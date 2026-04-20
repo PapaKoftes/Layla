@@ -421,3 +421,28 @@ def get_benchmark_for_model(model_name: str) -> dict | None:
         return get_benchmark(model_name)
     except Exception:
         return None
+
+
+def ollama_model_name_for_task(task_text: str, cfg: dict | None = None) -> str | None:
+    """
+    When using Ollama/HTTP inference, pick a model name from config by route (coding/reasoning/chat).
+    Returns None to use the default remote_model_name from the active completion path.
+    """
+    if cfg is None:
+        try:
+            import runtime_safety
+
+            cfg = runtime_safety.load_config()
+        except Exception:
+            return None
+    tt = classify_task(task_text)
+    if tt == "coding":
+        m = (cfg.get("ollama_coding_model") or cfg.get("coding_remote_model") or "").strip()
+        return m or None
+    if tt == "reasoning":
+        m = (cfg.get("ollama_reasoning_model") or cfg.get("reasoning_remote_model") or "").strip()
+        return m or None
+    if tt == "chat":
+        m = (cfg.get("ollama_chat_model") or cfg.get("chat_remote_model") or "").strip()
+        return m or None
+    return (cfg.get("remote_model_name") or "").strip() or None
