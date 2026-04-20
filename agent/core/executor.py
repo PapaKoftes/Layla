@@ -13,6 +13,7 @@ or continue to use TOOLS[name]["fn"](**args) — both paths are valid.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import time
@@ -132,6 +133,15 @@ def run_tool(
             )
         except Exception:
             pass
+        err_code = "timeout" if timed_out else (error or "unknown")[:80]
+        _trace_tool_call(
+            tool_name=tool_name,
+            args=args,
+            result=None,
+            duration_ms=duration_ms,
+            run_id=conversation_id,
+            error_code=err_code,
+        )
         return {
             "ok": False,
             "tool_name": tool_name,
@@ -191,7 +201,56 @@ def run_tool(
         )
     except Exception:
         pass
+
+    # Phase 0.2: structured tool call trace (fire-and-forget, never blocks execution)
+    _trace_tool_call(
+        tool_name=tool_name,
+        args=args,
+        result=result_raw,
+        duration_ms=duration_ms,
+        run_id=conversation_id,
+        error_code=None,
+    )
+
     return result_raw
+
+
+def _trace_tool_call(
+    tool_name: str,
+    args: dict | None,
+    result: dict | None,
+    duration_ms: int,
+    run_id: str = "",
+    error_code: str | None = None,
+) -> None:
+    """Persist a compact tool-call trace record to the tool_calls table (Phase 0.2)."""
+    try:
+        args_hash = hashlib.sha256(
+            json.dumps(args or {}, sort_keys=True, default=str).encode()
+        ).hexdigest()[:16]
+        result_ok = 1 if (result is not None and isinstance(result, dict) and result.get("ok", True)) else 0
+        from layla.memory.db_connection import _conn
+        from layla.memory.migrations import migrate
+        from layla.time_utils import utcnow
+
+        migrate()
+        with _conn() as db:
+            db.execute(
+                "INSERT INTO tool_calls (run_id, tool_name, args_hash, result_ok, error_code, duration_ms, created_at)"
+                " VALUES (?,?,?,?,?,?,?)",
+                (
+                    (run_id or "")[:64],
+                    tool_name,
+                    args_hash,
+                    result_ok,
+                    (error_code or "")[:80],
+                    duration_ms,
+                    utcnow().isoformat(),
+                ),
+            )
+            db.commit()
+    except Exception as _e:
+        logger.debug("tool_trace write failed: %s", _e)
 
 
 def _truncate_result(result: dict, max_bytes: int = _MAX_OUTPUT_BYTES) -> dict:
