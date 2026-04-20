@@ -966,6 +966,14 @@ async def agent(req: dict, request: Request):
         "run_budget_summary": _json_safe(result.get("run_budget_summary", {})),
         "confidence": _json_safe(result.get("confidence", {})),
     }
+    # Phase 0.4: inject last model routing decision for operator audit
+    try:
+        from services.model_router import get_last_routing_decision
+        _rd = get_last_routing_decision()
+        if _rd:
+            response_payload["model_selection"] = _json_safe(_rd)
+    except Exception:
+        pass
     try:
         import runtime_safety as _rs_dt
 

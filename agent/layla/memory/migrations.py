@@ -1088,5 +1088,27 @@ def _migrate_evolution_layer() -> None:
     except Exception as e:
         logger.warning("strategy_stats migration failed: %s", e)
 
+    # tool_calls — structured tracing for every tool execution (Phase 0.2)
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS tool_calls (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id      TEXT NOT NULL DEFAULT '',
+                    tool_name   TEXT NOT NULL,
+                    args_hash   TEXT DEFAULT '',
+                    result_ok   INTEGER DEFAULT 0,
+                    error_code  TEXT DEFAULT '',
+                    duration_ms INTEGER DEFAULT 0,
+                    created_at  TEXT NOT NULL
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_tool_calls_run_id ON tool_calls(run_id)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_tool_calls_tool_name ON tool_calls(tool_name)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_tool_calls_created ON tool_calls(created_at DESC)")
+            db.commit()
+    except Exception as e:
+        logger.warning("tool_calls table migration failed: %s", e)
+
 
 __all__ = ["migrate", "_MIGRATED", "_MIGRATION_LOCK"]

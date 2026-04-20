@@ -25,6 +25,10 @@ _collection = None
 _parser = None
 _parser_failed = False
 
+# Phase 0.3: workspace change detection (hash → invalidation)
+_workspace_hash_cache: dict[str, str] = {}  # root_str → last known hash
+_workspace_last_check: dict[str, float] = {}  # root_str → last check timestamp
+
 
 def _get_parser():
     """Lazy-load tree-sitter Python parser. Returns None if unavailable."""
@@ -412,6 +416,79 @@ def search_workspace(query: str, workspace_root: str | Path = "", k: int = 5) ->
     except Exception as e:
         logger.debug("search_workspace failed: %s", e)
         return []
+
+
+_INVALIDATE_SKIP = frozenset({".git", "__pycache__", "node_modules", ".layla", "chroma_db", ".mypy_cache", ".venv", "venv"})
+_EXTENSIONS_TRACKED = frozenset({".py", ".md", ".txt", ".json", ".yaml", ".yml", ".toml", ".cfg", ".ts", ".js", ".tsx", ".jsx", ".rs", ".go"})
+
+
+def _compute_workspace_hash(workspace_root: Path) -> str:
+    """
+    Fast, deterministic fingerprint of workspace file set (paths + mtimes).
+    Skips binary-heavy and VCS directories. Safe for frequent polling.
+    """
+    hasher = hashlib.md5(usedforsecurity=False)
+    try:
+        for f in sorted(workspace_root.rglob("*")):
+            if not f.is_file():
+                continue
+            parts = set(f.parts)
+            if parts & _INVALIDATE_SKIP or f.suffix not in _EXTENSIONS_TRACKED:
+                continue
+            try:
+                rel = str(f.relative_to(workspace_root)).replace("\\", "/")
+                st = f.stat()
+                hasher.update(f"{rel}:{st.st_mtime_ns}".encode())
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return hasher.hexdigest()
+
+
+_INVALIDATE_THROTTLE_SECONDS = 120
+
+
+def invalidate_if_changed(workspace_root: str | Path) -> bool:
+    """
+    Check whether the workspace has changed since last call; if so, reset the Chroma
+    collection so the next index_workspace call re-embeds fresh content.
+
+    Throttled to at most once every 120 s per root path to keep repeated calls cheap.
+    Returns True when an invalidation occurred, False if workspace unchanged or throttled.
+    """
+    import time as _time
+
+    global _collection, _workspace_hash_cache, _workspace_last_check
+    root = Path(workspace_root).expanduser().resolve()
+    root_str = str(root)
+
+    now = _time.time()
+    last = _workspace_last_check.get(root_str, 0.0)
+    if now - last < _INVALIDATE_THROTTLE_SECONDS:
+        return False
+    _workspace_last_check[root_str] = now
+    current_hash = _compute_workspace_hash(root)
+    old_hash = _workspace_hash_cache.get(root_str)
+    _workspace_hash_cache[root_str] = current_hash
+    if old_hash is None:
+        return False
+    if old_hash == current_hash:
+        return False
+    logger.info("workspace_index: changes detected in %s — invalidating semantic cache", root_str)
+    try:
+        import chromadb
+        client = chromadb.PersistentClient(path=str(WORKSPACE_INDEX_PATH))
+        try:
+            client.delete_collection(_COLLECTION_NAME)
+            logger.info("workspace_index: Chroma collection '%s' deleted for re-index", _COLLECTION_NAME)
+        except Exception as del_err:
+            logger.debug("workspace_index: collection delete skipped: %s", del_err)
+        _collection = None
+    except Exception as e:
+        logger.debug("workspace_index: invalidation chroma reset failed: %s", e)
+        _collection = None
+    return True
 
 
 def retrieve_code_context(query: str, workspace_root: str | Path = "", k: int = 5) -> list[dict]:

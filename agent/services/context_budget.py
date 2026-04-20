@@ -133,6 +133,52 @@ def get_budgets(n_ctx: int = 4096, cfg: dict | None = None) -> dict[str, int]:
     return budgets
 
 
+def build_budget_telemetry(n_ctx: int = 4096, last_metrics: dict | None = None) -> dict:
+    """
+    Build a human-readable context budget snapshot for telemetry / the /health/context_budget endpoint.
+
+    Returns per-section {used, budget, pct} dicts, a warnings list, and run metadata.
+    """
+    budgets = get_budgets(n_ctx)
+    section_tokens: dict[str, int] = (last_metrics or {}).get("section_tokens") or {}
+    total_budget = max(512, int(n_ctx * 0.75))
+
+    sections: dict[str, dict] = {}
+    warnings: list[str] = []
+
+    for key, budget in sorted(budgets.items()):
+        used = int(section_tokens.get(key, 0))
+        pct = round(used / budget * 100) if budget > 0 else 0
+        entry: dict = {"used": used, "budget": budget, "pct": pct}
+        if key == "tools":
+            entry["note"] = "injected separately by orchestrator"
+        sections[key] = entry
+        if budget > 0 and pct >= 100:
+            warnings.append(f"{key} at capacity ({used}/{budget} tokens)")
+        elif budget > 0 and used > 0 and pct >= 85:
+            warnings.append(f"{key} near capacity ({pct}%)")
+
+    total_used = int((last_metrics or {}).get("total_tokens") or sum(section_tokens.values()))
+    total_pct = round(total_used / total_budget * 100) if total_budget > 0 else 0
+    sections["total"] = {"used": total_used, "budget": total_budget, "pct": total_pct}
+
+    dropped: list[str] = list((last_metrics or {}).get("dropped_sections") or [])
+    truncated: list[str] = list((last_metrics or {}).get("truncated_sections") or [])
+    if dropped:
+        warnings.append(f"Dropped sections (budget exhausted): {', '.join(dropped)}")
+    if total_pct >= 90:
+        warnings.append(f"Total context at {total_pct}% — consider reducing pinned context or memory k")
+
+    return {
+        "n_ctx": n_ctx,
+        "sections": sections,
+        "warnings": warnings,
+        "dropped_sections": dropped,
+        "truncated_sections": truncated,
+        "dedup_removed": int((last_metrics or {}).get("dedup_removed") or 0),
+    }
+
+
 def truncate_section(text: str, max_tokens: int, section_name: str = "") -> str:
     """
     Truncate text to fit within max_tokens.

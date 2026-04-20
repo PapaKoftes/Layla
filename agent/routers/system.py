@@ -377,6 +377,25 @@ def health(request: Request):
     return payload
 
 
+@router.get("/health/context_budget")
+def health_context_budget():
+    """
+    Per-section context token usage vs allocated budgets.
+
+    Returns sections dict (used/budget/pct per key), warnings, dropped/truncated lists.
+    Call after any /agent run to see how context was allocated last turn.
+    """
+    try:
+        from services.context_budget import build_budget_telemetry
+        from services.context_manager import get_last_prompt_metrics
+
+        metrics, n_ctx = get_last_prompt_metrics()
+        return {"ok": True, **build_budget_telemetry(n_ctx=n_ctx, last_metrics=metrics)}
+    except Exception as e:
+        logger.debug("context_budget endpoint: %s", e)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 @router.get("/health/deps")
 def health_deps(request: Request):
     """Lightweight dependency matrix; optional Chroma vector probe via ?deep=true."""
