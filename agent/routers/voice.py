@@ -45,16 +45,26 @@ async def voice_speak(request: Request):
         from services.tts import get_tts_recovery, speak_to_bytes
 
         body = await request.body()
+        aspect_id = ""
+        speed_override = None
         try:
             import json as _j
 
             data = _j.loads(body)
             text = data.get("text", "")
+            aspect_id = str(data.get("aspect_id", "")).strip().lower()
         except Exception:
             text = body.decode("utf-8", errors="replace").strip()
         if not text:
             return JSONResponse({"ok": False, "error": "No text provided"}, status_code=400)
-        wav = await asyncio.to_thread(speak_to_bytes, text)
+        # Map aspect → TTS speed (matches TTS_VOICE_STYLES in layla-app.js)
+        _ASPECT_SPEEDS = {
+            "morrigan": 1.05, "nyx": 0.82, "echo": 0.90,
+            "eris": 1.20, "cassandra": 1.15, "lilith": 0.78,
+        }
+        if aspect_id in _ASPECT_SPEEDS:
+            speed_override = _ASPECT_SPEEDS[aspect_id]
+        wav = await asyncio.to_thread(speak_to_bytes, text, speed_override)
         if wav is None:
             rec = get_tts_recovery()
             return JSONResponse(
