@@ -16,7 +16,7 @@ async function laylaShowPlanViz(planId) {
   if (overlay) overlay.style.display = 'flex';
   const canvas = document.getElementById('plan-viz-canvas');
   if (canvas) { const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, canvas.width, canvas.height); }
-  const info = document.getElementById('plan-viz-info');
+  const info = document.getElementById('plan-viz-title');
   if (info) info.textContent = 'Loading…';
   const similar = document.getElementById('plan-viz-similar');
   if (similar) similar.style.display = 'none';
@@ -43,7 +43,7 @@ function laylaCloseViz() {
 // ─── Render Gantt ─────────────────────────────────────────────────────────────
 function _renderViz(data) {
   const steps = data.steps || [];
-  const info = document.getElementById('plan-viz-info');
+  const info = document.getElementById('plan-viz-title');
   const canvas = document.getElementById('plan-viz-canvas');
   if (!canvas) return;
 
@@ -101,7 +101,7 @@ function _renderViz(data) {
     const startPx = deps.length
       ? Math.max.apply(null, deps.map(function(d) { return endX[d] || 0; })) * scale
       : 0;
-    const barW = Math.max(6, Math.round((s.estimated_duration_ms / totalMs) * BAR_AREA));
+    const barW = Math.max(6, Math.round((s.estimated_duration_ms / totalMs) * BAR_AREA * scale));
     const x = LABEL_W + startPx;
 
     // Row background (alternate)

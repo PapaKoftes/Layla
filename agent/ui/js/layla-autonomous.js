@@ -26,7 +26,9 @@ function laylaAutoMonitorStart(taskId, goal) {
   _autoSetProgress(0, 0);
 
   clearInterval(_autoPollTimer);
-  _autoPollTimer = setInterval(_autoPoll, 1500);
+  // Wrap async poll in a sync wrapper so setInterval can call it without
+  // producing unhandled promise rejections on network errors.
+  _autoPollTimer = setInterval(() => { _autoPoll().catch(() => {}); }, 1500);
 }
 
 async function _autoPoll() {
@@ -42,6 +44,8 @@ async function _autoPoll() {
 function _autoHandleProgress(data) {
   const events = data.events || [];
   const status = data.status || 'running';
+  // Guard against backend restart shrinking the events array below our cursor.
+  if (events.length < _autoLastEventCount) _autoLastEventCount = 0;
   const newEvents = events.slice(_autoLastEventCount);
   _autoLastEventCount = events.length;
 
