@@ -191,9 +191,15 @@ async def lifespan(app: FastAPI):
     else:
         _logging.basicConfig(
             level=log_level,
-            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            format="%(asctime)s [%(levelname)s] %(name)s: %(task_ctx)s%(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
+    # Phase 4.3: install task-context filter so concurrent runs don't mix logs
+    try:
+        from services.task_context import install_filter as _install_task_ctx_filter
+        _install_task_ctx_filter("layla")
+    except Exception:
+        pass
     try:
         import runtime_safety
         cfg = runtime_safety.load_config()
