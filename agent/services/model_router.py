@@ -465,6 +465,67 @@ def get_benchmark_for_model(model_name: str) -> dict | None:
         return None
 
 
+# ── Phase 4.1: Dual-Model Chain-of-Thought ───────────────────────────────────
+
+# Module-level cost accumulator (GIL-safe; process lifetime)
+_cot_cost_stats: dict[str, dict] = {}
+
+
+def _record_cot_phase(phase: str, model: str | None, estimated_tokens: int = 0) -> None:
+    """Accumulate token estimates per (phase, model) for /agent/cot_stats."""
+    key = f"{phase}:{model or 'default'}"
+    entry = _cot_cost_stats.get(key)
+    if entry is None:
+        _cot_cost_stats[key] = {"phase": phase, "model": model or "default", "calls": 0, "estimated_tokens": 0}
+        entry = _cot_cost_stats[key]
+    entry["calls"] += 1
+    entry["estimated_tokens"] += max(0, int(estimated_tokens))
+
+
+def split_cot_models(
+    task_text: str = "",
+    cfg: dict | None = None,
+) -> dict[str, str | None]:
+    """
+    Phase 4.1: Return per-phase model assignments for chain-of-thought splitting.
+    Reasoning/planning phase → fast/chat model (cheap, local).
+    Implementation/coding phase → coding/agent model (capable, slower).
+
+    Returns:
+        {
+            "reasoning_model": str | None,   # fast model for reasoning phase
+            "implementation_model": str | None,  # strong model for code/execution
+            "split_enabled": bool,           # True when two distinct models found
+        }
+    """
+    if cfg is None:
+        try:
+            import runtime_safety
+            cfg = runtime_safety.load_config()
+        except Exception:
+            cfg = {}
+    chat_b, agent_b = resolve_dual_model_basenames(cfg)
+    # reasoning_model = fast/chat; implementation_model = coding/agent
+    reasoning_m = chat_b or route_model("chat")
+    impl_m = agent_b or route_model("coding") or route_model("default")
+    split_enabled = bool(reasoning_m and impl_m and reasoning_m != impl_m)
+    return {
+        "reasoning_model": reasoning_m,
+        "implementation_model": impl_m,
+        "split_enabled": split_enabled,
+    }
+
+
+def get_cot_stats() -> list[dict]:
+    """Return accumulated CoT cost stats for /agent/cot_stats endpoint."""
+    return list(_cot_cost_stats.values())
+
+
+def clear_cot_stats() -> None:
+    """Reset CoT stats (admin / test use)."""
+    _cot_cost_stats.clear()
+
+
 def ollama_model_name_for_task(task_text: str, cfg: dict | None = None) -> str | None:
     """
     When using Ollama/HTTP inference, pick a model name from config by route (coding/reasoning/chat).
