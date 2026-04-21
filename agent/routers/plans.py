@@ -109,6 +109,42 @@ def list_plans(workspace_root: str | None = None, status: str = "", limit: int =
     return JSONResponse({"ok": True, "plans": items})
 
 
+@router.get("/similar")
+def find_similar_plans(goal: str = "", limit: int = 5):
+    """
+    Similar plans by keyword overlap.
+    Defined before /{plan_id} so "similar" is not consumed as a plan_id param.
+    """
+    from layla.memory.db import list_layla_plans
+
+    if not goal.strip():
+        return JSONResponse({"ok": True, "similar": []})
+    q_words = set(goal.lower().split())
+    candidates = list_layla_plans(status=None, limit=200)
+    scored: list[tuple[float, dict]] = []
+    for p in candidates:
+        if p.get("status") not in ("done", "blocked"):
+            continue
+        p_words = set((p.get("goal") or "").lower().split())
+        if not p_words:
+            continue
+        overlap = len(q_words & p_words) / max(len(q_words | p_words), 1)
+        if overlap > 0:
+            scored.append((overlap, p))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    similar = []
+    for score, p in scored[:limit]:
+        similar.append({
+            "plan_id": p.get("id"),
+            "goal": (p.get("goal") or "")[:200],
+            "status": p.get("status") or "",
+            "step_count": len(p.get("steps") or []),
+            "created_at": p.get("created_at") or "",
+            "similarity": round(score, 3),
+        })
+    return JSONResponse({"ok": True, "similar": similar})
+
+
 @router.get("/{plan_id}")
 def get_plan(plan_id: str):
     from layla.memory.db import get_layla_plan
@@ -350,38 +386,3 @@ def get_plan_viz(plan_id: str):
     })
 
 
-@router.get("/similar")
-def find_similar_plans(goal: str = "", limit: int = 5):
-    """
-    Return up to `limit` historical plans whose goal is similar to `goal`.
-    Uses simple keyword overlap; returns done/blocked plans only.
-    """
-    from layla.memory.db import list_layla_plans
-
-    if not goal.strip():
-        return JSONResponse({"ok": True, "similar": []})
-
-    q_words = set(goal.lower().split())
-    candidates = list_layla_plans(status=None, limit=200)
-    scored: list[tuple[float, dict]] = []
-    for p in candidates:
-        if p.get("status") not in ("done", "blocked"):
-            continue
-        p_words = set((p.get("goal") or "").lower().split())
-        if not p_words:
-            continue
-        overlap = len(q_words & p_words) / max(len(q_words | p_words), 1)
-        if overlap > 0:
-            scored.append((overlap, p))
-    scored.sort(key=lambda x: x[0], reverse=True)
-    similar = []
-    for score, p in scored[:limit]:
-        similar.append({
-            "plan_id": p.get("id"),
-            "goal": (p.get("goal") or "")[:200],
-            "status": p.get("status") or "",
-            "step_count": len(p.get("steps") or []),
-            "created_at": p.get("created_at") or "",
-            "similarity": round(score, 3),
-        })
-    return JSONResponse({"ok": True, "similar": similar})
