@@ -145,9 +145,9 @@ async def global_search(
     knowledge: list[dict] = []
     if ctx in ("all", "knowledge"):
         try:
-            from services.retrieval import retrieve_knowledge
+            from services.retrieval import retrieve_documents
 
-            k_rows = retrieve_knowledge(q, k=per_group)
+            k_rows = retrieve_documents(q, k=per_group)
             for r in k_rows:
                 knowledge.append({
                     "source": r.get("source") or r.get("id") or "",

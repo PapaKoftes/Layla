@@ -84,7 +84,7 @@ function _renderSearchResults(data, q) {
     html += `<div class="srch-group-header">Workspace</div>`;
     ws.forEach(r => {
       const snippet = (r.snippet || '').slice(0, 100);
-      html += `<div class="srch-item">
+      html += `<div class="srch-item" onclick="laylaSearchOpenWorkspace(${JSON.stringify(r.path || '')})" style="cursor:pointer">
         <span class="srch-title srch-mono">${_esc(r.path || '')}</span>
         <span class="srch-meta srch-mono">${_esc(snippet)}${snippet.length >= 100 ? '…' : ''}</span>
       </div>`;
@@ -94,7 +94,7 @@ function _renderSearchResults(data, q) {
     html += `<div class="srch-group-header">Knowledge</div>`;
     know.forEach(r => {
       const snippet = (r.snippet || '').slice(0, 100);
-      html += `<div class="srch-item">
+      html += `<div class="srch-item" onclick="laylaSearchOpenKnowledge()" style="cursor:pointer">
         <span class="srch-title">${_esc(r.source || '')}</span>
         <span class="srch-meta">${_esc(snippet)}${snippet.length >= 100 ? '…' : ''}</span>
       </div>`;
@@ -125,8 +125,31 @@ function laylaSearchOpenMemory() {
   laylaGlobalSearchClose();
   document.getElementById('global-search-input').value = '';
   if (typeof showMainPanel === 'function') showMainPanel('workspace');
-  // Switch to memory sub-tab
   setTimeout(() => showMemorySubTab && showMemorySubTab('browse'), 100);
+}
+
+function laylaSearchOpenWorkspace(filePath) {
+  laylaGlobalSearchClose();
+  document.getElementById('global-search-input').value = '';
+  // Open workspace awareness sub-tab and pre-fill path if available
+  if (typeof showMainPanel === 'function') showMainPanel('workspace');
+  setTimeout(() => {
+    if (typeof showRcpSubPage === 'function') showRcpSubPage('awareness');
+    if (filePath) {
+      const el = document.getElementById('workspace-path');
+      if (el && !el.value) el.value = filePath;
+      try { showToast && showToast('Workspace: ' + filePath); } catch (_) {}
+    }
+  }, 100);
+}
+
+function laylaSearchOpenKnowledge() {
+  laylaGlobalSearchClose();
+  document.getElementById('global-search-input').value = '';
+  if (typeof showMainPanel === 'function') showMainPanel('workspace');
+  setTimeout(() => {
+    if (typeof showRcpSubPage === 'function') showRcpSubPage('knowledge');
+  }, 100);
 }
 
 function _esc(s) {
