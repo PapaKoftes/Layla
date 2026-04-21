@@ -278,3 +278,110 @@ async def execute_stored_plan(plan_id: str, req: Request):
         logger.exception("execute_stored_plan")
         set_layla_plan_status(plan_id, "approved")
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+# ── Phase 2.1: Plan Gantt visualization data ─────────────────────────────────
+
+_TOOL_DURATION_MS: dict[str, int] = {
+    "read_file": 400, "list_directory": 300, "search_files": 600,
+    "write_file": 800, "edit_file": 700, "create_file": 700,
+    "run_command": 3000, "execute_command": 3000, "bash": 3000,
+    "web_search": 2000, "web_fetch": 2500,
+    "read_webpage": 2000,
+}
+_DEFAULT_STEP_MS = 2500
+_ANALYSIS_KEYWORDS = {"analyze", "review", "understand", "summarize", "explain", "plan", "research"}
+
+
+def _estimate_step_duration(step: dict) -> int:
+    """Estimate step duration in ms based on tools or description keywords."""
+    tools: list[str] = step.get("tools") or []
+    if tools:
+        return max(_TOOL_DURATION_MS.get(t.lower(), _DEFAULT_STEP_MS) for t in tools)
+    desc = (step.get("task") or step.get("description") or "").lower()
+    if any(k in desc for k in _ANALYSIS_KEYWORDS):
+        return 5000
+    return _DEFAULT_STEP_MS
+
+
+@router.get("/{plan_id}/viz")
+def get_plan_viz(plan_id: str):
+    """
+    Return enriched plan data for Gantt visualization.
+    Adds estimated_duration_ms, depends_on, parallel_capable, and total_estimated_ms.
+    """
+    from layla.memory.db import get_layla_plan
+
+    p = get_layla_plan(plan_id)
+    if not p:
+        return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
+
+    raw_steps: list[dict] = p.get("steps") or []
+    viz_steps = []
+    for i, s in enumerate(raw_steps):
+        est = int(s.get("estimated_duration_ms") or _estimate_step_duration(s))
+        depends_on: list[int] = list(s.get("depends_on") or ([] if i == 0 else [i - 1]))
+        viz_steps.append({
+            "index": i,
+            "task": (s.get("task") or s.get("description") or f"Step {i + 1}")[:120],
+            "tools": s.get("tools") or [],
+            "type": s.get("type") or "task",
+            "status": s.get("status") or "pending",
+            "estimated_duration_ms": est,
+            "depends_on": depends_on,
+        })
+
+    total_ms = sum(s["estimated_duration_ms"] for s in viz_steps)
+    # Detect parallel capable: any step that depends on the same predecessor
+    dep_counts: dict[int, int] = {}
+    for s in viz_steps:
+        for d in s["depends_on"]:
+            dep_counts[d] = dep_counts.get(d, 0) + 1
+    parallel_capable = any(v > 1 for v in dep_counts.values())
+
+    return JSONResponse({
+        "ok": True,
+        "plan_id": plan_id,
+        "goal": p.get("goal") or "",
+        "status": p.get("status") or "draft",
+        "steps": viz_steps,
+        "total_estimated_ms": total_ms,
+        "parallel_capable": parallel_capable,
+    })
+
+
+@router.get("/similar")
+def find_similar_plans(goal: str = "", limit: int = 5):
+    """
+    Return up to `limit` historical plans whose goal is similar to `goal`.
+    Uses simple keyword overlap; returns done/blocked plans only.
+    """
+    from layla.memory.db import list_layla_plans
+
+    if not goal.strip():
+        return JSONResponse({"ok": True, "similar": []})
+
+    q_words = set(goal.lower().split())
+    candidates = list_layla_plans(status=None, limit=200)
+    scored: list[tuple[float, dict]] = []
+    for p in candidates:
+        if p.get("status") not in ("done", "blocked"):
+            continue
+        p_words = set((p.get("goal") or "").lower().split())
+        if not p_words:
+            continue
+        overlap = len(q_words & p_words) / max(len(q_words | p_words), 1)
+        if overlap > 0:
+            scored.append((overlap, p))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    similar = []
+    for score, p in scored[:limit]:
+        similar.append({
+            "plan_id": p.get("id"),
+            "goal": (p.get("goal") or "")[:200],
+            "status": p.get("status") or "",
+            "step_count": len(p.get("steps") or []),
+            "created_at": p.get("created_at") or "",
+            "similarity": round(score, 3),
+        })
+    return JSONResponse({"ok": True, "similar": similar})

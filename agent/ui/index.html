@@ -538,6 +538,26 @@
           <button type="button" class="approve-btn" style="font-size:0.7rem;margin-bottom:8px" onclick="refreshLaylaPlansPanel()">Refresh list</button>
           <div id="layla-plans-last-exec" style="font-size:0.68rem;margin-bottom:8px;color:var(--text-dim)"></div>
           <div id="layla-plans-list" style="font-size:0.72rem"><span style="color:var(--text-dim)">Open this tab to load.</span></div>
+
+          <!-- Autonomous execution monitor (Phase 2.2) -->
+          <div id="auto-monitor-panel" style="display:none;margin-top:12px;border:1px solid var(--asp-line,var(--border));border-radius:4px;padding:8px;background:rgba(0,0,0,0.15)">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <span class="panel-title" style="margin:0;font-size:0.7rem">Autonomous execution</span>
+              <div style="display:flex;gap:4px">
+                <button type="button" onclick="laylaAutoStop()" class="approve-btn" style="font-size:0.6rem;padding:2px 6px;background:rgba(231,76,60,0.2);border-color:#e74c3c;color:#e74c3c">Stop</button>
+                <button type="button" onclick="laylaAutoMonitorClose()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.8rem" title="Hide panel">✕</button>
+              </div>
+            </div>
+            <div style="height:6px;background:var(--code-bg);border-radius:3px;overflow:hidden;margin-bottom:6px">
+              <div id="auto-progress-fill" style="height:100%;width:0%;background:var(--asp);border-radius:3px;transition:width 0.5s ease"></div>
+            </div>
+            <div style="display:flex;gap:8px;font-size:0.65rem;color:var(--text-dim);margin-bottom:6px">
+              <span id="auto-status-text" style="color:var(--asp)">Starting…</span>
+              <span id="auto-step-label"></span>
+            </div>
+            <!-- Outcome (Phase 2.4) -->
+            <div id="auto-outcome-panel" style="display:none;border-top:1px solid var(--border);padding-top:6px;margin-top:4px"></div>
+          </div>
         </div>
         <div class="rcp-subpage" data-rcp-sub="memory">
           <!-- Memory sub-tabs -->
@@ -704,6 +724,23 @@
 </details>
 
 <!-- Modals/overlays BEFORE scripts: sync code + checkSetupStatus always see these nodes (DOM order fix). -->
+
+<!-- ── Plan Gantt viz overlay (Phase 2.1) ───────────────────────────────── -->
+<div id="plan-viz-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:2500;align-items:center;justify-content:center">
+  <div style="background:var(--bg-panel,#12122a);border:1px solid var(--asp-line,var(--border));border-radius:6px;width:min(760px,95vw);max-height:90vh;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div id="plan-viz-info" style="font-size:0.8rem;color:var(--text);flex:1">Loading…</div>
+      <button type="button" onclick="laylaCloseViz()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1.1rem;margin-left:8px">✕</button>
+    </div>
+    <canvas id="plan-viz-canvas" style="width:100%;display:block;border-radius:4px;border:1px solid var(--border)"></canvas>
+    <!-- Similar plans (Phase 2.3) -->
+    <div id="plan-viz-similar" style="display:none;font-size:0.68rem;color:var(--text);border-top:1px solid var(--border);padding-top:8px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="approve-btn" style="font-size:0.72rem" onclick="laylaCloseViz()">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Chat search overlay ─────────────────────────────────────────────── -->
 <div id="chat-search-overlay" style="display:none;position:fixed;top:0;left:0;right:0;background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 20px;z-index:10002;align-items:center;gap:12px;flex-direction:row">
   <input type="text" id="chat-search-input" placeholder="Search in chat (Ctrl+F)…" oninput="onChatSearchInput(this.value)" style="flex:1;padding:8px 12px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.9rem">
@@ -843,5 +880,7 @@ if ('serviceWorker' in navigator) {
 <script src="/layla-ui/js/layla-artifacts.js"></script>
 <script src="/layla-ui/js/layla-search.js"></script>
 <script src="/layla-ui/js/layla-memory.js"></script>
+<script src="/layla-ui/js/layla-plan-viz.js"></script>
+<script src="/layla-ui/js/layla-autonomous.js"></script>
 </body>
 </html>
