@@ -148,7 +148,16 @@
       </div>
       <div class="wizard-step" data-wstep="5">
         <h2 style="margin:0 0 8px;color:var(--asp);font-family:'Cinzel',serif">Ready</h2>
-        <p style="margin:0;color:var(--text-dim);line-height:1.6">Setup complete. Enter the app.</p>
+        <p style="margin:0 0 10px;color:var(--text-dim);line-height:1.6">Setup complete. Enter the app.</p>
+        <div style="font-size:0.72rem;color:var(--text-dim);line-height:1.7;border-left:2px solid var(--asp);padding-left:10px">
+          <strong style="color:var(--text)">What's new in v0.3</strong><br>
+          ⬡ <strong>Artifacts panel</strong> — code blocks extracted to right panel, copy/edit/send<br>
+          ⬡ <strong>Memory browser</strong> — browse, search, edit learnings in Library tab<br>
+          ⬡ <strong>Plan visualiser</strong> — Gantt chart of any plan (⬡ Gantt button)<br>
+          ⬡ <strong>Global search</strong> — search conversations, memory, code from the header<br>
+          ⬡ <strong>Voice + TTS</strong> — per-aspect speed/pitch, preview button in Options<br>
+          ⬡ <strong>Obsidian vault sync</strong> — connect your vault in Options → Obsidian Vault<br>
+        </div>
       </div>
     </div>
     <div class="wizard-actions">
@@ -488,6 +497,22 @@
           <label class="option-row" title="Reduce all glow and animation effects">
             <input type="checkbox" id="low-fx-toggle" onchange="document.documentElement.style.setProperty('--fx-strength',this.checked?'0.4':'1.5');localStorage.setItem('layla_low_fx',this.checked)"> Low visual effects
           </label>
+        </div>
+
+        <!-- Obsidian Vault (Phase 5.1) -->
+        <div class="option-card" id="obsidian-settings-card">
+          <div class="option-card-title">Obsidian Vault</div>
+          <p style="font-size:0.68rem;color:var(--text-dim);margin:0 0 8px">Sync your Obsidian vault into Layla's knowledge base. All local — no cloud.</p>
+          <div style="margin-bottom:6px">
+            <label style="font-size:0.68rem;color:var(--text-dim);display:block;margin-bottom:3px">Vault path</label>
+            <input type="text" id="obsidian-vault-path" placeholder="/path/to/ObsidianVault" style="width:100%;font-size:0.72rem;padding:4px 6px;background:var(--input-bg,#111);border:1px solid var(--border);color:var(--text);border-radius:2px" aria-label="Obsidian vault path">
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+            <button type="button" class="tab-btn" style="font-size:0.65rem" onclick="laylaObsidianConnect()" title="Connect this vault">Connect</button>
+            <button type="button" class="tab-btn" style="font-size:0.65rem" onclick="laylaObsidianSync()" title="Sync vault → knowledge">Sync now</button>
+            <button type="button" class="tab-btn" style="font-size:0.65rem" onclick="laylaObsidianSuggest()" title="See learnings to export">Suggest exports</button>
+          </div>
+          <div id="obsidian-status" style="font-size:0.65rem;color:var(--text-dim)">Not connected</div>
         </div>
 
         <div class="option-card" id="prefs-research-section">
@@ -940,8 +965,58 @@ if ('serviceWorker' in navigator) {
     // Sync tts-toggle2 with tts-toggle state
     var tts2 = document.getElementById('tts-toggle2');
     if (tts2) tts2.checked = localStorage.getItem('layla_tts') !== 'false';
+    // Restore Obsidian vault path
+    var obsPath = localStorage.getItem('layla_obsidian_vault_path');
+    if (obsPath) {
+      var obsEl = document.getElementById('obsidian-vault-path');
+      if (obsEl) obsEl.value = obsPath;
+    }
   } catch(_) {}
 })();
+</script>
+<script>
+// ─── Phase 5.1: Obsidian Vault UI helpers ────────────────────────────────────
+function _obsStatus(msg, isErr) {
+  var el = document.getElementById('obsidian-status');
+  if (el) { el.textContent = msg; el.style.color = isErr ? 'var(--error,#e74c3c)' : 'var(--asp)'; }
+}
+
+async function laylaObsidianConnect() {
+  var vp = (document.getElementById('obsidian-vault-path') || {}).value || '';
+  if (!vp.trim()) { _obsStatus('Enter a vault path first.', true); return; }
+  try {
+    _obsStatus('Connecting…');
+    var res = await fetch('/obsidian/connect', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({vault_path: vp}) });
+    var data = await res.json();
+    if (data.ok) {
+      localStorage.setItem('layla_obsidian_vault_path', vp);
+      _obsStatus('Connected: ' + data.vault_path);
+    } else { _obsStatus('Error: ' + (data.error || 'unknown'), true); }
+  } catch(e) { _obsStatus('Network error: ' + e.message, true); }
+}
+
+async function laylaObsidianSync() {
+  try {
+    _obsStatus('Syncing…');
+    var res = await fetch('/obsidian/sync', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+    var data = await res.json();
+    if (data.ok) {
+      _obsStatus('Synced: ' + data.copied + ' copied, ' + data.skipped_conflicts + ' conflicts skipped');
+    } else { _obsStatus('Error: ' + (data.error || 'unknown'), true); }
+  } catch(e) { _obsStatus('Network error: ' + e.message, true); }
+}
+
+async function laylaObsidianSuggest() {
+  try {
+    _obsStatus('Loading suggestions…');
+    var res = await fetch('/obsidian/suggest?n=5');
+    var data = await res.json();
+    if (!data.ok) { _obsStatus('Error: ' + (data.error || 'unknown'), true); return; }
+    var count = data.count || 0;
+    if (!count) { _obsStatus('No high-confidence learnings to suggest yet.'); return; }
+    _obsStatus(count + ' learnings ready to export → use /obsidian/export API or approve in memory browser');
+  } catch(e) { _obsStatus('Network error: ' + e.message, true); }
+}
 </script>
 </body>
 </html>
