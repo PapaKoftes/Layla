@@ -3011,6 +3011,18 @@ def autonomous_run(
     skip_engineering_pipeline: bool = False,
     context_files: list[str] | None = None,
 ) -> dict:
+    # Phase 4.3: set per-task context vars for structured log isolation
+    try:
+        import uuid as _uuid
+        from services.task_context import reset_task_context, set_task_context
+        _tid = conversation_id or str(_uuid.uuid4())[:8]
+        _ctx_tokens = set_task_context(
+            workspace=str(workspace_root or ""),
+            aspect=str(aspect_id or ""),
+            task_id=_tid,
+        )
+    except Exception:
+        _ctx_tokens = None
     try:
         with schedule_slot(priority=priority):
             with _autonomous_run_serialize_lock(workspace_root):
@@ -3048,6 +3060,12 @@ def autonomous_run(
                 "reasoning_mode": "light",
             }
         raise
+    finally:
+        if _ctx_tokens is not None:
+            try:
+                reset_task_context(_ctx_tokens)
+            except Exception:
+                pass
 
 
 def _autonomous_run_impl(
@@ -3094,6 +3112,19 @@ def _autonomous_run_impl(
                     set_model_override(classify_task_for_routing(goal, context or "", _cfg_route))
         except Exception as _exc:
             logger.debug("agent_loop:L2536: %s", _exc, exc_info=False)
+    # Phase 4.1: record CoT split decision for cost telemetry
+    try:
+        from services.model_router import _record_cot_phase, split_cot_models
+        _cot = split_cot_models()
+        if _cot.get("split_enabled"):
+            _record_cot_phase("reasoning", _cot.get("reasoning_model"), estimated_tokens=800)
+            _record_cot_phase("implementation", _cot.get("implementation_model"), estimated_tokens=1800)
+            logger.debug(
+                "cot_split: reasoning=%s impl=%s",
+                _cot.get("reasoning_model"), _cot.get("implementation_model"),
+            )
+    except Exception:
+        pass
     set_reasoning_effort(reasoning_effort)
     try:
         return _autonomous_run_impl_core(
