@@ -43,10 +43,33 @@ def _retrieval_guard_config() -> tuple[int, float]:
         return 500, 0.7
 
 
-def retrieve_relevant_memory(task: str, k: int = TOP_K, *, coding_boost: bool = False) -> list[dict]:
+def _normalize_confidence(items: list[dict]) -> list[dict]:
+    """Ensure every item has a float `confidence` key in [0, 1]."""
+    for item in items:
+        if "confidence" not in item:
+            raw = item.get("adjusted_confidence") or item.get("score")
+            try:
+                item["confidence"] = float(raw) if raw is not None else 0.5
+            except (TypeError, ValueError):
+                item["confidence"] = 0.5
+        try:
+            item["confidence"] = max(0.0, min(1.0, float(item["confidence"])))
+        except (TypeError, ValueError):
+            item["confidence"] = 0.5
+    return items
+
+
+def retrieve_relevant_memory(
+    task: str,
+    k: int = TOP_K,
+    *,
+    coding_boost: bool = False,
+    min_confidence: float = 0.0,
+) -> list[dict]:
     """
     Canonical memory retrieval for context_builder / planners.
     Uses the same hybrid pipeline as semantic recall (vector + BM25 + rerank path via search_memories_full).
+    Phase 4.2: normalises `confidence` on every returned item; filters by min_confidence when > 0.
     """
     k = max(1, min(int(k), MAX_K))
     try:
@@ -54,15 +77,20 @@ def retrieve_relevant_memory(task: str, k: int = TOP_K, *, coding_boost: bool = 
         if cfg.get("use_chroma"):
             from layla.memory.vector_store import search_memories_full
 
-            return search_memories_full(
+            results = search_memories_full(
                 task,
                 k=k,
                 use_rerank=True,
                 coding_boost=coding_boost,
             )
-        from layla.memory.db import search_learnings_fts
+        else:
+            from layla.memory.db import search_learnings_fts
 
-        return search_learnings_fts(task, n=k)
+            results = search_learnings_fts(task, n=k)
+        results = _normalize_confidence(results)
+        if min_confidence > 0.0:
+            results = [r for r in results if r.get("confidence", 0.0) >= min_confidence]
+        return results
     except Exception as e:
         logger.debug("retrieve_relevant_memory failed: %s", e)
     return []
@@ -110,7 +138,7 @@ def retrieve_similar_failures(task: str, k: int = 5) -> list[dict]:
 
 
 def retrieve_learnings(query: str, k: int = TOP_K, *, coding_boost: bool = False) -> list[dict]:
-    """Search vector memory (Chroma if enabled) and BM25. Returns top k items."""
+    """Search vector memory (Chroma if enabled) and BM25. Returns top k items with normalised confidence."""
     results = []
     try:
         cfg = __import__("runtime_safety", fromlist=[None]).load_config()
@@ -124,7 +152,7 @@ def retrieve_learnings(query: str, k: int = TOP_K, *, coding_boost: bool = False
             results = search_learnings_fts(query, n=k)
     except Exception as e:
         logger.debug("retrieve_learnings failed: %s", e)
-    return results[:k]
+    return _normalize_confidence(results[:k])
 
 
 def retrieve_documents(query: str, k: int = TOP_K) -> list[dict]:
@@ -375,3 +403,20 @@ def build_retrieved_context_with_ids(query: str, k: int = TOP_K, reasoning_mode:
     except Exception as e:
         logger.debug("build_retrieved_context_with_ids failed: %s", e)
         return "", []
+
+
+# Phase 4.2: high-confidence retrieval for planners ──────────────────────────
+
+PLANNER_MIN_CONFIDENCE = 0.75
+
+
+def retrieve_high_confidence_memory(task: str, k: int = TOP_K) -> list[dict]:
+    """
+    Return only memories with confidence ≥ PLANNER_MIN_CONFIDENCE.
+    Used by planner to seed plan-steps with validated knowledge only.
+    Falls back gracefully to all memories when confident items are scarce.
+    """
+    items = retrieve_relevant_memory(task, k=k, min_confidence=PLANNER_MIN_CONFIDENCE)
+    if len(items) < 2:
+        items = retrieve_relevant_memory(task, k=k)
+    return items

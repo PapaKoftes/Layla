@@ -608,6 +608,24 @@ def cancel_agent_run(conversation_id: str):
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
+@router.get("/agent/cot_stats")
+def get_cot_stats():
+    """Phase 4.1: Return dual-model CoT cost accumulator stats (per-phase token estimates)."""
+    try:
+        from services.model_router import get_cot_stats, split_cot_models
+        stats = get_cot_stats()
+        split = split_cot_models()
+        return {
+            "ok": True,
+            "split_config": split,
+            "accumulated": stats,
+            "total_calls": sum(s.get("calls", 0) for s in stats),
+            "total_estimated_tokens": sum(s.get("estimated_tokens", 0) for s in stats),
+        }
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 @router.delete("/agent")
 def cancel_latest_agent_run():
     """Cancel the most recently started conversation run (same as PR #1 DELETE /agent)."""
