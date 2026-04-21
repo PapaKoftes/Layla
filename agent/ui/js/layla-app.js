@@ -3602,6 +3602,7 @@ window.refreshLaylaPlansPanel = async function refreshLaylaPlansPanel() {
         '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">' +
         '<button type="button" class="approve-btn" onclick="laylaApprovePlan(' + JSON.stringify(id) + ')">Approve</button>' +
         '<button type="button" class="approve-btn" onclick="laylaExecutePlan(' + JSON.stringify(id) + ')">Execute</button>' +
+        '<button type="button" class="approve-btn" style="background:transparent;border-color:var(--asp);color:var(--asp)" onclick="typeof laylaShowPlanViz===\'function\'&&laylaShowPlanViz(' + JSON.stringify(id) + ')">⬡ Gantt</button>' +
         '<button type="button" class="approve-btn" style="background:transparent;border-color:var(--border);color:var(--text-dim)" onclick="laylaExpandPlan(' + JSON.stringify(id) + ', ' + JSON.stringify(sid) + ')">Detail</button>' +
         '</div>' +
         '<pre id="plan-detail-' + sid + '" style="display:none;margin-top:8px;font-size:0.62rem;max-height:200px;overflow:auto;white-space:pre-wrap"></pre>' +
