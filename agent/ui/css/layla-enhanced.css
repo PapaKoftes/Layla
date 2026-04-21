@@ -1,0 +1,182 @@
+/*
+ * Layla UI — Enhanced styles (Phase 3)
+ * Warframe aesthetic refinements, new panel chrome, accessibility, scanlines.
+ * Loaded after layla.css — overrides welcome.
+ */
+
+/* ── Scanline overlay ─────────────────────────────────────────────────────── */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(0, 0, 0, 0.08) 3px,
+    rgba(0, 0, 0, 0.08) 4px
+  );
+  opacity: calc(0.45 * var(--fx-strength, 1));
+}
+body.theme-light::after { opacity: 0.08; }
+@media (prefers-reduced-motion: reduce) { body::after { display: none; } }
+
+/* ── Aspect-switch glow flash ─────────────────────────────────────────────── */
+@keyframes asp-switch-flash {
+  0%   { box-shadow: 0 0 0 transparent; }
+  35%  { box-shadow: 0 0 32px var(--asp-glow), inset 0 0 12px var(--asp-mid); }
+  100% { box-shadow: 0 0 0 transparent; }
+}
+.asp-switch-flash { animation: asp-switch-flash 0.55s ease-out forwards; }
+
+/* ── Angular clip chrome for Phase 1-2 panels ─────────────────────────────── */
+#global-search-dropdown {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%);
+}
+#artifacts-list .artifact-card {
+  clip-path: polygon(0 6px, 6px 0, 100% 0, 100% 100%, 0 100%);
+}
+#auto-monitor-panel {
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+}
+#plan-viz-overlay > div {
+  clip-path: polygon(0 12px, 12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%);
+}
+
+/* ── Memory browser items ─────────────────────────────────────────────────── */
+.mem-item {
+  clip-path: polygon(0 4px, 4px 0, 100% 0, 100% 100%, 0 100%);
+  transition: border-color 0.15s;
+}
+.mem-item:hover { border-color: var(--asp) !important; }
+
+/* ── Search result groups ─────────────────────────────────────────────────── */
+.srch-group-header {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--asp) 15%, transparent), transparent);
+}
+.srch-item:hover { background: color-mix(in srgb, var(--asp) 8%, transparent) !important; }
+
+/* ── Gantt canvas container ───────────────────────────────────────────────── */
+#plan-viz-canvas {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
+}
+
+/* ── Stream stats dock row ────────────────────────────────────────────────── */
+#stream-stats-row {
+  border-bottom: 1px solid color-mix(in srgb, var(--asp) 30%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--asp) 6%, transparent), transparent 60%);
+}
+
+/* ── Holographic title enhancement ─────────────────────────────────────────── */
+@keyframes holo-shimmer {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+.title {
+  background: linear-gradient(
+    90deg,
+    var(--asp) 0%,
+    color-mix(in srgb, var(--asp) 60%, #fff) 40%,
+    var(--asp) 60%,
+    color-mix(in srgb, var(--asp) 80%, #fff) 80%,
+    var(--asp) 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: holo-shimmer 4s linear infinite, title-breathe 4s ease-in-out infinite;
+}
+body.theme-light .title { -webkit-text-fill-color: unset; background: none; color: var(--asp); animation: title-breathe 4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .title { animation: none; } }
+
+/* ── Accessibility: visible focus rings ─────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--asp);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+button:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid var(--asp);
+  box-shadow: 0 0 0 4px var(--asp-glow);
+}
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--asp);
+  border-color: var(--asp) !important;
+}
+
+/* ── High contrast mode ─────────────────────────────────────────────────────── */
+@media (prefers-contrast: high) {
+  :root {
+    --border: rgba(255,255,255,0.5);
+    --text-dim: #a0a0b0;
+    --asp-glow: transparent;
+    --wf-glow: transparent;
+  }
+  body::after { display: none; }
+  .title { -webkit-text-fill-color: var(--asp); background: none; }
+  .rcp-tab.active {
+    border: 2px solid var(--asp);
+    box-shadow: none;
+  }
+}
+
+/* ── Mic button pulse (recording state) ─────────────────────────────────────── */
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 6px var(--asp-glow); }
+  50%       { box-shadow: 0 0 18px var(--asp-glow), 0 0 30px var(--asp-glow); }
+}
+#mic-btn.recording {
+  animation: mic-pulse 0.7s ease-in-out infinite;
+  border-color: var(--asp);
+  color: var(--asp);
+}
+
+/* ── Auto-progress bar pulse ─────────────────────────────────────────────────── */
+@keyframes progress-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.65; }
+}
+#auto-progress-fill { animation: progress-pulse 1.8s ease-in-out infinite; }
+
+/* ── Artifacts tab glow badge ─────────────────────────────────────────────────── */
+.rcp-tab[data-rcp="artifacts"][style*="--asp"] {
+  box-shadow: 0 0 8px var(--asp-glow) !important;
+}
+
+/* ── Memory sub-tab buttons ────────────────────────────────────────────────── */
+[data-mem-sub].active {
+  color: var(--asp);
+  border-bottom: 2px solid var(--asp);
+}
+
+/* ── Global search container in header ─────────────────────────────────────── */
+#global-search-container input:focus {
+  box-shadow: 0 0 8px var(--asp-glow);
+}
+
+/* ── Skip-to-content link (keyboard accessibility) ─────────────────────────── */
+.skip-to-content {
+  position: absolute;
+  top: -40px;
+  left: 12px;
+  z-index: 99999;
+  background: var(--asp);
+  color: #000;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  transition: top 0.15s;
+}
+.skip-to-content:focus { top: 8px; }
+
+/* ── Smooth panel transitions ─────────────────────────────────────────────── */
+.rcp-page { transition: opacity 0.15s ease; }
+.rcp-page[aria-hidden="true"] { opacity: 0; pointer-events: none; }
+.rcp-page[aria-hidden="false"], .rcp-page.active { opacity: 1; pointer-events: auto; }
