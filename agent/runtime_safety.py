@@ -424,7 +424,7 @@ def load_config() -> dict:
             "model_filename": "your-model.gguf",
             "available_models": [],
             "models_dir": str(default_models_dir()),
-            "sandbox_root": str(Path.home() / "LaylaWorkspace"),
+            "sandbox_root": str(Path.home() / "layla-workspace"),
             "web_allowlist": [],
             "knowledge_sources": [],
             "knowledge_max_bytes": 4000,

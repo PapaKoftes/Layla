@@ -194,6 +194,15 @@
     <button type="button" id="open-cli-btn" onclick="openCliHelp()" title="Copy command to open terminal UI (TUI)">⌘ Terminal</button>
   </div>
   <div id="header-progress-row" class="header-progress-row" aria-hidden="true"><div id="header-progress-fill"></div></div>
+  <!-- Global search bar (Phase 1.4) -->
+  <div id="global-search-container" style="position:relative;padding:0 12px 4px;max-width:520px;margin:0 auto">
+    <div style="display:flex;align-items:center;gap:0;background:var(--code-bg);border:1px solid var(--border);border-radius:4px;overflow:hidden">
+      <span style="padding:0 6px;color:var(--text-dim);font-size:0.75rem">⌕</span>
+      <input type="search" id="global-search-input" placeholder="Search conversations, learnings, code, knowledge…" autocomplete="off" style="flex:1;background:transparent;border:none;color:var(--text);font-size:0.72rem;padding:5px 6px;outline:none" oninput="laylaGlobalSearchInput(this.value)" onkeydown="laylaGlobalSearchKey(event)" onfocus="laylaGlobalSearchInput(this.value)">
+      <button type="button" style="padding:4px 8px;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.7rem" onclick="document.getElementById('global-search-input').value='';laylaGlobalSearchClose()" title="Clear search">✕</button>
+    </div>
+    <div id="global-search-dropdown" style="display:none;position:absolute;top:calc(100% - 4px);left:12px;right:12px;background:var(--bg-panel,#1a1a2e);border:1px solid var(--asp-line,var(--border));border-radius:4px;box-shadow:0 8px 24px rgba(0,0,0,0.6);z-index:2000;max-height:480px;overflow-y:auto"></div>
+  </div>
 </header>
 
 <div class="layout">
@@ -329,6 +338,7 @@
       <button type="button" class="rcp-tab active" role="tab" aria-selected="true" data-rcp="status">Status</button>
       <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="prefs">Settings</button>
       <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="workspace">Library</button>
+      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="artifacts">Artifacts</button>
       <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="research">Research</button>
     </div>
     <div class="rcp-body">
@@ -530,20 +540,58 @@
           <div id="layla-plans-list" style="font-size:0.72rem"><span style="color:var(--text-dim)">Open this tab to load.</span></div>
         </div>
         <div class="rcp-subpage" data-rcp-sub="memory">
-          <div class="panel-title">Memory search</div>
-          <input id="memory-search" placeholder="Search memories…" oninput="onMemorySearch(this.value)" autocomplete="off">
-          <div id="memory-search-results" style="font-size:0.72rem"><span style="color:var(--text-dim);font-size:0.7rem">Type to search learnings (local filter)</span></div>
-          <div class="panel-title" style="margin-top:10px">Elasticsearch (keyword)</div>
-          <p class="rta-muted" style="margin:0 0 6px;font-size:0.65rem">Optional mirror of learnings. When off, use memory search above.</p>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;align-items:center">
-            <input type="text" id="es-learning-search" placeholder="Keyword search…" style="flex:1;min-width:140px;padding:4px;box-sizing:border-box" onkeydown="if(event.key==='Enter')runElasticsearchLearningSearch()">
-            <button type="button" class="approve-btn" style="font-size:0.65rem" onclick="runElasticsearchLearningSearch()">Search</button>
+          <!-- Memory sub-tabs -->
+          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">
+            <button type="button" class="rcp-subtab active" data-mem-sub="browse" onclick="showMemorySubTab('browse')" style="font-size:0.65rem;padding:3px 8px">Browse</button>
+            <button type="button" class="rcp-subtab" data-mem-sub="search" onclick="showMemorySubTab('search')" style="font-size:0.65rem;padding:3px 8px">Search</button>
+            <button type="button" class="rcp-subtab" data-mem-sub="checkpoints" onclick="showMemorySubTab('checkpoints')" style="font-size:0.65rem;padding:3px 8px">Checkpoints</button>
           </div>
-          <div id="es-learning-results" style="font-size:0.68rem;margin-bottom:12px"><span style="color:var(--text-dim);font-size:0.7rem">GET /memory/elasticsearch/search</span></div>
-          <div class="panel-title">File checkpoints</div>
-          <p class="rta-muted" style="margin:0 0 6px;font-size:0.65rem">Snapshots before writes. Restore may require approval (Safety tab).</p>
-          <button type="button" class="approve-btn" style="font-size:0.65rem;margin-bottom:6px" onclick="refreshFileCheckpointsPanel()">Refresh list</button>
-          <div id="file-checkpoints-list" style="font-size:0.68rem;max-height:220px;overflow-y:auto"><span style="color:var(--text-dim);font-size:0.7rem">Click Refresh to load</span></div>
+
+          <!-- Browse sub-tab -->
+          <div data-mem-subpage="browse">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
+              <select id="mem-browse-type" style="font-size:0.68rem;padding:3px;background:var(--code-bg);color:var(--text);border:1px solid var(--border);border-radius:3px" onchange="laylaMemBrowse(0)">
+                <option value="">All types</option>
+                <option value="fact">Fact</option>
+                <option value="strategy">Strategy</option>
+                <option value="outcome">Outcome</option>
+                <option value="preference">Preference</option>
+                <option value="pattern">Pattern</option>
+              </select>
+              <select id="mem-browse-sort" style="font-size:0.68rem;padding:3px;background:var(--code-bg);color:var(--text);border:1px solid var(--border);border-radius:3px" onchange="laylaMemBrowse(0)">
+                <option value="recent">Recent</option>
+                <option value="confidence">Confidence</option>
+              </select>
+              <input id="mem-browse-q" placeholder="Filter…" style="flex:1;min-width:80px;font-size:0.68rem;padding:3px" oninput="laylaMemBrowse(0)" autocomplete="off">
+              <button type="button" class="approve-btn" style="font-size:0.65rem" onclick="laylaMemBrowse(0)">Load</button>
+            </div>
+            <div id="mem-browse-list" style="font-size:0.68rem;max-height:320px;overflow-y:auto;margin-bottom:6px">
+              <span style="color:var(--text-dim)">Click Load to browse learnings.</span>
+            </div>
+            <div id="mem-browse-pager" style="display:flex;gap:6px;align-items:center;font-size:0.65rem;color:var(--text-dim)"></div>
+          </div>
+
+          <!-- Search sub-tab -->
+          <div data-mem-subpage="search" style="display:none">
+            <div class="panel-title">Semantic search</div>
+            <input id="memory-search" placeholder="Search memories…" oninput="onMemorySearch(this.value)" autocomplete="off">
+            <div id="memory-search-results" style="font-size:0.72rem"><span style="color:var(--text-dim);font-size:0.7rem">Type to search learnings</span></div>
+            <div class="panel-title" style="margin-top:10px">Elasticsearch (keyword)</div>
+            <p class="rta-muted" style="margin:0 0 6px;font-size:0.65rem">Optional mirror. When off, use semantic search above.</p>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;align-items:center">
+              <input type="text" id="es-learning-search" placeholder="Keyword search…" style="flex:1;min-width:140px;padding:4px;box-sizing:border-box" onkeydown="if(event.key==='Enter')runElasticsearchLearningSearch()">
+              <button type="button" class="approve-btn" style="font-size:0.65rem" onclick="runElasticsearchLearningSearch()">Search</button>
+            </div>
+            <div id="es-learning-results" style="font-size:0.68rem;margin-bottom:12px"><span style="color:var(--text-dim);font-size:0.7rem">GET /memory/elasticsearch/search</span></div>
+          </div>
+
+          <!-- Checkpoints sub-tab -->
+          <div data-mem-subpage="checkpoints" style="display:none">
+            <div class="panel-title">File checkpoints</div>
+            <p class="rta-muted" style="margin:0 0 6px;font-size:0.65rem">Snapshots before writes. Restore may require approval (Safety tab).</p>
+            <button type="button" class="approve-btn" style="font-size:0.65rem;margin-bottom:6px" onclick="refreshFileCheckpointsPanel()">Refresh list</button>
+            <div id="file-checkpoints-list" style="font-size:0.68rem;max-height:280px;overflow-y:auto"><span style="color:var(--text-dim);font-size:0.7rem">Click Refresh to load</span></div>
+          </div>
         </div>
         <div class="rcp-subpage" data-rcp-sub="plugins">
           <div class="panel-title">Plugin status</div>
@@ -560,6 +608,36 @@
           <p class="rta-muted" style="margin:0 0 8px;font-size:0.68rem">Markdown skills under <code>.layla/skills/</code>, <code>skills/</code>, or <code>.claude/skills/</code>.</p>
           <button type="button" class="approve-btn" style="font-size:0.7rem;margin-bottom:8px" onclick="refreshSkillsList()">Refresh list</button>
           <div id="platform-skills" style="font-size:0.72rem"><span style="color:var(--text-dim)">Open this tab to load.</span></div>
+        </div>
+      </section>
+
+      <!-- Artifacts panel (Phase 1.2) -->
+      <section class="rcp-page" data-rcp="artifacts" role="tabpanel" aria-hidden="true">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div class="panel-title" style="margin:0">Artifacts</div>
+          <div style="display:flex;gap:4px">
+            <button type="button" class="approve-btn" style="font-size:0.65rem" onclick="laylaArtifactsScan()" title="Re-scan current response for code blocks">⟳ Scan</button>
+            <button type="button" class="approve-btn" style="font-size:0.65rem;background:transparent;border-color:var(--border);color:var(--text-dim)" onclick="laylaArtifactsClear()" title="Clear artifact list">Clear</button>
+          </div>
+        </div>
+        <p class="rta-muted" style="margin:0 0 8px;font-size:0.65rem">Code blocks and documents extracted from responses. Click to expand, copy, or send edits back.</p>
+        <div id="artifacts-list" style="display:flex;flex-direction:column;gap:8px;max-height:calc(100vh - 220px);overflow-y:auto">
+          <span style="color:var(--text-dim);font-size:0.7rem">Artifacts appear here when Layla generates code blocks.</span>
+        </div>
+        <!-- Artifact edit modal -->
+        <div id="artifact-edit-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:3000;align-items:center;justify-content:center">
+          <div style="background:var(--bg-panel,#1a1a2e);border:1px solid var(--asp-line,var(--border));border-radius:6px;padding:16px;width:min(720px,92vw);max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span id="artifact-edit-lang" style="font-size:0.72rem;color:var(--asp);font-family:ui-monospace,monospace"></span>
+              <button type="button" onclick="laylaArtifactEditClose()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1rem">✕</button>
+            </div>
+            <textarea id="artifact-edit-content" style="width:100%;min-height:320px;box-sizing:border-box;font-family:ui-monospace,monospace;font-size:0.72rem;padding:10px;background:var(--code-bg);color:var(--text);border:1px solid var(--border);border-radius:4px;resize:vertical" spellcheck="false"></textarea>
+            <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+              <button type="button" class="approve-btn" style="font-size:0.72rem" onclick="laylaArtifactCopyEdit()" title="Copy content">Copy</button>
+              <button type="button" class="approve-btn" style="font-size:0.72rem" onclick="laylaArtifactSendEdit()" title="Send edited version to Layla">Send edits</button>
+              <button type="button" class="tab-btn" style="font-size:0.72rem" onclick="laylaArtifactEditClose()">Cancel</button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -613,8 +691,15 @@
 </div>
 
 <details id="operator-trace-dock" class="operator-trace-dock">
-  <summary>Operator trace</summary>
+  <summary>Operator trace <span id="stream-step-badge" style="font-size:0.58rem;opacity:0.7;margin-left:6px;font-family:ui-monospace,monospace;display:none"></span></summary>
   <p style="font-size:0.58rem;color:var(--text-dim);padding:0 8px 4px;margin:0;line-height:1.35">UI-only log of live stream signals (states, tools, thinking text). This is not a secret backchannel into the model — it mirrors server→browser events so you can confirm progress, stalls, and stops.</p>
+  <!-- Streaming stats row (Phase 1.6) -->
+  <div id="stream-stats-row" style="display:none;padding:3px 8px 4px;font-size:0.6rem;color:var(--text-dim);display:flex;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--border)">
+    <span id="stream-model-badge" title="Active model"></span>
+    <span id="stream-step-counter" title="Step count">step 0</span>
+    <span id="stream-token-counter" title="Approximate tokens streamed">0 chars</span>
+    <span id="stream-elapsed-counter" title="Time since start">0s</span>
+  </div>
   <div id="operator-trace-log" class="operator-trace-log"></div>
 </details>
 
@@ -755,5 +840,8 @@ if ('serviceWorker' in navigator) {
 <script src="/layla-ui/js/layla-wizard.js"></script>
 <script src="/layla-ui/js/layla-app.js"></script>
 <script src="/layla-ui/js/layla-conversations.js"></script>
+<script src="/layla-ui/js/layla-artifacts.js"></script>
+<script src="/layla-ui/js/layla-search.js"></script>
+<script src="/layla-ui/js/layla-memory.js"></script>
 </body>
 </html>
