@@ -185,10 +185,11 @@ def _get_tts():
     return _tts_engine
 
 
-def speak_to_bytes(text: str) -> bytes | None:
+def speak_to_bytes(text: str, speed_override: float | None = None) -> bytes | None:
     """
     Convert text to speech. Returns WAV bytes, or None on failure.
     Suitable for streaming from the /voice/speak API endpoint.
+    speed_override: 0.5–2.0 multiplier; None uses config default.
     """
     engine = _get_tts()
     if engine is None:
@@ -201,7 +202,10 @@ def speak_to_bytes(text: str) -> bytes | None:
     try:
         if _tts_type == "kokoro":
             import soundfile as sf
-            samples, sample_rate = engine.create(text)
+            create_kwargs = {}
+            if speed_override is not None:
+                create_kwargs["speed"] = max(0.5, min(2.0, float(speed_override)))
+            samples, sample_rate = engine.create(text, **create_kwargs) if create_kwargs else engine.create(text)
             buf = io.BytesIO()
             sf.write(buf, samples, sample_rate, format="WAV")
             return buf.getvalue()

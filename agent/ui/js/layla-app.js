@@ -688,14 +688,17 @@ function sanitizeHtml(html) {
   return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '').replace(/on\w+\s*=\s*["'][^"']*["']/gi, '').replace(/javascript:/gi, '');
 }
 
-// Aspect → TTS voice style (rate, pitch) for browser SpeechSynthesis
+// Aspect → TTS voice style (rate, pitch) for browser SpeechSynthesis fallback
+// rate: speaking speed multiplier; pitch: voice pitch (1=neutral, >1=higher, <1=lower)
+// Morrigan: fast/clipped/authoritative | Nyx: slow/measured | Echo: warm/rounded
+// Eris: playful/varied | Cassandra: rapid-fire | Lilith: slow/deliberate/weighted
 const TTS_VOICE_STYLES = {
-  morrigan: { rate: 0.95, pitch: 1 },
-  nyx: { rate: 0.85, pitch: 0.95 },
-  eris: { rate: 1.15, pitch: 1.05 },
-  echo: { rate: 0.9, pitch: 1.1 },
-  cassandra: { rate: 1.1, pitch: 1.05 },
-  lilith: { rate: 0.9, pitch: 0.98 },
+  morrigan:  { rate: 1.05, pitch: 0.90 },  // fast, lower pitch = authority
+  nyx:       { rate: 0.82, pitch: 0.88 },  // slow, low = thoughtful depth
+  eris:      { rate: 1.20, pitch: 1.12 },  // fast, high = playful energy
+  echo:      { rate: 0.90, pitch: 1.10 },  // medium-slow, higher = warmth
+  cassandra: { rate: 1.15, pitch: 1.05 },  // rapid, slightly elevated
+  lilith:    { rate: 0.78, pitch: 0.88 },  // very slow, low = deliberate weight
 };
 const UX_STATE_LABELS = {
   connecting: 'Connecting',
@@ -785,6 +788,65 @@ function operatorTraceLine(kind, text) {
   b.appendChild(line);
   while (b.children.length > 80) b.removeChild(b.firstChild);
   b.scrollTop = b.scrollHeight;
+}
+
+// ─── Phase 1.6: Stream stats dock ─────────────────────────────────────────────
+let _streamStatsActive = false;
+let _streamStepCount = 0;
+let _streamStartTs = 0;
+let _streamElapsedTimer = null;
+
+function laylaStreamStatsStart(modelName) {
+  _streamStatsActive = true;
+  _streamStepCount = 0;
+  _streamStartTs = Date.now();
+  const row = document.getElementById('stream-stats-row');
+  if (row) row.style.display = 'flex';
+  const badge = document.getElementById('stream-step-badge');
+  if (badge) { badge.textContent = ''; badge.style.display = 'inline'; }
+  const modelEl = document.getElementById('stream-model-badge');
+  if (modelEl) modelEl.textContent = modelName ? '⬡ ' + modelName : '';
+  _updateStreamStepEl();
+  clearInterval(_streamElapsedTimer);
+  _streamElapsedTimer = setInterval(_updateStreamElapsed, 1000);
+}
+
+function laylaStreamStatsStep(label) {
+  if (!_streamStatsActive) return;
+  _streamStepCount++;
+  _updateStreamStepEl();
+  if (label) operatorTraceLine('step', label);
+}
+
+function laylaStreamStatsChars(n) {
+  if (!_streamStatsActive) return;
+  const el = document.getElementById('stream-token-counter');
+  if (el) el.textContent = n + ' chars';
+}
+
+function laylaStreamStatsStop() {
+  _streamStatsActive = false;
+  clearInterval(_streamElapsedTimer);
+  _streamElapsedTimer = null;
+  const badge = document.getElementById('stream-step-badge');
+  if (badge) badge.style.display = 'none';
+  setTimeout(() => {
+    const row = document.getElementById('stream-stats-row');
+    if (row) row.style.display = 'none';
+  }, 3000);
+}
+
+function _updateStreamStepEl() {
+  const el = document.getElementById('stream-step-counter');
+  if (el) el.textContent = 'step ' + _streamStepCount;
+  const badge = document.getElementById('stream-step-badge');
+  if (badge && _streamStepCount > 0) badge.textContent = '· ' + _streamStepCount + ' steps';
+}
+
+function _updateStreamElapsed() {
+  if (!_streamStatsActive) return;
+  const el = document.getElementById('stream-elapsed-counter');
+  if (el) el.textContent = Math.round((Date.now() - _streamStartTs) / 1000) + 's';
 }
 function toggleComposePanel(force) {
   const p = document.getElementById('compose-panel');
@@ -2336,10 +2398,11 @@ async function speakText(text) {
   if (!_ttsEnabled || !text) return;
   // Try server-side TTS (kokoro-onnx) first; fall back to browser SpeechSynthesis
   try {
+    const _asp = (typeof currentAspect !== 'undefined' ? currentAspect : 'morrigan') || 'morrigan';
     const resp = await fetch('/voice/speak', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, aspect_id: _asp }),
     });
     if (resp.ok) {
       const arrayBuffer = await resp.arrayBuffer();
@@ -2960,6 +3023,7 @@ async function send() {
   // Chat chrome is rendered from FSM state via window.laylaOnChatState.
   try { laylaHeaderProgressStart(); } catch (_) {}
   try { operatorTraceClear(); } catch (_) {}
+  try { laylaStreamStatsStart(''); } catch (_) {}
 
   let msgAspect = currentAspect;
   const mentionMatch = msg.match(/^@([a-z]+)\s*/i);
@@ -3147,7 +3211,12 @@ async function send() {
             const ok = (obj.ok === true ? 'ok' : obj.ok === false ? 'fail' : '');
             const summary = String(obj.summary || '').trim();
             const line = '▸ ' + tool + (phase ? (' [' + phase + ']') : '') + (ok ? (' ' + ok) : '') + (summary ? (' — ' + summary) : '');
-            if (tool) appendThinkLine(line);
+            if (tool) { appendThinkLine(line); try { laylaStreamStatsStep(tool); } catch (_) {} }
+          }
+          if (obj.type === 'model_selection' || obj.model_selection) {
+            const ms = obj.model_selection || obj;
+            const mdl = String(ms.model || '').replace(/^claude-/i, '').replace(/-\d{8}$/, '');
+            try { const el = document.getElementById('stream-model-badge'); if (el && mdl) el.textContent = '⬡ ' + mdl; } catch (_) {}
           }
           if (obj.token) {
             liveStatus = 'streaming';
@@ -3170,6 +3239,7 @@ async function send() {
             }, stallMs);
             full += String(obj.token);
             if (bubble) bubble.textContent = full;
+            try { if (full.length % 200 === 0) laylaStreamStatsChars(full.length); } catch (_) {}
           }
           if (obj.done) {
             clearTimeout(firstTokenTimer);
@@ -3183,6 +3253,8 @@ async function send() {
             }
             if (_ttsEnabled && full) { try { speakText(full).catch(() => {}); } catch (_) {} }
             try { refreshMaturityCard(true); } catch (_) {}
+            try { laylaStreamStatsChars(full.length); laylaStreamStatsStop(); } catch (_) {}
+            try { if (typeof laylaIngestArtifacts === 'function') laylaIngestArtifacts(full); } catch (_) {}
           }
         }
       }
@@ -3206,6 +3278,8 @@ async function send() {
       addMsg('layla', resp, replyAspect, data?.state?.steps?.some(s => s.deliberated), data?.state?.steps, data?.state?.ux_states, data?.state?.memory_influenced);
       if (_ttsEnabled && resp && resp !== '(no output)') { speakText(resp).catch(() => {}); }
       try { refreshMaturityCard(true); } catch (_) {}
+      try { laylaStreamStatsStop(); } catch (_) {}
+      try { if (typeof laylaIngestArtifacts === 'function') laylaIngestArtifacts(resp); } catch (_) {}
     }
   } catch (e) {
     try { laylaRemoveTypingIndicator(); } catch (_) {}
@@ -3219,6 +3293,7 @@ async function send() {
     try { laylaRemoveTypingIndicator(); } catch (_) {}
     try { if (window.laylaChatFSM) window.laylaChatFSM.finishOk(); } catch (_) {}
     try { laylaHeaderProgressStop(); } catch (_) {}
+    try { laylaStreamStatsStop(); } catch (_) {}
     try { refreshApprovals(); } catch (_) {}
     try { updateContextChip(); } catch (_) {}
     try { if (typeof laylaScrollActiveConversationIntoView === 'function') laylaScrollActiveConversationIntoView(); } catch (_) {}

@@ -240,3 +240,143 @@ async def restore_file_checkpoint_http(request: Request):
 
     res = restore_file_checkpoint(checkpoint_id=cid)
     return JSONResponse(res)
+
+
+# ── Phase 1.3: Memory/Learnings Browser ─────────────────────────────────────
+
+@router.get("/browse")
+async def browse_learnings(
+    type: str = Query("", description="Filter by learning type (fact, strategy, outcome, preference, …)"),
+    q: str = Query("", description="Keyword filter on content"),
+    sort: str = Query("recent", description="Sort order: recent | confidence"),
+    page: int = Query(0, ge=0),
+    limit: int = Query(40, ge=1, le=200),
+):
+    """
+    Paginated browser for learnings. Supports type filter, keyword filter, and sort order.
+    Returns {ok, total, page, learnings:[{id, content, type, confidence, tags, created_at, source}]}.
+    """
+    try:
+        import sys
+        sys.path.insert(0, str(AGENT_DIR))
+        from layla.memory.db_connection import _conn
+        from layla.memory.migrations import migrate
+
+        migrate()
+        offset = page * limit
+        order = "confidence DESC, id DESC" if sort == "confidence" else "id DESC"
+
+        conditions = []
+        params: list = []
+        if type.strip():
+            conditions.append("(type=? OR learning_type=?)")
+            params += [type.strip(), type.strip()]
+        if q.strip():
+            conditions.append("content LIKE ?")
+            params.append(f"%{q.strip()}%")
+
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        with _conn() as db:
+            rows = db.execute(
+                f"SELECT id, content, type, confidence, tags, created_at, source, learning_type"
+                f" FROM learnings {where} ORDER BY {order} LIMIT ? OFFSET ?",
+                params + [limit, offset],
+            ).fetchall()
+            total = db.execute(
+                f"SELECT COUNT(*) FROM learnings {where}", params
+            ).fetchone()[0]
+
+        learnings = [
+            {
+                "id": r["id"],
+                "content": r["content"],
+                "type": r["learning_type"] or r["type"] or "fact",
+                "confidence": float(r["confidence"] or 0.5),
+                "tags": r["tags"] or "",
+                "created_at": r["created_at"] or "",
+                "source": r["source"] or "",
+            }
+            for r in rows
+        ]
+        return {"ok": True, "total": total, "page": page, "limit": limit, "learnings": learnings}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e), "learnings": []}, status_code=500)
+
+
+@router.patch("/{learning_id}")
+async def update_learning(learning_id: int, request: Request):
+    """
+    Update a learning's content and/or tags.
+    Body: {content?: string, tags?: string}.
+    """
+    try:
+        import sys
+        sys.path.insert(0, str(AGENT_DIR))
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"ok": False, "error": "body must be object"}, status_code=400)
+
+    updates: list[str] = []
+    params: list = []
+    if "content" in body and isinstance(body["content"], str):
+        c = body["content"].strip()
+        if c:
+            updates.append("content=?")
+            params.append(c)
+    if "tags" in body and isinstance(body["tags"], str):
+        updates.append("tags=?")
+        params.append(body["tags"].strip())
+
+    if not updates:
+        return JSONResponse({"ok": False, "error": "nothing to update"}, status_code=400)
+
+    try:
+        from layla.memory.db_connection import _conn
+        from layla.memory.migrations import migrate
+
+        migrate()
+        params.append(learning_id)
+        with _conn() as db:
+            cur = db.execute(
+                "UPDATE learnings SET " + ", ".join(updates) + " WHERE id=?",
+                params,
+            )
+            db.commit()
+        if cur.rowcount == 0:
+            return JSONResponse({"ok": False, "error": "not found"}, status_code=404)
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.delete("/{learning_id}")
+async def delete_learning(learning_id: int):
+    """Delete a learning by id. Also removes its Chroma embedding if one exists."""
+    try:
+        import sys
+        sys.path.insert(0, str(AGENT_DIR))
+        from layla.memory.db_connection import _conn
+        from layla.memory.migrations import migrate
+
+        migrate()
+        with _conn() as db:
+            row = db.execute(
+                "SELECT embedding_id FROM learnings WHERE id=?", (learning_id,)
+            ).fetchone()
+            cur = db.execute("DELETE FROM learnings WHERE id=?", (learning_id,))
+            db.commit()
+        if cur.rowcount == 0:
+            return JSONResponse({"ok": False, "error": "not found"}, status_code=404)
+        eid = (row["embedding_id"] if row and hasattr(row, "keys") else (row[0] if row else None)) or ""
+        if eid:
+            try:
+                from layla.memory.vector_store import delete_learning_embedding
+                delete_learning_embedding(str(eid))
+            except Exception:
+                pass
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
