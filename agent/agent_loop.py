@@ -677,8 +677,14 @@ def strip_junk_from_reply(text: str) -> str:
         t = _re.sub(r"^\s*assistant\s*:\s*I\s+replied\.\s*", "", t, count=1, flags=_re.IGNORECASE).strip()
         if t == prev:
             break
+    # Strip [EARNED_TITLE: ...] prefix (aspect unlock notifications leaked into reply)
+    t = _re.sub(r"^\s*\[EARNED_TITLE[^\]]*\]\s*", "", t, flags=_re.IGNORECASE).strip()
+    # Strip "AspectName: " role prefixes at the start
+    t = _re.sub(r"^(Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\s*:\s*", "", t).strip()
+    # Strip completion-gate retry injection lines if they leaked into the response
+    t = _re.sub(r"\[System:\s*Your last response[^\]]*\]\s*", "", t, flags=_re.IGNORECASE | _re.DOTALL).strip()
     # Truncate at prompt-echo markers (model echoed system prompt into reply)
-    for _marker in (r"\n\s*#{1,3}\s*TASK", r"\n\s*Current goal\s*:", r"\n\s*\[Active aspect\s*:", r"\n\s*##"):
+    for _marker in (r"(?:^|\n)\s*#{1,3}\s*(TASK|CONTEXT|SCRATCHPAD|REPO)\b", r"(?:^|\n)\s*Current goal\s*:", r"(?:^|\n)\s*\[Active aspect\s*:", r"(?:^|\n)\s*Last user message\s*:", r"(?:^|\n)\s*Repo snapshot\s*:", r"(?:^|\n)\s*Repo structure\s*:", r"(?:^|\n)\s*##"):
         m = _re.search(_marker, t, _re.IGNORECASE)
         if m:
             t = t[: m.start()].strip()
@@ -868,7 +874,7 @@ def _stream_reason_body(
     buffer = ""
     held_tokens: list[str] = []   # tokens held while we check for JSON blob start
     _json_suppressed = False
-    _PROMPT_ECHO_RE = re.compile(r"\n\s*(##\s*TASK\b|Current goal\s*:|\[Active aspect\s*:)", re.IGNORECASE)
+    _PROMPT_ECHO_RE = re.compile(r"(?:^|\n)\s*(##\s*(TASK|CONTEXT|SCRATCHPAD|REPO)\b|Current goal\s*:|\[Active aspect\s*:|Last user message\s*:|Repo snapshot\s*:|Repo structure\s*:)", re.IGNORECASE | re.MULTILINE)
     for token in gen:
         buffer += token
         if any(s in buffer for s in stop):
