@@ -722,6 +722,7 @@ def stream_reason(
     persona_focus: str = "",
     workspace_root: str = "",
     cognition_workspace_roots: list[str] | None = None,
+    budget_retrieval_depth: str = "",
 ):
     """
     Build the same prompt as the reason path and yield token strings from streaming completion.
