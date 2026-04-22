@@ -478,6 +478,23 @@ def _get_llm():
                          "n_threads", "n_threads_batch", "use_mlock", "use_mmap", "verbose"}
             inst = Llama(**{k: v for k, v in kwargs.items() if k in safe_keys})
 
+        # Guard: llama-cpp-python <=0.3.16 bug — when draft_model is set, _logits_all is
+        # forced True at runtime but scores is still allocated (n_batch, vocab) instead of
+        # (n_ctx, vocab). Any prompt > n_batch tokens causes a broadcast ValueError.
+        # Detect and fix: resize scores to (n_ctx, vocab) so eval() writes land correctly.
+        try:
+            import numpy as np
+            if getattr(inst, "_logits_all", False) and inst.scores.shape[0] < n_ctx:
+                logger.warning(
+                    "llm scores array mismatch (shape=%s, n_ctx=%d) — resizing. "
+                    "This is a llama-cpp-python speculative-decoding bug; "
+                    "set speculative_decoding_enabled=false to avoid it.",
+                    inst.scores.shape, n_ctx,
+                )
+                inst.scores = np.ndarray((n_ctx, inst._n_vocab), dtype=np.single)
+        except Exception as _e:
+            logger.debug("scores resize check failed: %s", _e)
+
         _llm_by_path[path_key] = inst
         if _llm is None:
             _llm = inst
@@ -531,7 +548,9 @@ def get_stop_sequences():
     stop = cfg.get("stop_sequences")
     if isinstance(stop, list) and stop:
         return [str(s) for s in stop if s]
-    return ["\nUser:", " User:"]
+    # Stop the model from echoing system-prompt section headers back into replies.
+    # SmolLM2 and similar small models tend to repeat ## CONTEXT / ## TASK verbatim.
+    return ["\nUser:", " User:", "\n## ", "## CONTEXT", "## TASK", "## SCRATCHPAD", "## REPO", "<|endoftext|>", "<|im_end|>"]
 
 
 def _count_tokens(text: str) -> int:
