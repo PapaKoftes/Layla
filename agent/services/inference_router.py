@@ -266,27 +266,50 @@ def run_completion_llama_cpp(
         extra_kw["reasoning_budget"] = reasoning_budget
     # If llama-cpp-python doesn't support reasoning_budget, drop it (TypeError)
     def _call_create_completion(stream_mode: bool = False, **kwargs):
+        # Full KV cache reset: clear C-level cache + reset Python n_tokens counter.
+        # Both are required — reset() alone leaves C cache stale; kv_cache_clear()
+        # alone leaves n_tokens > 0, causing mismatched scoring on the next eval.
         try:
-            return llm.create_completion(prompt, stream=stream_mode, **kwargs)
-        except TypeError:
-            kwargs.pop("reasoning_budget", None)
-            return llm.create_completion(prompt, stream=stream_mode, **kwargs)
+            llm._ctx.kv_cache_clear()
+        except Exception:
+            pass
+        try:
+            llm.reset()  # sets n_tokens = 0
+        except Exception:
+            pass
+        kwargs.pop("reasoning_budget", None)  # not supported in 0.3.16
+        return llm.create_completion(prompt, stream=stream_mode, **kwargs)
     if stream:
         def gen():
-            with _llm_lock:
-                for chunk in _call_create_completion(
-                    stream_mode=True,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    top_p=top_p,
-                    repeat_penalty=repeat_penalty,
-                    top_k=top_k,
-                    stop=stop,
-                    **extra_kw,
-                ):
-                    t = (chunk.get("choices") or [{}])[0].get("text") or ""
-                    if t:
-                        yield t
+            for _attempt in range(2):
+                try:
+                    with _llm_lock:
+                        for chunk in _call_create_completion(
+                            stream_mode=True,
+                            max_tokens=max_tokens,
+                            temperature=temperature,
+                            top_p=top_p,
+                            repeat_penalty=repeat_penalty,
+                            top_k=top_k,
+                            stop=stop,
+                            **extra_kw,
+                        ):
+                            t = (chunk.get("choices") or [{}])[0].get("text") or ""
+                            if t:
+                                yield t
+                    return  # success
+                except Exception as _se:
+                    _emsg = str(_se)
+                    if "broadcast" in _emsg or "shape" in _emsg:
+                        # KV cache corruption — invalidate and retry once
+                        try:
+                            from services.llm_gateway import invalidate_llm_cache
+                            invalidate_llm_cache()
+                        except Exception:
+                            pass
+                        if _attempt == 0:
+                            continue
+                    raise
         return gen()
     import concurrent.futures as _cf
     timeout_s = int(cfg.get("llm_local_timeout_seconds", 180) or 180)
@@ -308,11 +331,18 @@ def run_completion_llama_cpp(
             except _cf.TimeoutError:
                 try:
                     from services.llm_gateway import invalidate_llm_cache
-
                     invalidate_llm_cache()
                 except Exception:
                     pass
                 return {"choices": [{"message": {"content": "Local LLM timed out. Cache invalidated; retry."}}]}
+            except Exception as _fe:
+                if "broadcast" in str(_fe) or "shape" in str(_fe):
+                    try:
+                        from services.llm_gateway import invalidate_llm_cache
+                        invalidate_llm_cache()
+                    except Exception:
+                        pass
+                raise
     if isinstance(out, dict):
         return out
     text = "".join((c.get("choices") or [{}])[0].get("text") or "" for c in out)
