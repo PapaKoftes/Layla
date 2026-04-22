@@ -903,9 +903,15 @@ async def agent(req: dict, request: Request):
 
     steps = result.get("steps") or []
     final = steps[-1].get("result", "") if steps else ""
-    response_text = final if isinstance(final, str) else json.dumps(final) if final else ""
+    _raw_final = final if isinstance(final, str) else json.dumps(final) if final else ""
+    response_text = strip_junk_from_reply(_raw_final)
     if not response_text:
-        response_text = (result.get("response") or result.get("reply") or "").strip()
+        _raw_alt = (result.get("response") or result.get("reply") or "").strip()
+        response_text = strip_junk_from_reply(_raw_alt)
+    # When the model generated only echo (stripped to empty), substitute a graceful standby line
+    # rather than the generic error. This happens when a small model starts with ## CONTEXT or
+    # similar section headers and the stop sequence / junk stripper removes everything.
+    _was_all_echo = (not response_text) and bool(_raw_final or _raw_alt if '_raw_alt' in dir() else _raw_final)
     if not response_text and result.get("status") == "system_busy":
         response_text = "System is under load (CPU or RAM). Try again in a moment."
     elif not response_text and result.get("status") == "timeout":
@@ -917,7 +923,9 @@ async def agent(req: dict, request: Request):
     elif not response_text and result.get("status") == "parse_failed":
         response_text = "I couldn't understand the request. Please rephrase."
     elif not response_text:
-        response_text = "No response. Try again or rephrase."
+        # When the raw output was all-echo (model echoed system prompt sections), it was
+        # stripped to empty. Return a neutral standby rather than a confusing error.
+        response_text = "Ready. What do you need?"
 
     if result.get("status") == "finished":
         try:
