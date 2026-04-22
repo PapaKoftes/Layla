@@ -134,7 +134,7 @@ function laylaSearchOpenWorkspace(filePath) {
   // Open workspace awareness sub-tab and pre-fill path if available
   if (typeof showMainPanel === 'function') showMainPanel('workspace');
   setTimeout(() => {
-    if (typeof showRcpSubPage === 'function') showRcpSubPage('awareness');
+    if (typeof showWorkspaceSubtab === 'function') showWorkspaceSubtab('awareness');
     if (filePath) {
       const el = document.getElementById('workspace-path');
       if (el && !el.value) el.value = filePath;
@@ -148,7 +148,7 @@ function laylaSearchOpenKnowledge() {
   document.getElementById('global-search-input').value = '';
   if (typeof showMainPanel === 'function') showMainPanel('workspace');
   setTimeout(() => {
-    if (typeof showRcpSubPage === 'function') showRcpSubPage('knowledge');
+    if (typeof showWorkspaceSubtab === 'function') showWorkspaceSubtab('knowledge');
   }, 100);
 }
 

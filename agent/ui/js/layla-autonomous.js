@@ -152,18 +152,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const orig = window.laylaRunAutonomousResearch;
   if (typeof orig !== 'function') return;
   window.laylaRunAutonomousResearch = async function() {
-    // Generate a task id for monitoring
-    const taskId = 'auto_' + Date.now();
+    window._laylaCurrentAutoTaskId = null;
     const goalEl = document.getElementById('autonomous-goal');
     const goal = goalEl ? goalEl.value.trim() : '';
-    // Inject task id into the request payload via a hidden field
+    // Call orig — it runs synchronously until its first await (the fetch),
+    // setting window._laylaCurrentAutoTaskId before yielding control back here.
+    const runPromise = orig.call(this, ...arguments);
+    const taskId = window._laylaCurrentAutoTaskId || ('auto_' + Date.now());
     window._laylaAutoMonitorTaskId = taskId;
     laylaAutoMonitorStart(taskId, goal);
     try {
-      await orig.call(this, ...arguments);
+      await runPromise;
     } finally {
-      // Final poll after completion
-      setTimeout(_autoPoll, 500);
+      setTimeout(() => { _autoPoll().catch(() => {}); }, 500);
     }
   };
 });

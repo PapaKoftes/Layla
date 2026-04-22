@@ -49,12 +49,19 @@ async def global_search(
                     " WHERE title LIKE ? ORDER BY updated_at DESC LIMIT ?",
                     (f"%{q}%", per_group),
                 ).fetchall()
-                # Also search messages via FTS when available
-                msg_rows = db.execute(
-                    "SELECT DISTINCT conversation_id FROM conversation_messages_fts"
-                    " WHERE conversation_messages_fts MATCH ? LIMIT ?",
-                    (q, per_group),
-                ).fetchall()
+            # FTS search is best-effort; must not discard title LIKE results on failure
+            msg_rows = []
+            try:
+                # Escape FTS special chars by wrapping in double quotes
+                _fts_q = '"' + q.replace('"', '""') + '"'
+                with _conn() as db:
+                    msg_rows = db.execute(
+                        "SELECT DISTINCT conversation_id FROM conversation_messages_fts"
+                        " WHERE conversation_messages_fts MATCH ? LIMIT ?",
+                        (_fts_q, per_group),
+                    ).fetchall()
+            except Exception:
+                pass
             seen = {str(r["id"]) for r in rows}
             for r in rows:
                 conversations.append({
