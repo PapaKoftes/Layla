@@ -677,6 +677,11 @@ def strip_junk_from_reply(text: str) -> str:
         t = _re.sub(r"^\s*assistant\s*:\s*I\s+replied\.\s*", "", t, count=1, flags=_re.IGNORECASE).strip()
         if t == prev:
             break
+    # Truncate at prompt-echo markers (model echoed system prompt into reply)
+    for _marker in (r"\n\s*#{1,3}\s*TASK", r"\n\s*Current goal\s*:", r"\n\s*\[Active aspect\s*:", r"\n\s*##"):
+        m = _re.search(_marker, t, _re.IGNORECASE)
+        if m:
+            t = t[: m.start()].strip()
     if _is_junk_reply(t):
         return ""
     return t
@@ -863,9 +868,21 @@ def _stream_reason_body(
     buffer = ""
     held_tokens: list[str] = []   # tokens held while we check for JSON blob start
     _json_suppressed = False
+    _PROMPT_ECHO_RE = re.compile(r"\n\s*(##\s*TASK\b|Current goal\s*:|\[Active aspect\s*:)", re.IGNORECASE)
     for token in gen:
         buffer += token
         if any(s in buffer for s in stop):
+            break
+        # Stop streaming if model starts echoing system prompt markers
+        if _PROMPT_ECHO_RE.search(buffer):
+            m = _PROMPT_ECHO_RE.search(buffer)
+            clean = buffer[:m.start()].strip()
+            if held_tokens:
+                # Still in the initial buffer phase — yield clean text, discard junk tokens
+                held_tokens.clear()
+                if clean and not _is_junk_reply(clean):
+                    yield clean
+            buffer = clean
             break
         # Hold tokens until we know the reply isn't a raw decision-JSON blob.
         # Decision blobs start with '{' ÔÇö we hold up to 120 chars before committing.
