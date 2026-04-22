@@ -20,6 +20,11 @@ function _dbg() {
 }
 _dbg('script started');
 
+function laylaAgentTimeoutMs() {
+  const stored = parseInt(localStorage.getItem('layla_agent_timeout_ms') || '', 10);
+  return (stored > 0 && stored <= 600000) ? stored : 120000;
+}
+
 // triggerSend and Enter listener already registered by bootstrap script above; ensure window.send wrapper can delegate to full send()
 try {
 function formatAgentError(res, body) {
