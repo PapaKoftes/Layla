@@ -46,6 +46,7 @@ const ASPECT_COLORS = {
 };
 
 let _lastAspectSwitchTime = 0;
+let _aspectLocked = false;    // declared early to avoid TDZ if setAspect fires before line ~1843
 function setAspect(id, force) {
   if (_aspectLocked && !force) return; // locked — ignore sidebar clicks unless forced
   currentAspect = id;
@@ -1840,7 +1841,7 @@ let _mentionActive = false;   // dropdown is open
 window._mentionActive = false; // for listeners that run in finally (may run before this line)
 let _mentionIdx = 0;          // selected item index
 let _mentionAspectOverride = null; // one-shot aspect for next send
-let _aspectLocked = false;    // lock prevents auto-route
+// _aspectLocked declared near top of file to avoid TDZ
 
 // ── Aspect lock ──────────────────────────────────────────────────────────────
 function toggleAspectLock() {
@@ -3835,6 +3836,7 @@ window.laylaRunAutonomousResearch = async function laylaRunAutonomousResearch() 
   const taskId = (window.crypto && typeof window.crypto.randomUUID === 'function')
     ? window.crypto.randomUUID()
     : ('au-' + String(Date.now()));
+  window._laylaCurrentAutoTaskId = taskId; // expose for layla-autonomous.js monitor
   var sumOut = document.getElementById('autonomous-result-summary');
   if (sumOut) sumOut.textContent = 'Running… (task ' + taskId.slice(0, 8) + ')';
   if (out) out.textContent = 'Running (task ' + taskId.slice(0, 8) + '…)…\nPoll /agent/tasks for tool progress.';
