@@ -171,8 +171,8 @@ async def v1_chat_completions(req: dict):
                         finally:
                             tok_q.put(None)
 
-                    loop = asyncio.get_running_loop()
-                    await loop.run_in_executor(None, _stream_worker)
+                    import threading as _threading
+                    _threading.Thread(target=_stream_worker, daemon=True).start()
                     while True:
                         token = await asyncio.to_thread(tok_q.get)
                         if token is None:
