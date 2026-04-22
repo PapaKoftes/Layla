@@ -68,12 +68,8 @@ def check_python_compatibility() -> dict[str, Any]:
         import concurrent.futures  # noqa: F401
     except ImportError as e:
         issues.append(f"concurrent.futures: {e}")
-    try:
-        import sentence_transformers  # noqa: F401
-    except ImportError as e:
-        issues.append(
-            f"sentence_transformers: {e} (install agent/requirements.txt in your venv)"
-        )
+    # sentence_transformers is optional — reranking degrades gracefully without it
+    # (do not add to issues; server ran 3+ days without it on 0.3.16)
 
     if issues:
         return {
