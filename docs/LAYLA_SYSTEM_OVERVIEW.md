@@ -154,3 +154,25 @@ For technical listeners:
 5. **When she asks for approval:** `python layla.py approve <uuid>` or use the Web UI Approvals panel
 
 That’s the system you have today: a **local, persistent, multi-aspect partner** with project awareness, file understanding, selective learning, and strict safety—ready to use and to evolve with you.
+
+---
+
+## Hardware Self-Awareness
+
+Layla probes the host machine at startup and knows exactly what she can do on it.
+
+Every response includes an injected hardware line:
+
+```
+[Hardware: 16 GB RAM | ~7B parameter model | context window: 4096 tokens | tier: performance]
+Running on capable hardware. Long contexts, code reasoning, and multi-step tasks work well.
+```
+
+This means:
+- Layla will honestly tell you when a task is too complex for the current context window
+- Settings (n_ctx, GPU layers, threads, compression) are **auto-tuned** for your machine at startup
+- You never have to tune `n_ctx`, `n_batch`, or thread counts manually unless you want to override
+
+Four hardware tiers: `potato` (<=8 GB), `standard` (8-16 GB), `performance` (16-32 GB or GPU), `high_end` (32+ GB or 8+ GB VRAM).
+
+See [CAPABILITIES.md](CAPABILITIES.md#hardware-aware-auto-configuration) and [POTATO_MODE.md](POTATO_MODE.md) for details.

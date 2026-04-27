@@ -199,3 +199,78 @@ CAPABILITY_SEARCH_TERMS["my_capability"] = ["term1", "term2"]
 def benchmark_my_capability(impl_id: str) -> dict: ...
 # Register in run_benchmark()
 ```
+
+---
+
+## Hardware-Aware Auto-Configuration
+
+**Module:** `agent/services/hardware_probe.py`
+
+Layla probes the host machine at startup and automatically configures optimal
+inference settings -- no manual tuning required. The probe is non-blocking and
+falls back gracefully when optional dependencies (psutil, torch) are absent.
+
+### What gets probed
+
+| Property | How |
+|----------|-----|
+| Total + available RAM | psutil (preferred) or `/proc/meminfo` |
+| CPU cores (physical + logical) | psutil + `os.cpu_count()` |
+| GPU name + VRAM | PyTorch CUDA, then nvidia-smi, then Apple Metal |
+| Model file size | `runtime_config.json` `model_filename` |
+| Estimated model parameters | ~550 MB per billion params (Q4 GGUF rule of thumb) |
+
+### Hardware tiers
+
+| Tier | Criteria | n_ctx | GPU offload |
+|------|----------|-------|-------------|
+| `potato` | <8 GB RAM, CPU-only | 2048 | 0 layers |
+| `standard` | 8-16 GB RAM | 4096 | 0 layers |
+| `performance` | 16-32 GB RAM or >=4 GB VRAM | 4096 | partial/full |
+| `high_end` | 32+ GB RAM or >=8 GB VRAM | 8192 | full (-1) |
+
+### Settings automatically tuned
+
+`n_ctx`, `n_batch`, `n_threads`, `n_threads_batch`, `n_gpu_layers`,
+`flash_attn`, `speculative_decoding_enabled`,
+`context_aggressive_compress_enabled`, `context_auto_compact_ratio`
+
+**Config file values always win** -- hardware defaults only fill gaps where
+no explicit value is set.
+
+### Capability summary (system prompt injection)
+
+Every response includes a one-sentence hardware summary injected into the system
+prompt so Layla can accurately describe her own limits:
+
+```
+[Hardware: 16 GB RAM | ~7B parameter model | context window: 4096 tokens | tier: performance]
+Running on capable hardware. Long contexts, code reasoning, and multi-step tasks work well.
+```
+
+This is what lets Layla say "I can handle that" or "that will likely time out on
+this hardware" with real accuracy instead of guessing.
+
+### API
+
+```python
+from services.hardware_probe import (
+    get_hardware_profile,     # full dict (RAM, CPU, GPU, model, tier, recs)
+    get_capability_summary,   # 1-3 sentence string for system prompt
+    get_recommended_settings, # dict of optimal config keys
+    apply_to_config,          # overlay recs onto existing cfg dict
+    probe_hardware,           # re-probe, force=True to bypass cache
+)
+```
+
+### Cache
+
+Results are cached in memory (TTL 1h) and on disk at
+`agent/.layla/hardware_probe_cache.json`.  Re-probe after hot-plugging a GPU:
+
+```bash
+curl -X POST http://localhost:8000/health/hardware_probe?force=true
+```
+
+(Endpoint served by the health router when implemented.)
+

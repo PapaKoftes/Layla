@@ -35,3 +35,38 @@ Potato mode is **local configuration only**. It does not change approval rules, 
 ## Reverting
 
 Use Settings to set values back, edit `runtime_config.json`, or remove keys and rely on defaults from `runtime_safety.load_config()`.
+
+---
+
+## Relationship to Hardware Auto-Configuration
+
+`potato` mode and the hardware probe work together:
+
+1. **Hardware probe** (runs at every startup) detects your machine and applies
+   conservative defaults automatically if your RAM is below 8 GB.  On a
+   `potato`-tier machine it sets:
+   - `n_ctx`: 2048 (or less if the model barely fits in RAM)
+   - `context_aggressive_compress_enabled`: true
+   - `context_auto_compact_ratio`: 0.65
+   - `n_gpu_layers`: 0
+
+2. **Potato preset** (manual override via UI/API) lets you _force_ these
+   constraints on any hardware -- useful when you want Layla running quietly
+   in the background on a capable machine.
+
+**The probe never overwrites an explicit config value.**
+If you set `n_ctx: 8192` in `runtime_config.json`, the probe respects it even
+on a 4 GB RAM machine (though the model may crash or OOM -- that is your choice).
+
+## Layla's self-awareness
+
+Every system prompt includes a one-line hardware summary:
+
+```
+[Hardware: 4 GB RAM, CPU-only | ~0.4B parameter model | context window: 2048 tokens | tier: potato]
+Running on constrained hardware with a small model. Context window is tight; best on short focused tasks.
+```
+
+This is injected automatically by `agent_loop.py` via `hardware_probe.get_capability_summary()`.
+Layla uses it to honestly tell you when something is too complex for the current setup
+rather than silently timing out or returning a truncated mess.
