@@ -1593,15 +1593,19 @@ def _build_system_head(
     from services.context_merge_layers import MEMORY_SECTION_ORDER
 
     memory_sections: dict[str, str] = {}
-    if git_preamble:
+    # Small-model guard: skip expensive sections when context window ≤ 4096.
+    # Full injection overflows the window by ~2000 tokens on small models.
+    _n_ctx = int(cfg.get("n_ctx", 4096) or 4096)
+    _small_model = _n_ctx <= 4096
+    if git_preamble and not _small_model:
         memory_sections["git_preamble"] = git_preamble
-    if project_instructions:
+    if project_instructions and not _small_model:
         memory_sections["project_instructions"] = "Project instructions:\n" + project_instructions
     try:
         from services.repo_cognition import format_cognition_for_prompt, merge_cognition_roots
 
         _cog_roots = merge_cognition_roots(workspace_root, cognition_workspace_roots)
-        if _cog_roots and cfg.get("repo_cognition_inject_enabled", True):
+        if _cog_roots and cfg.get("repo_cognition_inject_enabled", True) and not _small_model:
             _cog_max = int(cfg.get("repo_cognition_max_chars", 6000) or 6000)
             _cog_block = format_cognition_for_prompt(_cog_roots, max_chars=_cog_max)
             if _cog_block.strip():
@@ -1644,13 +1648,14 @@ def _build_system_head(
         logger.debug("context[project_memory] failed: %s", _e)
     if _pm_chunks:
         memory_sections["project_memory"] = "\n\n".join(_pm_chunks)
-    try:
-        _codex_block, _ = _relationship_codex_context(cfg, workspace_root)
-        if _codex_block.strip():
-            memory_sections["relationship_codex"] = _codex_block.strip()
-    except Exception as _e:
-        logger.debug("context[relationship_codex] failed: %s", _e)
-    if skills_block:
+    if not _small_model:
+        try:
+            _codex_block, _ = _relationship_codex_context(cfg, workspace_root)
+            if _codex_block.strip():
+                memory_sections["relationship_codex"] = _codex_block.strip()
+        except Exception as _e:
+            logger.debug("context[relationship_codex] failed: %s", _e)
+    if skills_block and not _small_model:
         memory_sections["skills"] = "Matched skills:\n" + skills_block
     if aspect_memories:
         memory_sections["aspect_memories"] = aspect_memories
@@ -1660,17 +1665,18 @@ def _build_system_head(
         memory_sections["semantic_recall"] = f"Relevant memories:\n{semantic}"
     if retrieved_context:
         memory_sections["retrieved_context"] = retrieved_context
-    try:
-        from layla.memory.db import get_recent_conversation_summaries
-        summaries = get_recent_conversation_summaries(n=3)
-        if summaries:
-            summary_texts = [s.get("summary", "") for s in summaries if s.get("summary")]
-            if summary_texts:
-                memory_sections["conversation_summaries"] = "Prior conversation summaries:\n" + "\n\n".join(summary_texts)
-    except Exception as _e:
-        logger.debug("context[conversation_summaries] failed: %s", _e)
-    # Relationship memory + timeline events: skip for trivial/chat turns
-    if not _skip_expensive:
+    if not _small_model:
+        try:
+            from layla.memory.db import get_recent_conversation_summaries
+            summaries = get_recent_conversation_summaries(n=3)
+            if summaries:
+                summary_texts = [s.get("summary", "") for s in summaries if s.get("summary")]
+                if summary_texts:
+                    memory_sections["conversation_summaries"] = "Prior conversation summaries:\n" + "\n\n".join(summary_texts)
+        except Exception as _e:
+            logger.debug("context[conversation_summaries] failed: %s", _e)
+    # Relationship memory + timeline events: skip for trivial/chat turns or small models
+    if not _skip_expensive and not _small_model:
         try:
             from layla.memory.db import get_recent_relationship_memories
             rel_mems = get_recent_relationship_memories(n=3)
@@ -1785,8 +1791,8 @@ def _build_system_head(
         logger.debug("context[user_identity] failed: %s", _e)
     if _style_identity_parts:
         memory_sections["style_and_identity"] = "\n\n".join(_style_identity_parts)
-    # Personal knowledge graph: skip for trivial turns
-    if not _skip_expensive:
+    # Personal knowledge graph: skip for trivial turns or small models
+    if not _skip_expensive and not _small_model:
         try:
             from services.personal_knowledge_graph import get_personal_graph_context
             pkg_ctx = get_personal_graph_context(goal or "", max_chars=400)
@@ -1794,7 +1800,7 @@ def _build_system_head(
                 memory_sections["personal_knowledge_graph"] = "Personal context (relevant):\n" + pkg_ctx
         except Exception as _e:
             logger.debug("context[personal_knowledge_graph] failed: %s", _e)
-    if not _skip_expensive:
+    if not _skip_expensive and not _small_model:
         try:
             from services.rl_feedback import get_rl_hint_for_prompt
 
@@ -1803,8 +1809,8 @@ def _build_system_head(
                 memory_sections["rl_feedback"] = rl_hint
         except Exception:
             pass
-    # Reasoning strategies for complex goals
-    if goal and len(goal) > 100:
+    # Reasoning strategies for complex goals (skip on small models)
+    if goal and len(goal) > 100 and not _small_model:
         try:
             from services.reasoning_strategies import get_strategy_prompt_hint
             hint = get_strategy_prompt_hint(goal)
@@ -1813,7 +1819,7 @@ def _build_system_head(
         except Exception as _e:
             logger.debug("context[reasoning_strategies] failed: %s", _e)
     # Golden examples: inject small successful patterns for similar goals (token-bounded).
-    if not _skip_expensive:
+    if not _skip_expensive and not _small_model:
         try:
             if cfg.get("golden_examples_enabled", True):
                 from services.golden_examples import bump_usage as _ge_bump_usage
