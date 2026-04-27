@@ -242,12 +242,30 @@ def build_system_prompt(
 
     Returns (assembled_prompt, metrics_dict).
     """
+    # Small-model guard: when context window is ≤ 4096 tokens, the full 18-section
+    # injection overflows the window by ~2000+ tokens before the model can respond.
+    # Cap budgets aggressively so identity+task+1-2 memories fit with room to reply.
+    _small_model = n_ctx <= 4096
     if budgets is None:
-        try:
-            from services.context_budget import get_budgets
-            budgets = get_budgets(n_ctx)
-        except Exception:
-            budgets = DEFAULT_BUDGETS.copy()
+        if _small_model:
+            budgets = {
+                "system_instructions": 600,   # identity + aspect only, no tool list
+                "current_goal": 80,
+                "agent_state": 0,             # skip scratchpad entirely
+                "pinned_context": 0,          # skip
+                "memory": 300,                # 1-2 relevant memories max
+                "knowledge_graph": 0,
+                "knowledge": 0,
+                "tools": 0,
+                "conversation": 400,          # last 3-4 turns
+                "current_task": 60,
+            }
+        else:
+            try:
+                from services.context_budget import get_budgets
+                budgets = get_budgets(n_ctx)
+            except Exception:
+                budgets = DEFAULT_BUDGETS.copy()
     total_budget = max(512, n_ctx - reserve_for_response)
     order = [
         "system_instructions",

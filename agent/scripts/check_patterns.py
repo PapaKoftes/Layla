@@ -318,6 +318,38 @@ def check_kwarg_mismatches():
 
 
 # ---------------------------------------------------------------------------
+# CHECK 11: Context overflow — small-model guard missing
+# Pattern: heavy sections (repo_cognition, relationship_codex, golden_examples etc.)
+#          injected without _small_model / n_ctx guard.
+# Why: on n_ctx=4096 the full injection exceeds the window by ~2000 tokens.
+# ---------------------------------------------------------------------------
+_HEAVY_SECTIONS = [
+    "repo_cognition", "relationship_codex", "timeline_events",
+    "personal_knowledge_graph", "golden_examples", "rl_feedback",
+    "reasoning_strategies", "conversation_summaries", "relationship_memory",
+]
+_RE_SMALL_GUARD = re.compile(r"_small_model|small_model_mode|n_ctx.*<=.*4096|4096.*n_ctx")
+
+def check_context_overflow_guard():
+    target = REPO_ROOT / "agent_loop.py"
+    if not target.exists():
+        return
+    src = target.read_text(encoding="utf-8", errors="replace")
+    src_lines = src.splitlines()
+    for section in _HEAVY_SECTIONS:
+        pattern = re.compile(rf'memory_sections\["{section}"\]')
+        for i, line in enumerate(src_lines, 1):
+            if pattern.search(line):
+                # Check up to 20 lines back (guards may be on outer if-block)
+                window = "\n".join(src_lines[max(0, i - 20) : i + 2])
+                if not _RE_SMALL_GUARD.search(window):
+                    report("CTX_OVERFLOW", target, i, line,
+                           f'"{section}" injected without _small_model guard; '
+                           "overflows n_ctx=4096 — add `if not _small_model:` around this block")
+                break  # one report per section is enough
+
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 
@@ -337,6 +369,7 @@ def run_all():
         ("LOGITS_MISMATCH",   check_logits_mismatch),
         ("STOP_SEQ",          check_stop_sequences),
         ("KWARG_MISMATCH",    check_kwarg_mismatches),
+        ("CTX_OVERFLOW",      check_context_overflow_guard),
     ]
 
     for name, fn in checks:
