@@ -303,7 +303,7 @@ def search_learnings_fts(query: str, n: int = 20, aspect_id: str | None = None) 
                    WHERE learnings_fts MATCH ?{asp_sql}
                    ORDER BY rank
                    LIMIT ?""",
-                (query, *asp_args, n),
+                ('"' + query.replace('"', '""') + '"', *asp_args, n),
             ).fetchall()
             result = [dict(r) for r in rows]
             for r in result:

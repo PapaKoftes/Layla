@@ -112,10 +112,11 @@ async def global_search(
             try:
                 from layla.memory.db_connection import _conn
                 with _conn() as db:
+                    _fts_q = '"' + q.replace('"', '""') + '"'
                     rows = db.execute(
                         "SELECT id, content, type FROM learnings_fts"
                         " WHERE learnings_fts MATCH ? LIMIT ?",
-                        (q, per_group),
+                        (_fts_q, per_group),
                     ).fetchall()
                 seen_ids = {str(r.get("id")) for r in learnings if r.get("id")}
                 for r in rows:
