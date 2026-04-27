@@ -278,3 +278,150 @@ def hardware_class(hw: dict | None = None) -> str:
     if tier == "tier3":
         return "strong"
     return "workstation"
+
+
+# ---------------------------------------------------------------------------
+# Optimal settings recommendation (builds on detect_hardware())
+# ---------------------------------------------------------------------------
+
+_TIER_MAP = {"tier1": "potato", "tier2": "standard", "tier3": "performance", "tier4": "high_end"}
+_TIER_CTX = {"potato": 2048, "standard": 4096, "performance": 4096, "high_end": 8192}
+_TIER_BATCH = {"potato": 512, "standard": 1024, "performance": 2048, "high_end": 2048}
+_TIER_RATIO = {"potato": 0.65, "standard": 0.70, "performance": 0.75, "high_end": 0.75}
+
+def get_recommended_settings(hw: dict | None = None) -> dict:
+    """
+    Return recommended llama-cpp-python config settings for this hardware.
+    Config-file explicit values should always override these.
+    """
+    h = hw if hw is not None else detect_hardware()
+    tier_raw = str(h.get("machine_tier") or "tier2")
+    tier = _TIER_MAP.get(tier_raw, "standard")
+    ram_gb = h.get("ram_gb", 16.0)
+    vram_gb = h.get("vram_gb", 0.0)
+    cpu_physical = h.get("cpu_physical") or h.get("cpu_cores", 4)
+    cpu_logical = h.get("cpu_cores", 4)
+    has_gpu = (h.get("acceleration_backend") or "none") != "none"
+
+    n_ctx = _TIER_CTX[tier]
+
+    # Adjust n_ctx for model size vs RAM headroom
+    try:
+        import runtime_safety
+        cfg = runtime_safety.load_config() or {}
+        model_path = (cfg.get("model_path") or cfg.get("model_filename") or "").strip()
+        if model_path:
+            from pathlib import Path as _Path
+            p = _Path(model_path)
+            if p.exists():
+                model_mb = p.stat().st_size // (1024 * 1024)
+                ram_mb = int(ram_gb * 1024)
+                headroom_mb = max(0, ram_mb - model_mb - 512)
+                scale = max(0.05, model_mb / 3800)
+                safe_ctx = max(512, int((headroom_mb / (0.5 * scale)) * 1024))
+                n_ctx = min(n_ctx, safe_ctx)
+    except Exception:
+        pass
+    n_ctx = max(512, (n_ctx // 512) * 512)
+
+    # GPU layers
+    if not has_gpu:
+        n_gpu_layers = 0
+    elif vram_gb >= 8:
+        n_gpu_layers = -1
+    elif vram_gb >= 4:
+        n_gpu_layers = -1
+    elif vram_gb > 0:
+        n_gpu_layers = int(vram_gb * 4)  # rough: ~4 layers per GB
+    else:
+        n_gpu_layers = 0
+
+    return {
+        "n_ctx": n_ctx,
+        "n_batch": _TIER_BATCH[tier],
+        "n_threads": max(1, cpu_physical),
+        "n_threads_batch": min(cpu_logical, cpu_physical * 2),
+        "n_gpu_layers": n_gpu_layers,
+        "flash_attn": has_gpu and tier in ("performance", "high_end"),
+        "speculative_decoding_enabled": False,  # llama-cpp <=0.3.16 crash bug
+        "context_aggressive_compress_enabled": tier in ("potato", "standard"),
+        "context_auto_compact_ratio": _TIER_RATIO[tier],
+        "_tier": tier,
+    }
+
+
+def apply_to_config(cfg: dict, hw: dict | None = None) -> dict:
+    """
+    Overlay hardware-recommended settings onto cfg dict.
+    Config-file explicit values always win -- only fills gaps where value is None/empty.
+    Returns a new merged dict.
+    """
+    recs = get_recommended_settings(hw)
+    merged = dict(cfg)
+    _PROBE_KEYS = {
+        "n_ctx", "n_batch", "n_threads", "n_threads_batch",
+        "n_gpu_layers", "flash_attn", "speculative_decoding_enabled",
+        "context_aggressive_compress_enabled", "context_auto_compact_ratio",
+    }
+    for k, v in recs.items():
+        if k in _PROBE_KEYS and (cfg.get(k) is None or cfg.get(k) == ""):
+            merged[k] = v
+    return merged
+
+
+def get_capability_summary(hw: dict | None = None) -> str:
+    """
+    One-to-three sentence capability summary injected into system prompt.
+    Layla uses this to accurately describe her own hardware limits.
+    """
+    h = hw if hw is not None else detect_hardware()
+    recs = get_recommended_settings(h)
+    tier = recs.get("_tier", "standard")
+    n_ctx = recs.get("n_ctx", 4096)
+    ram_gb = h.get("ram_gb", 0.0)
+    vram_gb = h.get("vram_gb", 0.0)
+    has_gpu = (h.get("acceleration_backend") or "none") != "none"
+
+    ram_str = f"{int(ram_gb)} GB RAM"
+    gpu_str = f" + {vram_gb:.0f} GB VRAM GPU" if (has_gpu and vram_gb > 0) else (", CPU-only" if not has_gpu else "")
+
+    # Estimate model params from file size
+    model_params = 0.0
+    try:
+        import runtime_safety
+        cfg = runtime_safety.load_config() or {}
+        mp = (cfg.get("model_path") or cfg.get("model_filename") or "").strip()
+        if mp:
+            from pathlib import Path as _Path
+            p = _Path(mp)
+            if p.exists():
+                model_params = round(p.stat().st_size / (1024 * 1024 * 550), 1)
+    except Exception:
+        pass
+    model_str = (
+        f"~{model_params:.0f}B param model" if model_params >= 1 else "sub-1B (very small) model"
+    )
+
+    tier_notes = {
+        "potato": (
+            "Running on constrained hardware with a small model. "
+            "Context window is tight; complex reasoning may time out. Best on short focused tasks."
+        ),
+        "standard": (
+            "Running on mid-range hardware. "
+            "Most tasks work; very long documents or deep reasoning chains may be slower."
+        ),
+        "performance": (
+            "Running on capable hardware. "
+            "Long contexts, code reasoning, and multi-step tasks are handled well."
+        ),
+        "high_end": (
+            "Running on high-end hardware with a large context window. "
+            "Very long documents, complex reasoning, and extended autonomous runs are supported."
+        ),
+    }
+    note = tier_notes.get(tier, "")
+    return (
+        f"[Hardware: {ram_str}{gpu_str} | {model_str} | context window: {n_ctx} tokens | tier: {tier}] "
+        f"{note}"
+    )
