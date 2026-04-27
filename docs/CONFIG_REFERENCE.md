@@ -154,3 +154,64 @@ For advanced users. Edit `agent/runtime_config.json` directly, or use **Settings
 - **Example:** `agent/runtime_config.example.json`
 - **API:** `GET /settings`, `POST /settings`, `GET /settings/schema`
 - **Export:** `GET /system_export` (full system state as JSON)
+
+---
+
+## Hardware Auto-Configuration
+
+Layla probes your machine at startup and fills in optimal values for the keys
+below if they are **not explicitly set** in `runtime_config.json`.
+You never need to touch these unless you want to override the probe.
+
+| Key | Probe logic |
+|-----|-------------|
+| `n_ctx` | Computed from available RAM, model size, and hardware tier |
+| `n_batch` | 512 (potato) -- 2048 (high_end) |
+| `n_threads` | Physical CPU core count |
+| `n_threads_batch` | min(logical cores, physical * 2) |
+| `n_gpu_layers` | 0 (no GPU), partial, or -1 (full offload) based on VRAM vs model size |
+| `flash_attn` | `true` only when GPU tier is performance or high_end |
+| `speculative_decoding_enabled` | Always `false` (llama-cpp <=0.3.16 crash bug) |
+| `context_aggressive_compress_enabled` | `true` on potato/standard tiers |
+| `context_auto_compact_ratio` | 0.65 (potato), 0.70 (standard), 0.75 (performance/high_end) |
+
+To force a re-probe (e.g. after adding a GPU):
+
+```bash
+# Delete the disk cache; the probe runs again on next startup
+rm agent/.layla/hardware_probe_cache.json
+```
+
+To pin a value and prevent the probe from overriding it, just set it explicitly:
+
+```json
+{
+  "n_ctx": 8192,
+  "n_gpu_layers": 20
+}
+```
+
+---
+
+## Context Window Budget
+
+When `prompt_budget_enabled: true` (default), Layla enforces per-section token
+budgets so the total prompt never overflows `n_ctx`.
+
+For small models (`n_ctx <= 4096`), heavy sections are **automatically skipped**
+to prevent the 18-section injection from consuming the entire context window
+before the model can respond.
+
+| Section | Normal budget | Small-model budget |
+|---------|--------------|-------------------|
+| `system_instructions` | 800 | 600 |
+| `memory` | 800 | 300 |
+| `conversation` | 800 | 400 |
+| `agent_state` | 400 | 0 (skipped) |
+| `knowledge_graph` | 200 | 0 (skipped) |
+| `knowledge` | 800 | 0 (skipped) |
+| `current_task` | 200 | 60 |
+
+Sections like `repo_cognition`, `relationship_codex`, `timeline_events`, and
+`golden_examples` are **never injected** on small models.
+

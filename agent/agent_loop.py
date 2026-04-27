@@ -1918,6 +1918,18 @@ def _build_system_head(
         except Exception as _tb_e:
             logger.debug("tiered prompt budget skipped: %s", _tb_e)
 
+    # Inject hardware capability summary so Layla knows her own limits and
+    # can accurately describe what she can/cannot do on this machine.
+    try:
+        from services.hardware_detect import get_capability_summary as _hw_cap_summary
+        _hw_summary = _hw_cap_summary()
+        if _hw_summary:
+            system_instructions = (system_instructions or "") + "
+
+" + _hw_summary
+    except Exception as _hw_e:
+        logger.debug("hardware_probe capability_summary inject skipped: %s", _hw_e)
+
     sections = {
         "system_instructions": system_instructions,
         "pinned_context": pinned_block,

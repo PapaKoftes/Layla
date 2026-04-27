@@ -417,6 +417,14 @@ def _get_llm():
         if cached is not None:
             return cached
 
+        # Apply hardware-probe defaults for any config key not explicitly set.
+        # This makes Layla auto-configure optimally on any hardware without manual tuning.
+        try:
+            from services.hardware_detect import apply_to_config
+            cfg = apply_to_config(cfg)
+        except Exception as _hp_err:
+            logger.debug("hardware_probe apply_to_config skipped: %s", _hp_err)
+
         n_ctx = max(512, int(cfg.get("n_ctx", 4096)))
         n_batch = max(1, min(n_ctx, int(cfg.get("n_batch", 512))))
 
@@ -550,7 +558,16 @@ def get_stop_sequences():
         return [str(s) for s in stop if s]
     # Stop the model from echoing system-prompt section headers back into replies.
     # SmolLM2 and similar small models tend to repeat ## CONTEXT / ## TASK verbatim.
-    return ["\nUser:", " User:", "\n## ", "## CONTEXT", "## TASK", "## SCRATCHPAD", "## REPO", "<|endoftext|>", "<|im_end|>"]
+    return [
+        "\nUser:", " User:",
+        "\n## ", "## CONTEXT", "## TASK", "## SCRATCHPAD", "## REPO",
+        # Prevent fake multi-speaker roleplay (model echoes aspect names as dialogue tags)
+        "\nMorrigan:", "\nNyx:", "\nEcho:", "\nEris:", "\nCassandra:", "\nLilith:",
+        "Morrigan:", "Echo:", "Nyx:",  # also at position 0 if response starts with them
+        # Prevent memory-artifact leakage
+        "\nReplied.", "Snippet:", "\nSnippet:",
+        "<|endoftext|>", "<|im_end|>",
+    ]
 
 
 def _count_tokens(text: str) -> int:

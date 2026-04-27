@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 """
-check_patterns.py — Scan for known bug patterns in the Layla codebase.
+check_patterns.py â Scan for known bug patterns in the Layla codebase.
 
 Each check targets a specific class of bug that has actually caused production
 issues in this repo. Checks are regex or AST-free (plain text scan) to stay
@@ -69,7 +70,7 @@ def report(check, file, line, snippet, note):
 # CHECK 1: `reset=True` passed to llama-cpp create_completion
 # Pattern: create_completion(..., reset=True, ...)
 # Why: llama-cpp-python <=0.3.16 does not accept `reset` as a kwarg.
-#      It raises TypeError silently swallowed → empty responses.
+#      It raises TypeError silently swallowed â empty responses.
 # ---------------------------------------------------------------------------
 _RE_RESET_TRUE = re.compile(r"create_completion\s*\([^)]*reset\s*=\s*True")
 
@@ -111,7 +112,7 @@ def check_strip_missing():
 # Pattern: await ... run_in_executor(...) on its own line, followed within
 #          15 lines by a `while True:` or `async for` consumer.
 # Why: awaiting the executor before starting the consumer buffers the entire
-#      response before streaming begins — defeats streaming UX.
+#      response before streaming begins â defeats streaming UX.
 # ---------------------------------------------------------------------------
 _RE_AWAIT_EXEC = re.compile(r"await\s+.*run_in_executor")
 _RE_CONSUMER = re.compile(r"\bwhile\s+True\b|async\s+for\b")
@@ -124,14 +125,14 @@ def check_await_executor():
                 window = "\n".join(src_lines[i : i + 15])
                 if _RE_CONSUMER.search(window):
                     report("AWAIT_EXEC", f, i, line,
-                           "run_in_executor awaited BEFORE consumer loop — start it in a Thread instead; "
+                           "run_in_executor awaited BEFORE consumer loop â start it in a Thread instead; "
                            "see openai_compat.py fix")
 
 
 # ---------------------------------------------------------------------------
 # CHECK 4: FTS5 query not quote-escaped
 # Pattern: MATCH ? with argument that hasn't been wrapped in '"..."'
-# Why: FTS5 treats special chars (+, -, *, etc.) as operators → crashes.
+# Why: FTS5 treats special chars (+, -, *, etc.) as operators â crashes.
 # ---------------------------------------------------------------------------
 _RE_FTS_MATCH = re.compile(r'MATCH\s+\?', re.IGNORECASE)
 _RE_FTS_ESCAPE = re.compile(r'_fts_q|\.replace\s*\(.*["\']["\']["\']|replace\(.*\+\s*["\']"')  # common escape patterns
@@ -145,7 +146,7 @@ def check_fts_escape():
             if line.strip().startswith("#"):
                 continue
             if _RE_FTS_MATCH.search(line):
-                # Check ±6 lines around the MATCH for any escape pattern
+                # Check Â±6 lines around the MATCH for any escape pattern
                 window = "\n".join(src_lines[max(0, i - 6) : min(len(src_lines), i + 6)])
                 if not _RE_FTS_ESCAPE.search(window):
                     report("FTS_ESCAPE", f, i, line,
@@ -160,7 +161,7 @@ def check_fts_escape():
 _RE_BARE_EXCEPT = re.compile(r"except\s+Exception(\s+as\s+\w+)?\s*:")
 _RE_SILENT_YIELD = re.compile(r'^\s*yield\s+["\']["\']')  # only flag silent yield "", not bare pass
 # Bare `pass` in except is common + often intentional (teardown, optional feature).
-# We only care about silent `yield ""` in generators — that's the pattern that masks errors
+# We only care about silent `yield ""` in generators â that's the pattern that masks errors
 # and returns empty tokens to the streaming consumer.
 
 def check_silent_except():
@@ -177,7 +178,7 @@ def check_silent_except():
                 block_text = "\n".join(block)
                 has_yield_empty = bool(_RE_SILENT_YIELD.search(block_text))
                 has_logger = "logger." in block_text
-                # Only flag if yielding empty WITHOUT any logger call — truly silent
+                # Only flag if yielding empty WITHOUT any logger call â truly silent
                 if has_yield_empty and not has_logger:
                     report("SILENT_EXCEPT", f, i, line,
                            "Generator catches Exception, yields '' with NO logger call; "
@@ -240,7 +241,7 @@ def check_strip_junk_coverage():
 # CHECK 8: logits_all / scores mismatch after speculative decoding init
 # Pattern: draft_model= set in Llama() kwargs without post-init scores resize
 # Why: draft_model forces _logits_all=True but scores stays (n_batch, vocab)
-#      → broadcast crash on every prompt longer than n_batch tokens.
+#      â broadcast crash on every prompt longer than n_batch tokens.
 # ---------------------------------------------------------------------------
 _RE_DRAFT_MODEL = re.compile(r'kwargs\[.draft_model.\]')
 _RE_SCORES_RESIZE = re.compile(r'scores\s*=\s*np\.ndarray|_logits_all.*scores')
@@ -285,13 +286,13 @@ def check_stop_sequences():
         lineno = src[:fn_match.start()].count("\n") + 1
         report("STOP_SEQ", target, lineno,
                "def get_stop_sequences():",
-               f"Stop sequences may be missing: {', '.join(missing)} — small models echo section headers")
+               f"Stop sequences may be missing: {', '.join(missing)} â small models echo section headers")
 
 
 # ---------------------------------------------------------------------------
 # CHECK 10: kwargs passed to function that doesn't declare them
 # Pattern: stream_reason() called with budget_retrieval_depth= but signature lacks it
-# Why: silently causes TypeError → empty response.
+# Why: silently causes TypeError â empty response.
 # Target: any call site passing a kwarg the callee doesn't list.
 # (Lightweight: just check the known historical offenders.)
 # ---------------------------------------------------------------------------
@@ -314,11 +315,11 @@ def check_kwarg_mismatches():
                 for i, line in enumerate(lines_of(f), 1):
                     if call_re.search(line):
                         report("KWARG_MISMATCH", f, i, line,
-                               f"{callee_fn}() called with {kwarg}= but callee signature doesn't declare it → TypeError")
+                               f"{callee_fn}() called with {kwarg}= but callee signature doesn't declare it â TypeError")
 
 
 # ---------------------------------------------------------------------------
-# CHECK 11: Context overflow — small-model guard missing
+# CHECK 11: Context overflow â small-model guard missing
 # Pattern: heavy sections (repo_cognition, relationship_codex, golden_examples etc.)
 #          injected without _small_model / n_ctx guard.
 # Why: on n_ctx=4096 the full injection exceeds the window by ~2000 tokens.
@@ -345,9 +346,55 @@ def check_context_overflow_guard():
                 if not _RE_SMALL_GUARD.search(window):
                     report("CTX_OVERFLOW", target, i, line,
                            f'"{section}" injected without _small_model guard; '
-                           "overflows n_ctx=4096 — add `if not _small_model:` around this block")
+                           "overflows n_ctx=4096 â add `if not _small_model:` around this block")
                 break  # one report per section is enough
 
+
+
+# ---------------------------------------------------------------------------
+# CHECK 12: hardware_probe not called at model load time
+# Pattern: _get_llm() / load_llm() in llm_gateway.py without apply_to_config
+# Why: Without the probe, Layla uses static defaults (n_ctx=4096, n_gpu_layers=-1)
+#      regardless of the actual machine -- may overflow RAM or leave GPU unused.
+# ---------------------------------------------------------------------------
+_RE_APPLY_TO_CONFIG = re.compile(r"apply_to_config|hardware_detect|hardware_probe")
+
+def check_hardware_probe_hooked():
+    target = REPO_ROOT / "services" / "llm_gateway.py"
+    if not target.exists():
+        return
+    src = target.read_text(encoding="utf-8", errors="replace")
+    if not _RE_APPLY_TO_CONFIG.search(src):
+        report(
+            "HW_PROBE_MISSING", target, 1,
+            "# services/llm_gateway.py",
+            "hardware_probe.apply_to_config() not called at model load time; "
+            "Layla will use static defaults regardless of actual hardware. "
+            "Add: cfg = apply_to_config(cfg) before building Llama() kwargs.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# CHECK 13: capability_summary not injected into system prompt
+# Pattern: agent_loop.py missing hardware_probe capability_summary injection
+# Why: Layla should know her own hardware limits to describe them accurately
+#      and avoid promising complex work she can't complete in the context window.
+# ---------------------------------------------------------------------------
+_RE_CAP_SUMMARY = re.compile(r"get_capability_summary|capability_summary")
+
+def check_capability_summary_injected():
+    target = REPO_ROOT / "agent_loop.py"
+    if not target.exists():
+        return
+    src = target.read_text(encoding="utf-8", errors="replace")
+    if not _RE_CAP_SUMMARY.search(src):
+        report(
+            "CAP_SUMMARY_MISSING", target, 1,
+            "# agent_loop.py",
+            "hardware capability_summary not injected into system_instructions; "
+            "Layla cannot accurately describe her own limits to the user. "
+            "Add: system_instructions += hardware_probe.get_capability_summary()",
+        )
 
 # ---------------------------------------------------------------------------
 # Runner
@@ -370,6 +417,8 @@ def run_all():
         ("STOP_SEQ",          check_stop_sequences),
         ("KWARG_MISMATCH",    check_kwarg_mismatches),
         ("CTX_OVERFLOW",      check_context_overflow_guard),
+        ("HW_PROBE_MISSING",  check_hardware_probe_hooked),
+        ("CAP_SUMMARY_MISSING", check_capability_summary_injected),
     ]
 
     for name, fn in checks:
