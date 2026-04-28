@@ -1665,6 +1665,14 @@ def _build_system_head(
         memory_sections["semantic_recall"] = f"Relevant memories:\n{semantic}"
     if retrieved_context:
         memory_sections["retrieved_context"] = retrieved_context
+    # Working memory: cross-session project state (active project, next action, blockers, recent facts).
+    try:
+        from services.working_memory import format_for_prompt as _wm_format
+        _wm_text = _wm_format()
+        if _wm_text.strip():
+            memory_sections["working_memory"] = _wm_text
+    except Exception as _wm_e:
+        logger.debug("context[working_memory] failed: %s", _wm_e)
     if not _small_model:
         try:
             from layla.memory.db import get_recent_conversation_summaries
@@ -3221,6 +3229,55 @@ def _autonomous_run_impl_core(
     skip_engineering_pipeline: bool = False,
     context_files: list[str] | None = None,
 ) -> dict:
+    # Memory command fast-path: intercept before LLM (no inference cost, deterministic response).
+    try:
+        from services.memory_commands import detect_and_handle as _mem_cmd_detect
+        _mem_result = _mem_cmd_detect(goal, aspect_id=aspect_id or "")
+        if _mem_result.is_command:
+            _active_asp = orchestrator.select_aspect(goal, force_aspect=aspect_id)
+            return {
+                "goal": goal,
+                "original_goal": goal,
+                "objective": goal,
+                "objective_complete": True,
+                "depth": 0,
+                "steps": [{"action": "memory_command", "result": _mem_result.response, "deliberated": False, "aspect": _active_asp.get("id", "layla")}],
+                "status": "finished",
+                "start_time": time.time(),
+                "tool_calls": 0,
+                "aspect": _active_asp.get("id", "layla"),
+                "aspect_name": _active_asp.get("name", "Layla"),
+                "refused": False,
+                "refusal_reason": "",
+                "last_verification": None,
+                "consecutive_no_progress": 0,
+                "environment_aligned": None,
+                "last_tool_used": None,
+                "strategy_shift_count": 0,
+                "priority_level": None,
+                "impact_estimate": None,
+                "effort_estimate": None,
+                "risk_estimate": None,
+                "ux_states": [],
+                "memory_influenced": [],
+                "cited_knowledge_sources": [],
+                "sub_goals": [],
+                "reflection_pending": False,
+                "reflection_asked": False,
+                "reasoning_mode": "none",
+                "memory_command": _mem_result.command,
+                "memory_items_affected": _mem_result.items_affected,
+            }
+    except Exception as _mc_err:
+        logger.debug("memory_commands intercept failed: %s", _mc_err)
+
+    # Passive working memory extraction from this turn's message.
+    try:
+        from services.working_memory import auto_extract_from_message as _wm_extract
+        _wm_extract(goal)
+    except Exception as _wm_err:
+        logger.debug("working_memory extract failed: %s", _wm_err)
+
     persona_focus_id = (persona_focus or "").strip().lower()
     _run_cid = (conversation_id or "").strip() or "default"
     base_cfg = runtime_safety.load_config()
