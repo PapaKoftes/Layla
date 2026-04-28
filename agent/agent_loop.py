@@ -1728,48 +1728,23 @@ def _build_system_head(
             if parts:
                 _style_identity_parts.append("User/companion context:\n" + "\n".join(parts))
             try:
-                from services.operator_quiz import STAT_IDS
-
-                stats: dict[str, int] = {}
-                for sid in STAT_IDS:
-                    raw = uid.get(f"stat_{sid}")
-                    try:
-                        v = int(float(raw)) if raw is not None else 5
-                    except Exception:
-                        v = 5
-                    stats[sid] = max(1, min(10, v))
-                # Add a concise behavioral calibration line that changes how Layla responds.
-                # This is deliberately short; the raw user_identity already contains the full profile.
-                if stats:
-                    tech = stats.get("technical", 5)
-                    patience = stats.get("patience", 5)
-                    ambition = stats.get("ambition", 5)
-                    creative = stats.get("creative", 5)
-                    analytical = stats.get("analytical", 5)
-                    social = stats.get("social", 5)
-                    hints: list[str] = []
-                    if tech >= 8:
-                        hints.append("Assume high technical fluency: skip basics; use precise terminology; prefer succinct diffs.")
-                    elif tech <= 3:
-                        hints.append("Assume low technical fluency: explain terms, add small examples, avoid jargon.")
-                    if patience <= 3:
-                        hints.append("Be concise: minimal preamble; provide the answer then the smallest next steps.")
-                    elif patience >= 8:
-                        hints.append("Be thorough: explain reasoning and tradeoffs; teach back with structure.")
-                    if ambition >= 8:
-                        hints.append("High ambition: propose stretch improvements and proactive next steps (still approval-gated).")
-                    elif ambition <= 3:
-                        hints.append("Low ambition: keep scope tight; prefer stable, incremental wins.")
-                    if creative >= 8 and analytical <= 5:
-                        hints.append("Creativity-forward: suggest unconventional options; keep evaluation concrete.")
-                    if analytical >= 8:
-                        hints.append("Analysis-forward: quantify when possible; name risks explicitly.")
-                    if social >= 8:
-                        hints.append("People-forward: consider collaboration and communication impact.")
-                    if hints:
-                        _style_identity_parts.append("Behavioral calibration:\n- " + "\n- ".join(hints[:6]))
+                # FRAME calibration: stat profile -> behavioral prompt modifiers.
+                from services.frame_modifier import (
+                    build_frame_block,
+                    load_stats_from_identity,
+                    write_profile_snapshot,
+                )
+                _frame_stats = load_stats_from_identity(uid)
+                _frame_block = build_frame_block(_frame_stats)
+                if _frame_block:
+                    _style_identity_parts.append(_frame_block)
+                # Write offline snapshot (non-blocking, best-effort).
+                try:
+                    write_profile_snapshot(uid)
+                except Exception:
+                    pass
             except Exception as _e2:
-                logger.debug("context[operator_stats] failed: %s", _e2)
+                logger.debug("context[frame_modifier] failed: %s", _e2)
             # Layla v3: surface capability levels as a short training snapshot (skip for trivial turns).
             if not _skip_expensive and cfg.get("capability_level_inject_enabled", True):
                 try:
