@@ -1589,6 +1589,16 @@ def _build_system_head(
     )
     system_instructions = "\n\n".join(sys_parts)
 
+    # Aspect behavioral instructions: response length + refusal topics.
+    # Injected here so they sit at the same authority level as identity.
+    try:
+        from services.aspect_behavior import build_behavior_block as _ab_block
+        _behavior_block = _ab_block(aspect)
+        if _behavior_block:
+            system_instructions = system_instructions + "\n\n" + _behavior_block
+    except Exception as _ab_e:
+        logger.debug("aspect_behavior block inject failed: %s", _ab_e)
+
     # Memory: learnings + semantic + aspect_memories + retrieved (canonical order: context_merge_layers.MEMORY_SECTION_ORDER)
     from services.context_merge_layers import MEMORY_SECTION_ORDER
 
@@ -3338,6 +3348,15 @@ def _autonomous_run_impl_core(
     active_aspect = orchestrator.select_aspect(goal, force_aspect=aspect_id)
     _aspect_miss = bool(active_aspect.get("_force_aspect_miss")) if isinstance(active_aspect, dict) else False
     _aspect_req = str(active_aspect.get("_force_aspect_requested") or "") if isinstance(active_aspect, dict) else ""
+    # Apply aspect reasoning_depth_bias AFTER classification so aspect personality
+    # can upgrade or downgrade the classifier result (e.g. Nyx always deep, Eris always light).
+    try:
+        from services.aspect_behavior import apply_reasoning_depth as _ab_apply_depth
+        reasoning_mode = _ab_apply_depth(active_aspect, reasoning_mode)
+        with _reason_mode_lock:
+            _last_reasoning_mode = reasoning_mode
+    except Exception as _ab_err:
+        logger.debug("aspect_behavior depth apply failed: %s", _ab_err)
     if reasoning_mode == "none" and not allow_write and not allow_run and not show_thinking:
         quick = _quick_reply_for_trivial_turn(goal)
         if quick:
@@ -3674,7 +3693,12 @@ def _autonomous_run_impl_core(
                 # 2) same plan goal + failure context (debug)
                 # 3) simplified plan (max 3 steps) + optional model override
                 _goal_for_plan = goal
-                _max_steps = 6
+                # Aspect behavioral bias: get per-aspect step limit.
+                try:
+                    from services.aspect_behavior import get_max_steps as _ab_max_steps
+                    _max_steps = _ab_max_steps(active_aspect, base_limit=None)
+                except Exception:
+                    _max_steps = 6
                 _model_override = None
                 if _attempts == 2 and _last_plan_result is not None:
                     _goal_for_plan = (
