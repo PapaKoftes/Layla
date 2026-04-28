@@ -24,11 +24,15 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 def find_duplicate_keys(text: str) -> list[tuple[str, int]]:
-    """Return list of (key, count) for any key appearing more than once at any depth."""
+    """Return list of (key, count) for top-level duplicate keys only.
+    Nested array objects (e.g. knowledge_sources[{url:...},{url:...}]) are
+    intentionally excluded -- duplicate keys inside arrays are valid JSON.
+    """
     from collections import Counter
     import re
-    # Simple regex: extract all "key": pairs (doesn't handle nested context but good enough)
-    keys = re.findall(r'"([^"]+)"\s*:', text)
+    # Only match keys that appear at the top level of the JSON object
+    # (indented by 0 or 2 spaces, not inside nested arrays/objects)
+    keys = re.findall(r'(?m)^  "([^"]+)"\s*:', text)
     c = Counter(keys)
     return [(k, n) for k, n in c.items() if n > 1]
 
