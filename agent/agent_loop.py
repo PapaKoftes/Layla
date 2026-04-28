@@ -1,4 +1,4 @@
-﻿import json
+import json
 import logging
 import queue
 import re
@@ -52,7 +52,7 @@ _SKIP_TOOL_OUTPUT_VALIDATION = frozenset({
     "approval_required", "tool_policy_denied", "tool_loop_detected",
 })
 
-# Whole-message phatic turns ÔÇö router + autonomous_run quick path (no LLM).
+# Whole-message phatic turns ÃÃÃ¶ router + autonomous_run quick path (no LLM).
 _PHATIC_QUICK_PATTERNS = (
     r"^(how are you|how are you doing)\??$",
     r"^(what'?s up|wassup)\??$",
@@ -129,7 +129,7 @@ def _maybe_validate_tool_output(intent: str, result: object) -> object:
 
     out = validate_tool_output(intent, result)
 
-    # Phase 5 ÔÇö structured validation: injection scan, size check, schema check (core/validator.py)
+    # Phase 5 ÃÃÃ¶ structured validation: injection scan, size check, schema check (core/validator.py)
     try:
         from core.validator import validate as _core_validate
         vr = _core_validate(intent, out)
@@ -331,7 +331,7 @@ def _research_response_asks_user(text: str) -> bool:
     return any(p in t for p in phrases)
 
 
-# Placeholder for sanitized assistant turns in convo_block (never use "I replied." ÔÇö model repeats it)
+# Placeholder for sanitized assistant turns in convo_block (never use "I replied." ÃÃÃ¶ model repeats it)
 _SANITIZED_PLACEHOLDER = "[...]"
 
 # UX interaction states (UI layer only; no change to decision logic)
@@ -605,10 +605,10 @@ _RETRIEVAL_SUBSTANTIVE_MARKERS = (
 )
 
 _PHATIC_RETRIEVAL_SKIP_PATTERNS = (
-    r"^(hi|hey|hello|yo|sup|hiya|howdy)\b[!.ÔÇª\s]*$",
-    r"^(thanks|thank you|thx|ty|tysm)\b[^?.]{0,48}[!.ÔÇª\s]*$",
-    r"^(ok|okay|k|got it|yep|yeah|yes|no|nope|sure|mhm|uh huh)\b[!.ÔÇª\s]*$",
-    r"^(bye|goodbye|see you|cya|later)\b[^?.]{0,24}[!.ÔÇª\s]*$",
+    r"^(hi|hey|hello|yo|sup|hiya|howdy)\b[!.ÃÃÂª\s]*$",
+    r"^(thanks|thank you|thx|ty|tysm)\b[^?.]{0,48}[!.ÃÃÂª\s]*$",
+    r"^(ok|okay|k|got it|yep|yeah|yes|no|nope|sure|mhm|uh huh)\b[!.ÃÃÂª\s]*$",
+    r"^(bye|goodbye|see you|cya|later)\b[^?.]{0,24}[!.ÃÃÂª\s]*$",
 )
 
 
@@ -884,14 +884,14 @@ def _stream_reason_body(
             m = _PROMPT_ECHO_RE.search(buffer)
             clean = buffer[:m.start()].strip()
             if held_tokens:
-                # Still in the initial buffer phase — yield clean text, discard junk tokens
+                # Still in the initial buffer phase â yield clean text, discard junk tokens
                 held_tokens.clear()
                 if clean and not _is_junk_reply(clean):
                     yield clean
             buffer = clean
             break
         # Hold tokens until we know the reply isn't a raw decision-JSON blob.
-        # Decision blobs start with '{' ÔÇö we hold up to 120 chars before committing.
+        # Decision blobs start with '{' ÃÃÃ¶ we hold up to 120 chars before committing.
         if not held_tokens and not _json_suppressed:
             held_tokens.append(token)
             if len(buffer) < 120:
@@ -901,7 +901,7 @@ def _stream_reason_body(
                 _json_suppressed = True
                 held_tokens.clear()
                 continue
-            # Not junk ÔÇö flush held tokens
+            # Not junk ÃÃÃ¶ flush held tokens
             for t in held_tokens:
                 yield t
             held_tokens.clear()
@@ -1129,7 +1129,7 @@ def _enrich_deliberation_context(context: str) -> str:
         from layla.memory.db import get_project_context
         pc = get_project_context()
         if pc.get("project_name") or pc.get("goals") or pc.get("lifecycle_stage"):
-            proj_parts = [f"Project: {pc.get('project_name') or 'ÔÇö'}", f"Lifecycle: {pc.get('lifecycle_stage') or 'ÔÇö'}"]
+            proj_parts = [f"Project: {pc.get('project_name') or 'ÃÃÃ¶'}", f"Lifecycle: {pc.get('lifecycle_stage') or 'ÃÃÃ¶'}"]
             if pc.get("goals"):
                 proj_parts.append(f"Goals: {(pc.get('goals') or '')[:200]}")
             extra.append("Project context: " + "; ".join(proj_parts))
@@ -1149,7 +1149,7 @@ def _enrich_deliberation_context(context: str) -> str:
 
 
 def _needs_knowledge_rag(goal: str) -> bool:
-    """True if goal suggests research/search/explain or reflective/psychology-informed chat ÔÇö use full Chroma retrieval."""
+    """True if goal suggests research/search/explain or reflective/psychology-informed chat ÃÃÃ¶ use full Chroma retrieval."""
     if not (goal or "").strip():
         return False
     g = goal.lower()
@@ -1165,7 +1165,7 @@ def _needs_knowledge_rag(goal: str) -> bool:
     )
     if any(kw in g for kw in research_kw):
         return True
-    # Reflective / wellbeing phrasing ÔÇö pulls psychology-framework knowledge when indexed (narrow list to limit noise on code chat).
+    # Reflective / wellbeing phrasing ÃÃÃ¶ pulls psychology-framework knowledge when indexed (narrow list to limit noise on code chat).
     reflective_kw = (
         "reflect on",
         "self-reflect",
@@ -1201,7 +1201,7 @@ def _needs_knowledge_rag(goal: str) -> bool:
 
 
 def _needs_graph(goal: str) -> bool:
-    """True if goal suggests related/context/connection ÔÇö include graph associations."""
+    """True if goal suggests related/context/connection ÃÃÃ¶ include graph associations."""
     if not (goal or "").strip():
         return False
     g = goal.lower()
@@ -1362,7 +1362,7 @@ def _build_system_head(
         role = (aspect.get("role") or "").strip()[:120]
         anchor = f"{name} ({title})" if title else name
         if role:
-            anchor += f" ÔÇö {role}"
+            anchor += f" ÃÃÃ¶ {role}"
         anchor += ". Reply as her only. Do not output labels or repeat instructions."
         full_addition = (aspect.get("systemPromptAddition") or "").strip()
         if full_addition:
@@ -1593,7 +1593,7 @@ def _build_system_head(
     from services.context_merge_layers import MEMORY_SECTION_ORDER
 
     memory_sections: dict[str, str] = {}
-    # Small-model guard: skip expensive sections when context window ≤ 4096.
+    # Small-model guard: skip expensive sections when context window â¤ 4096.
     # Full injection overflows the window by ~2000 tokens on small models.
     _n_ctx = int(cfg.get("n_ctx", 4096) or 4096)
     _small_model = _n_ctx <= 4096
@@ -1610,7 +1610,7 @@ def _build_system_head(
             _cog_block = format_cognition_for_prompt(_cog_roots, max_chars=_cog_max)
             if _cog_block.strip():
                 memory_sections["repo_cognition"] = (
-                    "Repository cognition (deterministic snapshot from last sync ÔÇö stated intent, norms, and doc excerpts; "
+                    "Repository cognition (deterministic snapshot from last sync ÃÃÃ¶ stated intent, norms, and doc excerpts; "
                     "verify against files when editing):\n"
                     + _cog_block
                 )
@@ -1637,7 +1637,7 @@ def _build_system_head(
                     _pm_block = format_for_prompt(mem, max_chars=max(500, _pm_max))
                     if _pm_block.strip():
                         _pm_chunks.append(
-                            "Project memory (local `.layla/project_memory.json` ÔÇö structural map, plan, todos; "
+                            "Project memory (local `.layla/project_memory.json` ÃÃÃ¶ structural map, plan, todos; "
                             "verify against source when editing):\n"
                             + _pm_block
                         )
@@ -1695,7 +1695,7 @@ def _build_system_head(
                     memory_sections["timeline_events"] = "Recent timeline:\n" + "\n\n".join(tl_texts[:5])
         except Exception as _e:
             logger.debug("context[timeline_events] failed: %s", _e)
-    # Style profile + user identity ÔåÆ single precedence layer (docs/MEMORY_PRECEDENCE.md)
+    # Style profile + user identity ÃÃ¥Ã single precedence layer (docs/MEMORY_PRECEDENCE.md)
     _style_identity_parts: list[str] = []
     if cfg.get("enable_style_profile"):
         try:
@@ -1924,9 +1924,7 @@ def _build_system_head(
         from services.hardware_detect import get_capability_summary as _hw_cap_summary
         _hw_summary = _hw_cap_summary()
         if _hw_summary:
-            system_instructions = (system_instructions or "") + "
-
-" + _hw_summary
+            system_instructions = (system_instructions or "") + "\n\n" + _hw_summary
     except Exception as _hw_e:
         logger.debug("hardware_probe capability_summary inject skipped: %s", _hw_e)
 
@@ -2136,7 +2134,7 @@ def _summarize_steps_deterministic(steps: list, *, keep_last: int = 5, max_lines
         elif isinstance(r, str) and act == "reason":
             ok = True
         status = "ok" if ok else "fail" if ok is False else "?"
-        lines.append(f"- {act} ÔåÆ {status}{extra}")
+        lines.append(f"- {act} ÃÃ¥Ã {status}{extra}")
         n += 1
         if n >= max_lines:
             break
@@ -2214,9 +2212,9 @@ def _get_tools_for_goal(goal: str, *, context: str = "", workspace_root: str = "
     except Exception:
         return _VALID_TOOLS
 
-# ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶Ã
 # Auto file probe (planning layer only)
-# ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶Ã
 MAX_SAFE_READ_BYTES = 250 * 1024  # planning signal only
 LARGE_FILE_HINT_LINES = 2000      # planning signal only
 
@@ -2383,7 +2381,7 @@ def _observe_environment(tool_name: str, result: dict, workspace: str) -> bool:
 
 
 def _classify_failure_and_recovery(state: dict) -> None:
-    """North Star ┬º8: delegate to failure_recovery module."""
+    """North Star â¬Âº8: delegate to failure_recovery module."""
     from services.failure_recovery import classify_failure_and_recovery
     classify_failure_and_recovery(state)
 
@@ -2532,7 +2530,7 @@ def _run_verification_after_tool(state: dict, tool_name: str, result: dict, work
     """If tool is verifiable and succeeded, run verification and environment observation; update state."""
     if tool_name not in _VERIFY_TOOLS or not (isinstance(result, dict) and result.get("ok")):
         return
-    # Deterministic verification already ran at tool capture time; if it downgraded okÔåÆFalse,
+    # Deterministic verification already ran at tool capture time; if it downgraded okÃÃ¥ÃFalse,
     # this function won't run. Keep LLM verification optional to avoid small-model noise.
     objective = state.get("objective") or state.get("original_goal") or ""
     steps_text = _format_steps(state.get("steps") or [])
@@ -2554,7 +2552,7 @@ def _run_verification_after_tool(state: dict, tool_name: str, result: dict, work
     # If verification said progress but environment does not align, treat as no progress
     if ver and ver.get("progress_made") and not state.get("environment_aligned", True):
         state["consecutive_no_progress"] = state.get("consecutive_no_progress", 0) + 1
-    # North Star ┬º8: classify failure and set recovery hint when no progress
+    # North Star â¬Âº8: classify failure and set recovery hint when no progress
     if state.get("consecutive_no_progress", 0) > 0:
         _classify_failure_and_recovery(state)
 
@@ -2700,7 +2698,7 @@ def _llm_decision(
         no_progress_hint += "Last tool step did not make progress; consider a different approach or reply (reason). "
     if state.get("environment_aligned") is False:
         no_progress_hint += "Environment check did not confirm success; consider different approach or reply (reason). "
-    # North Star ┬º8: failure awareness (structured hint stringified here)
+    # North Star â¬Âº8: failure awareness (structured hint stringified here)
     rh = state.get("recovery_hint")
     if rh and isinstance(rh, dict):
         no_progress_hint += _format_recovery_hint_for_prompt(rh)
@@ -2778,8 +2776,8 @@ def _llm_decision(
     think_trace_hint = ""
     if show_thinking:
         think_trace_hint = (
-            'For action \"think\", put the plan in \"thought\" as 2-4 numbered lines (\"1.\" \"2.\" ÔÇª), '
-            "one short sentence each ÔÇö restate aim, outline the next move, note gaps/risks (ChatGPT-style step trace).\n"
+            'For action \"think\", put the plan in \"thought\" as 2-4 numbered lines (\"1.\" \"2.\" ÃÃÂª), '
+            "one short sentence each ÃÃÃ¶ restate aim, outline the next move, note gaps/risks (ChatGPT-style step trace).\n"
         )
     _edit_hint = _edit_hint_pb
     tool_first_hint = ""
@@ -2792,7 +2790,7 @@ def _llm_decision(
     pipeline_debug_hint = ""
     if str(state.get("pipeline_stage") or "") == "DEBUG" and cfg_pre.get("pipeline_enforcement_enabled", True):
         pipeline_debug_hint = (
-            "Pipeline DEBUG: stagnation recovery ÔÇö narrow the next tool (different path or verify with read_file/grep) "
+            "Pipeline DEBUG: stagnation recovery ÃÃÃ¶ narrow the next tool (different path or verify with read_file/grep) "
             "before repeating writes or shell.\n"
         )
     prompt = (
@@ -2847,7 +2845,7 @@ def _llm_decision(
         max_tok = 120 if reframe_candidate else (220 if show_thinking else 80)
         use_instructor = cfg.get("use_instructor_for_decisions", True)
         structured_on = bool(cfg.get("structured_generation_enabled", True))
-        # Optional outlines + llama-cpp (wheels on 3.11ÔÇô3.12); no-op if package missing
+        # Optional outlines + llama-cpp (wheels on 3.11ÃÃÃ´3.12); no-op if package missing
         if structured_on and not (cfg.get("llama_server_url") or "").strip():
             try:
                 from services.llm_gateway import _get_llm
@@ -3520,7 +3518,7 @@ def _autonomous_run_impl_core(
         if _hist_ratio > 0.6 and not research_mode:
             _capped = min(int(max_tool_calls), 3)
             if _capped < max_tool_calls:
-                logger.info("token_pressure_cap: hist_ratio=%.2f capping max_tool_calls %dÔåÆ%d", _hist_ratio, max_tool_calls, _capped)
+                logger.info("token_pressure_cap: hist_ratio=%.2f capping max_tool_calls %dÃÃ¥Ã%d", _hist_ratio, max_tool_calls, _capped)
                 max_tool_calls = _capped
                 max_tool_calls_effective = int(max_tool_calls)
     except Exception as _exc:
@@ -3547,7 +3545,7 @@ def _autonomous_run_impl_core(
         except Exception as _tb_e:
             logger.debug("task_budget failed: %s", _tb_e)
     # Short chat turns skip heavy retrieval, but local GGUF inference often needs tens of seconds.
-    # Do not use a single-digit cap here ÔÇö it caused false timeouts on "who are you" style messages.
+    # Do not use a single-digit cap here ÃÃÃ¶ it caused false timeouts on "who are you" style messages.
     if not allow_write and not allow_run and _is_lightweight_chat_turn(goal, reasoning_mode):
         _light_cap = int(cfg.get("chat_light_max_runtime_seconds", 90) or 90)
         max_runtime = min(int(max_runtime), max(30, _light_cap))
@@ -3556,7 +3554,7 @@ def _autonomous_run_impl_core(
     if research_mode and workspace:
         set_effective_sandbox(workspace)
 
-    # Phase 1 ÔÇô Observe: attach stable context snapshot to state (core/observer.py)
+    # Phase 1 ÃÃÃ´ Observe: attach stable context snapshot to state (core/observer.py)
     try:
         from core.observer import build_snapshot as _build_snapshot
         state["_snapshot"] = _build_snapshot(
@@ -3572,7 +3570,7 @@ def _autonomous_run_impl_core(
     except Exception as _obs_err:
         logger.debug("observer.build_snapshot failed (non-fatal): %s", _obs_err)
 
-    # Cognitive workspace: generate approaches ÔåÆ evaluate ÔåÆ choose best (tree-of-thought)
+    # Cognitive workspace: generate approaches ÃÃ¥Ã evaluate ÃÃ¥Ã choose best (tree-of-thought)
     try:
         from services.cognitive_workspace import run_deliberation, should_use_cognitive_workspace
         # Avoid invoking LLM-only deliberation when no model/inference backend is configured
@@ -3612,7 +3610,7 @@ def _autonomous_run_impl_core(
             _cs_f >= _thr
             and not _is_lightweight_chat_turn(goal, reasoning_mode)
         )
-        # Behavior lock-in: when a goal is classified as non-trivial, enforce planÔåÆexecuteÔåÆvalidateÔåÆdebug.
+        # Behavior lock-in: when a goal is classified as non-trivial, enforce planÃÃ¥ÃexecuteÃÃ¥ÃvalidateÃÃ¥Ãdebug.
         _non_trivial = bool(should_plan(goal, cfg, plan_depth=plan_depth, state=state) or _force_plan)
         if reasoning_mode != "none" and _non_trivial and bool(cfg.get("planning_enabled", True)):
             _digest = ""
@@ -3742,7 +3740,7 @@ def _autonomous_run_impl_core(
                         **_exec_common,
                     )
                 _last_plan_result = plan_result if isinstance(plan_result, dict) else None
-                # Mandatory validateÔåÆdebugÔåÆretry: if governance says steps not OK, do one debug-driven replan.
+                # Mandatory validateÃÃ¥ÃdebugÃÃ¥Ãretry: if governance says steps not OK, do one debug-driven replan.
                 if (
                     _il_gov
                     and bool(cfg.get("pipeline_enforcement_enabled", True))
@@ -3843,7 +3841,7 @@ def _autonomous_run_impl_core(
             if steer:
                 goal_for_decision = (
                     goal
-                    + "\n\n[Operator steer ÔÇö brief redirect; honor if compatible with the same task]\n"
+                    + "\n\n[Operator steer ÃÃÃ¶ brief redirect; honor if compatible with the same task]\n"
                     + steer
                 )
         except Exception as _exc:
@@ -3997,7 +3995,7 @@ def _autonomous_run_impl_core(
                 goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
                 continue
 
-        # D0: Preflight ÔÇö if the model picked an un-runnable tool (missing required args),
+        # D0: Preflight ÃÃÃ¶ if the model picked an un-runnable tool (missing required args),
         # redirect to a conversational reply instead of burning tool budget or producing parse_failed.
         if intent not in ("reason", "finish", "wakeup", "none") and intent in _VALID_TOOLS:
             try:
@@ -4024,7 +4022,7 @@ def _autonomous_run_impl_core(
             except Exception as _pf_exc:
                 logger.debug("tool_preflight skipped: %s", _pf_exc, exc_info=False)
 
-        # ÔöÇÔöÇ D1: Concurrent read-only tool batch ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+        # ÃÃ¶ÃÃÃ¶Ã D1: Concurrent read-only tool batch ÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶Ã
         # The LLM may declare additional parallel tools in decision["batch_tools"].
         # Each entry is {"tool": name, "args": {...}} and must be concurrency_safe.
         # We execute the primary tool + all batch_tools concurrently in one step.
@@ -4125,7 +4123,7 @@ def _autonomous_run_impl_core(
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
             logger.info("concurrent batch: ran %d tools in parallel", len(_batch))
             continue
-        # ÔöÇÔöÇ end concurrent batch ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+        # ÃÃ¶ÃÃÃ¶Ã end concurrent batch ÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶Ã
 
         # Emit tool_start so streaming UI can show "Running tool_name..."
         if intent not in ("reason", "finish", "wakeup"):
@@ -4995,7 +4993,7 @@ def _autonomous_run_impl_core(
             continue
 
         # ------------------------------------------------
-        # MCP (stdio subprocess; gated like shell ÔÇö allow_run + approvals)
+        # MCP (stdio subprocess; gated like shell ÃÃÃ¶ allow_run + approvals)
         # ------------------------------------------------
         if intent == "mcp_tools_call":
             args = _normalize_mcp_tool_args((decision.get("args") or {}) if decision else {})
@@ -5538,7 +5536,7 @@ def _autonomous_run_impl_core(
             })
             state["status"] = "finished"
 
-            # Save Echo aspect memory after any reply ÔÇö Echo always tracks
+            # Save Echo aspect memory after any reply ÃÃÃ¶ Echo always tracks
             if text and not refused:
                 try:
                     _maybe_save_echo_memory(
@@ -5566,7 +5564,7 @@ def _autonomous_run_impl_core(
         state["depth"] += 1
 
         # Resource-aware chunking: after each tool call, yield if system is under pressure.
-        # high load ÔåÆ sleep briefly and continue; critical (2 consecutive) ÔåÆ checkpoint and pause.
+        # high load ÃÃ¥Ã sleep briefly and continue; critical (2 consecutive) ÃÃ¥Ã checkpoint and pause.
         if state["tool_calls"] > 0 and state["tool_calls"] % 2 == 0:
             try:
                 _load = classify_load()
@@ -5578,7 +5576,7 @@ def _autonomous_run_impl_core(
                     logger.info("resource_chunking: load=%s consecutive=%d sleeping=%.0fs", _load_level, _consecutive_high, sleep_s)
                     time.sleep(sleep_s)
                     if _load_level == "critical" and _consecutive_high >= 2:
-                        # Checkpoint and pause ÔÇö let the UI offer a Resume button
+                        # Checkpoint and pause ÃÃÃ¶ let the UI offer a Resume button
                         state["checkpoint"] = {
                             "steps": list(state.get("steps", [])),
                             "goal": goal,
