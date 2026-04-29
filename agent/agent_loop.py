@@ -3072,6 +3072,27 @@ def autonomous_run(
     skip_engineering_pipeline: bool = False,
     context_files: list[str] | None = None,
 ) -> dict:
+    # Prompt optimizer: enhance user goal before processing (graceful; never blocks)
+    try:
+        from services.prompt_optimizer import optimize as _opt_goal
+        _cfg_now = runtime_safety.load_config() if hasattr(runtime_safety, "load_config") else {}
+        if _cfg_now.get("prompt_optimizer_enabled", True):
+            _opt_result = _opt_goal(
+                goal,
+                context={
+                    "aspect": aspect_id or "",
+                    "workspace": str(workspace_root or ""),
+                },
+            )
+            if _opt_result.get("changed") and _opt_result.get("optimized"):
+                logger.debug(
+                    "prompt_optimizer: [%s] goal rewritten (tier=%d)",
+                    _opt_result.get("intent", "?"), _opt_result.get("tier", 0),
+                )
+                goal = _opt_result["optimized"]
+    except Exception as _opt_e:
+        logger.debug("prompt_optimizer inject failed: %s", _opt_e)
+
     # Phase 4.3: set per-task context vars for structured log isolation
     try:
         import uuid as _uuid
@@ -5404,6 +5425,20 @@ def _autonomous_run_impl_core(
                     )
                 except Exception as _exc:
                     logger.debug("agent_loop:L3972: %s", _exc, exc_info=False)
+
+            # LLMLingua / heuristic per-message compression for large older messages
+            # (supplements summarize_history; applied to assistant turns > 800 chars)
+            if effective_history and cfg.get("llmlingua_compression_enabled", False):
+                try:
+                    from services.prompt_compressor import compress_conversation_history
+                    _keep_recent = max(4, int(cfg.get("context_sliding_keep_messages", 4) or 4))
+                    effective_history = compress_conversation_history(
+                        effective_history,
+                        keep_recent=_keep_recent,
+                        token_budget=max(800, int(n_ctx * 0.3)),
+                    )
+                except Exception as _cmp_e:
+                    logger.debug("llmlingua history compress failed: %s", _cmp_e)
             head = _build_system_head(
                 goal=goal,
                 aspect=active_aspect,

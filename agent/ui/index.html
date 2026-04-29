@@ -209,7 +209,7 @@
   <div id="global-search-container" style="position:relative;padding:0 12px 4px;max-width:520px;margin:0 auto">
     <div style="display:flex;align-items:center;gap:0;background:var(--code-bg);border:1px solid var(--border);border-radius:4px;overflow:hidden">
       <span style="padding:0 6px;color:var(--text-dim);font-size:0.75rem">⌕</span>
-      <input type="search" id="global-search-input" placeholder="Search conversations, learnings, code, knowledge…" autocomplete="off" style="flex:1;background:transparent;border:none;color:var(--text);font-size:0.72rem;padding:5px 6px;outline:none" oninput="laylaGlobalSearchInput(this.value)" onkeydown="laylaGlobalSearchKey(event)" onfocus="laylaGlobalSearchInput(this.value)">
+      <input type="search" id="global-search-input" placeholder="Search conversations, learnings, code, knowledge…" autocomplete="off" style="flex:1;background:transparent;border:none;color:var(--text);font-size:0.72rem;padding:5px 6px;outline:none" oninput="laylaGlobalSearchInput(this.value)" onkeydown="laylaGlobalSearchKey(event)" onfocus="laylaGlobalSearchInput(this.value)" aria-label="Search conversations, learnings and code" role="searchbox" aria-autocomplete="list" aria-controls="global-search-results">
       <button type="button" style="padding:4px 8px;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.7rem" onclick="document.getElementById('global-search-input').value='';laylaGlobalSearchClose()" title="Clear search">✕</button>
     </div>
     <div id="global-search-dropdown" style="display:none;position:absolute;top:calc(100% - 4px);left:12px;right:12px;background:var(--bg-panel,#1a1a2e);border:1px solid var(--asp-line,var(--border));border-radius:4px;box-shadow:0 8px 24px rgba(0,0,0,0.6);z-index:2000;max-height:480px;overflow-y:auto"></div>
@@ -251,27 +251,27 @@
       <h3>Voices</h3>
       <p class="sidebar-hint">Talk to Layla or choose a voice. She remembers and grows with you.</p>
       <div class="aspect-option expandable" id="aspect-opt-morrigan">
-        <button class="aspect-btn active" onclick="event.stopPropagation();setAspect('morrigan');toggleAspectDescription('morrigan')" id="btn-morrigan">⚔ Morrigan</button>
+        <button class="aspect-btn active" onclick="event.stopPropagation();setAspect('morrigan');toggleAspectDescription('morrigan')" id="btn-morrigan" aria-label="Switch to Morrigan aspect" aria-pressed="true">⚔ Morrigan</button>
         <span class="aspect-desc">Software engineering: coding, debugging, refactoring, and system architecture.</span>
       </div>
       <div class="aspect-option expandable" id="aspect-opt-nyx">
-        <button class="aspect-btn" onclick="event.stopPropagation();setAspect('nyx');toggleAspectDescription('nyx')" id="btn-nyx">✦ Nyx</button>
+        <button class="aspect-btn" onclick="event.stopPropagation();setAspect('nyx');toggleAspectDescription('nyx')" id="btn-nyx" aria-label="Switch to Nyx aspect" aria-pressed="false">✦ Nyx</button>
         <span class="aspect-desc">Research and analysis: deep dives, technical explanations, and synthesis.</span>
       </div>
       <div class="aspect-option expandable" id="aspect-opt-echo">
-        <button class="aspect-btn" onclick="event.stopPropagation();setAspect('echo');toggleAspectDescription('echo')" id="btn-echo">◎ Echo</button>
+        <button class="aspect-btn" onclick="event.stopPropagation();setAspect('echo');toggleAspectDescription('echo')" id="btn-echo" aria-label="Switch to Echo aspect" aria-pressed="false">◎ Echo</button>
         <span class="aspect-desc">Continuity and context: memory tracking, user patterns, and long-term consistency.</span>
       </div>
       <div class="aspect-option expandable" id="aspect-opt-eris">
-        <button class="aspect-btn" onclick="event.stopPropagation();setAspect('eris');toggleAspectDescription('eris')" id="btn-eris">⚡ Eris</button>
+        <button class="aspect-btn" onclick="event.stopPropagation();setAspect('eris');toggleAspectDescription('eris')" id="btn-eris" aria-label="Switch to Eris aspect" aria-pressed="false">⚡ Eris</button>
         <span class="aspect-desc">Creative ideation: brainstorming, unconventional options, and exploratory thinking.</span>
       </div>
       <div class="aspect-option expandable" id="aspect-opt-cassandra">
-        <button class="aspect-btn" onclick="event.stopPropagation();setAspect('cassandra');toggleAspectDescription('cassandra')" id="btn-cassandra">⌖ Cassandra</button>
+        <button class="aspect-btn" onclick="event.stopPropagation();setAspect('cassandra');toggleAspectDescription('cassandra')" id="btn-cassandra" aria-label="Switch to Cassandra aspect" aria-pressed="false">⌖ Cassandra</button>
         <span class="aspect-desc">Rapid critique: direct first-pass judgments and blunt feedback.</span>
       </div>
       <div class="aspect-option expandable" id="aspect-opt-lilith">
-        <button class="aspect-btn" onclick="event.stopPropagation();setAspect('lilith');toggleAspectDescription('lilith')" id="btn-lilith">⊛ Lilith</button>
+        <button class="aspect-btn" onclick="event.stopPropagation();setAspect('lilith');toggleAspectDescription('lilith')" id="btn-lilith" aria-label="Switch to Lilith aspect" aria-pressed="false">⊛ Lilith</button>
         <span class="aspect-desc">Safety and boundaries: ethics checks, refusal logic, and high-risk decision review.</span>
       </div>
     </div>
@@ -289,16 +289,16 @@
   <div id="chat-rail-backdrop" onclick="closeChatRailMobile()" aria-hidden="true"></div>
 
   <!-- Chat area -->
-  <div class="main-area">
+  <main class="main-area" id="main-chat-area" aria-label="Chat area">
     <div id="context-chip" class="context-chip" title="Active thread context">No chat selected — start a new chat or pick one from the list.</div>
     <div id="compose-panel" class="compose-panel" aria-label="Working notes">
       <div class="compose-panel-head">
         <span>Working notes → merged into request context (not shown as a user chat line)</span>
         <button type="button" class="tab-btn" onclick="toggleComposePanel(false)" style="font-size:0.65rem;padding:3px 8px">Close</button>
       </div>
-      <textarea id="compose-draft" placeholder="Longer context, specs, pasted errors, draft text…" autocomplete="off" oninput="try{localStorage.setItem('layla_compose_draft',this.value);}catch(_){}"></textarea>
+      <textarea id="compose-draft" placeholder="Longer context, specs, pasted errors, draft text…" autocomplete="off" oninput="try{localStorage.setItem('layla_compose_draft',this.value);}catch(_){}" aria-label="Working notes compose area"></textarea>
     </div>
-    <div id="chat">
+    <div id="chat" role="log" aria-live="polite" aria-label="Chat history" aria-relevant="additions">
       <div id="chat-empty"><!-- populated by renderPromptTilesAndEmptyState() --></div>
     </div>
     <div class="input-area" id="input-area-drop" title="Drop files here to attach"
@@ -322,15 +322,15 @@
       <div class="input-row">
         <div class="mention-wrap">
           <div id="mention-dropdown"></div>
-          <textarea id="msg-input" rows="1" placeholder="Ask Layla… drop a file, or type @nyx, @morrigan… (Shift+Enter for newline)" onkeydown="onInputKeydown(event)" oninput="onInputChange(event)"></textarea>
+          <textarea id="msg-input" rows="1" placeholder="Ask Layla… drop a file, or type @nyx, @morrigan… (Shift+Enter for newline)" onkeydown="onInputKeydown(event)" oninput="onInputChange(event)" aria-label="Message input" aria-multiline="true"></textarea>
         </div>
-        <label title="Attach file" style="cursor:pointer;padding:0 8px;display:flex;align-items:center;color:var(--text-dim);font-size:1rem" title="Attach file">
-          📎<input type="file" id="file-attach" style="display:none" onchange="attachFile(this)">
+        <label title="Attach file" aria-label="Attach file" style="cursor:pointer;padding:0 8px;display:flex;align-items:center;color:var(--text-dim);font-size:1rem">
+          📎<input type="file" id="file-attach" style="display:none" onchange="attachFile(this)" aria-label="File attachment">
         </label>
         <button id="mic-btn" onclick="toggleMic()" title="Click to record voice" aria-label="Record voice">🎤</button>
         <button id="retry-btn" onclick="retryLastMessage()" title="Regenerate last reply (Ctrl+R)" aria-label="Regenerate last reply" style="display:none;font-size:0.75rem;padding:4px 8px">↻ Regenerate</button>
         <button type="button" id="cancel-send-btn" onclick="cancelActiveSend()" title="Stop generation" aria-label="Stop generation" style="display:none;font-size:0.75rem;padding:4px 8px">Stop</button>
-        <button type="button" id="send-btn" onclick="typeof window.triggerSend==='function'&&window.triggerSend();">Send</button>
+        <button type="button" id="send-btn" onclick="typeof window.triggerSend==='function'&&window.triggerSend();" aria-label="Send message">Send</button>
       </div>
       <div id="ctx-usage-row" style="display:flex;align-items:center;gap:8px;padding:4px 8px 0;font-size:0.65rem;color:var(--text-dim)">
         <div style="flex:1;height:3px;background:var(--border);border-radius:2px;overflow:hidden;min-width:40px">
@@ -341,19 +341,19 @@
       </div>
       <span class="input-hint" style="display:block;font-size:var(--text-xs);color:var(--text-dim);margin-top:4px;padding:0 4px">Attach files with 📎 or paste. Enter to send, Shift+Enter for newline. Ctrl+K to clear. ↑ cycles recent prompts.</span>
     </div>
-  </div>
+  </main>
 
   <!-- Right column: rebuilt isolated shell (#layla-right-panel) — one scroll root, stable flex -->
   <aside id="layla-right-panel" class="layla-right-panel" aria-label="Layla control center">
-    <div class="rcp-tabs" role="tablist">
-      <button type="button" class="rcp-tab active" role="tab" aria-selected="true" data-rcp="status">Status</button>
-      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="prefs">Settings</button>
-      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="workspace">Library</button>
-      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="artifacts">Artifacts</button>
-      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="research">Research</button>
+    <div class="rcp-tabs" role="tablist" aria-label="Right column panels">
+      <button type="button" class="rcp-tab active" role="tab" aria-selected="true" data-rcp="status" id="tab-status" aria-controls="panel-status">Status</button>
+      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="prefs" id="tab-prefs" aria-controls="panel-prefs">Settings</button>
+      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="workspace" id="tab-workspace" aria-controls="panel-workspace">Library</button>
+      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="artifacts" id="tab-artifacts" aria-controls="panel-artifacts">Artifacts</button>
+      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="research" id="tab-research" aria-controls="panel-research">Research</button>
     </div>
     <div class="rcp-body">
-      <section class="rcp-page active" data-rcp="status" role="tabpanel" aria-hidden="false">
+      <section class="rcp-page active" data-rcp="status" role="tabpanel" aria-hidden="false" id="panel-status" aria-labelledby="tab-status">
         <div class="rta-card">
           <div class="panel-title" style="margin-bottom:6px">Build &amp; updates</div>
           <div id="app-version" style="margin-bottom:6px;color:var(--text-dim);font-size:0.72rem">Version: loading...</div>
@@ -387,7 +387,7 @@
         </div>
       </section>
 
-      <section class="rcp-page" data-rcp="prefs" role="tabpanel" aria-hidden="true">
+      <section class="rcp-page" data-rcp="prefs" role="tabpanel" aria-hidden="true" id="panel-prefs" aria-labelledby="tab-prefs">
         <div class="panel-title" style="margin-bottom:8px">Chat &amp; tools</div>
         <p class="rta-muted" style="margin:0 0 10px">Streaming, voice, sandbox path, and research triggers. Same checkboxes as before — they now live here so the left column stays chat-first.</p>
         <div class="option-card" style="margin-top:0">
@@ -537,7 +537,7 @@
         </div>
       </section>
 
-      <section class="rcp-page" data-rcp="workspace" role="tabpanel" aria-hidden="true">
+      <section class="rcp-page" data-rcp="workspace" role="tabpanel" aria-hidden="true" id="panel-workspace" aria-labelledby="tab-workspace">
         <div class="rcp-subtabs" role="tablist" aria-label="Workspace tools">
           <button type="button" class="rcp-subtab active" data-rcp-sub="models">Models</button>
           <button type="button" class="rcp-subtab" data-rcp-sub="awareness">Awareness</button>
@@ -694,7 +694,7 @@
       </section>
 
       <!-- Artifacts panel (Phase 1.2) -->
-      <section class="rcp-page" data-rcp="artifacts" role="tabpanel" aria-hidden="true">
+      <section class="rcp-page" data-rcp="artifacts" role="tabpanel" aria-hidden="true" id="panel-artifacts" aria-labelledby="tab-artifacts">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <div class="panel-title" style="margin:0">Artifacts</div>
           <div style="display:flex;gap:4px">
@@ -723,7 +723,7 @@
         </div>
       </section>
 
-      <section class="rcp-page" data-rcp="research" role="tabpanel" aria-hidden="true">
+      <section class="rcp-page" data-rcp="research" role="tabpanel" aria-hidden="true" id="panel-research" aria-labelledby="tab-research">
         <div id="research-mission-panel" data-panel="research">
           <div class="option-card" style="margin-bottom:12px;padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(0,0,0,0.08)">
             <div class="panel-title" style="margin-bottom:6px">Autonomous investigation (tier-0, read-only)</div>
