@@ -1111,4 +1111,51 @@ def _migrate_evolution_layer() -> None:
         logger.warning("tool_calls table migration failed: %s", e)
 
 
+    # ── Phase A: Canonical entity/relationship tables ──────────────────────
+    # These are the single source of truth for all entities stored anywhere.
+    # Every service that discovers people, concepts, technologies, or code
+    # symbols MUST write here via services/memory_router.py.
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS entities (
+                    id              TEXT PRIMARY KEY,
+                    type            TEXT NOT NULL,
+                    canonical_name  TEXT NOT NULL,
+                    aliases         TEXT DEFAULT '[]',
+                    description     TEXT DEFAULT '',
+                    tags            TEXT DEFAULT '[]',
+                    confidence      REAL DEFAULT 0.5,
+                    source          TEXT DEFAULT '',
+                    evidence        TEXT DEFAULT '',
+                    created_at      TEXT NOT NULL,
+                    updated_at      TEXT NOT NULL,
+                    last_seen_at    TEXT DEFAULT '',
+                    attributes      TEXT DEFAULT '{}'
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(type)")
+            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_entities_name_type ON entities(canonical_name, type)")
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS relationships (
+                    id              TEXT PRIMARY KEY,
+                    from_entity     TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+                    to_entity       TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+                    type            TEXT NOT NULL,
+                    weight          REAL DEFAULT 0.5,
+                    evidence        TEXT DEFAULT '',
+                    source          TEXT DEFAULT '',
+                    bidirectional   INTEGER DEFAULT 0,
+                    created_at      TEXT NOT NULL,
+                    updated_at      TEXT NOT NULL
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_rel_from ON relationships(from_entity)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_rel_to ON relationships(to_entity)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_rel_type ON relationships(type)")
+            db.commit()
+    except Exception as e:
+        logger.warning("entities/relationships migration failed: %s", e)
+
+
 __all__ = ["migrate", "_MIGRATED", "_MIGRATION_LOCK"]
