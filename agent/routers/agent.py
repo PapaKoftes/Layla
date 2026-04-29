@@ -165,6 +165,30 @@ def _get_image_context(image_url: str = "", image_base64: str = "", workspace_ro
     return ""
 
 
+def _extract_artifacts(text: str) -> list[dict]:
+    """
+    Parse markdown code blocks from a response string into artifact dicts.
+    Returns: [{id, lang, content, lines}]  (max 20 artifacts, >2 lines each)
+    """
+    import hashlib
+    import re
+    artifacts = []
+    pattern = re.compile(r"```(\w*)\n([\s\S]*?)```", re.MULTILINE)
+    for m in pattern.finditer(text or ""):
+        lang = (m.group(1) or "text").strip()
+        content = m.group(2)
+        if not content.strip():
+            continue
+        lines = content.rstrip("\n").count("\n") + 1
+        if lines < 2:
+            continue  # skip trivial one-liners
+        art_id = "art_" + hashlib.md5(content.encode()).hexdigest()[:8]
+        artifacts.append({"id": art_id, "lang": lang, "content": content, "lines": lines})
+        if len(artifacts) >= 20:
+            break
+    return artifacts
+
+
 def _model_ready_message() -> str | None:
     """Return error message if model/LLM is not ready, else None."""
     try:
@@ -997,6 +1021,14 @@ async def agent(req: dict, request: Request):
         response_payload["failure_report"] = str(result.get("failure_report"))
     if result.get("pipeline_status"):
         response_payload["pipeline_status"] = str(result.get("pipeline_status"))
+    # Server-side artifact extraction (Item #11): parse code blocks from response
+    # so the UI can immediately render the artifacts panel without client-side JS scanning.
+    try:
+        _artifacts = _extract_artifacts(response_text)
+        if _artifacts:
+            response_payload["artifacts"] = _artifacts
+    except Exception:
+        pass
     if (
         cache_enabled
         and not stream
