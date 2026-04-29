@@ -186,6 +186,12 @@ def run_tool(
     except Exception:
         pass
     try:
+        from services.request_tracer import record_trace_tool_call
+
+        record_trace_tool_call()
+    except Exception:
+        pass
+    try:
         from services.agent_hooks import run_agent_hooks
 
         _ok = True
