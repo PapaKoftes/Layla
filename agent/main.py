@@ -782,6 +782,9 @@ from routers import (
 from routers import (
     obsidian as obsidian_router,
 )
+from routers import (
+    german as german_router,
+)
 
 app.include_router(settings_router.router)
 app.include_router(session_router.router)
@@ -794,6 +797,7 @@ app.include_router(voice_router.router)
 app.include_router(tools_history_router.router)  # Phase 0.2: tool call history
 app.include_router(search_router.router)  # Phase 1.4: global smart search
 app.include_router(obsidian_router.router)  # Phase 5.1: Obsidian vault connector
+app.include_router(german_router.router)   # Item #10: German language learning mode
 
 if DOCS_DIR.exists():
     app.mount("/docs", StaticFiles(directory=str(DOCS_DIR)), name="docs")

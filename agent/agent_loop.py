@@ -1599,6 +1599,34 @@ def _build_system_head(
     except Exception as _ab_e:
         logger.debug("aspect_behavior block inject failed: %s", _ab_e)
 
+    # German language mode: inject CEFR-calibrated instructions when enabled.
+    try:
+        _german_enabled = False
+        try:
+            _gcfg = cfg if isinstance(cfg, dict) else {}
+            _german_enabled = bool(_gcfg.get("german_mode_enabled", False))
+        except Exception:
+            pass
+        if not _german_enabled:
+            try:
+                from layla.memory.db_connection import _conn as _gconn
+                _gc = _gconn()
+                _grow = _gc.execute(
+                    "SELECT 1 FROM german_profile WHERE user_id='default' LIMIT 1"
+                ).fetchone()
+                _gc.close()
+                # Only inject if user has set up a profile explicitly
+                _german_enabled = False  # profile exists but mode not enabled by default
+            except Exception:
+                pass
+        if _german_enabled:
+            from services.german_mode import build_german_system_block, get_profile as _gprof
+            _glevel = _gprof().get("level", "B1")
+            _german_block = build_german_system_block(_glevel)
+            system_instructions = system_instructions + "\n\n" + _german_block
+    except Exception as _ge:
+        logger.debug("german_mode inject failed: %s", _ge)
+
     # Memory: learnings + semantic + aspect_memories + retrieved (canonical order: context_merge_layers.MEMORY_SECTION_ORDER)
     from services.context_merge_layers import MEMORY_SECTION_ORDER
 
