@@ -584,12 +584,18 @@ def _count_tokens(text: str) -> int:
 
 
 def _add_usage(prompt_tokens: int, completion_tokens: int) -> None:
-    """Add token counts to session totals."""
+    """Add token counts to session totals and active per-turn trace."""
     with _token_usage_lock:
         _token_usage["prompt_tokens"] += prompt_tokens
         _token_usage["completion_tokens"] += completion_tokens
         _token_usage["total_tokens"] += prompt_tokens + completion_tokens
         _token_usage["request_count"] += 1
+    # Per-turn trace: record tokens for this specific request.
+    try:
+        from services.request_tracer import record_trace_tokens
+        record_trace_tokens(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+    except Exception:
+        pass
 
 
 def record_tool_call() -> None:
