@@ -396,6 +396,38 @@ def health_context_budget():
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
+@router.get("/health/trace")
+def health_trace(request: Request):
+    """
+    Last N per-request traces: tokens, latency phases, aspect, reasoning mode, status.
+
+    Query params:
+        n   -- number of traces to return (default 20, max 200)
+        fmt -- "summary" returns one-line strings; omit for full dicts
+
+    Example:
+        GET /health/trace?n=5
+        GET /health/trace?n=10&fmt=summary
+    """
+    try:
+        from services.request_tracer import get_recent_traces, get_trace_summary
+
+        raw_n = (request.query_params.get("n") or "20").strip()
+        try:
+            n = max(1, min(200, int(raw_n)))
+        except ValueError:
+            n = 20
+        fmt = (request.query_params.get("fmt") or "").strip().lower()
+
+        traces = get_recent_traces(n=n)
+        if fmt == "summary":
+            return {"ok": True, "count": len(traces), "traces": [get_trace_summary(t) for t in traces]}
+        return {"ok": True, "count": len(traces), "traces": traces}
+    except Exception as e:
+        logger.debug("health/trace endpoint: %s", e)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 @router.get("/health/deps")
 def health_deps(request: Request):
     """Lightweight dependency matrix; optional Chroma vector probe via ?deep=true."""

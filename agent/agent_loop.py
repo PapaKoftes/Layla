@@ -3317,6 +3317,20 @@ def _autonomous_run_impl_core(
             )
         except Exception as _exc:
             logger.debug("agent_loop:L2623: %s", _exc, exc_info=False)
+        # Close per-request trace on every exit path.
+        try:
+            from services.request_tracer import finish_trace as _rt_finish
+            _status_str = "ok" if success else "error"
+            _st_status = str((st or {}).get("status") or "")
+            if _st_status in ("refused", "system_busy"):
+                _status_str = _st_status
+            _rt_finish(
+                _req_trace,
+                status=_status_str,
+                tool_calls=int((st or {}).get("tool_calls") or 0),
+            )
+        except Exception:
+            pass
 
     def _overloaded_now() -> bool:
         try:
@@ -3357,6 +3371,17 @@ def _autonomous_run_impl_core(
             _last_reasoning_mode = reasoning_mode
     except Exception as _ab_err:
         logger.debug("aspect_behavior depth apply failed: %s", _ab_err)
+    # Open per-request trace (ContextVar -- safe for concurrent runs).
+    _req_trace = None
+    try:
+        from services.request_tracer import start_trace as _rt_start
+        _req_trace = _rt_start(
+            goal,
+            aspect_id=(active_aspect.get("id") or "") if isinstance(active_aspect, dict) else "",
+            reasoning_mode=reasoning_mode,
+        )
+    except Exception as _rt_err:
+        logger.debug("request_tracer start failed: %s", _rt_err)
     if reasoning_mode == "none" and not allow_write and not allow_run and not show_thinking:
         quick = _quick_reply_for_trivial_turn(goal)
         if quick:
