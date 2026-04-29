@@ -1,0 +1,67 @@
+{
+  "timestamp": "2026-04-29T09:52:05Z",
+  "confidence_pct": 75,
+  "pass": 6,
+  "warn": 1,
+  "fail": 1,
+  "skip": 0,
+  "duration_ms": 97644,
+  "checks": [
+    {
+      "check": "Bug patterns",
+      "status": "PASS",
+      "severity": "FAIL",
+      "summary": "All checks passed.",
+      "duration_ms": 808
+    },
+    {
+      "check": "Config validation",
+      "status": "PASS",
+      "severity": "WARN",
+      "summary": "WARNINGS: 1 issue(s), 0 error(s)",
+      "duration_ms": 38
+    },
+    {
+      "check": "Import resolution",
+      "status": "PASS",
+      "severity": "FAIL",
+      "summary": "PASS",
+      "duration_ms": 894
+    },
+    {
+      "check": "Security scan",
+      "status": "PASS",
+      "severity": "WARN",
+      "summary": "All security checks passed.",
+      "duration_ms": 2186
+    },
+    {
+      "check": "API contracts",
+      "status": "WARN",
+      "severity": "WARN",
+      "summary": "FAIL: 118 issue(s) found",
+      "duration_ms": 73
+    },
+    {
+      "check": "DB schema",
+      "status": "PASS",
+      "severity": "WARN",
+      "summary": "All DB checks passed.",
+      "duration_ms": 693
+    },
+    {
+      "check": "UI symbol check",
+      "status": "PASS",
+      "severity": "WARN",
+      "summary": "check_ui_symbols: OK 1 html file(s), 381 def(s)",
+      "duration_ms": 63
+    },
+    {
+      "check": "Pytest suite",
+      "status": "FAIL",
+      "severity": "FAIL",
+      "summary": "5 failed, 816 passed, 10 skipped, 57 deselected, 350 warnings in 88.33s (0:01:28",
+      "duration_ms": 92885
+    }
+  ]
+}

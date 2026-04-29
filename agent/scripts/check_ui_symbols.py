@@ -108,6 +108,14 @@ def main() -> int:
 
     js_files = sorted((UI_DIR / "js").rglob("*.js")) if (UI_DIR / "js").is_dir() else []
     combined_js = "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in js_files)
+
+    # Also scan inline <script> blocks in all HTML files (functions defined there are valid)
+    _RE_INLINE_SCRIPT = re.compile(r'<script[^>]*>(.*?)</script>', re.S | re.I)
+    for html_path in sorted(UI_DIR.rglob("*.html")):
+        html_text = html_path.read_text(encoding="utf-8", errors="replace")
+        for sm in _RE_INLINE_SCRIPT.finditer(html_text):
+            combined_js += "\n" + sm.group(1)
+
     defs = _collect_defs(combined_js)
 
     html_files = sorted(UI_DIR.rglob("*.html"))

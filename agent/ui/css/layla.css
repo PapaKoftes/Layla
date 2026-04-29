@@ -1,3 +1,23 @@
+/* ── WCAG 2.1 AA: Skip navigation link ────────────────────────────────────── */
+.skip-to-content {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--asp, #8b0000);
+  color: #fff;
+  padding: 8px 16px;
+  z-index: 10000;
+  font-size: 0.85rem;
+  text-decoration: none;
+  border-bottom-right-radius: 4px;
+  transition: top 0.15s ease;
+}
+.skip-to-content:focus {
+  top: 0;
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
   :root {
     --bg: #0a0008;
     --bg2: #0e000e;
