@@ -43,14 +43,15 @@ DIM    = lambda t: _c("2",  t)
 # Each entry: (label, script_path, severity)
 # severity: "FAIL" → exit 1 if any issues; "WARN" → report but exit 0
 CHECKS = [
-    ("Bug patterns",        SCRIPTS_DIR / "check_patterns.py",      "FAIL"),
-    ("Config validation",   SCRIPTS_DIR / "check_config.py",        "WARN"),
-    ("Import resolution",   SCRIPTS_DIR / "check_imports.py",       "FAIL"),
-    ("Security scan",       SCRIPTS_DIR / "check_security.py",      "WARN"),
-    ("API contracts",       SCRIPTS_DIR / "check_api_contracts.py", "WARN"),
-    ("DB schema",           SCRIPTS_DIR / "check_db_schema.py",     "WARN"),
-    ("UI symbol check",     SCRIPTS_DIR / "check_ui_symbols.py",    "WARN"),
-    ("Pytest suite",        None,                                     "FAIL"),  # special
+    ("Bug patterns",        SCRIPTS_DIR / "check_patterns.py",           "FAIL"),
+    ("Config validation",   SCRIPTS_DIR / "check_config.py",             "WARN"),
+    ("Import resolution",   SCRIPTS_DIR / "check_imports.py",            "FAIL"),
+    ("Security scan",       SCRIPTS_DIR / "check_security.py",           "WARN"),
+    ("Memory coherence",    SCRIPTS_DIR / "check_memory_coherence.py",   "FAIL"),  # Phase A gate
+    ("API contracts",       SCRIPTS_DIR / "check_api_contracts.py",      "WARN"),
+    ("DB schema",           SCRIPTS_DIR / "check_db_schema.py",          "WARN"),
+    ("UI symbol check",     SCRIPTS_DIR / "check_ui_symbols.py",         "WARN"),
+    ("Pytest suite",        None,                                          "FAIL"),  # special
 ]
 
 

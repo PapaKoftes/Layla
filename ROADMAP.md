@@ -300,7 +300,44 @@ Features:
 
 ---
 
-## PRIORITY ORDER (what to do next)
+## UPDATED PRIORITY ORDER (revised after architecture audit)
+
+> **See `SYSTEM_PLAN.md` for the full risk analysis, mitigation strategies,
+> verification gates, and file-level build specifications.**
+> The plan below was revised to address the critical risks identified:
+> memory fragmentation, no canonical entity schema, and scope creep.
+
+**True next priorities (most value, least risk):**
+
+1. **Phase A — Memory Coherence** (CRITICAL BLOCKER)
+   - `schemas/entity.py` — canonical data model for everything
+   - `services/memory_router.py` — single query interface for all memory
+   - Add entities/relationships tables to SQLite
+   - Gate: `check_memory_coherence.py` → 0 conflicts
+
+2. **Phase B — Repo Intelligence** (unblocks coding assistance)
+   - `services/repo_indexer.py` — unified incremental indexer
+   - Codex auto-generation
+   - NetworkX graph persistence
+
+3. **Phase C — Bulk Ingestion** (unblocks "loading with knowledge")
+   - `scripts/bulk_ingest.py` — one-command knowledge loading
+   - `services/people_codex.py` — relationship intelligence
+
+4. **Phase D — Background Scheduler** (unblocks autonomy)
+   - APScheduler for auto-reindex, Obsidian sync, memory consolidation
+
+5. **Phase E — Confidence score ≥ 85%** (quality assurance)
+   - Fix 5 pre-existing test failures
+   - In-process metrics dashboard
+
+6. **Phase F — Language System Generalisation** (low risk, high value)
+   - Generalise German mode to any language
+   - SM-2 for all KB content
+
+---
+
+## OLD PRIORITY ORDER (superseded)
 
 1. **Confirm test suite passes** — run `python scripts/run_all_checks.py`
 2. **Phase 7.1** — Research automation loop (biggest autonomy gain)
