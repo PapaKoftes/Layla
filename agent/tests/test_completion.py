@@ -85,9 +85,9 @@ def test_direct_feedback_and_psychology_pin_in_system_head():
     import agent_loop
     import runtime_safety
 
-    base = runtime_safety.load_config()
+    # Use built-in defaults rather than reading the live runtime_config.json,
+    # so this test is hermetic regardless of local operator config.
     merged = {
-        **base,
         "direct_feedback_enabled": True,
         "pin_psychology_framework_excerpt": True,
         "prompt_budget_enabled": False,

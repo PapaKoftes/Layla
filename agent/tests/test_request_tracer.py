@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import sys
 import threading
+
+import pytest
 import time
 from pathlib import Path
 
@@ -258,6 +260,7 @@ def test_concurrent_traces_isolated():
 # HTTP endpoint
 # ---------------------------------------------------------------------------
 
+@pytest.mark.endpoint
 def test_health_trace_endpoint(client):
     t = start_trace("endpoint test goal")
     record_trace_tokens(300, 100)

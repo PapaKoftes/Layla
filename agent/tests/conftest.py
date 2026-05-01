@@ -33,6 +33,39 @@ def _force_test_db_path(tmp_path_factory):
         pass
 
 
+@pytest.fixture(autouse=True)
+def _reset_volatile_module_state():
+    """
+    Reset module-level caches that leak between tests.
+
+    Runs before every test function (scope="function", autouse=True).
+
+    Why each reset is needed:
+    - runtime_safety._config_cache: load_config() caches the result for
+      _CONFIG_CHECK_TTL seconds. A test that calls load_config() without
+      patching populates this cache; the next test then reads stale values
+      (e.g. a temp-dir sandbox_root left by a previous test's live run).
+    - learnings._recent_learning_ts: an in-process deque rate-limiter.
+      After ~20 save_learning() calls across the suite the limiter trips and
+      save_learning() silently returns -1, causing tests that check DB
+      contents or graph-invalidation to fail.
+    """
+    try:
+        import runtime_safety as _rs
+        _rs._config_cache = None
+        _rs._config_last_check = 0.0
+    except Exception:
+        pass
+
+    try:
+        import layla.memory.learnings as _lm
+        _lm._recent_learning_ts.clear()
+    except Exception:
+        pass
+
+    yield  # test runs here
+
+
 def pytest_collection_modifyitems(config, items):  # noqa: ARG001
     try:
         import playwright  # noqa: F401

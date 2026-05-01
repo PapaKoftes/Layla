@@ -6,6 +6,8 @@ Run from agent/: pytest tests/test_startup_imports.py -v
 import sys
 from pathlib import Path
 
+import pytest
+
 AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
@@ -31,6 +33,7 @@ def test_context_manager_available():
     assert isinstance(DEFAULT_BUDGETS, dict)
 
 
+@pytest.mark.endpoint
 def test_health_endpoint_responds():
     """FastAPI app serves /health."""
     from fastapi.testclient import TestClient

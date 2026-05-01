@@ -75,9 +75,13 @@ def test_tts_get_voice_options():
 def _reset_db(monkeypatch, tmp_path):
     """Point db module at a fresh temp file and reset the migration guard."""
     import layla.memory.db as db_mod
+    import layla.memory.learnings as learnings_mod
     test_db = tmp_path / f"test_layla_{Path(tmp_path).name}.db"
     monkeypatch.setattr(db_mod, "_DB_PATH", test_db)
     monkeypatch.setattr(db_mod, "_MIGRATED", False)
+    # Clear the in-process rate-limiter deque so prior test calls don't trigger
+    # the 20-per-60s cap and cause save_learning to return -1.
+    learnings_mod._recent_learning_ts.clear()
     db_mod.migrate()
     return test_db
 
