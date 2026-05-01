@@ -122,6 +122,9 @@ def _minimal_cfg(sandbox_root: str) -> dict:
         "enable_personality_expression": False,
         "uncensored": False,
         "nsfw_allowed": False,
+        "prompt_optimizer_enabled": False,
+        "decision_policy_enabled": False,
+        "llmlingua_compression_enabled": False,
     }
 
 
