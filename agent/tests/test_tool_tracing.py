@@ -12,6 +12,8 @@ import sqlite3
 import sys
 import time
 from pathlib import Path
+
+import pytest
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -226,6 +228,7 @@ class TestGetToolReliability:
 # /tools/history HTTP endpoint
 # ---------------------------------------------------------------------------
 
+@pytest.mark.endpoint
 class TestToolsHistoryEndpoint:
     def test_endpoint_reachable(self, client):
         r = client.get("/tools/history")
@@ -279,6 +282,7 @@ class TestToolsHistoryEndpoint:
 # /tools/analysis HTTP endpoint
 # ---------------------------------------------------------------------------
 
+@pytest.mark.endpoint
 class TestToolsAnalysisEndpoint:
     def test_endpoint_reachable(self, client):
         r = client.get("/tools/analysis")

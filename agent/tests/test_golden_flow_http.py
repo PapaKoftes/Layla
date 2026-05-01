@@ -117,6 +117,9 @@ def test_golden_chat_tool_approve_then_reason(tmp_path, monkeypatch, golden_pend
     # Approvals call TOOLS fn directly; file_ops binds sandbox_core.inside_sandbox at import time.
     monkeypatch.setattr(file_ops_mod, "inside_sandbox", lambda _p: True)
     monkeypatch.setattr(agent_router, "_model_ready_message", lambda: None)
+    # Disable prompt optimizer so goal text is not modified (would break _extract_path/_extract_file_and_content)
+    import services.prompt_optimizer as _prompt_opt
+    monkeypatch.setattr(_prompt_opt, "optimize", lambda msg, **kw: {"original": msg, "optimized": msg, "changed": False, "intent": "unknown", "tier": 0})
 
     client = TestClient(app)
     conv_id = str(uuid_mod.uuid4())
