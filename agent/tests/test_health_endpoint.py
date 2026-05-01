@@ -1,7 +1,10 @@
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
+
+pytestmark = pytest.mark.endpoint
 
 AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
