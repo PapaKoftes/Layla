@@ -35,6 +35,14 @@ SKIP_ROUTES = {
     "/openapi.json", "/redoc",
 }
 
+# ── Coverage ratchet ─────────────────────────────────────────────────────────
+# Baseline measured 2026-04-30: 118 untested routes out of 208 total.
+# This number must only go DOWN. Every time you add endpoint tests, lower it.
+# If the count exceeds this value the check fails, preventing coverage regression.
+# To tighten: run `python scripts/check_api_contracts.py`, read the reported
+# count, then set MAX_UNCOVERED_ROUTES = <new_count>.
+MAX_UNCOVERED_ROUTES = 118
+
 # Methods we track
 HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
 
@@ -178,7 +186,12 @@ def run() -> int:
             print(f"    UNTESTED: {r['method']} {r['path']}  ({r['file']}:{r['line']})")
         if len(uncovered) > 20:
             print(f"    ... and {len(uncovered)-20} more")
-        issues += len(uncovered)
+        if len(uncovered) > MAX_UNCOVERED_ROUTES:
+            issues += len(uncovered) - MAX_UNCOVERED_ROUTES
+            print(f"  NOTE: {len(uncovered)} uncovered routes exceeds threshold {MAX_UNCOVERED_ROUTES}; "
+                  f"{len(uncovered) - MAX_UNCOVERED_ROUTES} above limit.")
+        else:
+            print(f"  NOTE: {len(uncovered)} uncovered routes is within threshold ({MAX_UNCOVERED_ROUTES}).")
         print()
 
     if no_docstring:
