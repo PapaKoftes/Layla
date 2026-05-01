@@ -48,6 +48,7 @@ CHECKS = [
     ("Import resolution",   SCRIPTS_DIR / "check_imports.py",            "FAIL"),
     ("Security scan",       SCRIPTS_DIR / "check_security.py",           "WARN"),
     ("Memory coherence",    SCRIPTS_DIR / "check_memory_coherence.py",   "FAIL"),  # Phase A gate
+    ("Repo index",          SCRIPTS_DIR / "check_repo_index.py",         "FAIL"),  # Phase B gate
     ("API contracts",       SCRIPTS_DIR / "check_api_contracts.py",      "WARN"),
     ("DB schema",           SCRIPTS_DIR / "check_db_schema.py",          "WARN"),
     ("UI symbol check",     SCRIPTS_DIR / "check_ui_symbols.py",         "WARN"),
@@ -68,12 +69,20 @@ def _run_script(script: Path) -> tuple[int, str]:
 
 
 def _run_pytest() -> tuple[int, str]:
-    """Run pytest suite excluding slow/HTTP endpoint tests."""
+    """Run pytest suite excluding tests marked endpoint, slow, or e2e.
+
+    Uses marker-based filtering (-m) rather than keyword matching (-k) so
+    the exclusion set is explicit and adding new tests doesn't accidentally
+    skip them because their name contains "client" or "endpoint".
+
+    To run only the excluded tests locally:
+        pytest tests/ -m "endpoint or slow"
+    """
     result = subprocess.run(
         [
             sys.executable, "-m", "pytest", "tests/",
             "-q", "--tb=no",
-            "-k", "not endpoint and not client and not slow and not e2e and not smoke_comprehensive",
+            "-m", "not endpoint and not slow and not e2e",
             "--no-header",
             "--timeout=60",
             "--ignore=tests/test_smoke_comprehensive.py",
