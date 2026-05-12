@@ -3073,6 +3073,10 @@ def autonomous_run(
     context_files: list[str] | None = None,
 ) -> dict:
     # Prompt optimizer: enhance user goal before processing (graceful; never blocks)
+    # Preserve the original user-authored goal text so downstream code can refer to
+    # the canonical words even when the optimizer rewrites the prompt.
+    goal_original = goal
+    goal_optimized: str | None = None
     try:
         from services.prompt_optimizer import optimize as _opt_goal
         _cfg_now = runtime_safety.load_config() if hasattr(runtime_safety, "load_config") else {}
@@ -3089,6 +3093,7 @@ def autonomous_run(
                     "prompt_optimizer: [%s] goal rewritten (tier=%d)",
                     _opt_result.get("intent", "?"), _opt_result.get("tier", 0),
                 )
+                goal_optimized = _opt_result["optimized"]
                 goal = _opt_result["optimized"]
     except Exception as _opt_e:
         logger.debug("prompt_optimizer inject failed: %s", _opt_e)
@@ -3577,6 +3582,11 @@ def _autonomous_run_impl_core(
         state["packed_context"] = _packed_ctx_run
     if context_files:
         state["context_files"] = [str(x).strip() for x in context_files if str(x).strip()]
+    # Preserve canonical user-authored goal text. `goal` here may have been
+    # rewritten by the prompt optimizer in _autonomous_run_impl; state already
+    # carries `original_goal` from create_execution_state if available, else
+    # default to the current goal value as a best-effort canonical record.
+    state.setdefault("original_goal", goal)
     state["workspace_root"] = (workspace_root or "").strip()
     state["fabrication_assist_runner_request"] = (fabrication_assist_runner_request or "").strip().lower()
     try:
