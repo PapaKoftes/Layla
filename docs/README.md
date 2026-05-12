@@ -1,6 +1,8 @@
-# Documentation index
+# Documentation Index
 
 Central index for Layla’s documentation. Links are relative so they work on GitHub and in local clones.
+
+**Last updated:** 2026-05-12 | **Tests:** 858 passing | **Health checks:** 12/12 green
 
 ---
 
@@ -9,6 +11,8 @@ Central index for Layla’s documentation. Links are relative so they work on Gi
 | Path | Description |
 |------|-------------|
 | [system/](system/) | **Ground-truth** docs derived from `agent/` source: routes, config, execution paths, invariants. **Authoritative when narrative docs disagree.** Start with [system/README.md](system/README.md). |
+| [../agent/docs/audit/](../agent/docs/audit/) | **Subsystem audit** (2026-05-12): 63 subsystems classified as REAL/PARTIAL/SCAFFOLD/MISSING. Ground truth for gaps. |
+| [../agent/scripts/README.md](../agent/scripts/README.md) | Health check scripts: 12 checks covering bugs, config, imports, security, API contracts, DB, UI symbols, wiring, memory router enforcement, and pytest. |
 
 Other documents under `docs/` are primarily **explanatory** (onboarding, audits, roadmap, conventions). Use **`docs/system/`** when you need behavior-level precision.
 
@@ -35,7 +39,7 @@ Other documents under `docs/` are primarily **explanatory** (onboarding, audits,
 | Document | Description |
 |----------|-------------|
 | [../PROJECT_BRAIN.md](../PROJECT_BRAIN.md) | Stable system summary — read before deep repo scans |
-| [../ARCHITECTURE.md](../ARCHITECTURE.md) | Request flow, state, subsystems |
+| [../ARCHITECTURE.md](../ARCHITECTURE.md) | Request flow, state, subsystems (47 KB — comprehensive) |
 | [LAYLA_SYSTEM_OVERVIEW.md](LAYLA_SYSTEM_OVERVIEW.md) | What Layla is and how the pieces fit |
 | [GOLDEN_FLOW.md](GOLDEN_FLOW.md) | End-to-end request lifecycle and contracts |
 | [POST_AGENT_RESPONSE_CONTRACT.md](POST_AGENT_RESPONSE_CONTRACT.md) | `POST /agent` response shapes |
@@ -43,6 +47,17 @@ Other documents under `docs/` are primarily **explanatory** (onboarding, audits,
 | [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) | North Star sections vs code |
 | [RULES.md](RULES.md) | Naming, layout, allowed/forbidden patterns |
 | [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) | Pre-publish verification |
+
+---
+
+## Personality and aspects
+
+| Document | Description |
+|----------|-------------|
+| [../LAYLA_NORTH_STAR.md](../LAYLA_NORTH_STAR.md) | Vision, FRAME calibration, design principles |
+| [PERSONALITY_LAYER_ARCHITECTURE.md](PERSONALITY_LAYER_ARCHITECTURE.md) | Personality expression layer design (prompt-only, feature-flagged) |
+| [PERSONALITY_LAYER_UNDERSTANDING.md](PERSONALITY_LAYER_UNDERSTANDING.md) | How personality is injected, aspect selection, refusal, UX states |
+| [ETHICAL_AI_PRINCIPLES.md](ETHICAL_AI_PRINCIPLES.md) | Ethics and boundaries |
 
 ---
 
@@ -55,8 +70,8 @@ Other documents under `docs/` are primarily **explanatory** (onboarding, audits,
 | [RUNBOOKS.md](RUNBOOKS.md) | Add tools, aspects, knowledge, workers |
 | [SKILLS.md](SKILLS.md) | Skills system |
 | [missions.md](missions.md) | Long-running missions |
+| [RESEARCH_MISSION_UI_GUIDE.md](RESEARCH_MISSION_UI_GUIDE.md) | How to run/resume 24h research missions from the UI |
 | [REMOTE_ARCHITECTURE.md](REMOTE_ARCHITECTURE.md) | Remote access patterns |
-| [ETHICAL_AI_PRINCIPLES.md](ETHICAL_AI_PRINCIPLES.md) | Ethics and boundaries |
 
 ---
 
@@ -64,7 +79,8 @@ Other documents under `docs/` are primarily **explanatory** (onboarding, audits,
 
 | Document | Description |
 |----------|-------------|
-| [ROADMAP.md](ROADMAP.md) | Roadmap |
+| [../SYSTEM_PLAN.md](../SYSTEM_PLAN.md) | Master development plan (from current state to fully operational) |
+| [ROADMAP.md](ROADMAP.md) | Phase-by-phase roadmap |
 | [MILESTONES.md](MILESTONES.md) | Milestones |
 | [TASKS.md](TASKS.md) | Lightweight backlog pointer |
 
@@ -78,6 +94,7 @@ Other documents under `docs/` are primarily **explanatory** (onboarding, audits,
 | [MODULE_SWEEP_TEMPLATE.md](MODULE_SWEEP_TEMPLATE.md) | Template for new sweeps |
 | [STRUCTURED_ENGINEERING_PARTNER.md](STRUCTURED_ENGINEERING_PARTNER.md) | Engineering pipeline |
 | [ADAPTIVE_EXECUTION_ENGINE.md](ADAPTIVE_EXECUTION_ENGINE.md) | Budgets and adaptive execution |
+| [FINAL_SYSTEM_READINESS.md](FINAL_SYSTEM_READINESS.md) | Research lab, mission state, runtime limits audit |
 
 ---
 
@@ -86,7 +103,13 @@ Other documents under `docs/` are primarily **explanatory** (onboarding, audits,
 | Document | Description |
 |----------|-------------|
 | [REPO_AUDIT_FOR_COLLABORATORS.md](REPO_AUDIT_FOR_COLLABORATORS.md) | Sharing the repo safely |
-| [AI_HANDOFF_REPORT.md](AI_HANDOFF_REPORT.md) | Cumulative handoff context |
+| [../AGENTS.md](../AGENTS.md) | AI/contributor operations manual (read-first for AI assistants) |
+
+---
+
+## Archived (historical)
+
+Older diagnostic reports, point-in-time audits, and handoff docs live in [`archive/`](archive/).
 
 ---
 
