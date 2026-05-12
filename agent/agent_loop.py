@@ -5,8 +5,27 @@ import re
 import threading
 import time
 from collections.abc import Callable
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
+
+# Goal preservation: the prompt optimizer (in `autonomous_run`) may rewrite the
+# user's goal before downstream processing. We must keep the canonical original
+# text available so memory writes, reflection, and trace endpoints can refer to
+# what the user actually said. These contextvars are set in `autonomous_run`
+# right after capturing/optimizing the goal and read by `_autonomous_run_impl_core`.
+_goal_original_var: ContextVar[str] = ContextVar("layla_goal_original", default="")
+_goal_optimized_var: ContextVar[str] = ContextVar("layla_goal_optimized", default="")
+
+
+def get_last_goal_original() -> str:
+    """Public accessor for the most recent user-authored goal (pre-optimizer)."""
+    return _goal_original_var.get()
+
+
+def get_last_goal_optimized() -> str:
+    """Public accessor for the optimizer's rewrite of the most recent goal."""
+    return _goal_optimized_var.get()
 
 import psutil
 
@@ -3098,6 +3117,12 @@ def autonomous_run(
     except Exception as _opt_e:
         logger.debug("prompt_optimizer inject failed: %s", _opt_e)
 
+    # Phase B Fix 2: publish canonical pre/post-optimizer goal text via contextvars
+    # so downstream code (state, /health/trace, memory writes) can refer to the
+    # text the user actually authored. Tokens are reset in the finally below.
+    _goal_orig_token = _goal_original_var.set(goal_original or "")
+    _goal_opt_token = _goal_optimized_var.set(goal_optimized or "")
+
     # Phase 4.3: set per-task context vars for structured log isolation
     try:
         import uuid as _uuid
@@ -3153,6 +3178,11 @@ def autonomous_run(
                 reset_task_context(_ctx_tokens)
             except Exception:
                 pass
+        try:
+            _goal_original_var.reset(_goal_orig_token)
+            _goal_optimized_var.reset(_goal_opt_token)
+        except Exception:
+            pass
 
 
 def _autonomous_run_impl(
@@ -3274,9 +3304,12 @@ def _autonomous_run_impl_core(
         _mem_result = _mem_cmd_detect(goal, aspect_id=aspect_id or "")
         if _mem_result.is_command:
             _active_asp = orchestrator.select_aspect(goal, force_aspect=aspect_id)
+            _go_mc = _goal_original_var.get() or goal
             return {
                 "goal": goal,
-                "original_goal": goal,
+                "original_goal": _go_mc,
+                "goal_original": _go_mc,
+                "goal_optimized": _goal_optimized_var.get() or "",
                 "objective": goal,
                 "objective_complete": True,
                 "depth": 0,
@@ -3440,9 +3473,12 @@ def _autonomous_run_impl_core(
         quick = _quick_reply_for_trivial_turn(goal)
         if quick:
             _emit_run_telemetry({"reasoning_mode": reasoning_mode}, True)
+            _go_qr = _goal_original_var.get() or goal
             return {
                 "goal": goal,
-                "original_goal": goal,
+                "original_goal": _go_qr,
+                "goal_original": _go_qr,
+                "goal_optimized": _goal_optimized_var.get() or "",
                 "objective": goal,
                 "objective_complete": True,
                 "depth": 0,
@@ -3583,10 +3619,15 @@ def _autonomous_run_impl_core(
     if context_files:
         state["context_files"] = [str(x).strip() for x in context_files if str(x).strip()]
     # Preserve canonical user-authored goal text. `goal` here may have been
-    # rewritten by the prompt optimizer in _autonomous_run_impl; state already
-    # carries `original_goal` from create_execution_state if available, else
-    # default to the current goal value as a best-effort canonical record.
-    state.setdefault("original_goal", goal)
+    # rewritten by the prompt optimizer in `autonomous_run` (the outer wrapper).
+    # `goal_original` is the user's authored input; `goal_optimized` is the
+    # optimizer's rewrite (empty if no rewrite happened). Both are persisted on
+    # state so memory writes and `/health/trace` can show the truth.
+    _go = _goal_original_var.get() or goal
+    _gopt = _goal_optimized_var.get()
+    state.setdefault("original_goal", _go)
+    state["goal_original"] = _go
+    state["goal_optimized"] = _gopt or ""
     state["workspace_root"] = (workspace_root or "").strip()
     state["fabrication_assist_runner_request"] = (fabrication_assist_runner_request or "").strip().lower()
     try:
