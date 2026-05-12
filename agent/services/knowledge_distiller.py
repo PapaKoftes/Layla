@@ -17,7 +17,8 @@ def distill_learnings_to_insights(n: int = 20) -> dict[str, Any]:
     Returns {insights_added, learnings_processed, error}.
     """
     try:
-        from layla.memory.db import get_recent_learnings, save_learning
+        from layla.memory.db import get_recent_learnings
+        from services.memory_router import save_learning  # canonical write path
         learnings = get_recent_learnings(n=n)
         if len(learnings) < 3:
             return {"insights_added": 0, "learnings_processed": len(learnings)}

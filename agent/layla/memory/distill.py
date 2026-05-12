@@ -122,7 +122,8 @@ def _summarize_group(group: list[dict]) -> str:
 
 def _merge_groups(groups: list[list[dict]]) -> dict:
     """Merge pre-computed groups into distilled learnings. Returns {merged_groups, removed, added}."""
-    from layla.memory.db import delete_learnings_by_id, save_learning
+    from layla.memory.db import delete_learnings_by_id
+    from services.memory_router import save_learning  # canonical write path
 
     if not groups:
         return {"merged_groups": 0, "removed": 0, "added": 0}
