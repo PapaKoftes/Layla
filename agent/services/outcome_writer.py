@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 import threading
 
-from layla.memory.db import save_aspect_memory as _db_save_aspect_memory
+from services.memory_router import save_aspect_memory as _db_save_aspect_memory  # canonical write path
 
 logger = logging.getLogger("layla")
 
@@ -99,7 +99,7 @@ def _save_outcome_memory(state: dict) -> None:
     if len(summary) > 400:
         summary = summary[:397] + "..."
     try:
-        from layla.memory.db import save_learning
+        from services.memory_router import save_learning  # canonical write path
 
         save_learning(content=summary, kind="outcome")
     except Exception as e:
@@ -108,7 +108,7 @@ def _save_outcome_memory(state: dict) -> None:
     # Layla v3: tool success patterns (high precision, deterministic).
     # Persist compact "what worked" snippets from successful tool steps.
     try:
-        from layla.memory.db import save_learning
+        from services.memory_router import save_learning  # canonical write path
 
         saved = 0
         for s in tool_steps[:30]:
@@ -313,7 +313,7 @@ def _auto_extract_learnings(user_msg: str, response: str, aspect_id: str) -> Non
 
         if not extracted:
             return
-        from layla.memory.db import save_learning
+        from services.memory_router import save_learning  # canonical write path
 
         saved = 0
         # Operator correction detection (high precision heuristic)
