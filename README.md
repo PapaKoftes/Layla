@@ -156,7 +156,7 @@ Switch in the sidebar or invoke by name:
 - File read/write/edit, patches, shell, Python  
 - Web search, Playwright browser automation, screenshots  
 - Repo search (grep/glob), Git operations  
-- 100+ registered tools — see [AGENTS.md](AGENTS.md) and [docs/TECH_STACK_AND_CAPABILITIES.md](docs/TECH_STACK_AND_CAPABILITIES.md)  
+- 195 registered tools — see [AGENTS.md](AGENTS.md) and [docs/TECH_STACK_AND_CAPABILITIES.md](docs/TECH_STACK_AND_CAPABILITIES.md)  
 
 **Memory**
 
@@ -299,6 +299,8 @@ Cursor integration via MCP — see [.cursor/rules/layla-assistant.mdc](.cursor/r
 | [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) | First run (detailed) |
 | [docs/SECURITY.md](docs/SECURITY.md) | Security |
 | [docs/RUNBOOKS.md](docs/RUNBOOKS.md) | Operations |
+| [agent/docs/audit/](agent/docs/audit/) | Subsystem audit & migration tracking |
+| [agent/scripts/README.md](agent/scripts/README.md) | Health check scripts (12 checks, 858 tests) |
 | [LICENSE](LICENSE) | Non-commercial source license |
 
 ---
