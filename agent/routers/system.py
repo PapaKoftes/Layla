@@ -425,9 +425,20 @@ def health_trace(request: Request):
         fmt = (request.query_params.get("fmt") or "").strip().lower()
 
         traces = get_recent_traces(n=n)
+        # Phase B Fix 2: expose the canonical pre/post-optimizer goal text so
+        # callers can verify the user's words survived the optimizer rewrite.
+        goal_view: dict = {}
+        try:
+            from agent_loop import get_last_goal_optimized, get_last_goal_original
+            goal_view = {
+                "goal_original": get_last_goal_original(),
+                "goal_optimized": get_last_goal_optimized(),
+            }
+        except Exception:
+            goal_view = {}
         if fmt == "summary":
-            return {"ok": True, "count": len(traces), "traces": [get_trace_summary(t) for t in traces]}
-        return {"ok": True, "count": len(traces), "traces": traces}
+            return {"ok": True, "count": len(traces), "traces": [get_trace_summary(t) for t in traces], **goal_view}
+        return {"ok": True, "count": len(traces), "traces": traces, **goal_view}
     except Exception as e:
         logger.debug("health/trace endpoint: %s", e)
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
