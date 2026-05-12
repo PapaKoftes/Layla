@@ -47,11 +47,10 @@ _model_cache: dict[str, Any] = {}  # model_path → loaded AirLLM model
 # ── Config helpers ────────────────────────────────────────────────────────────
 
 def _cfg() -> dict:
+    # Delegates to services.config_cache for mtime-invalidated single-source loader.
     try:
-        import json
-        p = Path(__file__).resolve().parent.parent / "config.json"
-        with p.open(encoding="utf-8") as f:
-            return json.load(f)
+        from services.config_cache import get_config
+        return get_config()
     except Exception:
         return {}
 
@@ -266,6 +265,11 @@ def generate(
 
     except Exception as exc:
         logger.error("airllm_runner: generation failed: %s", exc)
+        try:
+            from services.degraded import mark_degraded
+            mark_degraded("airllm", str(exc))
+        except Exception:
+            pass
         return {"ok": False, "error": str(exc)}
 
 

@@ -109,7 +109,7 @@ def store_reflections_as_learnings(
     if not reflections:
         return
     try:
-        from layla.memory.db import save_learning
+        from services.memory_router import save_learning  # canonical write path
         parts = []
         if reflections.get("what_worked"):
             parts.append(f"Worked: {reflections['what_worked']}")

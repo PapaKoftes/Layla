@@ -37,11 +37,10 @@ _TIMEOUT_S = 5  # seconds for each REST call
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _get_config() -> dict:
-    """Load agent config.json lazily."""
+    """Load agent config.json lazily (delegates to services.config_cache)."""
     try:
-        cfg_path = Path(__file__).resolve().parent.parent / "config.json"
-        with cfg_path.open(encoding="utf-8") as f:
-            return json.load(f)
+        from services.config_cache import get_config
+        return get_config()
     except Exception:
         return {}
 

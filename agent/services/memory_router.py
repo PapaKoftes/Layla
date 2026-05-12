@@ -56,12 +56,35 @@ class MemoryResult:
 # ── Config ─────────────────────────────────────────────────────────────────────
 
 def _cfg() -> dict:
+    # Delegates to services.config_cache for mtime-invalidated single-source loader.
     try:
-        p = _AGENT_DIR / "config.json"
-        with p.open(encoding="utf-8") as f:
-            return json.load(f)
+        from services.config_cache import get_config
+        return get_config()
     except Exception:
         return {}
+
+
+# ── Pass-through write helpers ────────────────────────────────────────────────
+# These exist so all writers can import memory_router as the canonical write
+# chokepoint. Internally they delegate to the same SQLite helpers writers used
+# directly before; the router becomes the registered chokepoint that
+# scripts/check_wiring.py asserts against.
+
+def save_learning(content: str, kind: str = "general", **kwargs) -> Any:
+    """Pass-through to layla.memory.db.save_learning (canonical write path)."""
+    from layla.memory.db import save_learning as _save_learning
+    return _save_learning(content=content, kind=kind, **kwargs)
+
+
+def save_aspect_memory(aspect_id: str, content: str, **kwargs) -> Any:
+    """Pass-through to layla.memory.db.save_aspect_memory."""
+    from layla.memory.db import save_aspect_memory as _sam
+    return _sam(aspect_id, content, **kwargs)
+
+
+def save_outcome(content: str, **kwargs) -> Any:
+    """Pass-through write for outcome-style learnings."""
+    return save_learning(content=content, kind="outcome", **kwargs)
 
 
 def _enabled() -> bool:

@@ -227,6 +227,11 @@ def health(request: Request):
         "knowledge_index_status": getattr(request.app.state, "knowledge_index_status", None),
     }
     try:
+        from services.degraded import get_degraded
+        payload["degraded"] = get_degraded()
+    except Exception:
+        payload["degraded"] = {}
+    try:
         import urllib.error
         import urllib.request
 
