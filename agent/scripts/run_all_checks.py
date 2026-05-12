@@ -52,6 +52,7 @@ CHECKS = [
     ("API contracts",       SCRIPTS_DIR / "check_api_contracts.py",      "WARN"),
     ("DB schema",           SCRIPTS_DIR / "check_db_schema.py",          "WARN"),
     ("UI symbol check",     SCRIPTS_DIR / "check_ui_symbols.py",         "WARN"),
+    ("Wiring (prod imports)", SCRIPTS_DIR / "check_wiring.py",            "WARN"),  # Fix #8
     ("Pytest suite",        None,                                          "FAIL"),  # special
 ]
 
@@ -179,6 +180,58 @@ def run(fail_fast: bool = False, json_output: bool = False) -> int:
 
     confidence = round((n_pass / total) * 100) if total else 0
 
+    # Fix #10: real assertions — actual production-state probes, not just
+    # "did the script return exit 0". These ground the confidence number in
+    # observable system state.
+    health_assertions: dict[str, bool] = {}
+    try:
+        # repo_index_populated: repo_indexer DB has at least one row
+        import sqlite3 as _sql
+        _idx_db = AGENT_DIR / ".layla" / "repo_index.db"
+        if not _idx_db.exists():
+            _idx_db = AGENT_DIR / "repo_index.db"
+        _populated = False
+        if _idx_db.exists():
+            try:
+                _c = _sql.connect(str(_idx_db))
+                _cur = _c.cursor()
+                _tabs = [r[0] for r in _cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+                for _t in _tabs:
+                    try:
+                        n = _cur.execute(f"SELECT COUNT(*) FROM {_t}").fetchone()[0]
+                        if n and int(n) > 0:
+                            _populated = True
+                            break
+                    except Exception:
+                        pass
+                _c.close()
+            except Exception:
+                _populated = False
+        health_assertions["repo_index_populated"] = _populated
+    except Exception:
+        health_assertions["repo_index_populated"] = False
+    try:
+        # memory_router_used: wiring check passes
+        _wiring = [r for r in results if r["check"].startswith("Wiring")]
+        health_assertions["memory_router_used"] = bool(_wiring and _wiring[0]["status"] == "PASS")
+    except Exception:
+        health_assertions["memory_router_used"] = False
+    try:
+        # config_cache_importable: module loads without error.
+        # Ensure AGENT_DIR is on sys.path so `services.*` resolves regardless
+        # of how this script was invoked.
+        import sys as _sys
+        if str(AGENT_DIR) not in _sys.path:
+            _sys.path.insert(0, str(AGENT_DIR))
+        import importlib as _il
+        _mod = _il.import_module("services.config_cache")
+        health_assertions["config_cache_importable"] = callable(getattr(_mod, "get_config", None))
+    except Exception:
+        health_assertions["config_cache_importable"] = False
+
+    n_assert_pass = sum(1 for v in health_assertions.values() if v)
+    n_assert_total = len(health_assertions)
+
     print()
     print(BOLD("-" * 66))
     print(f"  Checks: {total}  |  "
@@ -186,7 +239,9 @@ def run(fail_fast: bool = False, json_output: bool = False) -> int:
           f"{YELLOW(f'WARN {n_warn}')}  |  "
           f"{RED(f'FAIL {n_fail}')}  |  "
           f"SKIP {n_skip}")
-    print(f"  Confidence score: {BOLD(str(confidence) + '%')}")
+    print(f"  Check-script pass rate: {BOLD(str(confidence) + '%')}")
+    print(f"  Real assertions: {BOLD(f'{n_assert_pass}/{n_assert_total}')}  "
+          + DIM("(" + ", ".join(f"{k}={'Y' if v else 'N'}" for k, v in health_assertions.items()) + ")"))
     print(f"  Duration: {total_dur}ms")
     print(BOLD("-" * 66))
     print()
@@ -203,6 +258,9 @@ def run(fail_fast: bool = False, json_output: bool = False) -> int:
     report = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "confidence_pct": confidence,
+        "real_assertions": health_assertions,
+        "real_assertions_pass": n_assert_pass,
+        "real_assertions_total": n_assert_total,
         "pass": n_pass, "warn": n_warn, "fail": n_fail, "skip": n_skip,
         "duration_ms": total_dur,
         "checks": [{k: v for k, v in r.items() if k != "output"} for r in results],

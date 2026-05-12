@@ -78,10 +78,10 @@ _AGENT_DIR = Path(__file__).resolve().parent.parent
 # ── Config ────────────────────────────────────────────────────────────────────
 
 def _cfg() -> dict:
+    # Delegates to services.config_cache for mtime-invalidated single-source loader.
     try:
-        p = _AGENT_DIR / "config.json"
-        with p.open(encoding="utf-8") as f:
-            return json.load(f)
+        from services.config_cache import get_config
+        return get_config()
     except Exception:
         return {}
 
@@ -371,6 +371,11 @@ def _build_articles_with_storm(topic: str, sources: list[str]) -> list[dict] | N
         return None
     except Exception as exc:
         logger.debug("kb_builder: STORM failed: %s", exc)
+        try:
+            from services.degraded import mark_degraded
+            mark_degraded("storm", str(exc))
+        except Exception:
+            pass
         return None
 
 

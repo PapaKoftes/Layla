@@ -57,11 +57,10 @@ _lingua_cache: dict[str, Any] = {}  # model_id → loaded LLMLingua instance
 # ── Config ────────────────────────────────────────────────────────────────────
 
 def _cfg() -> dict:
+    # Delegates to services.config_cache for mtime-invalidated single-source loader.
     try:
-        import json
-        p = Path(__file__).resolve().parent.parent / "config.json"
-        with p.open(encoding="utf-8") as f:
-            return json.load(f)
+        from services.config_cache import get_config
+        return get_config()
     except Exception:
         return {}
 
@@ -127,9 +126,16 @@ def _load_lingua(model_id: str) -> Any:
     from llmlingua import PromptCompressor
     device = _lingua_device()
     logger.info("prompt_compressor: loading LLMLingua model '%s' on %s...", model_id, device)
+    # Model/algorithm pairing: LLMLingua-2 requires a BERT-style classifier
+    # (e.g. microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank).
+    # The default config model "microsoft/phi-2" is a causal LM, which is what
+    # the original LLMLingua expects, so we set use_llmlingua2=False here.
+    # If you change prompt_compression_model to an LLMLingua-2 BERT model,
+    # also set prompt_compression_use_v2=true in config.json.
+    use_v2 = bool(_cfg().get("prompt_compression_use_v2", False))
     compressor = PromptCompressor(
         model_name=model_id,
-        use_llmlingua2=True,  # Use LLMLingua-2 (faster, better quality)
+        use_llmlingua2=use_v2,
         device_map=device,
     )
     _lingua_cache[model_id] = compressor
@@ -169,6 +175,11 @@ def _compress_with_lingua(
         return {"compressed": compressed, "ratio": ratio, "method": "llmlingua"}
     except Exception as exc:
         logger.warning("prompt_compressor: LLMLingua failed (%s), falling back to heuristic", exc)
+        try:
+            from services.degraded import mark_degraded
+            mark_degraded("llmlingua", str(exc))
+        except Exception:
+            pass
         return _compress_heuristic(text, target_ratio=target_ratio)
 
 
@@ -208,6 +219,11 @@ def _compress_rag_with_lingua(
         }
     except Exception as exc:
         logger.warning("prompt_compressor: LongLLMLingua failed (%s), heuristic fallback", exc)
+        try:
+            from services.degraded import mark_degraded
+            mark_degraded("longllmlingua", str(exc))
+        except Exception:
+            pass
         merged = "\n\n---\n\n".join(context_list)
         return _compress_heuristic(merged, target_ratio=target_ratio)
 

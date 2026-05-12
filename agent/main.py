@@ -363,6 +363,24 @@ async def lifespan(app: FastAPI):
                 tts_prewarm()
             except Exception:
                 pass
+        # Phase B: kick a one-shot repo indexer at startup (best-effort, non-blocking).
+        try:
+            import threading as _threading
+            from services.repo_indexer import index_workspace_repo as _idx_repo
+            _ws_root = (cfg.get("sandbox_root") or "").strip()
+            if _ws_root:
+                def _startup_repo_index():
+                    try:
+                        _idx_repo(_ws_root)
+                    except Exception as _e:
+                        try:
+                            from services.degraded import mark_degraded
+                            mark_degraded("repo_indexer", str(_e))
+                        except Exception:
+                            pass
+                _threading.Thread(target=_startup_repo_index, daemon=True, name="startup-repo-index").start()
+        except Exception as _ri_e:
+            logger.debug("startup repo_indexer skipped: %s", _ri_e)
         from apscheduler.schedulers.background import BackgroundScheduler
         from apscheduler.triggers.interval import IntervalTrigger
         sched = BackgroundScheduler(timezone="UTC")
@@ -478,6 +496,25 @@ async def lifespan(app: FastAPI):
             sched.add_job(_bg_memory, IntervalTrigger(minutes=_mmin), id="background_memory_consolidation")
             sched.add_job(_bg_initiative, IntervalTrigger(minutes=_imin), id="background_initiative")
             sched.add_job(_bg_cleanup, IntervalTrigger(hours=24), id="background_memory_cleanup")
+
+            # Repo indexer: periodic reindex of the workspace repo (Phase B wiring).
+            def _bg_repo_reindex():
+                try:
+                    import runtime_safety as _rs
+                    from services.repo_indexer import index_workspace_repo
+                    _c = _rs.load_config()
+                    _ws = (_c.get("sandbox_root") or "").strip()
+                    if _ws:
+                        index_workspace_repo(_ws)
+                except Exception as _e:
+                    logger.warning("background_repo_reindex: %s", _e)
+                    try:
+                        from services.degraded import mark_degraded
+                        mark_degraded("repo_indexer", str(_e))
+                    except Exception:
+                        pass
+
+            sched.add_job(_bg_repo_reindex, IntervalTrigger(minutes=30), id="repo_reindex", replace_existing=True)
             logger.info(
                 "background jobs: reflection %s min, codex %s min, memory %s min, initiative %s min, cleanup daily",
                 _rmin,
