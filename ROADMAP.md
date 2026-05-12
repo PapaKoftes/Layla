@@ -7,33 +7,36 @@ your rules.
 
 ---
 
-## CURRENT STATE (as of 2026-04-29)
+## CURRENT STATE (as of 2026-05-12, audit-backed)
 
-| Area | Status | Confidence |
+> See `agent/docs/audit/subsystem_audit.md` for full ground truth (63 subsystems classified).
+
+| Area | Status | Notes |
 |---|---|---|
-| Core agent loop | ✅ Complete | 95% |
-| Memory (SQLite + ChromaDB) | ✅ Complete | 90% |
-| 6-Aspect personality system | ✅ Complete | 92% |
-| Conversation threads | ✅ Complete | 88% |
-| Artifact detection + panel | ✅ Complete | 85% |
-| Memory/learnings browser | ✅ Complete | 82% |
-| Global smart search | ✅ Complete | 80% |
-| Voice TTS/STT | ✅ Complete | 78% |
-| Plan visualization (Gantt) | ✅ Complete | 75% |
-| Autonomous execution monitoring | ✅ Complete | 78% |
-| German language learning mode | ✅ Complete | 90% |
-| Bug pattern detection system | ✅ Complete | 92% |
-| WCAG 2.1 AA accessibility | ✅ Complete | 85% |
-| Multi-device sync (Syncthing) | ✅ Complete | 80% |
-| AirLLM (large local models) | ✅ Complete | 82% |
-| Prompt compression (LLMLingua) | ✅ Complete | 85% |
-| Prompt optimizer (user input) | ✅ Complete | 85% |
-| Knowledge base builder | ✅ Complete | 78% |
-| API contracts coverage | ⚠️ WARN | 65% (99 routes untested) |
-| Test suite depth | ⚠️ Partial | 70% |
-| Obsidian vault sync | ✅ Complete | 75% |
+| Core agent loop | ✅ REAL | 5000+ line agent_loop.py, stable |
+| Memory (SQLite + ChromaDB) | ✅ REAL | Episodic, vector store, hybrid retrieval all wired |
+| Memory router enforcement | ⚠️ PARTIAL | Router exists; enforcement lint added 2026-05-12; episodic/vector writes still bypass |
+| 6-Aspect personality system | ✅ REAL | All 6 aspects parametrised with behavior, voice, reasoning depth |
+| Debate / Council / Tribunal | ❌ MISSING | North-star first-class feature; no implementation exists |
+| Conversation threads | ✅ REAL | `ui/js/layla-conversations.js`, left rail with search |
+| Artifact detection + panel | ✅ REAL | `ui/js/layla-artifacts.js`, server-side extraction |
+| Memory/learnings browser | ✅ REAL | `ui/js/layla-memory.js`, `routers/memory.py` |
+| Global smart search | ✅ REAL | `ui/js/layla-search.js`, `routers/search.py` |
+| Voice TTS/STT | ✅ REAL | faster-whisper + kokoro-onnx in requirements.txt |
+| Plan visualization | ✅ REAL | `ui/js/layla-plan-viz.js` |
+| Autonomous monitoring | ⚠️ PARTIAL | `ui/js/layla-autonomous.js` exists; event coverage incomplete |
+| German language learning | ✅ REAL | `services/german_mode.py`, `routers/german.py` |
+| Health check suite | ✅ REAL | 12 checks, 858 tests, 12/12 green |
+| Multi-device sync (Syncthing) | ⬜ SCAFFOLD | Code exists, zero production importers, daemon not bundled |
+| AirLLM (large local models) | ⬜ SCAFFOLD | Code exists, `airllm` not in requirements.txt, default off |
+| Prompt compression | ⚠️ PARTIAL | Tier-3 heuristic runs; `llmlingua` not in requirements.txt |
+| Prompt optimizer | ✅ REAL | Wired into agent_loop; original_goal preserved via ContextVars |
+| Knowledge base builder | ⬜ SCAFFOLD | Code exists, STORM/GraphRAG deps not in requirements.txt |
+| Obsidian vault sync | ⚠️ PARTIAL | One-way export connector; not structural mirror |
+| Prometheus/structlog | ❌ MISSING | No `prometheus_client`, no `structlog` in codebase |
+| Idle scheduler | ❌ MISSING | Coarse process-name skip only; no real idle detection |
 
-**Overall confidence score: 82%**
+**Health checks: 12/12 PASS | Tests: 858 passing | Real assertions: 2/3**
 
 ---
 
