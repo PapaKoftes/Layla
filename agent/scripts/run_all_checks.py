@@ -53,6 +53,7 @@ CHECKS = [
     ("DB schema",           SCRIPTS_DIR / "check_db_schema.py",          "WARN"),
     ("UI symbol check",     SCRIPTS_DIR / "check_ui_symbols.py",         "WARN"),
     ("Wiring (prod imports)", SCRIPTS_DIR / "check_wiring.py",            "WARN"),  # Fix #8
+    ("Memory router enforcement", SCRIPTS_DIR / "check_memory_router_enforcement.py", "WARN"),  # Phase B Fix 3 — ratchet to FAIL once stable
     ("Pytest suite",        None,                                          "FAIL"),  # special
 ]
 
