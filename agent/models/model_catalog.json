@@ -8,6 +8,23 @@
     "fast": "Under 8GB VRAM; daily driver for low-end or secondary tasks",
     "flagship": "40GB+ VRAM; maximum quality, no restrictions"
   },
+  "_hardware_tiers": {
+    "pocket": "2-4 GB RAM, 0-2 GB VRAM (phone, Pi, minimal laptop)",
+    "potato": "4-8 GB RAM, 2-4 GB VRAM (old laptop, low-end desktop)",
+    "standard": "8-16 GB RAM, 4-8 GB VRAM (most gaming laptops, mid desktop)",
+    "beefy": "16-32 GB RAM, 8-16 GB VRAM (gaming desktop, workstation)",
+    "beast": "32-64 GB RAM, 16-24 GB VRAM (high-end workstation)",
+    "cluster": "64+ GB RAM, 24+ GB VRAM (multi-GPU, compute cluster)"
+  },
+  "_recommended_aspects": {
+    "_comment": "Aspect affinity metadata: which aspects perform best with which model families",
+    "jinx": ["morrigan", "lilith", "eris"],
+    "dolphin": ["morrigan", "nyx", "echo"],
+    "deepseek": ["nyx", "cassandra"],
+    "qwen": ["morrigan", "nyx", "cassandra"],
+    "hermes": ["nyx", "echo"],
+    "wizard": ["morrigan"]
+  },
   "models": [
     {
       "name": "smolLM2-360M-Q2_K",
@@ -65,6 +82,8 @@
       "filename": "jinx-7b-v2-Q4_K_M.gguf",
       "uncensored": true,
       "recommended": "8gb_vram",
+      "hardware_tier": "standard",
+      "recommended_aspects": ["morrigan", "lilith", "eris"],
       "desc": "Jinx 7B. No restrictions. 6GB VRAM. Best for 8GB cards."
     },
     {
@@ -79,6 +98,7 @@
       "repo_id": "jinxai/Jinx-7B-v2-GGUF",
       "filename": "jinx-7b-v2-Q5_K_M.gguf",
       "uncensored": true,
+      "hardware_tier": "standard",
       "desc": "Jinx 7B Q5. Higher quality, same base."
     },
     {
@@ -94,6 +114,8 @@
       "filename": "jinx-20b.gguf",
       "uncensored": true,
       "recommended": "12gb_vram",
+      "hardware_tier": "beefy",
+      "recommended_aspects": ["morrigan", "lilith", "eris"],
       "desc": "Jinx 20B. No restrictions. Default pick. 12GB+ VRAM or 24GB RAM."
     },
     {
@@ -108,6 +130,7 @@
       "repo_id": "Jinx-org/Jinx-gpt-oss-20b-GGUF",
       "filename": "jinx-gpt-oss-20b-Q5_K_M.gguf",
       "uncensored": true,
+      "hardware_tier": "beefy",
       "desc": "Jinx 20B Q5. Best quality tier for 14GB VRAM."
     },
     {
@@ -122,6 +145,7 @@
       "repo_id": "Jinx-org/Jinx-gpt-oss-20b-GGUF",
       "filename": "jinx-gpt-oss-20b-Q2_K.gguf",
       "uncensored": true,
+      "hardware_tier": "standard",
       "desc": "Jinx 20B Q2. Fits 8GB VRAM. Quality tradeoff."
     },
 
