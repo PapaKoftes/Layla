@@ -38,7 +38,7 @@ def save_note(content: str, tag: str = "note") -> dict:
     try:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
-        from layla.memory.db import save_learning
+        from services.memory_router import save_learning  # canonical write path
         save_learning(content=content[:800], kind=tag)
         return {"ok": True, "saved": content[:100]}
     except Exception as e:
@@ -108,7 +108,7 @@ def vector_store(text: str, metadata: dict | None = None, collection: str = "mem
     try:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
-        from layla.memory.db import save_learning
+        from services.memory_router import save_learning  # canonical write path
         meta = metadata or {}
         kind = meta.get("kind", "tool_store")
         save_learning(content=text[:800], kind=kind)

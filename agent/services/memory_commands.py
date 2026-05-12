@@ -78,7 +78,7 @@ def _handle_remember(content: str, aspect_id: str = "") -> MemoryCommandResult:
             error="too_short",
         )
     try:
-        from layla.memory.db import save_learning
+        from services.memory_router import save_learning  # canonical write path
         row_id = save_learning(
             content=content,
             kind="user_fact",

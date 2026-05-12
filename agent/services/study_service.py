@@ -9,7 +9,8 @@ logger = logging.getLogger("layla")
 def run_autonomous_study_for_plan(plan: dict) -> str | None:
     """Run one Nyx-style research step for a study plan; return summary text or None.
     Saves extracted learnings to the DB after every successful study run."""
-    from layla.memory.db import save_learning, update_study_progress
+    from layla.memory.db import update_study_progress
+    from services.memory_router import save_learning  # canonical write path
     topic = (plan.get("topic") or "").strip()
     plan_id = plan.get("id")
     if not topic or not plan_id:

@@ -25,7 +25,8 @@ def _get_db():
     """Lazy import to avoid circular dep at import time."""
     import sys
     sys.path.insert(0, str(AGENT_DIR))
-    from layla.memory.db import get_recent_learnings, save_learning
+    from layla.memory.db import get_recent_learnings
+    from services.memory_router import save_learning  # canonical write path
     return get_recent_learnings, save_learning
 
 
