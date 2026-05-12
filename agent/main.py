@@ -546,8 +546,8 @@ async def lifespan(app: FastAPI):
                     except Exception as _e:
                         logger.warning("intelligence_job: experience_replay failed: %s", _e)
                     try:
-                        from layla.memory.db import save_learning
                         from services.curiosity_engine import get_curiosity_suggestions
+                        from services.memory_router import save_learning  # canonical write path
                         suggestions = get_curiosity_suggestions()
                         for suggestion in suggestions[:3]:
                             if suggestion and len(suggestion.strip()) > 10:

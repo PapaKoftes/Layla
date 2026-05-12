@@ -82,7 +82,7 @@ def learn(req: dict):
             embedding_id = add_vector(vec, meta)
         except Exception as e:
             logger.warning("vector_store add_vector failed: %s", e)
-        from layla.memory.db import save_learning
+        from services.memory_router import save_learning  # canonical write path
         save_learning(content=content, kind=kind, embedding_id=embedding_id, tags=tags, aspect_id=aspect_id)
         try:
             from layla.memory.memory_graph import add_node
