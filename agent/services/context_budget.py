@@ -179,6 +179,77 @@ def build_budget_telemetry(n_ctx: int = 4096, last_metrics: dict | None = None) 
     }
 
 
+def rebalance_budget(
+    budgets: dict[str, int],
+    section_tokens: dict[str, int] | None = None,
+    *,
+    pressure_threshold: float = 0.85,
+    cfg: dict | None = None,
+) -> dict[str, int]:
+    """
+    Dynamic context budget reallocation (Phase 5).
+
+    When context pressure exceeds *pressure_threshold*, shrink compressible
+    sections (memory, knowledge, knowledge_graph, workspace_context) to make
+    room for high-priority sections (system_instructions, current_goal,
+    conversation).
+
+    When pressure is low (<0.6), slightly expand memory/knowledge to use
+    available headroom.
+
+    Returns a new budgets dict (original is not mutated).
+    """
+    cfg = cfg or {}
+    if not cfg.get("dynamic_budget_enabled", True):
+        return dict(budgets)
+
+    threshold = float(cfg.get("budget_pressure_threshold", pressure_threshold))
+    used = section_tokens or {}
+    total_budget = sum(v for v in budgets.values() if v > 0)
+    total_used = sum(used.get(k, 0) for k in budgets)
+    if total_budget <= 0:
+        return dict(budgets)
+    pressure = total_used / total_budget
+
+    new = dict(budgets)
+
+    # Compressible sections (ordered by compression priority)
+    _compressible = ["knowledge_graph", "knowledge", "memory", "workspace_context", "pinned_context"]
+    # Protected sections (never shrink)
+    _protected = {"system_instructions", "current_goal", "conversation", "current_task", "tools"}
+
+    if pressure > threshold:
+        # High pressure: shrink compressible sections
+        _shrink_factors = {
+            "knowledge_graph": 0.4,
+            "knowledge": 0.5,
+            "memory": 0.6,
+            "workspace_context": 0.7,
+            "pinned_context": 0.6,
+            "agent_state": 0.5,
+        }
+        for key in _compressible:
+            if key in new and key not in _protected:
+                factor = _shrink_factors.get(key, 0.7)
+                new[key] = max(50, int(new[key] * factor))
+        if "agent_state" in new:
+            new["agent_state"] = max(50, int(new["agent_state"] * 0.5))
+        logger.debug(
+            "rebalance_budget: pressure %.2f > %.2f — shrunk compressible sections",
+            pressure, threshold,
+        )
+    elif pressure < 0.6 and total_used > 0:
+        # Low pressure: expand memory/knowledge to use headroom
+        headroom = total_budget - total_used
+        if headroom > 200:
+            bonus = int(headroom * 0.3)
+            for key in ("memory", "knowledge"):
+                if key in new:
+                    new[key] = new[key] + bonus // 2
+
+    return new
+
+
 def truncate_section(text: str, max_tokens: int, section_name: str = "") -> str:
     """
     Truncate text to fit within max_tokens.
