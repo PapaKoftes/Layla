@@ -110,8 +110,9 @@ class TestSkillPacksIntegration:
     def test_registry_lifecycle(self, tmp_path):
         import services.skill_registry as sr
         old_db = sr._DB_PATH
+        old_conn = sr._conn
+        sr._conn = None  # Force fresh connection to new DB
         sr._DB_PATH = tmp_path / "test_registry.db"
-        sr._db_ready = False
         try:
             sr.register(
                 name="test-pack", version="1.0.0",
@@ -129,8 +130,9 @@ class TestSkillPacksIntegration:
             sr.unregister("test-pack")
             assert sr.get_pack("test-pack") is None
         finally:
+            sr.close_db()
             sr._DB_PATH = old_db
-            sr._db_ready = False
+            sr._conn = old_conn
 
 
 class TestWebSocketIntegration:
@@ -154,7 +156,7 @@ class TestWebSocketIntegration:
         ws.send_json.assert_called_once()
 
         # Disconnect
-        mgr.disconnect("integration-client")
+        await mgr.disconnect("integration-client")
         assert mgr.client_count == 0
 
     @pytest.mark.asyncio
