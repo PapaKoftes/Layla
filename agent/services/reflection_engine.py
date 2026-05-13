@@ -140,9 +140,12 @@ def run_reflection(state: dict) -> dict[str, str] | None:
     if not tool_steps:
         return None
     reflections = generate_reflections(state)
+    # Use original_goal so reflections reference the user's actual text,
+    # not a machine-revised objective or optimizer-rewritten prompt.
+    _refl_obj = (state.get("original_goal") or state.get("objective") or "")[:100]
     store_reflections_as_learnings(
         reflections,
-        state.get("objective", "")[:100],
+        _refl_obj,
         outcome_evaluation=state.get("outcome_evaluation") if isinstance(state.get("outcome_evaluation"), dict) else None,
     )
     return reflections
