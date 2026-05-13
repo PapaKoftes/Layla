@@ -169,7 +169,7 @@ class TestTokenExpiry:
     def test_recent_token_not_expired(self):
         from services.tunnel_auth import is_token_expired
         import datetime
-        now = datetime.datetime.utcnow().isoformat()
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         cfg = {"tunnel_token_ttl_hours": 24, "tunnel_token_created_at": now}
         assert is_token_expired(cfg) is False
 

@@ -223,8 +223,6 @@ async def dispatch_subtasks(
     if not subtasks:
         return []
 
-    # Build a lookup and an index of which tasks are done
-    by_id: dict[str, dict] = {st["id"]: st for st in subtasks}
     results: dict[str, dict] = {}
     remaining = list(subtasks)
 

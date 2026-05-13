@@ -27,7 +27,7 @@ class TestConnectionManager:
         mgr = ConnectionManager()
         ws = AsyncMock()
         await mgr.connect(ws, "client-1")
-        mgr.disconnect("client-1")
+        await mgr.disconnect("client-1")
         assert not mgr.is_connected("client-1")
         assert mgr.client_count == 0
 
@@ -35,7 +35,7 @@ class TestConnectionManager:
     async def test_disconnect_nonexistent(self):
         from services.ws_manager import ConnectionManager
         mgr = ConnectionManager()
-        mgr.disconnect("ghost")  # Should not raise
+        await mgr.disconnect("ghost")  # Should not raise
 
     @pytest.mark.asyncio
     async def test_send_personal(self):

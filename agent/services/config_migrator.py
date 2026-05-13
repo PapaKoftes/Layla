@@ -58,6 +58,10 @@ _NEW_DEFAULTS: dict[str, Any] = {
     "tailscale_auth_key": None,
     # ── Search backends (Phase 5) ────────────────────────────────────
     "search_backend": "auto",
+    "elasticsearch_enabled": False,
+    "elasticsearch_url": None,
+    "elasticsearch_index_prefix": "layla",
+    "elasticsearch_api_key": None,
     "meilisearch_enabled": False,
     "meilisearch_url": "http://localhost:7700",
     "meilisearch_api_key": None,

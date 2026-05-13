@@ -170,7 +170,7 @@ class ConnectionManager:
             self.client_count,
         )
 
-    def disconnect(self, client_id: str) -> None:
+    async def disconnect(self, client_id: str) -> None:
         """Remove a client from all tracking structures.
 
         Safe to call even if *client_id* is not currently connected.
@@ -180,12 +180,13 @@ class ConnectionManager:
         client_id:
             The client to remove.
         """
-        removed = False
-        if client_id in self._connections:
-            del self._connections[client_id]
-            removed = True
-        self._client_rooms.pop(client_id, None)
-        self._connected_at.pop(client_id, None)
+        async with self._lock:
+            removed = False
+            if client_id in self._connections:
+                del self._connections[client_id]
+                removed = True
+            self._client_rooms.pop(client_id, None)
+            self._connected_at.pop(client_id, None)
         if removed:
             logger.info(
                 "Client %s disconnected (%d remaining)",
@@ -218,7 +219,7 @@ class ConnectionManager:
                 "Failed to send message to client %s; disconnecting",
                 client_id,
             )
-            self.disconnect(client_id)
+            await self.disconnect(client_id)
 
     async def broadcast(
         self,
@@ -256,7 +257,7 @@ class ConnectionManager:
                 )
                 dead.append(cid)
         for cid in dead:
-            self.disconnect(cid)
+            await self.disconnect(cid)
 
     async def broadcast_all(self, message: dict) -> None:
         """Broadcast a message to **all** connected clients regardless of room.
@@ -277,7 +278,32 @@ class ConnectionManager:
                 )
                 dead.append(cid)
         for cid in dead:
-            self.disconnect(cid)
+            await self.disconnect(cid)
+
+    # -- client message dispatch ---------------------------------------------
+
+    async def handle_client_message(
+        self,
+        websocket: WebSocket,
+        *,
+        client_id: str,
+        room: str = "general",
+        data: dict,
+    ) -> None:
+        """Dispatch an incoming client message and send response if any.
+
+        Delegates to the module-level :func:`handle_client_message` function,
+        then sends the reply back over the same WebSocket.
+        """
+        response = await handle_client_message(data, client_id)
+        if response is not None:
+            try:
+                await websocket.send_json(response)
+            except Exception:
+                logger.warning(
+                    "handle_client_message: failed to send reply to %s",
+                    client_id,
+                )
 
     # -- introspection -------------------------------------------------------
 
@@ -313,6 +339,10 @@ class ConnectionManager:
         return [
             cid for cid, r in self._client_rooms.items() if r == room
         ]
+
+    def list_clients(self) -> List[dict]:
+        """Alias for :meth:`get_connected_clients` (used by routers/ws.py)."""
+        return self.get_connected_clients()
 
     def is_connected(self, client_id: str) -> bool:
         """Check whether *client_id* is currently connected."""

@@ -488,6 +488,7 @@ from routers import autonomous as autonomous_router  # noqa: E402
 from routers import memory as memory_router  # noqa: E402
 from routers import research as research_router  # noqa: E402
 from routers import system as system_router
+from routers import ws as ws_router
 from services import study_service  # noqa: E402
 from shared_state import set_refs  # noqa: E402
 
@@ -593,6 +594,7 @@ app.include_router(intelligence_router.router)     # AirLLM, compression, prompt
 app.include_router(debate_router.router)            # Multi-aspect debate/council/tribunal engine
 app.include_router(metrics_router.router)           # Phase 3: Observability metrics endpoint
 app.include_router(character_router.router)         # Character Lab: aspect customization + tutorial
+app.include_router(ws_router.router)                # Phase 7A: WebSocket real-time communication
 
 if DOCS_DIR.exists():
     app.mount("/docs", StaticFiles(directory=str(DOCS_DIR)), name="docs")

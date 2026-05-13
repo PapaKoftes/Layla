@@ -19,6 +19,7 @@ logger = logging.getLogger("layla")
 
 _WARNED: set[str] = set()
 _client_cache: Any = None
+_client_cache_key: str = ""
 
 
 def _warn_once(key: str, msg: str) -> None:
@@ -28,9 +29,20 @@ def _warn_once(key: str, msg: str) -> None:
     logger.warning(msg)
 
 
+def _cache_key(cfg: dict[str, Any]) -> str:
+    """Build a string key from the config values that affect client creation."""
+    url = cfg.get("meilisearch_url") or ""
+    api_key = cfg.get("meilisearch_api_key") or ""
+    return f"{url}::{api_key}"
+
+
 def client_from_config(cfg: dict[str, Any]) -> Any | None:
-    """Get or create a Meilisearch client from config."""
-    global _client_cache
+    """Get or create a Meilisearch client from config.
+
+    The client is cached and reused across calls as long as the URL and
+    API key remain unchanged.
+    """
+    global _client_cache, _client_cache_key
     if not cfg.get("meilisearch_enabled"):
         return None
     url = str(cfg.get("meilisearch_url") or "http://localhost:7700").strip()
@@ -47,8 +59,15 @@ def client_from_config(cfg: dict[str, Any]) -> Any | None:
         return None
     api_key = cfg.get("meilisearch_api_key")
     key = str(api_key).strip() if api_key else None
+
+    ck = _cache_key(cfg)
+    if _client_cache is not None and _client_cache_key == ck:
+        return _client_cache
+
     try:
         client = meilisearch.Client(url, key)
+        _client_cache = client
+        _client_cache_key = ck
         return client
     except Exception as e:
         _warn_once("ms_connect", f"Failed to create Meilisearch client: {e}")
@@ -114,7 +133,7 @@ def search_learnings(cfg: dict[str, Any], q: str, limit: int = 20) -> dict[str, 
     index = _get_index(cfg)
     if index is None:
         return {"ok": False, "error": "meilisearch_unavailable", "hits": []}
-    lim = max(1, min(int(limit or 20), 100))
+    lim = max(1, min(int(limit if limit is not None else 20), 100))
     try:
         result = index.search(q, {"limit": lim})
         hits = []
