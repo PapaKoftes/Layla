@@ -29,6 +29,27 @@ logger = logging.getLogger("layla")
 _scheduler: Optional[BackgroundScheduler] = None
 
 
+def _instrumented(job_name: str, fn):
+    """Wrap a job function to record Prometheus scheduler metrics."""
+    def wrapper():
+        try:
+            fn()
+            try:
+                from services.metrics import record_scheduler_run
+                record_scheduler_run(job_name, "ok")
+            except Exception:
+                pass
+        except Exception as exc:
+            try:
+                from services.metrics import record_scheduler_run
+                record_scheduler_run(job_name, "error")
+            except Exception:
+                pass
+            raise exc
+    wrapper.__name__ = fn.__name__
+    return wrapper
+
+
 def get_scheduler() -> Optional[BackgroundScheduler]:
     """Return the current scheduler instance (or ``None`` if not yet created)."""
     return _scheduler
@@ -50,10 +71,10 @@ def create_scheduler(cfg: dict) -> BackgroundScheduler:
     # ── Mission worker: always run (v1.1 long-running tasks) ────────────
     try:
         mission_interval_min = max(1, min(10, int(float(cfg.get("mission_worker_interval_minutes", 2)))))
-        sched.add_job(_mission_worker_job, IntervalTrigger(minutes=mission_interval_min), id="mission_worker")
+        sched.add_job(_instrumented("mission_worker", _mission_worker_job), IntervalTrigger(minutes=mission_interval_min), id="mission_worker")
         logger.info("mission_worker scheduled every %s min", mission_interval_min)
     except (TypeError, ValueError):
-        sched.add_job(_mission_worker_job, IntervalTrigger(minutes=2), id="mission_worker")
+        sched.add_job(_instrumented("mission_worker", _mission_worker_job), IntervalTrigger(minutes=2), id="mission_worker")
 
     # ── Architecture overhaul: background intelligence + consolidation ──
     try:
