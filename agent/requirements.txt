@@ -175,5 +175,9 @@ deep-translator>=1.11           # Google Translate backend (translate_text tool,
 # icalendar>=5.0                # calendar_read, calendar_add_event: .ics files
 # qrcode[pil]>=7.4              # generate_qr: QR codes
 
+# ─── Observability (optional — graceful fallback when not installed) ──────────
+# prometheus_client>=0.20
+# structlog>=24.0
+
 # ─── Dev/CI (not required at runtime) ─────────────────────────────────────────
 # ruff>=0.4

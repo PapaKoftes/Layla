@@ -86,6 +86,12 @@ async def lifespan(app: FastAPI):
         log_agent_started()
     except Exception:
         pass
+    # Install crash handler
+    try:
+        from services.crash_handler import install_crash_handler
+        install_crash_handler()
+    except Exception as _ch_err:
+        logger.debug("crash handler install failed: %s", _ch_err)
     import logging as _logging
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
     log_level = getattr(_logging, log_level, _logging.INFO)
@@ -546,6 +552,7 @@ from routers import (
 from routers import (
     debate as debate_router,
 )
+from routers import metrics as metrics_router
 
 app.include_router(settings_router.router)
 app.include_router(session_router.router)
@@ -563,6 +570,7 @@ app.include_router(agent_tasks_router.router)      # Background task resume + pl
 app.include_router(sync_router.router)             # Multi-device sync via Syncthing
 app.include_router(intelligence_router.router)     # AirLLM, compression, prompt optimizer, KB builder
 app.include_router(debate_router.router)            # Multi-aspect debate/council/tribunal engine
+app.include_router(metrics_router.router)           # Phase 3: Observability metrics endpoint
 
 if DOCS_DIR.exists():
     app.mount("/docs", StaticFiles(directory=str(DOCS_DIR)), name="docs")
