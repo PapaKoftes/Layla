@@ -866,6 +866,31 @@ def _stream_reason_body(
                     content_t = _SANITIZED_PLACEHOLDER
                 lines.append(f"{name}: {content_t}")
         convo_block = "\n".join(lines)
+
+    # Multi-aspect debate engine: if deliberation_mode is not "solo", route through
+    # the debate engine for a 3-phase pipeline (generate -> critique -> synthesize).
+    # The debate engine runs non-streaming, so we yield the final response in one shot.
+    cfg = runtime_safety.load_config()  # noqa: F841
+    _delib_mode = str(cfg.get("deliberation_mode", "solo")).strip().lower()
+    _delib_routed = False
+    if _delib_mode != "solo" and not cfg.get("skip_deliberation"):
+        try:
+            from services.debate_engine import run_deliberation as _run_delib
+            _delib_result = _run_delib(
+                goal=goal,
+                state={},
+                cfg=cfg,
+                mode=_delib_mode,
+            )
+            if _delib_result.mode != "solo":
+                _delib_routed = True
+                yield _delib_result.final_response or ""
+        except Exception as _delib_exc:
+            logger.debug("debate_engine streaming route failed, falling back: %s", _delib_exc)
+
+    if _delib_routed:
+        return
+
     deliberate = show_thinking or orchestrator.should_deliberate(goal, active_aspect)
     if deliberate:
         prompt = orchestrator.build_deliberation_prompt(
@@ -880,7 +905,6 @@ def _stream_reason_body(
             message=goal, aspect=active_aspect, context=context,
             head=head, convo_block=convo_block,
         )
-    cfg = runtime_safety.load_config()  # noqa: F841
     temperature = cfg.get("temperature", 0.2)
     max_tok = cfg.get("completion_max_tokens", 256)
     stop = get_stop_sequences()
@@ -5537,37 +5561,64 @@ def _autonomous_run_impl_core(
                         lines.append(f"{name}: {content_t}")
                 convo_block = "\n".join(lines)
 
-            # Deliberation or standard prompt
-            deliberate = show_thinking or orchestrator.should_deliberate(goal, active_aspect)
-            if deliberate:
-                prompt = orchestrator.build_deliberation_prompt(
-                    message=goal,
-                    active_aspect=active_aspect,
-                    context=_enrich_deliberation_context(context),
-                )
-                if head:
-                    prompt = head + "\n\n" + prompt
-                if convo_block:
-                    prompt = prompt + f"\n\nRecent conversation:\n{convo_block}"
-            else:
-                prompt = orchestrator.build_standard_prompt(
-                    message=goal,
-                    aspect=active_aspect,
-                    context=context,
-                    head=head,
-                    convo_block=convo_block,
-                )
+            # Multi-aspect debate engine: if deliberation_mode is not "solo", route through
+            # the debate engine for a 3-phase pipeline (generate -> critique -> synthesize).
+            # Config keys: deliberation_mode (default "solo"), deliberation_auto_threshold (default 0.7).
+            _delib_mode = str(cfg.get("deliberation_mode", "solo")).strip().lower()
+            _delib_routed = False
+            if _delib_mode != "solo":
+                try:
+                    from services.debate_engine import run_deliberation as _run_delib
+                    _delib_result = _run_delib(
+                        goal=goal,
+                        state=state,
+                        cfg=cfg,
+                        mode=_delib_mode,
+                    )
+                    if _delib_result.mode != "solo":
+                        text = _delib_result.final_response or ""
+                        deliberate = True
+                        _delib_routed = True
+                        state["deliberation_result"] = {
+                            "mode": _delib_result.mode,
+                            "participating_aspects": _delib_result.participating_aspects,
+                            "synthesis_notes": _delib_result.synthesis_notes,
+                        }
+                except Exception as _delib_exc:
+                    logger.debug("debate_engine route failed, falling back to standard: %s", _delib_exc)
 
-            max_tok = cfg.get("completion_max_tokens", 256)
-            out = run_completion(prompt, max_tokens=max_tok, temperature=temperature, stream=False)
-            if isinstance(out, str):
-                out = {"choices": [{"text": out}]}
-            if isinstance(out, dict):
-                text = (out.get("choices") or [{}])[0].get("text") or (out.get("choices") or [{}])[0].get("message", {}).get("content") or ""
-            else:
-                text = ""
-            text = (text or "").strip()
-            text = truncate_at_next_user_turn(text)
+            if not _delib_routed:
+                # Deliberation or standard prompt
+                deliberate = show_thinking or orchestrator.should_deliberate(goal, active_aspect)
+                if deliberate:
+                    prompt = orchestrator.build_deliberation_prompt(
+                        message=goal,
+                        active_aspect=active_aspect,
+                        context=_enrich_deliberation_context(context),
+                    )
+                    if head:
+                        prompt = head + "\n\n" + prompt
+                    if convo_block:
+                        prompt = prompt + f"\n\nRecent conversation:\n{convo_block}"
+                else:
+                    prompt = orchestrator.build_standard_prompt(
+                        message=goal,
+                        aspect=active_aspect,
+                        context=context,
+                        head=head,
+                        convo_block=convo_block,
+                    )
+
+                max_tok = cfg.get("completion_max_tokens", 256)
+                out = run_completion(prompt, max_tokens=max_tok, temperature=temperature, stream=False)
+                if isinstance(out, str):
+                    out = {"choices": [{"text": out}]}
+                if isinstance(out, dict):
+                    text = (out.get("choices") or [{}])[0].get("text") or (out.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+                else:
+                    text = ""
+                text = (text or "").strip()
+                text = truncate_at_next_user_turn(text)
 
             # Strip when model echoes the system head (e.g. "You are Layla. Use the identity..." or "nyou are Layla...")
             # Normalize leading junk (e.g. "n") so we detect the echo
