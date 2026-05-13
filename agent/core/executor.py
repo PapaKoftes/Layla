@@ -142,6 +142,12 @@ def run_tool(
             run_id=conversation_id,
             error_code=err_code,
         )
+        # Phase 3: Prometheus metrics for failed tool calls
+        try:
+            from services.metrics import record_tool_call as _record_tool_metric
+            _record_tool_metric(tool_name, False, duration_ms / 1000.0)
+        except Exception:
+            pass
         return {
             "ok": False,
             "tool_name": tool_name,
@@ -217,6 +223,14 @@ def run_tool(
         run_id=conversation_id,
         error_code=None,
     )
+
+    # Phase 3: Prometheus metrics (fire-and-forget)
+    try:
+        from services.metrics import record_tool_call as _record_tool_metric
+        _ok = bool(result_raw.get("ok", True)) if isinstance(result_raw, dict) else True
+        _record_tool_metric(tool_name, _ok, duration_ms / 1000.0)
+    except Exception:
+        pass
 
     return result_raw
 

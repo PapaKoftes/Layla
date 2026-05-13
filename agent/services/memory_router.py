@@ -73,6 +73,11 @@ def _cfg() -> dict:
 def save_learning(content: str, kind: str = "general", **kwargs) -> Any:
     """Pass-through to layla.memory.db.save_learning (canonical write path)."""
     from layla.memory.db import save_learning as _save_learning
+    try:
+        from services.metrics import record_memory_op
+        record_memory_op("episodic", "save_learning")
+    except Exception:
+        pass
     return _save_learning(content=content, kind=kind, **kwargs)
 
 

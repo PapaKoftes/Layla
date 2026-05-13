@@ -729,6 +729,7 @@ def run_completion(
         effective_timeout = timeout_seconds if timeout_seconds is not None else _cfg_retry.get("llm_timeout_seconds", 120)
         _MAX_RETRIES = 2 if _retry_on_transient else 0
         out = None
+        _llm_start_t = time.monotonic()
         from services.otel_export import maybe_span
 
         for attempt in range(_MAX_RETRIES + 1):
@@ -764,6 +765,13 @@ def run_completion(
             text = msg.get("content") or (choices[0] if choices else {}).get("text") or ""
         completion_tokens = _count_tokens(text)
         _add_usage(prompt_tokens, completion_tokens)
+        # Phase 3: Prometheus LLM metrics (fire-and-forget)
+        try:
+            from services.metrics import record_llm_request as _record_llm
+            _llm_dur = time.monotonic() - _llm_start_t
+            _record_llm(cache_model_name or "default", "", _llm_dur)
+        except Exception:
+            pass
         if cfg.get("completion_cache_enabled") and isinstance(out, dict):
             try:
                 from services.completion_cache import set_cached
