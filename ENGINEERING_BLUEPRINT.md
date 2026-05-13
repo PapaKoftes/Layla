@@ -1,9 +1,9 @@
 # LAYLA ENGINEERING BLUEPRINT v2.1
 
 > Synthesized from 4 deep-audit agents covering Personality, Safety, Memory, and Research systems.
-> Updated 2026-05-13: All 7 tiers implemented + Phases 1-5 product build-out. 1690+ tests passing.
+> Updated 2026-05-13: All 7 tiers implemented + Phases 1-6 product build-out. 1750+ tests passing.
 
-**Status: ALL TIERS COMPLETE — PRODUCT BUILD-OUT IN PROGRESS (Phases 1-5 done)**
+**Status: ALL TIERS COMPLETE — PRODUCT BUILD-OUT IN PROGRESS (Phases 1-6 done)**
 
 ---
 
@@ -492,10 +492,30 @@ Token auth with SHA-256 hashing, audit logging, IP allowlisting, Tailscale VPN a
 | `runtime_safety.py` | Added tunnel auth + Tailscale config keys (8 new keys) |
 | `routers/system.py` | Added 10 new endpoints: /remote/tunnel/health, /remote/token/rotate, /remote/audit, /remote/audit/summary, /remote/tailscale/* (4), /search/status |
 
+### PHASE 6: OPEN-SOURCE INTEGRATIONS — COMPLETE
+
+Four integration adapters, all behind feature flags, all with local-first fallbacks.
+
+**New files:**
+| File | Purpose |
+|------|---------|
+| `services/web_crawler.py` | Unified web crawler: Firecrawl (cloud) → crawl4ai (local) → basic (urllib) |
+| `services/docling_ingest.py` | Document ingestion via IBM Docling (PDF/DOCX/PPTX) with fallback |
+| `layla/memory/vector_qdrant.py` | Qdrant vector store adapter (alternative to ChromaDB) |
+| `services/mem0_integration.py` | Mem0 automatic memory extraction with keyword fallback |
+| `tests/test_web_crawler.py` | 12 tests for crawler backends, status, fallback |
+| `tests/test_docling_ingest.py` | 14 tests for chunking, ingestion, format support |
+| `tests/test_vector_qdrant.py` | 13 tests for Qdrant CRUD, stats, graceful degradation |
+| `tests/test_mem0_integration.py` | 16 tests for memory extraction, fallback patterns |
+
+**Modified files:**
+| File | Change |
+|------|--------|
+| `runtime_safety.py` | Added 13 new config keys for crawler, docling, qdrant, mem0 |
+
 ### PHASES REMAINING
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| Phase 6 | Open-Source Integrations (Firecrawl, Docling, Qdrant, Mem0) | Pending |
 | Phase 7 | Engineering Improvements (WebSocket, async, multi-agent, UI) | Pending |
 | Phase 8 | Hardening & Release Prep (integration tests, docs, security audit) | Pending |
