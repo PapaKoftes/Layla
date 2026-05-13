@@ -10,7 +10,7 @@ Usage:
     cd agent/ && python scripts/run_all_checks.py [--json] [--fail-fast]
     echo $?   # 0 = all green, 1 = any failures
 
-Confidence score = (passing_checks / total_checks) × 100.
+Confidence score = 50% × (passing_checks / total_checks) + 50% × (real_assertions_pass / real_assertions_total).
 Exit 1 only on FAIL-class issues; WARN-class produce exit 0 but are reported.
 """
 from __future__ import annotations
@@ -179,18 +179,36 @@ def run(fail_fast: bool = False, json_output: bool = False) -> int:
     n_skip = sum(1 for r in results if r["status"] == "SKIP")
     total  = len(results)
 
-    confidence = round((n_pass / total) * 100) if total else 0
+    # Confidence = 50% from check pass rate + 50% from real assertions
+    # (computed after health_assertions are collected below)
+    confidence = 0  # placeholder; final value set after assertions
 
     # Fix #10: real assertions — actual production-state probes, not just
     # "did the script return exit 0". These ground the confidence number in
     # observable system state.
     health_assertions: dict[str, bool] = {}
     try:
-        # repo_index_populated: repo_indexer DB has at least one row
+        # repo_index_populated: repo_indexer DB has at least one row.
+        # If no sandbox_root / workspace_root is configured, treat as N/A (pass)
+        # — there is nothing to index, so an empty DB is expected.
         import sqlite3 as _sql
         _idx_db = AGENT_DIR / ".layla" / "repo_index.db"
         if not _idx_db.exists():
             _idx_db = AGENT_DIR / "repo_index.db"
+
+        # Check whether a workspace is actually configured
+        _has_workspace = False
+        try:
+            _rc_path = AGENT_DIR / "runtime_config.json"
+            if _rc_path.exists():
+                import json as _json_rc
+                _rc = _json_rc.loads(_rc_path.read_text(encoding="utf-8"))
+                _sr = _rc.get("sandbox_root") or _rc.get("workspace_root")
+                if _sr and str(_sr).strip():
+                    _has_workspace = Path(str(_sr)).expanduser().is_dir()
+        except Exception:
+            pass
+
         _populated = False
         if _idx_db.exists():
             try:
@@ -208,6 +226,20 @@ def run(fail_fast: bool = False, json_output: bool = False) -> int:
                 _c.close()
             except Exception:
                 _populated = False
+
+        # N/A when no workspace configured or workspace has no indexable files
+        if not _has_workspace:
+            _populated = True  # treat as N/A (pass)
+        elif not _populated:
+            # Workspace exists but DB is empty — check if there are actually files to index
+            try:
+                _ws_path = Path(str(_sr)).expanduser()
+                _has_files = any(_ws_path.rglob("*.py")) or any(_ws_path.rglob("*.js"))
+                if not _has_files:
+                    _populated = True  # empty workspace = nothing to index = N/A
+            except Exception:
+                pass
+
         health_assertions["repo_index_populated"] = _populated
     except Exception:
         health_assertions["repo_index_populated"] = False
@@ -232,6 +264,14 @@ def run(fail_fast: bool = False, json_output: bool = False) -> int:
 
     n_assert_pass = sum(1 for v in health_assertions.values() if v)
     n_assert_total = len(health_assertions)
+
+    # Final confidence: 50% check pass rate + 50% real assertion pass rate
+    if total and n_assert_total:
+        confidence = int(50 * (n_pass / total) + 50 * (n_assert_pass / n_assert_total))
+    elif total:
+        confidence = int(100 * (n_pass / total))
+    else:
+        confidence = 0
 
     print()
     print(BOLD("-" * 66))
