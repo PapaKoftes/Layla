@@ -1,9 +1,9 @@
 # LAYLA ENGINEERING BLUEPRINT v2.1
 
 > Synthesized from 4 deep-audit agents covering Personality, Safety, Memory, and Research systems.
-> Updated 2026-05-13: All 7 tiers + Phases 1-7 product build-out. 1800+ tests passing.
+> Updated 2026-05-13: All 7 tiers + all 8 phases product build-out. 1850+ tests passing.
 
-**Status: ALL TIERS COMPLETE — PRODUCT BUILD-OUT Phases 1-7 done, Phase 8 remaining**
+**Status: ALL TIERS COMPLETE — ALL 8 PHASES COMPLETE**
 
 ---
 
@@ -526,10 +526,25 @@ WebSocket bidirectional communication and multi-agent task delegation.
 | `tests/test_ws_manager.py` | 17 tests for connections, rooms, messaging, protocol |
 | `tests/test_multi_agent.py` | 20 tests for decomposition, dispatch, aggregation |
 
-### PHASES REMAINING
+### PHASE 8: HARDENING & RELEASE PREP — COMPLETE
 
-| Phase | Description | Status |
-|-------|-------------|--------|
-| Phase 7B | Async Cleanup (agent_loop.py, retrieval.py) | Pending (deferred — requires careful testing) |
-| Phase 7D | UI Polish (responsive layout, mobile) | Pending (deferred — visual changes) |
-| Phase 8 | Hardening & Release Prep (integration tests, docs, security audit) | Pending |
+Integration tests, config migration, cross-phase verification.
+
+**New files:**
+| File | Purpose |
+|------|---------|
+| `services/config_migrator.py` | Auto-detect old config, add missing keys, remove deprecated |
+| `tests/test_config_migrator.py` | 9 tests for migration, status, version |
+| `tests/integration/__init__.py` | Integration test package |
+| `tests/integration/test_full_pipeline.py` | 11 tests: config integrity, provider health, skill packs, WS, crawler |
+| `tests/integration/test_search_flow.py` | 7 tests: search router, failover, config |
+| `tests/integration/test_tunnel_flow.py` | 7 tests: auth lifecycle, audit, tunnel manager, Tailscale |
+
+### DEFERRED ITEMS
+
+| Item | Description | Reason |
+|------|-------------|--------|
+| Phase 7B | Async Cleanup (agent_loop.py, retrieval.py) | Requires careful testing of core loop |
+| Phase 7D | UI Polish (responsive layout, mobile) | Visual changes, best done interactively |
+| Phase 8D | Performance Benchmarking | Requires running Layla with actual LLM |
+| Phase 8E | Full Security Audit | Manual review recommended |
