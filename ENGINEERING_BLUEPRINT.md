@@ -1,9 +1,9 @@
 # LAYLA ENGINEERING BLUEPRINT v2.1
 
 > Synthesized from 4 deep-audit agents covering Personality, Safety, Memory, and Research systems.
-> Updated 2026-05-13: All 7 tiers implemented. 1348+ tests passing.
+> Updated 2026-05-13: All 7 tiers implemented + Phases 1,2,4,5 product build-out. 1620+ tests passing.
 
-**Status: ALL TIERS COMPLETE**
+**Status: ALL TIERS COMPLETE — PRODUCT BUILD-OUT IN PROGRESS (Phases 1,2,4,5 done)**
 
 ---
 
@@ -391,3 +391,92 @@ Session 3:        TIER 6 (privacy) + TIER 7 (docs)
 | `layla/memory/migrations.py` | 3 new tables + privacy_level columns |
 | `schemas/entity.py` | PrivacyLevel enum, privacy_allows(), privacy_level field |
 | All 6 personality JSONs | `expertise_domains`, `can_refuse`, aspect-specific `refusal_topics` |
+
+---
+
+## PRODUCT BUILD-OUT: PHASES 1-8
+
+> Full product audit revealed Layla is ~70% built. The 8-phase plan closes every gap:
+> multi-provider LLM, Discord polish, remote access, skill packs, search activation,
+> open-source integrations, engineering improvements, and hardening.
+
+### PHASE 1: MULTI-PROVIDER LLM GATEWAY — COMPLETE
+
+Added LiteLLM-based multi-provider LLM gateway with circuit-breaker failover.
+100+ providers (Anthropic, OpenAI, Ollama, Groq, Together, etc.) through one interface.
+
+**New files:**
+| File | Purpose |
+|------|---------|
+| `services/litellm_gateway.py` | Unified LLM call interface wrapping litellm with failover chain |
+| `services/provider_health.py` | Circuit-breaker health tracking: 3 failures in 60s = 5min cooldown |
+| `tests/test_litellm_gateway.py` | 25 tests for gateway, streaming, failover |
+| `tests/test_provider_health.py` | 17 tests for circuit breaker, recovery, thread safety |
+
+**Modified files:**
+| File | Change |
+|------|--------|
+| `services/inference_router.py` | Added `"litellm"` backend route before ollama/openai_compatible |
+| `runtime_safety.py` | Added litellm config keys: enabled, default_model, fallback_chain, api_keys, timeout, max_retries |
+| `routers/system.py` | Added `/models/providers`, `/models/providers/{name}/status`, `/models/costs` endpoints |
+| `requirements.txt` | Added `litellm>=1.40.0` |
+
+### PHASE 2: DISCORD BOT PRODUCTION POLISH — COMPLETE
+
+Rich embeds, per-guild config, global error handler, interactive installer wizard.
+
+**New files:**
+| File | Purpose |
+|------|---------|
+| `discord_bot/rich_embeds.py` | Aspect-themed embeds (6 aspects with color, icon, quote) |
+| `discord_bot/guild_config.py` | Per-guild SQLite preferences (aspect, channels, permissions, TTS) |
+| `discord_bot/error_handler.py` | Global error handler with user-friendly messages + Layla logging |
+| `discord_bot/installer.py` | CLI setup wizard: token validation, API config, .env writing, invite URL |
+| `discord_bot/tests/__init__.py` | Test package init |
+| `discord_bot/tests/test_embeds.py` | 14 tests for embed formatting, truncation, aspect themes |
+| `discord_bot/tests/test_guild_config.py` | 17 tests for guild config CRUD, channel filtering, defaults |
+
+**Modified files:**
+| File | Change |
+|------|--------|
+| `runtime_safety.py` | Added discord config keys: bot_autostart, bot_token, bot_default_aspect |
+
+### PHASE 4: SKILL PACKS HARDENING — COMPLETE
+
+Manifest validation, venv-per-pack isolation, registry tracking, rollback on failure.
+
+**New files:**
+| File | Purpose |
+|------|---------|
+| `services/skill_manifest.py` | `layla-skill.json` schema parser + validator (8 permission types) |
+| `services/skill_sandbox.py` | venv-per-pack isolation, subprocess execution with timeout |
+| `services/skill_registry.py` | SQLite registry of installed packs with versions, health status |
+| `services/skill_rollback.py` | Snapshot before install, restore on failure |
+| `tests/test_skill_manifest.py` | 24 tests for manifest validation, path traversal prevention |
+| `tests/test_skill_registry.py` | 13 tests for registry CRUD, health updates |
+| `tests/test_skill_sandbox.py` | 14 tests for venv creation, execution, timeout, env vars |
+
+### PHASE 5: SEARCH & SYNC ACTIVATION — COMPLETE
+
+Meilisearch adapter, unified search router with auto-failover, SQLite FTS5 always-available.
+
+**New files:**
+| File | Purpose |
+|------|---------|
+| `services/meilisearch_bridge.py` | Meilisearch adapter: index, search, delete, health, stats |
+| `services/search_router.py` | Unified search: Meilisearch → Elasticsearch → SQLite FTS5 failover |
+| `tests/test_search_router.py` | 15 tests for backend detection, failover, status, indexing |
+
+**Modified files:**
+| File | Change |
+|------|--------|
+| `runtime_safety.py` | Added meilisearch config keys + search_backend: "auto" |
+
+### PHASES REMAINING
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Phase 3 | Remote Access First-Class Promotion (tunnel auth, audit, Tailscale) | Pending |
+| Phase 6 | Open-Source Integrations (Firecrawl, Docling, Qdrant, Mem0) | Pending |
+| Phase 7 | Engineering Improvements (WebSocket, async, multi-agent, UI) | Pending |
+| Phase 8 | Hardening & Release Prep (integration tests, docs, security audit) | Pending |

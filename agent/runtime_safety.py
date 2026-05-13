@@ -503,6 +503,17 @@ def load_config() -> dict:
             "privacy_max_retrieval_level": "personal",
             # expertise_domain_boost: aspect-aware retrieval boosting
             "expertise_domain_boost_enabled": True,
+            # litellm: multi-provider LLM gateway (Phase 1)
+            # discord: bot auto-start and config (Phase 2)
+            "discord_bot_autostart": False,
+            "discord_bot_token": "",
+            "discord_bot_default_aspect": "",
+            "litellm_enabled": False,
+            "litellm_default_model": "",
+            "litellm_fallback_chain": [],
+            "litellm_api_keys": {},
+            "litellm_timeout_seconds": 120,
+            "litellm_max_retries": 2,
             "enable_personality_expression": True,
             "enable_cognitive_lens": True,
             "enable_behavioral_rhythm": True,
@@ -549,6 +560,13 @@ def load_config() -> dict:
             "elasticsearch_url": "",
             "elasticsearch_index_prefix": "layla",
             "elasticsearch_api_key": None,
+            # meilisearch: lightweight alternative to Elasticsearch (Phase 5)
+            "meilisearch_enabled": False,
+            "meilisearch_url": "http://localhost:7700",
+            "meilisearch_api_key": "",
+            "meilisearch_index": "layla-learnings",
+            # search_router: unified search backend selection (Phase 5)
+            "search_backend": "auto",
             "aspect_model_overrides": {},
             # Debate engine: "solo" (default), "auto", "debate", "council", "tribunal"
             "deliberation_mode": "solo",
