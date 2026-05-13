@@ -457,7 +457,7 @@ def load_config() -> dict:
             "initiative_engine_enabled": False,
             "initiative_project_proposals_enabled": False,
             "autonomy_optimizer_enabled": False,
-            "autonomy_trust_tiers_enabled": False,
+            "autonomy_trust_tiers_enabled": True,  # gates capabilities behind XP thresholds (more cautious)
             "trust_tier_override": None,
             "codex_semantic_enabled": False,
             "voice_adjustment_inject_enabled": False,
@@ -596,7 +596,7 @@ def load_config() -> dict:
             "mem0_provider": "local",  # "local" | "cloud"
             "aspect_model_overrides": {},
             # Debate engine: "solo" (default), "auto", "debate", "council", "tribunal"
-            "deliberation_mode": "solo",
+            "deliberation_mode": "auto",  # auto-detects when debate/council is useful
             "debate_max_tokens": 800,
             "debate_temperature": 0.7,
             "debate_synthesis_max_tokens": 1200,

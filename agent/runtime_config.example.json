@@ -277,7 +277,7 @@
   "_comment_autonomy_optimizer_enabled": "When true, governed plan step retries add text-only recovery hints from services/autonomy_optimizer.py (never widens allow_write/allow_run).",
   "autonomy_optimizer_enabled": false,
   "_comment_autonomy_trust_tiers_enabled": "When true, maturity rank derives a conservative autonomy trust tier (0-3). Tier 3 is operator override only; used to gate risky autonomy like multi-attempt coordinator retries.",
-  "autonomy_trust_tiers_enabled": false,
+  "autonomy_trust_tiers_enabled": true,
   "_comment_trust_tier_override": "Optional operator override for trust tier (0-3). Leave null for automatic (rank-based) tiers. Can also be stored in user_identity as trust_tier_override.",
   "trust_tier_override": null,
   "_comment_codex_semantic_enabled": "When true, services/codex_semantic.py can rank codex proposals by token overlap (optional Chroma path later).",

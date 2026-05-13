@@ -308,6 +308,37 @@ async def lifespan(app: FastAPI):
         app.state.scheduler = sched
     except Exception as e:
         logger.warning("scheduler not started: %s", e)
+    # Discord bot auto-start (opt-in via config)
+    try:
+        import runtime_safety as _rs_disc
+        _cfg_disc = _rs_disc.load_config()
+        if _cfg_disc.get("discord_bot_autostart", False):
+            _disc_token = (_cfg_disc.get("discord_bot_token") or "").strip()
+            if _disc_token:
+                def _start_discord_bot():
+                    try:
+                        import sys
+                        _bot_dir = str(Path(__file__).resolve().parent.parent / "discord_bot")
+                        if _bot_dir not in sys.path:
+                            sys.path.insert(0, _bot_dir)
+                        from bot import bot  # discord_bot/bot.py
+                        bot.run(_disc_token)
+                    except Exception as _bot_err:
+                        logger.warning("Discord bot failed: %s", _bot_err)
+
+                _disc_thread = threading.Thread(
+                    target=_start_discord_bot,
+                    daemon=True,
+                    name="discord-bot-autostart",
+                )
+                _disc_thread.start()
+                app.state.discord_bot_thread = _disc_thread
+                logger.info("Discord bot auto-start thread launched")
+            else:
+                logger.debug("discord_bot_autostart=true but no discord_bot_token configured")
+    except Exception as _disc_err:
+        logger.debug("Discord bot auto-start skipped: %s", _disc_err)
+
     # Phase 9: Start mDNS discovery (broadcasts this instance + discovers peers)
     try:
         import runtime_safety as _rs_mdns
@@ -709,7 +740,17 @@ async def remote_auth_middleware(request: Request, call_next):
 
     # Non-localhost: require API key
     api_key = cfg.get("remote_api_key")
+    req_path = (request.url.path or "").strip()
+    req_method = request.method
+    _audit_enabled = cfg.get("tunnel_audit_enabled", False)
+
     if not api_key or not str(api_key).strip():
+        if _audit_enabled:
+            try:
+                from services.tunnel_audit import log_access
+                log_access(client_host or "", req_path, req_method, None, "deny", detail="no api key configured")
+            except Exception:
+                pass
         return JSONResponse(
             {"ok": False, "error": "remote_access_requires_api_key", "detail": "Set remote_api_key in config."},
             status_code=403,
@@ -717,6 +758,12 @@ async def remote_auth_middleware(request: Request, call_next):
     auth = request.headers.get("Authorization") or ""
     expected = f"Bearer {api_key.strip()}"
     if auth.strip() != expected:
+        if _audit_enabled:
+            try:
+                from services.tunnel_audit import log_access
+                log_access(client_host or "", req_path, req_method, None, "deny", detail="invalid token")
+            except Exception:
+                pass
         return JSONResponse(
             {"ok": False, "error": "unauthorized", "detail": "Invalid or missing Authorization header."},
             status_code=401,
@@ -724,13 +771,31 @@ async def remote_auth_middleware(request: Request, call_next):
 
     # Endpoint allowlist
     allowed = _remote_allowed_paths(cfg)
-    path = (request.url.path or "").strip()
+    path = req_path
     ok = any(path == p or path.startswith(p.rstrip("/") + "/") or path == p.rstrip("/") for p in allowed)
     if not ok:
+        if _audit_enabled:
+            try:
+                from services.tunnel_audit import log_access
+                import hashlib as _hl
+                _tid = _hl.sha256(api_key.strip().encode()).hexdigest()[:8]
+                log_access(client_host or "", req_path, req_method, _tid, "deny", detail="endpoint not allowed")
+            except Exception:
+                pass
         return JSONResponse(
             {"ok": False, "error": "forbidden", "detail": "Endpoint not allowed for remote mode."},
             status_code=403,
         )
+
+    # Audit: successful access
+    if _audit_enabled:
+        try:
+            from services.tunnel_audit import log_access
+            import hashlib as _hl
+            _tid = _hl.sha256(api_key.strip().encode()).hexdigest()[:8]
+            log_access(client_host or "", req_path, req_method, _tid, "allow")
+        except Exception:
+            pass
 
     return await call_next(request)
 
