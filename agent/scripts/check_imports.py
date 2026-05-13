@@ -58,6 +58,9 @@ OPTIONAL_PACKAGES = {
     "ai", "bim", "commands", "demo_browser_viewer", "design", "fab",
     "fabrication_assist", "fea", "generators", "geom", "joints", "lifecycle",
     "product", "solver", "standards", "structural", "system", "ui_config", "worklist",
+    # Observability (Phase 3) — optional, graceful fallback
+    "prometheus_client",   # Prometheus metrics (fallback: internal dict counters)
+    "structlog",           # Structured logging (fallback: stdlib logging)
     # Misc optional
     "ffmpeg", "geopy", "icalendar", "pyautogui", "pyperclip", "pytesseract",
     "qrcode", "scenedetect", "ultralytics", "pandas_datareader", "tomli",
