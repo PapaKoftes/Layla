@@ -4,8 +4,8 @@ from unittest.mock import patch, MagicMock
 
 
 class TestIsAvailable:
-    @patch("layla.memory.vector_qdrant.get_client", return_value=None)
-    def test_not_available_no_client(self, mock_client):
+    def test_not_available_no_client(self):
+        """Without qdrant_client installed, is_available returns False."""
         from layla.memory.vector_qdrant import is_available
         assert is_available(cfg={}) is False
 
@@ -17,11 +17,11 @@ class TestIsAvailable:
 
 class TestGetClient:
     def test_no_qdrant_returns_none(self):
+        """Without qdrant_client installed, get_client returns None."""
         from layla.memory.vector_qdrant import get_client
-        # qdrant_client likely not installed in test env
         client = get_client(cfg={})
-        # Should return None or a client (depends on install)
-        assert client is None or client is not None  # never raises
+        # qdrant_client not installed in test env -> should be None
+        assert client is None
 
 
 class TestEnsureCollection:
@@ -63,7 +63,7 @@ class TestSearchMemories:
         from layla.memory.vector_qdrant import search_memories
         mock_gc.return_value = None
         result = search_memories(cfg={}, embedding=[0.1] * 384)
-        assert result == [] or isinstance(result, list)
+        assert result == []
 
     @patch("layla.memory.vector_qdrant.get_client")
     @patch("layla.memory.vector_qdrant.ensure_collection", return_value=True)

@@ -69,7 +69,7 @@ async def websocket_main(websocket: WebSocket):
         except Exception:  # noqa: BLE001
             pass  # connection may already be closed
     finally:
-        await ws_manager.disconnect(client_id=client_id, room=room)
+        await ws_manager.disconnect(client_id)
 
 
 @router.websocket("/ws/stream/{session_id}")
@@ -132,7 +132,7 @@ async def websocket_stream(websocket: WebSocket, session_id: str):
         except Exception:  # noqa: BLE001
             pass
     finally:
-        await ws_manager.disconnect(client_id=client_id, room=room)
+        await ws_manager.disconnect(client_id)
 
 
 @router.get("/ws/clients")
