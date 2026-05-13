@@ -139,11 +139,13 @@ def upsert_entity(entity: "schemas.entity.Entity") -> bool:
                     new_conf, new_desc, now, now, entity.id,
                 ))
             else:
+                _priv = getattr(entity, "privacy_level", "public") or "public"
                 db.execute("""
                     INSERT INTO entities
                         (id, type, canonical_name, aliases, description, tags,
-                         confidence, source, evidence, created_at, updated_at, last_seen_at, attributes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         confidence, source, evidence, created_at, updated_at, last_seen_at, attributes,
+                         privacy_level)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     entity.id, entity.type, entity.canonical_name,
                     json.dumps(entity.aliases), entity.description,
@@ -151,6 +153,7 @@ def upsert_entity(entity: "schemas.entity.Entity") -> bool:
                     entity.source, entity.evidence,
                     entity.created_at, entity.updated_at, entity.last_seen_at,
                     json.dumps(entity.attributes),
+                    _priv,
                 ))
             db.commit()
 
@@ -232,12 +235,21 @@ def get_entity_relationships(entity_id: str) -> list[dict]:
 
 # ── Query routing ──────────────────────────────────────────────────────────────
 
+def _max_privacy_from_config() -> str:
+    """Read the max retrieval privacy level from config; defaults to 'personal' (excludes sensitive)."""
+    try:
+        return str(_cfg().get("privacy_max_retrieval_level", "personal"))
+    except Exception:
+        return "personal"
+
+
 def query(
     text: str,
     *,
     query_type: str = "auto",
     limit: int = 10,
     min_confidence: float = 0.3,
+    max_privacy: str | None = None,
 ) -> list[MemoryResult]:
     """
     Route a memory query to the appropriate store(s) and return merged results.
@@ -249,10 +261,16 @@ def query(
       "relational" — graph traversal in NetworkX
       "recent"     — recent conversations
       "document"   — KB articles
+
+    max_privacy:
+      Maximum privacy level to include in results.
+      Defaults to config `privacy_max_retrieval_level` (default: "personal").
+      Set to "sensitive" to include all data, "public" for exports.
     """
     if not _enabled():
         return []
 
+    _privacy = max_privacy or _max_privacy_from_config()
     results: list[MemoryResult] = []
 
     if query_type == "auto":
@@ -263,7 +281,7 @@ def query(
             query_type = "semantic"
 
     if query_type in ("factual", "auto"):
-        results.extend(_query_sqlite_entities(text, limit=limit, min_confidence=min_confidence))
+        results.extend(_query_sqlite_entities(text, limit=limit, min_confidence=min_confidence, max_privacy=_privacy))
 
     if query_type in ("semantic", "auto"):
         results.extend(_query_chromadb(text, limit=limit))
@@ -277,6 +295,16 @@ def query(
     if query_type == "document":
         results.extend(_query_kb_articles(text, limit=limit))
 
+    # Post-filter: apply privacy level to all results that carry metadata with privacy_level
+    try:
+        from schemas.entity import privacy_allows
+        results = [
+            r for r in results
+            if privacy_allows(r.metadata.get("privacy_level", "public"), _privacy)
+        ]
+    except Exception:
+        pass  # If import fails, skip filtering (fail-open for compat)
+
     # Deduplicate by id (prefer higher score)
     seen: dict[str, MemoryResult] = {}
     for r in results:
@@ -286,20 +314,41 @@ def query(
     return sorted(seen.values(), key=lambda r: -r.score)[:limit]
 
 
-def _query_sqlite_entities(text: str, *, limit: int = 10, min_confidence: float = 0.3) -> list[MemoryResult]:
-    """Search entities table by name/description."""
+def _query_sqlite_entities(text: str, *, limit: int = 10, min_confidence: float = 0.3,
+                           max_privacy: str = "personal") -> list[MemoryResult]:
+    """Search entities table by name/description with privacy filtering."""
     results = []
     try:
         from layla.memory.db_connection import _conn
+        from schemas.entity import PrivacyLevel, _PRIVACY_RANK
         t = f"%{text.lower()}%"
+        # Build list of allowed privacy levels
+        try:
+            max_idx = _PRIVACY_RANK.index(PrivacyLevel(max_privacy))
+            allowed = [pl.value for pl in _PRIVACY_RANK[: max_idx + 1]]
+        except (ValueError, KeyError):
+            allowed = [pl.value for pl in _PRIVACY_RANK]  # Allow all on unknown level
+        placeholders = ", ".join("?" for _ in allowed)
         with _conn() as db:
-            rows = db.execute("""
-                SELECT * FROM entities
-                WHERE (LOWER(canonical_name) LIKE ? OR LOWER(description) LIKE ?)
-                  AND confidence >= ?
-                ORDER BY confidence DESC, updated_at DESC
-                LIMIT ?
-            """, (t, t, min_confidence, limit)).fetchall()
+            # Check if privacy_level column exists
+            cols = {r[1] for r in db.execute("PRAGMA table_info(entities)").fetchall()}
+            if "privacy_level" in cols:
+                rows = db.execute(f"""
+                    SELECT * FROM entities
+                    WHERE (LOWER(canonical_name) LIKE ? OR LOWER(description) LIKE ?)
+                      AND confidence >= ?
+                      AND COALESCE(privacy_level, 'public') IN ({placeholders})
+                    ORDER BY confidence DESC, updated_at DESC
+                    LIMIT ?
+                """, (t, t, min_confidence, *allowed, limit)).fetchall()
+            else:
+                rows = db.execute("""
+                    SELECT * FROM entities
+                    WHERE (LOWER(canonical_name) LIKE ? OR LOWER(description) LIKE ?)
+                      AND confidence >= ?
+                    ORDER BY confidence DESC, updated_at DESC
+                    LIMIT ?
+                """, (t, t, min_confidence, limit)).fetchall()
             for row in rows:
                 d = dict(row)
                 results.append(MemoryResult(
@@ -356,32 +405,61 @@ def _query_graph(text: str, *, limit: int = 10) -> list[MemoryResult]:
 
 
 def _query_recent_conversations(text: str, *, limit: int = 10) -> list[MemoryResult]:
-    """Search recent conversation history."""
+    """Search recent conversation history using FTS5 (full-text search) with substring fallback."""
     results = []
+    # Primary: FTS5 search (much better than naive substring)
     try:
-        from layla.memory.db import get_recent_learnings
-        learnings = get_recent_learnings(n=limit * 2)
-        t = text.lower()
-        for l in learnings:
-            content = (l.get("content") or "")
-            if t[:20] in content.lower():
+        from layla.memory.db import search_learnings_fts
+        fts_hits = search_learnings_fts(text, limit=limit)
+        if fts_hits:
+            for l in fts_hits:
+                content = (l.get("content") or "")
                 results.append(MemoryResult(
                     id=f"learning_{l.get('id', '')}",
                     content=content[:300],
                     type="learning",
-                    score=0.6,
-                    source="sqlite_learnings",
+                    score=0.7,
+                    source="sqlite_learnings_fts",
                     metadata=l,
                 ))
-                if len(results) >= limit:
-                    break
+            return results[:limit]
+    except Exception as exc:
+        logger.debug("memory_router: FTS5 search failed, falling back: %s", exc)
+
+    # Fallback: keyword overlap scoring (better than t[:20] substring)
+    try:
+        from layla.memory.db import get_recent_learnings
+        learnings = get_recent_learnings(n=limit * 3)
+        query_words = set(w.lower() for w in text.split() if len(w) > 2)
+        if not query_words:
+            return results
+        scored: list[tuple[float, dict]] = []
+        for l in learnings:
+            content = (l.get("content") or "").lower()
+            if not content:
+                continue
+            overlap = sum(1 for w in query_words if w in content)
+            if overlap > 0:
+                score = min(0.9, 0.3 + (overlap / len(query_words)) * 0.6)
+                scored.append((score, l))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        for score, l in scored[:limit]:
+            content = (l.get("content") or "")
+            results.append(MemoryResult(
+                id=f"learning_{l.get('id', '')}",
+                content=content[:300],
+                type="learning",
+                score=score,
+                source="sqlite_learnings",
+                metadata=l,
+            ))
     except Exception as exc:
         logger.debug("memory_router: recent query failed: %s", exc)
     return results
 
 
 def _query_kb_articles(text: str, *, limit: int = 10) -> list[MemoryResult]:
-    """Search KB article index."""
+    """Search KB article index using keyword overlap scoring."""
     results = []
     try:
         from services.kb_builder import _kb_output_dir
@@ -389,21 +467,30 @@ def _query_kb_articles(text: str, *, limit: int = 10) -> list[MemoryResult]:
         if not idx_path.exists():
             return results
         idx = json.loads(idx_path.read_text(encoding="utf-8"))
-        t = text.lower()
+        query_words = set(w.lower() for w in text.split() if len(w) > 2)
+        if not query_words:
+            return results
+        scored: list[tuple[float, dict]] = []
         for art in idx.get("articles", []):
             title = (art.get("title") or "").lower()
             summary = (art.get("summary") or "").lower()
-            if t[:20] in title or t[:20] in summary:
-                results.append(MemoryResult(
-                    id=f"kb_{art.get('id', '')}",
-                    content=f"{art.get('title', '')}: {art.get('summary', '')}",
-                    type="article",
-                    score=0.7 if t[:20] in title else 0.5,
-                    source="kb_articles",
-                    metadata=art,
-                ))
-                if len(results) >= limit:
-                    break
+            combined = title + " " + summary
+            overlap = sum(1 for w in query_words if w in combined)
+            if overlap > 0:
+                # Title matches score higher than summary-only
+                title_overlap = sum(1 for w in query_words if w in title)
+                score = min(0.9, 0.4 + (overlap / len(query_words)) * 0.4 + (title_overlap * 0.1))
+                scored.append((score, art))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        for score, art in scored[:limit]:
+            results.append(MemoryResult(
+                id=f"kb_{art.get('id', '')}",
+                content=f"{art.get('title', '')}: {art.get('summary', '')}",
+                type="article",
+                score=score,
+                source="kb_articles",
+                metadata=art,
+            ))
     except Exception as exc:
         logger.debug("memory_router: kb query failed: %s", exc)
     return results

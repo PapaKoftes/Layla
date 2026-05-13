@@ -722,6 +722,56 @@ def _migrate_impl() -> None:
     except Exception:
         pass
 
+    # Codex discovery tracking (videogame-style "new entry" notifications)
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS codex_discoveries (
+                    entity_id     TEXT NOT NULL,
+                    discovered_at TEXT NOT NULL,
+                    discovery_context TEXT DEFAULT '',
+                    notified      INTEGER DEFAULT 0,
+                    PRIMARY KEY(entity_id)
+                )
+            """)
+            db.commit()
+    except Exception:
+        pass
+
+    # Journal-entity links (connect journal entries to codex entities)
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS journal_entity_links (
+                    journal_id INTEGER NOT NULL,
+                    entity_id  TEXT NOT NULL,
+                    PRIMARY KEY(journal_id, entity_id)
+                )
+            """)
+            db.commit()
+    except Exception:
+        pass
+
+    # Learnings archive (faded memories -- moved here instead of hard-deleted)
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS learnings_archive (
+                    id            INTEGER PRIMARY KEY,
+                    content       TEXT NOT NULL,
+                    type          TEXT DEFAULT 'fact',
+                    created_at    TEXT NOT NULL,
+                    archived_at   TEXT NOT NULL,
+                    archive_reason TEXT DEFAULT 'confidence_decay',
+                    original_confidence REAL DEFAULT 0,
+                    tags          TEXT DEFAULT '',
+                    aspect_id     TEXT DEFAULT ''
+                )
+            """)
+            db.commit()
+    except Exception:
+        pass
+
     # Migrate learnings.json
     _migrate_learnings_json()
 
@@ -1156,6 +1206,27 @@ def _migrate_evolution_layer() -> None:
             db.commit()
     except Exception as e:
         logger.warning("entities/relationships migration failed: %s", e)
+
+    # Privacy level column on entities (TIER 6: Privacy Separation)
+    try:
+        with _conn() as db:
+            cols = {r[1] for r in db.execute("PRAGMA table_info(entities)").fetchall()}
+            if "privacy_level" not in cols:
+                db.execute("ALTER TABLE entities ADD COLUMN privacy_level TEXT DEFAULT 'public'")
+                db.execute("CREATE INDEX IF NOT EXISTS idx_entities_privacy ON entities(privacy_level)")
+                db.commit()
+    except Exception:
+        pass
+
+    # Privacy level column on learnings (allows marking learnings as personal/sensitive)
+    try:
+        with _conn() as db:
+            cols = {r[1] for r in db.execute("PRAGMA table_info(learnings)").fetchall()}
+            if "privacy_level" not in cols:
+                db.execute("ALTER TABLE learnings ADD COLUMN privacy_level TEXT DEFAULT 'public'")
+                db.commit()
+    except Exception:
+        pass
 
 
 __all__ = ["migrate", "_MIGRATED", "_MIGRATION_LOCK"]
