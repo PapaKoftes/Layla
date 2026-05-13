@@ -3872,8 +3872,9 @@ def _autonomous_run_impl_core(
                     cfg.get("plan_governance_require_nonempty_step_tools")
                 ):
                     normalize_plan_steps_tools(plan, cfg)
-                log_planner_invoked(steps=len(plan), goal_preview=goal[:60])
-                log_agent_plan_created(steps=len(plan), goal_preview=goal[:60])
+                _plan_goal_preview = (state.get("original_goal") or goal)[:60]
+                log_planner_invoked(steps=len(plan), goal_preview=_plan_goal_preview)
+                log_agent_plan_created(steps=len(plan), goal_preview=_plan_goal_preview)
                 plan_context = context or ""
                 if state.get("cognitive_workspace", {}).get("strategy_hint"):
                     plan_context = plan_context + f"\n\n[Chosen approach: {state['cognitive_workspace']['strategy_hint']}]"
@@ -4139,7 +4140,10 @@ def _autonomous_run_impl_core(
             _emit_ux(state, ux_state_queue, UX_STATE_REFRAMING_OBJECTIVE)
             state["reflection_pending"] = True
             state["objective"] = revised_objective.strip()
-            state["original_goal"] = revised_objective.strip()
+            # Preserve the user's actual text: original_goal must not be
+            # overwritten by a machine-revised objective so that learnings,
+            # reflections and plan titles still reference what the user typed.
+            state.setdefault("original_goal", revised_objective.strip())
             state["consecutive_no_progress"] = 0
             state["strategy_shift_count"] = 0
             goal = state["objective"]

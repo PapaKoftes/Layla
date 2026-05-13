@@ -75,7 +75,8 @@ def _save_outcome_memory(state: dict) -> None:
     tool_steps = [s for s in steps if s.get("action") and s["action"] != "reason"]
     if state.get("status") != "finished":
         return
-    objective = (state.get("objective") or state.get("original_goal") or "")[:200]
+    # Prefer the user's actual text for outcome summaries stored as learnings.
+    objective = (state.get("original_goal") or state.get("objective") or "")[:200]
     if tool_steps:
         actions = ", ".join(s["action"] for s in tool_steps[:5])
         facts = []
