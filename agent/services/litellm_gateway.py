@@ -82,6 +82,16 @@ def _configure_api_keys(cfg: dict) -> None:
             os.environ[env_var] = api_key
 
 
+def _safe_int(val: Any, default: int) -> int:
+    """Safely convert *val* to int, returning *default* on failure."""
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
+
 def _load_gateway_config() -> dict:
     """Load litellm-specific config from runtime_safety."""
     try:
@@ -94,8 +104,8 @@ def _load_gateway_config() -> dict:
         "default_model": (cfg.get("litellm_default_model") or "").strip(),
         "fallback_chain": cfg.get("litellm_fallback_chain") or [],
         "api_keys": cfg.get("litellm_api_keys") or {},
-        "timeout": int(cfg.get("litellm_timeout_seconds", 120)),
-        "max_retries": int(cfg.get("litellm_max_retries", 2)),
+        "timeout": _safe_int(cfg.get("litellm_timeout_seconds"), 120),
+        "max_retries": _safe_int(cfg.get("litellm_max_retries"), 2),
         "raw_cfg": cfg,
     }
 
@@ -155,7 +165,7 @@ def complete(
     # Build ordered attempt list: primary model first, then fallback chain
     models_to_try = [effective_model] + [m for m in chain if m != effective_model]
 
-    effective_timeout = timeout or gcfg["timeout"]
+    effective_timeout = timeout if timeout is not None else gcfg["timeout"]
     max_retries = gcfg["max_retries"]
 
     last_error: Exception | None = None
@@ -251,7 +261,7 @@ def complete_stream(
 
     chain = fallback_chain or gcfg["fallback_chain"] or []
     models_to_try = [effective_model] + [m for m in chain if m != effective_model]
-    effective_timeout = timeout or gcfg["timeout"]
+    effective_timeout = timeout if timeout is not None else gcfg["timeout"]
 
     last_error: Exception | None = None
 
