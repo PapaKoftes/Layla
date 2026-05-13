@@ -1,4 +1,17 @@
-# Pinned for reproducible installs. Use: pip install -r agent/requirements.txt
+# Full install: pip install -r agent/requirements.txt
+# Selective install: pip install -e ".[core]" or pip install -e ".[core,voice,research]"
+# See pyproject.toml [project.optional-dependencies] for group definitions.
+#
+# Install profiles:
+#   core     (~250 MB)  — Agent chat + memory + web server
+#   llm      (~100 MB)  — Local LLM inference (llama.cpp) + multi-provider gateway
+#   voice    (~600 MB)  — Speech-to-text + text-to-speech
+#   vision   (~1.5 GB)  — OCR (easyocr pulls torch)
+#   crawl    (~260 MB)  — Web crawling (trafilatura + playwright)
+#   research (~50 MB)   — PDF, Wikipedia, arXiv, web search
+#   data     (~125 MB)  — DuckDB, yfinance, scipy, sklearn
+#   all      (~3.5 GB)  — Everything
+#
 # Optional for installer (faster model downloads): huggingface_hub[hf_transfer]
 # Optional: structured observability (Section 8)
 # loguru>=0.7
