@@ -24,7 +24,7 @@ from typing import Any, Generator
 logger = logging.getLogger("layla")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-_BACKENDS = ("llama_cpp", "openai_compatible", "ollama")
+_BACKENDS = ("llama_cpp", "openai_compatible", "ollama", "litellm")
 _AUTO = "auto"
 
 
@@ -60,7 +60,7 @@ def _get_backend(cfg: dict) -> str:
 
 
 def effective_inference_backend(cfg: dict) -> str:
-    """Public alias for the resolved backend: llama_cpp | openai_compatible | ollama."""
+    """Public alias for the resolved backend: llama_cpp | openai_compatible | ollama | litellm."""
     return _get_backend(cfg)
 
 
@@ -411,6 +411,16 @@ def run_completion(
     if effective_model is None:
         effective_model = cfg.get("remote_model_name") or ("llama3.1" if backend == "ollama" else "layla")
 
+    if backend == "litellm":
+        try:
+            from services.litellm_gateway import run_completion_litellm
+            return run_completion_litellm(
+                cfg, prompt, max_tokens, temperature, stop, stream, timeout,
+                model_name=effective_model,
+            )
+        except ImportError:
+            logger.warning("inference_router: litellm backend selected but not installed; falling back to llama_cpp")
+            # Fall through to llama_cpp
     if backend == "ollama":
         return run_completion_ollama(
             cfg, prompt, max_tokens, temperature, top_p, repeat_penalty, top_k,
