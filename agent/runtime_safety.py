@@ -567,6 +567,15 @@ def load_config() -> dict:
             "meilisearch_index": "layla-learnings",
             # search_router: unified search backend selection (Phase 5)
             "search_backend": "auto",
+            # Phase 3: Remote Access — tunnel auth, audit, Tailscale
+            "tunnel_token_hash": "",
+            "tunnel_token_created_at": "",
+            "tunnel_token_ttl_hours": 0,
+            "tunnel_ip_allowlist": [],
+            "tunnel_audit_enabled": True,
+            "tunnel_audit_retention_days": 90,
+            "tailscale_enabled": False,
+            "tailscale_auth_key": "",
             "aspect_model_overrides": {},
             # Debate engine: "solo" (default), "auto", "debate", "council", "tribunal"
             "deliberation_mode": "solo",

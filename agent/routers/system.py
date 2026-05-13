@@ -617,6 +617,145 @@ def remote_tunnel_stop():
     return stop_tunnel()
 
 
+@router.get("/remote/tunnel/health")
+def remote_tunnel_health():
+    """Health check for the active tunnel."""
+    try:
+        from services.tunnel_manager import tunnel_status
+        status = tunnel_status()
+        url = status.get("url")
+        if not url:
+            return {"ok": False, "healthy": False, "reason": "no tunnel URL"}
+        try:
+            import urllib.request
+            req = urllib.request.Request(url, method="HEAD")
+            resp = urllib.request.urlopen(req, timeout=10)
+            return {"ok": True, "healthy": True, "url": url, "status_code": resp.status}
+        except Exception as e:
+            return {"ok": True, "healthy": False, "url": url, "reason": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@router.post("/remote/token/rotate")
+def remote_token_rotate():
+    """Generate a new auth token and return it (shown once)."""
+    try:
+        import runtime_safety
+        from services.tunnel_auth import rotate_token
+        import datetime
+        import json
+        from pathlib import Path
+
+        cfg = runtime_safety.load_config()
+        new_token, new_hash = rotate_token(cfg)
+        # Save hash + timestamp to runtime config
+        config_path = Path(runtime_safety.AGENT_DIR) / "runtime_config.json"
+        try:
+            existing = json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
+        except Exception:
+            existing = {}
+        existing["tunnel_token_hash"] = new_hash
+        existing["tunnel_token_created_at"] = datetime.datetime.utcnow().isoformat()
+        config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+        return {
+            "ok": True,
+            "token": new_token,
+            "message": "Save this token — it will not be shown again.",
+        }
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.get("/remote/audit")
+def remote_audit(days: int = 7, limit: int = 100, result: str = None):
+    """Query tunnel access audit log."""
+    try:
+        from services.tunnel_audit import query_log
+        entries = query_log(days=days, limit=limit, result_filter=result)
+        return {"ok": True, "entries": entries, "count": len(entries)}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "entries": []}
+
+
+@router.get("/remote/audit/summary")
+def remote_audit_summary(days: int = 7):
+    """Summarized audit stats."""
+    try:
+        from services.tunnel_audit import get_summary
+        return {"ok": True, **get_summary(days=days)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@router.get("/remote/tailscale/status")
+def tailscale_status():
+    """Get Tailscale VPN status."""
+    try:
+        from services.tailscale_manager import get_status
+        return get_status()
+    except Exception as e:
+        return {"running": False, "error": str(e)}
+
+
+@router.post("/remote/tailscale/start")
+def tailscale_start():
+    """Start Tailscale VPN."""
+    try:
+        import runtime_safety
+        from services.tailscale_manager import start_tailscale
+        cfg = runtime_safety.load_config()
+        return start_tailscale(cfg)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.post("/remote/tailscale/stop")
+def tailscale_stop():
+    """Stop Tailscale VPN."""
+    try:
+        from services.tailscale_manager import stop_tailscale
+        return stop_tailscale()
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.post("/remote/tailscale/funnel/start")
+def tailscale_funnel_start():
+    """Start Tailscale Funnel (public HTTPS)."""
+    try:
+        import runtime_safety
+        from services.tailscale_manager import funnel_start
+        cfg = runtime_safety.load_config()
+        port = int(cfg.get("port", 8000))
+        return funnel_start(port=port)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.post("/remote/tailscale/funnel/stop")
+def tailscale_funnel_stop():
+    """Stop Tailscale Funnel."""
+    try:
+        import runtime_safety
+        from services.tailscale_manager import funnel_stop
+        cfg = runtime_safety.load_config()
+        port = int(cfg.get("port", 8000))
+        return funnel_stop(port=port)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.get("/search/status")
+def search_status():
+    """Get status of all search backends."""
+    try:
+        from services.search_router import get_search_status
+        return get_search_status()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @router.get("/skill_packs")
 def skill_packs_list():
     from services.skill_packs import list_installed
