@@ -1,9 +1,9 @@
 # LAYLA ENGINEERING BLUEPRINT v2.1
 
 > Synthesized from 4 deep-audit agents covering Personality, Safety, Memory, and Research systems.
-> Updated 2026-05-13: All 7 tiers implemented + Phases 1,2,4,5 product build-out. 1620+ tests passing.
+> Updated 2026-05-13: All 7 tiers implemented + Phases 1-5 product build-out. 1690+ tests passing.
 
-**Status: ALL TIERS COMPLETE — PRODUCT BUILD-OUT IN PROGRESS (Phases 1,2,4,5 done)**
+**Status: ALL TIERS COMPLETE — PRODUCT BUILD-OUT IN PROGRESS (Phases 1-5 done)**
 
 ---
 
@@ -472,11 +472,30 @@ Meilisearch adapter, unified search router with auto-failover, SQLite FTS5 alway
 |------|--------|
 | `runtime_safety.py` | Added meilisearch config keys + search_backend: "auto" |
 
+### PHASE 3: REMOTE ACCESS FIRST-CLASS PROMOTION — COMPLETE
+
+Token auth with SHA-256 hashing, audit logging, IP allowlisting, Tailscale VPN alternative.
+
+**New files:**
+| File | Purpose |
+|------|---------|
+| `services/tunnel_auth.py` | Token generation, SHA-256 hashing, rotation, IP allowlist, expiry checks |
+| `services/tunnel_audit.py` | SQLite audit log for all remote access attempts (allow/deny) |
+| `services/tailscale_manager.py` | Tailscale mesh VPN alternative to cloudflared (start/stop/funnel) |
+| `tests/test_tunnel_auth.py` | 29 tests for token auth, rotation, IP allowlist, expiry |
+| `tests/test_tunnel_audit.py` | 17 tests for audit logging, queries, summaries, purge |
+| `tests/test_tailscale_manager.py` | 21 tests for Tailscale status, start/stop, funnel, config |
+
+**Modified files:**
+| File | Change |
+|------|--------|
+| `runtime_safety.py` | Added tunnel auth + Tailscale config keys (8 new keys) |
+| `routers/system.py` | Added 10 new endpoints: /remote/tunnel/health, /remote/token/rotate, /remote/audit, /remote/audit/summary, /remote/tailscale/* (4), /search/status |
+
 ### PHASES REMAINING
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| Phase 3 | Remote Access First-Class Promotion (tunnel auth, audit, Tailscale) | Pending |
 | Phase 6 | Open-Source Integrations (Firecrawl, Docling, Qdrant, Mem0) | Pending |
 | Phase 7 | Engineering Improvements (WebSocket, async, multi-agent, UI) | Pending |
 | Phase 8 | Hardening & Release Prep (integration tests, docs, security audit) | Pending |
