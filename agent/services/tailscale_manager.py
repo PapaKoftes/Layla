@@ -138,7 +138,7 @@ def start_tailscale(cfg: dict[str, Any] | None = None) -> dict[str, Any]:
         return {"ok": False, "message": "tailscale binary not found on PATH"}
 
     cmd: list[str] = [exe, "up"]
-    auth_key = cfg.get("tailscale_auth_key", "").strip()
+    auth_key = (cfg.get("tailscale_auth_key") or "").strip()
     if auth_key:
         cmd.extend(["--authkey", auth_key])
 

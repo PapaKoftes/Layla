@@ -72,7 +72,7 @@ def _crawl_firecrawl(url: str, cfg: dict) -> dict:
             "error": "firecrawl-py SDK not installed",
         }
 
-    api_key = cfg.get("firecrawl_api_key", "")
+    api_key = cfg.get("firecrawl_api_key") or ""
     api_url = cfg.get("firecrawl_api_url", "https://api.firecrawl.dev")
 
     if not api_key:
@@ -253,7 +253,7 @@ def _resolve_backend(cfg: dict, override: str | None = None) -> str:
     # auto
     if cfg.get("firecrawl_api_key") and _firecrawl_available():
         return "firecrawl"
-    if cfg.get("crawl4ai_enabled", True) and _crawl4ai_available():
+    if cfg.get("crawl4ai_enabled", False) and _crawl4ai_available():
         return "crawl4ai"
     return "basic"
 
