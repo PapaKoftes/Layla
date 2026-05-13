@@ -238,6 +238,56 @@ def _intelligence_job() -> None:
         logger.warning("intelligence_job: curiosity_engine failed: %s", _e)
 
 
+# ── AirLLM model warmup (Phase 8) ────────────────────────────────────
+def _airllm_warmup_job() -> None:
+    """Pre-load AirLLM model layers during idle time so generation is faster later."""
+    try:
+        import runtime_safety as _rs
+
+        cfg = _rs.load_config()
+        if not bool(cfg.get("airllm_enabled", False)):
+            return
+        from services.airllm_runner import is_available, _load_model, _model_path
+
+        if not is_available():
+            return
+        mp = _model_path()
+        if not mp:
+            return
+        # Only warm up if idle (low CPU)
+        try:
+            from layla.scheduler.idle_detector import check_idle
+
+            idle = check_idle()
+            if not idle.is_idle:
+                return
+        except Exception:
+            pass
+        _load_model(mp)
+        logger.info("airllm_warmup: model pre-loaded: %s", mp)
+    except Exception as _e:
+        logger.debug("airllm_warmup: %s", _e)
+
+
+# ── Syncthing nightly rescan (Phase 8) ───────────────────────────────
+def _syncthing_rescan_job() -> None:
+    """Trigger a Syncthing folder rescan to sync data across devices."""
+    try:
+        import runtime_safety as _rs
+
+        cfg = _rs.load_config()
+        if not cfg.get("syncthing_api_key"):
+            return
+        from services.syncthing_sync import trigger_rescan, get_status
+
+        status = get_status()
+        if status.get("running"):
+            trigger_rescan()
+            logger.info("syncthing_rescan: triggered folder rescan")
+    except Exception as _e:
+        logger.debug("syncthing_rescan: %s", _e)
+
+
 # ── RL preference update ──────────────────────────────────────────────
 def _rl_preference_job() -> None:
     try:

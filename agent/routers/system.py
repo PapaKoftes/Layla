@@ -313,6 +313,22 @@ def health(request: Request):
         payload["response_cache_stats"] = get_response_cache_stats()
     except Exception:
         pass
+    # Syncthing sync status (Phase 8 promotion)
+    try:
+        from services.syncthing_sync import get_status as _syncthing_status
+
+        _sync = _syncthing_status()
+        if _sync.get("enabled"):
+            payload["syncthing"] = {
+                "enabled": True,
+                "running": _sync.get("running", False),
+                "folder_state": _sync.get("folder_state", "unknown"),
+                "completion": _sync.get("completion", 0.0),
+                "devices": len(_sync.get("devices", [])),
+                "error": _sync.get("error"),
+            }
+    except Exception:
+        pass
     try:
         from services.health_snapshot import (
             build_dependency_status,

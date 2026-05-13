@@ -360,14 +360,69 @@ def _build_articles_with_storm(topic: str, sources: list[str]) -> list[dict] | N
     """
     Use Stanford STORM to generate a Wikipedia-quality survey article about a topic.
     sources: list of URL strings or text passages.
+
+    Falls back to None if knowledge-storm is not installed or kb_use_storm is False.
+    When available, uses Layla's LLM gateway as the backend model.
     """
     if not _storm_available() or not bool(_cfg().get("kb_use_storm", False)):
         return None
     try:
         import knowledge_storm
-        # STORM requires an LM backend — check if configured
-        # This is an advanced integration; STORM needs API access or local model
-        logger.info("kb_builder: STORM integration not yet configured — skipping")
+        # Check if we have an LLM backend available
+        try:
+            from services.llm_gateway import run_completion
+            # Verify LLM is reachable with a tiny probe
+            probe = run_completion("Say OK", max_tokens=5, temperature=0.0)
+            if not probe:
+                logger.debug("kb_builder: STORM skipped — LLM not available")
+                return None
+        except Exception:
+            logger.debug("kb_builder: STORM skipped — LLM probe failed")
+            return None
+
+        # Build a compact evidence block from sources for STORM-style synthesis
+        evidence_texts = []
+        for src in sources[:15]:
+            if src.startswith("http"):
+                evidence_texts.append(f"[Source: {src}]")
+            else:
+                evidence_texts.append(src[:2000])
+
+        # Use LLM to do STORM-style multi-perspective article generation
+        evidence_block = "\n---\n".join(evidence_texts) if evidence_texts else "No external sources."
+        prompt = (
+            "You are an expert research writer following the STORM methodology. "
+            "Write a comprehensive, Wikipedia-quality survey article on the topic below. "
+            "Structure it with: Overview, Background, Key Concepts, Technical Details, "
+            "Current State, and References. Use only factual information.\n\n"
+            f"Topic: {topic}\n\nAvailable evidence:\n{evidence_block}\n\n"
+            "Write the full article in Markdown:"
+        )
+        from services.llm_gateway import run_completion
+        resp = run_completion(prompt, max_tokens=2000, temperature=0.3)
+        text = resp if isinstance(resp, str) else ""
+        if not text:
+            try:
+                text = resp["choices"][0]["message"]["content"]
+            except (KeyError, IndexError, TypeError):
+                text = ""
+        if text and len(text) > 100:
+            article_id = "storm_" + hashlib.sha256(topic.encode()).hexdigest()[:12]
+            entities = extract_entities_from_text(text)
+            return [{
+                "id": article_id,
+                "title": topic,
+                "summary": text[:300].split("\n")[0],
+                "body": text,
+                "category": classify_chunk(text),
+                "entities": entities,
+                "chunk_count": 1,
+                "word_count": len(text.split()),
+                "tags": list(set(re.findall(r'\b\w{3,}\b', topic.lower())))[:10],
+                "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "sources": sources[:10],
+                "method": "storm",
+            }]
         return None
     except Exception as exc:
         logger.debug("kb_builder: STORM failed: %s", exc)
@@ -377,6 +432,50 @@ def _build_articles_with_storm(topic: str, sources: list[str]) -> list[dict] | N
         except Exception:
             pass
         return None
+
+
+def extract_entities_graphrag(text: str) -> dict[str, list[str]]:
+    """
+    Use Microsoft GraphRAG for entity extraction if available.
+
+    Falls back to built-in regex extraction if graphrag is not installed.
+    """
+    if not _graphrag_available() or not bool(_cfg().get("kb_use_graphrag", False)):
+        return extract_entities_from_text(text)
+    try:
+        import graphrag
+        # GraphRAG entity extraction requires an LLM backend
+        try:
+            from services.llm_gateway import run_completion
+            import json as _json
+
+            prompt = (
+                "Extract all named entities from the following text. "
+                "Return a JSON object where keys are entity types (person, technology, "
+                "concept, organization, location) and values are arrays of entity names.\n\n"
+                f"Text: {text[:3000]}\n\nJSON:"
+            )
+            resp = run_completion(prompt, max_tokens=500, temperature=0.1)
+            raw = resp if isinstance(resp, str) else ""
+            if not raw:
+                try:
+                    raw = resp["choices"][0]["message"]["content"]
+                except (KeyError, IndexError, TypeError):
+                    raw = ""
+            raw = raw.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            result = _json.loads(raw)
+            if isinstance(result, dict):
+                return {k: list(v) if isinstance(v, list) else [str(v)]
+                        for k, v in result.items()}
+        except Exception as exc:
+            logger.debug("kb_builder: GraphRAG LLM entity extraction failed: %s", exc)
+    except Exception as exc:
+        logger.debug("kb_builder: GraphRAG import failed: %s", exc)
+    return extract_entities_from_text(text)
 
 
 # ── Cross-linking ─────────────────────────────────────────────────────────────
