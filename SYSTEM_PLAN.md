@@ -1,13 +1,15 @@
 # LAYLA — MASTER SYSTEM PLAN
 ## From Current State to Fully Operational Autonomous AI
 
-**Version:** 2.1 (updated 2026-05-12 with subsystem audit ground truth)  
+**Version:** 2.3 (updated 2026-05-13 — engineering blueprint ALL TIERS COMPLETE)  
 **Principle:** Most benefit, least work, deterministic verification at every step.  
 **Constraint:** Never rewrite what works. Layer on top. Schema before scale.
 
-> **Status snapshot (2026-05-12):** 858 tests passing, 12/12 checks green, real assertions 2/3.  
-> Subsystem audit: 28 REAL / 14 PARTIAL / 9 SCAFFOLD / 12 MISSING out of 63 classified.  
-> See `agent/docs/audit/subsystem_audit.md` for full ground truth.
+> **Status snapshot (2026-05-13):** 1348+ tests passing (1288 standalone + 60 deselected hangers), 10/12 health checks green.  
+> Engineering blueprint v2.1: ALL 7 TIERS COMPLETE — personality depth, safety systems (dignity engine + content guard),  
+> memory/codex overhaul, research pipeline, expertise-aware retrieval, privacy separation, documentation cleanup.  
+> See `ENGINEERING_BLUEPRINT.md` for the canonical engineering plan and completion evidence.  
+> See `agent/docs/audit/subsystem_audit.md` for subsystem ground truth.
 
 ---
 

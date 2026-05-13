@@ -308,8 +308,26 @@ async def lifespan(app: FastAPI):
         app.state.scheduler = sched
     except Exception as e:
         logger.warning("scheduler not started: %s", e)
+    # Phase 9: Start mDNS discovery (broadcasts this instance + discovers peers)
+    try:
+        import runtime_safety as _rs_mdns
+        _cfg_mdns = _rs_mdns.load_config()
+        if _cfg_mdns.get("mdns_enabled", True):
+            from services.mdns_discovery import start_service as _mdns_start
+            if _mdns_start(_cfg_mdns):
+                logger.info("mDNS discovery service started")
+            else:
+                logger.debug("mDNS discovery not started (disabled or zeroconf missing)")
+    except Exception as _mdns_err:
+        logger.debug("mDNS startup skipped: %s", _mdns_err)
     yield
     # Shutdown
+    # Phase 9: Stop mDNS discovery
+    try:
+        from services.mdns_discovery import stop_service as _mdns_stop
+        _mdns_stop()
+    except Exception:
+        pass
     try:
         from services.observability import log_agent_shutdown
         duration_ms = (time.time() - _start_time) * 1000
@@ -548,11 +566,13 @@ from routers import (
 from routers import (
     sync as sync_router,
     intelligence as intelligence_router,
+    pairing as pairing_router,
 )
 from routers import (
     debate as debate_router,
 )
 from routers import metrics as metrics_router
+from routers import character as character_router
 
 app.include_router(settings_router.router)
 app.include_router(session_router.router)
@@ -568,9 +588,11 @@ app.include_router(obsidian_router.router)  # Phase 5.1: Obsidian vault connecto
 app.include_router(german_router.router)           # Item #10: German language learning mode
 app.include_router(agent_tasks_router.router)      # Background task resume + plan execution
 app.include_router(sync_router.router)             # Multi-device sync via Syncthing
+app.include_router(pairing_router.router)          # Phase 9: mDNS discovery + device pairing + cluster
 app.include_router(intelligence_router.router)     # AirLLM, compression, prompt optimizer, KB builder
 app.include_router(debate_router.router)            # Multi-aspect debate/council/tribunal engine
 app.include_router(metrics_router.router)           # Phase 3: Observability metrics endpoint
+app.include_router(character_router.router)         # Character Lab: aspect customization + tutorial
 
 if DOCS_DIR.exists():
     app.mount("/docs", StaticFiles(directory=str(DOCS_DIR)), name="docs")

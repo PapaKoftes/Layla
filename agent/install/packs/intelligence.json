@@ -1,0 +1,5 @@
+{
+  "description": "Intelligence pack: spaCy NER, document parsing, advanced embeddings",
+  "pip": ["spacy"],
+  "post_pip": ["python", "-m", "spacy", "download", "en_core_web_sm"]
+}
