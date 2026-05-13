@@ -543,6 +543,9 @@ from routers import (
     sync as sync_router,
     intelligence as intelligence_router,
 )
+from routers import (
+    debate as debate_router,
+)
 
 app.include_router(settings_router.router)
 app.include_router(session_router.router)
@@ -559,6 +562,7 @@ app.include_router(german_router.router)           # Item #10: German language l
 app.include_router(agent_tasks_router.router)      # Background task resume + plan execution
 app.include_router(sync_router.router)             # Multi-device sync via Syncthing
 app.include_router(intelligence_router.router)     # AirLLM, compression, prompt optimizer, KB builder
+app.include_router(debate_router.router)            # Multi-aspect debate/council/tribunal engine
 
 if DOCS_DIR.exists():
     app.mount("/docs", StaticFiles(directory=str(DOCS_DIR)), name="docs")
