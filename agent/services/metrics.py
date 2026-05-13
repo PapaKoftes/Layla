@@ -175,6 +175,11 @@ def record_scheduler_run(job_name: str, status: str) -> None:
     SCHEDULER_RUNS.labels(job_name=job_name, status=status).inc()
 
 
+def record_context_pressure(pressure: float) -> None:
+    """Record current context window pressure ratio (0.0–1.0)."""
+    CONTEXT_PRESSURE.set(max(0.0, min(1.0, float(pressure))))
+
+
 # ---------------------------------------------------------------------------
 # Output functions
 # ---------------------------------------------------------------------------
