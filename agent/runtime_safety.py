@@ -234,8 +234,8 @@ def load_config() -> dict:
             "run_budget_summary_log_enabled": True,
             "api_confidence_enabled": True,
             "langfuse_enabled": False,
-            "langfuse_public_key": "",
-            "langfuse_secret_key": "",
+            "langfuse_public_key": None,
+            "langfuse_secret_key": None,
             "langfuse_host": "https://cloud.langfuse.com",
             "operator_protection_policy_pin_enabled": True,
             "ui_decision_trace_enabled": False,
@@ -481,8 +481,9 @@ def load_config() -> dict:
             "scheduler_recent_activity_minutes": 90,
             "wakeup_include_initiative": False,
             "wakeup_include_discovery_line": False,
+            # ── Remote access ─────────────────────────────────────────────
             "remote_enabled": False,
-            "remote_api_key": None,
+            "remote_api_key": None,  # DEPRECATED: use tunnel_token_hash instead (Phase 3)
             "remote_allow_endpoints": [],
             "remote_mode": "observe",
             "remote_rate_limit_per_minute": 100,
@@ -503,17 +504,17 @@ def load_config() -> dict:
             "privacy_max_retrieval_level": "personal",
             # expertise_domain_boost: aspect-aware retrieval boosting
             "expertise_domain_boost_enabled": True,
-            # litellm: multi-provider LLM gateway (Phase 1)
-            # discord: bot auto-start and config (Phase 2)
-            "discord_bot_autostart": False,
-            "discord_bot_token": "",
-            "discord_bot_default_aspect": "",
+            # ── LiteLLM: multi-provider LLM gateway (Phase 1) ───────────
             "litellm_enabled": False,
-            "litellm_default_model": "",
+            "litellm_default_model": None,
             "litellm_fallback_chain": [],
             "litellm_api_keys": {},
-            "litellm_timeout_seconds": 120,
+            "litellm_timeout_seconds": 120,  # separate from llm_timeout_seconds (local inference)
             "litellm_max_retries": 2,
+            # ── Discord bot (Phase 2) ────────────────────────────────────
+            "discord_bot_autostart": False,
+            "discord_bot_token": None,
+            "discord_bot_default_aspect": None,
             "enable_personality_expression": True,
             "enable_cognitive_lens": True,
             "enable_behavioral_rhythm": True,
@@ -556,41 +557,43 @@ def load_config() -> dict:
             "file_checkpoint_enabled": True,
             "file_checkpoint_max_count": 200,
             "file_checkpoint_max_bytes": 209_715_200,
+            # ── Search backends (Phase 5) ─────────────────────────────────
+            "search_backend": "auto",  # "auto" | "meilisearch" | "elasticsearch" | "sqlite_fts"
             "elasticsearch_enabled": False,
-            "elasticsearch_url": "",
+            "elasticsearch_url": None,
             "elasticsearch_index_prefix": "layla",
             "elasticsearch_api_key": None,
-            # meilisearch: lightweight alternative to Elasticsearch (Phase 5)
             "meilisearch_enabled": False,
             "meilisearch_url": "http://localhost:7700",
-            "meilisearch_api_key": "",
+            "meilisearch_api_key": None,
             "meilisearch_index": "layla-learnings",
-            # search_router: unified search backend selection (Phase 5)
-            "search_backend": "auto",
-            # Phase 3: Remote Access — tunnel auth, audit, Tailscale
-            "tunnel_token_hash": "",
-            "tunnel_token_created_at": "",
-            "tunnel_token_ttl_hours": 0,
+            # ── Tunnel auth & audit (Phase 3) ────────────────────────────
+            "tunnel_token_hash": None,
+            "tunnel_token_created_at": None,
+            "tunnel_token_ttl_hours": 0,  # 0 = never expires
             "tunnel_ip_allowlist": [],
-            "tunnel_audit_enabled": True,
+            "tunnel_audit_enabled": False,  # activates when remote_enabled is True
             "tunnel_audit_retention_days": 90,
             "tailscale_enabled": False,
-            "tailscale_auth_key": "",
-            # Phase 6: Open-Source Integrations
-            "crawler_backend": "auto",
-            "firecrawl_api_key": "",
+            "tailscale_auth_key": None,
+            # ── Web crawling (Phase 6A) ──────────────────────────────────
+            "crawler_backend": "auto",  # "auto" | "firecrawl" | "crawl4ai" | "basic"
+            "firecrawl_api_key": None,
             "firecrawl_api_url": "https://api.firecrawl.dev",
-            "crawl4ai_enabled": True,
+            "crawl4ai_enabled": False,  # opt-in like all other integrations
+            # ── Document ingestion (Phase 6B) ────────────────────────────
             "docling_enabled": False,
             "docling_chunk_size": 1000,
             "docling_overlap": 200,
-            "vector_backend": "chroma",
+            # ── Vector store (Phase 6C) ──────────────────────────────────
+            "vector_backend": "chroma",  # "chroma" | "qdrant"
             "qdrant_url": "http://localhost:6333",
-            "qdrant_api_key": "",
+            "qdrant_api_key": None,
             "qdrant_collection": "layla-memories",
+            # ── Memory extraction (Phase 6D) ─────────────────────────────
             "mem0_enabled": False,
-            "mem0_api_key": "",
-            "mem0_provider": "local",
+            "mem0_api_key": None,
+            "mem0_provider": "local",  # "local" | "cloud"
             "aspect_model_overrides": {},
             # Debate engine: "solo" (default), "auto", "debate", "council", "tribunal"
             "deliberation_mode": "solo",
