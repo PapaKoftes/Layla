@@ -56,8 +56,9 @@ def rollback_install(pack_name: str, pack_dir: Path | None = None) -> dict[str, 
     except Exception as e:
         actions.append(f"Registry cleanup error: {e}")
 
+    has_errors = any("error" in a.lower() or "failed" in a.lower() for a in actions)
     logger.info("skill_rollback: rolled back '%s' — %d actions", pack_name, len(actions))
-    return {"ok": True, "pack_name": pack_name, "actions": actions}
+    return {"ok": not has_errors, "pack_name": pack_name, "actions": actions}
 
 
 def can_rollback(pack_name: str) -> bool:

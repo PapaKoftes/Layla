@@ -41,7 +41,7 @@ class TestTunnelAuthIntegration:
             "tunnel_token_hash": hash_token(token),
             "tunnel_ip_allowlist": ["10.0.0.1", "10.0.0.2"],
             "tunnel_token_ttl_hours": 24,
-            "tunnel_token_created_at": datetime.datetime.utcnow().isoformat(),
+            "tunnel_token_created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }
 
         # Valid token + allowed IP

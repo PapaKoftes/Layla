@@ -99,7 +99,10 @@ def run_entry_point(
     if not python.exists():
         return {"ok": False, "stdout": "", "stderr": f"venv Python not found: {python}", "exit_code": -1, "timed_out": False}
 
-    entry = pack_dir / entry_point
+    entry = (pack_dir / entry_point).resolve()
+    # Security: ensure entry point resolves to within the pack directory
+    if not str(entry).startswith(str(pack_dir.resolve())):
+        return {"ok": False, "stdout": "", "stderr": f"Entry point escapes pack directory: {entry_point}", "exit_code": -1, "timed_out": False}
     if not entry.exists():
         return {"ok": False, "stdout": "", "stderr": f"Entry point not found: {entry}", "exit_code": -1, "timed_out": False}
 
@@ -108,7 +111,10 @@ def run_entry_point(
         cmd.extend(args)
 
     import os
-    env = dict(os.environ)
+    # Minimal environment — don't leak parent secrets into sandboxed packs
+    _SAFE_KEYS = {"PATH", "HOME", "USERPROFILE", "TEMP", "TMP", "LANG",
+                  "SYSTEMROOT", "COMSPEC", "PATHEXT", "VIRTUAL_ENV"}
+    env = {k: v for k, v in os.environ.items() if k in _SAFE_KEYS}
     env["LAYLA_SKILL_PACK"] = pack_name
     env["LAYLA_PACK_DIR"] = str(pack_dir)
     if env_extra:

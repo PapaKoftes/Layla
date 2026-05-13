@@ -14,7 +14,6 @@ Config keys:
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any
 
 logger = logging.getLogger("layla")
@@ -58,6 +57,7 @@ def _search_sqlite_fts(cfg: dict, query: str, limit: int) -> dict[str, Any]:
         # FTS function not available — fallback to LIKE search
         return _search_sqlite_like(cfg, query, limit)
     except Exception as e:
+        logger.debug("search_router: sqlite_fts failed, falling back to LIKE: %s", e)
         return _search_sqlite_like(cfg, query, limit)
 
 

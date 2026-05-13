@@ -17,7 +17,7 @@ import os
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Optional
+from datetime import timezone
 
 logger = logging.getLogger("layla")
 
@@ -119,7 +119,7 @@ def log_access(
     """
     try:
         _ensure_table()
-        ts = datetime.datetime.utcnow().isoformat()
+        ts = datetime.datetime.now(timezone.utc).isoformat()
         with _write_lock:
             conn = _get_connection()
             try:
@@ -162,7 +162,7 @@ def query_log(
     try:
         _ensure_table()
         since = (
-            datetime.datetime.utcnow() - datetime.timedelta(days=days)
+            datetime.datetime.now(timezone.utc) - datetime.timedelta(days=days)
         ).isoformat()
 
         sql = "SELECT * FROM tunnel_access_log WHERE timestamp >= ?"
@@ -207,7 +207,7 @@ def get_summary(days: int = 7) -> dict:
     try:
         _ensure_table()
         since = (
-            datetime.datetime.utcnow() - datetime.timedelta(days=days)
+            datetime.datetime.now(timezone.utc) - datetime.timedelta(days=days)
         ).isoformat()
 
         conn = _get_connection()
@@ -280,7 +280,7 @@ def purge_old(days: int = 90) -> int:
     try:
         _ensure_table()
         cutoff = (
-            datetime.datetime.utcnow() - datetime.timedelta(days=days)
+            datetime.datetime.now(timezone.utc) - datetime.timedelta(days=days)
         ).isoformat()
 
         with _write_lock:
