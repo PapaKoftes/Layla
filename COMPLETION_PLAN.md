@@ -1141,40 +1141,54 @@ Target the remaining high-traffic untested modules:
 
 ---
 
-## PHASE 9: MULTI-DEVICE + NETWORKING (Week 15, ~15 hours)
+## PHASE 9: MULTI-DEVICE + NETWORKING (Week 15, ~15 hours) ✅ COMPLETE
 
 > Scale from phone to datacenter.
 
-### 9.1 mDNS Discovery (5 hours)
+### 9.1 mDNS Discovery (5 hours) ✅
 
 **New file:** `agent/services/mdns_discovery.py`
 
 Use `zeroconf` (pure Python) to broadcast and discover Layla instances on local network.
-- Service type: `_layla._tcp`
-- Metadata: device name, hardware tier, available models
+- Service type: `_layla._tcp.local.`
+- Metadata: device name, hardware tier, available models, API port, version, instance_id
 - Auto-discovery in UI: "Other Layla instances on your network"
+- Auto-start in server lifespan; auto-stop on shutdown
+- Peer health checking via `/health` endpoint ping
+- Best-peer selection by hardware tier ranking
+- `zeroconf>=0.131` added to requirements.txt
 
 ---
 
-### 9.2 Device Pairing Flow (5 hours)
+### 9.2 Device Pairing Flow (5 hours) ✅
 
 **New files:** `agent/routers/pairing.py`, `agent/ui/js/layla-pairing.js`
 
-- QR code / 6-digit PIN pairing
-- Key exchange for encrypted sync
-- Device list in settings
-- Permission model: which device can read/write which data
+- 6-digit cryptographic PIN pairing (secrets.randbelow)
+- Shared secret generation (32-byte hex) for peer-to-peer auth
+- Device list in settings panel (Network & Devices card)
+- Permission model: read_learnings, write_learnings, inference_offload, sync_knowledge, remote_tools
+- PIN expiry (configurable TTL, default 300s)
+- Paired devices persisted to `.governance/paired_devices.json`
+- Full REST API: pair, confirm, list, unpair, health-check, permissions
+- Warframe-aesthetic UI: peer cards, PIN overlay with countdown, permission toggles
+- Router registered in main.py
 
 ---
 
-### 9.3 Cluster Model Offloading (5 hours)
+### 9.3 Cluster Model Offloading (5 hours) ✅
 
-**Extend:** `agent/services/inference_router.py`
+**Extended:** `agent/services/inference_router.py`
 
 When local hardware can't run a model:
-- Check paired devices for available capacity
-- Route inference to the most powerful available device
+- Check paired devices for available capacity (filtered by inference_offload permission)
+- Route inference to the most powerful available device (tier ranking: gpu_high > gpu_mid > gpu_low > cpu)
 - Fallback chain: local GPU → local CPU → paired device → queue for later
+- `run_completion_with_fallback()` — drop-in replacement for `run_completion()` with cluster offloading
+- `get_cluster_status()` — diagnostics: local tier, backend, available peers, fallback chain description
+- Human-readable fallback chain for UI display
+
+**Tests:** 42 new tests (14 mDNS, 17 pairing, 11 cluster). Total: 1277+ passing.
 
 ---
 
@@ -1254,3 +1268,67 @@ Phase 1 (Structural Integrity)
 
 **Critical path:** 1 → 2 → 4 → 6 → 7 → 8  
 **Parallel track:** 3 (can start alongside Phase 2)
+
+---
+
+## PHASE 10: CHARACTER CREATOR + TUTORIAL SYSTEM (Week 16, ~10 hours) ✅ COMPLETE
+
+Videogame-style character creation system for all 6 Layla aspects with full customization, titles, lore, and guided tutorial intro.
+
+### Deliverables
+
+| Item | File(s) | Status |
+|------|---------|--------|
+| **Character Creator Service** | `services/character_creator.py` (~464 lines) | ✅ |
+| **Character Creator Router** | `routers/character.py` (14 endpoints) | ✅ |
+| **Character Lab UI** | `ui/js/layla-character-creator.js` (~470 lines) | ✅ |
+| **Character Lab CSS** | `ui/css/layla-enhanced.css` (+250 lines) | ✅ |
+| **Tutorial/Intro System** | Integrated into `layla-character-creator.js` | ✅ |
+| **HTML Integration** | `ui/index.html` (overlays, header button, script tag) | ✅ |
+| **Main.py Wiring** | `main.py` (import + router registration) | ✅ |
+| **Tests** | `tests/test_character_creator.py` (28 tests, all passing) | ✅ |
+
+### Features
+- **Aspect card strip**: Horizontal selector with per-aspect color coding and glow effects
+- **Personality sliders** (6): aggression, humor, verbosity, curiosity, bluntness, empathy — each generates behavioral prompt hints injected into the system prompt
+- **Voice profile** (4): pitch, speed, warmth, formality — per-aspect tuning
+- **Color customization**: Primary color picker with live preview
+- **Title system**: Earnable titles per aspect, rank-gated via maturity engine (4 titles each, 24 total)
+- **Lore display**: Origin story + philosophy per aspect
+- **Prompt hints preview**: Live view of active behavioral modifiers from slider positions
+- **Reset to defaults**: Per-aspect factory reset
+- **Set as main**: Choose your primary aspect
+- **Wizard integration**: `renderWizardCharacterStep()` for first-run character selection with mini stat bars
+- **Tutorial**: 6-step guided intro (welcome → aspects → chat → memory → character lab → complete) with element highlighting and progressive disclosure
+- **Warframe aesthetic**: Clip-paths, glow effects, scanline compatibility, aspect-reactive colors throughout
+
+### API Endpoints (14 total)
+```
+GET  /character/summary          — Full lab summary with all profiles + tutorial state
+GET  /character/aspects          — All 6 profiles
+GET  /character/aspects/{id}     — Single profile
+PATCH /character/aspects/{id}    — Save customizations
+POST /character/aspects/{id}/reset — Reset to defaults
+GET  /character/aspects/{id}/titles — Available titles at current rank
+POST /character/aspects/{id}/title  — Set active title
+GET  /character/aspects/{id}/prompt-hints — Live behavioral hints
+GET  /character/tutorial         — Tutorial progress
+POST /character/tutorial/advance — Advance tutorial step
+POST /character/main-aspect      — Set main aspect
+GET  /character/traits           — Trait slider metadata
+GET  /character/voice-params     — Voice slider metadata
+GET  /character/earnable-titles  — All earnable titles across aspects
+```
+
+---
+
+## COMPREHENSIVE AUDIT (Week 16)
+
+Full codebase audit completed covering all 6 domains. Results documented in `AUDIT_REPORT.md`.
+
+- **13 critical bugs** identified across backend (7), frontend (5), config (1)
+- **14 medium bugs** identified
+- **68% of services** lack dedicated test coverage
+- **106 undocumented config keys** scattered across codebase
+- **25+ open-source integration candidates** evaluated
+- **20-item prioritized improvement roadmap** produced

@@ -877,6 +877,45 @@ def _apply_confidence_recency_boost(items: list[dict], k: int) -> list[dict]:
     return [it for _, it in scored[:k]]
 
 
+def _apply_domain_keyword_boost(items: list[dict], domain_keywords: list[str], k: int) -> list[dict]:
+    """
+    Post-retrieval domain relevance boost for the active aspect's expertise.
+
+    Results whose content contains domain keywords get a score uplift,
+    promoting domain-relevant memories when an aspect is active. The boost
+    can promote items up 1-2 positions but won't completely override the
+    original semantic ranking. Uses a flatter base curve so the boost
+    meaningfully affects ordering.
+    """
+    if not items or not domain_keywords:
+        return items[:k]
+    # Normalise keywords for matching
+    kw_lower = [kw.lower().strip() for kw in domain_keywords if kw.strip()]
+    if not kw_lower:
+        return items[:k]
+
+    def domain_score(item: dict) -> float:
+        content = (item.get("content") or "").lower()
+        if not content:
+            return 0.0
+        hits = sum(1 for kw in kw_lower if kw in content)
+        if hits == 0:
+            return 0.0
+        # Diminishing returns: first match = 0.15, second = +0.10, third+ = +0.05 each
+        score = min(0.15 + max(0, hits - 1) * 0.10, 0.40)
+        return score
+
+    # Re-score: flatter base rank (so domain boost can actually promote items 1-2 positions)
+    # Linear decay: position 0 = 1.0, position 1 = 0.92, position 2 = 0.84, etc.
+    scored = []
+    for i, item in enumerate(items):
+        base = max(0.1, 1.0 - i * 0.08)  # flatter than 1/(i+1); floor at 0.1
+        boost = domain_score(item)
+        scored.append((base + boost, item))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [it for _, it in scored[:k]]
+
+
 def search_memories_full(
     query: str,
     k: int = 5,
@@ -886,6 +925,7 @@ def search_memories_full(
     cross_encoder_limit: int | None = None,
     coding_boost: bool = False,
     use_hyde: bool | None = None,
+    domain_boost_keywords: list[str] | None = None,
 ) -> list[dict]:
     """
     Two-stage retrieval pipeline:
@@ -893,7 +933,10 @@ def search_memories_full(
       2. Light rerank (MMR or take top 10) → top 10
       3. Cross-encoder (only on small candidate set) → top k
       4. Confidence + recency boost
+      5. Domain keyword boost (optional, from active aspect expertise)
     cross_encoder_limit: max candidates to run cross-encoder on (config: retrieval_cross_encoder_limit).
+    domain_boost_keywords: optional list of domain terms from the active aspect; results matching
+      these terms get a small score uplift to surface domain-relevant memories.
     """
     # Resolve cross_encoder_limit from config if not passed
     cfg_local: dict = {}
@@ -951,6 +994,10 @@ def search_memories_full(
     # Step 4: confidence + recency boost (skip if weighted fusion already blended recency/success)
     if use_confidence_boost and results and retrieval_fusion_mode() != "weighted":
         results = _apply_confidence_recency_boost(results, k)
+
+    # Step 5: domain keyword boost — small score uplift for results matching active aspect's domains
+    if domain_boost_keywords and results:
+        results = _apply_domain_keyword_boost(results, domain_boost_keywords, k)
     return results
 
 

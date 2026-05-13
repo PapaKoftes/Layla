@@ -1,0 +1,5 @@
+{
+  "description": "Research pack: feed parsing, web translation, finance data",
+  "pip": ["feedparser", "deep-translator", "yfinance"],
+  "post_pip": []
+}

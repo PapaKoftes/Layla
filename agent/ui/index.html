@@ -175,6 +175,7 @@
     <div id="aspect-badge" class="aspect-badge">∴ MORRIGAN</div>
     <button id="aspect-lock-btn" onclick="toggleAspectLock()" title="Lock this aspect (prevent auto-routing)">🔓</button>
     <button type="button" id="compact-chat-btn" onclick="compactConversation()" title="Summarize conversation and free context (server)" style="font-size:0.68rem;padding:4px 8px;margin-left:4px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer">⊙ Compact</button>
+    <button type="button" id="charlab-open-btn" onclick="openCharacterLab()" title="Open Character Lab — customize aspects, personality, voice, titles">⚙ Character Lab</button>
   </div>
   <div class="header-meta">
     <span id="session-time" title="Session duration">0:00</span>
@@ -513,6 +514,25 @@
             <button type="button" class="tab-btn" style="font-size:0.65rem" onclick="laylaObsidianSuggest()" title="See learnings to export">Suggest exports</button>
           </div>
           <div id="obsidian-status" style="font-size:0.65rem;color:var(--text-dim)">Not connected</div>
+        </div>
+
+        <!-- Phase 9: Multi-Device Discovery & Pairing -->
+        <div class="option-card" id="pairing-settings-card">
+          <div class="option-card-title">Network &amp; Devices</div>
+          <p style="font-size:0.68rem;color:var(--text-dim);margin:0 0 8px">Discover and pair with other Layla instances on your LAN. Zero-config via mDNS.</p>
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+            <button type="button" id="discovery-toggle-btn" class="btn-discovery" onclick="_discoveryRunning?stopDiscovery():startDiscovery()" style="font-size:0.65rem;padding:3px 8px;background:var(--violet);border:1px solid var(--accent);color:#fff;border-radius:2px;cursor:pointer">Start Discovery</button>
+            <button type="button" class="tab-btn" style="font-size:0.65rem" onclick="refreshPeeringPanel()">Refresh</button>
+            <span style="font-size:0.62rem;color:var(--text-dim)">Instance: <code id="pairing-instance-id" style="font-size:0.6rem">—</code></span>
+          </div>
+          <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:4px">Discovered peers (<span id="pairing-peer-count">0</span>):</div>
+          <div id="peers-list" style="max-height:200px;overflow-y:auto;margin-bottom:8px">
+            <div class="peers-empty" style="font-size:0.65rem;color:var(--text-dim)">Not scanning. Click "Start Discovery" above.</div>
+          </div>
+          <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:4px">Paired devices:</div>
+          <div id="paired-devices-list" style="max-height:200px;overflow-y:auto">
+            <div class="peers-empty" style="font-size:0.65rem;color:var(--text-dim)">No paired devices.</div>
+          </div>
         </div>
 
         <div class="option-card" id="prefs-research-section">
@@ -923,20 +943,46 @@
   </div>
 </div>
 
+<!-- Character Lab overlay (full-screen modal) -->
+<div id="character-lab-overlay" aria-hidden="true">
+  <div id="character-lab-container">
+    <button type="button" id="charlab-close-btn" onclick="closeCharacterLab()" aria-label="Close Character Lab">&times;</button>
+    <div style="color:var(--text-dim);font-size:0.8rem">Loading Character Lab...</div>
+  </div>
+</div>
+
+<!-- Tutorial / Intro overlay -->
+<div id="tutorial-overlay" aria-hidden="true"></div>
+
 <script>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(function () {});
 }
 </script>
+<!-- Phase 8.4: Code-split modules — load order matters -->
 <script src="/layla-ui/js/layla-ui-phases.js"></script>
 <script src="/layla-ui/js/layla-sprites.js"></script>
 <script src="/layla-ui/js/layla-bootstrap.js"></script>
 <script src="/layla-ui/js/state.js"></script>
 <script src="/layla-ui/js/api.js"></script>
-<script src="/layla-ui/js/chat.js"></script>
+<!-- Shared utilities (escapeHtml, showToast, fetchWithTimeout, etc.) — MUST load first -->
+<script src="/layla-ui/js/layla-utils.js"></script>
+<!-- Aspect switching, colors, maturity card, aspect registry -->
+<script src="/layla-ui/js/layla-aspect.js"></script>
+<!-- Voice recording, TTS, audio playback -->
+<script src="/layla-ui/js/layla-voice.js"></script>
 <script src="/layla-ui/js/sidebar.js"></script>
 <script src="/layla-ui/js/panels.js"></script>
 <script src="/layla-ui/js/layla-wizard.js"></script>
+<!-- First-run setup overlay and onboarding wizard -->
+<script src="/layla-ui/js/layla-setup.js"></script>
+<!-- Settings, workspace presets, relationship codex, content policy -->
+<script src="/layla-ui/js/layla-settings-full.js"></script>
+<!-- Chat rendering: addMsg, typing indicators, stream stats, code blocks -->
+<script src="/layla-ui/js/layla-chat-render.js"></script>
+<!-- Input handling: mentions, URL chip, file attachments, chat search, diff viewer -->
+<script src="/layla-ui/js/layla-input.js"></script>
+<!-- Core: send(), executePlan, health polling, panel routing, init -->
 <script src="/layla-ui/js/layla-app.js"></script>
 <script src="/layla-ui/js/layla-conversations.js"></script>
 <script src="/layla-ui/js/layla-artifacts.js"></script>
@@ -944,6 +990,14 @@ if ('serviceWorker' in navigator) {
 <script src="/layla-ui/js/layla-memory.js"></script>
 <script src="/layla-ui/js/layla-plan-viz.js"></script>
 <script src="/layla-ui/js/layla-autonomous.js"></script>
+<!-- Research panel, missions, approvals, sendResearch, autonomous research -->
+<script src="/layla-ui/js/layla-research.js"></script>
+<!-- Workspace panels: models, knowledge, study, skills, plans, execution -->
+<script src="/layla-ui/js/layla-workspace.js"></script>
+<!-- Phase 9: Multi-device discovery, pairing, cluster UI -->
+<script src="/layla-ui/js/layla-pairing.js"></script>
+<!-- Character Lab: aspect customization, tutorial, intro -->
+<script src="/layla-ui/js/layla-character-creator.js"></script>
 <script src="/layla-ui/js/layla-perf.js"></script>
 <script>
 // Restore persisted Performance settings on load
