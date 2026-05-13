@@ -90,6 +90,42 @@ your rules.
 - `/intelligence/*` REST API
 - WCAG 2.1 AA full pass (skip-nav, role=log, aria-controls, landmarks)
 
+### Phase 6.5 — System Engineering Overhaul ✅
+Major engineering pass covering personality, safety, memory, and research systems:
+
+**Personality Depth:**
+- Added `expertise_domains` to all 6 personality JSONs (primary, secondary, philosophy, knowledge gaps, technical refusals)
+- Fixed debate_engine `ASPECT_DOMAINS` inversion (Morrigan/Cassandra were swapped)
+- Added missing decision bias handlers: disruptive, reactive, honest, principled
+- Wired character creator sliders into LLM prompt path (was decorative-only)
+- Injected `failure_mode_expanded` as self-correction instructions
+- All aspects now have `can_refuse: true` with aspect-appropriate refusal topics
+
+**Safety & Autonomy:**
+- NEW: `services/dignity_engine.py` — Layla can push back on rude/abusive input (3-layer detection, escalation system)
+- NEW: `services/content_guard.py` — Deterministic pre-model content filter (Tier 1 hardcoded, Tier 2 user-overridable, Tier 3 user-controlled)
+- Replaced dead config flags (`knowledge_unrestricted`, `anonymous_access`) with functional safety flags
+- Content guard wired into agent_loop before model inference
+- Dignity engine wired into system prompt injection
+
+**Memory & Codex:**
+- NEW: `services/person_dossier.py` — Aggregated person profiles (videogame-style character entries)
+- NEW: `services/conversation_entity_extractor.py` — Entity extraction from every conversation exchange
+- NEW: `learnings_archive` table — Faded memories archived instead of hard-deleted
+- NEW: `codex_discoveries` table — Track when entities are first discovered
+- NEW: `journal_entity_links` table — Connect journal entries to codex entities
+- Fixed memory router substring matching → FTS5 + keyword overlap scoring
+
+**Research & Learning:**
+- Overhauled `services/background_intelligence.py` — 5 real jobs replacing stubs
+  - Entity enrichment from conversation summaries
+  - Relationship co-occurrence discovery
+  - Spaced repetition review processing
+  - KB synthesis candidate detection
+  - Strategy failure pattern identification
+
+**Tests:** 43 new tests (dignity_engine: 22, content_guard: 21), all passing
+
 ---
 
 ## PHASE 7 — RESEARCH AUTOMATION (weeks 8-9)

@@ -65,11 +65,14 @@ def retrieve_relevant_memory(
     *,
     coding_boost: bool = False,
     min_confidence: float = 0.0,
+    domain_boost_keywords: list[str] | None = None,
 ) -> list[dict]:
     """
     Canonical memory retrieval for context_builder / planners.
     Uses the same hybrid pipeline as semantic recall (vector + BM25 + rerank path via search_memories_full).
     Phase 4.2: normalises `confidence` on every returned item; filters by min_confidence when > 0.
+    domain_boost_keywords: optional domain terms from the active aspect's expertise_domains;
+      passed through to search_memories_full for post-retrieval score boosting.
     """
     k = max(1, min(int(k), MAX_K))
     try:
@@ -82,6 +85,7 @@ def retrieve_relevant_memory(
                 k=k,
                 use_rerank=True,
                 coding_boost=coding_boost,
+                domain_boost_keywords=domain_boost_keywords,
             )
         else:
             from layla.memory.db import search_learnings_fts

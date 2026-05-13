@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "updated_at": "2026-04-28T08:13:48.270527+00:00",
+  "updated_at": "2026-05-13T10:18:26.933299+00:00",
   "workspace_root": "C:\\Users\\minam\\local-jinx-agent\\agent",
   "files": {
     ".coverage": {
@@ -9,7 +9,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     ".coveragerc": {
       "size": 515,
@@ -17,7 +17,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     ".gitignore": {
       "size": 149,
@@ -25,7 +25,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "FINAL_SYSTEM_READINESS.md": {
       "size": 13237,
@@ -65,15 +65,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "agent_loop.py": {
-      "size": 282825,
+      "size": 297760,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "autonomous/__init__.py": {
       "size": 59,
@@ -81,7 +81,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "autonomous/aggregator.py": {
       "size": 11303,
@@ -89,7 +89,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "autonomous/audit.py": {
       "size": 1941,
@@ -97,7 +97,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "autonomous/budget.py": {
       "size": 940,
@@ -105,7 +105,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "autonomous/chroma_retrieval.py": {
       "size": 2111,
@@ -113,7 +113,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "autonomous/context.py": {
       "size": 4874,
@@ -121,7 +121,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "autonomous/controller.py": {
       "size": 13193,
@@ -129,7 +129,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "autonomous/investigation_reuse.py": {
       "size": 1605,
@@ -137,7 +137,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "autonomous/planner.py": {
       "size": 4745,
@@ -145,7 +145,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "autonomous/policy.py": {
       "size": 2550,
@@ -153,7 +153,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "autonomous/read_cache.py": {
       "size": 2570,
@@ -161,7 +161,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "autonomous/reuse_retrieval.py": {
       "size": 3015,
@@ -169,7 +169,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "autonomous/subagents.py": {
       "size": 848,
@@ -177,7 +177,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "autonomous/types.py": {
       "size": 919,
@@ -185,7 +185,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "autonomous/value_gate.py": {
       "size": 2925,
@@ -193,7 +193,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "autonomous/wiki.py": {
       "size": 2553,
@@ -201,7 +201,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "autonomous/wiki_retrieval.py": {
       "size": 4301,
@@ -209,7 +209,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "background_job_worker.py": {
       "size": 8915,
@@ -217,7 +217,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "behavioral_rhythm.txt": {
       "size": 452,
@@ -225,7 +225,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "capabilities/__init__.py": {
       "size": 419,
@@ -233,7 +233,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "capabilities/registry.py": {
       "size": 8944,
@@ -241,7 +241,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "cognitive_lens.txt": {
       "size": 804,
@@ -249,7 +249,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "config_schema.py": {
       "size": 18560,
@@ -257,7 +257,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "conftest.py": {
       "size": 1118,
@@ -265,7 +265,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "core/__init__.py": {
       "size": 510,
@@ -273,15 +273,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "core/executor.py": {
-      "size": 8089,
+      "size": 8832,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "core/observer.py": {
       "size": 3466,
@@ -289,7 +289,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "core/validator.py": {
       "size": 5297,
@@ -297,7 +297,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "decision_schema.py": {
       "size": 5450,
@@ -305,7 +305,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "diagnose_startup.py": {
       "size": 5472,
@@ -313,7 +313,23 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "docs/audit/memory_router_migration.md": {
+      "size": 3739,
+      "ext": ".md",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "docs/audit/subsystem_audit.md": {
+      "size": 33865,
+      "ext": ".md",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "download_docs.py": {
       "size": 3781,
@@ -321,7 +337,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "execution_state.py": {
       "size": 5056,
@@ -329,7 +345,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "export_finetune_data.py": {
       "size": 5152,
@@ -337,7 +353,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "first_run.py": {
       "size": 17532,
@@ -345,7 +361,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "install-autostart.ps1": {
       "size": 514,
@@ -353,7 +369,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "install/__init__.py": {
       "size": 164,
@@ -361,7 +377,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "install/hardware_probe.py": {
       "size": 480,
@@ -369,15 +385,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "install/installer_cli.py": {
-      "size": 15996,
+      "size": 18387,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "install/model_downloader.py": {
       "size": 20898,
@@ -385,7 +401,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "install/model_selector.py": {
       "size": 4848,
@@ -393,7 +409,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "install/packs/browser.json": {
       "size": 157,
@@ -401,7 +417,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "install/packs/e2e.json": {
       "size": 177,
@@ -409,7 +425,31 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "install/packs/intelligence.json": {
+      "size": 182,
+      "ext": ".json",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "install/packs/observability.json": {
+      "size": 145,
+      "ext": ".json",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "install/packs/research.json": {
+      "size": 156,
+      "ext": ".json",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "install/packs/voice.json": {
       "size": 125,
@@ -417,7 +457,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "install/run_first_time.py": {
       "size": 5265,
@@ -425,7 +465,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "install/setup_existing_model.py": {
       "size": 2764,
@@ -433,7 +473,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/__init__.py": {
       "size": 0,
@@ -441,7 +481,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/cam/__init__.py": {
       "size": 1371,
@@ -449,7 +489,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/cam/feeds_speeds.py": {
       "size": 1540,
@@ -457,7 +497,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/cam/simulator.py": {
       "size": 5659,
@@ -465,7 +505,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/cam/tool_library.py": {
       "size": 450,
@@ -473,7 +513,39 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "layla/codex/__init__.py": {
+      "size": 518,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "layla/codex/codex_db.py": {
+      "size": 10295,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "layla/codex/enricher.py": {
+      "size": 7251,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "layla/codex/linker.py": {
+      "size": 6307,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/file_understanding.py": {
       "size": 7661,
@@ -481,7 +553,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/geometry/__init__.py": {
       "size": 579,
@@ -489,7 +561,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/geometry/backends/__init__.py": {
       "size": 174,
@@ -497,7 +569,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/geometry/backends/base.py": {
       "size": 982,
@@ -505,7 +577,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/geometry/backends/cadquery_backend.py": {
       "size": 2993,
@@ -513,7 +585,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/geometry/backends/ezdxf_backend.py": {
       "size": 2407,
@@ -521,7 +593,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/geometry/backends/mesh_backend.py": {
       "size": 2185,
@@ -529,7 +601,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/geometry/backends/openscad_backend.py": {
       "size": 2403,
@@ -537,7 +609,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/geometry/bridges/__init__.py": {
       "size": 155,
@@ -545,7 +617,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/geometry/bridges/http_cad_bridge.py": {
       "size": 2542,
@@ -553,7 +625,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/geometry/executor.py": {
       "size": 5009,
@@ -561,7 +633,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/geometry/machining_ir.py": {
       "size": 12073,
@@ -569,7 +641,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/geometry/schema.py": {
       "size": 3206,
@@ -577,7 +649,39 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "layla/ingestion/__init__.py": {
+      "size": 120,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "layla/ingestion/chunker.py": {
+      "size": 2375,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "layla/ingestion/extractors.py": {
+      "size": 3531,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "layla/ingestion/pipeline.py": {
+      "size": 8717,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/__init__.py": {
       "size": 0,
@@ -585,7 +689,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/audit_session.py": {
       "size": 3900,
@@ -593,7 +697,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/capabilities.py": {
       "size": 14151,
@@ -601,7 +705,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/capabilities_db.py": {
       "size": 9715,
@@ -609,7 +713,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/conversations.py": {
       "size": 10512,
@@ -617,7 +721,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/db.py": {
       "size": 8095,
@@ -625,7 +729,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/db_connection.py": {
       "size": 1691,
@@ -633,15 +737,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/distill.py": {
-      "size": 8667,
+      "size": 8729,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/improvements.py": {
       "size": 2994,
@@ -649,7 +753,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/journal.py": {
       "size": 2576,
@@ -657,15 +761,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/knowledge_graph.graphml": {
-      "size": 1841,
+      "size": 2275,
       "ext": ".graphml",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/learnings.py": {
       "size": 21255,
@@ -673,7 +777,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/memory_graph.py": {
       "size": 6147,
@@ -681,15 +785,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/migrations.py": {
-      "size": 48751,
+      "size": 53043,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/missions_db.py": {
       "size": 9745,
@@ -697,7 +801,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/plans_db.py": {
       "size": 10084,
@@ -705,7 +809,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/projects_db.py": {
       "size": 8622,
@@ -713,7 +817,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/rl_preferences.py": {
       "size": 1172,
@@ -721,7 +825,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/routing_telemetry.py": {
       "size": 3159,
@@ -729,7 +833,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/strategy_stats.py": {
       "size": 2701,
@@ -737,7 +841,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/tasks_db.py": {
       "size": 3187,
@@ -745,7 +849,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/telemetry_db.py": {
       "size": 3946,
@@ -753,7 +857,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/user_profile.py": {
       "size": 13234,
@@ -761,7 +865,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/vector_meta.json": {
       "size": 196,
@@ -769,7 +873,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/memory/vector_store.py": {
       "size": 54022,
@@ -777,7 +881,47 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "layla/scheduler/__init__.py": {
+      "size": 195,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "layla/scheduler/activity.py": {
+      "size": 1792,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "layla/scheduler/idle_detector.py": {
+      "size": 5383,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "layla/scheduler/jobs.py": {
+      "size": 12073,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "layla/scheduler/registry.py": {
+      "size": 5718,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/skills/__init__.py": {
       "size": 155,
@@ -785,7 +929,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/skills/registry.py": {
       "size": 27262,
@@ -793,7 +937,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/time_utils.py": {
       "size": 411,
@@ -801,7 +945,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/__init__.py": {
       "size": 0,
@@ -809,7 +953,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/domains/__init__.py": {
       "size": 770,
@@ -817,95 +961,95 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/domains/analysis.py": {
-      "size": 1793,
+      "size": 4596,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/domains/automation.py": {
-      "size": 1358,
+      "size": 3319,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/domains/code.py": {
-      "size": 1569,
+      "size": 3900,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/domains/data.py": {
-      "size": 863,
+      "size": 2205,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/domains/file.py": {
-      "size": 3511,
+      "size": 8795,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/domains/general.py": {
-      "size": 4293,
+      "size": 10092,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/domains/geometry.py": {
-      "size": 1767,
+      "size": 2689,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/domains/git.py": {
-      "size": 1471,
+      "size": 3381,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/domains/memory.py": {
-      "size": 1519,
+      "size": 3238,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/domains/system.py": {
-      "size": 1198,
+      "size": 2902,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/domains/web.py": {
-      "size": 1595,
+      "size": 3731,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/impl/__init__.py": {
       "size": 421,
@@ -913,7 +1057,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/impl/analysis.py": {
       "size": 48711,
@@ -921,7 +1065,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/impl/automation.py": {
       "size": 18070,
@@ -929,7 +1073,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/impl/code.py": {
       "size": 36454,
@@ -937,7 +1081,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/impl/data.py": {
       "size": 24945,
@@ -945,7 +1089,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/impl/file_ops.py": {
       "size": 47423,
@@ -953,7 +1097,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/impl/general.py": {
       "size": 51516,
@@ -961,7 +1105,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/impl/geometry.py": {
       "size": 12579,
@@ -969,7 +1113,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/impl/git.py": {
       "size": 11886,
@@ -977,15 +1121,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/impl/memory.py": {
-      "size": 10106,
+      "size": 10168,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/impl/system.py": {
       "size": 12203,
@@ -993,7 +1137,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/impl/web.py": {
       "size": 18619,
@@ -1001,7 +1145,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/registry.py": {
       "size": 5703,
@@ -1009,7 +1153,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/registry_body.py": {
       "size": 1043,
@@ -1017,7 +1161,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/sandbox_core.py": {
       "size": 5667,
@@ -1025,7 +1169,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "layla/tools/web.py": {
       "size": 6446,
@@ -1033,7 +1177,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "lens_knowledge/assembly_lens.md": {
       "size": 1076,
@@ -1041,7 +1185,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "lens_knowledge/carpenter.md": {
       "size": 1262,
@@ -1049,7 +1193,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "lens_knowledge/devops.md": {
       "size": 1073,
@@ -1057,7 +1201,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "lens_knowledge/geometry.md": {
       "size": 1180,
@@ -1065,7 +1209,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "lens_knowledge/product.md": {
       "size": 1140,
@@ -1073,7 +1217,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "lens_knowledge/sources/README.md": {
       "size": 445,
@@ -1081,7 +1225,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "lens_knowledge/strategist.md": {
       "size": 1122,
@@ -1089,7 +1233,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "lens_refresh.py": {
       "size": 1508,
@@ -1097,15 +1241,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "main.py": {
-      "size": 44499,
+      "size": 33778,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "models/ci-stub.gguf": {
       "size": 18,
@@ -1113,15 +1257,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "models/model_catalog.json": {
-      "size": 22528,
+      "size": 23661,
       "ext": ".json",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "operational_guidance.txt": {
       "size": 1573,
@@ -1129,15 +1273,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "orchestrator.py": {
-      "size": 19486,
+      "size": 20131,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "personality_expression.txt": {
       "size": 1507,
@@ -1145,7 +1289,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "probe_hardware.py": {
       "size": 1776,
@@ -1153,15 +1297,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "pytest.ini": {
-      "size": 497,
+      "size": 609,
       "ext": ".ini",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "requirements-e2e.txt": {
       "size": 156,
@@ -1169,7 +1313,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "requirements-lock.txt": {
       "size": 527,
@@ -1177,15 +1321,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "requirements.txt": {
-      "size": 13069,
+      "size": 13465,
       "ext": ".txt",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "research_intelligence.py": {
       "size": 16558,
@@ -1193,7 +1337,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "research_lab.py": {
       "size": 3783,
@@ -1201,7 +1345,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "research_missions/architecture_study.json": {
       "size": 337,
@@ -1209,7 +1353,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "research_missions/repo_analysis.json": {
       "size": 538,
@@ -1217,7 +1361,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "research_missions/tool_compare.json": {
       "size": 368,
@@ -1225,7 +1369,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "research_missions/upgrade_scan.json": {
       "size": 325,
@@ -1233,7 +1377,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "research_stages.py": {
       "size": 17171,
@@ -1241,7 +1385,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "research_utils.py": {
       "size": 1213,
@@ -1249,7 +1393,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/__init__.py": {
       "size": 20,
@@ -1257,15 +1401,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/agent.py": {
-      "size": 48200,
+      "size": 49450,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/agent_tasks.py": {
       "size": 9407,
@@ -1273,7 +1417,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/agents.py": {
       "size": 1864,
@@ -1281,7 +1425,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/approvals.py": {
       "size": 6827,
@@ -1289,7 +1433,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/aspects.py": {
       "size": 2448,
@@ -1297,7 +1441,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/autonomous.py": {
       "size": 4767,
@@ -1305,7 +1449,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "routers/character.py": {
+      "size": 7129,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/codex.py": {
       "size": 5286,
@@ -1313,7 +1465,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/conversations.py": {
       "size": 4729,
@@ -1321,7 +1473,23 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "routers/debate.py": {
+      "size": 3658,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "routers/german.py": {
+      "size": 7658,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/improvements.py": {
       "size": 2635,
@@ -1329,7 +1497,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "routers/intelligence.py": {
+      "size": 13107,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/journal.py": {
       "size": 1695,
@@ -1337,7 +1513,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/knowledge.py": {
       "size": 6050,
@@ -1345,31 +1521,39 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/learn.py": {
-      "size": 4078,
+      "size": 4109,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/memory.py": {
-      "size": 14789,
+      "size": 14851,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "routers/metrics.py": {
+      "size": 889,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/missions.py": {
-      "size": 1954,
+      "size": 6330,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/obsidian.py": {
       "size": 3614,
@@ -1377,7 +1561,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/openai_compat.py": {
       "size": 14508,
@@ -1385,7 +1569,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "routers/pairing.py": {
+      "size": 14751,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/paths.py": {
       "size": 206,
@@ -1393,7 +1585,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/plan_file.py": {
       "size": 6105,
@@ -1401,7 +1593,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/plans.py": {
       "size": 14815,
@@ -1409,7 +1601,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/projects.py": {
       "size": 2794,
@@ -1417,7 +1609,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/research.py": {
       "size": 22629,
@@ -1425,7 +1617,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/search.py": {
       "size": 7377,
@@ -1433,7 +1625,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/session.py": {
       "size": 8649,
@@ -1441,7 +1633,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/settings.py": {
       "size": 19586,
@@ -1449,7 +1641,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/study.py": {
       "size": 22417,
@@ -1457,15 +1649,23 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
-    "routers/system.py": {
-      "size": 22523,
+    "routers/sync.py": {
+      "size": 7504,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "routers/system.py": {
+      "size": 24953,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/tools_history.py": {
       "size": 6368,
@@ -1473,7 +1673,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/voice.py": {
       "size": 3139,
@@ -1481,7 +1681,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "routers/workspace.py": {
       "size": 10818,
@@ -1489,7 +1689,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "run-layla-server.ps1": {
       "size": 266,
@@ -1497,7 +1697,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "run.ps1": {
       "size": 40,
@@ -1505,7 +1705,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "runtime_config.example.json": {
       "size": 37642,
@@ -1513,15 +1713,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "runtime_config.json": {
-      "size": 14932,
+      "size": 14903,
       "ext": ".json",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "runtime_config.json.bak": {
       "size": 227,
@@ -1529,7 +1729,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "runtime_config.pre-audit-backup.json": {
       "size": 461,
@@ -1537,15 +1737,55 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "runtime_safety.py": {
-      "size": 34417,
+      "size": 36513,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "schemas/__init__.py": {
+      "size": 383,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "schemas/entity.py": {
+      "size": 12331,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "scripts/README.md": {
+      "size": 4609,
+      "ext": ".md",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "scripts/bulk_ingest.py": {
+      "size": 5434,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "scripts/check_api_contracts.py": {
+      "size": 7380,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "scripts/check_config.py": {
       "size": 10121,
@@ -1553,7 +1793,39 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "scripts/check_db_schema.py": {
+      "size": 5361,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "scripts/check_imports.py": {
+      "size": 6044,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "scripts/check_memory_coherence.py": {
+      "size": 6237,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "scripts/check_memory_router_enforcement.py": {
+      "size": 3010,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "scripts/check_patterns.py": {
       "size": 21146,
@@ -1561,15 +1833,39 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
-    "scripts/check_ui_symbols.py": {
-      "size": 4243,
+    "scripts/check_repo_index.py": {
+      "size": 5479,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "scripts/check_security.py": {
+      "size": 10725,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "scripts/check_ui_symbols.py": {
+      "size": 4650,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "scripts/check_wiring.py": {
+      "size": 1904,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "scripts/generate_tool_inventory.py": {
       "size": 1727,
@@ -1577,7 +1873,23 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "scripts/last_report.json": {
+      "size": 2580,
+      "ext": ".json",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "scripts/run_all_checks.py": {
+      "size": 12893,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "seed_self_training_plans.py": {
       "size": 4676,
@@ -1585,7 +1897,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/__init__.py": {
       "size": 27,
@@ -1593,7 +1905,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/admin_checkpoint.py": {
       "size": 3618,
@@ -1601,7 +1913,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/agent_hooks.py": {
       "size": 3492,
@@ -1609,7 +1921,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/agent_loop_formatting.py": {
       "size": 1563,
@@ -1617,7 +1929,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/agent_roles.py": {
       "size": 830,
@@ -1625,7 +1937,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/agent_safety.py": {
       "size": 2705,
@@ -1633,7 +1945,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/agent_task_runner.py": {
       "size": 36627,
@@ -1641,7 +1953,23 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/airllm_runner.py": {
+      "size": 10675,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/aspect_behavior.py": {
+      "size": 8954,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/auto_setup.py": {
       "size": 928,
@@ -1649,7 +1977,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/auto_updater.py": {
       "size": 3993,
@@ -1657,7 +1985,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/autonomy_optimizer.py": {
       "size": 2985,
@@ -1665,15 +1993,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/background_intelligence.py": {
-      "size": 1401,
+      "size": 11462,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/background_subprocess.py": {
       "size": 8549,
@@ -1681,7 +2009,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/benchmark_suite.py": {
       "size": 8587,
@@ -1689,7 +2017,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/browser.py": {
       "size": 12578,
@@ -1697,7 +2025,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/capability_discovery.py": {
       "size": 10197,
@@ -1705,7 +2033,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/character_creator.py": {
+      "size": 19492,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/code_indexer.py": {
       "size": 957,
@@ -1713,7 +2049,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/code_intelligence.py": {
       "size": 3462,
@@ -1721,7 +2057,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/codex_semantic.py": {
       "size": 1521,
@@ -1729,7 +2065,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/cognitive_workspace.py": {
       "size": 6511,
@@ -1737,7 +2073,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/completion_cache.py": {
       "size": 3143,
@@ -1745,15 +2081,39 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
-    "services/context_budget.py": {
-      "size": 7431,
+    "services/config_cache.py": {
+      "size": 803,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/content_guard.py": {
+      "size": 6663,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/context_attribution.py": {
+      "size": 7301,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/context_budget.py": {
+      "size": 9997,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/context_builder.py": {
       "size": 7064,
@@ -1761,15 +2121,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/context_manager.py": {
-      "size": 15515,
+      "size": 16247,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/context_merge_layers.py": {
       "size": 993,
@@ -1777,7 +2137,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/context_window_ux.py": {
       "size": 1552,
@@ -1785,7 +2145,23 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/conversation_chunker.py": {
+      "size": 5989,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/conversation_entity_extractor.py": {
+      "size": 6821,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/coordinator.py": {
       "size": 18148,
@@ -1793,7 +2169,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/crash_handler.py": {
+      "size": 2271,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/curiosity_engine.py": {
       "size": 3930,
@@ -1801,7 +2185,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/data_importers.py": {
       "size": 2720,
@@ -1809,7 +2193,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/debate_engine.py": {
+      "size": 16188,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/decision_policy.py": {
       "size": 8576,
@@ -1817,7 +2209,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/degraded.py": {
+      "size": 645,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/dependency_recovery.py": {
       "size": 11700,
@@ -1825,7 +2225,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/dignity_engine.py": {
+      "size": 10330,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/doc_ingestion.py": {
       "size": 11257,
@@ -1833,7 +2241,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/elasticsearch_bridge.py": {
       "size": 3432,
@@ -1841,7 +2249,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/embedding_service.py": {
       "size": 3519,
@@ -1849,7 +2257,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/engine_plans.py": {
       "size": 23562,
@@ -1857,7 +2265,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/engineering_pipeline.py": {
       "size": 22107,
@@ -1865,7 +2273,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/experience_replay.py": {
       "size": 2822,
@@ -1873,7 +2281,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/failure_recovery.py": {
       "size": 6660,
@@ -1881,7 +2289,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/file_checkpoints.py": {
       "size": 6735,
@@ -1889,7 +2297,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/file_lock.py": {
       "size": 921,
@@ -1897,7 +2305,23 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/frame_modifier.py": {
+      "size": 10348,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/german_mode.py": {
+      "size": 21911,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/golden_examples.py": {
       "size": 6232,
@@ -1905,7 +2329,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/graph_cache.py": {
       "size": 1639,
@@ -1913,7 +2337,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/graph_learning.py": {
       "size": 3240,
@@ -1921,7 +2345,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/graph_reasoning.py": {
       "size": 5262,
@@ -1929,7 +2353,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/hardware_detect.py": {
       "size": 14505,
@@ -1937,7 +2361,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/health_snapshot.py": {
       "size": 6196,
@@ -1945,7 +2369,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/http_response_cache.py": {
       "size": 1441,
@@ -1953,15 +2377,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/inference_router.py": {
-      "size": 16352,
+      "size": 25426,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/initiative_engine.py": {
       "size": 6649,
@@ -1969,7 +2393,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/initiative_inline.py": {
       "size": 5263,
@@ -1977,7 +2401,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/intent_detection.py": {
       "size": 7956,
@@ -1985,7 +2409,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/intent_router.py": {
       "size": 5928,
@@ -1993,7 +2417,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/intent_routing_hints.py": {
       "size": 4254,
@@ -2001,7 +2425,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/journal_engine.py": {
       "size": 3385,
@@ -2009,7 +2433,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/kb_builder.py": {
+      "size": 33262,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/keyword_search.py": {
       "size": 1642,
@@ -2017,15 +2449,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/knowledge_distiller.py": {
-      "size": 3193,
+      "size": 3260,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/langfuse_export.py": {
       "size": 1442,
@@ -2033,7 +2465,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/learning_filter.py": {
       "size": 1474,
@@ -2041,15 +2473,23 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/llm_gateway.py": {
-      "size": 32383,
+      "size": 33043,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/long_horizon_planner.py": {
+      "size": 11354,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/markdown_skills.py": {
       "size": 3090,
@@ -2057,7 +2497,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/maturity_engine.py": {
       "size": 12201,
@@ -2065,7 +2505,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/mcp_client.py": {
       "size": 14271,
@@ -2073,15 +2513,47 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
-    "services/memory_consolidation.py": {
-      "size": 11264,
+    "services/mdns_discovery.py": {
+      "size": 16616,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/memory_commands.py": {
+      "size": 10241,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/memory_consolidation.py": {
+      "size": 13359,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/memory_router.py": {
+      "size": 21697,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/metrics.py": {
+      "size": 9733,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/mission_manager.py": {
       "size": 6921,
@@ -2089,7 +2561,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/model_benchmark.py": {
       "size": 5151,
@@ -2097,7 +2569,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/model_manager.py": {
       "size": 6977,
@@ -2105,7 +2577,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/model_recommender.py": {
       "size": 5418,
@@ -2113,15 +2585,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/model_router.py": {
-      "size": 19793,
+      "size": 22973,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/observability.py": {
       "size": 9730,
@@ -2129,7 +2601,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/obsidian_sync.py": {
       "size": 9336,
@@ -2137,7 +2609,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/operator_quiz.py": {
       "size": 19221,
@@ -2145,7 +2617,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/otel_export.py": {
       "size": 760,
@@ -2153,7 +2625,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/outcome_evaluation.py": {
       "size": 11501,
@@ -2161,7 +2633,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/outcome_metrics.py": {
       "size": 1143,
@@ -2169,15 +2641,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/outcome_writer.py": {
-      "size": 15183,
+      "size": 15386,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/output_polish.py": {
       "size": 1202,
@@ -2185,7 +2657,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/output_quality.py": {
       "size": 3960,
@@ -2193,7 +2665,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/people_codex.py": {
+      "size": 6160,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/performance_monitor.py": {
       "size": 3618,
@@ -2201,7 +2681,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/person_dossier.py": {
+      "size": 8604,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/personal_knowledge_graph.py": {
       "size": 4077,
@@ -2209,7 +2697,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/plan_execution_prompts.py": {
       "size": 1596,
@@ -2217,7 +2705,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/plan_executor.py": {
       "size": 1388,
@@ -2225,7 +2713,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/plan_refinement.py": {
       "size": 1253,
@@ -2233,7 +2721,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/plan_schema.py": {
       "size": 2773,
@@ -2241,7 +2729,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/plan_service.py": {
       "size": 3863,
@@ -2249,7 +2737,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/plan_step_governance.py": {
       "size": 16979,
@@ -2257,7 +2745,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/plan_step_result_models.py": {
       "size": 1638,
@@ -2265,7 +2753,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/plan_templates.py": {
       "size": 5025,
@@ -2273,7 +2761,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/plan_workspace_store.py": {
       "size": 6586,
@@ -2281,7 +2769,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/planner.py": {
       "size": 35874,
@@ -2289,7 +2777,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/plugin_loader.py": {
       "size": 5769,
@@ -2297,7 +2785,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/project_discovery.py": {
       "size": 5576,
@@ -2305,7 +2793,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/project_discovery_hooks.py": {
       "size": 3034,
@@ -2313,7 +2801,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/project_memory.py": {
       "size": 17511,
@@ -2321,15 +2809,31 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/prompt_builder.py": {
-      "size": 12451,
+      "size": 13495,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/prompt_compressor.py": {
+      "size": 21405,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/prompt_optimizer.py": {
+      "size": 19649,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/prompt_tier_budget.py": {
       "size": 2477,
@@ -2337,7 +2841,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/reasoning_classifier.py": {
       "size": 2522,
@@ -2345,7 +2849,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/reasoning_strategies.py": {
       "size": 2908,
@@ -2353,15 +2857,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/reflection_engine.py": {
-      "size": 6721,
+      "size": 6954,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/relationship_codex.py": {
       "size": 11390,
@@ -2369,7 +2873,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/release_updater.py": {
       "size": 7776,
@@ -2377,7 +2881,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/remote_rate_limit.py": {
       "size": 1012,
@@ -2385,7 +2889,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/repo_cognition.py": {
       "size": 10741,
@@ -2393,7 +2897,47 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/repo_indexer.py": {
+      "size": 21316,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/request_tracer.py": {
+      "size": 7520,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/reranker.py": {
+      "size": 3238,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/research_orchestrator.py": {
+      "size": 10852,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/research_profile.py": {
+      "size": 7945,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/research_report.py": {
       "size": 5475,
@@ -2401,7 +2945,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/resource_manager.py": {
       "size": 6164,
@@ -2409,7 +2953,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/response_cache.py": {
       "size": 2050,
@@ -2417,7 +2961,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/retrieval.py": {
       "size": 16279,
@@ -2425,7 +2969,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/retrieval_cache.py": {
       "size": 1917,
@@ -2433,7 +2977,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/rl_feedback.py": {
       "size": 7753,
@@ -2441,7 +2985,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/route_helpers.py": {
       "size": 6757,
@@ -2449,7 +2993,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/sandbox/__init__.py": {
       "size": 268,
@@ -2457,7 +3001,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/sandbox/python_runner.py": {
       "size": 2676,
@@ -2465,7 +3009,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/sandbox/shell_runner.py": {
       "size": 3223,
@@ -2473,7 +3017,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/sandbox_validator.py": {
       "size": 3384,
@@ -2481,7 +3025,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/self_improvement.py": {
       "size": 7423,
@@ -2489,7 +3033,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/session_grants.py": {
       "size": 2761,
@@ -2497,7 +3041,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/setup_engine.py": {
       "size": 6674,
@@ -2505,7 +3049,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/shell_sessions.py": {
       "size": 5108,
@@ -2513,7 +3057,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/skill_discovery.py": {
       "size": 1003,
@@ -2521,7 +3065,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/skill_packs.py": {
       "size": 2116,
@@ -2529,7 +3073,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/skills.py": {
       "size": 3346,
@@ -2537,7 +3081,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/spaced_repetition.py": {
+      "size": 7258,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/structured_gen.py": {
       "size": 5442,
@@ -2545,7 +3097,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/structured_log.py": {
+      "size": 2494,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/stt.py": {
       "size": 6920,
@@ -2553,15 +3113,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/study_service.py": {
-      "size": 5102,
+      "size": 5164,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/style_profile.py": {
       "size": 6153,
@@ -2569,7 +3129,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/syncthing_sync.py": {
+      "size": 9162,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/system_doctor.py": {
       "size": 17477,
@@ -2577,7 +3145,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/system_optimizer.py": {
       "size": 10056,
@@ -2585,7 +3153,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/task_budget.py": {
       "size": 5848,
@@ -2593,7 +3161,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/task_context.py": {
       "size": 2921,
@@ -2601,7 +3169,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/task_graph.py": {
       "size": 9933,
@@ -2609,7 +3177,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/telemetry.py": {
       "size": 4790,
@@ -2617,7 +3185,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/token_count.py": {
       "size": 1313,
@@ -2625,7 +3193,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/tool_allowlist_context.py": {
       "size": 638,
@@ -2633,7 +3201,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/tool_args.py": {
       "size": 4154,
@@ -2641,7 +3209,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/tool_generator.py": {
       "size": 641,
@@ -2649,7 +3217,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/tool_loop_detection.py": {
       "size": 4414,
@@ -2657,7 +3225,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/tool_output_validator.py": {
       "size": 8633,
@@ -2665,7 +3233,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/tool_policy.py": {
       "size": 16570,
@@ -2673,7 +3241,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/tool_preflight.py": {
       "size": 4792,
@@ -2681,7 +3249,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/toolchain_awareness.py": {
       "size": 2588,
@@ -2689,7 +3257,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/toolchain_graph.py": {
       "size": 4626,
@@ -2697,7 +3265,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/tts.py": {
       "size": 8843,
@@ -2705,7 +3273,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/tunnel_manager.py": {
       "size": 2901,
@@ -2713,7 +3281,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/worker_cgroup_linux.py": {
       "size": 5639,
@@ -2721,7 +3289,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/worker_os_limits.py": {
       "size": 8351,
@@ -2729,7 +3297,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/worker_pool.py": {
       "size": 1717,
@@ -2737,7 +3305,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "services/working_memory.py": {
+      "size": 7040,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/workspace_awareness.py": {
       "size": 3554,
@@ -2745,7 +3321,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/workspace_index.py": {
       "size": 23087,
@@ -2753,7 +3329,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "services/worktree_manager.py": {
       "size": 1372,
@@ -2761,7 +3337,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "setup/__init__.py": {
       "size": 50,
@@ -2769,7 +3345,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "setup/python_compat.py": {
       "size": 3523,
@@ -2777,7 +3353,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "shared_state.py": {
       "size": 13749,
@@ -2785,7 +3361,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "skills/__init__.py": {
       "size": 205,
@@ -2793,7 +3369,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "start-layla-server.ps1": {
       "size": 180,
@@ -2801,7 +3377,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "start-layla.ps1": {
       "size": 433,
@@ -2809,7 +3385,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "system_identity.txt": {
       "size": 2857,
@@ -2817,7 +3393,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/__init__.py": {
       "size": 42,
@@ -2828,12 +3404,12 @@
       "last_scanned": "2026-04-28T08:13:48.251040+00:00"
     },
     "tests/conftest.py": {
-      "size": 1547,
+      "size": 2656,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/e2e_ui/__init__.py": {
       "size": 55,
@@ -2905,15 +3481,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_agent_loop.py": {
-      "size": 18548,
+      "size": 18681,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_agent_loop_batch_tools.py": {
       "size": 3189,
@@ -2921,7 +3497,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_agent_loop_formatting.py": {
       "size": 1031,
@@ -2929,7 +3505,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_agents_spawn.py": {
       "size": 7848,
@@ -2937,7 +3513,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_approval_flow.py": {
       "size": 4751,
@@ -2945,7 +3521,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_approval_preview_diff.py": {
       "size": 845,
@@ -2953,7 +3529,31 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "tests/test_artifact_extraction.py": {
+      "size": 4710,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "tests/test_aspect_behavior.py": {
+      "size": 10304,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "tests/test_aspect_model_routing.py": {
+      "size": 12587,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_autonomous_chroma_prefetch.py": {
       "size": 2118,
@@ -2961,7 +3561,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_autonomous_investigation_engine.py": {
       "size": 14190,
@@ -2969,7 +3569,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_autonomous_v2.py": {
       "size": 5682,
@@ -2977,7 +3577,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_background_subprocess.py": {
       "size": 5395,
@@ -2985,7 +3585,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_background_task_cancel.py": {
       "size": 2938,
@@ -2993,7 +3593,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_cancellation.py": {
       "size": 1840,
@@ -3001,7 +3601,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_capability_evolution.py": {
       "size": 1838,
@@ -3009,7 +3609,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_capability_routing.py": {
       "size": 5336,
@@ -3017,7 +3617,23 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "tests/test_character_creator.py": {
+      "size": 9094,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "tests/test_cluster_offload.py": {
+      "size": 5845,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_code_intelligence.py": {
       "size": 784,
@@ -3025,7 +3641,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "tests/test_codex_module.py": {
+      "size": 9980,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_codex_proposals.py": {
       "size": 1788,
@@ -3033,7 +3657,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_codex_router.py": {
       "size": 4354,
@@ -3041,7 +3665,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_cognitive_workspace.py": {
       "size": 3747,
@@ -3049,23 +3673,23 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_companion_intelligence.py": {
-      "size": 8306,
+      "size": 8546,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_completion.py": {
-      "size": 10171,
+      "size": 10261,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_completion_gate.py": {
       "size": 1003,
@@ -3073,7 +3697,23 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "tests/test_conftest_isolation.py": {
+      "size": 3554,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "tests/test_content_guard.py": {
+      "size": 4436,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_context_merge_layers.py": {
       "size": 557,
@@ -3081,7 +3721,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_context_protection.py": {
       "size": 608,
@@ -3089,7 +3729,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_conversation_tags.py": {
       "size": 1551,
@@ -3097,7 +3737,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_cot_split.py": {
       "size": 1613,
@@ -3105,7 +3745,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_data_importers.py": {
       "size": 437,
@@ -3113,7 +3753,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "tests/test_debate_engine.py": {
+      "size": 18083,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_decision_parse.py": {
       "size": 840,
@@ -3121,7 +3769,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_decision_policy.py": {
       "size": 1984,
@@ -3129,7 +3777,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_dependency_recovery.py": {
       "size": 879,
@@ -3137,7 +3785,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_deterministic_tool_routes.py": {
       "size": 1236,
@@ -3145,7 +3793,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_deterministic_tool_verification.py": {
       "size": 992,
@@ -3153,7 +3801,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "tests/test_dignity_engine.py": {
+      "size": 6463,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_dual_model_routing.py": {
       "size": 3308,
@@ -3161,15 +3817,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_e2e_agent.py": {
-      "size": 1551,
+      "size": 1599,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_edit_loop_tools.py": {
       "size": 1513,
@@ -3177,7 +3833,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_elasticsearch_bridge.py": {
       "size": 422,
@@ -3185,7 +3841,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_engineering_pipeline.py": {
       "size": 2487,
@@ -3193,7 +3849,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_execute_plan_optional_graph.py": {
       "size": 2723,
@@ -3201,7 +3857,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_extract_json_block.py": {
       "size": 2104,
@@ -3209,7 +3865,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_fabrication_assist.py": {
       "size": 2414,
@@ -3217,7 +3873,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_fabrication_assist_cli.py": {
       "size": 2744,
@@ -3225,7 +3881,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_fabrication_assist_doc_links.py": {
       "size": 1187,
@@ -3233,7 +3889,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_fabrication_assist_runner.py": {
       "size": 4997,
@@ -3241,7 +3897,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_fabrication_assist_session_edges.py": {
       "size": 3586,
@@ -3249,7 +3905,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_fallback_chain.py": {
       "size": 1838,
@@ -3257,7 +3913,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_file_checkpoints.py": {
       "size": 2289,
@@ -3265,7 +3921,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "tests/test_frame_modifier.py": {
+      "size": 9500,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_gencad_toolpath.py": {
       "size": 2197,
@@ -3273,7 +3937,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_geometry_bridge_security.py": {
       "size": 1752,
@@ -3281,7 +3945,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_geometry_executor.py": {
       "size": 1145,
@@ -3289,7 +3953,7 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_geometry_schema.py": {
       "size": 889,
@@ -3297,7 +3961,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "tests/test_german_mode.py": {
+      "size": 16736,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_git_worktree_tools.py": {
       "size": 1634,
@@ -3305,7 +3977,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
+    },
+    "tests/test_goal_preservation.py": {
+      "size": 4403,
+      "ext": ".py",
+      "purpose": "",
+      "complexity": "",
+      "issues": [],
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_golden_examples.py": {
       "size": 714,
@@ -3313,695 +3993,15 @@
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     },
     "tests/test_golden_flow_http.py": {
-      "size": 6603,
+      "size": 6923,
       "ext": ".py",
       "purpose": "",
       "complexity": "",
       "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_graph_reasoning.py": {
-      "size": 919,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_health_endpoint.py": {
-      "size": 2711,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_in_loop_plan_governance.py": {
-      "size": 7139,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_inference_router.py": {
-      "size": 1939,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_ingest_chat_export.py": {
-      "size": 1816,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_initiative_autonomy.py": {
-      "size": 2582,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_install.py": {
-      "size": 10657,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_intent_detection.py": {
-      "size": 773,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_intent_router.py": {
-      "size": 1088,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_intent_routing_hints.py": {
-      "size": 1287,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_journal.py": {
-      "size": 519,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_knowledge_front_matter.py": {
-      "size": 630,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_lite_mode.py": {
-      "size": 2471,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_machining_ir.py": {
-      "size": 1756,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_mcp_client_stdio.py": {
-      "size": 7259,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_mission_api.py": {
-      "size": 1836,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_model_outcomes.py": {
-      "size": 620,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_north_star.py": {
-      "size": 5545,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_notebook_tools.py": {
-      "size": 1543,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_obsidian_sync.py": {
-      "size": 5245,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_openclaw_emulation.py": {
-      "size": 3505,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_operator_quiz.py": {
-      "size": 1054,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_outcome_evaluation.py": {
-      "size": 2412,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_output_quality.py": {
-      "size": 856,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_parity_manifest.py": {
-      "size": 1324,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_pending_lock.py": {
-      "size": 1793,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_phatic_detection.py": {
-      "size": 1042,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_plan_file_routes.py": {
-      "size": 4144,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_plan_pre_validation.py": {
-      "size": 1118,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_plan_step_governance.py": {
-      "size": 13166,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_plan_step_tool_allowlist.py": {
-      "size": 2310,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_plan_templates.py": {
-      "size": 517,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_plan_workspace_store.py": {
-      "size": 1656,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_planner_execute_governance.py": {
-      "size": 3872,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_planner_outcome_bias.py": {
-      "size": 3377,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_planning_strict_mode.py": {
-      "size": 1593,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_plans_api.py": {
-      "size": 4715,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_platform_ui.py": {
-      "size": 4998,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_project_discovery_hooks.py": {
-      "size": 730,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_project_memory.py": {
-      "size": 6363,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_projects_api.py": {
-      "size": 1594,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_prompt_builder_decision_tools.py": {
-      "size": 534,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_reasoning_classifier.py": {
-      "size": 5933,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_registered_tools_count.py": {
-      "size": 764,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_release_updater.py": {
-      "size": 962,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_remote.py": {
-      "size": 5125,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_remote_rate_limit.py": {
-      "size": 692,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_repo_cognition.py": {
-      "size": 1885,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_research_report.py": {
-      "size": 1307,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_research_resume.py": {
-      "size": 4072,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_retention_policies.py": {
-      "size": 2303,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_retrieval_confidence.py": {
-      "size": 2640,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_rl_feedback.py": {
-      "size": 11048,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_runtime_safety_ruff_workspace.py": {
-      "size": 1063,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_runtime_validation_plan.py": {
-      "size": 9690,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_sandbox.py": {
-      "size": 4707,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_sandbox_runners.py": {
-      "size": 1346,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_self_improvement.py": {
-      "size": 628,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_session_export.py": {
-      "size": 1063,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_smoke_comprehensive.py": {
-      "size": 15193,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_speculative_decoding.py": {
-      "size": 3002,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_startup_imports.py": {
-      "size": 1318,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_structured_gen.py": {
-      "size": 1238,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_structured_retry.py": {
-      "size": 3445,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_study_integration.py": {
-      "size": 6815,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_system_optimizer.py": {
-      "size": 1332,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_task_budget.py": {
-      "size": 2660,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_task_context.py": {
-      "size": 2465,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_task_graph.py": {
-      "size": 1326,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_tool_args.py": {
-      "size": 1186,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_tool_output_validator.py": {
-      "size": 1019,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_tool_preflight.py": {
-      "size": 947,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_tools_domain_registry.py": {
-      "size": 2157,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_transport_inbound.py": {
-      "size": 2260,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_validation_matrix.py": {
-      "size": 857,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_version_sync.py": {
-      "size": 992,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_wakeup_continuity.py": {
-      "size": 957,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_wave4_toolchain_cam.py": {
-      "size": 1270,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_worker_cgroup_linux.py": {
-      "size": 5589,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_worker_os_limits.py": {
-      "size": 1960,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_worker_pool.py": {
-      "size": 491,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_workspace_cognition_http.py": {
-      "size": 1316,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tests/test_workspace_index.py": {
-      "size": 1390,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "tui.py": {
-      "size": 17499,
-      "ext": ".py",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-28T08:13:48.251040+00:00"
-    },
-    "ui/aspects/cassandra.svg": {
-      "size": 223,
-      "ext": ".svg",
-      "purpose": "",
-      "complexity": "",
-      "issues": [],
-      "last_scanned": "2026-04-21T19:16:05.310299+00:00"
+      "last_scanned": "2026-05-13T10:18:26.904827+00:00"
     }
   },
   "structure": {
@@ -4009,6 +4009,7 @@
       "autonomous",
       "capabilities",
       "core",
+      "docs",
       "install",
       "jinx_runtime_backup",
       "layla",
@@ -4016,6 +4017,7 @@
       "models",
       "research_missions",
       "routers",
+      "schemas",
       "scripts",
       "services",
       "setup",
@@ -4030,11 +4032,18 @@
       "  .governance/approvals.json",
       "  .governance/autonomous_audit.jsonl",
       "  .governance/execution_log.json",
+      "  .governance/instance_id",
       "  .governance/tool_log.json",
       ".layla/",
+      "  .layla/models/",
       "  .layla/plan_store/",
       "  .layla/layla.db",
       "  .layla/project_memory.json",
+      "  .layla/repo_index.db",
+      ".layla_memory_verify/",
+      "  .layla_memory_verify/layla.db",
+      ".layla_test_db_verify/",
+      "  .layla_test_db_verify/layla.db",
       ".research_brain/",
       "  .research_brain/actions/",
       "    .research_brain/actions/action_queue.md",
@@ -4098,6 +4107,7 @@
       "  .research_output/research_20260223_033909.md",
       "  .research_output/research_20260223_043640.md",
       "  .research_output/research_20260223_063122.md",
+      ".screenshots/",
       "autonomous/",
       "  autonomous/__init__.py",
       "  autonomous/aggregator.py",
@@ -4124,10 +4134,17 @@
       "  core/executor.py",
       "  core/observer.py",
       "  core/validator.py",
+      "docs/",
+      "  docs/audit/",
+      "    docs/audit/memory_router_migration.md",
+      "    docs/audit/subsystem_audit.md",
       "install/",
       "  install/packs/",
       "    install/packs/browser.json",
       "    install/packs/e2e.json",
+      "    install/packs/intelligence.json",
+      "    install/packs/observability.json",
+      "    install/packs/research.json",
       "    install/packs/voice.json",
       "  install/__init__.py",
       "  install/hardware_probe.py",
@@ -4143,6 +4160,11 @@
       "    layla/cam/feeds_speeds.py",
       "    layla/cam/simulator.py",
       "    layla/cam/tool_library.py",
+      "  layla/codex/",
+      "    layla/codex/__init__.py",
+      "    layla/codex/codex_db.py",
+      "    layla/codex/enricher.py",
+      "    layla/codex/linker.py",
       "  layla/geometry/",
       "    layla/geometry/backends/",
       "      layla/geometry/backends/__init__.py",
@@ -4158,32 +4180,12 @@
       "    layla/geometry/executor.py",
       "    layla/geometry/machining_ir.py",
       "    layla/geometry/schema.py",
-      "  layla/memory/",
-      "    layla/memory/__init__.py",
-      "    layla/memory/audit_session.py",
-      "    layla/memory/capabilities.py",
-      "    layla/memory/capabilities_db.py",
-      "    layla/memory/conversations.py",
-      "    layla/memory/db.py",
-      "    layla/memory/db_connection.py",
-      "    layla/memory/distill.py",
-      "    layla/memory/improvements.py",
-      "    layla/memory/journal.py",
-      "    layla/memory/knowledge_graph.graphml",
-      "    layla/memory/learnings.py",
-      "    layla/memory/memory_graph.py",
-      "    layla/memory/migrations.py",
-      "    layla/memory/missions_db.py",
-      "    layla/memory/plans_db.py",
-      "    layla/memory/projects_db.py",
-      "    layla/memory/rl_preferences.py",
-      "    layla/memory/routing_telemetry.py",
-      "    layla/memory/strategy_stats.py",
-      "    layla/memory/tasks_db.py",
-      "    layla/memory/telemetry_db.py",
-      "    layla/memory/user_profile.py",
-      "    layla/memory/vector_meta.json",
-      "    layla/memory/vector_store.py"
+      "  layla/ingestion/",
+      "    layla/ingestion/__init__.py",
+      "    layla/ingestion/chunker.py",
+      "    layla/ingestion/extractors.py",
+      "    layla/ingestion/pipeline.py",
+      "  layla/memory/"
     ],
     "entrypoint_hints": [
       "main.py"
@@ -4235,6 +4237,7 @@
       "autonomous",
       "capabilities",
       "core",
+      "docs",
       "install",
       "jinx_runtime_backup",
       "layla",
@@ -4242,6 +4245,7 @@
       "models",
       "research_missions",
       "routers",
+      "schemas",
       "scripts",
       "services",
       "setup",
@@ -4277,27 +4281,27 @@
       "memory",
       "__init__",
       "autonomous",
+      "scripts",
       "geometry",
+      "install",
       "domains",
       "impl",
-      "install",
       "lens_knowledge",
+      "packs",
       "backends",
+      "codex",
+      "scheduler",
+      "registry",
       "core",
       "cam",
+      "ingestion",
       "skills",
       "research_missions",
-      "scripts",
-      "conftest",
+      "audit",
       "capabilities",
-      "registry",
-      "packs",
       "web",
       "system",
-      "sandbox",
-      "e2e_ui",
-      "integration_smoke",
-      "planner"
+      "sandbox"
     ],
     "file_sample_count": 500
   }

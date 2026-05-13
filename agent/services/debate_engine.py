@@ -36,12 +36,12 @@ logger = logging.getLogger("layla")
 # ---------------------------------------------------------------------------
 
 ASPECT_DOMAINS: dict[str, list[str]] = {
-    "morrigan":  ["strategy", "leadership", "decision", "authority", "planning"],
-    "nyx":       ["analysis", "investigation", "depth", "truth", "debugging"],
-    "echo":      ["empathy", "communication", "people", "feelings", "teaching"],
+    "morrigan":  ["code", "engineering", "implementation", "architecture", "debugging", "deploy"],
+    "nyx":       ["research", "analysis", "investigation", "depth", "synthesis", "knowledge"],
+    "echo":      ["empathy", "communication", "people", "feelings", "teaching", "patterns"],
     "eris":      ["creativity", "alternatives", "disruption", "brainstorm", "unconventional"],
-    "cassandra": ["code", "engineering", "architecture", "performance", "technical"],
-    "lilith":    ["ethics", "boundaries", "safety", "warning", "independence"],
+    "cassandra": ["perception", "anomaly", "contradiction", "prediction", "review", "risk"],
+    "lilith":    ["ethics", "boundaries", "safety", "autonomy", "consent", "governance"],
 }
 
 ALL_ASPECT_IDS: list[str] = list(ASPECT_DOMAINS.keys())

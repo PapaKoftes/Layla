@@ -1,0 +1,5 @@
+{
+  "description": "Observability pack: Prometheus metrics, structured logging",
+  "pip": ["prometheus_client", "structlog"],
+  "post_pip": []
+}

@@ -102,6 +102,48 @@ def run_packs(argv: list[str]) -> int:
     return 0
 
 
+def _list_available_packs() -> list[tuple[str, str]]:
+    """Return [(name, description), ...] for all pack manifests."""
+    packs = []
+    if not PACKS_DIR.exists():
+        return packs
+    for f in sorted(PACKS_DIR.glob("*.json")):
+        try:
+            m = json.loads(f.read_text(encoding="utf-8"))
+            packs.append((f.stem, m.get("description", "(no description)")))
+        except Exception:
+            packs.append((f.stem, "(invalid manifest)"))
+    return packs
+
+
+def _install_pack_quiet(name: str) -> bool:
+    """Install a pack by name. Returns True on success."""
+    manifest = PACKS_DIR / f"{name}.json"
+    if not manifest.is_file():
+        print(f"      [!] Pack not found: {name}")
+        return False
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except Exception:
+        print(f"      [!] Invalid manifest: {name}")
+        return False
+    pkgs = data.get("pip") or []
+    if pkgs:
+        print(f"      Installing {name}: {', '.join(pkgs)} ...")
+        r = subprocess.run(
+            [sys.executable, "-m", "pip", "install", *pkgs],
+            capture_output=True, text=True, timeout=300,
+        )
+        if r.returncode != 0:
+            print(f"      [!] pip install failed for {name}: {(r.stderr or '')[:200]}")
+            return False
+    post = data.get("post_pip")
+    if isinstance(post, list) and post:
+        subprocess.run(post, capture_output=True, timeout=300, check=False)
+    print(f"      ✓  {name} installed")
+    return True
+
+
 def _yn(prompt: str, default: bool = True) -> bool:
     suffix = " [Y/n] " if default else " [y/N] "
     try:
@@ -342,10 +384,31 @@ def run() -> int:
     except OSError as e:
         raise OSError(f"Could not write config to {CONFIG_PATH}: {e}") from e
 
-    # 5. Benchmark (optional, after config is written)
+    # 5. Optional packs selection
+    print()
+    print("  [5/7]  Optional feature packs")
+    available_packs = _list_available_packs()
+    if available_packs:
+        print("      Available packs:")
+        for pack_name, pack_desc in available_packs:
+            print(f"        [{pack_name}] — {pack_desc}")
+        print()
+        if _yn("  Install all optional packs? (voice, browser, e2e)", True):
+            for pack_name, _ in available_packs:
+                _install_pack_quiet(pack_name)
+        else:
+            for pack_name, pack_desc in available_packs:
+                if _yn(f"  Install '{pack_name}' ({pack_desc})?", False):
+                    _install_pack_quiet(pack_name)
+        print()
+    else:
+        print("      No optional packs found in install/packs/")
+        print()
+
+    # 6. Benchmark (optional, after config is written)
     if model_filename:
         print()
-        print("  [5/6]  Benchmarking model (tokens/sec, latency, memory)...")
+        print("  [6/7]  Benchmarking model (tokens/sec, latency, memory)...")
         print("        This may take a minute to load the model...")
         try:
             # Invalidate config cache so we read the fresh config
@@ -366,11 +429,11 @@ def run() -> int:
             print(f"        [!] Benchmark skipped: {e}")
     else:
         print()
-        print("  [5/6]  Skipping benchmark (no model set).")
+        print("  [6/7]  Skipping benchmark (no model set).")
 
-    # 6. Done
+    # 7. Done
     print()
-    print("  [6/6]  Done.")
+    print("  [7/7]  Done.")
     print()
     print("  ═══════════════════════════════════════════════")
     print("   INSTALLATION COMPLETE")

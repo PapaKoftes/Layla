@@ -1879,6 +1879,110 @@
   #memory-search { width:100%; padding:5px 8px; background:var(--code-bg); border:1px solid var(--border); color:var(--text); font-size:0.72rem; border-radius:2px; box-sizing:border-box; margin-bottom:8px; }
   #memory-search::placeholder { color:var(--text-dim); opacity:0.7; }
 
+/* ── Phase 9: Multi-Device / Pairing ──────────────────────────────────────── */
+  .peer-card, .paired-device-card {
+    background: var(--card-bg, #0e0e14);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+  }
+  .peer-card:hover, .paired-device-card:hover {
+    border-color: var(--asp, var(--accent));
+    box-shadow: 0 0 6px var(--asp-glow, rgba(100,100,200,0.15));
+  }
+  .peer-card-header, .paired-device-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  .peer-name, .paired-device-name {
+    font-weight: 600;
+    font-size: 0.78rem;
+    color: var(--text);
+  }
+  .peer-tier, .paired-device-tier {
+    font-size: 0.68rem;
+    font-weight: 500;
+  }
+  .peer-card-body { font-size: 0.68rem; color: var(--text-dim); }
+  .peer-detail { margin-bottom: 2px; }
+  .peer-label { color: var(--text-dim); opacity: 0.7; }
+  .peer-card-actions, .paired-device-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .btn-pair, .btn-health, .btn-unpair {
+    font-size: 0.62rem;
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    cursor: pointer;
+    background: transparent;
+    color: var(--text);
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .btn-pair { border-color: var(--accent); color: var(--accent); }
+  .btn-pair:hover { background: var(--accent); color: #000; }
+  .btn-unpair { border-color: #a33; color: #c44; }
+  .btn-unpair:hover { background: #a33; color: #fff; }
+  .btn-health:hover { border-color: var(--text-dim); }
+  .btn-discovery { transition: background 0.2s; }
+  .btn-discovery.active { background: #a33 !important; border-color: #a33 !important; }
+  .peers-empty { font-size: 0.65rem; color: var(--text-dim); padding: 8px 0; text-align: center; }
+  .paired-device-meta { font-size: 0.62rem; color: var(--text-dim); margin-bottom: 4px; }
+  .paired-device-perms { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 4px; }
+  .perm-toggle { font-size: 0.62rem; color: var(--text-dim); display: flex; align-items: center; gap: 3px; cursor: pointer; }
+  .perm-toggle.on { color: var(--accent); }
+  .perm-toggle input[type=checkbox] { width: 12px; height: 12px; }
+  /* Pairing overlay */
+  .pairing-overlay {
+    position: fixed; inset: 0; z-index: 10000;
+    background: rgba(0,0,0,0.75);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .pairing-overlay.visible { opacity: 1; pointer-events: auto; }
+  .pairing-dialog {
+    background: var(--card-bg, #0e0e14);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    padding: 24px 32px;
+    min-width: 280px;
+    max-width: 400px;
+    text-align: center;
+  }
+  .pairing-dialog-header {
+    font-size: 1rem; font-weight: 700; color: var(--accent);
+    margin-bottom: 12px;
+  }
+  .pairing-dialog-body p { font-size: 0.8rem; color: var(--text); margin: 0 0 12px; }
+  .pin-display {
+    display: flex; gap: 8px; justify-content: center; margin: 16px 0;
+  }
+  .pin-digit {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 2rem; font-weight: 700;
+    color: var(--accent);
+    background: var(--bg, #080810);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    width: 44px; height: 56px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .pin-ttl { font-size: 0.68rem; color: var(--text-dim); }
+  .pin-countdown { font-size: 0.72rem; color: var(--accent); margin-top: 4px; }
+  .pairing-dialog-actions { margin-top: 16px; }
+  .pairing-dialog-actions button {
+    font-size: 0.75rem; padding: 4px 16px;
+    border: 1px solid var(--border); border-radius: 2px;
+    background: transparent; color: var(--text); cursor: pointer;
+  }
+  .pairing-dialog-actions button:hover { border-color: var(--accent); }
+
 @media (prefers-reduced-motion: reduce) {
   .title,
   .typing-dots span,

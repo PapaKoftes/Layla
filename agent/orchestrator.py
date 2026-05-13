@@ -278,6 +278,14 @@ def decision_bias_prompt_extension(bias: list[str], *, relationship_codex_active
         parts.append("Bias exploratory: workspace_map or list_dir early is acceptable when the goal is unclear.")
     if "human_aligned" in bset:
         parts.append("Bias human-aligned: name tradeoffs briefly; one clarifying question beats silent guessing.")
+    if "disruptive" in bset:
+        parts.append("Bias disruptive: challenge the obvious approach first. Consider unconventional alternatives before conventional ones.")
+    if "reactive" in bset:
+        parts.append("Bias reactive: react to what you see, not what you expect. Stream observations as they come; do not over-plan.")
+    if "honest" in bset:
+        parts.append("Bias honest: state the truth directly, even when uncomfortable. No hedging, no softening bad news.")
+    if "principled" in bset:
+        parts.append("Bias principled: check every action against ethical principles before executing. Refuse if the reason is real.")
     if relationship_codex_active:
         parts.append(
             "Relationship codex is active: weight named people/entities and their traits in tool choice and tone; "
