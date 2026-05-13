@@ -33,47 +33,52 @@ _DEPRECATED: set[str] = {
 }
 
 # New keys with their defaults (added if missing)
+# NOTE: Defaults here MUST match runtime_safety.py defaults dict.
+# Secrets/API-keys use None (not ""), booleans default to False (opt-in).
 _NEW_DEFAULTS: dict[str, Any] = {
-    # Phase 1: LiteLLM Gateway
+    # ── LiteLLM Gateway (Phase 1) ────────────────────────────────────
     "litellm_enabled": False,
-    "litellm_default_model": "",
+    "litellm_default_model": None,
     "litellm_fallback_chain": [],
     "litellm_api_keys": {},
     "litellm_timeout_seconds": 120,
     "litellm_max_retries": 2,
-    # Phase 2: Discord
+    # ── Discord (Phase 2) ────────────────────────────────────────────
     "discord_bot_autostart": False,
-    "discord_bot_token": "",
-    "discord_bot_default_aspect": "",
-    # Phase 3: Remote Access
-    "tunnel_token_hash": "",
-    "tunnel_token_created_at": "",
-    "tunnel_token_ttl_hours": 0,
+    "discord_bot_token": None,
+    "discord_bot_default_aspect": None,
+    # ── Tunnel auth & audit (Phase 3) ────────────────────────────────
+    "tunnel_token_hash": None,
+    "tunnel_token_created_at": None,
+    "tunnel_token_ttl_hours": 0,         # 0 = never expires
     "tunnel_ip_allowlist": [],
-    "tunnel_audit_enabled": True,
+    "tunnel_audit_enabled": False,       # activates when remote_enabled is True
     "tunnel_audit_retention_days": 90,
     "tailscale_enabled": False,
-    "tailscale_auth_key": "",
-    # Phase 5: Search
+    "tailscale_auth_key": None,
+    # ── Search backends (Phase 5) ────────────────────────────────────
+    "search_backend": "auto",
     "meilisearch_enabled": False,
     "meilisearch_url": "http://localhost:7700",
-    "meilisearch_api_key": "",
+    "meilisearch_api_key": None,
     "meilisearch_index": "layla-learnings",
-    "search_backend": "auto",
-    # Phase 6: Integrations
+    # ── Web crawling (Phase 6A) ──────────────────────────────────────
     "crawler_backend": "auto",
-    "firecrawl_api_key": "",
+    "firecrawl_api_key": None,
     "firecrawl_api_url": "https://api.firecrawl.dev",
-    "crawl4ai_enabled": True,
+    "crawl4ai_enabled": False,           # opt-in like all other integrations
+    # ── Document ingestion (Phase 6B) ────────────────────────────────
     "docling_enabled": False,
     "docling_chunk_size": 1000,
     "docling_overlap": 200,
+    # ── Vector store (Phase 6C) ──────────────────────────────────────
     "vector_backend": "chroma",
     "qdrant_url": "http://localhost:6333",
-    "qdrant_api_key": "",
+    "qdrant_api_key": None,
     "qdrant_collection": "layla-memories",
+    # ── Memory extraction (Phase 6D) ─────────────────────────────────
     "mem0_enabled": False,
-    "mem0_api_key": "",
+    "mem0_api_key": None,
     "mem0_provider": "local",
 }
 
