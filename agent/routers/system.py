@@ -472,6 +472,41 @@ def health_deps(request: Request):
         return {"dependencies": {}, "error": str(e)}
 
 
+@router.get("/models/providers")
+def models_providers():
+    """LiteLLM multi-provider gateway status and health."""
+    try:
+        from services.litellm_gateway import get_gateway_info
+        return get_gateway_info()
+    except ImportError:
+        return {"installed": False, "enabled": False, "error": "litellm not installed"}
+    except Exception as e:
+        return {"installed": False, "enabled": False, "error": str(e)}
+
+
+@router.get("/models/providers/{provider}/status")
+def provider_status(provider: str):
+    """Health status for a specific LLM provider."""
+    try:
+        from services.provider_health import get_provider_status
+        return get_provider_status(provider)
+    except Exception as e:
+        return {"name": provider, "error": str(e)}
+
+
+@router.get("/models/costs")
+def models_costs():
+    """Cost tracking across all LLM providers."""
+    try:
+        from services.provider_health import get_total_cost, get_cost_by_provider
+        return {
+            "total_cost_usd": get_total_cost(),
+            "by_provider": get_cost_by_provider(),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @router.get("/local_access_info")
 def local_access_info():
     """Return LAN URL for phone/remote access. Safe to call from the UI."""
