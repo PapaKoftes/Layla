@@ -46,7 +46,7 @@ def is_available() -> bool:
 def _cfg_hash(cfg: dict) -> str:
     """Cheap hash of config keys relevant to client construction."""
     provider = cfg.get("mem0_provider", "local")
-    api_key = cfg.get("mem0_api_key", "")
+    api_key = cfg.get("mem0_api_key") or ""
     return f"{provider}::{api_key}"
 
 
@@ -77,7 +77,7 @@ def get_client(cfg: dict) -> Any | None:
 
     try:
         if provider == "cloud":
-            api_key = cfg.get("mem0_api_key", "")
+            api_key = cfg.get("mem0_api_key") or ""
             if not api_key:
                 logger.warning("mem0_provider is 'cloud' but mem0_api_key is empty")
                 return None
