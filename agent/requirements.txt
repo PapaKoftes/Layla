@@ -123,6 +123,9 @@ instructor>=1.0,<2             # Grammar-constrained JSON for tool-call parsing 
 # scikit-learn>=1.4             # Clustering, regression, classification, metrics
 # xgboost>=2.0                  # Gradient boosting
 
+# ─── Multi-Provider LLM Gateway ───────────────────────────────────────────────
+litellm>=1.40.0                 # 100+ LLM providers through one interface (Phase 1)
+
 # ─── Infrastructure / Reliability ─────────────────────────────────────────────
 tenacity>=8.2                   # Retry logic with exponential backoff (used in service calls)
 
