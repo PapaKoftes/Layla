@@ -553,6 +553,14 @@ def load_config() -> dict:
             "chunk_handoff_max_tokens": 600,
             "context_attribution_enabled": True,
             "attribution_min_score": 0.15,
+            # Phase 6: Autonomy Engine
+            "long_horizon_enabled": True,
+            "max_horizon_days": 14,
+            "hours_per_day_chunk": 4.0,
+            "checkpoint_auto_save": True,
+            "idle_detection_enabled": True,
+            "idle_cpu_threshold": 0.30,
+            "idle_timeout_minutes": 10,
         }
         hw_defaults = _hardware_derived_defaults()
         defaults.update(hw_defaults)
