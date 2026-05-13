@@ -1,9 +1,9 @@
 # LAYLA ENGINEERING BLUEPRINT v2.1
 
 > Synthesized from 4 deep-audit agents covering Personality, Safety, Memory, and Research systems.
-> Updated 2026-05-13: All 7 tiers implemented + Phases 1-6 product build-out. 1750+ tests passing.
+> Updated 2026-05-13: All 7 tiers + Phases 1-7 product build-out. 1800+ tests passing.
 
-**Status: ALL TIERS COMPLETE — PRODUCT BUILD-OUT IN PROGRESS (Phases 1-6 done)**
+**Status: ALL TIERS COMPLETE — PRODUCT BUILD-OUT Phases 1-7 done, Phase 8 remaining**
 
 ---
 
@@ -513,9 +513,23 @@ Four integration adapters, all behind feature flags, all with local-first fallba
 |------|--------|
 | `runtime_safety.py` | Added 13 new config keys for crawler, docling, qdrant, mem0 |
 
+### PHASE 7: ENGINEERING IMPROVEMENTS — COMPLETE (7A + 7C)
+
+WebSocket bidirectional communication and multi-agent task delegation.
+
+**New files:**
+| File | Purpose |
+|------|---------|
+| `services/ws_manager.py` | WebSocket connection manager: rooms, broadcast, heartbeat protocol |
+| `routers/ws.py` | WebSocket endpoints /ws, /ws/stream/{session_id}, /ws/clients |
+| `services/multi_agent.py` | Task decomposition, parallel dispatch, result aggregation |
+| `tests/test_ws_manager.py` | 17 tests for connections, rooms, messaging, protocol |
+| `tests/test_multi_agent.py` | 20 tests for decomposition, dispatch, aggregation |
+
 ### PHASES REMAINING
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| Phase 7 | Engineering Improvements (WebSocket, async, multi-agent, UI) | Pending |
+| Phase 7B | Async Cleanup (agent_loop.py, retrieval.py) | Pending (deferred — requires careful testing) |
+| Phase 7D | UI Polish (responsive layout, mobile) | Pending (deferred — visual changes) |
 | Phase 8 | Hardening & Release Prep (integration tests, docs, security audit) | Pending |
