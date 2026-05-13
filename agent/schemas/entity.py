@@ -48,6 +48,38 @@ class EntityType(str, Enum):
     UNKNOWN      = "unknown"       # Fallback when type can't be determined
 
 
+class PrivacyLevel(str, Enum):
+    """Privacy classification for entities and memory items.
+
+    Levels (ascending sensitivity):
+      public     — safe to display in UI, export, share
+      workspace  — tied to a specific project; visible within that workspace
+      personal   — personal info about the user; never exported without consent
+      sensitive  — passwords, tokens, health data, NSFW; encrypted at rest ideally
+
+    Retrieval filters by max allowed level: a query with max_privacy=workspace
+    will return public + workspace entities but not personal or sensitive.
+    """
+    PUBLIC    = "public"
+    WORKSPACE = "workspace"
+    PERSONAL  = "personal"
+    SENSITIVE = "sensitive"
+
+
+# Ordered list for comparison (lower index = less sensitive)
+_PRIVACY_RANK = [PrivacyLevel.PUBLIC, PrivacyLevel.WORKSPACE, PrivacyLevel.PERSONAL, PrivacyLevel.SENSITIVE]
+
+
+def privacy_allows(item_level: str, max_level: str) -> bool:
+    """Return True if item_level is at or below max_level in sensitivity."""
+    try:
+        item_rank = _PRIVACY_RANK.index(PrivacyLevel(item_level))
+        max_rank = _PRIVACY_RANK.index(PrivacyLevel(max_level))
+        return item_rank <= max_rank
+    except (ValueError, KeyError):
+        return True  # Unknown levels are treated as allowed (fail-open for compat)
+
+
 class RelationshipType(str, Enum):
     """Canonical relationship types between entities."""
     USES         = "uses"          # A uses B (technology A uses library B)
@@ -94,6 +126,9 @@ class Entity:
     confidence: float = 0.5           # 0.0 (guess) → 1.0 (verified)
     source: str = ""                  # Where this came from (file path, URL, conversation ID)
     evidence: str = ""                # Specific text that established this entity
+
+    # Privacy
+    privacy_level: str = "public"     # PrivacyLevel value: public/workspace/personal/sensitive
 
     # Temporal
     created_at: str = ""              # ISO 8601 datetime
@@ -210,7 +245,8 @@ def make_relationship_id(from_id: str, to_id: str, rel_type: str) -> str:
 # ── Convenience constructors ──────────────────────────────────────────────────
 
 def person(name: str, *, description: str = "", tags: list[str] | None = None,
-           confidence: float = 0.5, source: str = "") -> Entity:
+           confidence: float = 0.5, source: str = "",
+           privacy_level: str = "personal") -> Entity:
     return Entity(
         type=EntityType.PERSON.value,
         canonical_name=name.lower().strip(),
@@ -219,11 +255,13 @@ def person(name: str, *, description: str = "", tags: list[str] | None = None,
         tags=tags or [],
         confidence=confidence,
         source=source,
+        privacy_level=privacy_level,
     )
 
 
 def technology(name: str, *, description: str = "", tags: list[str] | None = None,
-               confidence: float = 0.8, source: str = "") -> Entity:
+               confidence: float = 0.8, source: str = "",
+               privacy_level: str = "public") -> Entity:
     return Entity(
         type=EntityType.TECHNOLOGY.value,
         canonical_name=name.lower().strip(),
@@ -232,11 +270,13 @@ def technology(name: str, *, description: str = "", tags: list[str] | None = Non
         tags=tags or ["technology"],
         confidence=confidence,
         source=source,
+        privacy_level=privacy_level,
     )
 
 
 def concept(name: str, *, description: str = "", tags: list[str] | None = None,
-            confidence: float = 0.7, source: str = "") -> Entity:
+            confidence: float = 0.7, source: str = "",
+            privacy_level: str = "public") -> Entity:
     return Entity(
         type=EntityType.CONCEPT.value,
         canonical_name=name.lower().strip(),
@@ -245,11 +285,13 @@ def concept(name: str, *, description: str = "", tags: list[str] | None = None,
         tags=tags or [],
         confidence=confidence,
         source=source,
+        privacy_level=privacy_level,
     )
 
 
 def code_function(name: str, *, module: str = "", description: str = "",
-                  confidence: float = 0.9, source: str = "") -> Entity:
+                  confidence: float = 0.9, source: str = "",
+                  privacy_level: str = "workspace") -> Entity:
     canonical = f"{module}.{name}" if module else name
     return Entity(
         type=EntityType.FUNCTION.value,
@@ -259,6 +301,7 @@ def code_function(name: str, *, module: str = "", description: str = "",
         tags=["code", "function"],
         confidence=confidence,
         source=source,
+        privacy_level=privacy_level,
         attributes={"module": module, "function_name": name},
     )
 
@@ -276,6 +319,9 @@ def validate_entity(entity: Entity) -> list[str]:
         errors.append(f"confidence must be 0.0-1.0, got {entity.confidence}")
     if entity.id and not entity.id.startswith("ent_"):
         errors.append(f"entity id should start with 'ent_', got '{entity.id}'")
+    valid_privacy = {pl.value for pl in PrivacyLevel}
+    if entity.privacy_level and entity.privacy_level not in valid_privacy:
+        errors.append(f"privacy_level must be one of {valid_privacy}, got '{entity.privacy_level}'")
     return errors
 
 

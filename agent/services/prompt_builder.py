@@ -216,6 +216,25 @@ def build_core_sys_parts(
             "Reasoning style: Think through problems step by step before giving your final answer. "
             "For complex questions, break them down. Show your reasoning when it helps clarity."
         )
+    # Character creator slider → behavioral prompt hints (makes slider customization functional)
+    if cfg.get("character_creator_enabled", True) and aspect:
+        _aid_cc = (aspect.get("id") or "").strip().lower()
+        if _aid_cc:
+            try:
+                from services.character_creator import personality_to_prompt_hints
+
+                _hints = personality_to_prompt_hints(_aid_cc)
+                if _hints:
+                    sys_parts.append("Personality tuning (operator customized):\n" + "\n".join(f"- {h}" for h in _hints))
+            except Exception as _exc:
+                logger.debug("prompt_builder:character_hints: %s", _exc, exc_info=False)
+    # Failure mode self-awareness (helps aspects catch their own degradation patterns)
+    if aspect:
+        _fm = (aspect.get("failure_mode_expanded") or aspect.get("failure_mode") or "").strip()
+        if _fm:
+            sys_parts.append(
+                f"Self-awareness: Under pressure you may {_fm[:300]} — catch this tendency and correct."
+            )
     return sys_parts
 
 

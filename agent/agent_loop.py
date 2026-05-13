@@ -1076,18 +1076,84 @@ def _load_learnings(aspect_id: str = "") -> str:
         return ""
 
 
-def _semantic_recall(query: str, k: int = 5) -> str:
+def _extract_aspect_domain_keywords(aspect: dict | None) -> list[str]:
+    """Extract flat list of short domain keywords from aspect expertise_domains for retrieval boosting."""
+    if not aspect:
+        return []
+    ed = aspect.get("expertise_domains")
+    if not ed or not isinstance(ed, dict):
+        return []
+    keywords: list[str] = []
+    for domain_list in (ed.get("primary", []), ed.get("secondary", [])):
+        if not isinstance(domain_list, list):
+            continue
+        for entry in domain_list:
+            if not isinstance(entry, str):
+                continue
+            # Extract the main keyword before any parenthetical detail
+            # e.g. "Python (stdlib, async)" → "Python"
+            # "debugging (pdb, traceback)" → "debugging"
+            clean = entry.split("(")[0].strip().lower()
+            if clean and len(clean) <= 40:
+                keywords.append(clean)
+    return keywords[:12]  # cap to avoid query bloat
+
+
+def _build_expertise_domain_block(aspect: dict | None) -> str:
+    """Build a concise expertise domain block for system head injection."""
+    if not aspect:
+        return ""
+    ed = aspect.get("expertise_domains")
+    if not ed or not isinstance(ed, dict):
+        return ""
+    parts: list[str] = []
+    name = aspect.get("name", "this aspect")
+    primary = ed.get("primary", [])
+    secondary = ed.get("secondary", [])
+    philosophy = (ed.get("philosophy") or "").strip()
+    gaps = ed.get("knowledge_gaps_honest", [])
+    can_refuse = ed.get("can_refuse_technical", [])
+    if primary:
+        parts.append(f"Primary expertise: {', '.join(str(p) for p in primary[:6])}")
+    if secondary:
+        parts.append(f"Secondary expertise: {', '.join(str(s) for s in secondary[:6])}")
+    if philosophy:
+        parts.append(f"Engineering philosophy: {philosophy[:200]}")
+    if gaps:
+        parts.append(f"Honest gaps (redirect to other aspects when these arise): {', '.join(str(g) for g in gaps[:5])}")
+    if can_refuse:
+        parts.append(f"Will refuse to: {', '.join(str(r) for r in can_refuse[:5])}")
+    if not parts:
+        return ""
+    return f"Domain expertise ({name}):\n" + "\n".join(f"- {p}" for p in parts)
+
+
+def _semantic_recall(query: str, k: int = 5, domain_boost_terms: list[str] | None = None) -> str:
     """
     Full memory recall pipeline: BM25 + vector hybrid search + FTS5 + cross-encoder reranking.
     Falls back to pure vector search, then FTS on ChromaDB error.
+
+    domain_boost_terms: optional list of domain keywords from the active aspect.
+    When provided, augments the query for broader domain-relevant recall and
+    applies post-retrieval score boosting for domain-matching results.
     """
     try:
         from layla.memory.vector_store import search_memories_full
         cfg = runtime_safety.load_config()
         use_mmr = bool(cfg.get("retrieval_use_mmr", False))
         use_hyde = bool(cfg.get("hyde_enabled", False))
+
+        # Domain-augmented query: append a few domain terms to broaden recall
+        augmented_query = query
+        if domain_boost_terms and cfg.get("expertise_domain_boost_enabled", True):
+            # Pick up to 4 most relevant domain terms (short ones, likely to appear in learnings)
+            short_terms = [t for t in domain_boost_terms if len(t) <= 25][:4]
+            if short_terms:
+                augmented_query = query + " " + " ".join(short_terms)
+
         results = search_memories_full(
-            query, k=k, use_rerank=True, use_mmr=use_mmr, use_hyde=use_hyde
+            augmented_query, k=k, use_rerank=True, use_mmr=use_mmr, use_hyde=use_hyde,
+            domain_boost_keywords=domain_boost_terms,
         )
         if not results:
             return ""
@@ -1418,6 +1484,12 @@ def _build_system_head(
 
     personality = _append_persona_focus_to_personality(personality, aspect, persona_focus_id)
 
+    # Expertise domains: extract from active aspect for retrieval boosting + system prompt
+    _domain_keywords: list[str] = _extract_aspect_domain_keywords(aspect)
+    _expertise_block = _build_expertise_domain_block(aspect)
+    if _expertise_block:
+        personality += "\n\n" + _expertise_block
+
     if bool(cfg.get("voice_adjustment_inject_enabled", False)):
         try:
             from layla.memory.db import get_user_identity
@@ -1444,11 +1516,15 @@ def _build_system_head(
                 logger.debug("context[aspect_memories] failed: %s", _e)
 
     # Semantic recall: use precomputed result if available (avoids double ChromaDB query).
+    # When an aspect is active, pass domain keywords to boost domain-relevant memories.
     semantic = ""
     if _precomputed_recall is not None:
         semantic = _precomputed_recall
     elif not _skip_expensive and goal:
-        semantic = _semantic_recall(goal, k=cfg.get("semantic_k", 5)).strip()
+        semantic = _semantic_recall(
+            goal, k=cfg.get("semantic_k", 5),
+            domain_boost_terms=_domain_keywords if _domain_keywords else None,
+        ).strip()
 
     # Memory graph associations: skip for trivial turns or short goals
     graph_associations = ""
@@ -3373,6 +3449,36 @@ def _autonomous_run_impl_core(
         _wm_extract(goal)
     except Exception as _wm_err:
         logger.debug("working_memory extract failed: %s", _wm_err)
+
+    # Content guard: deterministic pre-model filter for universally harmful content
+    try:
+        from services.content_guard import check_input as _cg_check, blocked_response as _cg_msg
+        _cg_cfg = runtime_safety.load_config()
+        _cg_result = _cg_check(goal, _cg_cfg)
+        if _cg_result.blocked:
+            logger.warning("content_guard: blocked tier=%d cat=%s", _cg_result.tier, _cg_result.category)
+            return {
+                "goal": goal, "objective": goal, "objective_complete": True,
+                "depth": 0, "steps": [{"action": "content_guard", "result": _cg_msg(_cg_result), "deliberated": False}],
+                "status": "blocked", "start_time": time.time(), "tool_calls": 0,
+                "aspect": aspect_id or "layla", "aspect_name": "Layla",
+                "refused": True, "refusal_reason": f"content_guard_tier{_cg_result.tier}",
+                "last_verification": None, "consecutive_no_progress": 0,
+                "original_goal": goal, "goal_original": goal, "goal_optimized": "",
+                "ux_states": [], "memory_influenced": [], "cited_knowledge_sources": [],
+                "sub_goals": [], "reasoning_mode": "none",
+            }
+    except Exception as _cg_err:
+        logger.debug("content_guard check failed: %s", _cg_err)
+
+    # Dignity engine: detect abuse and prepare boundary prompt for injection
+    _dignity_boundary_prompt = ""
+    try:
+        from services.dignity_engine import analyze_and_get_prompt as _dignity_check
+        _dig_cfg = runtime_safety.load_config()
+        _dignity_boundary_prompt = _dignity_check(goal, _dig_cfg)
+    except Exception as _dig_err:
+        logger.debug("dignity_engine check failed: %s", _dig_err)
 
     persona_focus_id = (persona_focus or "").strip().lower()
     _run_cid = (conversation_id or "").strip() or "default"
@@ -5532,6 +5638,10 @@ def _autonomous_run_impl_core(
                 packed_context=state.get("packed_context") if isinstance(state.get("packed_context"), dict) else None,
             )
 
+            # Dignity engine: inject boundary prompt if abuse detected this session
+            if _dignity_boundary_prompt:
+                head = head.rstrip() + "\n\n" + _dignity_boundary_prompt
+
             # Inject conversation history (sanitize assistant messages that are echoed instructions)
             convo_block = ""
             try:
@@ -5949,6 +6059,28 @@ def _autonomous_run_impl_core(
                 daemon=True,
                 name="auto-learn",
             ).start()
+    # Conversation entity extraction: extract entities from every exchange for codex/wiki
+    _conv_final_text = ""
+    try:
+        for _cs in reversed(state.get("steps", [])):
+            if _cs.get("action") == "reason":
+                _csr = _cs.get("result", "")
+                _conv_final_text = _csr if isinstance(_csr, str) else ""
+                break
+    except Exception:
+        pass
+    if _conv_final_text and not state.get("refused"):
+        try:
+            from services.conversation_entity_extractor import extract_in_background as _conv_ent_bg
+            _conv_ent_bg(
+                state.get("original_goal", ""),
+                _conv_final_text,
+                conversation_id=str(state.get("conversation_id", "")),
+                aspect_id=active_aspect.get("id", ""),
+            )
+        except Exception as _cee_err:
+            logger.debug("conversation_entity_extractor hook failed: %s", _cee_err)
+
     if research_mode:
         set_effective_sandbox(None)
 

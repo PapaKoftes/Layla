@@ -490,8 +490,19 @@ def load_config() -> dict:
             "use_chroma": True,
             "uncensored": True,
             "nsfw_allowed": True,
-            "knowledge_unrestricted": True,
-            "anonymous_access": True,
+            # dignity_engine: Layla's autonomy to push back on rude/abusive input
+            "dignity_engine_enabled": True,
+            "dignity_sensitivity": 0.5,
+            "dignity_enforcement": "soft",
+            # content_guard: deterministic pre-model filter for universally harmful content
+            "content_guard_enabled": True,
+            "content_guard_age_verified": False,
+            "content_guard_hardcoded_only": False,
+            # privacy: entity and memory privacy separation
+            "privacy_default_level": "public",
+            "privacy_max_retrieval_level": "personal",
+            # expertise_domain_boost: aspect-aware retrieval boosting
+            "expertise_domain_boost_enabled": True,
             "enable_personality_expression": True,
             "enable_cognitive_lens": True,
             "enable_behavioral_rhythm": True,
@@ -561,6 +572,20 @@ def load_config() -> dict:
             "idle_detection_enabled": True,
             "idle_cpu_threshold": 0.30,
             "idle_timeout_minutes": 10,
+            # Phase 9: Multi-Device / Networking
+            "cluster_offload_enabled": False,
+            "hardware_tier": "cpu",
+            "hardware_aware_startup": True,
+            # Phase 10: Character Creator + Tutorial
+            "character_creator_enabled": True,
+            "tutorial_enabled": True,
+            "tutorial_auto_start": True,
+            # Optional features (all enabled by default per design)
+            "maturity_enabled": True,
+            "skills_enabled": True,
+            "german_mode_enabled": False,  # language-specific; off by default
+            "golden_examples_enabled": True,
+            "speculative_decoding_enabled": False,
         }
         hw_defaults = _hardware_derived_defaults()
         defaults.update(hw_defaults)

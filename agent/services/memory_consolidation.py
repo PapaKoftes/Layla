@@ -220,16 +220,52 @@ def reinforce_learning(learning_id: int, *, success: bool = True) -> None:
 
 
 def prune_low_confidence_learnings(threshold: float = 0.08, batch: int = 25) -> int:
-    """Prune a small batch of stale low-confidence learnings (daily cleanup)."""
+    """Archive (not delete) a small batch of stale low-confidence learnings.
+
+    Moved from hard-delete to archive: learnings are inserted into
+    `learnings_archive` before being removed from the active table.
+    This preserves "faded memories" that users can browse or restore.
+    """
     try:
         from layla.memory.db_connection import _conn
         from layla.memory.migrations import migrate
+        from layla.time_utils import utcnow
 
         migrate()
         th = float(threshold)
         lim = max(1, min(200, int(batch)))
         emb_ids: list[str] = []
+        now = utcnow()
         with _conn() as db:
+            # First, archive the learnings before deleting
+            try:
+                to_archive = db.execute(
+                    f"SELECT id, content, type, created_at, confidence, tags, aspect_id "
+                    f"FROM learnings WHERE confidence IS NOT NULL AND confidence < ? "
+                    f"ORDER BY id ASC LIMIT {lim}",
+                    (th,),
+                ).fetchall()
+                for row in (to_archive or []):
+                    try:
+                        r = dict(row) if hasattr(row, 'keys') else {
+                            "id": row[0], "content": row[1], "type": row[2],
+                            "created_at": row[3], "confidence": row[4],
+                            "tags": row[5] if len(row) > 5 else "",
+                            "aspect_id": row[6] if len(row) > 6 else "",
+                        }
+                        db.execute(
+                            "INSERT OR IGNORE INTO learnings_archive "
+                            "(id, content, type, created_at, archived_at, archive_reason, original_confidence, tags, aspect_id) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            (r.get("id"), r.get("content", ""), r.get("type", "fact"),
+                             r.get("created_at", now), now, "confidence_decay",
+                             r.get("confidence", 0), r.get("tags", ""), r.get("aspect_id", "")),
+                        )
+                    except Exception:
+                        continue  # Archive is best-effort; don't block pruning
+            except Exception as _ae:
+                logger.debug("prune_low_confidence: archive step failed (continuing): %s", _ae)
+
             try:
                 cols = {r[1] for r in db.execute("PRAGMA table_info(learnings)").fetchall()}
                 if "embedding_id" in cols:
@@ -262,6 +298,8 @@ def prune_low_confidence_learnings(threshold: float = 0.08, batch: int = 25) -> 
                 delete_vectors_by_ids(emb_ids)
             except Exception:
                 pass
+        if n:
+            logger.info("memory_consolidation: archived and pruned %d low-confidence learnings", n)
         return int(n or 0)
     except Exception as e:
         logger.debug("prune_low_confidence_learnings: %s", e)
