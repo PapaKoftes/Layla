@@ -65,6 +65,15 @@ def _cfg() -> dict:
         return {}
 
 
+def _selective_context_available() -> bool:
+    """Check if the selective-context package is available (Tier-0)."""
+    try:
+        import selective_context  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 def _compression_enabled() -> bool:
     return bool(_cfg().get("prompt_compression_enabled", True))
 
@@ -99,7 +108,16 @@ def _llmlingua_available() -> bool:
 
 
 def get_available_tier() -> int:
-    """Return the best available compression tier (1=best, 4=fallback)."""
+    """Return the best available compression tier (0=best, 4=fallback).
+
+    Tier 0: Selective Context (token-level pruning via small LM)
+    Tier 1: LLMLingua (perplexity-based token pruning)
+    Tier 2: LongLLMLingua (question-aware multi-doc compression)
+    Tier 3: Heuristic sentence scoring (always available)
+    Tier 4: Truncation fallback
+    """
+    if _selective_context_available():
+        return 0
     if _llmlingua_available():
         return 1  # LLMLingua + LongLLMLingua both in same package
     return 3  # Heuristic always available
@@ -109,12 +127,47 @@ def get_info() -> dict:
     """Return compression capability info."""
     return {
         "enabled": _compression_enabled(),
+        "selective_context_installed": _selective_context_available(),
         "llmlingua_installed": _llmlingua_available(),
         "available_tier": get_available_tier(),
         "target_ratio": _target_ratio(),
         "lingua_model": _lingua_model(),
         "device": _lingua_device(),
     }
+
+
+# ── Tier 0: Selective Context ─────────────────────────────────────────────────
+
+def _compress_with_selective_context(
+    text: str,
+    target_ratio: float = 0.5,
+    question: str = "",
+) -> dict:
+    """
+    Compress using selective-context (token-level pruning via small LM).
+
+    Selective Context uses self-information (negative log probability) from a
+    small causal LM to identify and remove low-information tokens. This achieves
+    10-30% better compression than heuristic methods with minimal quality loss.
+    """
+    try:
+        from selective_context import SelectiveContext
+        sc = SelectiveContext(model_type="gpt2", lang="en")
+        compressed, _reduced = sc(text, reduce_ratio=1.0 - target_ratio)
+        ratio = len(compressed) / max(1, len(text))
+        logger.debug("prompt_compressor: SelectiveContext ratio %.2f", ratio)
+        return {"compressed": compressed, "ratio": ratio, "method": "selective_context"}
+    except Exception as exc:
+        logger.warning("prompt_compressor: selective-context failed (%s), falling back", exc)
+        try:
+            from services.degraded import mark_degraded
+            mark_degraded("selective_context", str(exc))
+        except Exception:
+            pass
+        # Fall through to next tier
+        if _llmlingua_available():
+            return _compress_with_lingua(text, question=question, target_ratio=target_ratio)
+        return _compress_heuristic(text, target_ratio=target_ratio, question=question)
 
 
 # ── Tier 1 & 2: LLMLingua ─────────────────────────────────────────────────────
@@ -422,7 +475,9 @@ def compress(
         return {"compressed": text, "ratio": 1.0, "original_len": len(text),
                 "compressed_len": len(text), "method": "passthrough"}
 
-    if not force_heuristic and _llmlingua_available():
+    if not force_heuristic and _selective_context_available():
+        result = _compress_with_selective_context(text, target_ratio=ratio, question=question)
+    elif not force_heuristic and _llmlingua_available():
         result = _compress_with_lingua(text, question=question, target_ratio=ratio)
     else:
         result = _compress_heuristic(text, target_ratio=ratio, question=question)

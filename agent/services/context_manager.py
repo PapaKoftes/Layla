@@ -267,6 +267,19 @@ def build_system_prompt(
             except Exception:
                 budgets = DEFAULT_BUDGETS.copy()
     total_budget = max(512, n_ctx - reserve_for_response)
+
+    # Phase 5: Dynamic budget reallocation based on last-known section pressure
+    try:
+        from services.context_budget import rebalance_budget
+        _prev_metrics, _ = get_last_prompt_metrics()
+        if _prev_metrics and _prev_metrics.get("section_tokens"):
+            budgets = rebalance_budget(
+                budgets,
+                section_tokens=_prev_metrics["section_tokens"],
+            )
+    except Exception:
+        pass
+
     order = [
         "system_instructions",
         # Current goal/sub-objectives must be early so it survives token pressure.
@@ -378,6 +391,15 @@ def build_system_prompt(
         pass
 
     record_prompt_metrics(metrics, n_ctx)
+
+    # Phase 5: Record context pressure to Prometheus/fallback gauge
+    try:
+        from services.metrics import record_context_pressure
+        pressure = metrics["total_tokens"] / max(1, total_budget)
+        record_context_pressure(pressure)
+    except Exception:
+        pass
+
     return final, metrics
 
 

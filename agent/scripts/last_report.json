@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-13T05:04:36Z",
+  "timestamp": "2026-05-13T05:14:33Z",
   "confidence_pct": 100,
   "real_assertions": {
     "repo_index_populated": true,
@@ -12,91 +12,91 @@
   "warn": 0,
   "fail": 0,
   "skip": 0,
-  "duration_ms": 134614,
+  "duration_ms": 135501,
   "checks": [
     {
       "check": "Bug patterns",
       "status": "PASS",
       "severity": "FAIL",
       "summary": "All checks passed.",
-      "duration_ms": 824
+      "duration_ms": 890
     },
     {
       "check": "Config validation",
       "status": "PASS",
       "severity": "WARN",
       "summary": "WARNINGS: 1 issue(s), 0 error(s)",
-      "duration_ms": 37
+      "duration_ms": 39
     },
     {
       "check": "Import resolution",
       "status": "PASS",
       "severity": "FAIL",
       "summary": "PASS",
-      "duration_ms": 910
+      "duration_ms": 943
     },
     {
       "check": "Security scan",
       "status": "PASS",
       "severity": "WARN",
       "summary": "All security checks passed.",
-      "duration_ms": 2205
+      "duration_ms": 2157
     },
     {
       "check": "Memory coherence",
       "status": "PASS",
       "severity": "FAIL",
       "summary": "All memory coherence checks passed.",
-      "duration_ms": 214
+      "duration_ms": 216
     },
     {
       "check": "Repo index",
       "status": "PASS",
       "severity": "FAIL",
       "summary": "All repo index checks passed.",
-      "duration_ms": 438
+      "duration_ms": 457
     },
     {
       "check": "API contracts",
       "status": "PASS",
       "severity": "WARN",
       "summary": "Routes found:      212",
-      "duration_ms": 73
+      "duration_ms": 75
     },
     {
       "check": "DB schema",
       "status": "PASS",
       "severity": "WARN",
       "summary": "All DB checks passed.",
-      "duration_ms": 678
+      "duration_ms": 695
     },
     {
       "check": "UI symbol check",
       "status": "PASS",
       "severity": "WARN",
       "summary": "check_ui_symbols: OK 1 html file(s), 381 def(s)",
-      "duration_ms": 62
+      "duration_ms": 63
     },
     {
       "check": "Wiring (prod imports)",
       "status": "PASS",
       "severity": "WARN",
       "summary": "PASS: all 5 services have production importers",
-      "duration_ms": 5319
+      "duration_ms": 5414
     },
     {
       "check": "Memory router enforcement",
       "status": "PASS",
       "severity": "WARN",
       "summary": "memory_router_enforcement: OK (0 offenders)",
-      "duration_ms": 1390
+      "duration_ms": 1433
     },
     {
       "check": "Pytest suite",
       "status": "PASS",
       "severity": "FAIL",
-      "summary": "1048 passed, 10 skipped, 43 deselected, 376 warnings in 117.80s (0:01:57)",
-      "duration_ms": 122458
+      "summary": "1095 passed, 10 skipped, 43 deselected, 376 warnings in 118.53s (0:01:58)",
+      "duration_ms": 123114
     }
   ]
 }
