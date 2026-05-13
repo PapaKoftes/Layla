@@ -545,6 +545,14 @@ def load_config() -> dict:
             "debate_temperature": 0.7,
             "debate_synthesis_max_tokens": 1200,
             "deliberation_auto_threshold": 0.7,
+            # Phase 5: Advanced Token Management
+            "dynamic_budget_enabled": True,
+            "budget_pressure_threshold": 0.85,
+            "auto_chunk_long_tasks": True,
+            "chunk_step_threshold": 50,
+            "chunk_handoff_max_tokens": 600,
+            "context_attribution_enabled": True,
+            "attribution_min_score": 0.15,
         }
         hw_defaults = _hardware_derived_defaults()
         defaults.update(hw_defaults)
