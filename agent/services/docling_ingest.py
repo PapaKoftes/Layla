@@ -189,8 +189,14 @@ def ingest_file(path: str | Path, *, cfg: dict[str, Any] | None = None) -> dict[
     """
     cfg = cfg or {}
     enabled = cfg.get("docling_enabled", False)
-    chunk_sz = int(cfg.get("docling_chunk_size", 1000))
-    overlap = int(cfg.get("docling_overlap", 200))
+    try:
+        chunk_sz = int(cfg.get("docling_chunk_size", 1000))
+    except (ValueError, TypeError):
+        chunk_sz = 1000
+    try:
+        overlap = int(cfg.get("docling_overlap", 200))
+    except (ValueError, TypeError):
+        overlap = 200
 
     p = Path(path).expanduser().resolve()
     if not p.is_file():

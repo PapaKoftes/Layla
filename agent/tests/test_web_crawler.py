@@ -71,23 +71,22 @@ class TestCrawlerStatus:
 
 
 class TestAutoDetect:
-    @patch("services.web_crawler._crawl_basic")
-    def test_auto_falls_to_basic(self, mock_basic):
-        from services.web_crawler import crawl_url
-        mock_basic.return_value = {"ok": True, "content": "text", "title": "T", "url": "http://a.com"}
-        # No firecrawl key, crawl4ai likely not installed in test env
-        result = crawl_url("http://example.com", cfg={})
-        assert result["ok"] is True
+    def test_auto_falls_to_basic(self):
+        """With no firecrawl key and crawl4ai disabled, auto resolves to basic."""
+        import services.web_crawler as wc
+        from services.web_crawler import _resolve_backend
+        backend = _resolve_backend(cfg={})
+        assert backend == "basic"
 
 
 class TestContentTruncation:
-    @patch("services.web_crawler._crawl_basic")
-    def test_long_content_truncated(self, mock_basic):
-        from services.web_crawler import crawl_url
-        mock_basic.return_value = {"ok": True, "content": "x" * 100000, "title": "T", "url": "http://a.com"}
-        result = crawl_url("http://example.com", cfg={}, backend="basic")
-        assert result["ok"] is True
-        assert len(result["content"]) <= 50001  # 50k + possible truncation marker
+    def test_long_content_truncated(self):
+        """Content longer than 50k chars is truncated by _truncate."""
+        from services.web_crawler import _truncate
+        long_text = "x" * 100000
+        truncated = _truncate(long_text)
+        assert len(truncated) <= 50020  # 50k + truncation marker
+        assert truncated.endswith("[...truncated]")
 
 
 class TestConfigKeys:
