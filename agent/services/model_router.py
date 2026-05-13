@@ -513,6 +513,15 @@ def get_model_routing_summary(cfg: dict | None = None) -> dict:
     if cfg is None:
         cfg = runtime_safety.load_config()
     chat_b, agent_b = resolve_dual_model_basenames(cfg)
+
+    # AirLLM fallback status (Phase 8 promotion)
+    airllm_info: dict = {}
+    try:
+        from services.airllm_runner import get_info as airllm_get_info
+        airllm_info = airllm_get_info()
+    except Exception:
+        airllm_info = {"available": False}
+
     return {
         "routing_enabled": is_routing_enabled(),
         "dual_models_active": should_use_dual_models(),
@@ -521,6 +530,8 @@ def get_model_routing_summary(cfg: dict | None = None) -> dict:
         "chat_basename": chat_b,
         "agent_basename": agent_b,
         "dual_model_threshold_gb": cfg.get("dual_model_threshold_gb", 24),
+        "airllm_available": airllm_info.get("available", False),
+        "airllm_model": airllm_info.get("model_path") or None,
     }
 
 

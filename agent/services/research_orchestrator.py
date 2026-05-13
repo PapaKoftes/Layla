@@ -186,13 +186,20 @@ def research_topic(
 
     article = synthesize_article(topic, all_sources, cfg)
 
-    # Extract entities
+    # Extract entities — try GraphRAG-enhanced extraction first, then codex enricher
     entities: list[str] = []
     try:
-        from layla.codex.enricher import extract_entities
-        entities = [e["name"] for e in extract_entities(article) if e.get("name")]
-    except Exception as exc:
-        logger.debug("entity extraction failed: %s", exc)
+        from services.kb_builder import extract_entities_graphrag
+        ent_dict = extract_entities_graphrag(article)
+        for ent_list in ent_dict.values():
+            entities.extend(ent_list)
+        entities = sorted(set(entities))
+    except Exception:
+        try:
+            from layla.codex.enricher import extract_entities
+            entities = [e["name"] for e in extract_entities(article) if e.get("name")]
+        except Exception as exc:
+            logger.debug("entity extraction failed: %s", exc)
 
     _save_to_kb(topic, article, cfg)
     _link_codex(article)
