@@ -210,6 +210,47 @@ def build_behavior_block(aspect: dict) -> str:
     return "\n".join(parts)
 
 
+# ---------------------------------------------------------------------------
+# Aspect tool preferences
+# ---------------------------------------------------------------------------
+
+ASPECT_TOOL_PREFERENCES: dict[str, dict[str, list[str]]] = {
+    "cassandra": {
+        "boost": ["read_file", "grep_code", "run_python", "git_diff", "understand_file"],
+        "suppress": ["fetch_url"],
+    },
+    "echo": {
+        "boost": ["search_memories", "save_learning"],
+        "suppress": ["run_shell"],
+    },
+    "nyx": {
+        "boost": ["grep_code", "read_file", "understand_file", "git_log"],
+        "suppress": [],
+    },
+    "eris": {
+        "boost": ["web_search", "fetch_url", "brainstorm"],
+        "suppress": [],
+    },
+    "morrigan": {
+        "boost": ["create_plan", "execute_plan", "list_dir"],
+        "suppress": [],
+    },
+    "lilith": {
+        "boost": ["search_memories"],
+        "suppress": ["run_shell", "run_python", "write_file"],
+    },
+}
+
+
+def get_tool_preferences(aspect_id: str) -> dict:
+    """Return tool preference weights for an aspect.
+
+    Returns a dict with ``boost`` (list of tool names the aspect favours)
+    and ``suppress`` (list of tool names the aspect avoids).
+    """
+    return ASPECT_TOOL_PREFERENCES.get(aspect_id, {"boost": [], "suppress": []})
+
+
 def get_behavior_summary(aspect: dict) -> dict:
     """
     Return a structured summary of the active behavioral parameters.

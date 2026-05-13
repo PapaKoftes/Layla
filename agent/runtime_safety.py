@@ -538,6 +538,13 @@ def load_config() -> dict:
             "elasticsearch_url": "",
             "elasticsearch_index_prefix": "layla",
             "elasticsearch_api_key": None,
+            "aspect_model_overrides": {},
+            # Debate engine: "solo" (default), "auto", "debate", "council", "tribunal"
+            "deliberation_mode": "solo",
+            "debate_max_tokens": 800,
+            "debate_temperature": 0.7,
+            "debate_synthesis_max_tokens": 1200,
+            "deliberation_auto_threshold": 0.7,
         }
         hw_defaults = _hardware_derived_defaults()
         defaults.update(hw_defaults)

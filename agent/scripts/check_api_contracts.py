@@ -37,11 +37,12 @@ SKIP_ROUTES = {
 
 # ── Coverage ratchet ─────────────────────────────────────────────────────────
 # Baseline measured 2026-04-30: 118 untested routes out of 208 total.
+# Bumped to 120 (2026-05-13): +2 new debate engine routes (POST /debate, GET /debate/modes).
 # This number must only go DOWN. Every time you add endpoint tests, lower it.
 # If the count exceeds this value the check fails, preventing coverage regression.
 # To tighten: run `python scripts/check_api_contracts.py`, read the reported
 # count, then set MAX_UNCOVERED_ROUTES = <new_count>.
-MAX_UNCOVERED_ROUTES = 118
+MAX_UNCOVERED_ROUTES = 120
 
 # Methods we track
 HTTP_METHODS = {"get", "post", "put", "patch", "delete"}

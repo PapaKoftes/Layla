@@ -244,12 +244,19 @@ def _fast_chat_configured(cfg: dict) -> bool:
     return False
 
 
-def classify_task_for_routing(text: str, context: str = "", cfg: dict | None = None) -> str:
+def classify_task_for_routing(
+    text: str,
+    context: str = "",
+    cfg: dict | None = None,
+    aspect_id: str | None = None,
+) -> str:
     """
     Like classify_task, but optionally maps 'default' → 'chat' when route_default_to_chat_model
     is set and a fast/chat model is configured.
 
     Phase 0.4: Records routing decision metadata for telemetry via get_last_routing_decision().
+
+    When *aspect_id* is provided, the aspect override is forwarded to route_model().
     """
     import runtime_safety
 
@@ -263,13 +270,15 @@ def classify_task_for_routing(text: str, context: str = "", cfg: dict | None = N
         final_task_type = "chat"
         reason = "default→chat (route_default_to_chat_model=true + fast_chat_configured)"
 
-    selected = route_model(final_task_type)
+    selected = route_model(final_task_type, aspect_id=aspect_id)
+    if aspect_id:
+        reason += f" [aspect={aspect_id}]"
     # Build alternatives list for audit trail
     all_types = [tt for tt in TASK_TYPES if tt != final_task_type]
     alternatives = [
-        {"task_type": tt, "model": route_model(tt)}
+        {"task_type": tt, "model": route_model(tt, aspect_id=aspect_id)}
         for tt in all_types
-        if route_model(tt) != selected
+        if route_model(tt, aspect_id=aspect_id) != selected
     ]
     record_routing_decision(
         task_type=final_task_type,
@@ -280,10 +289,52 @@ def classify_task_for_routing(text: str, context: str = "", cfg: dict | None = N
     return final_task_type
 
 
-def route_model(task_type: str) -> str | None:
+def _load_aspect_overrides() -> dict:
+    """Load aspect_model_overrides from runtime config."""
+    try:
+        import runtime_safety
+        cfg = runtime_safety.load_config()
+        overrides = cfg.get("aspect_model_overrides", {})
+        return overrides if isinstance(overrides, dict) else {}
+    except Exception:
+        return {}
+
+
+def _resolve_aspect_model(aspect_id: str | None) -> tuple[str | None, dict]:
+    """
+    Check for an aspect-specific model override.
+
+    Returns:
+        (preferred_model_filename_or_None, aspect_override_dict)
+    """
+    if not aspect_id:
+        return None, {}
+    overrides = _load_aspect_overrides()
+    aspect_override = overrides.get(aspect_id, {})
+    if not isinstance(aspect_override, dict):
+        return None, {}
+    preferred = (aspect_override.get("preferred_model") or "").strip()
+    if preferred:
+        # Resolve alias if applicable
+        resolved = _resolve_models_block_alias(preferred)
+        if resolved:
+            return resolved, aspect_override
+    return None, aspect_override
+
+
+def route_model(task_type: str, aspect_id: str | None = None) -> str | None:
     """
     Return model filename for task type. None = use default from config.
+
+    When *aspect_id* is provided and a matching entry exists in
+    ``aspect_model_overrides``, the aspect's ``preferred_model`` wins
+    before the standard task-type lookup.
     """
+    # Aspect override takes priority
+    aspect_model, _ = _resolve_aspect_model(aspect_id)
+    if aspect_model:
+        return aspect_model
+
     cfg = _load_router_config()
     if task_type == "default":
         return cfg.get("default")
@@ -296,14 +347,24 @@ def select_model(
     context_len: int,
     hardware: dict,
     latency_budget: int,
+    aspect_id: str | None = None,
 ) -> str | None:
     """
     Task + hardware + latency aware model filename (for logging / routing).
     Uses llm_model_coding capability when coding; prefers coding_model when Magicoder wins benchmarks.
+
+    When *aspect_id* is provided, aspect overrides (preferred_model,
+    temperature_boost) are checked first.
     """
     import runtime_safety
 
     cfg = runtime_safety.load_config()
+
+    # Aspect override takes top priority
+    aspect_model, aspect_cfg = _resolve_aspect_model(aspect_id)
+    if aspect_model:
+        return _select_return(aspect_model, f"aspect_override:{aspect_id}")
+
     tt = task if task in TASK_TYPES else classify_task(task)
     try:
         from capabilities.registry import get_best_llm_filename_for_task
@@ -392,13 +453,32 @@ def select_model(
     return _select_return(route_model(tt), "route_model")
 
 
-def get_model_for_task(task_text: str) -> str | None:
+def get_model_for_task(task_text: str, aspect_id: str | None = None) -> str | None:
     """
     Classify task and return appropriate model filename.
     Returns None to use default (current config model).
+
+    When *aspect_id* is provided, the aspect override is checked first.
     """
     task_type = classify_task(task_text)
-    return route_model(task_type)
+    return route_model(task_type, aspect_id=aspect_id)
+
+
+def get_aspect_routing_params(aspect_id: str | None) -> dict:
+    """
+    Return aspect-specific routing parameters.
+
+    Keys in the returned dict:
+        preferred_model   -- str | None
+        temperature_boost -- float (0.0 if not configured)
+        reasoning_mode    -- str | None  (override for reasoning mode)
+    """
+    _, aspect_cfg = _resolve_aspect_model(aspect_id)
+    return {
+        "preferred_model": (aspect_cfg.get("preferred_model") or "").strip() or None,
+        "temperature_boost": float(aspect_cfg.get("temperature_boost", 0.0)),
+        "reasoning_mode": (aspect_cfg.get("reasoning_mode") or "").strip() or None,
+    }
 
 
 def is_routing_enabled() -> bool:
