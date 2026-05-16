@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
 logger = logging.getLogger("layla.character")
@@ -294,7 +294,7 @@ def reset_aspect_to_defaults(aspect_id: str) -> dict[str, Any]:
         return {"ok": False, "error": f"Unknown aspect: {aspect_id}"}
 
     try:
-        from layla.memory.db import get_all_user_identity, delete_user_identity
+        from layla.memory.db import delete_user_identity, get_all_user_identity
         uid = get_all_user_identity() or {}
         prefix = f"char_{aspect_id}_"
         removed = 0

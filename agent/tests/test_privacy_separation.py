@@ -1,7 +1,6 @@
 """TIER 6 — Privacy separation tests for Entity schema and memory routing."""
 import pytest
 
-
 # ── PrivacyLevel enum ────────────────────────────────────────────────────────
 
 
@@ -14,7 +13,7 @@ class TestPrivacyLevel:
         assert PrivacyLevel.SENSITIVE.value == "sensitive"
 
     def test_rank_order(self):
-        from schemas.entity import PrivacyLevel, _PRIVACY_RANK
+        from schemas.entity import _PRIVACY_RANK, PrivacyLevel
         assert _PRIVACY_RANK.index(PrivacyLevel.PUBLIC) < _PRIVACY_RANK.index(PrivacyLevel.WORKSPACE)
         assert _PRIVACY_RANK.index(PrivacyLevel.WORKSPACE) < _PRIVACY_RANK.index(PrivacyLevel.PERSONAL)
         assert _PRIVACY_RANK.index(PrivacyLevel.PERSONAL) < _PRIVACY_RANK.index(PrivacyLevel.SENSITIVE)

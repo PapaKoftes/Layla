@@ -12,8 +12,6 @@ from __future__ import annotations
 
 import sys
 import threading
-
-import pytest
 import time
 from pathlib import Path
 
@@ -292,6 +290,7 @@ def test_health_trace_summary_format(client):
 @pytest.fixture(scope="module")
 def client():
     from fastapi.testclient import TestClient
+
     from main import app
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c

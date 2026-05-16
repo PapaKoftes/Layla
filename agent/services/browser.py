@@ -48,6 +48,8 @@ def _is_safe_url(url: str) -> bool:
             return False
         if host.startswith("127.") or host.startswith("10.") or host.startswith("169.254."):
             return False
+        if host.startswith("192.168."):
+            return False
         if host.startswith("172."):
             parts = host.split(".")
             if len(parts) >= 2:
@@ -57,6 +59,9 @@ def _is_safe_url(url: str) -> bool:
                     b = -1
                 if 16 <= b <= 31:
                     return False
+        # Block IPv6 private/link-local (fd00::/8, fe80::/10)
+        if host.startswith("fd") or host.startswith("fe80"):
+            return False
         return True
     except Exception:
         return False

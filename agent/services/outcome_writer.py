@@ -4,6 +4,7 @@ Extracted from agent_loop (consolidation Phase 4).
 """
 from __future__ import annotations
 
+import collections
 import logging
 import threading
 
@@ -21,9 +22,10 @@ _ASPECT_LEARNING_TYPE: dict = {
     "lilith": "identity",
     "cassandra": "fact",
 }
-_GREETING_WORDS = frozenset({"hi", "hello", "hey", "thanks", "thank", "ok", "okay", "yes", "no", "sure", "cool"})
-_recent_learning_fingerprints: set = set()
-_recent_tool_pattern_fingerprints: set = set()
+from constants import GREETING_WORDS as _GREETING_WORDS  # P2-8
+
+_recent_learning_fingerprints: collections.OrderedDict = collections.OrderedDict()
+_recent_tool_pattern_fingerprints: collections.OrderedDict = collections.OrderedDict()
 
 
 def _maybe_save_echo_memory(
@@ -132,9 +134,11 @@ def _save_outcome_memory(state: dict) -> None:
             with _fingerprint_lock:
                 if fp in _recent_tool_pattern_fingerprints:
                     continue
-                _recent_tool_pattern_fingerprints.add(fp)
+                _recent_tool_pattern_fingerprints[fp] = None  # OrderedDict as ordered set
                 if len(_recent_tool_pattern_fingerprints) > 300:
-                    _recent_tool_pattern_fingerprints = set(list(_recent_tool_pattern_fingerprints)[-160:])
+                    # Evict oldest entries (first inserted), keep most recent 160
+                    while len(_recent_tool_pattern_fingerprints) > 160:
+                        _recent_tool_pattern_fingerprints.popitem(last=False)
             try:
                 save_learning(content=item[:240], kind="strategy")
                 saved += 1
@@ -344,9 +348,10 @@ def _auto_extract_learnings(user_msg: str, response: str, aspect_id: str) -> Non
                 fp = ("pref|" + pref[:80].lower()).strip()
                 with _fingerprint_lock:
                     if fp not in _recent_learning_fingerprints:
-                        _recent_learning_fingerprints.add(fp)
+                        _recent_learning_fingerprints[fp] = None
                         if len(_recent_learning_fingerprints) > 200:
-                            _recent_learning_fingerprints = set(list(_recent_learning_fingerprints)[-100:])
+                            while len(_recent_learning_fingerprints) > 100:
+                                _recent_learning_fingerprints.popitem(last=False)
                         save_learning(content=f"Operator preference: {pref}"[:240], kind="preference")
         except Exception:
             pass
@@ -355,9 +360,10 @@ def _auto_extract_learnings(user_msg: str, response: str, aspect_id: str) -> Non
             with _fingerprint_lock:
                 if fp in _recent_learning_fingerprints:
                     continue
-                _recent_learning_fingerprints.add(fp)
+                _recent_learning_fingerprints[fp] = None
                 if len(_recent_learning_fingerprints) > 200:
-                    _recent_learning_fingerprints = set(list(_recent_learning_fingerprints)[-100:])
+                    while len(_recent_learning_fingerprints) > 100:
+                        _recent_learning_fingerprints.popitem(last=False)
             try:
                 save_learning(content=item, kind=learning_type)
                 saved += 1

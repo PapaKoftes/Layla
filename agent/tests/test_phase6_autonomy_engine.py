@@ -227,10 +227,13 @@ class TestEstimateComplexity:
 
 class TestCheckpointManagement:
     def test_save_and_load(self, tmp_path):
-        from services.long_horizon_planner import (
-            DayChunk, LongHorizonPlan, load_checkpoint, save_checkpoint,
-        )
         import services.long_horizon_planner as mod
+        from services.long_horizon_planner import (
+            DayChunk,
+            LongHorizonPlan,
+            load_checkpoint,
+            save_checkpoint,
+        )
         original_dir = mod._CHECKPOINT_DIR
         mod._CHECKPOINT_DIR = tmp_path / "checkpoints"
 
@@ -250,8 +253,8 @@ class TestCheckpointManagement:
             mod._CHECKPOINT_DIR = original_dir
 
     def test_load_nonexistent(self, tmp_path):
-        from services.long_horizon_planner import load_checkpoint
         import services.long_horizon_planner as mod
+        from services.long_horizon_planner import load_checkpoint
         original_dir = mod._CHECKPOINT_DIR
         mod._CHECKPOINT_DIR = tmp_path / "checkpoints"
 
@@ -261,10 +264,13 @@ class TestCheckpointManagement:
             mod._CHECKPOINT_DIR = original_dir
 
     def test_list_checkpoints(self, tmp_path):
-        from services.long_horizon_planner import (
-            DayChunk, LongHorizonPlan, list_checkpoints, save_checkpoint,
-        )
         import services.long_horizon_planner as mod
+        from services.long_horizon_planner import (
+            DayChunk,
+            LongHorizonPlan,
+            list_checkpoints,
+            save_checkpoint,
+        )
         original_dir = mod._CHECKPOINT_DIR
         mod._CHECKPOINT_DIR = tmp_path / "checkpoints"
 

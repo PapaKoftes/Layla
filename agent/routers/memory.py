@@ -18,7 +18,13 @@ router = APIRouter(prefix="/memory", tags=["memory"])
 AGENT_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = AGENT_DIR.parent
 KNOWLEDGE_DIR = REPO_ROOT / "knowledge"
-DB_PATH = AGENT_DIR / "layla.db"
+def _resolve_db_path():
+    """Use the canonical DB path from db_connection (respects LAYLA_DATA_DIR)."""
+    try:
+        from layla.memory.db_connection import _resolve_db_path as _rdp
+        return _rdp()
+    except Exception:
+        return AGENT_DIR / "layla.db"
 
 
 def _get_db():
@@ -43,8 +49,9 @@ async def memory_stats():
         docs = list(KNOWLEDGE_DIR.rglob("*.md")) + list(KNOWLEDGE_DIR.rglob("*.txt"))
         stats["knowledge_docs"] = len(docs)
         stats["knowledge_files"] = [f.name for f in docs[:50]]
-    if DB_PATH.exists():
-        stats["db_size_kb"] = round(DB_PATH.stat().st_size / 1024, 1)
+    db_path = _resolve_db_path()
+    if db_path.exists():
+        stats["db_size_kb"] = round(db_path.stat().st_size / 1024, 1)
     try:
         get_recent_learnings, _ = _get_db()
         rows = get_recent_learnings(n=1000)

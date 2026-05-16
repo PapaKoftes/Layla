@@ -691,7 +691,8 @@ def build_system_head(
             except Exception:
                 pass
         if _german_enabled:
-            from services.german_mode import build_german_system_block, get_profile as _gprof
+            from services.german_mode import build_german_system_block
+            from services.german_mode import get_profile as _gprof
             _glevel = _gprof().get("level", "B1")
             _german_block = build_german_system_block(_glevel)
             system_instructions = system_instructions + "\n\n" + _german_block
@@ -728,8 +729,10 @@ def build_system_head(
         if cfg.get("project_memory_enabled", True) and (workspace_root or "").strip():
             from layla.tools.registry import inside_sandbox
             from services.project_memory import (
-                format_aspects_hint, format_for_prompt,
-                load_project_memory, memory_file_path,
+                format_aspects_hint,
+                format_for_prompt,
+                load_project_memory,
+                memory_file_path,
             )
             wrp = Path(str(workspace_root).strip()).expanduser().resolve()
             if wrp.is_dir() and inside_sandbox(wrp) and memory_file_path(wrp).is_file():
@@ -836,7 +839,9 @@ def build_system_head(
                 _style_identity_parts.append("User/companion context:\n" + "\n".join(parts))
             try:
                 from services.frame_modifier import (
-                    build_frame_block, load_stats_from_identity, write_profile_snapshot,
+                    build_frame_block,
+                    load_stats_from_identity,
+                    write_profile_snapshot,
                 )
                 _frame_stats = load_stats_from_identity(uid)
                 _frame_block = build_frame_block(_frame_stats)

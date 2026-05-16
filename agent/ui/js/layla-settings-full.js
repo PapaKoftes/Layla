@@ -108,7 +108,7 @@
   window.laylaLoadOptionalFeatures = laylaLoadOptionalFeatures;
 
   async function laylaInstallFeature(fid) {
-    if (!fid || !confirm('Install feature ' + fid + ' via pip (allowlisted packages)?')) return;
+    if (!fid || !(await laylaConfirm('Install feature ' + fid + ' via pip (allowlisted packages)?'))) return;
     try {
       var r = await fetch('/settings/install_feature', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ feature_id: fid }) });
       var d = await r.json();
@@ -139,7 +139,7 @@
     var ws = (winp && winp.value || '').trim();
     var msg = document.getElementById('admin-undo-msg');
     if (!ws) { if (msg) msg.textContent = 'Set workspace path'; return; }
-    if (!confirm('Revert the last Layla checkpoint commit in this repo?')) return;
+    if (!(await laylaConfirm('Revert the last Layla checkpoint commit in this repo?'))) return;
     try {
       var r = await fetch('/settings/git_undo_checkpoint', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workspace_root: ws }) });
       var d = await r.json();
@@ -360,6 +360,35 @@
       if (btn) btn.disabled = false;
     }
   };
+
+  // ── Deliberation mode selector ──────────────────────────────────────────────
+  window.setDeliberationMode = async function setDeliberationMode(mode) {
+    var valid = ['solo', 'auto', 'debate', 'council', 'tribunal'];
+    if (valid.indexOf(mode) < 0) mode = 'auto';
+    try {
+      var r = await fetch('/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deliberation_mode: mode }),
+      });
+      var d = await r.json().catch(function () { return {}; });
+      __toast((d && d.ok) ? ('Deliberation: ' + mode) : 'Setting failed — check server logs');
+    } catch (_) {
+      __toast('Could not save deliberation mode');
+    }
+  };
+
+  // Load current deliberation mode from server on init
+  (function initDelibModeSelect() {
+    try {
+      fetch('/health').then(function (r) { return r.json(); }).then(function (d) {
+        var cfg = (d && d.config) || {};
+        var mode = cfg.deliberation_mode || 'auto';
+        var sel = document.getElementById('deliberation-mode-select');
+        if (sel) sel.value = mode;
+      }).catch(function () {});
+    } catch (_) {}
+  })();
 
   // ── Phone access ───────────────────────────────────────────────────────────
   window.loadPhoneAccess = async function loadPhoneAccess() {

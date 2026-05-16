@@ -1,14 +1,15 @@
 """Tests for the dignity engine -- Layla's autonomy to push back on abuse."""
 import pytest
+
 from services.dignity_engine import (
     DignityResult,
     DignityState,
-    analyze,
-    analyze_and_get_prompt,
-    reset_session,
-    get_session_state,
     _pattern_score,
     _tone_score,
+    analyze,
+    analyze_and_get_prompt,
+    get_session_state,
+    reset_session,
 )
 
 
