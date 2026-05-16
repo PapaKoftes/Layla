@@ -589,13 +589,14 @@ def run_completion_with_fallback(
         if not cluster_enabled:
             raise
         logger.info("Local inference failed (%s); trying cluster offload...", local_err)
+        _saved_local_err = local_err
 
     # Cluster fallback
     peers = _get_cluster_peers()
     if not peers:
         logger.warning("No cluster peers available for offloading")
         return {"choices": [{"message": {"content":
-            f"Local inference failed and no cluster peers available. Error: {local_err!s}"}}]}
+            f"Local inference failed and no cluster peers available. Error: {_saved_local_err!s}"}}]}
 
     timeout = timeout_seconds if timeout_seconds is not None else 120
     effective_model = None
@@ -622,7 +623,7 @@ def run_completion_with_fallback(
             logger.warning("Cluster peer %s failed: %s; trying next...", peer.get("name"), e)
 
     return {"choices": [{"message": {"content":
-        f"All inference targets failed. Local: {local_err!s}. Last cluster: {last_err!s}"}}]}
+        f"All inference targets failed. Local: {_saved_local_err!s}. Last cluster: {last_err!s}"}}]}
 
 
 def get_cluster_status() -> dict:

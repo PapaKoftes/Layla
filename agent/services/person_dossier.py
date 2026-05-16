@@ -104,7 +104,7 @@ def build_dossier(name: str) -> PersonDossier:
     dossier = PersonDossier(name=name)
 
     try:
-        from layla.codex.codex_db import search_entities, get_entity_graph
+        from layla.codex.codex_db import get_entity_graph, search_entities
 
         # Find the person entity
         matches = search_entities(name, entity_type="person", limit=3)
@@ -199,7 +199,7 @@ def update_person_mention(
     Creates the entity if it doesn't exist. Updates last_seen_at.
     """
     try:
-        from layla.codex.codex_db import upsert_entity, search_entities
+        from layla.codex.codex_db import search_entities, upsert_entity
         from layla.memory.db_connection import _conn
 
         # Check if entity exists

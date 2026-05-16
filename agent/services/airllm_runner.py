@@ -110,7 +110,6 @@ def get_info() -> dict:
     except ImportError:
         airllm_version = None
 
-    cfg = _cfg()
     return {
         "enabled": _enabled(),
         "installed": airllm_version is not None,
@@ -165,7 +164,9 @@ def unload_model(model_path: str | None = None) -> None:
     else:
         _model_cache.clear()
     try:
-        import torch, gc
+        import gc
+
+        import torch
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

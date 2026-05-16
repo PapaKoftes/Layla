@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 from dataclasses import dataclass, field
 
 logger = logging.getLogger("layla")
@@ -170,12 +171,14 @@ class DignityState:
 
 # Module-level session state (reset per session)
 _session_state = DignityState()
+_session_lock = threading.Lock()
 
 
 def reset_session() -> None:
     """Reset dignity tracking for a new session."""
     global _session_state
-    _session_state = DignityState()
+    with _session_lock:
+        _session_state = DignityState()
 
 
 def get_session_state() -> DignityState:
@@ -257,14 +260,15 @@ def analyze(
     threshold = 0.15 if enforcement == "firm" else 0.25
     threshold *= (1.0 - sensitivity * 0.5)  # Higher sensitivity = lower threshold
 
-    if result.severity > threshold:
-        result.abuse_detected = True
-        _session_state.degrade(result.severity, sensitivity)
-    else:
-        # Respectful message -- slight recovery
-        _session_state.recover(0.02)
+    with _session_lock:
+        if result.severity > threshold:
+            result.abuse_detected = True
+            _session_state.degrade(result.severity, sensitivity)
+        else:
+            # Respectful message -- slight recovery
+            _session_state.recover(0.02)
 
-    result.escalation_level = _session_state.escalation_level
+        result.escalation_level = _session_state.escalation_level
 
     # Generate boundary prompt if escalated
     if result.escalation_level > 0:
@@ -286,9 +290,11 @@ def should_inject_boundary(cfg: dict) -> str:
     """
     if not cfg.get("dignity_engine_enabled", True):
         return ""
-    if _session_state.escalation_level <= 0:
+    with _session_lock:
+        level = _session_state.escalation_level
+    if level <= 0:
         return ""
-    return _BOUNDARY_PROMPTS.get(_session_state.escalation_level, "")
+    return _BOUNDARY_PROMPTS.get(level, "")
 
 
 def analyze_and_get_prompt(message: str, cfg: dict) -> str:

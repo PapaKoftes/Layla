@@ -4,7 +4,7 @@ Post-session and periodic memory maintenance: summaries, dedup hints, learning r
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 logger = logging.getLogger("layla")
@@ -86,7 +86,7 @@ def apply_retention_policies(cfg: dict | None = None) -> dict[str, Any]:
 
         migrate()
         c = cfg or {}
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         def _cutoff(days: int) -> str:
             return (now - timedelta(days=int(days))).isoformat()
@@ -97,6 +97,11 @@ def apply_retention_policies(cfg: dict | None = None) -> dict[str, Any]:
             ("tool_outcomes", int(c.get("retention_tool_outcomes_days", 90)), None),
             ("conversation_messages", int(c.get("retention_conversation_messages_days", 90)), None),
             ("outcome_evaluations", int(c.get("retention_outcome_evaluations_days", 180)), None),
+            # P1-3: expanded retention policy tables
+            ("tool_calls", int(c.get("retention_tool_calls_days", 90)), None),
+            ("telemetry_events", int(c.get("retention_telemetry_events_days", 90)), None),
+            ("model_outcomes", int(c.get("retention_model_outcomes_days", 180)), None),
+            ("route_telemetry", int(c.get("retention_route_telemetry_days", 90)), None),
             # low-churn
             ("conversation_summaries", int(c.get("retention_conversation_summaries_days", 365)), None),
             ("relationship_memory", int(c.get("retention_relationship_memory_days", 365)), None),

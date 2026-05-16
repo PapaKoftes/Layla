@@ -1,7 +1,7 @@
 """Tests for litellm multi-provider gateway."""
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
+import pytest
 
 # ── Helper: mock litellm module ─────────────────────────────────────────────
 
@@ -232,8 +232,8 @@ class TestComplete:
             complete([{"role": "user", "content": "Hello"}])
 
     def test_no_litellm_raises(self):
-        from services.litellm_gateway import complete
         import services.litellm_gateway as mod
+        from services.litellm_gateway import complete
         old = mod._litellm
         mod._litellm = None
         with patch.object(mod, "_import_litellm", return_value=None):

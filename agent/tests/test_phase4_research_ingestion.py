@@ -384,10 +384,9 @@ class TestIngestText:
         assert result.skipped is False
         # save_learning should have been called with tags containing topic
         if mock_save.called:
-            call_kwargs = mock_save.call_args
             # Check tags include topic
-            tags = call_kwargs.kwargs.get("tags", "") if call_kwargs.kwargs else ""
             # May be in positional or keyword args
+            pass
 
 
 class TestIngestFile:

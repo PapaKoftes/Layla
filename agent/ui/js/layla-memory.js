@@ -140,7 +140,7 @@ async function laylaMemSaveEdit(id) {
 
 // ─── Delete ───────────────────────────────────────────────────────────────────
 async function laylaMemDelete(id) {
-  if (!confirm('Delete this learning?')) return;
+  if (!(await laylaConfirm('Delete this learning?'))) return;
   try {
     const res = await fetch(`/memory/${id}`, { method: 'DELETE' });
     const data = await res.json();

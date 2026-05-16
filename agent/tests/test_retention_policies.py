@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 def test_apply_retention_policies_deletes_old_rows(tmp_path, monkeypatch):
@@ -14,7 +14,7 @@ def test_apply_retention_policies_deletes_old_rows(tmp_path, monkeypatch):
     from services.memory_consolidation import apply_retention_policies
 
     migrate()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     old = (now - timedelta(days=10)).isoformat()
     fresh = now.isoformat()
 

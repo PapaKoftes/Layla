@@ -176,7 +176,8 @@ def _expand_abbreviations(text: str) -> tuple[str, list[str]]:
     for pat, expansion in _ABBREV_MAP.items():
         if re.search(pat, text):
             # Don't replace — just note; avoids breaking code snippets
-            expansions.append(f"'{pat.strip(r'\\b')}' likely means '{expansion}'")
+            stripped_pat = pat.strip(r'\b')
+            expansions.append(f"'{stripped_pat}' likely means '{expansion}'")
     return text, expansions
 
 

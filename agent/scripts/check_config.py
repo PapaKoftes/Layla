@@ -15,6 +15,7 @@ Usage:
     echo $?   # 0 = clean, 1 = issues found
 """
 from __future__ import annotations
+
 import json
 import sys
 from pathlib import Path
@@ -28,8 +29,8 @@ def find_duplicate_keys(text: str) -> list[tuple[str, int]]:
     Nested array objects (e.g. knowledge_sources[{url:...},{url:...}]) are
     intentionally excluded -- duplicate keys inside arrays are valid JSON.
     """
-    from collections import Counter
     import re
+    from collections import Counter
     # Only match keys that appear at the top level of the JSON object
     # (indented by 0 or 2 spaces, not inside nested arrays/objects)
     keys = re.findall(r'(?m)^  "([^"]+)"\s*:', text)

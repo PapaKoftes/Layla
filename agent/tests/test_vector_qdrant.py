@@ -1,6 +1,7 @@
 """Tests for Qdrant vector store adapter."""
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 class TestIsAvailable:

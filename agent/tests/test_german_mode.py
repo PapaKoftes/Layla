@@ -12,10 +12,8 @@ from __future__ import annotations
 
 import sqlite3
 import sys
-
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -53,6 +51,7 @@ def tmp_db(tmp_path, monkeypatch):
 @pytest.fixture()
 def client():
     from fastapi.testclient import TestClient
+
     from main import app
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
@@ -79,7 +78,6 @@ from services.german_mode import (
     score_complexity,
     set_level,
 )
-
 
 # ---------------------------------------------------------------------------
 # score_complexity

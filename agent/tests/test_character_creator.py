@@ -7,6 +7,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from routers.character import router
 from services.character_creator import (
     ALL_ASPECTS,
     ASPECT_DEFAULTS,
@@ -16,7 +17,6 @@ from services.character_creator import (
     get_available_titles,
     personality_to_prompt_hints,
 )
-from routers.character import router
 
 app = FastAPI()
 app.include_router(router)

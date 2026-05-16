@@ -49,13 +49,13 @@
   try {
     var needMarked = (typeof window.marked === 'undefined');
     var needHl = (typeof window.hljs === 'undefined');
-    var needPurify = (typeof window.DOMPurify === 'undefined');
+    // DOMPurify is vendored locally (purify.min.js loaded at top of page)
     if (needMarked) _loadScript('https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js').catch(function(){});
     if (needHl) {
       _loadCss('https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css').catch(function(){});
       _loadScript('https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js').catch(function(){});
     }
-    if (needPurify) _loadScript('https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js').catch(function(){});
+    // DOMPurify CDN fallback removed — vendored locally at /layla-ui/vendor/js/purify.min.js
   } catch (_) {}
 })();
 (function(){
@@ -200,6 +200,7 @@
     <button onclick="openSettings()" title="Settings" aria-label="Settings">⚙</button>
     <button type="button" onclick="toggleComposePanel()" title="Working notes (merged into request context)" aria-label="Working notes">📝 Notes</button>
     <button type="button" id="chat-rail-toggle" onclick="toggleChatRailMobile()" title="Chats" aria-label="Open chats">💬 Chats</button>
+    <button type="button" class="rp-toggle-btn" onclick="toggleRightPanel()" title="Panels" aria-label="Toggle right panel">☰</button>
     <button type="button" onclick="typeof retryLastMessage==='function'&&retryLastMessage()" title="Remove last exchange and resend" aria-label="Retry last message">retry</button>
 
     <button onclick="clearChat()" title="Clear chat history" aria-label="Clear chat" style="background:transparent;border-color:var(--border)">clear</button>
@@ -288,6 +289,8 @@
   </div>
 
   <div id="chat-rail-backdrop" onclick="closeChatRailMobile()" aria-hidden="true"></div>
+  <div id="sidebar-backdrop" onclick="closeMobileSidebar()" aria-hidden="true"></div>
+  <div id="rp-backdrop" onclick="closeRightPanel()" aria-hidden="true"></div>
 
   <!-- Chat area -->
   <main class="main-area" id="main-chat-area" aria-label="Chat area">
@@ -420,6 +423,17 @@
           <label class="option-row" id="reasoning-effort-row" title="Use extra reasoning budget for harder prompts">
             <input type="checkbox" id="reasoning-effort"> Think harder
           </label>
+          <label class="option-row" title="Deliberation mode: how many aspects weigh in on each response">
+            <span style="min-width:6rem;display:inline-block">Deliberation</span>
+            <select id="deliberation-mode-select" style="font-size:0.72rem;background:var(--code-bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 6px" onchange="setDeliberationMode(this.value)">
+              <option value="solo">Solo (single voice)</option>
+              <option value="auto" selected>Auto (detect when needed)</option>
+              <option value="debate">Debate (2 aspects argue)</option>
+              <option value="council">Council (3 aspects deliberate)</option>
+              <option value="tribunal">Tribunal (all 6 aspects)</option>
+            </select>
+          </label>
+          <p style="font-size:0.58rem;color:var(--text-dim);margin:4px 0 0 12px;line-height:1.35">Auto: Layla decides when to invoke multiple voices based on topic complexity. Debate/Council/Tribunal: always engage that many aspects. Solo: fastest, single aspect.</p>
         </div>
         <div class="option-card">
           <div class="option-card-title">Content policy <span class="option-pill">config</span></div>
