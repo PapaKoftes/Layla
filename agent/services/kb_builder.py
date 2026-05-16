@@ -67,8 +67,8 @@ import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
-from urllib.request import urlopen
 from urllib.error import URLError
+from urllib.request import urlopen
 
 logger = logging.getLogger("layla")
 
@@ -446,8 +446,9 @@ def extract_entities_graphrag(text: str) -> dict[str, list[str]]:
         import graphrag
         # GraphRAG entity extraction requires an LLM backend
         try:
-            from services.llm_gateway import run_completion
             import json as _json
+
+            from services.llm_gateway import run_completion
 
             prompt = (
                 "Extract all named entities from the following text. "

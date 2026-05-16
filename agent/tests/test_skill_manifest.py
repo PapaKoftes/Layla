@@ -102,7 +102,7 @@ class TestEntryPointValidation:
 
 class TestPermissions:
     def test_valid_permissions(self):
-        from services.skill_manifest import validate_manifest, VALID_PERMISSIONS
+        from services.skill_manifest import VALID_PERMISSIONS, validate_manifest
         m = {"name": "x", "version": "1.0", "description": "d", "entry_point": "e.py",
              "permissions": list(VALID_PERMISSIONS)[:3]}
         errors = validate_manifest(m)

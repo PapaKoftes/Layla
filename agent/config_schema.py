@@ -116,6 +116,7 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "hint": "Allow adult/NSFW content in system policy when combined with uncensored; use @lilith + register keywords per message for Lilith NSFW mode.",
     },
     {"key": "enable_cot", "type": "boolean", "category": "safety", "default": True, "hint": "Chain-of-thought reasoning."},
+    {"key": "deliberation_mode", "type": "string", "category": "safety", "options": ["solo", "auto", "debate", "council", "tribunal"], "default": "auto", "hint": "Multi-aspect deliberation: solo=one voice, auto=detect complexity, debate=2, council=3, tribunal=all 6."},
     {"key": "enable_self_reflection", "type": "boolean", "category": "safety", "default": False, "hint": "Post-response self-reflection."},
     {
         "key": "direct_feedback_enabled",

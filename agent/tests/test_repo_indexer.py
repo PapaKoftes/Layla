@@ -67,7 +67,7 @@ def test_extract_symbols_ast_finds_imports():
 
 
 def test_index_file_stores_symbols(tmp_path, fresh_db):
-    from services.repo_indexer import index_file, get_file_symbols
+    from services.repo_indexer import get_file_symbols, index_file
     py = tmp_path / "mod.py"
     py.write_text("class Engine:\n    def start(self): pass\n\ndef run(): pass\n", encoding="utf-8")
     ok = index_file(py, tmp_path, db_path=fresh_db)
@@ -80,7 +80,7 @@ def test_index_file_stores_symbols(tmp_path, fresh_db):
 
 def test_index_file_idempotent(tmp_path, fresh_db):
     """Indexing the same file twice should not duplicate symbols."""
-    from services.repo_indexer import index_file, get_symbols
+    from services.repo_indexer import get_symbols, index_file
     py = tmp_path / "idm.py"
     py.write_text("def alpha(): pass\n", encoding="utf-8")
     index_file(py, tmp_path, db_path=fresh_db)
@@ -90,7 +90,7 @@ def test_index_file_idempotent(tmp_path, fresh_db):
 
 
 def test_index_workspace_repo_indexes_all_py(tmp_path, fresh_db):
-    from services.repo_indexer import index_workspace_repo, get_stats
+    from services.repo_indexer import get_stats, index_workspace_repo
     (tmp_path / "a.py").write_text("def aa(): pass\n", encoding="utf-8")
     (tmp_path / "b.py").write_text("class Bb: pass\n", encoding="utf-8")
     result = index_workspace_repo(tmp_path, db_path=fresh_db)
@@ -113,7 +113,7 @@ def test_search_symbols_finds_partial_match(tmp_path, fresh_db):
 
 
 def test_get_callers_of(tmp_path, fresh_db):
-    from services.repo_indexer import index_file, get_callers_of
+    from services.repo_indexer import get_callers_of, index_file
     py = tmp_path / "caller.py"
     py.write_text("def main():\n    helper()\n\ndef helper(): pass\n", encoding="utf-8")
     index_file(py, tmp_path, db_path=fresh_db)
@@ -123,7 +123,7 @@ def test_get_callers_of(tmp_path, fresh_db):
 
 
 def test_get_symbol_context_returns_string(tmp_path, fresh_db):
-    from services.repo_indexer import index_file, get_symbol_context
+    from services.repo_indexer import get_symbol_context, index_file
     py = tmp_path / "ctx.py"
     py.write_text("def process_data(items, limit): pass\n", encoding="utf-8")
     index_file(py, tmp_path, db_path=fresh_db)
@@ -134,7 +134,7 @@ def test_get_symbol_context_returns_string(tmp_path, fresh_db):
 
 def test_export_graphml(tmp_path, fresh_db):
     pytest.importorskip("networkx")
-    from services.repo_indexer import index_workspace_repo, export_graphml
+    from services.repo_indexer import export_graphml, index_workspace_repo
     (tmp_path / "g.py").write_text("class Graph:\n    def edges(self): pass\n", encoding="utf-8")
     index_workspace_repo(tmp_path, db_path=fresh_db)
     gml = tmp_path / "out.graphml"
@@ -144,7 +144,7 @@ def test_export_graphml(tmp_path, fresh_db):
 
 
 def test_skip_dirs_ignored(tmp_path, fresh_db):
-    from services.repo_indexer import index_workspace_repo, get_stats
+    from services.repo_indexer import get_stats, index_workspace_repo
     cache_dir = tmp_path / "__pycache__"
     cache_dir.mkdir()
     (cache_dir / "skip_me.py").write_text("def should_not_index(): pass\n", encoding="utf-8")
@@ -165,8 +165,9 @@ def test_stats_empty_db(fresh_db):
 
 def test_no_orphaned_symbols_after_reindex(tmp_path, fresh_db):
     """After force_reindex, there should be no orphaned symbols."""
-    from services.repo_indexer import index_workspace_repo
     import sqlite3
+
+    from services.repo_indexer import index_workspace_repo
     (tmp_path / "x.py").write_text("def foo(): pass\n", encoding="utf-8")
     index_workspace_repo(tmp_path, db_path=fresh_db)
     # Force reindex

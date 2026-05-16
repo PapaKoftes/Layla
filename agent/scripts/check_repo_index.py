@@ -21,7 +21,7 @@ from pathlib import Path
 AGENT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(AGENT_DIR))
 
-from services.repo_indexer import _DEFAULT_DB, _conn, migrate, get_stats, get_symbols
+from services.repo_indexer import _DEFAULT_DB, _conn, get_stats, get_symbols, migrate
 
 
 def check_db_readable() -> tuple[bool, str]:
@@ -71,8 +71,10 @@ def check_orphaned_symbols() -> tuple[bool, str]:
 
 def check_symbol_schema() -> tuple[bool, str]:
     try:
-        from services.repo_indexer import index_file, get_file_symbols
-        import tempfile, os
+        import os
+        import tempfile
+
+        from services.repo_indexer import get_file_symbols, index_file
         with tempfile.TemporaryDirectory() as td:
             test_root = Path(td)
             test_file = test_root / "test_module.py"
@@ -115,6 +117,7 @@ def check_graphml_export() -> tuple[bool, str]:
         return True, "SKIP: networkx not installed"
     try:
         import tempfile
+
         from services.repo_indexer import export_graphml
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

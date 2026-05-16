@@ -78,9 +78,13 @@ class TaskContextFilter(logging.Filter):
         return True
 
 
-def install_filter(logger_name: str = "layla") -> None:
-    """Attach TaskContextFilter to the named logger (idempotent)."""
-    log = logging.getLogger(logger_name)
+def install_filter(logger_name: str | None = "layla") -> None:
+    """Attach TaskContextFilter to the named logger (idempotent).
+
+    Pass ``None`` or ``""`` to install on the root logger — required when
+    the root handler's formatter references ``%(task_ctx)s``.
+    """
+    log = logging.getLogger(logger_name or None)  # getLogger(None) → root
     for f in log.filters:
         if isinstance(f, TaskContextFilter):
             return

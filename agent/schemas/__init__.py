@@ -4,6 +4,6 @@ stored anywhere in the system (SQLite, ChromaDB, knowledge graph, KB articles).
 
 Import from here to ensure schema consistency across all services.
 """
-from schemas.entity import Entity, Relationship, EntityType, RelationshipType
+from schemas.entity import Entity, EntityType, Relationship, RelationshipType
 
 __all__ = ["Entity", "Relationship", "EntityType", "RelationshipType"]

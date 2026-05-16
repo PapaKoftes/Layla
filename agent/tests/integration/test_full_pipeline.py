@@ -1,6 +1,7 @@
 """Integration tests: end-to-end pipeline verification across all phases."""
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 class TestConfigIntegrity:
@@ -64,8 +65,11 @@ class TestProviderHealthIntegration:
 
     def test_health_lifecycle(self):
         from services.provider_health import (
-            record_success, record_failure,
-            is_healthy, get_all_status, reset_all,
+            get_all_status,
+            is_healthy,
+            record_failure,
+            record_success,
+            reset_all,
         )
         reset_all()
 
@@ -140,8 +144,9 @@ class TestWebSocketIntegration:
 
     @pytest.mark.asyncio
     async def test_ws_manager_lifecycle(self):
-        from services.ws_manager import ConnectionManager, create_message, MSG_SYSTEM
         from unittest.mock import AsyncMock
+
+        from services.ws_manager import MSG_SYSTEM, ConnectionManager, create_message
 
         mgr = ConnectionManager()
         ws = AsyncMock()

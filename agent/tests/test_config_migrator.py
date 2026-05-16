@@ -12,7 +12,7 @@ class TestMigrateConfig:
         assert "tunnel_token_hash" in cfg
 
     def test_full_config_no_changes(self):
-        from services.config_migrator import migrate_config, _NEW_DEFAULTS
+        from services.config_migrator import _NEW_DEFAULTS, migrate_config
         # Start with a config that has all keys
         cfg = dict(_NEW_DEFAULTS)
         _, changes = migrate_config(cfg)
@@ -49,7 +49,7 @@ class TestMigrationStatus:
         assert status["pending_changes"] > 0
 
     def test_no_migration_needed(self):
-        from services.config_migrator import get_migration_status, _NEW_DEFAULTS
+        from services.config_migrator import _NEW_DEFAULTS, get_migration_status
         cfg = dict(_NEW_DEFAULTS)
         status = get_migration_status(cfg)
         assert status["needs_migration"] is False

@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 logger = logging.getLogger("layla")
@@ -132,7 +132,7 @@ def get_study_calendar(days_ahead: int = 7) -> dict[str, int]:
         migrate()
 
         calendar: dict[str, int] = {}
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         with _conn() as db:
             # Check if next_review_at column exists
