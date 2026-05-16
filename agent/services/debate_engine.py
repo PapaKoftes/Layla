@@ -215,7 +215,8 @@ def _parallel_llm_calls(
         return results
 
     results: list = [None] * len(callables)
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+    pool = ThreadPoolExecutor(max_workers=max_workers)
+    try:
         futures = {
             pool.submit(fn, *args, **kwargs): idx
             for idx, (fn, args, kwargs) in enumerate(callables)
@@ -230,9 +231,11 @@ def _parallel_llm_calls(
                     results[idx] = {"error": str(e)}
         except TimeoutError:
             logger.warning("debate_engine: parallel calls timed out after 55s")
-            # Cancel any pending futures
             for f in futures:
                 f.cancel()
+    finally:
+        # shutdown(wait=False) so we don't block if threads are stuck in native code
+        pool.shutdown(wait=False, cancel_futures=True)
     return results
 
 
