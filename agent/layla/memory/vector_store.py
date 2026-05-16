@@ -10,6 +10,8 @@ THREAD SAFETY:
   - _embed_cached (LRU): thread-safe (functools.lru_cache), increases from 256 to 1024
   - embed_batch(): NOT locked; call only from context builder (single-threaded per goal)
 """
+from __future__ import annotations
+
 import hashlib
 import logging
 import os
@@ -17,9 +19,25 @@ import time
 import uuid
 import warnings
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import numpy as np
+if TYPE_CHECKING:
+    import numpy as np
+
+
+class _LazyNumpy:
+    """Lazy proxy for numpy — avoids top-level import that can SIGILL on CI runners."""
+
+    _mod = None
+
+    def __getattr__(self, name: str) -> Any:
+        if _LazyNumpy._mod is None:
+            import numpy
+            _LazyNumpy._mod = numpy
+        return getattr(_LazyNumpy._mod, name)
+
+
+np = _LazyNumpy()  # type: ignore[assignment]
 
 logger = logging.getLogger("layla")
 
@@ -259,7 +277,7 @@ def get_embed_model_name() -> str:
     return _current_model_name
 
 
-def embed(text: str) -> np.ndarray:
+def embed(text: str) -> Any:
     """Return a normalized float32 embedding. Results are LRU-cached per text."""
     return np.array(_embed_cached(text), dtype="float32")
 
@@ -726,7 +744,7 @@ def mmr_rerank(query: str, docs: list[dict], k: int = 5, lambda_: float = 0.7) -
     selected: list[int] = []
     remaining = list(range(len(docs)))
 
-    def _sim(a: np.ndarray, b: np.ndarray) -> float:
+    def _sim(a: Any, b: Any) -> float:
         return float(np.dot(a, b))  # cosine for normalized vecs
 
     for _ in range(min(k, len(docs))):
@@ -979,6 +997,8 @@ def search_memories_full(
     domain_boost_keywords: optional list of domain terms from the active aspect; results matching
       these terms get a small score uplift to surface domain-relevant memories.
     """
+    if k <= 0 or not query or not query.strip():
+        return []
     # Resolve cross_encoder_limit from config if not passed
     cfg_local: dict = {}
     if cross_encoder_limit is None:
