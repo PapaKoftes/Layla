@@ -226,13 +226,14 @@ async def lifespan(app: FastAPI):
                             pass
         except Exception:
             pass
-        # Pre-warm LLM in background thread â€” first request will be instant
-        try:
-            from services.llm_gateway import prewarm_llm
-            prewarm_llm()
-            logger.info("LLM pre-warm thread started")
-        except Exception as e:
-            logger.warning("LLM pre-warm thread failed: %s", e)
+        # Pre-warm LLM in background thread -- first request will be instant
+        if cfg.get("llm_prewarm_enabled", True):
+            try:
+                from services.llm_gateway import prewarm_llm
+                prewarm_llm()
+                logger.info("LLM pre-warm thread started")
+            except Exception as e:
+                logger.warning("LLM pre-warm thread failed: %s", e)
         if cfg.get("benchmark_on_load"):
             def _startup_capability_benchmarks() -> None:
                 try:
@@ -672,9 +673,9 @@ def serve_service_worker():
     return FileResponse(str(p), media_type="application/javascript; charset=utf-8")
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 # Â§16 Remote: auth and endpoint allowlist (production-safe, minimal)
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 def _remote_allowed_paths(cfg: dict) -> list[str]:
     """Derive allowlist from remote_mode if remote_allow_endpoints not set."""
     explicit = cfg.get("remote_allow_endpoints") or []
@@ -867,7 +868,7 @@ async def trace_id_middleware(request: Request, call_next):
     return response
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 @app.get("/manifest.json")
 def manifest():
     """PWA manifest."""
