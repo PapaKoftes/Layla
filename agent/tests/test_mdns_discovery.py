@@ -5,17 +5,17 @@ from unittest.mock import MagicMock, patch
 
 from services.mdns_discovery import (
     SERVICE_TYPE,
+    _discovered_peers,
     _get_or_create_instance_id,
     _is_zeroconf_available,
+    _peers_lock,
     detect_hardware_tier,
-    get_discovered_peers,
     get_best_peer_for_inference,
+    get_discovered_peers,
     get_instance_id,
     get_status,
     is_running,
     peer_count,
-    _discovered_peers,
-    _peers_lock,
 )
 
 

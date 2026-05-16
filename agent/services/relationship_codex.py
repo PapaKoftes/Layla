@@ -200,7 +200,7 @@ def generate_proposals(
         pr = {
             "id": str(uuid.uuid4()),
             "name": name.strip(),
-            "created_at": str(__import__("datetime").datetime.utcnow().isoformat()) + "Z",
+            "created_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
             "patch": {"notes": "", "traits": [], "history": []},
             "status": "proposed",
         }

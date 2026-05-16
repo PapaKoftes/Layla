@@ -1,6 +1,7 @@
 """Tests for transports/base inbound gate (no Layla server)."""
 from __future__ import annotations
 
+import importlib
 import sys
 from pathlib import Path
 
@@ -10,6 +11,9 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# Ensure we import the repo-level transports.base, not a stale cached module
+for _k in [k for k in sys.modules if k == "transports" or k.startswith("transports.")]:
+    del sys.modules[_k]
 from transports import base as tb  # noqa: E402
 
 

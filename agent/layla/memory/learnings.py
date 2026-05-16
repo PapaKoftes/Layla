@@ -44,10 +44,10 @@ def save_learning(
             if len(_recent_learning_ts) >= limit:
                 try:
                     from services.observability import log_learning_skipped
-
                     log_learning_skipped(reason="rate_limited")
                 except Exception:
                     pass
+                logger.debug("save_learning rate-limited (%d/%d in %.0fs window)", limit, limit, window_s)
                 return -1
             _recent_learning_ts.append(now)
     except Exception:
@@ -128,6 +128,29 @@ def save_learning(
         db.commit()
         rid = cur.lastrowid
         if rid and int(rid) > 0:
+            # P1-9: dual-write consistency — if no embedding_id yet, try ChromaDB write now
+            if not embedding_id:
+                try:
+                    from layla.memory.vector_store import add_vector, embed
+                    vec = embed(content)
+                    meta = {"content": content, "type": learning_type}
+                    if tags_s:
+                        meta["tags"] = tags_s
+                    new_eid = add_vector(vec, meta)
+                    if new_eid:
+                        db.execute("UPDATE learnings SET embedding_id=? WHERE id=?", (new_eid, int(rid)))
+                        db.commit()
+                except Exception as _vec_exc:
+                    logger.warning("save_learning: ChromaDB write failed for learning %s, marking needs_reindex=1: %s", rid, _vec_exc)
+                    try:
+                        has_reindex_col = any(
+                            r[1] == "needs_reindex" for r in db.execute("PRAGMA table_info(learnings)").fetchall()
+                        )
+                        if has_reindex_col:
+                            db.execute("UPDATE learnings SET needs_reindex=1 WHERE id=?", (int(rid),))
+                            db.commit()
+                    except Exception:
+                        pass
             asp = (aspect_id or "").strip()[:64]
             if asp:
                 try:
@@ -466,9 +489,9 @@ def get_learnings_due_for_review(limit: int = 10) -> list[dict]:
 def schedule_next_review(learning_id: int, interval_hours: float = 24.0) -> None:
     """Schedule next review for a learning. Uses simple interval (FSRS-style would need more params)."""
     migrate()
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     try:
-        next_at = (datetime.utcnow() + timedelta(hours=interval_hours)).isoformat() + "Z"
+        next_at = (datetime.now(timezone.utc) + timedelta(hours=interval_hours)).isoformat()
         with _conn() as db:
             db.execute("UPDATE learnings SET next_review_at = ? WHERE id = ?", (next_at, learning_id))
             db.commit()
@@ -525,5 +548,51 @@ def get_top_learnings_for_planning(limit: int = 5, *, min_confidence: float = 0.
             return [dict(r) for r in rows]
     except Exception:
         return []
+
+
+def reindex_failed_learnings() -> int:
+    """P1-9: re-embed learnings whose ChromaDB write failed (needs_reindex=1).
+
+    Queries up to 50 rows, re-embeds each, and writes to ChromaDB.
+    On success, clears needs_reindex and updates embedding_id.
+    Returns count of successfully reindexed learnings.
+    """
+    migrate()
+    reindexed = 0
+    try:
+        with _conn() as db:
+            cols = {r[1] for r in db.execute("PRAGMA table_info(learnings)").fetchall()}
+            if "needs_reindex" not in cols:
+                return 0
+            rows = db.execute(
+                "SELECT id, content, type FROM learnings WHERE needs_reindex=1 LIMIT 50"
+            ).fetchall()
+            if not rows:
+                return 0
+        from layla.memory.vector_store import add_vector, embed
+        for row in rows:
+            learning_id = row["id"]
+            content = row["content"] or ""
+            learning_type = row["type"] or "fact"
+            if not content.strip():
+                continue
+            try:
+                vec = embed(content)
+                meta = {"content": content, "type": learning_type}
+                new_eid = add_vector(vec, meta)
+                with _conn() as db:
+                    db.execute(
+                        "UPDATE learnings SET embedding_id=?, needs_reindex=0 WHERE id=?",
+                        (new_eid, int(learning_id)),
+                    )
+                    db.commit()
+                reindexed += 1
+            except Exception as _e:
+                logger.warning("reindex_failed_learnings: failed for learning %s: %s", learning_id, _e)
+    except Exception as _e:
+        logger.warning("reindex_failed_learnings: %s", _e)
+    if reindexed > 0:
+        logger.info("reindex_failed_learnings: successfully reindexed %d learnings", reindexed)
+    return reindexed
 
 

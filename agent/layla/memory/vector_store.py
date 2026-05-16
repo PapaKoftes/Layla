@@ -41,6 +41,7 @@ CHROMA_PATH = MEMORY_DIR / "chroma_db"
 
 _embedder = None
 _embedder_dim: int = 768  # set when embedder loads
+_current_model_name: str = ""  # P1-4: embedding model provenance
 _chroma_collection = None
 _embedder_lock = None
 _chroma_lock = None
@@ -62,7 +63,7 @@ def _get_embedder():
 
     Thread-safe: uses RLock to allow recursive acquisition in same thread.
     """
-    global _embedder, _embedder_dim, _embedder_lock
+    global _embedder, _embedder_dim, _embedder_lock, _current_model_name
     if _embedder is not None:
         return _embedder
     if _embedder_lock is None:
@@ -79,10 +80,12 @@ def _get_embedder():
         try:
             model = SentenceTransformer("nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True)
             _embedder_dim = 768
+            _current_model_name = "nomic-ai/nomic-embed-text-v1.5"
             log.info("Embedding model: nomic-embed-text-v1.5 (768d)")
         except Exception:
             model = SentenceTransformer("all-MiniLM-L6-v2")
             _embedder_dim = 384
+            _current_model_name = "all-MiniLM-L6-v2"
             log.info("Embedding model: all-MiniLM-L6-v2 (384d) [nomic unavailable]")
         # Quantize to int8 for faster CPU inference when torch is available
         try:
@@ -163,6 +166,17 @@ def _get_chroma_collection():
                             stored_dim,
                             current_dim,
                         )
+                # P1-4: check embed_model provenance mismatch
+                stored_metas = peek.get("metadatas") or []
+                if stored_metas and isinstance(stored_metas[0], dict):
+                    existing_model = stored_metas[0].get("embed_model", "")
+                    if existing_model and _current_model_name and existing_model != _current_model_name:
+                        logger.warning(
+                            "Embedding model mismatch: collection uses %s but current model is %s. "
+                            "Semantic search quality may be degraded.",
+                            existing_model,
+                            _current_model_name,
+                        )
         except Exception as _dim_e:
             logger.debug("ChromaDB dimension check failed: %s", _dim_e)
         return _chroma_collection
@@ -188,6 +202,7 @@ def rebuild_collection() -> dict:
         count = 0
         try:
             from layla.memory.db import get_recent_learnings
+            from layla.memory.db_connection import _conn as _db_conn
 
             learnings = get_recent_learnings(n=10000)
             for row in learnings:
@@ -199,8 +214,23 @@ def rebuild_collection() -> dict:
                 tags = row.get("tags")
                 if tags:
                     meta["tags"] = str(tags)
+                # P1-4: embed model provenance
+                if _current_model_name:
+                    meta["embed_model"] = _current_model_name
                 uid = str(uuid.uuid4())
                 coll.add(ids=[uid], embeddings=[vec.astype(float).tolist()], metadatas=[meta])
+                # P1-9: update SQLite embedding_id to match the new UUID
+                learning_id = row.get("id")
+                if learning_id:
+                    try:
+                        with _db_conn() as db:
+                            db.execute(
+                                "UPDATE learnings SET embedding_id = ? WHERE id = ?",
+                                (uid, int(learning_id)),
+                            )
+                            db.commit()
+                    except Exception as _upd_e:
+                        logger.debug("rebuild: failed to update embedding_id for learning %s: %s", learning_id, _upd_e)
                 count += 1
         except Exception as _idx_e:
             logger.warning("rebuild re-index failed: %s", _idx_e)
@@ -224,6 +254,11 @@ def _use_chroma() -> bool:
 
 # ─── Public API ─────────────────────────────────────────────────────────────
 
+def get_embed_model_name() -> str:
+    """Return the name of the currently loaded embedding model (P1-4 provenance)."""
+    return _current_model_name
+
+
 def embed(text: str) -> np.ndarray:
     """Return a normalized float32 embedding. Results are LRU-cached per text."""
     return np.array(_embed_cached(text), dtype="float32")
@@ -235,6 +270,9 @@ def add_vector(vec: np.ndarray, metadata: dict) -> str:
     try:
         coll = _get_chroma_collection()
         meta_flat = {k: (v if isinstance(v, (str, int, float, bool)) else str(v)) for k, v in metadata.items()}
+        # P1-4: embed model provenance — record which model produced this vector
+        if _current_model_name:
+            meta_flat["embed_model"] = _current_model_name
         coll.add(ids=[uid], embeddings=[vec.astype(float).tolist()], metadatas=[meta_flat])
     except Exception as _exc:
         logger.warning("vector_store:L150: %s", _exc, exc_info=True)
@@ -277,6 +315,9 @@ def upsert_vector(doc_id: str, vec: np.ndarray, metadata: dict) -> None:
     try:
         coll = _get_chroma_collection()
         meta_flat = {k: (v if isinstance(v, (str, int, float, bool)) else str(v)) for k, v in metadata.items()}
+        # P1-4: embed model provenance
+        if _current_model_name:
+            meta_flat["embed_model"] = _current_model_name
         coll.upsert(ids=[doc_id], embeddings=[vec.astype(float).tolist()], metadatas=[meta_flat])
     except Exception as _exc:
         logger.warning("vector_store:L161: %s", _exc, exc_info=True)

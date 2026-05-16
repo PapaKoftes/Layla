@@ -259,7 +259,48 @@
 
   function toggleMobileSidebar() {
     var sb = document.querySelector('.sidebar');
-    if (sb) sb.classList.toggle('mobile-sidebar-hidden');
+    if (!sb) return;
+    var isOpen = sb.classList.contains('mobile-open');
+    var bd = document.getElementById('sidebar-backdrop');
+    if (isOpen) {
+      sb.classList.remove('mobile-open');
+      if (bd) { bd.classList.remove('visible'); bd.setAttribute('aria-hidden', 'true'); }
+    } else {
+      sb.classList.add('mobile-open');
+      if (bd) { bd.classList.add('visible'); bd.setAttribute('aria-hidden', 'false'); }
+      // Close right panel if open
+      closeRightPanel();
+    }
+  }
+
+  function closeMobileSidebar() {
+    var sb = document.querySelector('.sidebar');
+    if (sb) sb.classList.remove('mobile-open');
+    var bd = document.getElementById('sidebar-backdrop');
+    if (bd) { bd.classList.remove('visible'); bd.setAttribute('aria-hidden', 'true'); }
+  }
+
+  function toggleRightPanel() {
+    var rp = document.getElementById('layla-right-panel');
+    if (!rp) return;
+    var isOpen = rp.classList.contains('rp-open');
+    var bd = document.getElementById('rp-backdrop');
+    if (isOpen) {
+      rp.classList.remove('rp-open');
+      if (bd) { bd.classList.remove('visible'); bd.setAttribute('aria-hidden', 'true'); }
+    } else {
+      rp.classList.add('rp-open');
+      if (bd) { bd.classList.add('visible'); bd.setAttribute('aria-hidden', 'false'); }
+      // Close sidebar if open
+      closeMobileSidebar();
+    }
+  }
+
+  function closeRightPanel() {
+    var rp = document.getElementById('layla-right-panel');
+    if (rp) rp.classList.remove('rp-open');
+    var bd = document.getElementById('rp-backdrop');
+    if (bd) { bd.classList.remove('visible'); bd.setAttribute('aria-hidden', 'true'); }
   }
 
   // ── Chat export / clear / fill / CLI help ─────────────────────────────────
@@ -286,8 +327,8 @@
     }
   }
 
-  function clearChat() {
-    if (!confirm('Clear the chat panel?')) return;
+  async function clearChat() {
+    if (!(await laylaConfirm('Clear the chat panel?'))) return;
     var chat = document.getElementById('chat');
     if (chat) {
       chat.innerHTML = '<div id="chat-empty">' + window.renderPromptTilesAndEmptyState() + '</div>';
@@ -453,6 +494,9 @@
   window.toggleTheme             = toggleTheme;
   window.toggleSidebarCompact    = toggleSidebarCompact;
   window.toggleMobileSidebar     = toggleMobileSidebar;
+  window.closeMobileSidebar      = closeMobileSidebar;
+  window.toggleRightPanel        = toggleRightPanel;
+  window.closeRightPanel         = closeRightPanel;
   window.exportChat              = exportChat;
   window.clearChat               = clearChat;
   window.fillPrompt              = fillPrompt;

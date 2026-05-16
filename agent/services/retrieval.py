@@ -220,80 +220,17 @@ def retrieve_graph_context(query: str, k: int = TOP_K) -> list[dict]:
     return results[:k]
 
 
-def _build_retrieved_context_impl(query: str, k: int, *, coding_boost: bool = False) -> str:
-    """Inner implementation (called with cache when enabled). Combined output capped at MAX_RETRIEVED_CHARS.
-    Runs learnings, documents, graph retrieval in parallel."""
-    k = max(1, min(int(k), MAX_K))
-    learnings, docs, graph = [], [], []
-    with ThreadPoolExecutor(max_workers=3) as ex:
-        f_learn = ex.submit(retrieve_learnings, query, k, coding_boost=coding_boost)
-        f_docs = ex.submit(retrieve_documents, query, k)
-        f_graph = ex.submit(retrieve_graph_context, query, k)
-        learnings = f_learn.result()
-        docs = f_docs.result()
-        graph = f_graph.result()
-    lines: list[str] = []
-    line_word_sets: list[set[str]] = []
-    remaining = MAX_RETRIEVED_CHARS - len("Relevant knowledge:\n")
-    per_cap, overlap_th = _retrieval_guard_config()
+def _retrieve_and_build(query: str, k: int, coding_boost: bool = False, track_ids: bool = False):
+    """Shared retrieval logic for both plain and ID-tracked variants.
 
-    def _append_line(line: str) -> bool:
-        nonlocal remaining
-        if remaining <= 40 or not line.strip():
-            return False
-        cap_body = per_cap
-        if len(line) > cap_body:
-            line = line[:cap_body].rsplit(" ", 1)[0]
-        ws = _word_set(line)
-        for prev_ws in line_word_sets:
-            if _jaccard(ws, prev_ws) > overlap_th:
-                return False
-        if len(line) > remaining:
-            line = line[:remaining].rsplit(" ", 1)[0]
-        if not line.strip():
-            return False
-        lines.append(line)
-        line_word_sets.append(ws)
-        remaining -= len(line) + 1
-        return True
+    Runs learnings, documents, graph retrieval in parallel. Merges results
+    into a deduplicated, capped context string.
 
-    for r in learnings:
-        content = (r.get("content") or r.get("text") or "").strip()
-        if len(content) > per_cap:
-            content = content[:per_cap].rsplit(" ", 1)[0]
-        kind = (r.get("type") or r.get("learning_type") or "fact")
-        if content and remaining > 40:
-            line = f"* {kind}: {content}"
-            if not _append_line(line):
-                break
-    for d in docs:
-        if remaining <= 40:
-            break
-        text = (d.get("text") or "").strip()
-        if len(text) > per_cap:
-            text = text[:per_cap].rsplit(" ", 1)[0]
-        src = d.get("source", "")
-        if text:
-            line = f"* doc excerpt ({src}): {text}"
-            if not _append_line(line):
-                break
-    for g in graph:
-        if remaining <= 40:
-            break
-        label = (g.get("label") or "").strip()
-        if len(label) > per_cap:
-            label = label[:per_cap]
-        if label:
-            line = f"* graph relation: {label}"
-            if not _append_line(line):
-                break
-    if not lines:
-        return ""
-    return "Relevant knowledge:\n" + "\n".join(lines)
-
-
-def _build_retrieved_context_impl_with_ids(query: str, k: int, *, coding_boost: bool = False) -> tuple[str, list[str]]:
-    """Like _build_retrieved_context_impl, but also returns learning ids included in the context."""
+    When *track_ids* is True, also collects the ``id`` field from each
+    learning that made it into the final output and returns a tuple
+    ``(context_str, learning_ids)``.  Otherwise returns just the
+    ``context_str``.
+    """
     k = max(1, min(int(k), MAX_K))
     learnings, docs, graph = [], [], []
     with ThreadPoolExecutor(max_workers=3) as ex:
@@ -338,11 +275,12 @@ def _build_retrieved_context_impl_with_ids(query: str, k: int, *, coding_boost: 
             line = f"* {kind}: {content}"
             if not _append_line(line):
                 break
-            _lid = r.get("id")
-            if _lid is not None:
-                s = str(_lid).strip()
-                if s:
-                    learning_ids.append(s)
+            if track_ids:
+                _lid = r.get("id")
+                if _lid is not None:
+                    s = str(_lid).strip()
+                    if s:
+                        learning_ids.append(s)
     for d in docs:
         if remaining <= 40:
             break
@@ -365,8 +303,24 @@ def _build_retrieved_context_impl_with_ids(query: str, k: int, *, coding_boost: 
             if not _append_line(line):
                 break
     if not lines:
-        return "", []
-    return "Relevant knowledge:\n" + "\n".join(lines), learning_ids
+        if track_ids:
+            return "", []
+        return ""
+    context_str = "Relevant knowledge:\n" + "\n".join(lines)
+    if track_ids:
+        return context_str, learning_ids
+    return context_str
+
+
+def _build_retrieved_context_impl(query: str, k: int, *, coding_boost: bool = False) -> str:
+    """Inner implementation (called with cache when enabled). Combined output capped at MAX_RETRIEVED_CHARS.
+    Runs learnings, documents, graph retrieval in parallel."""
+    return _retrieve_and_build(query, k, coding_boost=coding_boost, track_ids=False)
+
+
+def _build_retrieved_context_impl_with_ids(query: str, k: int, *, coding_boost: bool = False) -> tuple[str, list[str]]:
+    """Like _build_retrieved_context_impl, but also returns learning ids included in the context."""
+    return _retrieve_and_build(query, k, coding_boost=coding_boost, track_ids=True)
 
 
 def build_retrieved_context(query: str, k: int = TOP_K, reasoning_mode: str = "light") -> str:

@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import logging
 import re
-import urllib.request
 import urllib.error
+import urllib.request
 from typing import Any
 
 log = logging.getLogger("layla")

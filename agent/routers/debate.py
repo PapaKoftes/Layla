@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter
+
+from schemas.requests import DebateRequest
 
 logger = logging.getLogger("layla")
 
@@ -18,7 +20,7 @@ router = APIRouter(tags=["debate"])
 
 
 @router.post("/debate")
-async def run_debate(req: dict = Body(default={})):
+async def run_debate(req: DebateRequest):
     """
     Run multi-aspect deliberation on a goal.
 
@@ -32,16 +34,15 @@ async def run_debate(req: dict = Body(default={})):
         JSON with mode, final_response, aspect_responses, critiques,
         participating_aspects, synthesis_notes.
     """
+    from fastapi.responses import JSONResponse as _JSONResp
+
     import runtime_safety
     from services.debate_engine import run_deliberation
 
-    goal = (req.get("goal") or "").strip()
-    if not goal:
-        return {"ok": False, "error": "goal is required"}
-
-    mode = (req.get("mode") or "auto").strip().lower()
-    aspects = req.get("aspects")
-    state = req.get("state") or {}
+    goal = req.goal
+    mode = req.mode
+    aspects = req.aspects
+    state = req.state or {}
 
     if isinstance(aspects, list):
         aspects = [str(a).strip().lower() for a in aspects if a]
@@ -72,7 +73,7 @@ async def run_debate(req: dict = Body(default={})):
         }
     except Exception as exc:
         logger.error("debate endpoint failed: %s", exc, exc_info=True)
-        return {"ok": False, "error": str(exc)}
+        return _JSONResp({"ok": False, "error": str(exc)}, status_code=500)
 
 
 @router.get("/debate/modes")

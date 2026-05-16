@@ -366,6 +366,23 @@ def select_model(
         return _select_return(aspect_model, f"aspect_override:{aspect_id}")
 
     tt = task if task in TASK_TYPES else classify_task(task)
+
+    # Provider health awareness: when litellm is enabled, check if the
+    # preferred provider for this task type is healthy.  This lets the
+    # routing layer record a warning (and optionally prefer local) when
+    # the remote provider circuit breaker is open.
+    if cfg.get("litellm_enabled"):
+        try:
+            from services.provider_health import get_all_status as _ph_all
+            from services.provider_health import is_healthy as _ph_healthy
+            all_status = _ph_all()
+            unhealthy = [p for p, s in all_status.items() if not s.get("healthy", True)]
+            if unhealthy:
+                logger.info("model_router: unhealthy providers: %s — preferring local models", unhealthy)
+                record_routing_decision(tt, None, f"litellm_providers_unhealthy:{','.join(unhealthy)}")
+        except Exception:
+            pass
+
     try:
         from capabilities.registry import get_best_llm_filename_for_task
 
@@ -522,6 +539,19 @@ def get_model_routing_summary(cfg: dict | None = None) -> dict:
     except Exception:
         airllm_info = {"available": False}
 
+    # Provider health (litellm multi-provider gateway)
+    provider_health_info: dict = {}
+    litellm_enabled = bool(cfg.get("litellm_enabled"))
+    if litellm_enabled:
+        try:
+            from services.provider_health import get_all_status, get_total_cost
+            provider_health_info = {
+                "providers": get_all_status(),
+                "total_cost_usd": get_total_cost(),
+            }
+        except Exception:
+            provider_health_info = {"providers": {}, "total_cost_usd": 0.0}
+
     return {
         "routing_enabled": is_routing_enabled(),
         "dual_models_active": should_use_dual_models(),
@@ -532,6 +562,8 @@ def get_model_routing_summary(cfg: dict | None = None) -> dict:
         "dual_model_threshold_gb": cfg.get("dual_model_threshold_gb", 24),
         "airllm_available": airllm_info.get("available", False),
         "airllm_model": airllm_info.get("model_path") or None,
+        "litellm_enabled": litellm_enabled,
+        "provider_health": provider_health_info,
     }
 
 

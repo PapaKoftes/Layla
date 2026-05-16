@@ -6,18 +6,19 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from fastapi.testclient import TestClient
 
 # Minimal app for testing the pairing router
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
 from routers.pairing import (
+    _PAIRED_DEVICES_FILE,
+    _PAIRING_LOCK,
     _generate_pin,
     _generate_shared_secret,
     _load_paired_devices,
-    _save_paired_devices,
-    _PAIRED_DEVICES_FILE,
     _pending_pairings,
-    _PAIRING_LOCK,
+    _save_paired_devices,
     router,
 )
 

@@ -340,8 +340,8 @@
     }
 
     if (resetBtn) {
-      resetBtn.addEventListener('click', function () {
-        if (!confirm('Reset ' + _selectedAspect + ' to factory defaults? All customizations will be lost.')) return;
+      resetBtn.addEventListener('click', async function () {
+        if (!(await laylaConfirm('Reset ' + _selectedAspect + ' to factory defaults? All customizations will be lost.'))) return;
         _api('/aspects/' + _selectedAspect + '/reset', { method: 'POST' }).then(function (r) {
           if (r.ok !== false) {
             _toast(_selectedAspect + ' reset to defaults');

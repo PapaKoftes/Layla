@@ -316,7 +316,30 @@
   window.hideEmpty = hideEmpty;
 
   function renderPromptTilesAndEmptyState() {
+    var isFirstRun = false;
+    try { isFirstRun = !localStorage.getItem('layla_onboarded'); } catch (_) {}
+
+    var welcomeBlock = '';
+    if (isFirstRun) {
+      welcomeBlock =
+        '<div style="max-width:480px;text-align:left;margin:0 auto 16px;padding:14px 16px;border:1px solid var(--border);border-radius:6px;background:rgba(0,0,0,0.25)">' +
+          '<div style="font-family:\'Cinzel\',serif;font-size:0.9rem;color:var(--asp);letter-spacing:0.12em;margin-bottom:8px">Welcome to Layla</div>' +
+          '<div style="font-size:0.74rem;color:var(--text);line-height:1.6">' +
+            'Layla is a multi-aspect AI agent with persistent memory. She grows with you.' +
+          '</div>' +
+          '<div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;font-size:0.68rem;color:var(--text-dim);line-height:1.45">' +
+            '<div><strong style="color:var(--asp-morrigan)">6 Voices</strong> — Switch between Morrigan (code), Nyx (research), Echo (empathy), Eris (creativity), Cassandra (critique), Lilith (safety) in the left panel.</div>' +
+            '<div><strong style="color:var(--asp-nyx)">Persistent Memory</strong> — She remembers conversations, learns from interactions, and improves over time. Browse in Library tab.</div>' +
+            '<div><strong style="color:var(--asp-echo)">Deliberation</strong> — For complex questions, multiple aspects can debate and synthesize a response. Set mode in Settings.</div>' +
+            '<div><strong style="color:var(--asp-eris)">Tools</strong> — File operations, code execution, web search, research missions. Enable in Settings &rarr; Permissions.</div>' +
+            '<div><strong style="color:var(--asp-cassandra)">Keyboard</strong> — Enter to send, Shift+Enter for newline, Ctrl+K to search chats, Ctrl+/ for shortcuts.</div>' +
+          '</div>' +
+          '<button type="button" onclick="try{localStorage.setItem(\'layla_onboarded\',\'1\');this.parentNode.style.display=\'none\';}catch(_){}" style="margin-top:10px;padding:6px 16px;font-size:0.7rem;background:var(--asp-mid);border:1px solid var(--asp);color:var(--text);border-radius:4px;cursor:pointer;font-family:\'JetBrains Mono\',monospace">Got it</button>' +
+        '</div>';
+    }
+
     return '<div class="sigil">∴</div><div class="hint">she is waiting</div>' +
+      welcomeBlock +
       '<div class="prompt-tiles" id="prompt-tiles">' +
         '<button class="prompt-tile" onclick="fillPrompt(\'Explain how \')"><span class="tile-icon">✦</span><span class="tile-text">Explain something</span></button>' +
         '<button class="prompt-tile" onclick="fillPrompt(\'Write Python code to \')"><span class="tile-icon">⚔</span><span class="tile-text">Write code for me</span></button>' +
@@ -330,6 +353,25 @@
       '<div class="try-this-chips" style="margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center">' +
         '<button class="try-this-chip" onclick="fillPrompt(\'Explain quantum entanglement\')" style="padding:6px 12px;font-size:0.75rem;background:var(--asp-mid);border:1px solid var(--asp);color:var(--text);border-radius:4px;cursor:pointer">Explain quantum entanglement</button>' +
         '<button class="try-this-chip" onclick="fillPrompt(\'Write a Python hello world\')" style="padding:6px 12px;font-size:0.75rem;background:var(--asp-mid);border:1px solid var(--asp);color:var(--text);border-radius:4px;cursor:pointer">Write a Python hello world</button>' +
+      '</div>' +
+      '<div id="layla-capabilities-ref" style="margin-top:18px;max-width:520px;text-align:left">' +
+        '<details style="font-size:0.66rem;color:var(--text-dim)">' +
+          '<summary style="cursor:pointer;color:var(--asp);letter-spacing:0.08em;font-size:0.62rem;text-transform:uppercase;font-family:\'Cinzel\',serif;list-style:none">What can Layla do?</summary>' +
+          '<div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;line-height:1.45">' +
+            '<div>Write, refactor, and debug code</div>' +
+            '<div>Research topics with web search</div>' +
+            '<div>Read, create, and edit files</div>' +
+            '<div>Execute shell commands (with approval)</div>' +
+            '<div>Multi-aspect deliberation on decisions</div>' +
+            '<div>Persistent memory across sessions</div>' +
+            '<div>Spaced repetition study sessions</div>' +
+            '<div>Knowledge base with semantic search</div>' +
+            '<div>Plan and execute multi-step tasks</div>' +
+            '<div>Voice input/output (STT + TTS)</div>' +
+            '<div>Export chats, memory, and system state</div>' +
+            '<div>Discord bot integration</div>' +
+          '</div>' +
+        '</details>' +
       '</div>';
   }
   window.renderPromptTilesAndEmptyState = renderPromptTilesAndEmptyState;
@@ -569,13 +611,17 @@
       div.appendChild(trace);
     }
 
-    // ── Deliberation indicator ──
+    // ── Deliberation indicator / transcript ──
     if (deliberated) {
       var d = document.createElement('details');
       d.className = 'tool-trace';
       d.style.borderLeft = '2px solid var(--violet,#8844cc)';
       d.innerHTML = '<summary style="color:var(--violet,#8844cc);font-size:0.68rem">✦ She deliberated</summary><div class="think-bubble">She weighed this with her inner voices before answering.</div>';
       div.appendChild(d);
+    }
+    // Attach full deliberation metadata if present (stored by SSE handler)
+    if (div._deliberationMeta) {
+      _renderDeliberationTranscript(div, div._deliberationMeta);
     }
 
     // ── Reasoning tree summary ──
@@ -585,6 +631,79 @@
     chat.scrollTop = chat.scrollHeight;
   }
   window.addMsg = addMsg;
+
+  // ── Deliberation transcript renderer ──────────────────────────────────────
+  var ASPECT_SYMBOLS = {
+    morrigan: '⚔', nyx: '✦', echo: '◎', eris: '⚡', cassandra: '⌖', lilith: '⊛'
+  };
+  var MODE_LABELS = {
+    debate: '⚔ Debate (2 aspects)',
+    council: '⊛ Council (3 aspects)',
+    tribunal: '✦ Tribunal (all aspects)',
+  };
+
+  function _renderDeliberationTranscript(msgDiv, meta) {
+    if (!meta || !meta.mode || meta.mode === 'solo') return;
+    var container = document.createElement('details');
+    container.className = 'deliberation';
+    container.open = false;
+
+    var aspects = meta.participating_aspects || [];
+    var label = MODE_LABELS[meta.mode] || ('✦ ' + meta.mode);
+    var summaryEl = document.createElement('summary');
+    summaryEl.className = 'deliberation-label';
+    summaryEl.innerHTML = label + ' — <span style="opacity:0.7">' + aspects.length + ' voices</span>';
+    container.appendChild(summaryEl);
+
+    // Aspect responses
+    var responses = meta.aspect_responses || {};
+    var critiques = meta.critiques || {};
+    var hasResponses = Object.keys(responses).length > 0;
+    var hasCritiques = Object.keys(critiques).length > 0;
+
+    if (hasResponses) {
+      var respSection = document.createElement('div');
+      respSection.style.cssText = 'margin-top:6px;display:flex;flex-direction:column;gap:6px';
+      aspects.forEach(function (asp) {
+        if (!responses[asp]) return;
+        var card = document.createElement('div');
+        card.style.cssText = 'padding:6px 8px;border-left:2px solid var(--asp-' + asp + ', var(--violet));background:rgba(0,0,0,0.2);border-radius:2px';
+        var header = document.createElement('div');
+        header.style.cssText = 'font-size:0.66rem;font-weight:600;color:var(--asp-' + asp + ', var(--text));margin-bottom:3px;text-transform:uppercase;letter-spacing:0.08em';
+        header.textContent = (ASPECT_SYMBOLS[asp] || '◇') + ' ' + asp;
+        card.appendChild(header);
+        var body = document.createElement('div');
+        body.style.cssText = 'font-size:0.72rem;color:var(--text);line-height:1.4;white-space:pre-wrap';
+        body.textContent = String(responses[asp] || '').trim().slice(0, 800);
+        card.appendChild(body);
+
+        // Show critique for this aspect if available
+        if (hasCritiques && critiques[asp]) {
+          var crit = document.createElement('div');
+          crit.style.cssText = 'margin-top:4px;padding:4px 6px;font-size:0.66rem;color:var(--text-dim);border-top:1px solid rgba(255,255,255,0.06);font-style:italic';
+          crit.textContent = '↳ Critique: ' + String(critiques[asp] || '').trim().slice(0, 400);
+          card.appendChild(crit);
+        }
+        respSection.appendChild(card);
+      });
+      container.appendChild(respSection);
+    }
+
+    // Synthesis notes
+    if (meta.synthesis_notes) {
+      var synth = document.createElement('div');
+      synth.style.cssText = 'margin-top:6px;padding:6px 8px;background:rgba(61,0,80,0.2);border:1px solid var(--border);border-radius:3px;font-size:0.68rem;color:var(--text-dim)';
+      synth.innerHTML = '<strong style="color:var(--asp);font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase">Synthesis</strong>';
+      var synthBody = document.createElement('div');
+      synthBody.style.cssText = 'margin-top:3px;white-space:pre-wrap';
+      synthBody.textContent = String(meta.synthesis_notes || '').trim().slice(0, 600);
+      synth.appendChild(synthBody);
+      container.appendChild(synth);
+    }
+
+    msgDiv.appendChild(container);
+  }
+  window._renderDeliberationTranscript = _renderDeliberationTranscript;
 
   // ── Separator ───────────────────────────────────────────────────────────────
   function addSeparator() {

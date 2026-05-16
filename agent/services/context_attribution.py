@@ -193,6 +193,7 @@ def persist_attributions(
         return
     try:
         import json
+
         from layla.memory.db_connection import _conn
         data = json.dumps([
             {

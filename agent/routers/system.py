@@ -368,6 +368,9 @@ def health(request: Request):
             payload["active_model"] = ""
         payload["effective_config"] = build_effective_config_public(cfg, _eff)
         payload["features_enabled"] = build_features_enabled(cfg, _eff)
+        payload["config"] = {
+            "deliberation_mode": str(cfg.get("deliberation_mode", "auto")),
+        }
         deps = build_dependency_status(probe_chroma=deep)
         payload["dependencies"] = deps
         if deep and deps.get("chroma") != "missing":
@@ -498,7 +501,7 @@ def provider_status(provider: str):
 def models_costs():
     """Cost tracking across all LLM providers."""
     try:
-        from services.provider_health import get_total_cost, get_cost_by_provider
+        from services.provider_health import get_cost_by_provider, get_total_cost
         return {
             "total_cost_usd": get_total_cost(),
             "by_provider": get_cost_by_provider(),
@@ -641,11 +644,12 @@ def remote_tunnel_health():
 def remote_token_rotate():
     """Generate a new auth token and return it (shown once)."""
     try:
-        import runtime_safety
-        from services.tunnel_auth import rotate_token
         import datetime
         import json
         from pathlib import Path
+
+        import runtime_safety
+        from services.tunnel_auth import rotate_token
 
         cfg = runtime_safety.load_config()
         new_token, new_hash = rotate_token(cfg)
@@ -656,7 +660,7 @@ def remote_token_rotate():
         except Exception:
             existing = {}
         existing["tunnel_token_hash"] = new_hash
-        existing["tunnel_token_created_at"] = datetime.datetime.utcnow().isoformat()
+        existing["tunnel_token_created_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
         return {
             "ok": True,
