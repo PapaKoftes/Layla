@@ -510,19 +510,16 @@ class TestExtractTextHelper:
 
 
 class TestDecomposeTopic:
-    def test_fallback_on_failure(self):
-        """Without LLM gateway, should return [topic]."""
+    @patch("services.llm_gateway.run_completion", side_effect=RuntimeError("no model"))
+    def test_fallback_on_failure(self, _mock_llm):
+        """When run_completion raises, should fallback to [topic]."""
         from services.research_orchestrator import decompose_topic
         result = decompose_topic("test topic", {})
-        # Should fallback since llm_gateway won't be available in tests
         assert result == ["test topic"]
 
-    @patch("services.research_orchestrator.run_completion" if False else
-           "services.research_orchestrator._extract_text")
-    def test_fallback_returns_list(self, mock_extract):
+    @patch("services.llm_gateway.run_completion", side_effect=Exception("no LLM"))
+    def test_fallback_returns_list(self, _mock_llm):
         from services.research_orchestrator import decompose_topic
-        # Force an exception by patching _extract_text to fail
-        mock_extract.side_effect = Exception("no LLM")
         result = decompose_topic("Python async programming", {})
         assert isinstance(result, list)
         assert len(result) >= 1
@@ -545,8 +542,9 @@ class TestSearchWeb:
 
 
 class TestSynthesizeArticle:
-    def test_fallback_concatenation(self):
-        """Without LLM, should concatenate sources as fallback."""
+    @patch("services.llm_gateway.run_completion", side_effect=RuntimeError("no model"))
+    def test_fallback_concatenation(self, _mock_llm):
+        """When LLM fails, should concatenate sources as fallback."""
         from services.research_orchestrator import Source, synthesize_article
         sources = [
             Source(url="https://example.com", content="Example content about testing.",
