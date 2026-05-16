@@ -58,7 +58,8 @@ jobs:
             "n_gpu_layers": 0,
             "scheduler_study_enabled": false,
             "embedding_cache_warmup_enabled": false,
-            "embedder_prewarm_enabled": false
+            "embedder_prewarm_enabled": false,
+            "llm_prewarm_enabled": false
           }
           EOF
 
@@ -114,6 +115,7 @@ jobs:
             scheduler_study_enabled = $false
             embedding_cache_warmup_enabled = $false
             embedder_prewarm_enabled = $false
+            llm_prewarm_enabled = $false
           }
           $obj | ConvertTo-Json -Compress | Set-Content -Encoding utf8 runtime_config.json
 
@@ -159,7 +161,8 @@ jobs:
             "n_gpu_layers": 0,
             "scheduler_study_enabled": false,
             "embedding_cache_warmup_enabled": false,
-            "embedder_prewarm_enabled": false
+            "embedder_prewarm_enabled": false,
+            "llm_prewarm_enabled": false
           }
           EOF
 

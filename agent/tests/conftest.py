@@ -13,6 +13,7 @@ import pytest
 # In CI the lifespan hangs (no model, no scheduler env, no DB) so we skip
 # collection entirely.  Locally they run fine with a full environment.
 # ---------------------------------------------------------------------------
+# Tests that require TestClient + full app lifespan (hang in CI: no model, no scheduler, no DB)
 _TESTCLIENT_FILES = [
     "test_remote.py",
     "test_tool_tracing.py",
@@ -43,9 +44,16 @@ _TESTCLIENT_FILES = [
     "test_mission_api.py",
 ]
 
+# Tests that call autonomous_run → llm_gateway → llama_cpp which SIGILL on CI runners
+# (pre-compiled llama-cpp-python uses AVX-512/VNNI unsupported by GitHub Actions VMs)
+_LLAMA_CPP_FILES = [
+    "test_agent_loop.py",
+]
+
 collect_ignore: list[str] = []
 if os.environ.get("CI"):
     collect_ignore.extend(_TESTCLIENT_FILES)
+    collect_ignore.extend(_LLAMA_CPP_FILES)
 
 
 @pytest.fixture(autouse=True, scope="session")
