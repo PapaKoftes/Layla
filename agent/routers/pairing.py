@@ -197,7 +197,7 @@ def discovery_status():
             peers=[],
             zeroconf_installed=False,
         )
-    except Exception as e:
+    except Exception:
         return DiscoveryStatusResponse(
             enabled=False,
             instance_id="unknown",
@@ -377,7 +377,7 @@ def unpair_device(instance_id: str):
 def peer_health(instance_id: str):
     """Health-check a specific discovered peer by hitting its /health endpoint."""
     try:
-        from services.mdns_discovery import get_peer_by_id, check_peer_health
+        from services.mdns_discovery import check_peer_health, get_peer_by_id
         peer = get_peer_by_id(instance_id)
         if not peer:
             return PeerHealthResponse(
@@ -399,7 +399,7 @@ def refresh_peers():
     If mDNS is not running, starts it first.
     """
     try:
-        from services.mdns_discovery import is_running, start_service, get_discovered_peers
+        from services.mdns_discovery import get_discovered_peers, is_running, start_service
         if not is_running():
             start_service()
         # Return current peers after a brief wait

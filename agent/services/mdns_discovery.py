@@ -397,8 +397,8 @@ def check_peer_health(peer: dict[str, Any], timeout: float = 3.0) -> dict[str, A
     Ping a discovered peer's /health endpoint to verify it's reachable.
     Returns: {"reachable": bool, "latency_ms": float, "status": str, "error": str|None}
     """
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     ip = peer.get("ip", "")
     port = peer.get("port", 8000)

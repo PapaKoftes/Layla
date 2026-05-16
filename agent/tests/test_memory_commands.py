@@ -204,6 +204,7 @@ def test_wm_add_and_get(tmp_path):
 
 def test_wm_dedup(tmp_path):
     import services.working_memory as wm
+    _orig = wm._WM_PATH
     wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
     wm._cache = None
     try:
@@ -212,7 +213,7 @@ def test_wm_dedup(tmp_path):
         data = wm.get_working_memory()
         assert data["recent_facts"].count("user likes Python") == 1
     finally:
-        wm._WM_PATH = _orig if "_orig" in dir() else wm._WM_PATH
+        wm._WM_PATH = _orig
         wm._cache = None
 
 

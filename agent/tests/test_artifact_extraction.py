@@ -20,7 +20,6 @@ if str(AGENT_DIR) not in sys.path:
 
 from routers.agent import _extract_artifacts
 
-
 # ---------------------------------------------------------------------------
 # Basic extraction
 # ---------------------------------------------------------------------------

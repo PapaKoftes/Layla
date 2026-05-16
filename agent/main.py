@@ -53,6 +53,9 @@ import threading
 import time
 import uuid
 from collections import deque
+
+# P1-6: event signalling clean shutdown to background threads
+_shutdown_event = threading.Event()
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -78,6 +81,7 @@ async def lifespan(app: FastAPI):
     # Startup
     _start_time = time.time()
     app.state.start_time = _start_time
+    app.state.background_threads = []
     app.state.knowledge_index_ready = None
     app.state.knowledge_index_status = "unknown"
     app.state.knowledge_index_error = None
@@ -95,8 +99,16 @@ async def lifespan(app: FastAPI):
     import logging as _logging
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
     log_level = getattr(_logging, log_level, _logging.INFO)
+    # Custom formatter that gracefully handles missing task_ctx field.
+    # The TaskContextFilter injects it, but records emitted before the filter
+    # installs (or from loggers that bypass it) must not crash.
+    class _SafeFormatter(_logging.Formatter):
+        def format(self, record: _logging.LogRecord) -> str:
+            if not hasattr(record, "task_ctx"):
+                record.task_ctx = ""  # type: ignore[attr-defined]
+            return super().format(record)
+
     if os.getenv("LAYLA_LOG_JSON") == "1":
-        import logging.handlers
         class JsonFormatter(_logging.Formatter):
             def format(self, record):
                 return json.dumps({
@@ -110,15 +122,22 @@ async def lifespan(app: FastAPI):
         _logging.getLogger().handlers = [h]
         _logging.getLogger().setLevel(log_level)
     else:
-        _logging.basicConfig(
-            level=log_level,
-            format="%(asctime)s [%(levelname)s] %(name)s: %(task_ctx)s%(message)s",
+        fmt = _SafeFormatter(
+            fmt="%(asctime)s [%(levelname)s] %(name)s: %(task_ctx)s%(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
-    # Phase 4.3: install task-context filter so concurrent runs don't mix logs
+        h = _logging.StreamHandler()
+        h.setFormatter(fmt)
+        _logging.getLogger().handlers = [h]
+        _logging.getLogger().setLevel(log_level)
+
+    # Phase 4.3: install task-context filter so concurrent runs don't mix logs.
+    # Must be on the root logger too — _SafeFormatter only supplies a fallback;
+    # the filter populates the real workspace / aspect / task-id values.
     try:
         from services.task_context import install_filter as _install_task_ctx_filter
-        _install_task_ctx_filter("layla")
+        _install_task_ctx_filter()          # root logger — so every handler gets task_ctx
+        _install_task_ctx_filter("layla")   # layla logger for good measure
     except Exception:
         pass
     try:
@@ -152,11 +171,7 @@ async def lifespan(app: FastAPI):
                         except Exception as _e:
                             logger.warning("knowledge index failed: %s", _e)
 
-                    threading.Thread(
-                        target=_bg_index_knowledge,
-                        daemon=True,
-                        name="knowledge-index-startup",
-                    ).start()
+                    _tracked_thread(_bg_index_knowledge, "knowledge-index-startup")
                     logger.info("knowledge indexing thread started")
             except Exception as e:
                 logger.warning("knowledge index failed: %s", e)
@@ -227,20 +242,14 @@ async def lifespan(app: FastAPI):
                 except Exception as e:
                     logger.debug("startup capability benchmarks skipped: %s", e)
 
-            threading.Thread(
-                target=_startup_capability_benchmarks,
-                daemon=True,
-                name="capability-benchmark-startup",
-            ).start()
+            _tracked_thread(_startup_capability_benchmarks, "capability-benchmark-startup")
             logger.info("Capability benchmark startup thread started (benchmark_on_load)")
         # Preload embedder so first /agent request does not block on model load
         # Optional and disabled by default for stability on some Python/torchao combos.
         if cfg.get("embedder_prewarm_enabled", False):
             try:
-                import threading as _t
-
                 from layla.memory.vector_store import embed
-                _t.Thread(target=lambda: embed("warmup"), daemon=True, name="embed-prewarm").start()
+                _tracked_thread(lambda: embed("warmup"), "embed-prewarm")
                 logger.info("embedder pre-warm thread started")
             except Exception as e:
                 logger.warning("embedder preload failed: %s", e)
@@ -265,11 +274,7 @@ async def lifespan(app: FastAPI):
                 except Exception as _we:
                     logger.debug("embedding_cache_warmup failed (non-critical): %s", _we)
 
-            threading.Thread(
-                target=_warmup_embedding_cache,
-                daemon=True,
-                name="embedding-cache-warmup",
-            ).start()
+            _tracked_thread(_warmup_embedding_cache, "embedding-cache-warmup")
 
         # Prewarm voice models (optional; default off to avoid startup spikes)
         if cfg.get("voice_stt_prewarm_enabled", False):
@@ -286,7 +291,6 @@ async def lifespan(app: FastAPI):
                 pass
         # Phase B: kick a one-shot repo indexer at startup (best-effort, non-blocking).
         try:
-            import threading as _threading
             from services.repo_indexer import index_workspace_repo as _idx_repo
             _ws_root = (cfg.get("sandbox_root") or "").strip()
             if _ws_root:
@@ -299,7 +303,7 @@ async def lifespan(app: FastAPI):
                             mark_degraded("repo_indexer", str(_e))
                         except Exception:
                             pass
-                _threading.Thread(target=_startup_repo_index, daemon=True, name="startup-repo-index").start()
+                _tracked_thread(_startup_repo_index, "startup-repo-index")
         except Exception as _ri_e:
             logger.debug("startup repo_indexer skipped: %s", _ri_e)
         from layla.scheduler import create_scheduler
@@ -326,12 +330,7 @@ async def lifespan(app: FastAPI):
                     except Exception as _bot_err:
                         logger.warning("Discord bot failed: %s", _bot_err)
 
-                _disc_thread = threading.Thread(
-                    target=_start_discord_bot,
-                    daemon=True,
-                    name="discord-bot-autostart",
-                )
-                _disc_thread.start()
+                _disc_thread = _tracked_thread(_start_discord_bot, "discord-bot-autostart")
                 app.state.discord_bot_thread = _disc_thread
                 logger.info("Discord bot auto-start thread launched")
             else:
@@ -353,6 +352,13 @@ async def lifespan(app: FastAPI):
         logger.debug("mDNS startup skipped: %s", _mdns_err)
     yield
     # Shutdown
+    # P1-6: signal background threads to stop and join them
+    _shutdown_event.set()
+    for t in getattr(app.state, "background_threads", []):
+        try:
+            t.join(timeout=5)
+        except Exception:
+            pass
     # Phase 9: Stop mDNS discovery
     try:
         from services.mdns_discovery import stop_service as _mdns_stop
@@ -383,6 +389,14 @@ app = FastAPI(
 )
 app.add_middleware(GZipMiddleware, minimum_size=500)  # compress responses > 500 bytes
 
+
+def _tracked_thread(target, name: str, daemon: bool = True) -> threading.Thread:
+    """Start a thread and register it for clean shutdown."""
+    t = threading.Thread(target=target, name=name, daemon=daemon)
+    t.start()
+    app.state.background_threads.append(t)
+    return t
+
 try:
     import runtime_safety as _cors_rs
 
@@ -394,8 +408,8 @@ try:
             CORSMiddleware,
             allow_origins=[str(o).strip() for o in _origins if str(o).strip()],
             allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
         )
 except Exception:
     pass
@@ -556,23 +570,49 @@ app.include_router(projects_router.router)
 app.include_router(plans_router.router)
 app.include_router(plan_file_router.router)
 
+from routers import (
+    agent_tasks as agent_tasks_router,
+)
+from routers import character as character_router
 from routers import (  # noqa: E402
     conversations as conversations_router,
 )
 from routers import (
+    debate as debate_router,
+)
+from routers import (
+    german as german_router,
+)
+from routers import (
+    intelligence as intelligence_router,
+)
+from routers import (
     knowledge as knowledge_router,
 )
+from routers import metrics as metrics_router
 from routers import (
     missions as missions_router,
 )
 from routers import (
+    obsidian as obsidian_router,
+)
+from routers import (
     openai_compat as openai_compat_router,
+)
+from routers import (
+    pairing as pairing_router,
+)
+from routers import (
+    search as search_router,
 )
 from routers import (
     session as session_router,
 )
 from routers import (
     settings as settings_router,
+)
+from routers import (
+    sync as sync_router,
 )
 from routers import (
     tools_history as tools_history_router,
@@ -583,28 +623,6 @@ from routers import (
 from routers import (
     workspace as workspace_router,
 )
-from routers import (
-    search as search_router,
-)
-from routers import (
-    obsidian as obsidian_router,
-)
-from routers import (
-    german as german_router,
-)
-from routers import (
-    agent_tasks as agent_tasks_router,
-)
-from routers import (
-    sync as sync_router,
-    intelligence as intelligence_router,
-    pairing as pairing_router,
-)
-from routers import (
-    debate as debate_router,
-)
-from routers import metrics as metrics_router
-from routers import character as character_router
 
 app.include_router(settings_router.router)
 app.include_router(session_router.router)
@@ -738,35 +756,29 @@ async def remote_auth_middleware(request: Request, call_next):
     if _is_localhost(client_host):
         return await call_next(request)
 
-    # Non-localhost: require API key
-    api_key = cfg.get("remote_api_key")
+    # Extract bearer token from Authorization header
     req_path = (request.url.path or "").strip()
     req_method = request.method
     _audit_enabled = cfg.get("tunnel_audit_enabled", False)
+    auth = (request.headers.get("Authorization") or "").strip()
+    bearer_token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""
 
-    if not api_key or not str(api_key).strip():
+    # Unified auth check (shared with WebSocket path; localhost already handled above)
+    from services.auth import check_auth
+
+    _auth_ok, _deny_detail = check_auth(bearer_token, client_host or "", cfg)
+
+    if not _auth_ok:
         if _audit_enabled:
             try:
                 from services.tunnel_audit import log_access
-                log_access(client_host or "", req_path, req_method, None, "deny", detail="no api key configured")
+                log_access(client_host or "", req_path, req_method, None, "deny", detail=_deny_detail)
             except Exception:
                 pass
+        _status = 403 if _deny_detail == "no auth configured" else 401
         return JSONResponse(
-            {"ok": False, "error": "remote_access_requires_api_key", "detail": "Set remote_api_key in config."},
-            status_code=403,
-        )
-    auth = request.headers.get("Authorization") or ""
-    expected = f"Bearer {api_key.strip()}"
-    if auth.strip() != expected:
-        if _audit_enabled:
-            try:
-                from services.tunnel_audit import log_access
-                log_access(client_host or "", req_path, req_method, None, "deny", detail="invalid token")
-            except Exception:
-                pass
-        return JSONResponse(
-            {"ok": False, "error": "unauthorized", "detail": "Invalid or missing Authorization header."},
-            status_code=401,
+            {"ok": False, "error": "unauthorized", "detail": _deny_detail},
+            status_code=_status,
         )
 
     # Endpoint allowlist
@@ -776,9 +788,10 @@ async def remote_auth_middleware(request: Request, call_next):
     if not ok:
         if _audit_enabled:
             try:
-                from services.tunnel_audit import log_access
                 import hashlib as _hl
-                _tid = _hl.sha256(api_key.strip().encode()).hexdigest()[:8]
+
+                from services.tunnel_audit import log_access
+                _tid = _hl.sha256(bearer_token.encode()).hexdigest()[:8] if bearer_token else "none"
                 log_access(client_host or "", req_path, req_method, _tid, "deny", detail="endpoint not allowed")
             except Exception:
                 pass
@@ -790,9 +803,10 @@ async def remote_auth_middleware(request: Request, call_next):
     # Audit: successful access
     if _audit_enabled:
         try:
-            from services.tunnel_audit import log_access
             import hashlib as _hl
-            _tid = _hl.sha256(api_key.strip().encode()).hexdigest()[:8]
+
+            from services.tunnel_audit import log_access
+            _tid = _hl.sha256(bearer_token.encode()).hexdigest()[:8] if bearer_token else "none"
             log_access(client_host or "", req_path, req_method, _tid, "allow")
         except Exception:
             pass

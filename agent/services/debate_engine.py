@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
 logger = logging.getLogger("layla")
@@ -185,6 +186,50 @@ def select_aspects_for_task(
     return selected
 
 
+def _get_max_workers(cfg: dict) -> int:
+    """Return the max parallel LLM workers from config, default 3."""
+    try:
+        return max(1, int(cfg.get("debate_max_workers", 3)))
+    except (TypeError, ValueError):
+        return 3
+
+
+def _parallel_llm_calls(
+    callables: list[tuple],
+    max_workers: int = 3,
+) -> list:
+    """Run multiple LLM calls in parallel using ThreadPoolExecutor.
+
+    *callables* is a list of ``(fn, args_tuple, kwargs_dict)`` triples.
+    Returns results in the **same order** as the input list.
+    Falls back to sequential execution when *max_workers* <= 1.
+    """
+    if max_workers <= 1:
+        # Sequential fallback
+        results = []
+        for fn, args, kwargs in callables:
+            try:
+                results.append(fn(*args, **kwargs))
+            except Exception as e:
+                results.append({"error": str(e)})
+        return results
+
+    results: list = [None] * len(callables)
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {
+            pool.submit(fn, *args, **kwargs): idx
+            for idx, (fn, args, kwargs) in enumerate(callables)
+        }
+        for f in as_completed(futures):
+            idx = futures[f]
+            try:
+                results[idx] = f.result()
+            except Exception as e:
+                logger.warning("debate_engine: parallel call %d failed: %s", idx, e)
+                results[idx] = {"error": str(e)}
+    return results
+
+
 def run_deliberation(
     goal: str,
     state: dict,
@@ -227,24 +272,39 @@ def run_deliberation(
     if aspects is None:
         aspects = select_aspects_for_task(goal, mode, cfg)
 
-    # Phase 1: Independent generation
-    aspect_responses: dict[str, str] = {}
-    for aid in aspects:
-        try:
-            resp = _generate_aspect_response(goal, aid, state, cfg)
-            aspect_responses[aid] = resp
-        except Exception as exc:
-            logger.warning("debate_engine: aspect %s generation failed: %s", aid, exc)
-            aspect_responses[aid] = f"[{aid} was unable to respond]"
+    # Phase 1: Independent generation (parallel)
+    max_workers = _get_max_workers(cfg)
+    phase1_calls = [
+        (_generate_aspect_response, (goal, aid, state, cfg), {})
+        for aid in aspects
+    ]
+    phase1_results = _parallel_llm_calls(phase1_calls, max_workers=max_workers)
 
-    # Phase 2: Cross-critique
+    aspect_responses: dict[str, str] = {}
+    for aid, result in zip(aspects, phase1_results):
+        if isinstance(result, dict) and "error" in result:
+            logger.warning("debate_engine: aspect %s generation failed: %s", aid, result["error"])
+            aspect_responses[aid] = f"[{aid} was unable to respond]"
+        elif isinstance(result, str):
+            aspect_responses[aid] = result
+        else:
+            aspect_responses[aid] = str(result) if result else f"[{aid} was unable to respond]"
+
+    # Phase 2: Cross-critique (parallel — requires Phase 1 results)
+    phase2_calls = [
+        (_generate_critiques, (goal, aspect_responses, aid, state, cfg), {})
+        for aid in aspects
+    ]
+    phase2_results = _parallel_llm_calls(phase2_calls, max_workers=max_workers)
+
     critiques: dict[str, str] = {}
-    for aid in aspects:
-        try:
-            critique = _generate_critiques(goal, aspect_responses, aid, state, cfg)
-            critiques[aid] = critique
-        except Exception as exc:
-            logger.warning("debate_engine: aspect %s critique failed: %s", aid, exc)
+    for aid, result in zip(aspects, phase2_results):
+        if isinstance(result, dict) and "error" in result:
+            logger.warning("debate_engine: aspect %s critique failed: %s", aid, result["error"])
+            critiques[aid] = ""
+        elif isinstance(result, str):
+            critiques[aid] = result
+        else:
             critiques[aid] = ""
 
     # Phase 3: Synthesis

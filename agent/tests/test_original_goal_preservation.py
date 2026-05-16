@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-
 # ---------------------------------------------------------------------------
 # 1. Reflection engine uses original_goal, not objective
 # ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 """Integration tests: search router → backend selection → results."""
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 class TestSearchRouterIntegration:
@@ -8,7 +9,7 @@ class TestSearchRouterIntegration:
 
     def test_default_config_uses_sqlite(self):
         """With default config, search should use SQLite FTS (always available)."""
-        from services.search_router import search, _detect_backend
+        from services.search_router import _detect_backend, search
         cfg = {}
         backend = _detect_backend(cfg)
         assert backend == "sqlite_fts"

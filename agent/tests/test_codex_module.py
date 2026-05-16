@@ -15,7 +15,7 @@ def _ensure_db():
 
 class TestUpsertAndGet:
     def test_upsert_creates_entity(self):
-        from layla.codex.codex_db import upsert_entity, get_entity
+        from layla.codex.codex_db import get_entity, upsert_entity
 
         result = upsert_entity(
             "technology", "Python",
@@ -34,7 +34,7 @@ class TestUpsertAndGet:
         assert fetched["description"] == "A programming language"
 
     def test_upsert_merges_on_duplicate(self):
-        from layla.codex.codex_db import upsert_entity, get_entity
+        from layla.codex.codex_db import get_entity, upsert_entity
 
         r1 = upsert_entity(
             "concept", "Machine Learning",
@@ -67,7 +67,7 @@ class TestUpsertAndGet:
 
 class TestSearch:
     def test_search_finds_by_name(self):
-        from layla.codex.codex_db import upsert_entity, search_entities
+        from layla.codex.codex_db import search_entities, upsert_entity
 
         upsert_entity("technology", "FastAPI", description="Web framework", confidence=0.8)
 
@@ -77,7 +77,7 @@ class TestSearch:
         assert "fastapi" in names
 
     def test_search_filters_by_type(self):
-        from layla.codex.codex_db import upsert_entity, search_entities
+        from layla.codex.codex_db import search_entities, upsert_entity
 
         upsert_entity("person", "Alice Smith", confidence=0.7)
         upsert_entity("technology", "AliceDB", confidence=0.7)
@@ -87,7 +87,7 @@ class TestSearch:
         assert types == {"person"} or len(results_person) == 0 or all(r["type"] == "person" for r in results_person)
 
     def test_search_respects_min_confidence(self):
-        from layla.codex.codex_db import upsert_entity, search_entities
+        from layla.codex.codex_db import search_entities, upsert_entity
 
         upsert_entity("concept", "Low Confidence Concept", confidence=0.1)
 
@@ -98,7 +98,7 @@ class TestSearch:
 
 class TestRelationships:
     def test_link_entities_creates_relationship(self):
-        from layla.codex.codex_db import upsert_entity, link_entities, get_entity_relationships
+        from layla.codex.codex_db import get_entity_relationships, link_entities, upsert_entity
 
         e1 = upsert_entity("person", "Bob", confidence=0.8)
         e2 = upsert_entity("project", "Layla", confidence=0.9)
@@ -122,7 +122,7 @@ class TestRelationships:
 
 class TestGraph:
     def test_get_entity_graph_returns_nodes_and_edges(self):
-        from layla.codex.codex_db import upsert_entity, link_entities, get_entity_graph
+        from layla.codex.codex_db import get_entity_graph, link_entities, upsert_entity
 
         e1 = upsert_entity("person", "Carol", confidence=0.8)
         e2 = upsert_entity("technology", "Rust", confidence=0.9)
@@ -142,7 +142,7 @@ class TestGraph:
         assert e2["id"] in node_ids
 
     def test_graph_depth_1_limits_expansion(self):
-        from layla.codex.codex_db import upsert_entity, link_entities, get_entity_graph
+        from layla.codex.codex_db import get_entity_graph, link_entities, upsert_entity
 
         a = upsert_entity("concept", "Alpha", confidence=0.8)
         b = upsert_entity("concept", "Beta", confidence=0.8)
@@ -165,7 +165,7 @@ class TestGraph:
 
 class TestAggregates:
     def test_count_entities(self):
-        from layla.codex.codex_db import upsert_entity, count_entities
+        from layla.codex.codex_db import count_entities, upsert_entity
 
         upsert_entity("skill", "Welding", confidence=0.8)
         upsert_entity("skill", "Soldering", confidence=0.8)
@@ -177,7 +177,7 @@ class TestAggregates:
         assert skill_count >= 2
 
     def test_list_entity_types(self):
-        from layla.codex.codex_db import upsert_entity, list_entity_types
+        from layla.codex.codex_db import list_entity_types, upsert_entity
 
         upsert_entity("event", "Conference 2025", confidence=0.7)
 

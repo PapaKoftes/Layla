@@ -1,6 +1,7 @@
 """Phase 5.1 — Obsidian vault sync tests."""
-import pytest
 from pathlib import Path
+
+import pytest
 
 
 @pytest.fixture
@@ -22,7 +23,7 @@ def repo_root(tmp_path):
 
 
 def test_set_vault_path_valid(vault):
-    from services.obsidian_sync import set_vault_path, get_vault_path, _vault_config
+    from services.obsidian_sync import _vault_config, get_vault_path, set_vault_path
     _vault_config.clear()
     result = set_vault_path(str(vault))
     assert result["ok"] is True
@@ -71,6 +72,7 @@ def test_sync_vault_copies_files(vault, repo_root):
 def test_sync_vault_skips_conflict(vault, repo_root):
     """Files where dest is newer (and content differs) are skipped unless force=True."""
     import time
+
     from services.obsidian_sync import _vault_config, get_knowledge_vault_dir, set_vault_path, sync_vault
     _vault_config.clear()
     set_vault_path(str(vault))
@@ -90,7 +92,9 @@ def test_sync_vault_skips_conflict(vault, repo_root):
 
 
 def test_sync_vault_force_overwrites_conflict(vault, repo_root):
-    import os, time
+    import os
+    import time
+
     from services.obsidian_sync import _vault_config, get_knowledge_vault_dir, set_vault_path, sync_vault
     _vault_config.clear()
     set_vault_path(str(vault))

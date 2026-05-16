@@ -48,7 +48,8 @@ def intelligence_info():
         info["compression"] = {"error": str(exc)}
 
     try:
-        from services.prompt_optimizer import get_available_tier as _opt_tier, _use_dspy, _use_guidance
+        from services.prompt_optimizer import _use_dspy, _use_guidance
+        from services.prompt_optimizer import get_available_tier as _opt_tier
         info["optimizer"] = {
             "enabled": True,
             "dspy_requested": _use_dspy(),
@@ -250,8 +251,8 @@ def kb_info():
 
     # Add article count from index if it exists
     try:
-        from pathlib import Path as _Path
         import json as _json
+        from pathlib import Path as _Path
         idx = _Path(info["output_dir"]) / "_index.json"
         if idx.exists():
             data = _json.loads(idx.read_text(encoding="utf-8"))
@@ -304,8 +305,9 @@ def kb_build_from_directory(req: KBBuildFromDirectoryRequest):
 def kb_list_articles():
     """List all KB articles from the index."""
     try:
-        from services.kb_builder import _kb_output_dir
         import json as _json
+
+        from services.kb_builder import _kb_output_dir
         idx = _kb_output_dir() / "_index.json"
         if not idx.exists():
             return {"articles": [], "message": "No KB index found. Run a build first."}
@@ -319,8 +321,9 @@ def kb_list_articles():
 def kb_get_article(article_id: str):
     """Get a single KB article by ID."""
     try:
-        from services.kb_builder import _kb_output_dir
         import json as _json
+
+        from services.kb_builder import _kb_output_dir
         art_path = _kb_output_dir() / f"{article_id}.json"
         if not art_path.exists():
             raise HTTPException(status_code=404, detail=f"Article {article_id} not found")

@@ -1,6 +1,7 @@
 """Tests for the content guard -- deterministic pre-model content filter."""
 import pytest
-from services.content_guard import check_input, check_output, blocked_response, GuardResult
+
+from services.content_guard import GuardResult, blocked_response, check_input, check_output
 
 
 class TestTier1Blocking:

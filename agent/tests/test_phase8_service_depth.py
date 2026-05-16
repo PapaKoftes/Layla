@@ -163,10 +163,12 @@ class TestAutoExtractLearnings:
     @patch("services.llm_gateway.run_completion", side_effect=Exception("no LLM"))
     @patch("services.memory_router.save_learning")
     def test_preference_detection(self, mock_save, mock_llm):
-        from services.outcome_writer import _auto_extract_learnings
-        # Reset fingerprint set to avoid dedup
+        # Reset fingerprint dict to avoid dedup
+        import collections
+
         import services.outcome_writer as ow
-        ow._recent_learning_fingerprints = set()
+        from services.outcome_writer import _auto_extract_learnings
+        ow._recent_learning_fingerprints = collections.OrderedDict()
 
         # The response needs extractable bullet points so the function doesn't
         # early-return at "if not extracted: return" before the preference code
@@ -589,8 +591,17 @@ class TestToolDomainCategories:
     @pytest.fixture
     def all_domain_tools(self):
         from layla.tools.domains import (
-            analysis, automation, code, data, file, general,
-            geometry, git, memory, system, web,
+            analysis,
+            automation,
+            code,
+            data,
+            file,
+            general,
+            geometry,
+            git,
+            memory,
+            system,
+            web,
         )
         return {
             "analysis": analysis.TOOLS,

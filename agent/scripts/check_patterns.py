@@ -13,9 +13,10 @@ Usage:
 Add new checks at the bottom following the same pattern.
 """
 from __future__ import annotations
+
+import json
 import re
 import sys
-import json
 from pathlib import Path
 
 # ---------------------------------------------------------------------------

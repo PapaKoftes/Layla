@@ -134,17 +134,17 @@ def run():
 
     print(f"  Packages checked: {checked}")
     if optional_missing:
-        print(f"\n  OPTIONAL (not installed — features degraded gracefully):")
+        print("\n  OPTIONAL (not installed — features degraded gracefully):")
         for p in optional_missing:
             print(f"    - {p}")
     if missing:
-        print(f"\n  MISSING (hard dependency — will raise ImportError at runtime):")
+        print("\n  MISSING (hard dependency — will raise ImportError at runtime):")
         for p in missing:
             print(f"    FAIL: {p}")
         print(f"\nFAIL: {len(missing)} hard missing import(s)")
         return 1
     else:
-        print(f"\n  All hard dependencies resolvable.")
+        print("\n  All hard dependencies resolvable.")
         if optional_missing:
             print(f"  {len(optional_missing)} optional package(s) not installed (expected).")
         print("PASS")

@@ -19,6 +19,7 @@ from agent_loop import (
     strip_junk_from_reply,
     truncate_at_next_user_turn,
 )
+from schemas.requests import AgentRequest, SteerRequest
 from services.output_polish import polish_output
 from services.resource_manager import PRIORITY_CHAT, classify_load
 from shared_state import (
@@ -218,7 +219,7 @@ def _no_model_response(message: str) -> JSONResponse:
             "memory_influenced": [],
             "cited_sources": [],
         },
-        status_code=200,
+        status_code=503,
     )
 
 
@@ -231,11 +232,11 @@ def get_decision_trace(conversation_id: str = "default"):
 
 
 @router.post("/agent/steer")
-def agent_steer(req: dict):
+def agent_steer(req: SteerRequest):
     """Queue a short operator redirect for the in-flight run on this conversation (next decision tick)."""
     get_touch_activity()()
-    hint = ((req or {}).get("hint") or (req or {}).get("steer") or (req or {}).get("message") or "").strip()
-    conversation_id = ((req or {}).get("conversation_id") or "").strip()
+    hint = req.effective_hint()
+    conversation_id = (req.conversation_id or "").strip()
     if not hint:
         return JSONResponse({"ok": False, "error": "hint required"}, status_code=400)
     from shared_state import push_agent_steer_hint
@@ -245,27 +246,27 @@ def agent_steer(req: dict):
 
 
 @router.post("/agent")
-async def agent(req: dict, request: Request):
+async def agent(req: AgentRequest, request: Request):
     get_touch_activity()()
     _history = get_history()
     _append_history = get_append_history()
-    goal = (req or {}).get("message", "")
-    context = (req or {}).get("context", "") or ""
-    workspace_root = (req or {}).get("workspace_root", "") or ""
-    image_url = (req or {}).get("image_url", "") or ""
-    image_base64 = (req or {}).get("image_base64", "") or ""
-    allow_write = (req or {}).get("allow_write") is True
-    allow_run = (req or {}).get("allow_run") is True
-    aspect_id = (req or {}).get("aspect_id", "") or ""
-    persona_focus = ((req or {}).get("persona_focus") or (req or {}).get("personaFocus") or "").strip()
-    show_thinking = bool((req or {}).get("show_thinking", False))
-    plan_mode = bool((req or {}).get("plan_mode", False))
-    understand_mode = bool((req or {}).get("understand_mode", False))
-    stream = bool((req or {}).get("stream", False))
-    model_override = (req or {}).get("model_override", "") or ""
-    reasoning_effort = "high" if (req or {}).get("reasoning_effort") == "high" else None
-    conversation_id = ((req or {}).get("conversation_id") or "").strip() or str(uuid.uuid4())
-    _active_plan_id, _plan_approved_flag = _resolve_plan_binding_from_request(str((req or {}).get("plan_id") or ""))
+    goal = req.message
+    context = req.context or ""
+    workspace_root = req.workspace_root or ""
+    image_url = req.image_url or ""
+    image_base64 = req.image_base64 or ""
+    allow_write = req.allow_write
+    allow_run = req.allow_run
+    aspect_id = req.aspect_id or ""
+    persona_focus = req.effective_persona_focus()
+    show_thinking = req.show_thinking
+    plan_mode = req.plan_mode
+    understand_mode = req.understand_mode
+    stream = req.stream
+    model_override = req.model_override or ""
+    reasoning_effort = "high" if req.reasoning_effort == "high" else None
+    conversation_id = (req.conversation_id or "").strip() or str(uuid.uuid4())
+    _active_plan_id, _plan_approved_flag = _resolve_plan_binding_from_request(req.plan_id or "")
     conv_history = get_conv_history(conversation_id)
     cfg = {}
     try:
@@ -283,17 +284,17 @@ async def agent(req: dict, request: Request):
         pass
 
     _ep_enabled = bool(cfg.get("engineering_pipeline_enabled"))
-    _raw_epm = (req or {}).get("engineering_pipeline_mode")
+    _raw_epm = req.engineering_pipeline_mode
     if _raw_epm is None or (isinstance(_raw_epm, str) and not str(_raw_epm).strip()):
         _ep_mode = str(cfg.get("engineering_pipeline_default_mode") or "chat").strip().lower()
     else:
         _ep_mode = str(_raw_epm).strip().lower()
     if _ep_mode not in ("chat", "plan", "execute"):
         _ep_mode = "chat"
-    clarification_reply = str((req or {}).get("clarification_reply") or "").strip()
+    clarification_reply = (req.clarification_reply or "").strip()
 
     cognition_workspace_roots: list[str] = []
-    project_id = ((req or {}).get("project_id") or "").strip()
+    project_id = (req.project_id or "").strip()
     if project_id:
         try:
             import json as _json
@@ -327,7 +328,7 @@ async def agent(req: dict, request: Request):
                 pass
         except Exception:
             pass
-    raw_cog = (req or {}).get("cognition_workspace_roots")
+    raw_cog = req.cognition_workspace_roots
     if isinstance(raw_cog, list):
         for x in raw_cog:
             s = str(x).strip()
@@ -375,7 +376,7 @@ async def agent(req: dict, request: Request):
                 {"ok": False, "error": "workspace_root outside sandbox"},
                 status_code=400,
             )
-        idx_sem = (req or {}).get("understand_index_semantic") is True
+        idx_sem = req.understand_index_semantic
         mf = int(cfg.get("project_memory_max_file_entries", 500) or 500)
         mb = int(cfg.get("project_memory_max_bytes", 1_500_000) or 1_500_000)
 
@@ -774,6 +775,15 @@ async def agent(req: dict, request: Request):
                         if token is None:
                             break
                         _last_tok_activity = time.monotonic()
+                        # Intercept deliberation metadata marker from debate engine
+                        if isinstance(token, str) and token.startswith("__DELIB_META__"):
+                            try:
+                                _dm_json = token.split("__DELIB_META__")[1].split("__DELIB_END__")[0]
+                                result["_deliberation_meta"] = json.loads(_dm_json)
+                                yield f"data: {json.dumps({'deliberation': result['_deliberation_meta']})}\n\n"
+                            except Exception:
+                                pass
+                            continue
                         full.append(token)
                         yield f"data: {json.dumps({'token': token})}\n\n"
                     try:
@@ -821,6 +831,10 @@ async def agent(req: dict, request: Request):
                     }
                     if _cfg_stream.get("ui_decision_trace_enabled"):
                         _done_stream["decision_trace"] = (result.get("decision_trace") or [])[-15:]
+                    # Include deliberation metadata if available (streaming path)
+                    _dm = result.get("_deliberation_meta")
+                    if _dm:
+                        _done_stream["deliberation"] = _dm
                     yield f"data: {json.dumps(_done_stream)}\n\n"
                 else:
                     steps = result.get("steps") or []
@@ -861,6 +875,10 @@ async def agent(req: dict, request: Request):
                     }
                     if _cfg_stream.get("ui_decision_trace_enabled"):
                         _done_ns["decision_trace"] = (result.get("decision_trace") or [])[-15:]
+                    # Include deliberation metadata if available (non-streaming path)
+                    _dm_ns = result.get("deliberation_result")
+                    if _dm_ns:
+                        _done_ns["deliberation"] = _dm_ns
                     yield f"data: {json.dumps(_done_ns)}\n\n"
             except Exception as e:
                 logger.exception("stream_agent failed")

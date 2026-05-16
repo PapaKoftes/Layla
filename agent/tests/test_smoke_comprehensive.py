@@ -34,6 +34,7 @@ if str(AGENT_DIR) not in sys.path:
 @pytest.fixture(scope="module")
 def client():
     from fastapi.testclient import TestClient
+
     from main import app
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
@@ -54,15 +55,17 @@ def test_import_agent_loop():
 
 
 def test_import_context_manager():
-    from services.context_manager import build_system_prompt, DEFAULT_BUDGETS
+    from services.context_manager import DEFAULT_BUDGETS, build_system_prompt
     assert callable(build_system_prompt)
     assert "system_instructions" in DEFAULT_BUDGETS
 
 
 def test_import_hardware_detect():
     from services.hardware_detect import (
-        detect_hardware, get_recommended_settings,
-        get_capability_summary, apply_to_config,
+        apply_to_config,
+        detect_hardware,
+        get_capability_summary,
+        get_recommended_settings,
     )
     assert all(callable(f) for f in [
         detect_hardware, get_recommended_settings,
@@ -71,7 +74,7 @@ def test_import_hardware_detect():
 
 
 def test_import_llm_gateway():
-    from services.llm_gateway import run_completion, get_stop_sequences
+    from services.llm_gateway import get_stop_sequences, run_completion
     assert callable(run_completion) and callable(get_stop_sequences)
 
 

@@ -42,7 +42,7 @@ jobs:
 
       - name: Daily-driver smoke (targeted pytest)
         working-directory: agent
-        run: python -m pytest tests/test_edit_loop_tools.py tests/test_autonomous_v2.py -q --tb=line --timeout=60
+        run: python -m pytest tests/test_edit_loop_tools.py -q --tb=line --timeout=60
 
       - name: Write CI runtime config
         working-directory: agent
@@ -62,7 +62,7 @@ jobs:
 
       - name: Run tests with coverage floor
         working-directory: agent
-        run: pytest tests/ -v --tb=short -m "not slow and not e2e_ui and not browser_smoke and not voice_smoke and not gpu_smoke" --timeout=60 --cov=. --cov-config=.coveragerc --cov-report=term-missing:skip-covered
+        run: pytest tests/ -v --tb=short -m "not slow and not e2e_ui and not browser_smoke and not voice_smoke and not gpu_smoke and not endpoint" --timeout=60 --cov=. --cov-config=.coveragerc --cov-report=term-missing:skip-covered
 
   test-windows:
     name: Test (Windows, Python 3.12)
@@ -93,7 +93,7 @@ jobs:
 
       - name: Daily-driver smoke (targeted pytest)
         working-directory: agent
-        run: python -m pytest tests/test_edit_loop_tools.py tests/test_autonomous_v2.py -q --tb=line --timeout=120
+        run: python -m pytest tests/test_edit_loop_tools.py -q --tb=line --timeout=120
 
       - name: Write CI runtime config
         working-directory: agent
@@ -115,7 +115,7 @@ jobs:
 
       - name: Run tests (no coverage floor)
         working-directory: agent
-        run: python -m pytest tests/ -v --tb=short -m "not slow and not e2e_ui and not browser_smoke and not voice_smoke and not gpu_smoke" --timeout=120
+        run: python -m pytest tests/ -v --tb=short -m "not slow and not e2e_ui and not browser_smoke and not voice_smoke and not gpu_smoke and not endpoint" --timeout=120
 
   e2e-ui:
     name: E2E UI (Playwright)

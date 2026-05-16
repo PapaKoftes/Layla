@@ -92,10 +92,12 @@ def sql_query(db_path: str, query: str, limit: int = 200) -> dict:
         try:
             import duckdb
             conn = duckdb.connect(db_path)
-            rel = conn.execute(q)
-            cols = [d[0] for d in rel.description]
-            rows = rel.fetchall()
-            conn.close()
+            try:
+                rel = conn.execute(q)
+                cols = [d[0] for d in rel.description]
+                rows = rel.fetchall()
+            finally:
+                conn.close()
             return {
                 "ok": True, "db": db_path, "query": query,
                 "columns": cols, "rows": [dict(zip(cols, r)) for r in rows],
@@ -110,11 +112,13 @@ def sql_query(db_path: str, query: str, limit: int = 200) -> dict:
     try:
         import sqlite3 as _sql
         conn = _sql.connect(str(target))
-        conn.row_factory = _sql.Row
-        cursor = conn.execute(q)
-        rows = cursor.fetchall()
-        cols = [d[0] for d in cursor.description] if cursor.description else []
-        conn.close()
+        try:
+            conn.row_factory = _sql.Row
+            cursor = conn.execute(q)
+            rows = cursor.fetchall()
+            cols = [d[0] for d in cursor.description] if cursor.description else []
+        finally:
+            conn.close()
         return {
             "ok": True, "db": db_path, "query": query,
             "columns": cols, "rows": [dict(r) for r in rows],
@@ -192,19 +196,21 @@ def schema_introspect(db_path: str) -> dict:
         try:
             import duckdb
             conn = duckdb.connect(str(target))
-            tables_raw = conn.execute("SHOW TABLES").fetchall()
-            schema = {}
-            for (table_name,) in tables_raw:
-                cols = conn.execute(f"DESCRIBE {table_name}").fetchall()
-                count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
-                sample = conn.execute(f"SELECT * FROM {table_name} LIMIT 3").fetchall()
-                col_names = [c[0] for c in cols]
-                schema[table_name] = {
-                    "columns": [{"name": c[0], "type": c[1]} for c in cols],
-                    "row_count": count,
-                    "sample": [dict(zip(col_names, row)) for row in sample],
-                }
-            conn.close()
+            try:
+                tables_raw = conn.execute("SHOW TABLES").fetchall()
+                schema = {}
+                for (table_name,) in tables_raw:
+                    cols = conn.execute(f"DESCRIBE {table_name}").fetchall()
+                    count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+                    sample = conn.execute(f"SELECT * FROM {table_name} LIMIT 3").fetchall()
+                    col_names = [c[0] for c in cols]
+                    schema[table_name] = {
+                        "columns": [{"name": c[0], "type": c[1]} for c in cols],
+                        "row_count": count,
+                        "sample": [dict(zip(col_names, row)) for row in sample],
+                    }
+            finally:
+                conn.close()
             return {"ok": True, "db_type": "duckdb", "path": db_path, "tables": schema}
         except ImportError:
             return {"ok": False, "error": "duckdb not installed: pip install duckdb"}
@@ -215,24 +221,26 @@ def schema_introspect(db_path: str) -> dict:
     try:
         import sqlite3 as _sql
         conn = _sql.connect(str(target))
-        conn.row_factory = _sql.Row
-        tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-        schema = {}
-        for (table_name,) in [(r["name"],) for r in tables]:
-            cols = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
-            fkeys = conn.execute(f"PRAGMA foreign_key_list({table_name})").fetchall()
-            count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
-            sample_rows = conn.execute(f"SELECT * FROM {table_name} LIMIT 3").fetchall()
-            col_names = [c["name"] for c in cols]
-            schema[table_name] = {
-                "columns": [{"name": c["name"], "type": c["type"], "notnull": bool(c["notnull"]), "pk": bool(c["pk"])} for c in cols],
-                "foreign_keys": [{"from": fk["from"], "to_table": fk["table"], "to_col": fk["to"]} for fk in fkeys],
-                "row_count": count,
-                "sample": [dict(r) for r in sample_rows],
-            }
-        # Views
-        views = conn.execute("SELECT name FROM sqlite_master WHERE type='view'").fetchall()
-        conn.close()
+        try:
+            conn.row_factory = _sql.Row
+            tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+            schema = {}
+            for (table_name,) in [(r["name"],) for r in tables]:
+                cols = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+                fkeys = conn.execute(f"PRAGMA foreign_key_list({table_name})").fetchall()
+                count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+                sample_rows = conn.execute(f"SELECT * FROM {table_name} LIMIT 3").fetchall()
+                col_names = [c["name"] for c in cols]
+                schema[table_name] = {
+                    "columns": [{"name": c["name"], "type": c["type"], "notnull": bool(c["notnull"]), "pk": bool(c["pk"])} for c in cols],
+                    "foreign_keys": [{"from": fk["from"], "to_table": fk["table"], "to_col": fk["to"]} for fk in fkeys],
+                    "row_count": count,
+                    "sample": [dict(r) for r in sample_rows],
+                }
+            # Views
+            views = conn.execute("SELECT name FROM sqlite_master WHERE type='view'").fetchall()
+        finally:
+            conn.close()
         return {"ok": True, "db_type": "sqlite", "path": db_path, "tables": schema, "views": [r["name"] for r in views]}
     except Exception as e:
         return {"ok": False, "error": str(e)}

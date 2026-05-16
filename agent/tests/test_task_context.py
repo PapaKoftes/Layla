@@ -69,13 +69,16 @@ def test_thread_isolation():
 
     def worker(name: str, ws: str):
         tokens = set_task_context(workspace=ws)
-        import time; time.sleep(0.02)
+        import time
+        time.sleep(0.02)
         results[name] = get_workspace()
         reset_task_context(tokens)
 
     t1 = threading.Thread(target=worker, args=("a", "/ws-a"))
     t2 = threading.Thread(target=worker, args=("b", "/ws-b"))
-    t1.start(); t2.start()
-    t1.join(); t2.join()
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
     assert results["a"] == "/ws-a"
     assert results["b"] == "/ws-b"

@@ -100,7 +100,7 @@ async def get_corrections(user_id: str = "default", limit: int = 20):
 async def calibration_sentences(level: str):
     """Return example sentences for a given CEFR level."""
     try:
-        from services.german_mode import get_calibration_sentences, CEFR_LEVELS
+        from services.german_mode import CEFR_LEVELS, get_calibration_sentences
         lvl = level.upper()
         if lvl not in CEFR_LEVELS:
             return {"ok": False, "error": f"Unknown level: {level}. Use {CEFR_LEVELS}"}
