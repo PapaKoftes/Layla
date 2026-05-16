@@ -68,6 +68,40 @@ if os.environ.get("CI"):
 
 
 @pytest.fixture(autouse=True, scope="session")
+def _block_llama_cpp_on_ci():
+    """
+    CI safety net: prevent llama_cpp.Llama from loading native binary (SIGILL).
+
+    The pre-compiled llama-cpp-python uses AVX-512/VNNI instructions unsupported
+    by GitHub Actions VMs, causing a process-fatal SIGILL (exit 132) that
+    bypasses Python's try/except.
+
+    We replace llama_cpp.Llama with a stub that raises RuntimeError.  Tests that
+    explicitly mock llama_cpp.Llama (via monkeypatch) override this for their
+    specific test function.  Tests that mock run_completion never reach Llama.
+    """
+    if not os.environ.get("CI"):
+        yield
+        return
+
+    try:
+        import llama_cpp
+
+        class _BlockedLlama:
+            def __init__(self, *args, **kwargs):
+                raise RuntimeError(
+                    "llama_cpp.Llama blocked on CI — mock run_completion in your test"
+                )
+
+        _orig = llama_cpp.Llama
+        llama_cpp.Llama = _BlockedLlama  # type: ignore[misc,assignment]
+        yield
+        llama_cpp.Llama = _orig  # type: ignore[misc,assignment]
+    except ImportError:
+        yield
+
+
+@pytest.fixture(autouse=True, scope="session")
 def _force_test_db_path(tmp_path_factory):
     """
     Safety: never let tests touch the operator's real layla.db.
