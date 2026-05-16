@@ -4,12 +4,16 @@ Layla aspect orchestrator.
 Selects which aspect of Layla should respond, builds deliberation prompts,
 and decides whether to deliberate.
 """
+from __future__ import annotations
+
 import json
 import threading
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
-import numpy as np
+if TYPE_CHECKING:
+    import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PERSONALITIES_DIR = REPO_ROOT / "personalities"
@@ -22,7 +26,7 @@ _ASPECTS_CACHE_TS: float = 0.0
 _ASPECTS_TTL: float = 60.0  # seconds — re-reads JSON files if a minute has passed
 
 # Embedding-based aspect routing: cached aspect embeddings
-_ASPECT_EMBEDDINGS: dict[str, np.ndarray] = {}
+_ASPECT_EMBEDDINGS: dict[str, Any] = {}  # values are np.ndarray when loaded
 _ASPECT_EMBEDDINGS_TS: float = 0.0
 _EMBED_COSINE_THRESHOLD: float = 0.35  # below this score → use default
 
@@ -131,7 +135,7 @@ def _fallback_aspect() -> dict:
     }
 
 
-def _get_aspect_embeddings(aspects: list[dict]) -> dict[str, np.ndarray]:
+def _get_aspect_embeddings(aspects: list[dict]) -> dict[str, Any]:
     """Embed each aspect's role/voice description; cached per load cycle."""
     global _ASPECT_EMBEDDINGS, _ASPECT_EMBEDDINGS_TS
     now = time.monotonic()
@@ -143,7 +147,7 @@ def _get_aspect_embeddings(aspects: list[dict]) -> dict[str, np.ndarray]:
             return _ASPECT_EMBEDDINGS
         try:
             from layla.memory.vector_store import embed
-            embs: dict[str, np.ndarray] = {}
+            embs: dict[str, Any] = {}
             for a in aspects:
                 aid = a.get("id")
                 if not aid:
@@ -162,14 +166,15 @@ def _get_aspect_embeddings(aspects: list[dict]) -> dict[str, np.ndarray]:
             return {}
 
 
-def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
+def _cosine_sim(a: Any, b: Any) -> float:
     """Cosine similarity between two 1-D float32 arrays."""
     try:
-        n_a = np.linalg.norm(a)
-        n_b = np.linalg.norm(b)
+        import numpy as _np
+        n_a = _np.linalg.norm(a)
+        n_b = _np.linalg.norm(b)
         if n_a == 0 or n_b == 0:
             return 0.0
-        return float(np.dot(a, b) / (n_a * n_b))
+        return float(_np.dot(a, b) / (n_a * n_b))
     except Exception:
         return 0.0
 

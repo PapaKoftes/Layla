@@ -220,13 +220,19 @@ def _parallel_llm_calls(
             pool.submit(fn, *args, **kwargs): idx
             for idx, (fn, args, kwargs) in enumerate(callables)
         }
-        for f in as_completed(futures):
-            idx = futures[f]
-            try:
-                results[idx] = f.result()
-            except Exception as e:
-                logger.warning("debate_engine: parallel call %d failed: %s", idx, e)
-                results[idx] = {"error": str(e)}
+        try:
+            for f in as_completed(futures, timeout=55):
+                idx = futures[f]
+                try:
+                    results[idx] = f.result(timeout=10)
+                except Exception as e:
+                    logger.warning("debate_engine: parallel call %d failed: %s", idx, e)
+                    results[idx] = {"error": str(e)}
+        except TimeoutError:
+            logger.warning("debate_engine: parallel calls timed out after 55s")
+            # Cancel any pending futures
+            for f in futures:
+                f.cancel()
     return results
 
 
