@@ -145,6 +145,8 @@ def semantic_recall(query: str, k: int = 5, domain_boost_terms: list[str] | None
 
     Falls back to pure vector search, then FTS on ChromaDB error.
     """
+    if k <= 0 or not query or not query.strip():
+        return ""
     try:
         from layla.memory.vector_store import search_memories_full
         cfg = runtime_safety.load_config()

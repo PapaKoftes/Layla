@@ -56,7 +56,9 @@ jobs:
             "max_runtime_seconds": 30,
             "n_ctx": 2048,
             "n_gpu_layers": 0,
-            "scheduler_study_enabled": false
+            "scheduler_study_enabled": false,
+            "embedding_cache_warmup_enabled": false,
+            "embedder_prewarm_enabled": false
           }
           EOF
 
@@ -110,6 +112,8 @@ jobs:
             n_ctx = 2048
             n_gpu_layers = 0
             scheduler_study_enabled = $false
+            embedding_cache_warmup_enabled = $false
+            embedder_prewarm_enabled = $false
           }
           $obj | ConvertTo-Json -Compress | Set-Content -Encoding utf8 runtime_config.json
 
@@ -153,7 +157,9 @@ jobs:
             "max_runtime_seconds": 30,
             "n_ctx": 2048,
             "n_gpu_layers": 0,
-            "scheduler_study_enabled": false
+            "scheduler_study_enabled": false,
+            "embedding_cache_warmup_enabled": false,
+            "embedder_prewarm_enabled": false
           }
           EOF
 

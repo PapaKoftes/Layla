@@ -163,7 +163,8 @@ def build_precomputed_recall(
     _precomputed_recall = ""
     memory_influenced: list[str] = []
 
-    if goal and reasoning_mode != "none":
+    _semantic_k = int(cfg.get("semantic_k", 5))
+    if goal and reasoning_mode != "none" and _semantic_k > 0:
         # Invalidate stale semantic index when workspace files changed
         _ws = (str(workspace_root).strip() if workspace_root else "") or str(cfg.get("sandbox_root") or "")
         if _ws:
@@ -183,7 +184,7 @@ def build_precomputed_recall(
                     "workspace_root": wr,
                     "context_files": list(context_files or []),
                     "reasoning_mode": reasoning_mode,
-                    "k_memory": int(cfg.get("semantic_k", 5)),
+                    "k_memory": _semantic_k,
                     "k_code": int(cfg.get("context_builder_code_k", 5)),
                 },
             )
@@ -192,7 +193,7 @@ def build_precomputed_recall(
             logger.debug("context_builder failed: %s", _err)
             try:
                 from services.system_head_builder import semantic_recall as _semantic_recall
-                _precomputed_recall = _semantic_recall(goal, k=cfg.get("semantic_k", 5)).strip()
+                _precomputed_recall = _semantic_recall(goal, k=_semantic_k).strip()
             except Exception:
                 _precomputed_recall = ""
 
