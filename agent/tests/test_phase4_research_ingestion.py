@@ -560,13 +560,14 @@ class TestSynthesizeArticle:
 
 
 class TestResearchTopic:
+    @patch("services.llm_gateway.run_completion", side_effect=RuntimeError("no model"))
     @patch("services.research_orchestrator.search_web", return_value=[])
     @patch("services.research_orchestrator.search_local", return_value=[])
     @patch("services.research_orchestrator.decompose_topic", return_value=["test topic"])
     @patch("services.research_orchestrator._save_to_kb")
     @patch("services.research_orchestrator._link_codex")
     def test_full_pipeline_empty_sources(self, mock_link, mock_save, mock_decomp,
-                                         mock_local, mock_web):
+                                         mock_local, mock_web, _mock_llm):
         from services.research_orchestrator import research_topic
         result = research_topic("test topic", cfg={}, allow_web=False)
         assert result.topic == "test topic"
@@ -575,13 +576,14 @@ class TestResearchTopic:
         assert isinstance(result.article, str)
         assert result.duration_seconds >= 0
 
+    @patch("services.llm_gateway.run_completion", side_effect=RuntimeError("no model"))
     @patch("services.research_orchestrator.search_web", return_value=[])
     @patch("services.research_orchestrator.search_local")
     @patch("services.research_orchestrator.decompose_topic", return_value=["sub q1"])
     @patch("services.research_orchestrator._save_to_kb")
     @patch("services.research_orchestrator._link_codex")
     def test_pipeline_with_local_sources(self, mock_link, mock_save, mock_decomp,
-                                          mock_local, mock_web):
+                                          mock_local, mock_web, _mock_llm):
         from services.research_orchestrator import Source, research_topic
         mock_local.return_value = [
             Source("local:learnings", "Relevant fact about AI.", 0.8, "Fact #1"),
@@ -590,13 +592,14 @@ class TestResearchTopic:
         assert len(result.sources) >= 1
         assert result.confidence > 0
 
+    @patch("services.llm_gateway.run_completion", side_effect=RuntimeError("no model"))
     @patch("services.research_orchestrator.search_web", return_value=[])
     @patch("services.research_orchestrator.search_local", return_value=[])
     @patch("services.research_orchestrator.decompose_topic", return_value=["test"])
     @patch("services.research_orchestrator._save_to_kb")
     @patch("services.research_orchestrator._link_codex")
     def test_max_sources_respected(self, mock_link, mock_save, mock_decomp,
-                                    mock_local, mock_web):
+                                    mock_local, mock_web, _mock_llm):
         from services.research_orchestrator import research_topic
         result = research_topic("test", cfg={}, max_sources=5)
         assert len(result.sources) <= 5
