@@ -238,11 +238,13 @@ class ConnectionManager:
         exclude:
             Optional client_id to skip (e.g. the sender).
         """
-        targets = [
-            cid
-            for cid, r in self._client_rooms.items()
-            if r == room and cid != exclude
-        ]
+        # P2-9: snapshot under lock to avoid mutation during iteration
+        async with self._lock:
+            targets = [
+                cid
+                for cid, r in self._client_rooms.items()
+                if r == room and cid != exclude
+            ]
         dead: List[str] = []
         for cid in targets:
             ws = self._connections.get(cid)
@@ -267,8 +269,11 @@ class ConnectionManager:
         message:
             The dict payload.
         """
+        # Snapshot under lock to avoid dict-changed-size RuntimeError
+        async with self._lock:
+            targets = list(self._connections.items())
         dead: List[str] = []
-        for cid, ws in list(self._connections.items()):
+        for cid, ws in targets:
             try:
                 await ws.send_json(message)
             except Exception:

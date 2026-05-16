@@ -138,8 +138,8 @@ class TestCrashHandler:
             ch.CRASH_DIR = original_dir
 
     def test_clear_crashes(self, tmp_path):
-        from services.crash_handler import clear_crashes
         import services.crash_handler as ch
+        from services.crash_handler import clear_crashes
         original_dir = ch.CRASH_DIR
         ch.CRASH_DIR = tmp_path / "crashes"
 

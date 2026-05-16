@@ -127,7 +127,7 @@ def _handle_forget(query: str, aspect_id: str = "") -> MemoryCommandResult:
             response="Forget what? Give me a phrase to match against.",
         )
     try:
-        from layla.memory.db import search_learnings_fts, delete_learnings_by_id, get_recent_learnings
+        from layla.memory.db import delete_learnings_by_id, get_recent_learnings, search_learnings_fts
         matches = search_learnings_fts(query, n=20, aspect_id=aspect_id or None)
         if not matches:
             recents = get_recent_learnings(n=200)

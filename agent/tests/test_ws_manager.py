@@ -1,8 +1,9 @@
 """Tests for WebSocket connection manager."""
-import pytest
 import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 class TestConnectionManager:
@@ -127,7 +128,7 @@ class TestConnectionManager:
 
 class TestCreateMessage:
     def test_structure(self):
-        from services.ws_manager import create_message, MSG_SYSTEM
+        from services.ws_manager import MSG_SYSTEM, create_message
         msg = create_message(MSG_SYSTEM, {"text": "hello"})
         assert msg["type"] == "system"
         assert msg["data"]["text"] == "hello"
@@ -135,7 +136,7 @@ class TestCreateMessage:
         assert "timestamp" in msg
 
     def test_custom_sender(self):
-        from services.ws_manager import create_message, MSG_RESPONSE
+        from services.ws_manager import MSG_RESPONSE, create_message
         msg = create_message(MSG_RESPONSE, {}, sender="user")
         assert msg["sender"] == "user"
 

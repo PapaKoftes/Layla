@@ -12,8 +12,6 @@ import sqlite3
 import sys
 import time
 from pathlib import Path
-
-import pytest
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -30,6 +28,7 @@ if str(AGENT_DIR) not in sys.path:
 @pytest.fixture(scope="module")
 def client():
     from fastapi.testclient import TestClient
+
     from main import app
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
@@ -51,7 +50,10 @@ def fresh_db(tmp_path):
             result_ok   INTEGER DEFAULT 0,
             error_code  TEXT DEFAULT '',
             duration_ms INTEGER DEFAULT 0,
-            created_at  TEXT NOT NULL DEFAULT ''
+            created_at  TEXT NOT NULL DEFAULT '',
+            cost_usd    REAL DEFAULT 0.0,
+            provider    TEXT DEFAULT '',
+            model_used  TEXT DEFAULT ''
         );
         CREATE TABLE IF NOT EXISTS tool_outcomes (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -162,6 +164,78 @@ class TestTraceToolCallWrite:
 
         rows = _rows(fresh_db, "SELECT * FROM tool_calls WHERE tool_name='list_dir'")
         assert len(rows) == 5
+
+    def test_cost_columns_written(self, fresh_db, monkeypatch):
+        """Phase 3: cost_usd, provider, model_used columns are persisted."""
+        monkeypatch.setattr("layla.memory.db_connection._conn", _mk_conn(fresh_db))
+        monkeypatch.setattr("layla.memory.migrations.migrate", lambda: None)
+        from core.executor import _trace_tool_call
+
+        _trace_tool_call(
+            "read_file", {"path": "/test"}, {"ok": True}, 50,
+            run_id="r-cost",
+            cost_usd=0.0042,
+            provider="anthropic",
+            model_used="claude-3-haiku",
+        )
+        rows = _rows(fresh_db, "SELECT * FROM tool_calls WHERE run_id='r-cost'")
+        assert len(rows) == 1
+        assert rows[0]["cost_usd"] == pytest.approx(0.0042)
+        assert rows[0]["provider"] == "anthropic"
+        assert rows[0]["model_used"] == "claude-3-haiku"
+
+    def test_cost_defaults_to_zero(self, fresh_db, monkeypatch):
+        """Without cost kwargs, columns default to zero/empty."""
+        monkeypatch.setattr("layla.memory.db_connection._conn", _mk_conn(fresh_db))
+        monkeypatch.setattr("layla.memory.migrations.migrate", lambda: None)
+        from core.executor import _trace_tool_call
+
+        _trace_tool_call("grep_code", {}, {"ok": True}, 20, run_id="r-nocost")
+        rows = _rows(fresh_db, "SELECT * FROM tool_calls WHERE run_id='r-nocost'")
+        assert len(rows) == 1
+        assert rows[0]["cost_usd"] == 0.0
+        assert rows[0]["provider"] == ""
+        assert rows[0]["model_used"] == ""
+
+
+# ---------------------------------------------------------------------------
+# extract_litellm_cost (Phase 3 — cost extraction from run_completion result)
+# ---------------------------------------------------------------------------
+
+class TestExtractLitellmCost:
+    def test_with_litellm_metadata(self):
+        from services.llm_gateway import extract_litellm_cost
+        result = {
+            "choices": [{"message": {"content": "hello"}}],
+            "_litellm": {
+                "cost_usd": 0.005,
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+            },
+        }
+        cost = extract_litellm_cost(result)
+        assert cost["cost_usd"] == pytest.approx(0.005)
+        assert cost["provider"] == "openai"
+        assert cost["model"] == "gpt-4o-mini"
+
+    def test_without_litellm_metadata(self):
+        from services.llm_gateway import extract_litellm_cost
+        result = {"choices": [{"message": {"content": "hello"}}]}
+        cost = extract_litellm_cost(result)
+        assert cost["cost_usd"] == 0.0
+        assert cost["provider"] == ""
+        assert cost["model"] == ""
+
+    def test_none_result(self):
+        from services.llm_gateway import extract_litellm_cost
+        cost = extract_litellm_cost(None)
+        assert cost["cost_usd"] == 0.0
+
+    def test_empty_dict(self):
+        from services.llm_gateway import extract_litellm_cost
+        cost = extract_litellm_cost({})
+        assert cost["cost_usd"] == 0.0
+        assert cost["provider"] == ""
 
 
 # ---------------------------------------------------------------------------

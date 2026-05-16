@@ -12,11 +12,13 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from layla.scheduler.jobs import (
+    _bg_backup,
     _bg_cleanup,
     _bg_codex,
     _bg_initiative,
     _bg_memory,
     _bg_reflect,
+    _bg_reindex,
     _bg_repo_reindex,
     _intelligence_job,
     _mission_worker_job,
@@ -88,8 +90,15 @@ def create_scheduler(cfg: dict) -> BackgroundScheduler:
         sched.add_job(_bg_initiative, IntervalTrigger(minutes=_imin), id="background_initiative")
         sched.add_job(_bg_cleanup, IntervalTrigger(hours=24), id="background_memory_cleanup")
 
+        # Nightly DB backup (P1-5): safe hot backup via SQLite .backup() API
+        sched.add_job(_instrumented("nightly_backup", _bg_backup), IntervalTrigger(hours=24), id="nightly_db_backup")
+
         # Repo indexer: periodic reindex of the workspace repo (Phase B wiring).
         sched.add_job(_bg_repo_reindex, IntervalTrigger(minutes=30), id="repo_reindex", replace_existing=True)
+
+        # P1-9: re-embed learnings whose ChromaDB write failed (dual-write consistency)
+        sched.add_job(_instrumented("reindex_failed", _bg_reindex), IntervalTrigger(minutes=30), id="reindex_failed_learnings")
+
         logger.info(
             "background jobs: reflection %s min, codex %s min, memory %s min, initiative %s min, cleanup daily",
             _rmin,

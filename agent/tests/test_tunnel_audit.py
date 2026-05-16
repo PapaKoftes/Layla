@@ -1,9 +1,10 @@
 """Tests for tunnel audit logging module."""
-import pytest
 import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 
 @pytest.fixture(autouse=True)
@@ -97,7 +98,7 @@ class TestGetSummary:
         assert s["denied"] == 0
 
     def test_summary_counts(self):
-        from services.tunnel_audit import log_access, get_summary
+        from services.tunnel_audit import get_summary, log_access
         log_access("1.1.1.1", "/a", "GET", None, "allow")
         log_access("2.2.2.2", "/b", "POST", None, "deny")
         log_access("1.1.1.1", "/a", "GET", None, "allow")
@@ -108,7 +109,7 @@ class TestGetSummary:
         assert s["unique_ips"] >= 2
 
     def test_top_paths(self):
-        from services.tunnel_audit import log_access, get_summary
+        from services.tunnel_audit import get_summary, log_access
         for _ in range(5):
             log_access("1.1.1.1", "/popular", "GET", None, "allow")
         log_access("1.1.1.1", "/rare", "GET", None, "allow")

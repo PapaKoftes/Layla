@@ -175,7 +175,9 @@ class TestKnowledgeGap:
 class TestResearchProfile:
     def test_round_trip(self):
         from services.research_profile import (
-            DomainExpertise, KnowledgeGap, ResearchProfile,
+            DomainExpertise,
+            KnowledgeGap,
+            ResearchProfile,
         )
         profile = ResearchProfile(
             domains=[DomainExpertise(domain="python", confidence=0.9)],
@@ -211,10 +213,13 @@ class TestBuildProfile:
 
 class TestSaveLoadProfile:
     def test_save_and_load(self, tmp_path):
-        from services.research_profile import (
-            DomainExpertise, ResearchProfile, load_profile, save_profile,
-        )
         import services.research_profile as mod
+        from services.research_profile import (
+            DomainExpertise,
+            ResearchProfile,
+            load_profile,
+            save_profile,
+        )
         original = mod._PROFILE_PATH
         mod._PROFILE_PATH = tmp_path / "profile.json"
 
@@ -231,8 +236,8 @@ class TestSaveLoadProfile:
             mod._PROFILE_PATH = original
 
     def test_load_nonexistent(self, tmp_path):
-        from services.research_profile import load_profile
         import services.research_profile as mod
+        from services.research_profile import load_profile
         original = mod._PROFILE_PATH
         mod._PROFILE_PATH = tmp_path / "nonexistent.json"
 
@@ -245,8 +250,8 @@ class TestSaveLoadProfile:
 
 class TestGetKnowledgeSummary:
     def test_empty_profile(self, tmp_path):
-        from services.research_profile import get_knowledge_summary
         import services.research_profile as mod
+        from services.research_profile import get_knowledge_summary
         original = mod._PROFILE_PATH
         mod._PROFILE_PATH = tmp_path / "empty_profile.json"
 
@@ -260,6 +265,7 @@ class TestGetKnowledgeSummary:
 class TestDetectKnowledgeGaps:
     def test_finds_gaps(self):
         from collections import Counter
+
         from services.research_profile import _detect_knowledge_gaps
         domains = Counter({"python": 10, "rust": 5, "haskell": 3})
         capabilities = {"python": 0.9, "rust": 0.1}  # rust has low confidence

@@ -37,8 +37,8 @@ var _activeAgentAbort = null;
 function cancelActiveSend() {
   try {
     if (_activeAgentAbort) _activeAgentAbort.abort();
-  } catch (_) {}
-  try { laylaHeaderProgressStop(); } catch (_) {}
+  } catch (_e) { console.debug('layla-app:', _e); }
+  try { laylaHeaderProgressStop(); } catch (_e) { console.debug('layla-app:', _e); }
 }
 window.cancelActiveSend = cancelActiveSend;
 
@@ -57,7 +57,7 @@ function laylaRefreshHeaderContextRow() {
       el.textContent = cid ? ('conv ' + cid.slice(0, 8)) : 'new chat';
       el.title = cid ? ('conversation_id: ' + cid) : 'No conversation id yet';
     }
-  } catch (_) {}
+  } catch (_e) { console.debug('layla-app:', _e); }
   fetch('/session/stats', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
     var t = document.getElementById('header-session-tokens');
     if (!t || !d || d.error) return;
@@ -76,7 +76,7 @@ window.laylaRefreshHeaderContextRow = laylaRefreshHeaderContextRow;
 // ── Conversation ID helper ───────────────────────────────────────────────────
 function ensureLaylaConversationId() {
   if (typeof window.currentConversationId === 'string' && String(window.currentConversationId).trim()) {
-    try { laylaRefreshHeaderContextRow(); } catch (_) {}
+    try { laylaRefreshHeaderContextRow(); } catch (_e) { console.debug('layla-app:', _e); }
     return String(window.currentConversationId).trim();
   }
   var id = '';
@@ -87,9 +87,9 @@ function ensureLaylaConversationId() {
     id = 'lc-' + Date.now();
   }
   window.currentConversationId = id;
-  try { localStorage.setItem('layla_current_conversation_id', id); } catch (_) {}
-  try { if (typeof updateContextChip === 'function') updateContextChip(); } catch (_) {}
-  try { laylaRefreshHeaderContextRow(); } catch (_) {}
+  try { localStorage.setItem('layla_current_conversation_id', id); } catch (_e) { console.debug('layla-app:', _e); }
+  try { if (typeof updateContextChip === 'function') updateContextChip(); } catch (_e) { console.debug('layla-app:', _e); }
+  try { laylaRefreshHeaderContextRow(); } catch (_e) { console.debug('layla-app:', _e); }
   return id;
 }
 window.ensureLaylaConversationId = ensureLaylaConversationId;
@@ -103,8 +103,8 @@ window.__laylaRefreshAfterShowMainPanel = function (main) {
   }
   if (main === 'prefs') {
     if (typeof refreshContentPolicyToggles === 'function') refreshContentPolicyToggles();
-    try { refreshApprovals(); } catch (_) {}
-    try { loadProjectsIntoSelect(); } catch (_) {}
+    try { refreshApprovals(); } catch (_e) { console.debug('layla-app:', _e); }
+    try { loadProjectsIntoSelect(); } catch (_e) { console.debug('layla-app:', _e); }
   }
   if (main === 'workspace') {
     var wsRoot = document.querySelector('#layla-right-panel .rcp-page[data-rcp="workspace"]');
@@ -127,8 +127,8 @@ async function executePlan(plan, goal) {
   var workspacePath = (document.getElementById('workspace-path') ? document.getElementById('workspace-path').value : '').trim();
   var allowWrite = document.getElementById('allow-write') ? document.getElementById('allow-write').checked : false;
   var allowRun = document.getElementById('allow-run') ? document.getElementById('allow-run').checked : false;
-  try { ensureLaylaConversationId(); } catch (_) {}
-  try { laylaHeaderProgressStart(); } catch (_) {}
+  try { ensureLaylaConversationId(); } catch (_e) { console.debug('layla-app:', _e); }
+  try { laylaHeaderProgressStart(); } catch (_e) { console.debug('layla-app:', _e); }
   try {
     var res = await fetchWithTimeout(
       '/execute_plan',
@@ -159,13 +159,13 @@ async function executePlan(plan, goal) {
     try {
       var summary = JSON.stringify(data.results || {}, null, 2);
       addMsg('layla', '**Plan executed**\n```json\n' + summary.slice(0, 12000) + (summary.length > 12000 ? '\n…' : '') + '\n```');
-    } catch (_) {}
+    } catch (_e) { console.debug('layla-app:', _e); }
   } catch (e) {
     var msg = (e && e.message) ? String(e.message) : String(e);
     if (typeof showToast === 'function') showToast('executePlan: ' + msg);
     else _dbg('executePlan', e);
   } finally {
-    try { laylaHeaderProgressStop(); } catch (_) {}
+    try { laylaHeaderProgressStop(); } catch (_e) { console.debug('layla-app:', _e); }
   }
 }
 window.executePlan = executePlan;
@@ -186,7 +186,7 @@ async function compactConversation() {
     var n = data && typeof data.messages_remaining === 'number' ? data.messages_remaining : null;
     var tok = n != null ? String(n) : '?';
     if (typeof showToast === 'function') showToast('Compacted · messages in buffer: ~' + tok);
-    try { if (typeof updateContextChip === 'function') updateContextChip(); } catch (_) {}
+    try { if (typeof updateContextChip === 'function') updateContextChip(); } catch (_e) { console.debug('layla-app:', _e); }
   } catch (e) {
     if (typeof showToast === 'function') showToast('Compact failed: ' + ((e && e.message) || e));
   }
@@ -196,7 +196,7 @@ window.compactConversation = compactConversation;
 // ── send() — main chat entry point ──────────────────────────────────────────
 async function send() {
   _dbg('send() called');
-  try { if (typeof _hideMentionDropdown === 'function') _hideMentionDropdown(); } catch (_) {}
+  try { if (typeof _hideMentionDropdown === 'function') _hideMentionDropdown(); } catch (_e) { console.debug('layla-app:', _e); }
   var input = document.getElementById('msg-input');
   if (!input) return;
   var msg = (input.value || '').trim();
@@ -213,9 +213,9 @@ async function send() {
   var metaTimer = null;
   var firstTokenTimer = null;
   var stalledTimer = null;
-  try { laylaHeaderProgressStart(); } catch (_) {}
-  try { operatorTraceClear(); } catch (_) {}
-  try { laylaStreamStatsStart(''); } catch (_) {}
+  try { laylaHeaderProgressStart(); } catch (_e) { console.debug('layla-app:', _e); }
+  try { operatorTraceClear(); } catch (_e) { console.debug('layla-app:', _e); }
+  try { laylaStreamStatsStart(''); } catch (_e) { console.debug('layla-app:', _e); }
 
   var msgAspect = window.currentAspect;
   var mentionMatch = msg.match(/^@([a-z]+)\s*/i);
@@ -229,12 +229,12 @@ async function send() {
         msgAspect = found.id;
         msg = msg.slice(mentionMatch[0].length).trim() || msg;
       }
-    } catch (_) {}
+    } catch (_e) { console.debug('layla-app:', _e); }
   }
   if (window._aspectLocked) msgAspect = window.currentAspect;
 
   input.value = '';
-  try { toggleSendButton(); } catch (_) {}
+  try { toggleSendButton(); } catch (_e) { console.debug('layla-app:', _e); }
   var displayMsg = mentionMatch && msgAspect !== window.currentAspect ? ('@' + msgAspect + ' ' + msg) : msg;
   addMsg('you', displayMsg);
   addSeparator();
@@ -251,7 +251,7 @@ async function send() {
   var wpEl = document.getElementById('workspace-path');
   var workspacePath = wpEl ? (wpEl.value || '').trim() : '';
   var projectId = '';
-  try { projectId = (localStorage.getItem('layla_active_project_id') || '').trim(); } catch (_) {}
+  try { projectId = (localStorage.getItem('layla_active_project_id') || '').trim(); } catch (_e) { console.debug('layla-app:', _e); }
   var composeDraftEl = document.getElementById('compose-draft');
   var composeDraft = composeDraftEl ? (composeDraftEl.value || '').trim() : '';
 
@@ -278,7 +278,7 @@ async function send() {
     if (_cp) _cp.style.display = 'none';
   }
 
-  try { laylaShowTypingIndicator(msgAspect, streamMode ? 'connecting' : 'preparing_reply'); } catch (_) {}
+  try { laylaShowTypingIndicator(msgAspect, streamMode ? 'connecting' : 'preparing_reply'); } catch (_e) { console.debug('layla-app:', _e); }
 
   try {
     if (streamMode) {
@@ -290,13 +290,13 @@ async function send() {
       if (!res.ok || !res.body) {
         var body = {};
         try { var t = await res.text(); if (t) try { body = JSON.parse(t); } catch(_) {} } catch(_) {}
-        try { laylaRemoveTypingIndicator(); } catch (_) {}
+        try { laylaRemoveTypingIndicator(); } catch (_e) { console.debug('layla-app:', _e); }
         addMsg('layla', formatAgentError(res, body));
-        try { if (window.laylaChatFSM) window.laylaChatFSM.finishError(); } catch (_) {}
+        try { if (window.laylaChatFSM) window.laylaChatFSM.finishError(); } catch (_e) { console.debug('layla-app:', _e); }
         return;
       }
-      try { laylaRemoveTypingIndicator(); } catch (_) {}
-      try { if (window.laylaChatFSM) window.laylaChatFSM.beginStream(); } catch (_) {}
+      try { laylaRemoveTypingIndicator(); } catch (_e) { console.debug('layla-app:', _e); }
+      try { if (window.laylaChatFSM) window.laylaChatFSM.beginStream(); } catch (_e) { console.debug('layla-app:', _e); }
       var reader = res.body.getReader();
       var dec = new TextDecoder();
       var full = '';
@@ -342,7 +342,7 @@ async function send() {
       div.appendChild(streamMeta);
       var streamStartedAt = Date.now();
       var liveStatus = 'connecting';
-      try { laylaNotifyStreamPhase(div, 'connecting'); } catch (_) {}
+      try { laylaNotifyStreamPhase(div, 'connecting'); } catch (_e) { console.debug('layla-app:', _e); }
       metaTimer = setInterval(function () {
         var secs = Math.max(0, Math.floor((Date.now() - streamStartedAt) / 1000));
         streamMeta.textContent = 'Status: ' + ((typeof UX_STATE_LABELS !== 'undefined' && UX_STATE_LABELS[liveStatus]) || liveStatus) + ' · ' + secs + 's · ' + (full || '').length + ' chars';
@@ -353,7 +353,7 @@ async function send() {
         var statusEl = div.querySelector('.tool-status-label');
         if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; var mb = div.querySelector('.msg-bubble'); if (mb) mb.appendChild(statusEl); }
         statusEl.textContent = (typeof UX_STATE_LABELS !== 'undefined' && UX_STATE_LABELS.waiting_first_token) || 'Waiting for first token';
-        try { laylaNotifyStreamPhase(div, liveStatus); } catch (_) {}
+        try { laylaNotifyStreamPhase(div, liveStatus); } catch (_e) { console.debug('layla-app:', _e); }
       }, 1800);
       var stallMs = (typeof laylaStalledSilenceMs === 'function') ? laylaStalledSilenceMs() : 60000;
       stalledTimer = setTimeout(function () {
@@ -361,7 +361,7 @@ async function send() {
         var statusEl = div.querySelector('.tool-status-label');
         if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; var mb = div.querySelector('.msg-bubble'); if (mb) mb.appendChild(statusEl); }
         statusEl.textContent = ((typeof UX_STATE_LABELS !== 'undefined' && UX_STATE_LABELS.stalled) || 'Stalled') + ' — ' + ((typeof UX_STATE_LABELS !== 'undefined' && UX_STATE_LABELS.retry_hint) || 'Retry suggested');
-        try { laylaNotifyStreamPhase(div, 'stalled'); } catch (_) {}
+        try { laylaNotifyStreamPhase(div, 'stalled'); } catch (_e) { console.debug('layla-app:', _e); }
       }, stallMs);
       while (true) {
         var _read = await reader.read();
@@ -383,22 +383,22 @@ async function send() {
               var statusEl = div.querySelector('.tool-status-label');
               if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; var mb = div.querySelector('.msg-bubble'); if (mb) mb.appendChild(statusEl); }
               statusEl.textContent = ((typeof UX_STATE_LABELS !== 'undefined' && UX_STATE_LABELS.stalled) || 'Stalled') + ' — ' + ((typeof UX_STATE_LABELS !== 'undefined' && UX_STATE_LABELS.retry_hint) || 'Retry suggested');
-              try { laylaNotifyStreamPhase(div, 'stalled'); } catch (_) {}
+              try { laylaNotifyStreamPhase(div, 'stalled'); } catch (_e) { console.debug('layla-app:', _e); }
             }, stallMs);
           }
           if (obj.error) {
             clearTimeout(firstTokenTimer);
             clearTimeout(stalledTimer);
             clearInterval(metaTimer);
-            try { div.remove(); } catch (_) {}
-            try { laylaRemoveTypingIndicator(); } catch (_) {}
+            try { div.remove(); } catch (_e) { console.debug('layla-app:', _e); }
+            try { laylaRemoveTypingIndicator(); } catch (_e) { console.debug('layla-app:', _e); }
             addMsg('layla', String(obj.error));
-            try { if (window.laylaChatFSM) window.laylaChatFSM.finishError(); } catch (_) {}
+            try { if (window.laylaChatFSM) window.laylaChatFSM.finishError(); } catch (_e) { console.debug('layla-app:', _e); }
             return;
           }
           if (obj.ux_state) {
             liveStatus = String(obj.ux_state);
-            try { laylaNotifyStreamPhase(div, liveStatus); } catch (_) {}
+            try { laylaNotifyStreamPhase(div, liveStatus); } catch (_e) { console.debug('layla-app:', _e); }
             var statusEl = div.querySelector('.tool-status-label');
             if (statusEl) statusEl.textContent = (typeof UX_STATE_LABELS !== 'undefined' && UX_STATE_LABELS[liveStatus]) || liveStatus;
           }
@@ -412,16 +412,29 @@ async function send() {
             var ok = (obj.ok === true ? 'ok' : obj.ok === false ? 'fail' : '');
             var _summary = String(obj.summary || '').trim();
             var _line = '▸ ' + tool + (phase ? (' [' + phase + ']') : '') + (ok ? (' ' + ok) : '') + (_summary ? (' — ' + _summary) : '');
-            if (tool) { appendThinkLine(_line); try { laylaStreamStatsStep(tool); } catch (_) {} }
+            if (tool) { appendThinkLine(_line); try { laylaStreamStatsStep(tool); } catch (_e) { console.debug('layla-app:', _e); } }
           }
           if (obj.type === 'model_selection' || obj.model_selection) {
             var ms = obj.model_selection || obj;
             var mdl = String(ms.model || '').replace(/^claude-/i, '').replace(/-\d{8}$/, '');
-            try { var el = document.getElementById('stream-model-badge'); if (el && mdl) el.textContent = '⬡ ' + mdl; } catch (_) {}
+            try { var el = document.getElementById('stream-model-badge'); if (el && mdl) el.textContent = '⬡ ' + mdl; } catch (_e) { console.debug('layla-app:', _e); }
+          }
+          // Deliberation metadata from debate engine
+          if (obj.deliberation && obj.deliberation.mode && obj.deliberation.mode !== 'solo') {
+            div._deliberationMeta = obj.deliberation;
+            try {
+              var delibBadge = document.createElement('div');
+              delibBadge.className = 'deliberation-label';
+              delibBadge.style.cssText = 'font-size:0.62rem;color:var(--violet,#8844cc);padding:2px 0;font-style:italic';
+              var modeLabel = {debate:'⚔ Debate',council:'⊛ Council',tribunal:'✦ Tribunal'}[obj.deliberation.mode] || obj.deliberation.mode;
+              delibBadge.textContent = '✦ ' + modeLabel + ' — ' + (obj.deliberation.participating_aspects || []).length + ' voices contributing';
+              var mb = div.querySelector('.msg-bubble');
+              if (mb) mb.parentNode.insertBefore(delibBadge, mb);
+            } catch (_e) { console.debug('layla-app:', _e); }
           }
           if (obj.token) {
             liveStatus = 'streaming';
-            try { laylaNotifyStreamPhase(div, 'streaming'); } catch (_) {}
+            try { laylaNotifyStreamPhase(div, 'streaming'); } catch (_e) { console.debug('layla-app:', _e); }
             if (!gotToken) {
               gotToken = true;
               clearTimeout(firstTokenTimer);
@@ -436,24 +449,29 @@ async function send() {
               var statusEl = div.querySelector('.tool-status-label');
               if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; var mb = div.querySelector('.msg-bubble'); if (mb) mb.appendChild(statusEl); }
               statusEl.textContent = ((typeof UX_STATE_LABELS !== 'undefined' && UX_STATE_LABELS.stalled) || 'Stalled') + ' — ' + ((typeof UX_STATE_LABELS !== 'undefined' && UX_STATE_LABELS.retry_hint) || 'Retry suggested');
-              try { laylaNotifyStreamPhase(div, 'stalled'); } catch (_) {}
+              try { laylaNotifyStreamPhase(div, 'stalled'); } catch (_e) { console.debug('layla-app:', _e); }
             }, stallMs);
             full += String(obj.token);
             if (bubble) bubble.textContent = full;
-            try { if (full.length % 200 === 0) laylaStreamStatsChars(full.length); } catch (_) {}
+            try { if (full.length % 200 === 0) laylaStreamStatsChars(full.length); } catch (_e) { console.debug('layla-app:', _e); }
           }
           if (obj.done) {
             clearTimeout(firstTokenTimer);
             clearTimeout(stalledTimer);
             clearInterval(metaTimer);
             liveStatus = 'done';
-            try { laylaNotifyStreamPhase(div, 'done'); } catch (_) {}
+            try { laylaNotifyStreamPhase(div, 'done'); } catch (_e) { console.debug('layla-app:', _e); }
             if (bubble) bubble.textContent = full;
-            if (thinkBox) { try { thinkBox.open = false; } catch (_) {} }
-            if (window._ttsEnabled && full) { try { speakText(full).catch(function () {}); } catch (_) {} }
-            try { refreshMaturityCard(true); } catch (_) {}
-            try { laylaStreamStatsChars(full.length); laylaStreamStatsStop(); } catch (_) {}
-            try { if (typeof laylaIngestArtifacts === 'function') laylaIngestArtifacts(full); } catch (_) {}
+            if (thinkBox) { try { thinkBox.open = false; } catch (_e) { console.debug('layla-app:', _e); } }
+            if (window._ttsEnabled && full) { try { speakText(full).catch(function () {}); } catch (_e) { console.debug('layla-app:', _e); } }
+            try { refreshMaturityCard(true); } catch (_e) { console.debug('layla-app:', _e); }
+            try { laylaStreamStatsChars(full.length); laylaStreamStatsStop(); } catch (_e) { console.debug('layla-app:', _e); }
+            try { if (typeof laylaIngestArtifacts === 'function') laylaIngestArtifacts(full); } catch (_e) { console.debug('layla-app:', _e); }
+            // Render full deliberation transcript if available
+            var _delibDone = obj.deliberation || div._deliberationMeta;
+            if (_delibDone && _delibDone.mode && _delibDone.mode !== 'solo') {
+              try { if (typeof _renderDeliberationTranscript === 'function') _renderDeliberationTranscript(div, _delibDone); } catch (_e) { console.debug('layla-app:', _e); }
+            }
           }
         }
       }
@@ -467,12 +485,12 @@ async function send() {
       var data = {};
       try { data = await res.json(); } catch (_) { data = {}; }
       if (!res.ok || !data || data.ok === false) {
-        try { laylaRemoveTypingIndicator(); } catch (_) {}
+        try { laylaRemoveTypingIndicator(); } catch (_e) { console.debug('layla-app:', _e); }
         addMsg('layla', formatAgentError(res, data || {}));
-        try { if (window.laylaChatFSM) window.laylaChatFSM.finishError(); } catch (_) {}
+        try { if (window.laylaChatFSM) window.laylaChatFSM.finishError(); } catch (_e) { console.debug('layla-app:', _e); }
         return;
       }
-      try { laylaRemoveTypingIndicator(); } catch (_) {}
+      try { laylaRemoveTypingIndicator(); } catch (_e) { console.debug('layla-app:', _e); }
       var resp = (data && (data.response || data.reply)) || '(no output)';
       var replyAspect = (data && (data.aspect || (data.state && data.state.aspect))) || msgAspect;
       var _steps = data && data.state && data.state.steps;
@@ -480,27 +498,27 @@ async function send() {
       var _uxStates = data && data.state && data.state.ux_states;
       var _memInf = data && data.state && data.state.memory_influenced;
       addMsg('layla', resp, replyAspect, _delib, _steps, _uxStates, _memInf);
-      if (window._ttsEnabled && resp && resp !== '(no output)') { try { speakText(resp).catch(function () {}); } catch (_) {} }
-      try { refreshMaturityCard(true); } catch (_) {}
-      try { laylaStreamStatsStop(); } catch (_) {}
-      try { if (typeof laylaIngestArtifacts === 'function') laylaIngestArtifacts(resp); } catch (_) {}
+      if (window._ttsEnabled && resp && resp !== '(no output)') { try { speakText(resp).catch(function () {}); } catch (_e) { console.debug('layla-app:', _e); } }
+      try { refreshMaturityCard(true); } catch (_e) { console.debug('layla-app:', _e); }
+      try { laylaStreamStatsStop(); } catch (_e) { console.debug('layla-app:', _e); }
+      try { if (typeof laylaIngestArtifacts === 'function') laylaIngestArtifacts(resp); } catch (_e) { console.debug('layla-app:', _e); }
     }
   } catch (e) {
-    try { laylaRemoveTypingIndicator(); } catch (_) {}
+    try { laylaRemoveTypingIndicator(); } catch (_e) { console.debug('layla-app:', _e); }
     addMsg('layla', 'Error: ' + (e && e.message ? e.message : String(e)));
-    try { if (window.laylaChatFSM) window.laylaChatFSM.finishError(); } catch (_) {}
+    try { if (window.laylaChatFSM) window.laylaChatFSM.finishError(); } catch (_e) { console.debug('layla-app:', _e); }
   } finally {
     window._laylaSendBusy = false;
-    try { if (firstTokenTimer) clearTimeout(firstTokenTimer); } catch (_) {}
-    try { if (stalledTimer) clearTimeout(stalledTimer); } catch (_) {}
-    try { if (metaTimer) clearInterval(metaTimer); } catch (_) {}
-    try { laylaRemoveTypingIndicator(); } catch (_) {}
-    try { if (window.laylaChatFSM) window.laylaChatFSM.finishOk(); } catch (_) {}
-    try { laylaHeaderProgressStop(); } catch (_) {}
-    try { laylaStreamStatsStop(); } catch (_) {}
-    try { refreshApprovals(); } catch (_) {}
-    try { updateContextChip(); } catch (_) {}
-    try { if (typeof laylaScrollActiveConversationIntoView === 'function') laylaScrollActiveConversationIntoView(); } catch (_) {}
+    try { if (firstTokenTimer) clearTimeout(firstTokenTimer); } catch (_e) { console.debug('layla-app:', _e); }
+    try { if (stalledTimer) clearTimeout(stalledTimer); } catch (_e) { console.debug('layla-app:', _e); }
+    try { if (metaTimer) clearInterval(metaTimer); } catch (_e) { console.debug('layla-app:', _e); }
+    try { laylaRemoveTypingIndicator(); } catch (_e) { console.debug('layla-app:', _e); }
+    try { if (window.laylaChatFSM) window.laylaChatFSM.finishOk(); } catch (_e) { console.debug('layla-app:', _e); }
+    try { laylaHeaderProgressStop(); } catch (_e) { console.debug('layla-app:', _e); }
+    try { laylaStreamStatsStop(); } catch (_e) { console.debug('layla-app:', _e); }
+    try { refreshApprovals(); } catch (_e) { console.debug('layla-app:', _e); }
+    try { updateContextChip(); } catch (_e) { console.debug('layla-app:', _e); }
+    try { if (typeof laylaScrollActiveConversationIntoView === 'function') laylaScrollActiveConversationIntoView(); } catch (_e) { console.debug('layla-app:', _e); }
   }
 }
 
@@ -516,7 +534,7 @@ var __esc = (typeof window.escapeHtml === 'function')
   : function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); };
 var __toast = (typeof window.showToast === 'function')
   ? window.showToast
-  : function (t) { try { console.log('[Layla UI]', t); } catch (_) {} };
+  : function (t) { try { console.log('[Layla UI]', t); } catch (_e) { console.debug('layla-app:', _e); } };
 
 async function refreshVersionInfo() {
   var el = document.getElementById('app-version');
@@ -592,11 +610,11 @@ document.addEventListener('DOMContentLoaded', function () {
     var th = localStorage.getItem('layla_theme');
     if (th === 'light') document.body.classList.add('theme-light');
     else document.body.classList.remove('theme-light');
-  } catch (_) {}
+  } catch (_e) { console.debug('layla-app:', _e); }
 
   // Module init hooks (functions may not exist if module not loaded yet — try/catch)
-  try { if (typeof refreshWorkspacePresetsDropdown === 'function') refreshWorkspacePresetsDropdown(); } catch (_) {}
-  try { if (typeof toggleSendButton === 'function') toggleSendButton(); } catch (_) {}
+  try { if (typeof refreshWorkspacePresetsDropdown === 'function') refreshWorkspacePresetsDropdown(); } catch (_e) { console.debug('layla-app:', _e); }
+  try { if (typeof toggleSendButton === 'function') toggleSendButton(); } catch (_e) { console.debug('layla-app:', _e); }
 
   // Health polling (header status badge)
   try {
@@ -614,7 +632,7 @@ document.addEventListener('DOMContentLoaded', function () {
       }).then(function (x) {
         if (!x.r.ok) { el.textContent = 'degraded'; return; }
         var d = x.d || {};
-        try { if (typeof laylaApplyUiTimeoutsFromHealth === 'function') laylaApplyUiTimeoutsFromHealth(d); } catch (_) {}
+        try { if (typeof laylaApplyUiTimeoutsFromHealth === 'function') laylaApplyUiTimeoutsFromHealth(d); } catch (_e) { console.debug('layla-app:', _e); }
         var mode = (d.remote_mode ? 'remote' : 'local');
         var raw = String(d.active_model || d.model_path || d.model || d.model_filename || '').trim();
         var tail = laylaBasenameDisplay(raw);
@@ -624,7 +642,7 @@ document.addEventListener('DOMContentLoaded', function () {
       }).catch(function () { el.textContent = 'offline'; });
     }
     laylaPollHeaderDeep();
-    setInterval(laylaPollHeaderDeep, 20000);
+    var _pollHealthTimer = setInterval(laylaPollHeaderDeep, 20000);
 
     // Connection banner
     var ban = document.getElementById('connection-banner');
@@ -637,15 +655,15 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     window.addEventListener('online', function () { if (ban) ban.style.display = 'none'; });
     window.addEventListener('offline', function () { if (ban) ban.style.display = 'block'; });
-    setInterval(laylaPingConn, 15000);
+    var _pollConnTimer = setInterval(laylaPingConn, 15000);
     laylaPingConn();
-  } catch (_) {}
+  } catch (_e) { console.debug('layla-app:', _e); }
 
   // Header context row
   try {
     laylaRefreshHeaderContextRow();
-    setInterval(function () { try { laylaRefreshHeaderContextRow(); } catch (_) {} }, 12000);
-  } catch (_) {}
+    var _pollCtxTimer = setInterval(function () { try { laylaRefreshHeaderContextRow(); } catch (_e) { console.debug('layla-app:', _e); } }, 12000);
+  } catch (_e) { console.debug('layla-app:', _e); }
 
   // Setup overlay listeners
   try {
@@ -672,7 +690,22 @@ document.addEventListener('DOMContentLoaded', function () {
         ev.preventDefault();
       }
     });
-  } catch (_) {}
+  } catch (_e) { console.debug('layla-app:', _e); }
+
+  // P4-3: Pause polling when tab is hidden to save resources
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      // Clear all polling intervals
+      if (typeof _pollHealthTimer !== 'undefined' && _pollHealthTimer) clearInterval(_pollHealthTimer);
+      if (typeof _pollConnTimer !== 'undefined' && _pollConnTimer) clearInterval(_pollConnTimer);
+      if (typeof _pollCtxTimer !== 'undefined' && _pollCtxTimer) clearInterval(_pollCtxTimer);
+    } else {
+      // Restart polling when tab becomes visible again
+      try { laylaPollHeaderDeep(); _pollHealthTimer = setInterval(laylaPollHeaderDeep, 20000); } catch (_e) { console.debug('layla-app:', _e); }
+      try { laylaPingConn(); _pollConnTimer = setInterval(laylaPingConn, 15000); } catch (_e) { console.debug('layla-app:', _e); }
+      try { laylaRefreshHeaderContextRow(); _pollCtxTimer = setInterval(function () { try { laylaRefreshHeaderContextRow(); } catch (_e) { console.debug('layla-app:', _e); } }, 12000); } catch (_e) { console.debug('layla-app:', _e); }
+    }
+  });
 
   // First-run setup check
   if (typeof checkSetupStatus === 'function') checkSetupStatus();

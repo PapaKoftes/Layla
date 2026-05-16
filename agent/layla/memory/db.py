@@ -118,6 +118,10 @@ from layla.memory.projects_db import (
     set_project_context,
     update_project,
 )
+from layla.memory.rl_preferences import (
+    get_rl_preferences,
+    upsert_rl_preference,
+)
 from layla.memory.strategy_stats import (
     get_preferred_strategy,
     get_strategy_stat_row,
@@ -134,10 +138,6 @@ from layla.memory.tasks_db import (
 )
 from layla.memory.tasks_db import (
     update_task as update_persistent_task,
-)
-from layla.memory.rl_preferences import (
-    get_rl_preferences,
-    upsert_rl_preference,
 )
 from layla.memory.telemetry_db import (
     get_model_success_rates,

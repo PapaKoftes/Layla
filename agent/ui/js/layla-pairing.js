@@ -296,7 +296,7 @@
   // ── Unpair ────────────────────────────────────────────────────────────────
 
   async function unpairDevice(instanceId, name) {
-    if (!confirm('Unpair device "' + (name || instanceId) + '"?')) return;
+    if (!(await laylaConfirm('Unpair device "' + (name || instanceId) + '"?'))) return;
     try {
       var r = await fetch('/pairing/' + encodeURIComponent(instanceId), { method: 'DELETE' });
       var d = await r.json();

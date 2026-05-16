@@ -63,7 +63,7 @@ def check_orphaned_relationships() -> tuple[bool, str]:
 
 def check_entity_schema() -> tuple[bool, str]:
     try:
-        from schemas.entity import Entity, validate_entity, make_entity_id
+        from schemas.entity import Entity, make_entity_id, validate_entity
         # Test round-trip
         ent = Entity(type="technology", canonical_name="fastapi",
                      aliases=["FastAPI"], description="Python web framework",

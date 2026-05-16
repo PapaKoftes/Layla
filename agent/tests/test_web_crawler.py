@@ -1,13 +1,15 @@
 """Tests for unified web crawler module."""
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 class TestCrawlBasic:
     @patch("services.web_crawler._BACKENDS")
     def test_basic_fallback(self, mock_backends):
         from services.web_crawler import crawl_url
-        mock_fn = lambda url, cfg: {"ok": True, "content": "Hello world", "title": "Test", "url": url, "backend": "basic"}
+        def mock_fn(url, cfg):
+            return {"ok": True, "content": "Hello world", "title": "Test", "url": url, "backend": "basic"}
         mock_backends.__getitem__ = lambda self, k: mock_fn
         mock_backends.get = lambda k, d=None: mock_fn
         # Use auto which falls to basic

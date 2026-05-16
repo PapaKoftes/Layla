@@ -143,7 +143,6 @@ def run() -> int:
     for f in sorted(ROUTERS_DIR.glob("*.py")):
         if f.name.startswith("_"):
             continue
-        stem = f.stem + "_router"
         # main.py imports as e.g. `from routers import german as german_router`
         # or `from routers import voice as voice_router`
         src_main = "\n".join(_lines(MAIN_PY))
@@ -155,7 +154,6 @@ def run() -> int:
 
     for key, info in sorted(routes.items()):
         path = info["path"]
-        method = info["method"]
 
         # Skip known skipped routes
         if any(path == s or path.startswith(s + "/") for s in SKIP_ROUTES):

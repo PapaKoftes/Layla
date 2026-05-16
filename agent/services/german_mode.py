@@ -82,11 +82,8 @@ CARD_STATES = ["new", "learning", "review", "mastered"]
 def _get_db_path() -> Path:
     """Derive path to german_mode.db from layla memory location."""
     try:
-        from layla.memory.db_connection import _conn as _mk
-        conn = _mk()
-        db_path = Path(conn.execute("PRAGMA database_list").fetchone()[2])
-        conn.close()
-        return db_path.parent / "german_mode.db"
+        from layla.memory.db_connection import _resolve_db_path
+        return _resolve_db_path().parent / "german_mode.db"
     except Exception:
         return Path.home() / ".layla" / "german_mode.db"
 
@@ -98,6 +95,22 @@ def _open_db() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     _migrate(conn)
     return conn
+
+
+from contextlib import contextmanager
+
+
+@contextmanager
+def _db_ctx():
+    """Context manager that guarantees _open_db() connections are closed on any exit path."""
+    conn = _open_db()
+    try:
+        yield conn
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
@@ -145,25 +158,23 @@ def _migrate(conn: sqlite3.Connection) -> None:
 def get_profile(user_id: str = "default") -> dict:
     """Return the user's German learning profile, creating defaults if absent."""
     try:
-        conn = _open_db()
-        row = conn.execute(
-            "SELECT * FROM german_profile WHERE user_id=?", (user_id,)
-        ).fetchone()
-        if row:
-            conn.close()
+        with _db_ctx() as conn:
+            row = conn.execute(
+                "SELECT * FROM german_profile WHERE user_id=?", (user_id,)
+            ).fetchone()
+            if row:
+                return dict(row)
+            # Create default
+            from layla.time_utils import utcnow
+            conn.execute(
+                "INSERT INTO german_profile (user_id, level, updated_at) VALUES (?,?,?)",
+                (user_id, "B1", utcnow().isoformat()),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM german_profile WHERE user_id=?", (user_id,)
+            ).fetchone()
             return dict(row)
-        # Create default
-        from layla.time_utils import utcnow
-        conn.execute(
-            "INSERT INTO german_profile (user_id, level, updated_at) VALUES (?,?,?)",
-            (user_id, "B1", utcnow().isoformat()),
-        )
-        conn.commit()
-        row = conn.execute(
-            "SELECT * FROM german_profile WHERE user_id=?", (user_id,)
-        ).fetchone()
-        conn.close()
-        return dict(row)
     except Exception as e:
         logger.debug("german_mode.get_profile failed: %s", e)
         return {"user_id": user_id, "level": "B1", "streak_ok": 0, "streak_err": 0, "sessions": 0}
@@ -176,14 +187,13 @@ def set_level(level: str, user_id: str = "default") -> dict:
         raise ValueError(f"Invalid CEFR level: {level!r}. Use one of {CEFR_LEVELS}")
     try:
         from layla.time_utils import utcnow
-        conn = _open_db()
-        conn.execute(
-            "INSERT INTO german_profile (user_id, level, updated_at) VALUES (?,?,?) "
-            "ON CONFLICT(user_id) DO UPDATE SET level=excluded.level, updated_at=excluded.updated_at",
-            (user_id, level, utcnow().isoformat()),
-        )
-        conn.commit()
-        conn.close()
+        with _db_ctx() as conn:
+            conn.execute(
+                "INSERT INTO german_profile (user_id, level, updated_at) VALUES (?,?,?) "
+                "ON CONFLICT(user_id) DO UPDATE SET level=excluded.level, updated_at=excluded.updated_at",
+                (user_id, level, utcnow().isoformat()),
+            )
+            conn.commit()
     except Exception as e:
         logger.debug("german_mode.set_level failed: %s", e)
     return get_profile(user_id)
@@ -193,34 +203,33 @@ def _adapt_level(profile: dict, correct: bool, user_id: str = "default") -> str 
     """Auto-advance or drop level on streaks. Returns new level if changed, else None."""
     try:
         from layla.time_utils import utcnow
-        conn = _open_db()
-        field = "streak_ok" if correct else "streak_err"
-        reset_field = "streak_err" if correct else "streak_ok"
-        conn.execute(
-            f"UPDATE german_profile SET {field}={field}+1, {reset_field}=0, sessions=sessions+1, updated_at=? "
-            "WHERE user_id=?",
-            (utcnow().isoformat(), user_id),
-        )
-        conn.commit()
-        profile_new = get_profile(user_id)
-        current = profile_new["level"]
-        idx = _LEVEL_IDX[current]
-
-        new_level = None
-        if profile_new["streak_ok"] >= 10 and idx < len(CEFR_LEVELS) - 1:
-            new_level = CEFR_LEVELS[idx + 1]
-        elif profile_new["streak_err"] >= 8 and idx > 0:
-            new_level = CEFR_LEVELS[idx - 1]
-
-        if new_level:
+        with _db_ctx() as conn:
+            field = "streak_ok" if correct else "streak_err"
+            reset_field = "streak_err" if correct else "streak_ok"
             conn.execute(
-                "UPDATE german_profile SET level=?, streak_ok=0, streak_err=0, updated_at=? WHERE user_id=?",
-                (new_level, utcnow().isoformat(), user_id),
+                f"UPDATE german_profile SET {field}={field}+1, {reset_field}=0, sessions=sessions+1, updated_at=? "
+                "WHERE user_id=?",
+                (utcnow().isoformat(), user_id),
             )
             conn.commit()
+            profile_new = get_profile(user_id)
+            current = profile_new["level"]
+            idx = _LEVEL_IDX[current]
 
-        conn.close()
-        return new_level
+            new_level = None
+            if profile_new["streak_ok"] >= 10 and idx < len(CEFR_LEVELS) - 1:
+                new_level = CEFR_LEVELS[idx + 1]
+            elif profile_new["streak_err"] >= 8 and idx > 0:
+                new_level = CEFR_LEVELS[idx - 1]
+
+            if new_level:
+                conn.execute(
+                    "UPDATE german_profile SET level=?, streak_ok=0, streak_err=0, updated_at=? WHERE user_id=?",
+                    (new_level, utcnow().isoformat(), user_id),
+                )
+                conn.commit()
+
+            return new_level
     except Exception as e:
         logger.debug("german_mode._adapt_level failed: %s", e)
         return None
@@ -320,13 +329,12 @@ def correct_text(text: str, user_id: str = "default") -> dict:
     # Persist to DB
     try:
         from layla.time_utils import utcnow
-        conn = _open_db()
-        conn.execute(
-            "INSERT INTO correction_log (user_id, original, corrected, errors, level, created_at) VALUES (?,?,?,?,?,?)",
-            (user_id, text, corrected, json.dumps(errors), level, utcnow().isoformat()),
-        )
-        conn.commit()
-        conn.close()
+        with _db_ctx() as conn:
+            conn.execute(
+                "INSERT INTO correction_log (user_id, original, corrected, errors, level, created_at) VALUES (?,?,?,?,?,?)",
+                (user_id, text, corrected, json.dumps(errors), level, utcnow().isoformat()),
+            )
+            conn.commit()
     except Exception as e:
         logger.debug("german_mode.correct_text DB write failed: %s", e)
 
@@ -345,12 +353,11 @@ def _build_suggestion(text: str, errors: list[dict], level: str) -> str:
 def get_corrections_history(user_id: str = "default", limit: int = 20) -> list[dict]:
     """Return recent corrections for a user."""
     try:
-        conn = _open_db()
-        rows = conn.execute(
-            "SELECT * FROM correction_log WHERE user_id=? ORDER BY id DESC LIMIT ?",
-            (user_id, limit),
-        ).fetchall()
-        conn.close()
+        with _db_ctx() as conn:
+            rows = conn.execute(
+                "SELECT * FROM correction_log WHERE user_id=? ORDER BY id DESC LIMIT ?",
+                (user_id, limit),
+            ).fetchall()
         result = []
         for r in rows:
             d = dict(r)
@@ -399,17 +406,16 @@ def add_flashcard(
     try:
         from layla.time_utils import utcnow
         now = utcnow().isoformat()
-        conn = _open_db()
-        cur = conn.execute(
-            "INSERT INTO flashcards (user_id, front, back, example, tags, state, due_at, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?)",
-            (user_id, front.strip(), back.strip(), example.strip(), tags.strip(), "new", now, now, now),
-        )
-        row_id = cur.lastrowid
-        conn.commit()
-        row = conn.execute("SELECT * FROM flashcards WHERE id=?", (row_id,)).fetchone()
-        conn.close()
-        return {"ok": True, "card": dict(row)}
+        with _db_ctx() as conn:
+            cur = conn.execute(
+                "INSERT INTO flashcards (user_id, front, back, example, tags, state, due_at, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (user_id, front.strip(), back.strip(), example.strip(), tags.strip(), "new", now, now, now),
+            )
+            row_id = cur.lastrowid
+            conn.commit()
+            row = conn.execute("SELECT * FROM flashcards WHERE id=?", (row_id,)).fetchone()
+            return {"ok": True, "card": dict(row)}
     except Exception as e:
         logger.debug("german_mode.add_flashcard failed: %s", e)
         return {"ok": False, "error": str(e)}
@@ -420,13 +426,12 @@ def get_due_cards(user_id: str = "default", limit: int = 10) -> list[dict]:
     try:
         from layla.time_utils import utcnow
         now = utcnow().isoformat()
-        conn = _open_db()
-        rows = conn.execute(
-            "SELECT * FROM flashcards WHERE user_id=? AND state != 'mastered' AND due_at <= ? "
-            "ORDER BY due_at ASC LIMIT ?",
-            (user_id, now, limit),
-        ).fetchall()
-        conn.close()
+        with _db_ctx() as conn:
+            rows = conn.execute(
+                "SELECT * FROM flashcards WHERE user_id=? AND state != 'mastered' AND due_at <= ? "
+                "ORDER BY due_at ASC LIMIT ?",
+                (user_id, now, limit),
+            ).fetchall()
         return [dict(r) for r in rows]
     except Exception as e:
         logger.debug("german_mode.get_due_cards failed: %s", e)
@@ -440,47 +445,46 @@ def review_card(card_id: int, quality: int, user_id: str = "default") -> dict:
     """
     quality = max(0, min(5, quality))
     try:
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta, timezone
+
         from layla.time_utils import utcnow
 
-        conn = _open_db()
-        row = conn.execute(
-            "SELECT * FROM flashcards WHERE id=? AND user_id=?", (card_id, user_id)
-        ).fetchone()
-        if not row:
-            conn.close()
-            return {"ok": False, "error": "Card not found"}
+        with _db_ctx() as conn:
+            row = conn.execute(
+                "SELECT * FROM flashcards WHERE id=? AND user_id=?", (card_id, user_id)
+            ).fetchone()
+            if not row:
+                return {"ok": False, "error": "Card not found"}
 
-        card = dict(row)
-        new_ef, new_interval, new_reps = _sm2(
-            card.get("ease_factor", 2.5),
-            card.get("interval", 1),
-            card.get("reps", 0),
-            quality,
-        )
+            card = dict(row)
+            new_ef, new_interval, new_reps = _sm2(
+                card.get("ease_factor", 2.5),
+                card.get("interval", 1),
+                card.get("reps", 0),
+                quality,
+            )
 
-        now_dt = utcnow()
-        due_dt = now_dt + timedelta(days=new_interval)
+            now_dt = utcnow()
+            due_dt = now_dt + timedelta(days=new_interval)
 
-        # Determine new state
-        if quality < 3:
-            new_state = "learning"
-        elif new_reps >= 4 and new_interval >= 21:
-            new_state = "mastered"
-        elif new_reps >= 2:
-            new_state = "review"
-        else:
-            new_state = "learning"
+            # Determine new state
+            if quality < 3:
+                new_state = "learning"
+            elif new_reps >= 4 and new_interval >= 21:
+                new_state = "mastered"
+            elif new_reps >= 2:
+                new_state = "review"
+            else:
+                new_state = "learning"
 
-        conn.execute(
-            "UPDATE flashcards SET state=?, ease_factor=?, interval=?, reps=?, due_at=?, updated_at=? "
-            "WHERE id=?",
-            (new_state, new_ef, new_interval, new_reps, due_dt.isoformat(), now_dt.isoformat(), card_id),
-        )
-        conn.commit()
-        updated = conn.execute("SELECT * FROM flashcards WHERE id=?", (card_id,)).fetchone()
-        conn.close()
-        return {"ok": True, "card": dict(updated), "next_review_days": new_interval}
+            conn.execute(
+                "UPDATE flashcards SET state=?, ease_factor=?, interval=?, reps=?, due_at=?, updated_at=? "
+                "WHERE id=?",
+                (new_state, new_ef, new_interval, new_reps, due_dt.isoformat(), now_dt.isoformat(), card_id),
+            )
+            conn.commit()
+            updated = conn.execute("SELECT * FROM flashcards WHERE id=?", (card_id,)).fetchone()
+            return {"ok": True, "card": dict(updated), "next_review_days": new_interval}
     except Exception as e:
         logger.debug("german_mode.review_card failed: %s", e)
         return {"ok": False, "error": str(e)}
@@ -488,10 +492,9 @@ def review_card(card_id: int, quality: int, user_id: str = "default") -> dict:
 
 def delete_flashcard(card_id: int, user_id: str = "default") -> dict:
     try:
-        conn = _open_db()
-        conn.execute("DELETE FROM flashcards WHERE id=? AND user_id=?", (card_id, user_id))
-        conn.commit()
-        conn.close()
+        with _db_ctx() as conn:
+            conn.execute("DELETE FROM flashcards WHERE id=? AND user_id=?", (card_id, user_id))
+            conn.commit()
         return {"ok": True}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -500,12 +503,11 @@ def delete_flashcard(card_id: int, user_id: str = "default") -> dict:
 def get_flashcard_stats(user_id: str = "default") -> dict:
     """Return deck statistics for a user."""
     try:
-        conn = _open_db()
-        rows = conn.execute(
-            "SELECT state, COUNT(*) as cnt FROM flashcards WHERE user_id=? GROUP BY state",
-            (user_id,),
-        ).fetchall()
-        conn.close()
+        with _db_ctx() as conn:
+            rows = conn.execute(
+                "SELECT state, COUNT(*) as cnt FROM flashcards WHERE user_id=? GROUP BY state",
+                (user_id,),
+            ).fetchall()
         counts = {r["state"]: r["cnt"] for r in rows}
         total = sum(counts.values())
         return {

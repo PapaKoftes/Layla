@@ -25,7 +25,7 @@
     --violet: #3d0050;
     --accent: #c0006a;
     --text: #d4c5e2;
-    --text-dim: #7a6a8a;
+    --text-dim: #9a8aaa;
     --code-bg: #130013;
     --border: #320044;
     --glow: #8b000066;
@@ -61,7 +61,7 @@
     --bg: #f5f0f8;
     --bg2: #ebe5f0;
     --text: #2a1a35;
-    --text-dim: #5a4a65;
+    --text-dim: #4a3a55;
     --code-bg: #e8e0f0;
     --border: #c0b0d0;
     --crimson: #6b0000;
@@ -611,6 +611,8 @@
 
   .tab-btn {
     padding: 3px 8px;
+    min-height: 44px;
+    min-width: 44px;
     font-size: 0.68rem;
     background: var(--code-bg);
     border: 1px solid var(--border);
@@ -1243,7 +1245,29 @@
     border-radius: 4px;
     border-left: 2px solid var(--violet);
   }
-  .deliberation .deliberation-label { font-style: italic; margin-bottom: 3px; opacity: 0.8; }
+  .deliberation .deliberation-label {
+    font-style: italic;
+    margin-bottom: 3px;
+    opacity: 0.8;
+    cursor: pointer;
+    list-style: none;
+    font-size: 0.72rem;
+    color: var(--violet, #8844cc);
+    letter-spacing: 0.04em;
+  }
+  .deliberation .deliberation-label::-webkit-details-marker { display: none; }
+  .deliberation[open] .deliberation-label { opacity: 1; }
+  /* Split opinion indicator */
+  .deliberation-split {
+    display: inline-block;
+    font-size: 0.58rem;
+    color: #ff6666;
+    border: 1px solid rgba(255,100,100,0.3);
+    padding: 1px 6px;
+    border-radius: 10px;
+    margin-left: 6px;
+    letter-spacing: 0.05em;
+  }
 
   .tool-trace { font-size: 0.7rem; color: var(--text-dim); margin-top: 6px; cursor: pointer; }
   .tool-trace summary { list-style: none; }
@@ -1854,6 +1878,14 @@
   .session-item .sess-date { font-size:0.62rem; opacity:0.7; white-space:nowrap; }
   .session-item .sess-del { background:none; border:none; color:var(--text-dim); cursor:pointer; opacity:0; font-size:0.8rem; padding:0 2px; flex-shrink:0; }
   .session-item:hover .sess-del { opacity:1; }
+  /* Compact thread rail — toggled via JS */
+  .chat-rail.rail-compact .session-item { padding: 3px 6px; margin-top: 2px; font-size: 0.66rem; }
+  .chat-rail.rail-compact .session-item .sess-date { display: none; }
+  .chat-rail.rail-compact .session-item .conv-meta { gap: 3px; }
+  .chat-rail.rail-compact .session-item .conv-proj { display: none; }
+  .chat-rail.rail-compact .chat-rail-header { padding: 4px 6px 3px; }
+  .chat-rail.rail-compact .chat-rail-new { padding: 4px 6px; font-size: 0.66rem; }
+  .chat-rail.rail-compact .chat-rail-search { padding: 3px 6px; font-size: 0.64rem; }
 
   /* ── Apply to file / diff viewer ── */
   .apply-btn { position:absolute; top:6px; right:56px; padding:2px 8px; background:var(--violet); border:1px solid var(--asp); color:var(--text); font-family:'JetBrains Mono',monospace; font-size:0.67rem; cursor:pointer; border-radius:2px; z-index:1; }
@@ -1982,6 +2014,270 @@
     background: transparent; color: var(--text); cursor: pointer;
   }
   .pairing-dialog-actions button:hover { border-color: var(--accent); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE BREAKPOINTS
+   Mobile (<480px) → Tablet (481-768px) → Desktop (769px+, default)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Right panel: off-canvas drawer on narrow viewports ──────────────────── */
+@media (max-width: 1024px) {
+  #layla-right-panel.layla-right-panel {
+    position: fixed;
+    right: 0;
+    top: var(--header-stack-h);
+    bottom: 0;
+    z-index: 55;
+    width: min(340px, 85vw);
+    min-width: 0;
+    max-width: none;
+    transform: translateX(100%);
+    transition: transform 0.24s ease;
+    box-shadow: -4px 0 28px rgba(0,0,0,0.45);
+  }
+  #layla-right-panel.layla-right-panel.rp-open {
+    transform: translateX(0);
+  }
+  /* Backdrop overlay */
+  #rp-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    top: var(--header-stack-h);
+    background: rgba(0,0,0,0.5);
+    z-index: 54;
+  }
+  #rp-backdrop.visible { display: block; }
+  /* Toggle button appears */
+  .rp-toggle-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    font-size: 0.85rem;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+    flex-shrink: 0;
+  }
+  .rp-toggle-btn:hover { border-color: var(--asp); color: var(--asp); }
+}
+@media (min-width: 1025px) {
+  .rp-toggle-btn { display: none !important; }
+  #rp-backdrop { display: none !important; }
+}
+
+/* ── Tablet: 481px–768px ─────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Sidebar becomes a slide-in drawer */
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: var(--header-stack-h);
+    bottom: 0;
+    width: min(260px, 80vw) !important;
+    min-width: 0 !important;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.4);
+    overflow-y: auto;
+  }
+  .sidebar.mobile-open { transform: translateX(0); }
+  .sidebar.compact { width: min(260px, 80vw) !important; min-width: 0 !important; }
+  .sidebar.compact h3,
+  .sidebar.compact .sidebar-hint,
+  .sidebar.compact .aspect-desc { display: block !important; }
+
+  /* Sidebar backdrop */
+  #sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    top: var(--header-stack-h);
+    background: rgba(0,0,0,0.45);
+    z-index: 49;
+  }
+  #sidebar-backdrop.visible { display: block; }
+
+  /* Header: compact for touch */
+  header {
+    padding: 8px 12px 6px;
+    gap: 6px 10px;
+    min-height: 48px;
+    --header-bar-min-h: 48px;
+  }
+  .title { font-size: 1.1rem; letter-spacing: 0.12em; }
+  .header-meta { max-width: none; gap: 6px 10px; font-size: 0.72rem; }
+  .header-meta button { padding: 4px 7px; font-size: 0.68rem; }
+  .aspect-badge { font-size: 0.7rem; padding: 4px 10px; letter-spacing: 0.1em; }
+  #session-time { font-size: 0.6rem; padding: 2px 7px; }
+
+  /* Mobile hamburger visible */
+  .mobile-hamburger { display: flex !important; align-items: center; justify-content: center; }
+
+  /* Chat area: full width, no sidebar reservation */
+  .layout { flex-direction: column; height: auto; min-height: calc(100vh - var(--header-stack-h)); }
+  .main-area { flex: 1; min-height: 0; width: 100%; }
+
+  /* Chat padding tighter */
+  #chat { padding: 14px 12px; gap: 12px; }
+  .msg-bubble { max-width: 95%; font-size: 0.85rem; }
+
+  /* Input area touch-friendly */
+  .input-area { padding: 8px 10px; }
+  #msg-input { min-height: 44px; font-size: 16px; padding: 10px 12px; } /* 16px prevents iOS zoom */
+  #send-btn { padding: 10px 14px; font-size: 0.72rem; min-height: 44px; }
+  #mic-btn { width: 44px; height: 44px; min-height: 44px; min-width: 44px; }
+  .input-row { gap: 6px; }
+
+  /* Chat rail: already handled as slide-in by existing rules */
+  .sidebar .chat-rail { max-height: none; }
+
+  /* Right panel handled by 1024px breakpoint above */
+
+  /* Operator trace dock: full-width bottom sheet */
+  .operator-trace-dock {
+    left: 4px;
+    right: 4px;
+    max-width: none;
+    bottom: 72px; /* above input area */
+    font-size: 0.6rem;
+  }
+
+  /* Warframe clip-path: simplify on tablet for performance */
+  @supports (clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%)) {
+    .sidebar, #layla-right-panel, .chat-rail {
+      --wf-cut: 6px;
+    }
+  }
+
+  /* Wizard & modals: full-screen on tablet */
+  .wizard-modal, .settings-modal, .onboarding-modal {
+    max-width: 92vw;
+    max-height: 88vh;
+    overflow-y: auto;
+  }
+
+  /* Maturity card compact */
+  .maturity-card { margin: 6px 0 10px; padding: 8px; }
+  .maturity-rank-badge { padding: 4px 8px; }
+}
+
+/* ── Mobile: ≤480px ──────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  /* Header: minimal */
+  header {
+    padding: 6px 8px 5px;
+    gap: 4px 6px;
+    min-height: 44px;
+    --header-bar-min-h: 44px;
+  }
+  .title { font-size: 0.95rem; letter-spacing: 0.08em; }
+  .aspect-badge { font-size: 0.62rem; padding: 3px 8px; letter-spacing: 0.06em; }
+  .header-meta { font-size: 0.66rem; gap: 4px 6px; }
+  .header-meta button { font-size: 0.62rem; padding: 3px 6px; }
+  #session-time { display: none; } /* reclaim space */
+
+  /* Sidebar drawer narrower */
+  .sidebar { width: min(240px, 85vw) !important; }
+
+  /* Chat area: full bleed */
+  #chat { padding: 10px 8px; gap: 10px; }
+  .msg-bubble {
+    max-width: 98%;
+    padding: 8px 10px;
+    font-size: 0.82rem;
+    line-height: 1.4;
+  }
+  .msg-meta { font-size: 0.58rem; }
+  .msg-facet-chip { font-size: 0.56rem; padding: 2px 6px; }
+
+  /* Input area: stack vertically on very narrow */
+  .input-area { padding: 6px 6px; }
+  .input-row { gap: 4px; }
+  #msg-input { padding: 8px 10px; font-size: 16px; min-height: 44px; border-radius: 3px; }
+  #send-btn { padding: 8px 10px; font-size: 0.68rem; letter-spacing: 0.06em; min-height: 44px; }
+
+  /* File attachment row compact */
+  .attachment-row { flex-wrap: wrap; gap: 4px; }
+  .attachment-chip { font-size: 0.6rem; max-width: 140px; }
+
+  /* Right panel drawer: nearly full width */
+  #layla-right-panel.layla-right-panel { width: min(100vw, 100%) !important; }
+  #layla-right-panel .rcp-tabs { gap: 3px; padding-bottom: 6px; }
+  #layla-right-panel .rcp-tab { padding: 6px 6px; font-size: 0.58rem; min-width: 52px; }
+  #layla-right-panel .rta-card { padding: 8px; font-size: 0.68rem; }
+
+  /* Deliberation block: tighter */
+  .deliberation { padding: 6px 8px; font-size: 0.74rem; }
+
+  /* Operator trace: bottom sheet, more compact */
+  .operator-trace-dock { bottom: 64px; font-size: 0.56rem; }
+  .operator-trace-log { max-height: 120px; }
+
+  /* Wizard: full-screen takeover */
+  .wizard-overlay { padding: 8px; }
+  .wizard-modal { max-width: 100vw; max-height: 96vh; border-radius: 0; }
+  .wizard-modal, .settings-modal, .onboarding-modal { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+  /* Warframe chrome: disable clip-path on small screens for usability */
+  @supports (clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%)) {
+    .sidebar, .main-area, #layla-right-panel, .chat-rail {
+      clip-path: none;
+    }
+    .sidebar::before, .main-area::before, #layla-right-panel::before, .chat-rail::before {
+      clip-path: none;
+    }
+  }
+
+  /* Reduce visual effects for mobile perf */
+  body::before { opacity: calc(0.04 * var(--fx-strength)); } /* dim aspect pattern */
+  body::after { display: none; } /* disable scanlines */
+  #layla-sprite-field { display: none; } /* hide sprite for space */
+  #doodle-overlay { display: none; }
+
+  /* Maturity card: minimal */
+  .maturity-card { padding: 6px; margin: 4px 0 8px; }
+  .maturity-card-top { gap: 6px; }
+  .maturity-sigil { width: 26px; height: 26px; }
+  .maturity-rank-badge { padding: 3px 6px; font-size: 0.68rem; }
+  #maturity-rank { font-size: 0.85rem; }
+
+  /* Thinking/reasoning blocks */
+  .think-bubble { font-size: 0.64rem; padding: 5px 8px; }
+  .layla-reasoning-chain > summary.layla-reasoning-summary { font-size: 0.64rem; }
+  .layla-reasoning-step { font-size: 0.62rem; }
+
+  /* Tool trace compact */
+  .tool-trace { font-size: 0.64rem; }
+  .tool-trace-content { font-size: 0.62rem; max-height: 80px; }
+}
+
+/* ── Touch-target enforcement (iOS/Android) ──────────────────────────────── */
+@media (pointer: coarse) {
+  button, [role="button"], .aspect-btn, .chat-rail-item, .rcp-tab, .rcp-subtab {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .aspect-btn { padding: 10px 10px 10px 14px; }
+  .chat-rail-item { padding: 10px 8px; }
+  #chat-rail-toggle { min-height: 44px; min-width: 44px; }
+}
+
+/* ── Landscape phone: tighter vertical ───────────────────────────────────── */
+@media (max-height: 480px) and (orientation: landscape) {
+  header { min-height: 38px; padding: 4px 10px; --header-bar-min-h: 38px; }
+  .title { font-size: 0.9rem; }
+  .input-area { padding: 4px 8px; }
+  #msg-input { min-height: 36px; }
+  #chat { padding: 8px 10px; gap: 8px; }
+  .msg-bubble { font-size: 0.78rem; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .title,

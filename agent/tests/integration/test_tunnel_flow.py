@@ -1,6 +1,7 @@
 """Integration tests: remote access → auth → tunnel → audit logging."""
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 class TestTunnelAuthIntegration:
@@ -8,7 +9,7 @@ class TestTunnelAuthIntegration:
 
     def test_full_token_lifecycle(self):
         """Generate token → hash → validate → rotate → old token rejected."""
-        from services.tunnel_auth import generate_token, hash_token, validate_token, rotate_token
+        from services.tunnel_auth import generate_token, hash_token, rotate_token, validate_token
 
         # 1. Generate and hash
         token = generate_token()
@@ -33,8 +34,9 @@ class TestTunnelAuthIntegration:
 
     def test_auth_plus_ip_plus_expiry(self):
         """Combined check: valid token + allowed IP + not expired."""
-        from services.tunnel_auth import generate_token, hash_token, check_remote_access
         import datetime
+
+        from services.tunnel_auth import check_remote_access, generate_token, hash_token
 
         token = generate_token()
         cfg = {
@@ -71,7 +73,7 @@ class TestTunnelAuditIntegration:
         ta._table_ready = False
 
     def test_log_then_query(self):
-        from services.tunnel_audit import log_access, query_log, get_summary
+        from services.tunnel_audit import get_summary, log_access, query_log
 
         # Simulate mixed access
         log_access("10.0.0.1", "/agent", "POST", "abc12345", "allow")

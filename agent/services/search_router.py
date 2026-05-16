@@ -163,7 +163,7 @@ def get_search_status(cfg: dict | None = None) -> dict[str, Any]:
     # Meilisearch
     if cfg.get("meilisearch_enabled"):
         try:
-            from services.meilisearch_bridge import is_available, get_stats
+            from services.meilisearch_bridge import get_stats, is_available
             status["backends"]["meilisearch"] = {
                 "enabled": True,
                 "available": is_available(cfg),

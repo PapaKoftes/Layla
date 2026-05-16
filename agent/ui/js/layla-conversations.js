@@ -6,6 +6,10 @@
 // ─── Session history + chat rail ─────────────────────────────────────────────
 const SESSIONS_KEY = 'layla_sessions';
 const MAX_SESSIONS = 10;
+const RAIL_PAGE_SIZE = 30;
+let _railOffset = 0;
+let _railHasMore = false;
+let _railSearchTimer = null;
 
 function _saveCurrentSession() {
   const chat = document.getElementById('chat');
@@ -60,7 +64,7 @@ function closeChatRailMobile() {
 async function loadConversationIntoChat(convId, skipConfirm) {
   if (!convId) return;
   if (!skipConfirm && _hasChatContent()) {
-    if (!confirm('Switch chats? Current messages will be replaced from the server.')) return;
+    if (!(await laylaConfirm('Switch chats? Current messages will be replaced from the server.'))) return;
   }
   const chat = document.getElementById('chat');
   if (!chat) return;
@@ -163,12 +167,16 @@ async function _renderSessionList() {
     _setPinned(ids.slice(0, 50));
   }
   try {
-    const base = q ? '/conversations/search?q=' + encodeURIComponent(q) + '&limit=80' : '/conversations?limit=120';
+    const isAppend = arguments[0] === true;
+    const pageOffset = isAppend ? _railOffset : 0;
+    const limit = RAIL_PAGE_SIZE;
+    const base = q ? '/conversations/search?q=' + encodeURIComponent(q) + '&limit=' + limit + '&offset=' + pageOffset : '/conversations?limit=' + limit + '&offset=' + pageOffset;
     const url = tag ? (base + '&tag=' + encodeURIComponent(tag)) : base;
     const r = await fetch(url);
     const d = await r.json();
     if (d.ok && Array.isArray(d.conversations)) {
       let convs = d.conversations.slice();
+      _railHasMore = convs.length >= limit;
       // Client-side date filters (API doesn't currently expose range params).
       function _parseDay(s) {
         const t = String(s || '').trim();
@@ -199,7 +207,12 @@ async function _renderSessionList() {
         // newest first fallback
         return String(b.updated_at || '').localeCompare(String(a.updated_at || ''));
       });
-      container.innerHTML = '';
+      if (!isAppend) container.innerHTML = '';
+      else {
+        // Remove existing load-more button before appending
+        const oldMore = container.querySelector('.rail-load-more');
+        if (oldMore) oldMore.remove();
+      }
       conversations.forEach((s) => {
         const item = document.createElement('div');
         const active = String(s.id) === String(currentConversationId);
@@ -229,7 +242,7 @@ async function _renderSessionList() {
         renBtn.type = 'button';
         renBtn.addEventListener('click', async (ev) => {
           ev.stopPropagation();
-          const nt = prompt('Rename chat', (s.title || 'New chat').slice(0, 120));
+          const nt = await laylaPrompt('Rename chat', (s.title || 'New chat').slice(0, 120));
           if (!nt || !nt.trim()) return;
           try {
             const rr = await fetch('/conversations/' + encodeURIComponent(s.id) + '/rename', {
@@ -270,7 +283,7 @@ async function _renderSessionList() {
         item.addEventListener('contextmenu', async (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
-          const action = prompt('Chat actions: rename | delete | pin | tags | export', 'rename');
+          const action = await laylaPrompt('Chat actions: rename | delete | pin | tags | export', 'rename');
           if (!action) return;
           const a = action.trim().toLowerCase();
           if (a === 'pin') { _togglePinned(s.id); _renderSessionList(); return; }
@@ -295,7 +308,7 @@ async function _renderSessionList() {
             return;
           }
           if (a === 'tags') {
-            const nt = prompt('Tags (comma-separated)', String(s.tags || ''));
+            const nt = await laylaPrompt('Tags (comma-separated)', String(s.tags || ''));
             if (nt == null) return;
             try {
               const rr = await fetch('/conversations/' + encodeURIComponent(s.id) + '/tags', {
@@ -312,6 +325,16 @@ async function _renderSessionList() {
         });
         container.appendChild(item);
       });
+      _railOffset = pageOffset + convs.length;
+      if (_railHasMore) {
+        const moreBtn = document.createElement('button');
+        moreBtn.className = 'rail-load-more';
+        moreBtn.type = 'button';
+        moreBtn.textContent = 'Load more...';
+        moreBtn.style.cssText = 'width:100%;padding:6px;margin-top:4px;font-size:0.66rem;background:var(--code-bg);border:1px solid var(--border);color:var(--text-dim);border-radius:3px;cursor:pointer;font-family:inherit';
+        moreBtn.addEventListener('click', function() { _renderSessionList(true); });
+        container.appendChild(moreBtn);
+      }
       try { if (typeof laylaScrollActiveConversationIntoView === 'function') laylaScrollActiveConversationIntoView(); } catch (_) {}
       return;
     }
@@ -357,14 +380,14 @@ async function _restoreSession(s) {
     await loadConversationIntoChat(String(s.id), false);
     return;
   }
-  if (!confirm('Restore this session? Current chat will be cleared.')) return;
-  chat.innerHTML = s.html;
+  if (!(await laylaConfirm('Restore this session? Current chat will be cleared.'))) return;
+  chat.innerHTML = (typeof sanitizeHtml === 'function') ? sanitizeHtml(s.html) : s.html;
   hideEmpty();
   chat.scrollTop = chat.scrollHeight;
 }
 
 async function _deleteSession(id) {
-  if (!confirm('Delete this chat?')) return;
+  if (!(await laylaConfirm('Delete this chat?'))) return;
   try {
     const r = await fetch('/conversations/' + encodeURIComponent(id), { method: 'DELETE' });
     const d = await r.json();
@@ -435,7 +458,7 @@ function onProjectSelectChange() {
 }
 
 async function createProjectQuick() {
-  const name = prompt('Project name?', 'My project');
+  const name = await laylaPrompt('Project name?', 'My project');
   if (!name || !name.trim()) return;
   try {
     const r = await fetch('/projects', {
@@ -461,3 +484,26 @@ async function createProjectQuick() {
 window.loadProjectsIntoSelect = loadProjectsIntoSelect;
 window.onProjectSelectChange = onProjectSelectChange;
 window.createProjectQuick = createProjectQuick;
+
+// ── Debounced chat-rail search ──────────────────────────────────────────────
+(function() {
+  try {
+    const searchEl = document.getElementById('chat-rail-search');
+    if (!searchEl) return;
+    searchEl.addEventListener('input', function() {
+      clearTimeout(_railSearchTimer);
+      _railSearchTimer = setTimeout(function() {
+        _railOffset = 0;
+        _renderSessionList();
+      }, 280);
+    });
+    // Clear search on Escape
+    searchEl.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        searchEl.value = '';
+        _railOffset = 0;
+        _renderSessionList();
+      }
+    });
+  } catch (_) {}
+})();

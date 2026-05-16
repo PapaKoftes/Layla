@@ -59,27 +59,44 @@ def _extract_provider_name(model_string: str) -> str:
     return model_string.split("-")[0] if "-" in model_string else "unknown"
 
 
+_configured_api_keys: dict[str, str] = {}
+
+_KEY_MAP = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "together": "TOGETHER_API_KEY",
+    "mistral": "MISTRAL_API_KEY",
+    "cohere": "COHERE_API_KEY",
+    "google": "GEMINI_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+}
+
+
 def _configure_api_keys(cfg: dict) -> None:
-    """Set API keys from config into litellm/environment."""
+    """Extract API keys from config into module-level dict + os.environ.
+
+    Keys are stored in ``_configured_api_keys`` so callers can pass them via
+    the ``api_key`` parameter to litellm.completion() instead of relying solely
+    on os.environ (which leaks secrets to child processes).
+    """
     import os
     keys = cfg.get("litellm_api_keys", {})
     if not isinstance(keys, dict):
         return
-    key_map = {
-        "anthropic": "ANTHROPIC_API_KEY",
-        "openai": "OPENAI_API_KEY",
-        "groq": "GROQ_API_KEY",
-        "together": "TOGETHER_API_KEY",
-        "mistral": "MISTRAL_API_KEY",
-        "cohere": "COHERE_API_KEY",
-        "google": "GEMINI_API_KEY",
-        "deepseek": "DEEPSEEK_API_KEY",
-        "openrouter": "OPENROUTER_API_KEY",
-    }
-    for provider, env_var in key_map.items():
+    for provider, env_var in _KEY_MAP.items():
         api_key = (keys.get(provider) or "").strip()
-        if api_key and not os.environ.get(env_var):
-            os.environ[env_var] = api_key
+        if api_key:
+            _configured_api_keys[provider] = api_key
+            # Still set env for litellm's internal provider routing which reads env vars
+            if not os.environ.get(env_var):
+                os.environ[env_var] = api_key
+
+
+def get_api_key(provider: str) -> str:
+    """Return the API key for *provider* from module cache, or empty string."""
+    return _configured_api_keys.get(provider, "")
 
 
 def _safe_int(val: Any, default: int) -> int:
@@ -148,7 +165,7 @@ def complete(
     Returns dict with keys: content, model, provider, latency_ms, cost_usd, usage.
     Raises RuntimeError if all providers fail.
     """
-    from services.provider_health import record_success, record_failure, is_healthy
+    from services.provider_health import is_healthy, record_failure, record_success
 
     lit = _import_litellm()
     if lit is None:
@@ -246,7 +263,7 @@ def complete_stream(
 
     Yields text chunks. On provider failure, transparently switches to next in chain.
     """
-    from services.provider_health import record_success, record_failure, is_healthy
+    from services.provider_health import is_healthy, record_failure, record_success
 
     lit = _import_litellm()
     if lit is None:

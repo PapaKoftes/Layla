@@ -68,8 +68,8 @@ def run_codex_entity_nudge() -> dict[str, Any]:
                 continue
 
             try:
+                from layla.codex.codex_db import search_entities, upsert_entity
                 from layla.codex.enricher import extract_entities
-                from layla.codex.codex_db import upsert_entity, search_entities
 
                 raw_entities = extract_entities(content)
                 for ent in (raw_entities or [])[:3]:  # Max 3 per summary
@@ -105,9 +105,9 @@ def run_codex_relationship_discovery() -> dict[str, Any]:
     Creates 'co_occurs' relationships when entities are mentioned together.
     """
     try:
+        from layla.codex.codex_db import link_entities, search_entities
         from layla.memory.db_connection import _conn
         from layla.memory.migrations import migrate
-        from layla.codex.codex_db import search_entities, link_entities
 
         migrate()
         relationships_created = 0
@@ -152,7 +152,7 @@ def run_codex_relationship_discovery() -> dict[str, Any]:
                                 ent_b["id"],
                                 "co_occurs",
                                 weight=0.3,
-                                evidence=f"co-occurred in learning",
+                                evidence="co-occurred in learning",
                             )
                             relationships_created += 1
                         except Exception:

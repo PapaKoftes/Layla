@@ -30,12 +30,14 @@ def auto_link_learning(learning_content: str, learning_id: int) -> list[dict]:
     Returns a list of dicts describing each link created:
         [{"entity_id": str, "entity_name": str, "rel_type": str, "new": bool}, ...]
     """
-    from layla.codex.enricher import extract_entities
     from layla.codex.codex_db import (
-        upsert_entity as codex_upsert,
         link_entities,
         search_entities,
     )
+    from layla.codex.codex_db import (
+        upsert_entity as codex_upsert,
+    )
+    from layla.codex.enricher import extract_entities
     from schemas.entity import make_entity_id
 
     if not learning_content or not learning_content.strip():
@@ -80,16 +82,15 @@ def auto_link_learning(learning_content: str, learning_id: int) -> list[dict]:
 
         # Create a "mentions" relationship from a synthetic learning-entity
         # to the matched codex entity.
-        learning_entity_id = make_entity_id("learning", str(learning_id))
-
-        # Ensure the learning pseudo-entity exists
-        codex_upsert(
+        # Ensure the learning pseudo-entity exists (type must match the ID we use)
+        learning_ent = codex_upsert(
             entity_type="topic",
             canonical_name=f"learning_{learning_id}",
             description=learning_content[:200],
             confidence=0.5,
             source=source_label,
         )
+        learning_entity_id = (learning_ent or {}).get("id") or make_entity_id("topic", f"learning_{learning_id}")
 
         rel = link_entities(
             from_id=learning_entity_id,

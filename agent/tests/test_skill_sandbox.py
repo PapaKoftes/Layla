@@ -1,8 +1,9 @@
 """Tests for skill pack sandbox (venv isolation)."""
-import pytest
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 class TestVenvPaths:
@@ -30,8 +31,8 @@ class TestVenvPaths:
 
 class TestCreateVenv:
     def test_create_venv(self, tmp_path):
-        from services.skill_sandbox import create_venv
         import services.skill_sandbox as ss
+        from services.skill_sandbox import create_venv
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:
@@ -42,8 +43,8 @@ class TestCreateVenv:
             ss.ENVS_DIR = old_dir
 
     def test_create_existing_is_ok(self, tmp_path):
-        from services.skill_sandbox import create_venv
         import services.skill_sandbox as ss
+        from services.skill_sandbox import create_venv
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:
@@ -62,8 +63,8 @@ class TestRunEntryPoint:
         assert "not found" in result["stderr"].lower()
 
     def test_missing_entry_point(self, tmp_path):
-        from services.skill_sandbox import run_entry_point, create_venv
         import services.skill_sandbox as ss
+        from services.skill_sandbox import create_venv, run_entry_point
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:
@@ -75,8 +76,8 @@ class TestRunEntryPoint:
             ss.ENVS_DIR = old_dir
 
     def test_successful_run(self, tmp_path):
-        from services.skill_sandbox import run_entry_point, create_venv
         import services.skill_sandbox as ss
+        from services.skill_sandbox import create_venv, run_entry_point
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:
@@ -93,8 +94,8 @@ class TestRunEntryPoint:
             ss.ENVS_DIR = old_dir
 
     def test_timeout(self, tmp_path):
-        from services.skill_sandbox import run_entry_point, create_venv
         import services.skill_sandbox as ss
+        from services.skill_sandbox import create_venv, run_entry_point
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:
@@ -109,8 +110,8 @@ class TestRunEntryPoint:
             ss.ENVS_DIR = old_dir
 
     def test_env_variables(self, tmp_path):
-        from services.skill_sandbox import run_entry_point, create_venv
         import services.skill_sandbox as ss
+        from services.skill_sandbox import create_venv, run_entry_point
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:
@@ -129,8 +130,8 @@ class TestRunEntryPoint:
 
 class TestRemoveVenv:
     def test_remove_existing(self, tmp_path):
-        from services.skill_sandbox import create_venv, remove_venv, venv_exists
         import services.skill_sandbox as ss
+        from services.skill_sandbox import create_venv, remove_venv, venv_exists
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:
@@ -141,8 +142,8 @@ class TestRemoveVenv:
             ss.ENVS_DIR = old_dir
 
     def test_remove_nonexistent(self, tmp_path):
-        from services.skill_sandbox import remove_venv
         import services.skill_sandbox as ss
+        from services.skill_sandbox import remove_venv
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:
@@ -154,8 +155,8 @@ class TestRemoveVenv:
 
 class TestListVenvs:
     def test_list_empty(self, tmp_path):
-        from services.skill_sandbox import list_venvs
         import services.skill_sandbox as ss
+        from services.skill_sandbox import list_venvs
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:
@@ -164,8 +165,8 @@ class TestListVenvs:
             ss.ENVS_DIR = old_dir
 
     def test_list_after_create(self, tmp_path):
-        from services.skill_sandbox import create_venv, list_venvs
         import services.skill_sandbox as ss
+        from services.skill_sandbox import create_venv, list_venvs
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:

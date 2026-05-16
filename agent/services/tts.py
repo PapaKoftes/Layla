@@ -50,7 +50,10 @@ def _init_kokoro():
     global _tts_engine, _tts_type
     from inspect import signature
 
-    from kokoro_onnx import Kokoro
+    try:
+        from kokoro_onnx import Kokoro
+    except ImportError:
+        raise ImportError("kokoro-onnx not installed. pip install kokoro-onnx  # or: pip install layla[voice]")
     try:
         import runtime_safety
         cfg = runtime_safety.load_config()
@@ -88,7 +91,10 @@ def _init_kokoro():
 def _init_pyttsx3():
     """Fallback: system TTS via pyttsx3."""
     global _tts_engine, _tts_type
-    import pyttsx3
+    try:
+        import pyttsx3
+    except ImportError:
+        raise ImportError("pyttsx3 not installed. pip install pyttsx3  # system TTS fallback")
     engine = pyttsx3.init()
     engine.setProperty("rate", 175)
     engine.setProperty("volume", 1.0)

@@ -19,10 +19,24 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("layla")
+
+
+@contextmanager
+def db_session():
+    """Get a DB connection for explicit lifecycle management."""
+    from layla.memory.db_connection import _conn, close_thread_connection
+    conn = _conn()
+    try:
+        yield conn
+    finally:
+        # Don't close thread-local connections on every use — they're pooled
+        pass
+
 
 # Maximum bytes allowed in tool result before truncation
 _MAX_OUTPUT_BYTES = 256 * 1024  # 256 KB
@@ -75,8 +89,8 @@ def run_tool(
 
             if _ws:
                 set_effective_sandbox(_ws)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("sandbox setup failed: %s", e, exc_info=True)
         try:
             return fn(**clean_args)
         finally:
@@ -84,8 +98,8 @@ def run_tool(
                 from layla.tools.registry import set_effective_sandbox
 
                 set_effective_sandbox(None)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error("sandbox teardown failed: %s", e, exc_info=True)
 
     _ws = sandbox_root or ""
     try:
@@ -98,8 +112,8 @@ def run_tool(
             conversation_id=conversation_id,
             workspace_root=_ws,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("pre_tool hook failed: %s", e, exc_info=True)
 
     timed_out = False
     result_raw: Any = None
@@ -131,8 +145,8 @@ def run_tool(
                 workspace_root=_ws,
                 tool_ok=False,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("post_tool hook (error path) failed: %s", e, exc_info=True)
         err_code = "timeout" if timed_out else (error or "unknown")[:80]
         _trace_tool_call(
             tool_name=tool_name,
@@ -146,8 +160,8 @@ def run_tool(
         try:
             from services.metrics import record_tool_call as _record_tool_metric
             _record_tool_metric(tool_name, False, duration_ms / 1000.0)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("metrics recording (error path) failed: %s", e, exc_info=True)
         return {
             "ok": False,
             "tool_name": tool_name,
@@ -176,7 +190,8 @@ def run_tool(
             )
             result_raw = truncated
             output_bytes = len(json.dumps(result_raw, default=str).encode("utf-8"))
-    except Exception:
+    except Exception as e:
+        logger.warning("output size calculation failed: %s", e)
         output_bytes = 0
 
     result_raw["_meta"] = {
@@ -189,14 +204,14 @@ def run_tool(
         from services.llm_gateway import record_tool_call
 
         record_tool_call()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("llm_gateway record_tool_call failed: %s", e, exc_info=True)
     try:
         from services.request_tracer import record_trace_tool_call
 
         record_trace_tool_call()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("request_tracer record_trace_tool_call failed: %s", e, exc_info=True)
     try:
         from services.agent_hooks import run_agent_hooks
 
@@ -211,8 +226,8 @@ def run_tool(
             workspace_root=_ws,
             tool_ok=_ok,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("post_tool hook (success path) failed: %s", e, exc_info=True)
 
     # Phase 0.2: structured tool call trace (fire-and-forget, never blocks execution)
     _trace_tool_call(
@@ -229,8 +244,8 @@ def run_tool(
         from services.metrics import record_tool_call as _record_tool_metric
         _ok = bool(result_raw.get("ok", True)) if isinstance(result_raw, dict) else True
         _record_tool_metric(tool_name, _ok, duration_ms / 1000.0)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("metrics recording (success path) failed: %s", e, exc_info=True)
 
     return result_raw
 
@@ -242,22 +257,30 @@ def _trace_tool_call(
     duration_ms: int,
     run_id: str = "",
     error_code: str | None = None,
+    cost_usd: float = 0.0,
+    provider: str = "",
+    model_used: str = "",
 ) -> None:
-    """Persist a compact tool-call trace record to the tool_calls table (Phase 0.2)."""
+    """Persist a compact tool-call trace record to the tool_calls table (Phase 0.2).
+
+    Phase 3 additions: *cost_usd*, *provider*, *model_used* capture LLM cost
+    when the tool call was routed through litellm.
+
+    NOTE: migrate() is NOT called here — migration runs once at startup
+    (main.py lifespan). Calling it on every tool trace was unnecessary overhead.
+    """
     try:
         args_hash = hashlib.sha256(
             json.dumps(args or {}, sort_keys=True, default=str).encode()
         ).hexdigest()[:16]
         result_ok = 1 if (result is not None and isinstance(result, dict) and result.get("ok", True)) else 0
         from layla.memory.db_connection import _conn
-        from layla.memory.migrations import migrate
         from layla.time_utils import utcnow
 
-        migrate()
         with _conn() as db:
             db.execute(
-                "INSERT INTO tool_calls (run_id, tool_name, args_hash, result_ok, error_code, duration_ms, created_at)"
-                " VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO tool_calls (run_id, tool_name, args_hash, result_ok, error_code, duration_ms, created_at, cost_usd, provider, model_used)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (
                     (run_id or "")[:64],
                     tool_name,
@@ -266,6 +289,9 @@ def _trace_tool_call(
                     (error_code or "")[:80],
                     duration_ms,
                     utcnow().isoformat(),
+                    float(cost_usd or 0.0),
+                    (provider or "")[:80],
+                    (model_used or "")[:120],
                 ),
             )
             db.commit()

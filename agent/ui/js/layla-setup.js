@@ -119,8 +119,8 @@
         div.setAttribute('data-match-file', String(m.filename || m.gguf_filename || '').toLowerCase());
         div.style.cssText = 'margin:8px 0;padding:8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;opacity:' + (m.viable ? '1' : '0.55');
         div.innerHTML = '<strong>' + escapeHtml(m.name || '') + '</strong> <span style="font-size:0.7rem;color:var(--text-dim)">' + (m.recommended ? '(recommended) ' : '') + (m.viable ? '' : ' — may need more RAM') + '</span><br><span style="font-size:0.72rem;color:var(--text-dim)">' + escapeHtml(m.desc || '') + '</span>';
-        div.onclick = function () {
-          if (!m.viable && !confirm('This model may exceed your detected RAM. Download anyway?')) return;
+        div.onclick = async function () {
+          if (!m.viable && !(await laylaConfirm('This model may exceed your detected RAM. Download anyway?'))) return;
           _setupSelectedModel = m;
           container.querySelectorAll('.setup-catalog-row').forEach(function (el) { el.style.outline = ''; });
           div.style.outline = '2px solid var(--asp)';

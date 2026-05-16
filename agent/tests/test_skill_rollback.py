@@ -1,7 +1,8 @@
 """Tests for skill rollback module."""
-import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 class TestCanRollback:
@@ -62,6 +63,6 @@ class TestRollbackInstall:
     def test_unregister_called(self, mock_unreg, tmp_path):
         """Verify unregister is attempted during rollback."""
         from services.skill_rollback import rollback_install
-        result = rollback_install("test-pack", pack_dir=tmp_path / "no-dir")
+        rollback_install("test-pack", pack_dir=tmp_path / "no-dir")
         # unregister should have been called
         mock_unreg.assert_called_once_with("test-pack")

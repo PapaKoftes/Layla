@@ -621,6 +621,22 @@ def get_token_usage() -> dict:
         }
 
 
+def extract_litellm_cost(result: dict | None) -> dict:
+    """Extract litellm cost metadata from a run_completion result, if present.
+
+    Returns a dict with keys ``cost_usd``, ``provider``, ``model`` —
+    all defaulting to zero / empty string when litellm wasn't used.
+    """
+    if not isinstance(result, dict):
+        return {"cost_usd": 0.0, "provider": "", "model": ""}
+    meta = result.get("_litellm") or {}
+    return {
+        "cost_usd": float(meta.get("cost_usd", 0.0)),
+        "provider": str(meta.get("provider", "")),
+        "model": str(meta.get("model", "")),
+    }
+
+
 def run_completion(
     prompt: str,
     max_tokens: int = 256,
@@ -690,6 +706,72 @@ def run_completion(
                     return hit
             except Exception as e:
                 logger.debug("completion cache get: %s", e)
+
+        # ── LiteLLM multi-provider gateway ────────────────────────────────
+        # When litellm_enabled is true, delegate to litellm_gateway which
+        # provides automatic failover across 100+ LLM providers.
+        if cfg.get("litellm_enabled", False):
+            try:
+                from services.litellm_gateway import complete as _litellm_complete
+                from services.litellm_gateway import complete_stream as _litellm_stream
+                from services.litellm_gateway import is_available as _litellm_ok
+
+                if _litellm_ok():
+                    _litellm_messages = [{"role": "user", "content": prompt}]
+                    _litellm_model = model_override or None
+
+                    if stream:
+                        def _litellm_stream_gen():
+                            completion_tokens = 0
+                            try:
+                                for chunk in _litellm_stream(
+                                    _litellm_messages,
+                                    model=_litellm_model,
+                                    max_tokens=max_tokens,
+                                    temperature=temperature,
+                                    stop=stop,
+                                    timeout=timeout_seconds,
+                                ):
+                                    completion_tokens += _count_tokens(chunk)
+                                    yield chunk
+                            finally:
+                                _add_usage(prompt_tokens, completion_tokens)
+                                _routing_prompt_var.reset(routing_tok)
+                        return _litellm_stream_gen()
+
+                    # Non-streaming litellm completion
+                    _litellm_result = _litellm_complete(
+                        _litellm_messages,
+                        model=_litellm_model,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        stop=stop,
+                        timeout=timeout_seconds,
+                    )
+                    text = _litellm_result.get("content", "")
+                    completion_tokens = _count_tokens(text)
+                    _add_usage(prompt_tokens, completion_tokens)
+                    # Convert to standard run_completion return format
+                    out = {
+                        "choices": [{"message": {"content": text}}],
+                        "_litellm": {
+                            "model": _litellm_result.get("model", ""),
+                            "provider": _litellm_result.get("provider", ""),
+                            "latency_ms": _litellm_result.get("latency_ms", 0),
+                            "cost_usd": _litellm_result.get("cost_usd", 0),
+                            "usage": _litellm_result.get("usage", {}),
+                        },
+                    }
+                    if cfg.get("completion_cache_enabled") and isinstance(out, dict):
+                        try:
+                            from services.completion_cache import set_cached
+                            set_cached(prompt or "", routing_tag, cache_model_name or "litellm", float(temperature), int(max_tokens), out)
+                        except Exception:
+                            pass
+                    return out
+            except Exception as _litellm_exc:
+                logger.warning("litellm_gateway failed, falling back to local: %s", _litellm_exc)
+                # Fall through to standard inference path
 
         if stream:
 

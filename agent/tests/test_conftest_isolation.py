@@ -71,9 +71,10 @@ def test_config_cache_was_cleared_by_autouse_fixture():
 
 def test_learning_rate_limiter_reset_between_tests_first():
     """Fill the rate-limiter deque — next test verifies it was cleared."""
-    import layla.memory.learnings as lm
     # Simulate a nearly-full rate limiter (19 of 20 slots used)
     import time
+
+    import layla.memory.learnings as lm
     now = time.time()
     for _ in range(19):
         lm._recent_learning_ts.append(now)

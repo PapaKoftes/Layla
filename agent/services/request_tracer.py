@@ -40,10 +40,10 @@ Usage:
 from __future__ import annotations
 
 import collections
+import logging
 import threading
 import time
 import uuid
-import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timezone

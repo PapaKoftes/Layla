@@ -1,8 +1,9 @@
 """Tests for tunnel authentication module."""
-import pytest
 import hashlib
 import time
 from unittest.mock import patch
+
+import pytest
 
 
 class TestGenerateToken:
@@ -112,7 +113,7 @@ class TestValidateToken:
 
 class TestRotateToken:
     def test_returns_token_and_hash(self):
-        from services.tunnel_auth import rotate_token, hash_token
+        from services.tunnel_auth import hash_token, rotate_token
         cfg = {}
         new_token, new_hash = rotate_token(cfg)
         assert isinstance(new_token, str)
@@ -167,8 +168,9 @@ class TestTokenExpiry:
         assert is_token_expired(cfg) is False
 
     def test_recent_token_not_expired(self):
-        from services.tunnel_auth import is_token_expired
         import datetime
+
+        from services.tunnel_auth import is_token_expired
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         cfg = {"tunnel_token_ttl_hours": 24, "tunnel_token_created_at": now}
         assert is_token_expired(cfg) is False

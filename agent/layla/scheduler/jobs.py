@@ -247,7 +247,7 @@ def _airllm_warmup_job() -> None:
         cfg = _rs.load_config()
         if not bool(cfg.get("airllm_enabled", False)):
             return
-        from services.airllm_runner import is_available, _load_model, _model_path
+        from services.airllm_runner import _load_model, _model_path, is_available
 
         if not is_available():
             return
@@ -278,7 +278,7 @@ def _syncthing_rescan_job() -> None:
         cfg = _rs.load_config()
         if not cfg.get("syncthing_api_key"):
             return
-        from services.syncthing_sync import trigger_rescan, get_status
+        from services.syncthing_sync import get_status, trigger_rescan
 
         status = get_status()
         if status.get("running"):
@@ -286,6 +286,19 @@ def _syncthing_rescan_job() -> None:
             logger.info("syncthing_rescan: triggered folder rescan")
     except Exception as _e:
         logger.debug("syncthing_rescan: %s", _e)
+
+
+# ── P1-9: reindex failed learnings (dual-write consistency) ──────────
+def _bg_reindex() -> None:
+    """Background job: re-embed learnings whose ChromaDB write failed."""
+    try:
+        from layla.memory.learnings import reindex_failed_learnings
+
+        count = reindex_failed_learnings()
+        if count > 0:
+            logger.info("bg_reindex: reindexed %d failed learnings", count)
+    except Exception as _e:
+        logger.warning("bg_reindex: %s", _e)
 
 
 # ── RL preference update ──────────────────────────────────────────────
@@ -296,3 +309,23 @@ def _rl_preference_job() -> None:
         run_preference_update_job()
     except Exception:
         pass
+
+
+# ── nightly DB backup (P1-5) ─────────────────────────────────────────
+def _bg_backup() -> None:
+    """Create a nightly SQLite backup via the .backup() API."""
+    try:
+        from services.db_backup import backup_database
+
+        result = backup_database()
+        if result.get("ok"):
+            logger.info(
+                "nightly_backup: %s (%.1f KB, pruned %d)",
+                result.get("backup_path", "?"),
+                result.get("size_kb", 0),
+                result.get("pruned", 0),
+            )
+        else:
+            logger.warning("nightly_backup: %s", result)
+    except Exception as _e:
+        logger.warning("nightly_backup: %s", _e)

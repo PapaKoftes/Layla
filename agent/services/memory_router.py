@@ -33,7 +33,10 @@ import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from schemas.entity import Entity, Relationship
 
 logger = logging.getLogger("layla")
 
@@ -70,8 +73,11 @@ def _cfg() -> dict:
 # directly before; the router becomes the registered chokepoint that
 # scripts/check_wiring.py asserts against.
 
-def save_learning(content: str, kind: str = "general", **kwargs) -> Any:
-    """Pass-through to layla.memory.db.save_learning (canonical write path)."""
+def save_learning(content: str, kind: str = "general", **kwargs: Any) -> int:
+    """Pass-through to layla.memory.db.save_learning (canonical write path).
+
+    Returns the learning row id on success, or -1 if filtered/rate-limited.
+    """
     from layla.memory.db import save_learning as _save_learning
     try:
         from services.metrics import record_memory_op
@@ -81,14 +87,17 @@ def save_learning(content: str, kind: str = "general", **kwargs) -> Any:
     return _save_learning(content=content, kind=kind, **kwargs)
 
 
-def save_aspect_memory(aspect_id: str, content: str, **kwargs) -> Any:
+def save_aspect_memory(aspect_id: str, content: str, **kwargs: Any) -> Any:
     """Pass-through to layla.memory.db.save_aspect_memory."""
     from layla.memory.db import save_aspect_memory as _sam
     return _sam(aspect_id, content, **kwargs)
 
 
-def save_outcome(content: str, **kwargs) -> Any:
-    """Pass-through write for outcome-style learnings."""
+def save_outcome(content: str, **kwargs: Any) -> int:
+    """Pass-through write for outcome-style learnings.
+
+    Returns the learning row id on success, or -1 if filtered/rate-limited.
+    """
     return save_learning(content=content, kind="outcome", **kwargs)
 
 
@@ -98,7 +107,7 @@ def _enabled() -> bool:
 
 # ── Entity CRUD ────────────────────────────────────────────────────────────────
 
-def upsert_entity(entity: "schemas.entity.Entity") -> bool:
+def upsert_entity(entity: Entity) -> bool:
     """
     Write an entity to SQLite. If an entity with the same ID already exists,
     merge the records (union aliases/tags, keep higher confidence description).
@@ -167,7 +176,7 @@ def upsert_entity(entity: "schemas.entity.Entity") -> bool:
         return False
 
 
-def upsert_relationship(rel: "schemas.entity.Relationship") -> bool:
+def upsert_relationship(rel: Relationship) -> bool:
     """Write a relationship to SQLite. Upserts by ID."""
     try:
         from schemas.entity import validate_relationship
@@ -320,7 +329,7 @@ def _query_sqlite_entities(text: str, *, limit: int = 10, min_confidence: float 
     results = []
     try:
         from layla.memory.db_connection import _conn
-        from schemas.entity import PrivacyLevel, _PRIVACY_RANK
+        from schemas.entity import _PRIVACY_RANK, PrivacyLevel
         t = f"%{text.lower()}%"
         # Build list of allowed privacy levels
         try:
@@ -504,8 +513,8 @@ def discover_and_store_entities(text: str, source: str = "") -> int:
     Returns number of entities stored.
     """
     try:
-        from services.kb_builder import extract_entities_from_text
         from schemas.entity import Entity, EntityType, make_entity_id
+        from services.kb_builder import extract_entities_from_text
 
         raw_entities = extract_entities_from_text(text)
         stored = 0

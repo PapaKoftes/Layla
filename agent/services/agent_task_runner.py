@@ -137,15 +137,16 @@ def _append_progress_event(task_id: str, event: dict) -> None:
                     pe.pop(0)
                     pj = json.dumps(pe, default=str)
                 t["progress_events"] = pe
-        except Exception:
+        except Exception as e:
+            logger.warning("progress_events serialization failed: %s", e)
             pj = "[]"
         t["progress_json"] = pj
     try:
         from layla.memory.db import update_background_task
 
         update_background_task(task_id, progress_json=pj)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("progress_event DB persist failed: %s", e)
 
 
 def _resolve_plan_binding_from_request(plan_id: str) -> tuple[str, bool]:
@@ -162,7 +163,8 @@ def _resolve_plan_binding_from_request(plan_id: str) -> tuple[str, bool]:
         if pr.get("status") in ("approved", "executing"):
             return str(pr["id"]), True
         return str(pr["id"]), False
-    except Exception:
+    except Exception as e:
+        logger.warning("plan_binding resolution failed: %s", e)
         return pid, False
 
 
@@ -327,8 +329,8 @@ def enqueue_threaded_autonomous(req: dict, *, default_priority: int, kind: str) 
         from layla.memory.db import save_background_task
 
         save_background_task(task_row)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("save_background_task at enqueue failed: %s", e)
     th = threading.Thread(
         target=thread_target,
         args=(task_id, payload),
@@ -407,8 +409,8 @@ def _run_background_subprocess_task(task_id: str, payload: dict) -> None:
         from layla.memory.db import update_background_task
 
         update_background_task(task_id, status="running", started_at=now_started, error="")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("subprocess task DB status=running update failed: %s", e)
 
     cfg = runtime_safety.load_config()
     grace = float(cfg.get("background_worker_grace_seconds", 4.0))
@@ -433,8 +435,8 @@ def _run_background_subprocess_task(task_id: str, payload: dict) -> None:
                     from layla.memory.db import update_background_task
 
                     update_background_task(task_id, status="cancelled", finished_at=finished_at, error="cancelled_before_start")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("subprocess task DB cancelled_before_start update failed: %s", e)
                 return
 
         proc = spawn_background_worker(job)
@@ -450,16 +452,16 @@ def _run_background_subprocess_task(task_id: str, payload: dict) -> None:
                 cancel_worker(proc, grace_seconds=grace)
                 try:
                     proc.wait(timeout=120)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("subprocess proc.wait on cancel failed: %s", e, exc_info=True)
                 cleanup_worker_cgroup(proc)
                 finished_at = datetime.now(timezone.utc).isoformat()
                 try:
                     from layla.memory.db import update_background_task
 
                     update_background_task(task_id, status="cancelled", finished_at=finished_at, error="cancelled")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("subprocess task DB cancelled update failed: %s", e)
                 return
 
         parsed, stderr_tail = wait_worker_result(
@@ -473,8 +475,8 @@ def _run_background_subprocess_task(task_id: str, payload: dict) -> None:
         if proc is not None:
             try:
                 cleanup_worker_cgroup(proc)
-            except Exception:
-                pass
+            except Exception as e2:
+                logger.debug("cleanup_worker_cgroup failed: %s", e2, exc_info=True)
         finished_at = datetime.now(timezone.utc).isoformat()
         with _TASKS_LOCK:
             t = _TASKS.get(task_id)
@@ -487,8 +489,8 @@ def _run_background_subprocess_task(task_id: str, payload: dict) -> None:
             from layla.memory.db import update_background_task
 
             update_background_task(task_id, status="failed", error=err, finished_at=finished_at)
-        except Exception:
-            pass
+        except Exception as e2:
+            logger.warning("subprocess task DB status=failed update failed: %s", e2)
         return
     finally:
         with _TASKS_LOCK:
@@ -517,8 +519,8 @@ def _run_background_subprocess_task(task_id: str, payload: dict) -> None:
                     finished_at=finished_at,
                     error="cancelled",
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("subprocess task DB cancelled (post-wait) update failed: %s", e)
             return
 
     if parsed is None or not isinstance(parsed, dict) or not parsed.get("ok"):
@@ -538,8 +540,8 @@ def _run_background_subprocess_task(task_id: str, payload: dict) -> None:
             from layla.memory.db import update_background_task
 
             update_background_task(task_id, status="failed", error=msg, finished_at=finished_at)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("subprocess task DB status=failed (parse) update failed: %s", e)
         return
 
     result = parsed
@@ -562,8 +564,8 @@ def _run_background_subprocess_task(task_id: str, payload: dict) -> None:
                     finished_at=finished_at,
                     error="cancelled",
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("subprocess task DB cancelled (final) update failed: %s", e)
             return
         if t and t.get("status") != "cancelled":
             t["status"] = "done"
@@ -577,8 +579,8 @@ def _run_background_subprocess_task(task_id: str, payload: dict) -> None:
         from layla.memory.db import update_background_task
 
         update_background_task(task_id, status="done", result=text, finished_at=finished_at, error="")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("subprocess task DB status=done update failed: %s", e)
 
 
 def _run_background_task(task_id: str, payload: dict) -> None:
@@ -593,8 +595,8 @@ def _run_background_task(task_id: str, payload: dict) -> None:
         from layla.memory.db import update_background_task
 
         update_background_task(task_id, status="running", started_at=now_started, error="")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("threaded task DB status=running update failed: %s", e)
     try:
         import runtime_safety
 
@@ -738,8 +740,8 @@ def _run_background_task(task_id: str, payload: dict) -> None:
                                 pst = (mem.get("plan") or {}).get("status")
                                 if pst in ("done", "blocked"):
                                     break
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("project_memory load for continuous loop check failed: %s", e, exc_info=True)
                     with _TASKS_LOCK:
                         t1 = _TASKS.get(task_id)
                         if t1 and t1.get("status") == "cancelled":
@@ -772,8 +774,8 @@ def _run_background_task(task_id: str, payload: dict) -> None:
                         finished_at=finished_at,
                         error="cancelled",
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("threaded task DB cancelled update failed: %s", e)
                 return
             if t and t["status"] != "cancelled":
                 t["status"] = "done"
@@ -787,8 +789,8 @@ def _run_background_task(task_id: str, payload: dict) -> None:
             from layla.memory.db import update_background_task
 
             update_background_task(task_id, status="done", result=text, finished_at=finished_at, error="")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("threaded task DB status=done update failed: %s", e)
     except Exception as e:
         err = str(e)
         finished_at = datetime.now(timezone.utc).isoformat()
@@ -802,8 +804,8 @@ def _run_background_task(task_id: str, payload: dict) -> None:
             from layla.memory.db import update_background_task
 
             update_background_task(task_id, status="failed", error=err, finished_at=finished_at)
-        except Exception:
-            pass
+        except Exception as e2:
+            logger.warning("threaded task DB status=failed update failed: %s", e2)
 
 
 def register_inline_progress_task(task_id: str, *, goal: str = "", kind: str = "autonomous_tier0") -> None:
@@ -834,8 +836,8 @@ def register_inline_progress_task(task_id: str, *, goal: str = "", kind: str = "
         from layla.memory.db import save_background_task
 
         save_background_task(task_row)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("save_background_task for inline progress failed: %s", e)
 
 
 def finalize_inline_progress_task(task_id: str, *, result: dict | None = None, error: str | None = None) -> None:
@@ -845,7 +847,8 @@ def finalize_inline_progress_task(task_id: str, *, result: dict | None = None, e
     if result is not None:
         try:
             res_s = json.dumps(result, default=str)[:800000]
-        except Exception:
+        except Exception as e:
+            logger.warning("finalize_inline_progress_task result serialization failed: %s", e)
             res_s = str(result)[:8000]
     err_s = (error or "")[:8000]
     with _TASKS_LOCK:
@@ -859,8 +862,8 @@ def finalize_inline_progress_task(task_id: str, *, result: dict | None = None, e
         from layla.memory.db import update_background_task
 
         update_background_task(task_id, status=status, finished_at=finished_at, result=res_s, error=err_s)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("finalize_inline_progress_task DB update failed: %s", e)
 
 
 def _cancel_background_task_impl(task_id: str) -> JSONResponse:
@@ -889,6 +892,6 @@ def _cancel_background_task_impl(task_id: str) -> JSONResponse:
         from layla.memory.db import update_background_task
 
         update_background_task(task_id, status="cancelled", finished_at=item.get("finished_at", ""))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("cancel_background_task DB update failed: %s", e)
     return JSONResponse({"ok": True, "task_id": task_id, "status": "cancelled"})

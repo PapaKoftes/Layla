@@ -7,7 +7,8 @@ All external calls degrade gracefully on failure.
 """
 from __future__ import annotations
 
-import logging, time
+import logging
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -56,8 +57,9 @@ def score_credibility(url: str, content: str) -> float:
 def decompose_topic(topic: str, cfg: dict) -> list[str]:
     """Use LLM to break topic into 5-8 sub-questions. Fallback: just return [topic]."""
     try:
-        from services.llm_gateway import run_completion
         import json
+
+        from services.llm_gateway import run_completion
         prompt = (
             "You are a research planner. Break the following topic into 5-8 focused "
             "sub-questions that together cover it comprehensively. "
@@ -175,7 +177,8 @@ def research_topic(
         for s in new:
             key = s.url + "|" + s.content[:80]
             if key not in seen and len(all_sources) < max_sources:
-                seen.add(key); all_sources.append(s)
+                seen.add(key)
+                all_sources.append(s)
 
     for q in sub_qs:
         _add(search_local(q))

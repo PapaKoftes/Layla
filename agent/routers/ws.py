@@ -8,12 +8,51 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 
 from services.ws_manager import manager as ws_manager
 
 logger = logging.getLogger("layla")
 router = APIRouter(tags=["websocket"])
+
+
+async def _ws_check_auth(websocket: WebSocket) -> bool:
+    """Validate remote auth for WebSocket connections.
+
+    Reads the ``token`` query parameter and checks it via
+    ``services.auth.check_auth``.  Returns *True* if the connection is
+    authorised, *False* (after closing the socket) otherwise.
+    """
+    try:
+        import runtime_safety
+        cfg = runtime_safety.load_config()
+    except Exception:
+        return True  # can't load config → treat as local/dev
+
+    if not cfg.get("remote_enabled"):
+        return True
+
+    client_host = websocket.client.host if websocket.client else None
+
+    from services.auth import _is_localhost
+
+    if _is_localhost(client_host):
+        return True
+
+    token = websocket.query_params.get("token", "")
+
+    from services.auth import check_auth
+
+    ok, reason = check_auth(token, client_host or "", cfg)
+    if ok:
+        return True
+
+    # Reject: close with 4003 (policy violation) before accept
+    logger.warning("WS auth denied  host=%s  reason=%s", client_host, reason)
+    await websocket.close(code=4003, reason=f"unauthorized: {reason}")
+    return False
 
 
 @router.websocket("/ws")
@@ -28,6 +67,10 @@ async def websocket_main(websocket: WebSocket):
     receiving JSON messages and dispatching them through the connection
     manager.  Disconnects and unexpected errors are handled gracefully.
     """
+    # P0-2: Authenticate before accepting the WebSocket upgrade
+    if not await _ws_check_auth(websocket):
+        return
+
     client_id: str = websocket.query_params.get("client_id", str(uuid.uuid4()))
     room: str = websocket.query_params.get("room", "general")
 
@@ -64,7 +107,7 @@ async def websocket_main(websocket: WebSocket):
         try:
             await websocket.send_json({
                 "type": "error",
-                "message": f"Internal error: {exc}",
+                "message": "Internal error. Check server logs.",
             })
         except Exception:  # noqa: BLE001
             pass  # connection may already be closed
@@ -83,6 +126,10 @@ async def websocket_stream(websocket: WebSocket, session_id: str):
     Query params:
         client_id — optional identifier for the client (defaults to a UUID).
     """
+    # P0-2: Authenticate before accepting the WebSocket upgrade
+    if not await _ws_check_auth(websocket):
+        return
+
     client_id: str = websocket.query_params.get("client_id", str(uuid.uuid4()))
     room: str = session_id
 
@@ -127,7 +174,7 @@ async def websocket_stream(websocket: WebSocket, session_id: str):
         try:
             await websocket.send_json({
                 "type": "error",
-                "message": f"Internal error: {exc}",
+                "message": "Internal error. Check server logs.",
             })
         except Exception:  # noqa: BLE001
             pass

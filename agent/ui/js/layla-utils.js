@@ -47,8 +47,10 @@
 
   function sanitizeHtml(html) {
     if (typeof html !== 'string') return '';
-    if (typeof DOMPurify !== 'undefined') return DOMPurify.sanitize(html, { ALLOWED_TAGS: ['p','br','strong','em','code','pre','ul','ol','li','a','h1','h2','h3','blockquote','span','div'], ALLOWED_ATTR: ['href','class'] });
-    return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '').replace(/on\w+\s*=\s*["'][^"']*["']/gi, '').replace(/javascript:/gi, '');
+    if (typeof DOMPurify !== 'undefined') return DOMPurify.sanitize(html, { ALLOWED_TAGS: ['p','br','strong','em','code','pre','ul','ol','li','a','h1','h2','h3','blockquote','span','div','table','thead','tbody','tr','th','td'], ALLOWED_ATTR: ['href','class'] });
+    // Fallback: DOMPurify not loaded (should not happen — vendored locally)
+    console.warn('sanitizeHtml: DOMPurify not available — using basic regex fallback');
+    return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '').replace(/on\w+\s*=\s*["'][^"']*["']/gi, '').replace(/javascript:/gi, '').replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '').replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '').replace(/<embed\b[^>]*>/gi, '');
   }
   window.sanitizeHtml = sanitizeHtml;
 
@@ -100,6 +102,89 @@
     return el;
   }
   window._setBoxHtml = _setBoxHtml;
+
+  // ── Styled modal replacements for native confirm/prompt (P4-4) ────────────
+  function _createModalOverlay() {
+    var overlay = document.createElement('div');
+    overlay.className = 'layla-modal-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px);';
+    return overlay;
+  }
+
+  function _createModalBox(msg) {
+    var box = document.createElement('div');
+    box.className = 'layla-modal-box';
+    box.style.cssText = 'background:var(--bg-card,#1a1428);border:1px solid var(--accent,#7c5cbf);border-radius:8px;padding:24px;max-width:420px;width:90%;color:var(--text-main,#e0d8f0);font-family:inherit;box-shadow:0 8px 32px rgba(0,0,0,0.5);';
+    var msgEl = document.createElement('div');
+    msgEl.style.cssText = 'margin-bottom:16px;line-height:1.5;font-size:0.95rem;';
+    msgEl.textContent = msg;
+    box.appendChild(msgEl);
+    return box;
+  }
+
+  function _createBtn(label, isPrimary) {
+    var btn = document.createElement('button');
+    btn.textContent = label;
+    btn.style.cssText = 'padding:8px 20px;border-radius:4px;border:1px solid var(--accent,#7c5cbf);cursor:pointer;font-size:0.9rem;min-height:36px;margin-left:8px;' + (isPrimary ? 'background:var(--accent,#7c5cbf);color:#fff;' : 'background:transparent;color:var(--text-main,#e0d8f0);');
+    return btn;
+  }
+
+  /**
+   * laylaConfirm(msg) — Returns a Promise<boolean>. Styled modal replacement for confirm().
+   */
+  function laylaConfirm(msg) {
+    return new Promise(function (resolve) {
+      var overlay = _createModalOverlay();
+      var box = _createModalBox(msg);
+      var btnRow = document.createElement('div');
+      btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;';
+      var cancelBtn = _createBtn('Cancel', false);
+      var okBtn = _createBtn('OK', true);
+      function cleanup(val) { try { overlay.remove(); } catch(_e){} resolve(val); }
+      cancelBtn.onclick = function () { cleanup(false); };
+      okBtn.onclick = function () { cleanup(true); };
+      overlay.onclick = function (e) { if (e.target === overlay) cleanup(false); };
+      btnRow.appendChild(cancelBtn);
+      btnRow.appendChild(okBtn);
+      box.appendChild(btnRow);
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+      okBtn.focus();
+    });
+  }
+  window.laylaConfirm = laylaConfirm;
+
+  /**
+   * laylaPrompt(msg, defaultVal) — Returns a Promise<string|null>. Styled modal replacement for prompt().
+   */
+  function laylaPrompt(msg, defaultVal) {
+    return new Promise(function (resolve) {
+      var overlay = _createModalOverlay();
+      var box = _createModalBox(msg);
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.value = defaultVal || '';
+      input.style.cssText = 'width:100%;padding:8px;border:1px solid var(--accent,#7c5cbf);border-radius:4px;background:var(--bg-main,#0e0a14);color:var(--text-main,#e0d8f0);font-size:0.9rem;box-sizing:border-box;margin-bottom:16px;';
+      box.appendChild(input);
+      var btnRow = document.createElement('div');
+      btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;';
+      var cancelBtn = _createBtn('Cancel', false);
+      var okBtn = _createBtn('OK', true);
+      function cleanup(val) { try { overlay.remove(); } catch(_e){} resolve(val); }
+      cancelBtn.onclick = function () { cleanup(null); };
+      okBtn.onclick = function () { cleanup(input.value); };
+      input.addEventListener('keydown', function (e) { if (e.key === 'Enter') cleanup(input.value); if (e.key === 'Escape') cleanup(null); });
+      overlay.onclick = function (e) { if (e.target === overlay) cleanup(null); };
+      btnRow.appendChild(cancelBtn);
+      btnRow.appendChild(okBtn);
+      box.appendChild(btnRow);
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+      input.focus();
+      input.select();
+    });
+  }
+  window.laylaPrompt = laylaPrompt;
 
   window.laylaUtilsLoaded = true;
 })();

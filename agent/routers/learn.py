@@ -4,6 +4,7 @@ import logging
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
+from schemas.requests import LearnRequest, ScheduleRequest
 from shared_state import get_touch_activity
 
 logger = logging.getLogger("layla")
@@ -35,40 +36,35 @@ def search_memories(q: str = "", n: int = 8, aspect_id: str = ""):
 
 
 @router.post("/schedule")
-def schedule(req: dict):
+def schedule(req: ScheduleRequest):
     """Schedule a tool to run in background. tool_name, args, delay_seconds, cron_expr."""
     get_touch_activity()()
-    r = req or {}
-    tool_name = (r.get("tool_name") or "").strip()
-    if not tool_name:
-        return JSONResponse({"ok": False, "error": "tool_name required"})
+    tool_name = req.tool_name
     try:
         from layla.tools.registry import TOOLS, schedule_task
         if tool_name not in TOOLS:
-            return JSONResponse({"ok": False, "error": f"Unknown tool: {tool_name}"})
-        raw_delay = float(r.get("delay_seconds") or 0)
-        delay_seconds = max(0.0, min(86400.0, raw_delay)) if not (raw_delay != raw_delay) else 0.0  # clamp 0-24h, reject NaN
+            return JSONResponse({"ok": False, "error": f"Unknown tool: {tool_name}"}, status_code=400)
         result = schedule_task(
             tool_name=tool_name,
-            args=r.get("args") or {},
-            delay_seconds=delay_seconds,
-            cron_expr=(r.get("cron_expr") or "").strip(),
+            args=req.args or {},
+            delay_seconds=req.delay_seconds,
+            cron_expr=(req.cron_expr or "").strip(),
         )
         return JSONResponse(result)
     except Exception as e:
         logger.exception("schedule failed: %s", e)
-        return JSONResponse({"ok": False, "error": str(e)})
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 @router.post("/learn/")
-def learn(req: dict):
+def learn(req: LearnRequest):
     get_touch_activity()()
-    content = (req or {}).get("content", "").strip()
-    kind = (req or {}).get("type", "fact") or "fact"
-    tags = str((req or {}).get("tags") or "").strip()[:500]
-    aspect_id = str((req or {}).get("aspect_id") or "").strip()[:64]
+    content = req.content.strip()
+    kind = req.type or "fact"
+    tags = (req.tags or "").strip()
+    aspect_id = (req.aspect_id or "").strip()
     if not content:
-        return JSONResponse({"ok": False, "error": "No content"})
+        return JSONResponse({"ok": False, "error": "No content"}, status_code=400)
     try:
         embedding_id = ""
         try:

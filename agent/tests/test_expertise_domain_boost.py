@@ -1,7 +1,6 @@
 """Tests for expertise domain extraction, system prompt injection, and retrieval boosting."""
 import pytest
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -258,7 +257,7 @@ class TestSemanticRecallDomainParam:
             "runtime_safety.load_config",
             lambda: {"expertise_domain_boost_enabled": False},
         )
-        result = _semantic_recall("fix bug", k=3, domain_boost_terms=["python"])
+        _semantic_recall("fix bug", k=3, domain_boost_terms=["python"])
         # Query should NOT be augmented when disabled
         assert captured["query"] == "fix bug"
 

@@ -3,7 +3,9 @@ End-to-end test: POST /agent returns 200 and expected shape when autonomous_run 
 Run from agent/: pytest tests/test_e2e_agent.py -v
 """
 import sys
+
 import pytest
+
 pytestmark = pytest.mark.endpoint
 from pathlib import Path
 from unittest.mock import patch

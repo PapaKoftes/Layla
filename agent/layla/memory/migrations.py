@@ -14,6 +14,29 @@ logger = logging.getLogger("layla")
 _MIGRATED = False
 _MIGRATION_LOCK = threading.Lock()
 
+# ── MIGRATION VERSIONING ──
+# Version 0: pre-versioning (all tables created with IF NOT EXISTS)
+# Version 1: baseline — all existing tables, columns, indexes present
+# Future migrations: check `if version < N` and run only new changes
+
+
+def _get_schema_version(conn) -> int:
+    """Get current schema version, or 0 if table doesn't exist."""
+    try:
+        row = conn.execute("SELECT version FROM schema_version WHERE id=1").fetchone()
+        return row[0] if row else 0
+    except Exception:
+        return 0
+
+
+def _set_schema_version(conn, version: int):
+    """Update the schema version."""
+    conn.execute(
+        "UPDATE schema_version SET version=?, updated_at=datetime('now') WHERE id=1",
+        (version,),
+    )
+    conn.commit()
+
 
 def _effective_migrated() -> bool:
     """Prefer layla.memory.db._MIGRATED when tests patch the barrel module."""
@@ -48,6 +71,18 @@ def _migrate_impl() -> None:
     _dbp = _resolve_db_path()
     first_run = not _dbp.exists()
     with _conn() as db:
+        # ── Schema version tracking (must be first) ──
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS schema_version (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                version INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT
+            )
+        """)
+        db.execute(
+            "INSERT OR IGNORE INTO schema_version (id, version, updated_at) VALUES (1, 0, datetime('now'))"
+        )
+        db.commit()
         db.execute("""
             CREATE TABLE IF NOT EXISTS learnings (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,6 +136,8 @@ def _migrate_impl() -> None:
         db.execute("CREATE INDEX IF NOT EXISTS idx_audit_id_desc ON audit(id DESC)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_aspect_memories_aspect ON aspect_memories(aspect_id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_study_plans_status ON study_plans(status)")
+        # P1-2: cover hot retrieval path on learnings.embedding_id (column in CREATE TABLE)
+        db.execute("CREATE INDEX IF NOT EXISTS idx_learnings_embedding_id ON learnings(embedding_id)")
         db.execute("""
             CREATE TABLE IF NOT EXISTS outcome_evaluations (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -254,6 +291,13 @@ def _migrate_impl() -> None:
         except sqlite3.OperationalError as e:
             if "duplicate column" not in str(e).lower():
                 raise
+    # P1-2: index content_hash (column added above; can't be in early CREATE INDEX block)
+    try:
+        with _conn() as db:
+            db.execute("CREATE INDEX IF NOT EXISTS idx_learnings_content_hash ON learnings(content_hash)")
+            db.commit()
+    except Exception:
+        pass
     # Spaced repetition: importance_score (0-1), next_review_at (ISO datetime)
     for col, spec in [
         ("importance_score", "REAL DEFAULT 0.5"),
@@ -271,6 +315,15 @@ def _migrate_impl() -> None:
     try:
         with _conn() as db:
             db.execute("ALTER TABLE learnings ADD COLUMN tags TEXT DEFAULT ''")
+            db.commit()
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
+
+    # P1-9: dual-write consistency — mark learnings whose ChromaDB write failed
+    try:
+        with _conn() as db:
+            db.execute("ALTER TABLE learnings ADD COLUMN needs_reindex INTEGER DEFAULT 0")
             db.commit()
     except sqlite3.OperationalError as e:
         if "duplicate column" not in str(e).lower():
@@ -772,11 +825,75 @@ def _migrate_impl() -> None:
     except Exception:
         pass
 
+    # Clean up orphaned FK references (P0-6: must run BEFORE PRAGMA foreign_keys=ON)
+    _cleanup_orphaned_records()
+
     # Migrate learnings.json
     _migrate_learnings_json()
 
+    # ── Set baseline version ──
+    # All existing migration code above has run; stamp version 1 so future
+    # migrations can gate on `if version < N`.
+    try:
+        with _conn() as db:
+            current = _get_schema_version(db)
+            if current < 1:
+                _set_schema_version(db, 1)
+                logger.info("Schema version set to 1 (baseline)")
+    except Exception as e:
+        logger.debug("schema_version update failed: %s", e)
+
     if first_run:
         logger.info("Initialized new Layla workspace")
+
+
+def _cleanup_orphaned_records() -> None:
+    """Remove rows whose foreign-key parents no longer exist.
+
+    This runs once per process (called inside ``_migrate_impl``) so we clean up
+    any historical orphans *before* PRAGMA foreign_keys=ON is enforced on every
+    connection.  Each statement is wrapped individually so a missing table (e.g.
+    on a fresh DB where goals haven't been created yet) never blocks the rest.
+    """
+    cleanup_statements = [
+        (
+            "conversation_messages",
+            "DELETE FROM conversation_messages WHERE conversation_id NOT IN (SELECT id FROM conversations)",
+        ),
+        (
+            "relationships (from_entity)",
+            "DELETE FROM relationships WHERE from_entity NOT IN (SELECT id FROM entities)",
+        ),
+        (
+            "relationships (to_entity)",
+            "DELETE FROM relationships WHERE to_entity NOT IN (SELECT id FROM entities)",
+        ),
+        (
+            "goal_progress",
+            "DELETE FROM goal_progress WHERE goal_id NOT IN (SELECT id FROM goals)",
+        ),
+        (
+            "episode_events",
+            "DELETE FROM episode_events WHERE episode_id NOT IN (SELECT id FROM episodes)",
+        ),
+    ]
+    try:
+        with _conn() as db:
+            for label, sql in cleanup_statements:
+                try:
+                    cursor = db.execute(sql)
+                    if cursor.rowcount > 0:
+                        logger.info(
+                            "FK orphan cleanup: removed %d orphaned rows from %s",
+                            cursor.rowcount,
+                            label,
+                        )
+                except Exception:
+                    # Table may not exist yet on a brand-new DB — that's fine.
+                    pass
+            db.commit()
+    except Exception as exc:
+        logger.warning("FK orphan cleanup failed: %s", exc)
 
 
 def _migrate_learnings_json() -> None:
@@ -1160,6 +1277,19 @@ def _migrate_evolution_layer() -> None:
     except Exception as e:
         logger.warning("tool_calls table migration failed: %s", e)
 
+    # Add cost_usd + provider columns to tool_calls (Phase 3 — LLM cost tracking)
+    try:
+        with _conn() as db:
+            cols = {row[1] for row in db.execute("PRAGMA table_info(tool_calls)").fetchall()}
+            if "cost_usd" not in cols:
+                db.execute("ALTER TABLE tool_calls ADD COLUMN cost_usd REAL DEFAULT 0.0")
+            if "provider" not in cols:
+                db.execute("ALTER TABLE tool_calls ADD COLUMN provider TEXT DEFAULT ''")
+            if "model_used" not in cols:
+                db.execute("ALTER TABLE tool_calls ADD COLUMN model_used TEXT DEFAULT ''")
+            db.commit()
+    except Exception as e:
+        logger.debug("tool_calls cost columns migration: %s", e)
 
     # ── Phase A: Canonical entity/relationship tables ──────────────────────
     # These are the single source of truth for all entities stored anywhere.

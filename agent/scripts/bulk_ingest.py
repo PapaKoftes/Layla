@@ -66,8 +66,6 @@ def main():
     print("  Layla Bulk Ingest")
     print("=" * 60)
 
-    t0 = time.perf_counter()
-
     if args.url:
         return _ingest_url(args.url, args.topic)
 
@@ -96,13 +94,13 @@ def _ingest_url(url: str, topic: str) -> int:
     result = ingest_url(url, topic=topic)
 
     if result.skipped:
-        print(f"  → SKIPPED (duplicate or no content)")
+        print("  → SKIPPED (duplicate or no content)")
         return 0
 
     print(f"  → {result.chunks} chunks ingested")
     if result.entities:
         print(f"  → Entities: {', '.join(result.entities[:10])}")
-    print(f"\n  DONE")
+    print("\n  DONE")
     return 0
 
 
@@ -120,13 +118,13 @@ def _ingest_single_file(path: Path, topic: str, dry_run: bool) -> int:
     result = ingest_file(path, topic=topic)
 
     if result.skipped:
-        print(f"  → SKIPPED (duplicate or unsupported)")
+        print("  → SKIPPED (duplicate or unsupported)")
         return 0
 
     print(f"  → {result.chunks} chunks ingested")
     if result.entities:
         print(f"  → Entities: {', '.join(result.entities[:10])}")
-    print(f"\n  DONE")
+    print("\n  DONE")
     return 0
 
 
@@ -162,7 +160,7 @@ def _ingest_directory(path: Path, topic: str, extensions: list | None, dry_run: 
         return 0
 
     if not all_files:
-        print(f"\n  No files to ingest.")
+        print("\n  No files to ingest.")
         return 0
 
     results = ingest_directory(path, topic=topic, extensions=ext_list)
@@ -175,7 +173,7 @@ def _ingest_directory(path: Path, topic: str, extensions: list | None, dry_run: 
     for r in results:
         all_entities.update(r.entities)
 
-    print(f"\n  Results:")
+    print("\n  Results:")
     print(f"    Ingested: {ingested} files ({total_chunks} chunks)")
     print(f"    Skipped:  {skipped} files (duplicate or unsupported)")
     if all_entities:
@@ -185,7 +183,7 @@ def _ingest_directory(path: Path, topic: str, extensions: list | None, dry_run: 
 
     t1 = time.perf_counter()
     print(f"\n  Duration: {t1 - time.perf_counter():.1f}s")
-    print(f"  DONE")
+    print("  DONE")
     return 0
 
 
