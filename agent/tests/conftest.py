@@ -44,10 +44,21 @@ _TESTCLIENT_FILES = [
     "test_mission_api.py",
 ]
 
-# Tests that call autonomous_run → llm_gateway → llama_cpp which SIGILL on CI runners
-# (pre-compiled llama-cpp-python uses AVX-512/VNNI unsupported by GitHub Actions VMs)
+# Tests that call autonomous_run() directly → eventually reach llm_gateway →
+# llama_cpp which SIGILL on CI runners (pre-compiled llama-cpp-python uses
+# AVX-512/VNNI instructions unsupported by GitHub Actions VMs).
+# SIGILL is process-fatal so even one bad test kills the entire pytest session.
 _LLAMA_CPP_FILES = [
     "test_agent_loop.py",
+    "test_agent_loop_batch_tools.py",
+    "test_completion.py",
+    "test_engineering_pipeline.py",
+    "test_goal_preservation.py",
+    "test_in_loop_plan_governance.py",
+    "test_plan_step_tool_allowlist.py",
+    "test_project_memory.py",
+    "test_structured_retry.py",
+    "test_reasoning_classifier.py",
 ]
 
 collect_ignore: list[str] = []
