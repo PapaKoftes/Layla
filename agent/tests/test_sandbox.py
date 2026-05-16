@@ -1,7 +1,10 @@
 """Tests for sandbox path checking in layla/tools/registry.py."""
+import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -55,6 +58,7 @@ class TestInsideSandbox:
             assert inside_sandbox(sibling) is False
 
 
+@pytest.mark.skipif(bool(os.environ.get("CI")), reason="CI has explicit runtime_config.json")
 class TestSandboxRootDefault:
     def test_sandbox_root_default_is_layla_workspace(self):
         """sandbox_root default must be ~/layla-workspace, not ~."""
