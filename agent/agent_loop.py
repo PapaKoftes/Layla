@@ -38,7 +38,7 @@ from core.executor import run_tool as _run_tool  # noqa: E402
 from decision_schema import parse_decision as _parse_decision  # noqa: E402
 from layla.memory.db import get_aspect_memories as _db_get_aspect_memories  # noqa: E402
 from layla.memory.db import get_recent_learnings as _db_get_learnings  # noqa: E402
-from layla.memory.db import migrate as _db_migrate  # noqa: E402
+# NOTE: _db_migrate import removed — migration runs once in main.py lifespan.
 from layla.tools.registry import TOOLS, set_effective_sandbox  # noqa: E402
 from services.agent_loop_formatting import format_tool_steps_for_prompt as _format_steps_impl
 from services.agent_safety import (  # noqa: E402
