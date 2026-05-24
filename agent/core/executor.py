@@ -113,7 +113,7 @@ def run_tool(
             workspace_root=_ws,
         )
     except Exception as e:
-        logger.debug("pre_tool hook failed: %s", e, exc_info=True)
+        logger.warning("pre_tool hook failed: %s", e, exc_info=True)
 
     timed_out = False
     result_raw: Any = None
@@ -146,7 +146,7 @@ def run_tool(
                 tool_ok=False,
             )
         except Exception as e:
-            logger.debug("post_tool hook (error path) failed: %s", e, exc_info=True)
+            logger.warning("post_tool hook (error path) failed: %s", e, exc_info=True)
         err_code = "timeout" if timed_out else (error or "unknown")[:80]
         _trace_tool_call(
             tool_name=tool_name,
@@ -227,7 +227,7 @@ def run_tool(
             tool_ok=_ok,
         )
     except Exception as e:
-        logger.debug("post_tool hook (success path) failed: %s", e, exc_info=True)
+        logger.warning("post_tool hook (success path) failed: %s", e, exc_info=True)
 
     # Phase 0.2: structured tool call trace (fire-and-forget, never blocks execution)
     _trace_tool_call(
