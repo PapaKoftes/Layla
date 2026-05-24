@@ -16,37 +16,27 @@ AGENT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = AGENT_DIR.parent
 
 
-# ── Hardware probing ───────────────────────────────────────────────────────
+# ── Hardware probing (delegates to canonical hardware_detect) ─────────────
 
 def detect_ram_gb() -> float:
     try:
-        import psutil
-        return round(psutil.virtual_memory().total / (1024 ** 3), 1)
+        from services.hardware_detect import detect_hardware
+        return detect_hardware()["ram_gb"]
     except Exception:
-        return 0.0
+        try:
+            import psutil
+            return round(psutil.virtual_memory().total / (1024 ** 3), 1)
+        except Exception:
+            return 0.0
 
 
 def detect_gpu() -> tuple[str, float]:
     """Returns (vendor, vram_gb). vendor = 'nvidia' | 'amd' | 'none'."""
-    # NVIDIA
     try:
-        r = subprocess.run(
-            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=8,
-        )
-        if r.returncode == 0 and r.stdout.strip():
-            mb = int(r.stdout.strip().split("\n")[0].strip())
-            return "nvidia", round(mb / 1024, 1)
-    except Exception:
-        pass
-    # AMD / ROCm
-    try:
-        r = subprocess.run(["rocm-smi", "--showmeminfo", "vram"], capture_output=True, text=True, timeout=8)
-        if r.returncode == 0 and "Total Memory" in r.stdout:
-            for line in r.stdout.splitlines():
-                if "Total Memory" in line:
-                    kb = int(line.split(":")[1].strip().split()[0])
-                    return "amd", round(kb / (1024 * 1024), 1)
+        from services.hardware_detect import detect_hardware
+        h = detect_hardware()
+        vendor = h.get("gpu_vendor", "none") or "none"
+        return vendor, h.get("vram_gb", 0.0)
     except Exception:
         pass
     return "none", 0.0
@@ -58,45 +48,12 @@ def find_models() -> list[Path]:
     return sorted(d.glob("*.gguf"))
 
 
-# ── Model recommendation ───────────────────────────────────────────────────
+# ── Model recommendation (delegates to install.checks) ───────────────────
 
 def recommend_model(ram_gb: float, vram_gb: float, gpu_vendor: str) -> dict:
     """Return recommended config settings and a model suggestion string."""
-    if vram_gb >= 24 or (gpu_vendor == "none" and ram_gb >= 64):
-        return {
-            "config": {"n_ctx": 8192, "n_gpu_layers": -1, "n_batch": 1024,
-                       "completion_max_tokens": 512, "use_mmap": True},
-            "model_tier": "large",
-            "suggestion": "Qwen2.5-72B-Instruct-Q4_K_M or Llama-3.3-70B-Instruct-Q4_K_M",
-        }
-    if vram_gb >= 16 or (gpu_vendor == "none" and ram_gb >= 32):
-        return {
-            "config": {"n_ctx": 8192, "n_gpu_layers": -1, "n_batch": 512,
-                       "completion_max_tokens": 512, "use_mmap": True},
-            "model_tier": "medium-large",
-            "suggestion": "Qwen2.5-14B-Instruct-Q5_K_M or Mistral-NeMo-12B-Instruct-Q5_K_M",
-        }
-    if vram_gb >= 8 or (gpu_vendor == "none" and ram_gb >= 16):
-        return {
-            "config": {"n_ctx": 4096, "n_gpu_layers": -1, "n_batch": 512,
-                       "completion_max_tokens": 384, "use_mmap": True},
-            "model_tier": "medium",
-            "suggestion": "Qwen2.5-7B-Instruct-Q5_K_M or Llama-3.2-8B-Instruct-Q4_K_M",
-        }
-    if vram_gb >= 4 or (gpu_vendor == "none" and ram_gb >= 8):
-        return {
-            "config": {"n_ctx": 2048, "n_gpu_layers": 20, "n_batch": 256,
-                       "completion_max_tokens": 256, "use_mmap": True},
-            "model_tier": "small",
-            "suggestion": "Phi-3.5-mini-instruct-Q4_K_M or Llama-3.2-3B-Instruct-Q8_0",
-        }
-    # Very low resource
-    return {
-        "config": {"n_ctx": 1024, "n_gpu_layers": 0, "n_batch": 128,
-                   "completion_max_tokens": 256, "use_mmap": True},
-        "model_tier": "tiny",
-        "suggestion": "Llama-3.2-1B-Instruct-Q8_0 or Phi-3.5-mini-Q4_K_M",
-    }
+    from install.checks import recommend_model_tier
+    return recommend_model_tier(ram_gb, vram_gb, gpu_vendor)
 
 
 # ── Config builder ─────────────────────────────────────────────────────────
@@ -153,27 +110,10 @@ def save_config(cfg: dict) -> None:
     _rs.invalidate_config_cache()
 
 
-# ── Interactive prompts ────────────────────────────────────────────────────
+# ── Interactive prompts (delegated to install.checks) ─────────────────────
 
-def yn(prompt: str, default: bool = True) -> bool:
-    suffix = " [Y/n] " if default else " [y/N] "
-    try:
-        ans = input(prompt + suffix).strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        return default
-    if ans in ("y", "yes"):
-        return True
-    if ans in ("n", "no"):
-        return False
-    return default
-
-
-def ask(prompt: str, default: str = "") -> str:
-    try:
-        ans = input(f"{prompt} [{default}]: ").strip()
-        return ans if ans else default
-    except (EOFError, KeyboardInterrupt):
-        return default
+from install.checks import prompt_ask as ask  # noqa: E402
+from install.checks import prompt_yn as yn  # noqa: E402
 
 
 # ── Main wizard ────────────────────────────────────────────────────────────
