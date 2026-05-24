@@ -122,6 +122,16 @@ TOOLS = {
         "category": "filesystem",
         "description": "Read an Excel spreadsheet and return cell data as structured rows and columns.",
     },
+    "read_pptx": {
+        "dangerous": False, "require_approval": False, "risk_level": "low",
+        "category": "filesystem",
+        "description": "Extract text content from a PowerPoint (.pptx) presentation, slide by slide.",
+    },
+    "read_notebook": {
+        "dangerous": False, "require_approval": False, "risk_level": "low",
+        "category": "filesystem",
+        "description": "Extract cells (code + markdown) from a Jupyter notebook (.ipynb) file.",
+    },
     "hash_file": {
         "dangerous": False, "require_approval": False, "risk_level": "low",
         "category": "filesystem",

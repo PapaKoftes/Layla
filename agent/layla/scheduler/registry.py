@@ -13,6 +13,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from layla.scheduler.jobs import (
     _bg_backup,
+    _bg_capability_decay,
     _bg_cleanup,
     _bg_codex,
     _bg_initiative,
@@ -128,6 +129,15 @@ def create_scheduler(cfg: dict) -> BackgroundScheduler:
             logger.info("RL preference update scheduled every 30 min")
         except Exception as _rl_e:
             logger.debug("RL preference job not scheduled: %s", _rl_e)
+
+        # Capability decay: penalise unpracticed skills once per day
+        sched.add_job(
+            _bg_capability_decay,
+            IntervalTrigger(hours=24),
+            id="capability_decay",
+            replace_existing=True,
+            name="capability_decay",
+        )
 
         # Lens refresh (separately gated by its own config keys)
         if cfg.get("enable_lens_refresh") and cfg.get("lens_refresh_interval_days"):

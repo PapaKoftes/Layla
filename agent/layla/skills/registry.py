@@ -432,7 +432,7 @@ SKILLS: dict[str, dict[str, Any]] = {
     # ─── Read any file (everyday task) ───────────────────────────────────────────
     "read_any_file": {
         "description": "Read and understand any file type: code, docs, data, config, media metadata.",
-        "tools": ["read_file", "understand_file", "read_pdf", "read_csv", "read_excel", "read_docx", "read_toml", "yaml_read", "parse_gcode", "stl_mesh_info", "file_info"],
+        "tools": ["read_file", "understand_file", "read_pdf", "read_csv", "read_excel", "read_docx", "read_pptx", "read_notebook", "read_toml", "yaml_read", "parse_gcode", "stl_mesh_info", "file_info"],
         "sub_skills": [],
         "execution_steps": [
             "file_info for type/size",
