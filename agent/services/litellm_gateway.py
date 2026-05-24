@@ -75,23 +75,19 @@ _KEY_MAP = {
 
 
 def _configure_api_keys(cfg: dict) -> None:
-    """Extract API keys from config into module-level dict + os.environ.
+    """Extract API keys from config into module-level dict.
 
-    Keys are stored in ``_configured_api_keys`` so callers can pass them via
-    the ``api_key`` parameter to litellm.completion() instead of relying solely
-    on os.environ (which leaks secrets to child processes).
+    Keys are stored in ``_configured_api_keys`` and passed via the ``api_key``
+    parameter to litellm.completion(). os.environ is no longer set to avoid
+    leaking secrets to child processes.
     """
-    import os
     keys = cfg.get("litellm_api_keys", {})
     if not isinstance(keys, dict):
         return
-    for provider, env_var in _KEY_MAP.items():
+    for provider, _env_var in _KEY_MAP.items():
         api_key = (keys.get(provider) or "").strip()
         if api_key:
             _configured_api_keys[provider] = api_key
-            # Still set env for litellm's internal provider routing which reads env vars
-            if not os.environ.get(env_var):
-                os.environ[env_var] = api_key
 
 
 def get_api_key(provider: str) -> str:
@@ -193,6 +189,8 @@ def complete(
             logger.debug("litellm_gateway: skipping unhealthy provider %s", provider)
             continue
 
+        provider_key = get_api_key(provider) or None
+
         for attempt in range(max_retries + 1):
             t0 = time.monotonic()
             try:
@@ -203,6 +201,7 @@ def complete(
                     temperature=temperature,
                     stop=stop or [],
                     timeout=effective_timeout,
+                    api_key=provider_key,
                 )
                 latency = time.monotonic() - t0
                 content = response.choices[0].message.content or ""
@@ -288,6 +287,8 @@ def complete_stream(
             logger.debug("litellm_gateway: skipping unhealthy provider %s (stream)", provider)
             continue
 
+        provider_key = get_api_key(provider) or None
+
         t0 = time.monotonic()
         try:
             response = lit.completion(
@@ -298,6 +299,7 @@ def complete_stream(
                 stop=stop or [],
                 timeout=effective_timeout,
                 stream=True,
+                api_key=provider_key,
             )
             chunk_count = 0
             for chunk in response:
