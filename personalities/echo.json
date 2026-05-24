@@ -51,7 +51,6 @@
   "will_refuse": false,
   "can_refuse": true,
   "earned_title": null,
-  "blend_weight": 0,
   "expertise_domains": {
     "primary": ["psychology frameworks (CBT, attachment theory, communication styles)", "behavioral pattern recognition", "UX writing and microcopy", "documentation (user-facing, onboarding)", "accessibility (WCAG, screen readers)"],
     "secondary": ["empathetic design", "conflict resolution frameworks", "teaching and explanation strategies", "session continuity and memory management", "motivational interviewing techniques"],
