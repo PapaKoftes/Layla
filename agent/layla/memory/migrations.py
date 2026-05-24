@@ -775,35 +775,37 @@ def _migrate_impl() -> None:
     except Exception:
         pass
 
-    # Codex discovery tracking (videogame-style "new entry" notifications)
-    try:
-        with _conn() as db:
-            db.execute("""
-                CREATE TABLE IF NOT EXISTS codex_discoveries (
-                    entity_id     TEXT NOT NULL,
-                    discovered_at TEXT NOT NULL,
-                    discovery_context TEXT DEFAULT '',
-                    notified      INTEGER DEFAULT 0,
-                    PRIMARY KEY(entity_id)
-                )
-            """)
-            db.commit()
-    except Exception:
-        pass
+    # DEAD TABLE — no production code uses this (removed 2026-05-17)
+    # # Codex discovery tracking (videogame-style "new entry" notifications)
+    # try:
+    #     with _conn() as db:
+    #         db.execute("""
+    #             CREATE TABLE IF NOT EXISTS codex_discoveries (
+    #                 entity_id     TEXT NOT NULL,
+    #                 discovered_at TEXT NOT NULL,
+    #                 discovery_context TEXT DEFAULT '',
+    #                 notified      INTEGER DEFAULT 0,
+    #                 PRIMARY KEY(entity_id)
+    #             )
+    #         """)
+    #         db.commit()
+    # except Exception:
+    #     pass
 
-    # Journal-entity links (connect journal entries to codex entities)
-    try:
-        with _conn() as db:
-            db.execute("""
-                CREATE TABLE IF NOT EXISTS journal_entity_links (
-                    journal_id INTEGER NOT NULL,
-                    entity_id  TEXT NOT NULL,
-                    PRIMARY KEY(journal_id, entity_id)
-                )
-            """)
-            db.commit()
-    except Exception:
-        pass
+    # DEAD TABLE — no production code uses this (removed 2026-05-17)
+    # # Journal-entity links (connect journal entries to codex entities)
+    # try:
+    #     with _conn() as db:
+    #         db.execute("""
+    #             CREATE TABLE IF NOT EXISTS journal_entity_links (
+    #                 journal_id INTEGER NOT NULL,
+    #                 entity_id  TEXT NOT NULL,
+    #                 PRIMARY KEY(journal_id, entity_id)
+    #             )
+    #         """)
+    #         db.commit()
+    # except Exception:
+    #     pass
 
     # Learnings archive (faded memories -- moved here instead of hard-deleted)
     try:
