@@ -300,7 +300,7 @@ def run(run_fn: Callable[..., dict], goal: str, **kwargs: Any) -> dict:
 
     result: dict[str, Any] = {}
     try:
-        from services.otel_export import maybe_span
+        from services.trace_export import maybe_span
 
         for attempt in range(max_attempts):
             if attempt > 0:
