@@ -6,9 +6,11 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from pathlib import Path
 
+from constants import DISCOVERY_TIMEOUT_S
+
 logger = logging.getLogger("layla")
 
-DISCOVERY_TIMEOUT_SECONDS = 60
+DISCOVERY_TIMEOUT_SECONDS = DISCOVERY_TIMEOUT_S
 
 
 def discover_project(workspace_root: str = "") -> dict:
