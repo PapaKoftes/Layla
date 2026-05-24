@@ -47,11 +47,18 @@ def collect_initiative_hints(state: dict[str, Any], cfg: dict[str, Any]) -> list
         if any(k in goal for k in ("implement", "fix", "refactor")) and len(steps) >= 2:
             out.append("Checkpoint: confirm the smallest behavior change you are proving before expanding edits.")
         try:
-            from services.skill_discovery import suggest_packs_for_goal
-
-            packs = suggest_packs_for_goal(state.get("original_goal") or state.get("objective") or "")
-            if packs:
-                out.append("Optional skill packs that may help: " + ", ".join(packs[:4]))
+            _sg = (state.get("original_goal") or state.get("objective") or "").lower()
+            _packs: list[str] = []
+            if any(k in _sg for k in ("code", "refactor", "pytest", "git")):
+                _packs.append("engineering")
+            if any(k in _sg for k in ("paper", "arxiv", "citation", "research")):
+                _packs.append("research")
+            if any(k in _sg for k in ("translate", "language", "glossary")):
+                _packs.append("translation")
+            if any(k in _sg for k in ("dxf", "gcode", "cad", "cam")):
+                _packs.append("cad_cam")
+            if _packs:
+                out.append("Optional skill packs that may help: " + ", ".join(_packs[:4]))
         except Exception:
             pass
 
