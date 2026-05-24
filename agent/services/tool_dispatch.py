@@ -510,6 +510,29 @@ def _handle_glob_files(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
 
 
 # ===================================================================
+# SEARCH CODEBASE
+# ===================================================================
+
+def _handle_search_codebase(intent: str, goal: str, ctx: DispatchContext) -> DispatchResult:
+    al, _, TOOLS = _imports()
+
+    decision = ctx.decision
+    args = (decision.get("args") or {}) if decision else {}
+    symbol = args.get("symbol") or ""
+    if not symbol:
+        parts = goal.split()
+        symbol = parts[-1] if parts else ""
+    root = args.get("root") or ctx.workspace
+
+    return _base_tool_handler(
+        ctx, "search_codebase", TOOLS["search_codebase"]["fn"],
+        args={"symbol": symbol, "root": root},
+        log_args={"symbol": symbol, "root": root},
+        verify=False,
+    )
+
+
+# ===================================================================
 # RUN PYTHON
 # ===================================================================
 
@@ -769,8 +792,8 @@ def _handle_shell(intent: str, goal: str, ctx: DispatchContext) -> DispatchResul
     from layla.tools.registry import shell_command_is_safe_whitelisted, shell_command_line
     _cmd_line = shell_command_line(argv)
     _grant_ok = al._has_any_grant("shell", {"command": _cmd_line})
-    _need_shell_approval = rs.is_tool_allowed("shell")
-    if _need_shell_approval and not shell_command_is_safe_whitelisted(argv) and not _grant_ok:
+    _shell_allowed = rs.is_tool_allowed("shell")
+    if not _shell_allowed and not shell_command_is_safe_whitelisted(argv) and not _grant_ok:
         approval_id = al._write_pending("shell", {"argv": argv, "cwd": workspace})
         state["steps"].append({
             "action": "shell",
@@ -821,9 +844,9 @@ def _handle_mcp_tools_call(intent: str, goal: str, ctx: DispatchContext) -> Disp
         state["status"] = "finished"
         return DispatchResult(handled=True, flow="break", goal=goal)
 
-    _need_mcp_approval = rs.is_tool_allowed("mcp_tools_call")
+    _mcp_allowed = rs.is_tool_allowed("mcp_tools_call")
     _mcp_grant_ok = al._has_any_grant("mcp_tools_call", args)
-    if _need_mcp_approval and not _mcp_grant_ok:
+    if not _mcp_allowed and not _mcp_grant_ok:
         approval_id = al._write_pending("mcp_tools_call", args)
         state["steps"].append({
             "action": "mcp_tools_call",
@@ -1080,6 +1103,7 @@ _HANDLER_MAP: dict[str, Any] = {
     "git_branch": _handle_simple_git,
     "grep_code": _handle_grep_code,
     "glob_files": _handle_glob_files,
+    "search_codebase": _handle_search_codebase,
     "run_python": _handle_run_python,
     "apply_patch": _handle_apply_patch,
     "replace_in_file": _handle_replace_in_file,
