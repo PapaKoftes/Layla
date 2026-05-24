@@ -782,6 +782,51 @@ def read_excel(path: str, sheet: str = "", max_rows: int = 100) -> dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+def read_pptx(path: str, **_kw) -> dict:
+    """Extract text from a PowerPoint file."""
+    try:
+        from pptx import Presentation
+    except ImportError:
+        return {"ok": False, "error": "python-pptx not installed. Run: pip install python-pptx"}
+    p = Path(path)
+    if not p.exists():
+        return {"ok": False, "error": f"File not found: {path}"}
+    try:
+        prs = Presentation(str(p))
+        slides = []
+        for i, slide in enumerate(prs.slides, 1):
+            texts = []
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    for para in shape.text_frame.paragraphs:
+                        t = para.text.strip()
+                        if t:
+                            texts.append(t)
+            slides.append({"slide": i, "text": "\n".join(texts)})
+        full_text = "\n\n".join(f"--- Slide {s['slide']} ---\n{s['text']}" for s in slides if s['text'])
+        return {"ok": True, "content": full_text, "slides": len(slides), "path": str(p)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def read_notebook(path: str, **_kw) -> dict:
+    """Extract cells from a Jupyter notebook (.ipynb)."""
+    import json as _json
+    p = Path(path)
+    if not p.exists():
+        return {"ok": False, "error": f"File not found: {path}"}
+    try:
+        nb = _json.loads(p.read_text(encoding="utf-8"))
+        cells = nb.get("cells", [])
+        parts = []
+        for i, cell in enumerate(cells):
+            ctype = cell.get("cell_type", "unknown")
+            source = "".join(cell.get("source", []))
+            if source.strip():
+                parts.append(f"[{ctype} cell {i+1}]\n{source.strip()}")
+        return {"ok": True, "content": "\n\n".join(parts), "cells": len(cells), "path": str(p)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 def workspace_map(root: str = "", max_files: int = 500, include_content_preview: bool = False) -> dict:
     """
     Build a full intelligence map of a workspace:
