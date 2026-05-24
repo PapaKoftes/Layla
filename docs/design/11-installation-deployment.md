@@ -1,0 +1,842 @@
+# 11 -- Installation, Deployment & DevOps
+
+Version: 1.0
+Status: Living document
+Last verified against codebase: 2025-05 (post-v1.3.0)
+
+---
+
+## Table of Contents
+
+1. [Overview](#1-overview)
+2. [Installation Flow](#2-installation-flow)
+3. [First Run](#3-first-run)
+4. [Model Management](#4-model-management)
+5. [Auto-Start](#5-auto-start)
+6. [CI/CD](#6-cicd)
+7. [Dependency Management](#7-dependency-management)
+8. [Health Checks](#8-health-checks)
+9. [Update Mechanism](#9-update-mechanism)
+10. [Known Issues](#10-known-issues)
+11. [Stability Assessment](#11-stability-assessment)
+
+---
+
+## 1. Overview
+
+Layla's installation and deployment subsystem is a collection of shell scripts
+(PowerShell, Bash, BAT), Python modules, and GitHub Actions workflows that
+together handle: environment creation, dependency installation, hardware
+detection, model downloading, runtime configuration, auto-start registration,
+CI testing, health diagnostics, and self-updating.
+
+The system targets three platforms -- Windows (primary), Linux, and macOS -- and
+is designed for end users who may have no development experience.  The core
+philosophy is local-first: no cloud accounts, no external services required to
+run.
+
+### Key directories
+
+| Path | Purpose |
+|------|---------|
+| `<repo>/install.ps1` | Primary Windows installer |
+| `<repo>/install.sh` | Primary Linux/macOS installer |
+| `<repo>/INSTALL.bat` | Legacy BAT installer (different flow) |
+| `<repo>/agent/install/` | Python install subsystem (CLI, hardware, models) |
+| `<repo>/agent/first_run.py` | Legacy setup wizard |
+| `<repo>/agent/diagnose_startup.py` | Diagnostic script |
+| `<repo>/agent/services/auto_updater.py` | Self-update mechanism |
+| `<repo>/agent/services/dependency_recovery.py` | Runtime dep recovery |
+| `<repo>/agent/scripts/` | Health check scripts |
+| `<repo>/.github/workflows/` | CI/CD pipeline definitions |
+
+---
+
+## 2. Installation Flow
+
+### 2.1 Primary installer: install.ps1 (Windows)
+
+The canonical entry point for Windows.  Six numbered steps, executed
+sequentially.  The script uses `$ErrorActionPreference = "Stop"` so any
+unhandled error halts the process.
+
+```
+Step [1/6]  Python check
+            - Verifies `python` is on PATH
+            - Requires exactly 3.11 or 3.12 (rejects 3.13+)
+            - Exits with instructions to download from python.org
+
+Step [2/6]  Virtual environment
+            - Creates .venv via `python -m venv .venv` (skips if already exists)
+            - Activates via .venv\Scripts\Activate.ps1
+
+Step [3/6]  Dependencies
+            - `pip install --upgrade pip`
+            - `pip install -r agent\requirements.txt`
+            - Warning: llama-cpp-python compiles from source (5-15 min)
+
+Step [4/6]  Playwright browser
+            - `playwright install chromium`
+            - Non-fatal on failure (browser tools degrade gracefully)
+
+Step [5/6]  Config wizard + verify
+            - Runs `python agent\install\run_first_time.py`
+            - This delegates to setup_existing_model -> installer_cli -> first_run
+            - On failure: points user to diagnose_startup.py
+
+Step [6/6]  Launchers
+            - Generates START.bat if it does not already exist
+            - START.bat: activates venv, checks model presence, launches uvicorn
+```
+
+### 2.2 Primary installer: install.sh (Linux/macOS)
+
+Same six-step flow as install.ps1 with Linux adaptations:
+
+- Step [1/6]: Uses `python3`, checks version
+- Step [2/6]: Linux-only build dependency check (gcc, g++, cmake) -- required
+  for llama-cpp-python C++ compilation.  Provides per-distro install commands
+  (Debian/Ubuntu, Fedora, Arch, macOS)
+- Step [3/6]: Creates .venv with python3
+- Step [4/6]: `pip install -r agent/requirements.txt` with Linux-specific
+  troubleshooting hints for cmake/Python.h failures
+- Step [5/6]: On Linux, also runs `playwright install-deps chromium` for system
+  libraries
+- Step [6/6]: `chmod +x start.sh install.sh`
+
+Key difference from Windows: install.sh exits non-zero if run_first_time.py
+fails; install.ps1 only warns.  The completion banner includes commands for
+repair, doctor, packs, and forced URL downloads.
+
+### 2.3 Legacy installer: INSTALL.bat
+
+An older BAT-based installer with a different flow:
+
+- 3 steps instead of 6
+- Delegates to `scripts\setup_layla.py` (not run_first_time.py)
+- Delegates to `scripts\run_layla.py` for server launch
+- Does NOT generate a separate START.bat
+- Uses `python -m playwright install chromium` from the venv explicitly
+- Maintains ASCII art branding
+
+This script references `scripts\setup_layla.py` and `scripts\run_layla.py`
+which are a separate code path from the install/ package.  This creates
+duplicate setup logic.
+
+### 2.4 Convenience entry points
+
+| Script | Purpose |
+|--------|---------|
+| `PASTE-AND-RUN.ps1` | Quick-start for already-installed systems.  Finds the venv, runs uvicorn with --reload.  No install, no checks. |
+| `START.bat` | Generated by install.ps1.  Activates venv, verifies model via runtime_safety, launches uvicorn, auto-opens browser. |
+| `start.sh` | Linux/macOS launcher.  Activates venv, inline Python to verify model config, launches uvicorn with browser auto-open. |
+| `start-layla.ps1` | 5-step PowerShell launcher: creates venv if missing, installs deps, fetches knowledge docs, optionally starts Cursor MCP server, runs uvicorn.  Params: -SkipDocs, -NoMCP. |
+| `Start-Cursor-With-Layla.ps1` | Starts Layla server hidden, waits for model load (polls /v1/models up to 60 sec), launches Cursor IDE, monitors Cursor process, kills Layla on Cursor exit.  Uses Win32 ShowWindow to minimize console. |
+| `RUN_TEST_THEN_START.bat` | Runs `pytest tests/ -v -m "not slow"`, only starts server if tests pass. |
+| `SETUP-AND-TEST.ps1` | Creates venv, installs deps, runs import test on main.py, starts server briefly in background, tests GET /v1/models, kills server, reports status. |
+| `Download-Model.ps1` | Interactive model picker with 4 preset models (Dolphin Mistral 7B, Dolphin Llama3 8B, Hermes 3 8B, Dolphin Llama3 70B) + custom URL option.  Downloads via System.Net.WebClient. |
+
+---
+
+## 3. First Run
+
+### 3.1 Orchestrator: run_first_time.py
+
+`agent/install/run_first_time.py` is the unified first-run entry point called
+by both install.ps1 and install.sh.  It implements a three-level fallback
+cascade:
+
+```
+1. setup_existing_model.run()
+   - Non-interactive.  Scans canonical models dir for .gguf files.
+   - If models exist AND runtime_config.json already points to a valid model,
+     returns 0 immediately (no-op).
+   - If models exist but config is wrong/missing, auto-configures using a
+     priority order: jinx-20b > any jinx* > any dolphin* > first alphabetically.
+   - Reads from runtime_config.example.json as template if no config exists.
+
+2. installer_cli.run()
+   - Interactive 7-step wizard (see Section 3.2).
+   - Catches EOFError for non-interactive environments (CI, piped stdin).
+
+3. first_run.run()
+   - Legacy wizard (see Section 3.3).
+   - Provides its own hardware detection, model catalog, and config builder.
+   - Shares engine code via services.setup_engine (late-binding rebind at
+     module bottom).
+
+After the config wizard, always runs diagnose_startup.py as verification.
+```
+
+### 3.2 Interactive installer: installer_cli.py
+
+The modern interactive installer, invoked as
+`python agent/install/installer_cli.py`.  Supports subcommands:
+
+| Subcommand | Function |
+|-----------|----------|
+| (none) | Full interactive install wizard |
+| `doctor` | Run pip check, verify config, report model status |
+| `repair` | Re-run `pip install -r requirements.txt` |
+| `packs list` | List optional feature packs from install/packs/*.json |
+| `packs install <name>` | Install a specific pack (pip + post_pip steps) |
+| `download <url> [filename]` | Direct GGUF download from HTTPS URL |
+
+The full wizard flow (7 steps):
+
+```
+[1/6]  Hardware detection
+       - Delegates to services.hardware_detect.detect_hardware()
+       - Calls classify_hardware() for CPU/RAM/GPU tier classification
+       - Reports: CPU model, core count, RAM GB, GPU name, VRAM, tier string
+
+[2/6]  Model recommendation
+       - Uses install.model_selector.recommend_model()
+       - Reads model_catalog.json
+       - Filters by hardware compatibility (90% headroom rule)
+       - Sorts: fits-first, jinx family priority, Q4 quantization preference
+
+[3/6]  Model download
+       - Canonical dir: repo/models/ (or ~/.layla/models/ if standalone)
+       - Uses install.model_downloader.download_model()
+       - Tries huggingface_hub first, falls back to urllib
+       - Supports resume via .part + .part.meta files
+
+[4/6]  Config generation
+       - _generate_runtime_config() builds config from hardware:
+         n_ctx: 512-8192 based on VRAM/RAM
+         n_threads: physical cores - 1, capped at 16
+         n_gpu_layers: -1 (all GPU), 20 (partial), or 0 (CPU)
+         n_batch, completion_max_tokens, use_mlock: scaled to resources
+       - Merges with existing config (preserves custom keys)
+       - Optional "potato" preset for weak machines (Chroma off, tight limits)
+
+[5/7]  Optional packs
+       - Reads install/packs/*.json manifests
+       - Each pack has: pip dependencies, post_pip commands, description
+       - Can install all or pick individually
+
+[6/7]  Benchmark (optional)
+       - Runs services.model_benchmark.run_benchmark()
+       - Reports: tokens/sec, first-token latency, memory usage
+       - Stores results in ~/.layla/benchmarks.json
+
+[7/7]  Done
+```
+
+### 3.3 Legacy wizard: first_run.py
+
+An older standalone wizard with its own hardware detection, model catalog, and
+config defaults.  Key differences from installer_cli.py:
+
+- Has a hardcoded _MODELS_CATALOG list (5 models) instead of reading
+  model_catalog.json
+- Uses its own detect_ram_gb() and detect_gpu() instead of
+  services.hardware_detect
+- recommend_model() takes (ram_gb, vram_gb, gpu_vendor) instead of a hardware
+  dict
+- Config DEFAULTS include keys not in installer_cli (e.g., knowledge_unrestricted,
+  scheduler_interval_minutes, various prewarm flags)
+- Sandbox default: ~/LaylaWorkspace (vs installer_cli which uses Path.home())
+- At module bottom, attempts to rebind all shared functions from
+  services.setup_engine (late import, silent failure)
+
+### 3.4 Hardware detection: hardware_probe.py
+
+A thin delegation layer for backward compatibility.  The actual work is done by
+`services.hardware_detect`:
+
+- `detect_hardware()` -- returns dict with: cpu_model, cpu_cores,
+  cpu_physical, ram_gb, gpu_name, vram_gb, acceleration_backend, machine_tier
+- `classify_hardware()` -- returns dict with: cpu_tier, ram_tier, gpu_tier
+
+GPU detection chain: nvidia-smi (NVIDIA) -> rocm-smi (AMD ROCm) -> Metal
+detection (macOS) -> "none".
+
+---
+
+## 4. Model Management
+
+### 4.1 Model downloader: model_downloader.py
+
+Handles GGUF model downloading with several safety and reliability features:
+
+**Download strategies (priority order):**
+1. huggingface_hub.hf_hub_download() -- leverages hf_transfer for speed,
+   uses repo_id from catalog
+2. Direct HTTP/HTTPS -- urllib-based streaming download
+
+**Resume support:**
+- Partial downloads saved as `<filename>.gguf.part`
+- Metadata sidecar: `<filename>.gguf.part.meta` (JSON with url, etag,
+  content_length, bytes_written, sha256_expected)
+- Resume validation: checks URL match, ETag match, Content-Length match,
+  partial size vs server size
+- Auto-restart on: corrupt metadata, URL/filename mismatch, etag mismatch,
+  content-length mismatch, partial exceeding server size, 416 Range Not
+  Satisfiable, 200 while expecting 206
+
+**Integrity verification (_verify_before_commit):**
+- Minimum file size check (1MB floor, or 95% of expected_size_bytes)
+- Exact size check (within 0.01% tolerance)
+- SHA256 hash verification (when catalog provides it)
+- Atomic file placement via os.replace()
+
+**Security (SSRF mitigation):**
+- _is_safe_url() blocks: localhost, 127.*, 10.*, 169.254.*, 172.16-31.*
+- _safe_filename() blocks: path traversal (.., /, \)
+
+**Canonical models directory:**
+- get_canonical_models_dir(): repo/models/ if inside repo, else ~/.layla/models/
+- All tools and config point to this single location
+
+### 4.2 Model selector: model_selector.py
+
+- Reads `agent/models/model_catalog.json`
+- validate_catalog_entries(): requires download_url/repo_id AND ram/vram
+  requirements
+- recommend_model(): 90% memory headroom rule (only recommends models
+  requiring <= 90% of available RAM/VRAM)
+- Prefers VRAM sizing when GPU detected
+- Sort priority: fits-first (smallest memory) > jinx family > Q4 quantization
+- Category filtering: optional, with interactive fallback to full catalog
+
+### 4.3 Download-Model.ps1 (Windows convenience)
+
+Standalone PowerShell model downloader with 4 hardcoded model presets.
+Uses System.Net.WebClient (no resume support, no integrity verification).
+After download, instructs user to manually edit runtime_config.json.  This
+is a separate code path from model_downloader.py.
+
+### 4.4 Model storage layout
+
+```
+~/.layla/models/               # Standalone canonical dir
+<repo>/models/                 # Repo-local canonical dir (preferred when inside repo)
+<model>.gguf                   # Final model file
+<model>.gguf.part              # Partial download (in progress)
+<model>.gguf.part.meta         # Resume metadata (JSON)
+agent/models/model_catalog.json # Model catalog with metadata
+```
+
+---
+
+## 5. Auto-Start
+
+### 5.1 Windows Scheduled Task: install-autostart.ps1
+
+Located at `agent/install-autostart.ps1`.  Creates a Windows Scheduled Task
+named "Jinx Agent Server" (note: uses legacy project name "Jinx", not "Layla"):
+
+- Trigger: `AtLogOn` for current user
+- Action: runs `agent\start-jinx-server.ps1` hidden
+- Registration: `Register-ScheduledTask -Force` (overwrites if exists)
+- Removal: `Unregister-ScheduledTask -TaskName 'Jinx Agent Server'`
+
+### 5.2 Server script: start-layla-server.ps1
+
+Also located at `agent/start-layla-server.ps1`.  A minimal launcher:
+
+- Sets working directory to script root (agent/)
+- Runs uvicorn via `agent\venv\Scripts\python.exe`
+
+**Bug:** References `venv\` (not `.venv\`).  The main installer creates
+`.venv` at the repo root.  The autostart script expects `venv` under `agent/`.
+These paths do not match.  The auto-start will fail on a standard installation
+unless the user has manually created `agent/venv/`.
+
+### 5.3 Start-Cursor-With-Layla.ps1
+
+A more sophisticated launcher for Cursor IDE integration:
+
+- Starts Layla server as a hidden background process
+- Polls `/v1/models` for up to 60 seconds (30 attempts x 2s)
+- Launches Cursor IDE
+- Minimizes its own console window via P/Invoke (Win32 ShowWindow)
+- Monitors Cursor process; kills Layla when Cursor exits
+- Logs server stderr to `layla-server.log`
+- Falls back to legacy venv path: `agent\venv\Scripts\python.exe`
+
+### 5.4 Missing: Linux auto-start
+
+There is no systemd unit file, launchd plist, or cron entry for Linux/macOS
+auto-start.  Users must manually add to their init system.
+
+---
+
+## 6. CI/CD
+
+### 6.1 Main CI workflow: ci.yml
+
+Triggers: push/PR to main/master branches.
+
+**Jobs:**
+
+| Job | Runner | What it does |
+|-----|--------|-------------|
+| `test` | ubuntu-latest, matrix [3.11, 3.12] | Full test suite with coverage floor. Runs: requirements install, editable install verification, UI symbol check, targeted smoke test, full pytest (excludes slow/e2e_ui/browser_smoke/voice_smoke/gpu_smoke/endpoint markers). Uses --cov with .coveragerc. |
+| `test-windows` | windows-latest, 3.12 only | Same as `test` but Windows-specific config generation (PowerShell), no coverage floor, 120s timeout (vs 60s on Linux). |
+| `e2e-ui` | ubuntu-latest, 3.12 | Playwright Chromium browser tests.  Installs requirements-e2e.txt.  Runs tests in tests/e2e_ui/ with e2e_ui marker. |
+| `lint` | ubuntu-latest, 3.12 | Ruff linter on agent/ and fabrication_assist/ directories. |
+
+**CI runtime config:** All jobs write a stub runtime_config.json with:
+- model_filename: "ci-stub.gguf" (does not exist -- tests must mock LLM)
+- use_chroma: false
+- sandbox_root: /tmp/layla-ci (or %RUNNER_TEMP%/layla-ci on Windows)
+- Disabled: scheduler_study, embedding_cache_warmup, embedder_prewarm,
+  llm_prewarm
+
+**What is NOT tested in CI:**
+- Actual LLM inference (no model file, llama_cpp mocked)
+- GPU-dependent code paths
+- Voice STT/TTS (requires model download + audio hardware)
+- Browser tools against real pages
+- Auto-start / scheduled task registration
+- Model download / resume logic
+- Windows installer (install.ps1) end-to-end
+
+### 6.2 Nightly verification: verify-deep.yml
+
+Scheduled: daily at 07:00 UTC, also manual dispatch.
+
+| Job | Purpose |
+|-----|---------|
+| `e2e-ui` | Same Playwright tests as ci.yml |
+| `browser-smoke` | Browser smoke test from tests/integration_smoke/ |
+| `voice-smoke` | STT/TTS smoke with whisper_model=tiny, 600s timeout |
+| `doctor-report` | Runs system_doctor.run_diagnostics() + run_capability_probe(), uploads doctor-report.json as artifact |
+
+### 6.3 Release workflow: release.yml
+
+Triggers: push of `v*` tags.
+
+- Runs on windows-latest
+- Installs PyInstaller
+- Runs `installer/build_installer.ps1` (Inno Setup compiler)
+- Uploads: Windows .exe installer + SHA256SUMS.txt as artifacts
+
+### 6.4 Test markers and filtering
+
+CI uses pytest marker-based filtering to exclude heavyweight tests:
+
+| Marker | What it covers | Run where |
+|--------|---------------|-----------|
+| `slow` | Long-running tests | Manual only |
+| `e2e_ui` | Playwright browser tests | e2e-ui job, verify-deep |
+| `browser_smoke` | Chromium integration tests | verify-deep only |
+| `voice_smoke` | STT/TTS tests | verify-deep only |
+| `gpu_smoke` | GPU-dependent tests | Never in CI |
+| `endpoint` | Live server endpoint tests | Never in CI |
+| `e2e` | General end-to-end tests | Excluded from quick runs |
+
+---
+
+## 7. Dependency Management
+
+### 7.1 requirements.txt
+
+A single flat file at `agent/requirements.txt` containing all dependencies --
+core, optional, dev, and tier-3 experimental.  Organized by category with
+inline comments.  Total install is ~3.5 GB for everything.
+
+**Key dependency groups (as documented in the file header):**
+
+| Profile | Approx size | Contents |
+|---------|------------|----------|
+| core | ~250 MB | FastAPI, pydantic, uvicorn, sqlite-utils, sentence-transformers, chromadb |
+| llm | ~100 MB | llama-cpp-python, litellm, instructor |
+| voice | ~600 MB | faster-whisper, kokoro-onnx, soundfile |
+| vision | ~1.5 GB | easyocr (pulls torch) |
+| crawl | ~260 MB | trafilatura, playwright |
+| research | ~50 MB | PyMuPDF, pypdf, wikipedia, duckduckgo-search, arxiv |
+| data | ~125 MB | duckdb, yfinance, scipy, scikit-learn |
+| all | ~3.5 GB | Everything |
+
+**Pinning strategy:** Lower bounds with upper bounds on major versions
+(e.g., `fastapi>=0.115,<1`).  Some deps have no upper bound.
+
+**Notable constraints:**
+- `llama-cpp-python>=0.3.1,<0.4` -- requires C++ toolchain to compile
+- `outlines>=1.0.0,<2.0.0; python_version < "3.13"` -- conditional on Python
+  version
+- `chromadb>=0.6.0,<1` -- needs Python 3.11-3.12
+
+### 7.2 pyproject.toml
+
+Defines optional dependency groups for selective installation via
+`pip install -e ".[core]"` or `pip install -e ".[core,voice,research]"`.
+
+Groups mirror the requirements.txt categories but are structured as
+proper optional-dependencies.  The `all` group references all other groups
+via self-referential syntax: `"layla[core,llm,voice,vision,crawl,research,...]"`.
+
+Also configures:
+- Build system: setuptools + wheel
+- Ruff: line-length 120, target py311, select E/F/W/I
+- Pytest: testpaths=[agent/tests], asyncio_mode=auto, markers for slow and e2e_ui
+- Package discovery: agent/, fabrication_assist/, layla/, routers/, services/, etc.
+
+### 7.3 Conflict: flat requirements.txt vs grouped pyproject.toml
+
+Both files declare dependencies.  requirements.txt is used by all installers
+(install.ps1, install.sh, INSTALL.bat, CI).  pyproject.toml groups are for
+`pip install -e .` users.  They can drift out of sync.  The CI does both:
+`pip install -r requirements.txt` AND `pip install -e .` -- which means CI
+installs everything regardless of groups.
+
+### 7.4 Optional packs: install/packs/*.json
+
+A lightweight plugin system for optional feature bundles.  Each JSON manifest:
+
+```json
+{
+  "description": "...",
+  "pip": ["package1", "package2"],
+  "post_pip": ["python", "-m", "command", "arg"]
+}
+```
+
+Installed via `installer_cli.py packs install <name>` or during the interactive
+wizard.  Packs are NOT installed by default in non-interactive mode.
+
+---
+
+## 8. Health Checks
+
+### 8.1 diagnose_startup.py
+
+The primary diagnostic tool.  Checks, in order:
+
+1. Python version (3.11-3.12 required, 3.13+ warned)
+2. Linux build tools (gcc, g++, cmake -- Linux only)
+3. Core imports: fastapi, uvicorn, llama_cpp, sentence_transformers, psutil
+4. Optional imports: chromadb, playwright, soundfile, faster_whisper
+5. Config file existence (runtime_config.json)
+6. Model file existence (resolves via config's model_filename + models_dir)
+7. Remote LLM fallback check (llama_server_url in config)
+8. Full app load test: `import main; assert main.app is not None`
+
+Exit code 0 = all clear, 1 = failures found.  The failure output includes
+per-distro fix commands.
+
+### 8.2 installer_cli.py doctor
+
+Simpler check: runs `pip check` for dependency conflicts, verifies
+runtime_config.json existence, loads config via runtime_safety to verify model
+filename.
+
+### 8.3 run_all_checks.py (master orchestrator)
+
+Runs 12 check scripts as subprocesses, aggregates results, and computes a
+confidence score:
+
+| Check | Severity | What it validates |
+|-------|----------|-------------------|
+| Bug patterns | FAIL | check_patterns.py -- known anti-patterns |
+| Config validation | WARN | check_config.py -- runtime_config.json sanity |
+| Import resolution | FAIL | check_imports.py -- all imports resolve |
+| Security scan | WARN | check_security.py -- 10 security anti-patterns |
+| Memory coherence | FAIL | check_memory_coherence.py -- Phase A gate |
+| Repo index | FAIL | check_repo_index.py -- Phase B gate |
+| API contracts | WARN | check_api_contracts.py |
+| DB schema | WARN | check_db_schema.py |
+| UI symbol check | WARN | check_ui_symbols.py |
+| Wiring (prod imports) | WARN | check_wiring.py |
+| Memory router enforcement | WARN | check_memory_router_enforcement.py |
+| Pytest suite | FAIL | Full pytest (excludes endpoint/slow/e2e) |
+
+**Confidence score:** 50% x (passing_checks / total_checks) + 50% x
+(real_assertions_pass / real_assertions_total).
+
+**Real assertions** (observable system state probes):
+- repo_index_populated: at least one row in repo_index.db
+- memory_router_used: wiring check passes
+- config_cache_importable: services.config_cache loads and has get_config()
+
+Output: color-coded terminal summary + JSON report to scripts/last_report.json.
+
+### 8.4 check_config.py
+
+Validates runtime_config.json values:
+
+- Duplicate JSON key detection (stdlib json silently uses last value)
+- n_ctx < 2048: ERROR (system prompts alone can exceed this)
+- speculative_decoding_enabled: checks for scores resize guard in llm_gateway.py
+- completion_gate_enabled: ERROR (retry injection text leaks into responses)
+- temperature > 1.5: WARN (incoherent output)
+- completion_max_tokens < 64: WARN (truncation)
+- n_batch > 2048: WARN (OOM risk)
+- flash_attn on CPU-only: WARN
+- type_k/type_v invalid GGML type: WARN
+- model_filename not found on disk: WARN
+- stop_sequences missing section-header stop: WARN
+- max_tool_calls > 20: WARN (runaway loops)
+- sandbox_root does not exist: WARN
+
+### 8.5 check_security.py
+
+Ten security anti-pattern scanners (SEC-01 through SEC-10):
+
+- SEC-01: Hardcoded secrets/API keys (regex for sk-*, ghp_*, etc.)
+- SEC-02: subprocess shell=True near variable input
+- SEC-03: eval()/exec() on non-literal data
+- SEC-04: Path traversal in routers (open/Path without sandbox check)
+- SEC-05: SQL string concatenation with user input
+- SEC-06: pickle.loads() without trust annotation
+- SEC-07: debug=True in production server calls
+- SEC-08: Sensitive field names in log calls
+- SEC-09: Unrestricted file write in routers
+- SEC-10: CORS allow_origins=["*"] without dev/local comment
+
+### 8.6 Dependency recovery: dependency_recovery.py
+
+Runtime recovery system with an allowlisted set of pip packages that can be
+auto-installed:
+
+**Allowlist:** faster-whisper, kokoro-onnx, soundfile, pyttsx3,
+llama-cpp-python, PyMuPDF, pypdf, trafilatura, duckduckgo-search, arxiv,
+wikipedia-api, sympy, pyperclip, easyocr, pytesseract, Pillow, matplotlib,
+python-docx, trimesh, sounddevice.
+
+**Feature bundles:** faster_whisper (STT), kokoro_tts (TTS),
+pyttsx3_tts (fallback TTS), llama_cpp (local inference).
+
+Auto-install is gated by `auto_pip_install_optional` in runtime_config.json
+(default: false).  When a feature is needed:
+1. Check if imports are available
+2. If not and auto_pip_enabled: try pip install from allowlist
+3. Return structured recovery dict with: what_failed, pip_packages,
+   install_command, detail, next_steps, docs
+
+Also provides `missing_gguf_recovery()` and `llama_cpp_import_recovery()` for
+specific failure scenarios with step-by-step remediation.
+
+### 8.7 auto_setup.py
+
+Post-install idempotent setup: loads config, runs system_doctor.run_diagnostics()
+(without LLM), reports status.  Minimal functionality -- primarily a hook point
+for future post-install steps.
+
+---
+
+## 9. Update Mechanism
+
+### 9.1 auto_updater.py
+
+A simple release-check + git-pull updater.
+
+**check_update(current_version, github_repo):**
+- Fetches latest release from GitHub API: `/repos/{repo}/releases/latest`
+- Compares version tuples (strips `v` prefix, splits on `.`)
+- Returns: update_available, current_version, latest_version, release_url,
+  changelog (first 4000 chars)
+- Timeout: 12 seconds
+- User-Agent: "layla-local-updater"
+
+**apply_update(repo_root):**
+1. `git status --porcelain` -- refuses if working tree is dirty
+2. `git pull --ff-only` -- fast-forward only (no merge commits)
+3. `pip install -r agent/requirements.txt -q` -- re-sync deps
+4. Returns: restart_required=true on success
+
+**is_installed_mode():**
+- Checks LAYLA_DATA_DIR env var -- if set, assumes packaged install (not git),
+  would use release ZIP instead of git pull.  This code path is referenced
+  but not implemented.
+
+**Limitations:**
+- No automatic restart after update
+- No rollback mechanism
+- No pre-update backup
+- Does not handle requirements.txt changes that need C++ recompilation
+- git pull can fail on rebased upstream (ff-only)
+
+---
+
+## 10. Known Issues
+
+### 10.1 Missing uninstaller
+
+There is no uninstall script.  No way to remove the scheduled task, venv,
+models, or config in one operation.  Users must manually:
+- `Unregister-ScheduledTask -TaskName 'Jinx Agent Server'`
+- Delete .venv/
+- Delete models/*.gguf
+- Delete agent/runtime_config.json
+
+### 10.2 No service wrapper
+
+The server runs as a foreground uvicorn process.  There is no:
+- Windows service wrapper (NSSM, sc.exe)
+- systemd unit file for Linux
+- launchd plist for macOS
+- Process supervisor (supervisord)
+- Automatic restart on crash
+
+### 10.3 Auto-start venv path mismatch
+
+`agent/install-autostart.ps1` creates a scheduled task that runs
+`agent/start-layla-server.ps1`.  That script references
+`agent\venv\Scripts\python.exe`.  But all installers create `.venv` at the repo
+root.  The auto-start server script will fail with "python.exe not found" on
+any standard installation.
+
+Additionally, the scheduled task is registered as "Jinx Agent Server" (legacy
+name), not "Layla".
+
+### 10.4 Duplicate setup logic
+
+Three independent code paths exist for first-run configuration:
+
+1. `agent/install/installer_cli.py` -- modern, reads model_catalog.json,
+   uses services.hardware_detect
+2. `agent/first_run.py` -- legacy, hardcoded model catalog, own hardware
+   detection functions
+3. `INSTALL.bat` -> `scripts/setup_layla.py` -- oldest, separate script
+
+first_run.py attempts to rebind its functions from services.setup_engine at
+module load time (bottom of file), but this is a silent try/except -- if
+setup_engine doesn't exist or fails to import, first_run.py runs with its own
+stale implementations.
+
+### 10.5 Download-Model.ps1 divergence
+
+Download-Model.ps1 has its own model URL table (4 models) that is independent
+of model_catalog.json.  No resume support, no integrity verification, no SSRF
+protection.  Uses System.Net.WebClient instead of model_downloader.py.
+
+### 10.6 Python version gate inconsistency
+
+- install.ps1: Requires exactly 3.11 or 3.12, hard exit on anything else
+- install.sh: Same strict check
+- INSTALL.bat: Requires 3.11+, only notes 3.13+ as "best-effort"
+- pyproject.toml: `requires-python = ">=3.11,<3.13"`
+- main.py: Has a runtime compatibility check via setup.python_compat that
+  can handle 3.13+ in "supported_unofficial" mode with Chroma disabled
+- diagnose_startup.py: Warns on non-3.11/3.12 but does not block
+
+### 10.7 CI config does not match user install
+
+CI writes a runtime_config.json with `"model_filename": "ci-stub.gguf"` (a
+file that does not exist).  All tests that touch the LLM must mock it.  This
+means no CI test actually exercises the model loading path, the hardware
+detection path, or the download/verification path.
+
+### 10.8 Release workflow references external script
+
+`release.yml` runs `./installer/build_installer.ps1` but this script and the
+`installer/` directory are not present in the analyzed file set.  If missing
+from the repo, the release workflow will fail silently.
+
+---
+
+## 11. Stability Assessment
+
+| Component | Rating | Rationale |
+|-----------|--------|-----------|
+| **install.ps1** | STABLE | Clean 6-step flow, good error messages, handles existing venv. Used as primary entry point. |
+| **install.sh** | STABLE | Mirrors install.ps1 with Linux adaptations.  Good distro-specific guidance.  Build-dep check is valuable. |
+| **INSTALL.bat** | FRAGILE | References scripts/setup_layla.py and scripts/run_layla.py which may be a separate code path.  3-step vs 6-step divergence from primary installers. |
+| **run_first_time.py** | STABLE | Three-level fallback cascade is resilient.  Always runs diagnostics afterward. |
+| **installer_cli.py** | STABLE | Well-structured 7-step wizard.  Doctor/repair/packs subcommands add operational value.  Config generation is hardware-aware and thorough. |
+| **first_run.py** | FRAGILE | Legacy code with hardcoded model catalog.  Late-binding rebind from setup_engine is a silent failure point.  Duplicate logic with installer_cli.py. |
+| **hardware_probe.py** | STABLE | Thin delegation to services.hardware_detect.  Single source of truth respected. |
+| **model_downloader.py** | STABLE | Robust resume support, integrity verification, SSRF mitigation, atomic file placement.  Well-engineered. |
+| **model_selector.py** | STABLE | Catalog-driven, hardware-aware recommendation.  90% headroom rule prevents OOM.  Interactive fallback. |
+| **setup_existing_model.py** | STABLE | Non-interactive auto-config is clean and idempotent.  Priority-based model selection. |
+| **Download-Model.ps1** | FRAGILE | Separate code path from model_downloader.py.  No resume, no verification, hardcoded URLs that can go stale. |
+| **diagnose_startup.py** | STABLE | Comprehensive import checks, config verification, full app load test.  Clear remediation output. |
+| **run_all_checks.py** | STABLE | Master orchestrator with confidence scoring and JSON reports.  Well-structured check registry. |
+| **check_config.py** | STABLE | Thorough config validation with actionable error messages.  Duplicate key detection is a nice touch. |
+| **check_security.py** | STABLE | 10 anti-pattern scanners with low false-positive design.  Context-aware (checks surrounding lines). |
+| **dependency_recovery.py** | STABLE | Allowlisted auto-install is security-conscious.  Structured recovery dicts provide clear remediation paths. |
+| **auto_updater.py** | INCOMPLETE | Check works, apply works for simple cases.  No rollback, no restart, no non-git update path despite is_installed_mode() stub. |
+| **auto_setup.py** | INCOMPLETE | Minimal functionality.  Mostly a placeholder for future post-install hooks. |
+| **install-autostart.ps1** | DEAD | References wrong venv path (venv/ vs .venv/).  Uses legacy "Jinx" naming.  Will fail on standard installations. |
+| **start-layla-server.ps1** | DEAD | Same venv path bug.  Only 2 lines.  Non-functional without manual venv creation at agent/venv/. |
+| **Start-Cursor-With-Layla.ps1** | STABLE | Sophisticated lifecycle management.  Server health polling, Cursor monitoring, clean shutdown.  Falls back to legacy venv path correctly. |
+| **PASTE-AND-RUN.ps1** | STABLE | Minimal, cross-platform venv detection (Scripts/ or bin/).  Does one thing well. |
+| **START.bat** | STABLE | Model verification via runtime_safety before launch.  Auto-opens browser. |
+| **start.sh** | STABLE | Inline Python model check.  Browser auto-open with xdg-open/open fallback.  Uses python -m uvicorn for PATH robustness. |
+| **start-layla.ps1** | STABLE | Most feature-rich launcher.  MCP integration, doc fetching, dep install.  Optional params. |
+| **RUN_TEST_THEN_START.bat** | STABLE | Simple test-gate pattern.  Blocks server start on test failure. |
+| **SETUP-AND-TEST.ps1** | STABLE | Full validation pipeline: venv, deps, import test, server connectivity test.  Cleans up server process. |
+| **CI pipeline (ci.yml)** | STABLE | Matrix testing (3.11/3.12), Windows job, Playwright E2E, lint.  Stub config is well-designed. |
+| **Nightly verify (verify-deep.yml)** | STABLE | Browser, voice, and doctor probes.  Artifact upload for doctor report. |
+| **Release workflow (release.yml)** | INCOMPLETE | References installer/build_installer.ps1 which may not exist.  No Linux/macOS release artifacts. |
+
+### Summary ratings
+
+- **STABLE:** 20 components -- core install flow, model management, health checks, CI
+- **FRAGILE:** 3 components -- INSTALL.bat, first_run.py, Download-Model.ps1
+- **INCOMPLETE:** 3 components -- auto_updater.py, auto_setup.py, release.yml
+- **DEAD:** 2 components -- install-autostart.ps1, start-layla-server.ps1
+
+---
+
+## Appendix A: Entry Point Map
+
+```
+User double-clicks INSTALL.bat
+  -> scripts\setup_layla.py -> scripts\run_layla.py
+
+User runs: .\install.ps1
+  -> pip install -r requirements.txt
+  -> python agent\install\run_first_time.py
+     -> install.setup_existing_model.run()
+     -> install.installer_cli.run()
+     -> first_run.run()
+  -> diagnose_startup.py
+  -> Generates START.bat
+
+User runs: bash install.sh
+  -> Same as install.ps1 but with build-dep checks
+
+User runs: START.bat
+  -> .venv\Scripts\activate.bat
+  -> Model check via runtime_safety
+  -> uvicorn main:app
+
+User runs: bash start.sh
+  -> .venv/bin/activate
+  -> Inline Python model check
+  -> python -m uvicorn main:app
+
+User runs: .\start-layla.ps1
+  -> Creates venv if needed
+  -> pip install deps
+  -> Fetch knowledge docs
+  -> Optionally start MCP server
+  -> uvicorn main:app
+
+User runs: python agent/install/installer_cli.py doctor
+  -> pip check
+  -> Config load
+  -> Model filename report
+
+User runs: python agent/diagnose_startup.py
+  -> Python version check
+  -> Build tools check (Linux)
+  -> Import checks (8 modules)
+  -> Config check
+  -> Model check
+  -> App load test
+```
+
+## Appendix B: Configuration Tuning Reference
+
+The `_generate_runtime_config()` function in installer_cli.py maps hardware
+specs to configuration values.  The mapping is:
+
+| Resource | n_ctx | n_gpu_layers | n_batch | completion_max_tokens |
+|----------|-------|-------------|---------|----------------------|
+| VRAM >= 24 GB or RAM >= 48 GB (CPU) | 8192 | -1 (all GPU) | 1024 | 512 |
+| VRAM >= 12 GB or RAM >= 32 GB (CPU) | 8192 | -1 | 512 | 512 |
+| VRAM >= 8 GB or RAM >= 16 GB (CPU) | 4096 | -1 | 512 | 512 |
+| VRAM >= 4 GB or RAM >= 8 GB (CPU) | 2048 | 20 (partial) | 256 | 256 |
+| VRAM >= 2 GB or RAM >= 4 GB (CPU) | 1024 | 20 | 256 | 128 |
+| Below | 512 | 0 (CPU only) | 256 | 128 |
+
+n_threads: `max(1, min(physical_cores - 1, 16))`
+use_mlock: true when RAM >= 24 GB
+parallel_tasks: `max(2, min(cpu_cores, 8))`

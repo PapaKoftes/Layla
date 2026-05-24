@@ -133,14 +133,6 @@ _SKIP_TOOL_OUTPUT_VALIDATION = frozenset({
     "approval_required", "tool_policy_denied", "tool_loop_detected",
 })
 
-# Whole-message phatic turns ÃÃÃ¶ router + autonomous_run quick path (no LLM).
-_PHATIC_QUICK_PATTERNS = (
-    r"^(how are you|how are you doing)\??$",
-    r"^(what'?s up|wassup)\??$",
-    r"^(how'?s it going)\??$",
-    r"^(you good)\??$",
-)
-
 
 def _log_tool_outcome(intent: str, result: object) -> None:
     """Structured INFO log for observability (tool name, ok, reason)."""
@@ -676,9 +668,11 @@ def _quick_reply_for_trivial_turn(goal: str) -> str:
 
     if gl in {"ok", "okay", "yes", "yep", "no", "nope"}:
         return "Got it."
-    for pat in _PHATIC_QUICK_PATTERNS:
-        if re.match(pat, gl):
-            return "I'm good. What do you need?"
+    if re.match(
+        r"^(how are you( doing)?|what'?s up|wassup|how'?s it going|you good)\??$",
+        gl,
+    ):
+        return "I'm good. What do you need?"
     return ""
 
 
@@ -1006,11 +1000,6 @@ def _stream_reason_body(
     if held_tokens and not _is_junk_reply(buffer):
         for t in held_tokens:
             yield t
-    # Optional self-reflection: if enabled and score < 7, stream a rewritten response
-    improved = None if skip_self_reflection else _reflect_on_response(goal, buffer, active_aspect)
-    if improved:
-        yield "\n\n---\n"  # visual separator for the UI
-        yield improved
 
 
 def _has_any_grant(tool: str, args: dict | None = None) -> bool:
@@ -1111,74 +1100,6 @@ def _write_pending(tool: str, args: dict, ttl_seconds: int = 3600) -> str:
 
 # _build_system_head: moved to services/system_head_builder.py
 # Imported above as _build_system_head.
-
-def _reflect_on_response(goal: str, response: str, aspect: dict | None = None) -> str | None:
-    """
-    Self-reflection pass: score the response 1-10. If score < 7, rewrite it.
-    Returns the improved response, or None if reflection is disabled/failed/unnecessary.
-    Only runs when enable_self_reflection=True in config AND response is long enough.
-    Adds ~1 extra inference call; opt-in only.
-    """
-    cfg = runtime_safety.load_config()  # noqa: F841
-    if not cfg.get("enable_self_reflection", False):
-        return None
-    try:
-        min_len = int(cfg.get("self_reflection_min_length", 200) or 200)
-    except (TypeError, ValueError):
-        min_len = 200
-    if len(response.strip()) < max(80, min_len):  # too short to bother reflecting
-        return None
-    prev_override = None
-    try:
-        from services.llm_gateway import get_model_override, run_completion, set_model_override
-        try:
-            prev_override = get_model_override()
-            # Prefer the coding model for critique when the goal looks code-related.
-            from services.model_router import classify_task
-
-            if classify_task(goal or "", response or "") == "coding" and (cfg.get("coding_model") or "").strip():
-                set_model_override("coding")
-        except Exception as e:
-            logger.debug("self_reflection model_router override failed: %s", e, exc_info=True)
-        aspect_name = (aspect.get("name") or "Layla") if aspect else "Layla"
-        critic_prompt = (
-            f"You are a response quality critic for {aspect_name}.\n\n"
-            f"Original question: {goal[:300]}\n\n"
-            f"Response to review: {response[:800]}\n\n"
-            f"Score this response 1-10 for: accuracy, completeness, and helpfulness. "
-            f"Reply with only a number (1-10) on the first line, then 'GOOD' if score >= 7 "
-            f"or a rewritten better response if score < 7. Do NOT repeat the original if it was good."
-        )
-        result = run_completion(critic_prompt, max_tokens=600, temperature=0.1)
-        if not isinstance(result, dict):
-            return None
-        critique = ((result.get("choices") or [{}])[0].get("message") or {}).get("content", "").strip()
-        if not critique:
-            return None
-        lines = critique.split("\n", 1)
-        try:
-            score = int("".join(c for c in lines[0][:3] if c.isdigit()))
-        except (ValueError, IndexError):
-            return None
-        if score >= 7:
-            return None  # original was good
-        # Score < 7: use the rewritten portion
-        rewritten = lines[1].strip() if len(lines) > 1 else ""
-        if rewritten and len(rewritten) > 40 and rewritten.upper() != "GOOD":
-            import logging
-            logging.getLogger("layla").info("Self-reflection improved response (score was %d/10)", score)
-            return rewritten
-    except Exception as _exc:
-        logger.debug("agent_loop:L1782: %s", _exc, exc_info=False)
-    finally:
-        try:
-            from services.llm_gateway import set_model_override
-
-            set_model_override(prev_override)
-        except Exception as e:
-            logger.debug("self_reflection set_model_override cleanup failed: %s", e, exc_info=True)
-    return None
-
 
 # Smoothed load: avoid one spike from blocking every request
 _last_cpu: float = 0.0
