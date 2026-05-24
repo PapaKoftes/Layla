@@ -73,12 +73,21 @@ def _get_sandbox() -> Path:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
         import runtime_safety
-        root = runtime_safety.load_config().get("sandbox_root", str(Path.home()))
+        cfg = runtime_safety.load_config()
+        root = cfg.get("sandbox_root")
+        if not root or str(root).strip() == str(Path.home()):
+            raise RuntimeError(
+                "Cannot determine sandbox root — refusing to execute without containment"
+            )
         result = Path(root).expanduser().resolve()
         _sandbox_cache[tid] = (result, now)
         return result
+    except RuntimeError:
+        raise
     except Exception:
-        return Path.home().resolve()
+        raise RuntimeError(
+            "Cannot determine sandbox root — refusing to execute without containment"
+        )
 
 # Commands that are never allowed even with allow_run=True
 _SHELL_BLOCKLIST = [
@@ -147,6 +156,9 @@ def inside_sandbox(path: Path) -> bool:
         resolved = path.resolve()
         resolved.relative_to(sandbox)
         return True
+    except RuntimeError:
+        logger.error("Sandbox boundary unknown — denying access to %s", path)
+        return False
     except (ValueError, Exception):
         return False
 
