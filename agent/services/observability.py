@@ -52,7 +52,7 @@ def log_run_budget_summary(**kw: Any) -> None:
         import runtime_safety
 
         _cfg = runtime_safety.load_config()
-        from services.langfuse_export import maybe_emit_run_budget_span
+        from services.trace_export import maybe_emit_run_budget_span
 
         maybe_emit_run_budget_span(_cfg, kw)
     except Exception:

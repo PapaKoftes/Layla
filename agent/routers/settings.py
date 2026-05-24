@@ -368,9 +368,23 @@ async def apply_runtime_preset(req: Request):
 async def setup_auto():
     """Run idempotent auto-setup (doctor, config sanity) after the character creator / wizard."""
     try:
-        from services.auto_setup import run_auto_setup
+        import runtime_safety
+        from services.system_doctor import run_diagnostics
 
-        return await asyncio.to_thread(run_auto_setup)
+        def _run():
+            cfg = runtime_safety.load_config()
+            out = {"ok": True, "steps": []}
+            try:
+                doc = run_diagnostics(include_llm=False)
+                out["doctor"] = doc.get("status", "unknown")
+                out["steps"].append("doctor")
+            except Exception as e:
+                out["steps"].append(f"doctor_failed:{e}")
+            out["steps"].append("config_loaded")
+            out["model_filename"] = (cfg.get("model_filename") or "").strip()
+            return out
+
+        return await asyncio.to_thread(_run)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 

@@ -197,14 +197,13 @@ def build_core_sys_parts(
     if personality:
         sys_parts.append(personality)
     if cfg.get("multi_agent_orchestration_enabled") and (reasoning_mode or "").strip().lower() == "deep":
-        try:
-            from services.agent_roles import deep_task_coordination_prompt
-
-            _dap = deep_task_coordination_prompt()
-            if _dap:
-                sys_parts.append(_dap)
-        except Exception as _exc:
-            logger.debug("prompt_builder:deep_coordination: %s", _exc, exc_info=False)
+        _dap = (
+            "Multi-agent discipline (single pass): plan briefly, implement precisely, then sanity-check.\n"
+            "Organization: prefer minimal diffs, avoid new files unless necessary, do not bloat the repo, "
+            "keep outputs reviewable, and reject sloppy or redundant changes.\n"
+            "Self-check: verify assumptions against tools and files; if uncertain, say so and propose a concrete check."
+        )
+        sys_parts.append(_dap)
     if aspect and aspect.get("_use_nsfw_addition") and aspect.get("systemPromptAdditionNsfw"):
         sys_parts.append(aspect.get("systemPromptAdditionNsfw", ""))
         sys_parts.append(

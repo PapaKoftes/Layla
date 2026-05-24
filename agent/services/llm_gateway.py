@@ -778,7 +778,7 @@ def run_completion(
             def _counting_gen():
                 completion_tokens = 0
                 try:
-                    from services.otel_export import maybe_span
+                    from services.trace_export import maybe_span
 
                     with maybe_span(cfg, "llm_completion", stream="true"):
                         inner = _run(
@@ -812,7 +812,7 @@ def run_completion(
         _MAX_RETRIES = 2 if _retry_on_transient else 0
         out = None
         _llm_start_t = time.monotonic()
-        from services.otel_export import maybe_span
+        from services.trace_export import maybe_span
 
         for attempt in range(_MAX_RETRIES + 1):
             try:
