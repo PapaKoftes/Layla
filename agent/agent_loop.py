@@ -214,9 +214,9 @@ def _maybe_validate_tool_output(intent: str, result: object) -> object:
                 out["_injection_flagged"] = True
                 out["_injection_warning"] = "Possible prompt injection in tool output"
         if vr.get("warnings"):
-            logger.debug("validator: tool=%s warnings=%s", intent, vr["warnings"])
+            logger.warning("validator: tool=%s warnings=%s", intent, vr["warnings"])
     except Exception as _ve:
-        logger.debug("core.validator skipped: %s", _ve)
+        logger.warning("core.validator skipped: %s", _ve)
 
     _log_tool_outcome(intent, out if isinstance(out, dict) else result)
     return out
@@ -243,7 +243,7 @@ def _apply_deterministic_tool_verification(
         if not bool(cfg.get("deterministic_tool_verification_enabled", True)):
             return result, True, "disabled"
     except Exception as e:
-        logger.debug("deterministic_tool_verification config check failed: %s", e, exc_info=True)
+        logger.warning("deterministic_tool_verification config check failed: %s", e, exc_info=True)
         return result, True, "disabled"
     try:
         from services.tool_output_validator import deterministic_verify_tool_result
@@ -737,6 +737,70 @@ def strip_junk_from_reply(text: str) -> str:
 
 # NOTE: _db_migrate() removed — migration runs once in main.py lifespan, not at import time.
 
+
+def _clean_response_text(text: str) -> str:
+    """Strip echoed system head, instruction-like lines, and junk from model output."""
+    import re as _re_echo
+
+    if not text:
+        return ""
+
+    # Normalize leading junk (e.g. "n") so we detect the echo
+    if text[0].lower() == "n" and len(text) > 4 and text[1:].strip().lower().startswith("you are layla"):
+        text = text[1:].strip()
+    paragraphs = text.split("\n\n")
+    while paragraphs and paragraphs[0].strip():
+        first = paragraphs[0].strip().lower()
+        if first.startswith("you are layla") and ("use the identity" in first or "rules below" in first):
+            paragraphs.pop(0)
+        else:
+            break
+    text = "\n\n".join(paragraphs).strip()
+
+    # Strip all echoed "[NAME] (You are...)" blocks (no "). " required; repeat until clean)
+    _echo_pat = _re_echo.compile(
+        r"\s*\[[\w\s]+\]\s*\(You are[\s\S]*?(?=\)\.\s|\s*\[[\w\s]+\]\s*\(You are|\s*assistant\s*:|\n\n|\Z)",
+        _re_echo.IGNORECASE | _re_echo.DOTALL,
+    )
+    for _ in range(20):
+        prev = text
+        text = _echo_pat.sub("", text, count=1).strip()
+        if text == prev:
+            break
+    # Strip leading "assistant: " if present
+    if _re_echo.match(r"^\s*assistant\s*:\s*", text, _re_echo.IGNORECASE):
+        text = _re_echo.sub(r"^\s*assistant\s*:\s*", "", text, count=1, flags=_re_echo.IGNORECASE).strip()
+    # Strip repeated "assistant: I replied." so it never gets saved or shown
+    for _ in range(50):
+        prev = text
+        text = _re_echo.sub(r"^\s*assistant\s*:\s*I\s+replied\.\s*", "", text, count=1, flags=_re_echo.IGNORECASE).strip()
+        if text == prev:
+            break
+    if _is_junk_reply(text):
+        text = ""
+    # Strip line-by-line any remaining instruction-like lines at start
+    lines = text.split("\n")
+    while lines:
+        first = lines[0].strip()
+        if _re_echo.match(r"^\[[\w\s]+\]\s*\(?", first) or first.startswith("[ACTIVE ASPECT:"):
+            lines.pop(0)
+            continue
+        if first.startswith("You are ") and ("aspect" in first.lower() or " the " in first[:80]):
+            lines.pop(0)
+            continue
+        if first.lower() in ("assistant:", "assistant", "i replied."):
+            lines.pop(0)
+            continue
+        if _is_junk_reply(first):
+            lines.pop(0)
+            continue
+        break
+    text = "\n".join(lines).strip()
+    if not text or text.lower().strip() == "assistant:" or _is_junk_reply(text):
+        text = ""
+    return text
+
+
 # Last turn's reasoning mode (cross-request smoothing; single-operator local default)
 _last_reasoning_mode: str = ""
 _load_lock = threading.Lock()
@@ -1009,14 +1073,14 @@ def _has_any_grant(tool: str, args: dict | None = None) -> bool:
         if has_session_grant(tool, args):
             return True
     except Exception as _exc:
-        logger.debug("agent_loop:L763: %s", _exc, exc_info=False)
+        logger.warning("agent_loop:L763: %s", _exc, exc_info=True)
     try:
         from layla.memory.db import tool_grant_matches
         cmd = (args or {}).get("command") or (args or {}).get("path") or ""
         if tool_grant_matches(tool, cmd):
             return True
     except Exception as _exc:
-        logger.debug("agent_loop:L770: %s", _exc, exc_info=False)
+        logger.warning("agent_loop:L770: %s", _exc, exc_info=True)
     return False
 
 
@@ -1030,13 +1094,13 @@ def _admin_pre_mutate(cfg: dict, workspace: str, tool: str, summary: str) -> Non
 
             git_checkpoint_layla(workspace, tool, summary)
         except Exception as _exc:
-            logger.debug("agent_loop: admin checkpoint: %s", _exc, exc_info=False)
+            logger.warning("agent_loop: admin checkpoint: %s", _exc, exc_info=True)
     try:
         from shared_state import get_audit
 
         get_audit()(tool, f"admin_auto {summary[:200]}", "admin_mode", True)
     except Exception as _exc:
-        logger.debug("agent_loop: admin audit: %s", _exc, exc_info=False)
+        logger.warning("agent_loop: admin audit: %s", _exc, exc_info=True)
 
 
 def _write_pending(tool: str, args: dict, ttl_seconds: int = 3600) -> str:
@@ -1072,7 +1136,7 @@ def _write_pending(tool: str, args: dict, ttl_seconds: int = 3600) -> str:
             pruned.append(r)
         data = pruned[-500:]
     except Exception as e:
-        logger.debug("pending approval prune failed: %s", e, exc_info=True)
+        logger.warning("pending approval prune failed: %s", e, exc_info=True)
     entry_id = str(_uuid.uuid4())
     risk = (TOOLS.get(tool) or {}).get("risk_level") or "medium"
     now = utcnow()
@@ -1081,7 +1145,7 @@ def _write_pending(tool: str, args: dict, ttl_seconds: int = 3600) -> str:
         _pcfg = runtime_safety.load_config()
         ttl_seconds = int(_pcfg.get("approval_ttl_seconds", ttl_seconds) or ttl_seconds)
     except Exception as _exc:
-        logger.debug("agent_loop:L795: %s", _exc, exc_info=False)
+        logger.warning("agent_loop:L795: %s", _exc, exc_info=True)
     data.append({
         "id": entry_id,
         "tool": tool,
@@ -1580,7 +1644,7 @@ def _run_verification_after_tool(state: dict, tool_name: str, result: dict, work
         cfg_v = runtime_safety.load_config()
         llm_verify = bool(cfg_v.get("llm_tool_verification_enabled", True))
     except Exception as e:
-        logger.debug("llm_tool_verification config load failed: %s", e, exc_info=True)
+        logger.warning("llm_tool_verification config load failed: %s", e, exc_info=True)
         llm_verify = True
     ver = _verify_tool_progress(objective, steps_text, tool_name, result) if llm_verify else None
     if ver is not None:
@@ -1972,7 +2036,7 @@ def _llm_decision(
                 return decision
         return None
     except Exception as e:
-        logger.debug("llm_decision parse failed: %s", e)
+        logger.warning("llm_decision parse failed: %s", e)
         return None
     finally:
         try:
@@ -2371,6 +2435,256 @@ def _autonomous_run_impl(
     finally:
         set_model_override(None)
         set_reasoning_effort(None)
+
+
+def _run_tool_guards(
+    intent: str,
+    decision: dict | None,
+    state: dict,
+    cfg: dict,
+    goal: str,
+    workspace: str,
+    context: str,
+) -> tuple[bool, str]:
+    """Run post-batch tool guards (policy, loop, args, dup, recovery).
+    Returns (blocked, goal). If blocked, caller should continue the loop."""
+    # OpenClaw-style tool policy: block execution outside effective tool set
+    if intent not in ("reason", "finish", "wakeup") and intent in _VALID_TOOLS:
+        from services.tool_policy import tool_allowed
+
+        _vt = _get_tools_for_goal(goal, context=context or "", workspace_root=workspace or "", state=state)
+        try:
+            if cfg.get("decision_policy_enabled", True):
+                from services.decision_policy import apply_caps_to_valid_tools as _apply_caps_to_valid_tools
+                from services.decision_policy import build_policy_caps as _build_policy_caps
+
+                _cid = (state.get("conversation_id") or "").strip() or "unknown"
+                _caps = _build_policy_caps(state, cfg, conversation_id=_cid)
+                state["policy_caps"] = _caps.to_trace_dict()
+                _vt = _apply_caps_to_valid_tools(_vt, _caps)
+        except Exception as _dp_exc:
+            logger.warning("decision_policy caps skipped at dispatch: %s", _dp_exc)
+        if not tool_allowed(intent, _vt):
+            state["tool_calls"] += 1
+            _tpd = {
+                "ok": False,
+                "reason": "tool_policy_denied",
+                "message": (
+                    f"Tool {intent} is not allowed this turn "
+                    "(tools_profile / tools_allow / tools_deny / intent filter)."
+                ),
+            }
+            state["steps"].append({"action": intent, "result": _tpd})
+            _log_tool_outcome(intent, _tpd)
+            state["last_tool_used"] = intent
+            goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+            return True, goal
+
+    if intent not in ("reason", "finish", "wakeup") and intent in _VALID_TOOLS:
+        try:
+            from services.tool_loop_detection import push_and_evaluate
+
+            _loop_ev = push_and_evaluate(
+                cfg, state, intent, decision, reasoning_mode=state.get("reasoning_mode"),
+            )
+            if _loop_ev and _loop_ev.startswith("STOP:"):
+                state["tool_calls"] += 1
+                _tlr = {
+                    "ok": False,
+                    "reason": "tool_loop_detected",
+                    "message": _loop_ev[5:].strip(),
+                }
+                state["steps"].append({"action": intent, "result": _tlr})
+                _log_tool_outcome(intent, _tlr)
+                state["last_tool_used"] = intent
+                goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+                return True, goal
+            if _loop_ev and _loop_ev.startswith("WARN:"):
+                state["tool_loop_prompt_hint"] = _loop_ev[5:].strip()
+        except Exception as _exc:
+            logger.warning("agent_loop:L3249: %s", _exc, exc_info=True)
+
+    if intent not in ("reason", "finish", "wakeup") and intent in _VALID_TOOLS:
+        try:
+            from services.tool_args import validate_tool_invocation
+
+            _verr = validate_tool_invocation(intent, decision, goal, workspace)
+            if _verr:
+                state["tool_calls"] += 1
+                state["steps"].append({"action": intent, "result": _verr})
+                _log_tool_outcome(intent, _verr)
+                state["last_tool_used"] = intent
+                goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+                return True, goal
+        except Exception as _exc:
+            logger.warning("agent_loop:L3264: %s", _exc, exc_info=True)
+
+    if intent not in ("reason", "finish", "wakeup", "none") and intent in _VALID_TOOLS:
+        try:
+            from services.tool_loop_detection import exact_call_key
+
+            _eck = exact_call_key(intent, decision)
+            _seen = state.setdefault("_recent_exact_calls", set())
+            if _eck in _seen:
+                state["tool_calls"] += 1
+                _tdup = {
+                    "ok": False,
+                    "reason": "tool_loop_detected",
+                    "message": "Exact duplicate tool invocation blocked for this run.",
+                }
+                state["steps"].append({"action": intent, "result": _tdup})
+                _log_tool_outcome(intent, _tdup)
+                state["last_tool_used"] = intent
+                goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+                return True, goal
+        except Exception as _exc:
+            logger.warning("agent_loop:L3285: %s", _exc, exc_info=True)
+
+    if intent not in ("reason", "finish", "wakeup", "none") and intent in _VALID_TOOLS:
+        try:
+            from services.failure_recovery import block_repeated_mutating_under_retry_constrained
+
+            if block_repeated_mutating_under_retry_constrained(state, intent):
+                state["tool_calls"] += 1
+                _br = {
+                    "ok": False,
+                    "reason": "retry_constrained_block",
+                    "message": (
+                        "Same mutating tool blocked under retry_constrained; verify with read_file/grep before retrying."
+                    ),
+                }
+                state["steps"].append({"action": intent, "result": _br})
+                _log_tool_outcome(intent, _br)
+                state["last_tool_used"] = intent
+                goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
+                return True, goal
+        except Exception as _exc:
+            logger.warning("agent_loop:L3306: %s", _exc, exc_info=True)
+
+    return False, goal
+
+
+def _finalize_run_state(
+    state: dict,
+    active_aspect: dict,
+    goal: str,
+    conversation_history: list | None,
+    research_mode: bool,
+    emit_run_telemetry_fn: Callable,
+) -> None:
+    """Post-loop finalization: outcome evaluation, learning extraction, telemetry, response envelope."""
+    # D5: runtime timeout also warrants a cancel message
+    if state.get("status") == "timeout" and conversation_history is not None:
+        _inject_cancel_message(conversation_history, "agent", "hit runtime limit")
+
+    if state.get("status") == "finished":
+        try:
+            if runtime_safety.load_config().get("pipeline_enforcement_enabled", True):
+                state["pipeline_stage"] = "REFLECT"
+        except Exception as e:
+            logger.warning("pipeline_enforcement config check failed: %s", e, exc_info=True)
+            state["pipeline_stage"] = "REFLECT"
+        try:
+            from services.outcome_evaluation import evaluate_outcome_structured
+            from shared_state import set_last_outcome_evaluation
+
+            ev_struct = evaluate_outcome_structured(state)
+            state["outcome_evaluation"] = ev_struct
+            cid_fin = (state.get("conversation_id") or "").strip()
+            if cid_fin:
+                set_last_outcome_evaluation(cid_fin, ev_struct)
+            # Mandatory outcome recording for feedback loop: persist strategy patterns
+            try:
+                from layla.memory import strategy_stats as _strategy_stats
+
+                _g = (state.get("original_goal") or state.get("goal") or "").strip()
+                _task_type = (_g.replace("\n", " ")[:120] if _g else "general") or "general"
+                _strat = str(active_aspect.get("id") or "morrigan")[:120]
+                _strategy_stats.record_strategy_stat(_task_type, _strat, success=bool(ev_struct.get("success")))
+                state["strategy_stats_recorded"] = True
+            except Exception as _ss_exc:
+                logger.warning("strategy_stats record failed (outcome feedback at risk): %s", _ss_exc)
+        except Exception as _ev_exc:
+            logger.warning("outcome evaluation failed (feedback loop at risk): %s", _ev_exc)
+        _save_outcome_memory(state)
+        try:
+            from layla.memory.distill import run_distill_after_outcome
+            run_distill_after_outcome(n=50)
+        except Exception as e:
+            logger.debug("distill after outcome failed: %s", e)
+        # Auto-learning: extract and persist 1-2 insights from every substantive exchange
+        final_text = ""
+        for s in reversed(state.get("steps", [])):
+            if s.get("action") == "reason":
+                r = s.get("result", "")
+                final_text = r if isinstance(r, str) else ""
+                break
+        if final_text and not state.get("refused") and len(final_text.strip()) >= 80:
+            import threading as _t
+            _t.Thread(
+                target=_auto_extract_learnings,
+                args=(state.get("original_goal", ""), final_text, active_aspect.get("id", "")),
+                daemon=True,
+                name="auto-learn",
+            ).start()
+    # Conversation entity extraction: extract entities from every exchange for codex/wiki
+    _conv_final_text = ""
+    try:
+        for _cs in reversed(state.get("steps", [])):
+            if _cs.get("action") == "reason":
+                _csr = _cs.get("result", "")
+                _conv_final_text = _csr if isinstance(_csr, str) else ""
+                break
+    except Exception as e:
+        logger.debug("agent_loop: %s", e)
+    if _conv_final_text and not state.get("refused"):
+        try:
+            from services.conversation_entity_extractor import extract_in_background as _conv_ent_bg
+            _conv_ent_bg(
+                state.get("original_goal", ""),
+                _conv_final_text,
+                conversation_id=str(state.get("conversation_id", "")),
+                aspect_id=active_aspect.get("id", ""),
+            )
+        except Exception as _cee_err:
+            logger.debug("conversation_entity_extractor hook failed: %s", _cee_err)
+
+    if research_mode:
+        set_effective_sandbox(None)
+
+    # Persist routing telemetry (local-only) for debugging misroutes and regressions.
+    try:
+        rd = state.get("route_decision") if isinstance(state.get("route_decision"), dict) else {}
+        from layla.memory.routing_telemetry import log_route_telemetry
+
+        log_route_telemetry(
+            conversation_id=str(state.get("conversation_id") or "") or None,
+            goal=str(state.get("original_goal") or state.get("goal") or ""),
+            task_type=str(rd.get("task_type") or ""),
+            is_meta_self=bool(rd.get("is_meta_self")),
+            has_workspace_signals=bool(rd.get("has_workspace_signals")),
+            decision_action=str((state.get("last_decision") or {}).get("action") or ""),
+            decision_tool=str((state.get("last_decision") or {}).get("tool") or ""),
+            preflight_ok=state.get("preflight_ok") if "preflight_ok" in state else None,
+            preflight_reason=str(state.get("preflight_reason") or "") or None,
+            final_status=str(state.get("status") or "") or None,
+            parse_failed=bool(state.get("status") == "parse_failed"),
+        )
+    except Exception as e:
+        logger.debug("agent_loop: %s", e)
+
+    emit_run_telemetry_fn(state, state.get("status") in ("finished", "plan_completed"))
+
+    # Response envelope (stable keys for UI/API consumers).
+    try:
+        if state.get("status") in ("finished", "plan_completed"):
+            state["steps_taken"] = list(state.get("steps") or [])
+            if "completion_gate_passed" not in state:
+                state["completion_gate_passed"] = True
+            if "retry_count" not in state:
+                state["retry_count"] = int(state.get("completion_gate_retries") or 0)
+    except Exception as e:
+        logger.debug("agent_loop: %s", e)
 
 
 def _autonomous_run_impl_core(
@@ -3250,7 +3564,7 @@ def _autonomous_run_impl_core(
                     )
                     intent = "reason"
             except Exception as _pf_exc:
-                logger.debug("tool_preflight skipped: %s", _pf_exc, exc_info=False)
+                logger.warning("tool_preflight skipped: %s", _pf_exc, exc_info=True)
 
         # ÃÃ¶ÃÃÃ¶Ã D1: Concurrent read-only tool batch ÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶ÃÃÃ¶Ã
         # The LLM may declare additional parallel tools in decision["batch_tools"].
@@ -3359,118 +3673,17 @@ def _autonomous_run_impl_core(
         if intent not in ("reason", "finish", "wakeup"):
             _emit_tool_start(ux_state_queue, intent)
 
-        # OpenClaw-style tool policy: block execution outside effective tool set
-        if intent not in ("reason", "finish", "wakeup") and intent in _VALID_TOOLS:
-            from services.tool_policy import tool_allowed
-
-            _vt = _get_tools_for_goal(goal, context=context or "", workspace_root=workspace or "", state=state)
-            try:
-                if cfg.get("decision_policy_enabled", True):
-                    from services.decision_policy import apply_caps_to_valid_tools as _apply_caps_to_valid_tools
-                    from services.decision_policy import build_policy_caps as _build_policy_caps
-
-                    _cid = (state.get("conversation_id") or "").strip() or "unknown"
-                    _caps = _build_policy_caps(state, cfg, conversation_id=_cid)
-                    state["policy_caps"] = _caps.to_trace_dict()
-                    _vt = _apply_caps_to_valid_tools(_vt, _caps)
-            except Exception as _dp_exc:
-                logger.debug("decision_policy caps skipped at dispatch: %s", _dp_exc)
-            if not tool_allowed(intent, _vt):
-                state["tool_calls"] += 1
-                _tpd = {
-                    "ok": False,
-                    "reason": "tool_policy_denied",
-                    "message": (
-                        f"Tool {intent} is not allowed this turn "
-                        "(tools_profile / tools_allow / tools_deny / intent filter)."
-                    ),
-                }
-                state["steps"].append({"action": intent, "result": _tpd})
-                _log_tool_outcome(intent, _tpd)
-                state["last_tool_used"] = intent
-                goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
-                continue
-
-        if intent not in ("reason", "finish", "wakeup") and intent in _VALID_TOOLS:
-            try:
-                from services.tool_loop_detection import push_and_evaluate
-
-                _loop_ev = push_and_evaluate(
-                    cfg, state, intent, decision, reasoning_mode=state.get("reasoning_mode"),
-                )
-                if _loop_ev and _loop_ev.startswith("STOP:"):
-                    state["tool_calls"] += 1
-                    _tlr = {
-                        "ok": False,
-                        "reason": "tool_loop_detected",
-                        "message": _loop_ev[5:].strip(),
-                    }
-                    state["steps"].append({"action": intent, "result": _tlr})
-                    _log_tool_outcome(intent, _tlr)
-                    state["last_tool_used"] = intent
-                    goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
-                    continue
-                if _loop_ev and _loop_ev.startswith("WARN:"):
-                    state["tool_loop_prompt_hint"] = _loop_ev[5:].strip()
-            except Exception as _exc:
-                logger.debug("agent_loop:L3249: %s", _exc, exc_info=False)
-
-        if intent not in ("reason", "finish", "wakeup") and intent in _VALID_TOOLS:
-            try:
-                from services.tool_args import validate_tool_invocation
-
-                _verr = validate_tool_invocation(intent, decision, goal, workspace)
-                if _verr:
-                    state["tool_calls"] += 1
-                    state["steps"].append({"action": intent, "result": _verr})
-                    _log_tool_outcome(intent, _verr)
-                    state["last_tool_used"] = intent
-                    goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
-                    continue
-            except Exception as _exc:
-                logger.debug("agent_loop:L3264: %s", _exc, exc_info=False)
-
-        if intent not in ("reason", "finish", "wakeup", "none") and intent in _VALID_TOOLS:
-            try:
-                from services.tool_loop_detection import exact_call_key
-
-                _eck = exact_call_key(intent, decision)
-                _seen = state.setdefault("_recent_exact_calls", set())
-                if _eck in _seen:
-                    state["tool_calls"] += 1
-                    _tdup = {
-                        "ok": False,
-                        "reason": "tool_loop_detected",
-                        "message": "Exact duplicate tool invocation blocked for this run.",
-                    }
-                    state["steps"].append({"action": intent, "result": _tdup})
-                    _log_tool_outcome(intent, _tdup)
-                    state["last_tool_used"] = intent
-                    goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
-                    continue
-            except Exception as _exc:
-                logger.debug("agent_loop:L3285: %s", _exc, exc_info=False)
-
-        if intent not in ("reason", "finish", "wakeup", "none") and intent in _VALID_TOOLS:
-            try:
-                from services.failure_recovery import block_repeated_mutating_under_retry_constrained
-
-                if block_repeated_mutating_under_retry_constrained(state, intent):
-                    state["tool_calls"] += 1
-                    _br = {
-                        "ok": False,
-                        "reason": "retry_constrained_block",
-                        "message": (
-                            "Same mutating tool blocked under retry_constrained; verify with read_file/grep before retrying."
-                        ),
-                    }
-                    state["steps"].append({"action": intent, "result": _br})
-                    _log_tool_outcome(intent, _br)
-                    state["last_tool_used"] = intent
-                    goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _format_steps(state["steps"])
-                    continue
-            except Exception as _exc:
-                logger.debug("agent_loop:L3306: %s", _exc, exc_info=False)
+        _guard_blocked, goal = _run_tool_guards(
+            intent=intent,
+            decision=decision,
+            state=state,
+            cfg=cfg,
+            goal=goal,
+            workspace=workspace,
+            context=context or "",
+        )
+        if _guard_blocked:
+            continue
 
         # ------------------------------------------------
         # TOOL DISPATCH (handlers in services/tool_dispatch.py)
@@ -3648,62 +3861,7 @@ def _autonomous_run_impl_core(
                 text = (text or "").strip()
                 text = truncate_at_next_user_turn(text)
 
-            # Strip when model echoes the system head (e.g. "You are Layla. Use the identity..." or "nyou are Layla...")
-            # Normalize leading junk (e.g. "n") so we detect the echo
-            if text and text[0].lower() == "n" and len(text) > 4 and text[1:].strip().lower().startswith("you are layla"):
-                text = text[1:].strip()
-            paragraphs = text.split("\n\n")
-            while paragraphs and paragraphs[0].strip():
-                first = paragraphs[0].strip().lower()
-                if first.startswith("you are layla") and ("use the identity" in first or "rules below" in first):
-                    paragraphs.pop(0)
-                else:
-                    break
-            text = "\n\n".join(paragraphs).strip()
-
-            # Strip all echoed "[NAME] (You are...)" blocks (no "). " required; repeat until clean)
-            import re as _re_echo
-            # Match "[NAME] (You are ..." until "). " or next echo or "assistant:" or "\n\n" or end
-            _echo_pat = _re_echo.compile(
-                r"\s*\[[\w\s]+\]\s*\(You are[\s\S]*?(?=\)\.\s|\s*\[[\w\s]+\]\s*\(You are|\s*assistant\s*:|\n\n|\Z)",
-                _re_echo.IGNORECASE | _re_echo.DOTALL,
-            )
-            for _ in range(20):
-                prev = text
-                text = _echo_pat.sub("", text, count=1).strip()
-                if text == prev:
-                    break
-            # Strip leading "assistant: " if present
-            if _re_echo.match(r"^\s*assistant\s*:\s*", text, _re_echo.IGNORECASE):
-                text = _re_echo.sub(r"^\s*assistant\s*:\s*", "", text, count=1, flags=_re_echo.IGNORECASE).strip()
-            # Strip repeated "assistant: I replied." so it never gets saved or shown
-            for _ in range(50):
-                prev = text
-                text = _re_echo.sub(r"^\s*assistant\s*:\s*I\s+replied\.\s*", "", text, count=1, flags=_re_echo.IGNORECASE).strip()
-                if text == prev:
-                    break
-            if _is_junk_reply(text):
-                text = ""
-            # Strip line-by-line any remaining instruction-like lines at start
-            lines = text.split("\n")
-            while lines:
-                first = lines[0].strip()
-                if _re_echo.match(r"^\[[\w\s]+\]\s*\(?", first) or first.startswith("[ACTIVE ASPECT:"):
-                    lines.pop(0)
-                    continue
-                if first.startswith("You are ") and ("aspect" in first.lower() or " the " in first[:80]):
-                    lines.pop(0)
-                    continue
-                if first.lower() in ("assistant:", "assistant", "i replied."):
-                    lines.pop(0)
-                    continue
-                if _is_junk_reply(first):
-                    lines.pop(0)
-                    continue
-                break
-            text = "\n".join(lines).strip()
-            if not text or text.lower().strip() == "assistant:" or _is_junk_reply(text):
-                text = ""
+            text = _clean_response_text(text)
 
             # Refusal: if aspect can refuse and output starts with [REFUSED: ...], do not run tools
             refused = False
@@ -3924,117 +4082,13 @@ def _autonomous_run_impl_core(
         except Exception as _fb_exc:
             logger.warning("parse_failed fallback LLM call failed: %s", _fb_exc)
 
-    # D5: runtime timeout also warrants a cancel message
-    if state.get("status") == "timeout" and conversation_history is not None:
-        _inject_cancel_message(conversation_history, "agent", "hit runtime limit")
-
-    if state.get("status") == "finished":
-        try:
-            if runtime_safety.load_config().get("pipeline_enforcement_enabled", True):
-                state["pipeline_stage"] = "REFLECT"
-        except Exception as e:
-            logger.debug("pipeline_enforcement config check failed: %s", e, exc_info=True)
-            state["pipeline_stage"] = "REFLECT"
-        try:
-            from services.outcome_evaluation import evaluate_outcome_structured
-            from shared_state import set_last_outcome_evaluation
-
-            ev_struct = evaluate_outcome_structured(state)
-            state["outcome_evaluation"] = ev_struct
-            cid_fin = (state.get("conversation_id") or "").strip()
-            if cid_fin:
-                set_last_outcome_evaluation(cid_fin, ev_struct)
-            # Mandatory outcome recording for feedback loop: persist strategy patterns
-            try:
-                from layla.memory import strategy_stats as _strategy_stats
-
-                _g = (state.get("original_goal") or state.get("goal") or "").strip()
-                _task_type = (_g.replace("\n", " ")[:120] if _g else "general") or "general"
-                _strat = str(active_aspect.get("id") or "morrigan")[:120]
-                _strategy_stats.record_strategy_stat(_task_type, _strat, success=bool(ev_struct.get("success")))
-                state["strategy_stats_recorded"] = True
-            except Exception as _ss_exc:
-                logger.warning("strategy_stats record failed (outcome feedback at risk): %s", _ss_exc)
-        except Exception as _ev_exc:
-            logger.warning("outcome evaluation failed (feedback loop at risk): %s", _ev_exc)
-        _save_outcome_memory(state)
-        try:
-            from layla.memory.distill import run_distill_after_outcome
-            run_distill_after_outcome(n=50)
-        except Exception as e:
-            logger.debug("distill after outcome failed: %s", e)
-        # Auto-learning: extract and persist 1-2 insights from every substantive exchange
-        final_text = ""
-        for s in reversed(state.get("steps", [])):
-            if s.get("action") == "reason":
-                r = s.get("result", "")
-                final_text = r if isinstance(r, str) else ""
-                break
-        if final_text and not state.get("refused") and len(final_text.strip()) >= 80:
-            import threading as _t
-            _t.Thread(
-                target=_auto_extract_learnings,
-                args=(state.get("original_goal", ""), final_text, active_aspect.get("id", "")),
-                daemon=True,
-                name="auto-learn",
-            ).start()
-    # Conversation entity extraction: extract entities from every exchange for codex/wiki
-    _conv_final_text = ""
-    try:
-        for _cs in reversed(state.get("steps", [])):
-            if _cs.get("action") == "reason":
-                _csr = _cs.get("result", "")
-                _conv_final_text = _csr if isinstance(_csr, str) else ""
-                break
-    except Exception as e:
-        logger.debug("agent_loop: %s", e)
-    if _conv_final_text and not state.get("refused"):
-        try:
-            from services.conversation_entity_extractor import extract_in_background as _conv_ent_bg
-            _conv_ent_bg(
-                state.get("original_goal", ""),
-                _conv_final_text,
-                conversation_id=str(state.get("conversation_id", "")),
-                aspect_id=active_aspect.get("id", ""),
-            )
-        except Exception as _cee_err:
-            logger.debug("conversation_entity_extractor hook failed: %s", _cee_err)
-
-    if research_mode:
-        set_effective_sandbox(None)
-
-    # Persist routing telemetry (local-only) for debugging misroutes and regressions.
-    try:
-        rd = state.get("route_decision") if isinstance(state.get("route_decision"), dict) else {}
-        from layla.memory.routing_telemetry import log_route_telemetry
-
-        log_route_telemetry(
-            conversation_id=str(state.get("conversation_id") or "") or None,
-            goal=str(state.get("original_goal") or state.get("goal") or ""),
-            task_type=str(rd.get("task_type") or ""),
-            is_meta_self=bool(rd.get("is_meta_self")),
-            has_workspace_signals=bool(rd.get("has_workspace_signals")),
-            decision_action=str((state.get("last_decision") or {}).get("action") or ""),
-            decision_tool=str((state.get("last_decision") or {}).get("tool") or ""),
-            preflight_ok=state.get("preflight_ok") if "preflight_ok" in state else None,
-            preflight_reason=str(state.get("preflight_reason") or "") or None,
-            final_status=str(state.get("status") or "") or None,
-            parse_failed=bool(state.get("status") == "parse_failed"),
-        )
-    except Exception as e:
-        logger.debug("agent_loop: %s", e)
-
-    _emit_run_telemetry(state, state.get("status") in ("finished", "plan_completed"))
-
-    # Response envelope (stable keys for UI/API consumers).
-    try:
-        if state.get("status") in ("finished", "plan_completed"):
-            state["steps_taken"] = list(state.get("steps") or [])
-            if "completion_gate_passed" not in state:
-                state["completion_gate_passed"] = True
-            if "retry_count" not in state:
-                state["retry_count"] = int(state.get("completion_gate_retries") or 0)
-    except Exception as e:
-        logger.debug("agent_loop: %s", e)
+    _finalize_run_state(
+        state=state,
+        active_aspect=active_aspect,
+        goal=goal,
+        conversation_history=conversation_history,
+        research_mode=research_mode,
+        emit_run_telemetry_fn=_emit_run_telemetry,
+    )
 
     return state
