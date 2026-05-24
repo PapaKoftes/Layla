@@ -17,6 +17,13 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from constants import (
+    BROWSER_ACTION_TIMEOUT_MS,
+    BROWSER_IDLE_TIMEOUT_MS,
+    BROWSER_NAV_TIMEOUT_MS,
+    BROWSER_PAGE_TEXT_MAX_CHARS,
+)
+
 logger = logging.getLogger("layla.browser")
 
 _SCREENSHOT_DIR = Path(__file__).resolve().parent.parent / ".screenshots"
@@ -136,7 +143,7 @@ async def _new_page():
     return await ctx.new_page()
 
 
-async def _navigate(url: str, timeout_ms: int = 15000) -> dict:
+async def _navigate(url: str, timeout_ms: int = BROWSER_NAV_TIMEOUT_MS) -> dict:
     if not _is_safe_url(url):
         return {"ok": False, "error": "URL not allowed (private/localhost blocked)"}
     page = await _new_page()
@@ -144,12 +151,12 @@ async def _navigate(url: str, timeout_ms: int = 15000) -> dict:
         await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
         title = await page.title()
         text = await page.evaluate(
-            """() => {
+            f"""() => {{
                 const el = document.querySelector('main') ||
                            document.querySelector('article') ||
                            document.body;
-                return el ? el.innerText.slice(0, 8000) : '';
-            }"""
+                return el ? el.innerText.slice(0, {BROWSER_PAGE_TEXT_MAX_CHARS}) : '';
+            }}"""
         )
         final_url = page.url
         return {"ok": True, "url": final_url, "title": title, "text": text.strip()}
@@ -159,7 +166,7 @@ async def _navigate(url: str, timeout_ms: int = 15000) -> dict:
         await page.close()
 
 
-async def _screenshot(url: str, timeout_ms: int = 15000) -> dict:
+async def _screenshot(url: str, timeout_ms: int = BROWSER_NAV_TIMEOUT_MS) -> dict:
     if not _is_safe_url(url):
         return {"ok": False, "error": "URL not allowed (private/localhost blocked)"}
     page = await _new_page()
@@ -183,9 +190,9 @@ async def _click_and_extract(url: str, selector: str, timeout_ms: int = 10000) -
     page = await _new_page()
     try:
         await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
-        await page.click(selector, timeout=5000)
-        await page.wait_for_load_state("networkidle", timeout=5000)
-        text = await page.evaluate("() => document.body.innerText.slice(0, 6000)")
+        await page.click(selector, timeout=BROWSER_ACTION_TIMEOUT_MS)
+        await page.wait_for_load_state("networkidle", timeout=BROWSER_ACTION_TIMEOUT_MS)
+        text = await page.evaluate(f"() => document.body.innerText.slice(0, {BROWSER_PAGE_TEXT_MAX_CHARS})")
         return {"ok": True, "url": page.url, "text": text.strip()}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -201,11 +208,11 @@ async def _fill_form(url: str, fields: dict[str, str], submit_selector: str = ""
     try:
         await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
         for selector, value in fields.items():
-            await page.fill(selector, value, timeout=5000)
+            await page.fill(selector, value, timeout=BROWSER_ACTION_TIMEOUT_MS)
         if submit_selector:
-            await page.click(submit_selector, timeout=5000)
-            await page.wait_for_load_state("networkidle", timeout=8000)
-        text = await page.evaluate("() => document.body.innerText.slice(0, 6000)")
+            await page.click(submit_selector, timeout=BROWSER_ACTION_TIMEOUT_MS)
+            await page.wait_for_load_state("networkidle", timeout=BROWSER_IDLE_TIMEOUT_MS)
+        text = await page.evaluate(f"() => document.body.innerText.slice(0, {BROWSER_PAGE_TEXT_MAX_CHARS})")
         return {"ok": True, "url": page.url, "text": text.strip()}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -220,7 +227,7 @@ async def _search_web(query: str, engine: str = "ddg") -> dict:
     url = f"https://html.duckduckgo.com/html/?q={encoded}"
     page = await _new_page()
     try:
-        await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+        await page.goto(url, wait_until="domcontentloaded", timeout=BROWSER_NAV_TIMEOUT_MS)
         links = await page.evaluate(
             """() => {
                 const results = [];
@@ -272,7 +279,7 @@ def _run(coro):
 
 # ── Public synchronous API ────────────────────────────────────────────────────
 
-def navigate(url: str, timeout_ms: int = 15000) -> dict:
+def navigate(url: str, timeout_ms: int = BROWSER_NAV_TIMEOUT_MS) -> dict:
     """
     Navigate to a URL and extract the main text content.
     Returns: {"ok": bool, "url": str, "title": str, "text": str}
@@ -283,7 +290,7 @@ def navigate(url: str, timeout_ms: int = 15000) -> dict:
         return {"ok": False, "error": str(e)}
 
 
-def screenshot(url: str, timeout_ms: int = 15000) -> dict:
+def screenshot(url: str, timeout_ms: int = BROWSER_NAV_TIMEOUT_MS) -> dict:
     """
     Take a full-page screenshot of a URL.
     Returns: {"ok": bool, "url": str, "title": str, "screenshot_path": str}
