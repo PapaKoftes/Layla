@@ -16,6 +16,9 @@ MAX_IMAGE_BASE64_LENGTH: int = 10_000_000   # max base64 image payload (~7.5 MB 
 DEFAULT_TOOL_TIMEOUT_S: int = 120           # default subprocess timeout (seconds)
 DEFAULT_AGENT_TIMEOUT_MS: int = 120_000     # default agent request timeout (milliseconds)
 MAX_AGENT_TIMEOUT_MS: int = 600_000         # maximum allowed agent timeout (10 minutes)
+DOWNLOAD_TIMEOUT_S: int = 600               # large file download timeout (seconds)
+MCP_SESSION_TIMEOUT_S: float = 60.0         # MCP client session timeout
+DISCOVERY_TIMEOUT_S: int = 60               # project discovery LLM timeout
 
 # ── Agent loop limits ────────────────────────────────────────────────────────
 DEFAULT_MAX_TOOL_CALLS: int = 5             # normal mode
@@ -47,6 +50,18 @@ LOCALHOST_HOSTS: frozenset[str] = frozenset((
 ))
 ALLOWED_URL_SCHEMES: frozenset[str] = frozenset(("https", "git"))
 SLUG_PATTERN: str = r"^[a-zA-Z0-9_-]+$"
+
+# ── Browser automation ───────────────────────────────────────────────────────
+BROWSER_NAV_TIMEOUT_MS: int = 15_000        # page navigation timeout
+BROWSER_ACTION_TIMEOUT_MS: int = 5_000      # click/fill/type action timeout
+BROWSER_IDLE_TIMEOUT_MS: int = 8_000        # networkidle timeout
+BROWSER_PAGE_TEXT_MAX_CHARS: int = 6_000     # max chars from page text extraction
+
+# ── Content truncation ──────────────────────────────────────────────────────
+CONTEXT_SNIPPET_MAX_CHARS: int = 1_200      # snippet/excerpt truncation for context building
+PROMPT_CONTEXT_MAX_CHARS: int = 6_000       # max chars for file/tool context in prompts
+DEBATE_RESPONSE_MAX_CHARS: int = 1_200      # debate/council response truncation
+LLM_PROMPT_MAX_CHARS: int = 16_000          # max prompt text before truncation
 
 # ── Keyword sets ─────────────────────────────────────────────────────────────
 GREETING_WORDS: frozenset[str] = frozenset((
