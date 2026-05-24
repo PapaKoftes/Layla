@@ -51,7 +51,6 @@
   "will_refuse": false,
   "can_refuse": true,
   "earned_title": null,
-  "blend_weight": 0,
   "expertise_domains": {
     "primary": ["pattern recognition and anomaly detection", "code review (bugs, smells, anti-patterns)", "debugging (root cause analysis, fault isolation)", "risk assessment and failure mode analysis", "cognitive bias identification"],
     "secondary": ["performance profiling (CPU, memory, I/O)", "security vulnerability scanning", "contradiction detection in specifications", "regression testing strategy", "monitoring and alerting design"],

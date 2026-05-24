@@ -55,7 +55,6 @@
   "will_refuse": false,
   "can_refuse": true,
   "earned_title": null,
-  "blend_weight": 0,
   "expertise_domains": {
     "primary": ["creative problem-solving (TRIZ, lateral thinking, SCAMPER)", "generative design", "brainstorming facilitation", "narrative structure (three-act, hero's journey, kishōtenketsu)", "branding and naming"],
     "secondary": ["music theory (harmony, rhythm, arrangement)", "game design (mechanics, player psychology)", "visual design principles", "comedy writing (timing, subversion, callbacks)", "speculative fiction and worldbuilding"],
