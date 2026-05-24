@@ -30,6 +30,16 @@ _ASPECT_EMBEDDINGS: dict[str, Any] = {}  # values are np.ndarray when loaded
 _ASPECT_EMBEDDINGS_TS: float = 0.0
 _EMBED_COSINE_THRESHOLD: float = 0.35  # below this score → use default
 
+# Maturity phases (from maturity_engine) → voice_evolution keys (in personality JSONs).
+# The two systems were designed separately and use different naming conventions.
+_PHASE_TO_VOICE: dict[str, str] = {
+    "awakening": "nascent",
+    "attunement": "apprentice",
+    "resonance": "adept",
+    "sovereignty": "veteran",
+    "transcendence": "transcendent",
+}
+
 
 def reload_aspects() -> list[dict]:
     """Force-reload all aspect JSON files from personalities/ immediately."""
@@ -102,7 +112,8 @@ def _load_aspects() -> list[dict]:
                     try:
                         ve = a.get("voice_evolution")
                         if maturity_phase and isinstance(ve, dict):
-                            vline = str(ve.get(maturity_phase) or "").strip()
+                            voice_key = _PHASE_TO_VOICE.get(maturity_phase, maturity_phase)
+                            vline = str(ve.get(voice_key) or "").strip()
                             if vline:
                                 base2 = (a.get("systemPromptAddition") or "").rstrip()
                                 a["systemPromptAddition"] = base2 + f"\n\nVoice evolution ({maturity_phase}): {vline}"
