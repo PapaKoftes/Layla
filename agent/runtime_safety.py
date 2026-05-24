@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 from layla.time_utils import utcnow
+from services.file_lock import path_lock
 
 logger = logging.getLogger("layla")
 
@@ -857,7 +858,8 @@ def is_tool_allowed(tool_name: str) -> bool:
             cfg = load_config()
             if bool(cfg.get("admin_mode")) and not bool(cfg.get("admin_blocklist_override")):
                 return True
-            data = json.loads(APPROVAL_FILE.read_text(encoding="utf-8"))
+            with path_lock(APPROVAL_FILE):
+                data = json.loads(APPROVAL_FILE.read_text(encoding="utf-8"))
             return data.get(tool_name, False) if isinstance(data, dict) else False
         except Exception:
             return False
@@ -896,13 +898,14 @@ def log_execution(tool_name: str, payload: dict) -> None:
     }
     try:
         GOV_PATH.mkdir(parents=True, exist_ok=True)
-        data = []
-        if EXEC_LOG_FILE.exists():
-            try:
-                data = json.loads(EXEC_LOG_FILE.read_text(encoding="utf-8"))
-            except Exception:
-                data = []
-        data.append(entry)
-        EXEC_LOG_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        with path_lock(EXEC_LOG_FILE):
+            data = []
+            if EXEC_LOG_FILE.exists():
+                try:
+                    data = json.loads(EXEC_LOG_FILE.read_text(encoding="utf-8"))
+                except Exception:
+                    data = []
+            data.append(entry)
+            EXEC_LOG_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
     except Exception:
         pass
