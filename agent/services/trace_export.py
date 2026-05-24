@@ -1,14 +1,40 @@
-"""
-Optional Langfuse export — no hard dependency on langfuse (pip install langfuse to enable).
-Controlled by runtime_config: langfuse_enabled + keys.
+"""Unified tracing exports — OpenTelemetry spans + Langfuse budget spans.
+
+No hard dependency on either SDK; each function is a no-op when disabled or
+when the respective package is not installed.
 """
 from __future__ import annotations
 
 import logging
-from typing import Any
+from contextlib import contextmanager
+from typing import Any, Iterator
 
 logger = logging.getLogger("layla")
 
+
+# ---------------------------------------------------------------------------
+# OpenTelemetry
+# ---------------------------------------------------------------------------
+
+@contextmanager
+def maybe_span(cfg: dict[str, Any], name: str, **attrs: Any) -> Iterator[None]:
+    if not bool((cfg or {}).get("opentelemetry_enabled", False)):
+        yield
+        return
+    try:
+        from opentelemetry import trace
+
+        tracer = trace.get_tracer("layla")
+        with tracer.start_as_current_span(name, attributes={k: str(v) for k, v in attrs.items() if v is not None}):
+            yield
+    except Exception as e:
+        logger.debug("otel span skipped: %s", e)
+        yield
+
+
+# ---------------------------------------------------------------------------
+# Langfuse
+# ---------------------------------------------------------------------------
 
 def maybe_emit_run_budget_span(cfg: dict[str, Any], summary: dict[str, Any]) -> None:
     """Best-effort span for run_budget_summary; no-op if disabled or import fails."""
