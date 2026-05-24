@@ -25,7 +25,7 @@ _TOOL_CATEGORY_MAP = {
     "restore_file_checkpoint": "memory",
     "ingest_chat_export_to_knowledge": "memory",
     "memory_elasticsearch_search": "memory",
-    "read_csv": "data", "read_excel": "data", "read_pdf": "data", "read_docx": "data",
+    "read_csv": "data", "read_excel": "data", "read_pdf": "data", "read_docx": "data", "read_pptx": "data", "read_notebook": "data",
     "plot_chart": "data", "plot_scatter": "data", "plot_histogram": "data",
     "sql_query": "data", "schema_introspect": "data", "generate_sql": "data",
     "dataset_summary": "data", "cluster_data": "data", "scipy_compute": "data",
