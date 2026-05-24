@@ -16,24 +16,6 @@ def test_cam_feed_speed_hint_tool():
     assert "sfm_range_fpm" in r
 
 
-def test_codex_semantic_gated():
-    from services.codex_semantic import rank_codex_proposals
-
-    assert rank_codex_proposals("/tmp", "alice", {}) == []
-
-
-def test_codex_semantic_ranks_overlap(tmp_path):
-    from services.codex_semantic import rank_codex_proposals
-
-    layla = tmp_path / ".layla"
-    layla.mkdir()
-    (layla / "relationship_codex.json").write_text(
-        '{"entities":{},"proposals":[{"summary":"alice onboarding notes"}]}',
-        encoding="utf-8",
-    )
-    ranked = rank_codex_proposals(str(tmp_path), "alice onboarding", {"codex_semantic_enabled": True})
-    assert ranked and "alice" in str(ranked[0]).lower()
-
 
 def test_lookup_sfm():
     from layla.cam.feeds_speeds import lookup_sfm

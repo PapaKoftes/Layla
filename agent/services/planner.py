@@ -901,7 +901,7 @@ def execute_plan_with_optional_graph(
         return done_row
 
     from services.coordinator import run_with_plan_graph
-    from services.otel_export import maybe_span
+    from services.trace_export import maybe_span
 
     with maybe_span(c, "plan_execution", steps=len(norm), graph_enabled="true"):
         try:

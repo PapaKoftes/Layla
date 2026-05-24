@@ -3481,9 +3481,8 @@ def _autonomous_run_impl_core(
                 try:
                     chosen = str(decision.get("tool") or "").strip()
                     if chosen and chosen not in _VALID_TOOLS:
-                        from services.skill_discovery import record_skill_gap
-
-                        record_skill_gap(state.get("original_goal") or goal, tool=chosen, err="unknown_tool")
+                        _gap_goal = (state.get("original_goal") or goal or "")[:120]
+                        logger.info("skill_gap: goal=%s tool=%s err=%s", _gap_goal, chosen, "unknown_tool")
                 except Exception as e:
                     logger.debug("agent_loop: %s", e)
                 intent = "reason"
