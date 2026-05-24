@@ -17,7 +17,13 @@ for p in (AGENT_DIR, REPO_ROOT):
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
 
-CONFIG_PATH = AGENT_DIR / "runtime_config.json"
+# Use runtime_safety.CONFIG_FILE when available (respects LAYLA_DATA_DIR);
+# fall back to agent/ dir for pre-first-run scenarios.
+try:
+    import runtime_safety as _rs
+    CONFIG_PATH = _rs.CONFIG_FILE
+except Exception:
+    CONFIG_PATH = AGENT_DIR / "runtime_config.json"
 PACKS_DIR = Path(__file__).resolve().parent / "packs"
 
 
@@ -144,113 +150,10 @@ def _install_pack_quiet(name: str) -> bool:
     return True
 
 
-def _yn(prompt: str, default: bool = True) -> bool:
-    suffix = " [Y/n] " if default else " [y/N] "
-    try:
-        ans = input(prompt + suffix).strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        return default
-    if ans in ("y", "yes"):
-        return True
-    if ans in ("n", "no"):
-        return False
-    return default
-
-
-def _ask(prompt: str, default: str = "") -> str:
-    try:
-        ans = input(f"{prompt} [{default}]: ").strip()
-        return ans if ans else default
-    except (EOFError, KeyboardInterrupt):
-        return default
-
-
-def _generate_runtime_config(
-    hardware_info: dict,
-    model_filename: str,
-    models_dir: str,
-    sandbox_root: str,
-) -> dict:
-    """
-    Auto-generate runtime config from hardware.
-    Sets n_ctx, n_threads, n_gpu_layers, parallel_tasks.
-    """
-    ram_gb = hardware_info.get("ram_gb", 16.0)
-    vram_gb = hardware_info.get("vram_gb", 0.0)
-    cpu_cores = hardware_info.get("cpu_cores", 4)
-    cpu_physical = hardware_info.get("cpu_physical") or cpu_cores
-    accel = hardware_info.get("acceleration_backend", "none")
-
-    # n_ctx: context window. Larger = more memory. Tuned for shitty PCs.
-    if vram_gb >= 24 or (accel == "none" and ram_gb >= 48):
-        n_ctx = 8192
-    elif vram_gb >= 12 or (accel == "none" and ram_gb >= 32):
-        n_ctx = 8192
-    elif vram_gb >= 8 or (accel == "none" and ram_gb >= 16):
-        n_ctx = 4096
-    elif vram_gb >= 4 or (accel == "none" and ram_gb >= 8):
-        n_ctx = 2048
-    elif vram_gb >= 2 or (accel == "none" and ram_gb >= 4):
-        n_ctx = 1024
-    else:
-        n_ctx = 512  # Ultra-low: 4GB or less
-
-    # n_threads: physical cores, leave one free, cap at 16. Old CPUs: min 1.
-    n_threads = max(1, min(cpu_physical - 1, 16)) if cpu_physical else max(1, min(cpu_cores - 1, 16))
-
-    # n_gpu_layers: -1 = all to GPU when available; 0 = CPU only
-    if accel != "none" and vram_gb >= 4:
-        n_gpu_layers = -1
-    elif accel != "none" and vram_gb >= 2:
-        n_gpu_layers = 20
-    else:
-        n_gpu_layers = 0
-
-    # parallel_tasks: for task graph. Scale with cores. Cap low for weak PCs.
-    parallel_tasks = max(2, min(cpu_cores, 8))
-
-    # n_batch: smaller for low memory to avoid OOM
-    if n_ctx >= 4096:
-        n_batch = min(1024, n_ctx)
-    elif n_ctx >= 1024:
-        n_batch = min(512, n_ctx)
-    else:
-        n_batch = min(256, n_ctx)
-    completion_max_tokens = 512 if n_ctx >= 4096 else (256 if n_ctx >= 1024 else 128)
-
-    # use_mlock: only beneficial with large RAM
-    use_mlock = ram_gb >= 24
-
-    return {
-        "model_filename": model_filename,
-        "models_dir": models_dir,
-        "sandbox_root": sandbox_root,
-        "n_ctx": n_ctx,
-        "n_threads": n_threads,
-        "n_gpu_layers": n_gpu_layers,
-        "parallel_tasks": parallel_tasks,
-        "n_batch": n_batch,
-        "completion_max_tokens": completion_max_tokens,
-        "use_mlock": use_mlock,
-        "use_mmap": True,
-        "flash_attn": True,
-        "type_k": 8,
-        "type_v": 8,
-        "temperature": 0.2,
-        "top_p": 0.95,
-        "top_k": 40,
-        "repeat_penalty": 1.1,
-        "stop_sequences": ["\nUser:", " User:"],
-        "uncensored": True,
-        "nsfw_allowed": True,
-        "safe_mode": True,
-        "use_chroma": True,
-        "scheduler_study_enabled": True,
-        "enable_cot": True,
-        "enable_self_reflection": False,
-        "whisper_model": "base",
-        "tts_voice": "af_heart",
-    }
+# Shared helpers from install.checks (replaces local duplicates)
+from install.checks import generate_runtime_config as _generate_runtime_config  # noqa: E402
+from install.checks import prompt_ask as _ask  # noqa: E402
+from install.checks import prompt_yn as _yn  # noqa: E402
 
 
 def run() -> int:

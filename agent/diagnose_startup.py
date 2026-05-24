@@ -4,6 +4,7 @@ Startup diagnostic for Layla. Run from repo root: python agent/diagnose_startup.
 Or from agent/: python diagnose_startup.py
 
 Identifies common Linux (Ubuntu/Fedora) failure points before running uvicorn.
+Uses install.checks for shared verification logic.
 """
 from __future__ import annotations
 
@@ -16,17 +17,13 @@ REPO_ROOT = AGENT_DIR.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-def _check(name: str, fn, optional: bool = False) -> bool:
-    try:
-        fn()
-        print(f"  [OK] {name}")
-        return True
-    except Exception as e:
-        if optional:
-            print(f"  [--] {name} (optional, skipped: {e})")
-        else:
-            print(f"  [FAIL] {name}: {e}")
-        return False
+from install.checks import (  # noqa: E402
+    verify_build_tools,
+    verify_config,
+    verify_core_imports,
+    verify_model,
+    verify_python_version,
+)
 
 
 def main() -> int:
@@ -37,70 +34,46 @@ def main() -> int:
 
     failed = []
 
-    # Python (supported: 3.11–3.12 per pyproject.toml / CI)
-    v = sys.version_info
-    if v < (3, 11):
-        print(f"  [FAIL] Python 3.11 or 3.12 required, have {v.major}.{v.minor}.{v.micro}")
+    # Python version
+    py_ok, py_msg = verify_python_version()
+    if not py_ok:
+        print(f"  [FAIL] {py_msg}")
         failed.append("Python version")
-    elif v[:2] not in ((3, 11), (3, 12)):
-        print(f"  [WARN] Python {v.major}.{v.minor}.{v.micro} — Layla supports 3.11 and 3.12 only.")
-        print("         Use 3.12.x for best compatibility (Chroma, torch, sentence-transformers).")
-        print("         See pyproject.toml requires-python and repo .python-version.")
     else:
-        print(f"  [OK] Python {v.major}.{v.minor}.{v.micro}")
+        print(f"  [OK] {py_msg}")
 
     # Build tools (Linux)
-    if sys.platform == "linux":
-        import shutil
-        for cmd, pkg in [("gcc", "build-essential"), ("g++", "build-essential"), ("cmake", "cmake")]:
-            if shutil.which(cmd):
-                print(f"  [OK] {cmd} found")
-            else:
-                print(f"  [FAIL] {cmd} not found — install: sudo apt install {pkg} (Ubuntu) or sudo dnf install gcc-c++ cmake (Fedora)")
-                failed.append(cmd)
+    for tool, ok, msg in verify_build_tools():
+        if ok:
+            print(f"  [OK] {msg}")
+        else:
+            print(f"  [FAIL] {msg}")
+            failed.append(tool)
 
-    # Core imports
-    _check("fastapi", lambda: __import__("fastapi"))
-    _check("uvicorn", lambda: __import__("uvicorn"))
-    if not _check("llama_cpp", lambda: __import__("llama_cpp"), optional=False):
-        failed.append("llama_cpp — run: pip install llama-cpp-python (needs build-essential/cmake on Linux)")
-    _check("chromadb", lambda: __import__("chromadb"), optional=True)
-    _check("sentence_transformers", lambda: __import__("sentence_transformers"))
-    _check("psutil", lambda: __import__("psutil"))
-
-    # Optional
-    _check("playwright", lambda: __import__("playwright"), optional=True)
-    _check("soundfile", lambda: __import__("soundfile"), optional=True)
-    _check("faster_whisper", lambda: __import__("faster_whisper"), optional=True)
+    # Core + optional imports
+    for mod, ok, msg, optional in verify_core_imports():
+        if ok:
+            print(f"  [OK] {msg}")
+        elif optional:
+            print(f"  [--] {msg} (optional)")
+        else:
+            print(f"  [FAIL] {msg}")
+            failed.append(mod)
 
     # Config
-    cfg_path = REPO_ROOT / "agent" / "runtime_config.json"
-    if not cfg_path.exists():
-        cfg_path = AGENT_DIR / "runtime_config.json"
-    if cfg_path.exists():
-        print("  [OK] Config:", cfg_path)
+    cfg_ok, cfg_msg, cfg_path = verify_config(AGENT_DIR)
+    if cfg_ok:
+        print(f"  [OK] {cfg_msg}")
     else:
-        print("  [FAIL] No runtime_config.json — run: python agent/first_run.py")
+        print(f"  [FAIL] {cfg_msg}")
         failed.append("config")
 
     # Model
-    try:
-        import json
-        raw = cfg_path.read_text().strip() if cfg_path.exists() else ""
-        cfg = json.loads(raw) if raw else {}
-        m = cfg.get("model_filename", "")
-        md = cfg.get("models_dir", "~/.layla/models")
-        from pathlib import Path
-        models_dir = Path(md).expanduser().resolve()
-        model_path = models_dir / m if m else None
-        if model_path and model_path.exists():
-            print(f"  [OK] Model: {model_path}")
-        elif cfg.get("llama_server_url"):
-            print(f"  [OK] Remote LLM: {cfg.get('llama_server_url')}")
-        else:
-            print(f"  [--] No model file — configure model_filename and place .gguf in models/ or {md}")
-    except Exception as e:
-        print(f"  [--] Model check: {e}")
+    model_ok, model_msg = verify_model(cfg_path)
+    if model_ok:
+        print(f"  [OK] {model_msg}")
+    else:
+        print(f"  [--] {model_msg}")
 
     # App load (the real test)
     print("")
@@ -123,7 +96,7 @@ def main() -> int:
         if "gcc" in failed or "g++" in failed or "cmake" in failed:
             print("  • Ubuntu: sudo apt install build-essential cmake libsndfile1")
             print("  • Fedora: sudo dnf install python3-devel gcc-c++ cmake libsndfile")
-        if "llama_cpp" in str(failed):
+        if "llama_cpp" in failed:
             print("  • pip install llama-cpp-python  (after installing build tools)")
         if "config" in failed:
             print("  • python agent/first_run.py  or  python agent/install/installer_cli.py")
