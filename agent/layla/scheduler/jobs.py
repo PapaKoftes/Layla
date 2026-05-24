@@ -279,3 +279,13 @@ def _bg_backup() -> None:
             logger.warning("nightly_backup: %s", result)
     except Exception as _e:
         logger.warning("nightly_backup: %s", _e)
+
+
+# ── capability decay (daily) ─────────────────────────────────────────
+def _bg_capability_decay() -> None:
+    """Apply capability decay for unpracticed skills (daily)."""
+    try:
+        from layla.memory.capabilities import apply_decay_if_needed
+        apply_decay_if_needed()
+    except Exception as e:
+        logger.debug("capability_decay job failed: %s", e)

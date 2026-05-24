@@ -399,6 +399,8 @@ def tool_recommend(task: str) -> dict:
         "file": ["read_file", "write_file", "list_dir", "file_info", "understand_file"],
         "pdf": ["read_pdf"],
         "docx word": ["read_docx"],
+        "pptx powerpoint presentation slides": ["read_pptx"],
+        "notebook ipynb jupyter": ["read_notebook"],
         "excel spreadsheet": ["read_excel", "read_csv"],
         "csv data table": ["read_csv", "read_excel", "sql_query"],
         "code python test pytest": ["python_ast", "grep_code", "run_python", "run_tests", "security_scan", "code_lint"],
