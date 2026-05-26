@@ -140,226 +140,463 @@ async def lifespan(app: FastAPI):
         _install_task_ctx_filter("layla")   # layla logger for good measure
     except Exception:
         pass
+    # ── Load runtime config (shared by all subsystems below) ────────────────
+    import runtime_safety
+    cfg = runtime_safety.load_config()
+
+    # ── Subsystem: Hardware detection ─────────────────────────────────────────
+    if cfg.get("hardware_aware_startup", True):
+        try:
+            from services.hardware_detect import detect_hardware
+            from services.model_recommender import recommend_from_hardware
+            h = detect_hardware()
+            rec = recommend_from_hardware()
+            logger.info(
+                "Hardware: %s RAM %.0fGB VRAM %.0fGB tier=%s | Recommended: %s",
+                h.get("acceleration_backend", "none"),
+                h.get("ram_gb", 0),
+                h.get("vram_gb", 0),
+                h.get("machine_tier", ""),
+                rec.get("model_tier", ""),
+            )
+        except Exception as e:
+            logger.debug("hardware startup log skipped: %s", e)
+
+    # ── Subsystem: Chroma knowledge indexing ──────────────────────────────────
+    if cfg.get("use_chroma"):
+        try:
+            from layla.memory.vector_store import index_knowledge_docs
+            knowledge_dir = REPO_ROOT / "knowledge"
+            if knowledge_dir.exists():
+                def _bg_index_knowledge() -> None:
+                    try:
+                        index_knowledge_docs(knowledge_dir)
+                        logger.info("knowledge docs indexed for Chroma")
+                    except Exception as _e:
+                        logger.warning("knowledge index failed: %s", _e)
+
+                _tracked_thread(_bg_index_knowledge, "knowledge-index-startup")
+                logger.info("knowledge indexing thread started")
+        except Exception as e:
+            logger.warning("knowledge index failed: %s", e)
+
+    # ── Subsystem: DB migration ───────────────────────────────────────────────
     try:
-        import runtime_safety
-        cfg = runtime_safety.load_config()
-        if cfg.get("hardware_aware_startup", True):
-            try:
-                from services.hardware_detect import detect_hardware
-                from services.model_recommender import recommend_from_hardware
-                h = detect_hardware()
-                rec = recommend_from_hardware()
-                logger.info(
-                    "Hardware: %s RAM %.0fGB VRAM %.0fGB tier=%s | Recommended: %s",
-                    h.get("acceleration_backend", "none"),
-                    h.get("ram_gb", 0),
-                    h.get("vram_gb", 0),
-                    h.get("machine_tier", ""),
-                    rec.get("model_tier", ""),
-                )
-            except Exception as e:
-                logger.debug("hardware startup log skipped: %s", e)
-        if cfg.get("use_chroma"):
-            try:
-                from layla.memory.vector_store import index_knowledge_docs
-                knowledge_dir = REPO_ROOT / "knowledge"
-                if knowledge_dir.exists():
-                    def _bg_index_knowledge() -> None:
-                        try:
-                            index_knowledge_docs(knowledge_dir)
-                            logger.info("knowledge docs indexed for Chroma")
-                        except Exception as _e:
-                            logger.warning("knowledge index failed: %s", _e)
+        from layla.memory.db import migrate
+        migrate()
+        logger.info("DB migration complete")
+    except Exception as e:
+        logger.warning("DB migration failed: %s", e)
 
-                    _tracked_thread(_bg_index_knowledge, "knowledge-index-startup")
-                    logger.info("knowledge indexing thread started")
-            except Exception as e:
-                logger.warning("knowledge index failed: %s", e)
-        # Run DB migration once at startup (not on every DB call)
-        try:
-            from layla.memory.db import migrate
-            migrate()
-            logger.info("DB migration complete")
-        except Exception as e:
-            logger.warning("DB migration failed: %s", e)
-        try:
-            from layla.tools.registry import validate_tools_registry
-            validate_tools_registry()
-            logger.info("Tools registry validated")
-        except Exception as e:
-            logger.warning("Tools registry validation failed: %s", e)
-        try:
-            from services.plugin_loader import load_plugins
-            plug_result = load_plugins(cfg)
-            if plug_result["skills_added"] or plug_result["tools_added"] or plug_result.get("capabilities_added"):
-                logger.info(
-                    "Plugins loaded: %d skills, %d tools, %d capabilities",
-                    plug_result["skills_added"],
-                    plug_result["tools_added"],
-                    plug_result.get("capabilities_added", 0),
-                )
-            for err in plug_result.get("errors", [])[:5]:
-                logger.warning("Plugin error: %s", err)
-        except Exception as e:
-            logger.warning("Plugin load failed: %s", e)
-        try:
-            from services.llm_gateway import llm_request_queue
+    # ── Subsystem: Tool registry ──────────────────────────────────────────────
+    try:
+        from layla.tools.registry import validate_tools_registry
+        validate_tools_registry()
+        logger.info("Tools registry validated")
+    except Exception as e:
+        logger.warning("Tools registry validation failed: %s", e)
 
-            llm_request_queue.start()
-            logger.info("LLM request queue worker started")
-        except Exception as e:
-            logger.warning("LLM request queue start failed: %s", e)
-        # Sweep orphaned worktrees from prior crashes (best-effort).
+    # ── Subsystem: Plugins ────────────────────────────────────────────────────
+    try:
+        from services.plugin_loader import load_plugins
+        plug_result = load_plugins(cfg)
+        if plug_result["skills_added"] or plug_result["tools_added"] or plug_result.get("capabilities_added"):
+            logger.info(
+                "Plugins loaded: %d skills, %d tools, %d capabilities",
+                plug_result["skills_added"],
+                plug_result["tools_added"],
+                plug_result.get("capabilities_added", 0),
+            )
+        for err in plug_result.get("errors", [])[:5]:
+            logger.warning("Plugin error: %s", err)
+    except Exception as e:
+        logger.warning("Plugin load failed: %s", e)
+
+    # ── Subsystem: LLM request queue ──────────────────────────────────────────
+    try:
+        from services.llm_gateway import llm_request_queue
+        llm_request_queue.start()
+        logger.info("LLM request queue worker started")
+    except Exception as e:
+        logger.warning("LLM request queue start failed: %s", e)
+
+    # ── Subsystem: Worktree cleanup ───────────────────────────────────────────
+    try:
+        max_age_s = int(float(cfg.get("worktree_orphan_max_age_seconds", 3600) or 3600))
+        if max_age_s > 0:
+            wt_root = REPO_ROOT.parent / ".layla_worktrees"
+            if wt_root.exists():
+                cutoff = time.time() - max_age_s
+                for d in wt_root.iterdir():
+                    try:
+                        if not d.is_dir():
+                            continue
+                        if d.stat().st_mtime < cutoff:
+                            shutil.rmtree(str(d), ignore_errors=True)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+    # ── Subsystem: LLM pre-warm ───────────────────────────────────────────────
+    if cfg.get("llm_prewarm_enabled", True):
         try:
-            max_age_s = int(float(cfg.get("worktree_orphan_max_age_seconds", 3600) or 3600))
-            if max_age_s > 0:
-                wt_root = REPO_ROOT.parent / ".layla_worktrees"
-                if wt_root.exists():
-                    cutoff = time.time() - max_age_s
-                    for d in wt_root.iterdir():
-                        try:
-                            if not d.is_dir():
-                                continue
-                            if d.stat().st_mtime < cutoff:
-                                shutil.rmtree(str(d), ignore_errors=True)
-                        except Exception:
-                            pass
+            from services.llm_gateway import prewarm_llm
+            prewarm_llm()
+            logger.info("LLM pre-warm thread started")
+        except Exception as e:
+            logger.warning("LLM pre-warm thread failed: %s", e)
+
+    # ── Subsystem: Capability benchmarks ──────────────────────────────────────
+    if cfg.get("benchmark_on_load"):
+        def _startup_capability_benchmarks() -> None:
+            try:
+                from services.benchmark_suite import run_benchmark
+                run_benchmark("embedding", "sentence_transformers", "sentence-transformers")
+                run_benchmark("vector_search", "chromadb", "chromadb")
+            except Exception as e:
+                logger.debug("startup capability benchmarks skipped: %s", e)
+
+        _tracked_thread(_startup_capability_benchmarks, "capability-benchmark-startup")
+        logger.info("Capability benchmark startup thread started (benchmark_on_load)")
+
+    # ── Subsystem: Embedder pre-warm ──────────────────────────────────────────
+    if cfg.get("embedder_prewarm_enabled", False):
+        try:
+            from layla.memory.vector_store import embed
+            _tracked_thread(lambda: embed("warmup"), "embed-prewarm")
+            logger.info("embedder pre-warm thread started")
+        except Exception as e:
+            logger.warning("embedder preload failed: %s", e)
+
+    # ── Subsystem: Embedding cache warmup ─────────────────────────────────────
+    if cfg.get("embedding_cache_warmup_enabled", True):
+        def _warmup_embedding_cache() -> None:
+            try:
+                from layla.memory.db import get_recent_learnings
+                from layla.memory.vector_store import embed_batch
+
+                learnings = get_recent_learnings(n=5000)
+                texts = [
+                    l.get("content") or ""
+                    for l in (learnings or [])
+                    if (l.get("content") or "").strip()
+                ][:2000]
+                if not texts:
+                    return
+                logger.info("embedding_cache_warmup: pre-embedding %d learnings", len(texts))
+                embed_batch(texts)
+                logger.info("embedding_cache_warmup: done")
+            except Exception as _we:
+                logger.debug("embedding_cache_warmup failed (non-critical): %s", _we)
+
+        _tracked_thread(_warmup_embedding_cache, "embedding-cache-warmup")
+
+    # ── Subsystem: Voice pre-warm ─────────────────────────────────────────────
+    if cfg.get("voice_stt_prewarm_enabled", False):
+        try:
+            from services.stt import prewarm as stt_prewarm
+            stt_prewarm()
         except Exception:
             pass
-        # Pre-warm LLM in background thread -- first request will be instant
-        if cfg.get("llm_prewarm_enabled", True):
-            try:
-                from services.llm_gateway import prewarm_llm
-                prewarm_llm()
-                logger.info("LLM pre-warm thread started")
-            except Exception as e:
-                logger.warning("LLM pre-warm thread failed: %s", e)
-        if cfg.get("benchmark_on_load"):
-            def _startup_capability_benchmarks() -> None:
-                try:
-                    from services.benchmark_suite import run_benchmark
-                    run_benchmark("embedding", "sentence_transformers", "sentence-transformers")
-                    run_benchmark("vector_search", "chromadb", "chromadb")
-                except Exception as e:
-                    logger.debug("startup capability benchmarks skipped: %s", e)
-
-            _tracked_thread(_startup_capability_benchmarks, "capability-benchmark-startup")
-            logger.info("Capability benchmark startup thread started (benchmark_on_load)")
-        # Preload embedder so first /agent request does not block on model load
-        # Optional and disabled by default for stability on some Python/torchao combos.
-        if cfg.get("embedder_prewarm_enabled", False):
-            try:
-                from layla.memory.vector_store import embed
-                _tracked_thread(lambda: embed("warmup"), "embed-prewarm")
-                logger.info("embedder pre-warm thread started")
-            except Exception as e:
-                logger.warning("embedder preload failed: %s", e)
-        # Phase 0.5: pre-embed recent learnings at startup so first-turn retrieval is fast
-        if cfg.get("embedding_cache_warmup_enabled", True):
-            def _warmup_embedding_cache() -> None:
-                try:
-                    from layla.memory.db import get_recent_learnings
-                    from layla.memory.vector_store import embed_batch
-
-                    learnings = get_recent_learnings(n=5000)
-                    texts = [
-                        l.get("content") or ""
-                        for l in (learnings or [])
-                        if (l.get("content") or "").strip()
-                    ][:2000]
-                    if not texts:
-                        return
-                    logger.info("embedding_cache_warmup: pre-embedding %d learnings", len(texts))
-                    embed_batch(texts)
-                    logger.info("embedding_cache_warmup: done")
-                except Exception as _we:
-                    logger.debug("embedding_cache_warmup failed (non-critical): %s", _we)
-
-            _tracked_thread(_warmup_embedding_cache, "embedding-cache-warmup")
-
-        # Prewarm voice models (optional; default off to avoid startup spikes)
-        if cfg.get("voice_stt_prewarm_enabled", False):
-            try:
-                from services.stt import prewarm as stt_prewarm
-                stt_prewarm()
-            except Exception:
-                pass
-        if cfg.get("voice_tts_prewarm_enabled", False):
-            try:
-                from services.tts import prewarm as tts_prewarm
-                tts_prewarm()
-            except Exception:
-                pass
-        # Phase B: kick a one-shot repo indexer at startup (best-effort, non-blocking).
+    if cfg.get("voice_tts_prewarm_enabled", False):
         try:
-            from services.repo_indexer import index_workspace_repo as _idx_repo
-            _ws_root = (cfg.get("sandbox_root") or "").strip()
-            if _ws_root:
-                def _startup_repo_index():
+            from services.tts import prewarm as tts_prewarm
+            tts_prewarm()
+        except Exception:
+            pass
+
+    # ── Subsystem: Repo indexer ───────────────────────────────────────────────
+    try:
+        from services.repo_indexer import index_workspace_repo as _idx_repo
+        _ws_root = (cfg.get("sandbox_root") or "").strip()
+        if _ws_root:
+            def _startup_repo_index():
+                try:
+                    _idx_repo(_ws_root)
+                except Exception as _e:
                     try:
-                        _idx_repo(_ws_root)
-                    except Exception as _e:
-                        try:
-                            from services.degraded import mark_degraded
-                            mark_degraded("repo_indexer", str(_e))
-                        except Exception:
-                            pass
-                _tracked_thread(_startup_repo_index, "startup-repo-index")
-        except Exception as _ri_e:
-            logger.debug("startup repo_indexer skipped: %s", _ri_e)
+                        from services.degraded import mark_degraded
+                        mark_degraded("repo_indexer", str(_e))
+                    except Exception:
+                        pass
+            _tracked_thread(_startup_repo_index, "startup-repo-index")
+    except Exception as _ri_e:
+        logger.debug("startup repo_indexer skipped: %s", _ri_e)
+
+    # ── Subsystem: Scheduler ──────────────────────────────────────────────────
+    try:
         from layla.scheduler import create_scheduler
         sched = create_scheduler(cfg)
         sched.start()
         app.state.scheduler = sched
+        logger.info("Scheduler started")
     except Exception as e:
-        logger.warning("scheduler not started: %s", e)
-    # Discord bot auto-start (opt-in via config)
+        logger.warning("Scheduler not started: %s", e)
+
+    # ── Subsystem: Discord bot (opt-in) ───────────────────────────────────────
+    # Uses asyncio.run() in a daemon thread — with clean shutdown via bot.close().
     try:
-        import runtime_safety as _rs_disc
-        _cfg_disc = _rs_disc.load_config()
-        if _cfg_disc.get("discord_bot_autostart", False):
-            _disc_token = (_cfg_disc.get("discord_bot_token") or "").strip()
+        if cfg.get("discord_bot_autostart", False):
+            _disc_token = (cfg.get("discord_bot_token") or "").strip()
             if _disc_token:
+                _discord_bot_ref: list = []   # mutable container for shutdown access
+
                 def _start_discord_bot():
                     try:
-                        import sys
                         _bot_dir = str(Path(__file__).resolve().parent.parent / "discord_bot")
                         if _bot_dir not in sys.path:
                             sys.path.insert(0, _bot_dir)
-                        from bot import bot  # discord_bot/bot.py
-                        bot.run(_disc_token)
+                        from bot import _create_bot  # discord_bot/bot.py
+                        _bot = _create_bot()
+                        if _bot is None:
+                            logger.warning("Discord bot: _create_bot returned None (missing py-cord?)")
+                            return
+                        _discord_bot_ref.append(_bot)
+
+                        # Create a fresh event loop for this thread and run until complete.
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            loop.run_until_complete(_bot.start(_disc_token))
+                        except asyncio.CancelledError:
+                            pass
+                        finally:
+                            # Ensure clean close: cancel remaining tasks, close bot, close loop.
+                            if not _bot.is_closed():
+                                loop.run_until_complete(_bot.close())
+                            pending = asyncio.all_tasks(loop)
+                            for t in pending:
+                                t.cancel()
+                            if pending:
+                                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                            loop.run_until_complete(loop.shutdown_asyncgens())
+                            loop.close()
                     except Exception as _bot_err:
                         logger.warning("Discord bot failed: %s", _bot_err)
 
                 _disc_thread = _tracked_thread(_start_discord_bot, "discord-bot-autostart")
                 app.state.discord_bot_thread = _disc_thread
+                app.state._discord_bot_ref = _discord_bot_ref
                 logger.info("Discord bot auto-start thread launched")
             else:
                 logger.debug("discord_bot_autostart=true but no discord_bot_token configured")
     except Exception as _disc_err:
         logger.debug("Discord bot auto-start skipped: %s", _disc_err)
 
-    # Phase 9: Start mDNS discovery (broadcasts this instance + discovers peers)
+    # ── Subsystem: mDNS discovery ─────────────────────────────────────────────
+    # start_service() already spawns a background thread for registration
+    # to avoid EventLoopBlocked.  We wrap the *entire* startup in a daemon
+    # thread so that even the Zeroconf() constructor (which may block for
+    # interface enumeration on some systems) cannot stall the main startup.
     try:
-        import runtime_safety as _rs_mdns
-        _cfg_mdns = _rs_mdns.load_config()
-        if _cfg_mdns.get("mdns_enabled", True):
-            from services.mdns_discovery import start_service as _mdns_start
-            if _mdns_start(_cfg_mdns):
-                logger.info("mDNS discovery service started")
-            else:
-                logger.debug("mDNS discovery not started (disabled or zeroconf missing)")
+        if cfg.get("mdns_enabled", True):
+            def _mdns_startup():
+                try:
+                    from services.mdns_discovery import start_service as _mdns_start
+                    if _mdns_start(cfg):
+                        logger.info("mDNS discovery service started")
+                    else:
+                        logger.debug("mDNS discovery not started (disabled or zeroconf missing)")
+                except Exception as _e:
+                    logger.debug("mDNS startup failed (non-critical): %s", _e)
+
+            _tracked_thread(_mdns_startup, "mdns-startup")
     except Exception as _mdns_err:
         logger.debug("mDNS startup skipped: %s", _mdns_err)
+
+    # Resource Governor: initialise and start tick loop
+    _governor_instance = None
+    try:
+        import runtime_safety as _rs_gov
+        _cfg_gov = _rs_gov.load_config()
+        if _cfg_gov.get("resource_governor_enabled", True):
+            from services.resource_governor import get_governor, ResourceMode
+            _governor_instance = get_governor(_cfg_gov)
+            logger.info("resource governor initialised (mode: %s)", _governor_instance.mode.value)
+
+            # Register mode-change callback to throttle scheduler, model, and workers
+            _whisper_unload_timer = [None]  # mutable container for closure
+
+            _NON_CRITICAL_JOBS = {"study_session", "reflection", "memory_consolidation",
+                                  "intelligence_job", "distillation", "curiosity"}
+
+            def _on_governor_mode_change(old_mode, new_mode):
+                # 1. Scheduler throttle: pause non-critical jobs in WHISPER
+                try:
+                    if hasattr(app.state, "scheduler"):
+                        sched = app.state.scheduler
+                        if new_mode == ResourceMode.WHISPER:
+                            for job_id in _NON_CRITICAL_JOBS:
+                                try:
+                                    sched.pause_job(job_id)
+                                except Exception:
+                                    pass
+                        else:
+                            for job_id in _NON_CRITICAL_JOBS:
+                                try:
+                                    sched.resume_job(job_id)
+                                except Exception:
+                                    pass
+                except Exception as _sched_err:
+                    logger.debug("governor callback scheduler throttle: %s", _sched_err)
+
+                # 2. Model management: delayed unload in WHISPER, pre-warm in SPRINT
+                try:
+                    if new_mode == ResourceMode.WHISPER and old_mode != ResourceMode.WHISPER:
+                        # Schedule delayed model unload (2 min grace period)
+                        from services.llm_gateway import schedule_idle_unload
+                        _whisper_unload_timer[0] = schedule_idle_unload(delay_seconds=120)
+                    elif new_mode == ResourceMode.SPRINT:
+                        # Cancel any pending unload and pre-warm model
+                        if _whisper_unload_timer[0] is not None:
+                            _whisper_unload_timer[0].cancel()
+                            _whisper_unload_timer[0] = None
+                        import threading as _thr
+                        from services.llm_gateway import prewarm_llm
+                        _thr.Thread(target=prewarm_llm, daemon=True, name="sprint-prewarm").start()
+                    elif old_mode == ResourceMode.WHISPER:
+                        # Leaving WHISPER — cancel pending unload
+                        if _whisper_unload_timer[0] is not None:
+                            _whisper_unload_timer[0].cancel()
+                            _whisper_unload_timer[0] = None
+                except Exception as _model_err:
+                    logger.debug("governor callback model management: %s", _model_err)
+
+                # 3. Worker pool hint
+                try:
+                    from services.drone_worker import get_drone_worker
+                    dw = get_drone_worker()
+                    if dw and hasattr(dw, "_max_concurrent"):
+                        dw._max_concurrent = _governor_instance.get_max_workers()
+                except Exception:
+                    pass
+
+                logger.info("governor mode change: %s → %s", old_mode.value, new_mode.value)
+
+            _governor_instance.on_mode_change(_on_governor_mode_change)
+    except Exception as _gov_err:
+        logger.debug("resource governor init skipped: %s", _gov_err)
+
+    # System Tray: start if on Windows and enabled
+    try:
+        import runtime_safety as _rs_tray
+        _cfg_tray = _rs_tray.load_config()
+        if _cfg_tray.get("system_tray_enabled", True):
+            from services.system_tray import start_tray
+            if start_tray(_governor_instance):
+                logger.info("system tray started")
+    except Exception as _tray_err:
+        logger.debug("system tray skipped: %s", _tray_err)
+
+    # Phase 2: Cluster network startup
+    try:
+        import runtime_safety as _rs_cluster
+        _cfg_cluster = _rs_cluster.load_config()
+        if _cfg_cluster.get("cluster_enabled", False):
+            from services.cluster_network import get_cluster_network
+            _cluster_net = get_cluster_network(_cfg_cluster)
+            _cluster_net.start_heartbeat()
+            logger.info("cluster network started (role: %s, peers: %d)",
+                        _cluster_net.role.value, len(_cluster_net.peers))
+    except Exception as _cluster_err:
+        logger.debug("cluster network skipped: %s", _cluster_err)
+
+    # Phase 3: Start drone worker (processes queued tasks locally)
+    try:
+        from services.drone_worker import start_drone_worker
+        start_drone_worker()
+    except Exception as _dw_err:
+        logger.debug("drone worker skipped: %s", _dw_err)
+
+    # Start queen worker (processes queued tasks on QUEEN node)
+    try:
+        from services.drone_worker import start_queen_worker
+        start_queen_worker()
+    except Exception as _qw_err:
+        logger.debug("queen worker skipped: %s", _qw_err)
+
+    # Phase 5A: Start knowledge watcher (auto-ingest from watched folders)
+    try:
+        from services.knowledge_watcher import start_knowledge_watcher
+        start_knowledge_watcher()
+    except Exception as _kw_err:
+        logger.debug("knowledge watcher skipped: %s", _kw_err)
+
+    # Phase 5A: Start node sync (bidirectional cluster knowledge sync)
+    try:
+        import runtime_safety as _rs_nsync
+        _cfg_nsync = _rs_nsync.load_config()
+        if _cfg_nsync.get("cluster_enabled", False):
+            from services.node_sync import get_node_sync
+            _node_sync = get_node_sync(_cfg_nsync)
+            _node_sync.start()
+            logger.info("node sync started (interval=%ds)", _node_sync._sync_interval)
+    except Exception as _ns_err:
+        logger.debug("node sync skipped: %s", _ns_err)
+
     yield
     # Shutdown
     # P1-6: signal background threads to stop and join them
     _shutdown_event.set()
+
+    # ── Clean Discord bot shutdown ────────────────────────────────────────────
+    # The bot runs in its own event loop on a dedicated thread.  We schedule
+    # bot.close() *on that loop* so the `finally` block in _start_discord_bot
+    # can run its full cleanup (cancel tasks, shutdown_asyncgens, close loop).
+    # This must happen BEFORE we join threads, while the bot's loop is alive.
+    try:
+        _bot_ref = getattr(app.state, "_discord_bot_ref", None)
+        if _bot_ref and len(_bot_ref) > 0:
+            _bot = _bot_ref[0]
+            if not _bot.is_closed() and _bot.loop and _bot.loop.is_running():
+                import asyncio as _async_shutdown
+                _async_shutdown.run_coroutine_threadsafe(_bot.close(), _bot.loop)
+                logger.info("Discord bot close scheduled")
+    except Exception as _dbot_err:
+        logger.debug("Discord bot shutdown signal failed: %s", _dbot_err)
+
     for t in getattr(app.state, "background_threads", []):
         try:
             t.join(timeout=5)
         except Exception:
             pass
+    # Stop system tray
+    try:
+        from services.system_tray import stop_tray
+        stop_tray()
+    except Exception:
+        pass
+    # Phase 5A: Stop knowledge watcher
+    try:
+        from services.knowledge_watcher import stop_knowledge_watcher
+        stop_knowledge_watcher()
+    except Exception:
+        pass
+    # Phase 3: Stop drone worker
+    try:
+        from services.drone_worker import stop_drone_worker
+        stop_drone_worker()
+    except Exception:
+        pass
+    # Stop queen worker
+    try:
+        from services.drone_worker import stop_queen_worker
+        stop_queen_worker()
+    except Exception:
+        pass
+    # Phase 2: Stop cluster heartbeat
+    try:
+        from services.cluster_network import get_cluster_network
+        get_cluster_network().stop_heartbeat()
+    except Exception:
+        pass
+    # Stop node sync
+    try:
+        from services.node_sync import get_node_sync
+        get_node_sync().stop()
+    except Exception:
+        pass
     # Phase 9: Stop mDNS discovery
     try:
         from services.mdns_discovery import stop_service as _mdns_stop
@@ -604,6 +841,12 @@ from routers import (
     pairing as pairing_router,
 )
 from routers import (
+    cluster as cluster_router,
+)
+from routers import (
+    onboarding as onboarding_router,
+)
+from routers import (
     search as search_router,
 )
 from routers import (
@@ -640,6 +883,8 @@ app.include_router(german_router.router)           # Item #10: German language l
 app.include_router(agent_tasks_router.router)      # Background task resume + plan execution
 app.include_router(sync_router.router)             # Multi-device sync via Syncthing
 app.include_router(pairing_router.router)          # Phase 9: mDNS discovery + device pairing + cluster
+app.include_router(cluster_router.router)          # Phase 2: Cluster task dispatch + sync + pairing
+app.include_router(onboarding_router.router)       # Phase 4: Onboarding interview
 app.include_router(intelligence_router.router)     # AirLLM, compression, prompt optimizer, KB builder
 app.include_router(debate_router.router)            # Multi-aspect debate/council/tribunal engine
 app.include_router(metrics_router.router)           # Phase 3: Observability metrics endpoint
