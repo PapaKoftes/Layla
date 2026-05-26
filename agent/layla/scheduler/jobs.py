@@ -202,6 +202,12 @@ def _scheduled_study_job() -> None:
             except Exception as e:
                 logger.warning("capability record_practice failed: %s", e)
         logger.info("scheduled_study completed topic=%s domain_id=%s", plan.get("topic"), domain_id)
+        # Maturity: award XP for completing a study session
+        try:
+            from services.maturity_engine import award_xp
+            award_xp(20, reason="study_session")
+        except Exception:
+            pass
     except Exception as e:
         logger.exception("scheduled_study failed: %s", e)
 

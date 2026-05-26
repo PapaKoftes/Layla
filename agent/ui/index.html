@@ -119,9 +119,9 @@
             <div class="setup-progress"><div class="setup-progress-bar" id="setup-progress-bar"></div></div>
             <div id="setup-done-msg"></div>
             <div class="setup-btns">
-              <button class="setup-btn primary" id="setup-download-btn" onclick="startModelDownload()" disabled>Download Selected</button>
-              <button class="setup-btn" type="button" id="setup-retry-btn" style="display:none" onclick="retryModelDownload()">Retry download</button>
-              <button class="setup-btn skip" onclick="typeof dismissSetupOverlay==='function'&&dismissSetupOverlay(true)">Skip for now</button>
+              <button class="setup-btn primary" id="setup-download-btn" data-action="startModelDownload" disabled>Download Selected</button>
+              <button class="setup-btn" type="button" id="setup-retry-btn" style="display:none" data-action="retryModelDownload">Retry download</button>
+              <button class="setup-btn skip" data-action="dismissSetupOverlay" data-arg="true">Skip for now</button>
             </div>
           </div>
         </div>
@@ -169,61 +169,71 @@
 </div>
 <a href="#chat" class="skip-to-content">Skip to chat</a>
 <header>
-  <button id="mobile-hamburger" class="mobile-hamburger" onclick="toggleMobileSidebar()" title="Toggle sidebar" aria-label="Toggle sidebar" style="display:none;background:none;border:none;color:var(--text);font-size:1.2rem;cursor:pointer;padding:4px 8px">☰</button>
+  <button id="mobile-hamburger" class="mobile-hamburger" data-action="toggleMobileSidebar" title="Toggle sidebar" aria-label="Toggle sidebar">☰</button>
   <div class="title">∴ LAYLA</div>
-  <div style="display:flex;align-items:center;gap:4px">
+  <div class="header-core">
     <div id="aspect-badge" class="aspect-badge">∴ MORRIGAN</div>
-    <button id="aspect-lock-btn" onclick="toggleAspectLock()" title="Lock this aspect (prevent auto-routing)">🔓</button>
-    <button type="button" id="compact-chat-btn" onclick="compactConversation()" title="Summarize conversation and free context (server)" style="font-size:0.68rem;padding:4px 8px;margin-left:4px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer">⊙ Compact</button>
-    <button type="button" id="charlab-open-btn" onclick="openCharacterLab()" title="Open Character Lab — customize aspects, personality, voice, titles">⚙ Character Lab</button>
+    <button id="aspect-lock-btn" data-action="toggleAspectLock" title="Lock this aspect">🔓</button>
+    <span id="model-status-badge" class="header-pill" title="LLM status"></span>
+    <span id="header-system-status" class="header-pill" title="Server status">…</span>
+    <span id="session-time" class="header-pill" title="Session duration">0:00</span>
   </div>
-  <div class="header-meta">
-    <span id="session-time" title="Session duration">0:00</span>
-    <select id="model-override" title="Model for this request (remote backends only)" style="font-size:0.68rem;opacity:0.9;background:var(--code-bg);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:2px;cursor:pointer">
-      <option value="">Default</option>
-      <option value="coding">Coding</option>
-      <option value="reasoning">Reasoning</option>
-      <option value="chat">Chat</option>
+  <div class="header-actions">
+    <button type="button" id="compact-chat-btn" data-action="compactConversation" title="Compact context" class="header-action-btn">⊙ Compact</button>
+    <button data-action="toggleTheme" id="theme-btn" title="Toggle dark/light" aria-label="Toggle theme" class="header-action-btn">🌙</button>
+    <button data-action="openSettings" title="Settings" aria-label="Settings" class="header-action-btn">⚙</button>
+    <button type="button" id="chat-rail-toggle" data-action="toggleChatRailMobile" title="Chats" aria-label="Open chats" class="header-action-btn rp-mobile-only">💬</button>
+    <button type="button" class="rp-toggle-btn header-action-btn" data-action="toggleRightPanel" title="Panels" aria-label="Toggle right panel">☰ Panels</button>
+    <button type="button" class="header-action-btn header-overflow-trigger" id="header-overflow-btn" data-action="toggleHeaderOverflow" title="More actions" aria-label="More actions">⋮</button>
+  </div>
+  <!-- Preserved IDs for JS compatibility (hidden from view) -->
+  <div aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden;pointer-events:none">
+    <span id="header-conv-id">…</span>
+    <span id="header-session-tokens">…</span>
+    <span id="reasoning-mode-badge"></span>
+    <span id="cache-stats-badge" style="display:none"></span>
+    <select id="model-override" title="Model for this request">
+      <option value="">Default</option><option value="coding">Coding</option><option value="reasoning">Reasoning</option><option value="chat">Chat</option>
     </select>
-    <span id="model-status-badge" title="LLM status" style="font-size:0.68rem;opacity:0.7"></span>
-    <span id="header-system-status" title="Server status from /health" style="font-size:0.76rem;opacity:0.9;margin-left:4px;white-space:nowrap;color:var(--text)">…</span>
-    <span id="header-conv-id" title="Current conversation_id (truncated)" style="font-size:0.65rem;opacity:0.82;margin-left:6px;font-family:ui-monospace,monospace;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">…</span>
-    <span id="header-session-tokens" title="Session totals from GET /session/stats" style="font-size:0.65rem;opacity:0.75;margin-left:4px;white-space:nowrap">…</span>
-    <a href="/ctx_viz" target="_blank" rel="noopener" title="Open context visualization (GET /ctx_viz)" style="font-size:0.65rem;margin-left:4px;opacity:0.85">ctx</a>
-    <span id="reasoning-mode-badge" title="Adaptive reasoning depth for this turn" style="font-size:0.74rem;opacity:0.88;margin-left:4px;color:var(--asp)"></span>
-    <span id="cache-stats-badge" title="Completion cache hit rate. Enable: localStorage.setItem('layla_show_cache_stats','1')" style="font-size:0.68rem;opacity:0.65;margin-left:4px;display:none"></span>
-    <a href="/system_export" target="_blank" title="Full system export (JSON)">⊕ export</a>
-    <button onclick="exportChat()" title="Export chat as Markdown/JSON" aria-label="Export chat">📤 chat</button>
-    <a href="/memory/export" download title="Download memory bundle (ZIP of all knowledge + learnings)">⬇ memory</a>
-    <button onclick="toggleTheme()" id="theme-btn" title="Toggle dark/light" aria-label="Toggle theme">🌙</button>
-    <button onclick="toggleSidebarCompact()" id="sidebar-compact-btn" title="Compact sidebar" aria-label="Compact sidebar">◀</button>
-    <button onclick="openSettings()" title="Settings" aria-label="Settings">⚙</button>
-    <button type="button" onclick="toggleComposePanel()" title="Working notes (merged into request context)" aria-label="Working notes">📝 Notes</button>
-    <button type="button" id="chat-rail-toggle" onclick="toggleChatRailMobile()" title="Chats" aria-label="Open chats">💬 Chats</button>
-    <button type="button" class="rp-toggle-btn" onclick="toggleRightPanel()" title="Panels" aria-label="Toggle right panel">☰</button>
-    <button type="button" onclick="typeof retryLastMessage==='function'&&retryLastMessage()" title="Remove last exchange and resend" aria-label="Retry last message">retry</button>
-
-    <button onclick="clearChat()" title="Clear chat history" aria-label="Clear chat" style="background:transparent;border-color:var(--border)">clear</button>
-    <button type="button" id="open-cli-btn" onclick="openCliHelp()" title="Copy command to open terminal UI (TUI)">⌘ Terminal</button>
+    <button id="charlab-open-btn" tabindex="-1">Character Lab</button>
+    <button id="sidebar-compact-btn" tabindex="-1">Compact</button>
+    <button id="open-cli-btn" tabindex="-1">Terminal</button>
   </div>
   <div id="header-progress-row" class="header-progress-row" aria-hidden="true"><div id="header-progress-fill"></div></div>
-  <!-- Global search bar (Phase 1.4) -->
-  <div id="global-search-container" style="position:relative;padding:0 12px 4px;max-width:520px;margin:0 auto">
-    <div style="display:flex;align-items:center;gap:0;background:var(--code-bg);border:1px solid var(--border);border-radius:4px;overflow:hidden">
-      <span style="padding:0 6px;color:var(--text-dim);font-size:0.75rem">⌕</span>
-      <input type="search" id="global-search-input" placeholder="Search conversations, learnings, code, knowledge…" autocomplete="off" style="flex:1;background:transparent;border:none;color:var(--text);font-size:0.72rem;padding:5px 6px;outline:none" oninput="laylaGlobalSearchInput(this.value)" onkeydown="laylaGlobalSearchKey(event)" onfocus="laylaGlobalSearchInput(this.value)" aria-label="Search conversations, learnings and code" role="searchbox" aria-autocomplete="list" aria-controls="global-search-results">
-      <button type="button" style="padding:4px 8px;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.7rem" onclick="document.getElementById('global-search-input').value='';laylaGlobalSearchClose()" title="Clear search">✕</button>
+  <!-- Global search bar -->
+  <div id="global-search-container" class="header-search">
+    <div class="header-search-box">
+      <span class="header-search-icon">⌕</span>
+      <input type="search" id="global-search-input" placeholder="Search conversations, learnings, code…" autocomplete="off" data-on-input="laylaGlobalSearchInput" data-on-keydown="laylaGlobalSearchKey" onfocus="laylaGlobalSearchInput(this.value)" aria-label="Search" role="searchbox" aria-autocomplete="list" aria-controls="global-search-results">
+      <button type="button" class="header-search-clear" data-action="clearGlobalSearch" title="Clear">✕</button>
     </div>
-    <div id="global-search-dropdown" style="display:none;position:absolute;top:calc(100% - 4px);left:12px;right:12px;background:var(--bg-panel,#1a1a2e);border:1px solid var(--asp-line,var(--border));border-radius:4px;box-shadow:0 8px 24px rgba(0,0,0,0.6);z-index:2000;max-height:480px;overflow-y:auto"></div>
+    <div id="global-search-dropdown" class="header-search-dropdown"></div>
   </div>
 </header>
+
+<!-- Overflow menu (header ⋮ button) -->
+<nav id="header-overflow-menu" class="header-overflow-menu" aria-label="More actions" style="display:none">
+  <button data-action="exportChat toggleHeaderOverflow">📤 Export chat</button>
+  <a href="/system_export" target="_blank" data-action="toggleHeaderOverflow">⊕ System export</a>
+  <a href="/memory/export" download data-action="toggleHeaderOverflow">⬇ Memory bundle</a>
+  <hr>
+  <button data-action="retryLastMessage toggleHeaderOverflow">↻ Retry last</button>
+  <button data-action="clearChat toggleHeaderOverflow">🗑 Clear chat</button>
+  <button data-action="toggleComposePanel toggleHeaderOverflow">📝 Working notes</button>
+  <hr>
+  <button data-action="openCharacterLab toggleHeaderOverflow">🎭 Character Lab</button>
+  <button data-action="openCliHelp toggleHeaderOverflow">⌘ Terminal</button>
+  <button data-action="toggleSidebarCompact toggleHeaderOverflow">◀ Compact sidebar</button>
+  <a href="/ctx_viz" target="_blank" data-action="toggleHeaderOverflow">📊 Context visualizer</a>
+  <button data-action="showKeyboardShortcutsSheet toggleHeaderOverflow">⌨ Shortcuts</button>
+</nav>
 
 <div class="layout">
   <!-- Left column: conversations first, then voices (prefs / workspace / research live in the right panel) -->
   <div class="sidebar">
     <aside class="chat-rail" id="chat-rail" aria-label="Conversations">
       <div class="chat-rail-header">
-        <button type="button" class="chat-rail-new" onclick="startNewConversation()">+ New chat</button>
+        <button type="button" class="chat-rail-new" data-action="startNewConversation">+ New chat</button>
         <input type="search" class="chat-rail-search" id="chat-rail-search" placeholder="Search chats…" autocomplete="off" aria-label="Search conversations">
       </div>
       <div id="chat-rail-list" class="chat-rail-list">
@@ -231,7 +241,7 @@
       </div>
     </aside>
     <!-- Layla v3: Mastery rank / maturity card (Warframe-inspired). -->
-    <div id="maturity-card" class="maturity-card" role="button" tabindex="0" onclick="typeof refreshMaturityCard==='function'&&refreshMaturityCard(true)">
+    <div id="maturity-card" class="maturity-card" role="button" tabindex="0" data-action="showMainPanel" data-arg="growth">
       <div class="maturity-card-top">
         <div class="maturity-rank-badge">
           <span class="maturity-rank-label">MR</span> <span id="maturity-rank">0</span>
@@ -247,38 +257,81 @@
         <summary>Milestones</summary>
         <div id="maturity-milestones-list" class="maturity-milestones-list"><span style="color:var(--text-dim);font-size:0.7rem">Open to load</span></div>
       </details>
-      <div class="maturity-hint">Growth is real. Click to refresh.</div>
+      <div class="maturity-hint">Growth is real. Click to open Growth panel.</div>
     </div>
-    <div>
-      <h3>Voices</h3>
-      <p class="sidebar-hint">Talk to Layla or choose a voice. She remembers and grows with you.</p>
+    <details class="sidebar-voices" open>
+      <summary class="sidebar-voices-title">Voices</summary>
       <div class="aspect-option expandable" id="aspect-opt-morrigan">
-        <button class="aspect-btn active" onclick="event.stopPropagation();setAspect('morrigan');toggleAspectDescription('morrigan')" id="btn-morrigan" aria-label="Switch to Morrigan aspect" aria-pressed="true">⚔ Morrigan</button>
+        <button class="aspect-btn active" data-action="setAspect" data-arg="morrigan" data-action-stop id="btn-morrigan" aria-label="Switch to Morrigan aspect" aria-pressed="true">⚔ Morrigan</button>
         <span class="aspect-desc">Software engineering: coding, debugging, refactoring, and system architecture.</span>
       </div>
       <div class="aspect-option expandable" id="aspect-opt-nyx">
-        <button class="aspect-btn" onclick="event.stopPropagation();setAspect('nyx');toggleAspectDescription('nyx')" id="btn-nyx" aria-label="Switch to Nyx aspect" aria-pressed="false">✦ Nyx</button>
+        <button class="aspect-btn" data-action="setAspect" data-arg="nyx" data-action-stop id="btn-nyx" aria-label="Switch to Nyx aspect" aria-pressed="false">✦ Nyx</button>
         <span class="aspect-desc">Research and analysis: deep dives, technical explanations, and synthesis.</span>
       </div>
       <div class="aspect-option expandable" id="aspect-opt-echo">
-        <button class="aspect-btn" onclick="event.stopPropagation();setAspect('echo');toggleAspectDescription('echo')" id="btn-echo" aria-label="Switch to Echo aspect" aria-pressed="false">◎ Echo</button>
+        <button class="aspect-btn" data-action="setAspect" data-arg="echo" data-action-stop id="btn-echo" aria-label="Switch to Echo aspect" aria-pressed="false">◎ Echo</button>
         <span class="aspect-desc">Continuity and context: memory tracking, user patterns, and long-term consistency.</span>
       </div>
       <div class="aspect-option expandable" id="aspect-opt-eris">
-        <button class="aspect-btn" onclick="event.stopPropagation();setAspect('eris');toggleAspectDescription('eris')" id="btn-eris" aria-label="Switch to Eris aspect" aria-pressed="false">⚡ Eris</button>
+        <button class="aspect-btn" data-action="setAspect" data-arg="eris" data-action-stop id="btn-eris" aria-label="Switch to Eris aspect" aria-pressed="false">⚡ Eris</button>
         <span class="aspect-desc">Creative ideation: brainstorming, unconventional options, and exploratory thinking.</span>
       </div>
       <div class="aspect-option expandable" id="aspect-opt-cassandra">
-        <button class="aspect-btn" onclick="event.stopPropagation();setAspect('cassandra');toggleAspectDescription('cassandra')" id="btn-cassandra" aria-label="Switch to Cassandra aspect" aria-pressed="false">⌖ Cassandra</button>
+        <button class="aspect-btn" data-action="setAspect" data-arg="cassandra" data-action-stop id="btn-cassandra" aria-label="Switch to Cassandra aspect" aria-pressed="false">⌖ Cassandra</button>
         <span class="aspect-desc">Rapid critique: direct first-pass judgments and blunt feedback.</span>
       </div>
       <div class="aspect-option expandable" id="aspect-opt-lilith">
-        <button class="aspect-btn" onclick="event.stopPropagation();setAspect('lilith');toggleAspectDescription('lilith')" id="btn-lilith" aria-label="Switch to Lilith aspect" aria-pressed="false">⊛ Lilith</button>
+        <button class="aspect-btn" data-action="setAspect" data-arg="lilith" data-action-stop id="btn-lilith" aria-label="Switch to Lilith aspect" aria-pressed="false">⊛ Lilith</button>
         <span class="aspect-desc">Safety and boundaries: ethics checks, refusal logic, and high-risk decision review.</span>
       </div>
+    </details>
+    <!-- Sidebar nav: open overlay panels -->
+    <nav class="sidebar-nav" aria-label="Panel shortcuts">
+      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="status"><span class="sidebar-nav-icon">◈</span> Dashboard</button>
+      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="prefs"><span class="sidebar-nav-icon">⚙</span> Settings</button>
+      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="workspace"><span class="sidebar-nav-icon">📚</span> Library</button>
+      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="research"><span class="sidebar-nav-icon">🔬</span> Research</button>
+      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="artifacts"><span class="sidebar-nav-icon">⬡</span> Artifacts</button>
+    </nav>
+    <!-- Live dashboard cards -->
+    <div class="sidebar-dashboard" id="sidebar-dashboard">
+      <div class="dash-card dash-card-clickable" id="dash-governor" title="Resource governor mode — click to open Dashboard" role="button" tabindex="0" data-action="showMainPanel" data-arg="status">
+        <span class="dash-card-icon">⚡</span>
+        <div class="dash-card-body">
+          <span class="dash-card-label">Governor</span>
+          <span class="dash-card-value" id="dash-governor-val">—</span>
+        </div>
+      </div>
+      <div class="dash-card dash-card-clickable" id="dash-maturity" title="Maturity rank &amp; phase — click to open Growth" role="button" tabindex="0" data-action="showMainPanel" data-arg="growth">
+        <span class="dash-card-icon">✦</span>
+        <div class="dash-card-body">
+          <span class="dash-card-label">Maturity</span>
+          <span class="dash-card-value" id="dash-maturity-val">—</span>
+        </div>
+      </div>
+      <div class="dash-card dash-card-clickable" id="dash-facts" title="Total learned facts — click to open Knowledge" role="button" tabindex="0" data-action="showWorkspaceKnowledge">
+        <span class="dash-card-icon">◉</span>
+        <div class="dash-card-body">
+          <span class="dash-card-label">Facts</span>
+          <span class="dash-card-value" id="dash-facts-val">—</span>
+        </div>
+      </div>
+      <div class="dash-card dash-card-clickable" id="dash-cluster" title="Cluster node status — click to open Cluster" role="button" tabindex="0" data-action="showMainPanel" data-arg="cluster">
+        <span class="dash-card-icon">⬡</span>
+        <div class="dash-card-body">
+          <span class="dash-card-label">Cluster</span>
+          <span class="dash-card-value" id="dash-cluster-val">—</span>
+        </div>
+      </div>
+      <div class="dash-card dash-card-clickable" id="dash-uptime" title="Server uptime — click to open Dashboard" role="button" tabindex="0" data-action="showMainPanel" data-arg="status">
+        <span class="dash-card-icon">◷</span>
+        <div class="dash-card-body">
+          <span class="dash-card-label">Uptime</span>
+          <span class="dash-card-value" id="dash-uptime-val">—</span>
+        </div>
+      </div>
     </div>
-    <p class="sidebar-hint" style="font-size:0.68rem;margin:0;line-height:1.4">Chat options, workspace, permissions, and research controls are in the right column → <button type="button" class="tab-btn" style="margin-top:6px;width:100%;box-sizing:border-box" onclick="typeof showMainPanel==='function'&&showMainPanel('prefs')">Open Prefs</button></p>
-
   </div>
 
   <div id="rankup-overlay" class="rankup-overlay" aria-hidden="true">
@@ -288,19 +341,31 @@
     </div>
   </div>
 
-  <div id="chat-rail-backdrop" onclick="closeChatRailMobile()" aria-hidden="true"></div>
-  <div id="sidebar-backdrop" onclick="closeMobileSidebar()" aria-hidden="true"></div>
-  <div id="rp-backdrop" onclick="closeRightPanel()" aria-hidden="true"></div>
+  <div id="chat-rail-backdrop" data-action="closeChatRailMobile" aria-hidden="true"></div>
+  <div id="sidebar-backdrop" data-action="closeMobileSidebar" aria-hidden="true"></div>
+  <div id="rp-backdrop" data-action="closeRightPanel" aria-hidden="true"></div>
 
   <!-- Chat area -->
   <main class="main-area" id="main-chat-area" aria-label="Chat area">
+    <div class="topbar">
+      <div id="topbar-aspect-badge" class="aspect-badge" style="font-size:0.68rem;padding:3px 8px">∴ MORRIGAN</div>
+      <span id="topbar-model-status" class="topbar-pill" title="LLM status"></span>
+      <span id="topbar-system-status" class="topbar-pill" title="Server status">…</span>
+      <span id="topbar-session-time" class="topbar-pill" title="Session duration">0:00</span>
+      <div class="topbar-spacer"></div>
+      <button type="button" class="topbar-btn" data-action="compactConversation" title="Compact context">⊙ Compact</button>
+      <button type="button" class="topbar-btn" data-action="toggleTheme" title="Toggle dark/light" aria-label="Toggle theme">🌙</button>
+      <button type="button" class="topbar-btn" data-action="openOverlayPanel" data-arg="prefs" title="Settings" aria-label="Settings">⚙</button>
+      <button type="button" class="rp-toggle-btn" data-action="toggleRightPanel" title="Panels" aria-label="Toggle panels">☰ Panels</button>
+      <button type="button" class="topbar-btn header-overflow-trigger" data-action="toggleHeaderOverflow" title="More actions" aria-label="More actions">⋮</button>
+    </div>
     <div id="context-chip" class="context-chip" title="Active thread context">No chat selected — start a new chat or pick one from the list.</div>
     <div id="compose-panel" class="compose-panel" aria-label="Working notes">
       <div class="compose-panel-head">
         <span>Working notes → merged into request context (not shown as a user chat line)</span>
-        <button type="button" class="tab-btn" onclick="toggleComposePanel(false)" style="font-size:0.65rem;padding:3px 8px">Close</button>
+        <button type="button" class="tab-btn" data-action="toggleComposePanel" data-arg="false" style="font-size:0.65rem;padding:3px 8px">Close</button>
       </div>
-      <textarea id="compose-draft" placeholder="Longer context, specs, pasted errors, draft text…" autocomplete="off" oninput="try{localStorage.setItem('layla_compose_draft',this.value);}catch(_){}" aria-label="Working notes compose area"></textarea>
+      <textarea id="compose-draft" placeholder="Longer context, specs, pasted errors, draft text…" autocomplete="off" data-on-input="saveComposeDraft" aria-label="Working notes compose area"></textarea>
     </div>
     <div id="chat" role="log" aria-live="polite" aria-label="Chat history" aria-relevant="additions">
       <div id="chat-empty"><!-- populated by renderPromptTilesAndEmptyState() --></div>
@@ -308,33 +373,33 @@
     <div class="input-area" id="input-area-drop" title="Drop files here to attach"
          ondragover="event.preventDefault(); this.style.borderColor='var(--asp)'"
          ondragleave="this.style.borderColor=''"
-         ondrop="handleFileDrop(event)">
+         data-on-drop="handleFileDrop">
       <div id="file-context-chips" style="display:none;flex-wrap:wrap;gap:6px;padding:6px 12px 0;font-size:0.73rem"></div>
       <div id="url-detect-chip">
         <span class="url-chip-label">URL detected —</span>
         <span class="url-chip-domain" id="url-chip-domain"></span>
-        <button class="url-chip-btn" onclick="acceptUrlFetch()">Fetch content</button>
-        <button class="url-chip-dismiss" onclick="dismissUrlChip()" title="Ignore">✕</button>
+        <button class="url-chip-btn" data-action="acceptUrlFetch">Fetch content</button>
+        <button class="url-chip-dismiss" data-action="dismissUrlChip" title="Ignore">✕</button>
       </div>
       <div id="pipeline-clarify-panel" style="display:none;padding:8px 12px;margin:0 8px;background:var(--code-bg);border:1px solid var(--border);border-radius:6px;font-size:0.72rem">
         <div style="color:var(--asp);margin-bottom:4px">Pipeline needs clarification</div>
         <pre class="pipeline-clarify-questions" style="white-space:pre-wrap;margin:0 0 8px;font-family:inherit;font-size:0.7rem;color:var(--text-dim)"></pre>
         <label for="pipeline-clarify-answers" style="display:block;margin-bottom:4px;color:var(--text-dim)">Your answers (sent as <code>clarification_reply</code> on next Send)</label>
         <textarea id="pipeline-clarify-answers" rows="3" style="width:100%;box-sizing:border-box;font-size:0.72rem;padding:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px" placeholder="Answer the questions above, then Send again with the same goal in mind."></textarea>
-        <button type="button" class="tab-btn" style="margin-top:6px;font-size:0.65rem" onclick="document.getElementById('pipeline-clarify-panel').style.display='none'">Dismiss</button>
+        <button type="button" class="tab-btn" style="margin-top:6px;font-size:0.65rem" data-action="dismissPipelineClarify">Dismiss</button>
       </div>
       <div class="input-row">
         <div class="mention-wrap">
           <div id="mention-dropdown"></div>
-          <textarea id="msg-input" rows="1" placeholder="Ask Layla… drop a file, or type @nyx, @morrigan… (Shift+Enter for newline)" onkeydown="onInputKeydown(event)" oninput="onInputChange(event)" aria-label="Message input" aria-multiline="true"></textarea>
+          <textarea id="msg-input" rows="1" placeholder="Ask Layla… drop a file, or type @nyx, @morrigan… (Shift+Enter for newline)" data-on-keydown="onInputKeydown" data-on-input="onInputChange" aria-label="Message input" aria-multiline="true"></textarea>
         </div>
         <label title="Attach file" aria-label="Attach file" style="cursor:pointer;padding:0 8px;display:flex;align-items:center;color:var(--text-dim);font-size:1rem">
-          📎<input type="file" id="file-attach" style="display:none" onchange="attachFile(this)" aria-label="File attachment">
+          📎<input type="file" id="file-attach" style="display:none" data-on-change="attachFileChange" aria-label="File attachment">
         </label>
-        <button id="mic-btn" onclick="toggleMic()" title="Click to record voice" aria-label="Record voice">🎤</button>
-        <button id="retry-btn" onclick="retryLastMessage()" title="Regenerate last reply (Ctrl+R)" aria-label="Regenerate last reply" style="display:none;font-size:0.75rem;padding:4px 8px">↻ Regenerate</button>
-        <button type="button" id="cancel-send-btn" onclick="cancelActiveSend()" title="Stop generation" aria-label="Stop generation" style="display:none;font-size:0.75rem;padding:4px 8px">Stop</button>
-        <button type="button" id="send-btn" onclick="typeof window.triggerSend==='function'&&window.triggerSend();" aria-label="Send message">Send</button>
+        <button id="mic-btn" data-action="toggleMic" title="Click to record voice" aria-label="Record voice">🎤</button>
+        <button id="retry-btn" data-action="retryLastMessage" title="Regenerate last reply (Ctrl+R)" aria-label="Regenerate last reply" style="display:none;font-size:0.75rem;padding:4px 8px">↻ Regenerate</button>
+        <button type="button" id="cancel-send-btn" data-action="cancelActiveSend" title="Stop generation" aria-label="Stop generation" style="display:none;font-size:0.75rem;padding:4px 8px">Stop</button>
+        <button type="button" id="send-btn" data-action="triggerSend" aria-label="Send message">Send</button>
       </div>
       <div id="ctx-usage-row" style="display:flex;align-items:center;gap:8px;padding:4px 8px 0;font-size:0.65rem;color:var(--text-dim)">
         <div style="flex:1;height:3px;background:var(--border);border-radius:2px;overflow:hidden;min-width:40px">
@@ -347,14 +412,20 @@
     </div>
   </main>
 
-  <!-- Right column: rebuilt isolated shell (#layla-right-panel) — one scroll root, stable flex -->
-  <aside id="layla-right-panel" class="layla-right-panel" aria-label="Layla control center">
-    <div class="rcp-tabs" role="tablist" aria-label="Right column panels">
-      <button type="button" class="rcp-tab active" role="tab" aria-selected="true" data-rcp="status" id="tab-status" aria-controls="panel-status">Status</button>
+  <!-- Right panel: slide-out overlay (outside .layout for clean position:fixed) -->
+</div><!-- end .layout -->
+
+<aside id="layla-right-panel" class="layla-right-panel" aria-label="Layla control center">
+  <div class="panel-close-row">
+    <button type="button" class="panel-close-btn" data-action="closeRightPanel" aria-label="Close panel">← Back</button>
+    <span class="panel-close-title">Panels</span>
+  </div>
+  <div class="rcp-tabs" role="tablist" aria-label="Panel tabs">
+      <button type="button" class="rcp-tab active" role="tab" aria-selected="true" data-rcp="status" id="tab-status" aria-controls="panel-status">Dashboard</button>
       <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="prefs" id="tab-prefs" aria-controls="panel-prefs">Settings</button>
       <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="workspace" id="tab-workspace" aria-controls="panel-workspace">Library</button>
-      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="artifacts" id="tab-artifacts" aria-controls="panel-artifacts">Artifacts</button>
       <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="research" id="tab-research" aria-controls="panel-research">Research</button>
+      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="artifacts" id="tab-artifacts" aria-controls="panel-artifacts">Artifacts</button>
     </div>
     <div class="rcp-body">
       <section class="rcp-page active" data-rcp="status" role="tabpanel" aria-hidden="false" id="panel-status" aria-labelledby="tab-status">
@@ -362,9 +433,9 @@
           <div class="panel-title" style="margin-bottom:6px">Build &amp; updates</div>
           <div id="app-version" style="margin-bottom:6px;color:var(--text-dim);font-size:0.72rem">Version: loading...</div>
           <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">
-            <button type="button" class="tab-btn" onclick="checkForUpdates()">Check for updates</button>
-            <button type="button" class="tab-btn" onclick="laylaRunSetupAuto()">/setup/auto</button>
-            <button type="button" class="tab-btn" onclick="laylaRunDoctor()">/doctor</button>
+            <button type="button" class="tab-btn" data-action="checkForUpdates">Check for updates</button>
+            <button type="button" class="tab-btn" data-action="laylaRunSetupAuto">/setup/auto</button>
+            <button type="button" class="tab-btn" data-action="laylaRunDoctor">/doctor</button>
           </div>
           <div id="update-status" style="margin-top:6px;color:var(--text-dim);font-size:0.68rem"></div>
         </div>
@@ -377,198 +448,312 @@
         <div class="rta-card">
           <div id="runtime-options-panel"><span style="color:var(--text-dim);font-size:0.7rem">Loading…</span></div>
         </div>
-        <div class="rta-section-title">Execution trace</div>
-        <p class="rta-muted" style="margin:0 0 6px">Last agent run for this chat (<code>/debug/state</code>).</p>
-        <div class="rta-card">
-          <button type="button" class="tab-btn" onclick="typeof laylaRefreshExecutionPanels==='function'&&laylaRefreshExecutionPanels()">Refresh trace</button>
-          <pre id="exec-trace-json" style="font-size:0.65rem;max-height:200px;overflow:auto;margin-top:8px">—</pre>
+        <details class="dashboard-section">
+          <summary class="dashboard-section-title">Execution trace</summary>
+          <p class="rta-muted" style="margin:0 0 6px">Last agent run for this chat (<code>/debug/state</code>).</p>
+          <div class="rta-card">
+            <button type="button" class="tab-btn" data-action="wsRefreshExecutionPanels">Refresh trace</button>
+            <pre id="exec-trace-json" style="font-size:0.65rem;max-height:200px;overflow:auto;margin-top:8px">—</pre>
+          </div>
+        </details>
+        <details class="dashboard-section">
+          <summary class="dashboard-section-title">Coordinator tasks</summary>
+          <p class="rta-muted" style="margin:0 0 6px">Persisted runs (<code>/debug/tasks</code>).</p>
+          <div class="rta-card">
+            <button type="button" class="tab-btn" data-action="wsRefreshExecutionPanels">Refresh tasks</button>
+            <div id="tasks-list-json" style="font-size:0.65rem;max-height:260px;overflow:auto;margin-top:8px;white-space:pre-wrap;word-break:break-word">—</div>
+          </div>
+        </details>
+
+        <!-- Knowledge Growth (merged from Growth tab) -->
+        <div class="rta-section-title">Knowledge Growth</div>
+        <div id="growth-dashboard-panel">
+          <div id="growth-stats-container">
+            <div class="dashboard-stat-grid">
+              <div class="rta-card dashboard-stat-card">
+                <div class="dashboard-stat-value" id="growth-total-facts">—</div>
+                <div class="dashboard-stat-label">Total Facts</div>
+              </div>
+              <div class="rta-card dashboard-stat-card">
+                <div class="dashboard-stat-value" style="color:#4caf50" id="growth-verified-pct">—</div>
+                <div class="dashboard-stat-label">Verified %</div>
+              </div>
+              <div class="rta-card dashboard-stat-card">
+                <div class="dashboard-stat-value" id="growth-week-count">—</div>
+                <div class="dashboard-stat-label">This Week</div>
+              </div>
+              <div class="rta-card dashboard-stat-card">
+                <div class="dashboard-stat-value" style="color:#ff9800" id="growth-pending-verify">—</div>
+                <div class="dashboard-stat-label">Pending Verify</div>
+              </div>
+            </div>
+            <details class="dashboard-section" style="margin-top:8px">
+              <summary class="dashboard-section-title">Capabilities &amp; learning types</summary>
+              <div class="panel-title" style="margin-bottom:6px;font-size:0.72rem">Capabilities</div>
+              <div id="growth-capabilities-list" style="margin-bottom:12px;font-size:0.7rem">Loading...</div>
+              <div class="panel-title" style="margin-bottom:6px;font-size:0.72rem">Learning Types</div>
+              <div id="growth-types-list" style="margin-bottom:12px;font-size:0.7rem">Loading...</div>
+              <div class="panel-title" style="margin-bottom:6px;font-size:0.72rem">Knowledge Watcher</div>
+              <div id="growth-watcher-status" style="margin-bottom:12px;font-size:0.7rem;color:var(--text-dim)">Loading...</div>
+            </details>
+          </div>
+          <button type="button" class="tab-btn" data-action="refreshGrowthDashboard" style="margin-top:6px">Refresh growth</button>
         </div>
-        <div class="rta-section-title">Coordinator tasks</div>
-        <p class="rta-muted" style="margin:0 0 6px">Persisted runs (<code>/debug/tasks</code>).</p>
-        <div class="rta-card">
-          <button type="button" class="tab-btn" onclick="typeof laylaRefreshExecutionPanels==='function'&&laylaRefreshExecutionPanels()">Refresh tasks</button>
-          <div id="tasks-list-json" style="font-size:0.65rem;max-height:260px;overflow:auto;margin-top:8px;white-space:pre-wrap;word-break:break-word">—</div>
+
+        <!-- Cluster Status (merged from Cluster tab) -->
+        <div class="rta-section-title">Cluster</div>
+        <div id="cluster-status-panel">
+          <!-- Phase 5B: Cluster Setup Controls -->
+          <div class="cluster-setup-section">
+            <div class="cluster-toggle">
+              <span class="cluster-toggle-label">Enable Clustering</span>
+              <div id="cluster-enable-toggle" class="cluster-toggle-switch" data-action="toggleClusterEnabled" title="Toggle cluster networking"></div>
+            </div>
+            <div id="cluster-pair-as-drone" style="display:none;margin-top:6px">
+              <div style="font-size:0.6rem;color:var(--text-dim);margin-bottom:4px">Pair as Drone:</div>
+              <div style="display:flex;gap:4px">
+                <input id="cluster-queen-addr" type="text" placeholder="Queen address (e.g. 192.168.1.10:8000)" style="flex:1;padding:4px 6px;font-size:0.65rem;background:var(--code-bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+                <input id="cluster-pair-token-input" type="text" placeholder="Token" style="width:80px;padding:4px 6px;font-size:0.65rem;background:var(--code-bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+                <button type="button" class="tab-btn" data-action="pairAsDrone" style="font-size:0.6rem">Pair</button>
+              </div>
+              <div id="cluster-pair-result" style="font-size:0.6rem;margin-top:4px;display:none"></div>
+            </div>
+          </div>
+          <div id="cluster-overview">
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+              <span id="cluster-enabled-badge" class="cluster-badge">Disabled</span>
+              <span style="font-size:0.7rem;color:var(--text-dim)" id="cluster-role-label">Role: —</span>
+            </div>
+            <div class="dashboard-stat-grid" style="grid-template-columns:1fr 1fr 1fr">
+              <div class="rta-card dashboard-stat-card">
+                <div class="dashboard-stat-value" id="cluster-peer-count">0</div>
+                <div class="dashboard-stat-label">Peers</div>
+              </div>
+              <div class="rta-card dashboard-stat-card">
+                <div class="dashboard-stat-value" style="color:#4caf50" id="cluster-online-count">0</div>
+                <div class="dashboard-stat-label">Online</div>
+              </div>
+              <div class="rta-card dashboard-stat-card">
+                <div class="dashboard-stat-value" id="cluster-governor-mode">—</div>
+                <div class="dashboard-stat-label">Mode</div>
+              </div>
+            </div>
+          </div>
+          <details class="dashboard-section">
+            <summary class="dashboard-section-title">Nodes &amp; task queue</summary>
+            <div class="panel-title" style="margin-bottom:6px;font-size:0.72rem">Nodes</div>
+            <div id="cluster-nodes-list" style="margin-bottom:12px;font-size:0.7rem">No nodes connected</div>
+            <div class="panel-title" style="margin-bottom:6px;font-size:0.72rem">Task Queue</div>
+            <div id="cluster-queue-stats" style="margin-bottom:12px;font-size:0.7rem;color:var(--text-dim)">—</div>
+          </details>
+          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+            <button type="button" class="tab-btn" data-action="refreshClusterStatus">Refresh cluster</button>
+            <button type="button" class="tab-btn" data-action="generatePairingToken">Generate Pairing Token</button>
+          </div>
+          <div id="cluster-pairing-token" style="margin-top:8px;display:none;padding:10px;background:var(--code-bg);border:1px solid var(--border);border-radius:4px;font-family:monospace;font-size:0.8rem"></div>
         </div>
       </section>
 
       <section class="rcp-page" data-rcp="prefs" role="tabpanel" aria-hidden="true" id="panel-prefs" aria-labelledby="tab-prefs">
-        <div class="panel-title" style="margin-bottom:8px">Chat &amp; tools</div>
-        <p class="rta-muted" style="margin:0 0 10px">Streaming, voice, sandbox path, and research triggers. Same checkboxes as before — they now live here so the left column stays chat-first.</p>
-        <div class="option-card" style="margin-top:0">
-          <div class="option-card-title">Enabled by default <span class="option-pill">quick</span></div>
-          <label class="option-row" title="See her reply as it types">
-            <input type="checkbox" id="stream-toggle" checked> Stream
-          </label>
-          <label class="option-row" title="Let her think with her inner voices before answering">
-            <input type="checkbox" id="show-thinking"> Her thoughts
-          </label>
-          <p class="option-row" style="font-size:0.65rem;color:var(--text-dim);margin:4px 0 0 12px;line-height:1.4">Streaming: use the small <b>Steer</b> line on her reply row to queue a one-line redirect (picked up at her next thinking step).</p>
-          <label class="option-row" title="Speak final reply (Kokoro server TTS with browser fallback)">
-            <input type="checkbox" id="tts-toggle" onchange="_ttsEnabled=this.checked;localStorage.setItem('layla_tts',this.checked)"> Speak replies
-          </label>
-          <label class="option-row" title="Generate a plan first — review steps before execution">
-            <input type="checkbox" id="plan-mode-toggle"> Plan first
-          </label>
-          <label class="option-row" title="When engineering_pipeline_enabled in runtime_config: Chat = default agent; Plan = clarifier + planner only; Execute = full pipeline (slow).">
-            <span style="min-width:6rem;display:inline-block">Eng. pipeline</span>
-            <select id="engineering-pipeline-mode" style="font-size:0.72rem;background:var(--code-bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 6px" onchange="try{localStorage.setItem('layla_engineering_pipeline_mode',this.value);}catch(_){}">
-              <option value="chat">Chat</option>
-              <option value="plan">Plan</option>
-              <option value="execute">Execute</option>
-            </select>
-          </label>
-        </div>
-        <div class="option-card">
-          <div class="option-card-title">Advanced Chat</div>
-          <label class="option-row" id="reasoning-effort-row" title="Use extra reasoning budget for harder prompts">
-            <input type="checkbox" id="reasoning-effort"> Think harder
-          </label>
-          <label class="option-row" title="Deliberation mode: how many aspects weigh in on each response">
-            <span style="min-width:6rem;display:inline-block">Deliberation</span>
-            <select id="deliberation-mode-select" style="font-size:0.72rem;background:var(--code-bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 6px" onchange="setDeliberationMode(this.value)">
-              <option value="solo">Solo (single voice)</option>
-              <option value="auto" selected>Auto (detect when needed)</option>
-              <option value="debate">Debate (2 aspects argue)</option>
-              <option value="council">Council (3 aspects deliberate)</option>
-              <option value="tribunal">Tribunal (all 6 aspects)</option>
-            </select>
-          </label>
-          <p style="font-size:0.58rem;color:var(--text-dim);margin:4px 0 0 12px;line-height:1.35">Auto: Layla decides when to invoke multiple voices based on topic complexity. Debate/Council/Tribunal: always engage that many aspects. Solo: fastest, single aspect.</p>
-        </div>
-        <div class="option-card">
-          <div class="option-card-title">Content policy <span class="option-pill">config</span></div>
-          <p style="font-size:0.62rem;color:var(--text-dim);margin:0 0 6px;line-height:1.35">Writes <code>uncensored</code> + <code>nsfw_allowed</code> in <code>runtime_config.json</code> (same as ⚙ Settings → Safety). Applies on the next chat request.</p>
-          <label class="option-row" title="Broad uncensored system policy">
-            <input type="checkbox" id="opt-uncensored"> Uncensored
-          </label>
-          <label class="option-row" title="Adult topics in system policy when uncensored is on">
-            <input type="checkbox" id="opt-nsfw-allowed"> NSFW allowed
-          </label>
-          <button type="button" class="aspect-btn" onclick="typeof saveContentPolicySettings==='function'&&saveContentPolicySettings()" style="margin-top:8px;font-size:0.68rem;padding:6px 10px;width:100%;box-sizing:border-box">Save content policy</button>
-          <p style="font-size:0.58rem;color:var(--text-dim);margin:6px 0 0;line-height:1.35">Lilith explicit register: use <strong>Lilith</strong> or <code>@lilith</code> plus a trigger (<em>nsfw</em>, <em>intimate</em>, …) in that message.</p>
-        </div>
-        <div class="option-card">
-          <div class="option-card-title">Permissions</div>
-          <label class="option-row" style="color:#dd6666" title="Allow Layla to modify files">
-            <input type="checkbox" id="allow-write"> Allow Write
-          </label>
-          <label class="option-row" style="color:#dd6666" title="Allow Layla to run commands">
-            <input type="checkbox" id="allow-run"> Allow Run
-          </label>
-        </div>
-        <div class="option-card">
-          <div class="option-card-title">Pending approvals</div>
-          <div id="approvals-list"><span style="color:var(--text-dim);font-size:0.75rem">Layla will ask here when she needs permission to act</span></div>
-        </div>
-        <div class="option-card">
-          <div class="option-card-title">Workspace</div>
-          <label style="display:block;font-size:0.7rem;color:var(--text-dim);margin-bottom:4px">Workspace path</label>
-          <div style="display:flex;gap:4px;margin-bottom:4px;flex-wrap:wrap">
-            <select id="workspace-presets" onchange="onWorkspacePresetSelect()" style="flex:1;min-width:100px;max-width:160px;padding:4px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);font-size:0.7rem;border-radius:2px">
-              <option value="">— Preset —</option>
-            </select>
-            <button type="button" id="workspace-add-btn" onclick="addWorkspacePreset()" style="font-size:0.65rem;padding:4px 8px;background:var(--asp-mid);border:1px solid var(--asp);color:var(--text);border-radius:2px;cursor:pointer">Add current</button>
-            <button type="button" id="workspace-remove-btn" onclick="removeWorkspacePreset()" style="font-size:0.65rem;padding:4px 8px;background:transparent;border:1px solid var(--border);color:var(--text-dim);border-radius:2px;cursor:pointer">Remove</button>
-          </div>
-          <input type="text" id="workspace-path" placeholder="e.g. C:\github\myproject" style="width:100%;box-sizing:border-box;padding:6px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);font-size:0.75rem;border-radius:2px">
-          <button type="button" class="tab-btn" style="font-size:0.65rem;margin-top:6px" onclick="laylaRefreshWorkspaceAwareness()">Refresh awareness</button>
-          <span id="workspace-awareness-pulse" style="display:none;font-size:0.62rem;color:var(--asp);margin-left:6px">Refreshing…</span>
-          <label style="display:block;font-size:0.7rem;color:var(--text-dim);margin:8px 0 4px">Project preset</label>
-          <select id="project-select" onchange="onProjectSelectChange()" style="width:100%;padding:5px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);font-size:0.72rem;border-radius:2px">
-            <option value="">— None —</option>
-          </select>
-          <button type="button" class="aspect-btn" onclick="createProjectQuick()" style="margin-top:6px;font-size:0.68rem;padding:5px 8px">+ New project</button>
-        </div>
-        <!-- Voice & TTS (Phase 3.4) -->
-        <div class="option-card">
-          <div class="option-card-title">Voice &amp; TTS</div>
-          <label class="option-row" title="Speak final reply">
-            <input type="checkbox" id="tts-toggle2" onchange="_ttsEnabled=this.checked;document.getElementById('tts-toggle')&&(document.getElementById('tts-toggle').checked=this.checked);localStorage.setItem('layla_tts',this.checked)"> Speak replies
-          </label>
-          <div style="margin-top:8px">
-            <label style="font-size:0.68rem;color:var(--text-dim);display:flex;justify-content:space-between;margin-bottom:4px">
-              Speed <span id="voice-speed-display" style="color:var(--asp)">1.0×</span>
+
+        <!-- ═══ GROUP 1: Chat & Streaming ═══ -->
+        <details class="settings-accordion" open>
+          <summary class="settings-accordion-title">Chat &amp; Streaming</summary>
+          <div class="settings-accordion-body">
+            <label class="option-row" title="See her reply as it types">
+              <input type="checkbox" id="stream-toggle" checked> Stream responses
             </label>
-            <input type="range" id="voice-speed-range" min="0.5" max="2.0" step="0.05" value="1.0" style="width:100%;accent-color:var(--asp)" oninput="typeof laylaVoiceSpeedChange==='function'&&laylaVoiceSpeedChange(this.value)" aria-label="Voice speed">
-          </div>
-          <div style="margin-top:6px">
-            <label style="font-size:0.68rem;color:var(--text-dim);display:flex;justify-content:space-between;margin-bottom:4px">
-              Volume <span id="voice-volume-display" style="color:var(--asp)">100%</span>
+            <label class="option-row" title="Let her think with her inner voices before answering">
+              <input type="checkbox" id="show-thinking"> Show thoughts
             </label>
-            <input type="range" id="voice-volume-range" min="0" max="1" step="0.05" value="1.0" style="width:100%;accent-color:var(--asp)" oninput="typeof laylaVoiceVolumeChange==='function'&&laylaVoiceVolumeChange(this.value)" aria-label="Voice volume">
+            <label class="option-row" title="Speak final reply (Kokoro server TTS with browser fallback)">
+              <input type="checkbox" id="tts-toggle" data-on-change="toggleTts"> Speak replies
+            </label>
+            <label class="option-row" title="Generate a plan first — review steps before execution">
+              <input type="checkbox" id="plan-mode-toggle"> Plan first
+            </label>
+            <label class="option-row" title="Use extra reasoning budget for harder prompts" id="reasoning-effort-row">
+              <input type="checkbox" id="reasoning-effort"> Think harder
+            </label>
+            <div class="settings-row-group">
+              <label class="option-row" title="Engineering pipeline mode">
+                <span class="settings-label">Pipeline</span>
+                <select id="engineering-pipeline-mode" class="settings-select" data-on-change="savePipelineMode" data-pass-value>
+                  <option value="chat">Chat</option>
+                  <option value="plan">Plan</option>
+                  <option value="execute">Execute</option>
+                </select>
+              </label>
+              <label class="option-row" title="Deliberation: how many aspects weigh in">
+                <span class="settings-label">Deliberation</span>
+                <select id="deliberation-mode-select" class="settings-select" data-on-change="setDeliberationMode" data-pass-value>
+                  <option value="solo">Solo</option>
+                  <option value="auto" selected>Auto</option>
+                  <option value="debate">Debate (2)</option>
+                  <option value="council">Council (3)</option>
+                  <option value="tribunal">Tribunal (6)</option>
+                </select>
+              </label>
+              <label class="option-row" title="Model override for this request">
+                <span class="settings-label">Model</span>
+                <select id="model-override-visible" class="settings-select" data-on-change="syncModelOverride" data-pass-value>
+                  <option value="">Default</option>
+                  <option value="coding">Coding</option>
+                  <option value="reasoning">Reasoning</option>
+                  <option value="chat">Chat</option>
+                </select>
+              </label>
+            </div>
           </div>
-          <button type="button" class="tab-btn" style="font-size:0.65rem;margin-top:8px" onclick="typeof laylaVoicePreview==='function'&&laylaVoicePreview()" title="Hear current aspect voice">▶ Preview voice</button>
-        </div>
+        </details>
 
-        <!-- Performance (Phase 3.4) -->
-        <div class="option-card">
-          <div class="option-card-title">Performance</div>
-          <label class="option-row" title="Auto-scan responses for code artifacts">
-            <input type="checkbox" id="artifacts-autoscan-toggle" checked onchange="localStorage.setItem('layla_artifacts_autoscan',this.checked)"> Auto-detect artifacts
-          </label>
-          <label class="option-row" title="Cache conversation list in IndexedDB for instant load">
-            <input type="checkbox" id="idb-cache-toggle" checked onchange="localStorage.setItem('layla_idb_cache',this.checked)"> IndexedDB conversation cache
-          </label>
-          <label class="option-row" title="Reduce all glow and animation effects">
-            <input type="checkbox" id="low-fx-toggle" onchange="document.documentElement.style.setProperty('--fx-strength',this.checked?'0.4':'1.5');localStorage.setItem('layla_low_fx',this.checked)"> Low visual effects
-          </label>
-        </div>
+        <!-- ═══ GROUP 2: Permissions & Safety ═══ -->
+        <details class="settings-accordion" open>
+          <summary class="settings-accordion-title">Permissions &amp; Safety</summary>
+          <div class="settings-accordion-body">
+            <label class="option-row settings-danger" title="Allow Layla to modify files">
+              <input type="checkbox" id="allow-write"> Allow Write
+            </label>
+            <label class="option-row settings-danger" title="Allow Layla to run commands">
+              <input type="checkbox" id="allow-run"> Allow Run
+            </label>
+            <hr class="settings-divider">
+            <label class="option-row" title="Skip ALL tool approval prompts">
+              <input type="checkbox" id="tool-approval-bypass"> <span class="settings-bypass-label">⚠ Bypass All Approvals</span>
+            </label>
+            <div id="bypass-warning" class="settings-bypass-warning">
+              Tool approval bypass is <strong>ACTIVE</strong>. Layla will execute ALL tools without asking. Disable when not needed.
+            </div>
+            <hr class="settings-divider">
+            <label class="option-row" title="Broad uncensored system policy">
+              <input type="checkbox" id="opt-uncensored"> Uncensored
+            </label>
+            <label class="option-row" title="Adult topics when uncensored is on">
+              <input type="checkbox" id="opt-nsfw-allowed"> NSFW allowed
+            </label>
+            <button type="button" class="settings-save-btn" data-action="saveContentPolicySettings">Save content policy</button>
+            <div class="settings-group-label" style="margin-top:10px">Pending approvals</div>
+            <div id="approvals-list"><span class="settings-hint">Layla will ask here when she needs permission to act</span></div>
+          </div>
+        </details>
 
-        <!-- Obsidian Vault (Phase 5.1) -->
-        <div class="option-card" id="obsidian-settings-card">
-          <div class="option-card-title">Obsidian Vault</div>
-          <p style="font-size:0.68rem;color:var(--text-dim);margin:0 0 8px">Sync your Obsidian vault into Layla's knowledge base. All local — no cloud.</p>
-          <div style="margin-bottom:6px">
-            <label style="font-size:0.68rem;color:var(--text-dim);display:block;margin-bottom:3px">Vault path</label>
-            <input type="text" id="obsidian-vault-path" placeholder="/path/to/ObsidianVault" style="width:100%;font-size:0.72rem;padding:4px 6px;background:var(--input-bg,#111);border:1px solid var(--border);color:var(--text);border-radius:2px" aria-label="Obsidian vault path">
+        <!-- ═══ GROUP 3: Workspace & Projects ═══ -->
+        <details class="settings-accordion">
+          <summary class="settings-accordion-title">Workspace &amp; Projects</summary>
+          <div class="settings-accordion-body">
+            <label class="settings-group-label">Workspace path</label>
+            <div class="settings-row-inline">
+              <select id="workspace-presets" data-on-change="onWorkspacePresetSelect" class="settings-select" style="flex:1;min-width:100px;max-width:160px">
+                <option value="">— Preset —</option>
+              </select>
+              <button type="button" id="workspace-add-btn" class="settings-mini-btn" data-action="addWorkspacePreset">Add</button>
+              <button type="button" id="workspace-remove-btn" class="settings-mini-btn settings-mini-btn-dim" data-action="removeWorkspacePreset">Remove</button>
+            </div>
+            <input type="text" id="workspace-path" placeholder="e.g. C:\github\myproject" class="settings-input">
+            <div class="settings-row-inline" style="margin-top:6px">
+              <button type="button" class="tab-btn" style="font-size:0.65rem" data-action="laylaRefreshWorkspaceAwareness">Refresh awareness</button>
+              <span id="workspace-awareness-pulse" style="display:none;font-size:0.62rem;color:var(--asp)">Refreshing…</span>
+            </div>
+            <label class="settings-group-label" style="margin-top:10px">Project</label>
+            <select id="project-select" data-on-change="onProjectSelectChange" class="settings-select" style="width:100%">
+              <option value="">— None —</option>
+            </select>
+            <button type="button" class="settings-save-btn" data-action="createProjectQuick" style="margin-top:6px">+ New project</button>
           </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-            <button type="button" class="tab-btn" style="font-size:0.65rem" onclick="laylaObsidianConnect()" title="Connect this vault">Connect</button>
-            <button type="button" class="tab-btn" style="font-size:0.65rem" onclick="laylaObsidianSync()" title="Sync vault → knowledge">Sync now</button>
-            <button type="button" class="tab-btn" style="font-size:0.65rem" onclick="laylaObsidianSuggest()" title="See learnings to export">Suggest exports</button>
-          </div>
-          <div id="obsidian-status" style="font-size:0.65rem;color:var(--text-dim)">Not connected</div>
-        </div>
+        </details>
 
-        <!-- Phase 9: Multi-Device Discovery & Pairing -->
-        <div class="option-card" id="pairing-settings-card">
-          <div class="option-card-title">Network &amp; Devices</div>
-          <p style="font-size:0.68rem;color:var(--text-dim);margin:0 0 8px">Discover and pair with other Layla instances on your LAN. Zero-config via mDNS.</p>
-          <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
-            <button type="button" id="discovery-toggle-btn" class="btn-discovery" onclick="_discoveryRunning?stopDiscovery():startDiscovery()" style="font-size:0.65rem;padding:3px 8px;background:var(--violet);border:1px solid var(--accent);color:#fff;border-radius:2px;cursor:pointer">Start Discovery</button>
-            <button type="button" class="tab-btn" style="font-size:0.65rem" onclick="refreshPeeringPanel()">Refresh</button>
-            <span style="font-size:0.62rem;color:var(--text-dim)">Instance: <code id="pairing-instance-id" style="font-size:0.6rem">—</code></span>
+        <!-- ═══ GROUP 4: Voice & Audio ═══ -->
+        <details class="settings-accordion">
+          <summary class="settings-accordion-title">Voice &amp; Audio</summary>
+          <div class="settings-accordion-body">
+            <label class="option-row" title="Speak final reply">
+              <input type="checkbox" id="tts-toggle2" data-on-change="toggleTts"> Speak replies
+            </label>
+            <div class="settings-slider-group">
+              <label class="settings-slider-label">Speed <span id="voice-speed-display">1.0×</span></label>
+              <input type="range" id="voice-speed-range" min="0.5" max="2.0" step="0.05" value="1.0" class="settings-slider" data-on-input="laylaVoiceSpeedChange" aria-label="Voice speed">
+            </div>
+            <div class="settings-slider-group">
+              <label class="settings-slider-label">Volume <span id="voice-volume-display">100%</span></label>
+              <input type="range" id="voice-volume-range" min="0" max="1" step="0.05" value="1.0" class="settings-slider" data-on-input="laylaVoiceVolumeChange" aria-label="Voice volume">
+            </div>
+            <button type="button" class="tab-btn" style="font-size:0.65rem" data-action="laylaVoicePreview" title="Hear current aspect voice">▶ Preview voice</button>
           </div>
-          <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:4px">Discovered peers (<span id="pairing-peer-count">0</span>):</div>
-          <div id="peers-list" style="max-height:200px;overflow-y:auto;margin-bottom:8px">
-            <div class="peers-empty" style="font-size:0.65rem;color:var(--text-dim)">Not scanning. Click "Start Discovery" above.</div>
-          </div>
-          <div style="font-size:0.68rem;color:var(--text-dim);margin-bottom:4px">Paired devices:</div>
-          <div id="paired-devices-list" style="max-height:200px;overflow-y:auto">
-            <div class="peers-empty" style="font-size:0.65rem;color:var(--text-dim)">No paired devices.</div>
-          </div>
-        </div>
+        </details>
 
-        <div class="option-card" id="prefs-research-section">
-          <div class="option-card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
-            Research mission
-            <button type="button" onclick="focusResearchPanel()" style="font-size:0.62rem;padding:2px 6px;background:var(--violet);border:1px solid var(--accent);color:#fff;border-radius:2px;cursor:pointer" title="Open Research tab for live output">Results →</button>
+        <!-- ═══ GROUP 5: Research ═══ -->
+        <details class="settings-accordion" id="prefs-research-section">
+          <summary class="settings-accordion-title">Research Mission <button type="button" class="settings-link-btn" data-action="focusResearchPanel" data-action-stop title="Open Research tab">Results →</button></summary>
+          <div class="settings-accordion-body">
+            <label class="settings-group-label">Depth</label>
+            <div class="settings-row-inline">
+              <label class="settings-radio"><input type="radio" name="mission-depth" value="map"> Map</label>
+              <label class="settings-radio"><input type="radio" name="mission-depth" value="deep" checked> Deep</label>
+              <label class="settings-radio"><input type="radio" name="mission-depth" value="full"> Full</label>
+            </div>
+            <label class="option-row" style="margin:8px 0">
+              <input type="checkbox" id="next-stage"> Next stage only
+            </label>
+            <div class="settings-btn-stack">
+              <button type="button" class="aspect-btn" id="research-btn" data-action="sendResearch" style="font-size:0.75rem;background:var(--violet);border-color:var(--accent)">&#128269; Analyse repo</button>
+              <button type="button" class="aspect-btn" data-action="startResearchMission" data-arg="false" style="font-size:0.75rem">&#9654; Start mission</button>
+              <button type="button" class="aspect-btn" data-action="startResearchMission" data-arg="true" style="font-size:0.75rem;background:transparent;border-color:var(--border)">&#9208; Resume</button>
+            </div>
           </div>
-          <div style="font-size:0.7rem;color:var(--text-dim);margin:6px 0 4px">Depth:</div>
-          <div style="display:flex;gap:10px;margin-bottom:6px;flex-wrap:wrap">
-            <label style="display:flex;align-items:center;gap:4px;font-size:0.75rem;cursor:pointer"><input type="radio" name="mission-depth" value="map"> Map</label>
-            <label style="display:flex;align-items:center;gap:4px;font-size:0.75rem;cursor:pointer"><input type="radio" name="mission-depth" value="deep" checked> Deep</label>
-            <label style="display:flex;align-items:center;gap:4px;font-size:0.75rem;cursor:pointer"><input type="radio" name="mission-depth" value="full"> Full</label>
+        </details>
+
+        <!-- ═══ GROUP 6: Integrations ═══ -->
+        <details class="settings-accordion">
+          <summary class="settings-accordion-title">Integrations</summary>
+          <div class="settings-accordion-body">
+            <!-- Obsidian -->
+            <div class="settings-group-label" id="obsidian-settings-card">Obsidian Vault</div>
+            <p class="settings-hint">Sync your Obsidian vault into Layla's knowledge base. All local.</p>
+            <input type="text" id="obsidian-vault-path" placeholder="/path/to/ObsidianVault" class="settings-input" aria-label="Obsidian vault path">
+            <div class="settings-row-inline" style="margin-top:6px">
+              <button type="button" class="tab-btn" style="font-size:0.65rem" data-action="laylaObsidianConnect">Connect</button>
+              <button type="button" class="tab-btn" style="font-size:0.65rem" data-action="laylaObsidianSync">Sync</button>
+              <button type="button" class="tab-btn" style="font-size:0.65rem" data-action="laylaObsidianSuggest">Suggest exports</button>
+            </div>
+            <div id="obsidian-status" class="settings-hint" style="margin-top:4px">Not connected</div>
+
+            <hr class="settings-divider" style="margin:12px 0">
+
+            <!-- Network & Devices -->
+            <div class="settings-group-label" id="pairing-settings-card">Network &amp; Devices</div>
+            <p class="settings-hint">Discover other Layla instances on LAN via mDNS.</p>
+            <div class="settings-row-inline">
+              <button type="button" id="discovery-toggle-btn" class="btn-discovery settings-mini-btn" data-action="toggleDiscovery">Start Discovery</button>
+              <button type="button" class="tab-btn" style="font-size:0.65rem" data-action="refreshPeeringPanel">Refresh</button>
+              <span class="settings-hint">Instance: <code id="pairing-instance-id">—</code></span>
+            </div>
+            <div class="settings-hint" style="margin-top:6px">Discovered peers (<span id="pairing-peer-count">0</span>):</div>
+            <div id="peers-list" style="max-height:150px;overflow-y:auto;margin:4px 0 8px">
+              <span class="settings-hint">Not scanning.</span>
+            </div>
+            <div class="settings-hint">Paired devices:</div>
+            <div id="paired-devices-list" style="max-height:150px;overflow-y:auto;margin-top:4px">
+              <span class="settings-hint">No paired devices.</span>
+            </div>
           </div>
-          <label style="display:flex;align-items:center;gap:6px;font-size:0.75rem;cursor:pointer;margin-bottom:8px">
-            <input type="checkbox" id="next-stage"> Next stage only
-          </label>
-          <div style="display:flex;flex-direction:column;gap:4px">
-            <button type="button" class="aspect-btn" id="research-btn" onclick="sendResearch()" style="font-size:0.75rem;background:var(--violet);border-color:var(--accent)">&#128269; Analyse repo</button>
-            <button type="button" class="aspect-btn" onclick="startResearchMission(false)" style="font-size:0.75rem">&#9654; Start mission</button>
-            <button type="button" class="aspect-btn" onclick="startResearchMission(true)" style="font-size:0.75rem;background:transparent;border-color:var(--border)">&#9208; Resume</button>
+        </details>
+
+        <!-- ═══ GROUP 7: Performance ═══ -->
+        <details class="settings-accordion">
+          <summary class="settings-accordion-title">Performance</summary>
+          <div class="settings-accordion-body">
+            <label class="option-row" title="Auto-scan responses for code artifacts">
+              <input type="checkbox" id="artifacts-autoscan-toggle" checked data-on-change="saveArtifactsAutoscan"> Auto-detect artifacts
+            </label>
+            <label class="option-row" title="Cache conversation list in IndexedDB for instant load">
+              <input type="checkbox" id="idb-cache-toggle" checked data-on-change="saveIdbCache"> IndexedDB cache
+            </label>
+            <label class="option-row" title="Reduce all glow and animation effects">
+              <input type="checkbox" id="low-fx-toggle" data-on-change="toggleLowFx"> Low visual effects
+            </label>
           </div>
-        </div>
+        </details>
+
       </section>
 
       <section class="rcp-page" data-rcp="workspace" role="tabpanel" aria-hidden="true" id="panel-workspace" aria-labelledby="tab-workspace">
@@ -588,16 +773,16 @@
           <div class="panel-title">Workspace awareness</div>
           <p class="rta-muted" style="margin:0 0 8px;font-size:0.68rem">Uses the <strong>workspace path</strong> from Settings. Refreshes project discovery, project memory scan, and the code index.</p>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-            <button type="button" class="approve-btn" style="font-size:0.7rem" onclick="laylaRefreshWorkspaceAwareness()">Refresh awareness</button>
+            <button type="button" class="approve-btn" style="font-size:0.7rem" data-action="laylaRefreshWorkspaceAwareness">Refresh awareness</button>
             <span id="workspace-awareness-tab-pulse" style="display:none;font-size:0.62rem;color:var(--asp)">Refreshing…</span>
           </div>
           <div class="panel-title">Project memory</div>
-          <button type="button" class="approve-btn" style="font-size:0.7rem;margin-bottom:6px" onclick="laylaLoadProjectMemoryInspector()">Load project_memory.json</button>
+          <button type="button" class="approve-btn" style="font-size:0.7rem;margin-bottom:6px" data-action="laylaLoadProjectMemoryInspector">Load project_memory.json</button>
           <pre id="project-memory-inspector" style="font-size:0.62rem;max-height:220px;overflow:auto;background:var(--code-bg);padding:8px;border-radius:4px;border:1px solid var(--border);margin:0 0 12px;white-space:pre-wrap">Set workspace path, then Load.</pre>
           <div class="panel-title">Symbol search</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-            <input type="text" id="workspace-symbol-query" placeholder="Symbol or phrase…" style="flex:1;min-width:140px;padding:6px;box-sizing:border-box" onkeydown="if(event.key==='Enter')laylaWorkspaceSymbolSearch()">
-            <button type="button" class="approve-btn" style="font-size:0.65rem" onclick="laylaWorkspaceSymbolSearch()">Search</button>
+            <input type="text" id="workspace-symbol-query" placeholder="Symbol or phrase…" style="flex:1;min-width:140px;padding:6px;box-sizing:border-box" data-on-keydown-enter="laylaWorkspaceSymbolSearch">
+            <button type="button" class="approve-btn" style="font-size:0.65rem" data-action="laylaWorkspaceSymbolSearch">Search</button>
           </div>
           <pre id="workspace-symbol-results" style="font-size:0.62rem;max-height:200px;overflow:auto;background:var(--code-bg);padding:8px;border-radius:4px;border:1px solid var(--border);white-space:pre-wrap;margin:0">—</pre>
         </div>
@@ -606,7 +791,7 @@
           <div style="font-size:0.68rem;margin-bottom:8px">
             <input type="text" id="km-source" placeholder="URL or folder path (inside sandbox)" style="width:100%;box-sizing:border-box;margin-bottom:4px;padding:4px">
             <input type="text" id="km-label" placeholder="Label (optional)" style="width:100%;box-sizing:border-box;margin-bottom:4px;padding:4px">
-            <button type="button" onclick="runKnowledgeIngest()">Ingest</button>
+            <button type="button" data-action="runKnowledgeIngest">Ingest</button>
           </div>
           <div id="km-ingest-list" style="font-size:0.65rem;color:var(--text-dim);margin-bottom:10px;max-height:120px;overflow-y:auto"></div>
           <div class="panel-title" style="margin-top:4px">Knowledge explorer</div>
@@ -621,17 +806,17 @@
             <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:4px">From workspace (sandbox root)</div>
             <div id="study-suggestions" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px"></div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
-              <button type="button" class="approve-btn" style="font-size:0.65rem;padding:4px 8px" onclick="studyTopicFromChatInput()">Topic from chat input</button>
-              <button type="button" class="approve-btn" style="font-size:0.65rem;padding:4px 8px" onclick="studyTopicFromLastUserMessage()">Topic from last message</button>
+              <button type="button" class="approve-btn" style="font-size:0.65rem;padding:4px 8px" data-action="studyTopicFromChatInput">Topic from chat input</button>
+              <button type="button" class="approve-btn" style="font-size:0.65rem;padding:4px 8px" data-action="studyTopicFromLastUserMessage">Topic from last message</button>
             </div>
           </div>
           <div class="study-add">
-            <input type="text" id="study-input" placeholder="New topic..." onkeydown="if(event.key==='Enter')addStudyPlan()">
-            <button onclick="addStudyPlan()">+</button>
+            <input type="text" id="study-input" placeholder="New topic..." data-on-keydown-enter="addStudyPlan">
+            <button data-action="addStudyPlan">+</button>
           </div>
           <div class="panel-title" style="margin-top:14px">Engine plans</div>
           <p class="rta-muted" style="margin:0 0 8px;font-size:0.68rem">Durable plans (draft → approve → execute). Uses workspace path from <strong>Settings</strong> when set.</p>
-          <button type="button" class="approve-btn" style="font-size:0.7rem;margin-bottom:8px" onclick="refreshLaylaPlansPanel()">Refresh list</button>
+          <button type="button" class="approve-btn" style="font-size:0.7rem;margin-bottom:8px" data-action="refreshLaylaPlansPanel">Refresh list</button>
           <div id="layla-plans-last-exec" style="font-size:0.68rem;margin-bottom:8px;color:var(--text-dim)"></div>
           <div id="layla-plans-list" style="font-size:0.72rem"><span style="color:var(--text-dim)">Open this tab to load.</span></div>
 
@@ -640,8 +825,8 @@
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
               <span class="panel-title" style="margin:0;font-size:0.7rem">Autonomous execution</span>
               <div style="display:flex;gap:4px">
-                <button type="button" onclick="laylaAutoStop()" class="approve-btn" style="font-size:0.6rem;padding:2px 6px;background:rgba(231,76,60,0.2);border-color:#e74c3c;color:#e74c3c">Stop</button>
-                <button type="button" onclick="laylaAutoMonitorClose()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.8rem" title="Hide panel">✕</button>
+                <button type="button" data-action="laylaAutoStop" class="approve-btn" style="font-size:0.6rem;padding:2px 6px;background:rgba(231,76,60,0.2);border-color:#e74c3c;color:#e74c3c">Stop</button>
+                <button type="button" data-action="laylaAutoMonitorClose" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.8rem" title="Hide panel">✕</button>
               </div>
             </div>
             <div style="height:6px;background:var(--code-bg);border-radius:3px;overflow:hidden;margin-bottom:6px">
@@ -658,15 +843,15 @@
         <div class="rcp-subpage" data-rcp-sub="memory">
           <!-- Memory sub-tabs -->
           <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">
-            <button type="button" class="rcp-subtab active" data-mem-sub="browse" onclick="showMemorySubTab('browse')" style="font-size:0.65rem;padding:3px 8px">Browse</button>
-            <button type="button" class="rcp-subtab" data-mem-sub="search" onclick="showMemorySubTab('search')" style="font-size:0.65rem;padding:3px 8px">Search</button>
-            <button type="button" class="rcp-subtab" data-mem-sub="checkpoints" onclick="showMemorySubTab('checkpoints')" style="font-size:0.65rem;padding:3px 8px">Checkpoints</button>
+            <button type="button" class="rcp-subtab active" data-mem-sub="browse" data-action="showMemorySubTab" data-arg="browse" style="font-size:0.65rem;padding:3px 8px">Browse</button>
+            <button type="button" class="rcp-subtab" data-mem-sub="search" data-action="showMemorySubTab" data-arg="search" style="font-size:0.65rem;padding:3px 8px">Search</button>
+            <button type="button" class="rcp-subtab" data-mem-sub="checkpoints" data-action="showMemorySubTab" data-arg="checkpoints" style="font-size:0.65rem;padding:3px 8px">Checkpoints</button>
           </div>
 
           <!-- Browse sub-tab -->
           <div data-mem-subpage="browse">
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
-              <select id="mem-browse-type" style="font-size:0.68rem;padding:3px;background:var(--code-bg);color:var(--text);border:1px solid var(--border);border-radius:3px" onchange="laylaMemBrowse(0)">
+              <select id="mem-browse-type" style="font-size:0.68rem;padding:3px;background:var(--code-bg);color:var(--text);border:1px solid var(--border);border-radius:3px" data-on-change="laylaMemBrowseReset">
                 <option value="">All types</option>
                 <option value="fact">Fact</option>
                 <option value="strategy">Strategy</option>
@@ -674,12 +859,12 @@
                 <option value="preference">Preference</option>
                 <option value="pattern">Pattern</option>
               </select>
-              <select id="mem-browse-sort" style="font-size:0.68rem;padding:3px;background:var(--code-bg);color:var(--text);border:1px solid var(--border);border-radius:3px" onchange="laylaMemBrowse(0)">
+              <select id="mem-browse-sort" style="font-size:0.68rem;padding:3px;background:var(--code-bg);color:var(--text);border:1px solid var(--border);border-radius:3px" data-on-change="laylaMemBrowseReset">
                 <option value="recent">Recent</option>
                 <option value="confidence">Confidence</option>
               </select>
-              <input id="mem-browse-q" placeholder="Filter…" style="flex:1;min-width:80px;font-size:0.68rem;padding:3px" oninput="laylaMemBrowse(0)" autocomplete="off">
-              <button type="button" class="approve-btn" style="font-size:0.65rem" onclick="laylaMemBrowse(0)">Load</button>
+              <input id="mem-browse-q" placeholder="Filter…" style="flex:1;min-width:80px;font-size:0.68rem;padding:3px" data-on-input="laylaMemBrowseReset" autocomplete="off">
+              <button type="button" class="approve-btn" style="font-size:0.65rem" data-action="laylaMemBrowseReset">Load</button>
             </div>
             <div id="mem-browse-list" style="font-size:0.68rem;max-height:320px;overflow-y:auto;margin-bottom:6px">
               <span style="color:var(--text-dim)">Click Load to browse learnings.</span>
@@ -690,13 +875,13 @@
           <!-- Search sub-tab -->
           <div data-mem-subpage="search" style="display:none">
             <div class="panel-title">Semantic search</div>
-            <input id="memory-search" placeholder="Search memories…" oninput="onMemorySearch(this.value)" autocomplete="off">
+            <input id="memory-search" placeholder="Search memories…" data-on-input="onMemorySearch" autocomplete="off">
             <div id="memory-search-results" style="font-size:0.72rem"><span style="color:var(--text-dim);font-size:0.7rem">Type to search learnings</span></div>
             <div class="panel-title" style="margin-top:10px">Elasticsearch (keyword)</div>
             <p class="rta-muted" style="margin:0 0 6px;font-size:0.65rem">Optional mirror. When off, use semantic search above.</p>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;align-items:center">
-              <input type="text" id="es-learning-search" placeholder="Keyword search…" style="flex:1;min-width:140px;padding:4px;box-sizing:border-box" onkeydown="if(event.key==='Enter')runElasticsearchLearningSearch()">
-              <button type="button" class="approve-btn" style="font-size:0.65rem" onclick="runElasticsearchLearningSearch()">Search</button>
+              <input type="text" id="es-learning-search" placeholder="Keyword search…" style="flex:1;min-width:140px;padding:4px;box-sizing:border-box" data-on-keydown-enter="runElasticsearchLearningSearch">
+              <button type="button" class="approve-btn" style="font-size:0.65rem" data-action="runElasticsearchLearningSearch">Search</button>
             </div>
             <div id="es-learning-results" style="font-size:0.68rem;margin-bottom:12px"><span style="color:var(--text-dim);font-size:0.7rem">GET /memory/elasticsearch/search</span></div>
           </div>
@@ -705,7 +890,7 @@
           <div data-mem-subpage="checkpoints" style="display:none">
             <div class="panel-title">File checkpoints</div>
             <p class="rta-muted" style="margin:0 0 6px;font-size:0.65rem">Snapshots before writes. Restore may require approval (Safety tab).</p>
-            <button type="button" class="approve-btn" style="font-size:0.65rem;margin-bottom:6px" onclick="refreshFileCheckpointsPanel()">Refresh list</button>
+            <button type="button" class="approve-btn" style="font-size:0.65rem;margin-bottom:6px" data-action="refreshFileCheckpointsPanel">Refresh list</button>
             <div id="file-checkpoints-list" style="font-size:0.68rem;max-height:280px;overflow-y:auto"><span style="color:var(--text-dim);font-size:0.7rem">Click Refresh to load</span></div>
           </div>
         </div>
@@ -716,13 +901,13 @@
           <p class="rta-muted" style="margin:0 0 8px;font-size:0.68rem">Operator notes about people and relationships, stored at <code>.layla/relationship_codex.json</code> under your <strong>workspace path</strong> (Settings). Optional: set <code>relationship_codex_inject_enabled</code> to include a short digest in Layla&apos;s context.</p>
           <p id="relationship-codex-status" style="font-size:0.68rem;color:var(--text-dim);margin:0 0 6px">Set workspace in Settings, then Load.</p>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-            <button type="button" class="approve-btn" style="font-size:0.7rem" onclick="refreshRelationshipCodex()">Load</button>
-            <button type="button" class="approve-btn" style="font-size:0.7rem" onclick="saveRelationshipCodex()">Save JSON</button>
+            <button type="button" class="approve-btn" style="font-size:0.7rem" data-action="refreshRelationshipCodex">Load</button>
+            <button type="button" class="approve-btn" style="font-size:0.7rem" data-action="saveRelationshipCodex">Save JSON</button>
           </div>
           <textarea id="relationship-codex-json" style="width:100%;min-height:220px;box-sizing:border-box;font-family:ui-monospace,monospace;font-size:0.65rem;padding:8px;background:var(--code-bg);color:var(--text);border:1px solid var(--border);border-radius:4px" spellcheck="false" placeholder='{ "entities": { } }'></textarea>
           <div class="panel-title" style="margin-top:12px">Skills</div>
           <p class="rta-muted" style="margin:0 0 8px;font-size:0.68rem">Markdown skills under <code>.layla/skills/</code>, <code>skills/</code>, or <code>.claude/skills/</code>.</p>
-          <button type="button" class="approve-btn" style="font-size:0.7rem;margin-bottom:8px" onclick="refreshSkillsList()">Refresh list</button>
+          <button type="button" class="approve-btn" style="font-size:0.7rem;margin-bottom:8px" data-action="refreshSkillsList">Refresh list</button>
           <div id="platform-skills" style="font-size:0.72rem"><span style="color:var(--text-dim)">Open this tab to load.</span></div>
         </div>
       </section>
@@ -732,8 +917,8 @@
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <div class="panel-title" style="margin:0">Artifacts</div>
           <div style="display:flex;gap:4px">
-            <button type="button" class="approve-btn" style="font-size:0.65rem" onclick="laylaArtifactsScan()" title="Re-scan current response for code blocks">⟳ Scan</button>
-            <button type="button" class="approve-btn" style="font-size:0.65rem;background:transparent;border-color:var(--border);color:var(--text-dim)" onclick="laylaArtifactsClear()" title="Clear artifact list">Clear</button>
+            <button type="button" class="approve-btn" style="font-size:0.65rem" data-action="laylaArtifactsScan" title="Re-scan current response for code blocks">⟳ Scan</button>
+            <button type="button" class="approve-btn" style="font-size:0.65rem;background:transparent;border-color:var(--border);color:var(--text-dim)" data-action="laylaArtifactsClear" title="Clear artifact list">Clear</button>
           </div>
         </div>
         <p class="rta-muted" style="margin:0 0 8px;font-size:0.65rem">Code blocks and documents extracted from responses. Click to expand, copy, or send edits back.</p>
@@ -745,13 +930,13 @@
           <div style="background:var(--bg-panel,#1a1a2e);border:1px solid var(--asp-line,var(--border));border-radius:6px;padding:16px;width:min(720px,92vw);max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;gap:10px">
             <div style="display:flex;justify-content:space-between;align-items:center">
               <span id="artifact-edit-lang" style="font-size:0.72rem;color:var(--asp);font-family:ui-monospace,monospace"></span>
-              <button type="button" onclick="laylaArtifactEditClose()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1rem">✕</button>
+              <button type="button" data-action="laylaArtifactEditClose" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1rem">✕</button>
             </div>
             <textarea id="artifact-edit-content" style="width:100%;min-height:320px;box-sizing:border-box;font-family:ui-monospace,monospace;font-size:0.72rem;padding:10px;background:var(--code-bg);color:var(--text);border:1px solid var(--border);border-radius:4px;resize:vertical" spellcheck="false"></textarea>
             <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
-              <button type="button" class="approve-btn" style="font-size:0.72rem" onclick="laylaArtifactCopyEdit()" title="Copy content">Copy</button>
-              <button type="button" class="approve-btn" style="font-size:0.72rem" onclick="laylaArtifactSendEdit()" title="Send edited version to Layla">Send edits</button>
-              <button type="button" class="tab-btn" style="font-size:0.72rem" onclick="laylaArtifactEditClose()">Cancel</button>
+              <button type="button" class="approve-btn" style="font-size:0.72rem" data-action="laylaArtifactCopyEdit" title="Copy content">Copy</button>
+              <button type="button" class="approve-btn" style="font-size:0.72rem" data-action="laylaArtifactSendEdit" title="Send edited version to Layla">Send edits</button>
+              <button type="button" class="tab-btn" style="font-size:0.72rem" data-action="laylaArtifactEditClose">Cancel</button>
             </div>
           </div>
         </div>
@@ -770,20 +955,20 @@
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
               <input type="number" id="autonomous-max-steps" placeholder="max_steps" value="30" style="width:100px;padding:6px;box-sizing:border-box" min="1" max="500">
               <input type="number" id="autonomous-timeout" placeholder="timeout_s" value="120" style="width:110px;padding:6px;box-sizing:border-box" min="5" max="3600">
-              <button type="button" class="approve-btn" onclick="laylaRunInvestigation()" title="Preset goal for repo investigation" style="font-size:0.7rem">Run investigation</button>
+              <button type="button" class="approve-btn" data-action="laylaRunInvestigation" title="Preset goal for repo investigation" style="font-size:0.7rem">Run investigation</button>
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
-              <button type="button" class="approve-btn" onclick="laylaInvestigationTemplateTrace()" title="Trace symbol/API usage across files" style="font-size:0.65rem;padding:4px 8px">Trace function usage</button>
-              <button type="button" class="approve-btn" onclick="laylaInvestigationTemplateStructure()" title="Map layout, packages, and entry points" style="font-size:0.65rem;padding:4px 8px">Analyze repo structure</button>
-              <button type="button" class="approve-btn" onclick="laylaInvestigationTemplateBug()" title="Hypothesize bug sources from evidence" style="font-size:0.65rem;padding:4px 8px">Find likely bug source</button>
+              <button type="button" class="approve-btn" data-action="laylaInvestigationTemplateTrace" title="Trace symbol/API usage across files" style="font-size:0.65rem;padding:4px 8px">Trace function usage</button>
+              <button type="button" class="approve-btn" data-action="laylaInvestigationTemplateStructure" title="Map layout, packages, and entry points" style="font-size:0.65rem;padding:4px 8px">Analyze repo structure</button>
+              <button type="button" class="approve-btn" data-action="laylaInvestigationTemplateBug" title="Hypothesize bug sources from evidence" style="font-size:0.65rem;padding:4px 8px">Find likely bug source</button>
             </div>
-            <button type="button" class="aspect-btn" onclick="laylaRunAutonomousResearch()" style="font-size:0.75rem">Run autonomous</button>
+            <button type="button" class="aspect-btn" data-action="laylaRunAutonomousResearch" style="font-size:0.75rem">Run autonomous</button>
             <div id="autonomous-result-summary" style="margin-top:10px;font-size:0.68rem;line-height:1.45;color:var(--text);white-space:pre-wrap;word-break:break-word;border:1px solid var(--border);border-radius:4px;padding:8px;background:rgba(0,0,0,0.12)">—</div>
             <pre id="autonomous-result" style="margin-top:8px;font-size:0.62rem;max-height:220px;overflow:auto;background:var(--code-bg);padding:8px;border-radius:4px;border:1px solid var(--border);white-space:pre-wrap">—</pre>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:6px">
             <div class="panel-title" style="margin-bottom:0">Research mission</div>
-            <button type="button" class="tab-btn" onclick="refreshMissionStatus().then(function(){ var t = document.querySelector('#research-mission-panel .tab-btn.active'); if(t) showResearchTab(t.getAttribute('data-tab')); })" title="Refresh status and current tab">Refresh</button>
+            <button type="button" class="tab-btn" data-action="refreshMissionAndTab" title="Refresh status and current tab">Refresh</button>
           </div>
           <div id="mission-status-box" style="font-size:0.75rem;color:var(--text);margin-bottom:8px">
             <div id="mission-status-line">—</div>
@@ -793,18 +978,86 @@
             <div id="mission-status-resumable" style="margin-top:4px;display:none;color:var(--accent)">Mission in progress or resumable</div>
           </div>
           <div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap">
-            <button type="button" class="tab-btn active" data-tab="summary" onclick="showResearchTab('summary')">Summary</button>
-            <button type="button" class="tab-btn" data-tab="actions" onclick="showResearchTab('actions')">Actions</button>
-            <button type="button" class="tab-btn" data-tab="patterns" onclick="showResearchTab('patterns')">Patterns</button>
-            <button type="button" class="tab-btn" data-tab="risks" onclick="showResearchTab('risks')">Risks</button>
-            <button type="button" class="tab-btn" data-tab="last" onclick="showResearchTab('last')">Last output</button>
+            <button type="button" class="tab-btn active" data-tab="summary" data-action="showResearchTab" data-arg="summary">Summary</button>
+            <button type="button" class="tab-btn" data-tab="actions" data-action="showResearchTab" data-arg="actions">Actions</button>
+            <button type="button" class="tab-btn" data-tab="patterns" data-action="showResearchTab" data-arg="patterns">Patterns</button>
+            <button type="button" class="tab-btn" data-tab="risks" data-action="showResearchTab" data-arg="risks">Risks</button>
+            <button type="button" class="tab-btn" data-tab="last" data-action="showResearchTab" data-arg="last">Last output</button>
           </div>
           <div id="research-tab-content" style="min-height:140px;max-height:min(280px,40vh);overflow:auto;padding:8px;background:var(--code-bg);border:1px solid var(--border);border-radius:4px;font-size:0.8rem;white-space:pre-wrap;word-break:break-word"></div>
         </div>
       </section>
+
+      <!-- Growth and Cluster panels kept as hidden aliases for JS compatibility -->
+      <section class="rcp-page" data-rcp="growth" role="tabpanel" aria-hidden="true" id="panel-growth" style="display:none">
+        <!-- XP Progress -->
+        <div class="growth-section">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span id="growth-rank-badge" class="growth-rank-badge">Rank 0</span>
+              <span id="growth-phase-name" style="font-size:0.65rem;color:var(--text-dim)">Awakening</span>
+            </div>
+            <span id="growth-xp-pct" style="font-size:0.6rem;color:var(--accent)">0%</span>
+          </div>
+          <div class="growth-xp-bar">
+            <div id="growth-xp-bar-fill" class="growth-xp-bar-fill" style="width:0%"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:0.55rem;color:var(--text-dim);margin-top:3px">
+            <span><span id="growth-xp-current">0</span> XP</span>
+            <span><span id="growth-xp-needed">500</span> to next rank</span>
+          </div>
+        </div>
+        <!-- Unlocks -->
+        <div class="growth-section">
+          <div class="growth-section-title">Unlocked Abilities</div>
+          <div id="growth-unlocks-list" class="growth-unlocks-list">
+            <div class="growth-unlock-empty">Earn XP to unlock abilities</div>
+          </div>
+        </div>
+        <!-- Stats cards row -->
+        <div class="growth-section">
+          <div class="growth-section-title">Knowledge</div>
+          <div class="growth-stat-row">
+            <div class="growth-stat-card"><div class="growth-stat-value" id="growth-total-facts">—</div><div class="growth-stat-label">Facts</div></div>
+            <div class="growth-stat-card"><div class="growth-stat-value" id="growth-verified-pct">—</div><div class="growth-stat-label">Verified</div></div>
+            <div class="growth-stat-card"><div class="growth-stat-value" id="growth-week-count">—</div><div class="growth-stat-label">This Week</div></div>
+            <div class="growth-stat-card"><div class="growth-stat-value" id="growth-pending-verify">—</div><div class="growth-stat-label">Pending</div></div>
+          </div>
+        </div>
+        <!-- Velocity sparkline -->
+        <div class="growth-section">
+          <div class="growth-section-title">Learning Velocity (4 weeks)</div>
+          <div id="growth-velocity-sparkline"></div>
+        </div>
+        <!-- Verification breakdown -->
+        <div class="growth-section">
+          <div class="growth-section-title">Verification</div>
+          <div style="display:flex;gap:12px;font-size:0.6rem">
+            <span style="color:#4caf50">&#10003; <span id="growth-verify-confirmed">0</span> confirmed</span>
+            <span style="color:#f44336">&#10007; <span id="growth-verify-rejected">0</span> rejected</span>
+            <span style="color:#ff9800">? <span id="growth-verify-pending">0</span> pending</span>
+          </div>
+        </div>
+        <!-- Capabilities -->
+        <div class="growth-section">
+          <div class="growth-section-title">Capabilities</div>
+          <div id="growth-capabilities-list">No capabilities tracked yet</div>
+        </div>
+        <!-- Learning types -->
+        <div class="growth-section">
+          <div class="growth-section-title">Learning Types</div>
+          <div id="growth-types-list">No learnings yet</div>
+        </div>
+        <!-- Knowledge watcher -->
+        <div class="growth-section">
+          <div class="growth-section-title">Knowledge Watcher</div>
+          <div id="growth-watcher-status">Knowledge watcher not active</div>
+        </div>
+      </section>
+      <section class="rcp-page" data-rcp="cluster" role="tabpanel" aria-hidden="true" id="panel-cluster" style="display:none"></section>
+
     </div>
-  </aside>
-</div>
+</aside>
 
 <details id="operator-trace-dock" class="operator-trace-dock">
   <summary>Operator trace <span id="stream-step-badge" style="font-size:0.58rem;opacity:0.7;margin-left:6px;font-family:ui-monospace,monospace;display:none"></span></summary>
@@ -826,22 +1079,22 @@
   <div style="background:var(--bg-panel,#12122a);border:1px solid var(--asp-line,var(--border));border-radius:6px;width:min(760px,95vw);max-height:90vh;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
       <div id="plan-viz-title" role="heading" aria-level="2" style="font-size:0.8rem;color:var(--text);flex:1">Loading…</div>
-      <button type="button" onclick="laylaCloseViz()" aria-label="Close plan visualization" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1.1rem;margin-left:8px">✕</button>
+      <button type="button" data-action="laylaCloseViz" aria-label="Close plan visualization" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1.1rem;margin-left:8px">✕</button>
     </div>
     <canvas id="plan-viz-canvas" style="width:100%;display:block;border-radius:4px;border:1px solid var(--border)"></canvas>
     <!-- Similar plans (Phase 2.3) -->
     <div id="plan-viz-similar" style="display:none;font-size:0.68rem;color:var(--text);border-top:1px solid var(--border);padding-top:8px"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button type="button" class="approve-btn" style="font-size:0.72rem" onclick="laylaCloseViz()">Close</button>
+      <button type="button" class="approve-btn" style="font-size:0.72rem" data-action="laylaCloseViz">Close</button>
     </div>
   </div>
 </div>
 
 <!-- ── Chat search overlay ─────────────────────────────────────────────── -->
 <div id="chat-search-overlay" style="display:none;position:fixed;top:0;left:0;right:0;background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 20px;z-index:10002;align-items:center;gap:12px;flex-direction:row">
-  <input type="text" id="chat-search-input" placeholder="Search in chat (Ctrl+F)…" oninput="onChatSearchInput(this.value)" style="flex:1;padding:8px 12px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.9rem">
-  <button onclick="chatSearchNext()" style="padding:6px 12px;background:var(--asp);border:none;color:#fff;border-radius:4px;cursor:pointer">Next</button>
-  <button onclick="closeChatSearch()" style="padding:6px 12px;background:transparent;border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer">Close</button>
+  <input type="text" id="chat-search-input" placeholder="Search in chat (Ctrl+F)…" data-on-input="onChatSearchInput" style="flex:1;padding:8px 12px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.9rem">
+  <button data-action="chatSearchNext" style="padding:6px 12px;background:var(--asp);border:none;color:#fff;border-radius:4px;cursor:pointer">Next</button>
+  <button data-action="closeChatSearch" style="padding:6px 12px;background:transparent;border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer">Close</button>
 </div>
 
 <div id="keyboard-shortcuts-sheet" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10005;align-items:center;justify-content:center;padding:20px" onclick="if (event.target === this) hideKeyboardShortcutsSheet()">
@@ -851,9 +1104,10 @@
       <div style="color:var(--text-dim)">Quick guide</div>
       <ul style="margin:6px 0 0 16px;padding:0;font-size:0.82rem;line-height:1.6;color:var(--text)">
         <li>Use <code>@aspect</code> for one-shot routing (e.g. <code>@nyx</code>).</li>
-        <li><strong>Settings</strong> controls streaming, permissions, workspace path, and content policy.</li>
-        <li><strong>Library</strong> is models, knowledge, study/plans, memory, plugins/codex.</li>
-        <li>Writes and shell commands require explicit approval.</li>
+        <li><strong>Dashboard</strong> — system health, growth stats, cluster.</li>
+        <li><strong>Settings</strong> — streaming, permissions, workspace, voice, integrations.</li>
+        <li><strong>Library</strong> — models, knowledge, study/plans, memory, plugins.</li>
+        <li>Header <strong>⋮</strong> menu has exports, character lab, terminal.</li>
       </ul>
     </div>
     <div style="color:var(--text-dim);font-size:0.78rem;margin:0 0 6px">Keyboard shortcuts</div>
@@ -866,7 +1120,7 @@
       <li>Arrow Up / Down — Recent prompts (caret at start/end)</li>
       <li>Escape — Close overlays, stop mic</li>
     </ul>
-    <button type="button" class="setup-btn primary" style="margin-top:16px;width:100%" onclick="hideKeyboardShortcutsSheet()">Close</button>
+    <button type="button" class="setup-btn primary" style="margin-top:16px;width:100%" data-action="hideKeyboardShortcutsSheet">Close</button>
   </div>
 </div>
 
@@ -884,25 +1138,25 @@
     </div>
     <div class="settings-presets" style="margin:8px 0;padding:8px;border:1px solid rgba(255,255,255,0.12);border-radius:8px">
       <span class="hint">Low-resource preset (merges into config; restart server for full effect):</span>
-      <button type="button" class="settings-save" style="margin-left:8px" onclick="applySettingsPreset('potato')">Apply potato preset</button>
+      <button type="button" class="settings-save" style="margin-left:8px" data-action="applySettingsPreset" data-arg="potato">Apply potato preset</button>
     </div>
     <div class="settings-admin" style="margin:8px 0;padding:8px;border:1px solid rgba(255,255,255,0.12);border-radius:8px">
       <div class="hint" style="margin-bottom:6px"><strong>Admin mode</strong> — toggle <code>admin_mode</code> / <code>admin_auto_checkpoint</code> / <code>admin_blocklist_override</code> in the settings form above (save applies).</div>
       <div style="margin-top:8px;font-size:0.7rem;color:var(--text-dim)">Undo last Layla git checkpoint (needs git repo + last commit subject contains <code>layla-checkpoint</code>):</div>
       <input type="text" id="admin-undo-workspace" placeholder="Workspace root path" style="width:100%;max-width:420px;margin-top:4px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--code-bg);color:var(--text)" />
-      <button type="button" class="settings-save" style="margin-top:6px" onclick="typeof laylaGitUndoCheckpoint==='function'&&laylaGitUndoCheckpoint()">Git undo last checkpoint</button>
+      <button type="button" class="settings-save" style="margin-top:6px" data-action="laylaGitUndoCheckpoint">Git undo last checkpoint</button>
       <span id="admin-undo-msg" class="hint" style="margin-left:8px"></span>
     </div>
     <div class="settings-features" style="margin:8px 0;padding:8px;border:1px solid rgba(255,255,255,0.12);border-radius:8px">
       <div class="hint" style="margin-bottom:6px"><strong>Optional features</strong> — install missing Python packages (allowlisted).</div>
-      <button type="button" class="settings-save" onclick="typeof laylaLoadOptionalFeatures==='function'&&laylaLoadOptionalFeatures()">Refresh list</button>
+      <button type="button" class="settings-save" data-action="laylaLoadOptionalFeatures">Refresh list</button>
       <div id="optional-features-list" style="margin-top:8px;font-size:0.72rem;max-height:180px;overflow-y:auto"></div>
     </div>
     <div class="settings-import" style="margin:8px 0;padding:8px;border:1px solid rgba(255,255,255,0.12);border-radius:8px">
       <div class="hint" style="margin-bottom:6px"><strong>Import chat export</strong> (WhatsApp <code>_chat.txt</code> paste) → <code>knowledge/imports/</code></div>
       <input type="text" id="import-chat-title" placeholder="Title / filename stem" style="width:100%;max-width:320px;margin-bottom:6px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--code-bg);color:var(--text)" />
       <textarea id="import-chat-text" placeholder="Paste export text…" style="width:100%;min-height:90px;font-size:0.72rem;border-radius:4px;border:1px solid var(--border);background:var(--code-bg);color:var(--text);padding:6px"></textarea>
-      <button type="button" class="settings-save" style="margin-top:6px" onclick="typeof laylaImportChat==='function'&&laylaImportChat()">Import to knowledge</button>
+      <button type="button" class="settings-save" style="margin-top:6px" data-action="laylaImportChat">Import to knowledge</button>
       <span id="import-chat-msg" class="hint" style="margin-left:8px"></span>
     </div>
     <div class="settings-appearance" style="margin:8px 0;padding:8px;border:1px solid rgba(255,255,255,0.12);border-radius:8px">
@@ -911,12 +1165,12 @@
       <label style="display:block;margin:4px 0;font-size:0.75rem">Avatar style <input id="ui_avatar_style" type="text" style="width:100%;max-width:200px" placeholder="rings" /></label>
       <label style="display:block;margin:6px 0;font-size:0.75rem"><input id="chat_lite_mode" type="checkbox" /> Chat lite mode (shorter agent path)</label>
       <label style="display:block;margin:6px 0;font-size:0.75rem"><input id="ui_decision_trace_enabled" type="checkbox" /> Include decision policy trace in API/SSE when enabled</label>
-      <button type="button" class="settings-save" style="margin-top:6px" onclick="typeof saveAppearanceLite==='function'&&saveAppearanceLite()">Save appearance &amp; lite</button>
+      <button type="button" class="settings-save" style="margin-top:6px" data-action="saveAppearanceLite">Save appearance &amp; lite</button>
       <span id="appearance-save-msg" class="hint" style="margin-left:8px"></span>
     </div>
     <div class="settings-btns">
-      <button class="settings-save" onclick="saveSettings()">Save Settings</button>
-      <button class="settings-close" onclick="closeSettings()">Close</button>
+      <button class="settings-save" data-action="saveSettings">Save Settings</button>
+      <button class="settings-close" data-action="closeSettings">Close</button>
       <span class="settings-save-msg" id="settings-save-msg">✓ Saved</span>
     </div>
   </div>
@@ -929,8 +1183,8 @@
     <div id="batch-diff-tabs" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;max-height:120px;overflow-y:auto"></div>
     <div id="batch-diff-content" class="diff-panel" style="min-height:200px;max-height:50vh;overflow:auto;white-space:pre-wrap;font-family:JetBrains Mono,monospace;font-size:0.72rem"></div>
     <div class="diff-actions" style="margin-top:10px">
-      <button class="diff-cancel-btn" onclick="closeBatchDiffViewer()">Cancel</button>
-      <button class="diff-confirm-btn" id="batch-apply-btn" onclick="confirmApplyBatch()">Apply all</button>
+      <button class="diff-cancel-btn" data-action="closeBatchDiffViewer">Cancel</button>
+      <button class="diff-confirm-btn" id="batch-apply-btn" data-action="confirmApplyBatch">Apply all</button>
     </div>
   </div>
 </div>
@@ -951,8 +1205,8 @@
       </div>
     </div>
     <div class="diff-actions">
-      <button class="diff-cancel-btn" onclick="closeDiffViewer()">Cancel</button>
-      <button class="diff-confirm-btn" id="diff-confirm-btn" onclick="confirmApplyFile()">Apply (requires approval)</button>
+      <button class="diff-cancel-btn" data-action="closeDiffViewer">Cancel</button>
+      <button class="diff-confirm-btn" id="diff-confirm-btn" data-action="confirmApplyFile">Apply (requires approval)</button>
     </div>
   </div>
 </div>
@@ -960,7 +1214,7 @@
 <!-- Character Lab overlay (full-screen modal) -->
 <div id="character-lab-overlay" aria-hidden="true">
   <div id="character-lab-container">
-    <button type="button" id="charlab-close-btn" onclick="closeCharacterLab()" aria-label="Close Character Lab">&times;</button>
+    <button type="button" id="charlab-close-btn" data-action="closeCharacterLab" aria-label="Close Character Lab">&times;</button>
     <div style="color:var(--text-dim);font-size:0.8rem">Loading Character Lab...</div>
   </div>
 </div>
@@ -973,118 +1227,13 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(function () {});
 }
 </script>
-<!-- Phase 8.4: Code-split modules — load order matters -->
-<script src="/layla-ui/js/layla-ui-phases.js"></script>
-<script src="/layla-ui/js/layla-sprites.js"></script>
-<script src="/layla-ui/js/layla-bootstrap.js"></script>
-<script src="/layla-ui/js/state.js"></script>
-<script src="/layla-ui/js/api.js"></script>
-<!-- Shared utilities (escapeHtml, showToast, fetchWithTimeout, etc.) — MUST load first -->
-<script src="/layla-ui/js/layla-utils.js"></script>
-<!-- Aspect switching, colors, maturity card, aspect registry -->
-<script src="/layla-ui/js/layla-aspect.js"></script>
-<!-- Voice recording, TTS, audio playback -->
-<script src="/layla-ui/js/layla-voice.js"></script>
-<script src="/layla-ui/js/sidebar.js"></script>
-<script src="/layla-ui/js/panels.js"></script>
-<script src="/layla-ui/js/layla-wizard.js"></script>
-<!-- First-run setup overlay and onboarding wizard -->
-<script src="/layla-ui/js/layla-setup.js"></script>
-<!-- Settings, workspace presets, relationship codex, content policy -->
-<script src="/layla-ui/js/layla-settings-full.js"></script>
-<!-- Chat rendering: addMsg, typing indicators, stream stats, code blocks -->
-<script src="/layla-ui/js/layla-chat-render.js"></script>
-<!-- Input handling: mentions, URL chip, file attachments, chat search, diff viewer -->
-<script src="/layla-ui/js/layla-input.js"></script>
-<!-- Core: send(), executePlan, health polling, panel routing, init -->
-<script src="/layla-ui/js/layla-app.js"></script>
-<script src="/layla-ui/js/layla-conversations.js"></script>
-<script src="/layla-ui/js/layla-artifacts.js"></script>
-<script src="/layla-ui/js/layla-search.js"></script>
-<script src="/layla-ui/js/layla-memory.js"></script>
-<script src="/layla-ui/js/layla-plan-viz.js"></script>
-<script src="/layla-ui/js/layla-autonomous.js"></script>
-<!-- Research panel, missions, approvals, sendResearch, autonomous research -->
-<script src="/layla-ui/js/layla-research.js"></script>
-<!-- Workspace panels: models, knowledge, study, skills, plans, execution -->
-<script src="/layla-ui/js/layla-workspace.js"></script>
-<!-- Phase 9: Multi-device discovery, pairing, cluster UI -->
-<script src="/layla-ui/js/layla-pairing.js"></script>
-<!-- Character Lab: aspect customization, tutorial, intro -->
-<script src="/layla-ui/js/layla-character-creator.js"></script>
-<script src="/layla-ui/js/layla-perf.js"></script>
-<script>
-// Restore persisted Performance settings on load
-(function() {
-  try {
-    if (localStorage.getItem('layla_low_fx') === 'true') {
-      document.documentElement.style.setProperty('--fx-strength', '0.4');
-      var cb = document.getElementById('low-fx-toggle');
-      if (cb) cb.checked = true;
-    }
-    if (localStorage.getItem('layla_idb_cache') === 'false') {
-      var cb2 = document.getElementById('idb-cache-toggle');
-      if (cb2) cb2.checked = false;
-    }
-    if (localStorage.getItem('layla_artifacts_autoscan') === 'false') {
-      var cb3 = document.getElementById('artifacts-autoscan-toggle');
-      if (cb3) cb3.checked = false;
-    }
-    // Sync tts-toggle2 with tts-toggle state
-    var tts2 = document.getElementById('tts-toggle2');
-    if (tts2) tts2.checked = localStorage.getItem('layla_tts') !== 'false';
-    // Restore Obsidian vault path
-    var obsPath = localStorage.getItem('layla_obsidian_vault_path');
-    if (obsPath) {
-      var obsEl = document.getElementById('obsidian-vault-path');
-      if (obsEl) obsEl.value = obsPath;
-    }
-  } catch(_) {}
-})();
-</script>
-<script>
-// ─── Phase 5.1: Obsidian Vault UI helpers ────────────────────────────────────
-function _obsStatus(msg, isErr) {
-  var el = document.getElementById('obsidian-status');
-  if (el) { el.textContent = msg; el.style.color = isErr ? 'var(--error,#e74c3c)' : 'var(--asp)'; }
-}
+<!-- ES Module system (Phase 1 migration: core infra + compat bridge) -->
+<script type="module" src="/layla-ui/main.js"></script>
 
-async function laylaObsidianConnect() {
-  var vp = (document.getElementById('obsidian-vault-path') || {}).value || '';
-  if (!vp.trim()) { _obsStatus('Enter a vault path first.', true); return; }
-  try {
-    _obsStatus('Connecting…');
-    var res = await fetch('/obsidian/connect', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({vault_path: vp}) });
-    var data = await res.json();
-    if (data.ok) {
-      localStorage.setItem('layla_obsidian_vault_path', vp);
-      _obsStatus('Connected: ' + data.vault_path);
-    } else { _obsStatus('Error: ' + (data.error || 'unknown'), true); }
-  } catch(e) { _obsStatus('Network error: ' + e.message, true); }
-}
-
-async function laylaObsidianSync() {
-  try {
-    _obsStatus('Syncing…');
-    var res = await fetch('/obsidian/sync', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
-    var data = await res.json();
-    if (data.ok) {
-      _obsStatus('Synced: ' + data.copied + ' copied, ' + data.skipped_conflicts + ' conflicts skipped');
-    } else { _obsStatus('Error: ' + (data.error || 'unknown'), true); }
-  } catch(e) { _obsStatus('Network error: ' + e.message, true); }
-}
-
-async function laylaObsidianSuggest() {
-  try {
-    _obsStatus('Loading suggestions…');
-    var res = await fetch('/obsidian/suggest?n=5');
-    var data = await res.json();
-    if (!data.ok) { _obsStatus('Error: ' + (data.error || 'unknown'), true); return; }
-    var count = data.count || 0;
-    if (!count) { _obsStatus('No high-confidence learnings to suggest yet.'); return; }
-    _obsStatus(count + ' learnings ready to export → use /obsidian/export API or approve in memory browser');
-  } catch(e) { _obsStatus('Network error: ' + e.message, true); }
-}
-</script>
+<!-- Phase 3 complete: All 28 IIFE scripts removed.
+     Every module is now loaded via main.js (ES module entry point).
+     Legacy window.* shims provided by core/compat.js.
+     Vendor libs (marked, hljs, DOMPurify) remain in <head>. -->
+<!-- All inline scripts converted to ES modules (obsidian.js, perf restore in initObsidian) -->
 </body>
 </html>

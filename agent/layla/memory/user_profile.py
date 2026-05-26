@@ -119,7 +119,7 @@ def get_all_user_identity() -> dict[str, str]:
     migrate()
     with _conn() as db:
         rows = db.execute("SELECT key, snapshot FROM user_identity").fetchall()
-    return {r["key"]: (r["snapshot"] or "").strip() for r in rows if r.get("key")}
+    return {r["key"]: (r["snapshot"] or "").strip() for r in rows if r["key"]}
 
 
 def set_user_identity(key: str, snapshot: str) -> None:

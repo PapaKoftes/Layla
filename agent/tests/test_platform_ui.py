@@ -147,6 +147,6 @@ def test_layla_ui_static_assets_served():
     r = client.get("/layla-ui/css/layla.css")
     assert r.status_code == 200, "layla.css must be served"
     assert len(r.text) > 100
-    r2 = client.get("/layla-ui/js/layla-app.js")
-    assert r2.status_code == 200, "layla-app.js must be served"
+    r2 = client.get("/layla-ui/main.js")
+    assert r2.status_code == 200, "main.js (ES module entry) must be served"
     assert len(r2.text) > 100
