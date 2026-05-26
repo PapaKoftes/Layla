@@ -41,7 +41,7 @@ python main.py
 
 | Category | What's Built |
 |----------|-------------|
-| Agent Loop | 5,700-line orchestrator with tool dispatch, safety checks, plan/execute modes |
+| Agent Loop | 910-line orchestrator with tool dispatch, safety checks, plan/execute modes |
 | Memory | SQLite + ChromaDB + knowledge base + spaced repetition + semantic recall |
 | UI | Three-panel Warframe-themed web interface with SSE streaming, mobile responsive |
 | Discord | 20+ slash commands, per-guild config, rich embeds, error handling |
@@ -60,7 +60,7 @@ python main.py
 ```
 agent/
   main.py                 # FastAPI server, middleware, lifespan
-  agent_loop.py           # Core agent orchestrator (5,736 lines)
+  agent_loop.py           # Core agent orchestrator (910 lines)
   runtime_safety.py       # Config, sandboxing, safety defaults
   config_schema.py        # Editable settings schema for /settings API
   core/
@@ -69,19 +69,26 @@ agent/
   layla/
     memory/               # SQLite DB, migrations, learnings, knowledge
     tools/                # Tool registry and built-in tool implementations
-  services/
-    llm_gateway.py        # LLM completion with LiteLLM integration
-    debate_engine.py      # Multi-aspect deliberation (solo/debate/council/tribunal)
-    model_router.py       # Model file selection and routing summary
-    provider_health.py    # Circuit breaker for LLM providers
-    tunnel_manager.py     # Cloudflared tunnel lifecycle + health
-    tunnel_auth.py        # Hashed token authentication
-    skill_packs.py        # Git-based skill pack installer
-    tts.py / stt.py       # Voice synthesis and recognition
-    memory_consolidation.py  # Background memory maintenance
-    spaced_repetition.py  # SM-2 study scheduling
-    search_router.py      # Multi-backend search fallback
-    web_crawler.py        # Web content extraction
+  services/               # 19 subdirectories, 216 modules, backward-compat shims at top level
+    agent/                # Task runner, conversation manager, session context
+    cluster/              # Multi-device clustering, mDNS discovery, node sync
+    context/              # Conversation context, token budget, window management
+    governance/           # Rate limiting, cost tracking, usage policies
+    infrastructure/       # Core infra: config, logging, scheduling, caching, tunnels
+    llm/                  # LLM gateway, inference routing, model management
+    memory/               # Consolidation, curiosity, knowledge graphs, people codex
+    observability/        # Metrics, tracing, health monitoring
+    personality/          # Aspect behavior, maturity engine, style profiles
+    planning/             # Goal decomposition, plan execution, task tracking
+    prompts/              # Prompt building, compression, tier budgets
+    reasoning/            # Debate engine, deliberation, multi-aspect synthesis
+    retrieval/            # Search routing, semantic recall, web crawling
+    safety/               # Dignity engine, content guard, approval gates
+    sandbox/              # Code execution sandboxing and validation
+    skills/               # Skill pack management and tool generation
+    tools/                # Tool registry, MCP client/server
+    user/                 # Onboarding, user preferences
+    workspace/            # File operations, project management
   routers/
     agent.py              # POST /agent — main chat endpoint with SSE streaming
     system.py             # GET /health, /doctor, /tunnel/*
@@ -90,10 +97,10 @@ agent/
     memory.py             # Memory CRUD and search
   ui/
     css/layla.css          # Main stylesheet (2,200+ lines, Warframe theme)
-    js/                    # 16 JS modules (8,000+ lines)
+    js/                    # 16 ES modules (8,000+ lines)
     index.html             # Three-panel SPA
-  tests/                   # 1,500+ tests
-  docs/                    # Setup guides
+  tests/                   # 11,000+ test functions
+  docs/                    # Setup guides, ADRs, vision roadmap
 discord_bot/
   bot.py                   # Discord bot with 20+ slash commands
   rich_embeds.py           # Per-aspect themed embeds
@@ -135,10 +142,12 @@ See [docs/INSTALL_PROFILES.md](docs/INSTALL_PROFILES.md) for details.
 
 ## Documentation
 
+- [Vision & Roadmap](docs/VISION.md) — Full gap closure and product unification plan
 - [Discord Bot Setup](docs/DISCORD_SETUP.md)
 - [Remote Access / Tunnels](docs/REMOTE_ACCESS.md)
 - [Skill Packs](docs/SKILL_PACKS.md)
 - [Install Profiles](docs/INSTALL_PROFILES.md)
+- [Architecture Decision Records](docs/adr/) — ADR-001 through ADR-006
 
 ## API
 
