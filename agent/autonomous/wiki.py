@@ -35,8 +35,23 @@ def build_candidate(*, title: str, content_md: str) -> WikiCandidate:
     return WikiCandidate(title=title.strip() or "Untitled", slug=_slugify(title), content_md=(content_md or "").strip())
 
 
-def wiki_root_for_workspace(workspace_root: str) -> Path:
-    return (Path(workspace_root).expanduser().resolve() / ".layla" / "wiki").resolve()
+def wiki_root_for_workspace(workspace_root: str, domain: str = "") -> Path:
+    """Return the wiki directory for a given workspace.
+
+    Parameters
+    ----------
+    workspace_root:
+        The workspace directory (e.g. project root).
+    domain:
+        Optional knowledge domain for structured wiki organization.
+        Common domains: ``about-me``, ``domains``, ``procedures``, ``facts``.
+        If empty, returns the flat wiki root ``~/.layla/wiki/``.
+    """
+    base = (Path(workspace_root).expanduser().resolve() / ".layla" / "wiki").resolve()
+    if domain:
+        slug = _slugify(domain)
+        return (base / slug).resolve()
+    return base
 
 
 def merge_wiki_markdown(existing: str, incoming: str) -> str:
@@ -62,13 +77,14 @@ def write_wiki_entry(
     candidate: WikiCandidate,
     allow_write: bool,
     cfg: dict[str, Any],
+    domain: str = "",
 ) -> dict[str, Any]:
     if not cfg.get("autonomous_wiki_enabled", True):
         return {"ok": True, "skipped": True, "reason": "wiki_disabled", "candidate": candidate.as_dict()}
     if not allow_write:
         return {"ok": True, "skipped": True, "reason": "allow_write_false", "candidate": candidate.as_dict()}
 
-    root = wiki_root_for_workspace(workspace_root)
+    root = wiki_root_for_workspace(workspace_root, domain=domain)
     if not inside_sandbox(root):
         raise WikiError("wiki_root_outside_sandbox")
     root.mkdir(parents=True, exist_ok=True)

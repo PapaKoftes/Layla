@@ -26,8 +26,10 @@ def client(tmp_path, monkeypatch):
             return False
 
     import services.plan_service as plan_service_mod
+    import services.planning.plan_service as plan_service_real
 
     monkeypatch.setattr(plan_service_mod, "inside_sandbox", _sandbox_ok)
+    monkeypatch.setattr(plan_service_real, "inside_sandbox", _sandbox_ok)
 
     def fake_run(*_a, **_k):
         return {

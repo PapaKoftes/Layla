@@ -1,0 +1,177 @@
+"""
+Response text cleaning and formatting for the agent loop.
+
+Extracted from agent_loop.py — Phase 2 decomposition.
+These functions clean model output before it reaches the user.
+"""
+import logging
+import re
+import time
+from collections.abc import Callable
+
+logger = logging.getLogger("layla")
+
+
+def is_junk_reply(content: str) -> bool:
+    """True if content is junk that must never reach the user.
+
+    Catches:
+    - empty / whitespace-only
+    - repeated 'assistant: I replied.' echo loops
+    - raw decision-JSON blobs (model confusing tool-decision format with final reply)
+    """
+    if not content or not content.strip():
+        return True
+    s = content.strip().lower()
+    if s == "i replied." or s == "assistant: i replied.":
+        return True
+    remainder = re.sub(r"\s*assistant\s*:\s*i\s+replied\.\s*", " ", s, flags=re.IGNORECASE).strip()
+    if len(remainder) < 15 and ("assistant" in s and "i replied" in s):
+        return True
+    stripped = content.strip()
+    if stripped.startswith("{"):
+        _decision_keys = ("\"action\"", "\"tool\"", "\"thought\"", "\"ok\"", "\"objective_complete\"", "\"args\"")
+        hits = sum(1 for k in _decision_keys if k in stripped)
+        if hits >= 2:
+            return True
+    return False
+
+
+def quick_reply_for_trivial_turn(goal: str) -> str:
+    """Return instant deterministic replies for tiny chat turns."""
+    g = (goal or "").strip()
+    if not g:
+        return ""
+    gl = g.lower()
+    if gl.startswith("reply exactly "):
+        exact = g[len("reply exactly "):].strip().strip("\"'`")
+        return exact[:120]
+    if gl.startswith("say exactly "):
+        exact = g[len("say exactly "):].strip().strip("\"'`")
+        return exact[:120]
+    if gl in {"ok", "okay", "yes", "yep", "no", "nope"}:
+        return "Got it."
+    if re.match(
+        r"^(how are you( doing)?|what'?s up|wassup|how'?s it going|you good)\??$",
+        gl,
+    ):
+        return "I'm good. What do you need?"
+    return ""
+
+
+def truncate_at_next_user_turn(text: str) -> str:
+    """Keep only the first reply; cut at the first 'User:' so we don't save/show the model continuing the dialogue."""
+    if not text or not text.strip():
+        return (text or "").strip()
+    t = text.strip()
+    if re.match(r"^\s*User\s*:", t, re.IGNORECASE):
+        m = re.search(r"^\s*User\s*:[^\n]*?\s+([A-Za-z]+)\s*:", t, re.IGNORECASE)
+        if m:
+            t = t[m.start(1):].strip()
+        else:
+            first_line_end = t.find("\n")
+            if first_line_end != -1:
+                t = t[first_line_end + 1:].strip()
+            else:
+                t = ""
+    m = re.search(r"\n\s*User\s*:", t, re.IGNORECASE)
+    if m:
+        return t[:m.start()].strip()
+    m = re.search(r"\s+User\s*:", t, re.IGNORECASE)
+    if m:
+        return t[:m.start()].strip()
+    return t
+
+
+def strip_junk_from_reply(text: str) -> str:
+    """Remove repeated 'assistant: I replied.' and other junk from a reply before saving/displaying."""
+    if not text or not text.strip():
+        return (text or "").strip()
+    t = text.strip()
+    for _ in range(50):
+        prev = t
+        t = re.sub(r"^\s*assistant\s*:\s*I\s+replied\.\s*", "", t, count=1, flags=re.IGNORECASE).strip()
+        if t == prev:
+            break
+    t = re.sub(r"^\s*\[EARNED_TITLE[^\]]*\]\s*", "", t, flags=re.IGNORECASE).strip()
+    t = re.sub(r"^(Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\s*:\s*", "", t).strip()
+    t = re.sub(r"\[System:\s*Your last response[^\]]*\]\s*", "", t, flags=re.IGNORECASE | re.DOTALL).strip()
+    for _marker in (r"(?:^|\n)\s*#{1,3}\s*(TASK|CONTEXT|SCRATCHPAD|REPO)\b", r"(?:^|\n)\s*Current goal\s*:", r"(?:^|\n)\s*\[Active aspect\s*:", r"(?:^|\n)\s*Last user message\s*:", r"(?:^|\n)\s*Repo snapshot\s*:", r"(?:^|\n)\s*Repo structure\s*:", r"(?:^|\n)\s*##"):
+        m = re.search(_marker, t, re.IGNORECASE)
+        if m:
+            t = t[:m.start()].strip()
+    if is_junk_reply(t):
+        return ""
+    return t
+
+
+def clean_response_text(text: str) -> str:
+    """Strip echoed system head, instruction-like lines, and junk from model output."""
+    if not text:
+        return ""
+    if text[0].lower() == "n" and len(text) > 4 and text[1:].strip().lower().startswith("you are layla"):
+        text = text[1:].strip()
+    paragraphs = text.split("\n\n")
+    while paragraphs and paragraphs[0].strip():
+        first = paragraphs[0].strip().lower()
+        if first.startswith("you are layla") and ("use the identity" in first or "rules below" in first):
+            paragraphs.pop(0)
+        else:
+            break
+    text = "\n\n".join(paragraphs).strip()
+    _echo_pat = re.compile(
+        r"\s*\[[\w\s]+\]\s*\(You are[\s\S]*?(?=\)\.\s|\s*\[[\w\s]+\]\s*\(You are|\s*assistant\s*:|\n\n|\Z)",
+        re.IGNORECASE | re.DOTALL,
+    )
+    for _ in range(20):
+        prev = text
+        text = _echo_pat.sub("", text, count=1).strip()
+        if text == prev:
+            break
+    if re.match(r"^\s*assistant\s*:\s*", text, re.IGNORECASE):
+        text = re.sub(r"^\s*assistant\s*:\s*", "", text, count=1, flags=re.IGNORECASE).strip()
+    for _ in range(50):
+        prev = text
+        text = re.sub(r"^\s*assistant\s*:\s*I\s+replied\.\s*", "", text, count=1, flags=re.IGNORECASE).strip()
+        if text == prev:
+            break
+    if is_junk_reply(text):
+        text = ""
+    lines = text.split("\n")
+    while lines:
+        first = lines[0].strip()
+        if re.match(r"^\[[\w\s]+\]\s*\(?", first) or first.startswith("[ACTIVE ASPECT:"):
+            lines.pop(0)
+            continue
+        if first.startswith("You are ") and ("aspect" in first.lower() or " the " in first[:80]):
+            lines.pop(0)
+            continue
+        if first.lower() in ("assistant:", "assistant", "i replied."):
+            lines.pop(0)
+            continue
+        if is_junk_reply(first):
+            lines.pop(0)
+            continue
+        break
+    text = "\n".join(lines).strip()
+    if not text or text.lower().strip() == "assistant:" or is_junk_reply(text):
+        text = ""
+    return text
+
+
+def iter_with_response_pacing(tokens, pacing_ms: int):
+    """Minimum delay between successive streamed chunks (final reply path only). Caps at 10s per gap."""
+    try:
+        ms = int(pacing_ms or 0)
+    except (TypeError, ValueError):
+        ms = 0
+    if ms <= 0:
+        yield from tokens
+        return
+    delay = max(0.0, min(10.0, ms / 1000.0))
+    first = True
+    for t in tokens:
+        if not first:
+            time.sleep(delay)
+        first = False
+        yield t

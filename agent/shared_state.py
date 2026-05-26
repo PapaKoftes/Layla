@@ -12,21 +12,31 @@ _steer_hints: dict[str, deque[str]] = {}
 
 
 def push_agent_steer_hint(conversation_id: str, text: str) -> None:
-    """Queue a short redirect for the next decision tick of this conversation's run."""
+    """Adapter: delegates to SessionContext. Queue a short redirect for next decision tick."""
     cid = (conversation_id or "").strip() or "default"
     t = (text or "").strip()[:280]
     if not t:
         return
-    with _steer_lock:
-        dq = _steer_hints.setdefault(cid, deque())
-        dq.append(t)
-        while len(dq) > 8:
-            dq.popleft()
+    try:
+        from services.session_context import get_or_create_session
+        get_or_create_session(cid).push_steer_hint(t)
+    except Exception:
+        # Fallback to legacy in-process store
+        with _steer_lock:
+            dq = _steer_hints.setdefault(cid, deque())
+            dq.append(t)
+            while len(dq) > 8:
+                dq.popleft()
 
 
 def pop_one_agent_steer_hint(conversation_id: str) -> str:
-    """Pop one pending steer hint (non-blocking)."""
+    """Adapter: delegates to SessionContext. Pop one pending steer hint (non-blocking)."""
     cid = (conversation_id or "").strip() or "default"
+    try:
+        from services.session_context import get_or_create_session
+        return get_or_create_session(cid).pop_steer_hint()
+    except Exception:
+        pass
     with _steer_lock:
         dq = _steer_hints.get(cid)
         if not dq:
@@ -185,35 +195,39 @@ _last_outcome_evaluation: dict[str, dict] = {}
 
 
 def set_last_outcome_evaluation(conversation_id: str, data: dict) -> None:
+    """Adapter: delegates to SessionContext (keeps legacy in-memory cache as fallback)."""
     cid = (conversation_id or "").strip() or "default"
     if not isinstance(data, dict):
         return
     with _outcome_eval_lock:
         _last_outcome_evaluation[cid] = dict(data)
     try:
-        from layla.memory.db import save_outcome_evaluation
-
-        save_outcome_evaluation(cid, data)
+        from services.session_context import get_or_create_session
+        get_or_create_session(cid).set_outcome_evaluation(data)
     except Exception:
-        pass
+        # Fallback: persist directly if session_context unavailable
+        try:
+            from layla.memory.db import save_outcome_evaluation
+            save_outcome_evaluation(cid, data)
+        except Exception:
+            pass
 
 
 def get_last_outcome_evaluation(conversation_id: str) -> dict | None:
+    """Adapter: delegates to SessionContext (keeps legacy in-memory cache as fallback)."""
     cid = (conversation_id or "").strip() or "default"
+    try:
+        from services.session_context import get_or_create_session
+        v = get_or_create_session(cid).get_outcome_evaluation()
+        if isinstance(v, dict):
+            return v
+    except Exception:
+        pass
+    # Fallback: legacy in-memory cache
     with _outcome_eval_lock:
         v = _last_outcome_evaluation.get(cid)
         if isinstance(v, dict):
             return dict(v)
-    try:
-        from layla.memory.db import get_last_outcome_evaluation_record
-
-        v2 = get_last_outcome_evaluation_record(cid)
-        if isinstance(v2, dict):
-            with _outcome_eval_lock:
-                _last_outcome_evaluation[cid] = dict(v2)
-            return dict(v2)
-    except Exception:
-        pass
     return None
 
 
@@ -221,6 +235,11 @@ def clear_last_outcome_evaluation(conversation_id: str) -> None:
     cid = (conversation_id or "").strip() or "default"
     with _outcome_eval_lock:
         _last_outcome_evaluation.pop(cid, None)
+    try:
+        from services.session_context import get_or_create_session
+        get_or_create_session(cid).clear_outcome_evaluation()
+    except Exception:
+        pass
 
 
 # Coordinator classification trace (last run per conversation; UI / debug)
@@ -229,15 +248,29 @@ _last_coordinator_trace: dict[str, dict] = {}
 
 
 def set_last_coordinator_trace(conversation_id: str, data: dict) -> None:
+    """Adapter: delegates to SessionContext."""
     cid = (conversation_id or "").strip() or "default"
     if not isinstance(data, dict):
         return
     with _coordinator_trace_lock:
         _last_coordinator_trace[cid] = dict(data)
+    try:
+        from services.session_context import get_or_create_session
+        get_or_create_session(cid).set_coordinator_trace(data)
+    except Exception:
+        pass
 
 
 def get_last_coordinator_trace(conversation_id: str) -> dict | None:
+    """Adapter: delegates to SessionContext."""
     cid = (conversation_id or "").strip() or "default"
+    try:
+        from services.session_context import get_or_create_session
+        v = get_or_create_session(cid).get_coordinator_trace()
+        if isinstance(v, dict):
+            return v
+    except Exception:
+        pass
     with _coordinator_trace_lock:
         v = _last_coordinator_trace.get(cid)
         return dict(v) if isinstance(v, dict) else None
@@ -247,6 +280,11 @@ def clear_last_coordinator_trace(conversation_id: str) -> None:
     cid = (conversation_id or "").strip() or "default"
     with _coordinator_trace_lock:
         _last_coordinator_trace.pop(cid, None)
+    try:
+        from services.session_context import get_or_create_session
+        get_or_create_session(cid).clear_coordinator_trace()
+    except Exception:
+        pass
 
 
 # Last execution snapshot per conversation (debug / UI trace panel)
@@ -255,15 +293,29 @@ _last_execution_snapshot: dict[str, dict] = {}
 
 
 def set_last_execution_snapshot(conversation_id: str, data: dict) -> None:
+    """Adapter: delegates to SessionContext."""
     cid = (conversation_id or "").strip() or "default"
     if not isinstance(data, dict):
         return
     with _execution_snap_lock:
         _last_execution_snapshot[cid] = dict(data)
+    try:
+        from services.session_context import get_or_create_session
+        get_or_create_session(cid).set_execution_snapshot(data)
+    except Exception:
+        pass
 
 
 def get_last_execution_snapshot(conversation_id: str) -> dict | None:
+    """Adapter: delegates to SessionContext."""
     cid = (conversation_id or "").strip() or "default"
+    try:
+        from services.session_context import get_or_create_session
+        v = get_or_create_session(cid).get_execution_snapshot()
+        if isinstance(v, dict):
+            return v
+    except Exception:
+        pass
     with _execution_snap_lock:
         v = _last_execution_snapshot.get(cid)
         return dict(v) if isinstance(v, dict) else None
@@ -273,6 +325,11 @@ def clear_last_execution_snapshot(conversation_id: str) -> None:
     cid = (conversation_id or "").strip() or "default"
     with _execution_snap_lock:
         _last_execution_snapshot.pop(cid, None)
+    try:
+        from services.session_context import get_or_create_session
+        get_or_create_session(cid).clear_execution_snapshot()
+    except Exception:
+        pass
 
 
 # Last decision policy trace per conversation (for /agent/decision_trace)

@@ -301,6 +301,12 @@ async def execute_stored_plan(plan_id: str, req: Request):
                 )
             except Exception:
                 pass
+        # Award XP for successful plan execution
+        try:
+            from services.maturity_engine import award_xp
+            award_xp(20, reason=f"plan_executed:{plan_id}"[:80])
+        except Exception:
+            pass
         return JSONResponse(
             {
                 "ok": True,

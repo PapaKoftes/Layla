@@ -113,6 +113,12 @@ tui = [
 network = [
     "zeroconf>=0.131",
 ]
+tray = [
+    "pystray>=0.19",
+]
+watcher = [
+    "watchdog>=4.0",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
@@ -122,7 +128,7 @@ dev = [
     "python-multipart>=0.0.9",
 ]
 all = [
-    "layla[core,llm,voice,vision,crawl,research,data,docs,viz,nlp,security,tui,network]",
+    "layla[core,llm,voice,vision,crawl,research,data,docs,viz,nlp,security,tui,network,tray,watcher]",
 ]
 
 [tool.ruff]

@@ -1,20 +1,17 @@
 /* Layla PWA — cache static UI; API calls stay network-first. */
-const CACHE = "layla-ui-v1";
+const CACHE = "layla-ui-v2";
 const PRECACHE = [
   "/ui/",
   "/manifest.json",
   "/layla-ui/css/layla.css",
-  "/layla-ui/js/layla-bootstrap.js",
-  "/layla-ui/js/layla-app.js",
-  "/layla-ui/js/state.js",
-  "/layla-ui/js/api.js",
-  "/layla-ui/js/chat.js",
-  "/layla-ui/js/sidebar.js",
-  "/layla-ui/js/panels.js",
-  "/layla-ui/js/layla-wizard.js",
-  "/layla-ui/js/layla-conversations.js",
-  "/layla-ui/js/layla-ui-phases.js",
-  "/layla-ui/js/layla-sprites.js",
+  "/layla-ui/main.js",
+  "/layla-ui/core/bus.js",
+  "/layla-ui/core/state.js",
+  "/layla-ui/core/overlay.js",
+  "/layla-ui/core/compat.js",
+  "/layla-ui/services/api.js",
+  "/layla-ui/services/health.js",
+  "/layla-ui/services/utils.js",
 ];
 
 self.addEventListener("install", (event) => {
