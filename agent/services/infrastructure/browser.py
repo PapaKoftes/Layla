@@ -1,0 +1,357 @@
+"""
+Layla browser service — Playwright-based web automation.
+
+Provides tools that let Layla navigate web pages, extract text, take
+screenshots, fill forms, and click elements.  All operations run in a
+persistent headless Chromium instance that is reused across calls.
+
+Install: playwright install chromium
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+import re
+import threading
+import time
+from pathlib import Path
+from typing import Optional
+
+from constants import (
+    BROWSER_ACTION_TIMEOUT_MS,
+    BROWSER_IDLE_TIMEOUT_MS,
+    BROWSER_NAV_TIMEOUT_MS,
+    BROWSER_PAGE_TEXT_MAX_CHARS,
+)
+
+logger = logging.getLogger("layla.browser")
+
+_SCREENSHOT_DIR = Path(__file__).resolve().parent.parent / ".screenshots"
+_SCREENSHOT_DIR.mkdir(exist_ok=True)
+
+_playwright_lock = threading.Lock()
+_pw = None  # playwright instance
+_browser = None  # persistent browser (non-persistent mode)
+_context = None  # browser context with shared cookies/session
+_persistent_mode: bool = False  # True when using launch_persistent_context
+_loop: Optional[asyncio.AbstractEventLoop] = None
+_browser_thread: Optional[threading.Thread] = None
+_context_init_lock: Optional[asyncio.Lock] = None
+
+
+# ── SSRF mitigation ──────────────────────────────────────────────────────────
+
+def _is_safe_url(url: str) -> bool:
+    """Return True if URL is safe to fetch (http/https, not private/localhost)."""
+    if not url or not isinstance(url, str):
+        return False
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        host = (parsed.hostname or "").lower()
+        if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+            return False
+        if host.startswith("127.") or host.startswith("10.") or host.startswith("169.254."):
+            return False
+        if host.startswith("192.168."):
+            return False
+        if host.startswith("172."):
+            parts = host.split(".")
+            if len(parts) >= 2:
+                try:
+                    b = int(parts[1])
+                except ValueError:
+                    b = -1
+                if 16 <= b <= 31:
+                    return False
+        # Block IPv6 private/link-local (fd00::/8, fe80::/10)
+        if host.startswith("fd") or host.startswith("fe80"):
+            return False
+        return True
+    except Exception:
+        return False
+
+
+# ── Async internals ──────────────────────────────────────────────────────────
+
+async def _ensure_context():
+    global _pw, _browser, _context, _persistent_mode, _context_init_lock
+    if _context is not None:
+        return _context
+    if _context_init_lock is None:
+        _context_init_lock = asyncio.Lock()
+    async with _context_init_lock:
+        if _context is not None:  # re-check after acquiring lock
+            return _context
+        return await _init_context()
+
+
+async def _init_context():
+    global _pw, _browser, _context, _persistent_mode
+    try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+        persistent = bool(cfg.get("browser_persistent_profiles"))
+        raw_prof = (cfg.get("browser_default_profile") or "default").strip() or "default"
+        profile = re.sub(r"[^\w\-]+", "_", raw_prof)[:64]
+    except Exception:
+        persistent, profile = False, "default"
+
+    from playwright.async_api import async_playwright
+
+    _pw = await async_playwright().start()
+    ua = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
+    launch_args = [
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-blink-features=AutomationControlled",
+    ]
+    if persistent:
+        ud = Path(__file__).resolve().parent.parent / ".browser_profiles" / profile
+        ud.mkdir(parents=True, exist_ok=True)
+        _context = await _pw.chromium.launch_persistent_context(
+            str(ud),
+            headless=True,
+            args=launch_args,
+            user_agent=ua,
+            viewport={"width": 1280, "height": 800},
+            java_script_enabled=True,
+        )
+        _browser = None
+        _persistent_mode = True
+    else:
+        _persistent_mode = False
+        _browser = await _pw.chromium.launch(headless=True, args=launch_args)
+        _context = await _browser.new_context(
+            user_agent=ua,
+            viewport={"width": 1280, "height": 800},
+            java_script_enabled=True,
+        )
+    return _context
+
+
+async def _new_page():
+    ctx = await _ensure_context()
+    return await ctx.new_page()
+
+
+async def _navigate(url: str, timeout_ms: int = BROWSER_NAV_TIMEOUT_MS) -> dict:
+    if not _is_safe_url(url):
+        return {"ok": False, "error": "URL not allowed (private/localhost blocked)"}
+    page = await _new_page()
+    try:
+        await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+        title = await page.title()
+        text = await page.evaluate(
+            f"""() => {{
+                const el = document.querySelector('main') ||
+                           document.querySelector('article') ||
+                           document.body;
+                return el ? el.innerText.slice(0, {BROWSER_PAGE_TEXT_MAX_CHARS}) : '';
+            }}"""
+        )
+        final_url = page.url
+        return {"ok": True, "url": final_url, "title": title, "text": text.strip()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    finally:
+        await page.close()
+
+
+async def _screenshot(url: str, timeout_ms: int = BROWSER_NAV_TIMEOUT_MS) -> dict:
+    if not _is_safe_url(url):
+        return {"ok": False, "error": "URL not allowed (private/localhost blocked)"}
+    page = await _new_page()
+    try:
+        await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+        ts = int(time.time())
+        fname = f"screenshot_{ts}.png"
+        fpath = _SCREENSHOT_DIR / fname
+        await page.screenshot(path=str(fpath), full_page=True)
+        title = await page.title()
+        return {"ok": True, "url": page.url, "title": title, "screenshot_path": str(fpath)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    finally:
+        await page.close()
+
+
+async def _click_and_extract(url: str, selector: str, timeout_ms: int = 10000) -> dict:
+    if not _is_safe_url(url):
+        return {"ok": False, "error": "URL not allowed (private/localhost blocked)"}
+    page = await _new_page()
+    try:
+        await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+        await page.click(selector, timeout=BROWSER_ACTION_TIMEOUT_MS)
+        await page.wait_for_load_state("networkidle", timeout=BROWSER_ACTION_TIMEOUT_MS)
+        text = await page.evaluate(f"() => document.body.innerText.slice(0, {BROWSER_PAGE_TEXT_MAX_CHARS})")
+        return {"ok": True, "url": page.url, "text": text.strip()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    finally:
+        await page.close()
+
+
+async def _fill_form(url: str, fields: dict[str, str], submit_selector: str = "", timeout_ms: int = 10000) -> dict:
+    """Fill form fields and optionally submit. fields = {css_selector: value}."""
+    if not _is_safe_url(url):
+        return {"ok": False, "error": "URL not allowed (private/localhost blocked)"}
+    page = await _new_page()
+    try:
+        await page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+        for selector, value in fields.items():
+            await page.fill(selector, value, timeout=BROWSER_ACTION_TIMEOUT_MS)
+        if submit_selector:
+            await page.click(submit_selector, timeout=BROWSER_ACTION_TIMEOUT_MS)
+            await page.wait_for_load_state("networkidle", timeout=BROWSER_IDLE_TIMEOUT_MS)
+        text = await page.evaluate(f"() => document.body.innerText.slice(0, {BROWSER_PAGE_TEXT_MAX_CHARS})")
+        return {"ok": True, "url": page.url, "text": text.strip()}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    finally:
+        await page.close()
+
+
+async def _search_web(query: str, engine: str = "ddg") -> dict:
+    """Search the web via DuckDuckGo (no JS required) and return top results."""
+    import urllib.parse
+    encoded = urllib.parse.quote(query)
+    url = f"https://html.duckduckgo.com/html/?q={encoded}"
+    page = await _new_page()
+    try:
+        await page.goto(url, wait_until="domcontentloaded", timeout=BROWSER_NAV_TIMEOUT_MS)
+        links = await page.evaluate(
+            """() => {
+                const results = [];
+                document.querySelectorAll('.result').forEach(el => {
+                    const a = el.querySelector('.result__a');
+                    const snip = el.querySelector('.result__snippet');
+                    if (a) results.push({
+                        title: a.innerText.trim(),
+                        url: a.href,
+                        snippet: snip ? snip.innerText.trim() : ''
+                    });
+                });
+                return results.slice(0, 8);
+            }"""
+        )
+        return {"ok": True, "query": query, "results": links}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    finally:
+        await page.close()
+
+
+# ── Event-loop thread ────────────────────────────────────────────────────────
+
+def _get_loop() -> asyncio.AbstractEventLoop:
+    """Get (or create) the dedicated asyncio event loop for browser operations."""
+    global _loop, _browser_thread
+
+    def _run_loop(loop: asyncio.AbstractEventLoop):
+        asyncio.set_event_loop(loop)
+        loop.run_forever()
+
+    with _playwright_lock:
+        if _loop is None or _browser_thread is None or not _browser_thread.is_alive():
+            _loop = asyncio.new_event_loop()
+            _browser_thread = threading.Thread(
+                target=_run_loop, args=(_loop,), daemon=True, name="layla-browser"
+            )
+            _browser_thread.start()
+    return _loop
+
+
+def _run(coro):
+    """Run an async coroutine on the browser event loop from any sync thread."""
+    loop = _get_loop()
+    future = asyncio.run_coroutine_threadsafe(coro, loop)
+    return future.result(timeout=60)
+
+
+# ── Public synchronous API ────────────────────────────────────────────────────
+
+def navigate(url: str, timeout_ms: int = BROWSER_NAV_TIMEOUT_MS) -> dict:
+    """
+    Navigate to a URL and extract the main text content.
+    Returns: {"ok": bool, "url": str, "title": str, "text": str}
+    """
+    try:
+        return _run(_navigate(url, timeout_ms))
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def screenshot(url: str, timeout_ms: int = BROWSER_NAV_TIMEOUT_MS) -> dict:
+    """
+    Take a full-page screenshot of a URL.
+    Returns: {"ok": bool, "url": str, "title": str, "screenshot_path": str}
+    """
+    try:
+        return _run(_screenshot(url, timeout_ms))
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def click_and_extract(url: str, selector: str, timeout_ms: int = 10000) -> dict:
+    """
+    Navigate to URL, click a CSS selector, return updated page text.
+    Returns: {"ok": bool, "url": str, "text": str}
+    """
+    try:
+        return _run(_click_and_extract(url, selector, timeout_ms))
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def fill_form(url: str, fields: dict, submit_selector: str = "", timeout_ms: int = 10000) -> dict:
+    """
+    Navigate to URL, fill form fields, optionally submit.
+    fields: {css_selector: value}
+    Returns: {"ok": bool, "url": str, "text": str}
+    """
+    try:
+        return _run(_fill_form(url, fields, submit_selector, timeout_ms))
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def search_web(query: str) -> dict:
+    """
+    Search DuckDuckGo and return top 8 results.
+    Returns: {"ok": bool, "query": str, "results": [{title, url, snippet}]}
+    """
+    try:
+        return _run(_search_web(query))
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def close() -> None:
+    """Shut down the browser and playwright instance cleanly."""
+    global _pw, _browser, _context, _persistent_mode
+
+    async def _close():
+        global _pw, _browser, _context, _persistent_mode
+        if _context:
+            await _context.close()
+        if _browser:
+            await _browser.close()
+        if _pw:
+            await _pw.stop()
+        _context = _browser = _pw = None
+        _persistent_mode = False
+
+    try:
+        if _loop and _loop.is_running():
+            _run(_close())
+    except Exception as e:
+        logger.debug("browser close failed: %s", e)

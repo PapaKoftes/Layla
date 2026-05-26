@@ -3,7 +3,7 @@ version: 1
 paths:
   - relpath: agent/services/shell_sessions.py
   - relpath: agent/services/repo_cognition.py
-  - relpath: agent/services/skills.py
+  - relpath: agent/services/skills/__init__.py
   - relpath: agent/services/inference_router.py
   - relpath: agent/routers/approvals.py
   - relpath: agent/services/session_grants.py

@@ -22,8 +22,9 @@ def test_deterministic_route_tools_disabled_returns_none() -> None:
 def test_deterministic_route_tools_enabled_returns_subset(monkeypatch) -> None:
     from layla.tools.registry import TOOLS
     from services import tool_policy
+    from services.tools import tool_policy as _tool_policy_impl
 
-    monkeypatch.setattr(tool_policy, "_DEFAULT_DETERMINISTIC_TOOL_ROUTES", {"coding": ("read_file", "write_file")})
+    monkeypatch.setattr(_tool_policy_impl, "_DEFAULT_DETERMINISTIC_TOOL_ROUTES", {"coding": ("read_file", "write_file")})
 
     # Force classify_task -> coding
     from services import model_router
