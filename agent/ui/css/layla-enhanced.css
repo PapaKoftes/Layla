@@ -177,9 +177,12 @@ select:focus-visible {
 .skip-to-content:focus { top: 8px; }
 
 /* ── Smooth panel transitions ─────────────────────────────────────────────── */
-.rcp-page { transition: opacity 0.15s ease; }
-.rcp-page[aria-hidden="true"] { opacity: 0; pointer-events: none; }
-.rcp-page[aria-hidden="false"], .rcp-page.active { opacity: 1; pointer-events: auto; }
+/* Visibility is handled by .active / :not(.active) classes in layla.css with
+   display:none/flex !important — do NOT use aria-hidden or opacity to toggle
+   panels, as that creates ghost-clickable hidden areas.  Only apply a subtle
+   fade-in on the ACTIVE panel. */
+.rcp-page.active { animation: rcpFadeIn 0.15s ease forwards; }
+@keyframes rcpFadeIn { from { opacity: 0.6; } to { opacity: 1; } }
 
 /* ══════════════════════════════════════════════════════════════════════════════
    CHARACTER LAB — Videogame-style aspect customization panel

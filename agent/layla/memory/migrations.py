@@ -827,6 +827,79 @@ def _migrate_impl() -> None:
     except Exception:
         pass
 
+    # Task queue — cluster distributed work units (Phase 2E)
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS task_queue (
+                    id          TEXT PRIMARY KEY,
+                    type        TEXT NOT NULL,
+                    priority    INTEGER DEFAULT 1,
+                    status      TEXT DEFAULT 'pending',
+                    payload     TEXT DEFAULT '{}',
+                    result      TEXT,
+                    error       TEXT,
+                    source_node TEXT,
+                    assigned_to TEXT,
+                    timeout_s   INTEGER DEFAULT 300,
+                    created_at  TEXT NOT NULL,
+                    started_at  TEXT,
+                    completed_at TEXT
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_task_queue_status ON task_queue(status)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_task_queue_priority ON task_queue(priority, created_at)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_task_queue_assigned ON task_queue(assigned_to)")
+            db.commit()
+    except Exception as e:
+        logger.warning("task_queue table migration failed: %s", e)
+
+    # Verification queue — learn-and-verify loop (Phase 5B)
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS verification_queue (
+                    id           TEXT PRIMARY KEY,
+                    fact_content TEXT NOT NULL,
+                    source       TEXT DEFAULT 'inferred',
+                    confidence   REAL DEFAULT 0.5,
+                    importance   REAL DEFAULT 0.5,
+                    status       TEXT DEFAULT 'pending',
+                    ask_count    INTEGER DEFAULT 0,
+                    last_asked   TEXT,
+                    user_answer  TEXT,
+                    created_at   TEXT NOT NULL,
+                    resolved_at  TEXT
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_verification_queue_status ON verification_queue(status)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_verification_queue_importance ON verification_queue(importance DESC)")
+            db.commit()
+    except Exception as e:
+        logger.warning("verification_queue table migration failed: %s", e)
+
+    # ── pending_sync (node sync offline buffer) ──────────────────────────
+    try:
+        with _conn() as db:
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS pending_sync (
+                    id TEXT PRIMARY KEY,
+                    content TEXT NOT NULL,
+                    type TEXT DEFAULT 'learning',
+                    content_hash TEXT,
+                    confidence REAL DEFAULT 0.5,
+                    source TEXT DEFAULT 'local',
+                    tags TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    synced INTEGER DEFAULT 0
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS idx_pending_sync_synced ON pending_sync(synced)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_pending_sync_hash ON pending_sync(content_hash)")
+            db.commit()
+    except Exception as e:
+        logger.warning("pending_sync table migration failed: %s", e)
+
     # Clean up orphaned FK references (P0-6: must run BEFORE PRAGMA foreign_keys=ON)
     _cleanup_orphaned_records()
 

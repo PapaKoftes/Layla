@@ -117,6 +117,12 @@ async def execute_plan_route(req: dict):
             active_plan_id=str((req or {}).get("plan_id") or "").strip(),
         )
         all_ok = bool(results.get("all_steps_ok")) if isinstance(results, dict) else False
+        # Award XP for successful plan execution
+        try:
+            from services.maturity_engine import award_xp
+            award_xp(20, reason=f"plan_executed:{goal[:60]}")
+        except Exception:
+            pass
         return JSONResponse({
             "ok": True,
             "status": "plan_executed",

@@ -16,10 +16,12 @@ if str(AGENT_DIR) not in sys.path:
 @pytest.fixture()
 def fake_ws(monkeypatch):
     import services.plan_workspace_store as pws
+    import services.planning.plan_workspace_store as pws_real
 
     root = Path(tempfile.mkdtemp(prefix="layla_plan_ws_"))
     # Must patch the binding used by plan_workspace_store (not only registry).
     monkeypatch.setattr(pws, "inside_sandbox", lambda p: True)
+    monkeypatch.setattr(pws_real, "inside_sandbox", lambda p: True)
     return root
 
 

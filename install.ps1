@@ -78,8 +78,8 @@ if ($LASTEXITCODE -eq 0) {
 }
 Write-Host ""
 
-# ── [5/6] Config wizard + verify ─────────────────────────────────────────────
-Write-Host "  [5/6]  Detecting hardware, setting up config, and verifying..."
+# ── [5/8] Config wizard + verify ─────────────────────────────────────────────
+Write-Host "  [5/8]  Detecting hardware, setting up config, and verifying..."
 Write-Host ""
 python agent\install\run_first_time.py
 if ($LASTEXITCODE -ne 0) {
@@ -91,8 +91,35 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host ""
 
-# ── [6/6] Launchers ─────────────────────────────────────────────────────────
-Write-Host "  [6/6]  Creating launch shortcut..."
+# ── [6/8] Setup Wizard (purpose, node role, cluster) ────────────────────────
+Write-Host "  [6/8]  Running setup wizard (purpose, node role, cluster)..."
+Write-Host ""
+python agent\install\setup_wizard.py
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "  [!] Setup wizard had issues. See above for details." -ForegroundColor Yellow
+    Write-Host "      You can re-run later: python agent\install\setup_wizard.py"
+    Write-Host ""
+}
+Write-Host ""
+
+# ── [7/8] Service install (optional) ────────────────────────────────────────
+Write-Host "  [7/8]  Windows Service setup..."
+$installService = Read-Host "  Install Layla as a Windows Service (always-on, auto-start at boot)? [Y/n]"
+if ($installService -ne 'n') {
+    try {
+        & "$PSScriptRoot\agent\install\install_service.ps1"
+    } catch {
+        Write-Host "  [!] Service install failed: $_" -ForegroundColor Yellow
+        Write-Host "      You can retry later: agent\install\install_service.ps1"
+    }
+} else {
+    Write-Host "      Skipped. Run agent\install\install_service.ps1 later to install."
+}
+Write-Host ""
+
+# ── [8/8] Launchers ─────────────────────────────────────────────────────────
+Write-Host "  [8/8]  Creating launch shortcut..."
 if (-not (Test-Path "START.bat")) {
     @"
 @echo off
@@ -113,7 +140,7 @@ echo   Press Ctrl+C to stop.
 echo.
 start "" http://localhost:8000/ui
 cd agent
-uvicorn main:app --host 127.0.0.1 --port 8000
+uvicorn main:app --host 0.0.0.0 --port 8000
 "@ | Out-File -FilePath "START.bat" -Encoding ASCII
 }
 Write-Host "      START.bat ready."

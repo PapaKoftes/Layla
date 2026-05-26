@@ -1,0 +1,858 @@
+/**
+ * components/app.js — Main orchestrator: send(), executePlan(), health,
+ * panel routing, and DOMContentLoaded init.
+ *
+ * Converted from js/layla-app.js (IIFE -> ES module).
+ * Depends on: services/utils.js (escapeHtml, showToast, _dbg)
+ *             components/chat-render.js (addMsg, addSeparator, hideEmpty,
+ *               laylaHeaderProgressStart/Stop, operatorTraceClear,
+ *               laylaStreamStatsStart/Step/Chars/Stop, laylaNotifyStreamPhase,
+ *               laylaShowTypingIndicator, laylaRemoveTypingIndicator,
+ *               toggleSendButton, UX_STATE_LABELS, laylaAgentStreamTimeoutMs,
+ *               laylaStalledSilenceMs, _renderDeliberationTranscript)
+ *             components/aspect.js (formatLaylaLabelHtml)
+ *
+ * Heavy cross-module deps resolved at call-time via window.* guards:
+ *   fetchWithTimeout, formatAgentError, laylaAgentTimeoutMs, ASPECTS,
+ *   refreshApprovals, updateContextChip, laylaScrollActiveConversationIntoView,
+ *   refreshMaturityCard, speakText, laylaIngestArtifacts, refreshGrowthDashboard,
+ *   refreshClusterStatus, refreshContentPolicyToggles, refreshMissionStatus,
+ *   showResearchTab, loadProjectsIntoSelect, _hideMentionDropdown,
+ *   checkSetupStatus, dismissSetupOverlay, dismissOnboarding,
+ *   refreshWorkspacePresetsDropdown, sanitizeHtml
+ */
+
+import { escapeHtml, showToast, _dbg } from '../services/utils.js';
+import {
+  addMsg, addSeparator, hideEmpty,
+  laylaHeaderProgressStart, laylaHeaderProgressStop,
+  operatorTraceClear,
+  laylaStreamStatsStart, laylaStreamStatsStep, laylaStreamStatsChars, laylaStreamStatsStop,
+  laylaNotifyStreamPhase,
+  laylaShowTypingIndicator, laylaRemoveTypingIndicator,
+  toggleSendButton, UX_STATE_LABELS,
+  laylaAgentStreamTimeoutMs, laylaStalledSilenceMs,
+  _renderDeliberationTranscript,
+} from './chat-render.js';
+import { formatLaylaLabelHtml } from './aspect.js';
+
+// ── Global state ─────────────────────────────────────────────────────────────
+// Ensure health state object exists (may already be set by legacy code)
+window.__laylaHealth = window.__laylaHealth || {
+  payload: null,
+  lastFetch: 0,
+  lastDeepFetch: 0,
+  deepIntervalMs: 60000,
+  inFlight: false,
+  agentRequestActive: false,
+  _inFlightPromise: null,
+};
+
+// Aspect + conversation globals (may already be set by aspect.js module)
+if (typeof window.currentAspect === 'undefined') window.currentAspect = 'morrigan';
+try {
+  if (!window.currentConversationId) {
+    window.currentConversationId = localStorage.getItem('layla_current_conversation_id') || '';
+  }
+} catch (_) {}
+var sessionStart = Date.now();
+
+// ── Internal state ──────────────────────────────────────────────────────────
+var _lastDisplayMsg = null;
+window._lastDisplayMsg = null;
+var _activeAgentAbort = null;
+
+// ── Cancel / busy state ──────────────────────────────────────────────────────
+export function cancelActiveSend() {
+  try {
+    if (_activeAgentAbort) _activeAgentAbort.abort();
+  } catch (_e) { console.debug('app:', _e); }
+  try { laylaHeaderProgressStop(); } catch (_e) { console.debug('app:', _e); }
+}
+
+export function setCancelSendVisible(visible) {
+  var b = document.getElementById('cancel-send-btn');
+  if (b) b.style.display = visible ? 'inline-block' : 'none';
+}
+
+// ── Header context row ───────────────────────────────────────────────────────
+export function laylaRefreshHeaderContextRow() {
+  try {
+    var cid = String(window.currentConversationId || '').trim();
+    var el = document.getElementById('header-conv-id');
+    if (el) {
+      el.textContent = cid ? ('conv ' + cid.slice(0, 8)) : 'new chat';
+      el.title = cid ? ('conversation_id: ' + cid) : 'No conversation id yet';
+    }
+  } catch (_e) { console.debug('app:', _e); }
+  fetch('/session/stats', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
+    var t = document.getElementById('header-session-tokens');
+    if (!t || !d || d.error) return;
+    var tt = d.total_tokens != null ? Number(d.total_tokens) : 0;
+    var tc = d.tool_calls != null ? Number(d.tool_calls) : 0;
+    var elapsed = d.elapsed_seconds != null ? Number(d.elapsed_seconds) : 0;
+    t.textContent = 'Σ ' + tt + ' tok · ' + tc + ' tools · ' + elapsed + 's';
+    t.title = 'GET /session/stats — prompt:' + (d.prompt_tokens != null ? d.prompt_tokens : '?') + ' completion:' + (d.completion_tokens != null ? d.completion_tokens : '?');
+  }).catch(function () {
+    var t = document.getElementById('header-session-tokens');
+    if (t) t.textContent = '';
+  });
+}
+
+// ── Conversation ID helper ───────────────────────────────────────────────────
+export function ensureLaylaConversationId() {
+  if (typeof window.currentConversationId === 'string' && String(window.currentConversationId).trim()) {
+    try { laylaRefreshHeaderContextRow(); } catch (_e) { console.debug('app:', _e); }
+    return String(window.currentConversationId).trim();
+  }
+  var id = '';
+  try {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) id = crypto.randomUUID();
+    else id = 'lc-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9);
+  } catch (_) {
+    id = 'lc-' + Date.now();
+  }
+  window.currentConversationId = id;
+  try { localStorage.setItem('layla_current_conversation_id', id); } catch (_e) { console.debug('app:', _e); }
+  try { if (typeof window.updateContextChip === 'function') window.updateContextChip(); } catch (_e) { console.debug('app:', _e); }
+  try { laylaRefreshHeaderContextRow(); } catch (_e) { console.debug('app:', _e); }
+  return id;
+}
+
+// ── Panel refresh routing ────────────────────────────────────────────────────
+export function panelRefreshRouting(main) {
+  if (main === 'status') {
+    refreshPlatformHealth();
+    refreshVersionInfo();
+    refreshRuntimeOptions();
+    if (typeof window.refreshGrowthDashboard === 'function') try { window.refreshGrowthDashboard(); } catch (_) {}
+    if (typeof window.refreshClusterStatus === 'function') try { window.refreshClusterStatus(); } catch (_) {}
+  }
+  if (main === 'prefs') {
+    if (typeof window.refreshContentPolicyToggles === 'function') try { window.refreshContentPolicyToggles(); } catch (_) {}
+    try { if (typeof window.refreshApprovals === 'function') window.refreshApprovals(); } catch (_e) { console.debug('app:', _e); }
+    try { if (typeof window.loadProjectsIntoSelect === 'function') window.loadProjectsIntoSelect(); } catch (_e) { console.debug('app:', _e); }
+  }
+  if (main === 'workspace') {
+    var wsRoot = document.querySelector('#layla-right-panel .rcp-page[data-rcp="workspace"]');
+    var subEl = wsRoot && wsRoot.querySelector('.rcp-subtab.active');
+    var sub = (subEl && subEl.getAttribute('data-rcp-sub')) || 'models';
+    if (typeof window.__laylaRefreshAfterWorkspaceSubtab === 'function') {
+      window.__laylaRefreshAfterWorkspaceSubtab(sub);
+    }
+  }
+  if (main === 'research') {
+    if (typeof window.refreshMissionStatus === 'function') {
+      window.refreshMissionStatus().then(function () {
+        var t = document.querySelector('#research-mission-panel .tab-btn.active');
+        if (t && typeof window.showResearchTab === 'function') window.showResearchTab(t.getAttribute('data-tab'));
+      });
+    }
+  }
+  if (main === 'growth') {
+    if (typeof window.refreshGrowthDashboard === 'function') {
+      try { window.refreshGrowthDashboard(); } catch (_e) { console.debug('app: growth refresh', _e); }
+    }
+  }
+  if (main === 'cluster') {
+    if (typeof window.refreshClusterStatus === 'function') {
+      try { window.refreshClusterStatus(); } catch (_e) { console.debug('app: cluster refresh', _e); }
+    }
+  }
+}
+
+// ── executePlan ──────────────────────────────────────────────────────────────
+export async function executePlan(plan, goal) {
+  var workspacePath = (document.getElementById('workspace-path') ? document.getElementById('workspace-path').value : '').trim();
+  var allowWrite = document.getElementById('allow-write') ? document.getElementById('allow-write').checked : false;
+  var allowRun = document.getElementById('allow-run') ? document.getElementById('allow-run').checked : false;
+  try { ensureLaylaConversationId(); } catch (_e) { console.debug('app:', _e); }
+  try { laylaHeaderProgressStart(); } catch (_e) { console.debug('app:', _e); }
+  var fetchFn = (typeof window.fetchWithTimeout === 'function') ? window.fetchWithTimeout : fetch;
+  try {
+    var res = await fetchFn(
+      '/execute_plan',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan: plan,
+          goal: goal || '',
+          workspace_root: workspacePath,
+          aspect_id: window.currentAspect || 'morrigan',
+          conversation_id: window.currentConversationId || '',
+          allow_write: !!allowWrite,
+          allow_run: !!allowRun,
+        }),
+      },
+      600000
+    );
+    var data = await res.json().catch(function () { return {}; });
+    if (!res.ok || data.ok === false) {
+      var err = (data && (data.error || data.detail)) ? String(data.error || data.detail) : ('HTTP ' + res.status);
+      showToast(err);
+      return;
+    }
+    var okAll = !!data.all_steps_ok;
+    showToast(okAll ? 'Plan finished' : 'Plan finished (some steps reported issues)');
+    try {
+      var summary = JSON.stringify(data.results || {}, null, 2);
+      addMsg('layla', '**Plan executed**\n```json\n' + summary.slice(0, 12000) + (summary.length > 12000 ? '\n…' : '') + '\n```');
+    } catch (_e) { console.debug('app:', _e); }
+  } catch (e) {
+    var msg = (e && e.message) ? String(e.message) : String(e);
+    showToast('executePlan: ' + msg);
+  } finally {
+    try { laylaHeaderProgressStop(); } catch (_e) { console.debug('app:', _e); }
+  }
+}
+
+// ── compactConversation ──────────────────────────────────────────────────────
+export async function compactConversation() {
+  var fetchFn = (typeof window.fetchWithTimeout === 'function') ? window.fetchWithTimeout : fetch;
+  try {
+    var res = await fetchFn(
+      '/compact',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversation_id: window.currentConversationId || '' }),
+      },
+      120000
+    );
+    var data = await res.json().catch(function () { return {}; });
+    var n = data && typeof data.messages_remaining === 'number' ? data.messages_remaining : null;
+    var tok = n != null ? String(n) : '?';
+    showToast('Compacted · messages in buffer: ~' + tok);
+    try { if (typeof window.updateContextChip === 'function') window.updateContextChip(); } catch (_e) { console.debug('app:', _e); }
+  } catch (e) {
+    showToast('Compact failed: ' + ((e && e.message) || e));
+  }
+}
+
+// ── send() — main chat entry point ──────────────────────────────────────────
+export async function send() {
+  _dbg('send() called');
+  try { if (typeof window._hideMentionDropdown === 'function') window._hideMentionDropdown(); } catch (_e) { console.debug('app:', _e); }
+  var input = document.getElementById('msg-input');
+  if (!input) return;
+  var msg = (input.value || '').trim();
+  if (!msg) return;
+  if (window._laylaSendBusy) return;
+  window._laylaSendBusy = true;
+  if (window.laylaChatFSM && !window.laylaChatFSM.beginSend()) {
+    window._laylaSendBusy = false;
+    return;
+  }
+
+  var ac = new AbortController();
+  _activeAgentAbort = ac;
+  var metaTimer = null;
+  var firstTokenTimer = null;
+  var stalledTimer = null;
+  try { laylaHeaderProgressStart(); } catch (_e) { console.debug('app:', _e); }
+  try { operatorTraceClear(); } catch (_e) { console.debug('app:', _e); }
+  try { laylaStreamStatsStart(''); } catch (_e) { console.debug('app:', _e); }
+
+  var msgAspect = window.currentAspect;
+  var mentionMatch = msg.match(/^@([a-z]+)\s*/i);
+  if (mentionMatch) {
+    try {
+      var mentioned = mentionMatch[1].toLowerCase();
+      var ASPECTS = window.ASPECTS;
+      var found = (ASPECTS && ASPECTS.find)
+        ? ASPECTS.find(function (a) { return a.id === mentioned || (a.name || '').toLowerCase() === mentioned; })
+        : null;
+      if (found) {
+        msgAspect = found.id;
+        msg = msg.slice(mentionMatch[0].length).trim() || msg;
+      }
+    } catch (_e) { console.debug('app:', _e); }
+  }
+  if (window._aspectLocked) msgAspect = window.currentAspect;
+
+  input.value = '';
+  try { toggleSendButton(); } catch (_e) { console.debug('app:', _e); }
+  var displayMsg = mentionMatch && msgAspect !== window.currentAspect ? ('@' + msgAspect + ' ' + msg) : msg;
+  addMsg('you', displayMsg);
+  addSeparator();
+  _lastDisplayMsg = displayMsg;
+  window._lastDisplayMsg = displayMsg;
+
+  ensureLaylaConversationId();
+
+  var chatEl = document.getElementById('chat');
+  var streamToggle = document.getElementById('stream-toggle');
+  var streamMode = streamToggle ? streamToggle.checked : false;
+  var modelOverrideEl = document.getElementById('model-override');
+  var modelOverride = modelOverrideEl ? (modelOverrideEl.value || '').trim() : '';
+  var wpEl = document.getElementById('workspace-path');
+  var workspacePath = wpEl ? (wpEl.value || '').trim() : '';
+  var projectId = '';
+  try { projectId = (localStorage.getItem('layla_active_project_id') || '').trim(); } catch (_e) { console.debug('app:', _e); }
+  var composeDraftEl = document.getElementById('compose-draft');
+  var composeDraft = composeDraftEl ? (composeDraftEl.value || '').trim() : '';
+
+  var payload = {
+    message: msg,
+    context: composeDraft || '',
+    workspace_root: workspacePath || '',
+    project_id: projectId || '',
+    aspect_id: msgAspect,
+    conversation_id: window.currentConversationId,
+    show_thinking: !!(document.getElementById('show-thinking') && document.getElementById('show-thinking').checked),
+    allow_write: !!(document.getElementById('allow-write') && document.getElementById('allow-write').checked),
+    allow_run: !!(document.getElementById('allow-run') && document.getElementById('allow-run').checked),
+    stream: !!streamMode,
+  };
+  if (modelOverride) payload.model_override = modelOverride;
+  var _epSel = document.getElementById('engineering-pipeline-mode');
+  if (_epSel && _epSel.value && _epSel.value !== 'chat') payload.engineering_pipeline_mode = _epSel.value;
+  var _clarTa = document.getElementById('pipeline-clarify-answers');
+  if (_clarTa && _clarTa.value.trim()) {
+    payload.clarification_reply = _clarTa.value.trim();
+    _clarTa.value = '';
+    var _cp = document.getElementById('pipeline-clarify-panel');
+    if (_cp) _cp.style.display = 'none';
+  }
+
+  try { laylaShowTypingIndicator(msgAspect, streamMode ? 'connecting' : 'preparing_reply'); } catch (_e) { console.debug('app:', _e); }
+
+  var fetchFn = (typeof window.fetchWithTimeout === 'function') ? window.fetchWithTimeout : fetch;
+  var formatErr = (typeof window.formatAgentError === 'function') ? window.formatAgentError : function (r, b) { return 'Error: HTTP ' + (r && r.status); };
+  var sanitize = (typeof window.sanitizeHtml === 'function') ? window.sanitizeHtml : function (h) { return h; };
+
+  try {
+    if (streamMode) {
+      var res = await fetchFn(
+        '/agent',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: ac.signal },
+        Math.max(laylaAgentStreamTimeoutMs(), 300000)
+      );
+      if (!res.ok || !res.body) {
+        var body = {};
+        try { var t = await res.text(); if (t) try { body = JSON.parse(t); } catch(_) {} } catch(_) {}
+        try { laylaRemoveTypingIndicator(); } catch (_e) { console.debug('app:', _e); }
+        addMsg('layla', formatErr(res, body));
+        try { if (window.laylaChatFSM) window.laylaChatFSM.finishError(); } catch (_e) { console.debug('app:', _e); }
+        return;
+      }
+      try { laylaRemoveTypingIndicator(); } catch (_e) { console.debug('app:', _e); }
+      try { if (window.laylaChatFSM) window.laylaChatFSM.beginStream(); } catch (_e) { console.debug('app:', _e); }
+      var reader = res.body.getReader();
+      var dec = new TextDecoder();
+      var full = '';
+      hideEmpty();
+      var div = document.createElement('div');
+      div.className = 'msg msg-layla';
+      div.innerHTML = '<div class="msg-label msg-label-layla">' + formatLaylaLabelHtml(msgAspect) + '</div><div class="msg-bubble" title="Click to copy"><div class="md-content stream-md-placeholder"><div class="typing-indicator" style="min-height:36px"><div class="typing-dots"><span></span><span></span><span></span></div></div><div class="tool-status-label">' + (UX_STATE_LABELS.connecting || 'Connecting') + '</div></div></div>';
+      if (chatEl) chatEl.appendChild(div);
+      var bubble = div.querySelector('.md-content');
+      var thinkBox = null;
+      var thinkContent = null;
+      var thinkCount = 0;
+      function ensureThinkBox() {
+        if (thinkBox) return;
+        thinkBox = document.createElement('details');
+        thinkBox.className = 'tool-trace';
+        thinkBox.style.borderLeft = '2px solid var(--asp)';
+        thinkBox.open = true;
+        thinkBox.innerHTML = '<summary>Thinking (live)</summary>';
+        thinkContent = document.createElement('div');
+        thinkContent.className = 'tool-trace-content';
+        thinkContent.style.whiteSpace = 'pre-wrap';
+        thinkContent.style.maxHeight = '180px';
+        thinkContent.style.overflow = 'auto';
+        thinkBox.appendChild(thinkContent);
+        div.appendChild(thinkBox);
+      }
+      function appendThinkLine(txt) {
+        if (!txt) return;
+        ensureThinkBox();
+        thinkCount += 1;
+        if (thinkBox && thinkBox.querySelector('summary')) {
+          thinkBox.querySelector('summary').textContent = 'Thinking (live) · ' + thinkCount;
+        }
+        if (thinkContent) {
+          thinkContent.textContent += (thinkContent.textContent ? '\n' : '') + txt;
+          thinkContent.scrollTop = thinkContent.scrollHeight;
+        }
+      }
+      var streamMeta = document.createElement('div');
+      streamMeta.className = 'memory-attribution';
+      streamMeta.textContent = 'Status: ' + (UX_STATE_LABELS.connecting || 'Connecting') + ' · 0s · 0 chars';
+      div.appendChild(streamMeta);
+      var streamStartedAt = Date.now();
+      var liveStatus = 'connecting';
+      try { laylaNotifyStreamPhase(div, 'connecting'); } catch (_e) { console.debug('app:', _e); }
+      metaTimer = setInterval(function () {
+        var secs = Math.max(0, Math.floor((Date.now() - streamStartedAt) / 1000));
+        streamMeta.textContent = 'Status: ' + (UX_STATE_LABELS[liveStatus] || liveStatus) + ' · ' + secs + 's · ' + (full || '').length + ' chars';
+      }, 500);
+      var gotToken = false;
+      firstTokenTimer = setTimeout(function () {
+        liveStatus = 'waiting_first_token';
+        var statusEl = div.querySelector('.tool-status-label');
+        if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; var mb = div.querySelector('.msg-bubble'); if (mb) mb.appendChild(statusEl); }
+        statusEl.textContent = UX_STATE_LABELS.waiting_first_token || 'Waiting for first token';
+        try { laylaNotifyStreamPhase(div, liveStatus); } catch (_e) { console.debug('app:', _e); }
+      }, 1800);
+      var stallMs = laylaStalledSilenceMs();
+      function _showStalled() {
+        liveStatus = 'stalled';
+        var statusEl = div.querySelector('.tool-status-label');
+        if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; var mb = div.querySelector('.msg-bubble'); if (mb) mb.appendChild(statusEl); }
+        statusEl.textContent = (UX_STATE_LABELS.stalled || 'Stalled') + ' — ' + (UX_STATE_LABELS.retry_hint || 'Retry suggested');
+        try { laylaNotifyStreamPhase(div, 'stalled'); } catch (_e) { console.debug('app:', _e); }
+      }
+      stalledTimer = setTimeout(_showStalled, stallMs);
+      while (true) {
+        var _read = await reader.read();
+        var value = _read.value;
+        var done = _read.done;
+        if (done) break;
+        var chunk = dec.decode(value, { stream: true });
+        var lines = chunk.split('\n');
+        for (var li = 0; li < lines.length; li++) {
+          var line = lines[li];
+          if (!line.startsWith('data: ')) continue;
+          var obj = null;
+          try { obj = JSON.parse(line.slice(6)); } catch (_) { obj = null; }
+          if (!obj) continue;
+          if (obj.pulse === true) {
+            clearTimeout(stalledTimer);
+            stalledTimer = setTimeout(_showStalled, stallMs);
+          }
+          if (obj.error) {
+            clearTimeout(firstTokenTimer);
+            clearTimeout(stalledTimer);
+            clearInterval(metaTimer);
+            try { div.remove(); } catch (_e) { console.debug('app:', _e); }
+            try { laylaRemoveTypingIndicator(); } catch (_e) { console.debug('app:', _e); }
+            addMsg('layla', String(obj.error));
+            try { if (window.laylaChatFSM) window.laylaChatFSM.finishError(); } catch (_e) { console.debug('app:', _e); }
+            return;
+          }
+          if (obj.ux_state) {
+            liveStatus = String(obj.ux_state);
+            try { laylaNotifyStreamPhase(div, liveStatus); } catch (_e) { console.debug('app:', _e); }
+            var statusEl = div.querySelector('.tool-status-label');
+            if (statusEl) statusEl.textContent = UX_STATE_LABELS[liveStatus] || liveStatus;
+          }
+          if (obj.type === 'thinking' || obj.think) {
+            var tt = String(obj.text || obj.think || '').trim();
+            if (tt) appendThinkLine('✦ ' + tt);
+          }
+          if (obj.type === 'tool_step' || obj.tool_start) {
+            var tool = String(obj.tool || obj.tool_start || '').trim();
+            var phase = String(obj.phase || (obj.tool_start ? 'start' : 'end'));
+            var ok = (obj.ok === true ? 'ok' : obj.ok === false ? 'fail' : '');
+            var _summary = String(obj.summary || '').trim();
+            var _line = '▸ ' + tool + (phase ? (' [' + phase + ']') : '') + (ok ? (' ' + ok) : '') + (_summary ? (' — ' + _summary) : '');
+            if (tool) { appendThinkLine(_line); try { laylaStreamStatsStep(tool); } catch (_e) { console.debug('app:', _e); } }
+          }
+          if (obj.type === 'model_selection' || obj.model_selection) {
+            var ms = obj.model_selection || obj;
+            var mdl = String(ms.model || '').replace(/^claude-/i, '').replace(/-\d{8}$/, '');
+            try { var el = document.getElementById('stream-model-badge'); if (el && mdl) el.textContent = '⬡ ' + mdl; } catch (_e) { console.debug('app:', _e); }
+          }
+          // Deliberation metadata from debate engine
+          if (obj.deliberation && obj.deliberation.mode && obj.deliberation.mode !== 'solo') {
+            div._deliberationMeta = obj.deliberation;
+            try {
+              var delibBadge = document.createElement('div');
+              delibBadge.className = 'deliberation-label';
+              delibBadge.style.cssText = 'font-size:0.62rem;color:var(--violet,#8844cc);padding:2px 0;font-style:italic';
+              var modeLabel = {debate:'⚔ Debate',council:'⊛ Council',tribunal:'✦ Tribunal'}[obj.deliberation.mode] || obj.deliberation.mode;
+              delibBadge.textContent = '✦ ' + modeLabel + ' — ' + (obj.deliberation.participating_aspects || []).length + ' voices contributing';
+              var mb = div.querySelector('.msg-bubble');
+              if (mb) mb.parentNode.insertBefore(delibBadge, mb);
+            } catch (_e) { console.debug('app:', _e); }
+          }
+          if (obj.token) {
+            liveStatus = 'streaming';
+            try { laylaNotifyStreamPhase(div, 'streaming'); } catch (_e) { console.debug('app:', _e); }
+            if (!gotToken) {
+              gotToken = true;
+              clearTimeout(firstTokenTimer);
+              if (bubble && bubble.classList.contains('stream-md-placeholder')) {
+                bubble.classList.remove('stream-md-placeholder');
+                bubble.innerHTML = '';
+              }
+            }
+            clearTimeout(stalledTimer);
+            stalledTimer = setTimeout(_showStalled, stallMs);
+            full += String(obj.token);
+            if (bubble) {
+              // Render markdown during streaming for better readability
+              if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
+                try { bubble.innerHTML = sanitize(marked.parse(full)); } catch (_mdErr) { bubble.textContent = full; }
+              } else { bubble.textContent = full; }
+            }
+            try { if (full.length % 200 === 0) laylaStreamStatsChars(full.length); } catch (_e) { console.debug('app:', _e); }
+          }
+          if (obj.done) {
+            clearTimeout(firstTokenTimer);
+            clearTimeout(stalledTimer);
+            clearInterval(metaTimer);
+            liveStatus = 'done';
+            try { laylaNotifyStreamPhase(div, 'done'); } catch (_e) { console.debug('app:', _e); }
+            if (bubble) {
+              if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
+                try { bubble.innerHTML = sanitize(marked.parse(full)); } catch (_mdErr) { bubble.textContent = full; }
+              } else { bubble.textContent = full; }
+            }
+            if (thinkBox) { try { thinkBox.open = false; } catch (_e) { console.debug('app:', _e); } }
+            if (window._ttsEnabled && full) { try { if (typeof window.speakText === 'function') window.speakText(full).catch(function () {}); } catch (_e) { console.debug('app:', _e); } }
+            try { if (typeof window.refreshMaturityCard === 'function') window.refreshMaturityCard(true); } catch (_e) { console.debug('app:', _e); }
+            try { laylaStreamStatsChars(full.length); laylaStreamStatsStop(); } catch (_e) { console.debug('app:', _e); }
+            try { if (typeof window.laylaIngestArtifacts === 'function') window.laylaIngestArtifacts(full); } catch (_e) { console.debug('app:', _e); }
+            // Render full deliberation transcript if available
+            var _delibDone = obj.deliberation || div._deliberationMeta;
+            if (_delibDone && _delibDone.mode && _delibDone.mode !== 'solo') {
+              try { _renderDeliberationTranscript(div, _delibDone); } catch (_e) { console.debug('app:', _e); }
+            }
+          }
+        }
+      }
+    } else {
+      // Non-stream JSON mode
+      var agentTimeout = (typeof window.laylaAgentTimeoutMs === 'function') ? window.laylaAgentTimeoutMs() : 120000;
+      var res = await fetchFn(
+        '/agent',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: ac.signal },
+        Math.max(agentTimeout, 120000)
+      );
+      var data = {};
+      try { data = await res.json(); } catch (_) { data = {}; }
+      if (!res.ok || !data || data.ok === false) {
+        try { laylaRemoveTypingIndicator(); } catch (_e) { console.debug('app:', _e); }
+        addMsg('layla', formatErr(res, data || {}));
+        try { if (window.laylaChatFSM) window.laylaChatFSM.finishError(); } catch (_e) { console.debug('app:', _e); }
+        return;
+      }
+      try { laylaRemoveTypingIndicator(); } catch (_e) { console.debug('app:', _e); }
+      var resp = (data && (data.response || data.reply)) || '(no output)';
+      var replyAspect = (data && (data.aspect || (data.state && data.state.aspect))) || msgAspect;
+      var _steps = data && data.state && data.state.steps;
+      var _delib = _steps && _steps.some(function (s) { return s.deliberated; });
+      var _uxStates = data && data.state && data.state.ux_states;
+      var _memInf = data && data.state && data.state.memory_influenced;
+      addMsg('layla', resp, replyAspect, _delib, _steps, _uxStates, _memInf);
+      if (window._ttsEnabled && resp && resp !== '(no output)') { try { if (typeof window.speakText === 'function') window.speakText(resp).catch(function () {}); } catch (_e) { console.debug('app:', _e); } }
+      try { if (typeof window.refreshMaturityCard === 'function') window.refreshMaturityCard(true); } catch (_e) { console.debug('app:', _e); }
+      try { laylaStreamStatsStop(); } catch (_e) { console.debug('app:', _e); }
+      try { if (typeof window.laylaIngestArtifacts === 'function') window.laylaIngestArtifacts(resp); } catch (_e) { console.debug('app:', _e); }
+    }
+  } catch (e) {
+    try { laylaRemoveTypingIndicator(); } catch (_e) { console.debug('app:', _e); }
+    var errMsg = (e && e.message ? e.message : String(e));
+    // Phase 6B: Enhanced error recovery with retry button
+    var isTimeout = /timeout|abort|network/i.test(errMsg);
+    var isServerDown = /fetch|network|failed to fetch/i.test(errMsg);
+    var retryHtml = '<div class="layla-error-banner">';
+    retryHtml += '<span>' + (isTimeout ? 'Connection timed out' : isServerDown ? 'Server unreachable' : 'Error: ' + errMsg.substring(0, 120)) + '</span>';
+    retryHtml += '<button onclick="document.getElementById(\'chat-input\').value=\'' + (msg || '').replace(/'/g, "\\'").substring(0, 200) + '\';send()">Retry</button>';
+    retryHtml += '</div>';
+    addMsg('layla', retryHtml);
+    // Check if server is down and show model loading state
+    if (isServerDown) {
+      try { _checkServerHealth(); } catch (_hc) {}
+    }
+    try { if (window.laylaChatFSM) window.laylaChatFSM.finishError(); } catch (_e) { console.debug('app:', _e); }
+  } finally {
+    window._laylaSendBusy = false;
+    try { if (firstTokenTimer) clearTimeout(firstTokenTimer); } catch (_e) { console.debug('app:', _e); }
+    try { if (stalledTimer) clearTimeout(stalledTimer); } catch (_e) { console.debug('app:', _e); }
+    try { if (metaTimer) clearInterval(metaTimer); } catch (_e) { console.debug('app:', _e); }
+    try { laylaRemoveTypingIndicator(); } catch (_e) { console.debug('app:', _e); }
+    try { if (window.laylaChatFSM) window.laylaChatFSM.finishOk(); } catch (_e) { console.debug('app:', _e); }
+    try { laylaHeaderProgressStop(); } catch (_e) { console.debug('app:', _e); }
+    try { laylaStreamStatsStop(); } catch (_e) { console.debug('app:', _e); }
+    try { if (typeof window.refreshApprovals === 'function') window.refreshApprovals(); } catch (_e) { console.debug('app:', _e); }
+    try { if (typeof window.updateContextChip === 'function') window.updateContextChip(); } catch (_e) { console.debug('app:', _e); }
+    try { if (typeof window.laylaScrollActiveConversationIntoView === 'function') window.laylaScrollActiveConversationIntoView(); } catch (_e) { console.debug('app:', _e); }
+  }
+}
+
+// Phase 6B: Server health check for error recovery
+function _checkServerHealth() {
+  var banner = document.createElement('div');
+  banner.className = 'layla-model-loading';
+  banner.id = 'layla-health-banner';
+  banner.innerHTML = '<div class="spinner"></div><span>Checking server health...</span>';
+  var chatEl = document.getElementById('chat-messages');
+  if (chatEl) chatEl.appendChild(banner);
+
+  var _healthPoll = setInterval(function () {
+    fetch('/health', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.status === 'ok') {
+          clearInterval(_healthPoll);
+          var b = document.getElementById('layla-health-banner');
+          if (b) {
+            b.innerHTML = '<span style="color:#4caf50">Server is back online</span>';
+            setTimeout(function () { if (b.parentNode) b.parentNode.removeChild(b); }, 3000);
+          }
+        } else {
+          var b = document.getElementById('layla-health-banner');
+          if (b) {
+            var modelLoaded = d && d.model_loaded;
+            b.innerHTML = '<div class="spinner"></div><span>' +
+              (modelLoaded ? 'Server responding, model loaded' : 'Waiting for server... (model may be loading)') +
+              '</span>';
+          }
+        }
+      })
+      .catch(function () {
+        var b = document.getElementById('layla-health-banner');
+        if (b) b.innerHTML = '<div class="spinner"></div><span>Server unreachable... retrying in 5s</span>';
+      });
+  }, 5000);
+  // Stop polling after 2 minutes
+  setTimeout(function () { clearInterval(_healthPoll); }, 120000);
+}
+
+// ── Status panel helpers ────────────────────────────────────────────────────
+export async function refreshVersionInfo() {
+  var el = document.getElementById('app-version');
+  if (!el) return;
+  el.textContent = 'Version: loading…';
+  try {
+    var r = await fetch('/version');
+    var d = await r.json().catch(function () { return {}; });
+    var v = (d && d.ok && d.version) ? String(d.version) : '';
+    el.textContent = 'Version: ' + (v || '—');
+  } catch (_) {
+    el.textContent = 'Version: (could not load)';
+  }
+}
+
+export async function refreshPlatformHealth() {
+  var box = document.getElementById('platform-health');
+  if (!box) return;
+  box.innerHTML = '<span style="color:var(--text-dim)">Loading…</span>';
+  try {
+    var r = await fetch('/health');
+    var d = await r.json().catch(function () { return {}; });
+    var status = String((d && d.status) || 'unknown');
+    var html = [];
+    html.push('<div><strong>Status</strong>: ' + escapeHtml(status) + '</div>');
+    html.push('<div><strong>Uptime</strong>: ' + escapeHtml(String(Math.round((d && d.uptime_seconds) || 0))) + 's</div>');
+    html.push('<div><strong>Model</strong>: ' + escapeHtml((d && d.model_loaded) ? 'loaded' : 'not loaded') + '</div>');
+    html.push('<div><strong>Tools</strong>: ' + escapeHtml(String((d && d.tools_registered) || 0)) + '</div>');
+    html.push('<div><strong>Learnings</strong>: ' + escapeHtml(String((d && d.learnings) || 0)) + '</div>');
+    html.push('<div><strong>Study plans</strong>: ' + escapeHtml(String((d && d.study_plans) || 0)) + '</div>');
+    html.push('<div><strong>Vector store</strong>: ' + escapeHtml(String((d && d.vector_store) || 'unknown')) + '</div>');
+    box.innerHTML = html.join('');
+  } catch (_) {
+    box.innerHTML = '<span style="color:var(--text-dim)">Could not load health</span>';
+  }
+}
+
+export async function refreshRuntimeOptions() {
+  var box = document.getElementById('runtime-options-panel');
+  if (!box) return;
+  box.innerHTML = '<span style="color:var(--text-dim);font-size:0.7rem">Loading…</span>';
+  try {
+    var r = await fetch('/health?deep=true');
+    var d = await r.json().catch(function () { return {}; });
+    var html = [];
+    html.push('<div style="display:flex;flex-wrap:wrap;gap:6px">');
+    html.push('<span class="option-pill">safe_mode: ' + escapeHtml(String(!!(d && d.safe_mode))) + '</span>');
+    html.push('<span class="option-pill">uncensored: ' + escapeHtml(String(!!(d && d.uncensored))) + '</span>');
+    html.push('<span class="option-pill">nsfw_allowed: ' + escapeHtml(String(!!(d && d.nsfw_allowed))) + '</span>');
+    html.push('<span class="option-pill">use_chroma: ' + escapeHtml(String(!!(d && d.use_chroma))) + '</span>');
+    html.push('</div>');
+    if (d && d.limits) {
+      html.push('<div style="margin-top:8px"><strong>Limits</strong></div>');
+      html.push('<div style="color:var(--text-dim);font-size:0.7rem;line-height:1.5">');
+      html.push('max_active_runs: ' + escapeHtml(String(d.limits.max_active_runs != null ? d.limits.max_active_runs : '—')) + '<br>');
+      html.push('max_cpu_percent: ' + escapeHtml(String(d.limits.max_cpu_percent != null ? d.limits.max_cpu_percent : '—')) + '<br>');
+      html.push('max_ram_percent: ' + escapeHtml(String(d.limits.max_ram_percent != null ? d.limits.max_ram_percent : '—')) + '<br>');
+      html.push('</div>');
+    }
+    box.innerHTML = html.join('');
+  } catch (_) {
+    box.innerHTML = '<span style="color:var(--text-dim)">Could not load runtime options</span>';
+  }
+}
+
+// ── refreshContentPolicyToggles (stub — full version in settings-full.js) ────
+export function refreshContentPolicyToggles() {
+  // Delegate to settings-full if available
+  if (typeof window._refreshContentPolicyToggles === 'function') {
+    window._refreshContentPolicyToggles();
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+export function initApp() {
+  // Theme restore
+  try {
+    var th = localStorage.getItem('layla_theme');
+    if (th === 'light') document.body.classList.add('theme-light');
+    else document.body.classList.remove('theme-light');
+  } catch (_e) { console.debug('app:', _e); }
+
+  // Tool approval bypass toggle
+  try {
+    var bypassCb = document.getElementById('tool-approval-bypass');
+    var bypassWarn = document.getElementById('bypass-warning');
+    var allowWriteCb = document.getElementById('allow-write');
+    var allowRunCb = document.getElementById('allow-run');
+    if (bypassCb) {
+      // Load initial state from server config
+      fetch('/health', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
+        var cfg = d.effective_config || {};
+        if (cfg.tool_approval_bypass) {
+          bypassCb.checked = true;
+          if (bypassWarn) bypassWarn.style.display = 'block';
+          if (allowWriteCb) allowWriteCb.checked = true;
+          if (allowRunCb) allowRunCb.checked = true;
+        }
+      }).catch(function () {});
+      // Toggle handler
+      bypassCb.addEventListener('change', function () {
+        var on = bypassCb.checked;
+        if (bypassWarn) bypassWarn.style.display = on ? 'block' : 'none';
+        if (on) {
+          if (allowWriteCb) allowWriteCb.checked = true;
+          if (allowRunCb) allowRunCb.checked = true;
+        }
+        // Persist to server
+        fetch('/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tool_approval_bypass: on })
+        }).catch(function () {});
+      });
+    }
+  } catch (_e) { console.debug('app: bypass init', _e); }
+
+  // Module init hooks
+  try { if (typeof window.refreshWorkspacePresetsDropdown === 'function') window.refreshWorkspacePresetsDropdown(); } catch (_e) { console.debug('app:', _e); }
+  try { toggleSendButton(); } catch (_e) { console.debug('app:', _e); }
+
+  // Legacy health polling (will be killed by health service via _laylaKillLegacyPolling)
+  try {
+    function laylaBasenameDisplay(p) {
+      if (!p) return '';
+      var s = String(p).trim();
+      var i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
+      return i >= 0 ? s.slice(i + 1) : s;
+    }
+    var _pollHealthTimer = null;
+    function laylaPollHeaderDeep() {
+      var el = document.getElementById('header-system-status');
+      if (!el) return;
+      fetch('/health?deep=true', { cache: 'no-store' }).then(function (r) {
+        return r.json().then(function (d) { return { r: r, d: d }; });
+      }).then(function (x) {
+        if (!x.r.ok) { el.textContent = 'degraded'; return; }
+        var d = x.d || {};
+        try { if (typeof window.laylaApplyUiTimeoutsFromHealth === 'function') window.laylaApplyUiTimeoutsFromHealth(d); } catch (_e) { console.debug('app:', _e); }
+        var mode = (d.remote_mode ? 'remote' : 'local');
+        var raw = String(d.active_model || d.model_path || d.model || d.model_filename || '').trim();
+        var tail = laylaBasenameDisplay(raw);
+        el.title = raw ? raw : '';
+        if (tail.length > 28) tail = tail.slice(0, 28);
+        el.textContent = mode + (tail ? ' · ' + tail : '');
+        var msb = document.getElementById('model-status-badge');
+        if (msb) {
+          var loaded = d.model_loaded;
+          msb.textContent = loaded ? '● Model OK' : '○ No model';
+          msb.title = loaded ? ('Model loaded' + (raw ? ': ' + raw : '')) : 'No model loaded';
+          msb.style.color = loaded ? '#4ecdc4' : 'var(--text-dim)';
+        }
+      }).catch(function () { el.textContent = 'offline'; });
+    }
+    laylaPollHeaderDeep();
+    _pollHealthTimer = setInterval(laylaPollHeaderDeep, 20000);
+
+    // Connection banner
+    var ban = document.getElementById('connection-banner');
+    var _pollConnTimer = null;
+    function laylaPingConn() {
+      fetch('/health', { cache: 'no-store' }).then(function () {
+        if (navigator.onLine && ban) ban.style.display = 'none';
+      }).catch(function () {
+        if (ban) ban.style.display = 'block';
+      });
+    }
+    window.addEventListener('online', function () { if (ban) ban.style.display = 'none'; });
+    window.addEventListener('offline', function () { if (ban) ban.style.display = 'block'; });
+    _pollConnTimer = setInterval(laylaPingConn, 15000);
+    laylaPingConn();
+
+    // Header context row
+    laylaRefreshHeaderContextRow();
+    var _pollCtxTimer = setInterval(function () { try { laylaRefreshHeaderContextRow(); } catch (_e) { console.debug('app:', _e); } }, 12000);
+
+    // Session time ticker
+    var _sessionTimeTimer = null;
+    function _updateSessionTime() {
+      var el = document.getElementById('session-time');
+      if (!el) return;
+      var elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+      var h = Math.floor(elapsed / 3600);
+      var m = Math.floor((elapsed % 3600) / 60);
+      var s = elapsed % 60;
+      el.textContent = h > 0 ? (h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0'))
+                              : (m + ':' + String(s).padStart(2, '0'));
+    }
+    _updateSessionTime();
+    _sessionTimeTimer = setInterval(_updateSessionTime, 1000);
+
+    // MIGRATION: Allow ES module health service to kill legacy polling
+    window._laylaKillLegacyPolling = function () {
+      try { if (_pollHealthTimer) { clearInterval(_pollHealthTimer); _pollHealthTimer = null; } } catch (_) {}
+      try { if (_pollConnTimer) { clearInterval(_pollConnTimer); _pollConnTimer = null; } } catch (_) {}
+      try { if (_pollCtxTimer) { clearInterval(_pollCtxTimer); _pollCtxTimer = null; } } catch (_) {}
+      try { if (_sessionTimeTimer) { clearInterval(_sessionTimeTimer); _sessionTimeTimer = null; } } catch (_) {}
+      try { if (typeof window._laylaStopDashPoll === 'function') window._laylaStopDashPoll(); } catch (_) {}
+      console.log('[Layla] legacy polling killed — ES module health service takes over');
+    };
+  } catch (_e) { console.debug('app:', _e); }
+
+  // Setup overlay Escape listeners
+  try {
+    var sw = document.getElementById('setup-workspace-path');
+    if (sw) {
+      sw.addEventListener('input', function () { sw.setAttribute('data-user-edited', '1'); });
+    }
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Escape') return;
+      var so = document.getElementById('setup-overlay');
+      if (so && so.classList.contains('visible')) {
+        if (typeof window.dismissSetupOverlay === 'function') window.dismissSetupOverlay(true);
+        else so.classList.remove('visible');
+        ev.preventDefault();
+        return;
+      }
+      var ob = document.getElementById('onboarding-overlay');
+      if (ob && ob.classList.contains('visible')) {
+        if (typeof window.dismissOnboarding === 'function') window.dismissOnboarding();
+        ev.preventDefault();
+      }
+    });
+  } catch (_e) { console.debug('app:', _e); }
+
+  // Visibility change — pause/resume polling (skip if compat loaded since ES health service handles it)
+  document.addEventListener('visibilitychange', function () {
+    if (window.__laylaCompatLoaded) return;
+  });
+
+  // Panel refresh routing — chain hook
+  var _prevRefreshHook = window.__laylaRefreshAfterShowMainPanel;
+  window.__laylaRefreshAfterShowMainPanel = function (main) {
+    try { if (typeof _prevRefreshHook === 'function') _prevRefreshHook(main); } catch (_e) { console.debug('app: prev hook', _e); }
+    panelRefreshRouting(main);
+  };
+
+  // First-run setup check
+  if (typeof window.checkSetupStatus === 'function') window.checkSetupStatus();
+
+  console.log('[Layla] app.js initialized — core orchestrator active');
+}

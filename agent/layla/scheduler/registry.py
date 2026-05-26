@@ -152,5 +152,52 @@ def create_scheduler(cfg: dict) -> BackgroundScheduler:
 
         logger.info("scheduler created (study every %s min when active)", interval_min)
 
+    # ── Resource Governor tick ───────────────────────────────────────────
+    if cfg.get("resource_governor_enabled", True):
+        try:
+            tick_sec = max(5, min(60, int(cfg.get("governor_tick_seconds", 15))))
+            from services.resource_governor import governor_tick
+            sched.add_job(
+                _instrumented("governor_tick", governor_tick),
+                IntervalTrigger(seconds=tick_sec),
+                id="resource_governor_tick",
+                replace_existing=True,
+            )
+            logger.info("resource governor tick scheduled every %s sec", tick_sec)
+        except Exception as _gov_e:
+            logger.warning("resource governor not scheduled: %s", _gov_e)
+
+    # ── Cluster sync (Phase 3C) ────────────────────────────────────────
+    if cfg.get("cluster_enabled", False):
+        try:
+            sync_interval = max(60, int(cfg.get("cluster_sync_interval", 300)))
+            from services.node_sync import sync_now
+            sched.add_job(
+                _instrumented("cluster_sync", sync_now),
+                IntervalTrigger(seconds=sync_interval),
+                id="cluster_sync",
+                replace_existing=True,
+            )
+            logger.info("cluster sync scheduled every %s sec", sync_interval)
+        except Exception as _sync_e:
+            logger.warning("cluster sync not scheduled: %s", _sync_e)
+
+    # ── Task queue maintenance ──────────────────────────────────────────
+    try:
+        def _task_queue_maintenance():
+            from services.work_unit import get_task_queue
+            q = get_task_queue()
+            q.reset_stuck()
+            q.cleanup_stale()
+
+        sched.add_job(
+            _instrumented("task_queue_maintenance", _task_queue_maintenance),
+            IntervalTrigger(hours=1),
+            id="task_queue_maintenance",
+            replace_existing=True,
+        )
+    except Exception as _tq_e:
+        logger.debug("task queue maintenance not scheduled: %s", _tq_e)
+
     _scheduler = sched
     return sched

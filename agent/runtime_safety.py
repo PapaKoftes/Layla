@@ -316,6 +316,7 @@ def load_config() -> dict:
             "admin_mode": False,
             "admin_auto_checkpoint": True,
             "admin_blocklist_override": False,
+            "tool_approval_bypass": False,
             "remote_cors_origins": [],
             "cloudflared_path": "",
             "dynamic_tool_generation_enabled": False,
@@ -525,6 +526,8 @@ def load_config() -> dict:
             "lens_refresh_interval_days": 7,
             "enable_operational_guidance": True,
             "enable_cognitive_workspace": True,
+            "deliberation_enabled": True,
+            "deliberation_min_length": 100,
             "engineering_pipeline_enabled": False,
             "engineering_pipeline_default_mode": "chat",
             "engineering_pipeline_max_clarify_rounds": 3,
@@ -618,7 +621,21 @@ def load_config() -> dict:
             "idle_detection_enabled": True,
             "idle_cpu_threshold": 0.30,
             "idle_timeout_minutes": 10,
+            # Resource Governor (WHISPER / BREATHE / SPRINT)
+            "resource_governor_enabled": True,
+            "whisper_cpu_cap": 0.05,
+            "breathe_cpu_cap": 0.25,
+            "sprint_cpu_cap": 0.80,
+            "whisper_timeout_seconds": 60,
+            "sprint_timeout_seconds": 600,
+            "governor_tick_seconds": 15,
+            "system_tray_enabled": True,
             # Phase 9: Multi-Device / Networking
+            "cluster_enabled": False,
+            "node_role": "queen",
+            "cluster_heartbeat_interval": 30,
+            "cluster_task_timeout": 300,
+            "cluster_sync_interval": 300,
             "cluster_offload_enabled": False,
             "hardware_tier": "cpu",
             "hardware_aware_startup": True,
@@ -654,9 +671,52 @@ def load_config() -> dict:
             Path(defaults["sandbox_root"]).mkdir(parents=True, exist_ok=True)
         except Exception as e:
             logger.debug("sandbox_root mkdir failed: %s", e)
+        # Phase 1B: Apply maturity rank gates — overlay config based on earned rank
+        try:
+            _apply_maturity_gates(defaults)
+        except Exception as _mg_err:
+            logger.debug("maturity gates overlay failed: %s", _mg_err)
+
         _config_cache = defaults
         _config_mtime = current_mtime
         return _config_cache
+
+
+def _apply_maturity_gates(cfg: dict) -> None:
+    """Overlay config keys based on maturity rank thresholds.
+
+    This ensures that powerful capabilities are locked until the user has
+    interacted enough for Layla to earn them through the XP system.
+    """
+    try:
+        from services.maturity_engine import get_state
+        ms = get_state()
+        rank = ms.rank
+    except Exception:
+        return  # If maturity engine isn't available, don't gate anything
+
+    # Rank < 1: No proactive behavior, no autonomous research
+    if rank < 1:
+        cfg.setdefault("inline_initiative_enabled", False)
+        cfg["inline_initiative_enabled"] = False
+        cfg.setdefault("initiative_engine_enabled", False)
+        cfg["initiative_engine_enabled"] = False
+
+    # Rank < 3: No autonomous research mode
+    if rank < 3:
+        cfg["autonomous_research_mode"] = False
+
+    # Rank < 5: No multi-step planning autonomy
+    if rank < 5:
+        cfg["autonomous_mode"] = False
+
+    # Rank 5+: Enable planning with full autonomy
+    # (planning_enabled stays True for user-driven plans at all ranks)
+
+    # Rank < 10: No full initiative/autonomy
+    if rank < 10:
+        cfg["initiative_project_proposals_enabled"] = False
+        cfg["autonomy_optimizer_enabled"] = False
 
 
 def model_search_roots(cfg: dict | None = None) -> list[Path]:
