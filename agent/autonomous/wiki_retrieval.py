@@ -49,12 +49,12 @@ def _first_heading(body: str) -> str:
     return ""
 
 
-def try_wiki_retrieval(*, goal: str, workspace_root: str, cfg: dict[str, Any]) -> dict[str, Any] | None:
+def try_wiki_retrieval(*, goal: str, workspace_root: str, cfg: dict[str, Any], domain: str = "") -> dict[str, Any] | None:
     thresh = float(cfg.get("autonomous_wiki_match_threshold") or 0.18)
     max_files = int(cfg.get("autonomous_prefetch_wiki_max_files") or 80)
     max_chars = int(cfg.get("autonomous_prefetch_wiki_max_chars_per_file") or 48_000)
 
-    root = wiki_root_for_workspace(workspace_root)
+    root = wiki_root_for_workspace(workspace_root, domain=domain)
     try:
         if not root.is_dir():
             return None
@@ -67,7 +67,12 @@ def try_wiki_retrieval(*, goal: str, workspace_root: str, cfg: dict[str, Any]) -
     if not goal_t:
         return None
 
-    paths = sorted(root.glob("*.md"))[:max_files]
+    # Search both flat wiki root and domain subdirectories
+    if domain:
+        paths = sorted(root.glob("*.md"))[:max_files]
+    else:
+        # Merge top-level + one level of domain subdirectories
+        paths = sorted(list(root.glob("*.md")) + list(root.glob("*/*.md")))[:max_files]
     best: tuple[float, Path, dict[str, Any]] | None = None
 
     for p in paths:

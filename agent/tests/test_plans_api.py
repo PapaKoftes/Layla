@@ -131,8 +131,10 @@ def test_plans_approve_rejects_empty_steps(client):
 
 def test_plans_approve_rejects_edit_without_tools_when_required(client, monkeypatch):
     import services.plan_step_governance as psg
+    import services.planning.plan_step_governance as psg_real
 
     monkeypatch.setattr(psg, "_plan_governance_require_nonempty_tools", lambda: True)
+    monkeypatch.setattr(psg_real, "_plan_governance_require_nonempty_tools", lambda: True)
     r = client.post(
         "/plans",
         json={

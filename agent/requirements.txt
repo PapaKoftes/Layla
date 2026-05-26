@@ -194,6 +194,10 @@ deep-translator>=1.11           # Google Translate backend (translate_text tool,
 # ─── Multi-Device / Networking (Phase 9) ─────────────────────────────────────
 zeroconf>=0.131                 # mDNS: zero-config LAN discovery of Layla peers
 
+# ─── Resource Governor + System Tray ─────────────────────────────────────────
+pystray>=0.19                   # System tray icon (Windows Shell_NotifyIcon)
+watchdog>=4.0                   # File system monitoring for knowledge watcher
+
 # ─── Observability (optional — graceful fallback when not installed) ──────────
 # prometheus_client>=0.20
 # structlog>=24.0

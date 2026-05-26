@@ -123,6 +123,23 @@ def _ingest_raw(text: str, source: str, topic: str) -> IngestResult:
         except Exception as exc:
             logger.debug("auto_link_learning failed for %s: %s", source, exc)
 
+    # Auto-submit high-value chunks for user verification (Phase 3A)
+    if saved_count > 0:
+        try:
+            from services.verification_queue import get_verification_queue
+            vq = get_verification_queue()
+            for chunk in chunks[:3]:  # Submit up to 3 representative chunks
+                chunk_stripped = chunk.strip()
+                if len(chunk_stripped) > 50:  # Skip trivial chunks
+                    vq.submit(
+                        fact=chunk_stripped[:500],
+                        source=f"file:{source}",
+                        confidence=0.6,  # Extracted, not user-confirmed
+                        importance=0.5,
+                    )
+        except Exception as _vq_exc:
+            logger.debug("auto-verify submission failed for %s: %s", source, _vq_exc)
+
     return IngestResult(
         source=source,
         chunks=saved_count,

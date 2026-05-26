@@ -166,7 +166,7 @@ def test_validate_file_plan_rejects_mutating_empty_tools_when_flag(monkeypatch):
     from services.plan_step_governance import validate_file_plan_before_approval
 
     monkeypatch.setattr(
-        "services.plan_step_governance._plan_governance_require_nonempty_tools",
+        "services.planning.plan_step_governance._plan_governance_require_nonempty_tools",
         lambda: True,
     )
     s = PlanStep(id="e1", title="e", description="edit something", type="edit", tools=[])
@@ -178,7 +178,7 @@ def test_validate_sqlite_plan_rejects_mutating_empty_tools_when_flag(monkeypatch
     from services.plan_step_governance import validate_sqlite_plan_before_approval
 
     monkeypatch.setattr(
-        "services.plan_step_governance._plan_governance_require_nonempty_tools",
+        "services.planning.plan_step_governance._plan_governance_require_nonempty_tools",
         lambda: True,
     )
     plan = {
@@ -210,7 +210,7 @@ def test_validate_step_rejects_tools_auto_filled_when_config(monkeypatch):
     from services.plan_step_governance import validate_step_outcome
 
     monkeypatch.setattr(
-        "services.plan_step_governance._plan_governance_reject_auto_filled",
+        "services.planning.plan_step_governance._plan_governance_reject_auto_filled",
         lambda: True,
     )
     step = SimpleNamespace(
