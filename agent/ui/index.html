@@ -334,6 +334,7 @@
         <button id="mic-btn" onclick="toggleMic()" title="Click to record voice" aria-label="Record voice">🎤</button>
         <button id="retry-btn" onclick="retryLastMessage()" title="Regenerate last reply (Ctrl+R)" aria-label="Regenerate last reply" style="display:none;font-size:0.75rem;padding:4px 8px">↻ Regenerate</button>
         <button type="button" id="cancel-send-btn" onclick="cancelActiveSend()" title="Stop generation" aria-label="Stop generation" style="display:none;font-size:0.75rem;padding:4px 8px">Stop</button>
+        <button type="button" id="council-btn" onclick="typeof window.runCouncil==='function'&&window.runCouncil();" title="Council — several aspects deliberate on your prompt, then synthesize one answer (slower, deeper)" aria-label="Run Council deliberation">⊛ Council</button>
         <button type="button" id="send-btn" onclick="typeof window.triggerSend==='function'&&window.triggerSend();" aria-label="Send message">Send</button>
       </div>
       <div id="ctx-usage-row" style="display:flex;align-items:center;gap:8px;padding:4px 8px 0;font-size:0.65rem;color:var(--text-dim)">
@@ -535,7 +536,7 @@
           <div class="option-card-title">Network &amp; Devices</div>
           <p style="font-size:0.68rem;color:var(--text-dim);margin:0 0 8px">Discover and pair with other Layla instances on your LAN. Zero-config via mDNS.</p>
           <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
-            <button type="button" id="discovery-toggle-btn" class="btn-discovery" onclick="_discoveryRunning?stopDiscovery():startDiscovery()" style="font-size:0.65rem;padding:3px 8px;background:var(--violet);border:1px solid var(--accent);color:#fff;border-radius:2px;cursor:pointer">Start Discovery</button>
+            <button type="button" id="discovery-toggle-btn" class="btn-discovery" onclick="toggleDiscovery()" style="font-size:0.65rem;padding:3px 8px;background:var(--violet);border:1px solid var(--accent);color:#fff;border-radius:2px;cursor:pointer">Start Discovery</button>
             <button type="button" class="tab-btn" style="font-size:0.65rem" onclick="refreshPeeringPanel()">Refresh</button>
             <span style="font-size:0.62rem;color:var(--text-dim)">Instance: <code id="pairing-instance-id" style="font-size:0.6rem">—</code></span>
           </div>
@@ -1000,6 +1001,7 @@ if ('serviceWorker' in navigator) {
 <script src="/layla-ui/js/layla-app.js"></script>
 <script src="/layla-ui/js/layla-conversations.js"></script>
 <script src="/layla-ui/js/layla-artifacts.js"></script>
+<script src="/layla-ui/js/layla-council.js"></script>
 <script src="/layla-ui/js/layla-search.js"></script>
 <script src="/layla-ui/js/layla-memory.js"></script>
 <script src="/layla-ui/js/layla-plan-viz.js"></script>
