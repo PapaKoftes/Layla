@@ -32,6 +32,10 @@ data/
 agent/runtime_config.json
 agent/runtime_config.pre-audit-backup.json
 
+# Per-user runtime state (machine-specific paths, scanned-file cache) — must not
+# be committed; it hardcodes the author's workspace_root and leaks the username.
+agent/.layla/
+
 # Discord bot per-guild state (local)
 discord_bot/discord_bot_state.json
 
