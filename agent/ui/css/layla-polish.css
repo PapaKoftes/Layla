@@ -1,0 +1,167 @@
+/* ============================================================================
+   layla-polish.css — visual polish layer (loaded last).
+   Goal: calm the cluttered chrome and add hierarchy/rhythm WITHOUT changing the
+   color palette. Everything here references existing --vars. Fully removable.
+   ============================================================================ */
+
+/* ── Header: turn the 18-control junk drawer into a tidy toolbar ──────────── */
+header {
+  padding: 8px 20px 6px;
+  gap: 5px 14px;
+  backdrop-filter: blur(6px);
+}
+/* Search band: keep it tight against the toolbar instead of a tall centered block */
+#global-search-container { padding: 0 12px 2px !important; margin: 0 !important; max-width: 560px !important; }
+
+/* The brand title: slightly tighter, no need to shout */
+.title { letter-spacing: 0.16em; }
+
+/* Group all header-meta interactive controls into one consistent "chip" look.
+   Equal height, equal radius, calm accent hover (replaces the jarring red-on-
+   everything). Status text spans stay chrome-less so actions vs. info read apart. */
+/* Let the toolbar use the full width to the right of the brand so the controls
+   sit in as few rows as possible instead of stacking into a tall wall. */
+.header-meta {
+  gap: 5px 6px;
+  align-items: center;
+  max-width: none;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* !important + min-height here are deliberate: these controls carry inline
+   styles in index.html and a 44px touch min-height from the base sheet, both of
+   which would otherwise win and keep the header a chunky, ragged junk drawer. */
+.header-meta button,
+.header-meta a:not(.title),
+.header-meta select,
+#compact-chat-btn,
+#charlab-open-btn,
+#aspect-lock-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  min-height: 30px !important;
+  height: 30px !important;
+  margin: 0 !important;
+  padding: 0 10px !important;
+  font-size: 0.7rem !important;
+  line-height: 1 !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 7px !important;
+  color: var(--text-dim) !important;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  box-shadow: none !important;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.header-meta a:not(.title) { text-decoration: none !important; }
+/* Restore comfortable touch targets on coarse pointers (phones/tablets). */
+@media (pointer: coarse) {
+  .header-meta button,
+  .header-meta a:not(.title),
+  .header-meta select,
+  #compact-chat-btn,
+  #charlab-open-btn,
+  #aspect-lock-btn { min-height: 40px !important; height: 40px !important; }
+}
+.header-meta button:hover,
+.header-meta a:not(.title):hover,
+.header-meta select:hover,
+#compact-chat-btn:hover,
+#charlab-open-btn:hover,
+#aspect-lock-btn:hover {
+  color: var(--text) !important;
+  border-color: var(--asp) !important;
+  background: var(--asp-mid) !important;
+}
+
+/* Preserve the aspect-lock "locked" state (base rule has no !important, so our
+   chip color would otherwise suppress its accent indicator). */
+#aspect-lock-btn.locked {
+  color: var(--asp) !important;
+  border-color: var(--asp) !important;
+  background: var(--asp-mid) !important;
+}
+
+/* Plain status badges (server status, conv id, token counts, timers) read as
+   muted info, not buttons. */
+.header-meta > span {
+  color: var(--text-dim);
+  opacity: 0.78;
+  font-size: 0.66rem;
+  letter-spacing: 0.02em;
+}
+#session-time { font-variant-numeric: tabular-nums; }
+
+/* ── Global search: lift it into a proper search field ───────────────────── */
+#global-search-container > div:first-child {
+  border-radius: 9px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+#global-search-container > div:first-child:focus-within {
+  border-color: var(--asp);
+  box-shadow: 0 0 0 2px var(--asp-mid);
+}
+
+/* ── Sidebar voices: clearer cards, consistent rhythm ────────────────────── */
+.sidebar h3 {
+  font-size: 0.64rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  opacity: 0.75;
+}
+.aspect-btn { border-radius: 0 6px 6px 0; padding-top: 8px; padding-bottom: 8px; }
+.aspect-option { margin-bottom: 5px; }
+
+/* ── Chat bubbles: a touch more air + softer corners ─────────────────────── */
+.msg { max-width: 760px; }
+.msg-bubble { border-radius: 4px 12px 12px 4px; padding: 14px 18px; }
+.msg-you .msg-bubble { border-radius: 12px 4px 4px 12px; }
+.msg-label { opacity: 0.85; text-transform: uppercase; }
+
+/* ── Composer: one cohesive bar, evenly sized actions ────────────────────── */
+.input-area { padding: 14px 20px 16px; }
+.input-row { gap: 8px; align-items: flex-end; }
+#msg-input { border-radius: 10px; padding: 12px 16px; }
+.input-row button,
+#send-btn,
+#council-btn,
+#mic-btn { border-radius: 9px; }
+
+/* Secondary composer icon buttons (attach/mic) share a quiet, equal footprint */
+#mic-btn,
+.input-row label[title="Attach file"] {
+  height: 40px;
+  min-height: 40px;
+  border-radius: 9px;
+}
+
+/* ── Empty state: make the welcome feel intentional ──────────────────────── */
+#chat-empty .sigil { opacity: 0.3; filter: none; text-shadow: 0 0 40px var(--asp-glow); }
+#chat-empty .hint { opacity: 0.6; }
+.prompt-tile { border-radius: 9px; transition: border-color 0.16s, background 0.16s, transform 0.16s; }
+.prompt-tile:hover { transform: translateY(-1px); }
+
+/* ── Global niceties: focus rings, smoother scrollbars, crisper text ──────── */
+* { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+
+:focus-visible {
+  outline: 2px solid var(--asp);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--asp); background-clip: padding-box; }
+
+/* Buttons everywhere get a subtle press feedback */
+button { transition: transform 0.08s ease; }
+button:active:not(:disabled) { transform: translateY(1px); }
