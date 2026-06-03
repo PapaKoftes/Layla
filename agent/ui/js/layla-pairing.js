@@ -66,6 +66,13 @@
   }
   window.stopDiscovery = stopDiscovery;
 
+  // Single entry point for the toggle button. _discoveryRunning is scoped to
+  // this IIFE, so the inline onclick handler cannot read it — route through here.
+  function toggleDiscovery() {
+    return _discoveryRunning ? stopDiscovery() : startDiscovery();
+  }
+  window.toggleDiscovery = toggleDiscovery;
+
   // ── Peer polling ──────────────────────────────────────────────────────────
 
   function startPeerPolling() {

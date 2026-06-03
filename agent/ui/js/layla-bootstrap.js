@@ -43,7 +43,7 @@
       if (chat) {
         var you = document.createElement('div');
         you.className = 'msg msg-you';
-        you.innerHTML = '<div class="msg-label">You</div><div class="msg-bubble">' + String(msg).replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+        you.innerHTML = '<div class="msg-label">You</div><div class="msg-bubble">' + String(msg).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
         chat.appendChild(you);
       }
       var conv = '';
@@ -73,7 +73,7 @@
           if (el && d && d.response) {
             var div = document.createElement('div');
             div.className = 'msg msg-layla';
-            div.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble">' + String(d.response).replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+            div.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble">' + String(d.response).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
             el.appendChild(div);
             el.scrollTop = el.scrollHeight;
           }
@@ -86,7 +86,7 @@
             var friendly = (msg.indexOf('fetch') !== -1 || msg.indexOf('network') !== -1 || msg.indexOf('load failed') !== -1)
               ? "Can't reach Layla. Is the server running at http://127.0.0.1:8000?"
               : ('Error: ' + String(e && e.message || e));
-            err.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble">' + String(friendly).replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+            err.innerHTML = '<div class="msg-label">Layla</div><div class="msg-bubble">' + String(friendly).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
             chat.appendChild(err);
             chat.scrollTop = chat.scrollHeight;
           }
