@@ -172,40 +172,51 @@
 <header>
   <button id="mobile-hamburger" class="mobile-hamburger" onclick="toggleMobileSidebar()" title="Toggle sidebar" aria-label="Toggle sidebar" style="display:none;background:none;border:none;color:var(--text);font-size:1.2rem;cursor:pointer;padding:4px 8px">☰</button>
   <div class="title">∴ LAYLA</div>
-  <div style="display:flex;align-items:center;gap:4px">
+  <div class="hdr-identity" style="display:flex;align-items:center;gap:6px">
     <div id="aspect-badge" class="aspect-badge">∴ MORRIGAN</div>
     <button id="aspect-lock-btn" onclick="toggleAspectLock()" title="Lock this aspect (prevent auto-routing)">🔓</button>
-    <button type="button" id="compact-chat-btn" onclick="compactConversation()" title="Summarize conversation and free context (server)" style="font-size:0.68rem;padding:4px 8px;margin-left:4px;background:var(--code-bg);border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer">⊙ Compact</button>
-    <button type="button" id="charlab-open-btn" onclick="openCharacterLab()" title="Open Character Lab — customize aspects, personality, voice, titles">⚙ Character Lab</button>
   </div>
   <div class="header-meta">
-    <span id="session-time" title="Session duration">0:00</span>
-    <select id="model-override" title="Model for this request (remote backends only)" style="font-size:0.68rem;opacity:0.9;background:var(--code-bg);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:2px;cursor:pointer">
+    <!-- Primary controls stay inline; everything secondary lives in the ⋯ menu. -->
+    <select id="model-override" title="Model for this request (remote backends only)">
       <option value="">Default</option>
       <option value="coding">Coding</option>
       <option value="reasoning">Reasoning</option>
       <option value="chat">Chat</option>
     </select>
-    <span id="model-status-badge" title="LLM status" style="font-size:0.68rem;opacity:0.7"></span>
-    <span id="header-system-status" title="Server status from /health" style="font-size:0.76rem;opacity:0.9;margin-left:4px;white-space:nowrap;color:var(--text)">…</span>
-    <span id="header-conv-id" title="Current conversation_id (truncated)" style="font-size:0.65rem;opacity:0.82;margin-left:6px;font-family:ui-monospace,monospace;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">…</span>
-    <span id="header-session-tokens" title="Session totals from GET /session/stats" style="font-size:0.65rem;opacity:0.75;margin-left:4px;white-space:nowrap">…</span>
-    <a href="/ctx_viz" target="_blank" rel="noopener" title="Open context visualization (GET /ctx_viz)" style="font-size:0.65rem;margin-left:4px;opacity:0.85">ctx</a>
-    <span id="reasoning-mode-badge" title="Adaptive reasoning depth for this turn" style="font-size:0.74rem;opacity:0.88;margin-left:4px;color:var(--asp)"></span>
-    <span id="cache-stats-badge" title="Completion cache hit rate. Enable: localStorage.setItem('layla_show_cache_stats','1')" style="font-size:0.68rem;opacity:0.65;margin-left:4px;display:none"></span>
-    <a href="/system_export" target="_blank" title="Full system export (JSON)">⊕ export</a>
-    <button onclick="exportChat()" title="Export chat as Markdown/JSON" aria-label="Export chat">📤 chat</button>
-    <a href="/memory/export" download title="Download memory bundle (ZIP of all knowledge + learnings)">⬇ memory</a>
+    <span id="header-system-status" title="Server status from /health">…</span>
+    <span id="session-time" title="Session duration">0:00</span>
+    <span id="model-status-badge" title="LLM status"></span>
+    <span id="reasoning-mode-badge" title="Adaptive reasoning depth for this turn"></span>
     <button onclick="toggleTheme()" id="theme-btn" title="Toggle dark/light" aria-label="Toggle theme">🌙</button>
-    <button onclick="toggleSidebarCompact()" id="sidebar-compact-btn" title="Compact sidebar" aria-label="Compact sidebar">◀</button>
     <button onclick="openSettings()" title="Settings" aria-label="Settings">⚙</button>
-    <button type="button" onclick="toggleComposePanel()" title="Working notes (merged into request context)" aria-label="Working notes">📝 Notes</button>
-    <button type="button" id="chat-rail-toggle" onclick="toggleChatRailMobile()" title="Chats" aria-label="Open chats">💬 Chats</button>
+    <button type="button" onclick="toggleComposePanel()" title="Working notes (merged into request context)" aria-label="Working notes">📝</button>
+    <button type="button" id="chat-rail-toggle" onclick="toggleChatRailMobile()" title="Chats" aria-label="Open chats">💬</button>
     <button type="button" class="rp-toggle-btn" onclick="toggleRightPanel()" title="Panels" aria-label="Toggle right panel">☰</button>
-    <button type="button" onclick="typeof retryLastMessage==='function'&&retryLastMessage()" title="Remove last exchange and resend" aria-label="Retry last message">retry</button>
 
-    <button onclick="clearChat()" title="Clear chat history" aria-label="Clear chat" style="background:transparent;border-color:var(--border)">clear</button>
-    <button type="button" id="open-cli-btn" onclick="openCliHelp()" title="Copy command to open terminal UI (TUI)">⌘ Terminal</button>
+    <details class="hdr-more">
+      <summary title="More actions" aria-label="More actions">⋯</summary>
+      <div class="hdr-more-menu" onclick="setTimeout(function(){var d=document.querySelector('.hdr-more');if(d)d.removeAttribute('open');},0)">
+        <div class="hdr-more-group">Conversation</div>
+        <button type="button" id="compact-chat-btn" onclick="compactConversation()" title="Summarize conversation and free context (server)">⊙ Compact context</button>
+        <button type="button" onclick="typeof retryLastMessage==='function'&&retryLastMessage()" title="Remove last exchange and resend">↻ Retry last</button>
+        <button type="button" onclick="clearChat()" title="Clear chat history">✕ Clear chat</button>
+        <div class="hdr-more-group">Export</div>
+        <a href="/system_export" target="_blank" rel="noopener" title="Full system export (JSON)">⊕ System export</a>
+        <button type="button" onclick="exportChat()" title="Export chat as Markdown/JSON">📤 Export chat</button>
+        <a href="/memory/export" download title="Download memory bundle (ZIP of all knowledge + learnings)">⬇ Download memory</a>
+        <div class="hdr-more-group">Tools</div>
+        <button type="button" id="charlab-open-btn" onclick="openCharacterLab()" title="Open Character Lab — customize aspects, personality, voice, titles">⚙ Character Lab</button>
+        <button type="button" id="open-cli-btn" onclick="openCliHelp()" title="Copy command to open terminal UI (TUI)">⌘ Terminal (TUI)</button>
+        <a href="/ctx_viz" target="_blank" rel="noopener" title="Open context visualization (GET /ctx_viz)">◫ Context viz</a>
+        <button type="button" onclick="toggleSidebarCompact()" id="sidebar-compact-btn" title="Compact sidebar">◀ Toggle sidebar width</button>
+        <div class="hdr-more-status">
+          <span id="header-conv-id" title="Current conversation_id (truncated)">…</span>
+          <span id="header-session-tokens" title="Session totals from GET /session/stats">…</span>
+          <span id="cache-stats-badge" title="Completion cache hit rate. Enable: localStorage.setItem('layla_show_cache_stats','1')"></span>
+        </div>
+      </div>
+    </details>
   </div>
   <div id="header-progress-row" class="header-progress-row" aria-hidden="true"><div id="header-progress-fill"></div></div>
   <!-- Global search bar (Phase 1.4) -->
@@ -1003,6 +1014,22 @@ if ('serviceWorker' in navigator) {
 <script src="/layla-ui/js/layla-conversations.js"></script>
 <script src="/layla-ui/js/layla-artifacts.js"></script>
 <script src="/layla-ui/js/layla-council.js"></script>
+<script>
+/* Close the header ⋯ overflow menu when clicking outside it (native <details>
+   stays open otherwise). Also close on Escape. */
+(function () {
+  document.addEventListener('click', function (e) {
+    document.querySelectorAll('details.hdr-more[open]').forEach(function (d) {
+      if (!d.contains(e.target)) d.removeAttribute('open');
+    });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('details.hdr-more[open]').forEach(function (d) { d.removeAttribute('open'); });
+    }
+  });
+})();
+</script>
 <script src="/layla-ui/js/layla-search.js"></script>
 <script src="/layla-ui/js/layla-memory.js"></script>
 <script src="/layla-ui/js/layla-plan-viz.js"></script>
