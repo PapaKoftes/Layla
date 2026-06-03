@@ -4,9 +4,15 @@ Models stored under ~/.layla/models/ (configurable via runtime_config.models_dir
 """
 from __future__ import annotations
 
+import socket
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+# Per-socket-operation timeout for model downloads. Bounds any single stalled
+# read/connect so a dead connection raises instead of hanging forever; a healthy
+# large download keeps making progress well within this window.
+_DOWNLOAD_SOCKET_TIMEOUT_S = 60.0
 
 MODELS_CATALOG = [
     {"key": "dolphin-mistral-7b", "name": "Dolphin Mistral 7B Q4_K_M", "filename": "dolphin-2.6-mistral-7b.Q4_K_M.gguf",
@@ -102,6 +108,10 @@ def install_model(name: str, progress: bool = True) -> dict[str, Any]:
         total_mb = total_size / (1024 * 1024)
         print(f"\r  [{bar}] {pct}%  {downloaded_mb:.0f}/{total_mb:.0f} MB", end="", flush=True)
 
+    # urlretrieve has no timeout parameter, so bound socket operations globally
+    # for the duration of the download and restore the prior default afterward.
+    _prev_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(_DOWNLOAD_SOCKET_TIMEOUT_S)
     try:
         if progress:
             urllib.request.urlretrieve(url, str(dest), _progress)
@@ -113,6 +123,8 @@ def install_model(name: str, progress: bool = True) -> dict[str, Any]:
         if dest.exists():
             dest.unlink(missing_ok=True)
         return {"ok": False, "filename": None, "error": str(e)}
+    finally:
+        socket.setdefaulttimeout(_prev_timeout)
 
 
 def benchmark_model(name: str) -> dict[str, Any]:
