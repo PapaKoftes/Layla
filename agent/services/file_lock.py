@@ -21,7 +21,11 @@ def _key(path: str | Path) -> str:
 def path_lock(path: str | Path):
     """Hold an RLock for one normalized path (e.g. file being edited by a sub-agent)."""
     k = _key(path)
-    lock = _locks[k]
+    # Guard the defaultdict access: key creation mutates the shared registry and
+    # must not race with a concurrent reset in clear_locks_for_tests(). Acquire
+    # the path lock OUTSIDE _guard so we don't serialize all paths behind one lock.
+    with _guard:
+        lock = _locks[k]
     lock.acquire()
     try:
         yield
