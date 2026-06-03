@@ -69,17 +69,13 @@
       if (typeof showToast === 'function') showToast('Now talking to ' + (name ? name.name : id));
     }
     try { if (typeof updateContextChip === 'function') updateContextChip(); } catch (_) {}
+    // Background text-glyph doodles removed: most of those symbols aren't in the
+    // monospace font, so .repeat(180) rendered a wall of broken tofu boxes. The
+    // SVG sprite-field (#layla-sprite-field) already provides subtle per-aspect
+    // art, so just keep the text overlay empty.
     try {
-      var doodles = {
-        morrigan: '⚔ ⟁ ⚔ ⎔ ⚔ ◈\n/\\\\==/\\\\  ─┼─  /\\\\==/\\\\\n⎔  ◈  ⟁  ⚔  ⟁  ◈',
-        nyx: '✦ ⊛ ∴ ✦ ⌁ ✦\n..✦..::...✦..::..\n⌁  ✦  ⊛  ∴  ✦  ⌁',
-        echo: '◎ ∞ ◎ ⟡ ◎ ∞\n====  ~~~  ====\n⟡  ◎  ∞  ◎  ⟡',
-        eris: '⚡ ⊘ ⚡ ⌇ ⚡ ⊘\n/\\/\\/\\/\\  ╱╲  /\\/\\/\\/\\\n⌇  ⚡  ⊘  ⚡  ⌇',
-        cassandra: '⌖ △ ⌖ ⟟ ⌖ △\n<>  /\\  <>  /\\  <>\n⟟  ⌖  △  ⌖  ⟟',
-        lilith: '⊛ ♾ ✶ ⊛ ⟁ ⊛\n###  ╳  ###  ╳  ###\n✶  ⊛  ♾  ⊛  ✶',
-      };
       var ov = document.getElementById('doodle-overlay');
-      if (ov) ov.textContent = (doodles[id] || doodles.morrigan).repeat(180);
+      if (ov) ov.textContent = '';
     } catch (_) {}
     try {
       if (typeof window.laylaSetAspectSprite === 'function') window.laylaSetAspectSprite(id);
