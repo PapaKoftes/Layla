@@ -191,6 +191,12 @@ def _sse_error(msg: str) -> StreamingResponse:
 @router.get("/setup/download")
 async def setup_download(url: str, filename: str = ""):
     """Stream model download progress as SSE events. url: HuggingFace direct .gguf URL."""
+    # SSRF / local-file guard: urllib.urlretrieve honors file:// and ftp://, and
+    # would happily reach localhost, cloud metadata (169.254.169.254) or LAN hosts.
+    # Restrict to public http/https only before touching the URL.
+    from services.browser import _is_safe_url
+    if not _is_safe_url(url):
+        return _sse_error("URL not allowed — only public http(s) model URLs are permitted")
     cfg = _rs.load_config()
     models_dir_raw = cfg.get("models_dir")
     models_dir = Path(models_dir_raw).expanduser().resolve() if models_dir_raw else _rs.default_models_dir()
