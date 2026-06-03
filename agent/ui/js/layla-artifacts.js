@@ -137,7 +137,7 @@ function laylaArtifactSendEdit() {
   const content = document.getElementById('artifact-edit-content').value;
   if (!content.trim()) return;
   laylaArtifactEditClose();
-  const input = document.getElementById('input') || document.getElementById('user-input');
+  const input = document.getElementById('msg-input');
   if (input) {
     input.value = 'Update this code:\n```\n' + content + '\n```';
     input.focus();

@@ -232,28 +232,34 @@
   window.onWorkspacePresetSelect = onWorkspacePresetSelect;
 
   // ── Relationship codex ─────────────────────────────────────────────────────
+  function __codexStatus(msg) {
+    var s = document.getElementById('relationship-codex-status');
+    if (s) s.textContent = msg;
+  }
+
   async function refreshRelationshipCodex() {
-    var pre = document.getElementById('codex-user-data');
+    var pre = document.getElementById('relationship-codex-json');
     if (!pre) return;
-    pre.textContent = 'Loading…';
+    __codexStatus('Loading…');
     try {
       var r = await fetch('/codex/user');
       var d = await r.json();
       if (d && d.ok && d.user) {
-        pre.textContent = JSON.stringify(d.user, null, 2);
+        pre.value = JSON.stringify(d.user, null, 2);
       } else {
-        pre.textContent = d ? JSON.stringify(d, null, 2) : '(no data)';
+        pre.value = d ? JSON.stringify(d, null, 2) : '(no data)';
       }
+      __codexStatus('Loaded');
     } catch (e) {
-      pre.textContent = 'Error: ' + (e && e.message ? e.message : e);
+      __codexStatus('Error: ' + (e && e.message ? e.message : e));
     }
   }
   window.refreshRelationshipCodex = refreshRelationshipCodex;
 
   async function saveRelationshipCodex() {
-    var pre = document.getElementById('codex-user-data');
+    var pre = document.getElementById('relationship-codex-json');
     if (!pre) return;
-    var raw = (pre.textContent || '').trim();
+    var raw = (pre.value || '').trim();
     if (!raw) return;
     var payload;
     try { payload = JSON.parse(raw); } catch (_) {
@@ -287,38 +293,53 @@
   window.applySettingsPreset = applySettingsPreset;
 
   async function saveAppearanceLite() {
-    var fontSize = (document.getElementById('app-font-size') || {}).value;
-    var animLevel = (document.getElementById('app-anim-level') || {}).value;
+    function _val(id) { var el = document.getElementById(id); return el ? el.value : undefined; }
+    function _checked(id) { var el = document.getElementById(id); return el ? !!el.checked : undefined; }
+    var msg = document.getElementById('appearance-save-msg');
     var body = {};
-    if (fontSize) body.ui_font_size = fontSize;
-    if (animLevel) body.ui_animation_level = animLevel;
+    var seed = _val('ui_avatar_seed');
+    var style = _val('ui_avatar_style');
+    var lite = _checked('chat_lite_mode');
+    var trace = _checked('ui_decision_trace_enabled');
+    if (seed !== undefined && seed !== '') body.ui_avatar_seed = seed;
+    if (style !== undefined && style !== '') body.ui_avatar_style = style;
+    if (lite !== undefined) body.chat_lite_mode = lite;
+    if (trace !== undefined) body.ui_decision_trace_enabled = trace;
+    if (msg) msg.textContent = 'Saving…';
     try {
       var r = await fetch('/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       var d = await r.json().catch(function () { return {}; });
-      __toast(d.ok ? 'Appearance saved' : 'Save failed');
+      var ok = d.ok !== false;
+      if (msg) msg.textContent = ok ? 'Appearance saved' : ('Save failed: ' + (d.error || r.status));
+      __toast(ok ? 'Appearance saved' : 'Save failed');
     } catch (_) {
+      if (msg) msg.textContent = 'Save failed';
       __toast('Save failed');
     }
   }
   window.saveAppearanceLite = saveAppearanceLite;
 
   async function runKnowledgeIngest() {
-    var inp = document.getElementById('ingest-path');
-    var msg = document.getElementById('ingest-msg');
+    var inp = document.getElementById('km-source');
+    var labelEl = document.getElementById('km-label');
+    var msg = document.getElementById('km-ingest-list');
     var path = inp ? (inp.value || '').trim() : '';
+    var label = labelEl ? (labelEl.value || '').trim() : '';
     if (!path) {
       if (msg) msg.textContent = 'Enter a file or directory path';
       return;
     }
     if (msg) msg.textContent = 'Ingesting…';
     try {
+      var payload = { directory: path };
+      if (label) payload.label = label;
       var r = await fetch('/intelligence/kb/build/directory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ directory: path }),
+        body: JSON.stringify(payload),
       });
       var d = await r.json().catch(function () { return {}; });
-      if (msg) msg.textContent = d.ok ? ('Done — ' + (d.articles_count || 0) + ' articles') : (d.error || 'failed');
+      if (msg) msg.textContent = (d.ok !== false) ? ('Done — ' + (d.articles_count || 0) + ' articles') : (d.error || 'failed');
     } catch (e) {
       if (msg) msg.textContent = 'Ingest failed';
     }
