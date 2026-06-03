@@ -290,6 +290,8 @@ def get_settings():
     """Return all editable settings. Missing keys use schema defaults."""
     from config_schema import EDITABLE_SCHEMA
 
+    from services.secret_filter import is_secret_key, REDACTED
+
     full_cfg = _rs.load_config()
     out = {}
     for e in EDITABLE_SCHEMA:
@@ -300,6 +302,10 @@ def get_settings():
             out[k] = e["default"]
         else:
             out[k] = None
+        # Never disclose stored secrets (remote_api_key, *_token, *_secret, …).
+        # The UI shows a masked placeholder; saving the mask is ignored on POST.
+        if is_secret_key(k) and out[k] not in (None, "", [], {}):
+            out[k] = REDACTED
     return out
 
 
@@ -337,6 +343,11 @@ async def save_settings(req: Request):
         body = await req.json()
     except Exception:
         return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+    # Drop redaction-mask placeholders so re-saving the form (which receives a
+    # masked secret from GET /settings) never overwrites the real stored secret.
+    if isinstance(body, dict):
+        from services.secret_filter import REDACTED
+        body = {k: v for k, v in body.items() if v != REDACTED}
     try:
         return await asyncio.to_thread(sync_save_settings, body)
     except Exception as e:
