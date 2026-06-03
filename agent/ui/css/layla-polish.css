@@ -1,45 +1,44 @@
 /* ============================================================================
-   layla-polish.css — visual polish layer (loaded last).
-   Goal: calm the cluttered chrome and add hierarchy/rhythm WITHOUT changing the
-   color palette. Everything here references existing --vars. Fully removable.
+   layla-polish.css — quiet, confident UI redesign (loaded last).
+
+   Keeps the SPIRIT (dark, monospace, six aspect colors, a little mystical) but
+   stops it shouting: dials the global glow strength down, stills the perpetual
+   animations, adds breathing room, flattens the gothic gradients, and turns the
+   header junk-drawer into a real toolbar + a native ⋯ overflow menu.
+   Every value references existing --vars. Fully removable.
    ============================================================================ */
 
-/* ── Header: turn the 18-control junk drawer into a tidy toolbar ──────────── */
+/* ── 1. Calm the loudness — the single biggest lever ─────────────────────── */
+/* --fx-strength multiplies every glow/shadow/scanline in the base sheet. */
+:root { --fx-strength: 0.6 !important; }
+
+.title { animation: none !important; }            /* stop the 4s "breathing" brand */
+body::after { opacity: 0.025 !important; }         /* faint texture, not a CRT scanline */
+
+/* ── 2. Header: brand · primary controls · ⋯ overflow ────────────────────── */
 header {
-  padding: 8px 20px 6px;
-  gap: 5px 14px;
+  padding: 8px 22px 6px;
+  gap: 6px 14px;
+  background: linear-gradient(to bottom, var(--bg2), var(--bg)) !important;
+  box-shadow: 0 1px 0 var(--border) !important;    /* hairline, not a heavy drop shadow */
   backdrop-filter: blur(6px);
 }
-/* Search band: keep it tight against the toolbar instead of a tall centered block */
+.title { letter-spacing: 0.16em; }
 #global-search-container { padding: 0 12px 2px !important; margin: 0 !important; max-width: 560px !important; }
 
-/* The brand title: slightly tighter, no need to shout */
-.title { letter-spacing: 0.16em; }
+.header-meta { gap: 5px 6px; align-items: center; max-width: none; flex: 0 1 auto; min-width: 0; }
 
-/* Group all header-meta interactive controls into one consistent "chip" look.
-   Equal height, equal radius, calm accent hover (replaces the jarring red-on-
-   everything). Status text spans stay chrome-less so actions vs. info read apart. */
-/* Let the toolbar use the full width to the right of the brand so the controls
-   sit in as few rows as possible instead of stacking into a tall wall. */
-.header-meta {
-  gap: 5px 6px;
-  align-items: center;
-  max-width: none;
-  flex: 0 1 auto;
-  min-width: 0;
-}
-
-/* !important + min-height here are deliberate: these controls carry inline
-   styles in index.html and a 44px touch min-height from the base sheet, both of
-   which would otherwise win and keep the header a chunky, ragged junk drawer. */
-.header-meta button,
-.header-meta a:not(.title),
-.header-meta select,
-#compact-chat-btn,
-#charlab-open-btn,
+/* Inline chips — DIRECT children only, so overflow-menu rows are excluded.
+   !important is deliberate: these carry inline styles + a 44px touch min-height
+   in the base sheet that would otherwise keep the header a ragged junk drawer. */
+.header-meta > button,
+.header-meta > a:not(.title),
+.header-meta > select,
+.hdr-more > summary,
 #aspect-lock-btn {
   display: inline-flex !important;
   align-items: center !important;
+  justify-content: center;
   min-height: 30px !important;
   height: 30px !important;
   margin: 0 !important;
@@ -48,111 +47,165 @@ header {
   line-height: 1 !important;
   background: rgba(255, 255, 255, 0.03) !important;
   border: 1px solid var(--border) !important;
-  border-radius: 7px !important;
+  border-radius: 8px !important;
   color: var(--text-dim) !important;
   letter-spacing: 0.02em;
   white-space: nowrap;
   box-shadow: none !important;
+  cursor: pointer;
   transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
-.header-meta a:not(.title) { text-decoration: none !important; }
-/* Restore comfortable touch targets on coarse pointers (phones/tablets). */
-@media (pointer: coarse) {
-  .header-meta button,
-  .header-meta a:not(.title),
-  .header-meta select,
-  #compact-chat-btn,
-  #charlab-open-btn,
-  #aspect-lock-btn { min-height: 40px !important; height: 40px !important; }
-}
-.header-meta button:hover,
-.header-meta a:not(.title):hover,
-.header-meta select:hover,
-#compact-chat-btn:hover,
-#charlab-open-btn:hover,
+.header-meta > a:not(.title) { text-decoration: none !important; }
+.header-meta > button:hover,
+.header-meta > a:not(.title):hover,
+.header-meta > select:hover,
+.hdr-more > summary:hover,
 #aspect-lock-btn:hover {
   color: var(--text) !important;
   border-color: var(--asp) !important;
   background: var(--asp-mid) !important;
 }
-
-/* Preserve the aspect-lock "locked" state (base rule has no !important, so our
-   chip color would otherwise suppress its accent indicator). */
+@media (pointer: coarse) {
+  .header-meta > button,
+  .header-meta > a:not(.title),
+  .header-meta > select,
+  .hdr-more > summary,
+  #aspect-lock-btn { min-height: 38px !important; height: 38px !important; }
+}
 #aspect-lock-btn.locked {
   color: var(--asp) !important;
   border-color: var(--asp) !important;
   background: var(--asp-mid) !important;
 }
 
-/* Plain status badges (server status, conv id, token counts, timers) read as
-   muted info, not buttons. */
-.header-meta > span {
-  color: var(--text-dim);
-  opacity: 0.78;
-  font-size: 0.66rem;
-  letter-spacing: 0.02em;
-}
+/* Status spans: muted info, not buttons. Hide empties so they don't add gaps. */
+.header-meta > span { color: var(--text-dim); opacity: 0.8; font-size: 0.66rem; letter-spacing: 0.02em; }
 #session-time { font-variant-numeric: tabular-nums; }
+#model-status-badge:empty, #reasoning-mode-badge:empty { display: none; }
 
-/* ── Global search: lift it into a proper search field ───────────────────── */
-#global-search-container > div:first-child {
-  border-radius: 9px;
-  transition: border-color 0.15s, box-shadow 0.15s;
+/* ── Overflow menu — native <details>, no JS ─────────────────────────────── */
+.hdr-more { position: relative; }
+.hdr-more > summary { list-style: none; }
+.hdr-more > summary::-webkit-details-marker { display: none; }
+.hdr-more[open] > summary {
+  color: var(--text) !important;
+  border-color: var(--asp) !important;
+  background: var(--asp-mid) !important;
 }
-#global-search-container > div:first-child:focus-within {
-  border-color: var(--asp);
-  box-shadow: 0 0 0 2px var(--asp-mid);
+.hdr-more-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 214px;
+  padding: 6px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  animation: hdr-more-in 0.12s ease-out;
+}
+@keyframes hdr-more-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.hdr-more-group {
+  font-size: 0.56rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text-dim);
+  opacity: 0.65;
+  padding: 8px 10px 3px;
+}
+.hdr-more-menu > a,
+.hdr-more-menu > button {
+  display: flex !important;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  min-height: 0 !important;        /* kill the inherited 44px touch min-height */
+  height: auto !important;
+  margin: 0 !important;
+  padding: 9px 11px !important;     /* ~38px rows */
+  font-size: 0.74rem !important;
+  line-height: 1.1 !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 8px !important;
+  color: var(--text) !important;
+  text-decoration: none !important;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.01em;
+  transition: background 0.12s, color 0.12s;
+}
+.hdr-more-menu > a:hover,
+.hdr-more-menu > button:hover { background: var(--asp-mid) !important; color: #fff !important; }
+.hdr-more-status {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  padding: 8px 10px 4px;
+  border-top: 1px solid var(--border);
+  font-size: 0.6rem;
+  color: var(--text-dim);
+  opacity: 0.8;
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
+}
+.hdr-more-status > span:empty { display: none; }
+
+/* ── 3. Surfaces — flatter, calmer than the gothic gradients/glows ───────── */
+.msg { max-width: 768px; }
+.msg-bubble { border-radius: 4px 12px 12px 4px; padding: 14px 18px; line-height: 1.65; }
+.msg-you .msg-bubble { border-radius: 12px 4px 4px 12px; }
+.msg-label { opacity: 0.8; text-transform: uppercase; letter-spacing: 0.12em; }
+.msg-layla .msg-bubble {
+  background: var(--code-bg) !important;
+  box-shadow: 0 1px 10px rgba(0, 0, 0, 0.35) !important;  /* drop the inset glow */
+}
+.msg-you .msg-bubble {
+  background: #1c0a26 !important;                          /* flat, quiet purple */
+  box-shadow: 0 1px 10px rgba(0, 0, 0, 0.35) !important;
 }
 
-/* ── Sidebar voices: clearer cards, consistent rhythm ────────────────────── */
+/* ── 4. Sidebar voices: quieter cards ────────────────────────────────────── */
 .sidebar h3 {
-  font-size: 0.64rem;
+  font-size: 0.62rem;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--text-dim);
-  opacity: 0.75;
+  opacity: 0.7;
 }
-.aspect-btn { border-radius: 0 6px 6px 0; padding-top: 8px; padding-bottom: 8px; }
+.aspect-btn { border-radius: 0 8px 8px 0; padding-top: 8px; padding-bottom: 8px; }
+.aspect-btn.active { box-shadow: none !important; }       /* keep accent border, drop inset glow */
 .aspect-option { margin-bottom: 5px; }
+.maturity-card { border-radius: 12px; }
 
-/* ── Chat bubbles: a touch more air + softer corners ─────────────────────── */
-.msg { max-width: 760px; }
-.msg-bubble { border-radius: 4px 12px 12px 4px; padding: 14px 18px; }
-.msg-you .msg-bubble { border-radius: 12px 4px 4px 12px; }
-.msg-label { opacity: 0.85; text-transform: uppercase; }
-
-/* ── Composer: one cohesive bar, evenly sized actions ────────────────────── */
-.input-area { padding: 14px 20px 16px; }
+/* ── 5. Composer — cohesive bar, calm focus ──────────────────────────────── */
+.input-area { padding: 14px 20px 16px; background: linear-gradient(to top, var(--bg), var(--bg2)) !important; }
 .input-row { gap: 8px; align-items: flex-end; }
-#msg-input { border-radius: 10px; padding: 12px 16px; }
-.input-row button,
-#send-btn,
-#council-btn,
-#mic-btn { border-radius: 9px; }
+#msg-input { border-radius: 11px; padding: 12px 16px; }
+#msg-input:focus { box-shadow: 0 0 0 2px var(--asp-mid) !important; }  /* no 18px glow */
+.input-row button, #send-btn, #council-btn, #mic-btn { border-radius: 10px; }
+#send-btn { box-shadow: none !important; }
+#mic-btn, .input-row label[title="Attach file"] { height: 40px; min-height: 40px; border-radius: 10px; }
 
-/* Secondary composer icon buttons (attach/mic) share a quiet, equal footprint */
-#mic-btn,
-.input-row label[title="Attach file"] {
-  height: 40px;
-  min-height: 40px;
-  border-radius: 9px;
-}
+/* ── 6. Right-panel tabs ─────────────────────────────────────────────────── */
+.rcp-tab { border-radius: 8px 8px 0 0; }
 
-/* ── Empty state: make the welcome feel intentional ──────────────────────── */
-#chat-empty .sigil { opacity: 0.3; filter: none; text-shadow: 0 0 40px var(--asp-glow); }
-#chat-empty .hint { opacity: 0.6; }
-.prompt-tile { border-radius: 9px; transition: border-color 0.16s, background 0.16s, transform 0.16s; }
+/* ── 7. Empty state ──────────────────────────────────────────────────────── */
+#chat-empty .sigil { opacity: 0.26; filter: none; text-shadow: 0 0 50px var(--asp-glow); }
+#chat-empty .hint { opacity: 0.55; }
+.prompt-tile { border-radius: 10px; transition: border-color 0.16s, background 0.16s, transform 0.12s; }
 .prompt-tile:hover { transform: translateY(-1px); }
 
-/* ── Global niceties: focus rings, smoother scrollbars, crisper text ──────── */
+/* ── 8. Global niceties ──────────────────────────────────────────────────── */
 * { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
-
-:focus-visible {
-  outline: 2px solid var(--asp);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
+:focus-visible { outline: 2px solid var(--asp); outline-offset: 2px; border-radius: 4px; }
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-thumb {
   background: var(--border);
@@ -161,7 +214,5 @@ header {
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--asp); background-clip: padding-box; }
-
-/* Buttons everywhere get a subtle press feedback */
-button { transition: transform 0.08s ease; }
+button { transition: transform 0.08s ease, background 0.15s, border-color 0.15s, color 0.15s; }
 button:active:not(:disabled) { transform: translateY(1px); }
