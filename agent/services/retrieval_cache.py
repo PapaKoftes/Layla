@@ -38,23 +38,31 @@ def cached_retrieve(query: str, k: int, fetcher: Callable[[str, int], Any]) -> A
     now = time.monotonic()
     preview = (query or "")[:60]
     ttl = _get_cache_ttl()
+    # Fast path: serve a fresh hit while only briefly holding the lock.
     with _cache_lock:
-        if key in _cache:
-            val, ts = _cache[key]
-            if now - ts < ttl:
-                try:
-                    from services.observability import log_retrieval_cache_hit
-                    log_retrieval_cache_hit(query_preview=preview, duration_ms=0)
-                except Exception:
-                    pass
-                return val
-        t0 = time.monotonic()
-        result = fetcher(query, k)
-        elapsed_ms = (time.monotonic() - t0) * 1000
-        _cache[key] = (result, now)
-        try:
-            from services.observability import log_retrieval_cache_miss
-            log_retrieval_cache_miss(query_preview=preview, duration_ms=elapsed_ms)
-        except Exception:
-            pass
-        return result
+        cached = _cache.get(key)
+    if cached is not None:
+        val, ts = cached
+        if now - ts < ttl:
+            try:
+                from services.observability import log_retrieval_cache_hit
+                log_retrieval_cache_hit(query_preview=preview, duration_ms=0)
+            except Exception:
+                pass
+            return val
+
+    # Miss: run the (possibly slow) fetcher OUTSIDE the lock so concurrent
+    # cache reads/writes are not blocked on vector-DB or network I/O. Two
+    # concurrent misses may both fetch; that is acceptable for idempotent
+    # retrieval and the last writer wins.
+    t0 = time.monotonic()
+    result = fetcher(query, k)
+    elapsed_ms = (time.monotonic() - t0) * 1000
+    with _cache_lock:
+        _cache[key] = (result, time.monotonic())
+    try:
+        from services.observability import log_retrieval_cache_miss
+        log_retrieval_cache_miss(query_preview=preview, duration_ms=elapsed_ms)
+    except Exception:
+        pass
+    return result
