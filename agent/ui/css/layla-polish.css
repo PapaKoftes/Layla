@@ -14,6 +14,9 @@
 
 .title { animation: none !important; }            /* stop the 4s "breathing" brand */
 body::after { opacity: 0.025 !important; }         /* faint texture, not a CRT scanline */
+/* The text-glyph "doodle" wall rendered as broken tofu boxes (symbols absent
+   from the mono font); the SVG sprite-field is the real background art. */
+#doodle-overlay { display: none !important; }
 
 /* ── 2. Header: brand · primary controls · ⋯ overflow ────────────────────── */
 header {
