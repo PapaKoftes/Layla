@@ -21,35 +21,12 @@ from version import __version__
 logger = logging.getLogger("layla")
 router = APIRouter(tags=["session"])
 
-_REDACTED = "***redacted***"
-# Substrings that mark a config value as a credential. Matching is conservative
-# so diagnostic keys are preserved — e.g. "completion_max_tokens" is NOT a token
-# (it ends in "_tokens"), and "tunnel_token_ttl_hours" is a TTL, not the secret.
-_SECRET_SUBSTRINGS = ("api_key", "secret", "password", "passwd", "credential", "private_key", "passphrase")
-_SECRET_TOKEN_MARKERS = ("token_hash", "bot_token", "app_token", "auth_token", "access_token", "refresh_token")
-
-
-def _is_secret_key(key: str) -> bool:
-    k = str(key).lower()
-    if any(s in k for s in _SECRET_SUBSTRINGS):
-        return True
-    if k.endswith("_token") or any(m in k for m in _SECRET_TOKEN_MARKERS):
-        return True
-    return False
-
-
 def _redact_secrets(cfg: dict[str, Any]) -> dict[str, Any]:
     """Mask credential-bearing config values while keeping the keys visible, so
-    /system_export stays useful for diagnostics without leaking secrets."""
-    if not isinstance(cfg, dict):
-        return cfg
-    out: dict[str, Any] = {}
-    for key, val in cfg.items():
-        if _is_secret_key(key) and val not in (None, "", [], {}):
-            out[key] = _REDACTED
-        else:
-            out[key] = val
-    return out
+    /system_export stays useful for diagnostics without leaking secrets.
+    Delegates to the shared secret_filter (single source of truth)."""
+    from services.secret_filter import redact_secrets
+    return redact_secrets(cfg)
 
 
 @router.post("/compact")
