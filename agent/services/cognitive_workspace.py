@@ -51,7 +51,10 @@ def _generate_approaches(goal: str) -> list[dict[str, Any]]:
         if isinstance(out, dict):
             text = ((out.get("choices") or [{}])[0].get("message") or {}).get("content", "") or ""
             if text:
-                m = re.search(r"\{[\s\S]*?\}", text)
+                # Greedy: span the outer object (first '{' to last '}'). A
+                # non-greedy match stops at the first inner '}', truncating the
+                # nested {"approaches": [{...}]} payload into invalid JSON.
+                m = re.search(r"\{[\s\S]*\}", text)
                 if m:
                     data = json.loads(m.group(0))
                     approaches = data.get("approaches", [])
