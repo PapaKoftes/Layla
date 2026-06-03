@@ -69,12 +69,13 @@ if (-not $NoMCP) {
     Write-Host "[3/5] MCP skipped (-NoMCP)." -ForegroundColor Gray
 }
 
-# 4. Run the server (this blocks)
+# 4. Run the server (this blocks). serve.py guards the port so Layla never
+#    collides with another program on :8000 (auto-relocates or reuses a running
+#    instance) and opens the browser at the correct port.
 Write-Host ""
-Write-Host "[4/5] Starting Layla server at http://127.0.0.1:8000" -ForegroundColor Green
-Write-Host "      UI: http://127.0.0.1:8000  or  http://127.0.0.1:8000/ui" -ForegroundColor Green
+Write-Host "[4/5] Starting Layla server (port-checked)" -ForegroundColor Green
 Write-Host "      Ctrl+C to stop." -ForegroundColor Gray
 Write-Host ""
 $AgentDir = Join-Path $Root "agent"
 Set-Location $AgentDir
-& $VenvPython -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
+& $VenvPython serve.py
