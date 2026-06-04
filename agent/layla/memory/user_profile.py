@@ -119,7 +119,8 @@ def get_all_user_identity() -> dict[str, str]:
     migrate()
     with _conn() as db:
         rows = db.execute("SELECT key, snapshot FROM user_identity").fetchall()
-    return {r["key"]: (r["snapshot"] or "").strip() for r in rows if r.get("key")}
+    # sqlite3.Row has no .get(); key is the primary key so it is always present.
+    return {r["key"]: (r["snapshot"] or "").strip() for r in rows if r["key"]}
 
 
 def set_user_identity(key: str, snapshot: str) -> None:
@@ -137,6 +138,17 @@ def set_user_identity(key: str, snapshot: str) -> None:
             (key, snapshot, now),
         )
         db.commit()
+
+
+def delete_user_identity(key: str) -> bool:
+    """Forget a single user identity fact. Returns True if a row was removed."""
+    if not (key or "").strip():
+        return False
+    migrate()
+    with _conn() as db:
+        cur = db.execute("DELETE FROM user_identity WHERE key=?", (key.strip(),))
+        db.commit()
+    return cur.rowcount > 0
 
 
 # ── episodes (episodic memory) ──────────────────────────────────────────────
