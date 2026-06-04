@@ -197,6 +197,18 @@ header {
 #send-btn { box-shadow: none !important; }
 #mic-btn, .input-row label[title="Attach file"] { height: 40px; min-height: 40px; border-radius: 10px; }
 
+/* Council: per-aspect model badge (heterogeneous panel) */
+.council-aspect-model {
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-size: 0.58rem;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  vertical-align: middle;
+}
+
 /* ── 6. Right-panel tabs ─────────────────────────────────────────────────── */
 .rcp-tab { border-radius: 8px 8px 0 0; }
 
