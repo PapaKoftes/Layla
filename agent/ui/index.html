@@ -596,6 +596,15 @@
         <div class="rcp-subpage active" data-rcp-sub="models">
           <div class="panel-title">Model manager</div>
           <div id="platform-models" style="font-size:0.72rem"><span style="color:var(--text-dim)">Loading…</span></div>
+
+          <div class="panel-title" style="margin-top:14px">⊛ Council models</div>
+          <p class="rta-muted" style="margin:0 0 8px;font-size:0.68rem">Give each aspect its own model so the Council is a panel of different models. <strong>Default</strong> uses the main model. Model tags route to remote/Ollama backends (or a matching local GGUF) — see <code>council_aspect_models</code>.</p>
+          <div id="council-models-grid" style="display:flex;flex-direction:column;gap:5px;font-size:0.72rem"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <button type="button" class="approve-btn" style="font-size:0.7rem" onclick="typeof saveCouncilModels==='function'&&saveCouncilModels()">Save council models</button>
+            <button type="button" class="approve-btn" style="font-size:0.7rem" onclick="typeof loadCouncilModels==='function'&&loadCouncilModels()">Reload</button>
+            <span id="council-models-msg" style="font-size:0.65rem;color:var(--text-dim);align-self:center"></span>
+          </div>
         </div>
         <div class="rcp-subpage" data-rcp-sub="awareness">
           <div class="panel-title">Workspace awareness</div>
