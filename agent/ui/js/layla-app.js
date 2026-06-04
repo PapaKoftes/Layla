@@ -632,6 +632,12 @@ document.addEventListener('DOMContentLoaded', function () {
       }).then(function (x) {
         if (!x.r.ok) { el.textContent = 'degraded'; return; }
         var d = x.d || {};
+        // Make "no model loaded" impossible to miss: a model-less chat silently
+        // errors on every message, so surface a persistent banner app-wide.
+        try {
+          var mrb = document.getElementById('model-readiness-banner');
+          if (mrb) mrb.style.display = (d.model_loaded === false) ? 'block' : 'none';
+        } catch (_e3) { /* ignore */ }
         try { if (typeof laylaApplyUiTimeoutsFromHealth === 'function') laylaApplyUiTimeoutsFromHealth(d); } catch (_e) { console.debug('layla-app:', _e); }
         var mode = (d.remote_mode ? 'remote' : 'local');
         var raw = String(d.active_model || d.model_path || d.model || d.model_filename || '').trim();
