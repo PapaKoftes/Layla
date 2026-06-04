@@ -753,8 +753,14 @@ async def remote_auth_middleware(request: Request, call_next):
     except Exception:
         return await call_next(request)
 
-    client_host = request.client.host if request.client else None
-    if _is_localhost(client_host):
+    # Trust loopback ONLY for a direct connection. A tunnel (cloudflared/ngrok)
+    # forwards internet traffic from 127.0.0.1, so a bare loopback check would
+    # exempt every remote request. real_client_ip flags forwarded requests and
+    # returns the true client IP for allowlist/rate-limit/audit.
+    from services.auth import real_client_ip
+    _socket_host = request.client.host if request.client else None
+    client_host, _via_proxy = real_client_ip(request.headers, _socket_host)
+    if _is_localhost(client_host) and not _via_proxy:
         return await call_next(request)
 
     # Extract bearer token from Authorization header
@@ -826,8 +832,10 @@ async def remote_rate_limit_middleware(request: Request, call_next):
             return await call_next(request)
     except Exception:
         return await call_next(request)
-    client_host = request.client.host if request.client else None
-    if _is_localhost(client_host):
+    from services.auth import real_client_ip
+    _socket_host = request.client.host if request.client else None
+    client_host, _via_proxy = real_client_ip(request.headers, _socket_host)
+    if _is_localhost(client_host) and not _via_proxy:
         return await call_next(request)
     try:
         lim = int(float(cfg.get("remote_rate_limit_per_minute", 100)))
