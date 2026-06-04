@@ -117,6 +117,19 @@ async def memory_about():
     return JSONResponse(out)
 
 
+@router.delete("/identity/{key}")
+async def memory_forget_identity(key: str):
+    """Forget a single 'about you' identity fact by key."""
+    import sys
+    sys.path.insert(0, str(AGENT_DIR))
+    try:
+        from layla.memory.user_profile import delete_user_identity
+        removed = delete_user_identity(key)
+        return JSONResponse({"ok": True, "removed": bool(removed)})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 @router.get("/export")
 async def export_bundle():
     """
