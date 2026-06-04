@@ -432,6 +432,22 @@ async function send() {
               if (mb) mb.parentNode.insertBefore(delibBadge, mb);
             } catch (_e) { console.debug('layla-app:', _e); }
           }
+          // Cited knowledge sources (RAG provenance) — render a footer once.
+          if (obj.cited_sources && obj.cited_sources.length && !div._citedRendered) {
+            div._citedRendered = true;
+            try {
+              var srcEl = document.createElement('div');
+              srcEl.className = 'cited-sources';
+              var chips = obj.cited_sources.slice(0, 8).map(function (s) {
+                var name = String(s && s.source ? s.source : s);
+                name = name.split(/[\\/]/).pop();  // show basename only
+                return '<span class="cited-source-chip" title="' + __esc(String(s && s.source ? s.source : s)) + '">' + __esc(name) + '</span>';
+              }).join('');
+              srcEl.innerHTML = '<span class="cited-sources-label">Sources</span>' + chips;
+              var mbc = div.querySelector('.msg-bubble');
+              if (mbc) mbc.parentNode.appendChild(srcEl);
+            } catch (_e) { console.debug('layla-app:', _e); }
+          }
           if (obj.token) {
             liveStatus = 'streaming';
             try { laylaNotifyStreamPhase(div, 'streaming'); } catch (_e) { console.debug('layla-app:', _e); }
