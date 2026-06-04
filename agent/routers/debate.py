@@ -70,6 +70,7 @@ async def run_debate(req: DebateRequest):
             "critiques": result.critiques,
             "participating_aspects": result.participating_aspects,
             "synthesis_notes": result.synthesis_notes,
+            "aspect_models": result.aspect_models,
         }
     except Exception as exc:
         logger.error("debate endpoint failed: %s", exc, exc_info=True)
