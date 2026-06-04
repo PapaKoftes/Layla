@@ -32,6 +32,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             path = "/index.html"
         return super().translate_path(path)
 
+    def end_headers(self):
+        # Dev preview: never cache, so edits show up on a plain reload.
+        self.send_header("Cache-Control", "no-store, must-revalidate")
+        super().end_headers()
+
     def _maybe_stub_api(self):
         p = self.path.split("?")[0]
         if p.startswith(API_PREFIXES):
