@@ -414,6 +414,10 @@ def load_config() -> dict:
             "n_ctx": 4096,
             "n_gpu_layers": -1,  # full GPU offload by default; overridden by hardware probe
             "n_batch": 512,
+            # Max GGUF models kept resident at once (task/dual-model routing).
+            # Bounds memory so routing can't OOM the single process; raise it only
+            # if you have the RAM/VRAM for multiple concurrently-loaded models.
+            "max_resident_models": 2,
             "n_threads": None,
             "n_threads_batch": None,
             "use_mlock": False,
