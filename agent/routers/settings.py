@@ -22,6 +22,23 @@ from services.route_helpers import (
 logger = logging.getLogger("layla")
 router = APIRouter(tags=["settings"])
 
+# Security-critical config keys that a REMOTE client must never be able to change
+# via POST /settings (it is on the remote allowlist). Editing these could widen
+# the file sandbox, disable safe mode, or rotate/disable the remote auth itself.
+# Local (loopback) operators are unaffected.
+_REMOTE_PROTECTED_KEYS = frozenset({
+    "sandbox_root",
+    "safe_mode",
+    "uncensored",
+    "remote_enabled",
+    "remote_api_key",
+    "remote_rate_limit_per_minute",
+    "remote_allowlist",
+    "allowed_hosts",
+    "tunnel_enabled",
+    "tunnel_token_hash",
+})
+
 
 @router.get("/setup_status")
 def setup_status():
@@ -348,6 +365,20 @@ async def save_settings(req: Request):
     if isinstance(body, dict):
         from services.secret_filter import REDACTED
         body = {k: v for k, v in body.items() if v != REDACTED}
+
+        # Remote clients may not change security-critical keys (sandbox, safe
+        # mode, remote auth). Local/loopback operators are unaffected.
+        from services.auth import _is_localhost
+        client_host = req.client.host if req.client else None
+        if not _is_localhost(client_host):
+            blocked = _REMOTE_PROTECTED_KEYS.intersection(body)
+            if blocked:
+                for k in blocked:
+                    body.pop(k, None)
+                logger.warning(
+                    "settings: blocked remote write to protected keys from %s: %s",
+                    client_host, sorted(blocked),
+                )
     try:
         return await asyncio.to_thread(sync_save_settings, body)
     except Exception as e:
