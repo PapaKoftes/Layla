@@ -197,6 +197,36 @@ header {
 #send-btn { box-shadow: none !important; }
 #mic-btn, .input-row label[title="Attach file"] { height: 40px; min-height: 40px; border-radius: 10px; }
 
+/* Cited knowledge sources (RAG provenance) under a reply */
+.cited-sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 7px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+.cited-sources-label {
+  font-size: 0.56rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+  opacity: 0.8;
+  margin-right: 2px;
+}
+.cited-source-chip {
+  font-size: 0.6rem;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Council: per-aspect model badge (heterogeneous panel) */
 .council-aspect-model {
   margin-left: 8px;
