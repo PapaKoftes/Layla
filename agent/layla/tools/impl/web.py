@@ -101,6 +101,9 @@ def fetch_article(url: str) -> dict:
     Extract clean text from a web article using trafilatura.
     Much cleaner than raw fetch — removes nav, ads, footers. Ideal for research.
     """
+    from services.url_guard import is_safe_url
+    if not is_safe_url(url):
+        return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     try:
         import trafilatura
         downloaded = trafilatura.fetch_url(url)
@@ -235,6 +238,9 @@ def http_request(url: str, method: str = "GET", body: str = "", headers: dict | 
     Returns status, response text (truncated to 8000 chars).
     Use for webhooks, REST APIs, testing endpoints.
     """
+    from services.url_guard import is_safe_url
+    if not is_safe_url(url):
+        return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     import urllib.error
     import urllib.request
     method = method.upper()
@@ -278,6 +284,9 @@ def crawl_site(
     store_knowledge: save extracted pages to knowledge/fetched/ for later RAG indexing
     Returns: list of {url, title, text, depth} for all visited pages.
     """
+    from services.url_guard import is_safe_url
+    if not is_safe_url(url):
+        return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     import time
     from urllib.parse import urljoin, urlparse
 
@@ -360,6 +369,9 @@ def extract_links(url: str, same_domain: bool = False, max_links: int = 100) -> 
     same_domain: only return links from the same domain.
     Returns: links with href, internal/external classification, domain.
     """
+    from services.url_guard import is_safe_url
+    if not is_safe_url(url):
+        return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     from urllib.parse import urljoin, urlparse
     try:
         import trafilatura
@@ -401,6 +413,9 @@ def check_url(url: str, timeout: int = 10) -> dict:
     Check if a URL is accessible. Returns HTTP status, response time, content type.
     Uses HEAD request for speed. Useful for monitoring, link validation.
     """
+    from services.url_guard import is_safe_url
+    if not is_safe_url(url):
+        return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     import time as _time
     import urllib.error
     import urllib.request
@@ -421,6 +436,9 @@ def rss_feed(url: str, max_items: int = 20, include_content: bool = False) -> di
     Returns: feed title, description, and entry list (title, link, published, author, summary, tags).
     include_content: fetch and extract full article text for each entry (slow but thorough).
     """
+    from services.url_guard import is_safe_url
+    if not is_safe_url(url):
+        return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     try:
         import feedparser
         feed = feedparser.parse(url)
