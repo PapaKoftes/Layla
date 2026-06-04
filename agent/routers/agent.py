@@ -257,6 +257,16 @@ async def agent(req: AgentRequest, request: Request):
     image_base64 = req.image_base64 or ""
     allow_write = req.allow_write
     allow_run = req.allow_run
+    # A remote caller must not self-grant write/execute via the request body
+    # (same guard as /v1). Honored only for a direct local caller; fail-closed.
+    try:
+        from services.auth import is_direct_local
+        if not is_direct_local(request.headers, request.client.host if request.client else None):
+            allow_write = False
+            allow_run = False
+    except Exception:
+        allow_write = False
+        allow_run = False
     aspect_id = req.aspect_id or ""
     persona_focus = req.effective_persona_focus()
     show_thinking = req.show_thinking

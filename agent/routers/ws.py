@@ -40,7 +40,7 @@ async def _ws_check_auth(websocket: WebSocket) -> bool:
     # forwards from 127.0.0.1) — see real_client_ip.
     _socket_host = websocket.client.host if websocket.client else None
     client_host, _via_proxy = real_client_ip(websocket.headers, _socket_host)
-    if _is_localhost(client_host) and not _via_proxy:
+    if _is_localhost(client_host) and not _via_proxy and not cfg.get("remote_require_auth_always"):
         return True
 
     token = websocket.query_params.get("token", "")

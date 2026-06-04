@@ -367,17 +367,18 @@ async def save_settings(req: Request):
         body = {k: v for k, v in body.items() if v != REDACTED}
 
         # Remote clients may not change security-critical keys (sandbox, safe
-        # mode, remote auth). Local/loopback operators are unaffected.
-        from services.auth import _is_localhost
-        client_host = req.client.host if req.client else None
-        if not _is_localhost(client_host):
+        # mode, remote auth). Use is_direct_local (proxy-aware) — a bare host check
+        # would treat tunnelled requests (which arrive from 127.0.0.1) as local.
+        from services.auth import is_direct_local
+        socket_host = req.client.host if req.client else None
+        if not is_direct_local(req.headers, socket_host):
             blocked = _REMOTE_PROTECTED_KEYS.intersection(body)
             if blocked:
                 for k in blocked:
                     body.pop(k, None)
                 logger.warning(
                     "settings: blocked remote write to protected keys from %s: %s",
-                    client_host, sorted(blocked),
+                    socket_host, sorted(blocked),
                 )
     try:
         return await asyncio.to_thread(sync_save_settings, body)
