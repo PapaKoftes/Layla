@@ -19,6 +19,52 @@ logger = logging.getLogger("layla")
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _llm = None  # legacy: first loaded instance (health/UI)
 _llm_by_path: dict[str, Any] = {}  # resolved model path -> Llama (task-based routing)
+_DEFAULT_MAX_RESIDENT_MODELS = 2  # cap on concurrently-loaded GGUF models (memory bound)
+
+
+def _free_llm_instance(inst) -> None:
+    """Best-effort release of a loaded model's native resources before eviction."""
+    try:
+        close = getattr(inst, "close", None)
+        if callable(close):
+            close()
+    except Exception:
+        pass
+
+
+def _evict_models_if_needed(max_resident: int) -> list[str]:
+    """Bound _llm_by_path so multi-model routing can't OOM the single process.
+
+    Evicts the OLDEST non-primary model(s) until there is room for one more, then
+    frees them. The primary instance (``_llm``, the default/first-loaded model) is
+    never evicted. Caller must hold _llm_lock. Returns the evicted path keys.
+    """
+    global _llm
+    try:
+        cap = max(1, int(max_resident))
+    except (TypeError, ValueError):
+        cap = _DEFAULT_MAX_RESIDENT_MODELS
+    evicted: list[str] = []
+    # Make room for the about-to-be-inserted model: evict while at/over cap.
+    while len(_llm_by_path) >= cap:
+        victim_key = None
+        for k, inst in _llm_by_path.items():
+            if inst is not _llm:  # protect the primary/default model
+                victim_key = k
+                break
+        if victim_key is None:
+            break  # only the primary remains — do not evict it
+        old = _llm_by_path.pop(victim_key)
+        _free_llm_instance(old)
+        evicted.append(victim_key)
+    if evicted:
+        try:
+            import gc
+            gc.collect()
+        except Exception:
+            pass
+        logger.info("llm_gateway: evicted %d resident model(s) to stay within max_resident_models=%s", len(evicted), max_resident)
+    return evicted
 # RLock: kept for legacy sync callers (e.g. prewarm_llm) and _get_llm internal locking.
 _llm_lock = threading.RLock()
 # llm_serialize_lock is kept as a shim for legacy sync callers (agent_loop imports it).
@@ -503,6 +549,9 @@ def _get_llm():
         except Exception as _e:
             logger.debug("scores resize check failed: %s", _e)
 
+        # Bound resident models BEFORE inserting the new one, so routing across
+        # several models can never accumulate unbounded GGUFs and OOM the process.
+        _evict_models_if_needed(int(cfg.get("max_resident_models", _DEFAULT_MAX_RESIDENT_MODELS)))
         _llm_by_path[path_key] = inst
         if _llm is None:
             _llm = inst
