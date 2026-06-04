@@ -59,6 +59,26 @@ def test_direct_remote_is_not_local():
 
 
 # ---- edge cases ----
+def test_lan_attacker_cannot_spoof_forwarding_header():
+    # When the request did NOT arrive on loopback, forwarding headers are
+    # client-spoofable and must be IGNORED — use the real socket peer.
+    ip, via = real_client_ip(_Headers({"X-Forwarded-For": "127.0.0.1"}), "10.0.0.7")
+    assert ip == "10.0.0.7" and via is False
+    assert is_direct_local(_Headers({"X-Forwarded-For": "127.0.0.1"}), "10.0.0.7") is False
+
+
+def test_provider_header_preferred_over_xff():
+    # Cf-Connecting-Ip (provider-set, not client-forgeable) wins over the
+    # client-appendable X-Forwarded-For.
+    ip, via = real_client_ip(_Headers({"X-Forwarded-For": "127.0.0.1", "Cf-Connecting-Ip": "203.0.113.9"}), "127.0.0.1")
+    assert ip == "203.0.113.9" and via is True
+
+
+def test_whitespace_forwarding_header_stays_direct():
+    # A blank-but-present header must not flip a direct-local request to remote.
+    assert is_direct_local(_Headers({"X-Forwarded-For": "   "}), "127.0.0.1") is True
+
+
 def test_edge_cases():
     # no headers object at all
     assert real_client_ip(None, "127.0.0.1") == ("127.0.0.1", False)
