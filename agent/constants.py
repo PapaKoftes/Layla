@@ -43,8 +43,10 @@ DEFAULT_STUDY_INTERVAL_MINUTES: int = 30
 
 # ── Security ─────────────────────────────────────────────────────────────────
 LOCALHOST_HOSTS: frozenset[str] = frozenset((
-    "127.0.0.1", "::1", "localhost", "0.0.0.0", "testclient",
+    "127.0.0.1", "::1", "localhost", "testclient",
     "::ffff:127.0.0.1",  # IPv4-mapped loopback (dual-stack binds)
+    # NB: 0.0.0.0 deliberately NOT included — it is a bind-any sentinel, never a
+    # real client peer address; treating it as loopback would be a footgun.
 ))
 ALLOWED_URL_SCHEMES: frozenset[str] = frozenset(("https", "git"))
 SLUG_PATTERN: str = r"^[a-zA-Z0-9_-]+$"

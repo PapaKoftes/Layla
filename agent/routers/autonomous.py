@@ -54,8 +54,9 @@ async def autonomous_run(request: Request):
     if not confirm:
         return JSONResponse({"ok": False, "error": "confirm_autonomous_required"}, status_code=400)
 
-    client_host = request.client.host if request.client else None
-    if not _is_localhost(client_host):
+    from services.auth import is_direct_local
+    socket_host = request.client.host if request.client else None
+    if not is_direct_local(request.headers, socket_host):
         if not cfg.get("remote_enabled"):
             return JSONResponse({"ok": False, "error": "local_only"}, status_code=403)
         allowed = _remote_allowed_paths(cfg)
