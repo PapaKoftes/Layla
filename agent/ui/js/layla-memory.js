@@ -41,7 +41,11 @@ async function laylaMemAbout() {
     if (Object.keys(ids).length) {
       h.push('<div class="rta-section-title">Identity</div>');
       Object.keys(ids).forEach(function (k) {
-        h.push('<div style="margin:2px 0"><strong>' + _mesc(k) + '</strong>: ' + _mesc(String(ids[k])) + '</div>');
+        h.push('<div style="margin:2px 0;display:flex;gap:6px;align-items:baseline">'
+          + '<strong>' + _mesc(k) + '</strong>: <span style="flex:1">' + _mesc(String(ids[k])) + '</span>'
+          + '<button type="button" class="approve-btn" style="font-size:0.56rem;padding:1px 6px" title="Forget this fact"'
+          + ' data-forget-key="' + _mesc(k) + '" onclick="laylaMemForgetIdentity(this.dataset.forgetKey)">forget</button>'
+          + '</div>');
       });
     }
     if (goals.length) {
@@ -68,6 +72,18 @@ async function laylaMemAbout() {
   }
 }
 window.laylaMemAbout = laylaMemAbout;
+
+async function laylaMemForgetIdentity(key) {
+  if (!key) return;
+  try {
+    await fetch('/memory/identity/' + encodeURIComponent(key), { method: 'DELETE' });
+    if (typeof showToast === 'function') showToast('Forgot: ' + key);
+  } catch (e) {
+    if (typeof showToast === 'function') showToast('Could not forget');
+  }
+  laylaMemAbout();
+}
+window.laylaMemForgetIdentity = laylaMemForgetIdentity;
 
 // ─── Browse / load ────────────────────────────────────────────────────────────
 async function laylaMemBrowse(page) {
