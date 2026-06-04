@@ -12,7 +12,7 @@ port so Layla never collides silently with another program:
 
 Env:
   LAYLA_HOST    bind host (default 127.0.0.1)
-  LAYLA_RELOAD  "0" to disable uvicorn --reload (default on)
+  LAYLA_RELOAD  "1" to enable uvicorn --reload for development (default OFF)
   LAYLA_NO_BROWSER  "1" to not auto-open the browser
 """
 from __future__ import annotations
@@ -79,7 +79,10 @@ def main() -> int:
         print(f"[Layla] uvicorn is not installed: {exc}", file=sys.stderr)
         return 1
 
-    reload_enabled = (os.environ.get("LAYLA_RELOAD", "1") or "1").strip().lower() not in ("0", "false", "no")
+    # Production default: reload OFF. --reload watches the whole tree, thrashes on
+    # Windows, and restarts the server (dropping the loaded model + in-flight runs)
+    # on any file write. Opt in for development with LAYLA_RELOAD=1.
+    reload_enabled = (os.environ.get("LAYLA_RELOAD", "0") or "0").strip().lower() in ("1", "true", "yes", "on")
     _open_browser_soon(f"http://{host}:{serve_port}/ui")
     uvicorn.run("main:app", host=host, port=serve_port, reload=reload_enabled)
     return 0

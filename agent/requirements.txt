@@ -59,8 +59,11 @@ soundfile>=0.12                 # Required by kokoro-onnx for WAV encoding
 # pyttsx3>=2.90                 # Fallback: zero-download system TTS (lower quality)
 
 # ─── Research & Information ───────────────────────────────────────────────────
-PyMuPDF>=1.24                   # PDF reading via fitz (fast, accurate)
-pypdf>=4.0                      # PDF fallback if PyMuPDF unavailable
+pypdf>=4.0                      # PDF reading (BSD-licensed). NOTE: PyMuPDF (fitz)
+                                # was removed — it is AGPL-3.0/commercial, which is
+                                # incompatible with this project's non-commercial
+                                # source license. file_ops.read_pdf still uses fitz
+                                # IF a user installs it themselves, but we never ship it.
 wikipedia>=1.4                  # Wikipedia summaries and search
 duckduckgo-search>=6.0          # DuckDuckGo web search (pure Python, no browser)
 arxiv>=2.1                      # arXiv paper search and metadata

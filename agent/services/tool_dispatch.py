@@ -769,8 +769,13 @@ def _handle_shell(intent: str, goal: str, ctx: DispatchContext) -> DispatchResul
     from layla.tools.registry import shell_command_is_safe_whitelisted, shell_command_line
     _cmd_line = shell_command_line(argv)
     _grant_ok = al._has_any_grant("shell", {"command": _cmd_line})
-    _need_shell_approval = rs.is_tool_allowed("shell")
-    if _need_shell_approval and not shell_command_is_safe_whitelisted(argv) and not _grant_ok:
+    # Deny-by-default: a shell command needs approval UNLESS it is already an
+    # allowed tool (approvals.json / admin_mode), a safe-whitelisted command, or
+    # explicitly granted. The previous code required is_tool_allowed() to be True
+    # to even prompt — inverting the gate, so a non-approved command ran with no
+    # approval. is_tool_allowed means "already allowed", not "needs approval".
+    _shell_already_allowed = rs.is_tool_allowed("shell")
+    if not _shell_already_allowed and not shell_command_is_safe_whitelisted(argv) and not _grant_ok:
         approval_id = al._write_pending("shell", {"argv": argv, "cwd": workspace})
         state["steps"].append({
             "action": "shell",
