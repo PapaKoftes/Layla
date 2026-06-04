@@ -1010,10 +1010,17 @@ def extract_archive(path: str, dest: str = "") -> dict:
                         pass
         elif target.suffix.lower() in (".tar", ".gz", ".tgz", ".bz2", ".xz"):
             with tarfile.open(target, "r:*") as t:
-                for m in t.getnames():
-                    if ".." in m or m.startswith("/") or (m.startswith("\\") if len(m) > 1 else False):
+                for m in t.getmembers():
+                    name = m.name
+                    if ".." in name or name.startswith("/") or (name.startswith("\\") if len(name) > 1 else False):
                         continue
-                    member_path = (out / m).resolve()
+                    # Reject symlink/hardlink members: a link can point outside
+                    # `out`, and a later member written THROUGH it would escape the
+                    # sandbox (the relative_to check below only validates the
+                    # literal path, not where a symlink resolves post-extraction).
+                    if m.issym() or m.islnk():
+                        continue
+                    member_path = (out / name).resolve()
                     try:
                         member_path.relative_to(out)
                     except ValueError:
