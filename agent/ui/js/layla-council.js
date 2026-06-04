@@ -174,4 +174,82 @@
   }
 
   window.runCouncil = runCouncil;
+
+  // ── Council per-aspect model settings (Right panel → Settings → Models) ────
+  var MODEL_OPTIONS = [
+    { value: '', label: 'Default' },
+    { value: 'coding', label: 'Coding' },
+    { value: 'reasoning', label: 'Reasoning' },
+    { value: 'chat', label: 'Chat' },
+  ];
+  var COUNCIL_ASPECTS = ['morrigan', 'nyx', 'echo', 'eris', 'cassandra', 'lilith'];
+
+  function _renderCouncilModelsGrid(mapping) {
+    var grid = document.getElementById('council-models-grid');
+    if (!grid) return;
+    mapping = mapping || {};
+    grid.innerHTML = COUNCIL_ASPECTS.map(function (id) {
+      var m = metaFor(id);
+      var cur = String(mapping[id] || '');
+      var known = MODEL_OPTIONS.some(function (o) { return o.value === cur; });
+      var opts = MODEL_OPTIONS.map(function (o) {
+        return '<option value="' + esc(o.value) + '"' + (o.value === cur ? ' selected' : '') + '>' + esc(o.label) + '</option>';
+      }).join('');
+      if (cur && !known) opts += '<option value="' + esc(cur) + '" selected>' + esc(cur) + ' (custom)</option>';
+      return '<label style="display:flex;align-items:center;justify-content:space-between;gap:8px">'
+        + '<span style="color:' + m.color + '">' + esc(m.sym + ' ' + m.name) + '</span>'
+        + '<select id="council-model-' + esc(id) + '" style="font-size:0.7rem;background:var(--code-bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:2px 6px">' + opts + '</select>'
+        + '</label>';
+    }).join('');
+  }
+
+  async function loadCouncilModels() {
+    var msg = document.getElementById('council-models-msg');
+    try {
+      var r = await fetch('/settings');
+      var d = await r.json().catch(function () { return {}; });
+      var mapping = (d && d.council_aspect_models && typeof d.council_aspect_models === 'object') ? d.council_aspect_models : {};
+      _renderCouncilModelsGrid(mapping);
+      if (msg) msg.textContent = '';
+    } catch (e) {
+      _renderCouncilModelsGrid({});
+      if (msg) msg.textContent = 'Load failed';
+    }
+  }
+  window.loadCouncilModels = loadCouncilModels;
+
+  async function saveCouncilModels() {
+    var msg = document.getElementById('council-models-msg');
+    var mapping = {};
+    COUNCIL_ASPECTS.forEach(function (id) {
+      var el = document.getElementById('council-model-' + id);
+      var v = el ? String(el.value || '').trim() : '';
+      if (v) mapping[id] = v;  // omit Default/empty so the config stays clean
+    });
+    if (msg) msg.textContent = 'Saving…';
+    try {
+      var r = await fetch('/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ council_aspect_models: mapping }),
+      });
+      var d = await r.json().catch(function () { return {}; });
+      var ok = d && d.ok !== false;
+      if (msg) msg.textContent = ok ? 'Saved' : ('Save failed: ' + ((d && d.error) || r.status));
+      toast(ok ? 'Council models saved' : 'Save failed');
+    } catch (e) {
+      if (msg) msg.textContent = 'Save failed';
+      toast('Save failed');
+    }
+  }
+  window.saveCouncilModels = saveCouncilModels;
+
+  // Populate the grid on load (selects hold values even while the panel is hidden).
+  try {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function () { loadCouncilModels(); });
+    } else {
+      loadCouncilModels();
+    }
+  } catch (_) { /* ignore */ }
 })();
