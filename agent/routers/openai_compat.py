@@ -9,7 +9,7 @@ import time
 import uuid
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from agent_loop import _quick_reply_for_trivial_turn, autonomous_run, stream_reason
@@ -69,7 +69,7 @@ def _parse_v1_model(model_name: str) -> tuple[str, str]:
 
 
 @router.post("/v1/chat/completions")
-async def v1_chat_completions(req: dict):
+async def v1_chat_completions(req: dict, request: Request):
     body = req or {}
     messages = body.get("messages", [])
     if not isinstance(messages, list) or not messages:
@@ -83,6 +83,17 @@ async def v1_chat_completions(req: dict):
     workspace_root = (req or {}).get("workspace_root", "") or ""
     allow_write = (req or {}).get("allow_write") is True
     allow_run = (req or {}).get("allow_run") is True
+    # Never let a REMOTE caller grant itself write/execute via the request body —
+    # that turns the chat endpoint into an RCE primitive. Capability flags from
+    # the body are honored only for a direct local caller.
+    try:
+        from services.auth import is_direct_local
+        if not is_direct_local(request.headers, request.client.host if request.client else None):
+            allow_write = False
+            allow_run = False
+    except Exception:
+        allow_write = False
+        allow_run = False
     aspect_id = (req or {}).get("aspect_id", "") or parsed_aspect
     show_thinking = bool((req or {}).get("show_thinking", False))
     conversation_id = ((req or {}).get("conversation_id") or "").strip() or str(uuid.uuid4())

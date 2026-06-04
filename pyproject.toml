@@ -77,7 +77,6 @@ crawl = [
     "playwright>=1.40",
 ]
 research = [
-    "PyMuPDF>=1.24",
     "pypdf>=4.0",
     "wikipedia>=1.4",
     "duckduckgo-search>=6.0",
