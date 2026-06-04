@@ -683,6 +683,16 @@
             <button type="button" class="rcp-subtab active" data-mem-sub="browse" onclick="showMemorySubTab('browse')" style="font-size:0.65rem;padding:3px 8px">Browse</button>
             <button type="button" class="rcp-subtab" data-mem-sub="search" onclick="showMemorySubTab('search')" style="font-size:0.65rem;padding:3px 8px">Search</button>
             <button type="button" class="rcp-subtab" data-mem-sub="checkpoints" onclick="showMemorySubTab('checkpoints')" style="font-size:0.65rem;padding:3px 8px">Checkpoints</button>
+            <button type="button" class="rcp-subtab" data-mem-sub="about" onclick="showMemorySubTab('about')" style="font-size:0.65rem;padding:3px 8px">About you</button>
+          </div>
+
+          <!-- About you sub-tab -->
+          <div data-mem-subpage="about" style="display:none">
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+              <div class="panel-title" style="margin:0;flex:1">What Layla knows about you</div>
+              <button type="button" class="approve-btn" style="font-size:0.65rem" onclick="laylaMemAbout()">Refresh</button>
+            </div>
+            <div id="mem-about" style="font-size:0.7rem;line-height:1.5"><span style="color:var(--text-dim)">Open this tab to load.</span></div>
           </div>
 
           <!-- Browse sub-tab -->
