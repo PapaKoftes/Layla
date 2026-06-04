@@ -35,34 +35,14 @@ _context_init_lock: Optional[asyncio.Lock] = None
 # ── SSRF mitigation ──────────────────────────────────────────────────────────
 
 def _is_safe_url(url: str) -> bool:
-    """Return True if URL is safe to fetch (http/https, not private/localhost)."""
-    if not url or not isinstance(url, str):
-        return False
+    """Return True if URL is safe to fetch (http/https, not private/localhost).
+
+    Delegates to the hardened, shared SSRF guard (DNS resolution + ipaddress
+    checks + obfuscated-encoding handling); see services.url_guard.
+    """
     try:
-        from urllib.parse import urlparse
-        parsed = urlparse(url)
-        if parsed.scheme not in ("http", "https"):
-            return False
-        host = (parsed.hostname or "").lower()
-        if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
-            return False
-        if host.startswith("127.") or host.startswith("10.") or host.startswith("169.254."):
-            return False
-        if host.startswith("192.168."):
-            return False
-        if host.startswith("172."):
-            parts = host.split(".")
-            if len(parts) >= 2:
-                try:
-                    b = int(parts[1])
-                except ValueError:
-                    b = -1
-                if 16 <= b <= 31:
-                    return False
-        # Block IPv6 private/link-local (fd00::/8, fe80::/10)
-        if host.startswith("fd") or host.startswith("fe80"):
-            return False
-        return True
+        from services.url_guard import is_safe_url
+        return is_safe_url(url)
     except Exception:
         return False
 
