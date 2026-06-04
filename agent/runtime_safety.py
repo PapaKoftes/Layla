@@ -487,6 +487,11 @@ def load_config() -> dict:
             "remote_allow_endpoints": [],
             "remote_mode": "observe",
             "remote_rate_limit_per_minute": 100,
+            # When True, require the auth token even for loopback requests. Set
+            # this if exposing Layla via a forwarder that does NOT add forwarding
+            # headers (ssh -R, socat, nginx stream) — otherwise such relays arrive
+            # on 127.0.0.1 with no header and would be trusted as local.
+            "remote_require_auth_always": False,
             "trace_id_enabled": False,
             "use_chroma": True,
             "uncensored": True,
