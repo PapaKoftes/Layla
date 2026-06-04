@@ -236,20 +236,27 @@
     var s = document.getElementById('relationship-codex-status');
     if (s) s.textContent = msg;
   }
+  // The codex lives at <workspace>/.layla/relationship_codex.json; the endpoint
+  // is /codex/relationship?workspace_root=… (NOT /codex/user, which 404s).
+  function __codexUrl() {
+    var wpe = document.getElementById('workspace-path');
+    var wp = wpe ? (wpe.value || '').trim() : '';
+    return '/codex/relationship' + (wp ? ('?workspace_root=' + encodeURIComponent(wp)) : '');
+  }
 
   async function refreshRelationshipCodex() {
     var pre = document.getElementById('relationship-codex-json');
     if (!pre) return;
     __codexStatus('Loading…');
     try {
-      var r = await fetch('/codex/user');
+      var r = await fetch(__codexUrl());
       var d = await r.json();
-      if (d && d.ok && d.user) {
-        pre.value = JSON.stringify(d.user, null, 2);
+      if (d && d.ok) {
+        pre.value = JSON.stringify(d.data || { entities: {} }, null, 2);
+        __codexStatus('Loaded');
       } else {
-        pre.value = d ? JSON.stringify(d, null, 2) : '(no data)';
+        __codexStatus((d && d.error) || 'Load failed (set workspace path in Settings)');
       }
-      __codexStatus('Loaded');
     } catch (e) {
       __codexStatus('Error: ' + (e && e.message ? e.message : e));
     }
@@ -263,18 +270,22 @@
     if (!raw) return;
     var payload;
     try { payload = JSON.parse(raw); } catch (_) {
+      __codexStatus('Invalid JSON');
       __toast('Invalid JSON');
       return;
     }
     try {
-      var res = await fetch('/codex/user', {
+      var res = await fetch(__codexUrl(), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       var data = await res.json().catch(function () { return {}; });
-      __toast((data && data.ok) ? 'Saved codex' : ('Save failed: ' + ((data && data.error) || res.status)));
+      var ok = data && data.ok;
+      __codexStatus(ok ? 'Saved' : ('Save failed: ' + ((data && data.error) || res.status)));
+      __toast(ok ? 'Saved codex' : ('Save failed: ' + ((data && data.error) || res.status)));
     } catch (e) {
+      __codexStatus('Save error');
       __toast('Save error: ' + ((e && e.message) || e));
     }
   }
@@ -350,9 +361,12 @@
     var el = document.getElementById('update-status');
     if (el) el.textContent = 'Checking…';
     try {
-      var r = await fetch('/version/check_update');
+      var r = await fetch('/update/check');
       var d = await r.json().catch(function () { return {}; });
-      if (el) el.textContent = d.update_available ? ('Update available: ' + (d.latest || '')) : 'Up to date';
+      if (el) {
+        if (d.ok === false) el.textContent = 'Check failed: ' + (d.error || 'unknown');
+        else el.textContent = d.update_available ? ('Update available: ' + (d.latest_version || '')) : 'Up to date';
+      }
     } catch (_) {
       if (el) el.textContent = 'Could not check';
     }
