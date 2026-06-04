@@ -48,7 +48,7 @@
     const back = $('wizard-back-btn');
     const next = $('wizard-next-btn');
     if (back) back.style.visibility = (step === 0) ? 'hidden' : 'visible';
-    if (next) next.textContent = (step === 5) ? 'Enter' : 'Next';
+    if (next) next.textContent = (step === 5) ? 'Enter' : (step === 3 ? 'Skip quiz →' : 'Next');
 
     if (step === 1) {
       try {
@@ -149,7 +149,13 @@
       try { if (typeof window.checkSetupStatus === 'function') await window.checkSetupStatus(); } catch (_) {}
     }
     if (step === 2) syncWorkspaceToSettings();
-    if (step === 3) return; // quiz advances itself
+    if (step === 3) {
+      // Quiz is optional — the Next button skips it and defaults to the current
+      // aspect (Morrigan). Answering a question advances on its own (renderQuizStage).
+      step = 4;
+      applyStep();
+      return;
+    }
     if (step === 5) {
       try { localStorage.setItem(WIZ_KEY, '1'); } catch (_) {}
       try { localStorage.setItem(WIZ_KEY_COMPAT, '1'); } catch (_) {}
