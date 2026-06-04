@@ -194,8 +194,8 @@ async def setup_download(url: str, filename: str = ""):
     # SSRF / local-file guard: urllib.urlretrieve honors file:// and ftp://, and
     # would happily reach localhost, cloud metadata (169.254.169.254) or LAN hosts.
     # Restrict to public http/https only before touching the URL.
-    from services.browser import _is_safe_url
-    if not _is_safe_url(url):
+    from services.url_guard import is_safe_url
+    if not is_safe_url(url):
         return _sse_error("URL not allowed — only public http(s) model URLs are permitted")
     cfg = _rs.load_config()
     models_dir_raw = cfg.get("models_dir")
