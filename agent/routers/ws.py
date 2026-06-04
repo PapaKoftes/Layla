@@ -34,11 +34,13 @@ async def _ws_check_auth(websocket: WebSocket) -> bool:
     if not cfg.get("remote_enabled"):
         return True
 
-    client_host = websocket.client.host if websocket.client else None
+    from services.auth import _is_localhost, real_client_ip
 
-    from services.auth import _is_localhost
-
-    if _is_localhost(client_host):
+    # Trust loopback only for a DIRECT connection (not a tunnel/proxy that
+    # forwards from 127.0.0.1) — see real_client_ip.
+    _socket_host = websocket.client.host if websocket.client else None
+    client_host, _via_proxy = real_client_ip(websocket.headers, _socket_host)
+    if _is_localhost(client_host) and not _via_proxy:
         return True
 
     token = websocket.query_params.get("token", "")

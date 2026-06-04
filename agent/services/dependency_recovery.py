@@ -27,7 +27,6 @@ _PIP_ALLOWLIST: frozenset[str] = frozenset(
         "soundfile",
         "pyttsx3",
         "llama-cpp-python",
-        "PyMuPDF",
         "pypdf",
         "trafilatura",
         "duckduckgo-search",
