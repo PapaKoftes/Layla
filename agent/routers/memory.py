@@ -61,6 +61,62 @@ async def memory_stats():
     return JSONResponse(stats)
 
 
+@router.get("/about")
+async def memory_about():
+    """Aggregate "what Layla knows about you": identity facts, recent
+    relationship memories, timeline events, active goals, and counts.
+
+    Read-only. Every source is guarded independently so a missing table or
+    optional subsystem still yields partial data instead of a 500.
+    """
+    import sys
+    sys.path.insert(0, str(AGENT_DIR))
+    out: dict = {
+        "identity": {},
+        "relationship_memories": [],
+        "timeline": [],
+        "goals": [],
+        "learnings_count": 0,
+        "knowledge_docs": 0,
+    }
+    try:
+        from layla.memory.user_profile import (
+            get_active_goals,
+            get_all_user_identity,
+            get_recent_relationship_memories,
+            get_recent_timeline_events,
+        )
+        try:
+            out["identity"] = get_all_user_identity() or {}
+        except Exception:
+            pass
+        try:
+            out["relationship_memories"] = get_recent_relationship_memories(n=8) or []
+        except Exception:
+            pass
+        try:
+            out["timeline"] = get_recent_timeline_events(n=10) or []
+        except Exception:
+            pass
+        try:
+            out["goals"] = get_active_goals() or []
+        except Exception:
+            pass
+    except Exception:
+        pass
+    try:
+        get_recent_learnings, _ = _get_db()
+        out["learnings_count"] = len(get_recent_learnings(n=2000))
+    except Exception:
+        pass
+    try:
+        if KNOWLEDGE_DIR.exists():
+            out["knowledge_docs"] = len(list(KNOWLEDGE_DIR.rglob("*.md")) + list(KNOWLEDGE_DIR.rglob("*.txt")))
+    except Exception:
+        pass
+    return JSONResponse(out)
+
+
 @router.get("/export")
 async def export_bundle():
     """
