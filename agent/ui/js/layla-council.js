@@ -75,11 +75,15 @@
     var ids = Object.keys(responses);
     if (ids.length) {
       html += '<div class="council-aspects">';
+      var models = data.aspect_models || {};
       ids.forEach(function (id) {
         var m = metaFor(id);
+        var model = models[id] && models[id] !== 'default' ? models[id] : '';
         html += '<details class="council-aspect" open>';
         html += '<summary style="border-left:3px solid ' + m.color + '">'
-             + '<span style="color:' + m.color + '">' + esc(m.sym) + ' ' + esc(m.name) + '</span></summary>';
+             + '<span style="color:' + m.color + '">' + esc(m.sym) + ' ' + esc(m.name) + '</span>'
+             + (model ? '<span class="council-aspect-model" title="Model for this aspect">' + esc(model) + '</span>' : '')
+             + '</summary>';
         html += '<div class="council-aspect-body md-content">' + md(responses[id]) + '</div>';
         var crit = critiques[id];
         if (crit && String(crit).trim()) {
