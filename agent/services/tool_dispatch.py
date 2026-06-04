@@ -826,9 +826,11 @@ def _handle_mcp_tools_call(intent: str, goal: str, ctx: DispatchContext) -> Disp
         state["status"] = "finished"
         return DispatchResult(handled=True, flow="break", goal=goal)
 
-    _need_mcp_approval = rs.is_tool_allowed("mcp_tools_call")
+    # Deny-by-default (same fix as shell): require approval unless the tool is
+    # already allowed (approvals.json/admin_mode) or explicitly granted.
+    _mcp_already_allowed = rs.is_tool_allowed("mcp_tools_call")
     _mcp_grant_ok = al._has_any_grant("mcp_tools_call", args)
-    if _need_mcp_approval and not _mcp_grant_ok:
+    if not _mcp_already_allowed and not _mcp_grant_ok:
         approval_id = al._write_pending("mcp_tools_call", args)
         state["steps"].append({
             "action": "mcp_tools_call",

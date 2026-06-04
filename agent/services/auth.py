@@ -24,32 +24,43 @@ def _is_localhost(host: str | None) -> bool:
 
 
 # Headers a reverse proxy / tunnel (cloudflared, ngrok, nginx) adds when relaying
-# a request. A genuine DIRECT connection has none of them.
-_FORWARD_HEADERS = ("x-forwarded-for", "forwarded", "cf-connecting-ip", "x-real-ip", "true-client-ip")
+# a request. A genuine DIRECT connection has none of them. Provider-set headers
+# (Cf-Connecting-Ip / True-Client-Ip, which the provider overwrites and a client
+# cannot forge) are checked BEFORE the client-appendable X-Forwarded-For.
+_FORWARD_HEADERS = ("cf-connecting-ip", "true-client-ip", "x-real-ip", "x-forwarded-for", "forwarded")
 
 
 def real_client_ip(headers, socket_host: str | None) -> tuple[str | None, bool]:
     """Return ``(client_ip, via_proxy)``.
 
-    ``via_proxy`` is True when the request carries a forwarding header — i.e. it
-    arrived through a reverse proxy or tunnel rather than directly. In that case
-    the loopback *socket* address must NOT be trusted as "local": cloudflared and
-    ngrok forward internet traffic to the app from 127.0.0.1, so without this the
-    entire remote-auth stack is bypassed for tunnelled requests. The real client
-    IP is parsed from the header for allowlist / rate-limit / audit use.
+    ``via_proxy`` is True when the request was relayed by a proxy/tunnel rather
+    than connecting directly. cloudflared/ngrok forward internet traffic to the
+    app from 127.0.0.1, so a bare loopback-socket check would trust them; this
+    flags such requests and returns the real client IP from the forwarding header.
+
+    Forwarding headers are honored ONLY when the request actually arrived on the
+    loopback interface (the local tunnel terminus). For a direct non-loopback
+    connection the headers are client-spoofable, so they are ignored and the real
+    socket peer is used — a LAN/internet attacker cannot fake X-Forwarded-For to
+    poison the IP allowlist / rate-limit / audit.
     """
-    get = getattr(headers, "get", None)
-    if callable(get):
-        for h in _FORWARD_HEADERS:
-            v = get(h)
-            if v:
+    if _is_localhost(socket_host):
+        get = getattr(headers, "get", None)
+        if callable(get):
+            for h in _FORWARD_HEADERS:
+                v = get(h)
+                if v is None:
+                    continue
                 v = str(v).strip()
+                if not v:
+                    continue
                 if h == "forwarded":
                     m = re.search(r'for="?\[?([^;,"\]]+)', v, re.IGNORECASE)
                     ip = (m.group(1).strip() if m else v)
                 else:
                     ip = v.split(",")[0].strip()
-                return (ip or socket_host), True
+                if ip:
+                    return ip, True
     return socket_host, False
 
 

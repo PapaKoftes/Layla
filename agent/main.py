@@ -760,7 +760,10 @@ async def remote_auth_middleware(request: Request, call_next):
     from services.auth import real_client_ip
     _socket_host = request.client.host if request.client else None
     client_host, _via_proxy = real_client_ip(request.headers, _socket_host)
-    if _is_localhost(client_host) and not _via_proxy:
+    # Loopback is exempt only for a direct connection, and only when the operator
+    # has not opted into require-auth-always (which closes header-stripping
+    # forwarders like `ssh -R` / socat that arrive on loopback with no headers).
+    if _is_localhost(client_host) and not _via_proxy and not cfg.get("remote_require_auth_always"):
         return await call_next(request)
 
     # Extract bearer token from Authorization header
@@ -835,7 +838,7 @@ async def remote_rate_limit_middleware(request: Request, call_next):
     from services.auth import real_client_ip
     _socket_host = request.client.host if request.client else None
     client_host, _via_proxy = real_client_ip(request.headers, _socket_host)
-    if _is_localhost(client_host) and not _via_proxy:
+    if _is_localhost(client_host) and not _via_proxy and not cfg.get("remote_require_auth_always"):
         return await call_next(request)
     try:
         lim = int(float(cfg.get("remote_rate_limit_per_minute", 100)))
