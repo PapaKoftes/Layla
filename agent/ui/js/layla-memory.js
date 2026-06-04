@@ -17,7 +17,57 @@ function showMemorySubTab(sub) {
     btn.classList.toggle('active', btn.getAttribute('data-mem-sub') === sub);
   });
   if (sub === 'browse' && !_memTotal) laylaMemBrowse(0);
+  if (sub === 'about') laylaMemAbout();
 }
+
+// ─── "What Layla knows about you" ───────────────────────────────────────────────
+async function laylaMemAbout() {
+  var box = document.getElementById('mem-about');
+  if (!box) return;
+  box.innerHTML = '<span style="color:var(--text-dim)">Loading…</span>';
+  try {
+    var r = await fetch('/memory/about');
+    var d = await r.json().catch(function () { return {}; });
+    var ids = (d && d.identity && typeof d.identity === 'object') ? d.identity : {};
+    var goals = Array.isArray(d.goals) ? d.goals : [];
+    var rel = Array.isArray(d.relationship_memories) ? d.relationship_memories : [];
+    var tl = Array.isArray(d.timeline) ? d.timeline : [];
+    var h = [];
+    h.push('<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">');
+    h.push('<span class="option-pill">' + Number(d.learnings_count || 0) + ' learnings</span>');
+    h.push('<span class="option-pill">' + Number(d.knowledge_docs || 0) + ' knowledge docs</span>');
+    h.push('<span class="option-pill">' + Object.keys(ids).length + ' identity facts</span>');
+    h.push('</div>');
+    if (Object.keys(ids).length) {
+      h.push('<div class="rta-section-title">Identity</div>');
+      Object.keys(ids).forEach(function (k) {
+        h.push('<div style="margin:2px 0"><strong>' + _mesc(k) + '</strong>: ' + _mesc(String(ids[k])) + '</div>');
+      });
+    }
+    if (goals.length) {
+      h.push('<div class="rta-section-title" style="margin-top:8px">Active goals</div>');
+      goals.forEach(function (g) { h.push('<div style="margin:2px 0">• ' + _mesc(String(g.title || g.description || '')) + '</div>'); });
+    }
+    if (rel.length) {
+      h.push('<div class="rta-section-title" style="margin-top:8px">Recent relationship notes</div>');
+      rel.forEach(function (m) { h.push('<div style="margin:2px 0;color:var(--text-dim)">• ' + _mesc(String(m.user_event || '')) + '</div>'); });
+    }
+    if (tl.length) {
+      h.push('<div class="rta-section-title" style="margin-top:8px">Timeline</div>');
+      tl.forEach(function (t) {
+        var tag = t.event_type ? ('[' + _mesc(String(t.event_type)) + '] ') : '';
+        h.push('<div style="margin:2px 0;color:var(--text-dim)">• ' + tag + _mesc(String(t.content || '')) + '</div>');
+      });
+    }
+    if (!Object.keys(ids).length && !goals.length && !rel.length && !tl.length) {
+      h.push('<div style="color:var(--text-dim)">Layla hasn’t recorded much about you yet — this builds up as you chat. Edit or forget individual learnings under <strong>Browse</strong>.</div>');
+    }
+    box.innerHTML = h.join('');
+  } catch (e) {
+    box.innerHTML = '<span style="color:var(--text-dim)">Could not load.</span>';
+  }
+}
+window.laylaMemAbout = laylaMemAbout;
 
 // ─── Browse / load ────────────────────────────────────────────────────────────
 async function laylaMemBrowse(page) {
