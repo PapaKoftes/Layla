@@ -601,6 +601,10 @@ def load_config() -> dict:
             "debate_temperature": 0.7,
             "debate_synthesis_max_tokens": 1200,
             "deliberation_auto_threshold": 0.7,
+            # Heterogeneous council: map aspect_id -> model tag ("coding"/
+            # "reasoning"/"chat") or a GGUF filename. Empty => all aspects use the
+            # default model. e.g. {"morrigan": "coding", "nyx": "reasoning"}.
+            "council_aspect_models": {},
             # Phase 5: Advanced Token Management
             "dynamic_budget_enabled": True,
             "budget_pressure_threshold": 0.85,
