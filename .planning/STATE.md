@@ -46,6 +46,9 @@ map-codebase ✅ → new-project ✅ → plan/execute (remediation P1-2 ✅, P6 
 | A | A5 HumanEval/MBPP benchmark harness | ⏭ |
 | A | A6 full-app E2E + one-command install | ⏭ |
 | A | A7 per-domain kit contents | ⏭ |
+| A | A8 coding-quality scaffolding (repo-map, diff-edits, GBNF, codebase RAG, KV cache) | ⏭ **the real quality lever** |
+| A | A9 ecosystem seam (/v1 backend) + character-card portability | ⏭ |
+| A | A10 kit upgrades (embedding selection, IQ-quants, benchmark-driven choice) | ⏭ |
 | B | B1 ui-next Vite+React foundation (Warframe-mystic) | ⏭ Node ready; aesthetic locked |
 | B | B2 core chat · B3 aspect creator · B4 intake quiz · B5 polish | ⏭ |
 
