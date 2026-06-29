@@ -380,6 +380,16 @@ async def save_settings(req: Request):
                     "settings: blocked remote write to protected keys from %s: %s",
                     socket_host, sorted(blocked),
                 )
+    # REQ-12: route secret-typed keys into the OS keyring instead of writing them
+    # plaintext to runtime_config.json (no-op when no keyring backend exists).
+    if isinstance(body, dict):
+        try:
+            from services.secret_store import persist_secret_keys
+            body, _stored = persist_secret_keys(body)
+            if _stored:
+                logger.info("settings: stored %d secret(s) in the OS keyring (not plaintext)", len(_stored))
+        except Exception as e:
+            logger.debug("keyring secret persist skipped: %s", e)
     try:
         return await asyncio.to_thread(sync_save_settings, body)
     except Exception as e:
