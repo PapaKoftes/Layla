@@ -52,8 +52,11 @@ map-codebase ✅ → new-project ✅ → plan/execute (remediation P1-2 ✅, P6 
 | B | B1 ui-next Vite+React foundation (Warframe-mystic) | ⏭ Node ready; aesthetic locked |
 | B | B2 core chat · B3 aspect creator · B4 intake quiz · B5 polish | ⏭ |
 
-## Known issues (found by actually running it)
-- **Full suite hangs on the real stack**: a `services.llm_gateway.run_completion` test sits in `time.sleep(backoff)` retry-looping once llama-cpp is installed (previously skipped). Must make that test not attempt real completion (mock/seam). Until fixed, the "full green suite on the real stack" claim is unverified — run targeted subsets.
+## Verified state (real stack)
+- **Full suite green on the real 3.12 stack: 1734 passed, 0 failed, 10 skipped** (under canonical CI exclusions). The llama-cpp hang is FIXED (conftest default-protects real-Llama tests; opt in with `LAYLA_TEST_REAL_LLM`). Fixed a stale REQ-10/11 allowlist test that encoded the old XFF-localhost bypass.
+
+## Known issues (minor, follow-ups)
+- Local-only: `_TESTCLIENT_FILES` hang on `.venv-test` due to an httpx/starlette TestClient version mismatch ("install httpx2" deprecation). They are CI-skipped already; pin/upgrade httpx as a Phase 12 follow-up so they run locally too.
 
 ## Next action
 **Track A first:** A3 (compiler-less `chromadb`/`torch` install — the blocker for "she can install it"), then A4 (onboarding wires `recommend_kit`) and A5 (benchmark). **Track B in parallel:** B1 (`ui-next/` scaffold + design tokens in the locked Warframe-mystic palette). The remediation Phase 3 (verifiable core) is now unblocked and should fold into A5/A6.
