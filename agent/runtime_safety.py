@@ -671,6 +671,14 @@ def load_config() -> dict:
             Path(defaults["sandbox_root"]).mkdir(parents=True, exist_ok=True)
         except Exception as e:
             logger.debug("sandbox_root mkdir failed: %s", e)
+        # REQ-12: overlay secret-typed keys from the OS keyring / env (no-op when
+        # no keyring backend exists, so the plaintext path is unchanged). Done
+        # once per cache build, not on the hot fast-path return.
+        try:
+            from services.secret_store import resolve_config_secrets
+            defaults = resolve_config_secrets(defaults)
+        except Exception as e:
+            logger.debug("secret resolution skipped: %s", e)
         _config_cache = defaults
         _config_mtime = current_mtime
         return _config_cache
