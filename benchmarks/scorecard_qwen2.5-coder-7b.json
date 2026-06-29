@@ -1,0 +1,71 @@
+{
+  "n": 10,
+  "passed": 10,
+  "pass_at_1": 1.0,
+  "tokens": 656,
+  "elapsed_s": 207.1,
+  "tok_per_s": 3.17,
+  "results": [
+    {
+      "task_id": "below_zero",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 48
+    },
+    {
+      "task_id": "truncate_number",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 49
+    },
+    {
+      "task_id": "intersperse",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 72
+    },
+    {
+      "task_id": "greatest_common_divisor",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 53
+    },
+    {
+      "task_id": "is_palindrome",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 38
+    },
+    {
+      "task_id": "string_xor",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 67
+    },
+    {
+      "task_id": "sum_to_n",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 64
+    },
+    {
+      "task_id": "rolling_max",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 86
+    },
+    {
+      "task_id": "count_vowels",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 63
+    },
+    {
+      "task_id": "merge_sorted",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 116
+    }
+  ],
+  "model": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf"
+}
