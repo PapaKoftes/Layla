@@ -52,6 +52,10 @@ Derived from `.planning/PROJECT.md`, the adversarial audit (`.planning/codebase/
 - **REQ-74** — A HumanEval/MBPP pass@1 benchmark harness runs the local model via `services.llm_gateway` and emits a scorecard (model, quant, tok/s, pass@1).
 - **REQ-75** — Full-app E2E: a real coding task completes through the HTTP API (server + agent loop + tools), and a one-command install path provisions interpreter + venv + model on the target laptop.
 - **REQ-76** — Each aspect carries a curated **kit** (skills/tools/system-prompt set) for its domain, not just a model.
+- **REQ-82** — Coding-quality scaffolding absorbed from the ecosystem: a tree-sitter **repo-map**, a **search/replace diff-edit** output format (not whole-file rewrites), **GBNF grammar-constrained** tool/JSON output, **codebase RAG**, and **prompt/KV caching** of the system-prompt + repo-map — so a CPU-class 7B produces results well above its size.
+- **REQ-83** — `/v1` is hardened as a real integration seam: Cline/Continue/Aider can point at Layla as an OpenAI-compatible local backend (the pivot-1 hedge; meets devs in their existing tools). *(supersedes/extends REQ-61)*
+- **REQ-84** — Aspects import/export as **portable character cards** (SillyTavern-compatible PNG/JSON), so personalities/kits can be shared and ingested from the existing ecosystem.
+- **REQ-85** — Kit upgrades: **embedding-model selection** per hardware tier (RAG), **IQ-quant** catalog options, and **benchmark-driven model selection** (choose by measured pass@1 + tok/s on representative tasks, not raw size).
 
 ### Track B — The Layla Interface (UI from scratch)
 - **REQ-77** — `ui-next/` (Vite+React+TS) with a design-token system from the canonical palette (`--bg #0a0008`, `--accent #c0006a`, per-aspect colors, `--wf-cut` paneling, glyph/sigil SVG kit) in the **Warframe-mystic midpoint** aesthetic; FastAPI serves the static build.

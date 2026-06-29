@@ -147,6 +147,9 @@ Layered on the remediation substrate (Phases 1–10). Goal: a friend on a **16GB
 - [ ] **A5: Benchmark harness** — HumanEval/MBPP pass@1 runner against the local model via `services.llm_gateway`; emits a scorecard (model, quant, tok/s, pass@1). Folds into Phase 3/4. (REQ-74)
 - [ ] **A6: Full-app E2E + one-command install** — boot `serve.py` + agent loop + tools end-to-end via the API; package a clean install path for her laptop. (REQ-75)
 - [ ] **A7: Per-domain kit contents** — each aspect carries its curated skills/tools/prompt set (not just a model), so "the kit" is complete per domain. (REQ-76)
+- [ ] **A8: Coding-quality scaffolding** *(absorbed from the ecosystem — the real lever given the 7B ceiling)* — tree-sitter **repo-map**, **search/replace diff-edit** format (not whole-file), **GBNF grammar-constrained** tool/JSON output, **codebase RAG**, and **prompt/KV caching** of the system-prompt + repo-map. Makes a 7B punch far above its size. (REQ-82)
+- [ ] **A9: Ecosystem seam & portability** — harden **OpenAI-compatible `/v1`** so Cline/Continue/Aider can use Layla as a backend (meets devs where they work; the pivot-1 hedge); **aspect import/export as portable character cards** (SillyTavern-compatible). (REQ-83, REQ-84)
+- [ ] **A10: Kit upgrades** — **embedding-model selection** per hardware (for RAG), **IQ-quant** options in the catalog (better quality/size than Q4_K_M), and **benchmark-driven model selection** (best model for *her* tasks, not just generic HumanEval). (REQ-85)
 
 ### Track B — The Layla Interface (UI from scratch)
 Aesthetic locked: **"Warframe-mystic" midpoint** — angular sci-fi panel/glyph structure in the original near-black + magenta/violet **per-aspect** identity; organic aspect patterns as panel watermarks; the active aspect re-themes the whole shell.
