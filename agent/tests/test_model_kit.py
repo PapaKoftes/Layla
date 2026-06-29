@@ -34,14 +34,30 @@ def test_cpu_coding_quality_respects_usability_ceiling():
     assert kit["primary"]["category"] == "coding"
 
 
-def test_cpu_coding_pairs_same_family_speculative_draft():
-    """A >=7B CPU primary should pair a tiny SAME-FAMILY draft (safe tokenizer)."""
+def test_cpu_does_not_auto_enable_unproven_draft():
+    """MEASURED: speculative decoding is unhelpful on pure CPU (prompt-lookup ran
+    slower). So on CPU we must NOT auto-enable a draft — but we still expose a
+    same-family candidate for users who want to A/B it on their own hardware."""
     kit = recommend_kit(FRIEND_LAPTOP, domain="coding", prefer="quality")
-    draft = kit["draft"]
-    assert draft is not None, "expected a speculative draft for the 7B coder"
-    assert draft["family"] == kit["primary"]["family"], "draft must be same family (tokenizer-safe)"
-    assert _params_b(draft) <= 1.5
-    assert kit["settings"]["speculative_draft"] == draft["filename"]
+    assert kit["draft"] is None, "CPU must not auto-enable an unproven draft"
+    assert kit["settings"]["speculative_draft"] is None
+    cand = kit["draft_candidate"]
+    assert cand is not None and cand["family"] == kit["primary"]["family"]
+    assert _params_b(cand) <= 1.5
+    assert "speculative decoding measured unhelpful" in kit["rationale"]
+
+
+def test_gpu_auto_enables_same_family_draft():
+    """With a GPU, a same-family draft IS enabled (speculative decoding pays off there)."""
+    # Force a qwen primary (which has a 0.5B same-family draft) by asking for speed-ish
+    # quality on a GPU sized so qwen-14b is the top usable qwen coder.
+    gpu = {"ram_gb": 32.0, "vram_gb": 16.0, "acceleration_backend": "cuda",
+           "gpu_name": "RTX 4080", "physical_cores": 12}
+    kit = recommend_kit(gpu, domain="coding", prefer="quality")
+    if kit["primary"]["family"] == "qwen":  # qwen has a 0.5B draft in the catalog
+        assert kit["draft"] is not None
+        assert kit["draft"]["family"] == "qwen"
+        assert kit["settings"]["speculative_draft"] == kit["draft"]["filename"]
 
 
 def test_gpu_unlocks_larger_models():
