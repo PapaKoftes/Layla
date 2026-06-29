@@ -39,3 +39,60 @@ def redact_secrets(cfg: dict[str, Any]) -> dict[str, Any]:
         else:
             out[key] = val
     return out
+
+
+# --- Audit/log payload redaction (REQ-42/43) -------------------------------
+# A superset of secret-key detection for things that should never land in the
+# persisted audit log (.governance/execution_log.json) or execution traces:
+# credentials (above) plus common PII / session markers. Conservative — keyed on
+# field *names*, not value heuristics, to avoid corrupting diagnostic content.
+_PII_KEY_MARKERS = (
+    "authorization", "cookie", "session_id", "sessionid", "ssn",
+    "social_security", "credit_card", "card_number", "cvv",
+)
+_TRUNCATED = "***truncated***"
+_MAX_STR = 2048      # cap oversized free-form values (file bodies, web pages, prompts)
+_MAX_ITEMS = 100     # cap list length so a huge batch can't bloat the audit file
+_MAX_DEPTH = 12      # guard against deeply nested / cyclic structures
+
+
+def is_sensitive_log_key(key: str) -> bool:
+    """True if a payload field name should be redacted from audit logs."""
+    if is_secret_key(key):
+        return True
+    k = str(key).lower()
+    if any(m in k for m in _PII_KEY_MARKERS):
+        return True
+    # "email" as a field name (but not e.g. "email_count"/"emails_total").
+    if k == "email" or k.endswith("_email") or k.endswith(".email"):
+        return True
+    return False
+
+
+def redact_payload(obj: Any, *, _depth: int = 0) -> Any:
+    """Recursively redact secrets/PII and cap oversized content in a log payload.
+
+    - dict: values under a sensitive key name → ``REDACTED``; other values recurse.
+    - list/tuple: items recurse; length capped at ``_MAX_ITEMS`` with a marker.
+    - str: truncated past ``_MAX_STR`` with a ``…***truncated***`` suffix.
+    - depth capped so pathological/cyclic structures can't hang the writer.
+    Returns a new structure; the input is not mutated.
+    """
+    if _depth > _MAX_DEPTH:
+        return _TRUNCATED
+    if isinstance(obj, dict):
+        out: dict[Any, Any] = {}
+        for key, val in obj.items():
+            if is_sensitive_log_key(key) and val not in (None, "", [], {}):
+                out[key] = REDACTED
+            else:
+                out[key] = redact_payload(val, _depth=_depth + 1)
+        return out
+    if isinstance(obj, (list, tuple)):
+        items = [redact_payload(v, _depth=_depth + 1) for v in list(obj)[:_MAX_ITEMS]]
+        if len(obj) > _MAX_ITEMS:
+            items.append(f"{_TRUNCATED} (+{len(obj) - _MAX_ITEMS} more)")
+        return items
+    if isinstance(obj, str) and len(obj) > _MAX_STR:
+        return obj[:_MAX_STR] + "…" + _TRUNCATED
+    return obj
