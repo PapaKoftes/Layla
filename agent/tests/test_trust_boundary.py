@@ -44,8 +44,10 @@ def test_tunnelled_loopback_is_not_local():
 
 # ---- real client IP is extracted for allowlist/rate-limit/audit ----
 def test_real_client_ip_extraction():
+    # Rightmost-trusted-hop (REQ-10): the trusted loopback relay appends the real
+    # client on the right, so a two-entry XFF resolves to the RIGHT one.
     ip, via = real_client_ip(_Headers({"X-Forwarded-For": "203.0.113.9, 10.0.0.1"}), "127.0.0.1")
-    assert ip == "203.0.113.9" and via is True
+    assert ip == "10.0.0.1" and via is True
     ip2, via2 = real_client_ip(_Headers({"Forwarded": 'for="203.0.113.9:4711"'}), "127.0.0.1")
     assert ip2.startswith("203.0.113.9") and via2 is True
     ip3, via3 = real_client_ip(_Headers({}), "203.0.113.50")
@@ -88,3 +90,47 @@ def test_edge_cases():
     assert is_direct_local(_Headers({}), None) is True
     # IPv6-mapped loopback direct
     assert is_direct_local(_Headers({}), "::ffff:127.0.0.1") is True
+
+
+# ── REQ-10: rightmost-trusted-hop forwarded-IP derivation (anti-spoof) ──────────
+def test_provider_header_beats_spoofed_leftmost_xff():
+    # Cf-Connecting-Ip is provider-overwritten (unforgeable) and wins over a
+    # client-prepended X-Forwarded-For entry.
+    ip, via = real_client_ip(_Headers({"X-Forwarded-For": "127.0.0.1, 8.8.8.8", "Cf-Connecting-Ip": "203.0.113.9"}), "127.0.0.1")
+    assert (ip, via) == ("203.0.113.9", True)
+
+
+def test_xff_rightmost_not_leftmost():
+    # Attacker PREPENDS a fake entry; the trusted loopback relay APPENDS the real
+    # client on the right. We must take the rightmost, not the spoofable leftmost.
+    ip, via = real_client_ip(_Headers({"X-Forwarded-For": "127.0.0.1, 203.0.113.9"}), "127.0.0.1")
+    assert (ip, via) == ("203.0.113.9", True)
+    # single hop
+    assert real_client_ip(_Headers({"X-Forwarded-For": "203.0.113.9"}), "127.0.0.1") == ("203.0.113.9", True)
+
+
+def test_trusted_proxies_multi_hop_skip():
+    # With a configured trusted-proxy CIDR, walk right→left skipping it.
+    ip, via = real_client_ip(
+        _Headers({"X-Forwarded-For": "203.0.113.9, 10.0.0.5"}), "127.0.0.1", trusted_proxies=["10.0.0.0/8"]
+    )
+    assert (ip, via) == ("203.0.113.9", True)
+
+
+def test_spoofed_loopback_xff_cannot_become_direct_local():
+    # A tunnelled client sending XFF:127.0.0.1 is flagged via_proxy (must auth);
+    # it does NOT become a trusted/direct-local caller.
+    assert real_client_ip(_Headers({"X-Forwarded-For": "127.0.0.1"}), "127.0.0.1") == ("127.0.0.1", True)
+    assert is_direct_local(_Headers({"X-Forwarded-For": "127.0.0.1"}), "127.0.0.1") is False
+
+
+def test_lan_attacker_headers_ignored_on_nonloopback_socket():
+    ip, via = real_client_ip(_Headers({"X-Forwarded-For": "127.0.0.1", "Cf-Connecting-Ip": "127.0.0.1"}), "10.0.0.7")
+    assert (ip, via) == ("10.0.0.7", False)
+
+
+def test_ip_normalization_strips_port_and_validates():
+    assert real_client_ip(_Headers({"X-Forwarded-For": "203.0.113.9:5555"}), "127.0.0.1") == ("203.0.113.9", True)
+    assert real_client_ip(_Headers({"Forwarded": 'for="[2001:db8::1]:4711"'}), "127.0.0.1") == ("2001:db8::1", True)
+    # garbage XFF + an unverifiable X-Real-Ip => relayed but no usable IP => remote via socket
+    assert real_client_ip(_Headers({"X-Forwarded-For": "not-an-ip", "X-Real-Ip": "evil"}), "127.0.0.1") == ("127.0.0.1", True)
