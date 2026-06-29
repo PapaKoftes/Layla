@@ -163,8 +163,8 @@ Layered on the remediation substrate (Phases 1–8). Goal: a friend on a **16GB 
 **Requirements**: REQ-20, REQ-21, REQ-22, REQ-74
 **Success Criteria**:
   1. The full suite runs green **on the real stack** (fix the `llm_gateway.run_completion` retry-sleep hang found 2026-06-29). [x] *(1734 passed, 0 failed on 3.12 `.venv-test`; conftest default-protects real-Llama tests; fixed a stale REQ-10/11 allowlist test — commit on `master`)*
-  2. A blocking `inference-smoke` job drives `run_completion` end-to-end on a committed tiny model; release gated. [ ] *(seam ready: `LAYLA_TEST_REAL_LLM` opt-in)*
-  3. A HumanEval/MBPP pass@1 harness emits a scorecard (model, quant, tok/s, pass@1) for the local model. [ ]
+  2. A blocking `inference-smoke` job drives `run_completion` end-to-end on a committed tiny model; release gated. [ ] *(seam ready: `LAYLA_TEST_REAL_LLM` opt-in; SmolLM2-360M on disk)*
+  3. A HumanEval/MBPP pass@1 harness emits a scorecard (model, quant, tok/s, pass@1). [x] *(`scripts/benchmark_coding.py`, 8 tests; first scorecard **Qwen-Coder-7B 100% pass@1, 3.17 tok/s** — `benchmarks/`)*
 
 ### Phase 13: Onboarding & kit provisioning
 **Goal**: First run detects hardware and provisions the optimal kit per domain; kits are complete, not just a model.
@@ -238,7 +238,7 @@ Milestone 1 (remediation substrate) and Milestone 2 (Friend-Ready product). Old 
 | 8. Agent-loop decomposition | Open | |
 | **M2 — Friend-Ready** | | |
 | 11. Local-coding foundation | ~ Mostly done | REQ-70/71/72; inference + recommend_kit + memory fallback; 21+87 tests |
-| 12. Verifiable core & benchmark | ~ In progress | ✅ suite green on real stack (1734 pass); next: inference-smoke + HumanEval scorecard |
+| 12. Verifiable core & benchmark | ~ In progress (2/3) | ✅ suite green (1734 pass) + ✅ benchmark (Qwen-7B 100% pass@1); next: inference-smoke CI wiring |
 | 13. Onboarding & kit provisioning | Open | A4/A7/A10 |
 | 14. Coding-quality scaffolding | Open | A8 — the real quality lever |
 | 15. Full-app E2E, install & seam | Open | A6/A9 |
