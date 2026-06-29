@@ -915,10 +915,18 @@ def backup_file(path: Path) -> bool:
 
 
 def log_execution(tool_name: str, payload: dict) -> None:
+    # Redact secrets/PII and cap oversized content before persisting (REQ-42/43).
+    # Centralized here so every tool_dispatch call site (incl. mcp_tools_call's
+    # arbitrary args) is covered by one chokepoint.
+    try:
+        from services.secret_filter import redact_payload
+        safe_payload = redact_payload(payload)
+    except Exception:
+        safe_payload = payload
     entry = {
         "timestamp": utcnow().isoformat(),
         "tool": tool_name,
-        "payload": payload,
+        "payload": safe_payload,
     }
     try:
         GOV_PATH.mkdir(parents=True, exist_ok=True)
