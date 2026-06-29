@@ -29,7 +29,7 @@ GSD init is complete. No phase is active yet.
 | 3 | Verifiable core / CI | open — **de-risked by research** (stories260K + CPU wheel) |
 | 4 | Answer-quality eval | open (depends on P3) |
 | 5 | Inference reliability | ~ (model-cache bound done) |
-| 6 | Data durability & privacy | open |
+| 6 | Data durability & privacy (REQ-42/43) | ~ (log redaction done; Chroma backup/erasure need runtime) |
 | 7 | Config consolidation | open |
 | 8 | Agent-loop decomposition | open (depends on P3 test net) |
 | 9 | Then build (model browser, /v1, install) | open |
