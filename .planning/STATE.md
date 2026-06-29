@@ -1,48 +1,59 @@
 # Project State
 
 **Project:** Layla — local-first AI agent platform
-**Milestone:** Remediate, then Build (v1)
+**Milestones:** (1) Remediate-then-Build substrate · (2) **Friend-Ready** product (North Star)
 **Updated:** 2026-06-29
 
 ## Position in the GSD loop
 
 ```
-map-codebase ✅ → new-project ✅ → [plan-phase] → execute-phase → verify → ship
-                                    ▲ Phases 1+2 SHIPPED · next: Phase 5/6/7 (3.12-free)
+map-codebase ✅ → new-project ✅ → plan/execute (remediation P1-2 ✅, P6 partial) ✅
+                          → Milestone 2 "Friend-Ready" PLANNED → executing Track A
 ```
 
-GSD init is complete. No phase is active yet.
+## Runtime is now LIVE (the old caveat is resolved)
+- **Python 3.12.10 installed**; `.venv-test` built with `[dev]` + `[core,llm]` (minus chromadb) + `torch` CPU.
+- **Real inference works**: Qwen2.5-Coder-7B-Q4 loads and generates. The dev box **= the friend's tier** (4-core / 16GB / no-GPU), so all measurements transfer.
+- **Full test suite runs on 3.12** (was limited to a stdlib subset on the 3.14 box).
+- Models on disk: `models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf`, `models/SmolLM2-360M-Instruct-Q4_K_M.gguf` (gitignored).
 
-## Planning artifacts (all on `master`)
-- `PROJECT.md` — context + direction (remediate-then-build).
-- `config.json` — Balanced model profile, research on, Standard granularity.
-- `codebase/` — 7 clean-room map docs (native `gsd-codebase-mapper`).
-- `research/` — 4 briefs + `SUMMARY.md` (ecosystem, CI/LLM-testing, eval, security).
-- `REQUIREMENTS.md` — REQ-01..04 (done), REQ-10..63 (active).
-- `ROADMAP.md` — 10 phases, blast-radius ordered, REQ coverage validated.
+## Measured truths (drive all decisions)
+- 7B-Q4 ≈ **5 tok/s** on this CPU tier; **memory-bandwidth-bound** (thread tuning didn't help).
+- Quality: **good for focused edits/refactors**, weaker on from-scratch self-verification (caught a real bug in its own doctest).
+- **Speculative decoding is unhelpful on CPU** (prompt-lookup measured *slower*: 1.6 vs 2.6 tok/s).
+- → "Best possible local coding" = best *responsive* model (7B) + scaffolding, not the biggest that fits.
 
-## Phase status
+## Milestone 1 (remediation) — phase status
 | # | Phase | Status |
 |---|---|---|
-| 1 | Security finish (REQ-10/11/12) | ✅ DONE (4f05229, b1968ad, 77335b4; 58 tests) |
-| 2 | Legal & launch safety (REQ-02) | ✅ DONE (copyleft CI guard + THIRD_PARTY; 11 tests) |
-| 3 | Verifiable core / CI | open — **de-risked by research** (stories260K + CPU wheel) |
-| 4 | Answer-quality eval | open (depends on P3) |
+| 1 | Security finish (REQ-10/11/12) | ✅ DONE (58 tests) |
+| 2 | Legal & launch (REQ-02) | ✅ DONE (copyleft guard; 11 tests) |
+| 3 | Verifiable core / CI | open — **now unblocked** (3.12 env + real models exist) |
+| 4 | Answer-quality eval | open (pairs with A5 benchmark) |
 | 5 | Inference reliability | ~ (model-cache bound done) |
-| 6 | Data durability & privacy (REQ-42/43) | ~ (log redaction done; Chroma backup/erasure need runtime) |
+| 6 | Data durability & privacy | ~ (log redaction done; Chroma items need runtime — now available) |
 | 7 | Config consolidation | open |
-| 8 | Agent-loop decomposition | open (depends on P3 test net) |
-| 9 | Then build (model browser, /v1, install) | open |
-| 10 | Frontend & docs cleanup | open |
+| 8 | Agent-loop decomposition | open |
+| 9–10 | Then-build / frontend | superseded/merged into Milestone 2 |
+
+## Milestone 2 (Friend-Ready) — track status
+| Track | Item | Status |
+|---|---|---|
+| A | A1 stack+model+inference proven | ✅ DONE (REQ-70) |
+| A | A2 hardware→kit recommender | ✅ DONE (REQ-71; b306047, 9 tests) |
+| A | A3 compiler-less install (chromadb/torch) | ⏭ next — transferability blocker |
+| A | A4 onboarding startup sequence | ⏭ wires recommend_kit into first_run |
+| A | A5 HumanEval/MBPP benchmark harness | ⏭ |
+| A | A6 full-app E2E + one-command install | ⏭ |
+| A | A7 per-domain kit contents | ⏭ |
+| B | B1 ui-next Vite+React foundation (Warframe-mystic) | ⏭ Node ready; aesthetic locked |
+| B | B2 core chat · B3 aspect creator · B4 intake quiz · B5 polish | ⏭ |
 
 ## Next action
-Phases 1 & 2 shipped. Phases 3/4/8 need the 3.12 runtime + a model (`scripts/setup_test_env.ps1`), so on this 3.14 box the next runnable work is one of:
-- **Phase 6 — Data durability & privacy** (SQLite WAL/atomic-write/backup, secret redaction in logs) — mostly stdlib-testable.
-- **Phase 7 — Config consolidation** (single source of truth for runtime config; pure-Python, testable).
-- **Phase 5 — Inference reliability** (model-cache bound done; remaining items partly need the runtime).
-Pick Phase 6 or 7 next; Phase 3 (verifiable core) is the highest-value but is gated on standing up the 3.12 venv + `stories260K.gguf`.
+**Track A first:** A3 (compiler-less `chromadb`/`torch` install — the blocker for "she can install it"), then A4 (onboarding wires `recommend_kit`) and A5 (benchmark). **Track B in parallel:** B1 (`ui-next/` scaffold + design tokens in the locked Warframe-mystic palette). The remediation Phase 3 (verifiable core) is now unblocked and should fold into A5/A6.
 
 ## Key context for any session
-- Runtime caveat: this box has Python 3.14; Layla needs 3.11/3.12. Pure-stdlib tests run here; the full app/inference does not (`scripts/setup_test_env.ps1` for a 3.12 venv).
-- Verify against implementation, not docs. Every fix gets a runnable test where possible.
-- Phases 3/4/8 need the 3.12 runtime + a model; Phases 1/2/5/6/7/9/10 are largely doable without it.
+- The dev box now mirrors the target user (4-core/16GB/no-GPU) — measure here, it transfers.
+- Verify against implementation, not docs; report measurements honestly even when they contradict earlier claims (e.g. spec-decoding).
+- UI work must not require backend rewrites beyond additive endpoints; the API is the contract.
+- Commit cadence: feature commits separate from `docs(planning)` bookkeeping; end messages with the Co-Authored-By trailer.
