@@ -1,5 +1,6 @@
 # Dependencies and venv
 .venv/
+.venv-test/
 venv/
 # Leftover when .venv rename/replace fails mid-delete (locks); do not commit
 .venv_broken_*/
