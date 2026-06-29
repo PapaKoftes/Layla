@@ -496,6 +496,11 @@ def load_config() -> dict:
             # headers (ssh -R, socat, nginx stream) — otherwise such relays arrive
             # on 127.0.0.1 with no header and would be trusted as local.
             "remote_require_auth_always": False,
+            # Trusted reverse-proxy / tunnel IPs or CIDRs. Used for rightmost-
+            # trusted-hop client-IP derivation from X-Forwarded-For (anti-spoof).
+            # Empty => the rightmost XFF entry (appended by the loopback relay) is
+            # used; a client cannot poison the allowlist by prepending a fake hop.
+            "tunnel_trusted_proxies": [],
             "trace_id_enabled": False,
             "use_chroma": True,
             "uncensored": True,
