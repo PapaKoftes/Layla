@@ -51,6 +51,7 @@ core = [
     # Essentials
     "numpy>=1.24,<3",
     "psutil>=5.9",
+    "keyring>=24",  # OS keyring for secret storage (graceful fallback if backend absent)
     "apscheduler>=3.10,<4",
     "networkx>=3.0",
     "orjson>=3.9",
