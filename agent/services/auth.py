@@ -147,6 +147,28 @@ def real_client_ip(headers, socket_host: str | None, trusted_proxies=None) -> tu
     return socket_host, False
 
 
+def require_auth_always(cfg) -> bool:
+    """Effective value of the "require auth even for loopback" policy (REQ-11).
+
+    Tri-state ``remote_require_auth_always``:
+      - ``None`` (default) ⇒ **auto**: on whenever ``remote_enabled`` (so an
+        exposed instance never exempts loopback by default — the ssh-R/socat
+        header-stripping-forwarder class), off when local-only.
+      - ``True``  ⇒ always require the token, even local-only.
+      - ``False`` ⇒ never (explicit opt-out; loopback stays exempt even exposed).
+    """
+    try:
+        v = cfg.get("remote_require_auth_always")
+    except Exception:
+        v = None
+    if v is None:
+        try:
+            return bool(cfg.get("remote_enabled"))
+        except Exception:
+            return False
+    return bool(v)
+
+
 def is_direct_local(headers, socket_host: str | None) -> bool:
     """True only for a DIRECT loopback request (no proxy/tunnel in front).
 

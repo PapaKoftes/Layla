@@ -491,11 +491,11 @@ def load_config() -> dict:
             "remote_allow_endpoints": [],
             "remote_mode": "observe",
             "remote_rate_limit_per_minute": 100,
-            # When True, require the auth token even for loopback requests. Set
-            # this if exposing Layla via a forwarder that does NOT add forwarding
-            # headers (ssh -R, socat, nginx stream) — otherwise such relays arrive
-            # on 127.0.0.1 with no header and would be trusted as local.
-            "remote_require_auth_always": False,
+            # Tri-state: None=auto (require auth even for loopback whenever
+            # remote_enabled — the safe default when exposed), True=always,
+            # False=never (explicit opt-out, loopback stays exempt even exposed).
+            # Resolved by services.auth.require_auth_always().
+            "remote_require_auth_always": None,
             # Trusted reverse-proxy / tunnel IPs or CIDRs. Used for rightmost-
             # trusted-hop client-IP derivation from X-Forwarded-For (anti-spoof).
             # Empty => the rightmost XFF entry (appended by the loopback relay) is

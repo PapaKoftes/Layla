@@ -134,3 +134,16 @@ def test_ip_normalization_strips_port_and_validates():
     assert real_client_ip(_Headers({"Forwarded": 'for="[2001:db8::1]:4711"'}), "127.0.0.1") == ("2001:db8::1", True)
     # garbage XFF + an unverifiable X-Real-Ip => relayed but no usable IP => remote via socket
     assert real_client_ip(_Headers({"X-Forwarded-For": "not-an-ip", "X-Real-Ip": "evil"}), "127.0.0.1") == ("127.0.0.1", True)
+
+
+# ── REQ-11: auth-required-when-exposed by default ──────────────────────────────
+def test_require_auth_always_auto_on_when_exposed():
+    from services.auth import require_auth_always
+    # auto (None) => on when exposed, off when local-only
+    assert require_auth_always({"remote_enabled": True, "remote_require_auth_always": None}) is True
+    assert require_auth_always({"remote_enabled": False, "remote_require_auth_always": None}) is False
+    assert require_auth_always({"remote_enabled": True}) is True          # key absent => auto
+    # explicit overrides
+    assert require_auth_always({"remote_enabled": True, "remote_require_auth_always": False}) is False  # opt-out
+    assert require_auth_always({"remote_enabled": False, "remote_require_auth_always": True}) is True   # force
+    assert require_auth_always({}) is False                               # local-only default unaffected
