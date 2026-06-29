@@ -11,7 +11,7 @@ Coverage: every **active** requirement (REQ-10..REQ-63) maps to exactly one phas
 ## Phases
 
 - [x] **Phase 1: Security finish** - Close the residual forwarded-header gap, default auth-always-when-exposed, move secrets to the OS keyring. ✅ DONE (4f05229, b1968ad, 77335b4)
-- [~] **Phase 2: Legal & launch safety** - AGPL removed and reload-off shipped; add a dependency-license accounting.
+- [x] **Phase 2: Legal & launch safety** - AGPL removed, reload-off, + dependency-license accounting & CI copyleft guard. ✅ DONE
 - [ ] **Phase 3: Verifiable core (CI)** - Real tiny-model inference + the real agent loop run every PR; releases gated.
 - [ ] **Phase 4: Answer-quality eval harness** - Inline grounding/cite-or-abstain + a promptfoo golden set so quality is measured, not asserted.
 - [~] **Phase 5: Inference reliability** - Remove dead queue infra, take embedding out of the write txn, surface model-load failure.
@@ -42,8 +42,8 @@ Coverage: every **active** requirement (REQ-10..REQ-63) maps to exactly one phas
 **Success Criteria** (what must be TRUE):
   1. No copyleft (AGPL) dependency is bundled under the proprietary license. [x] *(PyMuPDF removed; pypdf fallback)*
   2. Default launch does not run `uvicorn --reload`. [x]
-  3. A `THIRD_PARTY`/`NOTICE` file documents dependency licenses, generated from a license scan; CI fails on a newly-introduced copyleft dependency. [ ]
-**Plans**: TBD
+  3. A `THIRD_PARTY`/`NOTICE` file documents dependency licenses, generated from a license scan; CI fails on a newly-introduced copyleft dependency. [x] *(`THIRD_PARTY.md` + `scripts/check_copyleft.py`, wired into `ci.yml`; 11 tests — commit on `master`)*
+**Plans**: executed directly — see `phases/02-legal-launch/VERIFICATION.md`
 
 ### Phase 3: Verifiable core (CI)
 **Goal**: Green CI means the real generation path and the real agent loop actually work — not just mocked orchestration.
