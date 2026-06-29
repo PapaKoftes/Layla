@@ -86,7 +86,7 @@ Coverage: every **active** requirement (REQ-10..REQ-63) maps to exactly one phas
 **Success Criteria** (what must be TRUE):
   1. Backup (`agent/services/db_backup.py`) includes the Chroma vector dir so a restore keeps SQLite↔embeddings consistent; WAL is checkpointed and the DB VACUUMed on a schedule.
   2. Deleting a conversation/learning removes its vectors from Chroma (no orphans, no dangling references back through the `vector_store.py` rehydration path).
-  3. Audit (`.governance/execution_log.json`) and execution logs redact PII/secret argument content before writing.
+  3. Audit (`.governance/execution_log.json`) and execution logs redact PII/secret argument content before writing. [x] *(`secret_filter.redact_payload` at the `log_execution` chokepoint; 11 tests — commit on `master`)*
   4. A test simulates SQLite-written-but-embed-failed (and the reverse) and asserts the durability/erasure paths keep the two stores consistent.
 **Plans**: TBD
 
