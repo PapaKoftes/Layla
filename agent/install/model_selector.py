@@ -251,36 +251,47 @@ def recommend_kit(
     primary = usable[0]
     fam = (primary.get("family") or "").lower()
 
-    # Speculative draft: a tiny SAME-FAMILY model accelerates a >=7B primary on CPU while
-    # preserving its outputs. Cross-family drafts are unsafe (different tokenizer), so skip.
-    draft = None
-    if not has_gpu and _params_b(primary) >= 6.0 and pref != "speed":
-        candidates = [m for m in catalog
-                      if (m.get("family") or "").lower() == fam and _params_b(m) <= 1.5
-                      and m.get("name") != primary.get("name")]
-        candidates.sort(key=lambda m: _params_b(m))
-        draft = candidates[0] if candidates else None
+    # Same-family tiny model that *could* serve as a speculative-decoding draft (a
+    # cross-family draft is unsafe — different tokenizer). We surface it as a candidate,
+    # but only auto-ENABLE it where it's known to pay off.
+    draft_candidate = None
+    if _params_b(primary) >= 6.0:
+        cands = [m for m in catalog
+                 if (m.get("family") or "").lower() == fam and _params_b(m) <= 1.5
+                 and m.get("name") != primary.get("name")]
+        cands.sort(key=lambda m: _params_b(m))
+        draft_candidate = cands[0] if cands else None
 
-    n_gpu_layers = -1 if has_gpu else 0  # offload all if GPU, else pure CPU
+    # MEASURED (4-core/16GB CPU): speculative decoding does NOT help on pure CPU —
+    # prompt-lookup ran *slower* (1.6 vs 2.6 tok/s) because the bottleneck is memory
+    # bandwidth, not compute, so the draft/verify cycle is pure overhead. Only enable a
+    # draft when a GPU makes it worthwhile; on CPU the real levers are a smaller model
+    # or a GPU. (Keep the candidate exposed for users who want to A/B it on their box.)
+    draft = draft_candidate if (has_gpu and pref != "speed") else None
+
     settings = {
-        "n_gpu_layers": n_gpu_layers,
+        "n_gpu_layers": -1 if has_gpu else 0,  # offload all if GPU, else pure CPU
         "n_threads": int(hardware_info.get("physical_cores") or 4),
         "n_ctx": 8192 if _params_b(primary) <= 8 else 4096,
         "speculative_draft": (draft or {}).get("filename") if draft else None,
     }
 
-    speed_note = ("GPU-accelerated" if has_gpu
-                  else f"CPU-only (~{'5' if _params_b(primary) <= 8 else '2'} tok/s expected on this tier)")
+    if has_gpu:
+        speed_note = "GPU-accelerated"
+    else:
+        speed_note = (f"CPU-only (~{'5' if _params_b(primary) <= 8 else '2'} tok/s on this tier; "
+                      "speculative decoding measured unhelpful on CPU)")
     rationale = (
         f"domain={category}, prefer={pref}, {speed_note}. "
         f"Chose {primary.get('name')} ({primary.get('size')}) as the best "
         f"{'responsive' if not has_gpu else 'capable'} fit within {budget:.0f}GB."
-        + (f" Paired draft {draft.get('name')} for ~1.5-2x speculative speedup." if draft else "")
+        + (f" Enabled draft {draft.get('name')} (GPU speculative decoding)." if draft else "")
     )
 
     return {
         "primary": primary,
-        "draft": draft,
+        "draft": draft,                     # auto-enabled draft (GPU only); None on CPU
+        "draft_candidate": draft_candidate,  # same-family tiny available to A/B test
         "aspect": _aspect_for_family(fam, recommended_aspects),
         "settings": settings,
         "rationale": rationale,
