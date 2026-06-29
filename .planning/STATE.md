@@ -8,7 +8,7 @@
 
 ```
 map-codebase ✅ → new-project ✅ → [plan-phase] → execute-phase → verify → ship
-                                    ▲ you are here (ready to plan Phase 1)
+                                    ▲ Phase 1 SHIPPED · next: plan Phase 2
 ```
 
 GSD init is complete. No phase is active yet.
@@ -24,7 +24,7 @@ GSD init is complete. No phase is active yet.
 ## Phase status
 | # | Phase | Status |
 |---|---|---|
-| 1 | Security finish (REQ-10/11/12) | ~ partial (builds on done REQ-01) |
+| 1 | Security finish (REQ-10/11/12) | ✅ DONE (4f05229, b1968ad, 77335b4; 58 tests) |
 | 2 | Legal & launch safety | ~ (AGPL+reload done; THIRD_PARTY open) |
 | 3 | Verifiable core / CI | open — **de-risked by research** (stories260K + CPU wheel) |
 | 4 | Answer-quality eval | open (depends on P3) |
@@ -36,7 +36,7 @@ GSD init is complete. No phase is active yet.
 | 10 | Frontend & docs cleanup | open |
 
 ## Next action
-`/gsd-plan-phase 1` — turn Phase 1 (Security finish: rightmost-trusted-hop XFF + `tunnel_trusted_proxies`, `remote_require_auth_always` default-on-when-exposed, keyring secrets) into executable plans, then `/gsd-execute-phase 1`.
+`/gsd-plan-phase 2` — Legal & launch safety. Mostly done (AGPL removed, reload-off); the remaining work is REQ-02's open item: a `THIRD_PARTY`/`NOTICE` file from a dependency-license scan + a CI guard against newly-introduced copyleft deps. No 3.12 runtime needed.
 
 ## Key context for any session
 - Runtime caveat: this box has Python 3.14; Layla needs 3.11/3.12. Pure-stdlib tests run here; the full app/inference does not (`scripts/setup_test_env.ps1` for a 3.12 venv).

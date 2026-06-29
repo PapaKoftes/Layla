@@ -10,7 +10,7 @@ Coverage: every **active** requirement (REQ-10..REQ-63) maps to exactly one phas
 
 ## Phases
 
-- [~] **Phase 1: Security finish** - Close the residual forwarded-header gap, default auth-always-when-exposed, move secrets to the OS keyring.
+- [x] **Phase 1: Security finish** - Close the residual forwarded-header gap, default auth-always-when-exposed, move secrets to the OS keyring. ✅ DONE (4f05229, b1968ad, 77335b4)
 - [~] **Phase 2: Legal & launch safety** - AGPL removed and reload-off shipped; add a dependency-license accounting.
 - [ ] **Phase 3: Verifiable core (CI)** - Real tiny-model inference + the real agent loop run every PR; releases gated.
 - [ ] **Phase 4: Answer-quality eval harness** - Inline grounding/cite-or-abstain + a promptfoo golden set so quality is measured, not asserted.
