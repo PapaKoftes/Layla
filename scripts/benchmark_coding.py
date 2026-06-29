@@ -278,14 +278,14 @@ def main(argv: list[str]) -> int:
             card = benchmark(generate, PROBLEMS, scratch)
 
     card["model"] = label
-    print(f"\n=== Coding benchmark · {label} ===")
+    print(f"\n=== Coding benchmark | {label} ===")
     print(f"pass@1: {card['pass_at_1']*100:.1f}%  ({card['passed']}/{card['n']})  "
           f"| {card['tok_per_s']} tok/s | {card['elapsed_s']}s")
     for r in card["results"]:
         print(f"  {'PASS' if r['passed'] else 'FAIL'}  {r['task_id']:28} {('' if r['passed'] else r['detail'])}")
     if args.out:
         Path(args.out).write_text(json.dumps(card, indent=2), encoding="utf-8")
-        print(f"\nscorecard → {args.out}")
+        print(f"\nscorecard -> {args.out}")
     return 0
 
 
