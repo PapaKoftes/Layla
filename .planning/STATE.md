@@ -54,6 +54,7 @@ map-codebase ✅ → new-project ✅ → plan/execute (remediation P1-2 ✅, P6 
 
 ## Verified state (real stack)
 - **Full suite green on the real 3.12 stack: 1734 passed, 0 failed, 10 skipped** (under canonical CI exclusions). The llama-cpp hang is FIXED (conftest default-protects real-Llama tests; opt in with `LAYLA_TEST_REAL_LLM`). Fixed a stale REQ-10/11 allowlist test that encoded the old XFF-localhost bypass.
+- **Coding quality is now a NUMBER**: Qwen2.5-Coder-7B = **100% pass@1 (10/10), 3.17 tok/s** on the friend's tier (`benchmarks/`, `scripts/benchmark_coding.py`, 8 tests). Curated easy-to-medium set → strong fundamentals, not saturated; HumanEval-164 is the next discriminating step.
 
 ## Known issues (minor, follow-ups)
 - Local-only: `_TESTCLIENT_FILES` hang on `.venv-test` due to an httpx/starlette TestClient version mismatch ("install httpx2" deprecation). They are CI-skipped already; pin/upgrade httpx as a Phase 12 follow-up so they run locally too.
