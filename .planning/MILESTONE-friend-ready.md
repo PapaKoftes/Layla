@@ -39,8 +39,23 @@ Aesthetic: **black + dark-purple**, **Warframe** sci-fi paneling & glyphs, motio
 - Everything stays **local-first** and regression-guarded (tests on `.venv-test`).
 - Backend API is the contract between the new UI and the agent core — UI work must not require backend rewrites beyond additive endpoints.
 
+## UI aesthetic — LOCKED: "Warframe-mystic" midpoint
+The blend of the new sci-fi direction and the original identity:
+- **Structure** from the Warframe direction: angular cut-corner panels (`--wf-cut`), Orokin-style glyphs/sigils, HUD status chips, energy edge-lines.
+- **Soul** from the original: near-black `--bg #0a0008`, magenta `--accent #c0006a` signature, **per-aspect colors** (morrigan=crimson `#8B0000`, nyx=indigo, echo=blue, eris=brown, cassandra=teal, lilith=wine); the active aspect re-themes the whole shell via `--asp`.
+- **Texture**: the existing organic per-aspect SVG patterns (morrigan-circuits, nyx-constellations, …) as panel watermarks. The sci-fi frame *holds* the personality. (Mockup shown 2026-06-29.)
+
+## Canonical plan locations (this milestone is now folded into the GSD plan)
+- `PROJECT.md` — thesis (domain-kit personalities), viability framing, two-layer direction.
+- `ROADMAP.md` → "Milestone 2 — Friend-Ready" — Track A (A1–A7) + Track B (B1–B5).
+- `REQUIREMENTS.md` — REQ-70..81.
+- `STATE.md` — live runtime status, measured truths, track status, next action.
+
+## Progress log
+- **2026-06-29:** Stack proven (A1 ✅), kit recommender shipped (A2 ✅, REQ-71). Measured: 7B ≈ 5 tok/s, good edits, **spec-decoding unhelpful on CPU** (corrected the kit to not overclaim). Market-viability audit → personal-first + curation-moat framing. UI midpoint aesthetic locked + mockup shown.
+
 ## Next actions
-1. (A1) finish Qwen-Coder download → smoke a real coding generation.
-2. (A2) resolve `chromadb`/`torch` CPU install so the stack is complete on a compiler-less box.
-3. (A4) scaffold the benchmark harness.
-4. (B1) scaffold `ui-next/` with the design system + a first Warframe-aesthetic shell.
+1. **(A3)** compiler-less `chromadb`/`torch` install — the transferability blocker.
+2. **(A4)** wire `recommend_kit` into the `first_run` onboarding/startup sequence.
+3. **(A5)** HumanEval/MBPP benchmark harness → first scorecard for Qwen-Coder-7B.
+4. **(B1)** scaffold `ui-next/` (Vite+React+TS) with the locked Warframe-mystic design tokens.

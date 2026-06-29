@@ -42,7 +42,26 @@ Derived from `.planning/PROJECT.md`, the adversarial audit (`.planning/codebase/
 - **REQ-62** — Install ships prebuilt CPU/CUDA llama wheels; the heavy ML stack (torch/chromadb) is opt-in.
 - **REQ-63** — Approval-gated mutation is a visible, demoable feature (diff/command previews).
 
+## Milestone 2 — Friend-Ready (product North Star)
+
+### Track A — Daily-Driver (programming-grade, benchmarked)
+- **REQ-70** — A real coding model runs locally end-to-end on a 16GB CPU box; performance and quality are *measured*, not asserted (baseline: Qwen2.5-Coder-7B-Q4 ≈ 5 tok/s; good edits, weak from-scratch self-verify; spec-decoding measured unhelpful on CPU). *(done)*
+- **REQ-71** — `recommend_kit(hardware, domain, prefer)` recommends the best **usable** model for the detected hardware + domain + priority (respecting a CPU usability ceiling), maps the domain to its affinity aspect, pairs a same-family draft only where it helps (GPU), and emits CPU/GPU-aware settings + a rationale. *(done; 9 tests)*
+- **REQ-72** — The full stack (`chromadb`/`chroma-hnswlib`, `torch`) installs on a fresh CPU Windows box with **no C++ toolchain** (prebuilt wheels, or a `use_chroma:false` + lightweight vector fallback). *The transferability blocker.*
+- **REQ-73** — First-run onboarding probes hardware, presents the recommended kit with a speed/quality choice, downloads it, and sets the default aspect (`recommend_kit` wired into `first_run`).
+- **REQ-74** — A HumanEval/MBPP pass@1 benchmark harness runs the local model via `services.llm_gateway` and emits a scorecard (model, quant, tok/s, pass@1).
+- **REQ-75** — Full-app E2E: a real coding task completes through the HTTP API (server + agent loop + tools), and a one-command install path provisions interpreter + venv + model on the target laptop.
+- **REQ-76** — Each aspect carries a curated **kit** (skills/tools/system-prompt set) for its domain, not just a model.
+
+### Track B — The Layla Interface (UI from scratch)
+- **REQ-77** — `ui-next/` (Vite+React+TS) with a design-token system from the canonical palette (`--bg #0a0008`, `--accent #c0006a`, per-aspect colors, `--wf-cut` paneling, glyph/sigil SVG kit) in the **Warframe-mystic midpoint** aesthetic; FastAPI serves the static build.
+- **REQ-78** — The core agent chat experience in the new aesthetic, wired to the existing API (streaming, tool calls, diff view, memory).
+- **REQ-79** — A BG3-style **aspect creator**: name, sigil, trait sliders, voice, synthesized system-prompt, **and the kit** (model affinity + skills); persists to the existing aspect backend; the active aspect re-themes the shell.
+- **REQ-80** — A Fallout-NV-style **intake quiz** (S.P.E.C.I.A.L.-style) that shapes the default aspect/personality; answers map to config + aspect weighting.
+- **REQ-81** — Per-aspect motion/polish: transitions, glyph animation, optional sound cues; responsive.
+
 ## Out of Scope (this milestone)
 - Horizontal scaling / multi-node inference (single-process model accepted).
+- Platform-scale market ambition (personal-first; pivot to a layer-on-incumbent if it must scale — see PROJECT.md viability framing).
 - Full rewrites; new niche features (German mode, etc.) until the core is hardened and focused.
 - Out-of-process/container tool sandboxing beyond the existing path-jail + approvals (tracked as a later hardening tier).

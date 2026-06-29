@@ -133,6 +133,31 @@ Coverage: every **active** requirement (REQ-10..REQ-63) maps to exactly one phas
 **Plans**: TBD
 **UI hint**: yes
 
+---
+
+## Milestone 2 — Friend-Ready (product North Star)
+
+Layered on the remediation substrate (Phases 1–10). Goal: a friend on a **16GB CPU laptop** installs Layla and gets **very good, benchmarked, private programming help** through a **from-scratch UI**, where **each personality is a hardware-adaptive domain kit**. Decisions locked 2026-06-29 (see `MILESTONE-friend-ready.md`). Tracks A & B run in parallel.
+
+### Track A — Daily-Driver (programming-grade, benchmarked, transferable)
+- [x] **A1: Stack & model proven** — 3.12 env, `llama-cpp` CPU wheel, real coding model (Qwen2.5-Coder-7B), live inference. ✅ (REQ-70) *measured: ~5 tok/s, good edits, weak self-verify; spec-decoding unhelpful on CPU.*
+- [x] **A2: Hardware→kit recommender** — `recommend_kit(hw, domain, prefer)` picks the best *usable* model per CPU/GPU + domain + priority, maps to the affinity aspect, emits settings. ✅ (REQ-71; 9 tests)
+- [ ] **A3: Compiler-less full install** — `chromadb`/`chroma-hnswlib` + `torch` install on a fresh CPU box with **no C++ toolchain** (prebuilt wheels, or `use_chroma:false` + light vector fallback). *The real transferability blocker.* (REQ-72)
+- [ ] **A4: Onboarding startup sequence** — first-run probes hardware, offers the recommended kit (with a speed/quality choice), downloads it, and sets the default aspect. Wires `recommend_kit` into `first_run`. (REQ-73)
+- [ ] **A5: Benchmark harness** — HumanEval/MBPP pass@1 runner against the local model via `services.llm_gateway`; emits a scorecard (model, quant, tok/s, pass@1). Folds into Phase 3/4. (REQ-74)
+- [ ] **A6: Full-app E2E + one-command install** — boot `serve.py` + agent loop + tools end-to-end via the API; package a clean install path for her laptop. (REQ-75)
+- [ ] **A7: Per-domain kit contents** — each aspect carries its curated skills/tools/prompt set (not just a model), so "the kit" is complete per domain. (REQ-76)
+
+### Track B — The Layla Interface (UI from scratch)
+Aesthetic locked: **"Warframe-mystic" midpoint** — angular sci-fi panel/glyph structure in the original near-black + magenta/violet **per-aspect** identity; organic aspect patterns as panel watermarks; the active aspect re-themes the whole shell.
+- [ ] **B1: Frontend foundation** — `ui-next/` Vite+React(TS); design-token system from the canonical palette (`--bg #0a0008`, `--accent #c0006a`, per-aspect colors, `--wf-cut` paneling, glyph/sigil SVG kit); FastAPI serves the static build. (REQ-77)
+- [ ] **B2: Core chat** — the agent chat experience in the midpoint aesthetic, wired to the existing API (streaming, tool calls, diff view, memory). (REQ-78)
+- [ ] **B3: BG3-style aspect creator** — create/edit aspects: name, sigil, trait sliders, voice, synthesized system-prompt, **and the kit** (model affinity + skills). Persists to the existing aspect backend. (REQ-79)
+- [ ] **B4: Fallout-NV intake quiz** — a S.P.E.C.I.A.L.-style onboarding quiz that shapes the default aspect/personality; answers map to config + aspect weighting. (REQ-80)
+- [ ] **B5: Polish & motion** — per-aspect transitions, glyph animation, optional sound cues; responsive. (REQ-81)
+
+**Sequencing note:** A3/A4 unblock "she can install it"; A5 makes "good" measurable; B1→B2 make it usable; B3/B4 deliver the personality-as-kit experience. A6/A7 and B5 are the finish.
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
