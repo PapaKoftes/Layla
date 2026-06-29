@@ -137,73 +137,147 @@ Coverage: every **active** requirement (REQ-10..REQ-63) maps to exactly one phas
 
 ## Milestone 2 — Friend-Ready (product North Star)
 
-Layered on the remediation substrate (Phases 1–10). Goal: a friend on a **16GB CPU laptop** installs Layla and gets **very good, benchmarked, private programming help** through a **from-scratch UI**, where **each personality is a hardware-adaptive domain kit**. Decisions locked 2026-06-29 (see `MILESTONE-friend-ready.md`). Tracks A & B run in parallel.
+Layered on the remediation substrate (Phases 1–8). Goal: a friend on a **16GB CPU laptop** installs Layla and gets **very good, benchmarked, private programming help** through a **from-scratch UI**, where **each personality is a hardware-adaptive domain kit**. Decisions locked 2026-06-29 (see `MILESTONE-friend-ready.md`). The product work (old Phases 9–10) is subsumed here. Phases 11–15 = Track A (Daily-Driver); 16–19 = Track B (the Warframe-mystic UI).
 
-### Track A — Daily-Driver (programming-grade, benchmarked, transferable)
-- [x] **A1: Stack & model proven** — 3.12 env, `llama-cpp` CPU wheel, real coding model (Qwen2.5-Coder-7B), live inference. ✅ (REQ-70) *measured: ~5 tok/s, good edits, weak self-verify; spec-decoding unhelpful on CPU.*
-- [x] **A2: Hardware→kit recommender** — `recommend_kit(hw, domain, prefer)` picks the best *usable* model per CPU/GPU + domain + priority, maps to the affinity aspect, emits settings. ✅ (REQ-71; 9 tests)
-- [ ] **A3: Compiler-less full install** — `chromadb`/`chroma-hnswlib` + `torch` install on a fresh CPU box with **no C++ toolchain** (prebuilt wheels, or `use_chroma:false` + light vector fallback). *The real transferability blocker.* (REQ-72)
-- [ ] **A4: Onboarding startup sequence** — first-run probes hardware, offers the recommended kit (with a speed/quality choice), downloads it, and sets the default aspect. Wires `recommend_kit` into `first_run`. (REQ-73)
-- [ ] **A5: Benchmark harness** — HumanEval/MBPP pass@1 runner against the local model via `services.llm_gateway`; emits a scorecard (model, quant, tok/s, pass@1). Folds into Phase 3/4. (REQ-74)
-- [ ] **A6: Full-app E2E + one-command install** — boot `serve.py` + agent loop + tools end-to-end via the API; package a clean install path for her laptop. (REQ-75)
-- [ ] **A7: Per-domain kit contents** — each aspect carries its curated skills/tools/prompt set (not just a model), so "the kit" is complete per domain. (REQ-76)
-- [ ] **A8: Coding-quality scaffolding** *(absorbed from the ecosystem — the real lever given the 7B ceiling)* — tree-sitter **repo-map**, **search/replace diff-edit** format (not whole-file), **GBNF grammar-constrained** tool/JSON output, **codebase RAG**, and **prompt/KV caching** of the system-prompt + repo-map. Makes a 7B punch far above its size. (REQ-82)
-- [ ] **A9: Ecosystem seam & portability** — harden **OpenAI-compatible `/v1`** so Cline/Continue/Aider can use Layla as a backend (meets devs where they work; the pivot-1 hedge); **aspect import/export as portable character cards** (SillyTavern-compatible). (REQ-83, REQ-84)
-- [ ] **A10: Kit upgrades** — **embedding-model selection** per hardware (for RAG), **IQ-quant** options in the catalog (better quality/size than Q4_K_M), and **benchmark-driven model selection** (best model for *her* tasks, not just generic HumanEval). (REQ-85)
+- [~] **Phase 11: Local-coding foundation** — model+inference proven, hardware→kit recommender, compiler-free memory. *(A1 ✅, A2 ✅, A3 mostly ✅)*
+- [ ] **Phase 12: Verifiable core & benchmark** — green suite on the real stack + a HumanEval/MBPP scorecard. *(merges remediation Phase 3 + A5)*
+- [ ] **Phase 13: Onboarding & kit provisioning** — first-run provisions the optimal per-domain kit; kit contents + upgrades. *(A4, A7, A10)*
+- [ ] **Phase 14: Coding-quality scaffolding** — repo-map, diff-edits, GBNF, codebase RAG, KV cache. *(A8 — the real quality lever)*
+- [ ] **Phase 15: Full-app E2E, install & ecosystem seam** — E2E + one-command install; `/v1` backend seam + portable character cards. *(A6, A9)*
+- [ ] **Phase 16: UI foundation** — `ui-next/` Vite+React(TS) + Warframe-mystic design tokens. *(B1)*
+- [ ] **Phase 17: Core chat UI** — agent chat in the new aesthetic, wired to the API. *(B2)*
+- [ ] **Phase 18: Personality creator & intake quiz** — BG3-style aspect creator + Fallout-NV quiz. *(B3, B4)*
+- [ ] **Phase 19: UI polish & motion** — per-aspect transitions, glyphs, sound, responsive. *(B5)*
 
-### Track B — The Layla Interface (UI from scratch)
-Aesthetic locked: **"Warframe-mystic" midpoint** — angular sci-fi panel/glyph structure in the original near-black + magenta/violet **per-aspect** identity; organic aspect patterns as panel watermarks; the active aspect re-themes the whole shell.
-- [ ] **B1: Frontend foundation** — `ui-next/` Vite+React(TS); design-token system from the canonical palette (`--bg #0a0008`, `--accent #c0006a`, per-aspect colors, `--wf-cut` paneling, glyph/sigil SVG kit); FastAPI serves the static build. (REQ-77)
-- [ ] **B2: Core chat** — the agent chat experience in the midpoint aesthetic, wired to the existing API (streaming, tool calls, diff view, memory). (REQ-78)
-- [ ] **B3: BG3-style aspect creator** — create/edit aspects: name, sigil, trait sliders, voice, synthesized system-prompt, **and the kit** (model affinity + skills). Persists to the existing aspect backend. (REQ-79)
-- [ ] **B4: Fallout-NV intake quiz** — a S.P.E.C.I.A.L.-style onboarding quiz that shapes the default aspect/personality; answers map to config + aspect weighting. (REQ-80)
-- [ ] **B5: Polish & motion** — per-aspect transitions, glyph animation, optional sound cues; responsive. (REQ-81)
+### Phase 11: Local-coding foundation  ✅ mostly done
+**Goal**: Layla runs a real coding model and auto-selects the best one for the machine, on a compiler-less box.
+**Requirements**: REQ-70, REQ-71, REQ-72
+**Success Criteria**:
+  1. A real coding model runs locally E2E; perf/quality **measured** not asserted. [x] *(Qwen2.5-Coder-7B; ~5 tok/s; spec-decoding measured unhelpful on CPU)*
+  2. `recommend_kit(hw, domain, prefer)` picks the best **usable** model + maps to the affinity aspect. [x] *(9 tests)*
+  3. Memory/RAG works with **no chromadb / no C++ toolchain**. [x] *(SQLite+NumPy fallback; 12+87 tests)*
+  4. A one-command fresh-box install path provisions interpreter+venv+model. [ ] *(remaining A3 slice)*
 
-**Sequencing note:** A3/A4 unblock "she can install it"; A5 makes "good" measurable; B1→B2 make it usable; B3/B4 deliver the personality-as-kit experience. A6/A7 and B5 are the finish.
+### Phase 12: Verifiable core & benchmark
+**Goal**: Green CI proves the real generation path AND the agent loop work; coding quality is a number.
+**Requirements**: REQ-20, REQ-21, REQ-22, REQ-74
+**Success Criteria**:
+  1. The full suite runs green **on the real stack** (fix the `llm_gateway.run_completion` retry-sleep hang found 2026-06-29). [ ]
+  2. A blocking `inference-smoke` job drives `run_completion` end-to-end on a committed tiny model; release gated. [ ]
+  3. A HumanEval/MBPP pass@1 harness emits a scorecard (model, quant, tok/s, pass@1) for the local model. [ ]
+
+### Phase 13: Onboarding & kit provisioning
+**Goal**: First run detects hardware and provisions the optimal kit per domain; kits are complete, not just a model.
+**Requirements**: REQ-73, REQ-76, REQ-85
+**Success Criteria**:
+  1. First-run probes hardware, offers the recommended kit (speed/quality choice), downloads it, sets the default aspect (wires `recommend_kit` into `first_run`). [ ]
+  2. Each aspect carries curated skills/tools/system-prompt for its domain. [ ]
+  3. Embedding-model selection per tier, IQ-quant options, benchmark-driven model choice. [ ]
+
+### Phase 14: Coding-quality scaffolding
+**Goal**: Make a CPU-class 7B produce results well above its size (the real lever, since the model is fixed).
+**Requirements**: REQ-82
+**Success Criteria**:
+  1. Tree-sitter **repo-map** supplies relevant code within the small context window. [ ]
+  2. **Search/replace diff-edit** output format (not whole-file rewrites). [ ]
+  3. **GBNF grammar-constrained** tool/JSON output. [ ]
+  4. **Codebase RAG** (using the Phase 11 fallback store) + **prompt/KV caching** of system-prompt + repo-map. [ ]
+
+### Phase 15: Full-app E2E, install & ecosystem seam
+**Goal**: A real coding task completes through the API; it installs in one command; existing tools can use Layla as a backend.
+**Requirements**: REQ-75, REQ-83, REQ-84
+**Success Criteria**:
+  1. A real coding task completes end-to-end via the HTTP API (server + agent loop + tools). [ ]
+  2. One-command install on a fresh CPU box. [ ]
+  3. `/v1` hardened so Cline/Continue/Aider can point at Layla; aspects import/export as portable character cards. [ ]
+
+### Phase 16: UI foundation
+**Goal**: A real `ui-next/` app exists with the locked aesthetic as code (not mockups).
+**Requirements**: REQ-77
+**Success Criteria**:
+  1. `ui-next/` (Vite+React+TS) builds to static assets served by FastAPI. [ ]
+  2. Design-token system from the canonical palette + `--wf-cut` paneling + glyph/sigil SVG kit; active aspect re-themes the shell. [ ]
+**UI hint**: yes
+
+### Phase 17: Core chat UI
+**Goal**: The agent chat experience in the Warframe-mystic aesthetic, wired to the real API.
+**Requirements**: REQ-78
+**Success Criteria**:
+  1. Streaming chat, tool-call rendering, diff view, and memory views work against the existing API. [ ]
+**UI hint**: yes
+
+### Phase 18: Personality creator & intake quiz
+**Goal**: The personality-as-kit experience: create/edit aspects and a quiz that shapes the default.
+**Requirements**: REQ-79, REQ-80
+**Success Criteria**:
+  1. BG3-style aspect creator (name, sigil, trait sliders, voice, synthesized prompt, **and the kit**), persisting to the aspect backend. [ ]
+  2. Fallout-NV S.P.E.C.I.A.L.-style intake quiz maps answers to the default aspect + config. [ ]
+**UI hint**: yes
+
+### Phase 19: UI polish & motion
+**Goal**: The finish — it feels like Layla.
+**Requirements**: REQ-81
+**Success Criteria**:
+  1. Per-aspect transitions, glyph animation, optional sound cues; responsive. [ ]
+**UI hint**: yes
 
 ## Progress
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. Security finish | 0/0 | Not started | - |
-| 2. Legal & launch safety | 0/0 | In progress (2 of 3 criteria done) | - |
-| 3. Verifiable core (CI) | 0/0 | Not started | - |
-| 4. Answer-quality eval harness | 0/0 | Not started | - |
-| 5. Inference reliability | 0/0 | In progress (REQ-04 done) | - |
-| 6. Data durability & privacy | 0/0 | Not started | - |
-| 7. Config consolidation | 0/0 | Not started | - |
-| 8. Agent-loop decomposition | 0/0 | Not started | - |
-| 9. Then build | 0/0 | Not started | - |
-| 10. Frontend & docs cleanup | 0/0 | Not started | - |
+Milestone 1 (remediation substrate) and Milestone 2 (Friend-Ready product). Old Phases 9–10 are subsumed into Milestone 2. `[x]`=done, `[~]`=partial, `[ ]`=open.
+
+| Phase | Status | Evidence |
+|-------|--------|----------|
+| **M1 — remediation** | | |
+| 1. Security finish | ✅ Done | REQ-10/11/12; 58 tests (4f05229, b1968ad, 77335b4) |
+| 2. Legal & launch | ✅ Done | REQ-02; copyleft guard + THIRD_PARTY; 11 tests (7d45082) |
+| 3. Verifiable core (CI) | → merged into **Phase 12** | |
+| 4. Answer-quality eval | Open | pairs with Phase 12 |
+| 5. Inference reliability | ~ Partial | REQ-04 (model-cache bound) done |
+| 6. Data durability & privacy | ~ Partial | REQ-43 log redaction done (4c68804); Chroma backup/erasure open |
+| 7. Config consolidation | Open | |
+| 8. Agent-loop decomposition | Open | |
+| **M2 — Friend-Ready** | | |
+| 11. Local-coding foundation | ~ Mostly done | REQ-70/71/72; inference + recommend_kit + memory fallback; 21+87 tests |
+| 12. Verifiable core & benchmark | **▶ active next** | fix suite-hang; inference-smoke; HumanEval scorecard |
+| 13. Onboarding & kit provisioning | Open | A4/A7/A10 |
+| 14. Coding-quality scaffolding | Open | A8 — the real quality lever |
+| 15. Full-app E2E, install & seam | Open | A6/A9 |
+| 16. UI foundation | Open | B1 |
+| 17. Core chat UI | Open | B2 |
+| 18. Personality creator & quiz | Open | B3/B4 |
+| 19. UI polish & motion | Open | B5 |
 
 ## Requirement Coverage
 
-All 19 active requirements (REQ-10..REQ-63) map to exactly one phase. Validated requirements (REQ-01..REQ-04) shown against their delivering phase.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REQ-01 | Phase 1 (basis) | Validated |
-| REQ-02 | Phase 2 | Validated |
-| REQ-03 | Phase 3 | Validated |
-| REQ-04 | Phase 5 | Validated |
-| REQ-10 | Phase 1 | Pending |
-| REQ-11 | Phase 1 | Pending |
-| REQ-12 | Phase 1 | Pending |
-| REQ-20 | Phase 3 | Pending |
-| REQ-21 | Phase 3 | Pending |
-| REQ-22 | Phase 3 | Pending |
-| REQ-30 | Phase 4 | Pending |
-| REQ-31 | Phase 4 | Pending |
-| REQ-40 | Phase 5 | Pending |
-| REQ-41 | Phase 5 | Pending |
+| REQ-01..04 | 1/2/12/5 | Validated |
+| REQ-10, REQ-11, REQ-12 | Phase 1 | ✅ Done |
+| REQ-20, REQ-21, REQ-22 | Phase 12 | Pending |
+| REQ-30, REQ-31 | Phase 12 | Pending |
+| REQ-40, REQ-41 | Phase 5 | Pending |
 | REQ-42 | Phase 6 | Pending |
-| REQ-43 | Phase 6 | Pending |
+| REQ-43 | Phase 6 | ✅ Done (log redaction) |
 | REQ-50 | Phase 7 | Pending |
 | REQ-51 | Phase 8 | Pending |
-| REQ-52 | Phase 10 | Pending |
-| REQ-60 | Phase 9 | Pending |
-| REQ-61 | Phase 9 | Pending |
-| REQ-62 | Phase 9 | Pending |
-| REQ-63 | Phase 9 | Pending |
+| REQ-52 | Phase 16/17 | Pending |
+| REQ-70 | Phase 11 | ✅ Done |
+| REQ-71 | Phase 11 | ✅ Done |
+| REQ-72 | Phase 11 | ✅ Done (memory fallback; install-path slice open) |
+| REQ-73 | Phase 13 | Pending |
+| REQ-74 | Phase 12 | Pending |
+| REQ-75 | Phase 15 | Pending |
+| REQ-76 | Phase 13 | Pending |
+| REQ-77 | Phase 16 | Pending |
+| REQ-78 | Phase 17 | Pending |
+| REQ-79, REQ-80 | Phase 18 | Pending |
+| REQ-81 | Phase 19 | Pending |
+| REQ-82 | Phase 14 | Pending |
+| REQ-83, REQ-84 | Phase 15 | Pending |
+| REQ-85 | Phase 13 | Pending |
+| REQ-60 (model browser) | Phase 13/16 | Pending |
+| REQ-61 (/v1) | Phase 15 (→REQ-83) | Pending |
+| REQ-62 (prebuilt wheels) | Phase 11/15 | ~ (llama+torch wheels working) |
+| REQ-63 (approval demoable) | Phase 17 | Pending |
 
-*Roadmap generated: 2026-06-29 — remediate-then-build, blast-radius ordered.*
+*Roadmap: 2026-06-29 — M1 remediate-then-build (blast-radius ordered) + M2 Friend-Ready (product).*
