@@ -163,6 +163,13 @@ def _get_chroma_collection():
     with _chroma_lock:
         if _chroma_collection is not None:
             return _chroma_collection
+        if not _real_chroma():
+            # Compiler-free fallback (REQ-72): SQLite+NumPy stand-in so memory works
+            # without chromadb/chroma-hnswlib on a box with no C++ toolchain.
+            from .fallback_store import get_fallback_collection
+            _chroma_collection = get_fallback_collection("learnings", CHROMA_PATH)
+            logger.info("vector_store: chromadb absent — using compiler-free fallback store (learnings)")
+            return _chroma_collection
         import chromadb
         client = chromadb.PersistentClient(path=str(CHROMA_PATH))
         _chroma_collection = client.get_or_create_collection(
@@ -270,6 +277,26 @@ def _use_chroma() -> bool:
         return False
 
 
+def _vector_enabled() -> bool:
+    """True if vector memory should run at all — i.e. not explicitly disabled.
+
+    When chromadb is present we use it; when it is absent (e.g. a CPU box with no C++
+    toolchain to build chroma-hnswlib) we transparently fall back to the SQLite+NumPy
+    store (REQ-72), so memory/RAG keeps working instead of silently turning off. Set
+    LAYLA_CHROMA_DISABLED=1 to turn vector memory off entirely.
+    """
+    return (os.environ.get("LAYLA_CHROMA_DISABLED") or "").strip().lower() not in ("1", "true", "yes")
+
+
+def _real_chroma() -> bool:
+    """True if the real chromadb package is importable (ignores the disabled flag)."""
+    try:
+        import chromadb  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
 # ─── Public API ─────────────────────────────────────────────────────────────
 
 def get_embed_model_name() -> str:
@@ -366,6 +393,11 @@ def _get_knowledge_collection():
     with _knowledge_lock:
         if _knowledge_collection is not None:
             return _knowledge_collection
+        if not _real_chroma():
+            from .fallback_store import get_fallback_collection
+            _knowledge_collection = get_fallback_collection("knowledge", CHROMA_PATH)
+            logger.info("vector_store: chromadb absent — using compiler-free fallback store (knowledge)")
+            return _knowledge_collection
         import chromadb
         client = chromadb.PersistentClient(path=str(CHROMA_PATH))
         _knowledge_collection = client.get_or_create_collection(name="knowledge", metadata={"hnsw:space": "cosine"})
@@ -413,7 +445,7 @@ def query_learnings_best_similarity(query: str, *, top_k: int = 5) -> tuple[floa
     matching convention used in get_knowledge_chunks. Read-only; no writes.
     Returns (similarity, metadata_dict) or None if Chroma unavailable, empty, or on error.
     """
-    if not _use_chroma():
+    if not _vector_enabled():
         return None
     try:
         coll = _get_chroma_collection()
@@ -1083,7 +1115,7 @@ def index_knowledge_docs(knowledge_dir: Path) -> None:
     If missing, priority=support. Excludes paths containing .identity (Lilith-only).
     Incremental: avoids duplication and preserves unchanged embeddings via content_hash."""
     global _knowledge_fingerprint
-    if not _use_chroma():
+    if not _vector_enabled():
         return
     try:
         coll = _get_knowledge_collection()
@@ -1307,7 +1339,7 @@ _PRIORITY_ORDER = {"core": 0, "support": 1, "flavor": 2}
 def get_knowledge_chunks(query: str, k: int = 5, *, aspect_id: str = "") -> list:
     """Return up to k text chunks from the knowledge collection most relevant to query. [] if not use_chroma.
     Retrieval priority: core > support > flavor (chunks with same relevance sorted by this)."""
-    if not _use_chroma():
+    if not _vector_enabled():
         return []
     try:
         coll = _get_knowledge_collection()
@@ -1355,7 +1387,7 @@ def get_knowledge_chunks_with_sources(
 ) -> list[dict]:
     """Return up to k chunks with text and source for RAG citation. [] if not use_chroma.
     Each item: {"text": str, "source": str} (source from metadata, e.g. path relative to knowledge_dir)."""
-    if not _use_chroma():
+    if not _vector_enabled():
         return []
     try:
         coll = _get_knowledge_collection()
