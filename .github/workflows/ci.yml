@@ -36,6 +36,9 @@ jobs:
           pip install -e .
           python -c "import fabrication_assist; import layla"
 
+      - name: License compliance — no strong-copyleft deps (REQ-02)
+        run: python scripts/check_copyleft.py
+
       - name: Check UI onclick/onchange symbols
         working-directory: agent
         run: python scripts/check_ui_symbols.py
