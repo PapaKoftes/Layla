@@ -41,7 +41,7 @@ map-codebase ✅ → new-project ✅ → plan/execute (remediation P1-2 ✅, P6 
 |---|---|---|
 | A | A1 stack+model+inference proven | ✅ DONE (REQ-70) |
 | A | A2 hardware→kit recommender | ✅ DONE (REQ-71; b306047, 9 tests) |
-| A | A3 compiler-less install (chromadb/torch) | ⏭ next — transferability blocker |
+| A | A3 compiler-less install (chromadb/torch) | 🟡 **torch ✅ + chromadb-free memory fallback ✅** (b… ; 12+87 tests). Fresh-box one-command install path remains. |
 | A | A4 onboarding startup sequence | ⏭ wires recommend_kit into first_run |
 | A | A5 HumanEval/MBPP benchmark harness | ⏭ |
 | A | A6 full-app E2E + one-command install | ⏭ |
@@ -51,6 +51,9 @@ map-codebase ✅ → new-project ✅ → plan/execute (remediation P1-2 ✅, P6 
 | A | A10 kit upgrades (embedding selection, IQ-quants, benchmark-driven choice) | ⏭ |
 | B | B1 ui-next Vite+React foundation (Warframe-mystic) | ⏭ Node ready; aesthetic locked |
 | B | B2 core chat · B3 aspect creator · B4 intake quiz · B5 polish | ⏭ |
+
+## Known issues (found by actually running it)
+- **Full suite hangs on the real stack**: a `services.llm_gateway.run_completion` test sits in `time.sleep(backoff)` retry-looping once llama-cpp is installed (previously skipped). Must make that test not attempt real completion (mock/seam). Until fixed, the "full green suite on the real stack" claim is unverified — run targeted subsets.
 
 ## Next action
 **Track A first:** A3 (compiler-less `chromadb`/`torch` install — the blocker for "she can install it"), then A4 (onboarding wires `recommend_kit`) and A5 (benchmark). **Track B in parallel:** B1 (`ui-next/` scaffold + design tokens in the locked Warframe-mystic palette). The remediation Phase 3 (verifiable core) is now unblocked and should fold into A5/A6.
