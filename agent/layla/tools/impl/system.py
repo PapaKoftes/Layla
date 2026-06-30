@@ -223,8 +223,39 @@ def docker_ps(all_containers: bool = False) -> dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+def _docker_dangerous_flags(args: str) -> list[str]:
+    """Return any sandbox-escaping docker flags present in *args*.
+
+    Blocks host bind mounts / devices, privileged mode, added capabilities,
+    relaxed security options, and host-namespace sharing — all of which let a
+    container reach outside the sandbox regardless of approval.
+    """
+    toks = args.split()
+    blocked: list[str] = []
+    mount_flags = {"-v", "--volume", "--mount", "--device", "--cap-add", "--security-opt"}
+    ns_flags = {"--network", "--net", "--pid", "--ipc", "--uts", "--userns"}
+    for i, t in enumerate(toks):
+        tl = t.lower()
+        base, _, inline = tl.partition("=")
+        val = inline if inline else (toks[i + 1].lower() if i + 1 < len(toks) else "")
+        if base == "--privileged":
+            blocked.append(t)
+        elif base in mount_flags:
+            blocked.append(t)
+        elif base in ns_flags and "host" in val:
+            blocked.append(t)
+    return blocked
+
+
 def docker_run(image: str, args: str = "", name: str = "", rm: bool = True) -> dict:
     """Run a Docker container. args: extra docker run args. name: container name. rm: remove when stopped."""
+    if args:
+        bad = _docker_dangerous_flags(args)
+        if bad:
+            return {
+                "ok": False,
+                "error": "Refused sandbox-escaping docker flags (host mount/device/namespace/privileged): " + ", ".join(bad),
+            }
     argv = ["docker", "run"]
     if rm:
         argv.append("--rm")
