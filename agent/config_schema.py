@@ -262,6 +262,13 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "hint": "Bearer token required for non-localhost clients when remote_enabled (store via UI or edit runtime_config.json).",
     },
     {
+        "key": "allow_legacy_remote_api_key",
+        "type": "boolean",
+        "category": "remote",
+        "default": False,
+        "hint": "Honor the DEPRECATED plaintext remote_api_key. Off by default — a stale key won't authenticate. Prefer tunnel_token_hash (rotate via /remote/token/rotate).",
+    },
+    {
         "key": "remote_rate_limit_per_minute",
         "type": "number",
         "category": "remote",

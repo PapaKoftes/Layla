@@ -42,10 +42,11 @@ class TestAuth:
 
         from services.auth import check_auth
 
-        # Make tunnel_auth unavailable so it falls through to legacy
+        # Make tunnel_auth unavailable so it falls through to legacy.
+        # R5: the legacy path is opt-in, so enable allow_legacy_remote_api_key.
         with patch.dict("sys.modules", {"services.tunnel_auth": None}):
             with patch("hmac.compare_digest", wraps=hmac.compare_digest) as mock_cmp:
-                check_auth("test-key", "1.2.3.4", {"remote_api_key": "test-key"})
+                check_auth("test-key", "1.2.3.4", {"remote_api_key": "test-key", "allow_legacy_remote_api_key": True})
                 mock_cmp.assert_called_once()
 
     def test_no_auth_configured(self):
