@@ -3,7 +3,13 @@
 **Project:** Layla — **companion-first** living experience; personalities = domain kits (coding second). See `UNIFIED-ROADMAP.md`.
 **Updated:** 2026-06-29
 
-## WHERE WE ARE — ✅ UNITE COMPLETE
+## WHERE WE ARE — ✅ UNITE COMPLETE (+ codebase re-mapped 2026-06-30)
+Codebase map refreshed for united+Castilla (`.planning/codebase/`, 7 docs). End-to-end review + the
+common-sense path to a watertight, installable product with the Warframe-mystic GUI: **`.planning/WATERTIGHT-PLAN.md`**.
+Do-now: (1) wire real-inference CI smoke, (2) **expand the existing modular UI** to the aesthetic + full
+see/control surface (NOT a rebuild), (3) low-end guardrails. Deferred (safe debt): ~207 shims, dual config.
+
+## (status) UNITE COMPLETE
 **master = the unified tree (refactor + this session), 2143 tests green, landed 2026-06-30.** Next: the **Castilla release** (Spanish bilingual, tuned to the friend's i7-7700HQ/16GB/~26GB-free laptop).
 
 ## (history) WHERE WE WERE (pre-unite)
