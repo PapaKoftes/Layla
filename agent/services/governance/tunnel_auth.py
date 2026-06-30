@@ -135,11 +135,11 @@ def is_ip_allowed(ip: str, cfg: dict) -> bool:
     if not ip:
         return False
 
-    # Localhost is always allowed regardless of allowlist
-    _LOCALHOST = {"127.0.0.1", "::1", "::ffff:127.0.0.1", "localhost"}
-    if ip.strip().lower() in _LOCALHOST:
-        return True
-
+    # REQ-10: NO "localhost is always allowed" short-circuit. is_ip_allowed is only
+    # reached for REMOTE requests — the middleware exempts genuine direct-local before
+    # auth runs. A 127.0.0.1 seen here came from a (spoofable) forwarding header, so it
+    # must satisfy the allowlist like any other remote IP (else a forged XFF: 127.0.0.1
+    # would bypass it — the exact hole the trust-boundary fix closed).
     try:
         addr = ipaddress.ip_address(ip)
     except ValueError:
