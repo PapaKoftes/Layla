@@ -627,6 +627,36 @@
       "filename": "Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf",
       "uncensored": false,
       "desc": "Qwen2.5 Coder 1.5B Q4 (~1.1GB). Minimal-disk floor for very constrained machines."
+    },
+    {
+      "name": "qwen2.5-1.5b-instruct-Q4_K_M",
+      "family": "qwen",
+      "category": "general",
+      "size": "1.5B",
+      "quant": "Q4_K_M",
+      "ram_required": 3,
+      "vram_required": 2,
+      "multilingual": true,
+      "download_url": "https://huggingface.co/bartowski/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf",
+      "repo_id": "bartowski/Qwen2.5-1.5B-Instruct-GGUF",
+      "filename": "Qwen2.5-1.5B-Instruct-Q4_K_M.gguf",
+      "uncensored": false,
+      "desc": "Qwen2.5 1.5B (~1GB). Multilingual; ideal as a small translation/intent helper."
+    },
+    {
+      "name": "qwen2.5-3b-instruct-Q4_K_M",
+      "family": "qwen",
+      "category": "general",
+      "size": "3B",
+      "quant": "Q4_K_M",
+      "ram_required": 4,
+      "vram_required": 3,
+      "multilingual": true,
+      "download_url": "https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf",
+      "repo_id": "bartowski/Qwen2.5-3B-Instruct-GGUF",
+      "filename": "Qwen2.5-3B-Instruct-Q4_K_M.gguf",
+      "uncensored": false,
+      "desc": "Qwen2.5 3B (~2GB). Multilingual general chat; good Spanish for a small model."
     }
   ]
 }

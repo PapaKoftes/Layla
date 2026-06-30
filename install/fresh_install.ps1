@@ -14,7 +14,9 @@
 param(
     [ValidateSet("quality", "balanced", "lite", "speed")][string]$Prefer = "balanced",
     [switch]$SkipModel,
-    [switch]$Spanish
+    [switch]$Spanish,
+    [switch]$LanguageHelper,
+    [string]$Aspects = ""
 )
 $ErrorActionPreference = "Stop"
 $Repo = Split-Path -Parent $PSScriptRoot          # install\ -> repo root
@@ -73,6 +75,8 @@ if ($SkipModel) {
     Push-Location agent
     $provArgs = @("install\provision_model.py", "--prefer", $Prefer)
     if ($Spanish) { $provArgs += "--spanish" }
+    if ($LanguageHelper) { $provArgs += "--language-assist" }
+    if ($Aspects) { $provArgs += @("--aspects", $Aspects) }
     & "..\.venv\Scripts\python.exe" @provArgs
     Pop-Location
 }

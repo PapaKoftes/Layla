@@ -29,12 +29,14 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--prefer", default="balanced", choices=["quality", "balanced", "lite", "speed"])
     ap.add_argument("--domain", default="coding")
     ap.add_argument("--spanish", action="store_true", help="Castilla: respond in Spanish (bilingual ES/EN)")
+    ap.add_argument("--language-assist", action="store_true", help="also download a small multilingual translation/intent helper")
+    ap.add_argument("--aspects", default="", help="comma list of extra personalities to provision models for (e.g. nyx,echo)")
     ap.add_argument("--dry-run", action="store_true", help="recommend only; do not download")
     args = ap.parse_args(argv)
 
     import runtime_safety as rs
     from install.hardware_probe import probe_hardware
-    from install.model_selector import recommend_kit
+    from install.model_selector import recommend_aspect_kit, recommend_kit, recommend_language_assist
 
     hw = probe_hardware()
     hw_info = {
@@ -111,6 +113,36 @@ def main(argv: list[str]) -> int:
             "estandar en ingles cuando sea la convencion. Si el usuario escribe en ingles, "
             "puedes responder en ingles."
         )
+    # Castilla: optional small multilingual translation/intent helper.
+    if getattr(args, "language_assist", False):
+        la = recommend_language_assist(hw_info)
+        if la and la.get("filename"):
+            from install.model_downloader import download_model as _dl
+            if not (dest / la["filename"]).exists():
+                print(f"[lang] downloading translation/intent helper {la['filename']} ...")
+                _dl(la, models_dir=dest, progress=True)
+            cfg["language_assist_model"] = la["filename"]
+            cfg["language_assist_enabled"] = True
+            print(f"[lang] language helper: {la['name']}")
+    # Castilla: optional per-personality (aspect) domain models.
+    extra_aspects = [a.strip() for a in (getattr(args, "aspects", "") or "").split(",") if a.strip()]
+    if extra_aspects:
+        from install.model_downloader import download_model as _dl2
+        provisioned = {}
+        for asp in extra_aspects:
+            ak = recommend_aspect_kit(asp, hw_info, prefer=args.prefer)
+            ap_primary = (ak or {}).get("primary") or {}
+            fn2 = ap_primary.get("filename")
+            if not fn2:
+                print(f"[aspect] no model for '{asp}'")
+                continue
+            if not (dest / fn2).exists():
+                print(f"[aspect] {asp}: downloading {fn2} ...")
+                _dl2(ap_primary, models_dir=dest, progress=True)
+            provisioned[asp] = fn2
+            print(f"[aspect] {asp} -> {ap_primary.get('name')}")
+        if provisioned:
+            cfg["aspect_models"] = {**(cfg.get("aspect_models") or {}), **provisioned}
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     cfg_path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     print(f"[config] wrote {cfg_path}  (model={fn}, n_ctx={cfg['n_ctx']}, n_gpu_layers={cfg['n_gpu_layers']})")
