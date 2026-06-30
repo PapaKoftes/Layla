@@ -69,8 +69,8 @@ body.overlay-scroll-lock {
     --fx-strength: 0.8;
     /* Warframe-inspired UI language (angular HUD chrome) */
     --wf-cut: 12px;
-    --wf-panel-bg: rgba(11, 0, 18, 0.76);
-    --wf-panel-bg2: rgba(36, 0, 56, 0.64);
+    --wf-panel-bg: rgba(10, 0, 16, 0.74);
+    --wf-panel-bg2: rgba(28, 0, 44, 0.62);
     --wf-line: color-mix(in srgb, var(--asp) 55%, transparent);
     --wf-line-dim: color-mix(in srgb, var(--asp) 28%, transparent);
     --wf-glow: color-mix(in srgb, var(--asp) 35%, transparent);
@@ -112,22 +112,7 @@ body.overlay-scroll-lock {
     background: linear-gradient(135deg, var(--wf-panel-bg), var(--wf-panel-bg2));
     border: 1px solid var(--border);
     border-radius: 8px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(150,90,195,0.11);
-  }
-
-  /* Floral ceramic glaze on chrome surfaces (sidebar + modals), to match the
-     black-and-purple damask preview. Layered UNDER the panel gradient so it reads
-     as a faint flowery glaze on the surface, not a busy pattern. Excludes the
-     chat reading area (.main-area / .chat-rail) so message text stays clean. */
-  .onboarding-modal,
-  .setup-modal,
-  #layla-right-panel {
-    background-image:
-      linear-gradient(135deg, var(--wf-panel-bg), var(--wf-panel-bg2)),
-      url("/layla-ui/assets/patterns/floral-damask.svg");
-    background-size: auto, 300px 300px;
-    background-repeat: no-repeat, repeat;
-    background-blend-mode: normal, screen;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(140,80,180,0.06);
   }
 
   /* Floral flourish beneath modal headings (settings + models reuse .settings-modal). */
@@ -180,9 +165,9 @@ body.overlay-scroll-lock {
     pointer-events: none !important;
     z-index: 0;
     background-image: var(--asp-bg-pattern, none), url("/layla-ui/assets/patterns/floral-damask.svg");
-    background-size: 512px 512px, 300px 300px;
+    background-size: 512px 512px, 340px 340px;
     background-repeat: repeat, repeat;
-    opacity: calc(0.11 * var(--fx-strength));
+    opacity: calc(0.06 * var(--fx-strength));
     mix-blend-mode: screen;
     filter: drop-shadow(0 0 0 var(--asp));
   }
@@ -1145,12 +1130,7 @@ body.overlay-scroll-lock {
     width: 260px;
     min-width: 200px;
     border-right: 1px solid var(--border);
-    /* bg2 wash over the floral damask → faint flowery glaze on the sidebar */
-    background:
-      linear-gradient(rgba(14,0,16,0.86), rgba(14,0,16,0.86)),
-      url("/layla-ui/assets/patterns/floral-damask.svg");
-    background-size: auto, 300px 300px;
-    background-repeat: no-repeat, repeat;
+    background: var(--bg2);
     padding: 14px 12px;
     display: flex;
     flex-direction: column;
@@ -1756,12 +1736,7 @@ body.overlay-scroll-lock {
   }
   .models-progress-bar { height: 100%; width: 0%; background: var(--asp); transition: width 0.2s ease; }
   .settings-modal {
-    /* bg2 wash over the floral damask → faint flowery glaze (matches the preview) */
-    background:
-      linear-gradient(rgba(14,0,16,0.88), rgba(14,0,16,0.88)),
-      url("/layla-ui/assets/patterns/floral-damask.svg");
-    background-size: auto, 300px 300px;
-    background-repeat: no-repeat, repeat;
+    background: var(--bg2);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 28px 32px;
