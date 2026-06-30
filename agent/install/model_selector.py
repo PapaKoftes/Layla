@@ -139,6 +139,7 @@ def recommend_model(
 # not the biggest that fits. Above this size, CPU latency hurts UX badly.
 _CPU_USABLE_MAX_B = 9.0      # billion params; ceiling for a good CPU-only experience
 _BALANCED_TARGET_B = 7.0     # the CPU sweet spot for coding quality vs. speed
+_LITE_TARGET_B = 3.0         # constrained/older-CPU sweet spot (Castilla default)
 
 # domain -> catalog category
 _DOMAIN_CATEGORY = {
@@ -245,6 +246,8 @@ def recommend_kit(
         usable.sort(key=lambda m: (_params_b(m), (m.get("name") or "")))
     elif pref == "quality":
         usable.sort(key=lambda m: (-_params_b(m), (m.get("name") or "")))
+    elif pref == "lite":  # constrained box (older CPU / tight disk): target ~3B, ties -> smaller
+        usable.sort(key=lambda m: (abs(_params_b(m) - _LITE_TARGET_B), _params_b(m)))
     else:  # balanced: closest to the CPU sweet spot, ties → larger
         usable.sort(key=lambda m: (abs(_params_b(m) - _BALANCED_TARGET_B), -_params_b(m)))
 

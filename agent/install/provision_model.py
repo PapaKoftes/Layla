@@ -26,8 +26,9 @@ if str(AGENT) not in sys.path:
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--prefer", default="balanced", choices=["quality", "balanced", "speed"])
+    ap.add_argument("--prefer", default="balanced", choices=["quality", "balanced", "lite", "speed"])
     ap.add_argument("--domain", default="coding")
+    ap.add_argument("--spanish", action="store_true", help="Castilla: respond in Spanish (bilingual ES/EN)")
     ap.add_argument("--dry-run", action="store_true", help="recommend only; do not download")
     args = ap.parse_args(argv)
 
@@ -46,6 +47,18 @@ def main(argv: list[str]) -> int:
     print(f"[hardware] {hw.get('cpu_model', '?')} | {hw_info['physical_cores']} cores | "
           f"{hw_info['ram_gb']}GB RAM | GPU {hw_info['gpu_name']} "
           f"({hw_info['acceleration_backend']}) | tier {hw.get('machine_tier', '?')}")
+
+    import shutil
+    try:
+        _probe = rs.default_models_dir()
+        _probe = _probe if _probe.exists() else _probe.parent
+        free_gb = shutil.disk_usage(str(_probe)).free / 1e9
+    except Exception:
+        free_gb = 0.0
+    print(f"[disk] ~{free_gb:.0f} GB free")
+    if free_gb and free_gb < 12 and args.prefer in ("balanced", "quality"):
+        print(f"[disk] only ~{free_gb:.0f} GB free -> switching to a lighter model (--prefer lite)")
+        args.prefer = "lite"
 
     kit = recommend_kit(hw_info, domain=args.domain, prefer=args.prefer)
     if not kit or not kit.get("primary"):
@@ -91,6 +104,13 @@ def main(argv: list[str]) -> int:
     })
     if kit.get("aspect"):
         cfg.setdefault("default_aspect", kit["aspect"])
+    if getattr(args, "spanish", False):
+        cfg["custom_system_prefix"] = (
+            "Eres Layla. Responde SIEMPRE en espanol (castellano) de forma clara y concisa. "
+            "Manten el codigo, los nombres de funciones/variables y los terminos tecnicos "
+            "estandar en ingles cuando sea la convencion. Si el usuario escribe en ingles, "
+            "puedes responder en ingles."
+        )
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     cfg_path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     print(f"[config] wrote {cfg_path}  (model={fn}, n_ctx={cfg['n_ctx']}, n_gpu_layers={cfg['n_gpu_layers']})")

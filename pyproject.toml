@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "layla"
-version = "1.3.0"
+version = "1.4.0"  # "Castilla" — Spanish bilingual release
 description = "A local-first, multi-aspect AI companion and engineering agent"
 readme = "README.md"
 license = { file = "LICENSE" }
