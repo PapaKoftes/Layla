@@ -43,13 +43,27 @@ def backup_database(keep: int = _DEFAULT_KEEP) -> dict:
             dst.close()
             src.close()
 
-        # Prune old backups
+        # R4: also back up the vector store (Chroma dir + the SQLite/NumPy fallback store)
+        # so embeddings stay consistent with layla.db on restore — no orphaned vectors.
+        vectors_backed_up = False
+        try:
+            from layla.memory.vector_store import CHROMA_PATH
+            vsrc = Path(CHROMA_PATH)
+            if vsrc.exists() and any(vsrc.iterdir()):
+                shutil.copytree(str(vsrc), str(backup_dir / f"vectors_{ts}"), dirs_exist_ok=True)
+                vectors_backed_up = True
+                logger.info("Vector store backed up: vectors_%s", ts)
+        except Exception as ve:
+            logger.warning("vector-store backup skipped: %s", ve)
+
+        # Prune old backups (both the .db files and the paired vector dirs)
         pruned = _prune_old_backups(backup_dir, keep)
 
         return {
             "ok": True,
             "backup_path": str(backup_path),
             "size_kb": round(backup_path.stat().st_size / 1024, 1),
+            "vectors_backed_up": vectors_backed_up,
             "pruned": pruned,
         }
     except Exception as e:
@@ -69,6 +83,14 @@ def _prune_old_backups(backup_dir: Path, keep: int) -> int:
             logger.debug("Pruned old backup: %s", oldest.name)
         except Exception as e:
             logger.warning("Failed to prune backup %s: %s", oldest.name, e)
+    # Prune paired vector-store dirs the same way (R4)
+    vdirs = sorted(backup_dir.glob("vectors_*"), key=lambda p: p.stat().st_mtime)
+    while len(vdirs) > keep:
+        old = vdirs.pop(0)
+        try:
+            shutil.rmtree(old, ignore_errors=True)
+        except Exception as e:
+            logger.warning("Failed to prune vector backup %s: %s", old.name, e)
     return pruned
 
 
