@@ -24,13 +24,16 @@ def test_remote_disabled_no_auth_required(monkeypatch):
 
 
 def test_remote_localhost_bypasses_auth(monkeypatch):
-    """When remote_enabled True, localhost requests are not required to send API key."""
+    """Localhost bypasses auth only when the operator opts out of always-require
+    (REQ-11: remote_enabled now implies require-auth-always unless explicitly
+    disabled via remote_require_auth_always=False)."""
     from fastapi.testclient import TestClient
 
     import main
     import runtime_safety
     monkeypatch.setattr(runtime_safety, "load_config", lambda: {
         "remote_enabled": True,
+        "remote_require_auth_always": False,  # REQ-11: explicit loopback exemption
         "remote_api_key": "secret",
         "allow_legacy_remote_api_key": True,
         "remote_allow_endpoints": [],

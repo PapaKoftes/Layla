@@ -166,11 +166,14 @@ def trace_phase(trace: dict | None, phase: str):
         yield
         return
     key = f"{phase}_ms"
-    t0 = time.monotonic()
+    # perf_counter (not monotonic): on Windows time.monotonic() has ~15.6ms
+    # resolution, so sub-tick phases would record as 0.0ms. perf_counter is the
+    # high-resolution interval clock on every platform.
+    t0 = time.perf_counter()
     try:
         yield
     finally:
-        elapsed = (time.monotonic() - t0) * 1000.0
+        elapsed = (time.perf_counter() - t0) * 1000.0
         phases = trace.get("phases")
         if isinstance(phases, dict):
             phases[key] = round(phases.get(key, 0.0) + elapsed, 2)

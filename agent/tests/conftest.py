@@ -8,12 +8,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# R6: TestClient-based tests trigger the FastAPI lifespan, whose heavy subsystems
+# (embedder preload, scheduler, knowledge indexing, cluster) used to hang when no
+# model/scheduler/DB is present — so they were CI-skipped. We now run them
+# everywhere by switching the app to minimal startup (see main.py lifespan), which
+# mounts the routes but skips the blocking subsystems. Must be set before the app
+# module is imported by any test.
+os.environ.setdefault("LAYLA_MINIMAL_STARTUP", "1")
+
 # ---------------------------------------------------------------------------
-# TestClient-based tests that require a working app lifespan.
-# In CI the lifespan hangs (no model, no scheduler env, no DB) so we skip
-# collection entirely.  Locally they run fine with a full environment.
+# TestClient-based tests that require a working app lifespan (kept for reference;
+# they now run via LAYLA_MINIMAL_STARTUP rather than being collection-skipped).
 # ---------------------------------------------------------------------------
-# Tests that require TestClient + full app lifespan (hang in CI: no model, no scheduler, no DB)
 _TESTCLIENT_FILES = [
     "test_remote.py",
     "test_tool_tracing.py",
@@ -68,8 +74,8 @@ _LLAMA_CPP_FILES = [
 _REAL_LLM = bool(os.environ.get("LAYLA_TEST_REAL_LLM"))
 
 collect_ignore: list[str] = []
-if os.environ.get("CI"):
-    collect_ignore.extend(_TESTCLIENT_FILES)
+# R6: _TESTCLIENT_FILES are no longer collection-skipped on CI — LAYLA_MINIMAL_STARTUP
+# (set above) makes their TestClient lifespan non-blocking, so they run everywhere.
 # Default-skip the real-Llama loop tests unless explicitly opted in. (On CI they were
 # always skipped; locally with real llama-cpp they'd run a real model and hang.)
 if not _REAL_LLM:

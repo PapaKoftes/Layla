@@ -17,11 +17,11 @@ Two files coexist: `config.json` (read by `services/infrastructure/config_cache.
 ### R4 — Two-store (SQLite+Chroma) consistency  *(LOW)* `[x]`
 Verify backup + erasure cover **both** stores (the fallback store too). Add a test that a delete removes the vector and a backup includes the vector dir. **Accept:** no orphaned vectors; backup round-trips both.
 
-### R5 — Deprecated plaintext `remote_api_key`  *(LOW)* `[—] deferred to a breaking release (honored by design in tunnel_auth; gating now breaks the documented flow + ~3 tests for a low item)`
-Already warns. Add a config gate (`allow_legacy_remote_api_key`, default False) so the plaintext fallback is opt-in, not silent. **Accept:** legacy key ignored unless explicitly enabled; test covers it.
+### R5 — Deprecated plaintext `remote_api_key`  *(LOW)* `[x] done`
+Gated behind `allow_legacy_remote_api_key` (default False) in BOTH paths — `tunnel_auth.validate_token` (the live path) and `auth.check_auth` (fallback) — so a stale key can't silently authenticate. Added to `config_schema` + `settings._REMOTE_PROTECTED_KEYS` (a remote client can't flip it). Tests enable the flag where the legacy path is exercised; new `test_legacy_key_gated_off_by_default`. **Accept met:** legacy key ignored unless explicitly enabled.
 
-### R6 — `_TESTCLIENT_FILES` test gap  *(testing)* `[—] deferred (testing-infra, low): pinning httpx is the fix but verifying needs the CI-skipped TestClient tests to actually run; not worth destabilizing CI now. Tracked.`
-They're CI-skipped due to an httpx/starlette TestClient version mismatch. Pin/upgrade httpx (or add the documented `httpx<…`/`httpx2` shim) so they run. **Accept:** the TestClient tests run (locally + CI) without hanging, or are honestly marked with a tracked reason.
+### R6 — `_TESTCLIENT_FILES` test gap  *(testing)* `[x] done`
+Real root cause was the full app **lifespan hanging** under TestClient (no model/scheduler/DB), not just httpx. Added a `LAYLA_MINIMAL_STARTUP` guard to `main.py` lifespan (routes still mount; blocking subsystems — embedder preload, scheduler, knowledge indexing, cluster/mDNS — are skipped), set it in `conftest.py`, and removed the CI collect-ignore so the 26 files run **everywhere**. Un-skipping exposed 11 pre-existing refactor-rot failures, all fixed: stale source-scan paths (services reorg shims; `get_capability_summary` moved to `system_head_builder`), `check_patterns.py` stale rules, ES-module-migration assertions in `test_platform_ui`, a real **Windows `time.monotonic()` ~15.6ms resolution bug** in `request_tracer.trace_phase` (→ `perf_counter`), a stale REQ-11 localhost-bypass test, and a stale approval mock (gate moved to `tool_dispatch._is_approval_bypassed`). **Accept met:** 343 TestClient tests run + pass; suite no longer hangs.
 
 ### R7 — GUI: Warframe-mystic + control surface  *(MEDIUM)* `[x] delivered`
 
