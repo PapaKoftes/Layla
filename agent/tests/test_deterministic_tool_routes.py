@@ -13,7 +13,7 @@ if str(AGENT) not in sys.path:
 
 def test_deterministic_route_tools_disabled_returns_none() -> None:
     from layla.tools.registry import TOOLS
-    from services.tool_policy import deterministic_route_tools
+    from services.tools.tool_policy import deterministic_route_tools
 
     cfg = {"deterministic_tool_routes_enabled": False}
     assert deterministic_route_tools(cfg, "edit this code", TOOLS) is None
@@ -21,13 +21,13 @@ def test_deterministic_route_tools_disabled_returns_none() -> None:
 
 def test_deterministic_route_tools_enabled_returns_subset(monkeypatch) -> None:
     from layla.tools.registry import TOOLS
-    from services import tool_policy
+    from services.tools import tool_policy
     from services.tools import tool_policy as _tool_policy_impl
 
     monkeypatch.setattr(_tool_policy_impl, "_DEFAULT_DETERMINISTIC_TOOL_ROUTES", {"coding": ("read_file", "write_file")})
 
     # Force classify_task -> coding
-    from services import model_router
+    from services.llm import model_router
 
     monkeypatch.setattr(model_router, "classify_task", lambda *_args, **_kw: "coding")
 

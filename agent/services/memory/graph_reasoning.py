@@ -135,7 +135,7 @@ def expand_query_via_graph(query: str, max_hops: int = 2, max_nodes: int = 15) -
     Uses graph_cache for TTL 300s to avoid repeated BFS.
     """
     try:
-        from services.graph_cache import get_cached, set_cached
+        from services.memory.graph_cache import get_cached, set_cached
         cached = get_cached(query)
         if cached is not None:
             return cached[:max_nodes]

@@ -34,7 +34,7 @@ def tmp_db(tmp_path, monkeypatch):
     def _fake_get_db_path():
         return db_file
 
-    monkeypatch.setattr("services.german_mode._get_db_path", _fake_get_db_path)
+    monkeypatch.setattr("services.infrastructure.german_mode._get_db_path", _fake_get_db_path)
     # Also patch utcnow to a stable value so tests are deterministic
     from datetime import datetime, timezone
     _now = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
@@ -44,7 +44,7 @@ def tmp_db(tmp_path, monkeypatch):
         def isoformat():
             return _now.isoformat()
 
-    monkeypatch.setattr("services.german_mode.time", MagicMock(monotonic=lambda: 0.0))
+    monkeypatch.setattr("services.infrastructure.german_mode.time", MagicMock(monotonic=lambda: 0.0))
     return tmp_path
 
 
@@ -61,7 +61,7 @@ def client():
 # Imports
 # ---------------------------------------------------------------------------
 
-from services.german_mode import (
+from services.infrastructure.german_mode import (
     CEFR_LEVELS,
     _sm2,
     add_flashcard,

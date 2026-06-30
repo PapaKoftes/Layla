@@ -38,7 +38,7 @@ class StageResponse(BaseModel):
 async def onboarding_status():
     """Check onboarding state — is it needed, in progress, or complete?"""
     try:
-        from services.onboarding_interview import get_onboarding
+        from services.user.onboarding_interview import get_onboarding
         ob = get_onboarding()
         needs = ob.needs_onboarding()
         state = ob.get_state()
@@ -62,7 +62,7 @@ async def onboarding_status():
 async def onboarding_stage():
     """Get the current interview stage info."""
     try:
-        from services.onboarding_interview import get_onboarding
+        from services.user.onboarding_interview import get_onboarding
         ob = get_onboarding()
         info = ob.get_current_stage_info()
         return {"ok": True, **info}
@@ -74,7 +74,7 @@ async def onboarding_stage():
 async def onboarding_start():
     """Start or resume the onboarding interview."""
     try:
-        from services.onboarding_interview import get_onboarding
+        from services.user.onboarding_interview import get_onboarding
         ob = get_onboarding()
         state = ob.start()
         stage_info = ob.get_current_stage_info()
@@ -91,7 +91,7 @@ async def onboarding_start():
 async def onboarding_response(body: StageResponse):
     """Submit the user's response for a stage."""
     try:
-        from services.onboarding_interview import get_onboarding
+        from services.user.onboarding_interview import get_onboarding
         ob = get_onboarding()
         result = ob.submit_response(body.stage, body.data)
         return result
@@ -103,7 +103,7 @@ async def onboarding_response(body: StageResponse):
 async def onboarding_advance():
     """Advance to the next interview stage."""
     try:
-        from services.onboarding_interview import get_onboarding
+        from services.user.onboarding_interview import get_onboarding
         ob = get_onboarding()
         result = ob.advance()
         return result
@@ -115,7 +115,7 @@ async def onboarding_advance():
 async def onboarding_complete():
     """Mark the interview as complete."""
     try:
-        from services.onboarding_interview import get_onboarding
+        from services.user.onboarding_interview import get_onboarding
         ob = get_onboarding()
         result = ob.complete()
         return result
@@ -127,7 +127,7 @@ async def onboarding_complete():
 async def onboarding_skip():
     """Skip the onboarding interview."""
     try:
-        from services.onboarding_interview import get_onboarding
+        from services.user.onboarding_interview import get_onboarding
         ob = get_onboarding()
         result = ob.skip()
         return result

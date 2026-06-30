@@ -156,7 +156,7 @@ def extract_and_store(
             ent_type = (ent.get("type") or ent.get("label") or "").strip().lower()
             if ent_type in ("person", "per"):
                 try:
-                    from services.person_dossier import update_person_mention
+                    from services.memory.person_dossier import update_person_mention
                     update_person_mention(name, context=user_message[:200], source="conversation")
                 except Exception:
                     pass

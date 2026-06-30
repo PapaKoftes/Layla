@@ -14,7 +14,7 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def test_maybe_attach_skips_non_linux(monkeypatch):
-    import services.worker_cgroup_linux as wcl
+    import services.infrastructure.worker_cgroup_linux as wcl
 
     monkeypatch.setattr(wcl.sys, "platform", "win32")
     proc = MagicMock()
@@ -23,7 +23,7 @@ def test_maybe_attach_skips_non_linux(monkeypatch):
 
 
 def test_maybe_attach_skips_when_disabled():
-    import services.worker_cgroup_linux as wcl
+    import services.infrastructure.worker_cgroup_linux as wcl
 
     proc = MagicMock()
     proc.pid = 1
@@ -31,7 +31,7 @@ def test_maybe_attach_skips_when_disabled():
 
 
 def test_maybe_attach_skips_without_limits():
-    import services.worker_cgroup_linux as wcl
+    import services.infrastructure.worker_cgroup_linux as wcl
 
     proc = MagicMock()
     proc.pid = 1
@@ -44,7 +44,7 @@ def test_maybe_attach_skips_without_limits():
 
 
 def test_maybe_attach_writes_procs_and_memory_max(monkeypatch, tmp_path):
-    import services.worker_cgroup_linux as wcl
+    import services.infrastructure.worker_cgroup_linux as wcl
 
     monkeypatch.setattr(wcl.sys, "platform", "linux")
     root = tmp_path / "cgroup"
@@ -74,7 +74,7 @@ def test_maybe_attach_writes_procs_and_memory_max(monkeypatch, tmp_path):
 def test_read_own_cgroup_v2_relative_path_parses_unified_line(monkeypatch, tmp_path):
     import pathlib
 
-    import services.worker_cgroup_linux as wcl
+    import services.infrastructure.worker_cgroup_linux as wcl
 
     monkeypatch.setattr(wcl.sys, "platform", "linux")
     fake_proc = tmp_path / "cgroup"
@@ -92,7 +92,7 @@ def test_read_own_cgroup_v2_relative_path_parses_unified_line(monkeypatch, tmp_p
 
 
 def test_maybe_attach_skips_without_v2_controllers_file(monkeypatch, tmp_path):
-    import services.worker_cgroup_linux as wcl
+    import services.infrastructure.worker_cgroup_linux as wcl
 
     monkeypatch.setattr(wcl.sys, "platform", "linux")
     root = tmp_path / "cgroup"
@@ -112,7 +112,7 @@ def test_maybe_attach_skips_without_v2_controllers_file(monkeypatch, tmp_path):
 
 
 def test_maybe_attach_skips_when_parent_not_writable(monkeypatch, tmp_path):
-    import services.worker_cgroup_linux as wcl
+    import services.infrastructure.worker_cgroup_linux as wcl
 
     monkeypatch.setattr(wcl.sys, "platform", "linux")
     root = tmp_path / "cgroup"
@@ -135,7 +135,7 @@ def test_maybe_attach_skips_when_parent_not_writable(monkeypatch, tmp_path):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="tmp_path leaf still contains cgroup.procs file; POSIX rmdir differs on Windows")
 def test_maybe_remove_worker_cgroup_rmdirs_empty_leaf(monkeypatch, tmp_path):
-    import services.worker_cgroup_linux as wcl
+    import services.infrastructure.worker_cgroup_linux as wcl
 
     monkeypatch.setattr(wcl.sys, "platform", "linux")
     root = tmp_path / "cgroup"
@@ -150,7 +150,7 @@ def test_maybe_remove_worker_cgroup_rmdirs_empty_leaf(monkeypatch, tmp_path):
 
 
 def test_maybe_remove_rejects_path_traversal(monkeypatch, tmp_path):
-    import services.worker_cgroup_linux as wcl
+    import services.infrastructure.worker_cgroup_linux as wcl
 
     monkeypatch.setattr(wcl.sys, "platform", "linux")
     root = tmp_path / "cgroup"

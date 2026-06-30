@@ -24,7 +24,7 @@ logger = logging.getLogger("layla")
 # ---------------------------------------------------------------------------
 
 def format_recovery_hint_for_prompt(recovery_hint: dict) -> str:
-    from services.failure_recovery import format_recovery_hint_for_prompt as _impl
+    from services.infrastructure.failure_recovery import format_recovery_hint_for_prompt as _impl
     return _impl(recovery_hint)
 
 
@@ -50,8 +50,8 @@ def get_tools_for_goal(
 
     try:
         cfg = runtime_safety.load_config()
-        from services.intent_router import route_intent
-        from services.tool_policy import (
+        from services.tools.intent_router import route_intent
+        from services.tools.tool_policy import (
             deterministic_route_tools_for_task_type,
             resolve_effective_tools_for_route,
         )
@@ -68,7 +68,7 @@ def get_tools_for_goal(
                 state["route_decision"] = rd.to_dict()
         else:
             # convert back into an object-like shape for downstream
-            from services.intent_router import RouteDecision
+            from services.tools.intent_router import RouteDecision
             rd = RouteDecision(**rd)
         names = set(resolve_effective_tools_for_route(cfg, rd, goal, tools_registry, skip_intent_filter=skip_intent))
         try:
@@ -79,7 +79,7 @@ def get_tools_for_goal(
             logger.warning("deterministic_route_tools failed: %s", e)
         # Deterministic routing: prefer a stable chain for common goal types.
         try:
-            from services.toolchain_graph import deterministic_toolchain_route
+            from services.tools.toolchain_graph import deterministic_toolchain_route
 
             route = deterministic_toolchain_route(goal or "")
             allowed = set(route.get("allowed_tools") or [])
@@ -148,7 +148,7 @@ def llm_decision(
     import orchestrator
     import runtime_safety
     from decision_schema import parse_decision as _parse_decision
-    from services.llm_gateway import run_completion
+    from services.llm.llm_gateway import run_completion
 
     steps_text = format_steps_fn(state.get("steps") or [])
     objective = (state.get("objective") or goal).strip()
@@ -185,7 +185,7 @@ def llm_decision(
         logger.debug("llm_decision: file_probe_hints: %s", _exc, exc_info=False)
 
     try:
-        from services.intent_routing_hints import tool_routing_prompt_hints
+        from services.tools.intent_routing_hints import tool_routing_prompt_hints
 
         _route_goal = (state.get("original_goal") or goal or "").strip()
         _rh = tool_routing_prompt_hints(_route_goal)
@@ -225,7 +225,7 @@ def llm_decision(
     try:
         cfg_obs = runtime_safety.load_config()
         if cfg_obs.get("observation_mode_enabled", True):
-            from services.maturity_engine import get_state as _get_maturity_state
+            from services.personality.maturity_engine import get_state as _get_maturity_state
 
             ms = _get_maturity_state()
             if ms.phase == "nascent":
@@ -268,7 +268,7 @@ def llm_decision(
 
     no_progress_hint = ""
     try:
-        from services.tool_loop_detection import consume_prompt_hint
+        from services.tools.tool_loop_detection import consume_prompt_hint
 
         _tlh = consume_prompt_hint(state)
         if _tlh:
@@ -328,7 +328,7 @@ def llm_decision(
     mcp_tool_hint = ""
     if cfg_pre.get("mcp_client_enabled") and cfg_pre.get("mcp_inject_tool_summary_in_decisions"):
         try:
-            from services.mcp_client import get_cached_mcp_tool_summary_for_prompt
+            from services.infrastructure.mcp_client import get_cached_mcp_tool_summary_for_prompt
 
             mcp_tool_hint = get_cached_mcp_tool_summary_for_prompt(cfg_pre)
         except Exception as e:
@@ -348,10 +348,10 @@ def llm_decision(
     # Decision policy caps: enforce safety/verify gates and tool restrictions at the prompt boundary.
     try:
         if cfg_pre.get("decision_policy_enabled", True):
-            from services.decision_policy import (
+            from services.safety.decision_policy import (
                 apply_caps_to_valid_tools as _apply_caps_to_valid_tools,
             )
-            from services.decision_policy import (
+            from services.safety.decision_policy import (
                 build_policy_caps as _build_policy_caps,
             )
             _cid = (state.get("conversation_id") or "").strip() or "unknown"
@@ -360,7 +360,7 @@ def llm_decision(
             valid_tools = _apply_caps_to_valid_tools(valid_tools, _caps)
     except Exception as _dp_exc:
         logger.debug("decision_policy caps skipped: %s", _dp_exc)
-    from services.prompt_builder import build_decision_tool_hints
+    from services.prompts.prompt_builder import build_decision_tool_hints
 
     tools_list, _edit_hint_pb = build_decision_tool_hints(valid_tools, goal)
     think_trace_hint = ""
@@ -423,7 +423,7 @@ def llm_decision(
     try:
         cfg = runtime_safety.load_config()
         # Optionally route decision JSON generation to a dedicated structured-output model.
-        from services.llm_gateway import get_model_override, set_model_override
+        from services.llm.llm_gateway import get_model_override, set_model_override
 
         try:
             prev_override = get_model_override()
@@ -438,8 +438,8 @@ def llm_decision(
         # Optional outlines + llama-cpp (wheels on 3.11—3.12); no-op if package missing
         if structured_on and not (cfg.get("llama_server_url") or "").strip():
             try:
-                from services.llm_gateway import _get_llm
-                from services.structured_gen import run_outlines_agent_decision
+                from services.llm.llm_gateway import _get_llm
+                from services.llm.structured_gen import run_outlines_agent_decision
 
                 _llm_local = _get_llm()
                 if _llm_local is not None:
@@ -462,7 +462,7 @@ def llm_decision(
 
                     from decision_schema import AgentDecision
                     if not (cfg.get("llama_server_url") or "").strip():
-                        from services.llm_gateway import _get_llm
+                        from services.llm.llm_gateway import _get_llm
                         llm = _get_llm()
                         if llm is not None:
                             create = instructor.patch(
@@ -512,7 +512,7 @@ def llm_decision(
         return None
     finally:
         try:
-            from services.llm_gateway import set_model_override
+            from services.llm.llm_gateway import set_model_override
 
             set_model_override(prev_override)
         except Exception as e:

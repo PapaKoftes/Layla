@@ -15,7 +15,7 @@ if str(AGENT_DIR) not in sys.path:
 
 @pytest.fixture()
 def fake_ws(monkeypatch):
-    import services.plan_workspace_store as pws
+    import services.planning.plan_workspace_store as pws
     import services.planning.plan_workspace_store as pws_real
 
     root = Path(tempfile.mkdtemp(prefix="layla_plan_ws_"))
@@ -26,7 +26,7 @@ def fake_ws(monkeypatch):
 
 
 def test_mirror_and_prior_digest(fake_ws, monkeypatch):
-    from services import plan_workspace_store as pws
+    from services.planning import plan_workspace_store as pws
 
     plan = {
         "id": "p1",
@@ -50,7 +50,7 @@ def test_mirror_and_prior_digest(fake_ws, monkeypatch):
 
 
 def test_coerce_tool_result():
-    from services.plan_step_result_models import coerce_tool_result
+    from services.planning.plan_step_result_models import coerce_tool_result
 
     assert coerce_tool_result("write_file", {"ok": True, "path": "/x"})["path"] == "/x"
     assert coerce_tool_result("run_tests", {"ok": True, "returncode": 0, "passed": 2})["passed"] == 2

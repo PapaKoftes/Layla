@@ -179,7 +179,7 @@ def index_workspace(workspace_root: str | Path, extensions: tuple[str, ...] = ("
     if coll is None:
         return {"indexed": 0, "skipped": 0, "errors": ["ChromaDB unavailable"]}
     try:
-        from services.embedding_service import embed_batch
+        from services.llm.embedding_service import embed_batch
     except ImportError:
         try:
             from layla.memory.vector_store import embed_batch
@@ -398,7 +398,7 @@ def search_workspace(query: str, workspace_root: str | Path = "", k: int = 5) ->
     if coll is None:
         return []
     try:
-        from services.embedding_service import embed_text
+        from services.llm.embedding_service import embed_text
 
         qvec = embed_text(query)
         res = coll.query(
@@ -501,7 +501,7 @@ def retrieve_code_context(query: str, workspace_root: str | Path = "", k: int = 
     if coll is None:
         return []
     try:
-        from services.embedding_service import embed_text
+        from services.llm.embedding_service import embed_text
 
         qvec = embed_text(query)
         n = min(max(k * 2, k), coll.count())

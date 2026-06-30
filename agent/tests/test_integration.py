@@ -117,8 +117,8 @@ class TestGovernorDispatcherIntegration:
     """Verify that governor mode changes affect dispatcher decisions."""
 
     def test_whisper_mode_offloads_to_drone(self):
-        from services.task_dispatcher import TaskDispatcher
-        from services.work_unit import WorkUnit, TaskType
+        from services.planning.task_dispatcher import TaskDispatcher
+        from services.cluster.work_unit import WorkUnit, TaskType
 
         disp = TaskDispatcher()
 
@@ -135,7 +135,7 @@ class TestGovernorDispatcherIntegration:
         mock_peer.has_capability = MagicMock(return_value=True)
 
         with patch.object(disp, "_get_governor_mode", return_value="whisper"), \
-             patch("services.cluster_network.get_cluster_network") as mock_cn:
+             patch("services.cluster.cluster_network.get_cluster_network") as mock_cn:
             net = MagicMock()
             net.get_online_drones.return_value = [mock_peer]
             mock_cn.return_value = net
@@ -146,8 +146,8 @@ class TestGovernorDispatcherIntegration:
         assert decision in ("drone-1", "queued")
 
     def test_sprint_mode_prefers_local(self):
-        from services.task_dispatcher import TaskDispatcher
-        from services.work_unit import WorkUnit, TaskType
+        from services.planning.task_dispatcher import TaskDispatcher
+        from services.cluster.work_unit import WorkUnit, TaskType
 
         disp = TaskDispatcher()
 
@@ -156,7 +156,7 @@ class TestGovernorDispatcherIntegration:
 
         with patch.object(disp, "_get_governor_mode", return_value="sprint"), \
              patch.object(disp, "_get_queen_load", return_value=0.2), \
-             patch("services.cluster_network.get_cluster_network") as mock_cn:
+             patch("services.cluster.cluster_network.get_cluster_network") as mock_cn:
             net = MagicMock()
             net.get_online_drones.return_value = []
             mock_cn.return_value = net
@@ -181,7 +181,7 @@ class TestVerificationGrowthPipeline:
         with patch("layla.memory.db_connection._conn", fake), \
              patch("layla.time_utils.utcnow", return_value=datetime(2024, 6, 1, tzinfo=timezone.utc)):
 
-            from services.verification_queue import VerificationQueue
+            from services.planning.verification_queue import VerificationQueue
             vq = VerificationQueue.__new__(VerificationQueue)
             vq._prompts_this_session = 0
 
@@ -235,7 +235,7 @@ class TestKnowledgeWatcherIngest:
              patch("layla.time_utils.utcnow", return_value=datetime(2024, 6, 1, tzinfo=timezone.utc)), \
              patch.dict("sys.modules", {"layla.ingestion.pipeline": None}):
 
-            from services.knowledge_watcher import KnowledgeWatcher
+            from services.memory.knowledge_watcher import KnowledgeWatcher
             watcher = KnowledgeWatcher.__new__(KnowledgeWatcher)
             watcher._cfg = {}
             watcher._watch_dirs = [tmp_path]
@@ -248,7 +248,7 @@ class TestKnowledgeWatcherIngest:
             watcher._files_ingested = 0
             watcher._files_skipped = 0
 
-            from services.knowledge_watcher import _FileTracker
+            from services.memory.knowledge_watcher import _FileTracker
             watcher._tracker = _FileTracker()
 
             # Process the file
@@ -272,7 +272,7 @@ class TestKnowledgeWatcherIngest:
              patch("layla.time_utils.utcnow", return_value=datetime(2024, 6, 1, tzinfo=timezone.utc)), \
              patch.dict("sys.modules", {"layla.ingestion.pipeline": None}):
 
-            from services.knowledge_watcher import KnowledgeWatcher, _FileTracker
+            from services.memory.knowledge_watcher import KnowledgeWatcher, _FileTracker
             watcher = KnowledgeWatcher.__new__(KnowledgeWatcher)
             watcher._cfg = {}
             watcher._watch_dirs = [tmp_path]
@@ -378,7 +378,7 @@ class TestTaskQueueLifecycle:
     """Verify complete task lifecycle: submit → claim → complete/fail."""
 
     def test_full_lifecycle(self):
-        from services.work_unit import WorkUnit, TaskType, TaskStatus
+        from services.cluster.work_unit import WorkUnit, TaskType, TaskStatus
 
         task = WorkUnit(type=TaskType.EMBEDDING, payload={"text": "test"})
 
@@ -399,7 +399,7 @@ class TestTaskQueueLifecycle:
         assert task.result == {"embedding": [0.1, 0.2, 0.3]}
 
     def test_fail_then_retry(self):
-        from services.work_unit import WorkUnit, TaskType, TaskStatus
+        from services.cluster.work_unit import WorkUnit, TaskType, TaskStatus
 
         task = WorkUnit(type=TaskType.INGESTION, payload={"file": "test.pdf"})
         task.mark_running("queen-node-1")
@@ -422,7 +422,7 @@ class TestPairingTokenLifecycle:
     """Verify pairing token generation, validation, and expiry."""
 
     def test_generate_and_validate(self):
-        from services.cluster_pairing import ClusterPairing
+        from services.cluster.cluster_pairing import ClusterPairing
 
         cp = ClusterPairing()
         pt = cp.generate_pairing_token()
@@ -437,7 +437,7 @@ class TestPairingTokenLifecycle:
         assert reason == "ok"
 
     def test_wrong_token_rejected(self):
-        from services.cluster_pairing import ClusterPairing
+        from services.cluster.cluster_pairing import ClusterPairing
 
         cp = ClusterPairing()
         cp.generate_pairing_token()
@@ -448,7 +448,7 @@ class TestPairingTokenLifecycle:
 
     def test_expired_token_rejected(self):
         import time
-        from services.cluster_pairing import ClusterPairing
+        from services.cluster.cluster_pairing import ClusterPairing
 
         cp = ClusterPairing()
         pt = cp.generate_pairing_token()

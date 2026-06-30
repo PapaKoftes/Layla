@@ -2,8 +2,8 @@ from __future__ import annotations
 
 
 def test_llm_gateway_uses_model_fallback_chain(monkeypatch, tmp_path):
-    from services import llm_gateway
-    from services.model_router import reset_router_config_cache
+    from services.llm import llm_gateway
+    from services.llm.model_router import reset_router_config_cache
 
     reset_router_config_cache()
 

@@ -1,7 +1,7 @@
 """Tests for workspace_index (code intelligence, tree-sitter)."""
 import pytest
 
-from services.workspace_index import extract_code_architecture, get_architecture_summary
+from services.workspace.workspace_index import extract_code_architecture, get_architecture_summary
 
 
 def test_extract_code_architecture_empty():

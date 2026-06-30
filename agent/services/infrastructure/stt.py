@@ -5,7 +5,7 @@ Install: pip install faster-whisper
 Model downloads automatically on first call (cached in ~/.cache/huggingface).
 
 Usage:
-    from services.stt import transcribe_bytes, transcribe_file
+    from services.infrastructure.stt import transcribe_bytes, transcribe_file
     text = transcribe_bytes(wav_bytes)  # bytes from browser MediaRecorder
     text = transcribe_file("/path/to/audio.wav")
 """
@@ -43,7 +43,7 @@ def _get_model():
                 from faster_whisper import WhisperModel
             except ImportError:
                 import runtime_safety
-                from services.dependency_recovery import ensure_feature, merge_recovery_message
+                from services.infrastructure.dependency_recovery import ensure_feature, merge_recovery_message
 
                 _cfg = runtime_safety.load_config()
                 ok, rec = ensure_feature("faster_whisper", _cfg)

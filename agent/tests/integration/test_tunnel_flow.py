@@ -9,7 +9,7 @@ class TestTunnelAuthIntegration:
 
     def test_full_token_lifecycle(self):
         """Generate token → hash → validate → rotate → old token rejected."""
-        from services.tunnel_auth import generate_token, hash_token, rotate_token, validate_token
+        from services.governance.tunnel_auth import generate_token, hash_token, rotate_token, validate_token
 
         # 1. Generate and hash
         token = generate_token()
@@ -36,7 +36,7 @@ class TestTunnelAuthIntegration:
         """Combined check: valid token + allowed IP + not expired."""
         import datetime
 
-        from services.tunnel_auth import check_remote_access, generate_token, hash_token
+        from services.governance.tunnel_auth import check_remote_access, generate_token, hash_token
 
         token = generate_token()
         cfg = {
@@ -64,7 +64,7 @@ class TestTunnelAuditIntegration:
 
     @pytest.fixture(autouse=True)
     def isolate_audit_db(self, tmp_path):
-        import services.tunnel_audit as ta
+        import services.governance.tunnel_audit as ta
         original_db = ta._DB_PATH
         ta._DB_PATH = tmp_path / "test_audit.db"
         ta._table_ready = False
@@ -73,7 +73,7 @@ class TestTunnelAuditIntegration:
         ta._table_ready = False
 
     def test_log_then_query(self):
-        from services.tunnel_audit import get_summary, log_access, query_log
+        from services.governance.tunnel_audit import get_summary, log_access, query_log
 
         # Simulate mixed access
         log_access("10.0.0.1", "/agent", "POST", "abc12345", "allow")
@@ -101,14 +101,14 @@ class TestTunnelManagerIntegration:
     """Verify tunnel manager status/start/stop interface."""
 
     def test_status_when_not_running(self):
-        from services.tunnel_manager import tunnel_status
+        from services.infrastructure.tunnel_manager import tunnel_status
         status = tunnel_status()
         assert "running" in status
         assert isinstance(status["running"], bool)
 
     def test_start_without_cloudflared(self):
         """Start should fail gracefully when cloudflared not found."""
-        from services.tunnel_manager import start_quick_tunnel
+        from services.infrastructure.tunnel_manager import start_quick_tunnel
         with patch("shutil.which", return_value=None):
             result = start_quick_tunnel()
             assert result["ok"] is False
@@ -116,13 +116,13 @@ class TestTunnelManagerIntegration:
 
 class TestTailscaleIntegration:
     def test_availability_check(self):
-        from services.tailscale_manager import is_available
+        from services.infrastructure.tailscale_manager import is_available
         # Just verify it doesn't crash
         result = is_available()
         assert isinstance(result, bool)
 
     def test_status_when_not_installed(self):
-        from services.tailscale_manager import get_status
+        from services.infrastructure.tailscale_manager import get_status
         with patch("shutil.which", return_value=None):
             status = get_status()
             assert status["running"] is False

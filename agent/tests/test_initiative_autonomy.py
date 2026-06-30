@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 def test_collect_initiative_hints_respects_gate():
-    from services.initiative_engine import collect_initiative_hints
+    from services.infrastructure.initiative_engine import collect_initiative_hints
 
     state = {
         "status": "finished",
@@ -17,7 +17,7 @@ def test_collect_initiative_hints_respects_gate():
 
 
 def test_propose_step_recovery_respects_allowlist():
-    from services.autonomy_optimizer import propose_step_recovery
+    from services.infrastructure.autonomy_optimizer import propose_step_recovery
 
     cfg = {"autonomy_optimizer_enabled": True}
     p = propose_step_recovery(
@@ -32,7 +32,7 @@ def test_propose_step_recovery_respects_allowlist():
 
 
 def test_propose_step_recovery_off_by_default():
-    from services.autonomy_optimizer import propose_step_recovery
+    from services.infrastructure.autonomy_optimizer import propose_step_recovery
 
     p = propose_step_recovery(
         failed_tool="write_file",
@@ -44,7 +44,7 @@ def test_propose_step_recovery_off_by_default():
 
 
 def test_propose_never_suggests_tool_outside_allowlist():
-    from services.autonomy_optimizer import propose_step_recovery
+    from services.infrastructure.autonomy_optimizer import propose_step_recovery
 
     cfg = {"autonomy_optimizer_enabled": True}
     allow = ["grep_code", "list_dir"]
@@ -59,7 +59,7 @@ def test_propose_never_suggests_tool_outside_allowlist():
 
 
 def test_last_failed_tool_from_agent_response():
-    from services.autonomy_optimizer import last_failed_tool_from_agent_response
+    from services.infrastructure.autonomy_optimizer import last_failed_tool_from_agent_response
 
     r = last_failed_tool_from_agent_response(
         {
@@ -75,7 +75,7 @@ def test_last_failed_tool_from_agent_response():
 
 
 def test_wakeup_engine_hints_gated():
-    from services.initiative_engine import wakeup_engine_hints
+    from services.infrastructure.initiative_engine import wakeup_engine_hints
 
     assert wakeup_engine_hints([{"topic": "a"}], {}) == []
     h = wakeup_engine_hints([], {"initiative_engine_enabled": True})

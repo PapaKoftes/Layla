@@ -10,7 +10,7 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-from services.url_guard import check_url, is_safe_url  # noqa: E402
+from services.safety.url_guard import check_url, is_safe_url  # noqa: E402
 
 BLOCKED = [
     "http://127.0.0.1/",

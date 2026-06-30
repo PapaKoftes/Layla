@@ -426,7 +426,7 @@ def get_character_summary() -> dict[str, Any]:
     profiles = load_all_profiles()
     tut = get_tutorial_state()
     try:
-        from services.maturity_engine import get_state
+        from services.personality.maturity_engine import get_state
         maturity = get_state()
         rank = maturity.rank
     except Exception:

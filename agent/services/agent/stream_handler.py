@@ -57,14 +57,14 @@ def stream_reason(
     Sets model ContextVar for this generator (autonomous_run clears it before streaming).
     """
     import runtime_safety
-    from services.llm_gateway import set_model_override
+    from services.llm.llm_gateway import set_model_override
 
     set_model_override(model_override)
     if not model_override:
         try:
             _cfg_route = runtime_safety.load_config()
             if _cfg_route.get("tool_routing_enabled", True):
-                from services.model_router import classify_task_for_routing, is_routing_enabled
+                from services.llm.model_router import classify_task_for_routing, is_routing_enabled
 
                 if is_routing_enabled():
                     set_model_override(classify_task_for_routing(goal, context or "", _cfg_route))
@@ -108,8 +108,8 @@ def _stream_reason_body(
         is_junk_reply as _is_junk_reply,
         iter_with_response_pacing as _iter_with_response_pacing,
     )
-    from services.llm_gateway import get_stop_sequences, run_completion
-    from services.system_head_builder import (
+    from services.llm.llm_gateway import get_stop_sequences, run_completion
+    from services.prompts.system_head_builder import (
         build_system_head as _build_system_head,
         enrich_deliberation_context as _enrich_deliberation_context,
         semantic_recall as _semantic_recall,
@@ -122,7 +122,7 @@ def _stream_reason_body(
         _stream_rmode = str(reasoning_mode_override)
     else:
         try:
-            from services.reasoning_classifier import classify_reasoning_need, stabilize_reasoning_mode
+            from services.infrastructure.reasoning_classifier import classify_reasoning_need, stabilize_reasoning_mode
 
             _stream_rmode = classify_reasoning_need(goal, context or "")
             _cfg_sr = runtime_safety.load_config()
@@ -186,7 +186,7 @@ def _stream_reason_body(
     _delib_routed = False
     if _delib_mode != "solo" and not cfg.get("skip_deliberation"):
         try:
-            from services.debate_engine import run_deliberation as _run_delib
+            from services.planning.debate_engine import run_deliberation as _run_delib
             _delib_result = _run_delib(
                 goal=goal,
                 state={},

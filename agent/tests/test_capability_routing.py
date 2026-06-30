@@ -4,27 +4,27 @@ from capabilities.registry import CAPABILITIES, CapabilityImpl
 
 
 def test_classify_task_coding_keywords():
-    from services.model_router import classify_task
+    from services.llm.model_router import classify_task
 
     assert classify_task("fix the bug in my function") == "coding"
     assert classify_task("implement a REST handler") == "coding"
 
 
 def test_classify_task_reasoning_keywords():
-    from services.model_router import classify_task
+    from services.llm.model_router import classify_task
 
     assert classify_task("explain why this algorithm works") == "reasoning"
     assert classify_task("analyze the tradeoffs") == "reasoning"
 
 
 def test_classify_task_default_chat():
-    from services.model_router import classify_task
+    from services.llm.model_router import classify_task
 
     assert classify_task("hello") == "chat"
 
 
 def test_route_model_returns_none_when_unset(monkeypatch):
-    from services.model_router import reset_router_config_cache, route_model
+    from services.llm.model_router import reset_router_config_cache, route_model
 
     reset_router_config_cache()
 
@@ -51,7 +51,7 @@ def test_magicoder_impl_id():
 
 
 def test_select_model_fallback_to_route(monkeypatch):
-    from services.model_router import reset_router_config_cache, select_model
+    from services.llm.model_router import reset_router_config_cache, select_model
 
     reset_router_config_cache()
 
@@ -69,7 +69,7 @@ def test_select_model_fallback_to_route(monkeypatch):
 
     monkeypatch.setattr("runtime_safety.load_config", _cfg)
     monkeypatch.setattr(
-        "services.telemetry.get_user_profile",
+        "services.observability.telemetry.get_user_profile",
         lambda: {"simple_ratio": 0.0, "coding_ratio": 0.0},
     )
     reset_router_config_cache()
@@ -79,7 +79,7 @@ def test_select_model_fallback_to_route(monkeypatch):
 
 def test_routing_consistency():
     """Same input always produces same model classification."""
-    from services.model_router import classify_task
+    from services.llm.model_router import classify_task
 
     for _ in range(5):
         assert classify_task("fix the bug in my function") == "coding"
@@ -89,8 +89,8 @@ def test_routing_consistency():
 
 def test_missing_model_graceful_fallback(monkeypatch, tmp_path):
     """_get_llm loads default model_filename when task-routed GGUF path is missing."""
-    from services import llm_gateway
-    from services.model_router import reset_router_config_cache
+    from services.llm import llm_gateway
+    from services.llm.model_router import reset_router_config_cache
 
     reset_router_config_cache()
 
@@ -151,7 +151,7 @@ def test_missing_model_graceful_fallback(monkeypatch, tmp_path):
 
 
 def test_performance_mode_low_reduces_ctx():
-    from services.system_optimizer import get_effective_config
+    from services.infrastructure.system_optimizer import get_effective_config
 
     eff = get_effective_config({
         "n_ctx": 8192,

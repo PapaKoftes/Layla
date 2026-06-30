@@ -161,7 +161,7 @@ def run() -> int:
     try:
         from install.model_downloader import download_model, get_canonical_models_dir
         from install.model_selector import recommend_model
-        from services.hardware_detect import classify_hardware, detect_hardware
+        from services.infrastructure.hardware_detect import classify_hardware, detect_hardware
     except ImportError as e:
         raise ImportError(f"Installer dependencies missing: {e}. Run from repo root with venv activated.") from e
 
@@ -318,7 +318,7 @@ def run() -> int:
             import runtime_safety
             if hasattr(runtime_safety, "_config_cache"):
                 runtime_safety._config_cache = None
-            from services.model_benchmark import run_benchmark
+            from services.llm.model_benchmark import run_benchmark
             bench = run_benchmark(model_filename)
             if bench.get("ok"):
                 tps = bench.get("tokens_per_sec", 0)

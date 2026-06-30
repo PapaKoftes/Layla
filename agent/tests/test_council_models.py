@@ -11,8 +11,8 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-from services import debate_engine as de  # noqa: E402
-from services import llm_gateway as gw  # noqa: E402
+from services.planning import debate_engine as de  # noqa: E402
+from services.llm import llm_gateway as gw  # noqa: E402
 
 
 def test_aspect_model_override_resolution():

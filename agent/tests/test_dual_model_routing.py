@@ -1,6 +1,6 @@
 """Dual-model routing: is_routing_enabled, resolve_dual_model_basenames, classify_task_for_routing."""
 
-from services.model_router import (
+from services.llm.model_router import (
     classify_task,
     classify_task_for_routing,
     is_routing_enabled,

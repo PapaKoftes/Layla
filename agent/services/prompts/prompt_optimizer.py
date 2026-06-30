@@ -27,7 +27,7 @@ Config keys in config.json:
     prompt_optimizer_log_rewrites   bool   (default false; log before/after for inspection)
 
 Usage:
-    from services.prompt_optimizer import optimize
+    from services.prompts.prompt_optimizer import optimize
 
     result = optimize(
         user_message="fix the bug in my code",

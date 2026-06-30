@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from routers.paths import REPO_ROOT
-from services.route_helpers import sync_ingest_docs
+from services.infrastructure.route_helpers import sync_ingest_docs
 
 logger = logging.getLogger("layla")
 router = APIRouter(tags=["knowledge"])
@@ -18,7 +18,7 @@ router = APIRouter(tags=["knowledge"])
 @router.get("/knowledge/ingest/sources")
 def knowledge_ingest_sources_list():
     try:
-        from services.doc_ingestion import list_ingested_sources
+        from services.workspace.doc_ingestion import list_ingested_sources
 
         return {"sources": list_ingested_sources()}
     except Exception as e:
@@ -56,7 +56,7 @@ def workspace_index(req: dict):
             return JSONResponse({"ok": False, "error": "workspace_root path does not exist"})
         if not resolved.is_dir():
             return JSONResponse({"ok": False, "error": "workspace_root must be a directory"})
-        from services.workspace_index import index_workspace
+        from services.workspace.workspace_index import index_workspace
 
         result = index_workspace(str(resolved))
         return {"ok": True, "indexed": result.get("indexed", 0), "skipped": result.get("skipped", 0), "errors": result.get("errors", [])}
@@ -76,7 +76,7 @@ def workspace_cognition_sync(req: dict):
     index_semantic = bool(body.get("index_semantic", False))
     labels = body.get("labels") if isinstance(body.get("labels"), dict) else {}
     try:
-        from services.repo_cognition import sync_repo_cognition
+        from services.workspace.repo_cognition import sync_repo_cognition
 
         out = sync_repo_cognition(
             [str(x) for x in roots if str(x).strip()],
@@ -111,7 +111,7 @@ async def knowledge_import_chat_preview(request: Request):
     title = str((body or {}).get("title") or "chat_import").strip()[:120]
     try:
         if fmt == "whatsapp":
-            from services.data_importers import parse_whatsapp_txt, whatsapp_export_to_markdown
+            from services.infrastructure.data_importers import parse_whatsapp_txt, whatsapp_export_to_markdown
 
             rows = parse_whatsapp_txt(text)
             md = whatsapp_export_to_markdown(text, title=title)
@@ -135,7 +135,7 @@ async def knowledge_import_chat(request: Request):
         return JSONResponse({"ok": False, "error": "payload_too_large"}, status_code=400)
     try:
         if fmt == "whatsapp":
-            from services.data_importers import whatsapp_export_to_markdown
+            from services.infrastructure.data_importers import whatsapp_export_to_markdown
 
             md = whatsapp_export_to_markdown(text, title=title)
         else:

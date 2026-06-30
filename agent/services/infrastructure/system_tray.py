@@ -18,7 +18,7 @@ import webbrowser
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from services.resource_governor import ResourceGovernor
+    from services.infrastructure.resource_governor import ResourceGovernor
 
 logger = logging.getLogger("layla.tray")
 
@@ -78,19 +78,19 @@ def _make_menu(governor: ResourceGovernor | None = None):
 
     def set_whisper(_icon, _item):
         if governor:
-            from services.resource_governor import ResourceMode
+            from services.infrastructure.resource_governor import ResourceMode
             governor._mode = ResourceMode.WHISPER
             _update_tray_state(governor)
 
     def set_breathe(_icon, _item):
         if governor:
-            from services.resource_governor import ResourceMode
+            from services.infrastructure.resource_governor import ResourceMode
             governor._mode = ResourceMode.BREATHE
             _update_tray_state(governor)
 
     def set_sprint(_icon, _item):
         if governor:
-            from services.resource_governor import ResourceMode
+            from services.infrastructure.resource_governor import ResourceMode
             governor._mode = ResourceMode.SPRINT
             _update_tray_state(governor)
 

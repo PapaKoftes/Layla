@@ -46,7 +46,7 @@ def build_snapshot(
     # Compute proportional token budgets for this n_ctx
     budget_map: dict[str, int] = {}
     try:
-        from services.context_budget import get_budgets
+        from services.context.context_budget import get_budgets
         budget_map = get_budgets(n_ctx)
     except Exception as e:
         logger.debug("observer: get_budgets failed: %s", e)

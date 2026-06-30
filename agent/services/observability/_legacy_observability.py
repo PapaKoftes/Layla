@@ -19,7 +19,7 @@ except ImportError:
 def _record_to_performance_monitor(metric: str, value: float, tags: dict[str, str] | None = None) -> None:
     """Record metric to performance_monitor for system_optimizer to consume."""
     try:
-        from services.performance_monitor import record
+        from services.observability.performance_monitor import record
         record(metric, value, tags or {})
     except Exception:
         pass
@@ -52,7 +52,7 @@ def log_run_budget_summary(**kw: Any) -> None:
         import runtime_safety
 
         _cfg = runtime_safety.load_config()
-        from services.trace_export import maybe_emit_run_budget_span
+        from services.observability.trace_export import maybe_emit_run_budget_span
 
         maybe_emit_run_budget_span(_cfg, kw)
     except Exception:

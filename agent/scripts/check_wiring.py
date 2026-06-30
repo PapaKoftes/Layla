@@ -14,11 +14,11 @@ AGENT = Path(__file__).resolve().parent.parent
 
 REQUIRED = {
     # service_module : [forbidden_dirs_for_callers]
-    "services.repo_indexer": ["tests"],
-    "services.memory_router": ["tests", "scripts"],
-    "services.prompt_compressor": ["tests"],
-    "services.prompt_optimizer": ["tests"],
-    "services.config_cache": ["tests"],
+    "services.workspace.repo_indexer": ["tests"],
+    "services.memory.memory_router": ["tests", "scripts"],
+    "services.prompts.prompt_compressor": ["tests"],
+    "services.prompts.prompt_optimizer": ["tests"],
+    "services.infrastructure.config_cache": ["tests"],
 }
 
 
