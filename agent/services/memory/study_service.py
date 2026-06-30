@@ -10,7 +10,7 @@ def run_autonomous_study_for_plan(plan: dict) -> str | None:
     """Run one Nyx-style research step for a study plan; return summary text or None.
     Saves extracted learnings to the DB after every successful study run."""
     from layla.memory.db import update_study_progress
-    from services.memory_router import save_learning  # canonical write path
+    from services.memory.memory_router import save_learning  # canonical write path
     topic = (plan.get("topic") or "").strip()
     plan_id = plan.get("id")
     if not topic or not plan_id:
@@ -78,7 +78,7 @@ def run_autonomous_study_for_plan(plan: dict) -> str | None:
         logger.info("study: saved %d learnings for topic=%s", saved, topic)
         # Section 5: graph expansion
         try:
-            from services.graph_learning import expand_graph_from_learning
+            from services.memory.graph_learning import expand_graph_from_learning
             expand_graph_from_learning(summary)
         except Exception:
             pass
@@ -99,7 +99,7 @@ def _add_follow_up_plans(topic: str, summary: str, parent_plan_id: str) -> None:
     if not summary or len(summary.strip()) < 50:
         return
     try:
-        from services.llm_gateway import run_completion
+        from services.llm.llm_gateway import run_completion
         prompt = (
             f"Given this study summary about '{topic}':\n\n{summary[:1500]}\n\n"
             "Generate 1-2 concise follow-up study topics (short phrases, 3-8 words each). "

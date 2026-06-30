@@ -1,4 +1,4 @@
-from services.outcome_evaluation import evaluate_outcome, evaluate_outcome_structured
+from services.infrastructure.outcome_evaluation import evaluate_outcome, evaluate_outcome_structured
 
 
 def test_evaluate_outcome_all_ok():

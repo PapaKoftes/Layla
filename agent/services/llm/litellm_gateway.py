@@ -161,7 +161,7 @@ def complete(
     Returns dict with keys: content, model, provider, latency_ms, cost_usd, usage.
     Raises RuntimeError if all providers fail.
     """
-    from services.provider_health import is_healthy, record_failure, record_success
+    from services.infrastructure.provider_health import is_healthy, record_failure, record_success
 
     lit = _import_litellm()
     if lit is None:
@@ -262,7 +262,7 @@ def complete_stream(
 
     Yields text chunks. On provider failure, transparently switches to next in chain.
     """
-    from services.provider_health import is_healthy, record_failure, record_success
+    from services.infrastructure.provider_health import is_healthy, record_failure, record_success
 
     lit = _import_litellm()
     if lit is None:
@@ -409,7 +409,7 @@ def get_gateway_info() -> dict:
     """Return gateway status for /health and /models/providers endpoints."""
     gcfg = _load_gateway_config()
     installed = _import_litellm() is not None
-    from services.provider_health import get_all_status
+    from services.infrastructure.provider_health import get_all_status
     return {
         "installed": installed,
         "enabled": gcfg["enabled"],

@@ -35,7 +35,7 @@ def test_structured_retry_ladder_injects_goal_and_model_override(monkeypatch) ->
     monkeypatch.setattr(runtime_safety, "load_config", lambda: cfg)
 
     # Ensure should_plan always returns True.
-    import services.planner as planner
+    import services.planning.planner as planner
 
     monkeypatch.setattr(planner, "should_plan", lambda *_a, **_k: True)
 

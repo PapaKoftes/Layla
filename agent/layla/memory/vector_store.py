@@ -841,7 +841,7 @@ def search_with_hyde(query: str, k: int = 5, fallback: bool = True) -> list[dict
     Falls back to standard dense search if LLM is unavailable or too slow.
     """
     try:
-        from services.llm_gateway import run_completion
+        from services.llm.llm_gateway import run_completion
         hyp_prompt = (
             f"Write a concise, factual 2-3 sentence answer to this question. "
             f"Be specific and technical if relevant.\n\nQuestion: {query}"

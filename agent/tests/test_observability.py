@@ -29,32 +29,32 @@ class TestMetricsFallback:
     """Tests for the lightweight fallback metrics when prometheus_client is absent."""
 
     def test_record_tool_call(self):
-        from services.metrics import TOOL_CALLS, TOOL_DURATION, record_tool_call
+        from services.observability.prom_metrics import TOOL_CALLS, TOOL_DURATION, record_tool_call
         record_tool_call("read_file", True, 0.5)
         counters = TOOL_CALLS.get_all()
         # Should have at least one entry
         assert any(v > 0 for v in counters.values())
 
     def test_record_llm_request(self):
-        from services.metrics import LLM_REQUESTS, record_llm_request
+        from services.observability.prom_metrics import LLM_REQUESTS, record_llm_request
         record_llm_request("test-model.gguf", "morrigan", 1.2)
         counters = LLM_REQUESTS.get_all()
         assert any(v > 0 for v in counters.values())
 
     def test_record_memory_op(self):
-        from services.metrics import MEMORY_OPS, record_memory_op
+        from services.observability.prom_metrics import MEMORY_OPS, record_memory_op
         record_memory_op("episodic", "save_learning")
         counters = MEMORY_OPS.get_all()
         assert any(v > 0 for v in counters.values())
 
     def test_record_scheduler_run(self):
-        from services.metrics import SCHEDULER_RUNS, record_scheduler_run
+        from services.observability.prom_metrics import SCHEDULER_RUNS, record_scheduler_run
         record_scheduler_run("mission_worker", "ok")
         counters = SCHEDULER_RUNS.get_all()
         assert any(v > 0 for v in counters.values())
 
     def test_get_metrics_summary_returns_dict(self):
-        from services.metrics import get_metrics_summary
+        from services.observability.prom_metrics import get_metrics_summary
         summary = get_metrics_summary()
         assert isinstance(summary, dict)
         assert "tool_calls" in summary
@@ -62,14 +62,14 @@ class TestMetricsFallback:
         assert "memory_ops" in summary
 
     def test_generate_metrics_text_fallback(self):
-        from services.metrics import PROMETHEUS_AVAILABLE, generate_metrics_text
+        from services.observability.prom_metrics import PROMETHEUS_AVAILABLE, generate_metrics_text
         result = generate_metrics_text()
         if not PROMETHEUS_AVAILABLE:
             assert isinstance(result, dict)
         # Either way, it shouldn't raise
 
     def test_fallback_counter_inc(self):
-        from services.metrics import _FallbackCounter
+        from services.observability.prom_metrics import _FallbackCounter
         c = _FallbackCounter("test_counter", "test", ["label1"])
         c.labels("a").inc()
         c.labels("a").inc()
@@ -79,7 +79,7 @@ class TestMetricsFallback:
         assert all_vals[("b",)] == 1
 
     def test_fallback_histogram_observe(self):
-        from services.metrics import _FallbackHistogram
+        from services.observability.prom_metrics import _FallbackHistogram
         h = _FallbackHistogram("test_hist", "test", ["label1"])
         h.labels("a").observe(0.5)
         h.labels("a").observe(1.5)
@@ -88,7 +88,7 @@ class TestMetricsFallback:
         assert sum(all_vals[("a",)]) == 2.0
 
     def test_fallback_gauge_set_and_inc_dec(self):
-        from services.metrics import _FallbackGauge
+        from services.observability.prom_metrics import _FallbackGauge
         g = _FallbackGauge("test_gauge", "test")
         g.set(10.0)
         assert g.get_all()[()] == 10.0
@@ -107,14 +107,14 @@ class TestCrashHandler:
     """Tests for the crash dump handler."""
 
     def test_get_recent_crashes_empty(self):
-        from services.crash_handler import get_recent_crashes
+        from services.infrastructure.crash_handler import get_recent_crashes
         # Should return a list (possibly empty)
         result = get_recent_crashes()
         assert isinstance(result, list)
 
     def test_crash_dump_writes_json(self, tmp_path):
         """Simulate a crash and verify dump file is valid JSON."""
-        import services.crash_handler as ch
+        import services.infrastructure.crash_handler as ch
         original_dir = ch.CRASH_DIR
         ch.CRASH_DIR = tmp_path / "crashes"
 
@@ -138,8 +138,8 @@ class TestCrashHandler:
             ch.CRASH_DIR = original_dir
 
     def test_clear_crashes(self, tmp_path):
-        import services.crash_handler as ch
-        from services.crash_handler import clear_crashes
+        import services.infrastructure.crash_handler as ch
+        from services.infrastructure.crash_handler import clear_crashes
         original_dir = ch.CRASH_DIR
         ch.CRASH_DIR = tmp_path / "crashes"
 
@@ -162,12 +162,12 @@ class TestStructuredLog:
     """Tests for the structured logging wrapper."""
 
     def test_configure_logging_no_error(self):
-        from services.structured_log import configure_logging
+        from services.observability.structured_log import configure_logging
         # Should not raise even without structlog
         configure_logging()
 
     def test_bind_context(self):
-        from services.structured_log import bind_context, get_bound_context
+        from services.observability.structured_log import bind_context, get_bound_context
         bind_context(run_id="test-run-123", aspect_id="nyx", workspace="/tmp/ws")
         ctx = get_bound_context()
         assert ctx["run_id"] == "test-run-123"
@@ -175,12 +175,12 @@ class TestStructuredLog:
         assert ctx["workspace"] == "/tmp/ws"
 
     def test_get_logger_returns_logger(self):
-        from services.structured_log import get_logger
+        from services.observability.structured_log import get_logger
         log = get_logger("test")
         assert log is not None
 
     def test_structlog_availability_flag(self):
-        from services.structured_log import STRUCTLOG_AVAILABLE
+        from services.observability.structured_log import STRUCTLOG_AVAILABLE
         # Should be a bool
         assert isinstance(STRUCTLOG_AVAILABLE, bool)
 

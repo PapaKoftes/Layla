@@ -598,7 +598,7 @@ def get_skills_prompt_hint(cfg: dict | None = None) -> str:
     out = "\n".join(lines) + "\n"
     if cfg is not None:
         try:
-            from services.markdown_skills import load_markdown_skills_prompt
+            from services.skills.markdown_skills import load_markdown_skills_prompt
 
             extra = load_markdown_skills_prompt(cfg)
             if extra:

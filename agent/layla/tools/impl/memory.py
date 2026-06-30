@@ -38,7 +38,7 @@ def save_note(content: str, tag: str = "note") -> dict:
     try:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
-        from services.memory_router import save_learning  # canonical write path
+        from services.memory.memory_router import save_learning  # canonical write path
         save_learning(content=content[:800], kind=tag)
         return {"ok": True, "saved": content[:100]}
     except Exception as e:
@@ -108,7 +108,7 @@ def vector_store(text: str, metadata: dict | None = None, collection: str = "mem
     try:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
-        from services.memory_router import save_learning  # canonical write path
+        from services.memory.memory_router import save_learning  # canonical write path
         meta = metadata or {}
         kind = meta.get("kind", "tool_store")
         save_learning(content=text[:800], kind=kind)
@@ -185,7 +185,7 @@ def memory_elasticsearch_search(query: str, limit: int = 20) -> dict:
     """Search learnings in Elasticsearch when elasticsearch_enabled (read-only)."""
     try:
         import runtime_safety
-        from services.elasticsearch_bridge import search_learnings
+        from services.retrieval.elasticsearch_bridge import search_learnings
 
         return search_learnings(runtime_safety.load_config(), query, limit=limit)
     except Exception as e:
@@ -197,7 +197,7 @@ def ingest_chat_export_to_knowledge(export_path: str, label: str = "") -> dict:
     Export file must be under sandbox_root; output is always under knowledge/_ingested/chats/.
     """
     try:
-        from services.doc_ingestion import ingest_chat_export
+        from services.workspace.doc_ingestion import ingest_chat_export
 
         return ingest_chat_export(export_path, label=label)
     except Exception as e:
@@ -221,7 +221,7 @@ def codex_suggest_update(workspace_root: str = "", goal_hint: str = "", recent_a
     if not _tools_registry.inside_sandbox(p):
         return {"ok": False, "error": "workspace_root outside sandbox"}
     try:
-        from services.relationship_codex import suggest_codex_updates
+        from services.memory.relationship_codex import suggest_codex_updates
 
         return suggest_codex_updates(p, goal_hint, recent_actions)
     except Exception as e:

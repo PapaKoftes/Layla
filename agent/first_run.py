@@ -20,7 +20,7 @@ REPO_ROOT = AGENT_DIR.parent
 
 def detect_ram_gb() -> float:
     try:
-        from services.hardware_detect import detect_hardware
+        from services.infrastructure.hardware_detect import detect_hardware
         return detect_hardware()["ram_gb"]
     except Exception:
         try:
@@ -33,7 +33,7 @@ def detect_ram_gb() -> float:
 def detect_gpu() -> tuple[str, float]:
     """Returns (vendor, vram_gb). vendor = 'nvidia' | 'amd' | 'none'."""
     try:
-        from services.hardware_detect import detect_hardware
+        from services.infrastructure.hardware_detect import detect_hardware
         h = detect_hardware()
         vendor = h.get("gpu_vendor", "none") or "none"
         return vendor, h.get("vram_gb", 0.0)
@@ -269,7 +269,7 @@ def run() -> int:
 
     # Detect hardware
     try:
-        from services.hardware_detect import detect_hardware
+        from services.infrastructure.hardware_detect import detect_hardware
         h = detect_hardware()
         ram_gb = h["ram_gb"]
         vram_gb = h["vram_gb"]
@@ -384,13 +384,13 @@ def run() -> int:
 # Ensure the Web setup flow and CLI wizard share one source of truth.
 # Rebind these names to the shared engine implementation (global lookup happens at call time).
 try:
-    from services.setup_engine import DEFAULTS as DEFAULTS  # type: ignore[no-redef]
-    from services.setup_engine import MODELS_CATALOG as _MODELS_CATALOG  # type: ignore[no-redef]
-    from services.setup_engine import detect_gpu as detect_gpu  # type: ignore[no-redef]
-    from services.setup_engine import detect_ram_gb as detect_ram_gb  # type: ignore[no-redef]
-    from services.setup_engine import load_existing as load_existing  # type: ignore[no-redef]
-    from services.setup_engine import recommend_model as recommend_model  # type: ignore[no-redef]
-    from services.setup_engine import save_config as save_config  # type: ignore[no-redef]
+    from services.infrastructure.setup_engine import DEFAULTS as DEFAULTS  # type: ignore[no-redef]
+    from services.infrastructure.setup_engine import MODELS_CATALOG as _MODELS_CATALOG  # type: ignore[no-redef]
+    from services.infrastructure.setup_engine import detect_gpu as detect_gpu  # type: ignore[no-redef]
+    from services.infrastructure.setup_engine import detect_ram_gb as detect_ram_gb  # type: ignore[no-redef]
+    from services.infrastructure.setup_engine import load_existing as load_existing  # type: ignore[no-redef]
+    from services.infrastructure.setup_engine import recommend_model as recommend_model  # type: ignore[no-redef]
+    from services.infrastructure.setup_engine import save_config as save_config  # type: ignore[no-redef]
 except Exception:
     pass
 

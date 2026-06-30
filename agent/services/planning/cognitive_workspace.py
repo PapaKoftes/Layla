@@ -38,7 +38,7 @@ APPROACHES = {
 def _generate_approaches(goal: str) -> list[dict[str, Any]]:
     """Generate 3 candidate approaches for the goal. Uses LLM when available."""
     try:
-        from services.llm_gateway import run_completion
+        from services.llm.llm_gateway import run_completion
         prompt = (
             f"Goal: {goal[:500]}\n\n"
             "Three possible approaches:\n"
@@ -70,7 +70,7 @@ def _generate_approaches(goal: str) -> list[dict[str, Any]]:
 def _evaluate_approaches(goal: str, approaches: list[dict]) -> dict[str, Any]:
     """Evaluate which approach is most promising. Returns {chosen_id, chosen_key, rationale}."""
     try:
-        from services.llm_gateway import run_completion
+        from services.llm.llm_gateway import run_completion
         approaches_str = "\n".join(
             f"{a.get('id','')}) {a.get('name','')}: {a.get('brief','')}" for a in approaches[:3]
         )

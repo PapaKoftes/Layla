@@ -40,8 +40,8 @@ def test_autonomous_run_concurrent_batch_read_and_list_dir(tmp_path, monkeypatch
     }
 
     monkeypatch.setattr(runtime_safety, "load_config", lambda: base_cfg)
-    monkeypatch.setattr("services.planner.should_plan", lambda *a, **k: False)
-    monkeypatch.setattr("services.cognitive_workspace.should_use_cognitive_workspace", lambda *a, **k: False)
+    monkeypatch.setattr("services.planning.planner.should_plan", lambda *a, **k: False)
+    monkeypatch.setattr("services.planning.cognitive_workspace.should_use_cognitive_workspace", lambda *a, **k: False)
 
     n = {"c": 0}
 

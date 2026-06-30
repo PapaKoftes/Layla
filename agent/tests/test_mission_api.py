@@ -30,7 +30,7 @@ def test_mission_create_body_fields_propagate(monkeypatch):
     def _fake_run_mission(_mission_id):
         return True
 
-    import services.mission_manager as mm
+    import services.planning.mission_manager as mm
 
     monkeypatch.setattr(mm, "create_mission", _fake_create_mission)
     monkeypatch.setattr(mm, "run_mission", _fake_run_mission)

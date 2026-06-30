@@ -79,7 +79,7 @@ def run_clarifier(
     Returns {"status": "ok"} or {"status": "needs_input", "questions": [...]}.
     """
     try:
-        from services.llm_gateway import run_completion
+        from services.llm.llm_gateway import run_completion
     except Exception as e:
         logger.warning("engineering_pipeline clarifier: no llm %s", e)
         return {"status": "ok"}
@@ -121,7 +121,7 @@ def run_clarifier(
 def run_critic_wrong(plan_json: str, goal: str, cfg: dict) -> list[str]:
     """Critic A: argue the plan is wrong."""
     try:
-        from services.llm_gateway import run_completion
+        from services.llm.llm_gateway import run_completion
     except Exception:
         return ["Assume plan may be wrong; verify assumptions manually."]
 
@@ -147,7 +147,7 @@ def run_critic_wrong(plan_json: str, goal: str, cfg: dict) -> list[str]:
 def run_critic_incomplete(plan_json: str, goal: str, cfg: dict) -> list[str]:
     """Critic B: argue the plan is incomplete."""
     try:
-        from services.llm_gateway import run_completion
+        from services.llm.llm_gateway import run_completion
     except Exception:
         return ["Assume missing verification steps."]
 
@@ -179,7 +179,7 @@ def run_refiner(
 ) -> list[dict]:
     """Return a single clean overwritten plan (list of step dicts)."""
     try:
-        from services.llm_gateway import run_completion
+        from services.llm.llm_gateway import run_completion
     except Exception:
         return plan
 
@@ -228,7 +228,7 @@ def run_validator(
     Mandatory gate for execute mode. Returns {ok, failure_report?, retry_suggested?}.
     """
     try:
-        from services.llm_gateway import run_completion
+        from services.llm.llm_gateway import run_completion
     except Exception:
         return {"ok": bool(all_steps_ok), "failure_report": "", "retry_suggested": False}
 
@@ -279,14 +279,14 @@ def run_plan_light(
             "conversation_id": conversation_id,
         }
 
-    from services.engine_plans import normalize_planner_steps
-    from services.planner import create_plan
+    from services.planning.engine_plans import normalize_planner_steps
+    from services.planning.planner import create_plan
 
     digest = ""
     wr = (workspace_root or "").strip()
     if wr:
         try:
-            from services.plan_workspace_store import prior_plans_digest
+            from services.planning.plan_workspace_store import prior_plans_digest
 
             digest = prior_plans_digest(wr, limit=8)
         except Exception:
@@ -313,7 +313,7 @@ def run_plan_light(
     prow = get_layla_plan(plan_row_id)
     if prow:
         try:
-            from services.plan_workspace_store import mirror_sqlite_plan
+            from services.planning.plan_workspace_store import mirror_sqlite_plan
 
             mirror_sqlite_plan(prow)
         except Exception:
@@ -323,7 +323,7 @@ def run_plan_light(
             from pathlib import Path
 
             from layla.tools.registry import inside_sandbox
-            from services.project_memory import persist_plan_to_memory
+            from services.memory.project_memory import persist_plan_to_memory
 
             wrp = Path(wr).expanduser().resolve()
             if inside_sandbox(wrp):
@@ -373,8 +373,8 @@ def run_execute_pipeline(
     """
     import time
 
-    from services.planner import create_plan, execute_plan, normalize_plan_steps_tools
-    from services.resource_manager import classify_load
+    from services.planning.planner import create_plan, execute_plan, normalize_plan_steps_tools
+    from services.infrastructure.resource_manager import classify_load
 
     t0 = time.perf_counter()
     cl = run_clarifier(goal, context, cfg, clarification_reply=clarification_reply)
@@ -383,7 +383,7 @@ def run_execute_pipeline(
         _qr = "\n".join(f"- {q}" for q in qs) if qs else "More information needed."
         try:
             import runtime_safety
-            from services.telemetry import log_event
+            from services.observability.telemetry import log_event
 
             log_event(
                 "engineering_pipeline_execute",
@@ -417,7 +417,7 @@ def run_execute_pipeline(
     wr = (workspace_root or "").strip()
     if wr:
         try:
-            from services.plan_workspace_store import prior_plans_digest
+            from services.planning.plan_workspace_store import prior_plans_digest
 
             digest = prior_plans_digest(wr, limit=8)
         except Exception:
@@ -458,7 +458,7 @@ def run_execute_pipeline(
     refined = run_refiner(plan, obj_a, obj_b, goal, cfg)
 
     from layla.memory.db import create_layla_plan, get_layla_plan, update_layla_plan
-    from services.engine_plans import normalize_planner_steps
+    from services.planning.engine_plans import normalize_planner_steps
 
     steps_norm = normalize_planner_steps(refined)
     strict = bool(cfg.get("planning_strict_mode"))
@@ -477,7 +477,7 @@ def run_execute_pipeline(
     prow = get_layla_plan(plan_row_id)
     if prow:
         try:
-            from services.plan_workspace_store import mirror_sqlite_plan
+            from services.planning.plan_workspace_store import mirror_sqlite_plan
 
             mirror_sqlite_plan(prow)
         except Exception:
@@ -573,7 +573,7 @@ def run_execute_pipeline(
 
     try:
         import runtime_safety
-        from services.telemetry import log_event
+        from services.observability.telemetry import log_event
 
         log_event(
             "engineering_pipeline_execute",

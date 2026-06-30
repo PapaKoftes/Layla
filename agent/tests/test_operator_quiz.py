@@ -1,4 +1,4 @@
-from services.operator_quiz import get_stage, score_answers
+from services.personality.operator_quiz import get_stage, score_answers
 
 
 def test_quiz_stage_exists():

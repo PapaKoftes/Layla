@@ -34,8 +34,8 @@ def handle_reasoning_intent(
     import agent_loop as _al
     import orchestrator
     import runtime_safety
-    from services.output_polish import polish_output as _polish_output
-    from services.system_head_builder import (
+    from services.infrastructure.output_polish import polish_output as _polish_output
+    from services.prompts.system_head_builder import (
         build_system_head as _build_system_head,
         enrich_deliberation_context as _enrich_deliberation_context,
     )
@@ -68,7 +68,7 @@ def handle_reasoning_intent(
     effective_history = conversation_history or []
     if effective_history and cfg.get("context_compression", True) and state.get("reasoning_mode") != "none":
         try:
-            from services.context_manager import (
+            from services.context.context_manager import (
                 effective_compact_threshold_ratio,
                 summarize_history,
             )
@@ -92,7 +92,7 @@ def handle_reasoning_intent(
     # ------------------------------------------------------------------
     if effective_history and cfg.get("llmlingua_compression_enabled", False):
         try:
-            from services.prompt_compressor import compress_conversation_history
+            from services.prompts.prompt_compressor import compress_conversation_history
 
             n_ctx = max(2048, int(cfg.get("n_ctx", 4096)))
             _keep_recent = max(4, int(cfg.get("context_sliding_keep_messages", 4) or 4))
@@ -167,7 +167,7 @@ def handle_reasoning_intent(
     deliberate = False
     if _delib_mode != "solo":
         try:
-            from services.debate_engine import run_deliberation as _run_delib
+            from services.planning.debate_engine import run_deliberation as _run_delib
 
             _delib_result = _run_delib(
                 goal=goal,
@@ -282,11 +282,11 @@ def handle_reasoning_intent(
     try:
         cfg_inline = runtime_safety.load_config()
         if cfg_inline.get("inline_initiative_enabled", False):
-            from services.maturity_engine import get_state as _get_maturity_state
+            from services.personality.maturity_engine import get_state as _get_maturity_state
 
             ms = _get_maturity_state()
             if ms.phase in ("adept", "veteran", "transcendent"):
-                from services.initiative_inline import maybe_append_inline_suggestion
+                from services.infrastructure.initiative_inline import maybe_append_inline_suggestion
 
                 text = maybe_append_inline_suggestion(text, state=state, cfg=cfg_inline)
     except Exception as _exc:
@@ -298,7 +298,7 @@ def handle_reasoning_intent(
     try:
         cfg_gate = runtime_safety.load_config()
         if bool(cfg_gate.get("completion_gate_enabled", False)):
-            from services.output_quality import passes_completion_gate
+            from services.infrastructure.output_quality import passes_completion_gate
 
             ok_gate, reasons = passes_completion_gate(goal=state.get("original_goal") or goal, text=text, state=state, cfg=cfg_gate)
             state["completion_gate_passed"] = bool(ok_gate)
@@ -353,7 +353,7 @@ def handle_reasoning_intent(
     # Save Echo aspect memory
     if text and not refused:
         try:
-            from services.outcome_writer import _maybe_save_echo_memory
+            from services.infrastructure.outcome_writer import _maybe_save_echo_memory
 
             _maybe_save_echo_memory(
                 aspect_id=active_aspect.get("id", ""),

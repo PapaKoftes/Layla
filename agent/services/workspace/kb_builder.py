@@ -40,7 +40,7 @@ Concepts:
   - CATEGORY: Hierarchical grouping (e.g. Python > Libraries > FastAPI)
 
 Usage:
-    from services.kb_builder import KBBuilder
+    from services.workspace.kb_builder import KBBuilder
 
     kb = KBBuilder()
 
@@ -80,7 +80,7 @@ _AGENT_DIR = Path(__file__).resolve().parent.parent
 def _cfg() -> dict:
     # Delegates to services.config_cache for mtime-invalidated single-source loader.
     try:
-        from services.config_cache import get_config
+        from services.infrastructure.config_cache import get_config
         return get_config()
     except Exception:
         return {}
@@ -370,7 +370,7 @@ def _build_articles_with_storm(topic: str, sources: list[str]) -> list[dict] | N
         import knowledge_storm
         # Check if we have an LLM backend available
         try:
-            from services.llm_gateway import run_completion
+            from services.llm.llm_gateway import run_completion
             # Verify LLM is reachable with a tiny probe
             probe = run_completion("Say OK", max_tokens=5, temperature=0.0)
             if not probe:
@@ -398,7 +398,7 @@ def _build_articles_with_storm(topic: str, sources: list[str]) -> list[dict] | N
             f"Topic: {topic}\n\nAvailable evidence:\n{evidence_block}\n\n"
             "Write the full article in Markdown:"
         )
-        from services.llm_gateway import run_completion
+        from services.llm.llm_gateway import run_completion
         resp = run_completion(prompt, max_tokens=2000, temperature=0.3)
         text = resp if isinstance(resp, str) else ""
         if not text:
@@ -427,7 +427,7 @@ def _build_articles_with_storm(topic: str, sources: list[str]) -> list[dict] | N
     except Exception as exc:
         logger.debug("kb_builder: STORM failed: %s", exc)
         try:
-            from services.degraded import mark_degraded
+            from services.infrastructure.degraded import mark_degraded
             mark_degraded("storm", str(exc))
         except Exception:
             pass
@@ -448,7 +448,7 @@ def extract_entities_graphrag(text: str) -> dict[str, list[str]]:
         try:
             import json as _json
 
-            from services.llm_gateway import run_completion
+            from services.llm.llm_gateway import run_completion
 
             prompt = (
                 "Extract all named entities from the following text. "

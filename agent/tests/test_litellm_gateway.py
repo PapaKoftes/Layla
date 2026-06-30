@@ -42,32 +42,32 @@ def _make_mock_stream_chunks(texts):
 
 class TestExtractProviderName:
     def test_slash_format(self):
-        from services.litellm_gateway import _extract_provider_name
+        from services.llm.litellm_gateway import _extract_provider_name
         assert _extract_provider_name("anthropic/claude-3-5-sonnet") == "anthropic"
         assert _extract_provider_name("openai/gpt-4") == "openai"
         assert _extract_provider_name("groq/llama-3") == "groq"
 
     def test_gpt_prefix(self):
-        from services.litellm_gateway import _extract_provider_name
+        from services.llm.litellm_gateway import _extract_provider_name
         assert _extract_provider_name("gpt-4o") == "openai"
         assert _extract_provider_name("gpt-3.5-turbo") == "openai"
 
     def test_claude_prefix(self):
-        from services.litellm_gateway import _extract_provider_name
+        from services.llm.litellm_gateway import _extract_provider_name
         assert _extract_provider_name("claude-3-opus") == "anthropic"
 
     def test_gemini_prefix(self):
-        from services.litellm_gateway import _extract_provider_name
+        from services.llm.litellm_gateway import _extract_provider_name
         assert _extract_provider_name("gemini-pro") == "google"
 
     def test_unknown(self):
-        from services.litellm_gateway import _extract_provider_name
+        from services.llm.litellm_gateway import _extract_provider_name
         result = _extract_provider_name("some-random-model")
         assert isinstance(result, str)
         assert len(result) > 0
 
     def test_o1_prefix(self):
-        from services.litellm_gateway import _extract_provider_name
+        from services.llm.litellm_gateway import _extract_provider_name
         assert _extract_provider_name("o1-mini") == "openai"
 
 
@@ -76,14 +76,14 @@ class TestExtractProviderName:
 
 class TestPromptToMessages:
     def test_simple_prompt(self):
-        from services.litellm_gateway import prompt_to_messages
+        from services.llm.litellm_gateway import prompt_to_messages
         msgs = prompt_to_messages("Hello, world!")
         assert len(msgs) == 1
         assert msgs[0]["role"] == "user"
         assert msgs[0]["content"] == "Hello, world!"
 
     def test_empty_prompt(self):
-        from services.litellm_gateway import prompt_to_messages
+        from services.llm.litellm_gateway import prompt_to_messages
         msgs = prompt_to_messages("")
         assert len(msgs) == 1
         assert msgs[0]["content"] == ""
@@ -94,7 +94,7 @@ class TestPromptToMessages:
 
 class TestGatewayConfig:
     def test_load_config_defaults(self):
-        from services.litellm_gateway import _load_gateway_config
+        from services.llm.litellm_gateway import _load_gateway_config
         cfg = _load_gateway_config()
         assert "enabled" in cfg
         assert "default_model" in cfg
@@ -102,7 +102,7 @@ class TestGatewayConfig:
         assert "timeout" in cfg
 
     def test_disabled_by_default(self):
-        from services.litellm_gateway import _load_gateway_config
+        from services.llm.litellm_gateway import _load_gateway_config
         cfg = _load_gateway_config()
         assert cfg["enabled"] is False
 
@@ -112,22 +112,22 @@ class TestGatewayConfig:
 
 class TestIsAvailable:
     def test_disabled_returns_false(self):
-        from services.litellm_gateway import is_available
+        from services.llm.litellm_gateway import is_available
         # litellm_enabled defaults to False
         assert is_available() is False
 
-    @patch("services.litellm_gateway._load_gateway_config")
-    @patch("services.litellm_gateway._import_litellm")
+    @patch("services.llm.litellm_gateway._load_gateway_config")
+    @patch("services.llm.litellm_gateway._import_litellm")
     def test_enabled_with_litellm(self, mock_import, mock_cfg):
-        from services.litellm_gateway import is_available
+        from services.llm.litellm_gateway import is_available
         mock_cfg.return_value = {"enabled": True}
         mock_import.return_value = MagicMock()
         assert is_available() is True
 
-    @patch("services.litellm_gateway._load_gateway_config")
-    @patch("services.litellm_gateway._import_litellm")
+    @patch("services.llm.litellm_gateway._load_gateway_config")
+    @patch("services.llm.litellm_gateway._import_litellm")
     def test_enabled_without_litellm(self, mock_import, mock_cfg):
-        from services.litellm_gateway import is_available
+        from services.llm.litellm_gateway import is_available
         mock_cfg.return_value = {"enabled": True}
         mock_import.return_value = None
         assert is_available() is False
@@ -137,12 +137,12 @@ class TestIsAvailable:
 
 
 class TestComplete:
-    @patch("services.litellm_gateway._import_litellm")
-    @patch("services.litellm_gateway._load_gateway_config")
-    @patch("services.litellm_gateway._configure_api_keys")
+    @patch("services.llm.litellm_gateway._import_litellm")
+    @patch("services.llm.litellm_gateway._load_gateway_config")
+    @patch("services.llm.litellm_gateway._configure_api_keys")
     def test_basic_completion(self, mock_keys, mock_cfg, mock_import):
-        from services.litellm_gateway import complete
-        from services.provider_health import reset_all
+        from services.llm.litellm_gateway import complete
+        from services.infrastructure.provider_health import reset_all
         reset_all()
 
         mock_lit = MagicMock()
@@ -168,12 +168,12 @@ class TestComplete:
         assert result["latency_ms"] >= 0  # mock calls complete instantly; 0.0 is valid
         assert "usage" in result
 
-    @patch("services.litellm_gateway._import_litellm")
-    @patch("services.litellm_gateway._load_gateway_config")
-    @patch("services.litellm_gateway._configure_api_keys")
+    @patch("services.llm.litellm_gateway._import_litellm")
+    @patch("services.llm.litellm_gateway._load_gateway_config")
+    @patch("services.llm.litellm_gateway._configure_api_keys")
     def test_failover_to_next_provider(self, mock_keys, mock_cfg, mock_import):
-        from services.litellm_gateway import complete
-        from services.provider_health import reset_all
+        from services.llm.litellm_gateway import complete
+        from services.infrastructure.provider_health import reset_all
         reset_all()
 
         mock_lit = MagicMock()
@@ -207,12 +207,12 @@ class TestComplete:
         assert result["content"] == "Fallback reply"
         assert result["provider"] == "groq"
 
-    @patch("services.litellm_gateway._import_litellm")
-    @patch("services.litellm_gateway._load_gateway_config")
-    @patch("services.litellm_gateway._configure_api_keys")
+    @patch("services.llm.litellm_gateway._import_litellm")
+    @patch("services.llm.litellm_gateway._load_gateway_config")
+    @patch("services.llm.litellm_gateway._configure_api_keys")
     def test_all_fail_raises(self, mock_keys, mock_cfg, mock_import):
-        from services.litellm_gateway import complete
-        from services.provider_health import reset_all
+        from services.llm.litellm_gateway import complete
+        from services.infrastructure.provider_health import reset_all
         reset_all()
 
         mock_lit = MagicMock()
@@ -232,8 +232,8 @@ class TestComplete:
             complete([{"role": "user", "content": "Hello"}])
 
     def test_no_litellm_raises(self):
-        import services.litellm_gateway as mod
-        from services.litellm_gateway import complete
+        import services.llm.litellm_gateway as mod
+        from services.llm.litellm_gateway import complete
         old = mod._litellm
         mod._litellm = None
         with patch.object(mod, "_import_litellm", return_value=None):
@@ -246,12 +246,12 @@ class TestComplete:
 
 
 class TestCompleteStream:
-    @patch("services.litellm_gateway._import_litellm")
-    @patch("services.litellm_gateway._load_gateway_config")
-    @patch("services.litellm_gateway._configure_api_keys")
+    @patch("services.llm.litellm_gateway._import_litellm")
+    @patch("services.llm.litellm_gateway._load_gateway_config")
+    @patch("services.llm.litellm_gateway._configure_api_keys")
     def test_stream_yields_chunks(self, mock_keys, mock_cfg, mock_import):
-        from services.litellm_gateway import complete_stream
-        from services.provider_health import reset_all
+        from services.llm.litellm_gateway import complete_stream
+        from services.infrastructure.provider_health import reset_all
         reset_all()
 
         chunks = _make_mock_stream_chunks(["Hello", " ", "world"])
@@ -274,12 +274,12 @@ class TestCompleteStream:
         ))
         assert result == ["Hello", " ", "world"]
 
-    @patch("services.litellm_gateway._import_litellm")
-    @patch("services.litellm_gateway._load_gateway_config")
-    @patch("services.litellm_gateway._configure_api_keys")
+    @patch("services.llm.litellm_gateway._import_litellm")
+    @patch("services.llm.litellm_gateway._load_gateway_config")
+    @patch("services.llm.litellm_gateway._configure_api_keys")
     def test_stream_failover(self, mock_keys, mock_cfg, mock_import):
-        from services.litellm_gateway import complete_stream
-        from services.provider_health import reset_all
+        from services.llm.litellm_gateway import complete_stream
+        from services.infrastructure.provider_health import reset_all
         reset_all()
 
         def side_effect(**kwargs):
@@ -312,12 +312,12 @@ class TestCompleteStream:
 
 
 class TestRunCompletionLitellm:
-    @patch("services.litellm_gateway._import_litellm")
-    @patch("services.litellm_gateway._load_gateway_config")
-    @patch("services.litellm_gateway._configure_api_keys")
+    @patch("services.llm.litellm_gateway._import_litellm")
+    @patch("services.llm.litellm_gateway._load_gateway_config")
+    @patch("services.llm.litellm_gateway._configure_api_keys")
     def test_returns_openai_compatible_format(self, mock_keys, mock_cfg, mock_import):
-        from services.litellm_gateway import run_completion_litellm
-        from services.provider_health import reset_all
+        from services.llm.litellm_gateway import run_completion_litellm
+        from services.infrastructure.provider_health import reset_all
         reset_all()
 
         mock_lit = MagicMock()
@@ -340,12 +340,12 @@ class TestRunCompletionLitellm:
         assert result["choices"][0]["message"]["content"] == "Compat test"
         assert "_litellm_meta" in result
 
-    @patch("services.litellm_gateway._import_litellm")
-    @patch("services.litellm_gateway._load_gateway_config")
-    @patch("services.litellm_gateway._configure_api_keys")
+    @patch("services.llm.litellm_gateway._import_litellm")
+    @patch("services.llm.litellm_gateway._load_gateway_config")
+    @patch("services.llm.litellm_gateway._configure_api_keys")
     def test_stream_returns_generator(self, mock_keys, mock_cfg, mock_import):
-        from services.litellm_gateway import run_completion_litellm
-        from services.provider_health import reset_all
+        from services.llm.litellm_gateway import run_completion_litellm
+        from services.infrastructure.provider_health import reset_all
         reset_all()
 
         chunks = _make_mock_stream_chunks(["Hi", "!"])
@@ -374,7 +374,7 @@ class TestRunCompletionLitellm:
 
 class TestGetGatewayInfo:
     def test_returns_dict(self):
-        from services.litellm_gateway import get_gateway_info
+        from services.llm.litellm_gateway import get_gateway_info
         info = get_gateway_info()
         assert isinstance(info, dict)
         assert "installed" in info
@@ -404,10 +404,10 @@ class TestRuntimeSafetyConfig:
 
 class TestInferenceRouterBackend:
     def test_litellm_backend_recognized(self):
-        from services.inference_router import _detect_backend
+        from services.llm.inference_router import _detect_backend
         cfg = {"inference_backend": "litellm"}
         assert _detect_backend(cfg) == "litellm"
 
     def test_litellm_in_backends_list(self):
-        from services.inference_router import _BACKENDS
+        from services.llm.inference_router import _BACKENDS
         assert "litellm" in _BACKENDS

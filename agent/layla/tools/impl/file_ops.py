@@ -234,7 +234,7 @@ def sync_repo_cognition(
         if not inside_sandbox(p):
             return {"ok": False, "error": f"Outside sandbox: {r}"}
     try:
-        from services.repo_cognition import sync_repo_cognition as _sync
+        from services.workspace.repo_cognition import sync_repo_cognition as _sync
 
         return _sync(roots, index_semantic=index_semantic)
     except Exception as e:
@@ -247,7 +247,7 @@ def scan_repo(workspace_root: str = "", dry_run: bool = False, max_files: int = 
     Requires allow_write + approval (writes under workspace).
     """
     import runtime_safety
-    from services import project_memory as pm
+    from services.memory import project_memory as pm
 
     cfg = runtime_safety.load_config()
     wr = (workspace_root or "").strip()
@@ -263,7 +263,7 @@ def scan_repo(workspace_root: str = "", dry_run: bool = False, max_files: int = 
 def update_project_memory(workspace_root: str = "", patch: dict | None = None) -> dict:
     """Merge a JSON patch into `.layla/project_memory.json` (plan, todos, decisions, file notes)."""
     import runtime_safety
-    from services import project_memory as pm
+    from services.memory import project_memory as pm
 
     cfg = runtime_safety.load_config()
     wr = (workspace_root or "").strip()
@@ -1169,7 +1169,7 @@ def merge_pdf(paths: list, output: str) -> dict:
 
 def list_file_checkpoints(path_filter: str = "", limit: int = 50) -> dict:
     """List recent file checkpoints (pre-write snapshots). Optional path_filter limits to one file."""
-    from services.file_checkpoints import list_checkpoints
+    from services.workspace.file_checkpoints import list_checkpoints
 
     pf: str | None = None
     raw = (path_filter or "").strip()
@@ -1189,7 +1189,7 @@ def list_file_checkpoints(path_filter: str = "", limit: int = 50) -> dict:
 
 def restore_file_checkpoint(checkpoint_id: str) -> dict:
     """Restore a file from a checkpoint id (see list_file_checkpoints). Overwrites current file."""
-    from services.file_checkpoints import restore_checkpoint
+    from services.workspace.file_checkpoints import restore_checkpoint
 
     cid = (checkpoint_id or "").strip()
     if not cid:

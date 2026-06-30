@@ -14,7 +14,7 @@ Each mode follows a 3-phase pipeline:
   3. Synthesis - merge into a unified response with noted disagreements
 
 Usage:
-    from services.debate_engine import run_deliberation
+    from services.planning.debate_engine import run_deliberation
 
     result = run_deliberation(
         goal="Should I refactor or rewrite?",
@@ -417,7 +417,7 @@ def _run_aspect_completion(aspect_id: str, cfg: dict, prompt: str, params: dict)
     capture and restore the prior value to avoid leaking one aspect's model into the
     next call on the same worker thread.
     """
-    from services.llm_gateway import get_model_override, run_completion, set_model_override
+    from services.llm.llm_gateway import get_model_override, run_completion, set_model_override
     override = _aspect_model_override(aspect_id, cfg)
     if not override:
         return run_completion(prompt, **params)
@@ -438,7 +438,7 @@ def _generate_aspect_response(
     """
     Phase 1: Generate a single aspect's independent response to the goal.
     """
-    from services.llm_gateway import run_completion
+    from services.llm.llm_gateway import run_completion
 
     aspect = _load_aspect_personality(aspect_id)
     sys_prompt = _build_aspect_system_prompt(aspect)
@@ -470,7 +470,7 @@ def _generate_critiques(
     Each aspect reads what the others said and provides constructive critique,
     identifying strengths, weaknesses, and blind spots.
     """
-    from services.llm_gateway import run_completion
+    from services.llm.llm_gateway import run_completion
 
     aspect = _load_aspect_personality(aspect_id)
     name = aspect.get("name", aspect_id.capitalize())
@@ -520,7 +520,7 @@ def _synthesize(
     Returns (final_response, synthesis_notes).
     Morrigan leads the synthesis by default (implementation authority).
     """
-    from services.llm_gateway import run_completion
+    from services.llm.llm_gateway import run_completion
 
     # Build the full deliberation transcript
     responses_block = ""

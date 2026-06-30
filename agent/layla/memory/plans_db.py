@@ -32,7 +32,7 @@ def save_study_plan(plan_id: str, topic: str, status: str = "active", domain_id:
             )
         db.commit()
     try:
-        from services.personal_knowledge_graph import invalidate_personal_graph
+        from services.memory.personal_knowledge_graph import invalidate_personal_graph
         invalidate_personal_graph()
     except Exception:
         pass

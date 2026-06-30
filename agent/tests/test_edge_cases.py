@@ -26,7 +26,7 @@ class TestEdgeCases:
     @pytest.mark.parametrize("text", EDGE_INPUTS)
     def test_clean_output_handles_edge(self, text):
         """clean_output should handle any input without crashing."""
-        from services.output_quality import clean_output
+        from services.infrastructure.output_quality import clean_output
 
         try:
             result = clean_output(text or "")
@@ -37,7 +37,7 @@ class TestEdgeCases:
     @pytest.mark.parametrize("text", EDGE_INPUTS)
     def test_filter_learning_handles_edge(self, text):
         """filter_learning should handle any input without crashing."""
-        from services.learning_filter import filter_learning
+        from services.memory.learning_filter import filter_learning
 
         try:
             passed, filtered, reason = filter_learning(text)
@@ -86,7 +86,7 @@ class TestEdgeCases:
     @pytest.mark.parametrize("text", EDGE_INPUTS)
     def test_is_safe_url_handles_edge(self, text):
         """_is_safe_url should never crash, even on garbage inputs."""
-        from services.browser import _is_safe_url
+        from services.infrastructure.browser import _is_safe_url
 
         try:
             result = _is_safe_url(text)

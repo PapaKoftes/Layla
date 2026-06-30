@@ -69,10 +69,11 @@ def test_golden_chat_tool_approve_then_reason(tmp_path, monkeypatch, golden_pend
     import layla.tools.registry as tools_registry
     import routers.agent as agent_router
     import runtime_safety
-    import services.coordinator as coordinator_mod
-    import services.tool_policy as tool_policy
+    import services.planning.coordinator as coordinator_mod
+    import services.tools.tool_policy as tool_policy
     from main import app
-    from services import model_router, planner
+    from services.llm import model_router
+    from services.planning import planner
 
     target = tmp_path / "golden_e2e.txt"
     # Path must contain ":" or "\\" for _extract_file_and_content
@@ -118,7 +119,7 @@ def test_golden_chat_tool_approve_then_reason(tmp_path, monkeypatch, golden_pend
     monkeypatch.setattr(file_ops_mod, "inside_sandbox", lambda _p: True)
     monkeypatch.setattr(agent_router, "_model_ready_message", lambda: None)
     # Disable prompt optimizer so goal text is not modified (would break _extract_path/_extract_file_and_content)
-    import services.prompt_optimizer as _prompt_opt
+    import services.prompts.prompt_optimizer as _prompt_opt
     monkeypatch.setattr(_prompt_opt, "optimize", lambda msg, **kw: {"original": msg, "optimized": msg, "changed": False, "intent": "unknown", "tier": 0})
 
     client = TestClient(app)

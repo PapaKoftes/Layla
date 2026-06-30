@@ -79,8 +79,8 @@ def _run_agent_step(
     tools_list: list[str],
 ) -> dict[str, Any]:
     """Set thread-local tool allowlist when tools_list non-empty; filter kwargs for autonomous_run."""
-    from services.engine_plans import _is_low_quality
-    from services.tool_allowlist_context import clear_plan_step_tool_allowlist, set_plan_step_tool_allowlist
+    from services.planning.engine_plans import _is_low_quality
+    from services.tools.tool_allowlist_context import clear_plan_step_tool_allowlist, set_plan_step_tool_allowlist
 
     names = [str(t).strip() for t in (tools_list or []) if str(t).strip()]
     if names:
@@ -195,7 +195,7 @@ def build_planning_bias_prompt(
     """Prior-turn evaluation + recent tool failures + persona + toolchain hint for create_plan."""
     parts: list[str] = []
     try:
-        from services.session_context import get_or_create_session
+        from services.infrastructure.session_context import get_or_create_session
 
         ev = get_or_create_session(conversation_id).get_outcome_evaluation()
         if isinstance(ev, dict) and ev.get("score") is not None:
@@ -220,7 +220,7 @@ def build_planning_bias_prompt(
                     f"Last run wall time ~{m.get('wall_time_seconds')}s, tool steps: {m.get('tool_step_count', '?')}."
                 )
             try:
-                from services.outcome_evaluation import policy_caps_trace_from_evaluation
+                from services.infrastructure.outcome_evaluation import policy_caps_trace_from_evaluation
 
                 _caps_tr = policy_caps_trace_from_evaluation(ev)
                 if _caps_tr.get("require_verify_before_mutate"):
@@ -265,7 +265,7 @@ def build_planning_bias_prompt(
     if pb:
         parts.append(pb)
     try:
-        from services.toolchain_awareness import toolchain_planning_hint
+        from services.tools.toolchain_awareness import toolchain_planning_hint
 
         th = toolchain_planning_hint()
         if th:
@@ -273,7 +273,7 @@ def build_planning_bias_prompt(
     except Exception:
         pass
     try:
-        from services.toolchain_graph import planner_toolchain_cost_line
+        from services.tools.toolchain_graph import planner_toolchain_cost_line
 
         cg = planner_toolchain_cost_line(goal)
         if cg:
@@ -329,7 +329,7 @@ def create_plan(
     if not goal or not goal.strip():
         return []
     try:
-        from services.plan_templates import fill_open_plan_steps, match_skeleton_plan, skeleton_with_open_slots
+        from services.planning.plan_templates import fill_open_plan_steps, match_skeleton_plan, skeleton_with_open_slots
 
         sk = match_skeleton_plan(goal, cfg)
         if sk:
@@ -340,7 +340,7 @@ def create_plan(
     except Exception:
         pass
     try:
-        from services.llm_gateway import run_completion
+        from services.llm.llm_gateway import run_completion
         tools_list = (
             "list_dir, read_file, grep_code, python_ast, security_scan, fetch_url, "
             "ddg_search, search_memories, write_file, apply_patch, workspace_map, "
@@ -493,7 +493,7 @@ def run_governed_plan_step(
     Shared by execute_plan and file-backed engine_plans.
     Either agent_result_fn(goal) -> dict (file-plan path) or agent_run_fn + agent_kwargs (SQLite path).
     """
-    from services.plan_step_governance import low_confidence_response, validate_step_outcome
+    from services.planning.plan_step_governance import low_confidence_response, validate_step_outcome
 
     ak = agent_kwargs if isinstance(agent_kwargs, dict) else {}
     dm = max(0, min(3, int(default_max_retries) if isinstance(default_max_retries, int) else 1))
@@ -509,7 +509,7 @@ def run_governed_plan_step(
         tools_hint = []
 
     if retry_suffix_fn is None:
-        from services.plan_execution_prompts import sqlite_step_retry_suffix as _suffix
+        from services.planning.plan_execution_prompts import sqlite_step_retry_suffix as _suffix
 
         retry_suffix_fn = _suffix
 
@@ -532,7 +532,7 @@ def run_governed_plan_step(
             suffix = retry_suffix_fn(attempt, mr) if attempt > 0 else ""
             if attempt > 0 and bool(_cfg_gov.get("autonomy_optimizer_enabled", False)):
                 try:
-                    from services.autonomy_optimizer import (
+                    from services.infrastructure.autonomy_optimizer import (
                         last_failed_tool_from_agent_response,
                         propose_step_recovery,
                     )
@@ -900,8 +900,8 @@ def execute_plan_with_optional_graph(
         done_row["task"] = task
         return done_row
 
-    from services.coordinator import run_with_plan_graph
-    from services.trace_export import maybe_span
+    from services.planning.coordinator import run_with_plan_graph
+    from services.observability.trace_export import maybe_span
 
     with maybe_span(c, "plan_execution", steps=len(norm), graph_enabled="true"):
         try:

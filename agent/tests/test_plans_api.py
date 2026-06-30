@@ -80,7 +80,7 @@ def test_plans_create_list_get_patch_approve(client, monkeypatch):
 
 
 def test_plans_execute_calls_planner(monkeypatch, client):
-    from services import planner as planner_mod
+    from services.planning import planner as planner_mod
 
     called = []
 
@@ -130,7 +130,7 @@ def test_plans_approve_rejects_empty_steps(client):
 
 
 def test_plans_approve_rejects_edit_without_tools_when_required(client, monkeypatch):
-    import services.plan_step_governance as psg
+    import services.planning.plan_step_governance as psg
     import services.planning.plan_step_governance as psg_real
 
     monkeypatch.setattr(psg, "_plan_governance_require_nonempty_tools", lambda: True)

@@ -8,7 +8,7 @@ Fallback: pyttsx3 (system TTS, zero download, lower quality).
 Falls back gracefully if neither is installed.
 
 Usage:
-    from services.tts import speak_to_bytes
+    from services.infrastructure.tts import speak_to_bytes
     wav_bytes = speak_to_bytes("Hello, I'm Layla.")  # returns WAV bytes
 """
 from __future__ import annotations
@@ -120,7 +120,7 @@ def _get_tts():
             return _tts_engine
         try:
             import runtime_safety
-            from services.dependency_recovery import ensure_feature, merge_recovery_message
+            from services.infrastructure.dependency_recovery import ensure_feature, merge_recovery_message
 
             _cfg = runtime_safety.load_config()
             _tts_recovery = None

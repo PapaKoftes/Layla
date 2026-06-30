@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 
 from layla.time_utils import utcnow
 from routers.paths import REPO_ROOT
-from services.route_helpers import sync_compact_history
+from services.infrastructure.route_helpers import sync_compact_history
 from shared_state import get_history, get_read_pending
 from version import __version__
 
@@ -25,7 +25,7 @@ def _redact_secrets(cfg: dict[str, Any]) -> dict[str, Any]:
     """Mask credential-bearing config values while keeping the keys visible, so
     /system_export stays useful for diagnostics without leaking secrets.
     Delegates to the shared secret_filter (single source of truth)."""
-    from services.secret_filter import redact_secrets
+    from services.safety.secret_filter import redact_secrets
     return redact_secrets(cfg)
 
 
@@ -38,8 +38,8 @@ async def compact_conversation():
 @router.get("/ctx_viz")
 def ctx_viz():
     import runtime_safety
-    from services.context_budget import get_budgets
-    from services.context_manager import token_estimate_messages
+    from services.context.context_budget import get_budgets
+    from services.context.context_manager import token_estimate_messages
 
     cfg = runtime_safety.load_config()
     n_ctx = int(cfg.get("n_ctx", 4096))

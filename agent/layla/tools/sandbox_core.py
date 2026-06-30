@@ -170,7 +170,7 @@ def _agent_registry_dir() -> Path:
 def _maybe_file_checkpoint(target: Path, tool_name: str) -> None:
     try:
         import runtime_safety
-        from services.file_checkpoints import create_checkpoint
+        from services.workspace.file_checkpoints import create_checkpoint
 
         cfg = runtime_safety.load_config()
         if not cfg.get("file_checkpoint_enabled", True):

@@ -39,7 +39,7 @@ def _reset_shared_state():
         ss._most_recent_conv_id = None
     # ADR-002: also reset the new SessionContext store (steer hints etc. live here now)
     try:
-        from services import session_context as _sc
+        from services.infrastructure import session_context as _sc
         with _sc._sessions_lock:
             _sc._sessions.clear()
     except Exception:
@@ -117,7 +117,7 @@ class TestConvHistory:
         assert len(hist_b) == 0
 
     @patch("layla.memory.conversations.get_conversation_messages", return_value=[])
-    @patch("services.context_manager.maybe_auto_compact", side_effect=lambda msgs, **kw: msgs)
+    @patch("services.context.context_manager.maybe_auto_compact", side_effect=lambda msgs, **kw: msgs)
     @patch("runtime_safety.load_config", return_value={"n_ctx": 4096})
     def test_append_adds_messages(self, _mock_cfg, _mock_compact, _mock_db):
         ss.append_conv_history("conv1", "user", "Hello")

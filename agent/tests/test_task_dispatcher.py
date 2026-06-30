@@ -9,9 +9,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from services.task_dispatcher import TaskDispatcher
-from services.work_unit import TaskType, TaskPriority
-from services.cluster_network import Peer, PeerStatus, NodeRole
+from services.planning.task_dispatcher import TaskDispatcher
+from services.cluster.work_unit import TaskType, TaskPriority
+from services.cluster.cluster_network import Peer, PeerStatus, NodeRole
 
 
 @pytest.fixture
@@ -98,7 +98,7 @@ class TestDroneFinding:
             Peer(instance_id="d1", status=PeerStatus.ONLINE, current_load=0.8, current_tasks=1, max_concurrent_tasks=2),
             Peer(instance_id="d2", status=PeerStatus.ONLINE, current_load=0.2, current_tasks=0, max_concurrent_tasks=2),
         ]
-        with patch("services.cluster_network.get_cluster_network", return_value=mock_net):
+        with patch("services.cluster.cluster_network.get_cluster_network", return_value=mock_net):
             result = dispatcher._find_available_drone("embedding")
             assert result == "d2"
 
@@ -108,7 +108,7 @@ class TestDroneFinding:
         mock_net.get_online_drones.return_value = [
             Peer(instance_id="d1", status=PeerStatus.ONLINE, current_tasks=2, max_concurrent_tasks=2),
         ]
-        with patch("services.cluster_network.get_cluster_network", return_value=mock_net):
+        with patch("services.cluster.cluster_network.get_cluster_network", return_value=mock_net):
             result = dispatcher._find_available_drone("embedding")
             assert result is None
 
@@ -116,7 +116,7 @@ class TestDroneFinding:
         """Returns None when no drones are online."""
         mock_net = MagicMock()
         mock_net.get_online_drones.return_value = []
-        with patch("services.cluster_network.get_cluster_network", return_value=mock_net):
+        with patch("services.cluster.cluster_network.get_cluster_network", return_value=mock_net):
             result = dispatcher._find_available_drone("embedding")
             assert result is None
 

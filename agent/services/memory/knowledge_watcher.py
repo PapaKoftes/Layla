@@ -274,7 +274,7 @@ class KnowledgeWatcher:
     def _should_ingest(self) -> bool:
         """Check if the resource governor allows ingestion."""
         try:
-            from services.resource_governor import get_mode
+            from services.infrastructure.resource_governor import get_mode
             mode = get_mode().value
             return mode in ("breathe", "sprint")
         except Exception:
@@ -292,7 +292,7 @@ class KnowledgeWatcher:
                 logger.info("Knowledge watcher: ingested %s", path.name)
                 # Maturity: award XP for file ingestion
                 try:
-                    from services.maturity_engine import award_xp
+                    from services.personality.maturity_engine import award_xp
                     award_xp(8, reason=f"file_ingested:{path.name}"[:80])
                 except Exception:
                     pass
@@ -333,7 +333,7 @@ class KnowledgeWatcher:
                     logger.info("Knowledge watcher: stored %s as learning", path.name)
                     # Maturity: award XP for fallback file storage
                     try:
-                        from services.maturity_engine import award_xp
+                        from services.personality.maturity_engine import award_xp
                         award_xp(5, reason=f"file_stored:{path.name}"[:80])
                     except Exception:
                         pass

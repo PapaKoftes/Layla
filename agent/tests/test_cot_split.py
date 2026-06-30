@@ -1,7 +1,7 @@
 """Phase 4.1 — dual-model CoT split tests."""
 import pytest
 
-from services.model_router import (
+from services.llm.model_router import (
     _record_cot_phase,
     clear_cot_stats,
     get_cot_stats,

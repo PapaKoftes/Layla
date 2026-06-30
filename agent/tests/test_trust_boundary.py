@@ -13,7 +13,7 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-from services.auth import is_direct_local, real_client_ip  # noqa: E402
+from services.safety.auth import is_direct_local, real_client_ip  # noqa: E402
 
 
 class _Headers:
@@ -138,7 +138,7 @@ def test_ip_normalization_strips_port_and_validates():
 
 # ── REQ-11: auth-required-when-exposed by default ──────────────────────────────
 def test_require_auth_always_auto_on_when_exposed():
-    from services.auth import require_auth_always
+    from services.safety.auth import require_auth_always
     # auto (None) => on when exposed, off when local-only
     assert require_auth_always({"remote_enabled": True, "remote_require_auth_always": None}) is True
     assert require_auth_always({"remote_enabled": False, "remote_require_auth_always": None}) is False

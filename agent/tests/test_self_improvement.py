@@ -4,7 +4,7 @@ from __future__ import annotations
 def test_self_improvement_generate_and_approve(tmp_path, monkeypatch):
     monkeypatch.setenv("LAYLA_DB_PATH", str(tmp_path / "layla.db"))
 
-    from services.self_improvement import approve_batch, generate_proposals, list_proposals
+    from services.infrastructure.self_improvement import approve_batch, generate_proposals, list_proposals
 
     r = generate_proposals(session_summary="performance note", capability_levels={}, recent_failures=["x"])
     assert r["ok"] is True

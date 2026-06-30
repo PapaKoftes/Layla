@@ -14,7 +14,7 @@ logger = logging.getLogger("layla")
 def workspace_memory_is_sparse(workspace_root: Path) -> bool:
     """True when .layla/project_memory.json missing or has little structural content."""
     try:
-        from services.project_memory import load_project_memory, memory_file_path
+        from services.memory.project_memory import load_project_memory, memory_file_path
 
         root = workspace_root.resolve()
         p = memory_file_path(root)
@@ -51,7 +51,7 @@ def build_workspace_discovery_brief(workspace_root: str, cfg: dict[str, Any]) ->
         return ""
     try:
         from layla.tools.registry import inside_sandbox
-        from services.project_discovery import discover_project
+        from services.workspace.project_discovery import discover_project
 
         if not inside_sandbox(root):
             return ""

@@ -27,7 +27,7 @@ FAKE_MCP = AGENT_DIR / "tests" / "fixtures" / "fake_mcp_stdio.py"
 
 
 def _model_ready() -> bool:
-    from services.llm_gateway import model_loaded_status
+    from services.llm.llm_gateway import model_loaded_status
 
     return not bool(model_loaded_status().get("error"))
 
@@ -87,7 +87,7 @@ def test_live_post_agent_multi_tool_when_model_ready(tmp_path, monkeypatch):
 def test_subprocess_background_cancel_hard_kill(monkeypatch, tmp_path):
     """worker_mode subprocess + cancel while wait_worker_result blocks; task ends cancelled."""
     import runtime_safety
-    import services.background_subprocess as bgsp
+    import services.infrastructure.background_subprocess as bgsp
     from main import app
 
     orig_load = runtime_safety.load_config
@@ -146,9 +146,10 @@ def test_mcp_tools_call_in_autonomous_run_http(tmp_path, monkeypatch):
     import layla.memory.distill as distill_mod
     import routers.agent as agent_router
     import runtime_safety
-    import services.tool_policy as tool_policy
+    import services.tools.tool_policy as tool_policy
     from main import app
-    from services import model_router, planner
+    from services.llm import model_router
+    from services.planning import planner
 
     orig = runtime_safety.load_config
     fake_cfg = {

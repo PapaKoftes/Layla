@@ -24,7 +24,7 @@ async def obsidian_connect(request: Request):
     if not vault_path:
         return JSONResponse({"ok": False, "error": "vault_path is required"}, status_code=400)
     try:
-        from services.obsidian_sync import set_vault_path
+        from services.infrastructure.obsidian_sync import set_vault_path
         return set_vault_path(vault_path)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
@@ -34,7 +34,7 @@ async def obsidian_connect(request: Request):
 def obsidian_status():
     """Return vault connection status and last-sync info."""
     try:
-        from services.obsidian_sync import diff_vault, get_vault_path
+        from services.infrastructure.obsidian_sync import diff_vault, get_vault_path
         vp = get_vault_path()
         if vp is None:
             return {"connected": False, "vault_path": None}
@@ -56,7 +56,7 @@ def obsidian_status():
 def obsidian_diff():
     """Show what files would change on next sync (dry-run)."""
     try:
-        from services.obsidian_sync import diff_vault
+        from services.infrastructure.obsidian_sync import diff_vault
         return diff_vault(_REPO_ROOT)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
@@ -71,7 +71,7 @@ async def obsidian_sync(request: Request):
         body = {}
     force = bool((body or {}).get("force", False))
     try:
-        from services.obsidian_sync import sync_vault
+        from services.infrastructure.obsidian_sync import sync_vault
         return sync_vault(_REPO_ROOT, force=force)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
@@ -81,7 +81,7 @@ async def obsidian_sync(request: Request):
 def obsidian_suggest(n: int = 10):
     """Suggest Layla learnings to export back to the vault as .md notes."""
     try:
-        from services.obsidian_sync import suggest_export
+        from services.infrastructure.obsidian_sync import suggest_export
         return suggest_export(n=max(1, min(50, n)))
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
@@ -98,7 +98,7 @@ async def obsidian_export(request: Request):
     if not ids:
         return JSONResponse({"ok": False, "error": "ids list is required"}, status_code=400)
     try:
-        from services.obsidian_sync import export_to_vault
+        from services.infrastructure.obsidian_sync import export_to_vault
         return export_to_vault([str(i) for i in ids], _REPO_ROOT)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)

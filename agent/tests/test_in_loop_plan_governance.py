@@ -13,8 +13,8 @@ if str(AGENT_DIR) not in sys.path:
 
 @pytest.fixture
 def _patch_reasoning_light(monkeypatch):
-    monkeypatch.setattr("services.reasoning_classifier.classify_reasoning_need", lambda *a, **k: "light")
-    monkeypatch.setattr("services.reasoning_classifier.stabilize_reasoning_mode", lambda _p, c: c)
+    monkeypatch.setattr("services.infrastructure.reasoning_classifier.classify_reasoning_need", lambda *a, **k: "light")
+    monkeypatch.setattr("services.infrastructure.reasoning_classifier.stabilize_reasoning_mode", lambda _p, c: c)
 
 
 def test_in_loop_execute_plan_passes_governance_when_enabled(monkeypatch, _patch_reasoning_light):
@@ -59,14 +59,14 @@ def test_in_loop_execute_plan_passes_governance_when_enabled(monkeypatch, _patch
 
     monkeypatch.setattr(runtime_safety, "load_config", _load_gov_on)
     monkeypatch.setattr(agent_loop, "system_overloaded", lambda **k: False)
-    monkeypatch.setattr("services.planner.should_plan", lambda *a, **k: True)
+    monkeypatch.setattr("services.planning.planner.should_plan", lambda *a, **k: True)
     monkeypatch.setattr(
-        "services.planner.create_plan",
+        "services.planning.planner.create_plan",
         lambda goal, max_steps=6, cfg=None, prior_plans_digest="", **kwargs: [
             {"step": 1, "task": "analyze and refactor the module", "tools": [], "role": ""}
         ],
     )
-    monkeypatch.setattr("services.planner.execute_plan_with_optional_graph", fake_execute_plan)
+    monkeypatch.setattr("services.planning.planner.execute_plan_with_optional_graph", fake_execute_plan)
 
     out = agent_loop.autonomous_run(
         "analyze and refactor the module with a full implementation plan " + ("x" * 80),
@@ -127,14 +127,14 @@ def test_in_loop_execute_plan_nested_plan_approved_false_when_read_only(monkeypa
 
     monkeypatch.setattr(runtime_safety, "load_config", _load_gov_on)
     monkeypatch.setattr(agent_loop, "system_overloaded", lambda **k: False)
-    monkeypatch.setattr("services.planner.should_plan", lambda *a, **k: True)
+    monkeypatch.setattr("services.planning.planner.should_plan", lambda *a, **k: True)
     monkeypatch.setattr(
-        "services.planner.create_plan",
+        "services.planning.planner.create_plan",
         lambda goal, max_steps=6, cfg=None, prior_plans_digest="", **kwargs: [
             {"step": 1, "task": "analyze the repository", "tools": [], "role": ""}
         ],
     )
-    monkeypatch.setattr("services.planner.execute_plan_with_optional_graph", fake_execute_plan)
+    monkeypatch.setattr("services.planning.planner.execute_plan_with_optional_graph", fake_execute_plan)
 
     agent_loop.autonomous_run(
         "analyze the repository and document findings " + ("y" * 80),
@@ -182,14 +182,14 @@ def test_in_loop_execute_plan_legacy_no_step_governance_when_disabled(monkeypatc
 
     monkeypatch.setattr(runtime_safety, "load_config", _load_gov_off)
     monkeypatch.setattr(agent_loop, "system_overloaded", lambda **k: False)
-    monkeypatch.setattr("services.planner.should_plan", lambda *a, **k: True)
+    monkeypatch.setattr("services.planning.planner.should_plan", lambda *a, **k: True)
     monkeypatch.setattr(
-        "services.planner.create_plan",
+        "services.planning.planner.create_plan",
         lambda goal, max_steps=6, cfg=None, prior_plans_digest="", **kwargs: [
             {"step": 1, "task": "build something", "tools": [], "role": ""}
         ],
     )
-    monkeypatch.setattr("services.planner.execute_plan_with_optional_graph", fake_execute_plan)
+    monkeypatch.setattr("services.planning.planner.execute_plan_with_optional_graph", fake_execute_plan)
 
     out = agent_loop.autonomous_run(
         "build something substantial with multiple phases " + ("z" * 80),

@@ -131,7 +131,7 @@ def emit_context_window_ux(
     format_steps_fn=None,
 ) -> None:
     """Delegate to services.context_window_ux (keeps call sites stable)."""
-    from services.context_window_ux import emit_context_window_ux as _emit
+    from services.context.context_window_ux import emit_context_window_ux as _emit
     _emit(
         ux_state_queue,
         conversation_history,

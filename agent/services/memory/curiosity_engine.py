@@ -58,7 +58,7 @@ def identify_knowledge_gaps(workspace_root: str = "", project_context: dict | No
                 py_count = sum(1 for _ in root.rglob("*.py") if ".git" not in str(_) and "__pycache__" not in str(_))
                 if py_count > 5:
                     try:
-                        from services.workspace_index import get_architecture_summary
+                        from services.workspace.workspace_index import get_architecture_summary
                         arch = get_architecture_summary(root)
                         if not arch or len(arch.strip()) < 100:
                             gaps.append({

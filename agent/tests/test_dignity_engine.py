@@ -1,7 +1,7 @@
 """Tests for the dignity engine -- Layla's autonomy to push back on abuse."""
 import pytest
 
-from services.dignity_engine import (
+from services.safety.dignity_engine import (
     DignityResult,
     DignityState,
     _pattern_score,

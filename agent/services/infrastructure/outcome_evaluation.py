@@ -194,7 +194,7 @@ def evaluate_outcome_structured(state: dict[str, Any]) -> dict[str, Any]:
     confidence, metrics, and cost_score for planner / persistence hooks.
     """
     base = evaluate_outcome(state)
-    from services.outcome_metrics import collect_outcome_metrics, heuristic_cost_score
+    from services.infrastructure.outcome_metrics import collect_outcome_metrics, heuristic_cost_score
 
     metrics = collect_outcome_metrics(state)
     refused = bool(state.get("refused"))
@@ -269,7 +269,7 @@ def evaluate_outcome_structured(state: dict[str, Any]) -> dict[str, Any]:
 
 def policy_caps_trace_from_evaluation(ev: dict) -> dict[str, object]:
     """Structured caps derived from a stored outcome (for planner / UI)."""
-    from services.decision_policy import caps_from_outcome_evaluation
+    from services.safety.decision_policy import caps_from_outcome_evaluation
 
     return caps_from_outcome_evaluation(ev).to_trace_dict()
 

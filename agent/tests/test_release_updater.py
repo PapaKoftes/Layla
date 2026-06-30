@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from services.release_updater import assert_zip_extract_safe, find_agent_package_in_extract
+from services.infrastructure.release_updater import assert_zip_extract_safe, find_agent_package_in_extract
 
 
 def test_assert_zip_extract_safe_rejects_zip_slip(tmp_path: Path) -> None:

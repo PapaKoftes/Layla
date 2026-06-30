@@ -285,7 +285,7 @@ def model_loaded_status() -> dict:
     """Return model status for /health. If path invalid, includes error message."""
     try:
         import runtime_safety
-        from services.dependency_recovery import missing_gguf_recovery
+        from services.infrastructure.dependency_recovery import missing_gguf_recovery
 
         cfg = runtime_safety.load_config()
         url = (cfg.get("llama_server_url") or "").strip()
@@ -294,7 +294,7 @@ def model_loaded_status() -> dict:
         try:
             import llama_cpp  # noqa: F401
         except ImportError as e:
-            from services.dependency_recovery import llama_cpp_import_recovery, merge_recovery_message
+            from services.infrastructure.dependency_recovery import llama_cpp_import_recovery, merge_recovery_message
 
             rec = llama_cpp_import_recovery(str(e))
             return {"error": merge_recovery_message(rec), "recovery": rec}
@@ -340,10 +340,10 @@ def _effective_model_filename(cfg: dict) -> str:
     # Optional dual-model routing: chat model for reactive turns, agent model for heavy work.
     # Falls back to existing routing when unset or unavailable.
     try:
-        from services.resource_manager import should_use_dual_models
+        from services.infrastructure.resource_manager import should_use_dual_models
 
         if should_use_dual_models():
-            from services.model_router import resolve_dual_model_basenames
+            from services.llm.model_router import resolve_dual_model_basenames
 
             chat_fn, agent_fn = resolve_dual_model_basenames(cfg)
             if override == "chat" and chat_fn:
@@ -364,7 +364,7 @@ def _effective_model_filename(cfg: dict) -> str:
     if task is None and rp and not _prompt_is_router_internal(rp):
         if cfg.get("tool_routing_enabled", True):
             try:
-                from services.model_router import classify_task_for_routing, is_routing_enabled
+                from services.llm.model_router import classify_task_for_routing, is_routing_enabled
 
                 if is_routing_enabled():
                     c = classify_task_for_routing(rp[:4000], "", cfg)
@@ -374,8 +374,8 @@ def _effective_model_filename(cfg: dict) -> str:
                 pass
     if task in ("coding", "reasoning", "chat"):
         try:
-            from services.hardware_detect import detect_hardware
-            from services.model_router import route_model, select_model
+            from services.infrastructure.hardware_detect import detect_hardware
+            from services.llm.model_router import route_model, select_model
 
             hw = detect_hardware()
             lat = 0
@@ -400,7 +400,7 @@ def _get_llm():
         from llama_cpp import Llama
     except ImportError as e:
         import runtime_safety
-        from services.dependency_recovery import ensure_feature, llama_cpp_import_recovery, merge_recovery_message
+        from services.infrastructure.dependency_recovery import ensure_feature, llama_cpp_import_recovery, merge_recovery_message
 
         ok, rec = ensure_feature("llama_cpp", runtime_safety.load_config())
         if ok:
@@ -472,7 +472,7 @@ def _get_llm():
         # Apply hardware-probe defaults for any config key not explicitly set.
         # This makes Layla auto-configure optimally on any hardware without manual tuning.
         try:
-            from services.hardware_detect import apply_to_config
+            from services.infrastructure.hardware_detect import apply_to_config
             cfg = apply_to_config(cfg)
         except Exception as _hp_err:
             logger.debug("hardware_probe apply_to_config skipped: %s", _hp_err)
@@ -487,7 +487,7 @@ def _get_llm():
         # generation can't choke a low-end laptop; use all cores when idle (Castilla).
         if cfg.get("resource_governor_enabled", True):
             try:
-                from services.resource_governor import get_governor
+                from services.infrastructure.resource_governor import get_governor
                 _phys = int(cfg.get("n_threads") or auto_t)
                 n_threads = max(1, get_governor().get_inference_threads(_phys))
             except Exception as _gov_e:
@@ -583,7 +583,7 @@ def _get_llm():
         )
         if cfg.get("benchmark_on_load"):
             try:
-                from services.model_benchmark import run_benchmark
+                from services.llm.model_benchmark import run_benchmark
                 res = run_benchmark(model_filename)
                 if res.get("ok") and res.get("tokens_per_sec"):
                     logger.info("Model benchmark: %.1f tokens/sec", res["tokens_per_sec"])
@@ -697,7 +697,7 @@ def _add_usage(prompt_tokens: int, completion_tokens: int) -> None:
         _token_usage["request_count"] += 1
     # Per-turn trace: record tokens for this specific request.
     try:
-        from services.request_tracer import record_trace_tokens
+        from services.observability.request_tracer import record_trace_tokens
         record_trace_tokens(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
     except Exception:
         pass
@@ -766,7 +766,7 @@ def run_completion(
     except Exception:
         pass
     import runtime_safety
-    from services.inference_router import run_completion as _run
+    from services.llm.inference_router import run_completion as _run
 
     routing_tok = _routing_prompt_var.set((prompt or "")[:16000])
     prompt_tokens = _count_tokens(prompt)
@@ -798,7 +798,7 @@ def run_completion(
             and len(prompt or "") < 12000
         ):
             try:
-                from services.completion_cache import get_cached
+                from services.retrieval.completion_cache import get_cached
 
                 hit = get_cached(
                     prompt or "",
@@ -822,9 +822,9 @@ def run_completion(
         # provides automatic failover across 100+ LLM providers.
         if cfg.get("litellm_enabled", False):
             try:
-                from services.litellm_gateway import complete as _litellm_complete
-                from services.litellm_gateway import complete_stream as _litellm_stream
-                from services.litellm_gateway import is_available as _litellm_ok
+                from services.llm.litellm_gateway import complete as _litellm_complete
+                from services.llm.litellm_gateway import complete_stream as _litellm_stream
+                from services.llm.litellm_gateway import is_available as _litellm_ok
 
                 if _litellm_ok():
                     _litellm_messages = [{"role": "user", "content": prompt}]
@@ -874,7 +874,7 @@ def run_completion(
                     }
                     if cfg.get("completion_cache_enabled") and isinstance(out, dict):
                         try:
-                            from services.completion_cache import set_cached
+                            from services.retrieval.completion_cache import set_cached
                             set_cached(prompt or "", routing_tag, cache_model_name or "litellm", float(temperature), int(max_tokens), out)
                         except Exception:
                             pass
@@ -888,7 +888,7 @@ def run_completion(
             def _counting_gen():
                 completion_tokens = 0
                 try:
-                    from services.trace_export import maybe_span
+                    from services.observability.trace_export import maybe_span
 
                     with maybe_span(cfg, "llm_completion", stream="true"):
                         inner = _run(
@@ -922,7 +922,7 @@ def run_completion(
         _MAX_RETRIES = 2 if _retry_on_transient else 0
         out = None
         _llm_start_t = time.monotonic()
-        from services.trace_export import maybe_span
+        from services.observability.trace_export import maybe_span
 
         for attempt in range(_MAX_RETRIES + 1):
             try:
@@ -959,14 +959,14 @@ def run_completion(
         _add_usage(prompt_tokens, completion_tokens)
         # Phase 3: Prometheus LLM metrics (fire-and-forget)
         try:
-            from services.metrics import record_llm_request as _record_llm
+            from services.observability.prom_metrics import record_llm_request as _record_llm
             _llm_dur = time.monotonic() - _llm_start_t
             _record_llm(cache_model_name or "default", "", _llm_dur)
         except Exception:
             pass
         if cfg.get("completion_cache_enabled") and isinstance(out, dict):
             try:
-                from services.completion_cache import set_cached
+                from services.retrieval.completion_cache import set_cached
 
                 set_cached(
                     prompt or "",

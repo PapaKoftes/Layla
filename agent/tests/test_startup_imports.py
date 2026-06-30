@@ -28,7 +28,7 @@ def test_agent_loop_imports():
 
 def test_context_manager_available():
     """context_manager is required by agent_loop at load time."""
-    from services.context_manager import DEFAULT_BUDGETS, build_system_prompt
+    from services.context.context_manager import DEFAULT_BUDGETS, build_system_prompt
     assert callable(build_system_prompt)
     assert isinstance(DEFAULT_BUDGETS, dict)
 

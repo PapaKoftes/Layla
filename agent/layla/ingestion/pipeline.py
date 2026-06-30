@@ -102,7 +102,7 @@ def _ingest_raw(text: str, source: str, topic: str) -> IngestResult:
         if not chunk.strip():
             continue
         try:
-            from services.memory_router import save_learning
+            from services.memory.memory_router import save_learning
             learning_id = save_learning(
                 content=chunk,
                 kind="fact",
@@ -126,7 +126,7 @@ def _ingest_raw(text: str, source: str, topic: str) -> IngestResult:
     # Auto-submit high-value chunks for user verification (Phase 3A)
     if saved_count > 0:
         try:
-            from services.verification_queue import get_verification_queue
+            from services.planning.verification_queue import get_verification_queue
             vq = get_verification_queue()
             for chunk in chunks[:3]:  # Submit up to 3 representative chunks
                 chunk_stripped = chunk.strip()

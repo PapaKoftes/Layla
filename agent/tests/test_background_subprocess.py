@@ -16,7 +16,7 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def test_cancel_worker_calls_terminate_then_kill():
-    from services import background_subprocess as bs
+    from services.infrastructure import background_subprocess as bs
 
     proc = MagicMock()
     proc.poll.return_value = None
@@ -27,7 +27,7 @@ def test_cancel_worker_calls_terminate_then_kill():
 
 
 def test_cancel_worker_noop_when_already_dead():
-    from services import background_subprocess as bs
+    from services.infrastructure import background_subprocess as bs
 
     proc = MagicMock()
     proc.poll.return_value = 0
@@ -63,7 +63,7 @@ def test_enqueue_subprocess_mode_returns_worker_mode(monkeypatch, tmp_path):
 
     import routers.agent as ra
     import runtime_safety
-    from services import inference_router as ir
+    from services.llm import inference_router as ir
 
     cfg = {
         "sandbox_root": str(tmp_path),
@@ -93,7 +93,7 @@ def test_enqueue_subprocess_rejects_local_gguf_when_policy_reject(monkeypatch, t
 
     import routers.agent as ra
     import runtime_safety
-    from services import inference_router as ir
+    from services.llm import inference_router as ir
 
     cfg = {
         "sandbox_root": str(tmp_path),
@@ -114,8 +114,8 @@ def test_enqueue_subprocess_rejects_local_gguf_when_policy_reject(monkeypatch, t
 
 
 def test_cleanup_worker_cgroup_calls_remove_and_clears_attr(monkeypatch):
-    import services.worker_cgroup_linux as wcl
-    from services import background_subprocess as bs
+    import services.infrastructure.worker_cgroup_linux as wcl
+    from services.infrastructure import background_subprocess as bs
 
     seen: list[str | None] = []
 
@@ -131,7 +131,7 @@ def test_cleanup_worker_cgroup_calls_remove_and_clears_attr(monkeypatch):
 
 
 def test_wait_worker_result_invokes_progress_callback():
-    from services import background_subprocess as bs
+    from services.infrastructure import background_subprocess as bs
 
     events: list[dict] = []
     proc = MagicMock()
@@ -149,7 +149,7 @@ def test_wait_worker_result_invokes_progress_callback():
 
 def test_worker_argv_inserts_wrapper(monkeypatch):
     import runtime_safety
-    import services.background_subprocess as bs
+    import services.infrastructure.background_subprocess as bs
 
     monkeypatch.setattr(
         runtime_safety,

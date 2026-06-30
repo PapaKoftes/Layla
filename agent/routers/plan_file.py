@@ -16,7 +16,7 @@ async def plan_create(request: Request):
     ctx = str(body.get("context") or "")
     if not ws:
         return JSONResponse({"ok": False, "error": "workspace_root required"}, status_code=400)
-    from services.plan_service import create_plan
+    from services.planning.plan_service import create_plan
 
     plan, err = create_plan(ws, goal, ctx)
     if plan is None:
@@ -29,7 +29,7 @@ def plan_get(plan_id: str, workspace_root: str = Query("", alias="workspace_root
     ws = (workspace_root or "").strip()
     if not ws:
         return JSONResponse({"ok": False, "error": "workspace_root query required"}, status_code=400)
-    from services.plan_service import load_plan
+    from services.planning.plan_service import load_plan
 
     p = load_plan(ws, plan_id)
     return JSONResponse({"ok": True, "plan": p.model_dump(mode="json") if p else None})
@@ -40,7 +40,7 @@ def plan_approve(plan_id: str, workspace_root: str = Query("", alias="workspace_
     ws = (workspace_root or "").strip()
     if not ws:
         return JSONResponse({"ok": False, "error": "workspace_root query required"}, status_code=400)
-    from services.plan_service import approve_plan
+    from services.planning.plan_service import approve_plan
 
     p, err, details = approve_plan(ws, plan_id)
     if p is None:
@@ -59,8 +59,8 @@ async def plan_add_steps(plan_id: str, request: Request, workspace_root: str = Q
         return JSONResponse({"ok": False, "error": "workspace_root query required"}, status_code=400)
     body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     body = body or {}
-    from services.plan_schema import PlanStep
-    from services.plan_service import load_plan, save_plan, touch_updated
+    from services.planning.plan_schema import PlanStep
+    from services.planning.plan_service import load_plan, save_plan, touch_updated
 
     p = load_plan(ws, plan_id)
     if p is None:
@@ -87,7 +87,7 @@ def plan_execute_next(plan_id: str, workspace_root: str = Query("", alias="works
     ws = (workspace_root or "").strip()
     if not ws:
         return JSONResponse({"ok": False, "error": "workspace_root query required"}, status_code=400)
-    from services.plan_executor import execute_next_step
+    from services.planning.plan_executor import execute_next_step
 
     return JSONResponse(execute_next_step(ws, plan_id))
 
@@ -97,7 +97,7 @@ async def plan_run_continuous(plan_id: str, request: Request, workspace_root: st
     ws = (workspace_root or "").strip()
     if not ws:
         return JSONResponse({"ok": False, "error": "workspace_root query required"}, status_code=400)
-    from services.plan_service import load_plan
+    from services.planning.plan_service import load_plan
 
     pl = load_plan(ws, plan_id)
     if pl is None:

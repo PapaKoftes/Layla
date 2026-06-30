@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def test_golden_examples_store_and_retrieve():
-    from services.golden_examples import (
+    from services.memory.golden_examples import (
         format_for_prompt,
         retrieve_relevant_examples,
         store_golden_example,

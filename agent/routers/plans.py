@@ -16,7 +16,7 @@ router = APIRouter(prefix="/plans", tags=["plans"])
 
 def _persist_plan_workspace_files(plan: dict) -> None:
     try:
-        from services.plan_workspace_store import mirror_sqlite_plan
+        from services.planning.plan_workspace_store import mirror_sqlite_plan
 
         mirror_sqlite_plan(plan)
     except Exception:
@@ -28,8 +28,8 @@ def _mirror_plan_to_workspace_memory(workspace_root: str, plan: dict) -> None:
         return
     try:
         from layla.tools.registry import inside_sandbox
-        from services import project_memory as pm
-        from services.engine_plans import mirror_plan_to_project_memory_patch
+        from services.memory import project_memory as pm
+        from services.planning.engine_plans import mirror_plan_to_project_memory_patch
 
         root = Path(str(workspace_root).strip()).expanduser().resolve()
         if not root.is_dir() or not inside_sandbox(root):
@@ -63,14 +63,14 @@ async def create_plan(req: Request):
     steps = raw_steps if isinstance(raw_steps, list) else None
     if steps is None:
         import runtime_safety
-        from services.engine_plans import normalize_planner_steps
-        from services.planner import create_plan as planner_create_plan
+        from services.planning.engine_plans import normalize_planner_steps
+        from services.planning.planner import create_plan as planner_create_plan
 
         cfg = runtime_safety.load_config()
         digest = ""
         if workspace_root.strip():
             try:
-                from services.plan_workspace_store import prior_plans_digest
+                from services.planning.plan_workspace_store import prior_plans_digest
 
                 digest = prior_plans_digest(workspace_root.strip(), limit=8)
             except Exception:
@@ -80,7 +80,7 @@ async def create_plan(req: Request):
         )
         steps = normalize_planner_steps(plan_steps)
     else:
-        from services.engine_plans import normalize_planner_steps
+        from services.planning.engine_plans import normalize_planner_steps
 
         steps = normalize_planner_steps([s for s in steps if isinstance(s, dict)])
     from layla.memory.db import create_layla_plan, get_layla_plan
@@ -172,7 +172,7 @@ async def patch_plan(plan_id: str, req: Request):
     if steps is not None and not isinstance(steps, list):
         return JSONResponse({"ok": False, "error": "steps must be a list"}, status_code=400)
     if steps is not None:
-        from services.engine_plans import normalize_planner_steps
+        from services.planning.engine_plans import normalize_planner_steps
 
         steps = normalize_planner_steps([s for s in steps if isinstance(s, dict)])
     ok = update_layla_plan(
@@ -189,7 +189,7 @@ async def patch_plan(plan_id: str, req: Request):
         _persist_plan_workspace_files(p)
     sug: list[str] = []
     if steps is not None:
-        from services.plan_step_governance import suggest_sqlite_plan_improvements
+        from services.planning.plan_step_governance import suggest_sqlite_plan_improvements
 
         sug = suggest_sqlite_plan_improvements(p.get("steps") or [])
     body: dict = {"ok": True, "plan": p}
@@ -201,7 +201,7 @@ async def patch_plan(plan_id: str, req: Request):
 @router.post("/{plan_id}/approve")
 def approve_plan(plan_id: str):
     from layla.memory.db import approve_layla_plan, get_layla_plan
-    from services.plan_step_governance import validate_sqlite_plan_before_approval
+    from services.planning.plan_step_governance import validate_sqlite_plan_before_approval
 
     p0 = get_layla_plan(plan_id)
     if not p0:
@@ -241,8 +241,8 @@ async def execute_stored_plan(plan_id: str, req: Request):
     except (TypeError, ValueError):
         dm = 1
     dm = max(0, min(3, dm))
-    from services.engine_plans import steps_for_planner_execution
-    from services.planner import execute_plan as _exec_plan
+    from services.planning.engine_plans import steps_for_planner_execution
+    from services.planning.planner import execute_plan as _exec_plan
 
     exec_steps = steps_for_planner_execution(p.get("steps") or [])
     if not exec_steps:
@@ -288,7 +288,7 @@ async def execute_stored_plan(plan_id: str, req: Request):
         if p_done:
             _persist_plan_workspace_files(p_done)
             try:
-                from services.plan_workspace_store import append_plan_history
+                from services.planning.plan_workspace_store import append_plan_history
 
                 append_plan_history(
                     p_done.get("workspace_root") or workspace_root,
@@ -303,7 +303,7 @@ async def execute_stored_plan(plan_id: str, req: Request):
                 pass
         # Award XP for successful plan execution
         try:
-            from services.maturity_engine import award_xp
+            from services.personality.maturity_engine import award_xp
             award_xp(20, reason=f"plan_executed:{plan_id}"[:80])
         except Exception:
             pass

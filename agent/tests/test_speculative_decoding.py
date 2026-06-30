@@ -6,7 +6,7 @@ def test_speculative_decoding_injects_draft_model(monkeypatch, tmp_path):
     When speculative_decoding_enabled is true, llm_gateway._get_llm should pass
     a draft_model kwarg (best-effort; may be ignored by older llama-cpp-python).
     """
-    from services import llm_gateway
+    from services.llm import llm_gateway
 
     model_p = tmp_path / "m.gguf"
     model_p.write_bytes(b"x")
@@ -61,7 +61,7 @@ def test_speculative_decoding_injects_draft_model(monkeypatch, tmp_path):
 
 
 def test_speculative_decoding_disabled(monkeypatch, tmp_path):
-    from services import llm_gateway
+    from services.llm import llm_gateway
 
     model_p = tmp_path / "m.gguf"
     model_p.write_bytes(b"x")

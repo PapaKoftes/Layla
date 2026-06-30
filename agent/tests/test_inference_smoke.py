@@ -59,7 +59,7 @@ def test_real_run_completion_one_turn(monkeypatch):
     })
     monkeypatch.setattr(rs, "load_config", lambda: cfg)
 
-    from services.llm_gateway import run_completion
+    from services.llm.llm_gateway import run_completion
 
     # A continuation prompt so a tiny instruct model reliably generates (a chat-style
     # instruction can legitimately stop at 0 tokens on a 360M model).

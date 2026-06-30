@@ -19,7 +19,7 @@ def test_relationship_memory_add_and_get():
 
 
 def test_style_profile_update_and_summary():
-    from services.style_profile import get_profile_summary, update_profile_from_interactions
+    from services.personality.style_profile import get_profile_summary, update_profile_from_interactions
     update_profile_from_interactions([
         {"role": "user", "content": "Thanks! Can you fix this bug? The error says NoneType."},
         {"role": "user", "content": "Please explain how async works in Python."},
@@ -31,7 +31,7 @@ def test_style_profile_update_and_summary():
 
 def test_style_profile_collaboration_hints_non_clinical():
     from layla.memory.db import get_style_profile, migrate
-    from services.style_profile import get_profile_summary, update_profile_from_interactions
+    from services.personality.style_profile import get_profile_summary, update_profile_from_interactions
 
     migrate()
     update_profile_from_interactions([
@@ -53,7 +53,7 @@ def test_conversation_summaries_still_work():
 
 
 def test_stt_detect_voice_mode():
-    from services.stt import detect_voice_mode
+    from services.infrastructure.stt import detect_voice_mode
     assert detect_voice_mode(b"") is False
     assert detect_voice_mode(b"x" * 100) is False
     # Short WAV-like bytes: RIFF header + minimal data
@@ -62,7 +62,7 @@ def test_stt_detect_voice_mode():
 
 
 def test_tts_get_voice_options():
-    from services.tts import get_voice_options
+    from services.infrastructure.tts import get_voice_options
     opts = get_voice_options()
     assert isinstance(opts, list)
     assert len(opts) >= 5
@@ -137,8 +137,8 @@ def test_study_plan_progress_advances_correctly(monkeypatch, tmp_path):
 def test_reflection_engine_produces_retrievable_learnings(monkeypatch, tmp_path):
     """run_reflection must persist at least one learning that get_recent_learnings can retrieve."""
     import layla.memory.db as db_mod
-    import services.llm_gateway as llm_gateway
-    from services.reflection_engine import run_reflection
+    import services.llm.llm_gateway as llm_gateway
+    from services.infrastructure.reflection_engine import run_reflection
 
     _reset_db(monkeypatch, tmp_path)
     # Never call the real LLM in unit tests (would require a model + can hang).
@@ -180,7 +180,7 @@ def test_reflection_engine_produces_retrievable_learnings(monkeypatch, tmp_path)
 def test_personal_knowledge_graph_invalidation_on_write(monkeypatch, tmp_path):
     """After save_learning, _pkg_built must be False so the next query rebuilds the graph."""
     import layla.memory.db as db_mod
-    import services.personal_knowledge_graph as pkg_mod
+    import services.memory.personal_knowledge_graph as pkg_mod
     _reset_db(monkeypatch, tmp_path)
     # Force an initial build.
     pkg_mod.get_personal_graph_context("test query")

@@ -49,7 +49,7 @@ def test_sub_goals_generate_for_broad_task():
     _decompose_goal = agent_loop._decompose_goal
 
     # Never call the real LLM in unit tests (would require a model + can hang).
-    import services.llm_gateway as llm_gateway
+    import services.llm.llm_gateway as llm_gateway
 
     def _fake_completion(*_args, **_kwargs):
         return {"choices": [{"message": {"content": "[\"Add tests\", \"Fix lint\", \"Update docs\"]"}}]}

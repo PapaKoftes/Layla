@@ -19,8 +19,8 @@ import orchestrator
 import runtime_safety
 from layla.memory.db import get_aspect_memories as _db_get_aspect_memories
 from layla.memory.db import get_recent_learnings as _db_get_learnings
-from services.context_manager import DEFAULT_BUDGETS, build_system_prompt
-from services.llm_gateway import run_completion
+from services.context.context_manager import DEFAULT_BUDGETS, build_system_prompt
+from services.llm.llm_gateway import run_completion
 
 logger = logging.getLogger("layla")
 
@@ -355,7 +355,7 @@ def relationship_codex_context(cfg: dict, workspace_root: str) -> tuple[str, boo
         return "", False
     try:
         from layla.tools.registry import inside_sandbox
-        from services.relationship_codex import codex_has_entities, format_codex_prompt_digest, load_codex
+        from services.memory.relationship_codex import codex_has_entities, format_codex_prompt_digest, load_codex
 
         if not inside_sandbox(wrp):
             return "", False
@@ -518,7 +518,7 @@ def build_system_head(
     # Phase 1B: Inject maturity rank gating into personality
     # (Full unlocks text is injected into system_instructions later to avoid duplication)
     try:
-        from services.maturity_engine import get_state as _get_maturity_state
+        from services.personality.maturity_engine import get_state as _get_maturity_state
         _ms = _get_maturity_state()
         # Gate proactive suggestions behind rank 1+
         if _ms.rank < 1:
@@ -589,7 +589,7 @@ def build_system_head(
     coding_keywords = ("code", "debug", "fix", "implement", "refactor", "function", "class", "module", "file", "grep", "read_file", "write_file")
     if not _skip_expensive and goal and workspace_root and any(kw in goal.lower() for kw in coding_keywords):
         try:
-            from services.workspace_index import get_workspace_dependency_context
+            from services.workspace.workspace_index import get_workspace_dependency_context
             dep_ctx = get_workspace_dependency_context(goal, workspace_root, max_chars=400)
             if dep_ctx:
                 workspace_context_parts.append(dep_ctx)
@@ -705,7 +705,7 @@ def build_system_head(
                 logger.debug("system_head_builder[skills]: %s", _exc, exc_info=False)
 
     # Core system instructions
-    from services.prompt_builder import build_core_sys_parts
+    from services.prompts.prompt_builder import build_core_sys_parts
     sys_parts = build_core_sys_parts(
         cfg=cfg, aspect=aspect, identity=identity, personality=personality,
         goal=goal, reasoning_mode=reasoning_mode, repo_root=REPO_ROOT,
@@ -714,7 +714,7 @@ def build_system_head(
 
     # Aspect behavioral instructions
     try:
-        from services.aspect_behavior import build_behavior_block as _ab_block
+        from services.personality.aspect_behavior import build_behavior_block as _ab_block
         _behavior_block = _ab_block(aspect)
         if _behavior_block:
             system_instructions = system_instructions + "\n\n" + _behavior_block
@@ -723,7 +723,7 @@ def build_system_head(
 
     # Maturity unlocks: inject current rank capabilities
     try:
-        from services.maturity_engine import get_state as _me_get_state, get_unlocks_text as _me_unlocks_text
+        from services.personality.maturity_engine import get_state as _me_get_state, get_unlocks_text as _me_unlocks_text
         _me_state = _me_get_state()
         _unlocks_str = _me_unlocks_text({"rank": _me_state.rank})
         if _unlocks_str:
@@ -735,7 +735,7 @@ def build_system_head(
     try:
         _evo_aspect_id = (aspect.get("id") or "") if aspect else ""
         if _evo_aspect_id:
-            from services.personality_evolution import get_personality_evolution
+            from services.personality.evolution import get_personality_evolution
             _evo = get_personality_evolution()
             _evolved_hints = _evo.get_evolved_hints(_evo_aspect_id)
             if _evolved_hints:
@@ -761,8 +761,8 @@ def build_system_head(
             except Exception:
                 pass
         if _german_enabled:
-            from services.german_mode import build_german_system_block
-            from services.german_mode import get_profile as _gprof
+            from services.infrastructure.german_mode import build_german_system_block
+            from services.infrastructure.german_mode import get_profile as _gprof
             _glevel = _gprof().get("level", "B1")
             _german_block = build_german_system_block(_glevel)
             system_instructions = system_instructions + "\n\n" + _german_block
@@ -770,7 +770,7 @@ def build_system_head(
         logger.debug("german_mode inject failed: %s", _ge)
 
     # Memory sections (canonical order)
-    from services.context_merge_layers import MEMORY_SECTION_ORDER
+    from services.context.context_merge_layers import MEMORY_SECTION_ORDER
     memory_sections: dict[str, str] = {}
     _n_ctx = int(cfg.get("n_ctx", 4096) or 4096)
     _small_model = _n_ctx <= 4096
@@ -781,7 +781,7 @@ def build_system_head(
         memory_sections["project_instructions"] = "Project instructions:\n" + project_instructions
 
     try:
-        from services.repo_cognition import format_cognition_for_prompt, merge_cognition_roots
+        from services.workspace.repo_cognition import format_cognition_for_prompt, merge_cognition_roots
         _cog_roots = merge_cognition_roots(workspace_root, cognition_workspace_roots)
         if _cog_roots and cfg.get("repo_cognition_inject_enabled", True) and not _small_model:
             _cog_max = int(cfg.get("repo_cognition_max_chars", 6000) or 6000)
@@ -798,7 +798,7 @@ def build_system_head(
     try:
         if cfg.get("project_memory_enabled", True) and (workspace_root or "").strip():
             from layla.tools.registry import inside_sandbox
-            from services.project_memory import (
+            from services.memory.project_memory import (
                 format_aspects_hint,
                 format_for_prompt,
                 load_project_memory,
@@ -844,7 +844,7 @@ def build_system_head(
 
     # Working memory
     try:
-        from services.working_memory import format_for_prompt as _wm_format
+        from services.memory.working_memory import format_for_prompt as _wm_format
         _wm_text = _wm_format()
         if _wm_text.strip():
             memory_sections["working_memory"] = _wm_text
@@ -886,7 +886,7 @@ def build_system_head(
     _style_identity_parts: list[str] = []
     if cfg.get("enable_style_profile"):
         try:
-            from services.style_profile import get_profile_summary
+            from services.personality.style_profile import get_profile_summary
             profile = get_profile_summary()
             profile_parts = []
             if profile.get("response_style"):
@@ -908,7 +908,7 @@ def build_system_head(
             if parts:
                 _style_identity_parts.append("User/companion context:\n" + "\n".join(parts))
             try:
-                from services.frame_modifier import (
+                from services.personality.frame_modifier import (
                     build_frame_block,
                     load_stats_from_identity,
                     write_profile_snapshot,
@@ -954,7 +954,7 @@ def build_system_head(
 
     if not _skip_expensive and not _small_model:
         try:
-            from services.personal_knowledge_graph import get_personal_graph_context
+            from services.memory.personal_knowledge_graph import get_personal_graph_context
             pkg_ctx = get_personal_graph_context(goal or "", max_chars=400)
             if pkg_ctx:
                 memory_sections["personal_knowledge_graph"] = "Personal context (relevant):\n" + pkg_ctx
@@ -963,7 +963,7 @@ def build_system_head(
 
     if not _skip_expensive and not _small_model:
         try:
-            from services.rl_feedback import get_rl_hint_for_prompt
+            from services.infrastructure.rl_feedback import get_rl_hint_for_prompt
             rl_hint = get_rl_hint_for_prompt()
             if rl_hint:
                 memory_sections["rl_feedback"] = rl_hint
@@ -972,7 +972,7 @@ def build_system_head(
 
     if goal and len(goal) > 100 and not _small_model:
         try:
-            from services.reasoning_strategies import get_strategy_prompt_hint
+            from services.infrastructure.reasoning_strategies import get_strategy_prompt_hint
             hint = get_strategy_prompt_hint(goal)
             if hint:
                 memory_sections["reasoning_strategies"] = hint
@@ -982,9 +982,9 @@ def build_system_head(
     if not _skip_expensive and not _small_model:
         try:
             if cfg.get("golden_examples_enabled", True):
-                from services.golden_examples import bump_usage as _ge_bump_usage
-                from services.golden_examples import format_for_prompt as _ge_format
-                from services.golden_examples import retrieve_relevant_examples as _ge_retrieve
+                from services.memory.golden_examples import bump_usage as _ge_bump_usage
+                from services.memory.golden_examples import format_for_prompt as _ge_format
+                from services.memory.golden_examples import retrieve_relevant_examples as _ge_retrieve
                 ex = _ge_retrieve(goal or "", "agent", k=2)
                 if ex:
                     memory_sections["golden_examples"] = _ge_format(ex, max_chars=1200)
@@ -997,7 +997,7 @@ def build_system_head(
 
     # Deduplicate and order memory sections
     try:
-        from services.context_manager import deduplicate_content
+        from services.context.context_manager import deduplicate_content
         _ordered = [(memory_sections.get(k) or "").strip() for k in MEMORY_SECTION_ORDER]
         _ordered = [x for x in _ordered if x]
         memory_parts = deduplicate_content(_ordered, key_len=100)
@@ -1061,7 +1061,7 @@ def build_system_head(
 
     if cfg.get("tiered_prompt_budget_enabled", True):
         try:
-            from services.prompt_tier_budget import budgets_for_mode
+            from services.prompts.prompt_tier_budget import budgets_for_mode
             _rm_search = (goal or "").lower()
             _researchish = any(x in _rm_search for x in ("research", "paper", "arxiv", "study", "explain in depth"))
             tier_budgets = budgets_for_mode(reasoning_mode, research_mode=_researchish)
@@ -1078,7 +1078,7 @@ def build_system_head(
 
     # Hardware capability injection
     try:
-        from services.hardware_detect import get_capability_summary as _hw_cap_summary
+        from services.infrastructure.hardware_detect import get_capability_summary as _hw_cap_summary
         _hw_summary = _hw_cap_summary()
         if _hw_summary:
             system_instructions = (system_instructions or "") + "\n\n" + _hw_summary
@@ -1100,7 +1100,7 @@ def build_system_head(
     _n_ctx = max(2048, int(cfg.get("n_ctx", 4096)))
     _hist_for_pressure = conversation_history or []
     try:
-        from services.context_manager import token_estimate_messages
+        from services.context.context_manager import token_estimate_messages
         _hist_tokens = token_estimate_messages(_hist_for_pressure)
         _hist_ratio = _hist_tokens / _n_ctx
     except Exception:

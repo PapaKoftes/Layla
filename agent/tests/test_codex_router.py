@@ -52,7 +52,7 @@ def test_codex_rejects_outside_sandbox(monkeypatch, tmp_path):
 
 
 def test_format_codex_prompt_digest():
-    from services.relationship_codex import format_codex_prompt_digest
+    from services.memory.relationship_codex import format_codex_prompt_digest
 
     assert format_codex_prompt_digest({}, 500) == ""
     d = {"entities": {"x": {"traits": ["a", "b"], "notes": "hello"}}}
@@ -62,7 +62,7 @@ def test_format_codex_prompt_digest():
 
 
 def test_codex_injection_respects_cap():
-    from services.relationship_codex import format_codex_prompt_digest
+    from services.memory.relationship_codex import format_codex_prompt_digest
 
     entities = {f"e{i}": {"traits": ["t"], "notes": "x" * 200} for i in range(30)}
     d = {"entities": entities}

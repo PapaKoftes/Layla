@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from autonomous.types import PlannerDecision
-from services.llm_gateway import run_completion
+from services.llm.llm_gateway import run_completion
 
 _JSON_OBJ = re.compile(r"\{[\s\S]*\}")
 

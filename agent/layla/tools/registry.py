@@ -109,7 +109,7 @@ def _wrap_tool_with_metrics(name: str, fn: Any) -> Any:
         import runtime_safety
 
         try:
-            from services.trace_export import maybe_span
+            from services.observability.trace_export import maybe_span
 
             _cfg = runtime_safety.load_config()
         except Exception:

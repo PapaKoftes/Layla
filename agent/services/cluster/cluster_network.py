@@ -137,7 +137,7 @@ class ClusterNetwork:
 
         # Instance ID (reuse mDNS stable ID)
         try:
-            from services.mdns_discovery import get_instance_id
+            from services.cluster.mdns_discovery import get_instance_id
             self._instance_id = get_instance_id()
         except Exception:
             import uuid
@@ -163,7 +163,7 @@ class ClusterNetwork:
         self._advertised_url: str = ""
         if self._enabled:
             try:
-                from services.tailscale_manager import get_tailscale_ip, is_available
+                from services.infrastructure.tailscale_manager import get_tailscale_ip, is_available
                 if is_available():
                     self._tailscale_ip = get_tailscale_ip() or ""
                     if self._tailscale_ip:
@@ -258,7 +258,7 @@ class ClusterNetwork:
         """Discover peers via mDNS and update internal state."""
         discovered = []
         try:
-            from services.mdns_discovery import get_discovered_peers
+            from services.cluster.mdns_discovery import get_discovered_peers
             mdns_peers = get_discovered_peers(max_age_s=120.0)
             for mp in mdns_peers:
                 pid = mp.get("instance_id", "")
@@ -291,7 +291,7 @@ class ClusterNetwork:
 
         # Also try Tailscale for WAN peers
         try:
-            from services.tailscale_manager import get_status
+            from services.infrastructure.tailscale_manager import get_status
             ts = get_status()
             if ts.get("running"):
                 # Tailscale peers are configured in cluster_config, not auto-discovered
@@ -384,7 +384,7 @@ class ClusterNetwork:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         try:
-            from services.resource_governor import get_mode
+            from services.infrastructure.resource_governor import get_mode
             status["governor_mode"] = get_mode().value
         except Exception:
             status["governor_mode"] = "whisper"
@@ -394,7 +394,7 @@ class ClusterNetwork:
         except Exception:
             status["current_load"] = 0.0
         try:
-            from services.work_unit import get_task_queue
+            from services.cluster.work_unit import get_task_queue
             running = get_task_queue().get_running(self._instance_id)
             status["current_tasks"] = len(running)
         except Exception:

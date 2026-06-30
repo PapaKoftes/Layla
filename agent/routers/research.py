@@ -207,7 +207,7 @@ async def research_mission(request: Request):
             out_dir = RESEARCH_OUTPUT
             out_dir.mkdir(parents=True, exist_ok=True)
             try:
-                from services.research_report import extract_citations, format_research_report
+                from services.infrastructure.research_report import extract_citations, format_research_report
 
                 citations = extract_citations(result if isinstance(result, dict) else {}, text_fallback=response_text)
                 report = format_research_report(
@@ -233,7 +233,7 @@ async def research_mission(request: Request):
         # Layla v3: maturity XP for completing a research mission (best-effort).
         if response_text:
             try:
-                from services.maturity_engine import award_xp
+                from services.personality.maturity_engine import award_xp
 
                 award_xp(50, reason=f"research_mission:{(mission_type or 'mission')[:60]}")
             except Exception:
@@ -421,7 +421,7 @@ async def research(req: dict):
                 report = ""
                 citations = {}
                 try:
-                    from services.research_report import extract_citations, format_research_report
+                    from services.infrastructure.research_report import extract_citations, format_research_report
 
                     citations = extract_citations(result, text_fallback=text)
                     report = format_research_report(
@@ -481,7 +481,7 @@ async def research(req: dict):
         _append_history("assistant", "I couldn't reply just then.")
     else:
         try:
-            from services.research_report import extract_citations, format_research_report
+            from services.infrastructure.research_report import extract_citations, format_research_report
 
             citations = extract_citations(result, text_fallback=response_text)
             report = format_research_report(

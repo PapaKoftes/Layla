@@ -1,8 +1,8 @@
 """Tests for capability evolution system."""
 
 from capabilities.registry import get_active_implementation, list_implementations
-from services.benchmark_suite import run_benchmark
-from services.capability_discovery import (
+from services.infrastructure.benchmark_suite import run_benchmark
+from services.infrastructure.capability_discovery import (
     CAPABILITY_SEARCH_TERMS,
     discover_candidate_libraries,
     fetch_github_candidates,

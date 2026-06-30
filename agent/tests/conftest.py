@@ -180,7 +180,7 @@ def mock_llm():
     """Mock LLM that returns a predictable response."""
     mock = MagicMock()
     mock.return_value = {"choices": [{"message": {"content": "Mock LLM response."}}]}
-    with patch("services.llm_gateway.run_completion", mock):
+    with patch("services.llm.llm_gateway.run_completion", mock):
         yield mock
 
 

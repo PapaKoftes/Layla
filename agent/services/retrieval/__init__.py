@@ -191,7 +191,7 @@ def retrieve_graph_context(query: str, k: int = TOP_K) -> list[dict]:
     """Query knowledge graph for related nodes. Uses graph_reasoning when available for entity extraction + expansion."""
     results = []
     try:
-        from services.graph_reasoning import expand_query_via_graph
+        from services.memory.graph_reasoning import expand_query_via_graph
         expanded = expand_query_via_graph(query, max_hops=2, max_nodes=k)
         for n in expanded:
             label = (n.get("label") or "").strip()
@@ -338,7 +338,7 @@ def build_retrieved_context(query: str, k: int = TOP_K, reasoning_mode: str = "l
     coding_boost = (reasoning_mode or "").strip().lower() == "deep"
     cache_query = f"{query}\x1e{'deep' if coding_boost else 'std'}"
     try:
-        from services.retrieval_cache import cached_retrieve
+        from services.retrieval.retrieval_cache import cached_retrieve
 
         def _fetch(_q: str, kk: int) -> str:
             return _build_retrieved_context_impl(query, kk, coding_boost=coding_boost)

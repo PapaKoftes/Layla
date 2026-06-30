@@ -12,7 +12,7 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def test_merge_cognition_roots_order_and_dedupe():
-    from services.repo_cognition import merge_cognition_roots
+    from services.workspace.repo_cognition import merge_cognition_roots
 
     with tempfile.TemporaryDirectory() as d1, tempfile.TemporaryDirectory() as d2:
         a = str(Path(d1).resolve())
@@ -25,7 +25,7 @@ def test_merge_cognition_roots_order_and_dedupe():
 
 def test_sync_repo_cognition_writes_snapshot(monkeypatch, tmp_path):
     from layla.memory import db as db_mod
-    from services import repo_cognition as rc
+    from services.workspace import repo_cognition as rc
 
     root = tmp_path / "repo"
     root.mkdir()
@@ -47,7 +47,7 @@ def test_sync_repo_cognition_writes_snapshot(monkeypatch, tmp_path):
 
 
 def test_format_cognition_missing_snapshot_hint():
-    from services.repo_cognition import format_cognition_for_prompt
+    from services.workspace.repo_cognition import format_cognition_for_prompt
 
     with tempfile.TemporaryDirectory() as d:
         bogus = str(Path(d).resolve())

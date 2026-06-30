@@ -1,5 +1,5 @@
 """Remote client rate limit (sliding window)."""
-from services.remote_rate_limit import check_rate_limit
+from services.infrastructure.remote_rate_limit import check_rate_limit
 
 
 def test_rate_limit_allows_under_cap():

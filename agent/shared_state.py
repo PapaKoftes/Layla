@@ -18,7 +18,7 @@ def push_agent_steer_hint(conversation_id: str, text: str) -> None:
     if not t:
         return
     try:
-        from services.session_context import get_or_create_session
+        from services.infrastructure.session_context import get_or_create_session
         get_or_create_session(cid).push_steer_hint(t)
     except Exception:
         # Fallback to legacy in-process store
@@ -33,7 +33,7 @@ def pop_one_agent_steer_hint(conversation_id: str) -> str:
     """Adapter: delegates to SessionContext. Pop one pending steer hint (non-blocking)."""
     cid = (conversation_id or "").strip() or "default"
     try:
-        from services.session_context import get_or_create_session
+        from services.infrastructure.session_context import get_or_create_session
         return get_or_create_session(cid).pop_steer_hint()
     except Exception:
         pass
@@ -124,7 +124,7 @@ def append_conv_history(conversation_id: str, role: str, content: str) -> None:
         def _compact_bg(cid: str) -> None:
             try:
                 import runtime_safety
-                from services.context_manager import maybe_auto_compact
+                from services.context.context_manager import maybe_auto_compact
 
                 cfg = runtime_safety.load_config()
                 n_ctx = max(2048, int(cfg.get("n_ctx", 4096)))
@@ -202,7 +202,7 @@ def set_last_outcome_evaluation(conversation_id: str, data: dict) -> None:
     with _outcome_eval_lock:
         _last_outcome_evaluation[cid] = dict(data)
     try:
-        from services.session_context import get_or_create_session
+        from services.infrastructure.session_context import get_or_create_session
         get_or_create_session(cid).set_outcome_evaluation(data)
     except Exception:
         # Fallback: persist directly if session_context unavailable
@@ -217,7 +217,7 @@ def get_last_outcome_evaluation(conversation_id: str) -> dict | None:
     """Adapter: delegates to SessionContext (keeps legacy in-memory cache as fallback)."""
     cid = (conversation_id or "").strip() or "default"
     try:
-        from services.session_context import get_or_create_session
+        from services.infrastructure.session_context import get_or_create_session
         v = get_or_create_session(cid).get_outcome_evaluation()
         if isinstance(v, dict):
             return v
@@ -236,7 +236,7 @@ def clear_last_outcome_evaluation(conversation_id: str) -> None:
     with _outcome_eval_lock:
         _last_outcome_evaluation.pop(cid, None)
     try:
-        from services.session_context import get_or_create_session
+        from services.infrastructure.session_context import get_or_create_session
         get_or_create_session(cid).clear_outcome_evaluation()
     except Exception:
         pass
@@ -255,7 +255,7 @@ def set_last_coordinator_trace(conversation_id: str, data: dict) -> None:
     with _coordinator_trace_lock:
         _last_coordinator_trace[cid] = dict(data)
     try:
-        from services.session_context import get_or_create_session
+        from services.infrastructure.session_context import get_or_create_session
         get_or_create_session(cid).set_coordinator_trace(data)
     except Exception:
         pass
@@ -265,7 +265,7 @@ def get_last_coordinator_trace(conversation_id: str) -> dict | None:
     """Adapter: delegates to SessionContext."""
     cid = (conversation_id or "").strip() or "default"
     try:
-        from services.session_context import get_or_create_session
+        from services.infrastructure.session_context import get_or_create_session
         v = get_or_create_session(cid).get_coordinator_trace()
         if isinstance(v, dict):
             return v
@@ -281,7 +281,7 @@ def clear_last_coordinator_trace(conversation_id: str) -> None:
     with _coordinator_trace_lock:
         _last_coordinator_trace.pop(cid, None)
     try:
-        from services.session_context import get_or_create_session
+        from services.infrastructure.session_context import get_or_create_session
         get_or_create_session(cid).clear_coordinator_trace()
     except Exception:
         pass
@@ -300,7 +300,7 @@ def set_last_execution_snapshot(conversation_id: str, data: dict) -> None:
     with _execution_snap_lock:
         _last_execution_snapshot[cid] = dict(data)
     try:
-        from services.session_context import get_or_create_session
+        from services.infrastructure.session_context import get_or_create_session
         get_or_create_session(cid).set_execution_snapshot(data)
     except Exception:
         pass
@@ -310,7 +310,7 @@ def get_last_execution_snapshot(conversation_id: str) -> dict | None:
     """Adapter: delegates to SessionContext."""
     cid = (conversation_id or "").strip() or "default"
     try:
-        from services.session_context import get_or_create_session
+        from services.infrastructure.session_context import get_or_create_session
         v = get_or_create_session(cid).get_execution_snapshot()
         if isinstance(v, dict):
             return v
@@ -326,7 +326,7 @@ def clear_last_execution_snapshot(conversation_id: str) -> None:
     with _execution_snap_lock:
         _last_execution_snapshot.pop(cid, None)
     try:
-        from services.session_context import get_or_create_session
+        from services.infrastructure.session_context import get_or_create_session
         get_or_create_session(cid).clear_execution_snapshot()
     except Exception:
         pass

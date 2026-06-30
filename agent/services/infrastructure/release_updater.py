@@ -91,7 +91,7 @@ def find_agent_package_in_extract(extract_root: Path) -> Path | None:
 def apply_release_update() -> dict:
     """Download latest release ZIP, merge `agent/` into install tree, run DB migrate."""
     import runtime_safety as rs
-    from services.auto_updater import check_update
+    from services.infrastructure.auto_updater import check_update
     from version import __version__
 
     cfg = rs.load_config()

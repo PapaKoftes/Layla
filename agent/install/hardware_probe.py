@@ -5,7 +5,7 @@ Kept for backward compatibility with install flow.
 """
 from __future__ import annotations
 
-from services.hardware_detect import classify_hardware, detect_hardware
+from services.infrastructure.hardware_detect import classify_hardware, detect_hardware
 
 
 def probe_hardware() -> dict:

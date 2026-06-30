@@ -64,7 +64,7 @@ def run_benchmark(model_name: str | None = None) -> dict:
         if not filename:
             return {"ok": False, "tokens_per_sec": None, "first_token_ms": None, "memory_mb": None, "error": "No model configured", "model": ""}
 
-        from services.llm_gateway import _get_llm, llm_serialize_lock
+        from services.llm.llm_gateway import _get_llm, llm_serialize_lock
         with llm_serialize_lock:
             llm = _get_llm()
         if llm is None:

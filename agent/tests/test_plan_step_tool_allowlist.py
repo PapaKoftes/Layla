@@ -11,7 +11,7 @@ if str(AGENT_DIR) not in sys.path:
 
 def test_allowlist_empty_context_never_blocks():
     import agent_loop as al
-    from services.tool_allowlist_context import clear_plan_step_tool_allowlist
+    from services.tools.tool_allowlist_context import clear_plan_step_tool_allowlist
 
     clear_plan_step_tool_allowlist()
     r = al._maybe_step_tool_allowlist_refusal("write_file", {})
@@ -20,7 +20,7 @@ def test_allowlist_empty_context_never_blocks():
 
 def test_allowlist_blocks_disallowed_tool():
     import agent_loop as al
-    from services.tool_allowlist_context import clear_plan_step_tool_allowlist, set_plan_step_tool_allowlist
+    from services.tools.tool_allowlist_context import clear_plan_step_tool_allowlist, set_plan_step_tool_allowlist
 
     clear_plan_step_tool_allowlist()
     set_plan_step_tool_allowlist(frozenset({"read_file", "list_dir"}))
@@ -32,7 +32,7 @@ def test_allowlist_blocks_disallowed_tool():
 
 def test_allowlist_allows_listed_tool():
     import agent_loop as al
-    from services.tool_allowlist_context import clear_plan_step_tool_allowlist, set_plan_step_tool_allowlist
+    from services.tools.tool_allowlist_context import clear_plan_step_tool_allowlist, set_plan_step_tool_allowlist
 
     set_plan_step_tool_allowlist(frozenset({"read_file"}))
     r = al._maybe_step_tool_allowlist_refusal("read_file", {})
@@ -41,8 +41,8 @@ def test_allowlist_allows_listed_tool():
 
 
 def test_call_autonomous_sets_and_clears_allowlist():
-    from services import engine_plans as ep
-    from services.tool_allowlist_context import get_plan_step_tool_allowlist
+    from services.planning import engine_plans as ep
+    from services.tools.tool_allowlist_context import get_plan_step_tool_allowlist
 
     calls: list[str] = []
 

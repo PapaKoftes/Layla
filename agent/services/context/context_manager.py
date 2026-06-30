@@ -48,13 +48,13 @@ DEFAULT_BUDGETS = {
 
 def token_estimate(text: str) -> int:
     """Token count. Uses tiktoken (cl100k_base) when available, else ~4 chars/token."""
-    from services.token_count import count_tokens
+    from services.llm.token_count import count_tokens
     return count_tokens(text)
 
 
 def token_estimate_messages(messages: list) -> int:
     """Total token count for a list of {role, content} dicts."""
-    from services.token_count import count_tokens_messages
+    from services.llm.token_count import count_tokens_messages
     return count_tokens_messages(messages)
 
 
@@ -118,7 +118,7 @@ def summarize_history(
             except Exception as _e:
                 _logger.debug("summarize_history companion-intel write failed: %s", _e)
             try:
-                from services.style_profile import update_profile_from_interactions
+                from services.personality.style_profile import update_profile_from_interactions
                 update_profile_from_interactions(to_compress)
             except Exception as _e:
                 _logger.debug("summarize_history style_profile update failed: %s", _e)
@@ -166,7 +166,7 @@ def _compress_to_summary(messages: list) -> str:
     raw = "\n".join(parts)
     try:
         import runtime_safety
-        from services.llm_gateway import llm_generation_lock, llm_serialize_lock, run_completion
+        from services.llm.llm_gateway import llm_generation_lock, llm_serialize_lock, run_completion
 
         cfg = runtime_safety.load_config()
         busy_lock = llm_generation_lock if cfg.get("llm_serialize_per_workspace") else llm_serialize_lock
@@ -394,7 +394,7 @@ def build_system_prompt(
 
     # Phase 5: Record context pressure to Prometheus/fallback gauge
     try:
-        from services.metrics import record_context_pressure
+        from services.observability.prom_metrics import record_context_pressure
         pressure = metrics["total_tokens"] / max(1, total_budget)
         record_context_pressure(pressure)
     except Exception:

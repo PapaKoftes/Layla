@@ -72,7 +72,7 @@ def debug_tasks(conversation_id: str = "", limit: int = 40):
 def usage():
     """Per-session token usage (prompt, completion, request count)."""
     try:
-        from services.llm_gateway import get_token_usage
+        from services.llm.llm_gateway import get_token_usage
 
         return get_token_usage()
     except Exception as e:
@@ -120,8 +120,8 @@ def version():
 def update_check():
     try:
         import runtime_safety
-        from services.auto_updater import check_update
-        from services.release_updater import is_installed_mode
+        from services.infrastructure.auto_updater import check_update
+        from services.infrastructure.release_updater import is_installed_mode
 
         cfg = runtime_safety.load_config()
         out = check_update(__version__, str(cfg.get("github_repo") or ""))
@@ -140,8 +140,8 @@ def update_apply(req: dict | None = None):
         return JSONResponse({"ok": False, "error": "allow_run_required"}, status_code=403)
     try:
         import runtime_safety
-        from services.auto_updater import apply_update
-        from services.release_updater import apply_release_update, is_installed_mode
+        from services.infrastructure.auto_updater import apply_update
+        from services.infrastructure.release_updater import apply_release_update, is_installed_mode
 
         if not runtime_safety.is_tool_allowed("shell"):
             return JSONResponse({"ok": False, "error": "approval_required_for_shell"}, status_code=403)
@@ -180,7 +180,7 @@ def undo():
 def health(request: Request):
     ok, detail = _health_checks()
     try:
-        from services.llm_gateway import _llm, model_loaded_status
+        from services.llm.llm_gateway import _llm, model_loaded_status
 
         model_loaded = _llm is not None
         model_status = model_loaded_status()
@@ -227,7 +227,7 @@ def health(request: Request):
         "knowledge_index_status": getattr(request.app.state, "knowledge_index_status", None),
     }
     try:
-        from services.degraded import get_degraded
+        from services.infrastructure.degraded import get_degraded
         payload["degraded"] = get_degraded()
     except Exception:
         payload["degraded"] = {}
@@ -284,38 +284,38 @@ def health(request: Request):
     except Exception:
         pass
     try:
-        from services.system_optimizer import get_summary
+        from services.infrastructure.system_optimizer import get_summary
 
         payload["system_optimizer"] = get_summary()
     except Exception:
         pass
     try:
-        from services.resource_manager import classify_load
+        from services.infrastructure.resource_manager import classify_load
 
         payload["resource_load"] = classify_load()
     except Exception:
         pass
     try:
-        from services.llm_gateway import get_token_usage
+        from services.llm.llm_gateway import get_token_usage
 
         payload["token_usage"] = get_token_usage()
     except Exception:
         pass
     try:
-        from services.completion_cache import get_cache_stats
+        from services.retrieval.completion_cache import get_cache_stats
 
         payload["cache_stats"] = get_cache_stats()
     except Exception:
         pass
     try:
-        from services.response_cache import get_response_cache_stats
+        from services.retrieval.response_cache import get_response_cache_stats
 
         payload["response_cache_stats"] = get_response_cache_stats()
     except Exception:
         pass
     # Syncthing sync status (Phase 8 promotion)
     try:
-        from services.syncthing_sync import get_status as _syncthing_status
+        from services.infrastructure.syncthing_sync import get_status as _syncthing_status
 
         _sync = _syncthing_status()
         if _sync.get("enabled"):
@@ -330,12 +330,12 @@ def health(request: Request):
     except Exception:
         pass
     try:
-        from services.health_snapshot import (
+        from services.observability.health_snapshot import (
             build_dependency_status,
             build_effective_config_public,
             build_features_enabled,
         )
-        from services.system_optimizer import get_effective_config
+        from services.infrastructure.system_optimizer import get_effective_config
 
         _eff = get_effective_config(cfg)
         payload["effective_limits"] = {
@@ -378,14 +378,14 @@ def health(request: Request):
     except Exception:
         pass
     try:
-        from services.model_router import get_model_routing_summary
+        from services.llm.model_router import get_model_routing_summary
 
         payload["model_routing"] = get_model_routing_summary(cfg)
     except Exception:
         pass
     try:
         if not getattr(request.app.state, "subproc_gguf_operator_hint_shown", False):
-            from services.inference_router import inference_backend_uses_local_gguf
+            from services.llm.inference_router import inference_backend_uses_local_gguf
 
             if bool(cfg.get("background_use_subprocess_workers")) and inference_backend_uses_local_gguf(cfg):
                 request.app.state.subproc_gguf_operator_hint_shown = True
@@ -410,8 +410,8 @@ def health_context_budget():
     Call after any /agent run to see how context was allocated last turn.
     """
     try:
-        from services.context_budget import build_budget_telemetry
-        from services.context_manager import get_last_prompt_metrics
+        from services.context.context_budget import build_budget_telemetry
+        from services.context.context_manager import get_last_prompt_metrics
 
         metrics, n_ctx = get_last_prompt_metrics()
         return {"ok": True, **build_budget_telemetry(n_ctx=n_ctx, last_metrics=metrics)}
@@ -434,7 +434,7 @@ def health_trace(request: Request):
         GET /health/trace?n=10&fmt=summary
     """
     try:
-        from services.request_tracer import get_recent_traces, get_trace_summary
+        from services.observability.request_tracer import get_recent_traces, get_trace_summary
 
         raw_n = (request.query_params.get("n") or "20").strip()
         try:
@@ -468,7 +468,7 @@ def health_deps(request: Request):
     """Lightweight dependency matrix; optional Chroma vector probe via ?deep=true."""
     deep = ((request.query_params.get("deep") or "").strip().lower() == "true")
     try:
-        from services.health_snapshot import build_dependency_status
+        from services.observability.health_snapshot import build_dependency_status
 
         return {"dependencies": build_dependency_status(probe_chroma=deep)}
     except Exception as e:
@@ -479,7 +479,7 @@ def health_deps(request: Request):
 def models_providers():
     """LiteLLM multi-provider gateway status and health."""
     try:
-        from services.litellm_gateway import get_gateway_info
+        from services.llm.litellm_gateway import get_gateway_info
         return get_gateway_info()
     except ImportError:
         return {"installed": False, "enabled": False, "error": "litellm not installed"}
@@ -491,7 +491,7 @@ def models_providers():
 def provider_status(provider: str):
     """Health status for a specific LLM provider."""
     try:
-        from services.provider_health import get_provider_status
+        from services.infrastructure.provider_health import get_provider_status
         return get_provider_status(provider)
     except Exception as e:
         return {"name": provider, "error": str(e)}
@@ -501,7 +501,7 @@ def provider_status(provider: str):
 def models_costs():
     """Cost tracking across all LLM providers."""
     try:
-        from services.provider_health import get_cost_by_provider, get_total_cost
+        from services.infrastructure.provider_health import get_cost_by_provider, get_total_cost
         return {
             "total_cost_usd": get_total_cost(),
             "by_provider": get_cost_by_provider(),
@@ -548,7 +548,7 @@ def local_access_info():
 def doctor():
     """Full system diagnostics. Same as `layla doctor`."""
     try:
-        from services.system_doctor import run_diagnostics
+        from services.infrastructure.system_doctor import run_diagnostics
 
         return run_diagnostics(include_llm=False)
     except Exception as e:
@@ -566,7 +566,7 @@ def doctor_capabilities(
     Set voice_micro=true to run tiny STT/TTS calls (may download models; slow).
     """
     try:
-        from services.system_doctor import run_capability_probe, run_diagnostics
+        from services.infrastructure.system_doctor import run_capability_probe, run_diagnostics
 
         base = run_diagnostics(include_llm=False)
         probe = run_capability_probe(
@@ -583,7 +583,7 @@ def doctor_capabilities(
 def session_stats():
     """Alias-style session metrics (token_usage includes tool_calls, elapsed, tok/s)."""
     try:
-        from services.llm_gateway import get_token_usage
+        from services.llm.llm_gateway import get_token_usage
 
         return get_token_usage()
     except Exception as e:
@@ -595,7 +595,7 @@ def remote_tunnel_start():
     """Start cloudflared quick tunnel (HTTPS URL) to this machine's Layla port."""
     try:
         import runtime_safety
-        from services.tunnel_manager import start_quick_tunnel
+        from services.infrastructure.tunnel_manager import start_quick_tunnel
 
         cfg = runtime_safety.load_config()
         port = int(cfg.get("port", 8000))
@@ -608,14 +608,14 @@ def remote_tunnel_start():
 
 @router.get("/remote/tunnel/status")
 def remote_tunnel_status():
-    from services.tunnel_manager import tunnel_status
+    from services.infrastructure.tunnel_manager import tunnel_status
 
     return tunnel_status()
 
 
 @router.post("/remote/tunnel/stop")
 def remote_tunnel_stop():
-    from services.tunnel_manager import stop_tunnel
+    from services.infrastructure.tunnel_manager import stop_tunnel
 
     return stop_tunnel()
 
@@ -624,7 +624,7 @@ def remote_tunnel_stop():
 def remote_tunnel_health():
     """Health check for the active tunnel."""
     try:
-        from services.tunnel_manager import tunnel_status
+        from services.infrastructure.tunnel_manager import tunnel_status
         status = tunnel_status()
         url = status.get("url")
         if not url:
@@ -649,7 +649,7 @@ def remote_token_rotate():
         from pathlib import Path
 
         import runtime_safety
-        from services.tunnel_auth import rotate_token
+        from services.governance.tunnel_auth import rotate_token
 
         cfg = runtime_safety.load_config()
         new_token, new_hash = rotate_token(cfg)
@@ -675,7 +675,7 @@ def remote_token_rotate():
 def remote_audit(days: int = 7, limit: int = 100, result: str = None):
     """Query tunnel access audit log."""
     try:
-        from services.tunnel_audit import query_log
+        from services.governance.tunnel_audit import query_log
         entries = query_log(days=days, limit=limit, result_filter=result)
         return {"ok": True, "entries": entries, "count": len(entries)}
     except Exception as e:
@@ -686,7 +686,7 @@ def remote_audit(days: int = 7, limit: int = 100, result: str = None):
 def remote_audit_summary(days: int = 7):
     """Summarized audit stats."""
     try:
-        from services.tunnel_audit import get_summary
+        from services.governance.tunnel_audit import get_summary
         return {"ok": True, **get_summary(days=days)}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -696,7 +696,7 @@ def remote_audit_summary(days: int = 7):
 def tailscale_status():
     """Get Tailscale VPN status."""
     try:
-        from services.tailscale_manager import get_status
+        from services.infrastructure.tailscale_manager import get_status
         return get_status()
     except Exception as e:
         return {"running": False, "error": str(e)}
@@ -707,7 +707,7 @@ def tailscale_start():
     """Start Tailscale VPN."""
     try:
         import runtime_safety
-        from services.tailscale_manager import start_tailscale
+        from services.infrastructure.tailscale_manager import start_tailscale
         cfg = runtime_safety.load_config()
         return start_tailscale(cfg)
     except Exception as e:
@@ -718,7 +718,7 @@ def tailscale_start():
 def tailscale_stop():
     """Stop Tailscale VPN."""
     try:
-        from services.tailscale_manager import stop_tailscale
+        from services.infrastructure.tailscale_manager import stop_tailscale
         return stop_tailscale()
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
@@ -729,7 +729,7 @@ def tailscale_funnel_start():
     """Start Tailscale Funnel (public HTTPS)."""
     try:
         import runtime_safety
-        from services.tailscale_manager import funnel_start
+        from services.infrastructure.tailscale_manager import funnel_start
         cfg = runtime_safety.load_config()
         port = int(cfg.get("port", 8000))
         return funnel_start(port=port)
@@ -742,7 +742,7 @@ def tailscale_funnel_stop():
     """Stop Tailscale Funnel."""
     try:
         import runtime_safety
-        from services.tailscale_manager import funnel_stop
+        from services.infrastructure.tailscale_manager import funnel_stop
         cfg = runtime_safety.load_config()
         port = int(cfg.get("port", 8000))
         return funnel_stop(port=port)
@@ -754,7 +754,7 @@ def tailscale_funnel_stop():
 def search_status():
     """Get status of all search backends."""
     try:
-        from services.search_router import get_search_status
+        from services.retrieval.search_router import get_search_status
         return get_search_status()
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -762,7 +762,7 @@ def search_status():
 
 @router.get("/skill_packs")
 def skill_packs_list():
-    from services.skill_packs import list_installed
+    from services.skills.skill_packs import list_installed
 
     return {"packs": list_installed()}
 
@@ -777,7 +777,7 @@ async def skill_packs_install(req: Request):
     name = (body.get("name") or "").strip() or None
     if not url:
         return JSONResponse({"ok": False, "error": "url required"}, status_code=400)
-    from services.skill_packs import install_from_git
+    from services.skills.skill_packs import install_from_git
 
     return install_from_git(url, name=name)
 
@@ -791,7 +791,7 @@ async def skill_packs_remove(req: Request):
     pid = (body.get("id") or "").strip()
     if not pid:
         return JSONResponse({"ok": False, "error": "id required"}, status_code=400)
-    from services.skill_packs import remove_pack
+    from services.skills.skill_packs import remove_pack
 
     return remove_pack(pid)
 
@@ -854,7 +854,7 @@ def cancel_agent_run(conversation_id: str):
 def get_cot_stats():
     """Phase 4.1: Return dual-model CoT cost accumulator stats (per-phase token estimates)."""
     try:
-        from services.model_router import get_cot_stats, split_cot_models
+        from services.llm.model_router import get_cot_stats, split_cot_models
         stats = get_cot_stats()
         split = split_cot_models()
         return {

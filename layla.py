@@ -280,7 +280,7 @@ def cmd_doctor(_args: list) -> None:
         sys.path.insert(0, agent_dir)
     try:
         os.chdir(agent_dir)
-        from services.system_doctor import run_diagnostics, format_diagnostics
+        from services.infrastructure.system_doctor import run_diagnostics, format_diagnostics
         report = run_diagnostics(include_llm=False)
         print(format_diagnostics(report))
     except Exception as e:

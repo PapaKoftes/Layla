@@ -141,7 +141,7 @@ def allocate_budget(profile: TaskProfile, cfg: dict[str, Any] | None) -> BudgetE
     cfg_mtc = max(1, int(c.get("max_tool_calls", 5)))
     cfg_mpd = max(0, int(c.get("max_plan_depth", 3)))
     try:
-        from services.hardware_detect import detect_hardware, hardware_class
+        from services.infrastructure.hardware_detect import detect_hardware, hardware_class
 
         hcls = hardware_class(detect_hardware())
         if hcls == "potato":

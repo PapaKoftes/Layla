@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def test_extract_citations_basic():
-    from services.research_report import extract_citations
+    from services.infrastructure.research_report import extract_citations
 
     state = {
         "cited_knowledge_sources": ["docs/CORE_LOOP.md"],
@@ -20,7 +20,7 @@ def test_extract_citations_basic():
 
 
 def test_format_research_report_contains_headers():
-    from services.research_report import format_research_report
+    from services.infrastructure.research_report import format_research_report
 
     md = format_research_report(
         "Findings here.",

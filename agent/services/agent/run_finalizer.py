@@ -39,8 +39,8 @@ def finalize_run_state(
             logger.warning("pipeline_enforcement config check failed: %s", e, exc_info=True)
             state["pipeline_stage"] = "REFLECT"
         try:
-            from services.outcome_evaluation import evaluate_outcome_structured
-            from services.session_context import get_or_create_session
+            from services.infrastructure.outcome_evaluation import evaluate_outcome_structured
+            from services.infrastructure.session_context import get_or_create_session
 
             ev_struct = evaluate_outcome_structured(state)
             state["outcome_evaluation"] = ev_struct
@@ -93,7 +93,7 @@ def finalize_run_state(
         logger.debug("agent_loop: %s", e)
     if _conv_final_text and not state.get("refused"):
         try:
-            from services.conversation_entity_extractor import extract_in_background as _conv_ent_bg
+            from services.memory.conversation_entity_extractor import extract_in_background as _conv_ent_bg
             _conv_ent_bg(
                 state.get("original_goal", ""),
                 _conv_final_text,
@@ -108,7 +108,7 @@ def finalize_run_state(
 
     # Personality evolution: record interaction and update relationship tracking
     try:
-        from services.personality_evolution import get_personality_evolution, infer_interaction_type
+        from services.personality.evolution import get_personality_evolution, infer_interaction_type
 
         _evo = get_personality_evolution()
         _evo_aspect_id = active_aspect.get("id", "") if isinstance(active_aspect, dict) else ""
@@ -125,14 +125,14 @@ def finalize_run_state(
 
     # Maturity: record daily activity for relationship tracking
     try:
-        from services.maturity_engine import record_relationship_event
+        from services.personality.maturity_engine import record_relationship_event
         record_relationship_event("active")
     except Exception as _rel_exc:
         logger.debug("maturity relationship active tracking failed: %s", _rel_exc)
 
     # Maturity: award XP for completing a conversation turn
     try:
-        from services.maturity_engine import award_xp as _turn_award_xp
+        from services.personality.maturity_engine import award_xp as _turn_award_xp
         _turn_award_xp(3, reason="conversation_turn")
     except Exception:
         pass

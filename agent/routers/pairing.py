@@ -169,7 +169,7 @@ def list_peers():
     Returns empty list if mDNS is not running or no peers found.
     """
     try:
-        from services.mdns_discovery import get_discovered_peers
+        from services.cluster.mdns_discovery import get_discovered_peers
         peers = get_discovered_peers(max_age_s=120.0)
         return [PeerInfo(**{k: v for k, v in p.items()
                            if k in PeerInfo.model_fields}) for p in peers]
@@ -184,11 +184,11 @@ def list_peers():
 def discovery_status():
     """Return mDNS service status: whether broadcasting, instance ID, and peer count."""
     try:
-        from services.mdns_discovery import get_status
+        from services.cluster.mdns_discovery import get_status
         status = get_status()
         return DiscoveryStatusResponse(**status)
     except ImportError:
-        from services.mdns_discovery import get_instance_id
+        from services.cluster.mdns_discovery import get_instance_id
         return DiscoveryStatusResponse(
             enabled=False,
             instance_id=get_instance_id(),
@@ -212,7 +212,7 @@ def discovery_status():
 def start_discovery():
     """Start mDNS broadcasting and peer discovery."""
     try:
-        from services.mdns_discovery import start_service
+        from services.cluster.mdns_discovery import start_service
         ok = start_service()
         return {"ok": ok, "error": None if ok else "Failed to start mDNS. Is zeroconf installed?"}
     except ImportError:
@@ -225,7 +225,7 @@ def start_discovery():
 def stop_discovery():
     """Stop mDNS broadcasting and peer discovery."""
     try:
-        from services.mdns_discovery import stop_service
+        from services.cluster.mdns_discovery import stop_service
         stop_service()
         return {"ok": True}
     except Exception as e:
@@ -304,7 +304,7 @@ def confirm_pairing(req: ConfirmPairRequest):
     peer_name = pairing.get("peer_name", req.instance_id[:8])
     peer_tier = "cpu"
     try:
-        from services.mdns_discovery import get_peer_by_id
+        from services.cluster.mdns_discovery import get_peer_by_id
         peer = get_peer_by_id(req.instance_id)
         if peer:
             peer_name = peer.get("name", peer_name)
@@ -341,7 +341,7 @@ def list_paired_devices():
 
     # Enrich with live discovery data
     try:
-        from services.mdns_discovery import get_discovered_peers
+        from services.cluster.mdns_discovery import get_discovered_peers
         peers = {p["instance_id"]: p for p in get_discovered_peers()}
     except Exception:
         peers = {}
@@ -377,7 +377,7 @@ def unpair_device(instance_id: str):
 def peer_health(instance_id: str):
     """Health-check a specific discovered peer by hitting its /health endpoint."""
     try:
-        from services.mdns_discovery import check_peer_health, get_peer_by_id
+        from services.cluster.mdns_discovery import check_peer_health, get_peer_by_id
         peer = get_peer_by_id(instance_id)
         if not peer:
             return PeerHealthResponse(
@@ -399,7 +399,7 @@ def refresh_peers():
     If mDNS is not running, starts it first.
     """
     try:
-        from services.mdns_discovery import get_discovered_peers, is_running, start_service
+        from services.cluster.mdns_discovery import get_discovered_peers, is_running, start_service
         if not is_running():
             start_service()
         # Return current peers after a brief wait

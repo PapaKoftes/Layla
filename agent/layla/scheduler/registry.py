@@ -38,13 +38,13 @@ def _instrumented(job_name: str, fn):
         try:
             fn()
             try:
-                from services.metrics import record_scheduler_run
+                from services.observability.prom_metrics import record_scheduler_run
                 record_scheduler_run(job_name, "ok")
             except Exception:
                 pass
         except Exception as exc:
             try:
-                from services.metrics import record_scheduler_run
+                from services.observability.prom_metrics import record_scheduler_run
                 record_scheduler_run(job_name, "error")
             except Exception:
                 pass
@@ -156,7 +156,7 @@ def create_scheduler(cfg: dict) -> BackgroundScheduler:
     if cfg.get("resource_governor_enabled", True):
         try:
             tick_sec = max(5, min(60, int(cfg.get("governor_tick_seconds", 15))))
-            from services.resource_governor import governor_tick
+            from services.infrastructure.resource_governor import governor_tick
             sched.add_job(
                 _instrumented("governor_tick", governor_tick),
                 IntervalTrigger(seconds=tick_sec),
@@ -171,7 +171,7 @@ def create_scheduler(cfg: dict) -> BackgroundScheduler:
     if cfg.get("cluster_enabled", False):
         try:
             sync_interval = max(60, int(cfg.get("cluster_sync_interval", 300)))
-            from services.node_sync import sync_now
+            from services.cluster.node_sync import sync_now
             sched.add_job(
                 _instrumented("cluster_sync", sync_now),
                 IntervalTrigger(seconds=sync_interval),
@@ -185,7 +185,7 @@ def create_scheduler(cfg: dict) -> BackgroundScheduler:
     # ── Task queue maintenance ──────────────────────────────────────────
     try:
         def _task_queue_maintenance():
-            from services.work_unit import get_task_queue
+            from services.cluster.work_unit import get_task_queue
             q = get_task_queue()
             q.reset_stuck()
             q.cleanup_stale()

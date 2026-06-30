@@ -23,7 +23,7 @@ def repo_root(tmp_path):
 
 
 def test_set_vault_path_valid(vault):
-    from services.obsidian_sync import _vault_config, get_vault_path, set_vault_path
+    from services.infrastructure.obsidian_sync import _vault_config, get_vault_path, set_vault_path
     _vault_config.clear()
     result = set_vault_path(str(vault))
     assert result["ok"] is True
@@ -31,14 +31,14 @@ def test_set_vault_path_valid(vault):
 
 
 def test_set_vault_path_invalid(tmp_path):
-    from services.obsidian_sync import set_vault_path
+    from services.infrastructure.obsidian_sync import set_vault_path
     result = set_vault_path(str(tmp_path / "nonexistent"))
     assert result["ok"] is False
     assert "error" in result
 
 
 def test_md_files_excludes_hidden(vault):
-    from services.obsidian_sync import _md_files
+    from services.infrastructure.obsidian_sync import _md_files
     files = _md_files(vault)
     paths = [str(f) for f in files]
     assert any("note1.md" in p for p in paths)
@@ -47,7 +47,7 @@ def test_md_files_excludes_hidden(vault):
 
 
 def test_diff_vault_new_files(vault, repo_root):
-    from services.obsidian_sync import _vault_config, diff_vault, set_vault_path
+    from services.infrastructure.obsidian_sync import _vault_config, diff_vault, set_vault_path
     _vault_config.clear()
     set_vault_path(str(vault))
     result = diff_vault(repo_root)
@@ -58,7 +58,7 @@ def test_diff_vault_new_files(vault, repo_root):
 
 
 def test_sync_vault_copies_files(vault, repo_root):
-    from services.obsidian_sync import _vault_config, get_knowledge_vault_dir, set_vault_path, sync_vault
+    from services.infrastructure.obsidian_sync import _vault_config, get_knowledge_vault_dir, set_vault_path, sync_vault
     _vault_config.clear()
     set_vault_path(str(vault))
     result = sync_vault(repo_root)
@@ -73,7 +73,7 @@ def test_sync_vault_skips_conflict(vault, repo_root):
     """Files where dest is newer (and content differs) are skipped unless force=True."""
     import time
 
-    from services.obsidian_sync import _vault_config, get_knowledge_vault_dir, set_vault_path, sync_vault
+    from services.infrastructure.obsidian_sync import _vault_config, get_knowledge_vault_dir, set_vault_path, sync_vault
     _vault_config.clear()
     set_vault_path(str(vault))
     # First sync
@@ -95,7 +95,7 @@ def test_sync_vault_force_overwrites_conflict(vault, repo_root):
     import os
     import time
 
-    from services.obsidian_sync import _vault_config, get_knowledge_vault_dir, set_vault_path, sync_vault
+    from services.infrastructure.obsidian_sync import _vault_config, get_knowledge_vault_dir, set_vault_path, sync_vault
     _vault_config.clear()
     set_vault_path(str(vault))
     sync_vault(repo_root)
@@ -111,7 +111,7 @@ def test_sync_vault_force_overwrites_conflict(vault, repo_root):
 
 
 def test_diff_after_sync_shows_unchanged(vault, repo_root):
-    from services.obsidian_sync import _vault_config, diff_vault, set_vault_path, sync_vault
+    from services.infrastructure.obsidian_sync import _vault_config, diff_vault, set_vault_path, sync_vault
     _vault_config.clear()
     set_vault_path(str(vault))
     sync_vault(repo_root)
@@ -122,7 +122,7 @@ def test_diff_after_sync_shows_unchanged(vault, repo_root):
 def test_suggest_export_returns_structure(monkeypatch):
     """suggest_export returns correct shape even with no DB."""
     monkeypatch.setattr(
-        "services.obsidian_sync.get_vault_path",
+        "services.infrastructure.obsidian_sync.get_vault_path",
         lambda: None,
     )
     # Patch DB call to return fake learnings
@@ -132,7 +132,7 @@ def test_suggest_export_returns_structure(monkeypatch):
             {"id": "1", "content": "Always test edge cases.", "type": "strategy", "confidence": 0.9}
         ],
     )
-    from services.obsidian_sync import suggest_export
+    from services.infrastructure.obsidian_sync import suggest_export
     result = suggest_export(n=5)
     assert result["ok"] is True
     assert result["count"] == 1
@@ -144,8 +144,8 @@ def test_suggest_export_returns_structure(monkeypatch):
 
 
 def test_export_to_vault_requires_connection(monkeypatch):
-    monkeypatch.setattr("services.obsidian_sync.get_vault_path", lambda: None)
-    from services.obsidian_sync import export_to_vault
+    monkeypatch.setattr("services.infrastructure.obsidian_sync.get_vault_path", lambda: None)
+    from services.infrastructure.obsidian_sync import export_to_vault
     result = export_to_vault(["1"])
     assert result["ok"] is False
     assert "No vault path" in result["error"]

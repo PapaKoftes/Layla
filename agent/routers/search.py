@@ -135,7 +135,7 @@ async def global_search(
             cfg = runtime_safety.load_config()
             ws_root = (cfg.get("sandbox_root") or "").strip()
             if ws_root:
-                from services.workspace_index import retrieve_code_context
+                from services.workspace.workspace_index import retrieve_code_context
 
                 code_rows = retrieve_code_context(q, workspace_root=ws_root, k=per_group)
                 for r in code_rows:

@@ -12,7 +12,7 @@ if str(AGENT) not in sys.path:
 
 
 def test_deterministic_verify_write_file(tmp_path: Path) -> None:
-    from services.tool_output_validator import deterministic_verify_tool_result
+    from services.tools.tool_output_validator import deterministic_verify_tool_result
 
     p = tmp_path / "x.txt"
     p.write_text("hi", encoding="utf-8")
@@ -21,7 +21,7 @@ def test_deterministic_verify_write_file(tmp_path: Path) -> None:
 
 
 def test_deterministic_verify_shell_returncode() -> None:
-    from services.tool_output_validator import deterministic_verify_tool_result
+    from services.tools.tool_output_validator import deterministic_verify_tool_result
 
     r = deterministic_verify_tool_result("shell", {"ok": True, "returncode": 1, "stderr": ""}, workspace_root="")
     assert r["ok"] is False

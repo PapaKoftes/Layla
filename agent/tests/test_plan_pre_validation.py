@@ -12,7 +12,7 @@ if str(AGENT) not in sys.path:
 
 
 def test_validate_plan_before_execution_injects_inspect_step() -> None:
-    from services.planner import validate_plan_before_execution
+    from services.planning.planner import validate_plan_before_execution
 
     plan = [{"step": 1, "task": "Edit file", "tools": ["write_file"]}]
     out, ok, _reason = validate_plan_before_execution(plan, cfg={"max_plan_steps": 6}, workspace_root="C:/x")
@@ -21,7 +21,7 @@ def test_validate_plan_before_execution_injects_inspect_step() -> None:
 
 
 def test_validate_plan_before_execution_caps_and_renumbers() -> None:
-    from services.planner import validate_plan_before_execution
+    from services.planning.planner import validate_plan_before_execution
 
     plan = [{"step": i + 1, "task": f"t{i}", "tools": []} for i in range(10)]
     out, ok, _reason = validate_plan_before_execution(plan, cfg={"max_plan_steps": 3}, workspace_root="")

@@ -11,7 +11,7 @@ def test_apply_retention_policies_deletes_old_rows(tmp_path, monkeypatch):
 
     from layla.memory.db_connection import _conn
     from layla.memory.migrations import migrate
-    from services.memory_consolidation import apply_retention_policies
+    from services.memory.memory_consolidation import apply_retention_policies
 
     migrate()
     now = datetime.now(timezone.utc)

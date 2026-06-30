@@ -6,7 +6,7 @@ Uses cross-encoder model when sentence-transformers is available;
 falls back to BM25-style keyword scoring.
 
 Usage:
-    from services.reranker import rerank
+    from services.retrieval.reranker import rerank
     ranked = rerank("fastapi async patterns", documents, top_k=5)
 """
 from __future__ import annotations

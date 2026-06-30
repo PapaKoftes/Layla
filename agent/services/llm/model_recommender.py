@@ -136,7 +136,7 @@ def recommend(
 def recommend_from_hardware() -> dict[str, Any]:
     """Recommend using current hardware detection."""
     try:
-        from services.hardware_detect import detect_hardware
+        from services.infrastructure.hardware_detect import detect_hardware
         return recommend(hardware=detect_hardware())
     except Exception:
         return recommend(ram_gb=16.0, vram_gb=0.0, gpu_vendor="none")

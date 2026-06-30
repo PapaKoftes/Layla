@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from services.tool_dispatch import (
+from services.tools.tool_dispatch import (
     _EXTENDED_TOOLS,
     _HARDCODED_INTENTS,
     DispatchContext,
@@ -121,7 +121,7 @@ class TestConstants:
 # ===================================================================
 
 class TestWriteFileHandler:
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_parse_failure_breaks(self, mock_imports):
         """write_file with no parseable path should break with parse_failed."""
         al = MagicMock()
@@ -135,7 +135,7 @@ class TestWriteFileHandler:
         assert result.flow == "break"
         assert ctx.state["status"] == "parse_failed"
 
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_lab_root_blocked(self, mock_imports):
         """write_file outside lab root should be blocked."""
         al = MagicMock()
@@ -156,7 +156,7 @@ class TestWriteFileHandler:
         assert result.flow == "continue"
         assert ctx.state["tool_calls"] == 1
 
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_approval_required(self, mock_imports):
         """write_file without write permission should require approval."""
         al = MagicMock()
@@ -176,8 +176,8 @@ class TestWriteFileHandler:
 
 
 class TestReadFileHandler:
-    @patch("services.tool_dispatch._imports")
-    @patch("services.tool_dispatch._deterministic_verify_retry")
+    @patch("services.tools.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._deterministic_verify_retry")
     def test_successful_read(self, mock_dvr, mock_imports):
         """read_file with valid path should continue."""
         al = MagicMock()
@@ -198,7 +198,7 @@ class TestReadFileHandler:
         assert ctx.state["tool_calls"] == 1
         assert ctx.state["last_tool_used"] == "read_file"
 
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_no_path_breaks(self, mock_imports):
         """read_file with no parseable path should break."""
         al = MagicMock()
@@ -214,7 +214,7 @@ class TestReadFileHandler:
 
 
 class TestSimpleGitHandlers:
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_git_status(self, mock_imports):
         al = MagicMock()
         al._maybe_validate_tool_output.return_value = {"ok": True}
@@ -230,7 +230,7 @@ class TestSimpleGitHandlers:
         assert result.flow == "continue"
         TOOLS["git_status"]["fn"].assert_called_once_with(repo="/tmp/test_workspace")
 
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_git_log_passes_n(self, mock_imports):
         """git_log should pass n=10 to the tool function."""
         al = MagicMock()
@@ -247,7 +247,7 @@ class TestSimpleGitHandlers:
 
 
 class TestShellHandler:
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_lab_blocked(self, mock_imports):
         al = MagicMock()
         al._format_steps.return_value = "[]"
@@ -265,7 +265,7 @@ class TestShellHandler:
         assert result.flow == "continue"
         assert ctx.state["steps"][-1]["result"]["reason"] == "not_allowed_in_research"
 
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_no_argv_breaks(self, mock_imports):
         al = MagicMock()
         al._extract_shell_argv.return_value = None
@@ -278,7 +278,7 @@ class TestShellHandler:
         assert result.flow == "break"
         assert ctx.state["status"] == "parse_failed"
 
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_approval_when_not_allowed(self, mock_imports):
         al = MagicMock()
         al._extract_shell_argv.return_value = ["ls", "-la"]
@@ -294,7 +294,7 @@ class TestShellHandler:
 
 
 class TestMCPHandler:
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_lab_blocked(self, mock_imports):
         al = MagicMock()
         al._normalize_mcp_tool_args.return_value = {"mcp_server": "test", "tool_name": "test"}
@@ -314,7 +314,7 @@ class TestMCPHandler:
 
 
 class TestExtendedToolsHandler:
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_json_query(self, mock_imports):
         al = MagicMock()
         al._maybe_validate_tool_output.return_value = {"ok": True}
@@ -328,7 +328,7 @@ class TestExtendedToolsHandler:
         assert result.handled is True
         assert result.flow == "continue"
 
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_env_info(self, mock_imports):
         al = MagicMock()
         al._maybe_validate_tool_output.return_value = {"ok": True}
@@ -344,7 +344,7 @@ class TestExtendedToolsHandler:
 
 
 class TestGitCommitHandler:
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_approval_required(self, mock_imports):
         al = MagicMock()
         al._has_any_grant.return_value = False
@@ -362,7 +362,7 @@ class TestGitCommitHandler:
 
 
 class TestUnderstandFileHandler:
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_no_path_breaks(self, mock_imports):
         al = MagicMock()
         al._extract_path.return_value = ""
@@ -375,7 +375,7 @@ class TestUnderstandFileHandler:
         assert result.flow == "break"
         assert ctx.state["status"] == "parse_failed"
 
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_with_args_path(self, mock_imports):
         al = MagicMock()
         al._maybe_validate_tool_output.return_value = {"ok": True}
@@ -392,7 +392,7 @@ class TestUnderstandFileHandler:
 
 
 class TestRunPythonHandler:
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_approval_when_not_allowed(self, mock_imports):
         al = MagicMock()
         al._write_pending.return_value = "approval-py"
@@ -406,7 +406,7 @@ class TestRunPythonHandler:
         assert result.flow == "break"
         assert ctx.state["status"] == "finished"
 
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_lab_disabled(self, mock_imports):
         al = MagicMock()
         al._format_steps.return_value = "[]"
@@ -429,7 +429,7 @@ class TestRunPythonHandler:
 
 
 class TestFetchUrlHandler:
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_no_url_breaks(self, mock_imports):
         al = MagicMock()
         rs = MagicMock()
@@ -443,7 +443,7 @@ class TestFetchUrlHandler:
 
 
 class TestApplyPatchHandler:
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_lab_blocked(self, mock_imports):
         al = MagicMock()
         al._format_steps.return_value = "[]"
@@ -463,7 +463,7 @@ class TestApplyPatchHandler:
 
 
 class TestReplaceInFileHandler:
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_lab_blocked(self, mock_imports):
         al = MagicMock()
         al._format_steps.return_value = "[]"
@@ -480,7 +480,7 @@ class TestReplaceInFileHandler:
         assert result.handled is True
         assert result.flow == "continue"
 
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_missing_args(self, mock_imports):
         al = MagicMock()
         al._format_steps.return_value = "[]"
@@ -495,7 +495,7 @@ class TestReplaceInFileHandler:
 
 
 class TestProjectContextHandlers:
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_get_project_context(self, mock_imports):
         al = MagicMock()
         al._maybe_validate_tool_output.return_value = {"ok": True}
@@ -509,7 +509,7 @@ class TestProjectContextHandlers:
         assert result.handled is True
         assert result.flow == "continue"
 
-    @patch("services.tool_dispatch._imports")
+    @patch("services.tools.tool_dispatch._imports")
     def test_update_project_context(self, mock_imports):
         al = MagicMock()
         al._maybe_validate_tool_output.return_value = {"ok": True}

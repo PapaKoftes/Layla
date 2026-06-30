@@ -10,7 +10,7 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def test_tool_names_for_decision_includes_reason():
-    from services.prompt_builder import tool_names_for_decision
+    from services.prompts.prompt_builder import tool_names_for_decision
 
     s = tool_names_for_decision({"reason", "read_file", "grep_code"}, "read file agent/main.py")
     assert s.split(",")[0].strip() == "reason"

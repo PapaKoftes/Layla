@@ -8,22 +8,22 @@ import pytest
 
 class TestVenvPaths:
     def test_venv_dir(self):
-        from services.skill_sandbox import _venv_dir
+        from services.skills.skill_sandbox import _venv_dir
         d = _venv_dir("my-pack")
         assert "my-pack" in str(d)
         assert ".layla" in str(d)
 
     def test_venv_python_windows(self):
-        from services.skill_sandbox import _venv_python
-        with patch("services.skill_sandbox.sys") as mock_sys:
+        from services.skills.skill_sandbox import _venv_python
+        with patch("services.skills.skill_sandbox.sys") as mock_sys:
             mock_sys.platform = "win32"
             p = _venv_python("test")
             # Check it has the right structure
             assert isinstance(p, Path)
 
     def test_venv_python_unix(self):
-        from services.skill_sandbox import _venv_python
-        with patch("services.skill_sandbox.sys") as mock_sys:
+        from services.skills.skill_sandbox import _venv_python
+        with patch("services.skills.skill_sandbox.sys") as mock_sys:
             mock_sys.platform = "linux"
             p = _venv_python("test")
             assert isinstance(p, Path)
@@ -31,8 +31,8 @@ class TestVenvPaths:
 
 class TestCreateVenv:
     def test_create_venv(self, tmp_path):
-        import services.skill_sandbox as ss
-        from services.skill_sandbox import create_venv
+        import services.skills.skill_sandbox as ss
+        from services.skills.skill_sandbox import create_venv
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:
@@ -43,8 +43,8 @@ class TestCreateVenv:
             ss.ENVS_DIR = old_dir
 
     def test_create_existing_is_ok(self, tmp_path):
-        import services.skill_sandbox as ss
-        from services.skill_sandbox import create_venv
+        import services.skills.skill_sandbox as ss
+        from services.skills.skill_sandbox import create_venv
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:
@@ -57,14 +57,14 @@ class TestCreateVenv:
 
 class TestRunEntryPoint:
     def test_missing_venv(self, tmp_path):
-        from services.skill_sandbox import run_entry_point
+        from services.skills.skill_sandbox import run_entry_point
         result = run_entry_point("nonexistent", tmp_path, "main.py")
         assert result["ok"] is False
         assert "not found" in result["stderr"].lower()
 
     def test_missing_entry_point(self, tmp_path):
-        import services.skill_sandbox as ss
-        from services.skill_sandbox import create_venv, run_entry_point
+        import services.skills.skill_sandbox as ss
+        from services.skills.skill_sandbox import create_venv, run_entry_point
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:
@@ -76,8 +76,8 @@ class TestRunEntryPoint:
             ss.ENVS_DIR = old_dir
 
     def test_successful_run(self, tmp_path):
-        import services.skill_sandbox as ss
-        from services.skill_sandbox import create_venv, run_entry_point
+        import services.skills.skill_sandbox as ss
+        from services.skills.skill_sandbox import create_venv, run_entry_point
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:
@@ -94,8 +94,8 @@ class TestRunEntryPoint:
             ss.ENVS_DIR = old_dir
 
     def test_timeout(self, tmp_path):
-        import services.skill_sandbox as ss
-        from services.skill_sandbox import create_venv, run_entry_point
+        import services.skills.skill_sandbox as ss
+        from services.skills.skill_sandbox import create_venv, run_entry_point
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:
@@ -110,8 +110,8 @@ class TestRunEntryPoint:
             ss.ENVS_DIR = old_dir
 
     def test_env_variables(self, tmp_path):
-        import services.skill_sandbox as ss
-        from services.skill_sandbox import create_venv, run_entry_point
+        import services.skills.skill_sandbox as ss
+        from services.skills.skill_sandbox import create_venv, run_entry_point
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:
@@ -130,8 +130,8 @@ class TestRunEntryPoint:
 
 class TestRemoveVenv:
     def test_remove_existing(self, tmp_path):
-        import services.skill_sandbox as ss
-        from services.skill_sandbox import create_venv, remove_venv, venv_exists
+        import services.skills.skill_sandbox as ss
+        from services.skills.skill_sandbox import create_venv, remove_venv, venv_exists
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:
@@ -142,8 +142,8 @@ class TestRemoveVenv:
             ss.ENVS_DIR = old_dir
 
     def test_remove_nonexistent(self, tmp_path):
-        import services.skill_sandbox as ss
-        from services.skill_sandbox import remove_venv
+        import services.skills.skill_sandbox as ss
+        from services.skills.skill_sandbox import remove_venv
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:
@@ -155,8 +155,8 @@ class TestRemoveVenv:
 
 class TestListVenvs:
     def test_list_empty(self, tmp_path):
-        import services.skill_sandbox as ss
-        from services.skill_sandbox import list_venvs
+        import services.skills.skill_sandbox as ss
+        from services.skills.skill_sandbox import list_venvs
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:
@@ -165,8 +165,8 @@ class TestListVenvs:
             ss.ENVS_DIR = old_dir
 
     def test_list_after_create(self, tmp_path):
-        import services.skill_sandbox as ss
-        from services.skill_sandbox import create_venv, list_venvs
+        import services.skills.skill_sandbox as ss
+        from services.skills.skill_sandbox import create_venv, list_venvs
         old_dir = ss.ENVS_DIR
         ss.ENVS_DIR = tmp_path / "envs"
         try:

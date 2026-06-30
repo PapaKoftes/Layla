@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from routers.character import router
-from services.character_creator import (
+from services.personality.character_creator import (
     ALL_ASPECTS,
     ASPECT_DEFAULTS,
     EARNABLE_TITLES,
@@ -104,7 +104,7 @@ def test_get_available_titles_unknown_aspect():
 
 def test_personality_to_prompt_hints_returns_list():
     """personality_to_prompt_hints returns a list of strings."""
-    with patch("services.character_creator.load_aspect_profile") as mock_load:
+    with patch("services.personality.character_creator.load_aspect_profile") as mock_load:
         mock_load.return_value = {
             "ok": True,
             "personality_aggression": 9,
@@ -123,7 +123,7 @@ def test_personality_to_prompt_hints_returns_list():
 
 def test_personality_to_prompt_hints_center_values():
     """Center values (5) should produce no hints."""
-    with patch("services.character_creator.load_aspect_profile") as mock_load:
+    with patch("services.personality.character_creator.load_aspect_profile") as mock_load:
         mock_load.return_value = {
             "ok": True,
             "personality_aggression": 5,

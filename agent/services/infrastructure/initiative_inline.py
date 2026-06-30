@@ -47,7 +47,7 @@ def maybe_append_inline_suggestion(text: str, state: dict[str, Any], cfg: dict[s
         )
     if bool(cfg.get("initiative_engine_enabled", False)):
         try:
-            from services.initiative_engine import collect_initiative_hints
+            from services.infrastructure.initiative_engine import collect_initiative_hints
 
             eng_hints = collect_initiative_hints(state, cfg)
             if eng_hints:
@@ -57,7 +57,7 @@ def maybe_append_inline_suggestion(text: str, state: dict[str, Any], cfg: dict[s
             pass
     if not suggestion:
         try:
-            from services.outcome_evaluation import evaluate_outcome
+            from services.infrastructure.outcome_evaluation import evaluate_outcome
 
             _probe = {**state, "status": "finished"}
             ev = evaluate_outcome(_probe)
@@ -87,7 +87,7 @@ def maybe_append_inline_suggestion(text: str, state: dict[str, Any], cfg: dict[s
             from pathlib import Path
 
             from layla.tools.registry import inside_sandbox
-            from services.relationship_codex import codex_has_entities, load_codex
+            from services.memory.relationship_codex import codex_has_entities, load_codex
 
             wrp = Path(wp).expanduser().resolve()
             if wrp.is_dir() and inside_sandbox(wrp) and codex_has_entities(load_codex(wrp)):

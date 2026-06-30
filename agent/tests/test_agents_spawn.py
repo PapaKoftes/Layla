@@ -21,7 +21,7 @@ def client():
 @pytest.fixture(autouse=True)
 def _clear_background_tasks_between_spawn_tests():
     """Daemon threads from /agents/spawn can finish after a test ends; drain store for isolation."""
-    from services import agent_task_runner as atr
+    from services.infrastructure import agent_task_runner as atr
 
     with atr._TASKS_LOCK:
         atr._TASKS.clear()

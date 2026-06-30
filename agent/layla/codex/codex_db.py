@@ -91,7 +91,7 @@ def upsert_entity(
         aliases=aliases if aliases is not None else [canonical_name.strip()],
     )
 
-    from services.memory_router import upsert_entity as _router_upsert
+    from services.memory.memory_router import upsert_entity as _router_upsert
     ok = _router_upsert(entity)
     if not ok:
         return {}
@@ -252,7 +252,7 @@ def link_entities(
     _ensure_tables()
 
     from schemas.entity import Relationship
-    from services.memory_router import upsert_relationship as _router_upsert_rel
+    from services.memory.memory_router import upsert_relationship as _router_upsert_rel
 
     rel = Relationship(
         from_entity=from_id,
@@ -275,7 +275,7 @@ def get_entity_relationships(entity_id: str) -> list[dict]:
     already joins entity names for readability.
     """
     _ensure_tables()
-    from services.memory_router import get_entity_relationships as _router_get_rels
+    from services.memory.memory_router import get_entity_relationships as _router_get_rels
     return _router_get_rels(entity_id)
 
 

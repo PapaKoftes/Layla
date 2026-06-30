@@ -117,8 +117,8 @@ def count_tokens(text: str, model: str = "gpt-4") -> dict:
     model hint used for encoding_for_model when supported; falls back to cl100k_base.
     """
     try:
-        from services.token_count import count_tokens as _count
-        from services.token_count import token_count_available
+        from services.llm.token_count import count_tokens as _count
+        from services.llm.token_count import token_count_available
         if token_count_available():
             n = _count(text)
             return {"ok": True, "tokens": n, "model": "cl100k_base", "method": "tiktoken"}

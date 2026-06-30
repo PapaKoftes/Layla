@@ -21,7 +21,7 @@ Config keys in config.json:
     airllm_device           str     — "cuda" | "cpu" (default "cuda" if available)
 
 Usage:
-    from services.airllm_runner import generate, is_available
+    from services.llm.airllm_runner import generate, is_available
 
     if is_available():
         response = generate("Write a poem about recursion", max_tokens=200)
@@ -49,7 +49,7 @@ _model_cache: dict[str, Any] = {}  # model_path → loaded AirLLM model
 def _cfg() -> dict:
     # Delegates to services.config_cache for mtime-invalidated single-source loader.
     try:
-        from services.config_cache import get_config
+        from services.infrastructure.config_cache import get_config
         return get_config()
     except Exception:
         return {}
@@ -267,7 +267,7 @@ def generate(
     except Exception as exc:
         logger.error("airllm_runner: generation failed: %s", exc)
         try:
-            from services.degraded import mark_degraded
+            from services.infrastructure.degraded import mark_degraded
             mark_degraded("airllm", str(exc))
         except Exception:
             pass

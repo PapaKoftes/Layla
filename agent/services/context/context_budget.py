@@ -259,7 +259,7 @@ def truncate_section(text: str, max_tokens: int, section_name: str = "") -> str:
     if not text or max_tokens <= 0:
         return ""
     try:
-        from services.token_count import count_tokens
+        from services.llm.token_count import count_tokens
         est = count_tokens(text)
     except Exception:
         est = max(1, len(text) // 4)

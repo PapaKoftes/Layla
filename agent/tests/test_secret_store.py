@@ -25,7 +25,7 @@ def fake_keyring(monkeypatch):
     mod.set_password = lambda svc, k, v: store.__setitem__((svc, k), v)
     mod.delete_password = lambda svc, k: store.pop((svc, k), None)
     monkeypatch.setitem(sys.modules, "keyring", mod)
-    import services.secret_store as s
+    import services.safety.secret_store as s
     importlib.reload(s)
     monkeypatch.delenv("LAYLA_REMOTE_API_KEY", raising=False)
     yield s
@@ -35,7 +35,7 @@ def fake_keyring(monkeypatch):
 @pytest.fixture
 def no_keyring(monkeypatch):
     monkeypatch.setitem(sys.modules, "keyring", None)  # import keyring -> ImportError
-    import services.secret_store as s
+    import services.safety.secret_store as s
     importlib.reload(s)
     yield s
     monkeypatch.delitem(sys.modules, "keyring", raising=False)

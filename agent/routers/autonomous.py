@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 import runtime_safety
 from autonomous.controller import run_autonomous_task
 from autonomous.types import AutonomousTask
-from services.agent_task_runner import (
+from services.infrastructure.agent_task_runner import (
     _append_progress_event,
     finalize_inline_progress_task,
     register_inline_progress_task,
@@ -54,7 +54,7 @@ async def autonomous_run(request: Request):
     if not confirm:
         return JSONResponse({"ok": False, "error": "confirm_autonomous_required"}, status_code=400)
 
-    from services.auth import is_direct_local
+    from services.safety.auth import is_direct_local
     socket_host = request.client.host if request.client else None
     if not is_direct_local(request.headers, socket_host):
         if not cfg.get("remote_enabled"):

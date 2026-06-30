@@ -17,7 +17,7 @@ Stat scale: 1-10. Default: 5 (neutral -- no modifier applied).
 Dead zone: 4-6 (too close to center to justify an instruction).
 
 Usage:
-    from services.frame_modifier import build_frame_modifiers, write_profile_snapshot
+    from services.personality.frame_modifier import build_frame_modifiers, write_profile_snapshot
 
     hints = build_frame_modifiers(stats)  # list[str]
     prompt_block = "Behavioral calibration:\\n- " + "\\n- ".join(hints)
@@ -247,7 +247,7 @@ def load_stats_from_identity(uid: dict[str, Any]) -> dict[str, int]:
     Extract stat dict from a user_identity flat KV dict.
     Missing stats default to 5 (neutral).
     """
-    from services.operator_quiz import STAT_IDS, _clamp_int
+    from services.personality.operator_quiz import STAT_IDS, _clamp_int
 
     return {
         sid: _clamp_int(uid.get(f"stat_{sid}"), 1, 10, 5)

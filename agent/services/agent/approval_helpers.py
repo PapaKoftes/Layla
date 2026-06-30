@@ -154,7 +154,7 @@ def _approval_preview_diff(tool: str, args: dict, workspace: str) -> None:
 def _has_any_grant(tool: str, args: dict | None = None) -> bool:
     """Return True if either a session grant or a DB grant covers this call (D6)."""
     try:
-        from services.session_grants import has_session_grant
+        from services.safety.session_grants import has_session_grant
         if has_session_grant(tool, args):
             return True
     except Exception as _exc:
@@ -179,7 +179,7 @@ def _admin_pre_mutate(cfg: dict, workspace: str, tool: str, summary: str) -> Non
         return
     if cfg.get("admin_auto_checkpoint", True):
         try:
-            from services.admin_checkpoint import git_checkpoint_layla
+            from services.safety.admin_checkpoint import git_checkpoint_layla
 
             git_checkpoint_layla(workspace, tool, summary)
         except Exception as _exc:

@@ -19,11 +19,11 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-from services.aspect_behavior import (
+from services.personality.aspect_behavior import (
     ASPECT_TOOL_PREFERENCES,
     get_tool_preferences,
 )
-from services.model_router import (
+from services.llm.model_router import (
     _resolve_aspect_model,
     get_aspect_routing_params,
     get_model_for_task,

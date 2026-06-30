@@ -547,10 +547,10 @@ def get_growth_narrative(state: dict | None = None) -> str:
 
         # Strongest area (based on interaction history from personality evolution)
         try:
-            from services.personality_evolution import get_personality_evolution
+            from services.personality.evolution import get_personality_evolution
             evo = get_personality_evolution()
             # Check each aspect for interaction count to find strongest
-            from services.character_creator import ALL_ASPECTS, ASPECT_DEFAULTS
+            from services.personality.character_creator import ALL_ASPECTS, ASPECT_DEFAULTS
             best_aspect = ""
             best_count = 0
             for aid in ALL_ASPECTS:

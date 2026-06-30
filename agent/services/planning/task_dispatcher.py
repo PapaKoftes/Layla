@@ -59,7 +59,7 @@ class TaskDispatcher:
         str
             instance_id of the target node, or "queued".
         """
-        from services.work_unit import TaskType, TaskPriority
+        from services.cluster.work_unit import TaskType, TaskPriority
 
         task_type = task_dict.get("type", "inference")
         priority = task_dict.get("priority", TaskPriority.NORMAL)
@@ -128,7 +128,7 @@ class TaskDispatcher:
 
         Returns a result dict with task_id and target_node.
         """
-        from services.work_unit import WorkUnit, get_task_queue
+        from services.cluster.work_unit import WorkUnit, get_task_queue
 
         target = self.dispatch(task_dict)
 
@@ -157,7 +157,7 @@ class TaskDispatcher:
 
         # Remote drone
         try:
-            from services.cluster_network import get_cluster_network
+            from services.cluster.cluster_network import get_cluster_network
             net = get_cluster_network()
             peer = net.get_peer(target)
             if peer:
@@ -187,7 +187,7 @@ class TaskDispatcher:
     def _get_governor_mode(self) -> str:
         """Get the current resource governor mode."""
         try:
-            from services.resource_governor import get_mode
+            from services.infrastructure.resource_governor import get_mode
             return get_mode().value
         except Exception:
             return "whisper"
@@ -203,7 +203,7 @@ class TaskDispatcher:
     def _get_queen_id(self) -> str:
         """Get this node's instance ID."""
         try:
-            from services.mdns_discovery import get_instance_id
+            from services.cluster.mdns_discovery import get_instance_id
             return get_instance_id()
         except Exception:
             return "local"
@@ -214,7 +214,7 @@ class TaskDispatcher:
         Returns the instance_id of the best drone, or None.
         """
         try:
-            from services.cluster_network import get_cluster_network
+            from services.cluster.cluster_network import get_cluster_network
             net = get_cluster_network()
             drones = net.get_online_drones()
 

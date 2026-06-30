@@ -10,7 +10,7 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def test_execute_plan_governance_success():
-    from services import planner as pl
+    from services.planning import planner as pl
 
     def fake_run(goal: str, **_kw: object) -> dict:
         return {
@@ -29,7 +29,7 @@ def test_execute_plan_governance_success():
 
 
 def test_execute_plan_governance_outer_retry_after_validation_fail():
-    from services import planner as pl
+    from services.planning import planner as pl
 
     calls: list[str] = []
 
@@ -56,8 +56,8 @@ def test_execute_plan_governance_outer_retry_after_validation_fail():
 
 
 def test_execute_plan_governance_tool_allowlist_blocks():
-    from services import planner as pl
-    from services.tool_allowlist_context import get_plan_step_tool_allowlist
+    from services.planning import planner as pl
+    from services.tools.tool_allowlist_context import get_plan_step_tool_allowlist
 
     seen: list[frozenset[str] | None] = []
 
@@ -77,7 +77,7 @@ def test_execute_plan_governance_tool_allowlist_blocks():
 
 
 def test_execute_plan_governance_edit_requires_write_tool_when_trace_present():
-    from services import planner as pl
+    from services.planning import planner as pl
 
     def fake_run(goal: str, **_kw: object) -> dict:
         return {
@@ -94,7 +94,7 @@ def test_execute_plan_governance_edit_requires_write_tool_when_trace_present():
 
 
 def test_execute_plan_legacy_no_governance_no_extra_fields():
-    from services import planner as pl
+    from services.planning import planner as pl
 
     def fake_run(goal: str, **_kw: object) -> dict:
         return {"status": "ok", "response": "hi"}

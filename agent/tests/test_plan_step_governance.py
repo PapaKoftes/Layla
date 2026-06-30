@@ -12,8 +12,8 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def test_validate_file_plan_rejects_bad_dep():
-    from services.plan_schema import Plan, PlanStep
-    from services.plan_step_governance import validate_file_plan_before_approval
+    from services.planning.plan_schema import Plan, PlanStep
+    from services.planning.plan_step_governance import validate_file_plan_before_approval
 
     a = PlanStep(id="a", title="a", description="d")
     b = PlanStep(id="b", title="b", description="d2", depends_on=["missing"])
@@ -22,8 +22,8 @@ def test_validate_file_plan_rejects_bad_dep():
 
 
 def test_validate_file_plan_rejects_unknown_tool():
-    from services.plan_schema import Plan, PlanStep
-    from services.plan_step_governance import validate_file_plan_before_approval
+    from services.planning.plan_schema import Plan, PlanStep
+    from services.planning.plan_step_governance import validate_file_plan_before_approval
 
     s = PlanStep(id="x", title="t", description="d", tools=["__not_a_real_tool_xyz__"])
     errs = validate_file_plan_before_approval(Plan(goal="g", steps=[s]))
@@ -31,8 +31,8 @@ def test_validate_file_plan_rejects_unknown_tool():
 
 
 def test_validate_step_edit_requires_patch_signal():
-    from services.plan_schema import PlanStep
-    from services.plan_step_governance import validate_step_outcome
+    from services.planning.plan_schema import PlanStep
+    from services.planning.plan_step_governance import validate_step_outcome
 
     step = PlanStep(title="e", description="edit", type="edit")
     ok, reason = validate_step_outcome(
@@ -44,14 +44,14 @@ def test_validate_step_edit_requires_patch_signal():
 
 
 def test_low_confidence_hedge():
-    from services.plan_step_governance import low_confidence_response
+    from services.planning.plan_step_governance import low_confidence_response
 
     assert low_confidence_response({"response": "I'm not sure this is correct.", "refused": False})
 
 
 def test_validate_step_edit_accepts_changed():
-    from services.plan_schema import PlanStep
-    from services.plan_step_governance import validate_step_outcome
+    from services.planning.plan_schema import PlanStep
+    from services.planning.plan_step_governance import validate_step_outcome
 
     step = PlanStep(title="e", description="edit", type="edit")
     ok, _reason = validate_step_outcome(
@@ -65,8 +65,8 @@ def test_validate_step_edit_accepts_changed():
 
 
 def test_validate_step_test_passed():
-    from services.plan_schema import PlanStep
-    from services.plan_step_governance import validate_step_outcome
+    from services.planning.plan_schema import PlanStep
+    from services.planning.plan_step_governance import validate_step_outcome
 
     step = PlanStep(title="t", description="run tests", type="test")
     ok, _reason = validate_step_outcome(
@@ -80,8 +80,8 @@ def test_validate_step_test_passed():
 
 
 def test_validate_step_rejects_fatal_traceback_phrase():
-    from services.plan_schema import PlanStep
-    from services.plan_step_governance import validate_step_outcome
+    from services.planning.plan_schema import PlanStep
+    from services.planning.plan_step_governance import validate_step_outcome
 
     step = PlanStep(title="a", description="d", type="analysis")
     ok, reason = validate_step_outcome(
@@ -93,8 +93,8 @@ def test_validate_step_rejects_fatal_traceback_phrase():
 
 
 def test_validate_step_requires_listed_tool_invocation():
-    from services.plan_schema import PlanStep
-    from services.plan_step_governance import validate_step_outcome
+    from services.planning.plan_schema import PlanStep
+    from services.planning.plan_step_governance import validate_step_outcome
 
     step = PlanStep(title="a", description="read src", type="analysis", tools=["read_file"])
     ok, reason = validate_step_outcome(
@@ -151,8 +151,8 @@ def test_validate_step_requires_listed_tool_invocation():
     ],
 )
 def test_validate_step_outcome_golden_matrix(step_type, payload, expect_ok, reason_needle):
-    from services.plan_schema import PlanStep
-    from services.plan_step_governance import validate_step_outcome
+    from services.planning.plan_schema import PlanStep
+    from services.planning.plan_step_governance import validate_step_outcome
 
     step = PlanStep(title="x", description="d", type=step_type)
     ok, reason = validate_step_outcome(step, payload)
@@ -162,8 +162,8 @@ def test_validate_step_outcome_golden_matrix(step_type, payload, expect_ok, reas
 
 
 def test_validate_file_plan_rejects_mutating_empty_tools_when_flag(monkeypatch):
-    from services.plan_schema import Plan, PlanStep
-    from services.plan_step_governance import validate_file_plan_before_approval
+    from services.planning.plan_schema import Plan, PlanStep
+    from services.planning.plan_step_governance import validate_file_plan_before_approval
 
     monkeypatch.setattr(
         "services.planning.plan_step_governance._plan_governance_require_nonempty_tools",
@@ -175,7 +175,7 @@ def test_validate_file_plan_rejects_mutating_empty_tools_when_flag(monkeypatch):
 
 
 def test_validate_sqlite_plan_rejects_mutating_empty_tools_when_flag(monkeypatch):
-    from services.plan_step_governance import validate_sqlite_plan_before_approval
+    from services.planning.plan_step_governance import validate_sqlite_plan_before_approval
 
     monkeypatch.setattr(
         "services.planning.plan_step_governance._plan_governance_require_nonempty_tools",
@@ -191,7 +191,7 @@ def test_validate_sqlite_plan_rejects_mutating_empty_tools_when_flag(monkeypatch
 
 
 def test_normalize_plan_steps_tools_fills_defaults():
-    from services import planner as pl
+    from services.planning import planner as pl
 
     cfg = {
         "plan_governance_require_nonempty_step_tools": True,
@@ -207,7 +207,7 @@ def test_normalize_plan_steps_tools_fills_defaults():
 def test_validate_step_rejects_tools_auto_filled_when_config(monkeypatch):
     from types import SimpleNamespace
 
-    from services.plan_step_governance import validate_step_outcome
+    from services.planning.plan_step_governance import validate_step_outcome
 
     monkeypatch.setattr(
         "services.planning.plan_step_governance._plan_governance_reject_auto_filled",
@@ -227,7 +227,7 @@ def test_validate_step_rejects_tools_auto_filled_when_config(monkeypatch):
 
 
 def test_normalize_plan_steps_tools_skips_mutating_role():
-    from services import planner as pl
+    from services.planning import planner as pl
 
     cfg = {"plan_governance_require_nonempty_step_tools": True, "plan_step_default_read_tools": ["read_file"]}
     plan = [{"step": 1, "task": "patch", "tools": [], "role": "edit"}]
@@ -243,8 +243,8 @@ def test_strict_tool_evidence_write_requires_path(monkeypatch):
         "load_config",
         lambda: {"plan_governance_strict_tool_evidence": True},
     )
-    from services.plan_schema import PlanStep
-    from services.plan_step_governance import validate_step_outcome
+    from services.planning.plan_schema import PlanStep
+    from services.planning.plan_step_governance import validate_step_outcome
 
     step = PlanStep(title="e", description="d", type="edit")
     ok, reason = validate_step_outcome(
@@ -263,8 +263,8 @@ def test_strict_tool_evidence_accepts_write_with_path(monkeypatch):
         "load_config",
         lambda: {"plan_governance_strict_tool_evidence": True},
     )
-    from services.plan_schema import PlanStep
-    from services.plan_step_governance import validate_step_outcome
+    from services.planning.plan_schema import PlanStep
+    from services.planning.plan_step_governance import validate_step_outcome
 
     step = PlanStep(title="e", description="d", type="edit")
     ok, _reason = validate_step_outcome(
@@ -285,8 +285,8 @@ def test_strict_tool_evidence_test_rejects_hollow_run_tests(monkeypatch):
         "load_config",
         lambda: {"plan_governance_strict_tool_evidence": True},
     )
-    from services.plan_schema import PlanStep
-    from services.plan_step_governance import validate_step_outcome
+    from services.planning.plan_schema import PlanStep
+    from services.planning.plan_step_governance import validate_step_outcome
 
     step = PlanStep(title="t", description="d", type="test")
     ok, reason = validate_step_outcome(
@@ -315,8 +315,8 @@ def test_strict_tool_evidence_test_accepts_pytest_output(monkeypatch):
         "load_config",
         lambda: {"plan_governance_strict_tool_evidence": True},
     )
-    from services.plan_schema import PlanStep
-    from services.plan_step_governance import validate_step_outcome
+    from services.planning.plan_schema import PlanStep
+    from services.planning.plan_step_governance import validate_step_outcome
 
     step = PlanStep(title="t", description="d", type="test")
     ok, _reason = validate_step_outcome(
@@ -350,8 +350,8 @@ def test_strict_requires_tool_traces_not_prose(monkeypatch):
         "load_config",
         lambda: {"plan_governance_strict_tool_evidence": True},
     )
-    from services.plan_schema import PlanStep
-    from services.plan_step_governance import validate_step_outcome
+    from services.planning.plan_schema import PlanStep
+    from services.planning.plan_step_governance import validate_step_outcome
 
     step = PlanStep(title="e", description="d", type="edit")
     ok, reason = validate_step_outcome(
@@ -366,7 +366,7 @@ def test_hard_mode_implies_reject_auto_filled(monkeypatch):
     from types import SimpleNamespace
 
     import runtime_safety
-    from services.plan_step_governance import validate_step_outcome
+    from services.planning.plan_step_governance import validate_step_outcome
 
     monkeypatch.setattr(
         runtime_safety,
@@ -384,8 +384,8 @@ def test_hard_mode_implies_reject_auto_filled(monkeypatch):
 
 def test_hard_mode_implies_require_nonempty_tools_on_mutating(monkeypatch):
     import runtime_safety
-    from services.plan_schema import Plan, PlanStep
-    from services.plan_step_governance import validate_file_plan_before_approval
+    from services.planning.plan_schema import Plan, PlanStep
+    from services.planning.plan_step_governance import validate_file_plan_before_approval
 
     monkeypatch.setattr(
         runtime_safety,

@@ -57,7 +57,7 @@ def test_optimizer_rewrite_preserves_original(monkeypatch):
             "tier": 2,
         }
 
-    import services.prompt_optimizer as po
+    import services.prompts.prompt_optimizer as po
     monkeypatch.setattr(po, "optimize", fake_optimize)
 
     # Simulate the optimizer block from autonomous_run inline so we don't
@@ -68,7 +68,7 @@ def test_optimizer_rewrite_preserves_original(monkeypatch):
     goal_original = goal
     goal_optimized = None
 
-    from services.prompt_optimizer import optimize as _opt_goal
+    from services.prompts.prompt_optimizer import optimize as _opt_goal
     result = _opt_goal(goal, context={"aspect": "", "workspace": ""})
     if result.get("changed") and result.get("optimized"):
         goal_optimized = result["optimized"]

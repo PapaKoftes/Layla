@@ -15,7 +15,7 @@ if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 from decision_schema import parse_decision  # noqa: E402
-from services.output_quality import passes_completion_gate  # noqa: E402
+from services.infrastructure.output_quality import passes_completion_gate  # noqa: E402
 
 TOOLS = frozenset({"read_file", "write_file", "shell", "grep_code"})
 

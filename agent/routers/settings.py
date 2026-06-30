@@ -13,7 +13,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 import runtime_safety as _rs
-from services.route_helpers import (
+from services.infrastructure.route_helpers import (
     sync_apply_runtime_preset,
     sync_save_appearance,
     sync_save_settings,
@@ -70,7 +70,7 @@ def setup_status():
     available_models.sort()
     hw = {}
     try:
-        from services.setup_engine import detect_gpu, detect_ram_gb, recommend_model
+        from services.infrastructure.setup_engine import detect_gpu, detect_ram_gb, recommend_model
 
         ram = detect_ram_gb()
         vendor, vram = detect_gpu()
@@ -136,7 +136,7 @@ def setup_status():
     }
     if not model_valid:
         try:
-            from services.dependency_recovery import missing_gguf_recovery
+            from services.infrastructure.dependency_recovery import missing_gguf_recovery
 
             out["recovery"] = missing_gguf_recovery(
                 model_filename if not placeholder else "",
@@ -152,8 +152,8 @@ def setup_status():
 def setup_models():
     """Return the model catalog for the first-run picker."""
     try:
-        from services.setup_engine import MODELS_CATALOG as _MODELS_CATALOG
-        from services.setup_engine import detect_gpu, detect_ram_gb, recommend_model
+        from services.infrastructure.setup_engine import MODELS_CATALOG as _MODELS_CATALOG
+        from services.infrastructure.setup_engine import detect_gpu, detect_ram_gb, recommend_model
 
         ram = detect_ram_gb()
         vendor, vram = detect_gpu()
@@ -212,7 +212,7 @@ async def setup_download(url: str, filename: str = ""):
     # SSRF / local-file guard: urllib.urlretrieve honors file:// and ftp://, and
     # would happily reach localhost, cloud metadata (169.254.169.254) or LAN hosts.
     # Restrict to public http/https only before touching the URL.
-    from services.url_guard import is_safe_url
+    from services.safety.url_guard import is_safe_url
     if not is_safe_url(url):
         return _sse_error("URL not allowed — only public http(s) model URLs are permitted")
     cfg = _rs.load_config()
@@ -284,7 +284,7 @@ async def setup_download(url: str, filename: str = ""):
                         except Exception:
                             pass
                     if not cfg2:
-                        from services.setup_engine import DEFAULTS, detect_gpu, detect_ram_gb, recommend_model
+                        from services.infrastructure.setup_engine import DEFAULTS, detect_gpu, detect_ram_gb, recommend_model
 
                         ram = detect_ram_gb()
                         vendor, vram = detect_gpu()
@@ -308,7 +308,7 @@ def get_settings():
     """Return all editable settings. Missing keys use schema defaults."""
     from config_schema import EDITABLE_SCHEMA
 
-    from services.secret_filter import is_secret_key, REDACTED
+    from services.safety.secret_filter import is_secret_key, REDACTED
 
     full_cfg = _rs.load_config()
     out = {}
@@ -364,13 +364,13 @@ async def save_settings(req: Request):
     # Drop redaction-mask placeholders so re-saving the form (which receives a
     # masked secret from GET /settings) never overwrites the real stored secret.
     if isinstance(body, dict):
-        from services.secret_filter import REDACTED
+        from services.safety.secret_filter import REDACTED
         body = {k: v for k, v in body.items() if v != REDACTED}
 
         # Remote clients may not change security-critical keys (sandbox, safe
         # mode, remote auth). Use is_direct_local (proxy-aware) — a bare host check
         # would treat tunnelled requests (which arrive from 127.0.0.1) as local.
-        from services.auth import is_direct_local
+        from services.safety.auth import is_direct_local
         socket_host = req.client.host if req.client else None
         if not is_direct_local(req.headers, socket_host):
             blocked = _REMOTE_PROTECTED_KEYS.intersection(body)
@@ -385,7 +385,7 @@ async def save_settings(req: Request):
     # plaintext to runtime_config.json (no-op when no keyring backend exists).
     if isinstance(body, dict):
         try:
-            from services.secret_store import persist_secret_keys
+            from services.safety.secret_store import persist_secret_keys
             body, _stored = persist_secret_keys(body)
             if _stored:
                 logger.info("settings: stored %d secret(s) in the OS keyring (not plaintext)", len(_stored))
@@ -429,7 +429,7 @@ async def setup_auto():
     """Run idempotent auto-setup (doctor, config sanity) after the character creator / wizard."""
     try:
         import runtime_safety
-        from services.system_doctor import run_diagnostics
+        from services.infrastructure.system_doctor import run_diagnostics
 
         def _run():
             cfg = runtime_safety.load_config()
@@ -453,7 +453,7 @@ async def setup_auto():
 def settings_optional_features():
     """Optional Python feature bundles (voice, llama_cpp, etc.) for the Features panel."""
     try:
-        from services.dependency_recovery import get_optional_features
+        from services.infrastructure.dependency_recovery import get_optional_features
 
         return JSONResponse({"ok": True, "features": get_optional_features()})
     except Exception as e:
@@ -471,7 +471,7 @@ async def settings_install_feature(req: Request):
     if not fid:
         return JSONResponse({"ok": False, "error": "feature_id required"}, status_code=400)
     try:
-        from services.dependency_recovery import install_feature
+        from services.infrastructure.dependency_recovery import install_feature
 
         return JSONResponse(install_feature(fid))
     except Exception as e:
@@ -489,7 +489,7 @@ async def settings_git_undo_checkpoint(req: Request):
     if not ws:
         return JSONResponse({"ok": False, "error": "workspace_root required"}, status_code=400)
     try:
-        from services.admin_checkpoint import git_revert_last_checkpoint
+        from services.safety.admin_checkpoint import git_revert_last_checkpoint
 
         return JSONResponse(git_revert_last_checkpoint(ws))
     except Exception as e:
@@ -503,7 +503,7 @@ async def settings_git_undo_checkpoint(req: Request):
 def operator_quiz_stage(stage_idx: int):
     """Return quiz questions for a stage (scenario-based, game-flavored)."""
     try:
-        from services.operator_quiz import get_stage
+        from services.personality.operator_quiz import get_stage
 
         return JSONResponse(get_stage(stage_idx))
     except Exception as e:
@@ -528,7 +528,7 @@ async def operator_quiz_submit(req: Request):
     if not isinstance(answers, list):
         return JSONResponse({"ok": False, "error": "answers must be a list"}, status_code=400)
     try:
-        from services.operator_quiz import load_profile, save_identity_kv, score_answers
+        from services.personality.operator_quiz import load_profile, save_identity_kv, score_answers
 
         seed = (load_profile() or {}).get("raw") or {}
         preview, kv = score_answers(answers, seed_identity=seed)
@@ -543,8 +543,8 @@ async def operator_quiz_submit(req: Request):
 def operator_profile():
     """Return the current operator profile (stats, maturity seed, prefs) from user_identity."""
     try:
-        from services.maturity_engine import get_milestones_status, get_state, xp_needed_for_next
-        from services.operator_quiz import load_profile
+        from services.personality.maturity_engine import get_milestones_status, get_state, xp_needed_for_next
+        from services.personality.operator_quiz import load_profile
 
         prof = load_profile() or {}
         try:
@@ -576,7 +576,7 @@ async def operator_profile_set_stat(req: Request):
         return JSONResponse({"ok": False, "error": "stat required"}, status_code=400)
     try:
         from layla.memory.db import set_user_identity
-        from services.operator_quiz import STAT_IDS, _clamp_int
+        from services.personality.operator_quiz import STAT_IDS, _clamp_int
 
         if stat not in STAT_IDS:
             return JSONResponse({"ok": False, "error": "unknown_stat", "known": list(STAT_IDS)}, status_code=400)

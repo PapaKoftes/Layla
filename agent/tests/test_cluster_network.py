@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from services.cluster_network import (
+from services.cluster.cluster_network import (
     ClusterNetwork,
     Peer,
     PeerStatus,
@@ -37,9 +37,9 @@ def network(cfg, tmp_path, monkeypatch):
     """Create a ClusterNetwork with a temporary config file."""
     config_file = tmp_path / "cluster_config.json"
     config_file.write_text('{"cluster_enabled": true, "node_role": "queen", "cluster_id": "test-cluster-123", "cluster_secret_hash": "", "peers": {}}')
-    monkeypatch.setattr("services.cluster_network.CLUSTER_CONFIG_FILE", config_file)
+    monkeypatch.setattr("services.cluster.cluster_network.CLUSTER_CONFIG_FILE", config_file)
     # Provide a stable instance ID
-    monkeypatch.setattr("services.cluster_network.ClusterNetwork.__init__", _patched_init(cfg, config_file))
+    monkeypatch.setattr("services.cluster.cluster_network.ClusterNetwork.__init__", _patched_init(cfg, config_file))
     net = ClusterNetwork.__new__(ClusterNetwork)
     _patched_init(cfg, config_file)(net, cfg)
     return net

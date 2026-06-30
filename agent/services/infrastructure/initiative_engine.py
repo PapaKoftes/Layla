@@ -31,7 +31,7 @@ def collect_initiative_hints(state: dict[str, Any], cfg: dict[str, Any]) -> list
             break
 
     try:
-        from services.outcome_evaluation import evaluate_outcome_structured
+        from services.infrastructure.outcome_evaluation import evaluate_outcome_structured
 
         probe = {**state, "status": state.get("status") or "finished"}
         ev = evaluate_outcome_structured(probe)
@@ -97,7 +97,7 @@ def generate_project_proposals(workspace_root: str = "", cfg: dict[str, Any] | N
     if not bool(c.get("initiative_project_proposals_enabled", False)):
         return []
     try:
-        from services.maturity_engine import get_trust_tier
+        from services.personality.maturity_engine import get_trust_tier
 
         if get_trust_tier(c) < 2:
             return []
@@ -105,7 +105,7 @@ def generate_project_proposals(workspace_root: str = "", cfg: dict[str, Any] | N
         pass
     try:
         import runtime_safety
-        from services.project_memory import load_project_memory
+        from services.memory.project_memory import load_project_memory
 
         root = (workspace_root or "").strip()
         ws = root if root else str(runtime_safety.REPO_ROOT)
@@ -145,7 +145,7 @@ def generate_project_proposals(workspace_root: str = "", cfg: dict[str, Any] | N
     try:
         import json as _json
 
-        from services.llm_gateway import run_completion
+        from services.llm.llm_gateway import run_completion
 
         out = run_completion(prompt, max_tokens=260, temperature=0.2, stream=False)
         text = ""

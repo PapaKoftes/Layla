@@ -14,7 +14,7 @@ if str(AGENT_DIR) not in sys.path:
 
 def test_pre_tool_hook_runs_when_hooks_require_allow_run_false(monkeypatch, tmp_path):
     import runtime_safety
-    from services.agent_hooks import run_agent_hooks
+    from services.infrastructure.agent_hooks import run_agent_hooks
 
     marker = tmp_path / "ran.txt"
     py = f"from pathlib import Path; Path({str(marker)!r}).write_text('x')"
@@ -30,7 +30,7 @@ def test_pre_tool_hook_runs_when_hooks_require_allow_run_false(monkeypatch, tmp_
 
 def test_pre_tool_skipped_when_hooks_require_allow_run_and_no_allow_run(monkeypatch, tmp_path):
     import runtime_safety
-    from services.agent_hooks import run_agent_hooks
+    from services.infrastructure.agent_hooks import run_agent_hooks
 
     marker = tmp_path / "ran.txt"
     py = f"from pathlib import Path; Path({str(marker)!r}).write_text('x')"
@@ -46,7 +46,7 @@ def test_pre_tool_skipped_when_hooks_require_allow_run_and_no_allow_run(monkeypa
 
 def test_session_start_runs_even_without_allow_run(monkeypatch, tmp_path):
     import runtime_safety
-    from services.agent_hooks import run_agent_hooks
+    from services.infrastructure.agent_hooks import run_agent_hooks
 
     marker = tmp_path / "ss.txt"
     py = f"from pathlib import Path; Path({str(marker)!r}).write_text('ss')"
