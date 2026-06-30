@@ -1,80 +1,52 @@
 # Project State
 
-**Project:** Layla — **companion-first** living experience; personalities = domain kits (coding second). See `UNIFIED-ROADMAP.md`.
-**Updated:** 2026-06-29
+**Project:** Layla — **companion-first**, private, low-end-friendly, multilingual local AI with a soul;
+personalities = hardware-adaptive domain kits (coding is one kit, not the headline).
+**Updated:** 2026-06-30
+**Read first:** [`STRATEGY.md`](STRATEGY.md) (the wedge + cuts) · [`UPGRADES.md`](UPGRADES.md) (the backlog) ·
+[`ROADMAP.md`](ROADMAP.md) (MVP/V2/V3/Dream tiers).
 
-## WHERE WE ARE — ✅ UNITE COMPLETE (+ codebase re-mapped 2026-06-30)
-Codebase map refreshed for united+Castilla (`.planning/codebase/`, 7 docs). End-to-end review + the
-common-sense path to a watertight, installable product with the Warframe-mystic GUI: **`.planning/WATERTIGHT-PLAN.md`**.
-Do-now: (1) wire real-inference CI smoke, (2) **expand the existing modular UI** to the aesthetic + full
-see/control surface (NOT a rebuild), (3) low-end guardrails. Deferred (safe debt): ~207 shims, dual config.
+## WHERE WE ARE — remediation done; strategy re-tiered; install proven on this machine
 
-## (status) UNITE COMPLETE
-**master = the unified tree (refactor + this session), 2143 tests green, landed 2026-06-30.** Next: the **Castilla release** (Spanish bilingual, tuned to the friend's i7-7700HQ/16GB/~26GB-free laptop).
+- **Remediation complete:** R1–R8 + R10 shipped. Security (R5 `remote_api_key` gating), CI inference
+  smoke (R1), config consolidation (R3), two-store backup (R4), **TestClient suite un-skipped + 12
+  hidden bugs fixed (R6)**, **206 back-compat shims removed → canonical imports (R8)**, backend audit
+  (R10). **Suite: 2508 passed, 0 failed.** R9 (god-module splits) is the last open item → now UPG-00b.
+- **Installer is real and self-verifying:** `scripts/selftest.py` (deep self-test: model load + a REAL
+  inference turn in a subprocess so a SIGILL is caught, not fatal) gates `install/fresh_install.ps1`
+  (+ `-Verify` doctor, `-Pair`). Guided pairing `scripts/pair.py` (HOST rotates a hashed token; CLIENT
+  verifies the link). `connect_tunnel.ps1` made R5-safe.
+- **Proven end-to-end on this box (16 GB / CPU-only / tier1 = the friend's tier):**
+  selftest `--server` PASS — `/health` (197 tools), `/ui` (200), `/agent` (200); core selftest PASS
+  **0 warnings** (model + embedder + SQLite+NumPy fallback RAG).
+- **RAG-grounding fix:** compiler-free installs no longer disable semantic memory (the fallback serves
+  it). UPG-02 (sqlite-vec) will supersede the bespoke fallback.
+- **UI:** reverted to the clean original damask; **direction locked** — clean/streamlined (mockup #1) +
+  real-historical-art ornament, kept subtle. Live GUI-polish pass deferred to the running app (now possible).
+- **Strategy wrapped into GSD (this update):** STRATEGY.md + UPGRADES.md added; ROADMAP re-tiered.
 
-## (history) WHERE WE WERE (pre-unite)
-**≈ 5/15 phases fully done · 6/15 partial · 4/15 open · weighted ≈ 8/15** — but that 5/15 is **split across two un-merged branches** (refactor on `master`, this session on `friend-ready-session`). **The gating task is the integration merge** (25 conflicts, `HANDOFF.md §6a`); only after it does `master` actually reflect 5/15. Full breakdown: `UNIFIED-ROADMAP.md`.
+## Measured truths (still drive all decisions)
+- On a 16 GB CPU box the recommender picks **Qwen2.5-Coder-3B** (loads + completes a real turn — verified
+  by selftest). 7B-Q4 ≈ 5 tok/s here; usable for focused edits, not from-scratch self-verification.
+- **Small-model-on-CPU cannot win "serious coding" vs the cloud** → coding is a strong *aspect*, made
+  credible by **hybrid escalation (UPG-01)**, not the headline. Lead with private + low-end + multilingual + soul.
+- Speculative decoding is unhelpful on CPU (measured slower). RAG grounding is the #1 correctness lever for small models.
+- **Reuse > reinvent:** sqlite-vec / FastEmbed / FlashRank / Outlines / Ollama-backend shrink code AND
+  improve low-end quality (UPGRADES Tier A).
 
-```
-map ✅ → new-project ✅ → TWO parallel lines reconciled:
-   master (refactor)        : arch decomposition + frontend modular + companion VISION  (~2/15 + partials)
-   friend-ready-session     : security + compiler-free runtime + kit + benchmark + install (~3/15 + partials)
-   ▶ NEXT (gating): MERGE friend-ready-session onto master → true ~5/15 base, then continue companion-first.
-```
-
-## Runtime is now LIVE (the old caveat is resolved)
-- **Python 3.12.10 installed**; `.venv-test` built with `[dev]` + `[core,llm]` (minus chromadb) + `torch` CPU.
-- **Real inference works**: Qwen2.5-Coder-7B-Q4 loads and generates. The dev box **= the friend's tier** (4-core / 16GB / no-GPU), so all measurements transfer.
-- **Full test suite runs on 3.12** (was limited to a stdlib subset on the 3.14 box).
-- Models on disk: `models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf`, `models/SmolLM2-360M-Instruct-Q4_K_M.gguf` (gitignored).
-
-## Measured truths (drive all decisions)
-- 7B-Q4 ≈ **5 tok/s** on this CPU tier; **memory-bandwidth-bound** (thread tuning didn't help).
-- Quality: **good for focused edits/refactors**, weaker on from-scratch self-verification (caught a real bug in its own doctest).
-- **Speculative decoding is unhelpful on CPU** (prompt-lookup measured *slower*: 1.6 vs 2.6 tok/s).
-- → "Best possible local coding" = best *responsive* model (7B) + scaffolding, not the biggest that fits.
-
-## Milestone 1 (remediation) — phase status
-| # | Phase | Status |
-|---|---|---|
-| 1 | Security finish (REQ-10/11/12) | ✅ DONE (58 tests) |
-| 2 | Legal & launch (REQ-02) | ✅ DONE (copyleft guard; 11 tests) |
-| 3 | Verifiable core / CI | open — **now unblocked** (3.12 env + real models exist) |
-| 4 | Answer-quality eval | open (pairs with A5 benchmark) |
-| 5 | Inference reliability | ~ (model-cache bound done) |
-| 6 | Data durability & privacy | ~ (log redaction done; Chroma items need runtime — now available) |
-| 7 | Config consolidation | open |
-| 8 | Agent-loop decomposition | open |
-| 9–10 | Then-build / frontend | superseded/merged into Milestone 2 |
-
-## Milestone 2 (Friend-Ready) — track status
-| Track | Item | Status |
-|---|---|---|
-| A | A1 stack+model+inference proven | ✅ DONE (REQ-70) |
-| A | A2 hardware→kit recommender | ✅ DONE (REQ-71; b306047, 9 tests) |
-| A | A3 compiler-less install (chromadb/torch) | 🟡 **torch ✅ + chromadb-free memory fallback ✅** (b… ; 12+87 tests). Fresh-box one-command install path remains. |
-| A | A4 onboarding startup sequence | ⏭ wires recommend_kit into first_run |
-| A | A5 HumanEval/MBPP benchmark harness | ⏭ |
-| A | A6 full-app E2E + one-command install | ⏭ |
-| A | A7 per-domain kit contents | ⏭ |
-| A | A8 coding-quality scaffolding (repo-map, diff-edits, GBNF, codebase RAG, KV cache) | ⏭ **the real quality lever** |
-| A | A9 ecosystem seam (/v1 backend) + character-card portability | ⏭ |
-| A | A10 kit upgrades (embedding selection, IQ-quants, benchmark-driven choice) | ⏭ |
-| B | B1 ui-next Vite+React foundation (Warframe-mystic) | ⏭ Node ready; aesthetic locked |
-| B | B2 core chat · B3 aspect creator · B4 intake quiz · B5 polish | ⏭ |
-
-## Verified state (real stack)
-- **Full suite green on the real 3.12 stack: 1734 passed, 0 failed, 10 skipped** (under canonical CI exclusions). The llama-cpp hang is FIXED (conftest default-protects real-Llama tests; opt in with `LAYLA_TEST_REAL_LLM`). Fixed a stale REQ-10/11 allowlist test that encoded the old XFF-localhost bypass.
-- **Coding quality is now a NUMBER**: Qwen2.5-Coder-7B = **100% pass@1 (10/10), 3.17 tok/s** on the friend's tier (`benchmarks/`, `scripts/benchmark_coding.py`, 8 tests). Curated easy-to-medium set → strong fundamentals, not saturated; HumanEval-164 is the next discriminating step.
-
-## Known issues (minor, follow-ups)
-- Local-only: `_TESTCLIENT_FILES` hang on `.venv-test` due to an httpx/starlette TestClient version mismatch ("install httpx2" deprecation). They are CI-skipped already; pin/upgrade httpx as a Phase 12 follow-up so they run locally too.
-
-## Next action
-**Track A first:** A3 (compiler-less `chromadb`/`torch` install — the blocker for "she can install it"), then A4 (onboarding wires `recommend_kit`) and A5 (benchmark). **Track B in parallel:** B1 (`ui-next/` scaffold + design tokens in the locked Warframe-mystic palette). The remediation Phase 3 (verifiable core) is now unblocked and should fold into A5/A6.
+## Next action (MVP tier — see ROADMAP "Tiers" + UPGRADES)
+1. **Win-win OSS swaps:** UPG-10 engine abstraction → UPG-02 sqlite-vec → UPG-03 FastEmbed/model2vec →
+   UPG-05 constrained decoding. (Each deletes hand-rolled code.)
+2. **Scope cut** (UPG-00a) + **finish R9** (UPG-00b) + **retire trap installers** (UPG-00c).
+3. **Doctor panel** (UPG-31) + **honesty card** (UPG-24) + **live GUI polish** to the clean #1 look.
+4. Then V2 opens with **hybrid escalation (UPG-01)**.
 
 ## Key context for any session
-- The dev box now mirrors the target user (4-core/16GB/no-GPU) — measure here, it transfers.
-- Verify against implementation, not docs; report measurements honestly even when they contradict earlier claims (e.g. spec-decoding).
+- The dev box mirrors the target user (16 GB / CPU / no-GPU) — measure here, it transfers.
+- Verify against implementation, not docs; report measurements honestly even when they contradict prior claims.
+- Plugins = **MCP only**; engine behind one interface ({llama.cpp, Ollama, OpenAI-compatible}).
 - UI work must not require backend rewrites beyond additive endpoints; the API is the contract.
-- Commit cadence: feature commits separate from `docs(planning)` bookkeeping; end messages with the Co-Authored-By trailer.
+- `runtime_config.json` is gitignored (local). Commit cadence: feature commits separate from
+  `docs(planning)` bookkeeping; end messages with the Co-Authored-By trailer.
+- Heavyweight, mostly-historical planning docs: `REMEDIATION-PLAN.md` (R1–R10, done), `WATERTIGHT-PLAN.md`,
+  `UNIFIED-ROADMAP.md`, `MILESTONE-friend-ready.md`, `FULL-HISTORY.md`, `codebase/` map, `research/`.

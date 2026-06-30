@@ -1,6 +1,39 @@
 # Roadmap: Layla — Remediate, then Build
 
-## Overview
+> **STRATEGIC REFRAME — 2026-06-30.** The remediation roadmap (Phases 1–10) is substantially
+> **DONE** (R1–R8 + R10; **2508 tests green**; installer + self-test + pairing shipped). The product
+> now re-tiers around the **wedge** in [`STRATEGY.md`](STRATEGY.md), executed via the
+> [`UPGRADES.md`](UPGRADES.md) backlog. **Read those two first.** The Phase 1–10 detail below is
+> retained as the (largely completed) remediation substrate.
+
+## Tiers (the live plan — supersedes the phase ordering below)
+
+### MVP — *"the local AI with a soul that runs on a potato, in your language"*  (narrow on purpose)
+- ONE soulful aspect (companion + general assistant) on the surface; others opt-in kits.
+- **Engine abstraction** (UPG-10) + **sqlite-vec** (UPG-02) + **FastEmbed/model2vec** (UPG-03) +
+  **constrained decoding** (UPG-05) — less code, better low-end quality.
+- Self-test-gated installer (UPG-30 ✅) + **Doctor panel** (UPG-31) + guided pairing (UPG-32 ✅) + **honesty card** (UPG-24).
+- Clean **#1** UI, memory, knowledge ingest. **Scope cut** (UPG-00a) + retire trap installers (UPG-00c) + finish **R9** (UPG-00b).
+- **CUT:** cluster mesh, tribunal council, gamification-as-headline, tool long-tail.
+
+### V2 — *"credible assistant"*
+- **Hybrid escalation** (UPG-01) — bigger-local / BYO-cloud; kills the quality objection.
+- Project-aware coding context (UPG-21), **MCP plugins** (UPG-12), **Ollama backend** (UPG-06),
+  FlashRank (UPG-04), DSPy (UPG-08), self-consistency (UPG-20).
+- **Multilingual/Castilla flagship** (UPG-23), eval harness in CI (UPG-22), safe model download (UPG-35),
+  Ollama + `/v1` interop (UPG-40/41).
+
+### V3 — *"platform"*
+- 2–3 opt-in aspect kits; **knowledge/memory sync** across paired instances (UPG-33);
+  **VS Code + CLI + mobile PWA via tunnel** (UPG-34); **Tauri shell** (UPG-13); optional GPU path; accessibility (UPG-36).
+
+### Dream — *"movement"*
+- Sponsor-funded OSS personal-AI-OS; your instance follows you across devices via pairing; a
+  community **MCP kit marketplace** (UPG-37). A cause, not a cap table (STRATEGY §verdict).
+
+---
+
+## Overview *(Milestone 1 — remediation; now substantially ✅, detail retained)*
 
 Derived from `.planning/PROJECT.md`, `.planning/REQUIREMENTS.md`, the four research briefs in `.planning/research/`, and the clean-room codebase map (`.planning/codebase/`). Direction: **remediate, then build** — first make Layla *safe to expose, legal to ship, and verifiably correct*, then add new capability on the hardened foundation.
 
