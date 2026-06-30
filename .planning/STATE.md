@@ -1,14 +1,16 @@
 # Project State
 
-**Project:** Layla — local-first AI agent platform
-**Milestones:** (1) Remediate-then-Build substrate · (2) **Friend-Ready** product (North Star)
+**Project:** Layla — **companion-first** living experience; personalities = domain kits (coding second). See `UNIFIED-ROADMAP.md`.
 **Updated:** 2026-06-29
 
-## Position in the GSD loop
+## WHERE WE ARE (unified, reconciled with the refactor)
+**≈ 5/15 phases fully done · 6/15 partial · 4/15 open · weighted ≈ 8/15** — but that 5/15 is **split across two un-merged branches** (refactor on `master`, this session on `friend-ready-session`). **The gating task is the integration merge** (25 conflicts, `HANDOFF.md §6a`); only after it does `master` actually reflect 5/15. Full breakdown: `UNIFIED-ROADMAP.md`.
 
 ```
-map-codebase ✅ → new-project ✅ → plan/execute (remediation P1-2 ✅, P6 partial) ✅
-                          → Milestone 2 "Friend-Ready" PLANNED → executing Track A
+map ✅ → new-project ✅ → TWO parallel lines reconciled:
+   master (refactor)        : arch decomposition + frontend modular + companion VISION  (~2/15 + partials)
+   friend-ready-session     : security + compiler-free runtime + kit + benchmark + install (~3/15 + partials)
+   ▶ NEXT (gating): MERGE friend-ready-session onto master → true ~5/15 base, then continue companion-first.
 ```
 
 ## Runtime is now LIVE (the old caveat is resolved)
