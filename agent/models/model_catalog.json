@@ -599,6 +599,34 @@
       "filename": "Qwen2.5-Coder-0.5B-Instruct-Q4_K_M.gguf",
       "uncensored": false,
       "desc": "Qwen2.5 Coder 0.5B — speculative-decoding draft for the 7B/14B coder (same tokenizer)."
+    },
+    {
+      "name": "qwen2.5-coder-3b-instruct-Q4_K_M",
+      "family": "qwen",
+      "category": "coding",
+      "size": "3B",
+      "quant": "Q4_K_M",
+      "ram_required": 4,
+      "vram_required": 3,
+      "download_url": "https://huggingface.co/bartowski/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-3B-Instruct-Q4_K_M.gguf",
+      "repo_id": "bartowski/Qwen2.5-Coder-3B-Instruct-GGUF",
+      "filename": "Qwen2.5-Coder-3B-Instruct-Q4_K_M.gguf",
+      "uncensored": false,
+      "desc": "Qwen2.5 Coder 3B Q4 (~2GB). Multilingual incl. Spanish. Fast on older CPUs; light on disk."
+    },
+    {
+      "name": "qwen2.5-coder-1.5b-instruct-Q4_K_M",
+      "family": "qwen",
+      "category": "coding",
+      "size": "1.5B",
+      "quant": "Q4_K_M",
+      "ram_required": 3,
+      "vram_required": 2,
+      "download_url": "https://huggingface.co/bartowski/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf",
+      "repo_id": "bartowski/Qwen2.5-Coder-1.5B-Instruct-GGUF",
+      "filename": "Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf",
+      "uncensored": false,
+      "desc": "Qwen2.5 Coder 1.5B Q4 (~1.1GB). Minimal-disk floor for very constrained machines."
     }
   ]
 }

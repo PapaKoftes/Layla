@@ -12,8 +12,9 @@
 #   -Prefer quality|balanced|speed   model bias for the detected hardware (default balanced)
 #   -SkipModel                       set up the env but don't download the model yet
 param(
-    [ValidateSet("quality", "balanced", "speed")][string]$Prefer = "balanced",
-    [switch]$SkipModel
+    [ValidateSet("quality", "balanced", "lite", "speed")][string]$Prefer = "balanced",
+    [switch]$SkipModel,
+    [switch]$Spanish
 )
 $ErrorActionPreference = "Stop"
 $Repo = Split-Path -Parent $PSScriptRoot          # install\ -> repo root
@@ -70,7 +71,9 @@ if ($SkipModel) {
 } else {
     Write-Host "[5/5] Detecting hardware and provisioning the best coding kit ($Prefer) ..."
     Push-Location agent
-    & "..\.venv\Scripts\python.exe" install\provision_model.py --prefer $Prefer
+    $provArgs = @("install\provision_model.py", "--prefer", $Prefer)
+    if ($Spanish) { $provArgs += "--spanish" }
+    & "..\.venv\Scripts\python.exe" @provArgs
     Pop-Location
 }
 
