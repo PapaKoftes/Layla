@@ -43,7 +43,9 @@ def check_auth(token: str, client_host: str, cfg: dict) -> tuple[bool, str]:
     except ImportError:
         pass  # tunnel_auth not available, fall through to legacy
 
-    # Legacy fallback: plaintext remote_api_key (deprecated)
+    # Legacy fallback: plaintext remote_api_key (deprecated). Honored by design until a
+    # future breaking release (R5 deferred: also accepted in tunnel_auth.check_remote_access;
+    # gating it now would break the documented remote-auth flow for a low-severity item).
     if not auth_ok:
         api_key = cfg.get("remote_api_key")
         if api_key and str(api_key).strip():
