@@ -10,8 +10,8 @@
       <use href="#pet" transform="rotate(225)"/>
       <use href="#pet" transform="rotate(270)"/>
       <use href="#pet" transform="rotate(315)"/>
-      <circle r="11" fill="rgba(150,90,190,0.10)" stroke="rgba(170,110,205,0.55)"/>
-      <circle r="4.5" fill="rgba(190,140,220,0.50)" stroke="none"/>
+      <circle r="11" fill="rgba(150,90,190,0.16)" stroke="rgba(178,118,212,0.80)"/>
+      <circle r="4.5" fill="rgba(198,150,228,0.72)" stroke="none"/>
     </g>
     <path id="vine" d="M0,-50 C-16,-104 16,-168 0,-226"/>
     <path id="cvine" d="M36,-36 C92,-92 140,-140 196,-196"/>
@@ -26,7 +26,7 @@
       <use href="#cvine" transform="rotate(270)"/>
     </g>
   </defs>
-  <g fill="rgba(125,70,165,0.16)" stroke="rgba(165,105,200,0.55)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <g fill="rgba(128,72,170,0.22)" stroke="rgba(172,112,206,0.78)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
     <use href="#lattice" transform="translate(256,256)"/>
     <use href="#fl" transform="translate(256,256)"/>
     <use href="#fl" transform="translate(0,0) scale(0.92)"/>
