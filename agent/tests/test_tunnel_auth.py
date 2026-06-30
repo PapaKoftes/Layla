@@ -64,9 +64,20 @@ class TestValidateToken:
 
     def test_backward_compat_plaintext(self):
         from services.tunnel_auth import validate_token
-        cfg = {"remote_api_key": "my-old-key"}
+        # R5: legacy plaintext key is opt-in — must enable the gate.
+        cfg = {"remote_api_key": "my-old-key", "allow_legacy_remote_api_key": True}
         ok, reason = validate_token("my-old-key", cfg)
         assert ok is True
+
+    def test_legacy_key_gated_off_by_default(self):
+        """R5: a plaintext remote_api_key does NOT authenticate unless explicitly enabled."""
+        from services.tunnel_auth import validate_token
+        cfg = {"remote_api_key": "my-old-key"}  # no allow_legacy_remote_api_key
+        ok, reason = validate_token("my-old-key", cfg)
+        assert ok is False
+        cfg_on = {"remote_api_key": "my-old-key", "allow_legacy_remote_api_key": True}
+        ok2, _ = validate_token("my-old-key", cfg_on)
+        assert ok2 is True
 
     def test_backward_compat_wrong(self):
         from services.tunnel_auth import validate_token
@@ -93,10 +104,11 @@ class TestValidateToken:
         cfg = {
             "tunnel_token_hash": hash_token(token),
             "remote_api_key": "old-plaintext-key",
+            "allow_legacy_remote_api_key": True,  # R5: legacy fallthrough is opt-in
         }
         ok, _ = validate_token(token, cfg)
         assert ok is True
-        # Legacy key still works during migration (intentional fallthrough)
+        # Legacy key still works during migration (intentional fallthrough, when enabled)
         ok2, _ = validate_token("old-plaintext-key", cfg)
         assert ok2 is True  # backward compat during migration
 

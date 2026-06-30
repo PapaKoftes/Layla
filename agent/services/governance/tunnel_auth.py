@@ -78,8 +78,13 @@ def validate_token(token: str, cfg: dict) -> Tuple[bool, str]:
         # operators who set both aren't locked out during migration.
 
     # -- legacy: plaintext remote_api_key -----------------------------------
+    # R5: opt-in ONLY. The deprecated plaintext key is honored solely when
+    # allow_legacy_remote_api_key is explicitly true, so a stale key left in
+    # config can never silently authenticate. Migrate to tunnel_token_hash.
     legacy_key = cfg.get("remote_api_key")
-    if legacy_key and str(legacy_key).strip():
+    legacy_usable = bool(legacy_key and str(legacy_key).strip()
+                         and cfg.get("allow_legacy_remote_api_key", False))
+    if legacy_usable:
         import hmac
         if hmac.compare_digest(token, str(legacy_key).strip()):
             logger.warning(
@@ -88,7 +93,7 @@ def validate_token(token: str, cfg: dict) -> Tuple[bool, str]:
             )
             return True, ""
 
-    if stored_hash or (legacy_key and str(legacy_key).strip()):
+    if stored_hash or legacy_usable:
         return False, "invalid_token"
     return False, "no_token_configured"
 

@@ -43,12 +43,12 @@ def check_auth(token: str, client_host: str, cfg: dict) -> tuple[bool, str]:
     except ImportError:
         pass  # tunnel_auth not available, fall through to legacy
 
-    # Legacy fallback: plaintext remote_api_key (deprecated). Honored by design until a
-    # future breaking release (R5 deferred: also accepted in tunnel_auth.check_remote_access;
-    # gating it now would break the documented remote-auth flow for a low-severity item).
+    # Legacy fallback: plaintext remote_api_key (deprecated). R5: opt-in only —
+    # honored solely when allow_legacy_remote_api_key is true (mirrors the same
+    # gate in tunnel_auth.validate_token), so a stale key can't silently auth.
     if not auth_ok:
         api_key = cfg.get("remote_api_key")
-        if api_key and str(api_key).strip():
+        if api_key and str(api_key).strip() and cfg.get("allow_legacy_remote_api_key", False):
             logger.warning(
                 "remote_api_key is deprecated — use tunnel_token_hash via /remote/token/rotate"
             )
