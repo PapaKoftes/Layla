@@ -299,3 +299,40 @@ def recommend_kit(
         "settings": settings,
         "rationale": rationale,
     }
+
+
+# Aspect (personality) -> domain (catalog category). Each personality can provision its
+# own domain-optimized model. Spanish/other-language users can add a small language helper.
+_ASPECT_DOMAIN = {
+    "morrigan": "coding",      # the architect / coder
+    "nyx": "reasoning",        # logic, math, step-by-step
+    "cassandra": "reasoning",  # research / analysis
+    "echo": "general",         # everyday chat
+    "eris": "creative",        # writing / ideas
+    "lilith": "creative",
+}
+
+
+def recommend_aspect_kit(aspect: str, hardware_info: dict, *, prefer: str = "lite") -> dict | None:
+    """Recommend a kit for a specific personality, using its domain (Castilla: per-aspect models)."""
+    domain = _ASPECT_DOMAIN.get(str(aspect).lower(), "general")
+    return recommend_kit(hardware_info, domain=domain, prefer=prefer)
+
+
+def recommend_language_assist(hardware_info: dict) -> dict | None:
+    """Smallest MULTILINGUAL general model — a translation/intent helper for non-English users.
+
+    Returns a catalog entry (not a full kit): a tiny model that understands the user's
+    language, extracts intent, and conveys it for the task model. None if none fits.
+    """
+    doc = load_catalog_full()
+    cat = validate_catalog_entries(doc.get("models", []))
+    multiling = [m for m in cat if m.get("multilingual") and (m.get("category") in ("general", "fast"))]
+    ram = float(hardware_info.get("ram_gb") or 0.0)
+    budget = max(ram * _RAM_HEADROOM, 0.5) if ram else 999
+    fits = [m for m in multiling if float(m.get("ram_required", 999) or 999) <= budget]
+    pool = fits or multiling
+    if not pool:
+        return None
+    pool.sort(key=_params_b)  # smallest first — it's a lightweight helper
+    return pool[0]

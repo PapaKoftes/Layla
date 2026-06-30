@@ -36,3 +36,18 @@ powershell -ExecutionPolicy Bypass -File install\castilla.ps1
 ## Provenance
 Catalog: `qwen2.5-coder-3b-instruct-Q4_K_M`, `qwen2.5-coder-1.5b-instruct-Q4_K_M` added.
 Hardware target confirmed from the operator's screenshot (2026-06-30).
+
+## Update — low-end optimization + languages + personalities (2026-06-30)
+- **Dynamic resource governor (low-end first).** Real keyboard/mouse detection drives three
+  modes: **WHISPER** (you're using the laptop → Layla backs off: half the CPU cores, lowered
+  OS priority, background work paused), **BREATHE** (lightly idle → moderate), **SPRINT**
+  (idle → all cores, background research/initiative). New: `get_inference_threads` (the model
+  itself throttles), live process-priority on mode change, and immediate back-off on an
+  incoming chat. Wired into `llm_gateway` model load. Enabled by default (`resource_governor_enabled`).
+  *So it never chokes the laptop in use, and gets the most out of the AI while idle.*
+- **Language helper (optional).** A small **multilingual** model (Qwen2.5-1.5B, ~1GB) for
+  translation/intent. Install with `-LanguageHelper` (or `provision_model.py --language-assist`).
+- **Per-personality models.** Each aspect can provision its own domain model: morrigan→coding,
+  nyx→reasoning, echo→general, eris/lilith→creative. `-Aspects nyx,echo` (or `--aspects`).
+- **Verified Spanish:** the 3B coder loads in ~3s and runs **~9 tok/s**, answering in fluent
+  Spanish with correct code (proof run 2026-06-30).
