@@ -23,7 +23,19 @@ Already warns. Add a config gate (`allow_legacy_remote_api_key`, default False) 
 ### R6 — `_TESTCLIENT_FILES` test gap  *(testing)* `[—] deferred (testing-infra, low): pinning httpx is the fix but verifying needs the CI-skipped TestClient tests to actually run; not worth destabilizing CI now. Tracked.`
 They're CI-skipped due to an httpx/starlette TestClient version mismatch. Pin/upgrade httpx (or add the documented `httpx<…`/`httpx2` shim) so they run. **Accept:** the TestClient tests run (locally + CI) without hanging, or are honestly marked with a tracked reason.
 
-### R7 — GUI: Warframe-mystic + control surface  *(MEDIUM)* `[~] mostly already done`
+### R7 — GUI: Warframe-mystic + control surface  *(MEDIUM)* `[x] delivered`
+
+**DELIVERED 2026-06-30:** added the one missing control surface — a persistent **Models & Kits**
+panel (`agent/ui/components/models.js` + sidebar entry + `#models-overlay` + themed CSS). It reuses
+existing endpoints only (`/setup_status` installed list, `/setup/models` catalog+recommendation,
+`/setup/download` SSE, `POST /settings {model_filename}` switch) — zero new backend. Verified live in
+the preview: sidebar button present, overlay opens (`display:flex`, `.visible`), fully themed
+(violet `#320044` border, crimson `#8b0000` titles, `#0e000e` bg), and the data path degrades
+gracefully when the API is absent. **Also fixed a real shipping bug found in the process:** the PWA
+service worker (`sw.js`) was cache-first with a static version + no cleanup, so UI updates would never
+reach an existing install — switched to stale-while-revalidate + old-cache purge + version bump so
+this panel (and all future UI changes) actually deploy.
+
 > Design tokens (palette/`--wf-cut`/per-aspect) already exist in `agent/ui/css/layla.css`. The real work is applying them consistently across the ~28 components + adding the control panels — which needs the app RUNNING (preview) for visual verification. This is a focused build, not a blind tail-of-session edit. Scoped + ready to execute next.
 
 **VERIFIED LIVE 2026-06-30 (preview server):** the UI is ALREADY built + fully themed — all design
