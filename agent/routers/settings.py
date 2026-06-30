@@ -22,6 +22,23 @@ from services.route_helpers import (
 logger = logging.getLogger("layla")
 router = APIRouter(tags=["settings"])
 
+# Security-critical config keys that a REMOTE client must never be able to change
+# via POST /settings (it is on the remote allowlist). Editing these could widen
+# the file sandbox, disable safe mode, or rotate/disable the remote auth itself.
+# Local (loopback) operators are unaffected.
+_REMOTE_PROTECTED_KEYS = frozenset({
+    "sandbox_root",
+    "safe_mode",
+    "uncensored",
+    "remote_enabled",
+    "remote_api_key",
+    "remote_rate_limit_per_minute",
+    "remote_allowlist",
+    "allowed_hosts",
+    "tunnel_enabled",
+    "tunnel_token_hash",
+})
+
 
 @router.get("/setup_status")
 def setup_status():
@@ -191,6 +208,12 @@ def _sse_error(msg: str) -> StreamingResponse:
 @router.get("/setup/download")
 async def setup_download(url: str, filename: str = ""):
     """Stream model download progress as SSE events. url: HuggingFace direct .gguf URL."""
+    # SSRF / local-file guard: urllib.urlretrieve honors file:// and ftp://, and
+    # would happily reach localhost, cloud metadata (169.254.169.254) or LAN hosts.
+    # Restrict to public http/https only before touching the URL.
+    from services.url_guard import is_safe_url
+    if not is_safe_url(url):
+        return _sse_error("URL not allowed — only public http(s) model URLs are permitted")
     cfg = _rs.load_config()
     models_dir_raw = cfg.get("models_dir")
     models_dir = Path(models_dir_raw).expanduser().resolve() if models_dir_raw else _rs.default_models_dir()
@@ -284,6 +307,8 @@ def get_settings():
     """Return all editable settings. Missing keys use schema defaults."""
     from config_schema import EDITABLE_SCHEMA
 
+    from services.secret_filter import is_secret_key, REDACTED
+
     full_cfg = _rs.load_config()
     out = {}
     for e in EDITABLE_SCHEMA:
@@ -294,6 +319,10 @@ def get_settings():
             out[k] = e["default"]
         else:
             out[k] = None
+        # Never disclose stored secrets (remote_api_key, *_token, *_secret, …).
+        # The UI shows a masked placeholder; saving the mask is ignored on POST.
+        if is_secret_key(k) and out[k] not in (None, "", [], {}):
+            out[k] = REDACTED
     return out
 
 
@@ -331,6 +360,36 @@ async def save_settings(req: Request):
         body = await req.json()
     except Exception:
         return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+    # Drop redaction-mask placeholders so re-saving the form (which receives a
+    # masked secret from GET /settings) never overwrites the real stored secret.
+    if isinstance(body, dict):
+        from services.secret_filter import REDACTED
+        body = {k: v for k, v in body.items() if v != REDACTED}
+
+        # Remote clients may not change security-critical keys (sandbox, safe
+        # mode, remote auth). Use is_direct_local (proxy-aware) — a bare host check
+        # would treat tunnelled requests (which arrive from 127.0.0.1) as local.
+        from services.auth import is_direct_local
+        socket_host = req.client.host if req.client else None
+        if not is_direct_local(req.headers, socket_host):
+            blocked = _REMOTE_PROTECTED_KEYS.intersection(body)
+            if blocked:
+                for k in blocked:
+                    body.pop(k, None)
+                logger.warning(
+                    "settings: blocked remote write to protected keys from %s: %s",
+                    socket_host, sorted(blocked),
+                )
+    # REQ-12: route secret-typed keys into the OS keyring instead of writing them
+    # plaintext to runtime_config.json (no-op when no keyring backend exists).
+    if isinstance(body, dict):
+        try:
+            from services.secret_store import persist_secret_keys
+            body, _stored = persist_secret_keys(body)
+            if _stored:
+                logger.info("settings: stored %d secret(s) in the OS keyring (not plaintext)", len(_stored))
+        except Exception as e:
+            logger.debug("keyring secret persist skipped: %s", e)
     try:
         return await asyncio.to_thread(sync_save_settings, body)
     except Exception as e:

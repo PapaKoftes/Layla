@@ -61,26 +61,35 @@ _LLAMA_CPP_FILES = [
     "test_reasoning_classifier.py",
 ]
 
+# Opt-in to exercise a REAL local model (the inference-smoke job sets this). Without
+# it, real-Llama tests are skipped and Llama is stubbed — so the suite is green on ANY
+# machine, including a dev box with real llama-cpp installed (which would otherwise hang
+# loading a real model on every loop test). See .planning/phases/12-*/CONTEXT.md.
+_REAL_LLM = bool(os.environ.get("LAYLA_TEST_REAL_LLM"))
+
 collect_ignore: list[str] = []
 if os.environ.get("CI"):
     collect_ignore.extend(_TESTCLIENT_FILES)
+# Default-skip the real-Llama loop tests unless explicitly opted in. (On CI they were
+# always skipped; locally with real llama-cpp they'd run a real model and hang.)
+if not _REAL_LLM:
     collect_ignore.extend(_LLAMA_CPP_FILES)
 
 
 @pytest.fixture(autouse=True, scope="session")
 def _block_llama_cpp_on_ci():
     """
-    CI safety net: prevent llama_cpp.Llama from loading native binary (SIGILL).
+    Safety net: prevent llama_cpp.Llama from loading a native binary during unit tests.
 
-    The pre-compiled llama-cpp-python uses AVX-512/VNNI instructions unsupported
-    by GitHub Actions VMs, causing a process-fatal SIGILL (exit 132) that
-    bypasses Python's try/except.
+    Two reasons: (1) on CI the pre-compiled wheel uses AVX-512/VNNI → process-fatal
+    SIGILL; (2) on any machine, loading a real model in a unit test is slow and, against
+    a stub/missing model, retry-sleeps until the per-test timeout — hanging the suite.
 
-    We replace llama_cpp.Llama with a stub that raises RuntimeError.  Tests that
-    explicitly mock llama_cpp.Llama (via monkeypatch) override this for their
-    specific test function.  Tests that mock run_completion never reach Llama.
+    We replace llama_cpp.Llama with a stub that raises RuntimeError, UNLESS the run opts
+    into a real backend via LAYLA_TEST_REAL_LLM (the inference-smoke job). Tests that
+    explicitly mock llama_cpp.Llama or run_completion override this for their function.
     """
-    if not os.environ.get("CI"):
+    if _REAL_LLM:
         yield
         return
 

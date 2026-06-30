@@ -3,7 +3,7 @@
 ## 1. Where personality is injected today
 
 - **agent_loop.py** `_build_system_head(goal, aspect, workspace_root, sub_goals)` builds the system prompt. It loads:
-  - `identity` via `runtime_safety.load_identity()` → [agent/system_identity.txt](agent/system_identity.txt)
+  - `identity` via `runtime_safety.load_identity()` → [agent/system_identity.txt](../agent/system_identity.txt)
   - `personality` from the **active aspect**: `name`, `title`, `role` or `voice` from personalities/*.json, formatted as third-person line; the aspect's `systemPromptAddition` is not injected here to avoid echo—only name/title/role. Fallback: `runtime_safety.load_personality()` → personality.json
 - Order in head: core sentence → identity → content policy (if uncensored) → personality → workspace_context → aspect_memories → learnings → semantic → knowledge
 - **orchestrator.py** `build_standard_prompt()` / `build_deliberation_prompt()` add the final user turn and "Reply as {name}... If you must refuse, start with [REFUSED: reason]."

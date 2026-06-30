@@ -66,7 +66,7 @@ Companion to [`PARITY_AUDIT.md`](PARITY_AUDIT.md). Each row here is **not fully 
 |------|------|-------------------|
 | `integrations/openclaude-main/` | Bun/TS Claude-like CLI + OpenAI-compat | Pattern only; no vendored runtime in `agent/`. |
 | `claude-code-sourcemap-main/` (root or integrations) | TS CLI + permissions patterns | Pattern only; see [`integrations/README.md`](../integrations/README.md). |
-| `claw-code-main/` | Python + Rust harness | [`PARITY.md`](../claw-code-main/PARITY.md) internal TS vs Rust gaps — checklist only. |
+| `claw-code-main/` | Python + Rust harness | `PARITY.md` (external sibling repo) internal TS vs Rust gaps — checklist only. |
 
 Do not copy source verbatim; implement behavior in Python with tests.
 
