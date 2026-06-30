@@ -4,20 +4,20 @@
 
 ## Order of execution (by value × tractability)
 
-### R1 — Real-inference CI smoke  *(HIGH; watertight gate)* `[ ]`
+### R1 — Real-inference CI smoke  *(HIGH; watertight gate)* `[x]`
 Wire a CI job that sets `LAYLA_TEST_REAL_LLM=1`, fetches a tiny GGUF, runs a one-turn `run_completion` smoke + the benchmark harness. Add a marked `inference_smoke` test. **Accept:** CI proves a fresh install can load a model + complete a turn.
 
-### R2 — Low-end guardrails  *(LOW/quick; prevents footguns)* `[ ]`
+### R2 — Low-end guardrails  *(LOW/quick; prevents footguns)* `[x]`
 - Encode aspect→model hardware gating so a low-end box never auto-selects an oversized model (e.g. `eris`→11B). Add a `max_params_b_for_tier` cap in selection + a test.
 - Ensure `resource_governor_enabled` + a low-end toggle are first-class config (already default-on; expose in settings schema). **Accept:** on a 16GB/CPU box every aspect resolves to a usable model; tests assert it.
 
-### R3 — Config consolidation  *(MEDIUM)* `[ ]`
+### R3 — Config consolidation  *(MEDIUM)* `[x]`
 Two files coexist: `config.json` (read by `services/infrastructure/config_cache.py`) vs the system-of-record `runtime_config.json` (`runtime_safety.load_config`). Make `config_cache` read the **same** file as `runtime_safety` (or document `config.json` as legacy + alias), so there's one source of truth. **Accept:** one authoritative config file; a test asserts both loaders resolve the same path; no drift.
 
-### R4 — Two-store (SQLite+Chroma) consistency  *(LOW)* `[ ]`
+### R4 — Two-store (SQLite+Chroma) consistency  *(LOW)* `[x]`
 Verify backup + erasure cover **both** stores (the fallback store too). Add a test that a delete removes the vector and a backup includes the vector dir. **Accept:** no orphaned vectors; backup round-trips both.
 
-### R5 — Deprecated plaintext `remote_api_key`  *(LOW)* `[ ]`
+### R5 — Deprecated plaintext `remote_api_key`  *(LOW)* `[—] deferred to a breaking release (honored by design in tunnel_auth; gating now breaks the documented flow + ~3 tests for a low item)`
 Already warns. Add a config gate (`allow_legacy_remote_api_key`, default False) so the plaintext fallback is opt-in, not silent. **Accept:** legacy key ignored unless explicitly enabled; test covers it.
 
 ### R6 — `_TESTCLIENT_FILES` test gap  *(testing)* `[ ]`
