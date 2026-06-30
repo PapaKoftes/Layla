@@ -241,7 +241,7 @@ class VerificationQueue:
                         logger.info("Verified fact: %s → confirmed", fact_content[:50])
                         # Maturity: award XP for user-verified fact
                         try:
-                            from services.maturity_engine import award_xp
+                            from services.personality.maturity_engine import award_xp
                             award_xp(12, reason=f"fact_verified:{fact_id}"[:80])
                         except Exception:
                             pass

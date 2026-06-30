@@ -61,7 +61,7 @@ class MemoryResult:
 def _cfg() -> dict:
     # Delegates to services.config_cache for mtime-invalidated single-source loader.
     try:
-        from services.config_cache import get_config
+        from services.infrastructure.config_cache import get_config
         return get_config()
     except Exception:
         return {}
@@ -80,7 +80,7 @@ def save_learning(content: str, kind: str = "general", **kwargs: Any) -> int:
     """
     from layla.memory.db import save_learning as _save_learning
     try:
-        from services.metrics import record_memory_op
+        from services.observability.prom_metrics import record_memory_op
         record_memory_op("episodic", "save_learning")
     except Exception:
         pass
@@ -525,7 +525,7 @@ def _query_graph(text: str, *, limit: int = 10) -> list[MemoryResult]:
     """Graph-based entity lookup via NetworkX."""
     results = []
     try:
-        from services.personal_knowledge_graph import get_related_entities
+        from services.memory.personal_knowledge_graph import get_related_entities
         entities = get_related_entities(text, k=limit)
         for ent in entities:
             results.append(MemoryResult(
@@ -599,7 +599,7 @@ def _query_kb_articles(text: str, *, limit: int = 10) -> list[MemoryResult]:
     """Search KB article index using keyword overlap scoring."""
     results = []
     try:
-        from services.kb_builder import _kb_output_dir
+        from services.workspace.kb_builder import _kb_output_dir
         idx_path = _kb_output_dir() / "_index.json"
         if not idx_path.exists():
             return results
@@ -642,7 +642,7 @@ def discover_and_store_entities(text: str, source: str = "") -> int:
     """
     try:
         from schemas.entity import Entity, EntityType, make_entity_id
-        from services.kb_builder import extract_entities_from_text
+        from services.workspace.kb_builder import extract_entities_from_text
 
         raw_entities = extract_entities_from_text(text)
         stored = 0

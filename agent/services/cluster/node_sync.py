@@ -383,7 +383,7 @@ def flush_pending_for_peer(peer_id: str) -> int:
         return 0
 
     try:
-        from services.cluster_network import get_cluster_network
+        from services.cluster.cluster_network import get_cluster_network
         net = get_cluster_network()
         peer = net.get_peer(peer_id)
         if not peer:
@@ -458,7 +458,7 @@ class NodeSync:
         }
 
         try:
-            from services.cluster_network import get_cluster_network
+            from services.cluster.cluster_network import get_cluster_network
             net = get_cluster_network()
             if not net.enabled:
                 summary["note"] = "cluster_disabled"
@@ -655,7 +655,7 @@ class NodeSync:
             try:
                 # Only sync if governor allows background work
                 try:
-                    from services.resource_governor import should_run_background
+                    from services.infrastructure.resource_governor import should_run_background
                     if not should_run_background(priority=2):
                         self._stop_event.wait(self._sync_interval)
                         continue
@@ -664,7 +664,7 @@ class NodeSync:
 
                 # Snapshot ALL peer statuses (including offline) before sync
                 try:
-                    from services.cluster_network import get_cluster_network
+                    from services.cluster.cluster_network import get_cluster_network
                     net = get_cluster_network()
                     if net.enabled:
                         with net._peers_lock:

@@ -8,12 +8,12 @@ import pytest
 class TestIsAvailable:
     @patch("shutil.which", return_value="/usr/bin/tailscale")
     def test_available(self, mock_which):
-        from services.tailscale_manager import is_available
+        from services.infrastructure.tailscale_manager import is_available
         assert is_available() is True
 
     @patch("shutil.which", return_value=None)
     def test_not_available(self, mock_which):
-        from services.tailscale_manager import is_available
+        from services.infrastructure.tailscale_manager import is_available
         assert is_available() is False
 
 
@@ -21,7 +21,7 @@ class TestGetStatus:
     @patch("subprocess.run")
     @patch("shutil.which", return_value="/usr/bin/tailscale")
     def test_running(self, mock_which, mock_run):
-        from services.tailscale_manager import get_status
+        from services.infrastructure.tailscale_manager import get_status
         mock_run.return_value = MagicMock(
             returncode=0,
             stdout=json.dumps({
@@ -41,7 +41,7 @@ class TestGetStatus:
     @patch("subprocess.run")
     @patch("shutil.which", return_value="/usr/bin/tailscale")
     def test_not_running(self, mock_which, mock_run):
-        from services.tailscale_manager import get_status
+        from services.infrastructure.tailscale_manager import get_status
         mock_run.return_value = MagicMock(
             returncode=0,
             stdout=json.dumps({
@@ -54,7 +54,7 @@ class TestGetStatus:
 
     @patch("shutil.which", return_value=None)
     def test_not_installed(self, mock_which):
-        from services.tailscale_manager import get_status
+        from services.infrastructure.tailscale_manager import get_status
         status = get_status()
         assert status["running"] is False
         assert "error" in status
@@ -62,7 +62,7 @@ class TestGetStatus:
     @patch("subprocess.run", side_effect=Exception("timeout"))
     @patch("shutil.which", return_value="/usr/bin/tailscale")
     def test_command_fails(self, mock_which, mock_run):
-        from services.tailscale_manager import get_status
+        from services.infrastructure.tailscale_manager import get_status
         status = get_status()
         assert status["running"] is False
         assert "error" in status
@@ -72,21 +72,21 @@ class TestStartTailscale:
     @patch("subprocess.run")
     @patch("shutil.which", return_value="/usr/bin/tailscale")
     def test_start_success(self, mock_which, mock_run):
-        from services.tailscale_manager import start_tailscale
+        from services.infrastructure.tailscale_manager import start_tailscale
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         result = start_tailscale({})
         assert result["ok"] is True
 
     @patch("shutil.which", return_value=None)
     def test_start_not_installed(self, mock_which):
-        from services.tailscale_manager import start_tailscale
+        from services.infrastructure.tailscale_manager import start_tailscale
         result = start_tailscale({})
         assert result["ok"] is False
 
     @patch("subprocess.run")
     @patch("shutil.which", return_value="/usr/bin/tailscale")
     def test_start_with_auth_key(self, mock_which, mock_run):
-        from services.tailscale_manager import start_tailscale
+        from services.infrastructure.tailscale_manager import start_tailscale
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         cfg = {"tailscale_auth_key": "tskey-auth-abc123"}
         result = start_tailscale(cfg)
@@ -101,14 +101,14 @@ class TestStopTailscale:
     @patch("subprocess.run")
     @patch("shutil.which", return_value="/usr/bin/tailscale")
     def test_stop_success(self, mock_which, mock_run):
-        from services.tailscale_manager import stop_tailscale
+        from services.infrastructure.tailscale_manager import stop_tailscale
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         result = stop_tailscale()
         assert result["ok"] is True
 
     @patch("shutil.which", return_value=None)
     def test_stop_not_installed(self, mock_which):
-        from services.tailscale_manager import stop_tailscale
+        from services.infrastructure.tailscale_manager import stop_tailscale
         result = stop_tailscale()
         assert result["ok"] is False
 
@@ -117,21 +117,21 @@ class TestGetTailscaleIP:
     @patch("subprocess.run")
     @patch("shutil.which", return_value="/usr/bin/tailscale")
     def test_returns_ip(self, mock_which, mock_run):
-        from services.tailscale_manager import get_tailscale_ip
+        from services.infrastructure.tailscale_manager import get_tailscale_ip
         mock_run.return_value = MagicMock(returncode=0, stdout="100.64.0.1\n")
         ip = get_tailscale_ip()
         assert ip == "100.64.0.1"
 
     @patch("shutil.which", return_value=None)
     def test_not_installed(self, mock_which):
-        from services.tailscale_manager import get_tailscale_ip
+        from services.infrastructure.tailscale_manager import get_tailscale_ip
         ip = get_tailscale_ip()
         assert ip is None
 
     @patch("subprocess.run", side_effect=Exception("fail"))
     @patch("shutil.which", return_value="/usr/bin/tailscale")
     def test_command_error(self, mock_which, mock_run):
-        from services.tailscale_manager import get_tailscale_ip
+        from services.infrastructure.tailscale_manager import get_tailscale_ip
         ip = get_tailscale_ip()
         assert ip is None
 
@@ -140,14 +140,14 @@ class TestGetConnectionUrl:
     @patch("subprocess.run")
     @patch("shutil.which", return_value="/usr/bin/tailscale")
     def test_returns_url(self, mock_which, mock_run):
-        from services.tailscale_manager import get_connection_url
+        from services.infrastructure.tailscale_manager import get_connection_url
         mock_run.return_value = MagicMock(returncode=0, stdout="100.64.0.1\n")
         url = get_connection_url(port=8000)
         assert url == "http://100.64.0.1:8000"
 
     @patch("shutil.which", return_value=None)
     def test_not_available(self, mock_which):
-        from services.tailscale_manager import get_connection_url
+        from services.infrastructure.tailscale_manager import get_connection_url
         url = get_connection_url()
         assert url is None
 
@@ -156,7 +156,7 @@ class TestFunnel:
     @patch("subprocess.run")
     @patch("shutil.which", return_value="/usr/bin/tailscale")
     def test_funnel_start(self, mock_which, mock_run):
-        from services.tailscale_manager import funnel_start
+        from services.infrastructure.tailscale_manager import funnel_start
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         result = funnel_start(port=8000)
         assert result["ok"] is True
@@ -164,14 +164,14 @@ class TestFunnel:
     @patch("subprocess.run")
     @patch("shutil.which", return_value="/usr/bin/tailscale")
     def test_funnel_stop(self, mock_which, mock_run):
-        from services.tailscale_manager import funnel_stop
+        from services.infrastructure.tailscale_manager import funnel_stop
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
         result = funnel_stop(port=8000)
         assert result["ok"] is True
 
     @patch("shutil.which", return_value=None)
     def test_funnel_not_installed(self, mock_which):
-        from services.tailscale_manager import funnel_start
+        from services.infrastructure.tailscale_manager import funnel_start
         result = funnel_start()
         assert result["ok"] is False
 

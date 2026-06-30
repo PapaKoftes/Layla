@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from services import project_discovery_hooks as pdh
+from services.workspace import project_discovery_hooks as pdh
 
 
 def test_workspace_memory_is_sparse_no_file(tmp_path: Path):

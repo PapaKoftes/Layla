@@ -39,14 +39,14 @@ def log_tool_outcome(intent: str, result: object) -> None:
 def maybe_validate_tool_output(intent: str, result: object) -> object:
     """Validate tool output through the tool_output_validator service."""
     if not isinstance(result, dict):
-        from services.tool_output_validator import validate_tool_output
+        from services.tools.tool_output_validator import validate_tool_output
         out = validate_tool_output(intent, result)
         log_tool_outcome(intent, out if isinstance(out, dict) else {"ok": True})
         return out
     if result.get("reason") in SKIP_TOOL_OUTPUT_VALIDATION:
         log_tool_outcome(intent, result)
         return result
-    from services.tool_output_validator import validate_tool_output
+    from services.tools.tool_output_validator import validate_tool_output
     out = validate_tool_output(intent, result)
 
     try:
@@ -90,7 +90,7 @@ def apply_deterministic_tool_verification(
         logger.warning("deterministic_tool_verification config check failed: %s", e, exc_info=True)
         return result, True, "disabled"
     try:
-        from services.tool_output_validator import deterministic_verify_tool_result
+        from services.tools.tool_output_validator import deterministic_verify_tool_result
 
         vr = deterministic_verify_tool_result(intent, result, workspace_root=workspace or "")
         ok = bool(vr.get("ok"))
@@ -124,7 +124,7 @@ def verify_tool_progress(
     LLM evaluates whether the tool step moved the objective closer.
     Returns {"progress_made": bool, "retry_suggested": bool} or None.
     """
-    from services.llm_gateway import run_completion
+    from services.llm.llm_gateway import run_completion
 
     obj_short = (objective or "")[:400]
     res_short = str(result)[:500]
@@ -232,7 +232,7 @@ def run_verification_after_tool(
     if ver and ver.get("progress_made") and not state.get("environment_aligned", True):
         state["consecutive_no_progress"] = state.get("consecutive_no_progress", 0) + 1
     if state.get("consecutive_no_progress", 0) > 0:
-        from services.failure_recovery import classify_failure_and_recovery
+        from services.infrastructure.failure_recovery import classify_failure_and_recovery
         classify_failure_and_recovery(state)
 
 

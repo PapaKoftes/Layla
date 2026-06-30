@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from services.agent_task_runner import (
+from services.infrastructure.agent_task_runner import (
     _TASKS,
     _TASKS_LOCK,
     _cancel_background_task_impl,
@@ -13,7 +13,7 @@ from services.agent_task_runner import (
     _task_public,
     enqueue_threaded_autonomous,
 )
-from services.resource_manager import PRIORITY_BACKGROUND
+from services.infrastructure.resource_manager import PRIORITY_BACKGROUND
 from shared_state import get_touch_activity
 
 logger = logging.getLogger("layla")
@@ -63,7 +63,7 @@ async def resume_persistent_coordinator_task(task_id: str, request: Request):
     if not isinstance(body, dict):
         body = {}
     import agent_loop as _al
-    from services.coordinator import run as coordinator_run
+    from services.planning.coordinator import run as coordinator_run
 
     result = await asyncio.to_thread(
         coordinator_run,
@@ -99,7 +99,7 @@ async def execute_plan_route(req: dict):
         return JSONResponse({"ok": False, "error": "plan and goal are required"}, status_code=400)
     try:
         from agent_loop import autonomous_run
-        from services.planner import execute_plan as _exec_plan
+        from services.planning.planner import execute_plan as _exec_plan
         results = await asyncio.to_thread(
             _exec_plan,
             plan_steps,
@@ -119,7 +119,7 @@ async def execute_plan_route(req: dict):
         all_ok = bool(results.get("all_steps_ok")) if isinstance(results, dict) else False
         # Award XP for successful plan execution
         try:
-            from services.maturity_engine import award_xp
+            from services.personality.maturity_engine import award_xp
             award_xp(20, reason=f"plan_executed:{goal[:60]}")
         except Exception:
             pass

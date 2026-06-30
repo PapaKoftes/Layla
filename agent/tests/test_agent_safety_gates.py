@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from services.agent_safety import (
+from services.safety.agent_safety import (
     maybe_planning_strict_refusal,
     maybe_step_tool_allowlist_refusal,
 )
@@ -99,7 +99,7 @@ class TestPlanningStrictRefusal:
     def test_dangerous_tool_blocked(self):
         """A tool flagged dangerous=True in the registry should be refused."""
         fake_tools = {"delete_everything": {"dangerous": True}}
-        with patch("services.agent_safety.TOOLS", fake_tools):
+        with patch("services.safety.agent_safety.TOOLS", fake_tools):
             result = maybe_planning_strict_refusal(
                 "delete_everything", _cfg(strict=True), _state(),
                 allow_write=True, allow_run=False,
@@ -112,7 +112,7 @@ class TestPlanningStrictRefusal:
     @pytest.mark.parametrize("intent", ["scan_repo", "update_project_memory"])
     def test_exception_dangerous_tools_pass(self, intent: str):
         fake_tools = {intent: {"dangerous": True}}
-        with patch("services.agent_safety.TOOLS", fake_tools):
+        with patch("services.safety.agent_safety.TOOLS", fake_tools):
             result = maybe_planning_strict_refusal(
                 intent, _cfg(strict=True), _state(),
                 allow_write=True, allow_run=True,
@@ -123,7 +123,7 @@ class TestPlanningStrictRefusal:
 
     def test_non_dangerous_non_run_tool_passes(self):
         fake_tools = {"read_file": {"dangerous": False}}
-        with patch("services.agent_safety.TOOLS", fake_tools):
+        with patch("services.safety.agent_safety.TOOLS", fake_tools):
             result = maybe_planning_strict_refusal(
                 "read_file", _cfg(strict=True), _state(),
                 allow_write=True, allow_run=True,
@@ -133,7 +133,7 @@ class TestPlanningStrictRefusal:
     # -- Unknown tool (not in TOOLS, not in run list) passes --
 
     def test_unknown_tool_passes(self):
-        with patch("services.agent_safety.TOOLS", {}):
+        with patch("services.safety.agent_safety.TOOLS", {}):
             result = maybe_planning_strict_refusal(
                 "unknown_safe_tool", _cfg(strict=True), _state(),
                 allow_write=True, allow_run=True,
@@ -160,7 +160,7 @@ class TestStepToolAllowlistRefusal:
 
     def test_empty_allowlist_returns_none(self):
         with patch(
-            "services.tool_allowlist_context.get_plan_step_tool_allowlist",
+            "services.tools.tool_allowlist_context.get_plan_step_tool_allowlist",
             return_value=None,
         ):
             result = maybe_step_tool_allowlist_refusal("shell", {})
@@ -168,7 +168,7 @@ class TestStepToolAllowlistRefusal:
 
     def test_empty_frozenset_allowlist_returns_none(self):
         with patch(
-            "services.tool_allowlist_context.get_plan_step_tool_allowlist",
+            "services.tools.tool_allowlist_context.get_plan_step_tool_allowlist",
             return_value=frozenset(),
         ):
             result = maybe_step_tool_allowlist_refusal("shell", {})
@@ -178,7 +178,7 @@ class TestStepToolAllowlistRefusal:
 
     def test_intent_in_allowlist_returns_none(self):
         with patch(
-            "services.tool_allowlist_context.get_plan_step_tool_allowlist",
+            "services.tools.tool_allowlist_context.get_plan_step_tool_allowlist",
             return_value=frozenset({"shell", "read_file"}),
         ):
             result = maybe_step_tool_allowlist_refusal("shell", {})
@@ -188,7 +188,7 @@ class TestStepToolAllowlistRefusal:
 
     def test_intent_not_in_allowlist_returns_refusal(self):
         with patch(
-            "services.tool_allowlist_context.get_plan_step_tool_allowlist",
+            "services.tools.tool_allowlist_context.get_plan_step_tool_allowlist",
             return_value=frozenset({"read_file", "write_file"}),
         ):
             result = maybe_step_tool_allowlist_refusal("shell", {})
@@ -203,7 +203,7 @@ class TestStepToolAllowlistRefusal:
     def test_refusal_lists_allowed_tools(self):
         allowed = frozenset({"alpha", "bravo", "charlie"})
         with patch(
-            "services.tool_allowlist_context.get_plan_step_tool_allowlist",
+            "services.tools.tool_allowlist_context.get_plan_step_tool_allowlist",
             return_value=allowed,
         ):
             result = maybe_step_tool_allowlist_refusal("delta", {})
@@ -226,11 +226,11 @@ class TestStepToolAllowlistRefusal:
             return _real_import(name, *args, **kwargs)
 
         # Remove cached module so the lazy import inside the function re-triggers
-        saved = sys.modules.pop("services.tool_allowlist_context", None)
+        saved = sys.modules.pop("services.tools.tool_allowlist_context", None)
         try:
             with patch.object(builtins, "__import__", side_effect=_blocking_import):
                 result = maybe_step_tool_allowlist_refusal("shell", {})
             assert result is None
         finally:
             if saved is not None:
-                sys.modules["services.tool_allowlist_context"] = saved
+                sys.modules["services.tools.tool_allowlist_context"] = saved

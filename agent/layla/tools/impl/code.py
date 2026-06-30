@@ -79,7 +79,7 @@ def grep_code(pattern: str, path: str, file_glob: str = "*") -> dict:
 def search_codebase(symbol: str, root: str = "") -> dict:
     """Find functions/classes and semantic chunks matching symbol (read-only). root defaults to sandbox."""
     try:
-        from services.code_intelligence import search_symbols
+        from services.workspace.code_intelligence import search_symbols
     except Exception as e:
         return {"ok": False, "error": str(e), "matches": []}
     root_path = Path(root).expanduser().resolve() if (root or "").strip() else _get_sandbox()
@@ -272,7 +272,7 @@ def project_discovery_tool(workspace_root: str = "") -> dict:
     try:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
-        from services.project_discovery import discover_project
+        from services.workspace.project_discovery import discover_project
         root = workspace_root or str(Path.cwd())
         return discover_project(root)
     except Exception as e:

@@ -12,7 +12,7 @@ if str(AGENT) not in sys.path:
 
 
 def test_completion_gate_rejects_empty() -> None:
-    from services.output_quality import passes_completion_gate
+    from services.infrastructure.output_quality import passes_completion_gate
 
     ok, reasons = passes_completion_gate(goal="do x", text="", state={"tool_calls": 0, "steps": []}, cfg={})
     assert ok is False
@@ -20,7 +20,7 @@ def test_completion_gate_rejects_empty() -> None:
 
 
 def test_completion_gate_requires_ok_tool_when_tool_calls() -> None:
-    from services.output_quality import passes_completion_gate
+    from services.infrastructure.output_quality import passes_completion_gate
 
     ok, reasons = passes_completion_gate(
         goal="edit file",

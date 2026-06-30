@@ -6,7 +6,7 @@ import pytest
 
 class TestRecordSuccess:
     def test_records_success(self):
-        from services.provider_health import get_provider_status, record_success, reset_all
+        from services.infrastructure.provider_health import get_provider_status, record_success, reset_all
         reset_all()
         record_success("anthropic", latency_seconds=0.5, cost_usd=0.001)
         status = get_provider_status("anthropic")
@@ -16,7 +16,7 @@ class TestRecordSuccess:
         assert status["failure_count"] == 0
 
     def test_tracks_latency(self):
-        from services.provider_health import get_provider_status, record_success, reset_all
+        from services.infrastructure.provider_health import get_provider_status, record_success, reset_all
         reset_all()
         record_success("groq", latency_seconds=0.1)
         record_success("groq", latency_seconds=0.3)
@@ -24,7 +24,7 @@ class TestRecordSuccess:
         assert status["avg_latency_ms"] == pytest.approx(200.0, abs=1)
 
     def test_tracks_cost(self):
-        from services.provider_health import get_provider_status, record_success, reset_all
+        from services.infrastructure.provider_health import get_provider_status, record_success, reset_all
         reset_all()
         record_success("openai", cost_usd=0.005)
         record_success("openai", cost_usd=0.003)
@@ -34,7 +34,7 @@ class TestRecordSuccess:
 
 class TestRecordFailure:
     def test_records_failure(self):
-        from services.provider_health import get_provider_status, record_failure, reset_all
+        from services.infrastructure.provider_health import get_provider_status, record_failure, reset_all
         reset_all()
         record_failure("anthropic", error="rate_limited")
         status = get_provider_status("anthropic")
@@ -43,7 +43,7 @@ class TestRecordFailure:
         assert status["healthy"] is True  # 1 failure = still healthy
 
     def test_truncates_long_errors(self):
-        from services.provider_health import get_provider_status, record_failure, reset_all
+        from services.infrastructure.provider_health import get_provider_status, record_failure, reset_all
         reset_all()
         record_failure("test", error="x" * 1000)
         status = get_provider_status("test")
@@ -52,7 +52,7 @@ class TestRecordFailure:
 
 class TestCircuitBreaker:
     def test_opens_after_threshold(self):
-        from services.provider_health import (
+        from services.infrastructure.provider_health import (
             FAILURE_THRESHOLD,
             is_healthy,
             record_failure,
@@ -64,7 +64,7 @@ class TestCircuitBreaker:
         assert is_healthy("bad_provider") is False
 
     def test_stays_healthy_under_threshold(self):
-        from services.provider_health import (
+        from services.infrastructure.provider_health import (
             FAILURE_THRESHOLD,
             is_healthy,
             record_failure,
@@ -76,12 +76,12 @@ class TestCircuitBreaker:
         assert is_healthy("flaky_provider") is True
 
     def test_unknown_provider_is_healthy(self):
-        from services.provider_health import is_healthy, reset_all
+        from services.infrastructure.provider_health import is_healthy, reset_all
         reset_all()
         assert is_healthy("never_seen_provider") is True
 
     def test_success_closes_circuit(self):
-        from services.provider_health import (
+        from services.infrastructure.provider_health import (
             FAILURE_THRESHOLD,
             is_healthy,
             record_failure,
@@ -99,7 +99,7 @@ class TestCircuitBreaker:
 
 class TestHealthFiltering:
     def test_get_healthy_providers(self):
-        from services.provider_health import (
+        from services.infrastructure.provider_health import (
             FAILURE_THRESHOLD,
             get_healthy_providers,
             record_failure,
@@ -115,14 +115,14 @@ class TestHealthFiltering:
         assert "alive_two" in healthy
 
     def test_empty_candidates(self):
-        from services.provider_health import get_healthy_providers, reset_all
+        from services.infrastructure.provider_health import get_healthy_providers, reset_all
         reset_all()
         assert get_healthy_providers([]) == []
 
 
 class TestStatusReporting:
     def test_get_all_status(self):
-        from services.provider_health import (
+        from services.infrastructure.provider_health import (
             get_all_status,
             record_failure,
             record_success,
@@ -138,7 +138,7 @@ class TestStatusReporting:
         assert "prov_b" in names
 
     def test_error_rate_calculation(self):
-        from services.provider_health import (
+        from services.infrastructure.provider_health import (
             get_provider_status,
             record_failure,
             record_success,
@@ -152,7 +152,7 @@ class TestStatusReporting:
         assert status["error_rate"] == pytest.approx(1 / 3, abs=0.01)
 
     def test_reset_provider(self):
-        from services.provider_health import (
+        from services.infrastructure.provider_health import (
             get_provider_status,
             record_success,
             reset_all,
@@ -168,7 +168,7 @@ class TestStatusReporting:
 
 class TestCostTracking:
     def test_record_cost_separate(self):
-        from services.provider_health import get_cost_by_provider, record_cost, reset_all
+        from services.infrastructure.provider_health import get_cost_by_provider, record_cost, reset_all
         reset_all()
         record_cost("anthropic", 0.01)
         record_cost("anthropic", 0.02)
@@ -178,14 +178,14 @@ class TestCostTracking:
         assert costs["groq"] == pytest.approx(0.005, abs=0.001)
 
     def test_get_total_cost(self):
-        from services.provider_health import get_total_cost, record_cost, reset_all
+        from services.infrastructure.provider_health import get_total_cost, record_cost, reset_all
         reset_all()
         record_cost("a", 0.1)
         record_cost("b", 0.2)
         assert get_total_cost() == pytest.approx(0.3, abs=0.01)
 
     def test_negative_cost_ignored(self):
-        from services.provider_health import get_cost_by_provider, record_cost, reset_all
+        from services.infrastructure.provider_health import get_cost_by_provider, record_cost, reset_all
         reset_all()
         record_cost("test", -5.0)
         costs = get_cost_by_provider()

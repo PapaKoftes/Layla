@@ -16,7 +16,7 @@ def format_tool_steps_for_prompt(steps: list, cfg: dict[str, Any] | None = None)
             cfg = runtime_safety.load_config()
         except Exception:
             cfg = {}
-    from services.context_manager import truncate_tool_output_for_prompt
+    from services.context.context_manager import truncate_tool_output_for_prompt
 
     max_tok = int(cfg.get("tool_step_context_max_tokens", 500) or 500)
     if cfg.get("context_aggressive_compress_enabled"):

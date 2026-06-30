@@ -121,7 +121,7 @@ def benchmark_model(name: str) -> dict[str, Any]:
     Delegates to model_benchmark when available.
     """
     try:
-        from services.model_benchmark import run_benchmark
+        from services.llm.model_benchmark import run_benchmark
         return run_benchmark(name)
     except ImportError:
         return {"ok": False, "error": "model_benchmark not available", "tokens_per_sec": None}
@@ -135,7 +135,7 @@ def select_best_model() -> dict[str, Any]:
     Uses model_recommender + list_models; prefers models matching recommendation.
     """
     try:
-        from services.model_recommender import recommend_from_hardware
+        from services.llm.model_recommender import recommend_from_hardware
         rec = recommend_from_hardware()
         models = list_models()
         if not models:

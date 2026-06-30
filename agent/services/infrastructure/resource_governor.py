@@ -20,7 +20,7 @@ Config keys (all in runtime_config.json / runtime_safety defaults):
     governor_tick_seconds        int    (default 15)     — how often to re-evaluate
 
 Usage:
-    from services.resource_governor import get_governor, ResourceMode
+    from services.infrastructure.resource_governor import get_governor, ResourceMode
     gov = get_governor(cfg)
     gov.update()
     if gov.mode == ResourceMode.SPRINT:

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from services.decision_policy import PolicyCaps
+from services.safety.decision_policy import PolicyCaps
 
 # Step id -> (cost, risk) for operator-style reasoning in plans
 TOOLCHAIN_DXF_TO_MACHINE: tuple[tuple[str, str, str], ...] = (

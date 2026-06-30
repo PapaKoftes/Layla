@@ -30,13 +30,13 @@ def run_tool_guards(
     Returns (blocked, goal). If blocked, caller should continue the loop."""
     # OpenClaw-style tool policy: block execution outside effective tool set
     if intent not in ("reason", "finish", "wakeup") and intent in valid_tools:
-        from services.tool_policy import tool_allowed
+        from services.tools.tool_policy import tool_allowed
 
         _vt = get_tools_for_goal_fn(goal, context=context or "", workspace_root=workspace or "", state=state)
         try:
             if cfg.get("decision_policy_enabled", True):
-                from services.decision_policy import apply_caps_to_valid_tools as _apply_caps_to_valid_tools
-                from services.decision_policy import build_policy_caps as _build_policy_caps
+                from services.safety.decision_policy import apply_caps_to_valid_tools as _apply_caps_to_valid_tools
+                from services.safety.decision_policy import build_policy_caps as _build_policy_caps
 
                 _cid = (state.get("conversation_id") or "").strip() or "unknown"
                 _caps = _build_policy_caps(state, cfg, conversation_id=_cid)
@@ -62,7 +62,7 @@ def run_tool_guards(
 
     if intent not in ("reason", "finish", "wakeup") and intent in valid_tools:
         try:
-            from services.tool_loop_detection import push_and_evaluate
+            from services.tools.tool_loop_detection import push_and_evaluate
 
             _loop_ev = push_and_evaluate(
                 cfg, state, intent, decision, reasoning_mode=state.get("reasoning_mode"),
@@ -86,7 +86,7 @@ def run_tool_guards(
 
     if intent not in ("reason", "finish", "wakeup") and intent in valid_tools:
         try:
-            from services.tool_args import validate_tool_invocation
+            from services.tools.tool_args import validate_tool_invocation
 
             _verr = validate_tool_invocation(intent, decision, goal, workspace)
             if _verr:
@@ -101,7 +101,7 @@ def run_tool_guards(
 
     if intent not in ("reason", "finish", "wakeup", "none") and intent in valid_tools:
         try:
-            from services.tool_loop_detection import exact_call_key
+            from services.tools.tool_loop_detection import exact_call_key
 
             _eck = exact_call_key(intent, decision)
             _seen = state.setdefault("_recent_exact_calls", set())
@@ -122,7 +122,7 @@ def run_tool_guards(
 
     if intent not in ("reason", "finish", "wakeup", "none") and intent in valid_tools:
         try:
-            from services.failure_recovery import block_repeated_mutating_under_retry_constrained
+            from services.infrastructure.failure_recovery import block_repeated_mutating_under_retry_constrained
 
             if block_repeated_mutating_under_retry_constrained(state, intent):
                 state["tool_calls"] += 1

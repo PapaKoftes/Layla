@@ -122,14 +122,14 @@ class TestModuleLevelIdleFunctions:
 
 class TestDayChunk:
     def test_creation(self):
-        from services.long_horizon_planner import DayChunk
+        from services.planning.long_horizon_planner import DayChunk
         chunk = DayChunk(day=1, title="Research", goal="Understand the problem")
         assert chunk.day == 1
         assert chunk.status == "pending"
         assert chunk.depends_on == []
 
     def test_to_dict(self):
-        from services.long_horizon_planner import DayChunk
+        from services.planning.long_horizon_planner import DayChunk
         chunk = DayChunk(day=2, title="Build", goal="Implement core", depends_on=[1])
         d = chunk.to_dict()
         assert d["day"] == 2
@@ -138,7 +138,7 @@ class TestDayChunk:
 
 class TestLongHorizonPlan:
     def test_creation(self):
-        from services.long_horizon_planner import DayChunk, LongHorizonPlan
+        from services.planning.long_horizon_planner import DayChunk, LongHorizonPlan
         plan = LongHorizonPlan(
             id="test123", goal="Build feature X",
             chunks=[DayChunk(day=1, title="D1", goal="G1")],
@@ -147,7 +147,7 @@ class TestLongHorizonPlan:
         assert len(plan.chunks) == 1
 
     def test_to_dict_round_trip(self):
-        from services.long_horizon_planner import DayChunk, LongHorizonPlan
+        from services.planning.long_horizon_planner import DayChunk, LongHorizonPlan
         plan = LongHorizonPlan(
             id="abc", goal="Test goal",
             chunks=[
@@ -163,7 +163,7 @@ class TestLongHorizonPlan:
         assert restored.chunks[1].depends_on == [1]
 
     def test_from_dict_with_missing_fields(self):
-        from services.long_horizon_planner import LongHorizonPlan
+        from services.planning.long_horizon_planner import LongHorizonPlan
         plan = LongHorizonPlan.from_dict({"id": "x", "goal": "y"})
         assert plan.id == "x"
         assert plan.chunks == []
@@ -171,13 +171,13 @@ class TestLongHorizonPlan:
 
 class TestDecomposeToHorizon:
     def test_disabled_returns_single_chunk(self):
-        from services.long_horizon_planner import decompose_to_horizon
+        from services.planning.long_horizon_planner import decompose_to_horizon
         plan = decompose_to_horizon("Build a widget", cfg={"long_horizon_enabled": False})
         assert len(plan.chunks) == 1
         assert plan.chunks[0].goal == "Build a widget"
 
     def test_heuristic_decompose(self):
-        from services.long_horizon_planner import decompose_to_horizon
+        from services.planning.long_horizon_planner import decompose_to_horizon
         # With LLM unavailable, should fall back to heuristic.
         # Use a complex enough goal to trigger multi-day splitting.
         plan = decompose_to_horizon(
@@ -193,7 +193,7 @@ class TestDecomposeToHorizon:
         assert "Research" in plan.chunks[0].title or "Planning" in plan.chunks[0].title
 
     def test_dependency_chain(self):
-        from services.long_horizon_planner import decompose_to_horizon
+        from services.planning.long_horizon_planner import decompose_to_horizon
         plan = decompose_to_horizon(
             "Refactor entire codebase architecture",
             cfg={"long_horizon_enabled": True, "max_horizon_days": 5},
@@ -205,12 +205,12 @@ class TestDecomposeToHorizon:
 
 class TestEstimateComplexity:
     def test_simple_task(self):
-        from services.long_horizon_planner import _estimate_complexity
+        from services.planning.long_horizon_planner import _estimate_complexity
         hours = _estimate_complexity("fix a bug")
         assert hours >= 2.0
 
     def test_complex_task(self):
-        from services.long_horizon_planner import _estimate_complexity
+        from services.planning.long_horizon_planner import _estimate_complexity
         hours = _estimate_complexity(
             "Complete comprehensive refactoring of the entire authentication system "
             "including database migrations, API endpoints, frontend components, "
@@ -219,7 +219,7 @@ class TestEstimateComplexity:
         assert hours > 5.0
 
     def test_keyword_multipliers(self):
-        from services.long_horizon_planner import _estimate_complexity
+        from services.planning.long_horizon_planner import _estimate_complexity
         h1 = _estimate_complexity("update a function")
         h2 = _estimate_complexity("refactor the complete module")
         assert h2 > h1
@@ -227,8 +227,8 @@ class TestEstimateComplexity:
 
 class TestCheckpointManagement:
     def test_save_and_load(self, tmp_path):
-        import services.long_horizon_planner as mod
-        from services.long_horizon_planner import (
+        import services.planning.long_horizon_planner as mod
+        from services.planning.long_horizon_planner import (
             DayChunk,
             LongHorizonPlan,
             load_checkpoint,
@@ -253,8 +253,8 @@ class TestCheckpointManagement:
             mod._CHECKPOINT_DIR = original_dir
 
     def test_load_nonexistent(self, tmp_path):
-        import services.long_horizon_planner as mod
-        from services.long_horizon_planner import load_checkpoint
+        import services.planning.long_horizon_planner as mod
+        from services.planning.long_horizon_planner import load_checkpoint
         original_dir = mod._CHECKPOINT_DIR
         mod._CHECKPOINT_DIR = tmp_path / "checkpoints"
 
@@ -264,8 +264,8 @@ class TestCheckpointManagement:
             mod._CHECKPOINT_DIR = original_dir
 
     def test_list_checkpoints(self, tmp_path):
-        import services.long_horizon_planner as mod
-        from services.long_horizon_planner import (
+        import services.planning.long_horizon_planner as mod
+        from services.planning.long_horizon_planner import (
             DayChunk,
             LongHorizonPlan,
             list_checkpoints,
@@ -289,7 +289,7 @@ class TestCheckpointManagement:
 
 class TestAdvanceChunk:
     def test_advance_marks_done(self):
-        from services.long_horizon_planner import DayChunk, LongHorizonPlan, advance_chunk
+        from services.planning.long_horizon_planner import DayChunk, LongHorizonPlan, advance_chunk
         plan = LongHorizonPlan(
             id="adv", goal="test",
             chunks=[
@@ -301,12 +301,12 @@ class TestAdvanceChunk:
         assert plan.chunks[0].status == "done"
 
     def test_advance_nonexistent_day(self):
-        from services.long_horizon_planner import DayChunk, LongHorizonPlan, advance_chunk
+        from services.planning.long_horizon_planner import DayChunk, LongHorizonPlan, advance_chunk
         plan = LongHorizonPlan(id="x", goal="y", chunks=[DayChunk(day=1, title="D1", goal="G1")])
         assert advance_chunk(plan, 99) is False
 
     def test_all_done_completes_plan(self):
-        from services.long_horizon_planner import DayChunk, LongHorizonPlan, advance_chunk
+        from services.planning.long_horizon_planner import DayChunk, LongHorizonPlan, advance_chunk
         plan = LongHorizonPlan(
             id="done", goal="done",
             chunks=[DayChunk(day=1, title="D1", goal="G1")],
@@ -315,7 +315,7 @@ class TestAdvanceChunk:
         assert plan.status == "completed"
 
     def test_unblocks_dependents(self):
-        from services.long_horizon_planner import DayChunk, LongHorizonPlan, advance_chunk
+        from services.planning.long_horizon_planner import DayChunk, LongHorizonPlan, advance_chunk
         plan = LongHorizonPlan(
             id="dep", goal="dep",
             chunks=[
@@ -329,7 +329,7 @@ class TestAdvanceChunk:
 
 class TestGetNextChunk:
     def test_returns_first_pending(self):
-        from services.long_horizon_planner import DayChunk, LongHorizonPlan, get_next_chunk
+        from services.planning.long_horizon_planner import DayChunk, LongHorizonPlan, get_next_chunk
         plan = LongHorizonPlan(
             id="next", goal="next",
             chunks=[
@@ -342,7 +342,7 @@ class TestGetNextChunk:
         assert nxt.day == 1
 
     def test_skips_blocked(self):
-        from services.long_horizon_planner import DayChunk, LongHorizonPlan, get_next_chunk
+        from services.planning.long_horizon_planner import DayChunk, LongHorizonPlan, get_next_chunk
         plan = LongHorizonPlan(
             id="blk", goal="blk",
             chunks=[
@@ -355,7 +355,7 @@ class TestGetNextChunk:
         assert nxt.day == 2
 
     def test_returns_none_when_all_done(self):
-        from services.long_horizon_planner import DayChunk, LongHorizonPlan, get_next_chunk
+        from services.planning.long_horizon_planner import DayChunk, LongHorizonPlan, get_next_chunk
         plan = LongHorizonPlan(
             id="alldone", goal="done",
             chunks=[DayChunk(day=1, title="D1", goal="G1", status="done")],

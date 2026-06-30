@@ -105,7 +105,7 @@ def _is_low_quality(resp: dict[str, Any]) -> bool:
 
 def _autonomous_kwargs_from_payload(payload: dict[str, Any], goal: str) -> dict[str, Any]:
     """Map background / caller payload to autonomous_run keyword args."""
-    from services.resource_manager import PRIORITY_AGENT
+    from services.infrastructure.resource_manager import PRIORITY_AGENT
 
     pri = payload.get("_schedule_priority")
     try:
@@ -145,7 +145,7 @@ def _autonomous_kwargs_from_payload(payload: dict[str, Any], goal: str) -> dict[
 
 def _call_autonomous(goal: str, payload: dict[str, Any]) -> dict[str, Any]:
     from agent_loop import autonomous_run
-    from services.tool_allowlist_context import (
+    from services.tools.tool_allowlist_context import (
         clear_plan_step_tool_allowlist,
         set_plan_step_tool_allowlist,
     )
@@ -198,7 +198,7 @@ def _build_step_prompt(plan: Any, step: Any) -> str:
 
 def _update_memory_after_iteration(workspace_root: str, resp: dict[str, Any]) -> None:
     try:
-        from services import project_memory as pm
+        from services.memory import project_memory as pm
 
         mem = pm.load_memory(workspace_root)
         mem["last_iteration"] = _summarize_result(resp)
@@ -221,7 +221,7 @@ def _update_memory_after_iteration(workspace_root: str, resp: dict[str, Any]) ->
 
 def _append_aspect_step_note(workspace_root: str, aspect_id: str, line: str) -> None:
     try:
-        from services import project_memory as pm
+        from services.memory import project_memory as pm
 
         mem = pm.load_memory(workspace_root)
         aspects = mem.setdefault("aspects", {})
@@ -264,7 +264,7 @@ def _planning_first_prompt(goal: str, context: str, memory_summary: str) -> str:
 
 
 def generate_or_refine_plan(plan: Any, workspace_root: str, payload: dict[str, Any]) -> dict[str, Any]:
-    from services import project_memory as pm
+    from services.memory import project_memory as pm
     from services.planning.plan_service import save_plan, touch_updated
 
     mem = pm.load_memory(workspace_root)
@@ -285,10 +285,10 @@ def generate_or_refine_plan(plan: Any, workspace_root: str, payload: dict[str, A
 
 
 def execute_next_file_plan_step(plan: Any, workspace_root: str, payload: dict[str, Any]) -> dict[str, Any]:
-    from services import project_memory as pm
+    from services.memory import project_memory as pm
     from services.planning.plan_execution_prompts import file_plan_retry_suffix
     from services.planning.plan_service import save_plan, set_step_status, touch_updated
-    from services.planner import run_governed_plan_step
+    from services.planning.planner import run_governed_plan_step
 
     plan.memory_summary = pm.summarize_memory(pm.load_memory(workspace_root))
     step = plan.next_ready_step()
@@ -471,7 +471,7 @@ def run_plan_iteration(
     if plan is None:
         return {"ok": False, "error": "plan_not_found", "response": "", "steps": []}
 
-    from services import project_memory as pm
+    from services.memory import project_memory as pm
 
     mem = pm.load_memory(wr)
     plan.memory_summary = pm.summarize_memory(mem)

@@ -25,7 +25,7 @@ def client(tmp_path, monkeypatch):
         except ValueError:
             return False
 
-    import services.plan_service as plan_service_mod
+    import services.planning.plan_service as plan_service_mod
     import services.planning.plan_service as plan_service_real
 
     monkeypatch.setattr(plan_service_mod, "inside_sandbox", _sandbox_ok)
@@ -103,7 +103,7 @@ def test_plan_file_run_continuous_rejects_subprocess_workers(client, monkeypatch
 
 
 def test_summarize_memory_helpers():
-    from services import project_memory as pm
+    from services.memory import project_memory as pm
 
     assert "0 files" in pm.summarize_memory(None)
     doc = pm.empty_document("/x")
@@ -120,7 +120,7 @@ def test_summarize_memory_helpers():
 
 
 def test_plan_schema_next_ready_depends():
-    from services.plan_schema import Plan, PlanStep
+    from services.planning.plan_schema import Plan, PlanStep
 
     a = PlanStep(title="a", description="", status="pending", id="s1")
     b = PlanStep(title="b", description="", status="pending", id="s2", depends_on=["s1"])

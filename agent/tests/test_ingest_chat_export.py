@@ -9,7 +9,7 @@ import pytest
 
 @pytest.fixture
 def _patch_ingest_dirs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    import services.doc_ingestion as di
+    import services.workspace.doc_ingestion as di
 
     kd = tmp_path / "knowledge"
     kd.mkdir()
@@ -20,7 +20,7 @@ def _patch_ingest_dirs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
 
 def test_ingest_chat_export_json_array(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, _patch_ingest_dirs: None) -> None:
     import runtime_safety
-    import services.doc_ingestion as di
+    import services.workspace.doc_ingestion as di
 
     sandbox = tmp_path / "sand"
     sandbox.mkdir()
@@ -44,7 +44,7 @@ def test_ingest_chat_export_json_array(monkeypatch: pytest.MonkeyPatch, tmp_path
 
 def test_ingest_rejects_outside_sandbox(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, _patch_ingest_dirs: None) -> None:
     import runtime_safety
-    import services.doc_ingestion as di
+    import services.workspace.doc_ingestion as di
 
     sandbox = tmp_path / "sand"
     sandbox.mkdir()

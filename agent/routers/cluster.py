@@ -117,7 +117,7 @@ def _validate_cluster_auth(request: Request) -> bool:
 
     # Check cluster secret
     try:
-        from services.cluster_network import load_cluster_config
+        from services.cluster.cluster_network import load_cluster_config
         config = load_cluster_config()
         stored_hash = config.get("cluster_secret_hash", "")
         if stored_hash:
@@ -129,7 +129,7 @@ def _validate_cluster_auth(request: Request) -> bool:
 
     # Fallback to tunnel auth
     try:
-        from services.tunnel_auth import validate_token
+        from services.governance.tunnel_auth import validate_token
         from runtime_safety import load_config
         cfg = load_config()
         valid, _ = validate_token(token, cfg)
@@ -154,7 +154,7 @@ async def cluster_heartbeat(body: HeartbeatRequest, request: Request):
     _require_auth(request)
 
     try:
-        from services.cluster_network import get_cluster_network, PeerStatus
+        from services.cluster.cluster_network import get_cluster_network, PeerStatus
         net = get_cluster_network()
         peer = net.get_peer(body.instance_id)
         if peer:
@@ -171,13 +171,13 @@ async def cluster_heartbeat(body: HeartbeatRequest, request: Request):
     # Return our own status
     response = HeartbeatResponse(ok=True)
     try:
-        from services.cluster_network import get_cluster_network
+        from services.cluster.cluster_network import get_cluster_network
         net = get_cluster_network()
         response.instance_id = net.instance_id
     except Exception:
         pass
     try:
-        from services.resource_governor import get_mode
+        from services.infrastructure.resource_governor import get_mode
         response.governor_mode = get_mode().value
     except Exception:
         pass
@@ -187,7 +187,7 @@ async def cluster_heartbeat(body: HeartbeatRequest, request: Request):
     except Exception:
         pass
     try:
-        from services.work_unit import get_task_queue
+        from services.cluster.work_unit import get_task_queue
         running = get_task_queue().get_running()
         response.current_tasks = len(running)
     except Exception:
@@ -204,7 +204,7 @@ async def cluster_task_submit(body: TaskSubmitRequest, request: Request):
     _require_auth(request)
 
     try:
-        from services.work_unit import WorkUnit, TaskType, TaskStatus, get_task_queue
+        from services.cluster.work_unit import WorkUnit, TaskType, TaskStatus, get_task_queue
 
         unit = WorkUnit(
             id=body.id if body.id else uuid.uuid4().hex[:16],
@@ -230,7 +230,7 @@ async def cluster_task_status(task_id: str, request: Request):
     _require_auth(request)
 
     try:
-        from services.work_unit import get_task_queue
+        from services.cluster.work_unit import get_task_queue
         queue = get_task_queue()
         unit = queue.get(task_id)
         if not unit:
@@ -249,7 +249,7 @@ async def cluster_task_cancel(task_id: str, request: Request):
     _require_auth(request)
 
     try:
-        from services.work_unit import get_task_queue
+        from services.cluster.work_unit import get_task_queue
         queue = get_task_queue()
         cancelled = queue.cancel(task_id)
         return {"ok": cancelled, "task_id": task_id}
@@ -358,13 +358,13 @@ async def cluster_status(request: Request):
     result: dict[str, Any] = {"ok": True}
 
     try:
-        from services.cluster_network import get_cluster_status
+        from services.cluster.cluster_network import get_cluster_status
         result.update(get_cluster_status())
     except Exception:
         result["cluster_enabled"] = False
 
     try:
-        from services.resource_governor import get_mode
+        from services.infrastructure.resource_governor import get_mode
         result["governor_mode"] = get_mode().value
     except Exception:
         result["governor_mode"] = "unknown"
@@ -379,7 +379,7 @@ async def cluster_status(request: Request):
         pass
 
     try:
-        from services.work_unit import get_task_queue
+        from services.cluster.work_unit import get_task_queue
         result["queue_stats"] = get_task_queue().stats()
     except Exception:
         result["queue_stats"] = {}
@@ -400,7 +400,7 @@ async def cluster_generate_pairing_token(request: Request):
         raise HTTPException(status_code=403, detail="Pairing tokens can only be generated locally")
 
     try:
-        from services.cluster_pairing import get_cluster_pairing
+        from services.cluster.cluster_pairing import get_cluster_pairing
         pairing = get_cluster_pairing()
         pt = pairing.generate_pairing_token()
         return {
@@ -420,7 +420,7 @@ async def cluster_pair(body: PairRequest, request: Request):
     No auth required (the pairing token IS the auth).
     """
     try:
-        from services.cluster_pairing import get_cluster_pairing
+        from services.cluster.cluster_pairing import get_cluster_pairing
         pairing = get_cluster_pairing()
 
         # Validate the token
@@ -454,7 +454,7 @@ async def cluster_peers(request: Request):
     _require_auth(request)
 
     try:
-        from services.cluster_network import get_cluster_network
+        from services.cluster.cluster_network import get_cluster_network
         net = get_cluster_network()
         status = net.get_status()
         return {"ok": True, "peers": status.get("peers", [])}
@@ -470,7 +470,7 @@ async def cluster_queue_stats(request: Request):
     _require_auth(request)
 
     try:
-        from services.work_unit import get_task_queue
+        from services.cluster.work_unit import get_task_queue
         queue = get_task_queue()
         return {
             "ok": True,

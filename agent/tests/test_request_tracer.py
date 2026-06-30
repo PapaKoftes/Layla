@@ -21,7 +21,7 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-from services.request_tracer import (
+from services.observability.request_tracer import (
     clear_traces,
     finish_trace,
     get_active_trace,

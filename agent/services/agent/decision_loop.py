@@ -36,11 +36,11 @@ def run_decision_loop(
     import agent_loop as _al
     import runtime_safety
     from layla.tools.registry import TOOLS
-    from services.agent_safety import (
+    from services.safety.agent_safety import (
         maybe_planning_strict_refusal as _maybe_planning_strict_refusal,
         maybe_step_tool_allowlist_refusal as _maybe_step_tool_allowlist_refusal,
     )
-    from services.resource_manager import classify_load
+    from services.infrastructure.resource_manager import classify_load
     from services.agent.reasoning_handler import handle_reasoning_intent
 
     cfg = run_params["cfg"]
@@ -65,8 +65,8 @@ def run_decision_loop(
         # -- Decision policy caps --
         try:
             if cfg.get("decision_policy_enabled", True):
-                from services.decision_policy import build_policy_caps as _build_policy_caps
-                from services.decision_policy import effective_max_tool_calls as _effective_max_tool_calls
+                from services.safety.decision_policy import build_policy_caps as _build_policy_caps
+                from services.safety.decision_policy import effective_max_tool_calls as _effective_max_tool_calls
 
                 _cid = (state.get("conversation_id") or "").strip() or "unknown"
                 _caps = _build_policy_caps(state, cfg, conversation_id=_cid)
@@ -113,7 +113,7 @@ def run_decision_loop(
         # -- Steer hint injection --
         goal_for_decision = goal
         try:
-            from services.session_context import get_or_create_session
+            from services.infrastructure.session_context import get_or_create_session
             steer = get_or_create_session(state.get("conversation_id") or "default").pop_steer_hint()
             if steer:
                 goal_for_decision = (
@@ -127,7 +127,7 @@ def run_decision_loop(
         # -- Packed context injection --
         try:
             if cfg.get("inject_packed_context_in_decisions", True) and state.get("packed_context"):
-                from services.context_builder import format_tool_context
+                from services.context.context_builder import format_tool_context
 
                 _gh = format_tool_context(
                     state["packed_context"],
@@ -140,7 +140,7 @@ def run_decision_loop(
 
         # -- Context protection / compression --
         try:
-            from services.context_manager import summarize_history, token_estimate_messages
+            from services.context.context_manager import summarize_history, token_estimate_messages
 
             n_ctx = max(2048, int(cfg.get("n_ctx", 4096)))
             thr = float(cfg.get("context_protection_threshold", 0.60) or 0.60)
@@ -284,7 +284,7 @@ def run_decision_loop(
         # -- Tool preflight --
         if intent not in ("reason", "finish", "wakeup", "none") and intent in _VALID_TOOLS:
             try:
-                from services.tool_preflight import preflight_tool
+                from services.tools.tool_preflight import preflight_tool
 
                 pf = preflight_tool(intent=intent, decision=decision, goal=state.get("original_goal") or goal, workspace_root=workspace or "")
                 state["preflight_ok"] = bool(pf.ok)
@@ -365,7 +365,7 @@ def run_decision_loop(
             continue
 
         # -- Tool dispatch --
-        from services.tool_dispatch import DispatchContext, dispatch_tool_intent
+        from services.tools.tool_dispatch import DispatchContext, dispatch_tool_intent
 
         _dispatch_ctx = DispatchContext(
             state=state,
@@ -471,7 +471,7 @@ def _run_concurrent_batch(
     import runtime_safety
     from core.executor import run_tool as _run_tool
     from layla.tools.registry import TOOLS
-    from services.agent_safety import (
+    from services.safety.agent_safety import (
         maybe_planning_strict_refusal as _maybe_planning_strict_refusal,
         maybe_step_tool_allowlist_refusal as _maybe_step_tool_allowlist_refusal,
     )
@@ -500,7 +500,7 @@ def _run_concurrent_batch(
     import concurrent.futures as _cf
     import functools as _fn
 
-    from services.worker_pool import tool_batch_max_workers
+    from services.infrastructure.worker_pool import tool_batch_max_workers
 
     _tool_timeout = float(cfg.get("tool_call_timeout_seconds", 60))
     _primary_args = _al._inject_workspace_args(intent, (decision.get("args") or {}) if decision else {}, workspace)

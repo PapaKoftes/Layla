@@ -15,11 +15,11 @@ if str(AGENT_DIR) not in sys.path:
 class TestAuth:
     def test_valid_tunnel_auth(self):
         """check_auth returns True for valid tunnel token."""
-        from services.auth import check_auth
+        from services.safety.auth import check_auth
 
-        with patch("services.auth.check_remote_access", return_value=(True, "ok"), create=True):
+        with patch("services.safety.auth.check_remote_access", return_value=(True, "ok"), create=True):
             # Patch the import inside check_auth
-            with patch.dict("sys.modules", {"services.tunnel_auth": MagicMock(
+            with patch.dict("sys.modules", {"services.governance.tunnel_auth": MagicMock(
                 check_remote_access=MagicMock(return_value=(True, "ok"))
             )}):
                 ok, reason = check_auth("valid-token", "1.2.3.4", {"tunnel_token_hash": "xxx"})
@@ -27,9 +27,9 @@ class TestAuth:
 
     def test_invalid_token_denied(self):
         """check_auth returns False for invalid token when tunnel_token_hash is set."""
-        from services.auth import check_auth
+        from services.safety.auth import check_auth
 
-        with patch.dict("sys.modules", {"services.tunnel_auth": MagicMock(
+        with patch.dict("sys.modules", {"services.governance.tunnel_auth": MagicMock(
             check_remote_access=MagicMock(return_value=(False, "bad token"))
         )}):
             ok, reason = check_auth("bad-token", "1.2.3.4", {"tunnel_token_hash": "xxx"})
@@ -40,30 +40,30 @@ class TestAuth:
         """Legacy API key comparison uses hmac.compare_digest."""
         import hmac
 
-        from services.auth import check_auth
+        from services.safety.auth import check_auth
 
         # Make tunnel_auth unavailable so it falls through to legacy.
         # R5: the legacy path is opt-in, so enable allow_legacy_remote_api_key.
-        with patch.dict("sys.modules", {"services.tunnel_auth": None}):
+        with patch.dict("sys.modules", {"services.governance.tunnel_auth": None}):
             with patch("hmac.compare_digest", wraps=hmac.compare_digest) as mock_cmp:
                 check_auth("test-key", "1.2.3.4", {"remote_api_key": "test-key", "allow_legacy_remote_api_key": True})
                 mock_cmp.assert_called_once()
 
     def test_no_auth_configured(self):
         """check_auth returns False with 'no auth configured' when nothing is set."""
-        from services.auth import check_auth
+        from services.safety.auth import check_auth
 
         # Make tunnel_auth unavailable
-        with patch.dict("sys.modules", {"services.tunnel_auth": None}):
+        with patch.dict("sys.modules", {"services.governance.tunnel_auth": None}):
             ok, reason = check_auth("any", "1.2.3.4", {})
             assert ok is False
             assert "no auth" in reason
 
     def test_empty_token(self):
         """check_auth returns False for empty token."""
-        from services.auth import check_auth
+        from services.safety.auth import check_auth
 
-        with patch.dict("sys.modules", {"services.tunnel_auth": MagicMock(
+        with patch.dict("sys.modules", {"services.governance.tunnel_auth": MagicMock(
             check_remote_access=MagicMock(return_value=(False, "empty"))
         )}):
             ok, _ = check_auth("", "1.2.3.4", {"tunnel_token_hash": "xxx"})
@@ -72,14 +72,14 @@ class TestAuth:
 
 class TestBrowserSSRF:
     def test_localhost_blocked(self):
-        from services.browser import _is_safe_url
+        from services.infrastructure.browser import _is_safe_url
 
         assert _is_safe_url("http://127.0.0.1/admin") is False
         assert _is_safe_url("http://localhost/") is False
         assert _is_safe_url("http://0.0.0.0/") is False
 
     def test_private_ranges_blocked(self):
-        from services.browser import _is_safe_url
+        from services.infrastructure.browser import _is_safe_url
 
         assert _is_safe_url("http://10.0.0.1/") is False
         assert _is_safe_url("http://192.168.1.1/") is False
@@ -88,26 +88,26 @@ class TestBrowserSSRF:
         assert _is_safe_url("http://169.254.1.1/") is False
 
     def test_public_urls_allowed(self):
-        from services.browser import _is_safe_url
+        from services.infrastructure.browser import _is_safe_url
 
         assert _is_safe_url("https://example.com") is True
         assert _is_safe_url("https://api.github.com/repos") is True
 
     def test_non_http_blocked(self):
-        from services.browser import _is_safe_url
+        from services.infrastructure.browser import _is_safe_url
 
         assert _is_safe_url("ftp://example.com") is False
         assert _is_safe_url("file:///etc/passwd") is False
         assert _is_safe_url("javascript:alert(1)") is False
 
     def test_empty_and_none(self):
-        from services.browser import _is_safe_url
+        from services.infrastructure.browser import _is_safe_url
 
         assert _is_safe_url("") is False
         assert _is_safe_url(None) is False
 
     def test_172_non_private_allowed(self):
-        from services.browser import _is_safe_url
+        from services.infrastructure.browser import _is_safe_url
 
         assert _is_safe_url("http://172.32.0.1/") is True
         assert _is_safe_url("http://172.15.0.1/") is True
@@ -118,7 +118,7 @@ class TestSkillPackSecurity:
 
     def test_url_scheme_validation(self):
         """Only https:// and git:// should be allowed."""
-        from services.skill_packs import install_from_git
+        from services.skills.skill_packs import install_from_git
 
         # Invalid schemes should be rejected before any git clone
         result_http = install_from_git("http://github.com/user/repo.git")
@@ -131,7 +131,7 @@ class TestSkillPackSecurity:
 
     def test_embedded_credentials_blocked(self):
         """URLs with embedded user:pass@ should be rejected."""
-        from services.skill_packs import install_from_git
+        from services.skills.skill_packs import install_from_git
 
         result = install_from_git("https://user:pass@github.com/repo.git")
         assert result["ok"] is False
@@ -139,7 +139,7 @@ class TestSkillPackSecurity:
 
     def test_slug_validation(self):
         """Slugs with path traversal or invalid chars should be rejected."""
-        from services.skill_packs import install_from_git
+        from services.skills.skill_packs import install_from_git
 
         # Path traversal slug
         result = install_from_git("https://github.com/user/repo.git", name="../../etc/passwd")
@@ -156,7 +156,7 @@ class TestSkillPackSecurity:
 
     def test_safe_slug_accepted(self):
         """Valid slugs should pass the regex check (pack itself may fail to clone, but slug is OK)."""
-        from services.skill_packs import _SAFE_SLUG_RE
+        from services.skills.skill_packs import _SAFE_SLUG_RE
 
         assert _SAFE_SLUG_RE.match("my-pack_v2") is not None
         assert _SAFE_SLUG_RE.match("simple123") is not None
@@ -164,7 +164,7 @@ class TestSkillPackSecurity:
 
     def test_safe_slug_regex_rejects_bad_input(self):
         """Unsafe slugs should fail the regex."""
-        from services.skill_packs import _SAFE_SLUG_RE
+        from services.skills.skill_packs import _SAFE_SLUG_RE
 
         assert _SAFE_SLUG_RE.match("../../etc/passwd") is None
         assert _SAFE_SLUG_RE.match("a b c") is None
@@ -172,7 +172,7 @@ class TestSkillPackSecurity:
 
     def test_allowed_schemes_constant(self):
         """Verify the allowed schemes are exactly https and git."""
-        from services.skill_packs import _ALLOWED_SCHEMES
+        from services.skills.skill_packs import _ALLOWED_SCHEMES
 
         assert "https://" in _ALLOWED_SCHEMES
         assert "git://" in _ALLOWED_SCHEMES

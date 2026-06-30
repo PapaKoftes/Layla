@@ -146,7 +146,7 @@ def decompose_to_horizon(
 def _llm_decompose(goal: str, max_days: int, hours_per_day: float, cfg: dict) -> list[DayChunk]:
     """Use LLM to decompose goal into day-chunks. Returns [] on failure."""
     try:
-        from services.llm_gateway import run_completion
+        from services.llm.llm_gateway import run_completion
         prompt = (
             f"You are a project planner. Break this goal into {max_days} or fewer day-sized work chunks, "
             f"each approximately {hours_per_day} hours of effort.\n\n"

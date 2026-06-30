@@ -37,7 +37,7 @@ async def run_debate(req: DebateRequest):
     from fastapi.responses import JSONResponse as _JSONResp
 
     import runtime_safety
-    from services.debate_engine import run_deliberation
+    from services.planning.debate_engine import run_deliberation
 
     goal = req.goal
     mode = req.mode
@@ -80,7 +80,7 @@ async def run_debate(req: DebateRequest):
 @router.get("/debate/modes")
 def list_modes():
     """Return available deliberation modes and their descriptions."""
-    from services.debate_engine import (
+    from services.planning.debate_engine import (
         ALL_ASPECT_IDS,
         ASPECT_DOMAINS,
         MODE_COUNCIL,

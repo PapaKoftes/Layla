@@ -100,57 +100,57 @@ class TestSelectDeliberationMode:
     """Tests for keyword-based mode auto-detection."""
 
     def test_debate_should_i(self):
-        from services.debate_engine import select_deliberation_mode
+        from services.planning.debate_engine import select_deliberation_mode
         assert select_deliberation_mode("Should I refactor or rewrite?", {}, {}) == "debate"
 
     def test_debate_tradeoff(self):
-        from services.debate_engine import select_deliberation_mode
+        from services.planning.debate_engine import select_deliberation_mode
         assert select_deliberation_mode("What are the trade-offs of microservices?", {}, {}) == "debate"
 
     def test_debate_pros_cons(self):
-        from services.debate_engine import select_deliberation_mode
+        from services.planning.debate_engine import select_deliberation_mode
         assert select_deliberation_mode("List the pros and cons of Python vs Go", {}, {}) == "debate"
 
     def test_debate_compare(self):
-        from services.debate_engine import select_deliberation_mode
+        from services.planning.debate_engine import select_deliberation_mode
         assert select_deliberation_mode("Compare React and Vue", {}, {}) == "debate"
 
     def test_council_ethical(self):
-        from services.debate_engine import select_deliberation_mode
+        from services.planning.debate_engine import select_deliberation_mode
         assert select_deliberation_mode("Is this approach ethical?", {}, {}) == "council"
 
     def test_council_risky(self):
-        from services.debate_engine import select_deliberation_mode
+        from services.planning.debate_engine import select_deliberation_mode
         assert select_deliberation_mode("This seems risky, help me decide", {}, {}) == "council"
 
     def test_council_dangerous(self):
-        from services.debate_engine import select_deliberation_mode
+        from services.planning.debate_engine import select_deliberation_mode
         assert select_deliberation_mode("Is this dangerous for production?", {}, {}) == "council"
 
     def test_tribunal_comprehensive(self):
-        from services.debate_engine import select_deliberation_mode
+        from services.planning.debate_engine import select_deliberation_mode
         assert select_deliberation_mode("I need a comprehensive review of this design", {}, {}) == "tribunal"
 
     def test_tribunal_all_perspectives(self):
-        from services.debate_engine import select_deliberation_mode
+        from services.planning.debate_engine import select_deliberation_mode
         assert select_deliberation_mode("Give me all perspectives on this decision", {}, {}) == "tribunal"
 
     def test_solo_simple(self):
-        from services.debate_engine import select_deliberation_mode
+        from services.planning.debate_engine import select_deliberation_mode
         assert select_deliberation_mode("What is a for loop?", {}, {}) == "solo"
 
     def test_solo_empty(self):
-        from services.debate_engine import select_deliberation_mode
+        from services.planning.debate_engine import select_deliberation_mode
         assert select_deliberation_mode("", {}, {}) == "solo"
 
     def test_long_goal_becomes_council(self):
-        from services.debate_engine import select_deliberation_mode
+        from services.planning.debate_engine import select_deliberation_mode
         # 81+ words
         goal = " ".join(["word"] * 85)
         assert select_deliberation_mode(goal, {}, {}) == "council"
 
     def test_medium_goal_becomes_debate(self):
-        from services.debate_engine import select_deliberation_mode
+        from services.planning.debate_engine import select_deliberation_mode
         # 41-80 words
         goal = " ".join(["word"] * 50)
         assert select_deliberation_mode(goal, {}, {}) == "debate"
@@ -165,44 +165,44 @@ class TestSelectAspectsForTask:
     """Tests for domain-aware aspect selection."""
 
     def test_code_task_picks_cassandra(self):
-        from services.debate_engine import select_aspects_for_task
+        from services.planning.debate_engine import select_aspects_for_task
         aspects = select_aspects_for_task("fix the code architecture performance", "debate", {})
         assert "cassandra" in aspects
         assert len(aspects) == 2
 
     def test_ethics_task_picks_lilith(self):
-        from services.debate_engine import select_aspects_for_task
+        from services.planning.debate_engine import select_aspects_for_task
         aspects = select_aspects_for_task("is this safe and ethical with proper boundaries", "council", {})
         assert "lilith" in aspects
         assert len(aspects) == 3
 
     def test_creativity_task_picks_eris(self):
-        from services.debate_engine import select_aspects_for_task
+        from services.planning.debate_engine import select_aspects_for_task
         aspects = select_aspects_for_task("brainstorm unconventional alternatives", "debate", {})
         assert "eris" in aspects
 
     def test_investigation_picks_nyx(self):
-        from services.debate_engine import select_aspects_for_task
+        from services.planning.debate_engine import select_aspects_for_task
         aspects = select_aspects_for_task("deep analysis and investigation of the truth", "debate", {})
         assert "nyx" in aspects
 
     def test_empathy_picks_echo(self):
-        from services.debate_engine import select_aspects_for_task
+        from services.planning.debate_engine import select_aspects_for_task
         aspects = select_aspects_for_task("help me communicate my feelings to the team", "debate", {})
         assert "echo" in aspects
 
     def test_tribunal_returns_all(self):
-        from services.debate_engine import select_aspects_for_task
+        from services.planning.debate_engine import select_aspects_for_task
         aspects = select_aspects_for_task("full review", "tribunal", {})
         assert len(aspects) == 6
 
     def test_solo_returns_morrigan(self):
-        from services.debate_engine import select_aspects_for_task
+        from services.planning.debate_engine import select_aspects_for_task
         aspects = select_aspects_for_task("hello", "solo", {})
         assert aspects == ["morrigan"]
 
     def test_morrigan_always_included_in_debate(self):
-        from services.debate_engine import select_aspects_for_task
+        from services.planning.debate_engine import select_aspects_for_task
         aspects = select_aspects_for_task("help with empathy feelings communication people", "debate", {})
         # Even when echo scores highest, morrigan should still be included
         assert "morrigan" in aspects or len(aspects) == 2
@@ -213,10 +213,10 @@ class TestSelectAspectsForTask:
 # ---------------------------------------------------------------------------
 
 
-@patch("services.debate_engine._load_aspect_personality", side_effect=lambda aid: _FAKE_PERSONALITIES.get(aid, {"id": aid, "name": aid}))
-@patch("services.llm_gateway.run_completion", side_effect=_mock_run_completion)
+@patch("services.planning.debate_engine._load_aspect_personality", side_effect=lambda aid: _FAKE_PERSONALITIES.get(aid, {"id": aid, "name": aid}))
+@patch("services.llm.llm_gateway.run_completion", side_effect=_mock_run_completion)
 def test_deliberation_debate_mode(mock_completion, mock_personality):
-    from services.debate_engine import run_deliberation
+    from services.planning.debate_engine import run_deliberation
 
     result = run_deliberation(
         goal="Should I refactor or rewrite the auth module?",
@@ -241,10 +241,10 @@ def test_deliberation_debate_mode(mock_completion, mock_personality):
 # ---------------------------------------------------------------------------
 
 
-@patch("services.debate_engine._load_aspect_personality", side_effect=lambda aid: _FAKE_PERSONALITIES.get(aid, {"id": aid, "name": aid}))
-@patch("services.llm_gateway.run_completion", side_effect=_mock_run_completion)
+@patch("services.planning.debate_engine._load_aspect_personality", side_effect=lambda aid: _FAKE_PERSONALITIES.get(aid, {"id": aid, "name": aid}))
+@patch("services.llm.llm_gateway.run_completion", side_effect=_mock_run_completion)
 def test_deliberation_council_mode(mock_completion, mock_personality):
-    from services.debate_engine import run_deliberation
+    from services.planning.debate_engine import run_deliberation
 
     result = run_deliberation(
         goal="Is this approach ethical and risky?",
@@ -266,10 +266,10 @@ def test_deliberation_council_mode(mock_completion, mock_personality):
 # ---------------------------------------------------------------------------
 
 
-@patch("services.debate_engine._load_aspect_personality", side_effect=lambda aid: _FAKE_PERSONALITIES.get(aid, {"id": aid, "name": aid}))
-@patch("services.llm_gateway.run_completion", side_effect=_mock_run_completion)
+@patch("services.planning.debate_engine._load_aspect_personality", side_effect=lambda aid: _FAKE_PERSONALITIES.get(aid, {"id": aid, "name": aid}))
+@patch("services.llm.llm_gateway.run_completion", side_effect=_mock_run_completion)
 def test_deliberation_tribunal_mode(mock_completion, mock_personality):
-    from services.debate_engine import run_deliberation
+    from services.planning.debate_engine import run_deliberation
 
     result = run_deliberation(
         goal="Give me a comprehensive review and all perspectives",
@@ -289,10 +289,10 @@ def test_deliberation_tribunal_mode(mock_completion, mock_personality):
 # ---------------------------------------------------------------------------
 
 
-@patch("services.debate_engine._load_aspect_personality", side_effect=lambda aid: _FAKE_PERSONALITIES.get(aid, {"id": aid, "name": aid}))
-@patch("services.llm_gateway.run_completion", side_effect=_mock_run_completion)
+@patch("services.planning.debate_engine._load_aspect_personality", side_effect=lambda aid: _FAKE_PERSONALITIES.get(aid, {"id": aid, "name": aid}))
+@patch("services.llm.llm_gateway.run_completion", side_effect=_mock_run_completion)
 def test_synthesis_extracts_notes(mock_completion, mock_personality):
-    from services.debate_engine import _synthesize
+    from services.planning.debate_engine import _synthesize
 
     responses = {
         "morrigan": _CANNED_RESPONSES["morrigan"],
@@ -315,10 +315,10 @@ def test_synthesis_extracts_notes(mock_completion, mock_personality):
 # ---------------------------------------------------------------------------
 
 
-@patch("services.debate_engine._load_aspect_personality", side_effect=lambda aid: _FAKE_PERSONALITIES.get(aid, {"id": aid, "name": aid}))
-@patch("services.llm_gateway.run_completion", side_effect=_mock_run_completion)
+@patch("services.planning.debate_engine._load_aspect_personality", side_effect=lambda aid: _FAKE_PERSONALITIES.get(aid, {"id": aid, "name": aid}))
+@patch("services.llm.llm_gateway.run_completion", side_effect=_mock_run_completion)
 def test_auto_mode_selects_debate(mock_completion, mock_personality):
-    from services.debate_engine import run_deliberation
+    from services.planning.debate_engine import run_deliberation
 
     result = run_deliberation(
         goal="Should I use PostgreSQL or MongoDB? Compare the pros and cons.",
@@ -332,10 +332,10 @@ def test_auto_mode_selects_debate(mock_completion, mock_personality):
     assert len(result.participating_aspects) >= 2
 
 
-@patch("services.debate_engine._load_aspect_personality", side_effect=lambda aid: _FAKE_PERSONALITIES.get(aid, {"id": aid, "name": aid}))
-@patch("services.llm_gateway.run_completion", side_effect=_mock_run_completion)
+@patch("services.planning.debate_engine._load_aspect_personality", side_effect=lambda aid: _FAKE_PERSONALITIES.get(aid, {"id": aid, "name": aid}))
+@patch("services.llm.llm_gateway.run_completion", side_effect=_mock_run_completion)
 def test_auto_mode_selects_solo_for_simple(mock_completion, mock_personality):
-    from services.debate_engine import run_deliberation
+    from services.planning.debate_engine import run_deliberation
 
     result = run_deliberation(
         goal="What is a list comprehension?",
@@ -354,7 +354,7 @@ def test_auto_mode_selects_solo_for_simple(mock_completion, mock_personality):
 
 
 def test_all_aspects_have_domains():
-    from services.debate_engine import ALL_ASPECT_IDS, ASPECT_DOMAINS
+    from services.planning.debate_engine import ALL_ASPECT_IDS, ASPECT_DOMAINS
 
     for aid in ALL_ASPECT_IDS:
         assert aid in ASPECT_DOMAINS
@@ -362,7 +362,7 @@ def test_all_aspects_have_domains():
 
 
 def test_all_six_aspects_listed():
-    from services.debate_engine import ALL_ASPECT_IDS
+    from services.planning.debate_engine import ALL_ASPECT_IDS
 
     expected = {"morrigan", "nyx", "echo", "eris", "cassandra", "lilith"}
     assert set(ALL_ASPECT_IDS) == expected
@@ -373,10 +373,10 @@ def test_all_six_aspects_listed():
 # ---------------------------------------------------------------------------
 
 
-@patch("services.debate_engine._load_aspect_personality", side_effect=lambda aid: _FAKE_PERSONALITIES.get(aid, {"id": aid, "name": aid}))
-@patch("services.llm_gateway.run_completion", side_effect=_mock_run_completion)
+@patch("services.planning.debate_engine._load_aspect_personality", side_effect=lambda aid: _FAKE_PERSONALITIES.get(aid, {"id": aid, "name": aid}))
+@patch("services.llm.llm_gateway.run_completion", side_effect=_mock_run_completion)
 def test_solo_mode_single_aspect(mock_completion, mock_personality):
-    from services.debate_engine import run_deliberation
+    from services.planning.debate_engine import run_deliberation
 
     result = run_deliberation(
         goal="Fix the login bug",
@@ -398,20 +398,20 @@ def test_solo_mode_single_aspect(mock_completion, mock_personality):
 
 
 def test_extract_text_from_dict():
-    from services.debate_engine import _extract_text
+    from services.planning.debate_engine import _extract_text
 
     result = {"choices": [{"message": {"content": "hello world"}}]}
     assert _extract_text(result) == "hello world"
 
 
 def test_extract_text_from_string():
-    from services.debate_engine import _extract_text
+    from services.planning.debate_engine import _extract_text
 
     assert _extract_text("  raw string  ") == "raw string"
 
 
 def test_extract_text_from_empty():
-    from services.debate_engine import _extract_text
+    from services.planning.debate_engine import _extract_text
 
     assert _extract_text({}) == ""
     assert _extract_text(None) == ""
@@ -423,10 +423,10 @@ def test_extract_text_from_empty():
 # ---------------------------------------------------------------------------
 
 
-@patch("services.debate_engine._load_aspect_personality", side_effect=lambda aid: _FAKE_PERSONALITIES.get(aid, {"id": aid, "name": aid}))
-@patch("services.llm_gateway.run_completion", side_effect=Exception("LLM unavailable"))
+@patch("services.planning.debate_engine._load_aspect_personality", side_effect=lambda aid: _FAKE_PERSONALITIES.get(aid, {"id": aid, "name": aid}))
+@patch("services.llm.llm_gateway.run_completion", side_effect=Exception("LLM unavailable"))
 def test_deliberation_handles_llm_failure(mock_completion, mock_personality):
-    from services.debate_engine import run_deliberation
+    from services.planning.debate_engine import run_deliberation
 
     result = run_deliberation(
         goal="Should I refactor?",

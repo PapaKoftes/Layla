@@ -2,7 +2,7 @@
 
 
 def test_should_plan_replan_bypasses_length_gate():
-    from services.planner import should_plan
+    from services.planning.planner import should_plan
 
     cfg = {"planning_enabled": True, "max_plan_depth": 3}
     state = {"recovery_strategy": "replan"}
@@ -10,7 +10,7 @@ def test_should_plan_replan_bypasses_length_gate():
 
 
 def test_should_plan_without_replan_requires_length_and_keyword():
-    from services.planner import should_plan
+    from services.planning.planner import should_plan
 
     cfg = {"planning_enabled": True, "max_plan_depth": 3}
     assert should_plan("short", cfg, plan_depth=0, state=None) is False
@@ -19,7 +19,7 @@ def test_should_plan_without_replan_requires_length_and_keyword():
 
 
 def test_block_repeated_mutating_under_retry_constrained():
-    from services.failure_recovery import block_repeated_mutating_under_retry_constrained
+    from services.infrastructure.failure_recovery import block_repeated_mutating_under_retry_constrained
 
     st = {
         "recovery_strategy": "retry_constrained",
@@ -35,7 +35,7 @@ def test_block_repeated_mutating_under_retry_constrained():
 
 
 def test_personality_planner_bias_nonempty_for_core_aspects():
-    from services.planner import personality_planner_bias
+    from services.planning.planner import personality_planner_bias
 
     assert "Morrigan" in personality_planner_bias("morrigan")
     assert "Nyx" in personality_planner_bias("nyx")
@@ -43,7 +43,7 @@ def test_personality_planner_bias_nonempty_for_core_aspects():
 
 
 def test_build_planning_bias_includes_structured_outcome_fields():
-    from services.planner import build_planning_bias_prompt
+    from services.planning.planner import build_planning_bias_prompt
     from shared_state import clear_last_outcome_evaluation, set_last_outcome_evaluation
 
     cid = "test-cid-struct-bias"
@@ -72,7 +72,7 @@ def test_build_planning_bias_includes_structured_outcome_fields():
 
 
 def test_maybe_append_inline_state_aware_repetition():
-    from services.initiative_inline import maybe_append_inline_suggestion
+    from services.infrastructure.initiative_inline import maybe_append_inline_suggestion
 
     cfg = {"inline_initiative_enabled": True}
     state = {

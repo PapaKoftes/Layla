@@ -12,7 +12,7 @@ import uuid
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
-from services.ws_manager import manager as ws_manager
+from services.infrastructure.ws_manager import manager as ws_manager
 
 logger = logging.getLogger("layla")
 router = APIRouter(tags=["websocket"])
@@ -34,7 +34,7 @@ async def _ws_check_auth(websocket: WebSocket) -> bool:
     if not cfg.get("remote_enabled"):
         return True
 
-    from services.auth import _is_localhost, real_client_ip, require_auth_always
+    from services.safety.auth import _is_localhost, real_client_ip, require_auth_always
 
     # Trust loopback only for a DIRECT connection (not a tunnel/proxy that
     # forwards from 127.0.0.1) — see real_client_ip.
@@ -45,7 +45,7 @@ async def _ws_check_auth(websocket: WebSocket) -> bool:
 
     token = websocket.query_params.get("token", "")
 
-    from services.auth import check_auth
+    from services.safety.auth import check_auth
 
     ok, reason = check_auth(token, client_host or "", cfg)
     if ok:

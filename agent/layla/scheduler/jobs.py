@@ -25,7 +25,7 @@ def _mission_worker_job() -> None:
     """Background job: run next step of active missions.  Persists progress for restart recovery."""
     try:
         from layla.memory.db import get_active_missions
-        from services.mission_manager import execute_next_step
+        from services.planning.mission_manager import execute_next_step
 
         missions = get_active_missions(limit=1)
         for m in missions:
@@ -41,7 +41,7 @@ def _mission_worker_job() -> None:
 # ── background reflection ──────────────────────────────────────────────
 def _bg_reflect() -> None:
     try:
-        from services.background_intelligence import run_reflection_scan
+        from services.infrastructure.background_intelligence import run_reflection_scan
 
         run_reflection_scan()
     except Exception as _e:
@@ -51,7 +51,7 @@ def _bg_reflect() -> None:
 # ── background codex entity nudge ──────────────────────────────────────
 def _bg_codex() -> None:
     try:
-        from services.background_intelligence import run_codex_entity_nudge
+        from services.infrastructure.background_intelligence import run_codex_entity_nudge
 
         run_codex_entity_nudge()
     except Exception as _e:
@@ -61,7 +61,7 @@ def _bg_codex() -> None:
 # ── background memory consolidation ────────────────────────────────────
 def _bg_memory() -> None:
     try:
-        from services.memory_consolidation import consolidate_periodic
+        from services.memory.memory_consolidation import consolidate_periodic
 
         consolidate_periodic()
     except Exception as _e:
@@ -72,8 +72,8 @@ def _bg_memory() -> None:
 def _bg_initiative() -> None:
     try:
         import runtime_safety as _rs
-        from services.initiative_engine import generate_project_proposals
-        from services.maturity_engine import get_trust_tier
+        from services.infrastructure.initiative_engine import generate_project_proposals
+        from services.personality.maturity_engine import get_trust_tier
 
         _c = _rs.load_config()
         if not bool(_c.get("initiative_project_proposals_enabled", False)):
@@ -89,7 +89,7 @@ def _bg_initiative() -> None:
 def _bg_cleanup() -> None:
     try:
         import runtime_safety as _rs
-        from services.memory_consolidation import apply_retention_policies, prune_low_confidence_learnings
+        from services.memory.memory_consolidation import apply_retention_policies, prune_low_confidence_learnings
 
         _c = _rs.load_config()
         th = float(_c.get("memory_cleanup_confidence_threshold", 0.08) or 0.08)
@@ -146,7 +146,7 @@ def _bg_cleanup() -> None:
 def _bg_repo_reindex() -> None:
     try:
         import runtime_safety as _rs
-        from services.repo_indexer import index_workspace_repo
+        from services.workspace.repo_indexer import index_workspace_repo
 
         _c = _rs.load_config()
         _ws = (_c.get("sandbox_root") or "").strip()
@@ -155,7 +155,7 @@ def _bg_repo_reindex() -> None:
     except Exception as _e:
         logger.warning("background_repo_reindex: %s", _e)
         try:
-            from services.degraded import mark_degraded
+            from services.infrastructure.degraded import mark_degraded
 
             mark_degraded("repo_indexer", str(_e))
         except Exception:
@@ -191,7 +191,7 @@ def _scheduled_study_job() -> None:
         plan, domain_id = cap_mod.get_next_plan_for_study(plans, use_capabilities=use_capabilities)
         if not plan:
             return
-        from services.study_service import run_autonomous_study_for_plan
+        from services.memory.study_service import run_autonomous_study_for_plan
 
         summary = run_autonomous_study_for_plan(plan)
         if domain_id:
@@ -204,7 +204,7 @@ def _scheduled_study_job() -> None:
         logger.info("scheduled_study completed topic=%s domain_id=%s", plan.get("topic"), domain_id)
         # Maturity: award XP for completing a study session
         try:
-            from services.maturity_engine import award_xp
+            from services.personality.maturity_engine import award_xp
             award_xp(20, reason="study_session")
         except Exception:
             pass
@@ -215,13 +215,13 @@ def _scheduled_study_job() -> None:
 # ── intelligence (distillation + replay + curiosity) ───────────────────
 def _intelligence_job() -> None:
     try:
-        from services.knowledge_distiller import run_periodic_distillation
+        from services.memory.knowledge_distiller import run_periodic_distillation
 
         run_periodic_distillation()
     except Exception as _e:
         logger.warning("intelligence_job: knowledge_distiller failed: %s", _e)
     try:
-        from services.experience_replay import run_experience_replay
+        from services.infrastructure.experience_replay import run_experience_replay
 
         replay_summary = run_experience_replay()
         if replay_summary:
@@ -229,8 +229,8 @@ def _intelligence_job() -> None:
     except Exception as _e:
         logger.warning("intelligence_job: experience_replay failed: %s", _e)
     try:
-        from services.curiosity_engine import get_curiosity_suggestions
-        from services.memory_router import save_learning  # canonical write path
+        from services.memory.curiosity_engine import get_curiosity_suggestions
+        from services.memory.memory_router import save_learning  # canonical write path
 
         suggestions = get_curiosity_suggestions()
         for suggestion in suggestions[:3]:
@@ -260,7 +260,7 @@ def _bg_reindex() -> None:
 # ── RL preference update ──────────────────────────────────────────────
 def _rl_preference_job() -> None:
     try:
-        from services.rl_feedback import run_preference_update_job
+        from services.infrastructure.rl_feedback import run_preference_update_job
 
         run_preference_update_job()
     except Exception:
@@ -271,7 +271,7 @@ def _rl_preference_job() -> None:
 def _bg_backup() -> None:
     """Create a nightly SQLite backup via the .backup() API."""
     try:
-        from services.db_backup import backup_database
+        from services.infrastructure.db_backup import backup_database
 
         result = backup_database()
         if result.get("ok"):

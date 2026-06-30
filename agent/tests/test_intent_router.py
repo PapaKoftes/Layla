@@ -10,7 +10,7 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def test_route_intent_meta_self_defaults_to_chat():
-    from services.intent_router import route_intent
+    from services.tools.intent_router import route_intent
 
     rd = route_intent("please explain your full capabilities", context="", workspace_root="")
     assert rd.task_type == "chat"
@@ -19,7 +19,7 @@ def test_route_intent_meta_self_defaults_to_chat():
 
 
 def test_route_intent_traceback_is_workspace_signal():
-    from services.intent_router import route_intent
+    from services.tools.intent_router import route_intent
 
     rd = route_intent("please explain this traceback in foo.py line 12", context="", workspace_root="")
     assert rd.has_workspace_signals is True
@@ -27,7 +27,7 @@ def test_route_intent_traceback_is_workspace_signal():
 
 
 def test_route_intent_mixed_sets_multi_intent():
-    from services.intent_router import route_intent
+    from services.tools.intent_router import route_intent
 
     rd = route_intent("explain your capabilities and read agent/agent_loop.py", context="", workspace_root="")
     assert rd.multi_intent is True

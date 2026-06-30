@@ -11,7 +11,7 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-from services.mcp_client import (  # noqa: E402
+from services.infrastructure.mcp_client import (  # noqa: E402
     McpStdioServerSpec,
     get_cached_mcp_tool_summary_for_prompt,
     load_mcp_stdio_servers,
@@ -155,7 +155,7 @@ def test_mcp_list_read_resources_registry(monkeypatch):
 
 
 def test_get_cached_mcp_tool_summary_for_prompt(monkeypatch):
-    import services.mcp_client as mc
+    import services.infrastructure.mcp_client as mc
 
     cfg = {
         "mcp_client_enabled": True,

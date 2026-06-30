@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from services.resource_governor import (
+from services.infrastructure.resource_governor import (
     ResourceGovernor,
     ResourceMode,
     GovernorState,
@@ -41,35 +41,35 @@ class TestResourceModes:
 
     def test_whisper_when_user_active(self, governor):
         """User input within 60s → WHISPER."""
-        with patch("services.resource_governor.get_last_input_seconds", return_value=10.0):
+        with patch("services.infrastructure.resource_governor.get_last_input_seconds", return_value=10.0):
             with patch.object(governor, "_get_cpu_percent", return_value=0.3):
                 state = governor.update()
                 assert state.mode == ResourceMode.WHISPER
 
     def test_breathe_when_lightly_idle(self, governor):
         """User idle 61-599s → BREATHE."""
-        with patch("services.resource_governor.get_last_input_seconds", return_value=120.0):
+        with patch("services.infrastructure.resource_governor.get_last_input_seconds", return_value=120.0):
             with patch.object(governor, "_get_cpu_percent", return_value=0.1):
                 state = governor.update()
                 assert state.mode == ResourceMode.BREATHE
 
     def test_sprint_when_fully_idle(self, governor):
         """User idle 600+s → SPRINT."""
-        with patch("services.resource_governor.get_last_input_seconds", return_value=700.0):
+        with patch("services.infrastructure.resource_governor.get_last_input_seconds", return_value=700.0):
             with patch.object(governor, "_get_cpu_percent", return_value=0.05):
                 state = governor.update()
                 assert state.mode == ResourceMode.SPRINT
 
     def test_cpu_fallback_when_no_input_detection(self, governor):
         """If get_last_input_seconds returns -1, use CPU heuristics."""
-        with patch("services.resource_governor.get_last_input_seconds", return_value=-1.0):
+        with patch("services.infrastructure.resource_governor.get_last_input_seconds", return_value=-1.0):
             with patch.object(governor, "_get_cpu_percent", return_value=0.8):
                 state = governor.update()
                 assert state.mode == ResourceMode.WHISPER  # High CPU → WHISPER
 
     def test_cpu_fallback_low_cpu_breathe(self, governor):
         """Low CPU without input detection → BREATHE (not SPRINT without idle detector)."""
-        with patch("services.resource_governor.get_last_input_seconds", return_value=-1.0):
+        with patch("services.infrastructure.resource_governor.get_last_input_seconds", return_value=-1.0):
             with patch.object(governor, "_get_cpu_percent", return_value=0.15):
                 governor._idle_detector = None  # No idle detector
                 state = governor.update()
@@ -133,7 +133,7 @@ class TestModeTransitions:
         transitions = []
         governor.on_mode_change(lambda old, new: transitions.append((old, new)))
 
-        with patch("services.resource_governor.get_last_input_seconds", return_value=700.0):
+        with patch("services.infrastructure.resource_governor.get_last_input_seconds", return_value=700.0):
             with patch.object(governor, "_get_cpu_percent", return_value=0.05):
                 governor.update()
 
@@ -145,7 +145,7 @@ class TestModeTransitions:
         transitions = []
         governor.on_mode_change(lambda old, new: transitions.append((old, new)))
 
-        with patch("services.resource_governor.get_last_input_seconds", return_value=10.0):
+        with patch("services.infrastructure.resource_governor.get_last_input_seconds", return_value=10.0):
             with patch.object(governor, "_get_cpu_percent", return_value=0.3):
                 governor.update()
                 governor.update()
@@ -168,7 +168,7 @@ class TestDisabled:
 
 class TestSerialization:
     def test_to_dict(self, governor):
-        with patch("services.resource_governor.get_last_input_seconds", return_value=10.0):
+        with patch("services.infrastructure.resource_governor.get_last_input_seconds", return_value=10.0):
             with patch.object(governor, "_get_cpu_percent", return_value=0.3):
                 governor.update()
 
@@ -183,6 +183,6 @@ class TestSerialization:
 class TestInputDetection:
     def test_fallback_returns_negative(self):
         """On non-Windows, get_last_input_seconds returns -1."""
-        with patch("services.resource_governor._HAS_WIN_INPUT", False):
+        with patch("services.infrastructure.resource_governor._HAS_WIN_INPUT", False):
             result = get_last_input_seconds()
             assert result == -1.0

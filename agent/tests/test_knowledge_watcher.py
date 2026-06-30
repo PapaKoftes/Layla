@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from services.knowledge_watcher import (
+from services.memory.knowledge_watcher import (
     SKIP_PATTERNS,
     SUPPORTED_EXTENSIONS,
     KnowledgeWatcher,
@@ -162,7 +162,7 @@ def test_tracker_mark_processed_updates_hash(tmp_path: Path):
 # ── KnowledgeWatcher.__init__ ──────────────────────────────────────────
 
 
-@patch("services.knowledge_watcher.KnowledgeWatcher._load_config")
+@patch("services.memory.knowledge_watcher.KnowledgeWatcher._load_config")
 def test_init_empty_config_has_no_watch_dirs(mock_load):
     watcher = KnowledgeWatcher({})
     assert watcher._watch_dirs == []
@@ -171,21 +171,21 @@ def test_init_empty_config_has_no_watch_dirs(mock_load):
 # ── add_watch_dir / remove_watch_dir ───────────────────────────────────
 
 
-@patch("services.knowledge_watcher.KnowledgeWatcher._load_config")
+@patch("services.memory.knowledge_watcher.KnowledgeWatcher._load_config")
 def test_add_watch_dir_valid_directory(mock_load, tmp_path: Path):
     watcher = KnowledgeWatcher({})
     assert watcher.add_watch_dir(str(tmp_path)) is True
     assert tmp_path in watcher._watch_dirs
 
 
-@patch("services.knowledge_watcher.KnowledgeWatcher._load_config")
+@patch("services.memory.knowledge_watcher.KnowledgeWatcher._load_config")
 def test_add_watch_dir_rejects_nonexistent(mock_load):
     watcher = KnowledgeWatcher({})
     assert watcher.add_watch_dir("/does/not/exist/at/all") is False
     assert len(watcher._watch_dirs) == 0
 
 
-@patch("services.knowledge_watcher.KnowledgeWatcher._load_config")
+@patch("services.memory.knowledge_watcher.KnowledgeWatcher._load_config")
 def test_remove_watch_dir_existing(mock_load, tmp_path: Path):
     watcher = KnowledgeWatcher({})
     watcher.add_watch_dir(str(tmp_path))
@@ -193,7 +193,7 @@ def test_remove_watch_dir_existing(mock_load, tmp_path: Path):
     assert tmp_path not in watcher._watch_dirs
 
 
-@patch("services.knowledge_watcher.KnowledgeWatcher._load_config")
+@patch("services.memory.knowledge_watcher.KnowledgeWatcher._load_config")
 def test_remove_watch_dir_returns_false_if_missing(mock_load):
     watcher = KnowledgeWatcher({})
     assert watcher.remove_watch_dir("/never/added") is False
@@ -202,7 +202,7 @@ def test_remove_watch_dir_returns_false_if_missing(mock_load):
 # ── get_stats ──────────────────────────────────────────────────────────
 
 
-@patch("services.knowledge_watcher.KnowledgeWatcher._load_config")
+@patch("services.memory.knowledge_watcher.KnowledgeWatcher._load_config")
 def test_get_stats_structure(mock_load, tmp_path: Path):
     watcher = KnowledgeWatcher({})
     watcher.add_watch_dir(str(tmp_path))
@@ -220,7 +220,7 @@ def test_get_stats_structure(mock_load, tmp_path: Path):
 # ── start ──────────────────────────────────────────────────────────────
 
 
-@patch("services.knowledge_watcher.KnowledgeWatcher._load_config")
+@patch("services.memory.knowledge_watcher.KnowledgeWatcher._load_config")
 def test_start_returns_false_when_no_watch_dirs(mock_load):
     watcher = KnowledgeWatcher({})
     assert watcher.start() is False
@@ -229,37 +229,37 @@ def test_start_returns_false_when_no_watch_dirs(mock_load):
 # ── _should_ingest ─────────────────────────────────────────────────────
 
 
-@patch("services.knowledge_watcher.KnowledgeWatcher._load_config")
+@patch("services.memory.knowledge_watcher.KnowledgeWatcher._load_config")
 def test_should_ingest_returns_true_with_no_governor(mock_load):
     """When resource_governor import fails, _should_ingest defaults to True."""
     watcher = KnowledgeWatcher({})
     # Force the import to fail so the except branch (return True) is taken
-    with patch.dict(sys.modules, {"services.resource_governor": None}):
+    with patch.dict(sys.modules, {"services.infrastructure.resource_governor": None}):
         assert watcher._should_ingest() is True
 
 
-@patch("services.knowledge_watcher.KnowledgeWatcher._load_config")
+@patch("services.memory.knowledge_watcher.KnowledgeWatcher._load_config")
 def test_should_ingest_returns_true_for_breathe_mode(mock_load):
     watcher = KnowledgeWatcher({})
     mock_mode = MagicMock()
     mock_mode.value = "breathe"
-    with patch("services.resource_governor.get_mode", return_value=mock_mode):
+    with patch("services.infrastructure.resource_governor.get_mode", return_value=mock_mode):
         assert watcher._should_ingest() is True
 
 
-@patch("services.knowledge_watcher.KnowledgeWatcher._load_config")
+@patch("services.memory.knowledge_watcher.KnowledgeWatcher._load_config")
 def test_should_ingest_returns_false_for_hibernate_mode(mock_load):
     watcher = KnowledgeWatcher({})
     mock_mode = MagicMock()
     mock_mode.value = "hibernate"
-    with patch("services.resource_governor.get_mode", return_value=mock_mode):
+    with patch("services.infrastructure.resource_governor.get_mode", return_value=mock_mode):
         assert watcher._should_ingest() is False
 
 
 # ── scan_now ───────────────────────────────────────────────────────────
 
 
-@patch("services.knowledge_watcher.KnowledgeWatcher._load_config")
+@patch("services.memory.knowledge_watcher.KnowledgeWatcher._load_config")
 def test_scan_now_processes_files_in_watched_dirs(mock_load, tmp_path: Path):
     """scan_now should find and attempt to process supported files."""
     watcher = KnowledgeWatcher({})

@@ -146,7 +146,7 @@ def gather_repo_signals(root: Path, *, label: str = "") -> dict[str, Any]:
         except OSError as e:
             signals["errors"].append(f"{rel}:{e}")
     try:
-        from services.workspace_index import get_architecture_summary
+        from services.workspace.workspace_index import get_architecture_summary
 
         arch = get_architecture_summary(root)
         if arch and str(arch).strip():
@@ -258,7 +258,7 @@ def sync_repo_cognition(
         )
         if index_semantic:
             try:
-                from services.workspace_index import index_workspace
+                from services.workspace.workspace_index import index_workspace
 
                 index_workspace(str(root))
             except Exception as e:

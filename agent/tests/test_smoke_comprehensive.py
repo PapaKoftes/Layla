@@ -55,13 +55,13 @@ def test_import_agent_loop():
 
 
 def test_import_context_manager():
-    from services.context_manager import DEFAULT_BUDGETS, build_system_prompt
+    from services.context.context_manager import DEFAULT_BUDGETS, build_system_prompt
     assert callable(build_system_prompt)
     assert "system_instructions" in DEFAULT_BUDGETS
 
 
 def test_import_hardware_detect():
-    from services.hardware_detect import (
+    from services.infrastructure.hardware_detect import (
         apply_to_config,
         detect_hardware,
         get_capability_summary,
@@ -74,7 +74,7 @@ def test_import_hardware_detect():
 
 
 def test_import_llm_gateway():
-    from services.llm_gateway import get_stop_sequences, run_completion
+    from services.llm.llm_gateway import get_stop_sequences, run_completion
     assert callable(run_completion) and callable(get_stop_sequences)
 
 
@@ -93,14 +93,14 @@ def test_import_memory_db():
 # ---------------------------------------------------------------------------
 
 def test_hardware_probe_returns_dict():
-    from services.hardware_detect import detect_hardware
+    from services.infrastructure.hardware_detect import detect_hardware
     hw = detect_hardware()
     assert isinstance(hw, dict)
     assert "machine_tier" in hw
 
 
 def test_hardware_recommended_settings_complete():
-    from services.hardware_detect import get_recommended_settings
+    from services.infrastructure.hardware_detect import get_recommended_settings
     recs = get_recommended_settings()
     required = {
         "n_ctx", "n_batch", "n_threads", "n_gpu_layers",
@@ -111,14 +111,14 @@ def test_hardware_recommended_settings_complete():
 
 
 def test_hardware_n_ctx_sane():
-    from services.hardware_detect import get_recommended_settings
+    from services.infrastructure.hardware_detect import get_recommended_settings
     n_ctx = get_recommended_settings()["n_ctx"]
     assert 512 <= n_ctx <= 131072, f"n_ctx={n_ctx} out of range"
     assert n_ctx % 512 == 0, f"n_ctx={n_ctx} must be multiple of 512"
 
 
 def test_hardware_speculative_decoding_always_false():
-    from services.hardware_detect import get_recommended_settings
+    from services.infrastructure.hardware_detect import get_recommended_settings
     assert get_recommended_settings().get("speculative_decoding_enabled") is False, (
         "speculative_decoding_enabled must always be False -- "
         "llama-cpp <=0.3.16 scores shape crash on prompts > n_batch tokens"
@@ -126,32 +126,32 @@ def test_hardware_speculative_decoding_always_false():
 
 
 def test_hardware_capability_summary_nonempty():
-    from services.hardware_detect import get_capability_summary
+    from services.infrastructure.hardware_detect import get_capability_summary
     s = get_capability_summary()
     assert isinstance(s, str) and len(s) > 20
     assert "tier" in s.lower() or "hardware" in s.lower()
 
 
 def test_hardware_apply_fills_gaps():
-    from services.hardware_detect import apply_to_config
+    from services.infrastructure.hardware_detect import apply_to_config
     merged = apply_to_config({})
     assert "n_ctx" in merged and merged["n_ctx"] >= 512
 
 
 def test_hardware_apply_respects_explicit():
-    from services.hardware_detect import apply_to_config
+    from services.infrastructure.hardware_detect import apply_to_config
     merged = apply_to_config({"n_ctx": 99999, "n_batch": 7})
     assert merged["n_ctx"] == 99999 and merged["n_batch"] == 7
 
 
 def test_hardware_tier_valid():
-    from services.hardware_detect import detect_hardware, hardware_class
+    from services.infrastructure.hardware_detect import detect_hardware, hardware_class
     cls = hardware_class(detect_hardware())
     assert cls in ("potato", "mid", "strong", "workstation"), f"Bad tier: {cls!r}"
 
 
 def test_hardware_threads_reasonable():
-    from services.hardware_detect import get_recommended_settings
+    from services.infrastructure.hardware_detect import get_recommended_settings
     recs = get_recommended_settings()
     assert 1 <= recs["n_threads"] <= 256
     assert 1 <= recs["n_threads_batch"] <= 512
@@ -192,7 +192,7 @@ def test_stop_sequences_no_config_override():
 # ---------------------------------------------------------------------------
 
 def test_prompt_no_overflow_2048():
-    from services.context_manager import build_system_prompt
+    from services.context.context_manager import build_system_prompt
     sections = {
         "system_instructions": "You are Layla. " * 50,
         "memory": "fact " * 200,
@@ -209,7 +209,7 @@ def test_prompt_no_overflow_2048():
 
 
 def test_prompt_no_overflow_4096():
-    from services.context_manager import build_system_prompt
+    from services.context.context_manager import build_system_prompt
     sections = {
         "system_instructions": "You are Layla. " * 50,
         "current_goal": "Write a function.",

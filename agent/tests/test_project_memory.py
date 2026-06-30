@@ -13,7 +13,7 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def test_merge_patch_caps_files():
-    from services import project_memory as pm
+    from services.memory import project_memory as pm
 
     base = pm.empty_document("/tmp/x")
     base["files"] = {f"f{i}": {"size": 1} for i in range(5)}
@@ -23,7 +23,7 @@ def test_merge_patch_caps_files():
 
 
 def test_save_and_load_roundtrip(tmp_path):
-    from services import project_memory as pm
+    from services.memory import project_memory as pm
 
     root = tmp_path / "ws"
     root.mkdir()
@@ -81,7 +81,7 @@ def test_continuous_background_respects_max_iterations(monkeypatch, tmp_path):
     import agent_loop
     import layla.memory.db as db_mod
     from layla.tools.registry import set_effective_sandbox
-    from services import agent_task_runner as atr
+    from services.infrastructure import agent_task_runner as atr
 
     monkeypatch.setattr(db_mod, "update_background_task", lambda *a, **k: None)
 
@@ -139,8 +139,8 @@ def test_continuous_background_stops_on_plan_done(monkeypatch, tmp_path):
     import agent_loop
     import layla.memory.db as db_mod
     from layla.tools.registry import set_effective_sandbox
-    from services import agent_task_runner as atr
-    from services import project_memory as pm
+    from services.infrastructure import agent_task_runner as atr
+    from services.memory import project_memory as pm
 
     monkeypatch.setattr(db_mod, "update_background_task", lambda *a, **k: None)
 

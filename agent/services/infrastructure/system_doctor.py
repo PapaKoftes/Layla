@@ -93,7 +93,7 @@ def run_capability_probe(
     # Inference backend + GPU vs config
     try:
         import runtime_safety
-        from services.inference_router import effective_inference_backend, inference_backend_uses_local_gguf
+        from services.llm.inference_router import effective_inference_backend, inference_backend_uses_local_gguf
 
         cfg = runtime_safety.load_config()
         backend = effective_inference_backend(cfg)
@@ -104,7 +104,7 @@ def run_capability_probe(
             "local_gguf": inference_backend_uses_local_gguf(cfg),
         }
         try:
-            from services.hardware_detect import detect_hardware
+            from services.infrastructure.hardware_detect import detect_hardware
 
             hw = detect_hardware()
             accel = hw.get("acceleration_backend") or "none"
@@ -181,7 +181,7 @@ def run_capability_probe(
 
     if voice_micro and fw_ok:
         try:
-            from services.stt import transcribe_bytes
+            from services.infrastructure.stt import transcribe_bytes
 
             # Minimal silent WAV (valid header); may return '' without loading heavy model if bytes invalid
             silent_wav = (
@@ -200,7 +200,7 @@ def run_capability_probe(
 
     if voice_micro and ko_ok:
         try:
-            from services.tts import speak_to_bytes
+            from services.infrastructure.tts import speak_to_bytes
 
             raw = speak_to_bytes("ok")
             out["checks"]["kokoro_onnx"]["micro_speak_ok"] = bool(raw and len(raw) > 100)
@@ -282,7 +282,7 @@ def run_diagnostics(include_llm: bool = False) -> dict[str, Any]:
 
     # GPU detection
     try:
-        from services.hardware_detect import detect_hardware
+        from services.infrastructure.hardware_detect import detect_hardware
         hw = detect_hardware()
         report["checks"]["hardware"] = {
             "cpu_cores": hw.get("cpu_cores"),
@@ -312,7 +312,7 @@ def run_diagnostics(include_llm: bool = False) -> dict[str, Any]:
     # Plugins
     try:
         import runtime_safety
-        from services.plugin_loader import load_plugins
+        from services.skills.plugin_loader import load_plugins
         cfg = runtime_safety.load_config()
         pl = load_plugins(cfg)
         report["checks"]["plugins"] = {
@@ -396,7 +396,7 @@ def run_diagnostics(include_llm: bool = False) -> dict[str, Any]:
 
     # System optimizer
     try:
-        from services.system_optimizer import get_summary
+        from services.infrastructure.system_optimizer import get_summary
         report["system_optimizer"] = get_summary()
     except Exception as e:
         report["system_optimizer"] = {"error": str(e)}

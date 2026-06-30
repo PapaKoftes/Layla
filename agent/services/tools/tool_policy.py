@@ -8,7 +8,7 @@ import fnmatch
 import logging
 from typing import Any
 
-from services.intent_detection import _get_tool_category, filter_tools_by_categories, get_tool_names_for_goal
+from services.tools.intent_detection import _get_tool_category, filter_tools_by_categories, get_tool_names_for_goal
 
 logger = logging.getLogger("layla")
 
@@ -93,7 +93,7 @@ def deterministic_route_tools(
     if not bool(cfg.get("deterministic_tool_routes_enabled", False)):
         return None
     try:
-        from services.model_router import classify_task
+        from services.llm.model_router import classify_task
 
         tt = str(classify_task(goal or "", "") or "").strip().lower()
     except Exception:

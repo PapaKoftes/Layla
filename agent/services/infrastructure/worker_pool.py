@@ -12,7 +12,7 @@ from typing import Any
 def hardware_class(hw: dict[str, Any] | None) -> str:
     """Map detect_hardware() output to potato | mid | strong | workstation."""
     try:
-        from services.hardware_detect import hardware_class as _hwc
+        from services.infrastructure.hardware_detect import hardware_class as _hwc
 
         return _hwc(hw)
     except Exception:
@@ -39,7 +39,7 @@ def max_parallel_workers(cfg: dict[str, Any] | None) -> int:
     if mx > 0:
         return max(1, min(mx, 16))
     try:
-        from services.hardware_detect import detect_hardware
+        from services.infrastructure.hardware_detect import detect_hardware
 
         cls = hardware_class(detect_hardware())
     except Exception:

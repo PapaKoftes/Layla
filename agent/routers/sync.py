@@ -21,7 +21,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from services import syncthing_sync
+from services.infrastructure import syncthing_sync
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 

@@ -3,7 +3,7 @@
 import time
 from unittest.mock import MagicMock, patch
 
-from services.inference_router import (
+from services.llm.inference_router import (
     _TIER_RANK,
     _build_fallback_chain_description,
     get_cluster_status,
@@ -94,7 +94,7 @@ def test_get_cluster_status_enabled_no_peers():
         "hardware_tier": "gpu_mid",
     })
     with patch.dict(sys.modules, {"runtime_safety": mock_rs}):
-        with patch("services.inference_router._get_cluster_peers", return_value=[]):
+        with patch("services.llm.inference_router._get_cluster_peers", return_value=[]):
             status = get_cluster_status()
     assert status["cluster_enabled"] is True
     assert status["local_tier"] == "gpu_mid"
@@ -114,7 +114,7 @@ def test_get_cluster_status_with_peers():
          "hardware_tier": "gpu_high", "models": ["llama3.1-70b"]},
     ]
     with patch.dict(sys.modules, {"runtime_safety": mock_rs}):
-        with patch("services.inference_router._get_cluster_peers", return_value=mock_peers):
+        with patch("services.llm.inference_router._get_cluster_peers", return_value=mock_peers):
             status = get_cluster_status()
     assert status["available_peers"] == 1
     assert status["peers"][0]["name"] == "BigBox"
@@ -124,10 +124,10 @@ def test_get_cluster_status_with_peers():
 
 def test_get_cluster_peers_no_mdns():
     """_get_cluster_peers returns empty when mdns_discovery raises ImportError."""
-    from services.inference_router import _get_cluster_peers
+    from services.llm.inference_router import _get_cluster_peers
     # _get_cluster_peers does a local import of get_discovered_peers from services.mdns_discovery
     # When that import fails, it should return []
-    with patch.dict("sys.modules", {"services.mdns_discovery": None}):
+    with patch.dict("sys.modules", {"services.cluster.mdns_discovery": None}):
         # This won't work because _get_cluster_peers uses 'from services.mdns_discovery import ...'
         # Instead, mock the module to raise ImportError
         pass
@@ -138,7 +138,7 @@ def test_get_cluster_peers_no_mdns():
 
 def test_run_completion_cluster_unreachable():
     """run_completion_cluster handles unreachable peers gracefully."""
-    from services.inference_router import run_completion_cluster
+    from services.llm.inference_router import run_completion_cluster
     fake_peer = {"ip": "192.0.2.1", "port": 1, "name": "Unreachable"}
     result = run_completion_cluster(
         fake_peer, "Hello", max_tokens=10, temperature=0.1,

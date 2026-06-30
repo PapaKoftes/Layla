@@ -7,7 +7,7 @@ import json
 import re
 from typing import Any
 
-from services.llm_gateway import run_completion
+from services.llm.llm_gateway import run_completion
 
 
 def match_skeleton_plan(goal: str, cfg: dict | None) -> list[dict] | None:

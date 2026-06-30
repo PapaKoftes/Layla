@@ -17,7 +17,7 @@ from pathlib import Path
 from fastapi.responses import JSONResponse
 
 from agent_loop import autonomous_run
-from services.resource_manager import PRIORITY_AGENT, PRIORITY_BACKGROUND, PRIORITY_CHAT
+from services.infrastructure.resource_manager import PRIORITY_AGENT, PRIORITY_BACKGROUND, PRIORITY_CHAT
 from shared_state import get_conv_history
 
 logger = logging.getLogger("layla")

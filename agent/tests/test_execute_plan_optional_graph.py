@@ -3,7 +3,7 @@ from __future__ import annotations
 
 
 def test_optional_graph_hard_fails_when_disabled():
-    from services import planner as pl
+    from services.planning import planner as pl
 
     calls: list[str] = []
 
@@ -25,7 +25,7 @@ def test_optional_graph_hard_fails_when_disabled():
 
 
 def test_optional_graph_runs_for_single_step_when_enabled(monkeypatch):
-    from services import planner as pl
+    from services.planning import planner as pl
 
     seen: list[dict] = []
 
@@ -36,7 +36,7 @@ def test_optional_graph_runs_for_single_step_when_enabled(monkeypatch):
         seen.append(r)
         return {"ok": True, "results": [r]}
 
-    monkeypatch.setattr("services.coordinator.run_with_plan_graph", fake_graph)
+    monkeypatch.setattr("services.planning.coordinator.run_with_plan_graph", fake_graph)
 
     def fake_run(step_goal: str, **kw: object) -> dict:
         return {"status": "finished", "steps": []}
@@ -49,12 +49,12 @@ def test_optional_graph_runs_for_single_step_when_enabled(monkeypatch):
 
 
 def test_optional_graph_hard_fails_on_graph_error(monkeypatch):
-    from services import planner as pl
+    from services.planning import planner as pl
 
     def fake_graph(*, plan_steps, step_runner, cfg):
         return {"ok": False, "reason": "boom", "results": []}
 
-    monkeypatch.setattr("services.coordinator.run_with_plan_graph", fake_graph)
+    monkeypatch.setattr("services.planning.coordinator.run_with_plan_graph", fake_graph)
 
     calls: list[str] = []
 

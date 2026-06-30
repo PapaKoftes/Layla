@@ -32,7 +32,7 @@ def _get_db():
     import sys
     sys.path.insert(0, str(AGENT_DIR))
     from layla.memory.db import get_recent_learnings
-    from services.memory_router import save_learning  # canonical write path
+    from services.memory.memory_router import save_learning  # canonical write path
     return get_recent_learnings, save_learning
 
 
@@ -265,7 +265,7 @@ async def memory_elasticsearch_search_route(
 
         sys.path.insert(0, str(AGENT_DIR))
         import runtime_safety
-        from services.elasticsearch_bridge import search_learnings
+        from services.retrieval.elasticsearch_bridge import search_learnings
 
         out = search_learnings(runtime_safety.load_config(), q, limit=limit)
         return JSONResponse(out)
@@ -280,7 +280,7 @@ async def list_file_checkpoints_http(limit: int = Query(40, ge=1, le=200)):
 
     sys.path.insert(0, str(AGENT_DIR))
     import runtime_safety
-    from services.file_checkpoints import list_checkpoints
+    from services.workspace.file_checkpoints import list_checkpoints
 
     cfg = runtime_safety.load_config()
     sandbox = Path(cfg.get("sandbox_root", str(Path.home()))).expanduser().resolve()

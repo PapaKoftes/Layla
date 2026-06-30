@@ -28,7 +28,7 @@ def test_write_files_batch_resolves_relative_paths(tmp_path: Path) -> None:
 
 
 def test_det_verify_search_replace_literal(tmp_path: Path) -> None:
-    from services.tool_output_validator import deterministic_verify_tool_result
+    from services.tools.tool_output_validator import deterministic_verify_tool_result
 
     f = tmp_path / "a.py"
     f.write_text("aaa\n", encoding="utf-8")
