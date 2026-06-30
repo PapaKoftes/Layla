@@ -1,130 +1,123 @@
----
-last_mapped_commit: dc0b9c0ad8bdb1cba9afea771ad54a55473ec14d
----
 # Coding Conventions
 
-**Analysis Date:** 2026-06-29
+**Analysis Date:** 2026-06-30
 
-Layla is a Python 3.11/3.12 local-first FastAPI agent platform. The runtime
-lives under `agent/` (routers, services, the `layla` package, tools,
-capabilities). `fabrication_assist/` is a sibling top-level package. Conventions
-below are prescriptive — match them when adding code.
+Layla is a Python 3.11/3.12 codebase (v1.4.0 "Castilla"). The agent lives under
+`agent/`; a secondary package `fabrication_assist/` sits at the repo root. All
+linting and type targets assume **Python 3.11** semantics.
 
 ## Naming Patterns
 
-**Files / modules:**
-- `snake_case.py` for all modules (`agent_loop.py`, `route_helpers.py`, `secret_filter.py`).
-- Routers live in `agent/routers/<feature>.py`, one `APIRouter` per file.
-- Services live in `agent/services/<feature>.py` (business logic, no FastAPI imports where avoidable).
-- Tests are `agent/tests/test_<subject>.py` (see TESTING.md).
+**Files:**
+- `snake_case.py` for all modules: `llm_gateway.py`, `system_head_builder.py`, `maturity_engine.py`.
+- Test files: `test_<subject>.py` under `agent/tests/` (required by `python_files = ["test_*.py"]` in `pyproject.toml`).
 
 **Functions:**
-- `snake_case` for all functions and methods.
-- Module-private helpers are `_`-prefixed (`_redact_secrets`, `_is_localhost`, `_build_tools_from_domains`). Treat `_`-prefixed names as not-for-import.
-- `async def` for route handlers and anything awaiting I/O; no special prefix — async-ness is conveyed by `await`/`asyncio.to_thread` at call sites. CPU/blocking work inside an async route is wrapped: `await asyncio.to_thread(sync_fn)` (e.g. `routers/session.py::compact_conversation`).
+- `snake_case`: `real_client_ip()`, `_evict_models_if_needed()`, `run_completion()`.
+- Leading underscore for module-private helpers: `_free_llm_instance()`, `_get_llm()`.
 
-**Variables / constants:**
-- `snake_case` for locals.
-- `UPPER_SNAKE_CASE` module-level constants, centralized in `agent/constants.py` (`MAX_SAFE_READ_BYTES`, `DEFAULT_MAX_TOOL_CALLS`, `LOCALHOST_HOSTS`). Import from `constants` rather than redefining — see the anti-pattern note below.
-- Type-annotate constants: `MAX_MESSAGE_LENGTH: int = 100_000`. Use `_` digit separators for large numbers.
+**Variables:**
+- `snake_case` locals; module-level singletons/caches prefixed `_`: `_llm`, `_llm_by_path`, `_llm_lock`, `_config_cache`.
+- Constants in `UPPER_SNAKE`: `REPO_ROOT`, `_DEFAULT_MAX_RESIDENT_MODELS`, `COPYLEFT`, `KNOWN_ROOT_FILES`.
 
-**Types / schemas:**
-- `PascalCase` for Pydantic models and dataclasses (`CapabilityImpl`). Pydantic request/response schemas live in `agent/schemas/` and `agent/config_schema.py` / `decision_schema.py`.
-- `@dataclass` for plain data holders with `field(default_factory=...)` for mutable defaults (`capabilities/registry.py`).
-- Constant tuples/frozensets for closed value sets: `VALID_REASONING_MODES: tuple[str, ...]`, `LOCALHOST_HOSTS: frozenset[str]`.
+**Types:**
+- Modern PEP 585 / 604 builtins: `list[int]`, `dict[str, Any]`, `str | None`. Enabled by `from __future__ import annotations` at the top of most modules.
 
 ## Code Style
 
-**Formatting & linting:**
-- `ruff` is the single tool (config in `pyproject.toml` `[tool.ruff]`). `line-length = 120`, `target-version = "py311"`, `src = ["agent", "fabrication_assist"]`.
-- Lint selection: `E, F, W, I` (pycodestyle, pyflakes, warnings, import-sort). Deliberately ignored globally: `E501` (length — formatter's job), `F401` (intentional re-exports), `E741` (math-heavy single letters), `E402` (intentional non-top-level imports in startup paths).
-- Per-file ignores: `agent/tests/*` ignores `F811` (fixture name reuse); fabrication tests ignore `E402` (sys.path bootstrap).
-- Run: `python -m ruff check agent fabrication_assist` (the `lint` CI job).
+**Formatting:**
+- Tool: **ruff** (`pyproject.toml [tool.ruff]`).
+- `line-length = 120`, `target-version = "py311"`, `src = ["agent", "fabrication_assist"]`.
+- Line length is *not* enforced as an error (`E501` ignored) — treated as a formatter concern, not a hard gate.
 
-**`from __future__ import annotations`:**
-- Required at the top of every module — present in 187/203 service files. Add it to all new modules. It makes annotations lazy strings, which is what lets the codebase annotate with types whose modules aren't imported at top level.
+**Linting:**
+- Rule sets selected: `E` (pycodestyle errors), `F` (pyflakes), `W` (warnings), `I` (isort import ordering).
+- Global ignores (`[tool.ruff.lint] ignore`):
+  - `E501` line too long (handled by formatter)
+  - `F401` imported-but-unused (intentional re-exports / barrel modules)
+  - `E741` ambiguous variable name (math-heavy code)
+  - `E402` module-level import not at top (intentional non-top-level imports in startup paths)
+- Per-file ignores (`[tool.ruff.lint.per-file-ignores]`):
+  - `agent/tests/*` → `F811` (fixture-name redefinition is normal in pytest)
+  - `agent/tests/test_fabrication_assist*.py` → `E402` (sys.path bootstrap before repo imports)
+- CI invocation (`.github/workflows/ci.yml`, `lint` job): `python -m ruff check agent fabrication_assist`.
 
 ## Import Organization
 
-The codebase runs a **deliberate two-tier import convention** (this is why `E402` is globally ignored):
+Enforced by ruff's `I` (isort) rules. Standard order:
+1. `from __future__ import annotations` (first line after the docstring)
+2. Standard library (`asyncio`, `logging`, `os`, `pathlib`, `typing`)
+3. Third-party (`pytest`, `fastapi`, `pydantic`)
+4. First-party (`services.*`, `layla.*`, `routers.*`, `shared_state`)
 
-1. **Top-level imports** — stdlib, then third-party, then first-party — for anything needed at module import time and cheap to load. Standard ruff `I` ordering applies.
-2. **In-function / lazy imports** — heavy or optional dependencies are imported *inside* the function that needs them, NOT at module top. Examples: `routers/session.py::ctx_viz` imports `runtime_safety`, `services.context_budget`, `services.context_manager` locally; `routers/ws.py` imports `from services.auth import _is_localhost` inside the handler; `_is_localhost` imports `constants.LOCALHOST_HOSTS` inside the function with an `ImportError` fallback.
+**Module resolution:**
+- The agent runs with cwd = `agent/`, so top-level packages (`services`, `routers`, `layla`, `capabilities`, `skills`) are importable as roots. See `[tool.setuptools.packages.find]` in `pyproject.toml`.
+- Tests that run on a bare interpreter prepend `AGENT_DIR` to `sys.path` themselves (e.g. `agent/tests/test_trust_boundary.py`, `agent/tests/test_architecture_boundaries.py`) so they work without an editable install.
 
-Reasons this is intentional, not laziness:
-- Keeps app startup fast and lets the `dev` extra import app modules without the GPU/model stack installed (heavy imports never fire until used).
-- Breaks import cycles between routers ↔ services ↔ `layla.*`.
-- Makes optional features degrade gracefully (a missing `chromadb`/`playwright` only errors when that path runs).
+## Backward-Compat Shim Pattern (IMPORTANT)
 
-When adding code: import lazily for anything in the `llm`/`voice`/`vision`/`research` optional groups, anything heavy (`torch`, `chromadb`, `sentence_transformers`, `llama_cpp`), or anything that would create a cycle. Import at top for stdlib, FastAPI, pydantic, and sibling helpers.
+When a module is reorganized into a sub-package, the old flat path is preserved as
+a **shim** so existing imports keep working. This is the dominant structural
+convention in `agent/services/`.
 
-**First-party absolute imports** are used throughout because `agent/` is on `sys.path` (`conftest.py`, and `[tool.setuptools.packages.find]` exposes `routers`, `services`, `capabilities`, `skills`, `layla`): `from services.route_helpers import ...`, `from layla.time_utils import utcnow`, `from constants import ...`. No relative `from .x` style.
+Canonical shim form (`agent/services/llm_gateway.py`):
+
+```python
+"""Backward compatibility -- module moved to services/llm/llm_gateway.py"""
+import importlib as _importlib
+import sys as _sys
+
+_real = _importlib.import_module("services.llm.llm_gateway")
+_sys.modules[__name__] = _real
+```
+
+Rules enforced by `agent/tests/test_architecture_boundaries.py`:
+- **Every** flat `services/*.py` (other than `__init__.py`) MUST be a shim — detected by `sys.modules[__name__]` reassignment or a `"Backward compatibility" ... import *` docstring (`test_all_flat_services_are_shims`).
+- A shim and its canonical module must resolve to the **same** module object (`test_shim_resolves_to_canonical`, e.g. `services.llm_gateway is services.llm.llm_gateway`).
+- New logic goes in a sub-package (`services/llm/`, `services/safety/`, `services/personality/`, …), never as a new flat file.
+
+When you move a module: create the real implementation under the right
+sub-package, then leave (or add) a shim at the old path. Do not delete the old path.
+
+## Architecture / Layering Conventions
+
+`agent/tests/test_architecture_boundaries.py` codifies these as executable rules:
+- **Routers** (`agent/routers/`) must not import `layla.memory.db.get_connection` directly — go through the service layer (`test_routers_dont_import_db_directly`).
+- Non-infrastructure code should route DB access through `services/memory_router.py` rather than importing `layla.memory.db*` directly (ratcheted bypass budget, currently ≤85; memory-infra prefixes like `layla/memory/`, `layla/codex/`, `scripts/` are exempt).
+- `shared_state` importers are budgeted (≤15) and meant to migrate to `services.session_context` / dependency injection.
+- New root-level `agent/*.py` files are discouraged: only the allowlist in `KNOWN_ROOT_FILES` (entrypoints, config, and explicitly-listed legacy shims) is permitted; others raise a warning today (soft gate, intended to harden later).
+- `agent_loop.py` size is budgeted (≤1000 lines) and must keep exporting its public names (`autonomous_run`, `stream_reason`, `classify_intent`, `TOOLS`, …) for backward compat (`test_agent_loop_backward_compat_attrs`).
+- Required service sub-packages must each contain real modules + an `__init__.py`: `services/agent`, `observability`, `retrieval`, `planning`, `skills`, `tools`, `context`, `personality`, plus `cluster`, `governance`, `infrastructure`, `llm`, `memory`, `prompts`, `reasoning`, `safety`, `sandbox`, `user`, `workspace`.
 
 ## Error Handling
 
-Two complementary patterns:
-
-**1. Result dicts (`{"ok": bool, ...}`)** — service/tool functions that can fail in expected ways return a dict, never raise across the boundary (~93 occurrences across services/routers). Shape:
-```python
-return {"ok": False, "error": "not_a_git_repo"}        # machine-readable error code
-return {"ok": False, "reason": "...", "message": "..."} # safety refusals add reason/message
-return {"ok": True, ...}                                # success, extra keys as needed
-```
-The `error`/`reason` value is a short snake_case code, not a sentence; human text goes in `message`. Catch-all tail: `except Exception as e: return {"ok": False, "error": str(e)}` (`services/admin_checkpoint.py`).
-
-**2. try/except-degrade** — optional subsystems are wrapped so a failure downgrades rather than crashes:
-```python
-try:
-    import runtime_safety as _rs
-    _rs._config_cache = None
-except Exception:
-    pass
-```
-Used for optional-dependency imports, cache resets, and best-effort side effects. Pair a narrow `ImportError` with a hard-coded fallback when an optional module supplies constants (`auth._is_localhost`).
-
-Raise real exceptions only for programmer errors / invariant violations and at hard trust boundaries (e.g. Pydantic validation rejecting oversized input via `constants.MAX_MESSAGE_LENGTH`).
+- Best-effort cleanup paths use broad `except Exception: pass` deliberately (resource release, optional imports, cache resets) — see `_free_llm_instance`, conftest fixtures. This is an accepted pattern for non-critical side effects, not for control flow.
+- Optional dependencies are guarded with `try/import/except ImportError` and degrade gracefully (e.g. `llama_cpp`, `playwright`, `chromadb` falling back to the SQLite+NumPy vector store).
+- Security-critical primitives raise/return explicitly and are covered by dedicated stdlib-only tests (see TESTING.md trust-boundary suite).
 
 ## Logging
 
-- One logger per module: `logger = logging.getLogger("layla")` — a single named tree, configured centrally. Do not use bare `print` in runtime code.
-- Log at service boundaries and on degraded/except paths; keep utility functions quiet.
+- Single named logger per process: `logger = logging.getLogger("layla")`.
+- `%`-style lazy formatting in log calls: `logger.info("... %d ...", n)` — never f-strings inside log calls.
 
-## Trust / security checks
+## Comments & Docstrings
 
-Trust decisions go through `agent/services/auth.py`, never ad-hoc host checks:
-- `is_direct_local(headers, socket_host)` — the correct "trust the local caller" gate. It returns True only for a DIRECT loopback request; tunnelled requests that merely appear to come from `127.0.0.1` (cloudflared/ngrok) are treated as remote.
-- `real_client_ip(headers, socket_host) -> (ip, via_proxy)` — resolves the real peer, honoring forwarding headers only when the socket actually arrived on loopback.
-- Loopback membership is `constants.LOCALHOST_HOSTS` (note `0.0.0.0` is deliberately excluded as a bind sentinel).
-Recent history (commits `b6bb9aa`, `44cc3b0`) hardened this exact boundary — do not reintroduce bare `host == "127.0.0.1"` checks.
+- Module docstrings explain the module's role and any non-obvious constraints (e.g. "Serializes all completion calls via asyncio queue").
+- Inline comments frequently cite requirement/phase IDs (`REQ-02`, `REQ-72`, `F9`, `Phase 12`) tying code to planning artifacts. Preserve these references when editing.
+- Functions carry short docstrings describing intent, invariants, and who holds locks.
 
-## Patterns to match when adding...
+## Module Design
 
-**...a router** (`agent/routers/<feature>.py`):
-```python
-from __future__ import annotations
-from fastapi import APIRouter
-router = APIRouter(tags=["<feature>"])
+- Heavy use of module-level singletons protected by locks (`_llm_lock = threading.RLock()`), with explicit reset hooks for tests (see `_reset_volatile_module_state` in conftest).
+- `ContextVar` used for request-scoped state instead of globals where applicable.
+- Barrel re-exports are intentional and exempt from `F401`.
+- Per-aspect config theming: personality/behavior is parameterized per "aspect" rather than hard-coded; see `agent/services/personality/` (`aspect_behavior.py`, `style_profile.py`, `frame_modifier.py`).
 
-@router.post("/<path>")
-async def <handler>():
-    ...                      # heavy imports go INSIDE the handler
-```
-Then register it in `agent/main.py` with `app.include_router(<feature>.router)` (~line 550+).
+## License Hygiene (REQ-02)
 
-**...a tool**: add the callable to the appropriate domain module under `agent/layla/tools/impl/<domain>.py`, expose it via the domain's `*_TOOLS` dict, which `layla/tools/registry.py::_build_tools_from_domains` merges into `TOOLS`. Return a `{"ok": ...}` result dict and respect the sandbox (`inside_sandbox`, `shell_command_is_safe_whitelisted` from `sandbox_core`).
-
-**...a config flag**: add it as a typed field to the Pydantic schema in `agent/config_schema.py` with a default there; read it via `runtime_safety.load_config()` (cached). Do NOT hard-code a literal default at the read site (see anti-pattern below). Defaults that are real magic numbers belong in `agent/constants.py`.
-
-**...a trust check**: call `services.auth.is_direct_local(...)` — never inline a host comparison.
-
-**...a test**: `agent/tests/test_<subject>.py`, pure-stdlib where possible, mock `services.llm_gateway.run_completion`. See TESTING.md.
-
-## Anti-patterns present (avoid / clean up)
-
-- **God-file:** `agent/agent_loop.py` is 4,119 lines and concentrates the highest-bug-density logic. Its core decision/gate logic was extracted to `decision_schema.py` and `services/output_quality.py` precisely so it could be tested (see `test_agent_core_logic.py`). Prefer extracting new logic into a service rather than growing `agent_loop.py`.
-- **Inlined-default drift:** config defaults appear both in the schema and as `cfg.get("key", <literal>)` literals at call sites (e.g. `int(cfg.get("n_ctx", 4096))`). The two drift apart. Read defaults from the schema/`constants`, not re-typed literals.
-- **`window.*` browser globals:** the frontend (`agent/ui/js/*.js`) stores app state on mutable `window.*` globals (`window.currentAspect`, `window.currentConversationId`, `window.__laylaHealth`) with `||` fallbacks. This is implicit global state with load-order coupling; a CI guard (`scripts/check_ui_symbols.py`) checks UI onclick/onchange symbols but does not fix the global-state pattern.
+- The project ships under a proprietary "Free for non-commercial use" license, incompatible with strong copyleft.
+- `scripts/check_copyleft.py` (run in CI) scans installed distribution metadata via stdlib `importlib.metadata` and fails if any AGPL/GPL/SSPL dependency is present without an escape hatch (dual-license, linking exception, LGPL/MPL-only, or an `ALLOW` justification). Do not add strong-copyleft dependencies.
 
 ---
 
-*Convention analysis: 2026-06-29*
+*Convention analysis: 2026-06-30*
