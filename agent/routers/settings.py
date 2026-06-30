@@ -32,6 +32,7 @@ _REMOTE_PROTECTED_KEYS = frozenset({
     "uncensored",
     "remote_enabled",
     "remote_api_key",
+    "allow_legacy_remote_api_key",
     "remote_rate_limit_per_minute",
     "remote_allowlist",
     "allowed_hosts",

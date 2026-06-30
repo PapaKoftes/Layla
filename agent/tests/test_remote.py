@@ -32,6 +32,7 @@ def test_remote_localhost_bypasses_auth(monkeypatch):
     monkeypatch.setattr(runtime_safety, "load_config", lambda: {
         "remote_enabled": True,
         "remote_api_key": "secret",
+        "allow_legacy_remote_api_key": True,
         "remote_allow_endpoints": [],
         "remote_mode": "observe",
     })
@@ -50,6 +51,7 @@ def test_remote_non_localhost_requires_key(monkeypatch):
     monkeypatch.setattr(runtime_safety, "load_config", lambda: {
         "remote_enabled": True,
         "remote_api_key": "secret123",
+        "allow_legacy_remote_api_key": True,
         "remote_allow_endpoints": [],
         "remote_mode": "observe",
     })
@@ -70,6 +72,7 @@ def test_remote_non_localhost_wrong_key_401(monkeypatch):
     monkeypatch.setattr(runtime_safety, "load_config", lambda: {
         "remote_enabled": True,
         "remote_api_key": "secret123",
+        "allow_legacy_remote_api_key": True,
         "remote_allow_endpoints": [],
         "remote_mode": "observe",
     })
@@ -89,6 +92,7 @@ def test_remote_non_localhost_correct_key_allowed(monkeypatch):
     monkeypatch.setattr(runtime_safety, "load_config", lambda: {
         "remote_enabled": True,
         "remote_api_key": "secret123",
+        "allow_legacy_remote_api_key": True,
         "remote_allow_endpoints": [],
         "remote_mode": "observe",
     })
@@ -107,6 +111,7 @@ def test_remote_mode_observe_blocks_agent(monkeypatch):
     monkeypatch.setattr(runtime_safety, "load_config", lambda: {
         "remote_enabled": True,
         "remote_api_key": "k",
+        "allow_legacy_remote_api_key": True,
         "remote_allow_endpoints": [],
         "remote_mode": "observe",
     })
@@ -128,6 +133,7 @@ def test_remote_mode_interactive_allows_agent(monkeypatch):
     monkeypatch.setattr(runtime_safety, "load_config", lambda: {
         "remote_enabled": True,
         "remote_api_key": "k",
+        "allow_legacy_remote_api_key": True,
         "remote_allow_endpoints": [],
         "remote_mode": "interactive",
     })
