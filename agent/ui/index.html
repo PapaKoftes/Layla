@@ -290,6 +290,7 @@
     <nav class="sidebar-nav" aria-label="Panel shortcuts">
       <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="status"><span class="sidebar-nav-icon">◈</span> Dashboard</button>
       <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="prefs"><span class="sidebar-nav-icon">⚙</span> Settings</button>
+      <button type="button" class="sidebar-nav-btn" data-action="openModelsPanel"><span class="sidebar-nav-icon">◆</span> Models</button>
       <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="workspace"><span class="sidebar-nav-icon">📚</span> Library</button>
       <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="research"><span class="sidebar-nav-icon">🔬</span> Research</button>
       <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="artifacts"><span class="sidebar-nav-icon">⬡</span> Artifacts</button>
@@ -1172,6 +1173,33 @@
       <button class="settings-save" data-action="saveSettings">Save Settings</button>
       <button class="settings-close" data-action="closeSettings">Close</button>
       <span class="settings-save-msg" id="settings-save-msg">✓ Saved</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Models & Kits manager overlay ───────────────────────────────────── -->
+<div id="models-overlay">
+  <div class="settings-modal">
+    <h2>◆ Models &amp; Kits</h2>
+    <div id="models-loading" class="settings-loading">Loading…</div>
+    <div id="models-body" style="display:none">
+      <div id="models-hw" class="models-hw"></div>
+      <div class="models-section">
+        <div class="models-section-title">Installed</div>
+        <div id="models-installed"></div>
+      </div>
+      <div class="models-section">
+        <div class="models-section-title">Download a model</div>
+        <div id="models-catalog"></div>
+      </div>
+      <div id="models-progress" class="models-progress" style="display:none">
+        <div class="models-progress-track"><div id="models-progress-bar" class="models-progress-bar"></div></div>
+        <div id="models-progress-label" class="hint"></div>
+      </div>
+    </div>
+    <div class="settings-btns">
+      <button class="settings-save" data-action="refreshModelsPanel">Refresh</button>
+      <button class="settings-close" data-action="closeModelsPanel">Close</button>
     </div>
   </div>
 </div>

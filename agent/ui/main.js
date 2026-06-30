@@ -94,6 +94,9 @@ import * as app from './components/app.js';
 // Phase 4: inline scripts converted
 import * as obsidian from './components/obsidian.js';
 
+// Models & Kits manager (persistent model control surface)
+import * as models from './components/models.js';
+
 // ── Compat bridge (exposes everything to window.* for legacy scripts) ────────
 import './core/compat.js';
 
@@ -153,6 +156,13 @@ function _registerOverlays() {
     tier: 'modal',
     elementId: 'character-lab-overlay',
     escapable: true,
+  });
+
+  overlayManager.register('models', {
+    tier: 'modal',
+    elementId: 'models-overlay',
+    escapable: true,
+    onClose: () => { try { models.closeModelsPanel(); } catch (_) {} },
   });
 
   overlayManager.register('tutorial', {
@@ -246,6 +256,9 @@ function init() {
 
   // Initialize Phase 4 modules (inline scripts converted)
   obsidian.initObsidian();
+
+  // Models & Kits manager (lazy — loads on open)
+  models.initModels();
 
   // ── Phase 5: Register all actions for event delegation ──────────────────────
   initActions();
@@ -392,6 +405,12 @@ function init() {
     laylaObsidianConnect: obsidian.laylaObsidianConnect,
     laylaObsidianSync: obsidian.laylaObsidianSync,
     laylaObsidianSuggest: obsidian.laylaObsidianSuggest,
+    // models.js
+    openModelsPanel: models.openModelsPanel,
+    closeModelsPanel: models.closeModelsPanel,
+    refreshModelsPanel: models.refreshModelsPanel,
+    switchActiveModel: models.switchActiveModel,
+    downloadCatalogModel: models.downloadCatalogModel,
     // ── Compound/wrapper actions for HTML handler conversion ──
     clearGlobalSearch: () => {
       var el = document.getElementById('global-search-input');

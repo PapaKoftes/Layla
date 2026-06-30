@@ -1669,7 +1669,8 @@ body.overlay-scroll-lock {
   #setup-done-msg { color: #4dff88; font-size: 0.9rem; margin-top: 12px; display: none; }
 
   /* ── Settings modal ── */
-  #settings-overlay {
+  #settings-overlay,
+  #models-overlay {
     display: none;
     position: fixed;
     inset: 0;
@@ -1679,7 +1680,45 @@ body.overlay-scroll-lock {
     justify-content: center;
     backdrop-filter: blur(3px);
   }
-  #settings-overlay.visible { display: flex; }
+  #settings-overlay.visible,
+  #models-overlay.visible { display: flex; }
+
+  /* Models & Kits manager */
+  .models-hw { margin-bottom: 16px; }
+  .models-hw-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .models-chip {
+    font-size: 0.68rem; letter-spacing: 0.06em; padding: 3px 9px; border-radius: 999px;
+    background: var(--code-bg); border: 1px solid var(--border); color: var(--text-dim);
+  }
+  .models-section { margin: 14px 0; }
+  .models-section-title {
+    font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--asp); margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px;
+  }
+  .models-row {
+    display: flex; align-items: center; gap: 10px; justify-content: space-between;
+    padding: 8px 10px; margin: 6px 0; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--code-bg);
+  }
+  .models-row-active { border-color: var(--asp); box-shadow: 0 0 0 1px var(--asp) inset; }
+  .models-row-main { flex: 1; min-width: 0; }
+  .models-row-name { font-size: 0.82rem; color: var(--text); word-break: break-all; }
+  .models-badge {
+    font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 2px 8px; border-radius: 999px; background: var(--asp); color: #fff; margin-left: 6px;
+  }
+  .models-badge-warn { background: #7a5a00; }
+  .models-btn {
+    flex-shrink: 0; padding: 6px 14px; background: var(--asp); border: none; color: #fff;
+    border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.74rem;
+  }
+  .models-btn:hover { filter: brightness(1.15); }
+  .models-progress { margin-top: 14px; }
+  .models-progress-track {
+    height: 8px; background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 999px; overflow: hidden;
+  }
+  .models-progress-bar { height: 100%; width: 0%; background: var(--asp); transition: width 0.2s ease; }
   .settings-modal {
     background: var(--bg2);
     border: 1px solid var(--border);
