@@ -416,6 +416,10 @@ def load_config() -> dict:
             "n_ctx": 4096,
             "n_gpu_layers": -1,  # full GPU offload by default; overridden by hardware probe
             "n_batch": 512,
+            # Max GGUF models kept resident at once (task/dual-model routing).
+            # Bounds memory so routing can't OOM the single process; raise it only
+            # if you have the RAM/VRAM for multiple concurrently-loaded models.
+            "max_resident_models": 2,
             "n_threads": None,
             "n_threads_batch": None,
             "use_mlock": False,
@@ -489,6 +493,16 @@ def load_config() -> dict:
             "remote_allow_endpoints": [],
             "remote_mode": "observe",
             "remote_rate_limit_per_minute": 100,
+            # Tri-state: None=auto (require auth even for loopback whenever
+            # remote_enabled — the safe default when exposed), True=always,
+            # False=never (explicit opt-out, loopback stays exempt even exposed).
+            # Resolved by services.auth.require_auth_always().
+            "remote_require_auth_always": None,
+            # Trusted reverse-proxy / tunnel IPs or CIDRs. Used for rightmost-
+            # trusted-hop client-IP derivation from X-Forwarded-For (anti-spoof).
+            # Empty => the rightmost XFF entry (appended by the loopback relay) is
+            # used; a client cannot poison the allowlist by prepending a fake hop.
+            "tunnel_trusted_proxies": [],
             "trace_id_enabled": False,
             "use_chroma": True,
             "uncensored": True,
@@ -605,6 +619,10 @@ def load_config() -> dict:
             "debate_temperature": 0.7,
             "debate_synthesis_max_tokens": 1200,
             "deliberation_auto_threshold": 0.7,
+            # Heterogeneous council: map aspect_id -> model tag ("coding"/
+            # "reasoning"/"chat") or a GGUF filename. Empty => all aspects use the
+            # default model. e.g. {"morrigan": "coding", "nyx": "reasoning"}.
+            "council_aspect_models": {},
             # Phase 5: Advanced Token Management
             "dynamic_budget_enabled": True,
             "budget_pressure_threshold": 0.85,
@@ -677,6 +695,14 @@ def load_config() -> dict:
         except Exception as _mg_err:
             logger.debug("maturity gates overlay failed: %s", _mg_err)
 
+        # REQ-12: overlay secret-typed keys from the OS keyring / env (no-op when
+        # no keyring backend exists, so the plaintext path is unchanged). Done
+        # once per cache build, not on the hot fast-path return.
+        try:
+            from services.secret_store import resolve_config_secrets
+            defaults = resolve_config_secrets(defaults)
+        except Exception as e:
+            logger.debug("secret resolution skipped: %s", e)
         _config_cache = defaults
         _config_mtime = current_mtime
         return _config_cache
@@ -951,10 +977,18 @@ def backup_file(path: Path) -> bool:
 
 
 def log_execution(tool_name: str, payload: dict) -> None:
+    # Redact secrets/PII and cap oversized content before persisting (REQ-42/43).
+    # Centralized here so every tool_dispatch call site (incl. mcp_tools_call's
+    # arbitrary args) is covered by one chokepoint.
+    try:
+        from services.secret_filter import redact_payload
+        safe_payload = redact_payload(payload)
+    except Exception:
+        safe_payload = payload
     entry = {
         "timestamp": utcnow().isoformat(),
         "tool": tool_name,
-        "payload": payload,
+        "payload": safe_payload,
     }
     try:
         GOV_PATH.mkdir(parents=True, exist_ok=True)

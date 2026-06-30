@@ -81,6 +81,16 @@ def sql_query(db_path: str, query: str, limit: int = 200) -> dict:
     if target and not target.exists():
         return {"ok": False, "error": "File not found"}
 
+    # Enforce the documented read-only contract: this tool runs unattended
+    # (require_approval: False), so reject anything that could mutate or attach a
+    # database (INSERT/UPDATE/DELETE/DROP/ATTACH/PRAGMA/CREATE/…). The connection
+    # below is ALSO opened read-only as defense in depth (catches WITH ... DELETE).
+    if not is_readonly:
+        return {
+            "ok": False,
+            "error": "sql_query is read-only: only SELECT / WITH (read) queries are allowed.",
+        }
+
     # Inject LIMIT if not present
     q = query.strip().rstrip(";")
     if is_readonly and "LIMIT" not in q.upper():
@@ -91,7 +101,7 @@ def sql_query(db_path: str, query: str, limit: int = 200) -> dict:
     if ext == ".duckdb" or db_path == ":memory:":
         try:
             import duckdb
-            conn = duckdb.connect(db_path)
+            conn = duckdb.connect(db_path) if db_path == ":memory:" else duckdb.connect(db_path, read_only=True)
             try:
                 rel = conn.execute(q)
                 cols = [d[0] for d in rel.description]
@@ -111,7 +121,12 @@ def sql_query(db_path: str, query: str, limit: int = 200) -> dict:
     # SQLite
     try:
         import sqlite3 as _sql
-        conn = _sql.connect(str(target))
+        # Open read-only at the driver level so even a sneaky WITH-prefixed write
+        # cannot mutate the file.
+        try:
+            conn = _sql.connect(f"file:{target}?mode=ro", uri=True)
+        except Exception:
+            conn = _sql.connect(str(target))
         try:
             conn.row_factory = _sql.Row
             cursor = conn.execute(q)

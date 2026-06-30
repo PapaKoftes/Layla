@@ -128,3 +128,171 @@ def recommend_model(
 
     compatible.sort(key=sort_key)
     return compatible[0] if compatible else None
+
+
+# ---------------------------------------------------------------------------
+# Domain "kit" recommendation (hardware + domain + priority aware)
+# ---------------------------------------------------------------------------
+# Measured wisdom (4-core / 16GB / no-GPU box): a 7B-Q4 runs ~4-5 tok/s on CPU,
+# memory-bandwidth-bound — so a 14B would be ~2 tok/s (unusable for interactive
+# coding). On CPU-only, "best experience" is the best model that stays RESPONSIVE,
+# not the biggest that fits. Above this size, CPU latency hurts UX badly.
+_CPU_USABLE_MAX_B = 9.0      # billion params; ceiling for a good CPU-only experience
+_BALANCED_TARGET_B = 7.0     # the CPU sweet spot for coding quality vs. speed
+
+# domain -> catalog category
+_DOMAIN_CATEGORY = {
+    "coding": "coding", "code": "coding",
+    "general": "general", "chat": "general",
+    "reasoning": "reasoning", "math": "reasoning",
+    "creative": "creative", "writing": "creative", "roleplay": "creative",
+}
+
+
+def load_catalog_full() -> dict[str, Any]:
+    """Load the entire catalog document (models + _recommended_aspects + tiers)."""
+    try:
+        return json.loads(_CATALOG_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _params_b(m: dict[str, Any]) -> float:
+    """Parse a model's parameter count in billions from its 'size' field ('7B', '360M')."""
+    s = str(m.get("size") or "").strip().upper()
+    try:
+        if s.endswith("M"):
+            return float(s[:-1]) / 1000.0
+        if s.endswith("B"):
+            return float(s[:-1])
+    except ValueError:
+        pass
+    return 999.0
+
+
+def _aspect_for_family(family: str, recommended: dict[str, Any]) -> str | None:
+    """Map a model family to its best-affinity aspect (the domain personality)."""
+    if not family:
+        return None
+    aspects = recommended.get(family.lower())
+    if isinstance(aspects, list) and aspects:
+        return str(aspects[0])
+    return None
+
+
+def recommend_kit(
+    hardware_info: dict[str, Any],
+    *,
+    domain: str = "coding",
+    prefer: str = "balanced",
+) -> dict[str, Any] | None:
+    """Recommend a complete domain *kit* for the detected hardware.
+
+    Unlike :func:`recommend_model` (smallest-fits-first, safety-biased), this picks the
+    best model for an *experience*: it respects a CPU usability ceiling, honors a
+    quality/speed priority, pairs a speculative-draft model when it will help, and maps
+    the domain to its affinity aspect (personality).
+
+    Args:
+        hardware_info: output of ``hardware_probe.probe_hardware()``.
+        domain: e.g. ``"coding"`` (mapped to a catalog category).
+        prefer: ``"quality"`` | ``"balanced"`` | ``"speed"``. On CPU-only, "quality" is
+            still capped at the usable model size — a model too slow to use is not "best".
+
+    Returns:
+        ``{primary, draft, aspect, settings, rationale}`` or ``None`` if nothing fits.
+    """
+    doc = load_catalog_full()
+    catalog = validate_catalog_entries(doc.get("models", []))
+    recommended_aspects = doc.get("_recommended_aspects", {}) or {}
+    if not catalog:
+        return None
+
+    category = _DOMAIN_CATEGORY.get(domain.strip().lower(), domain.strip().lower())
+    in_domain = [m for m in catalog if (m.get("category") or "").lower() == category]
+    pool = in_domain or catalog  # fall back to whole catalog if the domain is empty
+
+    # --- hardware sizing (mirrors recommend_model) ---
+    ram_gb = float(hardware_info.get("ram_gb") or 0.0)
+    vram_gb = float(hardware_info.get("vram_gb") or 0.0)
+    accel = str(hardware_info.get("acceleration_backend") or "none").lower()
+    gpu_name = str(hardware_info.get("gpu_name") or "").strip().lower()
+    has_gpu = accel not in ("none", "") or vram_gb > 0 or (gpu_name and gpu_name not in ("none", "unknown", ""))
+
+    if has_gpu and vram_gb > 0:
+        mem_key, avail = "vram_required", vram_gb
+    else:
+        mem_key, avail = "ram_required", ram_gb
+    avail = max(avail, 1.0)
+    budget = max(avail * _RAM_HEADROOM, 0.5)
+
+    fits = [m for m in pool if float(m.get(mem_key, 999) or 999) <= budget]
+    if not fits:
+        # degrade gracefully to the smallest thing in the pool
+        fits = sorted(pool, key=lambda m: _params_b(m))[:1]
+        if not fits:
+            return None
+
+    # On CPU-only, exclude models too large to stay responsive (unless nothing smaller fits).
+    usable = fits
+    if not has_gpu:
+        small_enough = [m for m in fits if _params_b(m) <= _CPU_USABLE_MAX_B]
+        if small_enough:
+            usable = small_enough
+
+    pref = prefer.strip().lower()
+    if pref == "speed":
+        usable.sort(key=lambda m: (_params_b(m), (m.get("name") or "")))
+    elif pref == "quality":
+        usable.sort(key=lambda m: (-_params_b(m), (m.get("name") or "")))
+    else:  # balanced: closest to the CPU sweet spot, ties → larger
+        usable.sort(key=lambda m: (abs(_params_b(m) - _BALANCED_TARGET_B), -_params_b(m)))
+
+    primary = usable[0]
+    fam = (primary.get("family") or "").lower()
+
+    # Same-family tiny model that *could* serve as a speculative-decoding draft (a
+    # cross-family draft is unsafe — different tokenizer). We surface it as a candidate,
+    # but only auto-ENABLE it where it's known to pay off.
+    draft_candidate = None
+    if _params_b(primary) >= 6.0:
+        cands = [m for m in catalog
+                 if (m.get("family") or "").lower() == fam and _params_b(m) <= 1.5
+                 and m.get("name") != primary.get("name")]
+        cands.sort(key=lambda m: _params_b(m))
+        draft_candidate = cands[0] if cands else None
+
+    # MEASURED (4-core/16GB CPU): speculative decoding does NOT help on pure CPU —
+    # prompt-lookup ran *slower* (1.6 vs 2.6 tok/s) because the bottleneck is memory
+    # bandwidth, not compute, so the draft/verify cycle is pure overhead. Only enable a
+    # draft when a GPU makes it worthwhile; on CPU the real levers are a smaller model
+    # or a GPU. (Keep the candidate exposed for users who want to A/B it on their box.)
+    draft = draft_candidate if (has_gpu and pref != "speed") else None
+
+    settings = {
+        "n_gpu_layers": -1 if has_gpu else 0,  # offload all if GPU, else pure CPU
+        "n_threads": int(hardware_info.get("physical_cores") or 4),
+        "n_ctx": 8192 if _params_b(primary) <= 8 else 4096,
+        "speculative_draft": (draft or {}).get("filename") if draft else None,
+    }
+
+    if has_gpu:
+        speed_note = "GPU-accelerated"
+    else:
+        speed_note = (f"CPU-only (~{'5' if _params_b(primary) <= 8 else '2'} tok/s on this tier; "
+                      "speculative decoding measured unhelpful on CPU)")
+    rationale = (
+        f"domain={category}, prefer={pref}, {speed_note}. "
+        f"Chose {primary.get('name')} ({primary.get('size')}) as the best "
+        f"{'responsive' if not has_gpu else 'capable'} fit within {budget:.0f}GB."
+        + (f" Enabled draft {draft.get('name')} (GPU speculative decoding)." if draft else "")
+    )
+
+    return {
+        "primary": primary,
+        "draft": draft,                     # auto-enabled draft (GPU only); None on CPU
+        "draft_candidate": draft_candidate,  # same-family tiny available to A/B test
+        "aspect": _aspect_for_family(fam, recommended_aspects),
+        "settings": settings,
+        "rationale": rationale,
+    }

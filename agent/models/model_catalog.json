@@ -18,12 +18,32 @@
   },
   "_recommended_aspects": {
     "_comment": "Aspect affinity metadata: which aspects perform best with which model families",
-    "jinx": ["morrigan", "lilith", "eris"],
-    "dolphin": ["morrigan", "nyx", "echo"],
-    "deepseek": ["nyx", "cassandra"],
-    "qwen": ["morrigan", "nyx", "cassandra"],
-    "hermes": ["nyx", "echo"],
-    "wizard": ["morrigan"]
+    "jinx": [
+      "morrigan",
+      "lilith",
+      "eris"
+    ],
+    "dolphin": [
+      "morrigan",
+      "nyx",
+      "echo"
+    ],
+    "deepseek": [
+      "nyx",
+      "cassandra"
+    ],
+    "qwen": [
+      "morrigan",
+      "nyx",
+      "cassandra"
+    ],
+    "hermes": [
+      "nyx",
+      "echo"
+    ],
+    "wizard": [
+      "morrigan"
+    ]
   },
   "models": [
     {
@@ -68,7 +88,6 @@
       "uncensored": true,
       "desc": "TinyDolphin 1.1B. Uncensored. 3GB RAM. Old/slow PCs."
     },
-
     {
       "name": "jinx-7b-v2-Q4_K_M",
       "family": "jinx",
@@ -83,7 +102,11 @@
       "uncensored": true,
       "recommended": "8gb_vram",
       "hardware_tier": "standard",
-      "recommended_aspects": ["morrigan", "lilith", "eris"],
+      "recommended_aspects": [
+        "morrigan",
+        "lilith",
+        "eris"
+      ],
       "desc": "Jinx 7B. No restrictions. 6GB VRAM. Best for 8GB cards."
     },
     {
@@ -115,7 +138,11 @@
       "uncensored": true,
       "recommended": "12gb_vram",
       "hardware_tier": "beefy",
-      "recommended_aspects": ["morrigan", "lilith", "eris"],
+      "recommended_aspects": [
+        "morrigan",
+        "lilith",
+        "eris"
+      ],
       "desc": "Jinx 20B. No restrictions. Default pick. 12GB+ VRAM or 24GB RAM."
     },
     {
@@ -148,7 +175,6 @@
       "hardware_tier": "standard",
       "desc": "Jinx 20B Q2. Fits 8GB VRAM. Quality tradeoff."
     },
-
     {
       "name": "dolphin-3.0-llama3.1-8b-Q4_K_M",
       "family": "dolphin",
@@ -262,7 +288,6 @@
       "recommended": "48gb_vram",
       "desc": "Dolphin 3.0 Llama 3.3 70B. Latest flagship. No restrictions. Best for 48GB VRAM."
     },
-
     {
       "name": "hermes-3-llama-3.1-8b-Q4_K_M",
       "family": "hermes",
@@ -305,7 +330,6 @@
       "uncensored": true,
       "desc": "Hermes 3 Llama 3.1 70B Uncensored. No restrictions. 40GB+ VRAM."
     },
-
     {
       "name": "mistral-nemo-12b-heretic-Q4_K_S",
       "family": "mistral",
@@ -334,7 +358,6 @@
       "uncensored": true,
       "desc": "Mistral Small 24B. Open weights, low restrictions. 16GB VRAM sweet spot."
     },
-
     {
       "name": "deepseek-r1-distill-qwen-7b-Q4_K_M",
       "family": "deepseek",
@@ -406,7 +429,6 @@
       "uncensored": true,
       "desc": "DeepSeek R1 Distill Llama 70B. Maximum reasoning quality. 40GB+ VRAM."
     },
-
     {
       "name": "qwen2.5-coder-7b-instruct-Q4_K_M",
       "family": "qwen",
@@ -479,7 +501,6 @@
       "uncensored": true,
       "desc": "Qwen 2.5 72B. Flagship general model. Near GPT-4 class. 40GB+ VRAM."
     },
-
     {
       "name": "fimbulvetr-11b-v2-Q4_K_M",
       "family": "fimbulvetr",
@@ -522,7 +543,6 @@
       "uncensored": true,
       "desc": "Midnight Rose 70B. Uncensored flagship for creative, narrative, and roleplay. 40GB+ VRAM."
     },
-
     {
       "name": "deepseek-coder-v2-lite-instruct-Q4_K_M",
       "family": "deepseek",
@@ -537,7 +557,6 @@
       "uncensored": true,
       "desc": "DeepSeek Coder V2 Lite 16B (MoE). Elite code model, 236B params active 16B. 16GB VRAM."
     },
-
     {
       "name": "wizardlm-2-7b-Q4_K_M",
       "family": "wizard",
@@ -552,7 +571,6 @@
       "uncensored": true,
       "desc": "WizardLM 2 7B. Instruction-tuned, capable. Low restrictions. 8GB VRAM."
     },
-
     {
       "name": "solar-10.7b-instruct-v1-Q4_K_M",
       "family": "solar",
@@ -566,6 +584,21 @@
       "filename": "solar-10.7b-instruct-v1.0.Q4_K_M.gguf",
       "uncensored": true,
       "desc": "Solar 10.7B. Strong 10B class model. Very capable for size. 12GB VRAM."
+    },
+    {
+      "name": "qwen2.5-coder-0.5b-instruct-Q4_K_M",
+      "family": "qwen",
+      "category": "fast",
+      "size": "0.5B",
+      "quant": "Q4_K_M",
+      "ram_required": 1,
+      "vram_required": 1,
+      "role": "draft",
+      "download_url": "https://huggingface.co/bartowski/Qwen2.5-Coder-0.5B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-0.5B-Instruct-Q4_K_M.gguf",
+      "repo_id": "bartowski/Qwen2.5-Coder-0.5B-Instruct-GGUF",
+      "filename": "Qwen2.5-Coder-0.5B-Instruct-Q4_K_M.gguf",
+      "uncensored": false,
+      "desc": "Qwen2.5 Coder 0.5B — speculative-decoding draft for the 7B/14B coder (same tokenizer)."
     }
   ]
 }

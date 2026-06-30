@@ -20,7 +20,7 @@ Single reference for how a normal chat turn moves through Layla, where tools and
 ## 2. Tool gating and `approval_required`
 
 - **Mutating tools** (`write_file`, `apply_patch`, `shell`, `run_python`, `git_commit`, etc.) check `allow_write` / `allow_run` and `runtime_safety.is_tool_allowed(...)` (back-compat alias: `require_approval`).
-- When approval is required, the loop calls `_write_pending(tool, args)` → entries in [`agent/.governance/pending.json`](../agent/.governance/) (via [`agent/main.py`](../agent/main.py) `shared_state` readers).
+- When approval is required, the loop calls `_write_pending(tool, args)` → entries in `agent/.governance/pending.json` (via [`agent/main.py`](../agent/main.py) `shared_state` readers).
 - Tool result shape includes `reason: approval_required`, `approval_id`, and a short message.
 
 **`POST /undo` note:** `/undo` is **git-only**: it reverts the last Layla auto-commit (`git revert HEAD --no-edit`). It does **not** “undo an approval id”.

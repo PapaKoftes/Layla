@@ -21,6 +21,13 @@ from version import __version__
 logger = logging.getLogger("layla")
 router = APIRouter(tags=["session"])
 
+def _redact_secrets(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Mask credential-bearing config values while keeping the keys visible, so
+    /system_export stays useful for diagnostics without leaking secrets.
+    Delegates to the shared secret_filter (single source of truth)."""
+    from services.secret_filter import redact_secrets
+    return redact_secrets(cfg)
+
 
 @router.post("/compact")
 async def compact_conversation():
@@ -150,7 +157,7 @@ def system_export():
     _history = get_history()
     return JSONResponse({
         "timestamp": utcnow().isoformat(),
-        "config": cfg,
+        "config": _redact_secrets(cfg),
         "pending_count": pending_count,
         "learnings_count": learnings_count,
         "active_study_plans": active_plans,

@@ -89,6 +89,24 @@ def main() -> int:
         print(f"Layla: missing venv Python at {py}. Run: python scripts/setup_layla.py")
         return 1
     port = _load_port(agent)
+
+    # Guard the port so we never collide with another program on :8000. Reuses
+    # agent/port_guard.py (pure stdlib) for one source of truth across launchers.
+    sys.path.insert(0, str(agent))
+    try:
+        import port_guard
+
+        decision = port_guard.resolve_serve_port("127.0.0.1", port)
+        print(f"[Layla] {decision['message']}")
+        if decision["action"] == "already_running":
+            webbrowser.open(f"http://127.0.0.1:{decision['port']}/ui")
+            return 0
+        if decision["action"] == "blocked":
+            return 2
+        port = int(decision["port"])  # may have relocated
+    except Exception:
+        pass  # fall back to the configured port if the guard is unavailable
+
     url = f"http://127.0.0.1:{port}/ui"
     env = os.environ.copy()
     env.setdefault("PYTHONUTF8", "1")

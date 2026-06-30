@@ -139,6 +139,12 @@ def test_router_allow_write_follows_wiki_export_flags(monkeypatch):
 
 
 def test_autonomous_router_remote_allowlist(monkeypatch):
+    """REQ-11: a remote (non-localhost) call to an allowlisted endpoint requires auth
+    by default (auth-required-when-exposed). The allowlist says *which* endpoints are
+    reachable remotely — it is not a substitute for authentication. An operator can
+    explicitly opt out with ``remote_require_auth_always: False`` to restore the old
+    allowlist-only behavior.
+    """
     from fastapi.testclient import TestClient
 
     import main
@@ -146,21 +152,30 @@ def test_autonomous_router_remote_allowlist(monkeypatch):
     from routers import autonomous as autonomous_router
 
     monkeypatch.setattr(autonomous_router, "_is_localhost", lambda _h: False)
-    monkeypatch.setattr(
-        runtime_safety,
-        "load_config",
-        lambda: {
-            "autonomous_mode": True,
-            "remote_enabled": True,
-            "remote_allow_endpoints": ["/autonomous/run"],
-            "remote_mode": "observe",
-            "autonomous_max_steps": 1,
-            "autonomous_timeout_seconds": 1,
-        },
-    )
     monkeypatch.setattr(autonomous_router, "run_autonomous_task", lambda **_k: {"ok": True, "stopped_reason": "test"})
+
+    base_cfg = {
+        "autonomous_mode": True,
+        "remote_enabled": True,
+        "remote_allow_endpoints": ["/autonomous/run"],
+        "remote_mode": "observe",
+        "autonomous_max_steps": 1,
+        "autonomous_timeout_seconds": 1,
+    }
+    body = {"goal": "Fully audit the repo architecture and CI regressions across multiple files.",
+            "confirm_autonomous": True}
+
+    # Secure default: remote + no token → denied, even though the endpoint is allowlisted.
+    monkeypatch.setattr(runtime_safety, "load_config", lambda: dict(base_cfg))
     client = TestClient(main.app)
-    r = client.post("/autonomous/run", json={"goal": "Fully audit the repo architecture and CI regressions across multiple files.", "confirm_autonomous": True})
-    assert r.status_code == 200
+    r = client.post("/autonomous/run", json=body)
+    assert r.status_code == 403, "tokenless remote call must be denied by default (REQ-11)"
+
+    # Explicit opt-out: operator turns auth-always off → the allowlist alone permits it.
+    monkeypatch.setattr(runtime_safety, "load_config",
+                        lambda: dict(base_cfg, remote_require_auth_always=False))
+    client = TestClient(main.app)
+    r = client.post("/autonomous/run", json=body)
+    assert r.status_code == 200, "explicit opt-out should restore allowlist-only access"
     assert r.json().get("ok") is True
 
