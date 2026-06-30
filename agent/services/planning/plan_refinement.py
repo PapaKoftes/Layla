@@ -11,7 +11,7 @@ def refine_output_text(text: str, *, max_tokens: int = 256) -> str:
         return text or ""
     try:
         import runtime_safety
-        from services.llm_gateway import run_completion
+        from services.llm.llm_gateway import run_completion
 
         cfg = runtime_safety.load_config()
         if not cfg.get("file_plan_refinement_enabled", False):

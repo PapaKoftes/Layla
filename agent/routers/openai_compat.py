@@ -87,7 +87,7 @@ async def v1_chat_completions(req: dict, request: Request):
     # that turns the chat endpoint into an RCE primitive. Capability flags from
     # the body are honored only for a direct local caller.
     try:
-        from services.auth import is_direct_local
+        from services.safety.auth import is_direct_local
         if not is_direct_local(request.headers, request.client.host if request.client else None):
             allow_write = False
             allow_run = False

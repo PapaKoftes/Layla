@@ -24,8 +24,8 @@ class TaskClassification:
 
 
 def classify(goal: str, context: str, cfg: dict, *, research_mode: bool = False) -> TaskClassification:
-    from services.model_router import classify_task_for_routing
-    from services.reasoning_classifier import classify_reasoning_need
+    from services.llm.model_router import classify_task_for_routing
+    from services.infrastructure.reasoning_classifier import classify_reasoning_need
 
     task_kind = classify_task_for_routing(goal, context or "", cfg)
     rdepth = classify_reasoning_need(goal, context or "", research_mode=research_mode)
@@ -81,7 +81,7 @@ def build_coordinator_trace(
         out["preferred_strategy"] = pref
     try:
         if bool(cfg.get("coordinator_task_budget_hint_enabled", True)):
-            from services.task_budget import allocate_budget, profile_task
+            from services.infrastructure.task_budget import allocate_budget, profile_task
 
             prof = profile_task(
                 goal,
@@ -133,7 +133,7 @@ def dispatch_autonomous_run(
         kwargs = dict(kwargs)
         kwargs["coordinator_trace"] = trace
     try:
-        from services.session_context import get_or_create_session
+        from services.infrastructure.session_context import get_or_create_session
         get_or_create_session(conversation_id).set_coordinator_trace(trace)
     except Exception as _e:
         logger.debug("coordinator trace: %s", _e)
@@ -171,7 +171,7 @@ def dispatch_autonomous_run(
             logger.debug("task persist update: %s", _ue)
     try:
         if isinstance(result, dict):
-            from services.session_context import get_or_create_session as _gocs
+            from services.infrastructure.session_context import get_or_create_session as _gocs
 
             snap = {
                 "execution_id": result.get("execution_id"),
@@ -254,7 +254,7 @@ def run(run_fn: Callable[..., dict], goal: str, **kwargs: Any) -> dict:
     )
     kw["coordinator_trace"] = trace
     try:
-        from services.session_context import get_or_create_session as _gocs2
+        from services.infrastructure.session_context import get_or_create_session as _gocs2
         _gocs2(conversation_id).set_coordinator_trace(trace)
     except Exception:
         pass
@@ -266,7 +266,7 @@ def run(run_fn: Callable[..., dict], goal: str, **kwargs: Any) -> dict:
                 try:
                     from pathlib import Path
 
-                    from services.worktree_manager import create_worktree
+                    from services.workspace.worktree_manager import create_worktree
 
                     root = Path(wr).expanduser().resolve()
                     if root.is_dir() and (root / ".git").exists():
@@ -284,7 +284,7 @@ def run(run_fn: Callable[..., dict], goal: str, **kwargs: Any) -> dict:
     # Trust tiers: never allow multi-attempt coordinator retries unless explicitly operator-granted.
     try:
         if bool(cfg.get("autonomy_trust_tiers_enabled", False)):
-            from services.maturity_engine import get_trust_tier
+            from services.personality.maturity_engine import get_trust_tier
 
             if get_trust_tier(cfg) < 3:
                 max_attempts = 1
@@ -298,7 +298,7 @@ def run(run_fn: Callable[..., dict], goal: str, **kwargs: Any) -> dict:
 
     result: dict[str, Any] = {}
     try:
-        from services.trace_export import maybe_span
+        from services.observability.trace_export import maybe_span
 
         for attempt in range(max_attempts):
             if attempt > 0:
@@ -328,7 +328,7 @@ def run(run_fn: Callable[..., dict], goal: str, **kwargs: Any) -> dict:
     finally:
         if worktree_path:
             try:
-                from services.worktree_manager import cleanup_worktree
+                from services.workspace.worktree_manager import cleanup_worktree
 
                 cleanup_worktree(worktree_path)
             except Exception as e:
@@ -351,7 +351,7 @@ def run(run_fn: Callable[..., dict], goal: str, **kwargs: Any) -> dict:
             pass
         if conversation_id:
             try:
-                from services.memory_consolidation import consolidate_session
+                from services.memory.memory_consolidation import consolidate_session
 
                 consolidate_session(conversation_id)
             except Exception:
@@ -370,7 +370,7 @@ async def run_parallel_subtasks(
             out.append(await f())
         return out
     try:
-        from services.worker_pool import max_parallel_workers
+        from services.infrastructure.worker_pool import max_parallel_workers
 
         cap = max(1, min(len(coro_factories), max_parallel_workers(cfg, len(coro_factories))))
     except Exception:
@@ -399,7 +399,7 @@ def run_with_plan_graph(
     try:
         import uuid
 
-        from services.task_graph import GraphExecutor, plan_steps_to_task_graph
+        from services.planning.task_graph import GraphExecutor, plan_steps_to_task_graph
 
         norm: list[dict] = []
         for s in plan_steps:

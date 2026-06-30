@@ -67,7 +67,7 @@ def setup_autonomous_run(
     # ------------------------------------------------------------------
     # 0. Pre-loop service calls (already extracted to pre_loop_setup)
     # ------------------------------------------------------------------
-    from services.pre_loop_setup import (
+    from services.infrastructure.pre_loop_setup import (
         build_precomputed_recall,
         check_content_guard,
         check_dignity,
@@ -105,7 +105,7 @@ def setup_autonomous_run(
     cfg = _al._get_effective_config(base_cfg)
     _prev_reasoning_mode = ""
     try:
-        from services.reasoning_classifier import classify_reasoning_need, stabilize_reasoning_mode
+        from services.infrastructure.reasoning_classifier import classify_reasoning_need, stabilize_reasoning_mode
 
         reasoning_mode = classify_reasoning_need(goal, context or "", research_mode=research_mode)
         if reasoning_mode == "deep" and (cfg.get("performance_mode") or "").strip().lower() in ("low",):
@@ -130,8 +130,8 @@ def setup_autonomous_run(
             _cfg_t = runtime_safety.load_config()
             if not _cfg_t.get("telemetry_enabled", True):
                 return
-            from services.telemetry import log_event as _tel
-            from services.telemetry import log_model_outcome as _log_mo
+            from services.observability.telemetry import log_event as _tel
+            from services.observability.telemetry import log_model_outcome as _log_mo
 
             _lat_ms = max(0.0, (time.time() - _run_t0) * 1000.0)
             _model_used = str(_cfg_t.get("model_filename") or "")
@@ -159,7 +159,7 @@ def setup_autonomous_run(
         except Exception as _exc:
             logger.debug("agent_loop:L2623: %s", _exc, exc_info=False)
         try:
-            from services.request_tracer import finish_trace as _rt_finish
+            from services.observability.request_tracer import finish_trace as _rt_finish
 
             _status_str = "ok" if success else "error"
             _st_status = str((st or {}).get("status") or "")
@@ -176,7 +176,7 @@ def setup_autonomous_run(
     # ------------------------------------------------------------------
     # 3. System overload check + early return
     # ------------------------------------------------------------------
-    from services.resource_manager import PRIORITY_CHAT
+    from services.infrastructure.resource_manager import PRIORITY_CHAT
 
     import orchestrator
 
@@ -216,7 +216,7 @@ def setup_autonomous_run(
     _aspect_req = str(active_aspect.get("_force_aspect_requested") or "") if isinstance(active_aspect, dict) else ""
 
     try:
-        from services.aspect_behavior import apply_reasoning_depth as _ab_apply_depth
+        from services.personality.aspect_behavior import apply_reasoning_depth as _ab_apply_depth
 
         reasoning_mode = _ab_apply_depth(active_aspect, reasoning_mode)
         from services.agent.reasoning_state import get_lock as _rstate_get_lock2, set_ as _rstate_set2
@@ -230,7 +230,7 @@ def setup_autonomous_run(
     # ------------------------------------------------------------------
     _req_trace = None
     try:
-        from services.request_tracer import start_trace as _rt_start
+        from services.observability.request_tracer import start_trace as _rt_start
 
         _req_trace = _rt_start(
             goal,
@@ -313,7 +313,7 @@ def setup_autonomous_run(
         and (goal or "").strip()
     ):
         try:
-            from services.engineering_pipeline import engineering_planning_locked, run_execute_pipeline
+            from services.planning.engineering_pipeline import engineering_planning_locked, run_execute_pipeline
 
             if not engineering_planning_locked():
 
@@ -368,8 +368,8 @@ def setup_autonomous_run(
     # ------------------------------------------------------------------
     from execution_state import create_execution_state
 
-    from services.system_head_builder import decompose_goal as _decompose_goal
-    from services.system_head_builder import is_lightweight_chat_turn as _is_lightweight_chat_turn
+    from services.prompts.system_head_builder import decompose_goal as _decompose_goal
+    from services.prompts.system_head_builder import is_lightweight_chat_turn as _is_lightweight_chat_turn
 
     state = create_execution_state(
         goal=goal,
@@ -398,14 +398,14 @@ def setup_autonomous_run(
     state["fabrication_assist_runner_request"] = (fabrication_assist_runner_request or "").strip().lower()
 
     try:
-        from services.intent_router import route_intent
+        from services.tools.intent_router import route_intent
 
         state["route_decision"] = route_intent(goal, context=context or "", workspace_root=workspace_root or "").to_dict()
     except Exception as e:
         logger.debug("agent_loop: %s", e)
 
     try:
-        from services.session_context import get_or_create_session
+        from services.infrastructure.session_context import get_or_create_session
         _ctr = get_or_create_session(_run_cid).get_coordinator_trace()
         if _ctr:
             state["coordinator_trace"] = _ctr
@@ -447,7 +447,7 @@ def setup_autonomous_run(
     )
     state["cognition_workspace_roots"] = [str(x).strip() for x in (cognition_workspace_roots or []) if str(x).strip()]
 
-    from services.resource_manager import PRIORITY_AGENT as _PA
+    from services.infrastructure.resource_manager import PRIORITY_AGENT as _PA
 
     RESEARCH_LAB_ROOT = Path(__file__).resolve().parent.parent.parent / ".research_lab"
     if research_mode:
@@ -461,7 +461,7 @@ def setup_autonomous_run(
 
     # Token-pressure cap
     try:
-        from services.context_manager import token_estimate_messages as _tem
+        from services.context.context_manager import token_estimate_messages as _tem
 
         _n_ctx_here = max(2048, int(cfg.get("n_ctx", 4096)))
         _hist_ratio = _tem(conversation_history or []) / _n_ctx_here
@@ -480,7 +480,7 @@ def setup_autonomous_run(
     # Adaptive task budget
     if cfg.get("task_budget_enabled", True):
         try:
-            from services.task_budget import allocate_budget, profile_task
+            from services.infrastructure.task_budget import allocate_budget, profile_task
 
             _tb_prof = profile_task(
                 goal, context or "",
@@ -532,7 +532,7 @@ def setup_autonomous_run(
     # 13. Cognitive workspace deliberation
     # ------------------------------------------------------------------
     try:
-        from services.cognitive_workspace import run_deliberation, should_use_cognitive_workspace
+        from services.planning.cognitive_workspace import run_deliberation, should_use_cognitive_workspace
 
         _llm_configured = (
             bool((cfg.get("model_filename") or "").strip())
@@ -552,7 +552,7 @@ def setup_autonomous_run(
     # ------------------------------------------------------------------
     try:
         import random as _rng
-        from services.verification_queue import get_next_verification
+        from services.planning.verification_queue import get_next_verification
         _pending_v = get_next_verification()
         if _pending_v and _rng.random() < 0.3:  # 30% chance per turn
             _v_count = state.get("_verification_count", 0)
@@ -598,7 +598,7 @@ def setup_autonomous_run(
     # 15. Agent hooks session_start
     # ------------------------------------------------------------------
     try:
-        from services.agent_hooks import run_agent_hooks
+        from services.infrastructure.agent_hooks import run_agent_hooks
 
         run_agent_hooks(
             "session_start",
@@ -668,17 +668,17 @@ def _run_planning_block(
     _emit_run_telemetry,
 ) -> dict | None:
     """Run the planning block. Returns a result dict if planning completed, else None."""
-    from services.system_head_builder import is_lightweight_chat_turn as _is_lightweight_chat_turn
+    from services.prompts.system_head_builder import is_lightweight_chat_turn as _is_lightweight_chat_turn
 
     from services.observability import log_agent_plan_completed, log_agent_plan_created, log_planner_invoked
-    from services.planner import (
+    from services.planning.planner import (
         create_plan,
         execute_plan_with_optional_graph,
         normalize_plan_steps_tools,
         should_plan,
         validate_plan_before_execution,
     )
-    from services.resource_manager import classify_load
+    from services.infrastructure.resource_manager import classify_load
 
     import agent_loop as _al
 
@@ -703,7 +703,7 @@ def _run_planning_block(
     _digest = ""
     if (workspace or "").strip():
         try:
-            from services.plan_workspace_store import prior_plans_digest
+            from services.planning.plan_workspace_store import prior_plans_digest
 
             _digest = prior_plans_digest(workspace, limit=8)
         except Exception as e:
@@ -728,7 +728,7 @@ def _run_planning_block(
         _attempts += 1
         _goal_for_plan = goal
         try:
-            from services.aspect_behavior import get_max_steps as _ab_max_steps
+            from services.personality.aspect_behavior import get_max_steps as _ab_max_steps
 
             _max_steps = _ab_max_steps(active_aspect, base_limit=None)
         except Exception as e:
@@ -852,7 +852,7 @@ def _run_planning_block(
         _emit_run_telemetry(state, True)
         # Maturity: award XP for successful plan execution
         try:
-            from services.maturity_engine import award_xp as _plan_award_xp
+            from services.personality.maturity_engine import award_xp as _plan_award_xp
             _plan_id = plan_result.get("plan_id", "")
             _plan_award_xp(20, reason=f"plan_executed:{_plan_id}"[:80])
         except Exception:

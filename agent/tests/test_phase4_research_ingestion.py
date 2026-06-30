@@ -34,11 +34,11 @@ class TestRerankerTokenize:
     """Unit tests for the _tokenize helper."""
 
     def test_basic(self):
-        from services.reranker import _tokenize
+        from services.retrieval.reranker import _tokenize
         assert _tokenize("Hello World") == ["hello", "world"]
 
     def test_punctuation_stripped(self):
-        from services.reranker import _tokenize
+        from services.retrieval.reranker import _tokenize
         tokens = _tokenize("async/await patterns — Python 3.12!")
         assert "async" in tokens
         assert "await" in tokens
@@ -47,11 +47,11 @@ class TestRerankerTokenize:
         assert "12" in tokens
 
     def test_empty(self):
-        from services.reranker import _tokenize
+        from services.retrieval.reranker import _tokenize
         assert _tokenize("") == []
 
     def test_unicode(self):
-        from services.reranker import _tokenize
+        from services.retrieval.reranker import _tokenize
         tokens = _tokenize("日本語テスト")
         # \w+ matches unicode word characters
         assert len(tokens) >= 1
@@ -61,7 +61,7 @@ class TestBM25Rerank:
     """Tests for the BM25 fallback reranker."""
 
     def test_basic_ranking(self):
-        from services.reranker import _bm25_rerank
+        from services.retrieval.reranker import _bm25_rerank
         docs = [
             "Python is great for web development",
             "Java enterprise application server",
@@ -75,7 +75,7 @@ class TestBM25Rerank:
         assert 0 in top_2_indices or 2 in top_2_indices
 
     def test_returns_correct_structure(self):
-        from services.reranker import _bm25_rerank
+        from services.retrieval.reranker import _bm25_rerank
         docs = ["alpha beta", "gamma delta"]
         result = _bm25_rerank("alpha", docs, top_k=2)
         assert len(result) == 2
@@ -86,20 +86,20 @@ class TestBM25Rerank:
             assert isinstance(r["score"], float)
 
     def test_top_k_limits_output(self):
-        from services.reranker import _bm25_rerank
+        from services.retrieval.reranker import _bm25_rerank
         docs = [f"document {i}" for i in range(10)]
         result = _bm25_rerank("document", docs, top_k=3)
         assert len(result) == 3
 
     def test_empty_query_tokens(self):
-        from services.reranker import _bm25_rerank
+        from services.retrieval.reranker import _bm25_rerank
         docs = ["hello world"]
         result = _bm25_rerank("!!!", docs, top_k=5)
         assert len(result) == 1
         assert result[0]["score"] == 0.0
 
     def test_descending_score_order(self):
-        from services.reranker import _bm25_rerank
+        from services.retrieval.reranker import _bm25_rerank
         docs = ["the the the", "python web python web", "python async patterns"]
         result = _bm25_rerank("python web", docs, top_k=3)
         scores = [r["score"] for r in result]
@@ -110,24 +110,24 @@ class TestRerank:
     """Tests for the public rerank() function."""
 
     def test_empty_documents(self):
-        from services.reranker import rerank
+        from services.retrieval.reranker import rerank
         assert rerank("test query", []) == []
 
     def test_empty_query(self):
-        from services.reranker import rerank
+        from services.retrieval.reranker import rerank
         result = rerank("", ["doc1", "doc2"])
         assert len(result) == 2
         assert all(r["score"] == 0.0 for r in result)
 
     def test_whitespace_query(self):
-        from services.reranker import rerank
+        from services.retrieval.reranker import rerank
         result = rerank("   ", ["doc1"])
         assert len(result) == 1
         assert result[0]["score"] == 0.0
 
     def test_bm25_fallback_used_without_sentence_transformers(self):
         """Without sentence-transformers installed, should fall back to BM25."""
-        from services.reranker import rerank
+        from services.retrieval.reranker import rerank
         docs = ["Python web async", "Java Spring Boot", "Python FastAPI"]
         result = rerank("Python web framework", docs, top_k=2)
         assert len(result) == 2
@@ -138,13 +138,13 @@ class TestRerank:
             assert "original_index" in r
 
     def test_top_k_respected(self):
-        from services.reranker import rerank
+        from services.retrieval.reranker import rerank
         docs = [f"document number {i} about testing" for i in range(20)]
         result = rerank("document testing", docs, top_k=5)
         assert len(result) == 5
 
     def test_original_index_preserved(self):
-        from services.reranker import rerank
+        from services.retrieval.reranker import rerank
         docs = ["aaa", "bbb query match", "ccc"]
         result = rerank("query match", docs, top_k=3)
         indices = {r["original_index"] for r in result}
@@ -367,7 +367,7 @@ class TestIngestText:
         assert result.content_hash != ""
 
     @patch("layla.ingestion.pipeline._hash_exists", return_value=False)
-    @patch("services.memory_router.save_learning", return_value=1)
+    @patch("services.memory.memory_router.save_learning", return_value=1)
     def test_successful_ingest(self, mock_save, mock_hash):
         from layla.ingestion.pipeline import ingest_text
         result = ingest_text("A short text that will become a single chunk.", source="unit-test")
@@ -377,7 +377,7 @@ class TestIngestText:
         assert result.source == "unit-test"
 
     @patch("layla.ingestion.pipeline._hash_exists", return_value=False)
-    @patch("services.memory_router.save_learning", return_value=1)
+    @patch("services.memory.memory_router.save_learning", return_value=1)
     def test_ingest_with_topic(self, mock_save, mock_hash):
         from layla.ingestion.pipeline import ingest_text
         result = ingest_text("Content about Python.", source="test", topic="python")
@@ -396,7 +396,7 @@ class TestIngestFile:
         assert result.skipped is True
 
     @patch("layla.ingestion.pipeline._hash_exists", return_value=False)
-    @patch("services.memory_router.save_learning", return_value=1)
+    @patch("services.memory.memory_router.save_learning", return_value=1)
     def test_txt_file(self, mock_save, mock_hash, tmp_path):
         from layla.ingestion.pipeline import ingest_file
         f = tmp_path / "sample.txt"
@@ -417,7 +417,7 @@ class TestIngestFile:
 
 class TestIngestDirectory:
     @patch("layla.ingestion.pipeline._hash_exists", return_value=False)
-    @patch("services.memory_router.save_learning", return_value=1)
+    @patch("services.memory.memory_router.save_learning", return_value=1)
     def test_directory_ingest(self, mock_save, mock_hash, tmp_path):
         from layla.ingestion.pipeline import ingest_directory
         (tmp_path / "a.txt").write_text("File A content.", encoding="utf-8")
@@ -432,7 +432,7 @@ class TestIngestDirectory:
         assert results == []
 
     @patch("layla.ingestion.pipeline._hash_exists", return_value=False)
-    @patch("services.memory_router.save_learning", return_value=1)
+    @patch("services.memory.memory_router.save_learning", return_value=1)
     def test_extension_filter(self, mock_save, mock_hash, tmp_path):
         from layla.ingestion.pipeline import ingest_directory
         (tmp_path / "keep.txt").write_text("keep this", encoding="utf-8")
@@ -449,77 +449,77 @@ class TestIngestDirectory:
 
 class TestScoreCredibility:
     def test_local_source(self):
-        from services.research_orchestrator import score_credibility
+        from services.planning.research_orchestrator import score_credibility
         assert score_credibility("local:learnings", "any content") == 0.75
 
     def test_official_docs(self):
-        from services.research_orchestrator import score_credibility
+        from services.planning.research_orchestrator import score_credibility
         s = score_credibility("https://docs.python.org/3/library/asyncio.html", "")
         assert s >= 0.9
 
     def test_github(self):
-        from services.research_orchestrator import score_credibility
+        from services.planning.research_orchestrator import score_credibility
         s = score_credibility("https://github.com/user/repo", "")
         assert s >= 0.8
 
     def test_stackoverflow(self):
-        from services.research_orchestrator import score_credibility
+        from services.planning.research_orchestrator import score_credibility
         s = score_credibility("https://stackoverflow.com/questions/123", "")
         assert s >= 0.75
 
     def test_wikipedia(self):
-        from services.research_orchestrator import score_credibility
+        from services.planning.research_orchestrator import score_credibility
         s = score_credibility("https://en.wikipedia.org/wiki/Python", "")
         assert s >= 0.7
 
     def test_medium(self):
-        from services.research_orchestrator import score_credibility
+        from services.planning.research_orchestrator import score_credibility
         s = score_credibility("https://medium.com/some-article", "")
         assert 0.5 <= s <= 0.7
 
     def test_unknown_domain(self):
-        from services.research_orchestrator import score_credibility
+        from services.planning.research_orchestrator import score_credibility
         s = score_credibility("https://random-unknown-site.example.com/page", "")
         assert s == 0.4
 
     def test_arxiv(self):
-        from services.research_orchestrator import score_credibility
+        from services.planning.research_orchestrator import score_credibility
         s = score_credibility("https://arxiv.org/abs/2301.12345", "")
         assert s >= 0.85
 
 
 class TestExtractTextHelper:
     def test_string_input(self):
-        from services.research_orchestrator import _extract_text
+        from services.planning.research_orchestrator import _extract_text
         assert _extract_text("hello") == "hello"
 
     def test_dict_with_choices(self):
-        from services.research_orchestrator import _extract_text
+        from services.planning.research_orchestrator import _extract_text
         resp = {"choices": [{"message": {"content": "result text"}}]}
         assert _extract_text(resp) == "result text"
 
     def test_dict_missing_keys(self):
-        from services.research_orchestrator import _extract_text
+        from services.planning.research_orchestrator import _extract_text
         resp = {"unexpected": "format"}
         result = _extract_text(resp)
         assert isinstance(result, str)
 
     def test_none_input(self):
-        from services.research_orchestrator import _extract_text
+        from services.planning.research_orchestrator import _extract_text
         assert _extract_text(None) == ""
 
 
 class TestDecomposeTopic:
-    @patch("services.llm_gateway.run_completion", side_effect=RuntimeError("no model"))
+    @patch("services.llm.llm_gateway.run_completion", side_effect=RuntimeError("no model"))
     def test_fallback_on_failure(self, _mock_llm):
         """When run_completion raises, should fallback to [topic]."""
-        from services.research_orchestrator import decompose_topic
+        from services.planning.research_orchestrator import decompose_topic
         result = decompose_topic("test topic", {})
         assert result == ["test topic"]
 
-    @patch("services.llm_gateway.run_completion", side_effect=Exception("no LLM"))
+    @patch("services.llm.llm_gateway.run_completion", side_effect=Exception("no LLM"))
     def test_fallback_returns_list(self, _mock_llm):
-        from services.research_orchestrator import decompose_topic
+        from services.planning.research_orchestrator import decompose_topic
         result = decompose_topic("Python async programming", {})
         assert isinstance(result, list)
         assert len(result) >= 1
@@ -528,7 +528,7 @@ class TestDecomposeTopic:
 class TestSearchLocal:
     def test_returns_list_of_sources(self):
         """Should return a list even if no local data found."""
-        from services.research_orchestrator import search_local
+        from services.planning.research_orchestrator import search_local
         result = search_local("something unlikely")
         assert isinstance(result, list)
 
@@ -536,16 +536,16 @@ class TestSearchLocal:
 class TestSearchWeb:
     def test_returns_list_of_sources(self):
         """Should return empty list when tools not available."""
-        from services.research_orchestrator import search_web
+        from services.planning.research_orchestrator import search_web
         result = search_web("test query", max_results=2)
         assert isinstance(result, list)
 
 
 class TestSynthesizeArticle:
-    @patch("services.llm_gateway.run_completion", side_effect=RuntimeError("no model"))
+    @patch("services.llm.llm_gateway.run_completion", side_effect=RuntimeError("no model"))
     def test_fallback_concatenation(self, _mock_llm):
         """When LLM fails, should concatenate sources as fallback."""
-        from services.research_orchestrator import Source, synthesize_article
+        from services.planning.research_orchestrator import Source, synthesize_article
         sources = [
             Source(url="https://example.com", content="Example content about testing.",
                    credibility=0.8, title="Example"),
@@ -560,15 +560,15 @@ class TestSynthesizeArticle:
 
 
 class TestResearchTopic:
-    @patch("services.llm_gateway.run_completion", side_effect=RuntimeError("no model"))
-    @patch("services.research_orchestrator.search_web", return_value=[])
-    @patch("services.research_orchestrator.search_local", return_value=[])
-    @patch("services.research_orchestrator.decompose_topic", return_value=["test topic"])
-    @patch("services.research_orchestrator._save_to_kb")
-    @patch("services.research_orchestrator._link_codex")
+    @patch("services.llm.llm_gateway.run_completion", side_effect=RuntimeError("no model"))
+    @patch("services.planning.research_orchestrator.search_web", return_value=[])
+    @patch("services.planning.research_orchestrator.search_local", return_value=[])
+    @patch("services.planning.research_orchestrator.decompose_topic", return_value=["test topic"])
+    @patch("services.planning.research_orchestrator._save_to_kb")
+    @patch("services.planning.research_orchestrator._link_codex")
     def test_full_pipeline_empty_sources(self, mock_link, mock_save, mock_decomp,
                                          mock_local, mock_web, _mock_llm):
-        from services.research_orchestrator import research_topic
+        from services.planning.research_orchestrator import research_topic
         result = research_topic("test topic", cfg={}, allow_web=False)
         assert result.topic == "test topic"
         assert isinstance(result.sub_questions, list)
@@ -576,15 +576,15 @@ class TestResearchTopic:
         assert isinstance(result.article, str)
         assert result.duration_seconds >= 0
 
-    @patch("services.llm_gateway.run_completion", side_effect=RuntimeError("no model"))
-    @patch("services.research_orchestrator.search_web", return_value=[])
-    @patch("services.research_orchestrator.search_local")
-    @patch("services.research_orchestrator.decompose_topic", return_value=["sub q1"])
-    @patch("services.research_orchestrator._save_to_kb")
-    @patch("services.research_orchestrator._link_codex")
+    @patch("services.llm.llm_gateway.run_completion", side_effect=RuntimeError("no model"))
+    @patch("services.planning.research_orchestrator.search_web", return_value=[])
+    @patch("services.planning.research_orchestrator.search_local")
+    @patch("services.planning.research_orchestrator.decompose_topic", return_value=["sub q1"])
+    @patch("services.planning.research_orchestrator._save_to_kb")
+    @patch("services.planning.research_orchestrator._link_codex")
     def test_pipeline_with_local_sources(self, mock_link, mock_save, mock_decomp,
                                           mock_local, mock_web, _mock_llm):
-        from services.research_orchestrator import Source, research_topic
+        from services.planning.research_orchestrator import Source, research_topic
         mock_local.return_value = [
             Source("local:learnings", "Relevant fact about AI.", 0.8, "Fact #1"),
         ]
@@ -592,22 +592,22 @@ class TestResearchTopic:
         assert len(result.sources) >= 1
         assert result.confidence > 0
 
-    @patch("services.llm_gateway.run_completion", side_effect=RuntimeError("no model"))
-    @patch("services.research_orchestrator.search_web", return_value=[])
-    @patch("services.research_orchestrator.search_local", return_value=[])
-    @patch("services.research_orchestrator.decompose_topic", return_value=["test"])
-    @patch("services.research_orchestrator._save_to_kb")
-    @patch("services.research_orchestrator._link_codex")
+    @patch("services.llm.llm_gateway.run_completion", side_effect=RuntimeError("no model"))
+    @patch("services.planning.research_orchestrator.search_web", return_value=[])
+    @patch("services.planning.research_orchestrator.search_local", return_value=[])
+    @patch("services.planning.research_orchestrator.decompose_topic", return_value=["test"])
+    @patch("services.planning.research_orchestrator._save_to_kb")
+    @patch("services.planning.research_orchestrator._link_codex")
     def test_max_sources_respected(self, mock_link, mock_save, mock_decomp,
                                     mock_local, mock_web, _mock_llm):
-        from services.research_orchestrator import research_topic
+        from services.planning.research_orchestrator import research_topic
         result = research_topic("test", cfg={}, max_sources=5)
         assert len(result.sources) <= 5
 
 
 class TestSourceDataclass:
     def test_creation(self):
-        from services.research_orchestrator import Source
+        from services.planning.research_orchestrator import Source
         s = Source(url="https://example.com", content="test", credibility=0.9, title="Test")
         assert s.url == "https://example.com"
         assert s.credibility == 0.9
@@ -615,7 +615,7 @@ class TestSourceDataclass:
 
 class TestResearchResultDataclass:
     def test_creation(self):
-        from services.research_orchestrator import ResearchResult
+        from services.planning.research_orchestrator import ResearchResult
         r = ResearchResult(
             topic="test", sub_questions=["q1"], sources=[], article="article",
             entities=[], confidence=0.8, duration_seconds=1.5,

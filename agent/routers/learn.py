@@ -91,7 +91,7 @@ def learn(req: LearnRequest):
             embedding_id = add_vector(vec, meta)
         except Exception as e:
             logger.warning("vector_store add_vector failed: %s", e)
-        from services.memory_router import save_learning  # canonical write path
+        from services.memory.memory_router import save_learning  # canonical write path
         save_learning(content=content, kind=kind, embedding_id=embedding_id, tags=tags, aspect_id=aspect_id)
         try:
             from layla.memory.memory_graph import add_node
@@ -182,7 +182,7 @@ def correct_fact(req: FactCorrectionRequest):
 
         # 4. Record the correction event for maturity tracking
         try:
-            from services.maturity_engine import get_maturity_engine
+            from services.personality.maturity_engine import get_maturity_engine
             me = get_maturity_engine()
             me.record_relationship_event("correction")
         except Exception:
@@ -206,7 +206,7 @@ def correct_fact(req: FactCorrectionRequest):
 def verify_next():
     """Get the next fact awaiting user verification."""
     try:
-        from services.verification_queue import get_next_verification
+        from services.planning.verification_queue import get_next_verification
         fact = get_next_verification()
         if fact is None:
             return JSONResponse({"ok": True, "fact": None, "message": "No pending verifications"})
@@ -220,7 +220,7 @@ def verify_next():
 def verify_answer(req: VerifyAnswerRequest):
     """Record the user's answer for a verification prompt."""
     try:
-        from services.verification_queue import get_verification_queue
+        from services.planning.verification_queue import get_verification_queue
         result = get_verification_queue().answer(req.fact_id, req.confirmed, req.correction)
         return JSONResponse(result)
     except Exception as e:
@@ -232,7 +232,7 @@ def verify_answer(req: VerifyAnswerRequest):
 def verify_stats():
     """Get verification queue statistics."""
     try:
-        from services.verification_queue import get_verification_queue
+        from services.planning.verification_queue import get_verification_queue
         stats = get_verification_queue().get_stats()
         return JSONResponse({"ok": True, **stats})
     except Exception as e:
@@ -291,7 +291,7 @@ def growth_stats():
 
     # Verification stats
     try:
-        from services.verification_queue import get_verification_queue
+        from services.planning.verification_queue import get_verification_queue
         result["verification"] = get_verification_queue().get_stats()
     except Exception:
         result["verification"] = {}
@@ -321,7 +321,7 @@ def growth_stats():
 
     # Knowledge watcher stats
     try:
-        from services.knowledge_watcher import get_knowledge_watcher
+        from services.memory.knowledge_watcher import get_knowledge_watcher
         result["knowledge_watcher"] = get_knowledge_watcher().get_stats()
     except Exception:
         result["knowledge_watcher"] = {}

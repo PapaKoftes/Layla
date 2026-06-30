@@ -154,7 +154,7 @@ def route_intent(goal: str, context: str = "", workspace_root: str = "") -> Rout
     else:
         # Delegate to model_router for coarse coding/reasoning/chat when not explicitly research/meta.
         try:
-            from services.model_router import classify_task
+            from services.llm.model_router import classify_task
 
             tt = str(classify_task(g, c) or "").strip().lower()
         except Exception:
@@ -176,7 +176,7 @@ def route_intent(goal: str, context: str = "", workspace_root: str = "") -> Rout
 
     # Attach intent categories as a hint for tool filtering (downstream may override/cap).
     try:
-        from services.intent_detection import detect_intent
+        from services.tools.intent_detection import detect_intent
 
         intent_categories = detect_intent(g)
     except Exception:

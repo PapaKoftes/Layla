@@ -20,7 +20,7 @@ def get_cached_plugins(cfg: dict) -> dict:
     now = time.time()
     if _plugins_cache and (now - _plugins_cache_ts) < _PLUGINS_CACHE_TTL:
         return _plugins_cache
-    from services.plugin_loader import load_plugins
+    from services.skills.plugin_loader import load_plugins
 
     _plugins_cache = load_plugins(cfg)
     _plugins_cache_ts = now
@@ -110,13 +110,13 @@ def sync_set_project_context(body: dict) -> dict:
 
 
 def sync_ingest_docs(source: str, label: str) -> dict:
-    from services.doc_ingestion import ingest_docs
+    from services.workspace.doc_ingestion import ingest_docs
 
     return ingest_docs(source, label)
 
 
 def sync_create_and_run_mission(body: dict) -> dict:
-    from services.mission_manager import create_mission, run_mission
+    from services.planning.mission_manager import create_mission, run_mission
 
     goal = (body.get("goal") or "").strip()
     if not goal:
@@ -159,7 +159,7 @@ def sync_save_appearance(body: dict) -> dict:
 def sync_compact_history() -> dict:
     """Summarize in-memory chat history when over context threshold."""
     import runtime_safety
-    from services.context_manager import summarize_history
+    from services.context.context_manager import summarize_history
     from shared_state import get_history
 
     cfg = runtime_safety.load_config()

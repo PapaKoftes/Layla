@@ -5,7 +5,7 @@ import pytest
 
 
 def test_engineering_planning_locked_default_false():
-    from services.engineering_pipeline import (
+    from services.planning.engineering_pipeline import (
         engineering_planning_locked,
         lock_engineering_planning,
         unlock_engineering_planning,
@@ -19,7 +19,7 @@ def test_engineering_planning_locked_default_false():
 
 
 def test_run_clarifier_needs_input_blocks_planner(monkeypatch):
-    from services import engineering_pipeline as ep
+    from services.planning import engineering_pipeline as ep
 
     monkeypatch.setattr(ep, "run_clarifier", lambda *a, **k: {"status": "needs_input", "questions": ["Which file?"]})
     calls: list[str] = []
@@ -28,7 +28,7 @@ def test_run_clarifier_needs_input_blocks_planner(monkeypatch):
         calls.append("create_plan")
         return []
 
-    monkeypatch.setattr("services.planner.create_plan", _no_plan)
+    monkeypatch.setattr("services.planning.planner.create_plan", _no_plan)
 
     out = ep.run_execute_pipeline(
         goal="fix it",
@@ -71,6 +71,6 @@ def test_autonomous_run_signature_has_pipeline_params():
 
 
 def test_planner_kw_includes_skip_engineering_pipeline():
-    from services.planner import _AUTONOMOUS_KW_KEYS
+    from services.planning.planner import _AUTONOMOUS_KW_KEYS
 
     assert "skip_engineering_pipeline" in _AUTONOMOUS_KW_KEYS

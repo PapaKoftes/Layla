@@ -204,7 +204,7 @@ class TestTraceToolCallWrite:
 
 class TestExtractLitellmCost:
     def test_with_litellm_metadata(self):
-        from services.llm_gateway import extract_litellm_cost
+        from services.llm.llm_gateway import extract_litellm_cost
         result = {
             "choices": [{"message": {"content": "hello"}}],
             "_litellm": {
@@ -219,7 +219,7 @@ class TestExtractLitellmCost:
         assert cost["model"] == "gpt-4o-mini"
 
     def test_without_litellm_metadata(self):
-        from services.llm_gateway import extract_litellm_cost
+        from services.llm.llm_gateway import extract_litellm_cost
         result = {"choices": [{"message": {"content": "hello"}}]}
         cost = extract_litellm_cost(result)
         assert cost["cost_usd"] == 0.0
@@ -227,12 +227,12 @@ class TestExtractLitellmCost:
         assert cost["model"] == ""
 
     def test_none_result(self):
-        from services.llm_gateway import extract_litellm_cost
+        from services.llm.llm_gateway import extract_litellm_cost
         cost = extract_litellm_cost(None)
         assert cost["cost_usd"] == 0.0
 
     def test_empty_dict(self):
-        from services.llm_gateway import extract_litellm_cost
+        from services.llm.llm_gateway import extract_litellm_cost
         cost = extract_litellm_cost({})
         assert cost["cost_usd"] == 0.0
         assert cost["provider"] == ""
@@ -435,7 +435,7 @@ class TestToolsAnalysisEndpoint:
 
 class TestExecutorTracerIntegration:
     def test_record_trace_tool_call_increments_active_trace(self):
-        from services.request_tracer import (
+        from services.observability.request_tracer import (
             finish_trace,
             record_trace_tool_call,
             start_trace,
@@ -448,17 +448,17 @@ class TestExecutorTracerIntegration:
         finish_trace(trace)
 
     def test_no_active_trace_does_not_raise(self):
-        from services.request_tracer import finish_trace, get_active_trace, record_trace_tool_call
+        from services.observability.request_tracer import finish_trace, get_active_trace, record_trace_tool_call
         finish_trace(get_active_trace(), status="cleared")
         record_trace_tool_call()  # no-op, no raise
 
     def test_record_trace_tool_call_importable_from_executor_path(self):
         # The import path executor uses must resolve
-        from services.request_tracer import record_trace_tool_call
+        from services.observability.request_tracer import record_trace_tool_call
         assert callable(record_trace_tool_call)
 
     def test_multiple_tools_accumulate_in_trace(self):
-        from services.request_tracer import (
+        from services.observability.request_tracer import (
             finish_trace,
             record_trace_tool_call,
             start_trace,

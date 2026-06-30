@@ -1,4 +1,4 @@
-from services.plan_templates import match_skeleton_plan
+from services.planning.plan_templates import match_skeleton_plan
 
 
 def test_skeleton_fix_tests_pattern():

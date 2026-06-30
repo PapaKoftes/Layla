@@ -5,7 +5,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from routers.agent import enqueue_threaded_autonomous
-from services.resource_manager import PRIORITY_AGENT
+from services.infrastructure.resource_manager import PRIORITY_AGENT
 from shared_state import get_touch_activity
 
 router = APIRouter(prefix="/agents", tags=["agents"])

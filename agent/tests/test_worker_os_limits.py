@@ -14,14 +14,14 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def test_apply_posix_rlimit_skipped_when_disabled():
-    from services.worker_os_limits import apply_background_worker_posix_rlimits
+    from services.infrastructure.worker_os_limits import apply_background_worker_posix_rlimits
 
     apply_background_worker_posix_rlimits({"background_worker_rlimits_enabled": False})
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="RLIMIT_AS is POSIX")
 def test_apply_posix_rlimit_calls_setrlimit():
-    from services import worker_os_limits as wo
+    from services.infrastructure import worker_os_limits as wo
 
     cfg = {"background_worker_rlimits_enabled": True, "background_worker_rlimit_as_bytes": 1_000_000}
     with patch("resource.setrlimit") as mock_rl:
@@ -35,7 +35,7 @@ def test_apply_posix_rlimit_calls_setrlimit():
 
 
 def test_attach_windows_job_skipped_on_posix():
-    from services.worker_os_limits import attach_windows_job_memory_limit
+    from services.infrastructure.worker_os_limits import attach_windows_job_memory_limit
 
     proc = MagicMock()
     attach_windows_job_memory_limit(
@@ -49,7 +49,7 @@ def test_attach_windows_job_skipped_on_posix():
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Job Object is Windows-only")
 def test_attach_windows_job_smoke_skipped_if_no_handle():
-    from services.worker_os_limits import attach_windows_job_memory_limit
+    from services.infrastructure.worker_os_limits import attach_windows_job_memory_limit
 
     proc = MagicMock(spec=["pid"])
     proc._handle = None

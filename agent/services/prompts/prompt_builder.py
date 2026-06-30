@@ -220,7 +220,7 @@ def build_core_sys_parts(
         _aid_cc = (aspect.get("id") or "").strip().lower()
         if _aid_cc:
             try:
-                from services.character_creator import personality_to_prompt_hints
+                from services.personality.character_creator import personality_to_prompt_hints
 
                 _hints = personality_to_prompt_hints(_aid_cc)
                 if _hints:

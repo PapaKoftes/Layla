@@ -75,7 +75,7 @@ def load_plan(workspace_root: str, plan_id: str) -> Plan | None:
 
 
 def create_plan(workspace_root: str, goal: str, context: str = "") -> tuple[Plan | None, str]:
-    from services import project_memory as pm
+    from services.memory import project_memory as pm
 
     root = _workspace_path(workspace_root)
     if root is None:

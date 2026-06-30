@@ -34,50 +34,50 @@ if str(AGENT_DIR) not in sys.path:
 
 class TestExtractPatchText:
     def test_empty_goal(self):
-        from services.outcome_writer import _extract_patch_text
+        from services.infrastructure.outcome_writer import _extract_patch_text
         assert _extract_patch_text("") == ""
         assert _extract_patch_text(None) == ""
 
     def test_plain_text_passthrough(self):
-        from services.outcome_writer import _extract_patch_text
+        from services.infrastructure.outcome_writer import _extract_patch_text
         assert _extract_patch_text("just some text") == "just some text"
 
     def test_code_block_extraction(self):
-        from services.outcome_writer import _extract_patch_text
+        from services.infrastructure.outcome_writer import _extract_patch_text
         goal = "Apply this:\n```patch\n--- a/foo.py\n+++ b/foo.py\n```\nDone."
         result = _extract_patch_text(goal)
         assert "--- a/foo.py" in result
 
     def test_diff_marker_detection(self):
-        from services.outcome_writer import _extract_patch_text
+        from services.infrastructure.outcome_writer import _extract_patch_text
         goal = "Some preamble\n--- a/file.py\n+++ b/file.py\n@@ -1 +1 @@\n-old\n+new"
         result = _extract_patch_text(goal)
         assert result.startswith("--- a/file.py")
 
     def test_diff_git_detection(self):
-        from services.outcome_writer import _extract_patch_text
+        from services.infrastructure.outcome_writer import _extract_patch_text
         goal = "Header text\ndiff --git a/x.py b/x.py\nindex abc..def 100644"
         result = _extract_patch_text(goal)
         assert result.startswith("diff --git")
 
 
 class TestMaybeSaveEchoMemory:
-    @patch("services.outcome_writer._db_save_aspect_memory")
+    @patch("services.infrastructure.outcome_writer._db_save_aspect_memory")
     def test_echo_active_saves_immediately(self, mock_save):
-        from services.outcome_writer import _maybe_save_echo_memory
+        from services.infrastructure.outcome_writer import _maybe_save_echo_memory
         _maybe_save_echo_memory("echo", "Hello", "Hi there", [])
         mock_save.assert_called()
 
-    @patch("services.outcome_writer._db_save_aspect_memory")
+    @patch("services.infrastructure.outcome_writer._db_save_aspect_memory")
     def test_non_echo_no_immediate_save(self, mock_save):
-        from services.outcome_writer import _maybe_save_echo_memory
+        from services.infrastructure.outcome_writer import _maybe_save_echo_memory
         # 0 turns, not echo — should not fire
         _maybe_save_echo_memory("morrigan", "Hello", "Hi", [])
         mock_save.assert_not_called()
 
-    @patch("services.outcome_writer._db_save_aspect_memory")
+    @patch("services.infrastructure.outcome_writer._db_save_aspect_memory")
     def test_pattern_save_every_5_turns(self, mock_save):
-        from services.outcome_writer import _maybe_save_echo_memory
+        from services.infrastructure.outcome_writer import _maybe_save_echo_memory
         history = [
             {"role": "user", "content": f"msg {i}"}
             for i in range(10)
@@ -86,9 +86,9 @@ class TestMaybeSaveEchoMemory:
         # 10 turns, 10 % 5 == 0 → pattern save should fire
         assert mock_save.call_count >= 1
 
-    @patch("services.outcome_writer._db_save_aspect_memory")
+    @patch("services.infrastructure.outcome_writer._db_save_aspect_memory")
     def test_pattern_save_needs_two_topics(self, mock_save):
-        from services.outcome_writer import _maybe_save_echo_memory
+        from services.infrastructure.outcome_writer import _maybe_save_echo_memory
         # 5 turns but only 1 user message
         history = [{"role": "assistant", "content": "ok"}] * 4 + [{"role": "user", "content": "hello"}]
         _maybe_save_echo_memory("nyx", "test", "reply", history)
@@ -97,10 +97,10 @@ class TestMaybeSaveEchoMemory:
 
 
 class TestSaveOutcomeMemory:
-    @patch("services.reflection_engine.run_reflection", new=MagicMock())
-    @patch("services.memory_router.save_learning")
+    @patch("services.infrastructure.reflection_engine.run_reflection", new=MagicMock())
+    @patch("services.memory.memory_router.save_learning")
     def test_finished_state_saves(self, mock_save):
-        from services.outcome_writer import _save_outcome_memory
+        from services.infrastructure.outcome_writer import _save_outcome_memory
         state = {
             "status": "finished",
             "objective": "Test the system",
@@ -111,17 +111,17 @@ class TestSaveOutcomeMemory:
         _save_outcome_memory(state)
         assert mock_save.call_count >= 1
 
-    @patch("services.memory_router.save_learning")
+    @patch("services.memory.memory_router.save_learning")
     def test_non_finished_state_skips(self, mock_save):
-        from services.outcome_writer import _save_outcome_memory
+        from services.infrastructure.outcome_writer import _save_outcome_memory
         state = {"status": "running", "steps": []}
         _save_outcome_memory(state)
         mock_save.assert_not_called()
 
-    @patch("services.reflection_engine.run_reflection", new=MagicMock())
-    @patch("services.memory_router.save_learning")
+    @patch("services.infrastructure.reflection_engine.run_reflection", new=MagicMock())
+    @patch("services.memory.memory_router.save_learning")
     def test_no_tool_steps_still_saves(self, mock_save):
-        from services.outcome_writer import _save_outcome_memory
+        from services.infrastructure.outcome_writer import _save_outcome_memory
         state = {
             "status": "finished",
             "objective": "Answer a question",
@@ -132,22 +132,22 @@ class TestSaveOutcomeMemory:
 
 
 class TestAutoExtractLearnings:
-    @patch("services.memory_router.save_learning")
+    @patch("services.memory.memory_router.save_learning")
     def test_short_response_skips(self, mock_save):
-        from services.outcome_writer import _auto_extract_learnings
+        from services.infrastructure.outcome_writer import _auto_extract_learnings
         _auto_extract_learnings("question", "short reply", "morrigan")
         mock_save.assert_not_called()
 
-    @patch("services.memory_router.save_learning")
+    @patch("services.memory.memory_router.save_learning")
     def test_greeting_response_skips(self, mock_save):
-        from services.outcome_writer import _auto_extract_learnings
+        from services.infrastructure.outcome_writer import _auto_extract_learnings
         _auto_extract_learnings("hi", "hello thanks ok sure cool yes no " * 3, "echo")
         mock_save.assert_not_called()
 
-    @patch("services.llm_gateway.run_completion", side_effect=Exception("no LLM"))
-    @patch("services.memory_router.save_learning")
+    @patch("services.llm.llm_gateway.run_completion", side_effect=Exception("no LLM"))
+    @patch("services.memory.memory_router.save_learning")
     def test_fallback_extracts_bullet_points(self, mock_save, mock_llm):
-        from services.outcome_writer import _auto_extract_learnings
+        from services.infrastructure.outcome_writer import _auto_extract_learnings
         response = (
             "Here are the key points:\n"
             "- Always validate input before processing it through the pipeline\n"
@@ -160,14 +160,14 @@ class TestAutoExtractLearnings:
             saved_content = mock_save.call_args_list[0][1].get("content", "")
             assert len(saved_content) > 10
 
-    @patch("services.llm_gateway.run_completion", side_effect=Exception("no LLM"))
-    @patch("services.memory_router.save_learning")
+    @patch("services.llm.llm_gateway.run_completion", side_effect=Exception("no LLM"))
+    @patch("services.memory.memory_router.save_learning")
     def test_preference_detection(self, mock_save, mock_llm):
         # Reset fingerprint dict to avoid dedup
         import collections
 
-        import services.outcome_writer as ow
-        from services.outcome_writer import _auto_extract_learnings
+        import services.infrastructure.outcome_writer as ow
+        from services.infrastructure.outcome_writer import _auto_extract_learnings
         ow._recent_learning_fingerprints = collections.OrderedDict()
 
         # The response needs extractable bullet points so the function doesn't
@@ -188,7 +188,7 @@ class TestAutoExtractLearnings:
 
 class TestAspectLearningType:
     def test_all_aspects_covered(self):
-        from services.outcome_writer import _ASPECT_LEARNING_TYPE
+        from services.infrastructure.outcome_writer import _ASPECT_LEARNING_TYPE
         expected = {"morrigan", "nyx", "echo", "eris", "lilith", "cassandra"}
         assert expected == set(_ASPECT_LEARNING_TYPE.keys())
 
@@ -200,18 +200,18 @@ class TestAspectLearningType:
 
 class TestCollectInitiativeHints:
     def test_disabled_returns_empty(self):
-        from services.initiative_engine import collect_initiative_hints
+        from services.infrastructure.initiative_engine import collect_initiative_hints
         result = collect_initiative_hints({}, {"initiative_engine_enabled": False})
         assert result == []
 
     def test_enabled_with_empty_state(self):
-        from services.initiative_engine import collect_initiative_hints
+        from services.infrastructure.initiative_engine import collect_initiative_hints
         result = collect_initiative_hints({"steps": []}, {"initiative_engine_enabled": True})
         assert isinstance(result, list)
 
-    @patch("services.outcome_evaluation.evaluate_outcome_structured", side_effect=ImportError)
+    @patch("services.infrastructure.outcome_evaluation.evaluate_outcome_structured", side_effect=ImportError)
     def test_failed_tool_step_generates_hint(self, mock_eval):
-        from services.initiative_engine import collect_initiative_hints
+        from services.infrastructure.initiative_engine import collect_initiative_hints
         state = {
             "steps": [
                 {"action": "write_file", "result": {"ok": False, "error": "permission denied"}},
@@ -222,7 +222,7 @@ class TestCollectInitiativeHints:
         assert "write_file" in result[0]
 
     def test_deduplication(self):
-        from services.initiative_engine import collect_initiative_hints
+        from services.infrastructure.initiative_engine import collect_initiative_hints
         # Steps that would generate the same hint
         state = {
             "steps": [
@@ -236,7 +236,7 @@ class TestCollectInitiativeHints:
         assert len(result) == len(set(r[:80] for r in result))
 
     def test_max_4_hints(self):
-        from services.initiative_engine import collect_initiative_hints
+        from services.infrastructure.initiative_engine import collect_initiative_hints
         state = {
             "steps": [
                 {"action": f"tool_{i}", "result": {"ok": False, "error": f"err {i}"}}
@@ -249,40 +249,40 @@ class TestCollectInitiativeHints:
 
 class TestWakeupEngineHints:
     def test_disabled(self):
-        from services.initiative_engine import wakeup_engine_hints
+        from services.infrastructure.initiative_engine import wakeup_engine_hints
         assert wakeup_engine_hints([], {"initiative_engine_enabled": False}) == []
 
     def test_no_plans(self):
-        from services.initiative_engine import wakeup_engine_hints
+        from services.infrastructure.initiative_engine import wakeup_engine_hints
         hints = wakeup_engine_hints([], {"initiative_engine_enabled": True})
         assert len(hints) >= 1
         assert "No active study plans" in hints[0]
 
     def test_many_plans(self):
-        from services.initiative_engine import wakeup_engine_hints
+        from services.infrastructure.initiative_engine import wakeup_engine_hints
         hints = wakeup_engine_hints([1, 2, 3, 4], {"initiative_engine_enabled": True})
         assert any("pausing" in h.lower() for h in hints)
 
     def test_few_plans(self):
-        from services.initiative_engine import wakeup_engine_hints
+        from services.infrastructure.initiative_engine import wakeup_engine_hints
         hints = wakeup_engine_hints([1, 2], {"initiative_engine_enabled": True})
         assert len(hints) >= 1
 
 
 class TestGenerateProjectProposals:
     def test_disabled(self):
-        from services.initiative_engine import generate_project_proposals
+        from services.infrastructure.initiative_engine import generate_project_proposals
         result = generate_project_proposals(cfg={"initiative_project_proposals_enabled": False})
         assert result == []
 
     def test_default_disabled(self):
-        from services.initiative_engine import generate_project_proposals
+        from services.infrastructure.initiative_engine import generate_project_proposals
         result = generate_project_proposals(cfg={})
         assert result == []
 
-    @patch("services.maturity_engine.get_trust_tier", return_value=1)
+    @patch("services.personality.maturity_engine.get_trust_tier", return_value=1)
     def test_low_trust_tier(self, mock_trust):
-        from services.initiative_engine import generate_project_proposals
+        from services.infrastructure.initiative_engine import generate_project_proposals
         result = generate_project_proposals(cfg={"initiative_project_proposals_enabled": True})
         assert result == []
 
@@ -295,7 +295,7 @@ class TestGenerateProjectProposals:
 class TestDistillLearningsToInsights:
     @patch("layla.memory.db.get_recent_learnings", return_value=[])
     def test_empty_learnings(self, mock_get):
-        from services.knowledge_distiller import distill_learnings_to_insights
+        from services.memory.knowledge_distiller import distill_learnings_to_insights
         result = distill_learnings_to_insights(n=10)
         assert result["insights_added"] == 0
 
@@ -303,13 +303,13 @@ class TestDistillLearningsToInsights:
         {"content": "a"}, {"content": "b"},
     ])
     def test_too_few_learnings(self, mock_get):
-        from services.knowledge_distiller import distill_learnings_to_insights
+        from services.memory.knowledge_distiller import distill_learnings_to_insights
         result = distill_learnings_to_insights(n=10)
         assert result["insights_added"] == 0
         assert result["learnings_processed"] == 2
 
-    @patch("services.memory_router.save_learning")
-    @patch("services.llm_gateway.run_completion", return_value={
+    @patch("services.memory.memory_router.save_learning")
+    @patch("services.llm.llm_gateway.run_completion", return_value={
         "choices": [{"message": {"content": "Users prefer fast local inference.\nCode quality improves with tests."}}],
     })
     @patch("layla.memory.db.get_recent_learnings", return_value=[
@@ -318,13 +318,13 @@ class TestDistillLearningsToInsights:
         {"content": "Learning about code quality"},
     ])
     def test_llm_synthesis(self, mock_get, mock_llm, mock_save):
-        from services.knowledge_distiller import distill_learnings_to_insights
+        from services.memory.knowledge_distiller import distill_learnings_to_insights
         result = distill_learnings_to_insights(n=10)
         assert result["insights_added"] >= 1
         assert mock_save.call_count >= 1
 
-    @patch("services.memory_router.save_learning")
-    @patch("services.llm_gateway.run_completion", side_effect=Exception("no LLM"))
+    @patch("services.memory.memory_router.save_learning")
+    @patch("services.llm.llm_gateway.run_completion", side_effect=Exception("no LLM"))
     @patch("layla.memory.distill.distill_rules", return_value=["Pattern: users prefer local-first tools"])
     @patch("layla.memory.db.get_recent_learnings", return_value=[
         {"content": "Learning about local models"},
@@ -332,23 +332,23 @@ class TestDistillLearningsToInsights:
         {"content": "Learning about privacy"},
     ])
     def test_fallback_to_distill_rules(self, mock_get, mock_rules, mock_llm, mock_save):
-        from services.knowledge_distiller import distill_learnings_to_insights
+        from services.memory.knowledge_distiller import distill_learnings_to_insights
         result = distill_learnings_to_insights(n=10)
         assert result["insights_added"] >= 1
 
     @patch("layla.memory.db.get_recent_learnings", side_effect=Exception("DB error"))
     def test_error_returns_zero(self, mock_get):
-        from services.knowledge_distiller import distill_learnings_to_insights
+        from services.memory.knowledge_distiller import distill_learnings_to_insights
         result = distill_learnings_to_insights(n=10)
         assert result["insights_added"] == 0
         assert "error" in result
 
 
 class TestRunPeriodicDistillation:
-    @patch("services.knowledge_distiller.distill_learnings_to_insights")
+    @patch("services.memory.knowledge_distiller.distill_learnings_to_insights")
     def test_calls_distill(self, mock_distill):
         mock_distill.return_value = {"insights_added": 2, "learnings_processed": 25}
-        from services.knowledge_distiller import run_periodic_distillation
+        from services.memory.knowledge_distiller import run_periodic_distillation
         result = run_periodic_distillation()
         mock_distill.assert_called_once_with(n=25)
         assert result["insights_added"] == 2
@@ -366,7 +366,7 @@ class TestGetRecentToolPatterns:
         "shell": {"count": 2, "success_rate": 1.0, "avg_latency": 300},
     })
     def test_filters_low_count(self, mock_rel):
-        from services.experience_replay import get_recent_tool_patterns
+        from services.infrastructure.experience_replay import get_recent_tool_patterns
         patterns = get_recent_tool_patterns()
         # shell has count=2 (< 3 threshold), should be excluded
         tool_names = [p["tool"] for p in patterns]
@@ -376,12 +376,12 @@ class TestGetRecentToolPatterns:
 
     @patch("layla.memory.db.get_tool_reliability", return_value={})
     def test_empty_returns_empty(self, mock_rel):
-        from services.experience_replay import get_recent_tool_patterns
+        from services.infrastructure.experience_replay import get_recent_tool_patterns
         assert get_recent_tool_patterns() == []
 
     @patch("layla.memory.db.get_tool_reliability", side_effect=Exception("DB error"))
     def test_error_returns_empty(self, mock_rel):
-        from services.experience_replay import get_recent_tool_patterns
+        from services.infrastructure.experience_replay import get_recent_tool_patterns
         assert get_recent_tool_patterns() == []
 
 
@@ -393,7 +393,7 @@ class TestGetRecentReflections:
         {"content": "Failed: timeout on large repos"},
     ])
     def test_filters_reflections(self, mock_get):
-        from services.experience_replay import get_recent_reflections
+        from services.infrastructure.experience_replay import get_recent_reflections
         reflections = get_recent_reflections(n=10)
         assert len(reflections) == 3
         assert all(
@@ -403,18 +403,18 @@ class TestGetRecentReflections:
 
     @patch("layla.memory.db.get_recent_learnings", return_value=[])
     def test_empty(self, mock_get):
-        from services.experience_replay import get_recent_reflections
+        from services.infrastructure.experience_replay import get_recent_reflections
         assert get_recent_reflections() == []
 
 
 class TestGetReliableTools:
-    @patch("services.experience_replay.get_recent_tool_patterns", return_value=[
+    @patch("services.infrastructure.experience_replay.get_recent_tool_patterns", return_value=[
         {"tool": "read_file", "success_rate": 0.95, "count": 50},
         {"tool": "write_file", "success_rate": 0.70, "count": 20},
         {"tool": "grep_code", "success_rate": 0.90, "count": 10},
     ])
     def test_filters_by_success_rate(self, mock_patterns):
-        from services.experience_replay import get_reliable_tools
+        from services.infrastructure.experience_replay import get_reliable_tools
         tools = get_reliable_tools(min_success_rate=0.8)
         assert "read_file" in tools
         assert "grep_code" in tools
@@ -422,12 +422,12 @@ class TestGetReliableTools:
 
 
 class TestRunExperienceReplay:
-    @patch("services.experience_replay.get_recent_reflections", return_value=["reflection1"])
-    @patch("services.experience_replay.get_recent_tool_patterns", return_value=[
+    @patch("services.infrastructure.experience_replay.get_recent_reflections", return_value=["reflection1"])
+    @patch("services.infrastructure.experience_replay.get_recent_tool_patterns", return_value=[
         {"tool": "read_file", "success_rate": 0.95, "count": 50},
     ])
     def test_returns_summary(self, mock_patterns, mock_reflections):
-        from services.experience_replay import run_experience_replay
+        from services.infrastructure.experience_replay import run_experience_replay
         result = run_experience_replay()
         assert result["tool_patterns"] == 1
         assert result["reflections_reviewed"] == 1
@@ -441,14 +441,14 @@ class TestRunExperienceReplay:
 
 class TestConsolidateSession:
     def test_no_conversation_id(self):
-        from services.memory_consolidation import consolidate_session
+        from services.memory.memory_consolidation import consolidate_session
         result = consolidate_session("")
         assert result["ok"] is False
         assert "no_conversation_id" in result["reason"]
 
     @patch("layla.memory.db.get_conversation_messages", return_value=[])
     def test_no_messages(self, mock_msgs):
-        from services.memory_consolidation import consolidate_session
+        from services.memory.memory_consolidation import consolidate_session
         result = consolidate_session("conv-123")
         assert result["ok"] is True
         assert result.get("note") == "no_messages"
@@ -459,7 +459,7 @@ class TestConsolidateSession:
         {"role": "user", "content": f"msg {i}"} for i in range(8)
     ])
     def test_normal_session(self, mock_msgs, mock_distill, mock_eval):
-        from services.memory_consolidation import consolidate_session
+        from services.memory.memory_consolidation import consolidate_session
         result = consolidate_session("conv-456")
         assert result["ok"] is True
         assert result["messages_seen"] == 8
@@ -471,7 +471,7 @@ class TestConsolidateSession:
         {"role": "user", "content": f"msg {i}"} for i in range(15)
     ])
     def test_long_session_flags_summary(self, mock_msgs, mock_distill, mock_eval):
-        from services.memory_consolidation import consolidate_session
+        from services.memory.memory_consolidation import consolidate_session
         result = consolidate_session("conv-789")
         assert "thread_ready_for_summary" in result["actions"]
 
@@ -480,7 +480,7 @@ class TestConsolidatePeriodic:
     @patch("layla.memory.distill.run_distill_after_outcome", return_value={"merged": 1})
     @patch("layla.memory.learnings._apply_confidence_decay")
     def test_runs_both_hooks(self, mock_decay, mock_distill):
-        from services.memory_consolidation import consolidate_periodic
+        from services.memory.memory_consolidation import consolidate_periodic
         result = consolidate_periodic()
         assert result["ok"] is True
         assert any("distill_tick" in a for a in result["actions"])
@@ -501,14 +501,14 @@ class TestReinforcelearning:
         mock_row = {"confidence": 0.5}
         mock_db.execute.return_value.fetchone.return_value = mock_row
 
-        from services.memory_consolidation import reinforce_learning
+        from services.memory.memory_consolidation import reinforce_learning
         reinforce_learning(42, success=True)
         # Should have called execute with SELECT then UPDATE then commit
         call_sqls = [str(c) for c in mock_db.execute.call_args_list]
         assert any("UPDATE" in s for s in call_sqls)
 
     def test_failure_skips(self):
-        from services.memory_consolidation import reinforce_learning
+        from services.memory.memory_consolidation import reinforce_learning
         # Should not raise, just return
         reinforce_learning(42, success=False)
 
@@ -545,7 +545,7 @@ class TestPruneLowConfidenceLearnings:
 
         mock_db.execute.side_effect = exec_side_effect
 
-        from services.memory_consolidation import prune_low_confidence_learnings
+        from services.memory.memory_consolidation import prune_low_confidence_learnings
         n = prune_low_confidence_learnings(threshold=0.08, batch=5)
         assert n == 3
 
@@ -568,12 +568,12 @@ class TestApplyRetentionPolicies:
         ]
         mock_db.execute.return_value = mock_cursor
 
-        from services.memory_consolidation import apply_retention_policies
+        from services.memory.memory_consolidation import apply_retention_policies
         result = apply_retention_policies()
         assert result["ok"] is True
 
     def test_error_returns_error_dict(self):
-        from services.memory_consolidation import apply_retention_policies
+        from services.memory.memory_consolidation import apply_retention_policies
         # Without mocking the DB, it will fail but should return error dict
         result = apply_retention_policies()
         # May or may not succeed depending on DB state, but should not raise

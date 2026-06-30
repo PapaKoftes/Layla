@@ -12,7 +12,7 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-from services.tunnel_auth import is_ip_allowed  # noqa: E402
+from services.governance.tunnel_auth import is_ip_allowed  # noqa: E402
 
 
 def test_empty_allowlist_allows_all():

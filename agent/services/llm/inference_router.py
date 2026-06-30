@@ -307,7 +307,7 @@ def run_completion_llama_cpp(
                     if "broadcast" in _emsg or "shape" in _emsg:
                         # KV cache corruption — invalidate and retry once
                         try:
-                            from services.llm_gateway import invalidate_llm_cache
+                            from services.llm.llm_gateway import invalidate_llm_cache
                             invalidate_llm_cache()
                         except Exception:
                             pass
@@ -334,7 +334,7 @@ def run_completion_llama_cpp(
                 out = fut.result(timeout=max(10, timeout_s))
             except _cf.TimeoutError:
                 try:
-                    from services.llm_gateway import invalidate_llm_cache
+                    from services.llm.llm_gateway import invalidate_llm_cache
                     invalidate_llm_cache()
                 except Exception:
                     pass
@@ -342,7 +342,7 @@ def run_completion_llama_cpp(
             except Exception as _fe:
                 if "broadcast" in str(_fe) or "shape" in str(_fe):
                     try:
-                        from services.llm_gateway import invalidate_llm_cache
+                        from services.llm.llm_gateway import invalidate_llm_cache
                         invalidate_llm_cache()
                     except Exception:
                         pass
@@ -359,7 +359,7 @@ def _resolve_model_override(override: str | None, cfg: dict) -> str | None:
         return None
     if override in ("coding", "reasoning", "chat"):
         try:
-            from services.model_router import route_model
+            from services.llm.model_router import route_model
             return route_model(override)
         except Exception:
             return None
@@ -388,7 +388,7 @@ def run_completion(
     import runtime_safety
     cfg = cfg_override if isinstance(cfg_override, dict) else runtime_safety.load_config()
     if stop is None:
-        from services.llm_gateway import get_stop_sequences
+        from services.llm.llm_gateway import get_stop_sequences
         stop = get_stop_sequences()
     top_p = float(cfg.get("top_p", 0.95))
     repeat_penalty = float(cfg.get("repeat_penalty", 1.1))
@@ -397,11 +397,11 @@ def run_completion(
     backend = _get_backend(cfg)
     lock = _llm_lock
     if lock is None:
-        from services.llm_gateway import llm_serialize_lock
+        from services.llm.llm_gateway import llm_serialize_lock
         lock = llm_serialize_lock
     get_llm = _get_llm
     if get_llm is None:
-        from services.llm_gateway import _get_llm
+        from services.llm.llm_gateway import _get_llm
         get_llm = _get_llm
 
     # Resolve model override for remote backends (local llama_cpp uses single model)
@@ -413,7 +413,7 @@ def run_completion(
 
     if backend == "litellm":
         try:
-            from services.litellm_gateway import run_completion_litellm
+            from services.llm.litellm_gateway import run_completion_litellm
             return run_completion_litellm(
                 cfg, prompt, max_tokens, temperature, stop, stream, timeout,
                 model_name=effective_model,
@@ -449,7 +449,7 @@ _TIER_RANK = {"cpu": 0, "gpu_low": 1, "gpu_mid": 2, "gpu_high": 3}
 def _get_cluster_peers() -> list[dict]:
     """Return paired peers that allow inference offloading, sorted by tier (highest first)."""
     try:
-        from services.mdns_discovery import get_discovered_peers
+        from services.cluster.mdns_discovery import get_discovered_peers
         peers = get_discovered_peers(max_age_s=60.0)
     except Exception:
         return []
@@ -605,7 +605,7 @@ def run_completion_with_fallback(
 
     if stop is None:
         try:
-            from services.llm_gateway import get_stop_sequences
+            from services.llm.llm_gateway import get_stop_sequences
             stop = get_stop_sequences()
         except Exception:
             stop = []
@@ -634,7 +634,7 @@ def get_cluster_status() -> dict:
     local_tier = (cfg.get("hardware_tier") or "").strip()
     if not local_tier:
         try:
-            from services.mdns_discovery import detect_hardware_tier
+            from services.cluster.mdns_discovery import detect_hardware_tier
             local_tier = detect_hardware_tier()
         except Exception:
             local_tier = "cpu"

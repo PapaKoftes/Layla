@@ -92,7 +92,7 @@ async def lifespan(app: FastAPI):
         pass
     # Install crash handler
     try:
-        from services.crash_handler import install_crash_handler
+        from services.infrastructure.crash_handler import install_crash_handler
         install_crash_handler()
     except Exception as _ch_err:
         logger.debug("crash handler install failed: %s", _ch_err)
@@ -135,7 +135,7 @@ async def lifespan(app: FastAPI):
     # Must be on the root logger too — _SafeFormatter only supplies a fallback;
     # the filter populates the real workspace / aspect / task-id values.
     try:
-        from services.task_context import install_filter as _install_task_ctx_filter
+        from services.infrastructure.task_context import install_filter as _install_task_ctx_filter
         _install_task_ctx_filter()          # root logger — so every handler gets task_ctx
         _install_task_ctx_filter("layla")   # layla logger for good measure
     except Exception:
@@ -158,8 +158,8 @@ async def lifespan(app: FastAPI):
     # ── Subsystem: Hardware detection ─────────────────────────────────────────
     if cfg.get("hardware_aware_startup", True):
         try:
-            from services.hardware_detect import detect_hardware
-            from services.model_recommender import recommend_from_hardware
+            from services.infrastructure.hardware_detect import detect_hardware
+            from services.llm.model_recommender import recommend_from_hardware
             h = detect_hardware()
             rec = recommend_from_hardware()
             logger.info(
@@ -209,7 +209,7 @@ async def lifespan(app: FastAPI):
 
     # ── Subsystem: Plugins ────────────────────────────────────────────────────
     try:
-        from services.plugin_loader import load_plugins
+        from services.skills.plugin_loader import load_plugins
         plug_result = load_plugins(cfg)
         if plug_result["skills_added"] or plug_result["tools_added"] or plug_result.get("capabilities_added"):
             logger.info(
@@ -225,7 +225,7 @@ async def lifespan(app: FastAPI):
 
     # ── Subsystem: LLM request queue ──────────────────────────────────────────
     try:
-        from services.llm_gateway import llm_request_queue
+        from services.llm.llm_gateway import llm_request_queue
         llm_request_queue.start()
         logger.info("LLM request queue worker started")
     except Exception as e:
@@ -252,7 +252,7 @@ async def lifespan(app: FastAPI):
     # ── Subsystem: LLM pre-warm ───────────────────────────────────────────────
     if cfg.get("llm_prewarm_enabled", True):
         try:
-            from services.llm_gateway import prewarm_llm
+            from services.llm.llm_gateway import prewarm_llm
             prewarm_llm()
             logger.info("LLM pre-warm thread started")
         except Exception as e:
@@ -262,7 +262,7 @@ async def lifespan(app: FastAPI):
     if cfg.get("benchmark_on_load"):
         def _startup_capability_benchmarks() -> None:
             try:
-                from services.benchmark_suite import run_benchmark
+                from services.infrastructure.benchmark_suite import run_benchmark
                 run_benchmark("embedding", "sentence_transformers", "sentence-transformers")
                 run_benchmark("vector_search", "chromadb", "chromadb")
             except Exception as e:
@@ -306,20 +306,20 @@ async def lifespan(app: FastAPI):
     # ── Subsystem: Voice pre-warm ─────────────────────────────────────────────
     if cfg.get("voice_stt_prewarm_enabled", False):
         try:
-            from services.stt import prewarm as stt_prewarm
+            from services.infrastructure.stt import prewarm as stt_prewarm
             stt_prewarm()
         except Exception:
             pass
     if cfg.get("voice_tts_prewarm_enabled", False):
         try:
-            from services.tts import prewarm as tts_prewarm
+            from services.infrastructure.tts import prewarm as tts_prewarm
             tts_prewarm()
         except Exception:
             pass
 
     # ── Subsystem: Repo indexer ───────────────────────────────────────────────
     try:
-        from services.repo_indexer import index_workspace_repo as _idx_repo
+        from services.workspace.repo_indexer import index_workspace_repo as _idx_repo
         _ws_root = (cfg.get("sandbox_root") or "").strip()
         if _ws_root:
             def _startup_repo_index():
@@ -327,7 +327,7 @@ async def lifespan(app: FastAPI):
                     _idx_repo(_ws_root)
                 except Exception as _e:
                     try:
-                        from services.degraded import mark_degraded
+                        from services.infrastructure.degraded import mark_degraded
                         mark_degraded("repo_indexer", str(_e))
                     except Exception:
                         pass
@@ -404,7 +404,7 @@ async def lifespan(app: FastAPI):
         if cfg.get("mdns_enabled", True):
             def _mdns_startup():
                 try:
-                    from services.mdns_discovery import start_service as _mdns_start
+                    from services.cluster.mdns_discovery import start_service as _mdns_start
                     if _mdns_start(cfg):
                         logger.info("mDNS discovery service started")
                     else:
@@ -422,7 +422,7 @@ async def lifespan(app: FastAPI):
         import runtime_safety as _rs_gov
         _cfg_gov = _rs_gov.load_config()
         if _cfg_gov.get("resource_governor_enabled", True):
-            from services.resource_governor import get_governor, ResourceMode
+            from services.infrastructure.resource_governor import get_governor, ResourceMode
             _governor_instance = get_governor(_cfg_gov)
             logger.info("resource governor initialised (mode: %s)", _governor_instance.mode.value)
 
@@ -456,7 +456,7 @@ async def lifespan(app: FastAPI):
                 try:
                     if new_mode == ResourceMode.WHISPER and old_mode != ResourceMode.WHISPER:
                         # Schedule delayed model unload (2 min grace period)
-                        from services.llm_gateway import schedule_idle_unload
+                        from services.llm.llm_gateway import schedule_idle_unload
                         _whisper_unload_timer[0] = schedule_idle_unload(delay_seconds=120)
                     elif new_mode == ResourceMode.SPRINT:
                         # Cancel any pending unload and pre-warm model
@@ -464,7 +464,7 @@ async def lifespan(app: FastAPI):
                             _whisper_unload_timer[0].cancel()
                             _whisper_unload_timer[0] = None
                         import threading as _thr
-                        from services.llm_gateway import prewarm_llm
+                        from services.llm.llm_gateway import prewarm_llm
                         _thr.Thread(target=prewarm_llm, daemon=True, name="sprint-prewarm").start()
                     elif old_mode == ResourceMode.WHISPER:
                         # Leaving WHISPER — cancel pending unload
@@ -476,7 +476,7 @@ async def lifespan(app: FastAPI):
 
                 # 3. Worker pool hint
                 try:
-                    from services.drone_worker import get_drone_worker
+                    from services.cluster.drone_worker import get_drone_worker
                     dw = get_drone_worker()
                     if dw and hasattr(dw, "_max_concurrent"):
                         dw._max_concurrent = _governor_instance.get_max_workers()
@@ -494,7 +494,7 @@ async def lifespan(app: FastAPI):
         import runtime_safety as _rs_tray
         _cfg_tray = _rs_tray.load_config()
         if _cfg_tray.get("system_tray_enabled", True):
-            from services.system_tray import start_tray
+            from services.infrastructure.system_tray import start_tray
             if start_tray(_governor_instance):
                 logger.info("system tray started")
     except Exception as _tray_err:
@@ -505,7 +505,7 @@ async def lifespan(app: FastAPI):
         import runtime_safety as _rs_cluster
         _cfg_cluster = _rs_cluster.load_config()
         if _cfg_cluster.get("cluster_enabled", False):
-            from services.cluster_network import get_cluster_network
+            from services.cluster.cluster_network import get_cluster_network
             _cluster_net = get_cluster_network(_cfg_cluster)
             _cluster_net.start_heartbeat()
             logger.info("cluster network started (role: %s, peers: %d)",
@@ -515,21 +515,21 @@ async def lifespan(app: FastAPI):
 
     # Phase 3: Start drone worker (processes queued tasks locally)
     try:
-        from services.drone_worker import start_drone_worker
+        from services.cluster.drone_worker import start_drone_worker
         start_drone_worker()
     except Exception as _dw_err:
         logger.debug("drone worker skipped: %s", _dw_err)
 
     # Start queen worker (processes queued tasks on QUEEN node)
     try:
-        from services.drone_worker import start_queen_worker
+        from services.cluster.drone_worker import start_queen_worker
         start_queen_worker()
     except Exception as _qw_err:
         logger.debug("queen worker skipped: %s", _qw_err)
 
     # Phase 5A: Start knowledge watcher (auto-ingest from watched folders)
     try:
-        from services.knowledge_watcher import start_knowledge_watcher
+        from services.memory.knowledge_watcher import start_knowledge_watcher
         start_knowledge_watcher()
     except Exception as _kw_err:
         logger.debug("knowledge watcher skipped: %s", _kw_err)
@@ -539,7 +539,7 @@ async def lifespan(app: FastAPI):
         import runtime_safety as _rs_nsync
         _cfg_nsync = _rs_nsync.load_config()
         if _cfg_nsync.get("cluster_enabled", False):
-            from services.node_sync import get_node_sync
+            from services.cluster.node_sync import get_node_sync
             _node_sync = get_node_sync(_cfg_nsync)
             _node_sync.start()
             logger.info("node sync started (interval=%ds)", _node_sync._sync_interval)
@@ -574,43 +574,43 @@ async def lifespan(app: FastAPI):
             pass
     # Stop system tray
     try:
-        from services.system_tray import stop_tray
+        from services.infrastructure.system_tray import stop_tray
         stop_tray()
     except Exception:
         pass
     # Phase 5A: Stop knowledge watcher
     try:
-        from services.knowledge_watcher import stop_knowledge_watcher
+        from services.memory.knowledge_watcher import stop_knowledge_watcher
         stop_knowledge_watcher()
     except Exception:
         pass
     # Phase 3: Stop drone worker
     try:
-        from services.drone_worker import stop_drone_worker
+        from services.cluster.drone_worker import stop_drone_worker
         stop_drone_worker()
     except Exception:
         pass
     # Stop queen worker
     try:
-        from services.drone_worker import stop_queen_worker
+        from services.cluster.drone_worker import stop_queen_worker
         stop_queen_worker()
     except Exception:
         pass
     # Phase 2: Stop cluster heartbeat
     try:
-        from services.cluster_network import get_cluster_network
+        from services.cluster.cluster_network import get_cluster_network
         get_cluster_network().stop_heartbeat()
     except Exception:
         pass
     # Stop node sync
     try:
-        from services.node_sync import get_node_sync
+        from services.cluster.node_sync import get_node_sync
         get_node_sync().stop()
     except Exception:
         pass
     # Phase 9: Stop mDNS discovery
     try:
-        from services.mdns_discovery import stop_service as _mdns_stop
+        from services.cluster.mdns_discovery import stop_service as _mdns_stop
         _mdns_stop()
     except Exception:
         pass
@@ -623,7 +623,7 @@ async def lifespan(app: FastAPI):
     if hasattr(app.state, "scheduler"):
         app.state.scheduler.shutdown(wait=False)
     try:
-        from services.llm_gateway import llm_request_queue
+        from services.llm.llm_gateway import llm_request_queue
 
         await llm_request_queue.stop()
     except Exception:
@@ -783,7 +783,7 @@ from routers import memory as memory_router  # noqa: E402
 from routers import research as research_router  # noqa: E402
 from routers import system as system_router
 from routers import ws as ws_router
-from services import study_service  # noqa: E402
+from services.memory import study_service  # noqa: E402
 from shared_state import set_refs  # noqa: E402
 
 set_refs(
@@ -1013,7 +1013,7 @@ async def remote_auth_middleware(request: Request, call_next):
     # forwards internet traffic from 127.0.0.1, so a bare loopback check would
     # exempt every remote request. real_client_ip flags forwarded requests and
     # returns the true client IP for allowlist/rate-limit/audit.
-    from services.auth import real_client_ip, require_auth_always
+    from services.safety.auth import real_client_ip, require_auth_always
     _socket_host = request.client.host if request.client else None
     client_host, _via_proxy = real_client_ip(request.headers, _socket_host)
     # Loopback is exempt only for a direct connection, and only when the operator
@@ -1030,14 +1030,14 @@ async def remote_auth_middleware(request: Request, call_next):
     bearer_token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""
 
     # Unified auth check (shared with WebSocket path; localhost already handled above)
-    from services.auth import check_auth
+    from services.safety.auth import check_auth
 
     _auth_ok, _deny_detail = check_auth(bearer_token, client_host or "", cfg)
 
     if not _auth_ok:
         if _audit_enabled:
             try:
-                from services.tunnel_audit import log_access
+                from services.governance.tunnel_audit import log_access
                 log_access(client_host or "", req_path, req_method, None, "deny", detail=_deny_detail)
             except Exception:
                 pass
@@ -1056,7 +1056,7 @@ async def remote_auth_middleware(request: Request, call_next):
             try:
                 import hashlib as _hl
 
-                from services.tunnel_audit import log_access
+                from services.governance.tunnel_audit import log_access
                 _tid = _hl.sha256(bearer_token.encode()).hexdigest()[:8] if bearer_token else "none"
                 log_access(client_host or "", req_path, req_method, _tid, "deny", detail="endpoint not allowed")
             except Exception:
@@ -1071,7 +1071,7 @@ async def remote_auth_middleware(request: Request, call_next):
         try:
             import hashlib as _hl
 
-            from services.tunnel_audit import log_access
+            from services.governance.tunnel_audit import log_access
             _tid = _hl.sha256(bearer_token.encode()).hexdigest()[:8] if bearer_token else "none"
             log_access(client_host or "", req_path, req_method, _tid, "allow")
         except Exception:
@@ -1091,7 +1091,7 @@ async def remote_rate_limit_middleware(request: Request, call_next):
             return await call_next(request)
     except Exception:
         return await call_next(request)
-    from services.auth import real_client_ip, require_auth_always
+    from services.safety.auth import real_client_ip, require_auth_always
     _socket_host = request.client.host if request.client else None
     client_host, _via_proxy = real_client_ip(request.headers, _socket_host)
     if _is_localhost(client_host) and not _via_proxy and not require_auth_always(cfg):
@@ -1101,7 +1101,7 @@ async def remote_rate_limit_middleware(request: Request, call_next):
     except (TypeError, ValueError):
         lim = 100
     try:
-        from services.remote_rate_limit import check_rate_limit
+        from services.infrastructure.remote_rate_limit import check_rate_limit
 
         ok, reason = check_rate_limit(client_host or "unknown", lim)
         if not ok:

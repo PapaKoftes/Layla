@@ -20,8 +20,8 @@ from agent_loop import (
     truncate_at_next_user_turn,
 )
 from schemas.requests import AgentRequest, SteerRequest
-from services.output_polish import polish_output
-from services.resource_manager import PRIORITY_CHAT, classify_load
+from services.infrastructure.output_polish import polish_output
+from services.infrastructure.resource_manager import PRIORITY_CHAT, classify_load
 from shared_state import (
     append_conv_history,
     get_append_history,
@@ -37,7 +37,7 @@ router = APIRouter(tags=["agent"])
 def _dispatch_autonomous_run(goal, **kwargs):
     """Late-bind to agent_loop.autonomous_run; coordinator.run is the outer HTTP entry (resume, worktree, consolidation)."""
     import agent_loop as _al
-    from services.coordinator import run as coordinator_run
+    from services.planning.coordinator import run as coordinator_run
 
     return coordinator_run(_al.autonomous_run, goal, **kwargs)
 
@@ -54,7 +54,7 @@ async def _watch_client_disconnect(http_request: Request, ev: threading.Event) -
         return
 
 
-from services.agent_task_runner import (
+from services.infrastructure.agent_task_runner import (
     _build_reasoning_tree_summary,
     _compute_background_job_sandbox,
     _json_safe,
@@ -62,7 +62,7 @@ from services.agent_task_runner import (
     _run_background_subprocess_task,
     enqueue_threaded_autonomous,
 )
-from services.resource_manager import PRIORITY_BACKGROUND
+from services.infrastructure.resource_manager import PRIORITY_BACKGROUND
 
 from .agent_tasks import router as _agent_tasks_router
 from .learn import router as _learn_router
@@ -193,7 +193,7 @@ def _extract_artifacts(text: str) -> list[dict]:
 def _model_ready_message() -> str | None:
     """Return error message if model/LLM is not ready, else None."""
     try:
-        from services.llm_gateway import model_loaded_status
+        from services.llm.llm_gateway import model_loaded_status
         status = model_loaded_status()
         err = status.get("error")
         if err:
@@ -260,7 +260,7 @@ async def agent(req: AgentRequest, request: Request):
     # A remote caller must not self-grant write/execute via the request body
     # (same guard as /v1). Honored only for a direct local caller; fail-closed.
     try:
-        from services.auth import is_direct_local
+        from services.safety.auth import is_direct_local
         if not is_direct_local(request.headers, request.client.host if request.client else None):
             allow_write = False
             allow_run = False
@@ -287,7 +287,7 @@ async def agent(req: AgentRequest, request: Request):
 
     try:
         if (workspace_root or "").strip():
-            from services.workspace_awareness import refresh_for_workspace
+            from services.workspace.workspace_awareness import refresh_for_workspace
 
             refresh_for_workspace(str(workspace_root).strip(), cfg)
     except Exception:
@@ -377,8 +377,8 @@ async def agent(req: AgentRequest, request: Request):
         from pathlib import Path
 
         from layla.tools.registry import inside_sandbox
-        from services.project_memory import scan_workspace_into_memory
-        from services.repo_cognition import sync_repo_cognition
+        from services.memory.project_memory import scan_workspace_into_memory
+        from services.workspace.repo_cognition import sync_repo_cognition
 
         root = Path(str(workspace_root).strip()).expanduser().resolve()
         if not inside_sandbox(root):
@@ -421,7 +421,7 @@ async def agent(req: AgentRequest, request: Request):
     _plan_light = _ep_enabled and (plan_mode or _ep_mode == "plan")
     if _plan_light and (goal or "").strip():
         try:
-            from services.engineering_pipeline import run_plan_light
+            from services.planning.engineering_pipeline import run_plan_light
 
             pr = await asyncio.to_thread(
                 run_plan_light,
@@ -475,20 +475,20 @@ async def agent(req: AgentRequest, request: Request):
             from pathlib import Path
 
             from layla.tools.registry import inside_sandbox
-            from services.planner import create_plan
-            from services.project_memory import persist_plan_to_memory
+            from services.planning.planner import create_plan
+            from services.memory.project_memory import persist_plan_to_memory
 
             digest = ""
             if (workspace_root or "").strip():
                 try:
-                    from services.plan_workspace_store import prior_plans_digest
+                    from services.planning.plan_workspace_store import prior_plans_digest
 
                     digest = prior_plans_digest(str(workspace_root).strip(), limit=8)
                 except Exception:
                     digest = ""
             plan_steps = await asyncio.to_thread(create_plan, goal, 6, cfg, digest)
             from layla.memory.db import create_layla_plan, get_layla_plan
-            from services.engine_plans import normalize_planner_steps
+            from services.planning.engine_plans import normalize_planner_steps
 
             steps_norm = normalize_planner_steps(plan_steps)
             plan_row_id = create_layla_plan(
@@ -502,7 +502,7 @@ async def agent(req: AgentRequest, request: Request):
             prow = get_layla_plan(plan_row_id)
             if prow:
                 try:
-                    from services.plan_workspace_store import mirror_sqlite_plan
+                    from services.planning.plan_workspace_store import mirror_sqlite_plan
 
                     mirror_sqlite_plan(prow)
                 except Exception:
@@ -604,7 +604,7 @@ async def agent(req: AgentRequest, request: Request):
         and not (_ep_enabled and _ep_mode in ("plan", "execute"))
     ):
         try:
-            from services.response_cache import get_cached_response
+            from services.retrieval.response_cache import get_cached_response
             cached = get_cached_response(goal, aspect_id or "morrigan", cache_ttl)
             if cached:
                 cached.setdefault("state", {})
@@ -1028,7 +1028,7 @@ async def agent(req: AgentRequest, request: Request):
     }
     # Phase 0.4: inject last model routing decision for operator audit
     try:
-        from services.model_router import get_last_routing_decision
+        from services.llm.model_router import get_last_routing_decision
         _rd = get_last_routing_decision()
         if _rd:
             response_payload["model_selection"] = _json_safe(_rd)
@@ -1068,7 +1068,7 @@ async def agent(req: AgentRequest, request: Request):
         and not (_ep_enabled and _ep_mode in ("plan", "execute"))
     ):
         try:
-            from services.response_cache import put_cached_response
+            from services.retrieval.response_cache import put_cached_response
             put_cached_response(goal, aspect_id or response_payload.get("aspect") or "morrigan", response_payload, max_entries=cache_max_entries)
         except Exception:
             pass

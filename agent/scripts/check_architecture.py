@@ -56,14 +56,14 @@ def warn(name: str, detail: str) -> None:
 
 print("\n[1] Critical module imports")
 CRITICAL = [
-    "services.agent_safety",
-    "services.context_manager",
-    "services.llm_gateway",
-    "services.resource_manager",
-    "services.system_head_builder",
+    "services.safety.agent_safety",
+    "services.context.context_manager",
+    "services.llm.llm_gateway",
+    "services.infrastructure.resource_manager",
+    "services.prompts.system_head_builder",
     "shared_state",
     "services.observability",
-    "services.session_context",
+    "services.infrastructure.session_context",
 ]
 for mod in CRITICAL:
     try:

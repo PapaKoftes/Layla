@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from services.elasticsearch_bridge import search_learnings
+from services.retrieval.elasticsearch_bridge import search_learnings
 
 
 def test_search_returns_disabled_when_es_off():

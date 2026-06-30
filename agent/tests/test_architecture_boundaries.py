@@ -50,11 +50,11 @@ def _parse_file(path: Path):
 # ---------------------------------------------------------------------------
 
 CRITICAL_MODULES = [
-    "services.agent_safety",
-    "services.context_manager",
-    "services.llm_gateway",
-    "services.resource_manager",
-    "services.system_head_builder",
+    "services.safety.agent_safety",
+    "services.context.context_manager",
+    "services.llm.llm_gateway",
+    "services.infrastructure.resource_manager",
+    "services.prompts.system_head_builder",
     "shared_state",
 ]
 
@@ -188,7 +188,7 @@ _MEMORY_INFRA_PREFIXES = (
     "layla/ingestion/",
     "layla/scheduler/",
     "layla/tools/",
-    "services/memory_router.py",
+    "services/memory/memory_router.py",
     "shared_state.py",
     "scripts/",
 )
@@ -235,19 +235,21 @@ def test_memory_router_bypass_count():
 # ---------------------------------------------------------------------------
 
 def test_services_flat_file_count():
-    """Track flat files in services/.
+    """services/ should contain no flat modules except __init__.py.
 
-    Count should decrease as we reorganize into sub-packages.
+    The back-compat shims (R8) were removed; every service now lives in a
+    sub-package (services/<domain>/<mod>.py). New service logic must be placed
+    in a sub-package, never as a flat services/<mod>.py file.
     """
     services = AGENT_DIR / "services"
     if not services.is_dir():
         pytest.skip("services/ directory not found")
 
     flat_files = [f for f in services.glob("*.py") if f.name != "__init__.py"]
-    # All 204 flat files are now backward-compat shims (sys.modules pattern).
-    assert len(flat_files) <= 210, (
-        f"services/ has {len(flat_files)} flat files (max 210). "
-        "Move services into sub-packages."
+    assert flat_files == [], (
+        f"services/ has {len(flat_files)} flat module(s): "
+        f"{sorted(f.name for f in flat_files)}. "
+        "Service modules must live in a sub-package (services/<domain>/)."
     )
 
 
@@ -314,54 +316,48 @@ def test_required_subpackage_exists(pkg: str):
 
 
 # ---------------------------------------------------------------------------
-# Test 10 -- All flat shims are backward-compat only
+# Test 10 -- No flat shims remain (R8 removed all back-compat shims)
 # ---------------------------------------------------------------------------
 
-def test_all_flat_services_are_shims():
-    """Every flat services/*.py file should be a backward-compat shim."""
+def test_no_flat_service_shims_remain():
+    """The flat back-compat shims were removed in R8.
+
+    Every flat services/*.py (other than __init__.py) used to be a
+    ``sys.modules[__name__] = import_module(...)`` shim re-exporting the
+    canonical services.<domain>.<mod> module.  They are gone now; assert none
+    have reappeared.
+    """
     services = AGENT_DIR / "services"
-    violations = []
-    for f in sorted(services.glob("*.py")):
-        if f.name == "__init__.py":
-            continue
-        content = f.read_text(encoding="utf-8", errors="replace")
-        is_shim = (
-            "sys.modules[__name__]" in content
-            or ("Backward compatibility" in content and "import *" in content)
-        )
-        if not is_shim:
-            violations.append(f"{f.name} ({len(content.splitlines())} lines)")
-    assert not violations, (
-        f"Flat service files that are NOT shims:\n  " + "\n  ".join(violations)
+    flat = [f.name for f in sorted(services.glob("*.py")) if f.name != "__init__.py"]
+    assert flat == [], (
+        "Flat services/*.py shims should no longer exist after R8: "
+        f"{flat}. Import from the canonical services.<domain>.<mod> path instead."
     )
 
 
 # ---------------------------------------------------------------------------
-# Test 11 -- Shims resolve to same module as canonical path
+# Test 11 -- Canonical service modules import cleanly
 # ---------------------------------------------------------------------------
 
-_SHIM_PAIRS = [
-    ("services.llm_gateway", "services.llm.llm_gateway"),
-    ("services.maturity_engine", "services.personality.maturity_engine"),
-    ("services.resource_manager", "services.infrastructure.resource_manager"),
-    ("services.cluster_network", "services.cluster.cluster_network"),
-    ("services.tool_dispatch", "services.tools.tool_dispatch"),
-    ("services.memory_router", "services.memory.memory_router"),
-    ("services.planner", "services.planning.planner"),
-    ("services.telemetry", "services.observability.telemetry"),
-    ("services.content_guard", "services.safety.content_guard"),
-    ("services.metrics", "services.observability.prom_metrics"),
+_CANONICAL_MODULES = [
+    "services.llm.llm_gateway",
+    "services.personality.maturity_engine",
+    "services.infrastructure.resource_manager",
+    "services.cluster.cluster_network",
+    "services.tools.tool_dispatch",
+    "services.memory.memory_router",
+    "services.planning.planner",
+    "services.observability.telemetry",
+    "services.safety.content_guard",
+    "services.observability.prom_metrics",
+    "services.personality.evolution",
 ]
 
 
-@pytest.mark.parametrize("old_path,new_path", _SHIM_PAIRS)
-def test_shim_resolves_to_canonical(old_path, new_path):
-    """Old import path should resolve to the same module as the canonical path."""
-    old_mod = importlib.import_module(old_path)
-    new_mod = importlib.import_module(new_path)
-    assert old_mod is new_mod, (
-        f"{old_path} and {new_path} should be the same module"
-    )
+@pytest.mark.parametrize("mod_path", _CANONICAL_MODULES)
+def test_canonical_service_modules_import(mod_path):
+    """Canonical service modules (former shim targets) must import cleanly."""
+    importlib.import_module(mod_path)
 
 
 # ---------------------------------------------------------------------------

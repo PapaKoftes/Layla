@@ -18,7 +18,7 @@ def distill_learnings_to_insights(n: int = 20) -> dict[str, Any]:
     """
     try:
         from layla.memory.db import get_recent_learnings
-        from services.memory_router import save_learning  # canonical write path
+        from services.memory.memory_router import save_learning  # canonical write path
         learnings = get_recent_learnings(n=n)
         if len(learnings) < 3:
             return {"insights_added": 0, "learnings_processed": len(learnings)}
@@ -29,7 +29,7 @@ def distill_learnings_to_insights(n: int = 20) -> dict[str, Any]:
 
         # Try LLM to synthesize higher-level insight
         try:
-            from services.llm_gateway import run_completion
+            from services.llm.llm_gateway import run_completion
             sample = "\n".join(f"- {c[:150]}" for c in contents[:10])
             prompt = (
                 f"From these learnings:\n{sample}\n\n"

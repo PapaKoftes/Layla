@@ -94,8 +94,8 @@ def test_initiative_rule_ordering():
 
 def test_project_discovery_returns_structure(monkeypatch):
     """North Star §18: run_project_discovery returns dict with opportunities, ideas, feasibility_notes."""
-    import services.project_discovery as pd
-    from services import llm_gateway
+    import services.workspace.project_discovery as pd
+    from services.llm import llm_gateway
     monkeypatch.setattr(
         llm_gateway,
         "run_completion",
@@ -112,8 +112,8 @@ def test_project_discovery_returns_structure(monkeypatch):
 
 def test_project_discovery_malformed_completion_returns_safe_fallback(monkeypatch):
     """Malformed or invalid JSON from completion returns safe structure (no exception)."""
-    import services.project_discovery as pd
-    from services import llm_gateway
+    import services.workspace.project_discovery as pd
+    from services.llm import llm_gateway
 
     monkeypatch.setattr(
         llm_gateway,

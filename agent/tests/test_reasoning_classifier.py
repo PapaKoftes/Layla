@@ -10,31 +10,31 @@ if str(AGENT_DIR) not in sys.path:
 
 
 def test_classify_hi_is_none():
-    from services.reasoning_classifier import classify_reasoning_need
+    from services.infrastructure.reasoning_classifier import classify_reasoning_need
 
     assert classify_reasoning_need("hi") == "none"
 
 
 def test_classify_coding_is_deep():
-    from services.reasoning_classifier import classify_reasoning_need
+    from services.infrastructure.reasoning_classifier import classify_reasoning_need
 
     assert classify_reasoning_need("fix the bug in login.py") == "deep"
 
 
 def test_classify_explain_for_loop_is_light():
-    from services.reasoning_classifier import classify_reasoning_need
+    from services.infrastructure.reasoning_classifier import classify_reasoning_need
 
     assert classify_reasoning_need("explain what a for loop does") == "light"
 
 
 def test_research_mode_forces_deep():
-    from services.reasoning_classifier import classify_reasoning_need
+    from services.infrastructure.reasoning_classifier import classify_reasoning_need
 
     assert classify_reasoning_need("hi", research_mode=True) == "deep"
 
 
 def test_stabilize_deep_to_light_stays_light():
-    from services.reasoning_classifier import stabilize_reasoning_mode
+    from services.infrastructure.reasoning_classifier import stabilize_reasoning_mode
 
     assert stabilize_reasoning_mode("deep", "light") == "light"
     assert stabilize_reasoning_mode("light", "deep") == "deep"

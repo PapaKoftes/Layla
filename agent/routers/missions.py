@@ -18,7 +18,7 @@ import logging
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from services.route_helpers import sync_create_and_run_mission
+from services.infrastructure.route_helpers import sync_create_and_run_mission
 
 logger = logging.getLogger("layla")
 router = APIRouter(tags=["missions"])
@@ -160,7 +160,7 @@ def mission_board_api():
 def list_horizon_plans_api():
     """List all long-horizon plan checkpoints."""
     try:
-        from services.long_horizon_planner import list_checkpoints
+        from services.planning.long_horizon_planner import list_checkpoints
         return JSONResponse({"plans": list_checkpoints()})
     except Exception as e:
         return JSONResponse({"error": str(e), "plans": []})

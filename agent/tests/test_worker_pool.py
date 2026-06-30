@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from services.worker_pool import hardware_class, max_parallel_workers, tool_batch_max_workers
+from services.infrastructure.worker_pool import hardware_class, max_parallel_workers, tool_batch_max_workers
 
 
 def test_hardware_class_tiers():

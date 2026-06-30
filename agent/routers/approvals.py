@@ -74,7 +74,7 @@ def approve(req: dict):
         # D6: save_for_session — register an in-memory grant valid until process restart
         if save_for_session and tool_name:
             try:
-                from services.session_grants import add_session_grant
+                from services.safety.session_grants import add_session_grant
                 grant_scope = "command" if args.get("command") else "tool"
                 grant_args = {}
                 if grant_scope == "command":
@@ -105,7 +105,7 @@ def approve(req: dict):
         # Layla v3: maturity XP for approvals (trust signal).
         if result_ok:
             try:
-                from services.maturity_engine import award_xp
+                from services.personality.maturity_engine import award_xp
 
                 award_xp(15, reason="approval_executed")
             except Exception:
@@ -140,7 +140,7 @@ def deny_approval(req: dict):
 def get_session_grants():
     """Return all active in-memory session grants."""
     try:
-        from services.session_grants import list_session_grants
+        from services.safety.session_grants import list_session_grants
         return JSONResponse({"ok": True, "grants": list_session_grants()})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)})
@@ -150,7 +150,7 @@ def get_session_grants():
 def clear_session_grants_route():
     """Revoke all session grants immediately."""
     try:
-        from services.session_grants import clear_session_grants
+        from services.safety.session_grants import clear_session_grants
         clear_session_grants()
         return JSONResponse({"ok": True})
     except Exception as e:

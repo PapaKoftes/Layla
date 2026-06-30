@@ -39,7 +39,7 @@ _TIMEOUT_S = 5  # seconds for each REST call
 def _get_config() -> dict:
     """Load agent config.json lazily (delegates to services.config_cache)."""
     try:
-        from services.config_cache import get_config
+        from services.infrastructure.config_cache import get_config
         return get_config()
     except Exception:
         return {}

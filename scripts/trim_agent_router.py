@@ -6,7 +6,7 @@ p = ROOT / "agent" / "routers" / "agent.py"
 lines = p.read_text(encoding="utf-8").splitlines(keepends=True)
 
 bridge = """
-from services.agent_task_runner import (
+from services.infrastructure.agent_task_runner import (
     _build_reasoning_tree_summary,
     _json_safe,
 )

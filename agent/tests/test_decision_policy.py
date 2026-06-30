@@ -1,4 +1,4 @@
-from services.decision_policy import (
+from services.safety.decision_policy import (
     PolicyCaps,
     apply_caps_to_valid_tools,
     build_policy_caps,

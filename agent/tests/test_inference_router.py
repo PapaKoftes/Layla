@@ -1,6 +1,6 @@
 """Tests for inference_router (multi-backend LLM routing)."""
 
-from services.inference_router import (
+from services.llm.inference_router import (
     _BACKENDS,
     _detect_backend,
     effective_inference_backend,

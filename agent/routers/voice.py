@@ -15,7 +15,7 @@ router = APIRouter(tags=["voice"])
 async def voice_transcribe(request: Request):
     """Transcribe audio to text using faster-whisper."""
     try:
-        from services.stt import get_stt_recovery, is_stt_ready, transcribe_bytes
+        from services.infrastructure.stt import get_stt_recovery, is_stt_ready, transcribe_bytes
 
         audio_bytes = await request.body()
         if not audio_bytes:
@@ -42,7 +42,7 @@ async def voice_transcribe(request: Request):
 async def voice_speak(request: Request):
     """Text-to-speech via kokoro-onnx (or pyttsx3 fallback)."""
     try:
-        from services.tts import get_tts_recovery, speak_to_bytes
+        from services.infrastructure.tts import get_tts_recovery, speak_to_bytes
 
         body = await request.body()
         aspect_id = ""

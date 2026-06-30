@@ -20,7 +20,7 @@ def create_mission(goal: str, workspace_root: str = "", allow_write: bool = Fals
     try:
         from layla.memory.db import save_mission
         from services.observability import log_mission_created
-        from services.planner import create_plan
+        from services.planning.planner import create_plan
     except ImportError as e:
         logger.warning("mission create imports failed: %s", e)
         return None
@@ -29,7 +29,7 @@ def create_mission(goal: str, workspace_root: str = "", allow_write: bool = Fals
     digest = ""
     if (workspace_root or "").strip():
         try:
-            from services.plan_workspace_store import prior_plans_digest
+            from services.planning.plan_workspace_store import prior_plans_digest
 
             digest = prior_plans_digest(str(workspace_root).strip(), limit=8)
         except Exception:
