@@ -85,7 +85,7 @@ This project maintains **uniform technical depth** documentation. Full coverage 
 Individual subsystem deep dives (examples):
 
 - UI → [`docs/UI_MODULE_SECOND_SWEEP.md`](docs/UI_MODULE_SECOND_SWEEP.md)
-- Agent Loop → [`docs/AGENT_LOOP_MODULE_SECOND_SWEEP.md`](docs/AGENT_LOOP_MODULE_SECOND_SWEEP.md)
+- Agent Loop → [`docs/archive/sweep_stubs/AGENT_LOOP_MODULE_SECOND_SWEEP.md`](docs/archive/sweep_stubs/AGENT_LOOP_MODULE_SECOND_SWEEP.md)
 - Services → [`docs/SERVICES_MODULE_SECOND_SWEEP.md`](docs/SERVICES_MODULE_SECOND_SWEEP.md)
 - Routers → [`docs/ROUTERS_MODULE_SECOND_SWEEP.md`](docs/ROUTERS_MODULE_SECOND_SWEEP.md)
 - Geometry → [`docs/GEOMETRY_MODULE_SECOND_SWEEP.md`](docs/GEOMETRY_MODULE_SECOND_SWEEP.md)

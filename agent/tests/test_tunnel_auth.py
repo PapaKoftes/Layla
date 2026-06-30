@@ -149,11 +149,20 @@ class TestIPAllowlist:
         cfg = {"tunnel_ip_allowlist": ["1.2.3.4", "5.6.7.8"]}
         assert is_ip_allowed("9.9.9.9", cfg) is False
 
-    def test_localhost_always_allowed(self):
+    def test_forged_localhost_must_satisfy_allowlist(self):
+        """REQ-10/11: is_ip_allowed has NO localhost bypass. It is only reached for
+        REMOTE requests (the middleware exempts genuine direct-local before auth runs),
+        so a 127.0.0.1 seen here arrived via a spoofable forwarding header and must
+        satisfy the allowlist like any other IP — otherwise a forged XFF: 127.0.0.1
+        would bypass the allowlist (the exact hole the trust-boundary fix closed)."""
         from services.tunnel_auth import is_ip_allowed
-        cfg = {"tunnel_ip_allowlist": ["1.2.3.4"]}
-        assert is_ip_allowed("127.0.0.1", cfg) is True
-        assert is_ip_allowed("::1", cfg) is True
+        # allowlist set, loopback NOT in it → denied (no magic bypass)
+        assert is_ip_allowed("127.0.0.1", {"tunnel_ip_allowlist": ["1.2.3.4"]}) is False
+        assert is_ip_allowed("::1", {"tunnel_ip_allowlist": ["1.2.3.4"]}) is False
+        # empty allowlist → all allowed (incl. loopback)
+        assert is_ip_allowed("127.0.0.1", {"tunnel_ip_allowlist": []}) is True
+        # loopback explicitly allowlisted → allowed
+        assert is_ip_allowed("127.0.0.1", {"tunnel_ip_allowlist": ["127.0.0.1"]}) is True
 
 
 class TestTokenExpiry:

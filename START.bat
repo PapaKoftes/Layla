@@ -30,13 +30,11 @@ if errorlevel 1 (
 )
 
 echo  Starting Layla...
-echo  UI will open at: http://localhost:8000/ui
 echo  Press Ctrl+C here to stop.
 echo.
 
-REM Open browser after a short delay (background)
-start /b cmd /c "timeout /t 3 /nobreak >nul && start http://localhost:8000/ui"
-
-REM Start the server (foreground, visible output)
+REM Start via serve.py: it checks the port first so Layla never collides with
+REM another program on :8000 (auto-relocates to a free port, or opens the
+REM already-running instance), and opens the browser at the correct port.
 cd agent
-uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+python serve.py
