@@ -192,6 +192,7 @@ Layered on the remediation substrate (Phases 1–8). Goal: a friend on a **16GB 
   3. `/v1` hardened so Cline/Continue/Aider can point at Layla; aspects import/export as portable character cards. [ ]
 
 ### Phase 16: UI foundation
+> **2026-06-30 correction:** the refactor already modularized `agent/ui/` (ES modules). EXPAND the existing modular UI to the Warframe-mystic aesthetic + full control surface — do NOT build a from-scratch `ui-next/` React app (that would rebuild existing code). See `WATERTIGHT-PLAN.md`.
 **Goal**: A real `ui-next/` app exists with the locked aesthetic as code (not mockups).
 **Requirements**: REQ-77
 **Success Criteria**:
