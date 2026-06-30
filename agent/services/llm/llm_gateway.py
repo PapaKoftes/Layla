@@ -483,6 +483,15 @@ def _get_llm():
         # Auto-detect thread counts if not in config
         auto_t = _auto_threads()
         n_threads = max(1, int(cfg["n_threads"])) if cfg.get("n_threads") else auto_t
+        # Dynamic governor: when the user is active, load with fewer threads so a
+        # generation can't choke a low-end laptop; use all cores when idle (Castilla).
+        if cfg.get("resource_governor_enabled", True):
+            try:
+                from services.resource_governor import get_governor
+                _phys = int(cfg.get("n_threads") or auto_t)
+                n_threads = max(1, get_governor().get_inference_threads(_phys))
+            except Exception as _gov_e:
+                logger.debug("governor inference-threads unavailable: %s", _gov_e)
         # Batch threads: more threads help here; use logical count capped at 2× physical
         n_threads_batch = (
             max(1, int(cfg["n_threads_batch"])) if cfg.get("n_threads_batch")
