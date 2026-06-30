@@ -144,6 +144,17 @@ async def lifespan(app: FastAPI):
     import runtime_safety
     cfg = runtime_safety.load_config()
 
+    # R6: minimal startup for TestClient-based tests. The heavy subsystems below
+    # (embedder preload, scheduler, knowledge indexing, cluster/mDNS) block or
+    # hang a TestClient lifespan when there's no model/scheduler/DB — which is why
+    # these tests were CI-skipped. With this guard the routes still mount but the
+    # blocking startup is skipped, so the TestClient suite runs on CI too. Set by
+    # agent/tests/conftest.py; never set in production.
+    if os.environ.get("LAYLA_MINIMAL_STARTUP") == "1":
+        logger.info("LAYLA_MINIMAL_STARTUP=1 — skipping heavy startup subsystems (test mode)")
+        yield
+        return
+
     # ── Subsystem: Hardware detection ─────────────────────────────────────────
     if cfg.get("hardware_aware_startup", True):
         try:

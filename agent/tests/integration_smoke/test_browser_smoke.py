@@ -15,13 +15,23 @@ pytestmark = pytest.mark.browser_smoke
 
 
 def test_playwright_chromium_loads_example_com():
+    # External-dependency smoke: needs the playwright package, an installed Chromium,
+    # AND outbound internet. Skip gracefully when any is absent (matches the e2e_ui
+    # philosophy) but still assert correctness when the environment supports it.
+    pytest.importorskip("playwright.sync_api")
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        try:
+            browser = p.chromium.launch(headless=True)
+        except Exception as e:  # browser binary not installed (`playwright install chromium`)
+            pytest.skip(f"Chromium not available: {e}")
         try:
             page = browser.new_page()
-            page.goto("https://example.com", timeout=60000)
+            try:
+                page.goto("https://example.com", timeout=60000)
+            except Exception as e:  # no outbound network in this environment
+                pytest.skip(f"network unavailable for browser smoke: {e}")
             title = page.title() or ""
             assert "Example" in title
         finally:

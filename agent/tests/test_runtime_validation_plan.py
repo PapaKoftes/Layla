@@ -157,6 +157,10 @@ def test_mcp_tools_call_in_autonomous_run_http(tmp_path, monkeypatch):
             {"name": "fake", "command": sys.executable, "args": [str(FAKE_MCP.resolve())]},
         ],
         "sandbox_root": str(tmp_path),
+        # Approval moved into tool_dispatch._is_approval_bypassed (reads this flag);
+        # the mcp gate checks rs.is_tool_allowed/allow_run, not the patched
+        # runtime_safety.require_approval, so bypass approval explicitly here.
+        "tool_approval_bypass": True,
     }
 
     def _cfg():

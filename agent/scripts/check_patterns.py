@@ -197,13 +197,23 @@ def check_silent_except():
 _RE_GATE_INJECT = re.compile(r'\[System:\s*Your last response')
 
 def check_gate_injection():
+    # The final reply is stripped by the orchestrator (agent_loop.py), even when the
+    # injection itself now lives in a decomposed handler (services/agent/*) that
+    # builds a re-prompt. So the injection is "covered" if the stripper is applied
+    # in this file OR by the orchestrator pipeline — only flag when it's nowhere.
+    stripper_in_pipeline = False
+    try:
+        stripper_in_pipeline = "strip_junk_from_reply" in (
+            REPO_ROOT / "agent_loop.py"
+        ).read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     for f in py_files(REPO_ROOT):
         src_lines = lines_of(f)
         for i, line in enumerate(src_lines, 1):
             if _RE_GATE_INJECT.search(line):
-                # Check there's a strip_junk_from_reply somewhere in the same file
                 full_src = "\n".join(src_lines)
-                if "strip_junk_from_reply" not in full_src:
+                if "strip_junk_from_reply" not in full_src and not stripper_in_pipeline:
                     report("GATE_INJECT", f, i, line,
                            "Completion gate retry injection present but strip_junk_from_reply not imported; "
                            "injection text can reach user")
@@ -361,7 +371,7 @@ def check_context_overflow_guard():
 _RE_APPLY_TO_CONFIG = re.compile(r"apply_to_config|hardware_detect|hardware_probe")
 
 def check_hardware_probe_hooked():
-    target = REPO_ROOT / "services" / "llm_gateway.py"
+    target = REPO_ROOT / "services" / "llm" / "llm_gateway.py"
     if not target.exists():
         return
     src = target.read_text(encoding="utf-8", errors="replace")
@@ -384,7 +394,8 @@ def check_hardware_probe_hooked():
 _RE_CAP_SUMMARY = re.compile(r"get_capability_summary|capability_summary")
 
 def check_capability_summary_injected():
-    target = REPO_ROOT / "agent_loop.py"
+    # Post-refactor the system prompt is assembled in services/prompts/system_head_builder.py
+    target = REPO_ROOT / "services" / "prompts" / "system_head_builder.py"
     if not target.exists():
         return
     src = target.read_text(encoding="utf-8", errors="replace")

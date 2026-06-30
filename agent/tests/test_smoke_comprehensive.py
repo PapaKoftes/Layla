@@ -163,15 +163,15 @@ def test_hardware_threads_reasonable():
 
 def test_stop_sequences_cover_section_headers():
     # Read the source directly -- most reliable, avoids module cache issues
-    src = (AGENT_DIR / "services" / "llm_gateway.py").read_text(encoding="utf-8", errors="replace")
+    src = (AGENT_DIR / "services" / "llm" / "llm_gateway.py").read_text(encoding="utf-8", errors="replace")
     assert "## CONTEXT" in src and "endoftext" in src, (
         "llm_gateway.py stop sequences missing ## CONTEXT -- small models echo section headers"
     )
 def test_stop_sequences_cover_endoftext():
-    src = (AGENT_DIR / "services" / "llm_gateway.py").read_text(encoding="utf-8", errors="replace")
+    src = (AGENT_DIR / "services" / "llm" / "llm_gateway.py").read_text(encoding="utf-8", errors="replace")
     assert "endoftext" in src, "Missing <|endoftext|> in stop sequences"
 def test_stop_sequences_cover_aspect_names():
-    src = (AGENT_DIR / "services" / "llm_gateway.py").read_text(encoding="utf-8", errors="replace")
+    src = (AGENT_DIR / "services" / "llm" / "llm_gateway.py").read_text(encoding="utf-8", errors="replace")
     for name in ("Morrigan", "Nyx", "Echo", "Eris", "Cassandra", "Lilith"):
         assert name in src, f"Missing aspect stop sequence: {name}"
 def test_stop_sequences_no_config_override():
@@ -382,15 +382,20 @@ def test_reg004_completion_gate_off():
 
 def test_reg005_hardware_probe_in_gateway():
     """REG-005: llm_gateway calls apply_to_config for dynamic hardware settings."""
-    src = (AGENT_DIR / "services" / "llm_gateway.py").read_text(
+    src = (AGENT_DIR / "services" / "llm" / "llm_gateway.py").read_text(
         encoding="utf-8", errors="replace"
     )
     assert "apply_to_config" in src or "hardware_detect" in src
 
 
 def test_reg006_capability_summary_in_agent_loop():
-    """REG-006: agent_loop injects hardware capability summary into system prompt."""
-    src = (AGENT_DIR / "agent_loop.py").read_text(encoding="utf-8", errors="replace")
+    """REG-006: the system-prompt builder injects the hardware capability summary.
+
+    (Post-refactor this moved out of agent_loop.py into services/prompts/
+    system_head_builder.py, which assembles the system prompt.)"""
+    src = (AGENT_DIR / "services" / "prompts" / "system_head_builder.py").read_text(
+        encoding="utf-8", errors="replace"
+    )
     assert "get_capability_summary" in src
 
 
