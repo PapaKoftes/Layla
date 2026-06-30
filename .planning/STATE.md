@@ -3,7 +3,10 @@
 **Project:** Layla — **companion-first** living experience; personalities = domain kits (coding second). See `UNIFIED-ROADMAP.md`.
 **Updated:** 2026-06-29
 
-## WHERE WE ARE (unified, reconciled with the refactor)
+## WHERE WE ARE — ✅ UNITE COMPLETE
+**master = the unified tree (refactor + this session), 2143 tests green, landed 2026-06-30.** Next: the **Castilla release** (Spanish bilingual, tuned to the friend's i7-7700HQ/16GB/~26GB-free laptop).
+
+## (history) WHERE WE WERE (pre-unite)
 **≈ 5/15 phases fully done · 6/15 partial · 4/15 open · weighted ≈ 8/15** — but that 5/15 is **split across two un-merged branches** (refactor on `master`, this session on `friend-ready-session`). **The gating task is the integration merge** (25 conflicts, `HANDOFF.md §6a`); only after it does `master` actually reflect 5/15. Full breakdown: `UNIFIED-ROADMAP.md`.
 
 ```
