@@ -136,6 +136,9 @@ def main(argv: list[str]) -> int:
             if not fn2:
                 print(f"[aspect] no model for '{asp}'")
                 continue
+            if (ak or {}).get("too_heavy"):
+                print(f"[aspect] skipping '{asp}': best model ({ap_primary.get('size')}) too heavy for this hardware (use --prefer quality on a GPU box to force)")
+                continue
             if not (dest / fn2).exists():
                 print(f"[aspect] {asp}: downloading {fn2} ...")
                 _dl2(ap_primary, models_dir=dest, progress=True)
