@@ -191,3 +191,45 @@ jobs:
 
       - name: Check with ruff
         run: python -m ruff check agent fabrication_assist
+
+  inference-smoke:
+    name: Inference smoke (real tiny model)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install llama-cpp (CPU wheel) + deps
+        working-directory: agent
+        run: |
+          pip install --upgrade pip
+          pip install "llama-cpp-python>=0.3.1,<0.4" \
+            --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu \
+            --only-binary llama-cpp-python --prefer-binary
+          pip install -r requirements.txt
+
+      - name: Download a tiny real model
+        run: |
+          mkdir -p models
+          python - <<'PY'
+          import json, sys
+          from pathlib import Path
+          sys.path.insert(0, "agent")
+          from install.model_downloader import download_model
+          d = json.load(open("agent/models/model_catalog.json"))
+          m = next(x for x in d["models"] if x.get("name") == "smolLM2-360M-Q2_K")
+          r = download_model(m, models_dir=Path("models"), progress=False)
+          assert r.get("ok"), r
+          print("downloaded:", r.get("filename"))
+          PY
+
+      - name: Real inference smoke (run_completion completes one turn)
+        working-directory: agent
+        env:
+          LAYLA_TEST_REAL_LLM: "1"
+        run: python -m pytest tests/test_inference_smoke.py -v --tb=short --timeout=300
