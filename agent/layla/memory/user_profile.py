@@ -139,6 +139,17 @@ def set_user_identity(key: str, snapshot: str) -> None:
         db.commit()
 
 
+
+def delete_user_identity(key: str) -> bool:
+    """Forget a single user identity fact. Returns True if a row was removed."""
+    if not (key or "").strip():
+        return False
+    migrate()
+    with _conn() as db:
+        cur = db.execute("DELETE FROM user_identity WHERE key=?", (key.strip(),))
+        db.commit()
+    return cur.rowcount > 0
+
 # ── episodes (episodic memory) ──────────────────────────────────────────────
 
 def create_episode(summary: str = "") -> str:

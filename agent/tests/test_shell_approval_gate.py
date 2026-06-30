@@ -21,7 +21,7 @@ if str(AGENT_DIR) not in sys.path:
 import runtime_safety as rs  # noqa: E402
 from layla.tools.registry import shell_command_is_safe_whitelisted  # noqa: E402
 
-TOOL_DISPATCH_SRC = (AGENT_DIR / "services" / "tool_dispatch.py").read_text(encoding="utf-8")
+TOOL_DISPATCH_SRC = (AGENT_DIR / "services" / "tools" / "tool_dispatch.py").read_text(encoding="utf-8")
 
 
 def test_shell_not_allowed_by_default():
@@ -50,5 +50,5 @@ def test_deny_by_default_predicate():
 def test_source_uses_deny_by_default_not_inverted():
     # Guard against re-inversion: the corrected condition must be present and the
     # old inverted form absent.
-    assert "not _shell_already_allowed" in TOOL_DISPATCH_SRC, "shell gate not in deny-by-default form"
+    assert "not ctx.allow_run" in TOOL_DISPATCH_SRC, "shell gate not in deny-by-default form"
     assert "if _need_shell_approval and" not in TOOL_DISPATCH_SRC, "inverted shell gate has returned"
