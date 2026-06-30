@@ -1,154 +1,141 @@
----
-last_mapped_commit: dc0b9c0ad8bdb1cba9afea771ad54a55473ec14d
----
 # Codebase Structure
 
-**Analysis Date:** 2026-06-29
+**Analysis Date:** 2026-06-30
 
 ## Directory Layout
 
-```text
-Layla/                            # repo root (docs, installers, launchers, llama.cpp/)
-├── layla.py / launcher.py        # top-level launch shims into agent/
-├── transports/ integrations/     # discord_bot/, cursor-layla-mcp/, etc.
-├── personalities/ skills/ plugins/ knowledge/
-└── agent/                        # THE APPLICATION (everything runs from here)
-    ├── main.py                   # FastAPI app: lifespan, middleware, 38 routers (930 ln)
-    ├── agent_loop.py             # the orchestration spine (4119 ln)
-    ├── serve.py / tui.py         # HTTP and terminal entry points
-    ├── runtime_safety.py         # cached runtime_config.json loader
-    ├── config_schema.py constants.py shared_state.py  # config + per-request state
-    ├── orchestrator.py coordinator (via services) background_job_worker.py
-    ├── research_*.py             # research lab / intelligence pipeline
-    ├── routers/                  # 38 HTTP/WS/SSE routers (thin adapters)
-    │   ├── agent.py              #   primary /agent chat stream entry
-    │   ├── autonomous.py memory.py knowledge.py settings.py ws.py ...
-    ├── services/                 # 203 flat capability modules
-    │   ├── llm_gateway.py        #   single serialized completion gateway
-    │   ├── inference_router.py   #   backend select: llama.cpp / Ollama / OpenAI
-    │   ├── tool_dispatch.py      #   intent → tool, sandbox + approval (TRUST BOUNDARY)
-    │   ├── planner.py model_router.py system_head_builder.py memory_router.py ...
-    │   └── sandbox/              #   python_runner.py, shell_runner.py
-    ├── layla/                    # reusable core package
-    │   ├── memory/               #   SQLite db.py, migrations, graph, distill, conversations
-    │   ├── tools/                #   registry.py + domains/ (12) + impl/ (tool bodies)
-    │   ├── codex/                #   knowledge codex db + enricher + linker
-    │   ├── geometry/ + cam/      #   machining IR, executor, feeds/speeds, simulator
-    │   ├── scheduler/            #   idle detector, jobs, registry, activity
-    │   ├── ingestion/            #   chunker, extractors, pipeline
-    │   └── skills/  time_utils.py file_understanding.py
-    ├── core/                     # executor.py, observer.py, validator.py
-    ├── autonomous/               # planner, controller, policy, budget, retrieval, value_gate
-    ├── schemas/                  # Pydantic requests.py, entity.py
-    ├── ui/                       # static front end: index.html + 29 JS + css/ assets/ vendor/
-    └── tests/                    # 204 test files (+ integration/ e2e_ui/ smoke/ fixtures/)
+```
+Layla/
+├── agent/                      # The application (run everything from here)
+│   ├── serve.py                # Port-guarded server entrypoint
+│   ├── main.py                 # FastAPI app: routers, lifespan, runtime gate
+│   ├── agent_loop.py           # Top-level agent loop (910 lines, decomposed)
+│   ├── orchestrator.py         # Aspect (personality) selection
+│   ├── routers/                # ~40 FastAPI routers by domain
+│   ├── services/               # 19 sub-packages + backward-compat shims
+│   │   ├── agent/              # Decomposed loop phases
+│   │   ├── llm/                # Inference, models (governor-aware gateway)
+│   │   ├── memory/  context/   # Memory + context assembly
+│   │   ├── planning/ reasoning/
+│   │   ├── retrieval/ tools/ skills/
+│   │   ├── safety/ governance/ sandbox/
+│   │   ├── cluster/ personality/ prompts/
+│   │   ├── observability/ infrastructure/
+│   │   ├── user/ workspace/
+│   │   └── *.py                # Flat files = shims → sub-packages
+│   ├── ui/                     # ES-module browser frontend
+│   │   ├── main.js             # Single <script type="module"> entry
+│   │   ├── core/               # bus, state, actions, overlay, compat
+│   │   ├── services/           # api, health, utils
+│   │   ├── components/         # ~28 view modules
+│   │   ├── css/                # Styles (aspect CSS vars)
+│   │   ├── aspects/  assets/   # Aspect SVGs, sigils, patterns, sprites
+│   │   └── vendor/             # Bundled fonts/js/css
+│   ├── install/                # Provisioning: probe → recommend → download → first run
+│   ├── core/                   # executor, observer, validator
+│   ├── setup/                  # python_compat runtime gate
+│   ├── schemas/  routers/      # Pydantic schemas / API
+│   ├── docs/                   # adr/001-006, VISION.md, design docs
+│   └── tests/                  # Test suite
+├── docs/                       # Project-wide docs incl. design/00-13
+├── installer/  install/  launcher/   # OS install helpers + launchers
+├── personalities/              # Aspect definitions
+├── skills/ skill_packs/ plugins/
+├── integrations/ transports/ discord_bot/ cursor-layla-mcp/
+├── models/                     # Local model files
+├── layla.db                    # SQLite store
+└── pyproject.toml              # Package metadata + tooling
 ```
 
 ## Directory Purposes
 
-**`agent/` (root of the app):**
-- Process entry, the agent loop, config, and cross-cutting state. Run everything
-  from here — top-level repo shims just `cd` into it.
-- Key files: `main.py`, `agent_loop.py` (4119 ln), `runtime_safety.py`,
-  `shared_state.py`.
+**`agent/`** — The whole application. Run `serve.py`/`main.py` from inside `agent/`.
 
-**`agent/routers/` (38 modules):**
-- HTTP/WebSocket/SSE surface. Thin adapters that parse requests and call the loop
-  or a service. Wired in `main.py:550-647`.
-- Key files: `agent.py` (chat), `autonomous.py`, `ws.py`, `openai_compat.py`.
+**`agent/services/`** — Domain logic in 19 sub-packages. The flat `*.py` files
+are **backward-compat shims** (`sys.modules[__name__] = _real`); real code is in
+the sub-package of the same-named module. See ARCHITECTURE.md for the mapping.
 
-**`agent/services/` (203 modules):**
-- Flat capability catalog — the bulk of the system. Largest: `tool_dispatch.py`
-  (1122 ln), `system_head_builder.py` (1086), `llm_gateway.py` (944),
-  `planner.py` (937), `agent_task_runner.py` (897).
-- Only nested package: `services/sandbox/` (subprocess runners).
+**`agent/services/agent/`** — Decomposed agent loop phases: `decision_loop.py`,
+`stream_handler.py`, `reasoning_handler.py`, `tool_guards.py`,
+`verification_engine.py`, `run_setup.py`, `run_finalizer.py`, `ux_emitter.py`.
 
-**`agent/layla/` (core package):**
-- Transport-agnostic domain logic, importable independent of FastAPI.
-  - `memory/` — durable store (`db.py`), migrations, graph, distillation,
-    conversations, RL preferences.
-  - `tools/` — `registry.py` assembles `TOOLS` from `domains/` (12: file, web,
-    code, git, system, memory, data, analysis, automation, geometry, general)
-    and `impl/`.
-  - `geometry/` + `cam/` — CAD/CAM machining (IR, executor, simulator, tool library).
-  - `scheduler/`, `ingestion/`, `codex/`, `skills/`.
+**`agent/routers/`** — One module per API domain; all wired in `main.py` via
+`include_router`.
 
-**`agent/ui/`:**
-- Static PWA: `index.html`, 29 JS files in `js/` (`layla-app.js`, `chat.js`,
-  `api.js`, `layla-autonomous.js`, ...), `css/`, `assets/`, `vendor/`, `sw.js`,
-  `manifest.json`. Served via `StaticFiles` mounts in `main.py`.
+**`agent/ui/`** — ES-module frontend. `core/` holds the bus/state/actions
+infrastructure; `components/` are views; `aspects/` + `assets/` hold per-aspect
+SVGs and palettes that re-theme the shell.
 
-**`agent/tests/`:**
-- 204 top-level `test_*.py` plus `integration/` (6), `integration_smoke/` (4),
-  `e2e_ui/` (3), `fixtures/`. `conftest.py` at `agent/conftest.py`.
+**`agent/install/`** — Install/provisioning system: `hardware_probe.py`,
+`model_recommender`/`model_selector.py`, `model_downloader.py`,
+`provision_model.py`, `run_first_time.py`, `setup_wizard.py`, `packs/`.
+
+**`agent/docs/`** — `adr/001-006`, `VISION.md` (companion-first 10-phase plan).
 
 ## Key File Locations
 
 **Entry Points:**
-- `agent/main.py`: FastAPI app + router wiring.
-- `agent/serve.py`, `agent/tui.py`: HTTP / terminal launchers.
+- `agent/serve.py`: port-guarded launch (run from `agent/`).
+- `agent/main.py`: FastAPI `app` + lifespan.
+- `agent/agent_loop.py`: agent run orchestration.
 
 **Configuration:**
-- `agent/runtime_safety.py`: `load_config()` (cached, line 186).
-- `agent/config_schema.py`: schema/hints for `runtime_config.json`.
+- `agent/runtime_config.json` (+ `.example.json`), `agent/config_schema.py`, `agent/runtime_safety.py`.
+- `pyproject.toml`, `agent/requirements*.txt`.
 
 **Core Logic:**
-- `agent/agent_loop.py`: `autonomous_run` (2244), `stream_reason` (770).
-- `agent/services/llm_gateway.py` + `inference_router.py`: the one model path.
-- `agent/services/tool_dispatch.py`: tool execution + security boundary.
+- Inference: `agent/services/llm/llm_gateway.py`.
+- Governor: `agent/services/infrastructure/resource_governor.py`.
+- Aspect selection: `agent/orchestrator.py`.
+
+**Frontend:**
+- `agent/ui/main.js`, `agent/ui/core/{bus,state,actions}.js`, `agent/ui/components/aspect.js`.
 
 **Testing:**
-- `agent/tests/`, `agent/conftest.py`.
+- `agent/tests/`, `agent/conftest.py`, `agent/pytest.ini`.
 
 ## Naming Conventions
 
-**Files:**
-- snake_case modules. Services are flat single-purpose files
-  (`memory_router.py`, `tool_policy.py`). UI JS is `layla-*.js` (kebab-case).
-
-**Directories:**
-- lowercase; the reusable package is `layla/`, the app shell is everything else
-  under `agent/`.
+**Files:** snake_case Python modules; kebab/lowercase `.js` for UI components.
+**Sub-packages:** lowercase domain nouns (`llm`, `memory`, `safety`).
+**Shims:** flat `services/<name>.py` mirrors `services/<pkg>/<name>.py`.
 
 ## Where to Add New Code
 
-**New HTTP/WS endpoint:**
-- Add/extend a router in `agent/routers/`, then `app.include_router(...)` in
-  `agent/main.py` (~line 550-647).
+**New service logic:**
+- Implementation: `agent/services/<sub-package>/<module>.py` (the real module).
+- Keep/create a flat shim `agent/services/<module>.py` only if legacy import
+  paths must keep working; never put logic in the shim.
 
-**New capability/service:**
-- Add a module to `agent/services/` (flat). Call it from `agent_loop.py` or a
-  router — do NOT grow `agent_loop.py`.
+**New agent-loop phase:**
+- `agent/services/agent/<phase>.py`; call it from `agent_loop.py` /
+  `services/agent/decision_loop.py`. Do not inline into `agent_loop.py`.
 
-**New tool:**
-- Implement the body in `agent/layla/tools/impl/`, register it in the matching
-  `agent/layla/tools/domains/<domain>.py` dict; it merges via
-  `layla/tools/registry.py`. Enforce sandbox/approval in
-  `services/tool_dispatch.py` if it touches the filesystem.
+**New API endpoint:**
+- New/edit router in `agent/routers/<domain>.py`; register in `agent/main.py`.
 
-**New reusable domain logic:**
-- Add to the appropriate `agent/layla/<subpackage>/` (memory, geometry, codex,
-  scheduler, ingestion).
+**New UI view:**
+- Component in `agent/ui/components/<name>.js`; import via `main.js`; use the
+  `core/bus.js` + `core/state.js` patterns; read aspect CSS vars for theming.
 
-**New UI feature:**
-- Add a `layla-*.js` to `agent/ui/js/` and wire it from `index.html` /
-  `layla-app.js`.
+**New aspect (personality):**
+- Definition in `personalities/`; palette + SVG in `agent/ui/components/aspect.js`
+  and `agent/ui/aspects/` / `agent/ui/assets/sigils/`.
+
+**Install/provisioning step:**
+- Module under `agent/install/`.
 
 **Tests:**
-- `agent/tests/test_*.py` for unit; `tests/integration/`, `tests/e2e_ui/`,
-  `tests/integration_smoke/` for broader scopes.
-
-**Config knob:**
-- Add the key to `agent/config_schema.py` and read it via
-  `runtime_safety.load_config()`.
+- `agent/tests/` mirroring the module path.
 
 ## Special Directories
 
-**`agent/__pycache__`, `*/__pycache__`:** generated, not committed.
-**`llama.cpp/` (repo root):** vendored inference backend; not Layla source.
-**`agent/models/`:** local GGUF model storage (runtime, not source).
-**`.planning/`:** GSD planning artifacts (this directory).
+**`agent/services/` flat files** — Shims; generated by the refactor; committed.
+**`agent/ui/vendor/`** — Bundled third-party assets; committed; do not hand-edit.
+**`models/`, `layla.db`** — Local model files / runtime SQLite store; committed
+state varies (large binaries usually gitignored).
+**`.planning/`** — GSD planning artifacts (this map lives here).
 
 ---
 
-*Structure analysis: 2026-06-29*
+*Structure analysis: 2026-06-30*

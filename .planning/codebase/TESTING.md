@@ -1,134 +1,176 @@
----
-last_mapped_commit: dc0b9c0ad8bdb1cba9afea771ad54a55473ec14d
----
 # Testing Patterns
 
-**Analysis Date:** 2026-06-29
+**Analysis Date:** 2026-06-30
+
+The suite lives under `agent/tests/` (~234 test files, ~2143 passing on master).
+Tests are designed to run **without the GPU/model stack** — a deliberate, central
+constraint that drives most of the conftest machinery below.
 
 ## Test Framework
 
 **Runner:**
-- `pytest >= 8.0`, configured in two places: `pyproject.toml` `[tool.pytest.ini_options]` (canonical, `testpaths = ["agent/tests"]`, `asyncio_mode = "auto"`, `addopts = "-v --tb=short"`) and `agent/pytest.ini` (marker docs + `timeout = 120`).
-- Plugins: `pytest-asyncio >= 0.23` (auto mode — no `@pytest.mark.asyncio` needed), `pytest-timeout >= 2.3`, `pytest-cov >= 5.0`. `hypothesis >= 6.0` is declared in the `dev` extra but is **not currently exercised** by any test (only referenced as a runtime import in `services/cognitive_workspace.py`); property-based tests are an available-but-unused capability.
+- pytest `>=8.0`, configured in `pyproject.toml [tool.pytest.ini_options]`.
+- `testpaths = ["agent/tests"]`, `python_files = ["test_*.py"]`, `python_functions = ["test_*"]`.
+- `addopts = "-v --tb=short"`.
 
-**Assertion library:**
-- Plain `assert` (pytest rewriting). Mocking via `unittest.mock` (`MagicMock`, `patch`, `monkeypatch`).
+**Plugins / async:**
+- `pytest-asyncio` (`asyncio_mode = "auto"` — `async def test_*` run without explicit decorators).
+- `pytest-timeout` (CI passes `--timeout=60` / `120`).
+- `pytest-cov` for coverage; `hypothesis` available for property tests.
 
-**Run commands:**
-```bash
-# Full fast suite (what CI runs), from agent/:
+**Warning filters:** DeprecationWarning / PendingDeprecationWarning / PytestConfigWarning are ignored.
+
+## Running the Suite
+
+Setup uses a dedicated, GPU-free virtualenv `.venv-test` populated from the `dev`
+extra (see `docs/DEV_TESTING.md`). The `dev` extra is a deliberately minimal,
+no-GPU, no-model dependency set.
+
+```powershell
+# Windows one-command setup (finds a 3.11/3.12 interpreter via the py launcher)
+powershell -ExecutionPolicy Bypass -File scripts\setup_test_env.ps1
+.\.venv-test\Scripts\Activate.ps1
 cd agent
-pytest tests/ -v --tb=short \
-  -m "not slow and not e2e_ui and not browser_smoke and not voice_smoke and not gpu_smoke and not endpoint" \
-  --timeout=60
+pytest -m "not slow and not e2e_ui and not browser_smoke and not voice_smoke and not gpu_smoke"
+```
 
-# dev extra (no GPU/model build) — see docs/DEV_TESTING.md:
-python3.12 -m venv .venv-test && .venv-test/bin/pip install -e ".[dev]"
+```bash
+# Other platforms
+python3.12 -m venv .venv-test
+.venv-test/bin/pip install -e ".[dev]"
 cd agent && pytest -m "not slow and not e2e_ui and not browser_smoke and not voice_smoke and not gpu_smoke"
+```
 
-# Pure-stdlib subset — runs on ANY Python (incl. 3.13/3.14), no third-party deps:
+**Canonical CI run** (set `CI=1` to get the canonical collection exclusions — see conftest):
+
+```bash
+cd agent
+CI=1 pytest tests/ -m "not slow and not e2e_ui and not browser_smoke and not voice_smoke and not gpu_smoke and not endpoint" --timeout=60
+```
+
+**Dependency-free subset** (pure stdlib — runs on ANY Python incl. 3.14, no extras):
+
+```bash
 cd agent
 python -m pytest tests/test_port_guard.py tests/test_url_guard.py \
   tests/test_sandbox_core.py tests/test_extract_archive_safety.py \
   tests/test_council_models.py tests/test_user_identity.py -q
-
-# Single file:
-pytest tests/test_agent_core_logic.py -q
 ```
-`scripts/setup_test_env.ps1` is a one-command Windows bootstrap (finds a 3.11/3.12 interpreter via the `py` launcher, builds `.venv-test`, installs `dev`).
+
+## conftest.py — Critical Patterns
+
+`agent/tests/conftest.py` carries the machinery that keeps the suite green on any
+machine. Understand these before adding tests:
+
+**1. `collect_ignore` (collection-time skips):**
+- `_TESTCLIENT_FILES` — files needing `TestClient` + full app lifespan (hang in CI: no model/scheduler/DB). Ignored **only when `CI` env var is set**; they run locally with a full environment.
+- `_LLAMA_CPP_FILES` — files that reach `llm_gateway → llama_cpp`, which SIGILLs on CI runners (pre-compiled wheel uses AVX-512/VNNI). Ignored **unless `LAYLA_TEST_REAL_LLM` is set**, so even a dev box with real llama-cpp won't hang loading a model on every loop test.
+
+**2. `_block_llama_cpp_on_ci` (autouse, session scope):**
+- Safety net that replaces `llama_cpp.Llama` with a stub raising `RuntimeError` unless `LAYLA_TEST_REAL_LLM` is set. Prevents the suite from ever loading a native model (SIGILL on CI; retry-sleep hang elsewhere). Tests that explicitly mock `run_completion`/`llama_cpp.Llama` override this for their scope.
+
+**3. `_force_test_db_path` (autouse, session scope):**
+- Points `LAYLA_DATA_DIR` at a tmp dir and patches `layla.memory.db._DB_PATH` so tests never touch the operator's real `layla.db`. Resets `_MIGRATED` flags so migrations re-run against the throwaway DB.
+
+**4. `_reset_volatile_module_state` (autouse, function scope):**
+- Clears module-level caches that leak between tests: `runtime_safety._config_cache` (stale TTL'd config) and `layla.memory.learnings._recent_learning_ts` (in-process rate-limiter deque that otherwise trips and makes `save_learning()` silently return -1).
+
+**5. `pytest_collection_modifyitems`:** auto-skips `e2e_ui`-marked tests when playwright isn't importable.
+
+**Implication for new tests:** if your code path calls the LLM, mock
+`services.llm_gateway.run_completion` (use the `mock_llm` fixture) — do not rely
+on a real model. If it ImportErrors on a missing package, add that package to the
+`dev` extra in `pyproject.toml`.
+
+## Markers
+
+Declared in `pyproject.toml`: `slow`, `e2e_ui`. Additional markers filtered in CI:
+`browser_smoke`, `voice_smoke`, `gpu_smoke`, `endpoint`. The canonical marker
+filter is `not slow and not e2e_ui and not browser_smoke and not voice_smoke and
+not gpu_smoke` (plus `not endpoint` in the CI coverage run).
 
 ## Test File Organization
 
-**Layout** — separate `agent/tests/` tree (~202 `test_*.py` files), not co-located with source:
-```
-agent/
-  conftest.py                 # adds agent/ to sys.path; stubs setup.python_compat
-  tests/
-    conftest.py               # CI collect_ignore + autouse isolation fixtures
-    test_<subject>.py         # bulk of the suite (one subject per file)
-    fixtures/                 # shared helpers (e.g. fake_mcp_stdio.py)
-    integration/              # multi-module flows (conftest.py + test_full_pipeline.py, ...)
-    integration_smoke/        # marked smoke: gpu_smoke / voice_smoke / browser_smoke
-    e2e_ui/                   # Playwright tests, marker e2e_ui (test_ui_smoke.py)
-```
+- Flat layout under `agent/tests/`, one `test_<subject>.py` per concern.
+- Playwright UI tests isolated under `agent/tests/e2e_ui/` (`test_ui_smoke.py`, its own `conftest.py`), marked `e2e_ui`.
+- No co-location with source; all tests centralized in `agent/tests/`.
 
-**Naming / markers** (`pyproject.toml` + `agent/pytest.ini`):
-- `slow` — needs a live LLM model. `endpoint` — spins up FastAPI `TestClient` / real HTTP.
-- `e2e_ui` — Playwright vs live uvicorn (needs `requirements-e2e.txt` + `playwright install chromium`).
-- `browser_smoke`, `voice_smoke`, `gpu_smoke` — heavy smokes, all deselected in PR CI.
+## Shared Fixtures (conftest.py)
 
-## Isolation Fixtures (the safety layer)
-
-`agent/tests/conftest.py` defines autouse fixtures that make the suite hermetic:
-- `_force_test_db_path` (session, autouse) — sets `LAYLA_DATA_DIR` to a tmp dir and repoints `layla.memory.db._DB_PATH` so tests **never touch the operator's real `layla.db`**.
-- `_reset_volatile_module_state` (function, autouse) — clears module-level caches that leak between tests (`runtime_safety._config_cache`, `learnings._recent_learning_ts` rate-limiter deque).
-- `_block_llama_cpp_on_ci` (session, autouse) — on CI, replaces `llama_cpp.Llama` with a stub that raises, so the AVX-512 prebuilt wheel can't SIGILL (exit 132) the whole session.
-- `agent/conftest.py::_relax_python_compat_for_tests` — patches `setup.python_compat.check_python_compatibility` to a "supported" stub (override with the `real_python_compat` marker).
-
-Opt-in fixtures: `mock_llm` (patches `services.llm_gateway.run_completion`), `mock_config` (minimal runtime config dict), `isolated_db` (function-scoped migrated SQLite via `patch("layla.memory.db._DB_PATH", ...)`), `no_network` (raises on `socket.socket`).
-
-## Test Structure
-
-Flat `test_*` functions (not `describe`/class-based). Pure-stdlib targets import the unit directly and assert on its contract:
-```python
-from decision_schema import parse_decision            # noqa: E402
-from services.output_quality import passes_completion_gate
-
-TOOLS = frozenset({"read_file", "write_file", "shell", "grep_code"})
-
-def test_unknown_tool_is_nulled():
-    d = parse_decision('{"action":"tool","tool":"definitely_not_a_tool"}', TOOLS)
-    assert d is not None and d["tool"] is None   # unknown tool dropped, not executed
-```
-`asyncio_mode = "auto"` means `async def test_*` runs without a marker. Files that import app modules add the `agent/` sys.path bootstrap at top (hence `# noqa: E402`).
+| Fixture | Scope | Purpose |
+|---------|-------|---------|
+| `mock_llm` | function | Patches `services.llm_gateway.run_completion` with a `MagicMock` returning a canned completion |
+| `mock_config` | function | Minimal runtime config dict (tool/runtime caps, flags off) |
+| `isolated_db` | function | Function-scoped SQLite DB; patches `_DB_PATH` on `db` + `db_connection`, runs `migrate()` |
+| `no_network` | function | Patches `socket.socket` to raise `OSError` — blocks all outbound network |
 
 ## Mocking
 
-- `unittest.mock.patch` against the import path, targeting **app behavior over the full stack**: mock `services.llm_gateway.run_completion` so no real inference runs; patch `layla.memory.db._DB_PATH` for DB isolation; the `no_network` fixture monkeypatches `socket.socket`.
-- **What to mock:** the LLM gateway, the DB path, the network socket, `setup.python_compat`, and `llama_cpp.Llama` (CI). **What NOT to mock:** the pure decision/gate/sandbox/guard logic — those are tested directly with real inputs.
+- `unittest.mock` (`MagicMock`, `patch`) is the standard tool.
+- Mock at the **service boundary**, primarily `services.llm_gateway.run_completion`, never the native `llama_cpp` layer in normal tests (the autouse stub already blocks it).
+- Lightweight hand-written stubs for protocol surfaces (e.g. `_Headers` case-insensitive header stub in `test_trust_boundary.py`) rather than full framework objects.
 
-## What IS vs IS NOT covered
+## Architecture-Boundary Test Suite
 
-**Covered (deliberately, because pure-stdlib & high-bug-density):**
-- Security primitives: SSRF/url guard, port guard, sandbox containment, archive-extraction safety (`test_url_guard.py`, `test_port_guard.py`, `test_sandbox_core.py`, `test_extract_archive_safety.py`) — the documented stdlib subset.
-- Agent core decision logic: `parse_decision` JSON extraction (brace-balancing, fence stripping, trailing-comma repair, unknown-tool nulling) and the completion gate (`test_agent_core_logic.py` — added in commit `dc0b9c0` precisely because `agent_loop.py` is collect-ignored).
-- Council/model routing, user identity, config migration, tool dispatch, edit-loop tools (the CI "daily-driver smoke" runs `test_edit_loop_tools.py`).
+`agent/tests/test_architecture_boundaries.py` is a cheap (no network/DB,
+AST + filesystem only) guard that enforces structural rules and prevents
+regressions:
+- Critical services import without circular deps (`services.llm_gateway`, `services.context_manager`, `shared_state`, …).
+- Routers don't import `layla.memory.db.get_connection` directly.
+- Root `agent/*.py` files stay within `KNOWN_ROOT_FILES`; new logic goes in sub-packages.
+- `shared_state` importer count ≤15; `memory_router` bypass count ≤85 (ratchets).
+- Flat `services/*.py` are **all** backward-compat shims, and each shim resolves to the same module object as its canonical path.
+- Dead-code files stay deleted; required sub-packages exist; `agent_loop.py` ≤1000 lines and keeps its public attrs.
 
-**NOT covered (known gaps — do not assume green CI means these work):**
-- **Real inference never runs in CI.** CI writes a stub `model_filename: "ci-stub.gguf"` runtime config, and `_block_llama_cpp_on_ci` hard-blocks `llama_cpp.Llama` (prebuilt wheel SIGILLs on GitHub VMs). No test loads a real GGUF or generates real tokens in PR CI.
-- **The agent loop's end-to-end path is `collect_ignore`d on CI.** `_LLAMA_CPP_FILES` (`test_agent_loop.py`, `test_completion.py`, `test_engineering_pipeline.py`, ...) reach `autonomous_run() → llm_gateway → llama_cpp` and are skipped via `collect_ignore` when `CI` is set. Only the extracted pure pieces run.
-- **`TestClient`/HTTP routes are collect-ignored on CI** (`_TESTCLIENT_FILES`: `test_health_endpoint.py`, `test_pairing.py`, `test_e2e_agent.py`, `test_plans_api.py`, ...) — the app lifespan hangs without model/scheduler/DB. There are effectively **no `/v1` OpenAI-compat contract tests** running in CI.
-- **No quality / grounding / hallucination eval.** Coverage is behavioral and structural; there is no LLM-judge, golden-answer, or grounding-accuracy harness gating merges.
-- GPU / voice / browser smokes (`integration_smoke/`, `e2e_ui/`) are deselected in PR CI and gated behind extra installs / env vars (`LAYLA_GPU_SMOKE`).
+This suite is the executable contract for the conventions in CONVENTIONS.md — run
+it after any restructuring.
+
+## Security Tests (Trust Boundary)
+
+Pure-stdlib, runnable on any Python (incl. 3.14):
+- `agent/tests/test_trust_boundary.py` — `services.auth.is_direct_local()` / `real_client_ip()`. Regression guard for the CRITICAL finding that a tunnel (cloudflared/ngrok) forwarding internet traffic from 127.0.0.1 bypassed auth. Verifies forwarded requests (`Cf-Connecting-Ip`, `X-Forwarded-For`, `X-Real-Ip`, `Forwarded`, `True-Client-Ip`) are treated as NON-local and the rightmost-trusted-hop client IP is extracted (REQ-10/11).
+- `agent/tests/test_tunnel_auth.py` — companion tunnel-auth coverage.
+- Other stdlib security primitives: `test_port_guard.py`, `test_url_guard.py` (SSRF), `test_sandbox_core.py`, `test_extract_archive_safety.py`.
 
 ## Coverage
 
-- Linux CI enforces a coverage floor: `--cov=. --cov-config=.coveragerc --cov-report=term-missing:skip-covered` (`agent/.coveragerc`). Windows CI runs tests **without** a coverage floor.
-- Coverage reflects the fast subset only — heavy/ignored modules (`agent_loop.py` full path, HTTP routes, inference) are not exercised, so the number understates real risk in those areas.
+- Config: `agent/.coveragerc` (used when pytest runs with cwd=`agent/`). `branch = True`, `source = .`, omits `tests/*`, `e2e_ui/*`, `tui.py`.
+- Floor: `fail_under = 28` (branch coverage; ratcheted upward over time). Linux CI enforces the floor; Windows CI runs without it.
 
-## CI Workflows (`.github/workflows/`)
-
-- **`ci.yml`** — jobs: `test` (ubuntu, Python 3.11 + 3.12 matrix; installs `agent/requirements.txt`, editable install, `scripts/check_ui_symbols.py`, daily-driver smoke, writes stub runtime config, runs fast suite with coverage floor); `test-windows` (windows-latest, 3.12, no coverage floor, longer 120s timeout); `e2e-ui` (Playwright Chromium, `-m e2e_ui`); `lint` (`ruff check agent fabrication_assist`).
-- **`release.yml`**, **`verify-deep.yml`** — release and deeper verification pipelines.
-- The fast suite marker filter on every PR: `not slow and not e2e_ui and not browser_smoke and not voice_smoke and not gpu_smoke and not endpoint`, `--timeout=60` (Linux) / `--timeout=120` (Windows).
-
-## Common Patterns
-
-**Async** — no decorator (auto mode):
-```python
-async def test_compacts():
-    result = await compact_conversation()
-    assert result["ok"]
+```bash
+cd agent
+pytest tests/ -m "<canonical filter>" --cov=. --cov-config=.coveragerc --cov-report=term-missing:skip-covered
 ```
-**Error / refusal** — assert on the result dict, not on a raised exception:
-```python
-out = some_service(bad_input)
-assert out["ok"] is False and out["error"] == "expected_code"
-```
-**Stdlib-only contract test** — import the unit, feed crafted strings, assert exact behavior (`test_agent_core_logic.py`). Prefer this shape; it runs everywhere and survives the heavy-stack gates.
 
-Snapshot testing: not used.
+## CI Workflow (`.github/workflows/ci.yml`)
+
+Jobs:
+- **test** — matrix Python 3.11 + 3.12 on ubuntu; writes a stub `runtime_config.json` (`ci-stub.gguf`, `use_chroma=false`), runs the canonical marker-filtered suite with the coverage floor.
+- **test-windows** — Python 3.12 on windows-latest; same suite, no coverage floor, `--timeout=120`.
+- **e2e-ui** — installs `requirements-e2e.txt` + `playwright install chromium`, runs `tests/e2e_ui/` with `-m e2e_ui`.
+- **lint** — `python -m ruff check agent fabrication_assist`.
+- License-compliance step (`python scripts/check_copyleft.py`) and UI-symbol check (`scripts/check_ui_symbols.py`) run inside the test jobs. A targeted daily-driver smoke (`tests/test_edit_loop_tools.py`) runs before the full suite.
+
+## Test Types
+
+- **Unit:** dominant — service functions + pure primitives with mocked LLM/DB.
+- **Architecture/contract:** `test_architecture_boundaries.py` (structural invariants).
+- **Security:** trust-boundary / sandbox / SSRF primitives (stdlib-only).
+- **Integration / HTTP:** `TestClient`-based (skipped in CI via `collect_ignore`, run locally).
+- **E2E UI:** Playwright under `tests/e2e_ui/`, marker-gated.
+- **Inference smoke (opt-in):** set `LAYLA_TEST_REAL_LLM` to exercise a real local model.
+
+## Benchmark Harness
+
+Not part of pytest — a separate quality-tracking tool:
+- `scripts/benchmark_coding.py` — HumanEval/MBPP-style **pass@1** coding benchmark for the local model. Prompts the model, extracts the function, runs canonical tests in a sandboxed subprocess with a timeout, emits a JSON + markdown scorecard (model, quant, tok/s, per-problem). `--self-test` scores a known-good solver with no model (REQ-74, Phase 12).
+- `benchmarks/` — committed scorecards (e.g. `scorecard_qwen2.5-coder-7b.json`) + `README.md`.
+
+```bash
+python scripts/benchmark_coding.py --model models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf
+python scripts/benchmark_coding.py --self-test
+```
 
 ---
 
-*Testing analysis: 2026-06-29*
+*Testing analysis: 2026-06-30*
