@@ -291,6 +291,10 @@ def recommend_kit(
         + (f" Enabled draft {draft.get('name')} (GPU speculative decoding)." if draft else "")
     )
 
+    too_heavy = (not has_gpu) and _params_b(primary) > _CPU_USABLE_MAX_B
+    if too_heavy:
+        rationale += (f" WARNING: smallest {category} model is {primary.get('size')} — too heavy for "
+                      "CPU-only; expect <2 tok/s. Provision only if you accept that, or use a GPU.")
     return {
         "primary": primary,
         "draft": draft,                     # auto-enabled draft (GPU only); None on CPU
@@ -298,6 +302,7 @@ def recommend_kit(
         "aspect": _aspect_for_family(fam, recommended_aspects),
         "settings": settings,
         "rationale": rationale,
+        "too_heavy": too_heavy,             # CPU-only + over the usability ceiling
     }
 
 
