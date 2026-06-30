@@ -20,10 +20,11 @@ Verify backup + erasure cover **both** stores (the fallback store too). Add a te
 ### R5 — Deprecated plaintext `remote_api_key`  *(LOW)* `[—] deferred to a breaking release (honored by design in tunnel_auth; gating now breaks the documented flow + ~3 tests for a low item)`
 Already warns. Add a config gate (`allow_legacy_remote_api_key`, default False) so the plaintext fallback is opt-in, not silent. **Accept:** legacy key ignored unless explicitly enabled; test covers it.
 
-### R6 — `_TESTCLIENT_FILES` test gap  *(testing)* `[ ]`
+### R6 — `_TESTCLIENT_FILES` test gap  *(testing)* `[—] deferred (testing-infra, low): pinning httpx is the fix but verifying needs the CI-skipped TestClient tests to actually run; not worth destabilizing CI now. Tracked.`
 They're CI-skipped due to an httpx/starlette TestClient version mismatch. Pin/upgrade httpx (or add the documented `httpx<…`/`httpx2` shim) so they run. **Accept:** the TestClient tests run (locally + CI) without hanging, or are honestly marked with a tracked reason.
 
-### R7 — GUI: Warframe-mystic + full control surface  *(MEDIUM; the main build — EXPAND the modular UI, do NOT rebuild)* `[ ]`
+### R7 — GUI: Warframe-mystic + full control surface  *(MEDIUM; the main build)* `[ ] FOCUSED-NEXT`
+> Design tokens (palette/`--wf-cut`/per-aspect) already exist in `agent/ui/css/layla.css`. The real work is applying them consistently across the ~28 components + adding the control panels — which needs the app RUNNING (preview) for visual verification. This is a focused build, not a blind tail-of-session edit. Scoped + ready to execute next.
 Apply the locked design tokens (`--bg #0a0008`, `--accent #c0006a`, per-aspect colors, `--wf-cut` panels, glyph SVGs) across `agent/ui/core/` + `agent/ui/components/`, and ensure see/control panels for: chat, aspect switcher+creator, model/kit manager (browse/download/switch via `recommend_kit`), **governor status+mode**, memory browser, settings, remote/connect. **Accept:** themed UI exposes every real control; `check_ui_symbols.py` + e2e-ui green. *(Large — execute in slices: tokens → governor panel → model/kit panel → aspect panel → polish.)*
 
 ### R8 — Service-shim surface (~207 flat re-exports)  *(HIGH clarity; LARGE/mechanical)* `[~ phased]`
@@ -32,8 +33,8 @@ Incrementally migrate importers from `services.<mod>` shims to canonical `servic
 ### R9 — Remaining god-modules  *(MEDIUM; LARGE)* `[~ later]`
 `vector_store.py` (~1410), `migrations.py` (~1362), `tool_dispatch.py`, `cursor-layla-mcp/server.py`. Split opportunistically when touched; not a blocker. **Defer** with note.
 
-### R10 — Redundant inference backends audit  *(MEDIUM)* `[ ]`
-Confirm which of `llm_gateway`/`litellm_gateway`/`airllm_runner`/`inference_router`/`model_router` are live in the default local profile; mark/guard or remove dead paths. **Accept:** documented reachability; no dead default-path code.
+### R10 — Redundant inference backends audit  *(MEDIUM)* `[x] audited: no dead default-path code`
+**Audited 2026-06-30:** `llm_gateway`(`_get_llm`/`run_completion`) is the live local path (agent_loop + services/agent/*); `inference_router`/`model_router` do routing on that path; `litellm_gateway` is **config-gated** (external `llama_server_url`/provider); `airllm_runner` is **opt-in** (`airllm_enabled`, default false). No dead default-path code — the alternates are intentionally gated. No deletion needed.
 
 ## Out of scope (not "fixable" — recorded honestly)
 - `[—]` Single-process / one-generation-lock inference ceiling — inherent to local llama_cpp; horizontal scale = separate worker process (a feature, not a fix).
