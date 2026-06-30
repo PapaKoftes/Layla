@@ -355,6 +355,19 @@ class ResourceGovernor:
         }
         return batches.get(self.mode, 256)
 
+    def get_inference_threads(self, physical_cores: int) -> int:
+        """Recommended llama n_threads for the current mode.
+
+        Leaves CPU headroom for the user when they are active (WHISPER) so a running
+        generation can't choke a low-end laptop; uses all cores when idle (SPRINT).
+        """
+        cores = max(1, int(physical_cores or 1))
+        if self.mode == ResourceMode.WHISPER:
+            return max(1, cores // 2)     # user active: leave half the cores free
+        if self.mode == ResourceMode.BREATHE:
+            return max(1, cores - 1)      # lightly idle: most cores
+        return cores                      # SPRINT: all cores
+
     def mark_user_active(self) -> None:
         """
         Manually mark user as active (e.g., incoming chat message).
@@ -368,6 +381,13 @@ class ResourceGovernor:
             if self._mode != ResourceMode.WHISPER:
                 self._mode = ResourceMode.WHISPER
                 logger.info("governor: forced WHISPER (user_active)")
+        # Fire callbacks on the forced transition so priority/throttle apply immediately.
+        if old != ResourceMode.WHISPER:
+            for cb in self._on_mode_change:
+                try:
+                    cb(old, ResourceMode.WHISPER)
+                except Exception as exc:
+                    logger.warning("governor: mode_change callback failed: %s", exc)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise current state for API responses."""
@@ -395,12 +415,28 @@ _governor: ResourceGovernor | None = None
 _governor_lock = threading.Lock()
 
 
+def _apply_process_priority(mode: ResourceMode) -> None:
+    """Lower OS process priority when the user is active so Layla never chokes the
+    foreground; restore normal when idle. Best-effort, cross-platform (Windows/POSIX)."""
+    try:
+        import psutil
+        proc = psutil.Process()
+        if mode == ResourceMode.WHISPER:
+            proc.nice(getattr(psutil, "BELOW_NORMAL_PRIORITY_CLASS", 10))
+        else:
+            proc.nice(getattr(psutil, "NORMAL_PRIORITY_CLASS", 0))
+    except Exception:
+        pass
+
+
 def get_governor(cfg: dict | None = None) -> ResourceGovernor:
     """Get or create the singleton ResourceGovernor."""
     global _governor
     with _governor_lock:
         if _governor is None:
             _governor = ResourceGovernor(cfg)
+            if _governor.enabled:
+                _governor.on_mode_change(lambda old, new: _apply_process_priority(new))
         return _governor
 
 
