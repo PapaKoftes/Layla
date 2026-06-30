@@ -35,7 +35,7 @@ def check_auth(token: str, client_host: str, cfg: dict) -> tuple[bool, str]:
     # Try tunnel_auth (hashed token + IP allowlist + expiry) first
     auth_ok = False
     try:
-        from services.tunnel_auth import check_remote_access
+        from services.governance.tunnel_auth import check_remote_access
 
         auth_ok, auth_reason = check_remote_access(token, client_host, cfg)
         if not auth_ok:

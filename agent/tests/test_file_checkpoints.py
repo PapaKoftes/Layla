@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from services import file_checkpoints as fc
+from services.workspace import file_checkpoints as fc
 
 
 def test_create_list_restore_roundtrip(tmp_path: Path) -> None:

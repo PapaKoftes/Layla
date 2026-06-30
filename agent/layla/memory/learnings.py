@@ -53,7 +53,7 @@ def save_learning(
     except Exception:
         pass
     try:
-        from services.learning_filter import filter_learning
+        from services.memory.learning_filter import filter_learning
         pass_filter, filtered, reason = filter_learning(content)
         if not pass_filter:
             try:
@@ -167,7 +167,7 @@ def save_learning(
                         pass
             try:
                 import runtime_safety
-                from services.elasticsearch_bridge import index_learning
+                from services.retrieval.elasticsearch_bridge import index_learning
 
                 index_learning(
                     runtime_safety.load_config(),
@@ -186,7 +186,7 @@ def save_learning(
         # Layla v3: maturity XP for saved learnings (best-effort; never raise).
         if rid and int(rid) > 0:
             try:
-                from services.maturity_engine import award_xp
+                from services.personality.maturity_engine import award_xp
 
                 award_xp(10, reason=f"learning_saved:{learning_type}")
             except Exception:
@@ -197,7 +197,7 @@ def save_learning(
                 import threading
                 def _expand():
                     try:
-                        from services.graph_learning import expand_graph_from_learning
+                        from services.memory.graph_learning import expand_graph_from_learning
                         expand_graph_from_learning(content)
                     except Exception:
                         pass
@@ -206,7 +206,7 @@ def save_learning(
             except Exception:
                 pass
         try:
-            from services.personal_knowledge_graph import invalidate_personal_graph
+            from services.memory.personal_knowledge_graph import invalidate_personal_graph
             invalidate_personal_graph()
         except Exception:
             pass

@@ -25,7 +25,7 @@ if str(AGENT_DIR) not in sys.path:
 # memory_commands -- basic pattern matching (no DB)
 # ---------------------------------------------------------------------------
 
-from services.memory_commands import MemoryCommandResult, detect_and_handle
+from services.memory.memory_commands import MemoryCommandResult, detect_and_handle
 
 
 def test_non_command_passthrough():
@@ -49,7 +49,7 @@ def test_remember_too_short():
 def test_remember_triggers_pattern():
     """Pattern matched -- DB call will fail without DB, but is_command must be True."""
     with patch("layla.memory.db.save_learning", return_value=42), \
-         patch("services.working_memory.add_to_working_memory", return_value=None):
+         patch("services.memory.working_memory.add_to_working_memory", return_value=None):
         r = detect_and_handle("remember: my favorite language is Python")
     assert r.is_command is True
     assert r.command == "remember"
@@ -62,7 +62,7 @@ def test_remember_aliases():
     for verb in ("memorize", "note", "store", "save"):
         msg = f"{verb}: the user prefers concise responses"
         with patch("layla.memory.db.save_learning", return_value=1), \
-             patch("services.working_memory.add_to_working_memory", return_value=None):
+             patch("services.memory.working_memory.add_to_working_memory", return_value=None):
             r = detect_and_handle(msg)
         assert r.is_command is True, f"{verb} should trigger remember"
         assert r.command == "remember"
@@ -171,7 +171,7 @@ def test_clear_with_confirm():
 def test_layla_prefix_accepted():
     """'layla, remember: X' should work."""
     with patch("layla.memory.db.save_learning", return_value=1), \
-         patch("services.working_memory.add_to_working_memory", return_value=None):
+         patch("services.memory.working_memory.add_to_working_memory", return_value=None):
         r = detect_and_handle("layla, remember: I work in Python and C++")
     assert r.is_command is True
 
@@ -188,7 +188,7 @@ def test_remember_rate_limited():
 # ---------------------------------------------------------------------------
 
 def test_wm_add_and_get(tmp_path):
-    import services.working_memory as wm
+    import services.memory.working_memory as wm
     # Redirect to temp path
     _orig = wm._WM_PATH
     wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
@@ -203,7 +203,7 @@ def test_wm_add_and_get(tmp_path):
 
 
 def test_wm_dedup(tmp_path):
-    import services.working_memory as wm
+    import services.memory.working_memory as wm
     _orig = wm._WM_PATH
     wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
     wm._cache = None
@@ -218,7 +218,7 @@ def test_wm_dedup(tmp_path):
 
 
 def test_wm_fifo_cap(tmp_path):
-    import services.working_memory as wm
+    import services.memory.working_memory as wm
     wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
     wm._cache = None
     try:
@@ -233,7 +233,7 @@ def test_wm_fifo_cap(tmp_path):
 
 
 def test_wm_set_project_and_action(tmp_path):
-    import services.working_memory as wm
+    import services.memory.working_memory as wm
     wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
     wm._cache = None
     try:
@@ -247,7 +247,7 @@ def test_wm_set_project_and_action(tmp_path):
 
 
 def test_wm_blockers(tmp_path):
-    import services.working_memory as wm
+    import services.memory.working_memory as wm
     wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
     wm._cache = None
     try:
@@ -266,7 +266,7 @@ def test_wm_blockers(tmp_path):
 
 
 def test_wm_reset(tmp_path):
-    import services.working_memory as wm
+    import services.memory.working_memory as wm
     wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
     wm._cache = None
     try:
@@ -280,7 +280,7 @@ def test_wm_reset(tmp_path):
 
 
 def test_wm_format_for_prompt_empty(tmp_path):
-    import services.working_memory as wm
+    import services.memory.working_memory as wm
     wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
     wm._cache = None
     try:
@@ -292,7 +292,7 @@ def test_wm_format_for_prompt_empty(tmp_path):
 
 
 def test_wm_format_for_prompt_populated(tmp_path):
-    import services.working_memory as wm
+    import services.memory.working_memory as wm
     wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
     wm._cache = None
     try:
@@ -312,7 +312,7 @@ def test_wm_format_for_prompt_populated(tmp_path):
 
 
 def test_wm_auto_extract_project(tmp_path):
-    import services.working_memory as wm
+    import services.memory.working_memory as wm
     wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
     wm._cache = None
     try:
@@ -326,7 +326,7 @@ def test_wm_auto_extract_project(tmp_path):
 
 
 def test_wm_auto_extract_blocker(tmp_path):
-    import services.working_memory as wm
+    import services.memory.working_memory as wm
     wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
     wm._cache = None
     try:
@@ -339,7 +339,7 @@ def test_wm_auto_extract_blocker(tmp_path):
 
 
 def test_wm_short_message_ignored(tmp_path):
-    import services.working_memory as wm
+    import services.memory.working_memory as wm
     wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
     wm._cache = None
     try:

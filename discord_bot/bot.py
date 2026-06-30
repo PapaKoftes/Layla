@@ -113,7 +113,7 @@ def _rate_limited(channel_id: int) -> bool:
 def _get_tts_bytes_sync(text: str) -> bytes | None:
     """Synchronous TTS call. Wrap with asyncio.to_thread when calling from async."""
     try:
-        from services.tts import speak_to_bytes  # type: ignore[import]
+        from services.infrastructure.tts import speak_to_bytes  # type: ignore[import]
         return speak_to_bytes(text[:500])
     except Exception as e:
         logger.warning("TTS failed: %s", e)
@@ -544,7 +544,7 @@ def _create_bot() -> "commands.Bot | None":  # type: ignore[return]
 
     def _transcribe_wav(path: str) -> str:
         try:
-            from services.stt import transcribe_file  # type: ignore[import]
+            from services.infrastructure.stt import transcribe_file  # type: ignore[import]
             return (transcribe_file(path) or "").strip()
         except Exception as e:
             logger.warning("STT failed: %s", e)

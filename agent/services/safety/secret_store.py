@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import os
 
-from services.secret_filter import is_secret_key
+from services.safety.secret_filter import is_secret_key
 
 _SERVICE = "layla"
 

@@ -258,7 +258,7 @@ def run(fail_fast: bool = False, json_output: bool = False) -> int:
         if str(AGENT_DIR) not in _sys.path:
             _sys.path.insert(0, str(AGENT_DIR))
         import importlib as _il
-        _mod = _il.import_module("services.config_cache")
+        _mod = _il.import_module("services.infrastructure.config_cache")
         health_assertions["config_cache_importable"] = callable(getattr(_mod, "get_config", None))
     except Exception:
         health_assertions["config_cache_importable"] = False

@@ -88,7 +88,7 @@ def shell(argv: list, cwd: str) -> dict:
 
 def shell_session_start(argv: list | None = None, cwd: str = "") -> dict:
     """Start a background shell process; returns session_id. Requires approval."""
-    from services.shell_sessions import shell_session_tool
+    from services.infrastructure.shell_sessions import shell_session_tool
 
     return shell_session_tool(action="start", argv=list(argv or []), cwd=cwd or "")
 
@@ -99,7 +99,7 @@ def shell_session_manage(
     limit: int = 80,
 ) -> dict:
     """Poll, log, or kill a background shell session (no extra approval)."""
-    from services.shell_sessions import shell_session_tool
+    from services.infrastructure.shell_sessions import shell_session_tool
 
     return shell_session_tool(
         action=action,

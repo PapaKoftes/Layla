@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 import runtime_safety
 from routers.paths import AGENT_DIR, REPO_ROOT
-from services.route_helpers import get_cached_plugins, sync_set_project_context
+from services.infrastructure.route_helpers import get_cached_plugins, sync_set_project_context
 
 logger = logging.getLogger("layla")
 router = APIRouter(tags=["workspace"])
@@ -19,7 +19,7 @@ router = APIRouter(tags=["workspace"])
 @router.get("/platform/models")
 def platform_models():
     try:
-        from services.model_manager import list_models
+        from services.llm.model_manager import list_models
 
         cfg = runtime_safety.load_config()
         models = list_models()
@@ -36,14 +36,14 @@ def platform_models():
             pass
         benchmarks = {}
         try:
-            from services.model_benchmark import get_all_benchmarks
+            from services.llm.model_benchmark import get_all_benchmarks
 
             benchmarks = get_all_benchmarks() or {}
         except Exception:
             pass
         routing = {}
         try:
-            from services.model_router import get_model_routing_summary
+            from services.llm.model_router import get_model_routing_summary
 
             routing = get_model_routing_summary(cfg)
         except Exception:
@@ -176,7 +176,7 @@ async def set_project_context_api(req: Request):
 @router.get("/project_discovery")
 def get_project_discovery_api():
     try:
-        from services.project_discovery import run_project_discovery
+        from services.workspace.project_discovery import run_project_discovery
 
         return run_project_discovery()
     except Exception as e:
@@ -208,7 +208,7 @@ async def workspace_awareness_refresh(request: Request):
         rp = Path(root).expanduser().resolve()
         if not rp.is_dir() or not inside_sandbox(rp):
             return JSONResponse({"ok": False, "error": "workspace_root invalid or outside sandbox"}, status_code=400)
-        from services.workspace_awareness import refresh_for_workspace_sync
+        from services.workspace.workspace_awareness import refresh_for_workspace_sync
 
         out = refresh_for_workspace_sync(root, cfg)
         return JSONResponse({"ok": True, **out})
@@ -221,7 +221,7 @@ def workspace_project_memory(workspace_root: str = ""):
     """Read-only view of `.layla/project_memory.json` for the active workspace."""
     try:
         from layla.tools.registry import inside_sandbox
-        from services import project_memory as pm
+        from services.memory import project_memory as pm
 
         root = (workspace_root or "").strip()
         if not root:

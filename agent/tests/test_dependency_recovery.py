@@ -1,6 +1,6 @@
 """dependency_recovery: allowlist and structured payloads."""
 
-from services.dependency_recovery import (
+from services.infrastructure.dependency_recovery import (
     missing_gguf_recovery,
     pip_install_command,
     try_pip_install,

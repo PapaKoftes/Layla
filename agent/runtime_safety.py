@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from layla.time_utils import utcnow
-from services.file_lock import path_lock
+from services.workspace.file_lock import path_lock
 
 logger = logging.getLogger("layla")
 
@@ -125,7 +125,7 @@ def _probe_hardware() -> dict:
             return _hardware_probe_cache
         result: dict
         try:
-            from services.hardware_detect import detect_hardware
+            from services.infrastructure.hardware_detect import detect_hardware
             h = detect_hardware()
             result = {
                 "ram_gb": h["ram_gb"],
@@ -699,7 +699,7 @@ def load_config() -> dict:
         # no keyring backend exists, so the plaintext path is unchanged). Done
         # once per cache build, not on the hot fast-path return.
         try:
-            from services.secret_store import resolve_config_secrets
+            from services.safety.secret_store import resolve_config_secrets
             defaults = resolve_config_secrets(defaults)
         except Exception as e:
             logger.debug("secret resolution skipped: %s", e)
@@ -715,7 +715,7 @@ def _apply_maturity_gates(cfg: dict) -> None:
     interacted enough for Layla to earn them through the XP system.
     """
     try:
-        from services.maturity_engine import get_state
+        from services.personality.maturity_engine import get_state
         ms = get_state()
         rank = ms.rank
     except Exception:
@@ -981,7 +981,7 @@ def log_execution(tool_name: str, payload: dict) -> None:
     # Centralized here so every tool_dispatch call site (incl. mcp_tools_call's
     # arbitrary args) is covered by one chokepoint.
     try:
-        from services.secret_filter import redact_payload
+        from services.safety.secret_filter import redact_payload
         safe_payload = redact_payload(payload)
     except Exception:
         safe_payload = payload

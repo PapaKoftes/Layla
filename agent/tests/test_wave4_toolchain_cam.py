@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def test_suggest_cheaper_path_ir_before_gcode():
-    from services.toolchain_graph import suggest_cheaper_path
+    from services.tools.toolchain_graph import suggest_cheaper_path
 
     h = suggest_cheaper_path(["generate_gcode"])
     assert "geometry_extract_machining_ir" in h

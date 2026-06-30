@@ -34,7 +34,7 @@ def get_relationship_codex(workspace_root: str = Query("", description="Sandboxe
     if err:
         return JSONResponse({"ok": False, "error": err}, status_code=400)
     try:
-        from services.relationship_codex import load_codex
+        from services.memory.relationship_codex import load_codex
 
         data = load_codex(p)
         return JSONResponse({"ok": True, "path": str(p / ".layla" / "relationship_codex.json"), "data": data})
@@ -59,7 +59,7 @@ def put_relationship_codex(
     if not isinstance(data["entities"], dict):
         return JSONResponse({"ok": False, "error": "entities must be an object"}, status_code=400)
     try:
-        from services.relationship_codex import save_codex
+        from services.memory.relationship_codex import save_codex
 
         ok, msg = save_codex(p, data)
         if not ok:
@@ -75,7 +75,7 @@ def list_codex_proposals(workspace_root: str = Query("", description="Sandboxed 
     if err:
         return JSONResponse({"ok": False, "error": err}, status_code=400)
     try:
-        from services.relationship_codex import list_proposals
+        from services.memory.relationship_codex import list_proposals
 
         return JSONResponse(list_proposals(p))
     except Exception as e:
@@ -91,7 +91,7 @@ def generate_codex_proposals(
     if err:
         return JSONResponse({"ok": False, "error": err}, status_code=400)
     try:
-        from services.relationship_codex import generate_proposals
+        from services.memory.relationship_codex import generate_proposals
 
         goal_or_context = (body.get("goal_or_context") or "").strip() if isinstance(body, dict) else ""
         recent_actions = (body.get("recent_actions") or "").strip() if isinstance(body, dict) else ""
@@ -109,7 +109,7 @@ def approve_codex_proposal(
     if err:
         return JSONResponse({"ok": False, "error": err}, status_code=400)
     try:
-        from services.relationship_codex import approve_proposal
+        from services.memory.relationship_codex import approve_proposal
 
         res = approve_proposal(p, proposal_id)
         return JSONResponse(res, status_code=200 if res.get("ok") else 400)
@@ -126,7 +126,7 @@ def dismiss_codex_proposal(
     if err:
         return JSONResponse({"ok": False, "error": err}, status_code=400)
     try:
-        from services.relationship_codex import dismiss_proposal
+        from services.memory.relationship_codex import dismiss_proposal
 
         res = dismiss_proposal(p, proposal_id)
         return JSONResponse(res, status_code=200 if res.get("ok") else 400)

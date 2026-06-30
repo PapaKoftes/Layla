@@ -9,7 +9,7 @@ router = APIRouter(tags=["journal"])
 @router.get("/journal")
 def journal_list(limit: int = 50, day: str = ""):
     try:
-        from services.journal_engine import list_entries
+        from services.infrastructure.journal_engine import list_entries
 
         return JSONResponse(list_entries(limit=limit, day=day or ""))
     except Exception as e:
@@ -19,7 +19,7 @@ def journal_list(limit: int = 50, day: str = ""):
 @router.get("/journal/daily")
 def journal_daily(day: str = ""):
     try:
-        from services.journal_engine import list_entries
+        from services.infrastructure.journal_engine import list_entries
 
         return JSONResponse(list_entries(limit=200, day=day or ""))
     except Exception as e:
@@ -29,7 +29,7 @@ def journal_daily(day: str = ""):
 @router.post("/journal")
 def journal_add(req: dict = Body(default={})):
     try:
-        from services.journal_engine import add_entry
+        from services.infrastructure.journal_engine import add_entry
 
         body = req if isinstance(req, dict) else {}
         entry_type = (body.get("entry_type") or "note").strip()

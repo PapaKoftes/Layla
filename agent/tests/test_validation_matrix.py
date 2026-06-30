@@ -12,7 +12,7 @@ if str(AGENT) not in sys.path:
 
 
 def test_validation_matrix_basic_success() -> None:
-    from services.outcome_evaluation import evaluate_validation_matrix
+    from services.infrastructure.outcome_evaluation import evaluate_validation_matrix
 
     st = {
         "status": "finished",

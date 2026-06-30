@@ -12,7 +12,7 @@ router = APIRouter(tags=["metrics"])
 @router.get("/metrics")
 def get_metrics():
     """Prometheus scrape endpoint. Returns text/plain if prometheus_client is available, else JSON."""
-    from services.metrics import PROMETHEUS_AVAILABLE, generate_metrics_text
+    from services.observability.prom_metrics import PROMETHEUS_AVAILABLE, generate_metrics_text
 
     if PROMETHEUS_AVAILABLE:
         return PlainTextResponse(
@@ -25,7 +25,7 @@ def get_metrics():
 @router.get("/metrics/summary")
 def get_metrics_summary():
     """Human-readable metrics summary."""
-    from services.metrics import get_metrics_summary
+    from services.observability.prom_metrics import get_metrics_summary
 
     return get_metrics_summary()
 

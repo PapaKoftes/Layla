@@ -1,4 +1,4 @@
-from services.context_merge_layers import MEMORY_SECTION_ORDER, merge_memory_sections
+from services.context.context_merge_layers import MEMORY_SECTION_ORDER, merge_memory_sections
 
 
 def test_merge_memory_sections_order():

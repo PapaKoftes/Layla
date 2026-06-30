@@ -404,7 +404,7 @@ def _handle_write_files_batch(intent: str, goal: str, ctx: DispatchContext) -> D
     # Deterministic batch verification
     try:
         if isinstance(_res, dict) and _res.get("ok") and isinstance(_res.get("written"), list):
-            from services.tool_output_validator import deterministic_verify_tool_result
+            from services.tools.tool_output_validator import deterministic_verify_tool_result
             _batch_v: list[dict] = []
             _batch_ok = True
             for _p in [str(x) for x in (_res.get("written") or []) if str(x).strip()][:50]:
@@ -656,7 +656,7 @@ def _handle_run_python(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
 
 def _handle_apply_patch(intent: str, goal: str, ctx: DispatchContext) -> DispatchResult:
     al, rs, TOOLS = _imports()
-    from services.outcome_writer import _extract_patch_text
+    from services.infrastructure.outcome_writer import _extract_patch_text
     state, cfg, workspace, decision = ctx.state, ctx.cfg, ctx.workspace, ctx.decision
 
     if state.get("research_lab_root"):
@@ -1054,7 +1054,7 @@ def _handle_generic(intent: str, goal: str, ctx: DispatchContext) -> DispatchRes
     if intent in ("restore_file_checkpoint", "ingest_chat_export_to_knowledge",
                   "memory_elasticsearch_search", "list_file_checkpoints"):
         try:
-            from services.intent_routing_hints import fill_tool_args_from_goal
+            from services.tools.intent_routing_hints import fill_tool_args_from_goal
             _og = (state.get("original_goal") or goal or "").strip()
             args = fill_tool_args_from_goal(intent, _og, workspace, args)
         except Exception as _exc:
@@ -1092,7 +1092,7 @@ def _handle_generic(intent: str, goal: str, ctx: DispatchContext) -> DispatchRes
     )
 
     try:
-        from services.rl_feedback import record_outcome_feedback as _rl_record
+        from services.infrastructure.rl_feedback import record_outcome_feedback as _rl_record
         _ms = (time.perf_counter() - _tool_t0) * 1000.0
         _ok = isinstance(result, dict) and result.get("ok", True) is not False
         _rl_record(intent, success=_ok, latency_ms=_ms)

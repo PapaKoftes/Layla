@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from services.context_manager import (
+from services.context.context_manager import (
     DEFAULT_BUDGETS,
     build_system_prompt,
     deduplicate_content,
@@ -152,10 +152,10 @@ class TestSummarizeHistory:
             {"role": "user", "content": "Latest question"},
         ]
         # Use a tight context to force compression
-        with patch("services.context_manager.token_estimate_messages") as mock_est:
+        with patch("services.context.context_manager.token_estimate_messages") as mock_est:
             # First call: total (over threshold); subsequent calls measure output
             mock_est.side_effect = [5000, 100]
-            with patch("services.context_manager._compress_to_summary") as mock_compress:
+            with patch("services.context.context_manager._compress_to_summary") as mock_compress:
                 mock_compress.return_value = "[Earlier conversation summary]\n- Bullet 1"
                 result = summarize_history(msgs, n_ctx=4096, threshold_ratio=0.5)
 
@@ -172,8 +172,8 @@ class TestSummarizeHistory:
             {"role": "user", "content": "Recent question"},
             {"role": "assistant", "content": "Recent answer"},
         ]
-        with patch("services.context_manager.token_estimate_messages", return_value=8000):
-            with patch("services.context_manager._compress_to_summary") as mock_compress:
+        with patch("services.context.context_manager.token_estimate_messages", return_value=8000):
+            with patch("services.context.context_manager._compress_to_summary") as mock_compress:
                 mock_compress.return_value = "[Earlier conversation (truncated)]\nOld stuff"
                 result = summarize_history(
                     msgs, n_ctx=4096, threshold_ratio=0.5, keep_recent_messages=2,
@@ -194,7 +194,7 @@ class TestMaybeAutoCompact:
 
     def test_delegates_to_summarize_history(self):
         msgs = [{"role": "user", "content": "Hello"}]
-        with patch("services.context_manager.summarize_history", return_value=msgs) as mock_sh:
+        with patch("services.context.context_manager.summarize_history", return_value=msgs) as mock_sh:
             result = maybe_auto_compact(msgs, n_ctx=16384, cfg={})
         mock_sh.assert_called_once()
         assert result == msgs
@@ -202,7 +202,7 @@ class TestMaybeAutoCompact:
     def test_aggressive_sets_keep_10(self):
         msgs = [{"role": "user", "content": "Hello"}]
         cfg = {"context_aggressive_compress_enabled": True}
-        with patch("services.context_manager.summarize_history", return_value=msgs) as mock_sh:
+        with patch("services.context.context_manager.summarize_history", return_value=msgs) as mock_sh:
             maybe_auto_compact(msgs, n_ctx=16384, cfg=cfg)
         _, kwargs = mock_sh.call_args
         assert kwargs["keep_recent_messages"] == 10
@@ -213,7 +213,7 @@ class TestMaybeAutoCompact:
             "context_aggressive_compress_enabled": True,
             "context_sliding_keep_messages": 5,
         }
-        with patch("services.context_manager.summarize_history", return_value=msgs) as mock_sh:
+        with patch("services.context.context_manager.summarize_history", return_value=msgs) as mock_sh:
             maybe_auto_compact(msgs, n_ctx=16384, cfg=cfg)
         _, kwargs = mock_sh.call_args
         assert kwargs["keep_recent_messages"] == 5
@@ -308,8 +308,8 @@ class TestBuildSystemPrompt:
     def _patch_externals(self):
         """Return a stack of patches for external dependencies."""
         return [
-            patch("services.context_manager.get_last_prompt_metrics", return_value=({}, 4096)),
-            patch("services.context_manager.record_prompt_metrics"),
+            patch("services.context.context_manager.get_last_prompt_metrics", return_value=({}, 4096)),
+            patch("services.context.context_manager.record_prompt_metrics"),
         ]
 
     def test_assembles_sections_in_order(self):

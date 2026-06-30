@@ -59,7 +59,7 @@ def decompose_topic(topic: str, cfg: dict) -> list[str]:
     try:
         import json
 
-        from services.llm_gateway import run_completion
+        from services.llm.llm_gateway import run_completion
         prompt = (
             "You are a research planner. Break the following topic into 5-8 focused "
             "sub-questions that together cover it comprehensively. "
@@ -94,7 +94,7 @@ def search_local(query: str) -> list[Source]:
         logger.debug("search_local learnings: %s", exc)
     # Workspace semantic search
     try:
-        from services.workspace_index import search_workspace
+        from services.workspace.workspace_index import search_workspace
         for h in search_workspace(query, k=5):
             t = h.get("text", "")
             if t:
@@ -140,7 +140,7 @@ def search_web(query: str, max_results: int = 3) -> list[Source]:
 def synthesize_article(topic: str, sources: list[Source], cfg: dict) -> str:
     """LLM-based article synthesis. Returns markdown article."""
     try:
-        from services.llm_gateway import run_completion
+        from services.llm.llm_gateway import run_completion
         evidence = "\n---\n".join(
             f"[{s.title or s.url}] (cred {s.credibility:.1f}):\n{s.content[:1500]}"
             for s in sorted(sources, key=lambda s: -s.credibility)[:10])
@@ -192,7 +192,7 @@ def research_topic(
     # Extract entities — try GraphRAG-enhanced extraction first, then codex enricher
     entities: list[str] = []
     try:
-        from services.kb_builder import extract_entities_graphrag
+        from services.workspace.kb_builder import extract_entities_graphrag
         ent_dict = extract_entities_graphrag(article)
         for ent_list in ent_dict.values():
             entities.extend(ent_list)
@@ -219,7 +219,7 @@ def research_topic(
 def _save_to_kb(topic: str, article: str, cfg: dict) -> None:
     """Save via KBBuilder; fallback to memory_router."""
     try:
-        from services.kb_builder import KBBuilder
+        from services.workspace.kb_builder import KBBuilder
         kb = KBBuilder()
         kb.ingest_text(article, source=f"research:{topic}")
         kb.save()
@@ -227,7 +227,7 @@ def _save_to_kb(topic: str, article: str, cfg: dict) -> None:
     except Exception as exc:
         logger.debug("KBBuilder save failed: %s", exc)
     try:
-        from services.memory_router import save_learning
+        from services.memory.memory_router import save_learning
         save_learning(content=f"[Research] {topic}\n\n{article[:3000]}", kind="research")
     except Exception as exc:
         logger.debug("save_learning fallback failed: %s", exc)

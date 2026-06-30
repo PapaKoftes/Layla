@@ -120,7 +120,7 @@ def caps_from_cognitive_workspace(cw: dict | None) -> PolicyCaps:
 def caps_from_running_outcome(state: dict) -> PolicyCaps:
     """Heuristic on in-flight steps (tool failures this run)."""
     try:
-        from services.outcome_evaluation import evaluate_outcome
+        from services.infrastructure.outcome_evaluation import evaluate_outcome
 
         ev = evaluate_outcome(state)
     except Exception:
@@ -189,7 +189,7 @@ def build_policy_caps(
 
     caps = PolicyCaps()
     try:
-        from services.session_context import get_or_create_session
+        from services.infrastructure.session_context import get_or_create_session
 
         prev = get_or_create_session(conversation_id).get_outcome_evaluation()
         caps = merge_policy_caps(caps, caps_from_outcome_evaluation(prev))
@@ -214,7 +214,7 @@ def build_policy_caps(
         )
 
     try:
-        from services.toolchain_awareness import policy_hint_from_toolchain
+        from services.tools.toolchain_awareness import policy_hint_from_toolchain
 
         th = policy_hint_from_toolchain(state.get("original_goal") or state.get("goal") or "")
         if th.forbidden_tools:

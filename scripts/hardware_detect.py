@@ -36,7 +36,7 @@ def summarize_hardware() -> dict[str, Any]:
     if str(AGENT_DIR) not in sys.path:
         sys.path.insert(0, str(AGENT_DIR))
 
-    from services.hardware_detect import detect_hardware
+    from services.infrastructure.hardware_detect import detect_hardware
 
     h = detect_hardware()
     accel = (h.get("acceleration_backend") or "none").lower()

@@ -3,7 +3,7 @@
 import time
 from unittest.mock import MagicMock, patch
 
-from services.mdns_discovery import (
+from services.cluster.mdns_discovery import (
     SERVICE_TYPE,
     _discovered_peers,
     _get_or_create_instance_id,
@@ -181,7 +181,7 @@ def test_zeroconf_available_check():
 
 def test_check_peer_health_unreachable():
     """check_peer_health returns unreachable for bad IP."""
-    from services.mdns_discovery import check_peer_health
+    from services.cluster.mdns_discovery import check_peer_health
     result = check_peer_health({"ip": "192.0.2.1", "port": 1}, timeout=1.0)
     assert result["reachable"] is False
     assert result["error"] is not None

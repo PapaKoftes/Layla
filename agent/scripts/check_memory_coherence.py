@@ -126,7 +126,7 @@ def check_knowledge_graph() -> tuple[bool, str]:
 
 def check_memory_router() -> tuple[bool, str]:
     try:
-        from services.memory_router import check_coherence, query
+        from services.memory.memory_router import check_coherence, query
         report = check_coherence()
         if report.get("orphaned_relationships", 0) > 0:
             return False, f"FAIL: {report['orphaned_relationships']} orphaned relationships"

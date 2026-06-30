@@ -65,7 +65,7 @@ def register_exact_tool_call(state: dict, intent: str, decision: dict | None) ->
     except Exception as e:
         logger.debug("tools_used tracking failed: %s", e, exc_info=True)
     try:
-        from services.tool_loop_detection import exact_call_key
+        from services.tools.tool_loop_detection import exact_call_key
         state.setdefault("_recent_exact_calls", set()).add(exact_call_key(intent, decision))
     except Exception as _exc:
         logger.debug("register_exact_tool_call: %s", _exc, exc_info=False)
@@ -96,7 +96,7 @@ def apply_lite_mode_overrides(cfg: dict) -> dict:
 def get_effective_config(base_cfg: dict) -> dict:
     """Apply system_optimizer runtime overrides. Never persists to disk."""
     try:
-        from services.system_optimizer import get_runtime_overrides
+        from services.infrastructure.system_optimizer import get_runtime_overrides
         overrides = get_runtime_overrides()
         if overrides:
             cfg = dict(base_cfg)

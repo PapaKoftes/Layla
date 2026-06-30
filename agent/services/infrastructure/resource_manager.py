@@ -71,7 +71,7 @@ def classify_load() -> dict:
     }
     # Include governor mode if available
     try:
-        from services.resource_governor import get_governor
+        from services.infrastructure.resource_governor import get_governor
         gov = get_governor()
         result["governor_mode"] = gov.mode.value
         result["governor_max_workers"] = gov.get_max_workers()

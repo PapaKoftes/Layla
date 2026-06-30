@@ -20,7 +20,7 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-from services.frame_modifier import (
+from services.personality.frame_modifier import (
     _HIGH,
     _LOW,
     build_frame_block,
@@ -238,7 +238,7 @@ def test_load_from_identity_clamps():
 # ---------------------------------------------------------------------------
 
 def test_write_and_load_snapshot(tmp_path, monkeypatch):
-    import services.frame_modifier as fm
+    import services.personality.frame_modifier as fm
     monkeypatch.setattr(fm, "_PROFILE_PATH", tmp_path / ".layla" / "layla_profile.json")
 
     uid = {
@@ -265,7 +265,7 @@ def test_write_and_load_snapshot(tmp_path, monkeypatch):
 
 
 def test_snapshot_active_modifiers_match_build(tmp_path, monkeypatch):
-    import services.frame_modifier as fm
+    import services.personality.frame_modifier as fm
     monkeypatch.setattr(fm, "_PROFILE_PATH", tmp_path / "profile.json")
 
     uid = {"stat_technical": "8", "stat_patience": "2"}
@@ -278,13 +278,13 @@ def test_snapshot_active_modifiers_match_build(tmp_path, monkeypatch):
 
 
 def test_load_snapshot_missing_returns_empty(tmp_path, monkeypatch):
-    import services.frame_modifier as fm
+    import services.personality.frame_modifier as fm
     monkeypatch.setattr(fm, "_PROFILE_PATH", tmp_path / "nonexistent.json")
     assert load_profile_snapshot() == {}
 
 
 def test_write_snapshot_bad_path_does_not_raise(monkeypatch):
-    import services.frame_modifier as fm
+    import services.personality.frame_modifier as fm
     monkeypatch.setattr(fm, "_PROFILE_PATH", Path("/impossible/path/x/y/z/profile.json"))
     # Should not raise -- errors are swallowed
     write_profile_snapshot({"stat_technical": "8"})

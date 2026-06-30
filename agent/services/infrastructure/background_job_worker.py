@@ -46,7 +46,7 @@ def main() -> int:
     except Exception:
         pass
     try:
-        from services.worker_os_limits import apply_background_worker_posix_rlimits
+        from services.infrastructure.worker_os_limits import apply_background_worker_posix_rlimits
 
         apply_background_worker_posix_rlimits(_worker_cfg)
     except Exception:
@@ -89,7 +89,7 @@ def main() -> int:
             aw, ar = _effective_allows_job()
             fpid = str(job.get("file_plan_id") or "").strip()
             if fpid:
-                from services.engine_plans import run_plan_iteration
+                from services.planning.engine_plans import run_plan_iteration
 
                 pl = dict(job)
                 pl["allow_write"] = aw
@@ -141,7 +141,7 @@ def main() -> int:
             wr = str(job.get("workspace_root") or "").strip()
             root = Path(wr).expanduser().resolve() if wr else None
             if str(job.get("file_plan_id") or "").strip():
-                from services.engine_plans import run_file_plan_background_loop
+                from services.planning.engine_plans import run_file_plan_background_loop
 
                 pl = dict(job)
                 pl["conversation_history"] = hist
@@ -154,7 +154,7 @@ def main() -> int:
                     delay_s,
                 )
             else:
-                from services.project_memory import load_project_memory
+                from services.memory.project_memory import load_project_memory
 
                 aggregate_steps: list = []
                 result = {}

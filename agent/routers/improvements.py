@@ -9,7 +9,7 @@ router = APIRouter(tags=["improvements"])
 @router.get("/improvements")
 def improvements_list(status: str = "", limit: int = 50):
     try:
-        from services.self_improvement import list_proposals
+        from services.infrastructure.self_improvement import list_proposals
 
         return JSONResponse(list_proposals(status=status or "", limit=limit))
     except Exception as e:
@@ -20,7 +20,7 @@ def improvements_list(status: str = "", limit: int = 50):
 def improvements_generate(req: dict = Body(default={})):
     try:
         import runtime_safety
-        from services.self_improvement import generate_proposals
+        from services.infrastructure.self_improvement import generate_proposals
 
         body = req if isinstance(req, dict) else {}
         out = generate_proposals(
@@ -31,7 +31,7 @@ def improvements_generate(req: dict = Body(default={})):
         try:
             cfg = runtime_safety.load_config()
             if cfg.get("initiative_project_proposals_enabled", False):
-                from services.initiative_engine import generate_project_proposals
+                from services.infrastructure.initiative_engine import generate_project_proposals
 
                 ws = (body.get("workspace_root") or "").strip() or str(runtime_safety.REPO_ROOT)
                 out["project_proposals"] = generate_project_proposals(ws, cfg)
@@ -45,7 +45,7 @@ def improvements_generate(req: dict = Body(default={})):
 @router.post("/improvements/approve_batch")
 def improvements_approve_batch(req: dict = Body(default={})):
     try:
-        from services.self_improvement import approve_batch
+        from services.infrastructure.self_improvement import approve_batch
 
         body = req if isinstance(req, dict) else {}
         ids = body.get("ids") if isinstance(body.get("ids"), list) else []
@@ -57,7 +57,7 @@ def improvements_approve_batch(req: dict = Body(default={})):
 @router.post("/improvements/reject")
 def improvements_reject(req: dict = Body(default={})):
     try:
-        from services.self_improvement import reject
+        from services.infrastructure.self_improvement import reject
 
         body = req if isinstance(req, dict) else {}
         ids = body.get("ids") if isinstance(body.get("ids"), list) else []

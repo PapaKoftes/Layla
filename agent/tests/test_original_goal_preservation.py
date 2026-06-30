@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 def test_reflection_engine_uses_original_goal():
     """store_reflections_as_learnings receives original_goal, not the revised objective."""
-    from services.reflection_engine import run_reflection
+    from services.infrastructure.reflection_engine import run_reflection
 
     state = {
         "status": "finished",
@@ -24,8 +24,8 @@ def test_reflection_engine_uses_original_goal():
             {"action": "read_file", "result": {"ok": True, "path": "/tmp/gear.txt"}},
         ],
     }
-    with patch("services.reflection_engine.generate_reflections") as mock_gen, \
-         patch("services.reflection_engine.store_reflections_as_learnings") as mock_store:
+    with patch("services.infrastructure.reflection_engine.generate_reflections") as mock_gen, \
+         patch("services.infrastructure.reflection_engine.store_reflections_as_learnings") as mock_store:
         mock_gen.return_value = {
             "what_worked": "read succeeded",
             "what_failed": "None",
@@ -42,7 +42,7 @@ def test_reflection_engine_uses_original_goal():
 
 def test_reflection_engine_falls_back_to_objective():
     """When original_goal is absent, fall back to objective."""
-    from services.reflection_engine import run_reflection
+    from services.infrastructure.reflection_engine import run_reflection
 
     state = {
         "status": "finished",
@@ -51,8 +51,8 @@ def test_reflection_engine_falls_back_to_objective():
             {"action": "grep_code", "result": {"ok": True}},
         ],
     }
-    with patch("services.reflection_engine.generate_reflections") as mock_gen, \
-         patch("services.reflection_engine.store_reflections_as_learnings") as mock_store:
+    with patch("services.infrastructure.reflection_engine.generate_reflections") as mock_gen, \
+         patch("services.infrastructure.reflection_engine.store_reflections_as_learnings") as mock_store:
         mock_gen.return_value = {
             "what_worked": "grep succeeded",
             "what_failed": "None",
@@ -123,7 +123,7 @@ def test_plan_log_falls_back_to_goal():
 
 def test_generate_reflections_reads_original_goal():
     """generate_reflections should pick up original_goal for the objective line."""
-    from services.reflection_engine import generate_reflections
+    from services.infrastructure.reflection_engine import generate_reflections
 
     state = {
         "original_goal": "Calculate torque for a stepper motor",
@@ -139,7 +139,7 @@ def test_generate_reflections_reads_original_goal():
     # must use original_goal.  We test the run_reflection integration above.
     # Here we just confirm generate_reflections doesn't crash.
     # run_completion is imported lazily inside the function, so patch the gateway module.
-    with patch("services.llm_gateway.run_completion", side_effect=Exception("no LLM")):
+    with patch("services.llm.llm_gateway.run_completion", side_effect=Exception("no LLM")):
         result = generate_reflections(state)
     assert "what_worked" in result
     assert "what_failed" in result
@@ -151,7 +151,7 @@ def test_generate_reflections_reads_original_goal():
 
 def test_outcome_writer_uses_original_goal():
     """_save_outcome_memory should use original_goal for the objective line."""
-    from services.outcome_writer import _save_outcome_memory
+    from services.infrastructure.outcome_writer import _save_outcome_memory
 
     state = {
         "status": "finished",
@@ -162,8 +162,8 @@ def test_outcome_writer_uses_original_goal():
         ],
     }
     # save_learning is imported lazily from services.memory_router inside _save_outcome_memory
-    with patch("services.memory_router.save_learning") as mock_save, \
-         patch("services.reflection_engine.run_reflection", return_value=None):
+    with patch("services.memory.memory_router.save_learning") as mock_save, \
+         patch("services.infrastructure.reflection_engine.run_reflection", return_value=None):
         _save_outcome_memory(state)
 
     # The first save_learning call is the outcome summary
@@ -180,7 +180,7 @@ def test_outcome_writer_uses_original_goal():
 
 def test_auto_extract_learnings_uses_original_goal():
     """_auto_extract_learnings should receive state['original_goal'], not the optimized goal."""
-    from services.outcome_writer import _auto_extract_learnings
+    from services.infrastructure.outcome_writer import _auto_extract_learnings
 
     captured_msgs = []
 
@@ -197,8 +197,8 @@ def test_auto_extract_learnings_uses_original_goal():
     )
     # save_learning and run_completion are imported lazily from services.memory_router
     # and services.llm_gateway respectively
-    with patch("services.memory_router.save_learning", side_effect=fake_save), \
-         patch("services.llm_gateway.run_completion", return_value=""):
+    with patch("services.memory.memory_router.save_learning", side_effect=fake_save), \
+         patch("services.llm.llm_gateway.run_completion", return_value=""):
         _auto_extract_learnings(user_msg, response, "morrigan")
 
     # The function was called with the original user message.

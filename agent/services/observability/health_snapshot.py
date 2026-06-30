@@ -156,7 +156,7 @@ def build_dependency_status(*, probe_chroma: bool) -> dict[str, str]:
         out["tree_sitter"] = "missing"
 
     try:
-        from services.hardware_detect import detect_hardware
+        from services.infrastructure.hardware_detect import detect_hardware
 
         hw = detect_hardware()
         gpu = (hw.get("gpu_name") or "").strip()

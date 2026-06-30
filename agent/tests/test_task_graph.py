@@ -1,6 +1,6 @@
 """Tests for task_graph (parallel agent roles)."""
 
-from services.task_graph import (
+from services.planning.task_graph import (
     AGENT_ROLES,
     GraphExecutor,
     TaskGraph,

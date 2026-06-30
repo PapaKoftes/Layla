@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from services.plan_step_governance import validate_step_outcome
-from services.task_budget import allocate_budget, profile_task
+from services.planning.plan_step_governance import validate_step_outcome
+from services.infrastructure.task_budget import allocate_budget, profile_task
 
 
 def test_profile_short_greeting_low_complexity():

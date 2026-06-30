@@ -32,7 +32,7 @@ router = APIRouter(prefix="/german", tags=["german"])
 async def get_profile(user_id: str = "default"):
     """Return the user's German learning profile."""
     try:
-        from services.german_mode import get_profile as _get
+        from services.infrastructure.german_mode import get_profile as _get
         return {"ok": True, "profile": _get(user_id)}
     except Exception as e:
         logger.error("GET /german/profile failed: %s", e)
@@ -48,7 +48,7 @@ async def set_level(body: dict):
     level = str(body.get("level", "B1")).strip()
     user_id = str(body.get("user_id", "default"))
     try:
-        from services.german_mode import set_level as _set
+        from services.infrastructure.german_mode import set_level as _set
         profile = _set(level, user_id)
         return {"ok": True, "profile": profile}
     except ValueError as e:
@@ -73,7 +73,7 @@ async def correct_text(body: dict):
     if not text:
         return {"ok": False, "error": "text is required"}
     try:
-        from services.german_mode import correct_text as _correct
+        from services.infrastructure.german_mode import correct_text as _correct
         return _correct(text, user_id)
     except Exception as e:
         logger.error("POST /german/correct failed: %s", e)
@@ -84,7 +84,7 @@ async def correct_text(body: dict):
 async def get_corrections(user_id: str = "default", limit: int = 20):
     """Return recent correction history."""
     try:
-        from services.german_mode import get_corrections_history
+        from services.infrastructure.german_mode import get_corrections_history
         records = get_corrections_history(user_id, limit=min(limit, 200))
         return {"ok": True, "records": records, "total": len(records)}
     except Exception as e:
@@ -100,7 +100,7 @@ async def get_corrections(user_id: str = "default", limit: int = 20):
 async def calibration_sentences(level: str):
     """Return example sentences for a given CEFR level."""
     try:
-        from services.german_mode import CEFR_LEVELS, get_calibration_sentences
+        from services.infrastructure.german_mode import CEFR_LEVELS, get_calibration_sentences
         lvl = level.upper()
         if lvl not in CEFR_LEVELS:
             return {"ok": False, "error": f"Unknown level: {level}. Use {CEFR_LEVELS}"}
@@ -120,7 +120,7 @@ async def run_calibration(body: dict):
     if not isinstance(answers, list) or not answers:
         return {"ok": False, "error": "answers must be a non-empty list"}
     try:
-        from services.german_mode import calibrate_from_answers
+        from services.infrastructure.german_mode import calibrate_from_answers
         return calibrate_from_answers(answers, user_id)
     except Exception as e:
         logger.error("POST /german/calibrate failed: %s", e)
@@ -135,7 +135,7 @@ async def run_calibration(body: dict):
 async def due_cards(user_id: str = "default", limit: int = 10):
     """Return flashcards due for review."""
     try:
-        from services.german_mode import get_due_cards
+        from services.infrastructure.german_mode import get_due_cards
         cards = get_due_cards(user_id, limit=min(limit, 50))
         return {"ok": True, "cards": cards, "total": len(cards)}
     except Exception as e:
@@ -147,7 +147,7 @@ async def due_cards(user_id: str = "default", limit: int = 10):
 async def flashcard_stats(user_id: str = "default"):
     """Return deck statistics."""
     try:
-        from services.german_mode import get_flashcard_stats
+        from services.infrastructure.german_mode import get_flashcard_stats
         return {"ok": True, **get_flashcard_stats(user_id)}
     except Exception as e:
         logger.error("GET /german/flashcards/stats failed: %s", e)
@@ -168,7 +168,7 @@ async def add_flashcard(body: dict):
     example = str(body.get("example", ""))
     tags = str(body.get("tags", ""))
     try:
-        from services.german_mode import add_flashcard as _add
+        from services.infrastructure.german_mode import add_flashcard as _add
         return _add(front, back, example, tags, user_id)
     except Exception as e:
         logger.error("POST /german/flashcards failed: %s", e)
@@ -185,7 +185,7 @@ async def review_card(card_id: int, body: dict):
     quality = int(body.get("quality", 3))
     user_id = str(body.get("user_id", "default"))
     try:
-        from services.german_mode import review_card as _review
+        from services.infrastructure.german_mode import review_card as _review
         return _review(card_id, quality, user_id)
     except Exception as e:
         logger.error("POST /german/flashcards/%d/review failed: %s", card_id, e)
@@ -196,7 +196,7 @@ async def review_card(card_id: int, body: dict):
 async def delete_flashcard(card_id: int, user_id: str = "default"):
     """Delete a flashcard."""
     try:
-        from services.german_mode import delete_flashcard as _del
+        from services.infrastructure.german_mode import delete_flashcard as _del
         return _del(card_id, user_id)
     except Exception as e:
         logger.error("DELETE /german/flashcards/%d failed: %s", card_id, e)

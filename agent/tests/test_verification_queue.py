@@ -64,10 +64,10 @@ def _patched_queue():
     def fake_conn():
         return db
 
-    with patch("services.verification_queue._conn", fake_conn), \
-         patch("services.verification_queue.utcnow", side_effect=lambda: datetime.now(timezone.utc)):
+    with patch("services.planning.verification_queue._conn", fake_conn), \
+         patch("services.planning.verification_queue.utcnow", side_effect=lambda: datetime.now(timezone.utc)):
         # Re-import after patching so the class picks up the stubs
-        from services.verification_queue import VerificationQueue
+        from services.planning.verification_queue import VerificationQueue
         q = VerificationQueue.__new__(VerificationQueue)
         q._prompts_this_session = 0
         yield q, db
@@ -82,15 +82,15 @@ def _make_queue():
     def fake_conn():
         return db
 
-    patcher_conn = patch("services.verification_queue._conn", fake_conn)
+    patcher_conn = patch("services.planning.verification_queue._conn", fake_conn)
     patcher_time = patch(
-        "services.verification_queue.utcnow",
+        "services.planning.verification_queue.utcnow",
         side_effect=lambda: datetime.now(timezone.utc),
     )
     patcher_conn.start()
     patcher_time.start()
 
-    from services.verification_queue import VerificationQueue
+    from services.planning.verification_queue import VerificationQueue
     q = VerificationQueue.__new__(VerificationQueue)
     q._prompts_this_session = 0
 
@@ -116,7 +116,7 @@ def vq():
 
     with patch("layla.memory.db_connection._conn", fake_conn), \
          patch("layla.time_utils.utcnow", return_value=datetime.now(timezone.utc)):
-        from services.verification_queue import VerificationQueue
+        from services.planning.verification_queue import VerificationQueue
         q = VerificationQueue.__new__(VerificationQueue)
         q._prompts_this_session = 0
         yield q, db

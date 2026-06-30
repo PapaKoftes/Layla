@@ -172,7 +172,7 @@ def get_best_llm_filename_for_task(task_type: str, cfg: dict | None = None) -> s
             raw = (cfg.get("coding_model") or "").strip()
             if not raw:
                 return None
-            from services.model_router import _resolve_models_block_alias
+            from services.llm.model_router import _resolve_models_block_alias
 
             return _resolve_models_block_alias(raw) or raw
     except Exception as e:

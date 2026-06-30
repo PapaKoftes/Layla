@@ -36,20 +36,20 @@ def intelligence_info():
     info: dict[str, Any] = {}
 
     try:
-        from services.airllm_runner import get_info as _airllm_info
+        from services.llm.airllm_runner import get_info as _airllm_info
         info["airllm"] = _airllm_info()
     except Exception as exc:
         info["airllm"] = {"error": str(exc)}
 
     try:
-        from services.prompt_compressor import get_info as _comp_info
+        from services.prompts.prompt_compressor import get_info as _comp_info
         info["compression"] = _comp_info()
     except Exception as exc:
         info["compression"] = {"error": str(exc)}
 
     try:
-        from services.prompt_optimizer import _use_dspy, _use_guidance
-        from services.prompt_optimizer import get_available_tier as _opt_tier
+        from services.prompts.prompt_optimizer import _use_dspy, _use_guidance
+        from services.prompts.prompt_optimizer import get_available_tier as _opt_tier
         info["optimizer"] = {
             "enabled": True,
             "dspy_requested": _use_dspy(),
@@ -69,7 +69,7 @@ def intelligence_info():
         info["optimizer"] = {"error": str(exc)}
 
     try:
-        from services.kb_builder import get_info as _kb_info
+        from services.workspace.kb_builder import get_info as _kb_info
         info["kb_builder"] = _kb_info()
     except Exception as exc:
         info["kb_builder"] = {"error": str(exc)}
@@ -82,7 +82,7 @@ def intelligence_info():
 @router.get("/airllm/info")
 def airllm_info():
     """Return AirLLM configuration and availability status."""
-    from services.airllm_runner import get_info
+    from services.llm.airllm_runner import get_info
     return get_info()
 
 
@@ -109,9 +109,9 @@ def airllm_generate(req: AirLLMGenerateRequest):
     Requires airllm_enabled=true and airllm_model_path set in config.json.
     Generation is slower than full-VRAM inference but works on consumer GPUs.
     """
-    from services.airllm_runner import generate, is_available
+    from services.llm.airllm_runner import generate, is_available
     if not is_available():
-        from services.airllm_runner import get_info
+        from services.llm.airllm_runner import get_info
         return JSONResponse({"ok": False, "error": "AirLLM not available", "info": get_info()}, status_code=503)
     result = generate(
         req.prompt,
@@ -129,7 +129,7 @@ def airllm_generate(req: AirLLMGenerateRequest):
 @router.post("/airllm/chat")
 def airllm_chat(req: AirLLMChatRequest):
     """Chat-style generation via AirLLM. Applies the model's chat template if available."""
-    from services.airllm_runner import generate_chat, is_available
+    from services.llm.airllm_runner import generate_chat, is_available
     if not is_available():
         return JSONResponse({"ok": False, "error": "AirLLM not available"}, status_code=503)
     result = generate_chat(
@@ -146,7 +146,7 @@ def airllm_chat(req: AirLLMChatRequest):
 @router.post("/airllm/unload")
 def airllm_unload(model_path: str | None = None):
     """Unload AirLLM model from memory to free VRAM/RAM."""
-    from services.airllm_runner import unload_model
+    from services.llm.airllm_runner import unload_model
     unload_model(model_path)
     return {"ok": True, "message": f"Model {'all models' if not model_path else model_path} unloaded"}
 
@@ -174,7 +174,7 @@ def compress_text(req: CompressRequest):
     Compress text to target length using LLMLingua (if installed) or heuristic scoring.
     Returns compressed text, achieved ratio, and method used.
     """
-    from services.prompt_compressor import compress
+    from services.prompts.prompt_compressor import compress
     return compress(
         req.text,
         target_ratio=req.target_ratio,
@@ -191,7 +191,7 @@ def compress_rag(req: CompressRAGRequest):
     Uses LongLLMLingua (question-aware, multi-doc) if available.
     Returns a single compressed context string ready for prompt injection.
     """
-    from services.prompt_compressor import compress_rag_context
+    from services.prompts.prompt_compressor import compress_rag_context
     return compress_rag_context(
         req.documents,
         req.query,
@@ -221,7 +221,7 @@ def optimize_prompt(req: OptimizeRequest):
 
     Returns the optimized prompt plus analysis metadata.
     """
-    from services.prompt_optimizer import optimize
+    from services.prompts.prompt_optimizer import optimize
     return optimize(req.message, context=req.context, force_tier=req.force_tier)
 
 
@@ -246,7 +246,7 @@ class KBBuildFromDirectoryRequest(BaseModel):
 @router.get("/kb/info")
 def kb_info():
     """Return KB builder capability info and output directory status."""
-    from services.kb_builder import get_info
+    from services.workspace.kb_builder import get_info
     info = get_info()
 
     # Add article count from index if it exists
@@ -273,7 +273,7 @@ def kb_build_from_text(req: KBBuildFromTextRequest):
     Auto-discovers topics and synthesizes structured articles.
     Articles are saved as JSON + Markdown in the KB output directory.
     """
-    from services.kb_builder import build_kb_from_texts
+    from services.workspace.kb_builder import build_kb_from_texts
     out = Path(req.output_dir) if req.output_dir else None
     result = build_kb_from_texts(req.texts, topic=req.topic, output_dir=out)
     return result
@@ -285,7 +285,7 @@ def kb_build_from_urls(req: KBBuildFromURLsRequest):
     Build a knowledge base from a list of URLs.
     Fetches each URL, extracts text, discovers topics, and synthesizes articles.
     """
-    from services.kb_builder import build_kb_from_urls
+    from services.workspace.kb_builder import build_kb_from_urls
     return build_kb_from_urls(req.urls, topic=req.topic)
 
 
@@ -295,7 +295,7 @@ def kb_build_from_directory(req: KBBuildFromDirectoryRequest):
     Build a knowledge base from all supported files in a directory.
     Recursively ingests .txt, .md, .py, .js, .json, .yaml, .pdf, etc.
     """
-    from services.kb_builder import build_kb_from_directory
+    from services.workspace.kb_builder import build_kb_from_directory
     if not Path(req.directory).is_dir():
         raise HTTPException(status_code=400, detail=f"Not a directory: {req.directory}")
     return build_kb_from_directory(req.directory, topic=req.topic)
@@ -307,7 +307,7 @@ def kb_list_articles():
     try:
         import json as _json
 
-        from services.kb_builder import _kb_output_dir
+        from services.workspace.kb_builder import _kb_output_dir
         idx = _kb_output_dir() / "_index.json"
         if not idx.exists():
             return {"articles": [], "message": "No KB index found. Run a build first."}
@@ -323,7 +323,7 @@ def kb_get_article(article_id: str):
     try:
         import json as _json
 
-        from services.kb_builder import _kb_output_dir
+        from services.workspace.kb_builder import _kb_output_dir
         art_path = _kb_output_dir() / f"{article_id}.json"
         if not art_path.exists():
             raise HTTPException(status_code=404, detail=f"Article {article_id} not found")

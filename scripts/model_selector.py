@@ -32,7 +32,7 @@ def _summarize_hardware() -> tuple[dict[str, Any], dict[str, Any]]:
     if full is None:
         if str(AGENT_DIR) not in sys.path:
             sys.path.insert(0, str(AGENT_DIR))
-        from services.hardware_detect import detect_hardware
+        from services.infrastructure.hardware_detect import detect_hardware
 
         full = detect_hardware()
     public = {k: v for k, v in summary.items() if not str(k).startswith("_")}

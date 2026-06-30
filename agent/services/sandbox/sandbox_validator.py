@@ -77,7 +77,7 @@ def run_sandbox_benchmark(capability: str, implementation_id: str, package_name:
     Returns {ok, valid, latency_ms, error}.
     """
     from layla.memory.db import upsert_capability_implementation
-    from services.benchmark_suite import run_benchmark
+    from services.infrastructure.benchmark_suite import run_benchmark
 
     val = validate_capability_impl(capability, implementation_id, package_name)
     if not val["valid"]:

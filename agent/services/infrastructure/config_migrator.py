@@ -7,7 +7,7 @@ Handles:
   - Deprecated keys (warns and removes)
 
 Usage:
-    from services.config_migrator import migrate_config
+    from services.infrastructure.config_migrator import migrate_config
     cfg, changes = migrate_config(cfg)
 """
 from __future__ import annotations

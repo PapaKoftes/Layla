@@ -78,7 +78,7 @@ def _handle_remember(content: str, aspect_id: str = "") -> MemoryCommandResult:
             error="too_short",
         )
     try:
-        from services.memory_router import save_learning  # canonical write path
+        from services.memory.memory_router import save_learning  # canonical write path
         row_id = save_learning(
             content=content,
             kind="user_fact",
@@ -101,7 +101,7 @@ def _handle_remember(content: str, aspect_id: str = "") -> MemoryCommandResult:
 
         # Sync to working memory
         try:
-            from services.working_memory import add_to_working_memory
+            from services.memory.working_memory import add_to_working_memory
             add_to_working_memory(content)
         except Exception as _e:
             logger.debug("memory_commands: working_memory update skipped: %s", _e)

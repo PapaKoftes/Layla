@@ -46,7 +46,7 @@ def generate_reflections(state: dict) -> dict[str, str]:
 
     # Try LLM for richer reflections when available
     try:
-        from services.llm_gateway import run_completion
+        from services.llm.llm_gateway import run_completion
         oe_line = ""
         if oe_score is not None:
             iss = "; ".join(str(x) for x in oe_issues[:5]) if oe_issues else "none"
@@ -109,7 +109,7 @@ def store_reflections_as_learnings(
     if not reflections:
         return
     try:
-        from services.memory_router import save_learning  # canonical write path
+        from services.memory.memory_router import save_learning  # canonical write path
         parts = []
         if reflections.get("what_worked"):
             parts.append(f"Worked: {reflections['what_worked']}")

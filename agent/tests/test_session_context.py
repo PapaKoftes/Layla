@@ -12,7 +12,7 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-from services.session_context import (
+from services.infrastructure.session_context import (
     SessionContext,
     get_or_create_session,
     get_session,
@@ -269,7 +269,7 @@ def test_concurrent_blackboard():
 
 
 def test_session_count():
-    from services.session_context import session_count, _sessions, _sessions_lock
+    from services.infrastructure.session_context import session_count, _sessions, _sessions_lock
 
     with _sessions_lock:
         before = len(_sessions)
@@ -279,7 +279,7 @@ def test_session_count():
 
 
 def test_prune_stale_sessions():
-    from services.session_context import prune_stale_sessions, _sessions, _sessions_lock
+    from services.infrastructure.session_context import prune_stale_sessions, _sessions, _sessions_lock
 
     # Create a session with artificially old _created_at
     ctx = get_or_create_session("prune-old")
@@ -291,7 +291,7 @@ def test_prune_stale_sessions():
 
 
 def test_prune_keeps_fresh_sessions():
-    from services.session_context import prune_stale_sessions
+    from services.infrastructure.session_context import prune_stale_sessions
 
     ctx = get_or_create_session("prune-fresh")
     # _created_at is just now, so it should survive pruning

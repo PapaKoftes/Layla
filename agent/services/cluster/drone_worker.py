@@ -32,7 +32,7 @@ class DroneWorker:
 
         # Get our node ID
         try:
-            from services.mdns_discovery import get_instance_id
+            from services.cluster.mdns_discovery import get_instance_id
             self._node_id = get_instance_id()
         except Exception:
             self._node_id = "local"
@@ -109,7 +109,7 @@ class DroneWorker:
                 if _stuck_check_counter >= 10:
                     _stuck_check_counter = 0
                     try:
-                        from services.work_unit import get_task_queue
+                        from services.cluster.work_unit import get_task_queue
                         get_task_queue().reset_stuck(300)
                     except Exception:
                         pass
@@ -149,7 +149,7 @@ class DroneWorker:
     def _should_work(self) -> bool:
         """Check if the resource governor allows background work."""
         try:
-            from services.resource_governor import should_run_background
+            from services.infrastructure.resource_governor import should_run_background
             return should_run_background(priority=1)
         except Exception:
             return True  # If no governor, always work
@@ -157,7 +157,7 @@ class DroneWorker:
     def _claim_task(self):
         """Claim the next available task from the queue."""
         try:
-            from services.work_unit import get_task_queue
+            from services.cluster.work_unit import get_task_queue
             queue = get_task_queue()
             return queue.claim(self._node_id)
         except Exception as e:
@@ -177,7 +177,7 @@ class DroneWorker:
             result = handler(task.payload)
 
             # Mark done
-            from services.work_unit import get_task_queue
+            from services.cluster.work_unit import get_task_queue
             get_task_queue().complete(task.id, result)
             self._tasks_completed += 1
             logger.info("Task %s completed", task.id[:8])
@@ -185,7 +185,7 @@ class DroneWorker:
         except Exception as e:
             logger.warning("Task %s failed: %s", task.id[:8], e)
             try:
-                from services.work_unit import get_task_queue
+                from services.cluster.work_unit import get_task_queue
                 get_task_queue().fail(task.id, str(e))
             except Exception:
                 pass
@@ -207,7 +207,7 @@ class DroneWorker:
             return {"error": "empty_prompt"}
 
         try:
-            from services.llm_gateway import run_completion
+            from services.llm.llm_gateway import run_completion
             result = run_completion(
                 prompt,
                 max_tokens=max_tokens,
@@ -257,7 +257,7 @@ class DroneWorker:
             return {"error": "no_topic"}
 
         try:
-            from services.llm_gateway import run_completion
+            from services.llm.llm_gateway import run_completion
             prompt = f"Research and summarize the following topic concisely:\n\n{topic}"
             result = run_completion(prompt, max_tokens=500, temperature=0.5, stream=False)
             return {"summary": result}
@@ -370,7 +370,7 @@ class QueenWorker:
 
         # Get our node ID
         try:
-            from services.mdns_discovery import get_instance_id
+            from services.cluster.mdns_discovery import get_instance_id
             self._node_id = get_instance_id()
         except Exception:
             self._node_id = "local"
@@ -471,7 +471,7 @@ class QueenWorker:
     def _should_work(self) -> bool:
         """Only run tasks when governor mode is BREATHE or SPRINT."""
         try:
-            from services.resource_governor import get_governor, ResourceMode
+            from services.infrastructure.resource_governor import get_governor, ResourceMode
             mode = get_governor().mode
             return mode in (ResourceMode.BREATHE, ResourceMode.SPRINT)
         except Exception:
@@ -480,7 +480,7 @@ class QueenWorker:
     def _claim_task(self):
         """Claim a task assigned to us, or any unassigned pending task."""
         try:
-            from services.work_unit import get_task_queue
+            from services.cluster.work_unit import get_task_queue
             queue = get_task_queue()
             return queue.claim(self._node_id)
         except Exception as e:
@@ -499,7 +499,7 @@ class QueenWorker:
             logger.info("Queen executing task %s (type=%s)", task.id[:8], task_type)
             result = handler(task.payload)
 
-            from services.work_unit import get_task_queue
+            from services.cluster.work_unit import get_task_queue
             get_task_queue().complete(task.id, result)
             self._tasks_completed += 1
             logger.info("Queen task %s completed", task.id[:8])
@@ -507,7 +507,7 @@ class QueenWorker:
         except Exception as e:
             logger.warning("Queen task %s failed: %s", task.id[:8], e)
             try:
-                from services.work_unit import get_task_queue
+                from services.cluster.work_unit import get_task_queue
                 get_task_queue().fail(task.id, str(e))
             except Exception:
                 pass

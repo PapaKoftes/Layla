@@ -373,8 +373,8 @@ def select_model(
     # the remote provider circuit breaker is open.
     if cfg.get("litellm_enabled"):
         try:
-            from services.provider_health import get_all_status as _ph_all
-            from services.provider_health import is_healthy as _ph_healthy
+            from services.infrastructure.provider_health import get_all_status as _ph_all
+            from services.infrastructure.provider_health import is_healthy as _ph_healthy
             all_status = _ph_all()
             unhealthy = [p for p, s in all_status.items() if not s.get("healthy", True)]
             if unhealthy:
@@ -413,7 +413,7 @@ def select_model(
         if latency_budget and latency_budget < 5000:
             try:
                 candidates = [x for x in (route_model("coding"), cfg.get("model_filename")) if x]
-                from services.model_benchmark import select_fastest_model
+                from services.llm.model_benchmark import select_fastest_model
 
                 fastest = select_fastest_model([str(c) for c in candidates if c])
                 if fastest:
@@ -421,7 +421,7 @@ def select_model(
             except Exception:
                 pass
     try:
-        from services.telemetry import get_user_profile
+        from services.observability.telemetry import get_user_profile
 
         profile = get_user_profile()
         if profile.get("simple_ratio", 0) > 0.7:
@@ -434,7 +434,7 @@ def select_model(
     # Soft adaptive bias: prefer models with a materially higher historical success rate
     # for this task type (when enough samples exist).
     try:
-        from services.telemetry import get_model_success_rates
+        from services.observability.telemetry import get_model_success_rates
 
         stats = get_model_success_rates(min_count=5)
         if isinstance(stats, dict) and stats:
@@ -525,7 +525,7 @@ def is_routing_enabled() -> bool:
 def get_model_routing_summary(cfg: dict | None = None) -> dict:
     """Read-only snapshot for /health and /platform/models (no LLM load)."""
     import runtime_safety
-    from services.resource_manager import should_use_dual_models
+    from services.infrastructure.resource_manager import should_use_dual_models
 
     if cfg is None:
         cfg = runtime_safety.load_config()
@@ -534,7 +534,7 @@ def get_model_routing_summary(cfg: dict | None = None) -> dict:
     # AirLLM fallback status (Phase 8 promotion)
     airllm_info: dict = {}
     try:
-        from services.airllm_runner import get_info as airllm_get_info
+        from services.llm.airllm_runner import get_info as airllm_get_info
         airllm_info = airllm_get_info()
     except Exception:
         airllm_info = {"available": False}
@@ -544,7 +544,7 @@ def get_model_routing_summary(cfg: dict | None = None) -> dict:
     litellm_enabled = bool(cfg.get("litellm_enabled"))
     if litellm_enabled:
         try:
-            from services.provider_health import get_all_status, get_total_cost
+            from services.infrastructure.provider_health import get_all_status, get_total_cost
             provider_health_info = {
                 "providers": get_all_status(),
                 "total_cost_usd": get_total_cost(),
@@ -573,7 +573,7 @@ def get_fastest_benchmarked(available: list[str] | None = None) -> str | None:
     If available is given, only consider those. Used when no explicit routing.
     """
     try:
-        from services.model_benchmark import select_fastest_model
+        from services.llm.model_benchmark import select_fastest_model
         return select_fastest_model(available)
     except Exception:
         return None
@@ -582,7 +582,7 @@ def get_fastest_benchmarked(available: list[str] | None = None) -> str | None:
 def get_benchmark_for_model(model_name: str) -> dict | None:
     """Return stored benchmark (tokens_per_sec, first_token_ms, memory_mb) for a model."""
     try:
-        from services.model_benchmark import get_benchmark
+        from services.llm.model_benchmark import get_benchmark
         return get_benchmark(model_name)
     except Exception:
         return None

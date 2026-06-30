@@ -286,7 +286,7 @@ def wakeup():
     # Layla v3: explicitly frame the early trial phase.
     maturity_payload: dict = {}
     try:
-        from services.maturity_engine import get_milestones_status, get_state, xp_needed_for_next
+        from services.personality.maturity_engine import get_milestones_status, get_state, xp_needed_for_next
 
         ms = get_state()
         need = xp_needed_for_next(ms.rank)
@@ -446,7 +446,7 @@ def wakeup():
                 greeting_parts.append("Suggestion: " + initiative)
             if cfg.get("initiative_engine_enabled", False):
                 try:
-                    from services.initiative_engine import wakeup_engine_hints
+                    from services.infrastructure.initiative_engine import wakeup_engine_hints
 
                     for h in wakeup_engine_hints(active_plans, cfg):
                         if h:
@@ -456,7 +456,7 @@ def wakeup():
                 if cfg.get("initiative_project_proposals_enabled", False):
                     try:
                         import runtime_safety
-                        from services.initiative_engine import generate_project_proposals
+                        from services.infrastructure.initiative_engine import generate_project_proposals
 
                         props = generate_project_proposals(str(runtime_safety.REPO_ROOT), cfg)
                         if props:
@@ -473,7 +473,7 @@ def wakeup():
         # Optional one-liner from project discovery (tighter use of discovery)
         if cfg.get("wakeup_include_discovery_line", False):
             try:
-                from services.project_discovery import run_project_discovery
+                from services.workspace.project_discovery import run_project_discovery
                 disc = run_project_discovery()
                 opps = (disc.get("opportunities") or [])[:1]
                 ideas = (disc.get("ideas") or [])[:1]
@@ -485,7 +485,7 @@ def wakeup():
         # Curiosity suggestions: surface knowledge gaps at wakeup (gated — text only)
         if cfg.get("wakeup_include_curiosity", False):
             try:
-                from services.curiosity_engine import get_curiosity_suggestions
+                from services.memory.curiosity_engine import get_curiosity_suggestions
                 gaps = get_curiosity_suggestions()
                 if gaps:
                     greeting_parts.append("Knowledge gap: " + gaps[0].strip())

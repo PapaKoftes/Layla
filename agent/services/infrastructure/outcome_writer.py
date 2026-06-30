@@ -8,7 +8,7 @@ import collections
 import logging
 import threading
 
-from services.memory_router import save_aspect_memory as _db_save_aspect_memory  # canonical write path
+from services.memory.memory_router import save_aspect_memory as _db_save_aspect_memory  # canonical write path
 
 logger = logging.getLogger("layla")
 
@@ -102,7 +102,7 @@ def _save_outcome_memory(state: dict) -> None:
     if len(summary) > 400:
         summary = summary[:397] + "..."
     try:
-        from services.memory_router import save_learning  # canonical write path
+        from services.memory.memory_router import save_learning  # canonical write path
 
         save_learning(content=summary, kind="outcome")
     except Exception as e:
@@ -111,7 +111,7 @@ def _save_outcome_memory(state: dict) -> None:
     # Layla v3: tool success patterns (high precision, deterministic).
     # Persist compact "what worked" snippets from successful tool steps.
     try:
-        from services.memory_router import save_learning  # canonical write path
+        from services.memory.memory_router import save_learning  # canonical write path
 
         saved = 0
         for s in tool_steps[:30]:
@@ -149,7 +149,7 @@ def _save_outcome_memory(state: dict) -> None:
     except Exception as e:
         logger.debug("tool pattern auto-learn failed: %s", e)
     try:
-        from services.reflection_engine import run_reflection
+        from services.infrastructure.reflection_engine import run_reflection
 
         run_reflection(state)
     except Exception as e:
@@ -175,7 +175,7 @@ def _save_outcome_memory(state: dict) -> None:
                 else:
                     pattern_lines.append(f'{{"action":"tool","tool":"{act}"}}')
             if pattern_lines:
-                from services.golden_examples import store_golden_example
+                from services.memory.golden_examples import store_golden_example
 
                 goal = (state.get("original_goal") or state.get("goal") or "").strip()
                 store_golden_example(
@@ -189,7 +189,7 @@ def _save_outcome_memory(state: dict) -> None:
 
     # Reinforce learnings that were retrieved and used during the run.
     try:
-        from services.memory_consolidation import reinforce_learning
+        from services.memory.memory_consolidation import reinforce_learning
 
         ev = state.get("outcome_evaluation") if isinstance(state.get("outcome_evaluation"), dict) else {}
         ok = bool(ev.get("success", state.get("status") == "finished"))
@@ -266,7 +266,7 @@ def _auto_extract_learnings(user_msg: str, response: str, aspect_id: str) -> Non
         extracted = []
 
         try:
-            from services.llm_gateway import run_completion
+            from services.llm.llm_gateway import run_completion
 
             prompt = (
                 "Extract 1-2 concise, standalone, reusable insights from this exchange. "
@@ -318,7 +318,7 @@ def _auto_extract_learnings(user_msg: str, response: str, aspect_id: str) -> Non
 
         if not extracted:
             return
-        from services.memory_router import save_learning  # canonical write path
+        from services.memory.memory_router import save_learning  # canonical write path
 
         saved = 0
         # Operator correction detection (high precision heuristic)

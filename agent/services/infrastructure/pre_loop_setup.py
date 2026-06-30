@@ -25,7 +25,7 @@ def check_memory_command(goal: str, aspect_id: str = "") -> dict | None:
     """
     try:
         import orchestrator
-        from services.memory_commands import detect_and_handle as _mem_detect
+        from services.memory.memory_commands import detect_and_handle as _mem_detect
 
         result = _mem_detect(goal, aspect_id=aspect_id or "")
         if result.is_command:
@@ -81,7 +81,7 @@ def check_memory_command(goal: str, aspect_id: str = "") -> dict | None:
 def extract_working_memory(goal: str) -> None:
     """Passive working-memory extraction from the user's message."""
     try:
-        from services.working_memory import auto_extract_from_message as _wm_extract
+        from services.memory.working_memory import auto_extract_from_message as _wm_extract
         _wm_extract(goal)
     except Exception as _err:
         logger.debug("working_memory extract failed: %s", _err)
@@ -94,8 +94,8 @@ def check_content_guard(goal: str, aspect_id: str = "") -> dict | None:
     """
     try:
         import runtime_safety
-        from services.content_guard import blocked_response as _cg_msg
-        from services.content_guard import check_input as _cg_check
+        from services.safety.content_guard import blocked_response as _cg_msg
+        from services.safety.content_guard import check_input as _cg_check
 
         cfg = runtime_safety.load_config()
         result = _cg_check(goal, cfg)
@@ -134,7 +134,7 @@ def check_dignity(goal: str) -> str:
     """Detect abuse and return a boundary prompt for injection (or empty string)."""
     try:
         import runtime_safety
-        from services.dignity_engine import analyze_and_get_prompt as _dignity_check
+        from services.safety.dignity_engine import analyze_and_get_prompt as _dignity_check
 
         cfg = runtime_safety.load_config()
         return _dignity_check(goal, cfg)
@@ -169,13 +169,13 @@ def build_precomputed_recall(
         _ws = (str(workspace_root).strip() if workspace_root else "") or str(cfg.get("sandbox_root") or "")
         if _ws:
             try:
-                from services.workspace_index import invalidate_if_changed
+                from services.workspace.workspace_index import invalidate_if_changed
                 invalidate_if_changed(_ws)
             except Exception:
                 pass
 
         try:
-            from services.context_builder import build_context
+            from services.context.context_builder import build_context
 
             wr = (str(workspace_root).strip() if workspace_root else "") or str(cfg.get("sandbox_root") or "")
             _packed_ctx = build_context(
@@ -192,14 +192,14 @@ def build_precomputed_recall(
         except Exception as _err:
             logger.debug("context_builder failed: %s", _err)
             try:
-                from services.system_head_builder import semantic_recall as _semantic_recall
+                from services.prompts.system_head_builder import semantic_recall as _semantic_recall
                 _precomputed_recall = _semantic_recall(goal, k=_semantic_k).strip()
             except Exception:
                 _precomputed_recall = ""
 
     # Check memory sources
     try:
-        from services.system_head_builder import load_learnings as _load_learnings
+        from services.prompts.system_head_builder import load_learnings as _load_learnings
         if _load_learnings(aspect_id=aspect_id).strip():
             memory_influenced.append("learnings")
     except Exception:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from services.intent_routing_hints import fill_tool_args_from_goal, tool_routing_prompt_hints
+from services.tools.intent_routing_hints import fill_tool_args_from_goal, tool_routing_prompt_hints
 
 
 def test_prompt_hints_restore_and_ingest():

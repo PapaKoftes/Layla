@@ -71,7 +71,7 @@ def maybe_step_tool_allowlist_refusal(intent: str, _cfg: dict) -> dict | None:
     if intent in ("reason", "finish", "wakeup", "none", "think"):
         return None
     try:
-        from services.tool_allowlist_context import get_plan_step_tool_allowlist
+        from services.tools.tool_allowlist_context import get_plan_step_tool_allowlist
     except Exception:
         return None
     al = get_plan_step_tool_allowlist()

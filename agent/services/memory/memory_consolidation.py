@@ -32,7 +32,7 @@ def consolidate_session(conversation_id: str) -> dict[str, Any]:
         except Exception as e:
             out["actions"].append(f"distill_skip:{e}")
         try:
-            from services.session_context import get_or_create_session
+            from services.infrastructure.session_context import get_or_create_session
 
             ev = get_or_create_session(cid).get_outcome_evaluation() or {}
             if isinstance(ev, dict) and ev.get("success") is False:

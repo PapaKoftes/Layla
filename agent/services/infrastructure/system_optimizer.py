@@ -38,7 +38,7 @@ def collect_metrics() -> dict[str, Any]:
     }
 
     try:
-        from services.resource_manager import get_resource_usage
+        from services.infrastructure.resource_manager import get_resource_usage
         usage = get_resource_usage()
         result["cpu_percent"] = usage.get("cpu_percent", 0.0)
         result["ram_percent"] = usage.get("ram_percent", 0.0)
@@ -47,7 +47,7 @@ def collect_metrics() -> dict[str, Any]:
         logger.debug("system_optimizer resource_usage: %s", e)
 
     try:
-        from services.performance_monitor import get_stats, get_tool_latency_stats
+        from services.observability.performance_monitor import get_stats, get_tool_latency_stats
         tok = get_stats("token_throughput", window_sec=60)
         if tok.get("count", 0) > 0:
             result["token_throughput"] = tok.get("mean", 0)
@@ -96,7 +96,7 @@ def get_effective_config(base_cfg: dict | None = None) -> dict:
         mode = str(raw_pm).strip().lower()
     if mode == "auto":
         try:
-            from services.hardware_detect import detect_hardware
+            from services.infrastructure.hardware_detect import detect_hardware
 
             hw = detect_hardware()
             vram = float(hw.get("vram_gb", 0.0) or 0.0)
@@ -170,7 +170,7 @@ def get_effective_config(base_cfg: dict | None = None) -> dict:
 def suggest_parallel_tasks() -> int:
     """Suggest max parallel tasks based on current load. Uses resource_manager."""
     try:
-        from services.resource_manager import suggest_parallel_tasks as _suggest
+        from services.infrastructure.resource_manager import suggest_parallel_tasks as _suggest
         return _suggest()
     except Exception:
         return 2
@@ -179,7 +179,7 @@ def suggest_parallel_tasks() -> int:
 def suggest_context_size(n_ctx_default: int = 4096) -> int:
     """Suggest context size based on available RAM. Uses resource_manager."""
     try:
-        from services.resource_manager import suggest_context_size as _suggest
+        from services.infrastructure.resource_manager import suggest_context_size as _suggest
         return _suggest(n_ctx_default)
     except Exception:
         return n_ctx_default
@@ -188,7 +188,7 @@ def suggest_context_size(n_ctx_default: int = 4096) -> int:
 def should_switch_model(current_model: str, task_type: str) -> bool:
     """True if resource pressure suggests switching to a lighter model."""
     try:
-        from services.resource_manager import should_switch_model as _should
+        from services.infrastructure.resource_manager import should_switch_model as _should
         return _should(current_model, task_type)
     except Exception:
         return False
@@ -203,7 +203,7 @@ def get_summary() -> dict[str, Any]:
     metrics = collect_metrics()
     performance: dict[str, Any] = {}
     try:
-        from services.performance_monitor import get_stats, get_tool_latency_stats
+        from services.observability.performance_monitor import get_stats, get_tool_latency_stats
         for name, key in [
             ("token_throughput", "token_throughput"),
             ("retrieval_latency_ms", "retrieval_latency_ms"),
@@ -232,7 +232,7 @@ def get_summary() -> dict[str, Any]:
     # Include stored model benchmarks from ~/.layla/benchmarks.json
     model_benchmarks: dict[str, Any] = {}
     try:
-        from services.model_benchmark import get_all_benchmarks
+        from services.llm.model_benchmark import get_all_benchmarks
         stored = get_all_benchmarks()
         if stored:
             model_benchmarks = dict(stored)

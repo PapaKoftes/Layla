@@ -12,7 +12,7 @@ Schema:
   repo_calls   (id, file_path, caller, callee, line, indexed_at)
 
 Usage:
-  from services.repo_indexer import index_workspace_repo, get_symbols, search_symbols
+  from services.workspace.repo_indexer import index_workspace_repo, get_symbols, search_symbols
 """
 from __future__ import annotations
 
@@ -182,7 +182,7 @@ def _extract_symbols_ast(source: str, file_path: str) -> dict[str, list[dict]]:
 def _try_tree_sitter(source: str, file_path: str) -> dict[str, list[dict]] | None:
     """Try tree-sitter extraction; return None if unavailable."""
     try:
-        from services.workspace_index import extract_code_architecture
+        from services.workspace.workspace_index import extract_code_architecture
         arch = extract_code_architecture(source, file_path)
         if not arch:
             return None

@@ -10,7 +10,7 @@ import logging
 
 import runtime_safety
 from layla.tools.registry import TOOLS
-from services.agent_loop_formatting import format_tool_steps_for_prompt as _format_steps_impl
+from services.infrastructure.agent_loop_formatting import format_tool_steps_for_prompt as _format_steps_impl
 
 logger = logging.getLogger("layla")
 

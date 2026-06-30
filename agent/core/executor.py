@@ -103,7 +103,7 @@ def run_tool(
 
     _ws = sandbox_root or ""
     try:
-        from services.agent_hooks import run_agent_hooks
+        from services.infrastructure.agent_hooks import run_agent_hooks
 
         run_agent_hooks(
             "pre_tool",
@@ -135,7 +135,7 @@ def run_tool(
 
     if timed_out or error:
         try:
-            from services.agent_hooks import run_agent_hooks
+            from services.infrastructure.agent_hooks import run_agent_hooks
 
             run_agent_hooks(
                 "post_tool",
@@ -158,7 +158,7 @@ def run_tool(
         )
         # Phase 3: Prometheus metrics for failed tool calls
         try:
-            from services.metrics import record_tool_call as _record_tool_metric
+            from services.observability.prom_metrics import record_tool_call as _record_tool_metric
             _record_tool_metric(tool_name, False, duration_ms / 1000.0)
         except Exception as e:
             logger.debug("metrics recording (error path) failed: %s", e, exc_info=True)
@@ -201,19 +201,19 @@ def run_tool(
         "timed_out": False,
     }
     try:
-        from services.llm_gateway import record_tool_call
+        from services.llm.llm_gateway import record_tool_call
 
         record_tool_call()
     except Exception as e:
         logger.debug("llm_gateway record_tool_call failed: %s", e, exc_info=True)
     try:
-        from services.request_tracer import record_trace_tool_call
+        from services.observability.request_tracer import record_trace_tool_call
 
         record_trace_tool_call()
     except Exception as e:
         logger.debug("request_tracer record_trace_tool_call failed: %s", e, exc_info=True)
     try:
-        from services.agent_hooks import run_agent_hooks
+        from services.infrastructure.agent_hooks import run_agent_hooks
 
         _ok = True
         if isinstance(result_raw, dict):
@@ -241,7 +241,7 @@ def run_tool(
 
     # Phase 3: Prometheus metrics (fire-and-forget)
     try:
-        from services.metrics import record_tool_call as _record_tool_metric
+        from services.observability.prom_metrics import record_tool_call as _record_tool_metric
         _ok = bool(result_raw.get("ok", True)) if isinstance(result_raw, dict) else True
         _record_tool_metric(tool_name, _ok, duration_ms / 1000.0)
     except Exception as e:

@@ -33,7 +33,7 @@ def add_relationship_memory(user_event: str, embedding_id: str = "") -> None:
         )
         db.commit()
     try:
-        from services.personal_knowledge_graph import invalidate_personal_graph
+        from services.memory.personal_knowledge_graph import invalidate_personal_graph
         invalidate_personal_graph()
     except Exception:
         pass
@@ -206,7 +206,7 @@ def record_tool_outcome(tool_name: str, success: bool, context: str = "", latenc
     # Layla v3: maturity XP for successful tool usage (best-effort; never raise).
     if success:
         try:
-            from services.maturity_engine import award_xp
+            from services.personality.maturity_engine import award_xp
 
             award_xp(5, reason=f"tool_success:{tool_name.strip()[:60]}")
         except Exception:

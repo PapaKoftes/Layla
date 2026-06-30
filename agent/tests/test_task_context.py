@@ -4,7 +4,7 @@ import threading
 
 import pytest
 
-from services.task_context import (
+from services.infrastructure.task_context import (
     TaskContextFilter,
     get_aspect,
     get_task_id,
