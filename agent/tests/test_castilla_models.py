@@ -57,3 +57,16 @@ def test_aspect_case_insensitive():
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+def test_too_heavy_protects_low_end():
+    # creative's smallest model (11B) is too heavy for a CPU box -> flagged so the
+    # provisioner skips it instead of filling the disk.
+    assert recommend_aspect_kit("eris", HER, prefer="lite")["too_heavy"] is True
+    assert recommend_aspect_kit("morrigan", HER, prefer="lite")["too_heavy"] is False
+
+
+def test_gpu_lifts_too_heavy():
+    gpu = {"ram_gb": 32.0, "vram_gb": 24.0, "acceleration_backend": "cuda",
+           "gpu_name": "RTX 4090", "physical_cores": 16}
+    assert recommend_aspect_kit("eris", gpu, prefer="quality")["too_heavy"] is False
