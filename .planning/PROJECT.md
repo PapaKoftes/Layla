@@ -14,6 +14,10 @@ Layla is a **local-first, self-hosted AI agent platform** — a Python/FastAPI s
 
 The defensible edge is **curation, not the engine**: the engine (llama.cpp), the runners (Ollama/LM Studio), and the chat UIs are commodities. The bet is that *assembling the optimal local kit per domain per hardware tier, auto-provisioned and wrapped in a personality*, is what no incumbent does well.
 
+> **Current operating strategy → [`STRATEGY.md`](STRATEGY.md) (2026-06-30).** The market audit below
+> was sharpened into an explicit wedge (private + low-end + multilingual + companion **soul**), a ~60%
+> scope cut, a reuse-don't-reinvent principle, and MVP/V2/V3/Dream tiers. Backlog: [`UPGRADES.md`](UPGRADES.md).
+
 ## Honest viability framing (from the 2026-06-29 market audit)
 
 An evidence-based audit (VC/PM/skeptic lens, web-researched) concluded that **as a market product competing head-on, Layla is redundant** — local coding (Cline/Aider/Continue), local runners/UIs (Ollama/Jan/Open WebUI, 25+ chat UIs), and companions/personalities (SillyTavern + Chub.ai) are all owned by far larger communities, and developers still prefer cloud for serious coding quality. **Conclusions we are operating under:**
@@ -47,3 +51,4 @@ An evidence-based audit (VC/PM/skeptic lens, web-researched) concluded that **as
 ## Evolution
 - **2026-06 (early):** Adversarial audit (88 findings) → trust-boundary class remediation → independent re-review → class-elimination → core-logic tests + bounded model cache. GSD adopted; codebase mapped.
 - **2026-06-29:** Stood up a real 3.12 env + live CPU inference (proved E2E). Measured the honest local-coding reality. Ran a market-viability audit (→ personal-first + curation-moat framing). Sharpened the thesis to **hardware-adaptive domain-kit personalities**; shipped the `recommend_kit` engine. Locked the **Friend-Ready** two-track milestone and the **Warframe-mystic midpoint** UI direction.
+- **2026-06-30:** Finished remediation (R1–R8 + R10; **2508 tests**; removed 206 back-compat shims → canonical imports; un-skipped the TestClient suite, fixing 12 hidden bugs incl. a Windows `time.monotonic()` resolution bug; restored RAG grounding on compiler-free installs). Shipped a **self-test-gated installer** (`scripts/selftest.py` — proves a real inference turn; SIGILL-safe) + **guided pairing** (`scripts/pair.py`), **proven end-to-end on the friend's tier** (16 GB CPU: `/health` 197 tools, `/ui`, `/agent` all green; RAG via fallback). Ran a senior-strategist/architect/OSS **adversarial product evaluation** → wrapped into GSD as **`STRATEGY.md`** (the wedge; cut ~60% of surface; coding = an aspect, not the headline) + **`UPGRADES.md`** (reuse-don't-reinvent backlog — sqlite-vec, FastEmbed/model2vec, FlashRank, Outlines, optional Ollama backend, Tauri; **hybrid escalation** as the quality unlock) + **ROADMAP** re-tiered to **MVP/V2/V3/Dream**. UI reverted to the clean original; direction locked (clean #1 + real-art ornament, subtle).
