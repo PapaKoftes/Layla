@@ -33,7 +33,7 @@ TOOLS: dict = {}
 def fetch_url_tool(url: str, store: bool = False) -> dict:
     try:
         import runtime_safety
-        from services.http_response_cache import get_cached, set_cached
+        from services.retrieval.http_response_cache import get_cached, set_cached
 
         cfg = runtime_safety.load_config()
         if not store:
@@ -49,7 +49,7 @@ def fetch_url_tool(url: str, store: bool = False) -> dict:
     try:
         if not store and out.get("ok"):
             import runtime_safety
-            from services.http_response_cache import set_cached
+            from services.retrieval.http_response_cache import set_cached
 
             set_cached(f"fetch:{url}", out, runtime_safety.load_config())
     except Exception:
@@ -59,7 +59,7 @@ def fetch_url_tool(url: str, store: bool = False) -> dict:
 def browser_navigate(url: str, timeout_ms: int = 15000) -> dict:
     """Navigate to a URL and return its main text content and title."""
     try:
-        from services.browser import navigate
+        from services.infrastructure.browser import navigate
         return navigate(url, timeout_ms=timeout_ms)
     except ImportError:
         return {"ok": False, "error": "playwright not installed. Run: playwright install chromium"}
@@ -67,7 +67,7 @@ def browser_navigate(url: str, timeout_ms: int = 15000) -> dict:
 def browser_search(query: str) -> dict:
     """Search the web via DuckDuckGo. Returns top 8 results with titles, URLs, snippets."""
     try:
-        from services.browser import search_web
+        from services.infrastructure.browser import search_web
         return search_web(query)
     except ImportError:
         return {"ok": False, "error": "playwright not installed. Run: playwright install chromium"}
@@ -75,7 +75,7 @@ def browser_search(query: str) -> dict:
 def browser_screenshot(url: str) -> dict:
     """Take a full-page screenshot of a URL. Returns path to the screenshot file."""
     try:
-        from services.browser import screenshot
+        from services.infrastructure.browser import screenshot
         return screenshot(url)
     except ImportError:
         return {"ok": False, "error": "playwright not installed. Run: playwright install chromium"}
@@ -83,7 +83,7 @@ def browser_screenshot(url: str) -> dict:
 def browser_click(url: str, selector: str) -> dict:
     """Navigate to a URL, click a CSS selector, return updated page text."""
     try:
-        from services.browser import click_and_extract
+        from services.infrastructure.browser import click_and_extract
         return click_and_extract(url, selector)
     except ImportError:
         return {"ok": False, "error": "playwright not installed. Run: playwright install chromium"}
@@ -91,7 +91,7 @@ def browser_click(url: str, selector: str) -> dict:
 def browser_fill(url: str, fields: dict, submit_selector: str = "") -> dict:
     """Navigate to a URL, fill form fields {selector: value}, optionally submit."""
     try:
-        from services.browser import fill_form
+        from services.infrastructure.browser import fill_form
         return fill_form(url, fields, submit_selector)
     except ImportError:
         return {"ok": False, "error": "playwright not installed. Run: playwright install chromium"}
@@ -101,7 +101,7 @@ def fetch_article(url: str) -> dict:
     Extract clean text from a web article using trafilatura.
     Much cleaner than raw fetch — removes nav, ads, footers. Ideal for research.
     """
-    from services.url_guard import is_safe_url
+    from services.safety.url_guard import is_safe_url
     if not is_safe_url(url):
         return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     try:
@@ -170,7 +170,7 @@ def ddg_search(query: str, max_results: int = 10, region: str = "wt-wt") -> dict
     """
     try:
         import runtime_safety
-        from services.http_response_cache import get_cached, set_cached
+        from services.retrieval.http_response_cache import get_cached, set_cached
 
         cfg = runtime_safety.load_config()
         ck = f"ddg:{region}:{max_results}:{query}"
@@ -186,7 +186,7 @@ def ddg_search(query: str, max_results: int = 10, region: str = "wt-wt") -> dict
         out = {"ok": True, "query": query, "results": results, "count": len(results)}
         try:
             import runtime_safety
-            from services.http_response_cache import set_cached
+            from services.retrieval.http_response_cache import set_cached
 
             set_cached(f"ddg:{region}:{max_results}:{query}", out, runtime_safety.load_config())
         except Exception:
@@ -238,7 +238,7 @@ def http_request(url: str, method: str = "GET", body: str = "", headers: dict | 
     Returns status, response text (truncated to 8000 chars).
     Use for webhooks, REST APIs, testing endpoints.
     """
-    from services.url_guard import is_safe_url
+    from services.safety.url_guard import is_safe_url
     if not is_safe_url(url):
         return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     import urllib.error
@@ -284,7 +284,7 @@ def crawl_site(
     store_knowledge: save extracted pages to knowledge/fetched/ for later RAG indexing
     Returns: list of {url, title, text, depth} for all visited pages.
     """
-    from services.url_guard import is_safe_url
+    from services.safety.url_guard import is_safe_url
     if not is_safe_url(url):
         return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     import time
@@ -369,7 +369,7 @@ def extract_links(url: str, same_domain: bool = False, max_links: int = 100) -> 
     same_domain: only return links from the same domain.
     Returns: links with href, internal/external classification, domain.
     """
-    from services.url_guard import is_safe_url
+    from services.safety.url_guard import is_safe_url
     if not is_safe_url(url):
         return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     from urllib.parse import urljoin, urlparse
@@ -413,7 +413,7 @@ def check_url(url: str, timeout: int = 10) -> dict:
     Check if a URL is accessible. Returns HTTP status, response time, content type.
     Uses HEAD request for speed. Useful for monitoring, link validation.
     """
-    from services.url_guard import is_safe_url
+    from services.safety.url_guard import is_safe_url
     if not is_safe_url(url):
         return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     import time as _time
@@ -436,7 +436,7 @@ def rss_feed(url: str, max_items: int = 20, include_content: bool = False) -> di
     Returns: feed title, description, and entry list (title, link, published, author, summary, tags).
     include_content: fetch and extract full article text for each entry (slow but thorough).
     """
-    from services.url_guard import is_safe_url
+    from services.safety.url_guard import is_safe_url
     if not is_safe_url(url):
         return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     try:

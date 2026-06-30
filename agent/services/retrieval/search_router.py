@@ -37,13 +37,13 @@ def _detect_backend(cfg: dict) -> str:
 
 def _search_meilisearch(cfg: dict, query: str, limit: int) -> dict[str, Any]:
     """Search via Meilisearch."""
-    from services.meilisearch_bridge import search_learnings
+    from services.retrieval.meilisearch_bridge import search_learnings
     return search_learnings(cfg, query, limit=limit)
 
 
 def _search_elasticsearch(cfg: dict, query: str, limit: int) -> dict[str, Any]:
     """Search via Elasticsearch."""
-    from services.elasticsearch_bridge import search_learnings
+    from services.retrieval.elasticsearch_bridge import search_learnings
     return search_learnings(cfg, query, limit=limit)
 
 
@@ -163,7 +163,7 @@ def get_search_status(cfg: dict | None = None) -> dict[str, Any]:
     # Meilisearch
     if cfg.get("meilisearch_enabled"):
         try:
-            from services.meilisearch_bridge import get_stats, is_available
+            from services.retrieval.meilisearch_bridge import get_stats, is_available
             status["backends"]["meilisearch"] = {
                 "enabled": True,
                 "available": is_available(cfg),
@@ -177,7 +177,7 @@ def get_search_status(cfg: dict | None = None) -> dict[str, Any]:
     # Elasticsearch
     if cfg.get("elasticsearch_enabled"):
         try:
-            from services.elasticsearch_bridge import client_from_config
+            from services.retrieval.elasticsearch_bridge import client_from_config
             client = client_from_config(cfg)
             status["backends"]["elasticsearch"] = {
                 "enabled": True,
@@ -205,14 +205,14 @@ def index_learning(
     """Index a learning to all enabled backends (fan-out)."""
     if cfg.get("meilisearch_enabled"):
         try:
-            from services.meilisearch_bridge import index_learning as ms_index
+            from services.retrieval.meilisearch_bridge import index_learning as ms_index
             ms_index(cfg, rid=rid, text=text, tags=tags, source=source)
         except Exception as e:
             logger.debug("search_router: meilisearch index failed: %s", e)
 
     if cfg.get("elasticsearch_enabled"):
         try:
-            from services.elasticsearch_bridge import index_learning as es_index
+            from services.retrieval.elasticsearch_bridge import index_learning as es_index
             es_index(cfg, rid=rid, text=text, tags=tags, source=source)
         except Exception as e:
             logger.debug("search_router: elasticsearch index failed: %s", e)

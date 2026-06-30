@@ -66,23 +66,23 @@ from services.agent.probe_helpers import (
     maybe_preprobe_file as _maybe_preprobe_file_impl,
     apply_probe_guidance as _apply_probe_guidance_impl,
 )
-from services.agent_safety import (  # noqa: E402
+from services.safety.agent_safety import (  # noqa: E402
     maybe_planning_strict_refusal as _maybe_planning_strict_refusal,
 )
-from services.agent_safety import (
+from services.safety.agent_safety import (
     maybe_step_tool_allowlist_refusal as _maybe_step_tool_allowlist_refusal,
 )
-from services.context_manager import DEFAULT_BUDGETS, build_system_prompt  # noqa: E402
-from services.context_window_ux import emit_context_window_ux
-from services.llm_gateway import get_stop_sequences, llm_serialize_lock, run_completion  # noqa: E402
-from services.outcome_writer import (  # noqa: E402
+from services.context.context_manager import DEFAULT_BUDGETS, build_system_prompt  # noqa: E402
+from services.context.context_window_ux import emit_context_window_ux
+from services.llm.llm_gateway import get_stop_sequences, llm_serialize_lock, run_completion  # noqa: E402
+from services.infrastructure.outcome_writer import (  # noqa: E402
     _auto_extract_learnings,
     _extract_patch_text,
     _maybe_save_echo_memory,
     _save_outcome_memory,
 )
-from services.output_polish import polish_output as _polish_output  # noqa: E402
-from services.resource_manager import (  # noqa: E402
+from services.infrastructure.output_polish import polish_output as _polish_output  # noqa: E402
+from services.infrastructure.resource_manager import (  # noqa: E402
     PRIORITY_AGENT,
     PRIORITY_CHAT,
     classify_load,
@@ -97,52 +97,52 @@ RESEARCH_LAB_ROOT = AGENT_DIR / ".research_lab"
 # System head builder: extracted to services/system_head_builder.py
 # These imports maintain backward compatibility for internal callers.
 # ---------------------------------------------------------------------------
-from services.system_head_builder import (
+from services.prompts.system_head_builder import (
     append_persona_focus_to_personality as _append_persona_focus_to_personality,
 )
-from services.system_head_builder import (
+from services.prompts.system_head_builder import (
     aspect_dict_by_id as _aspect_dict_by_id,
 )
-from services.system_head_builder import (
+from services.prompts.system_head_builder import (
     build_expertise_domain_block as _build_expertise_domain_block,
 )
-from services.system_head_builder import (  # noqa: E402
+from services.prompts.system_head_builder import (  # noqa: E402
     build_system_head as _build_system_head,
 )
-from services.system_head_builder import (
+from services.prompts.system_head_builder import (
     decompose_goal as _decompose_goal,
 )
-from services.system_head_builder import (
+from services.prompts.system_head_builder import (
     enrich_deliberation_context as _enrich_deliberation_context,
 )
-from services.system_head_builder import (
+from services.prompts.system_head_builder import (
     extract_aspect_domain_keywords as _extract_aspect_domain_keywords,
 )
-from services.system_head_builder import (
+from services.prompts.system_head_builder import (
     get_repo_structure as _get_repo_structure,
 )
-from services.system_head_builder import (
+from services.prompts.system_head_builder import (
     is_lightweight_chat_turn as _is_lightweight_chat_turn,
 )
-from services.system_head_builder import (
+from services.prompts.system_head_builder import (
     load_learnings as _load_learnings,
 )
-from services.system_head_builder import (
+from services.prompts.system_head_builder import (
     needs_graph as _needs_graph,
 )
-from services.system_head_builder import (
+from services.prompts.system_head_builder import (
     needs_knowledge_rag as _needs_knowledge_rag,
 )
-from services.system_head_builder import (
+from services.prompts.system_head_builder import (
     relationship_codex_context as _relationship_codex_context,
 )
-from services.system_head_builder import (
+from services.prompts.system_head_builder import (
     semantic_recall as _semantic_recall,
 )
-from services.tool_dispatch import (
+from services.tools.tool_dispatch import (
     DispatchContext as _DispatchContext,
 )
-from services.tool_dispatch import (
+from services.tools.tool_dispatch import (
     DispatchResult as _DispatchResult,
 )
 
@@ -150,7 +150,7 @@ from services.tool_dispatch import (
 # Tool dispatch: extracted to services/tool_dispatch.py
 # Import here for backward compatibility and to ensure the module is loadable.
 # ---------------------------------------------------------------------------
-from services.tool_dispatch import (  # noqa: E402
+from services.tools.tool_dispatch import (  # noqa: E402
     dispatch_tool_intent as _dispatch_tool_intent,
 )
 
@@ -336,7 +336,7 @@ _format_recovery_hint_for_prompt = _format_recovery_hint_for_prompt_impl
 
 
 def _classify_failure_and_recovery(state: dict) -> None:
-    from services.failure_recovery import classify_failure_and_recovery
+    from services.infrastructure.failure_recovery import classify_failure_and_recovery
     classify_failure_and_recovery(state)
 
 
@@ -385,7 +385,7 @@ def _llm_decision(
 def _autonomous_run_serialize_lock(workspace_root: str):
     """Serialize agent flights: global lock by default; optional per-workspace when configured."""
     if runtime_safety.load_config().get("llm_serialize_per_workspace"):
-        from services.llm_gateway import _resolve_workspace_lock_key, get_agent_serialize_lock
+        from services.llm.llm_gateway import _resolve_workspace_lock_key, get_agent_serialize_lock
 
         return get_agent_serialize_lock(_resolve_workspace_lock_key(workspace_root))
     return llm_serialize_lock
@@ -517,7 +517,7 @@ def autonomous_run(
     goal_original = goal
     goal_optimized: str | None = None
     try:
-        from services.prompt_optimizer import optimize as _opt_goal
+        from services.prompts.prompt_optimizer import optimize as _opt_goal
         _cfg_now = runtime_safety.load_config() if hasattr(runtime_safety, "load_config") else {}
         if _cfg_now.get("prompt_optimizer_enabled", True):
             _opt_result = _opt_goal(
@@ -547,7 +547,7 @@ def autonomous_run(
     try:
         import uuid as _uuid
 
-        from services.task_context import reset_task_context, set_task_context
+        from services.infrastructure.task_context import reset_task_context, set_task_context
         _tid = conversation_id or str(_uuid.uuid4())[:8]
         _ctx_tokens = set_task_context(
             workspace=str(workspace_root or ""),
@@ -639,21 +639,21 @@ def _autonomous_run_impl(
     skip_engineering_pipeline: bool = False,
     context_files: list[str] | None = None,
 ) -> dict:
-    from services.llm_gateway import set_model_override, set_reasoning_effort
+    from services.llm.llm_gateway import set_model_override, set_reasoning_effort
     set_model_override(model_override)
     if not model_override:
         try:
             import runtime_safety
             _cfg_route = runtime_safety.load_config()
             if _cfg_route.get("tool_routing_enabled", True):
-                from services.model_router import classify_task_for_routing, is_routing_enabled
+                from services.llm.model_router import classify_task_for_routing, is_routing_enabled
                 if is_routing_enabled():
                     set_model_override(classify_task_for_routing(goal, context or "", _cfg_route))
         except Exception as _exc:
             logger.debug("agent_loop:L2536: %s", _exc, exc_info=False)
     # Phase 4.1: record CoT split decision for cost telemetry
     try:
-        from services.model_router import _record_cot_phase, split_cot_models
+        from services.llm.model_router import _record_cot_phase, split_cot_models
         _cot = split_cot_models()
         if _cot.get("split_enabled"):
             _record_cot_phase("reasoning", _cot.get("reasoning_model"), estimated_tokens=800)

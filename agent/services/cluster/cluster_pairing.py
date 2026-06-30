@@ -121,7 +121,7 @@ class ClusterPairing:
 
         Returns dict with cluster_id, cluster_secret, queen_address.
         """
-        from services.cluster_network import (
+        from services.cluster.cluster_network import (
             load_cluster_config,
             save_cluster_config,
             Peer,
@@ -161,7 +161,7 @@ class ClusterPairing:
 
         # Also add to the live cluster network
         try:
-            from services.cluster_network import get_cluster_network
+            from services.cluster.cluster_network import get_cluster_network
             net = get_cluster_network()
             net.add_peer(Peer(
                 instance_id=drone_instance_id,
@@ -178,7 +178,7 @@ class ClusterPairing:
         # Build queen address
         queen_address = ""
         try:
-            from services.tailscale_manager import get_connection_url
+            from services.infrastructure.tailscale_manager import get_connection_url
             queen_address = get_connection_url(8000) or ""
         except Exception:
             pass
@@ -221,7 +221,7 @@ class ClusterPairing:
         # Get our own address (Tailscale preferred)
         drone_address = ""
         try:
-            from services.tailscale_manager import get_connection_url
+            from services.infrastructure.tailscale_manager import get_connection_url
             drone_address = get_connection_url(8000) or ""
         except Exception:
             pass
@@ -243,7 +243,7 @@ class ClusterPairing:
 
             if result.get("ok"):
                 # Save cluster info locally
-                from services.cluster_network import (
+                from services.cluster.cluster_network import (
                     load_cluster_config,
                     save_cluster_config,
                 )
@@ -292,7 +292,7 @@ class ClusterPairing:
 def _get_instance_id() -> str:
     """Get this node's stable instance ID."""
     try:
-        from services.mdns_discovery import get_instance_id
+        from services.cluster.mdns_discovery import get_instance_id
         return get_instance_id()
     except Exception:
         import uuid

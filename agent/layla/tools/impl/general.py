@@ -133,7 +133,7 @@ def structured_llm_task(
     """One bounded LLM step that should return JSON (OpenClaw llm-task style). No file writes."""
     import json as _json
 
-    from services.llm_gateway import run_completion
+    from services.llm.llm_gateway import run_completion
 
     sh = (schema_hint or "").strip()
     prompt = (
@@ -165,7 +165,7 @@ def mcp_tools_call(
 ) -> dict:
     """Call one tool on a configured MCP stdio server (short session: initialize → tools/call)."""
     import runtime_safety
-    from services.mcp_client import load_mcp_stdio_servers, mcp_session_call_tool
+    from services.infrastructure.mcp_client import load_mcp_stdio_servers, mcp_session_call_tool
 
     cfg = runtime_safety.load_config()
     if not cfg.get("mcp_client_enabled"):
@@ -192,7 +192,7 @@ def mcp_tools_call(
 def mcp_list_mcp_tools(mcp_server: str = "") -> dict:
     """List tools advertised by a configured MCP stdio server (tools/list). Read-only discovery."""
     import runtime_safety
-    from services.mcp_client import load_mcp_stdio_servers, mcp_session_list_tools
+    from services.infrastructure.mcp_client import load_mcp_stdio_servers, mcp_session_list_tools
 
     cfg = runtime_safety.load_config()
     if not cfg.get("mcp_client_enabled"):
@@ -220,7 +220,7 @@ def mcp_list_mcp_tools(mcp_server: str = "") -> dict:
 def mcp_list_mcp_resources(mcp_server: str = "") -> dict:
     """List resources advertised by a configured MCP stdio server (resources/list). Read-only discovery."""
     import runtime_safety
-    from services.mcp_client import load_mcp_stdio_servers, mcp_session_list_resources
+    from services.infrastructure.mcp_client import load_mcp_stdio_servers, mcp_session_list_resources
 
     cfg = runtime_safety.load_config()
     if not cfg.get("mcp_client_enabled"):
@@ -253,7 +253,7 @@ def mcp_list_mcp_resources(mcp_server: str = "") -> dict:
 def mcp_read_mcp_resource(mcp_server: str = "", uri: str = "") -> dict:
     """Read one resource from a configured MCP stdio server (resources/read)."""
     import runtime_safety
-    from services.mcp_client import load_mcp_stdio_servers, mcp_session_read_resource
+    from services.infrastructure.mcp_client import load_mcp_stdio_servers, mcp_session_read_resource
 
     cfg = runtime_safety.load_config()
     if not cfg.get("mcp_client_enabled"):
@@ -595,7 +595,7 @@ def stt_file(path: str, language: str = "en", model_size: str = "base") -> dict:
     try:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
-        from services.stt import transcribe_file
+        from services.infrastructure.stt import transcribe_file
         result = transcribe_file(str(target), language=language or None)
         if isinstance(result, dict):
             return {"ok": True, "path": str(target), **result}
@@ -626,7 +626,7 @@ def tts_speak(text: str, voice: str = "af_heart", output_path: str = "") -> dict
     try:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
-        from services.tts import speak_to_bytes
+        from services.infrastructure.tts import speak_to_bytes
         wav_bytes = speak_to_bytes(text)
         if wav_bytes:
             p = Path(out)

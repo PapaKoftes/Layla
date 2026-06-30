@@ -11,7 +11,7 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-from services.resource_governor import (  # noqa: E402
+from services.infrastructure.resource_governor import (  # noqa: E402
     ResourceGovernor,
     ResourceMode,
     _apply_process_priority,
@@ -58,7 +58,7 @@ def test_apply_process_priority_does_not_raise():
 
 
 def test_governor_registers_priority_callback_when_enabled():
-    import services.resource_governor as rg
+    import services.infrastructure.resource_governor as rg
     rg._governor = None  # reset singleton
     gov = rg.get_governor({"resource_governor_enabled": True})
     assert gov.enabled is True

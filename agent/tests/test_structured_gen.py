@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from services.structured_gen import _normalize_outlines_result
+from services.llm.structured_gen import _normalize_outlines_result
 
 
 def test_normalize_outlines_result_basic():

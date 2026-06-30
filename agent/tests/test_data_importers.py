@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from services.data_importers import parse_whatsapp_txt, whatsapp_export_to_markdown
+from services.infrastructure.data_importers import parse_whatsapp_txt, whatsapp_export_to_markdown
 
 
 def test_parse_whatsapp_line():

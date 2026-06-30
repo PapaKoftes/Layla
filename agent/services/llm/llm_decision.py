@@ -76,8 +76,8 @@ class OutlinesStrategy(DecisionStrategy):
         if (cfg.get("llama_server_url") or "").strip():
             return None
         try:
-            from services.llm_gateway import _get_llm
-            from services.structured_gen import run_outlines_agent_decision
+            from services.llm.llm_gateway import _get_llm
+            from services.llm.structured_gen import run_outlines_agent_decision
 
             llm = _get_llm()
             if llm is None:
@@ -126,7 +126,7 @@ class InstructorStrategy(DecisionStrategy):
                 import instructor
 
                 from decision_schema import AgentDecision
-                from services.llm_gateway import _get_llm
+                from services.llm.llm_gateway import _get_llm
 
                 llm = _get_llm()
                 if llm is None:
@@ -180,7 +180,7 @@ class PlainJsonStrategy(DecisionStrategy):
         cfg: dict | None = None,
     ) -> dict | None:
         from decision_schema import parse_decision as _parse_decision
-        from services.llm_gateway import run_completion
+        from services.llm.llm_gateway import run_completion
 
         retry_suffix = " Output only a single JSON line, no other text or commentary.\n"
         for attempt in range(2):

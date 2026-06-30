@@ -139,7 +139,7 @@ def test_resolve_model_path_finds_basename_in_repo_models(tmp_path, monkeypatch)
 
 def test_model_benchmark_stores_and_retrieves():
     """Benchmarks stored in ~/.layla/benchmarks.json can be retrieved."""
-    from services.model_benchmark import BENCHMARKS_PATH, get_all_benchmarks, get_benchmark
+    from services.llm.model_benchmark import BENCHMARKS_PATH, get_all_benchmarks, get_benchmark
 
     assert BENCHMARKS_PATH == Path.home() / ".layla" / "benchmarks.json"
     all_b = get_all_benchmarks()
@@ -154,7 +154,7 @@ def test_model_benchmark_stores_and_retrieves():
 
 def test_model_router_benchmark_helpers():
     """model_router exposes get_fastest_benchmarked and get_benchmark_for_model."""
-    from services.model_router import get_benchmark_for_model, get_fastest_benchmarked
+    from services.llm.model_router import get_benchmark_for_model, get_fastest_benchmarked
 
     fastest = get_fastest_benchmarked()
     # May be None if no benchmarks

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from fastapi.responses import JSONResponse
 
-from services.resource_manager import PRIORITY_AGENT, PRIORITY_BACKGROUND, PRIORITY_CHAT
+from services.infrastructure.resource_manager import PRIORITY_AGENT, PRIORITY_BACKGROUND, PRIORITY_CHAT
 from shared_state import get_conv_history
 
 logger = logging.getLogger("layla")
@@ -199,7 +199,7 @@ def enqueue_threaded_autonomous(req: dict, *, default_priority: int, kind: str) 
         err, sand = _compute_background_job_sandbox(cfg, ws_req)
         if err:
             return {"ok": False, "error": err}
-        from services.inference_router import inference_backend_uses_local_gguf
+        from services.llm.inference_router import inference_backend_uses_local_gguf
 
         if inference_backend_uses_local_gguf(cfg):
             pol = str(cfg.get("background_subprocess_local_gguf_policy") or "warn").strip().lower()
@@ -391,7 +391,7 @@ def _json_safe(value):
 def _run_background_subprocess_task(task_id: str, payload: dict) -> None:
     """Run job in a child process; hard cancel via terminate/kill on worker_proc."""
     import runtime_safety
-    from services.background_subprocess import (
+    from services.infrastructure.background_subprocess import (
         cancel_worker,
         cleanup_worker_cgroup,
         spawn_background_worker,
@@ -624,7 +624,7 @@ def _run_background_task(task_id: str, payload: dict) -> None:
             aw, ar = _effective_allows()
             fpid = str(payload.get("file_plan_id") or "").strip()
             if fpid:
-                from services.engine_plans import run_plan_iteration
+                from services.planning.engine_plans import run_plan_iteration
 
                 pl = dict(payload)
                 pl["allow_write"] = aw
@@ -670,7 +670,7 @@ def _run_background_task(task_id: str, payload: dict) -> None:
 
         if continuous:
             if str(payload.get("file_plan_id") or "").strip():
-                from services.engine_plans import run_file_plan_background_loop
+                from services.planning.engine_plans import run_file_plan_background_loop
 
                 pl = dict(payload)
                 pl["conversation_history"] = list(get_conv_history(payload.get("conversation_id") or ""))
@@ -687,7 +687,7 @@ def _run_background_task(task_id: str, payload: dict) -> None:
             else:
                 from pathlib import Path
 
-                from services.project_memory import load_project_memory
+                from services.memory.project_memory import load_project_memory
 
                 aggregate_steps: list = []
                 result = {}
@@ -868,7 +868,7 @@ def finalize_inline_progress_task(task_id: str, *, result: dict | None = None, e
 
 def _cancel_background_task_impl(task_id: str) -> JSONResponse:
     import runtime_safety
-    from services.background_subprocess import cancel_worker
+    from services.infrastructure.background_subprocess import cancel_worker
 
     grace = float(runtime_safety.load_config().get("background_worker_grace_seconds", 4.0))
     proc_to_kill: subprocess.Popen | None = None

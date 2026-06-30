@@ -296,7 +296,7 @@ def scan_workspace_into_memory(
     """
     Walk workspace (respecting repo_cognition ignore dirs), build files + structure, merge into memory.
     """
-    from services.repo_cognition import IGNORE_DIR_PARTS, _tree_sample
+    from services.workspace.repo_cognition import IGNORE_DIR_PARTS, _tree_sample
 
     root = workspace_root.resolve()
     if not root.is_dir():

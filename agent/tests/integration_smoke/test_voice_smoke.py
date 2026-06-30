@@ -15,8 +15,8 @@ pytestmark = [pytest.mark.voice_smoke, pytest.mark.timeout(600)]
 
 
 def test_voice_stt_and_tts_micro():
-    from services.stt import transcribe_bytes
-    from services.tts import get_tts_recovery, speak_to_bytes
+    from services.infrastructure.stt import transcribe_bytes
+    from services.infrastructure.tts import get_tts_recovery, speak_to_bytes
 
     # Minimal valid WAV payload (mostly silence); STT may return empty string.
     silent_wav = (

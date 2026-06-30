@@ -68,7 +68,7 @@ def _rank_file_chunks(workspace_root: Path, rel: str, task: str, max_chunks: int
         return []
     ids = [f"{rel}:{i}" for i in range(len(chunks))]
     try:
-        from services.keyword_search import build_index
+        from services.retrieval.keyword_search import build_index
 
         idx = build_index(ids, chunks)
         scores = idx.score_query(task)
@@ -119,7 +119,7 @@ def build_context(task: str, options: dict[str, Any] | None = None) -> dict[str,
     code_chunks: list[dict] = []
     try:
         if workspace_root:
-            from services.workspace_index import retrieve_code_context
+            from services.workspace.workspace_index import retrieve_code_context
 
             code_chunks = retrieve_code_context(task, workspace_root=workspace_root, k=k_code)
     except Exception as e:

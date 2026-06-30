@@ -66,7 +66,7 @@ def spawn_background_worker(job: dict[str, Any], *, python_executable: str | Non
     )
     cfg = runtime_safety.load_config()
     try:
-        from services.worker_cgroup_linux import maybe_attach_worker_to_cgroup
+        from services.infrastructure.worker_cgroup_linux import maybe_attach_worker_to_cgroup
 
         _cg_rel = maybe_attach_worker_to_cgroup(proc, cfg)
         if _cg_rel:
@@ -74,7 +74,7 @@ def spawn_background_worker(job: dict[str, Any], *, python_executable: str | Non
     except Exception:
         logger.debug("maybe_attach_worker_to_cgroup skipped", exc_info=True)
     try:
-        from services.worker_os_limits import attach_windows_job_memory_limit
+        from services.infrastructure.worker_os_limits import attach_windows_job_memory_limit
 
         attach_windows_job_memory_limit(proc, cfg)
     except Exception:
@@ -124,7 +124,7 @@ def cleanup_worker_cgroup(proc: subprocess.Popen | None) -> None:
     if not rel:
         return
     try:
-        from services.worker_cgroup_linux import maybe_remove_worker_cgroup
+        from services.infrastructure.worker_cgroup_linux import maybe_remove_worker_cgroup
 
         maybe_remove_worker_cgroup(rel)
     except Exception:

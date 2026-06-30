@@ -38,7 +38,7 @@ def refresh_for_workspace(workspace_root: str, cfg: dict[str, Any] | None = None
 
     def _job() -> None:
         try:
-            from services.project_discovery import run_project_discovery
+            from services.workspace.project_discovery import run_project_discovery
 
             run_project_discovery()
         except Exception as e:
@@ -56,7 +56,7 @@ def refresh_for_workspace(workspace_root: str, cfg: dict[str, Any] | None = None
             except Exception:
                 pass
         try:
-            from services.workspace_index import index_workspace
+            from services.workspace.workspace_index import index_workspace
 
             index_workspace(str(rp))
         except Exception as e:
@@ -95,13 +95,13 @@ def refresh_for_workspace_sync(workspace_root: str, cfg: dict[str, Any] | None =
             except Exception:
                 pass
     try:
-        from services.workspace_index import index_workspace
+        from services.workspace.workspace_index import index_workspace
 
         out["index"] = index_workspace(str(rp))
     except Exception as e:
         out["index_error"] = str(e)
     try:
-        from services.project_discovery import run_project_discovery
+        from services.workspace.project_discovery import run_project_discovery
 
         out["discovery"] = run_project_discovery()
     except Exception as e:

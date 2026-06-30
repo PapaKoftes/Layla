@@ -48,7 +48,7 @@ class MainAspectSet(BaseModel):
 def character_summary():
     """Full character lab summary: all aspect profiles, tutorial state, maturity rank."""
     try:
-        from services.character_creator import get_character_summary
+        from services.personality.character_creator import get_character_summary
         return get_character_summary()
     except Exception as e:
         logger.warning("character summary failed: %s", e)
@@ -59,7 +59,7 @@ def character_summary():
 def list_aspects():
     """All 6 aspect profiles with operator customizations merged in."""
     try:
-        from services.character_creator import load_all_profiles
+        from services.personality.character_creator import load_all_profiles
         return load_all_profiles()
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
@@ -68,7 +68,7 @@ def list_aspects():
 @router.get("/aspects/{aspect_id}")
 def get_aspect(aspect_id: str):
     """Single aspect profile."""
-    from services.character_creator import ALL_ASPECTS, load_aspect_profile
+    from services.personality.character_creator import ALL_ASPECTS, load_aspect_profile
     if aspect_id not in ALL_ASPECTS:
         return JSONResponse({"ok": False, "error": f"Unknown aspect: {aspect_id}"}, status_code=400)
     return load_aspect_profile(aspect_id)
@@ -77,7 +77,7 @@ def get_aspect(aspect_id: str):
 @router.patch("/aspects/{aspect_id}")
 def customize_aspect(aspect_id: str, body: AspectCustomization):
     """Save operator customizations for an aspect."""
-    from services.character_creator import ALL_ASPECTS, save_aspect_customization
+    from services.personality.character_creator import ALL_ASPECTS, save_aspect_customization
     if aspect_id not in ALL_ASPECTS:
         return JSONResponse({"ok": False, "error": f"Unknown aspect: {aspect_id}"}, status_code=400)
     # Only send non-None fields
@@ -91,7 +91,7 @@ def customize_aspect(aspect_id: str, body: AspectCustomization):
 @router.post("/aspects/{aspect_id}/reset")
 def reset_aspect(aspect_id: str):
     """Reset an aspect to factory defaults."""
-    from services.character_creator import ALL_ASPECTS, reset_aspect_to_defaults
+    from services.personality.character_creator import ALL_ASPECTS, reset_aspect_to_defaults
     if aspect_id not in ALL_ASPECTS:
         return JSONResponse({"ok": False, "error": f"Unknown aspect: {aspect_id}"}, status_code=400)
     return reset_aspect_to_defaults(aspect_id)
@@ -100,11 +100,11 @@ def reset_aspect(aspect_id: str):
 @router.get("/aspects/{aspect_id}/titles")
 def get_titles(aspect_id: str):
     """Titles available at the current maturity rank."""
-    from services.character_creator import ALL_ASPECTS, get_available_titles
+    from services.personality.character_creator import ALL_ASPECTS, get_available_titles
     if aspect_id not in ALL_ASPECTS:
         return JSONResponse({"ok": False, "error": f"Unknown aspect: {aspect_id}"}, status_code=400)
     try:
-        from services.maturity_engine import get_state
+        from services.personality.maturity_engine import get_state
         rank = get_state().rank
     except Exception:
         rank = 0
@@ -114,7 +114,7 @@ def get_titles(aspect_id: str):
 @router.post("/aspects/{aspect_id}/title")
 def set_title(aspect_id: str, body: dict):
     """Set the active title for an aspect."""
-    from services.character_creator import ALL_ASPECTS, set_active_title
+    from services.personality.character_creator import ALL_ASPECTS, set_active_title
     if aspect_id not in ALL_ASPECTS:
         return JSONResponse({"ok": False, "error": f"Unknown aspect: {aspect_id}"}, status_code=400)
     title = body.get("title", "")
@@ -126,7 +126,7 @@ def set_title(aspect_id: str, body: dict):
 @router.get("/aspects/{aspect_id}/prompt-hints")
 def get_prompt_hints(aspect_id: str):
     """Personality slider values converted to behavioral prompt hints."""
-    from services.character_creator import ALL_ASPECTS, personality_to_prompt_hints
+    from services.personality.character_creator import ALL_ASPECTS, personality_to_prompt_hints
     if aspect_id not in ALL_ASPECTS:
         return JSONResponse({"ok": False, "error": f"Unknown aspect: {aspect_id}"}, status_code=400)
     hints = personality_to_prompt_hints(aspect_id)
@@ -138,21 +138,21 @@ def get_prompt_hints(aspect_id: str):
 @router.get("/tutorial")
 def tutorial_state():
     """Current tutorial / intro progress."""
-    from services.character_creator import get_tutorial_state
+    from services.personality.character_creator import get_tutorial_state
     return get_tutorial_state()
 
 
 @router.post("/tutorial/advance")
 def tutorial_advance(body: TutorialAdvance):
     """Advance the tutorial to a specific step."""
-    from services.character_creator import advance_tutorial
+    from services.personality.character_creator import advance_tutorial
     return advance_tutorial(body.step)
 
 
 @router.post("/main-aspect")
 def set_main(body: MainAspectSet):
     """Set the operator's main/default aspect."""
-    from services.character_creator import set_main_aspect
+    from services.personality.character_creator import set_main_aspect
     return set_main_aspect(body.aspect_id)
 
 
@@ -161,19 +161,19 @@ def set_main(body: MainAspectSet):
 @router.get("/traits")
 def personality_traits_metadata():
     """Metadata for personality trait sliders (label, range, icon)."""
-    from services.character_creator import PERSONALITY_TRAITS
+    from services.personality.character_creator import PERSONALITY_TRAITS
     return {"traits": PERSONALITY_TRAITS}
 
 
 @router.get("/voice-params")
 def voice_params_metadata():
     """Metadata for voice parameter sliders."""
-    from services.character_creator import VOICE_PARAMS
+    from services.personality.character_creator import VOICE_PARAMS
     return {"params": VOICE_PARAMS}
 
 
 @router.get("/earnable-titles")
 def all_earnable_titles():
     """All earnable titles across all aspects (with unlock conditions)."""
-    from services.character_creator import EARNABLE_TITLES
+    from services.personality.character_creator import EARNABLE_TITLES
     return EARNABLE_TITLES

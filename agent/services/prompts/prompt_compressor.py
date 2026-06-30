@@ -28,7 +28,7 @@ Config keys in config.json:
     prompt_compression_device     str    "cpu"|"cuda" (default auto)
 
 Usage:
-    from services.prompt_compressor import compress, compress_rag_context
+    from services.prompts.prompt_compressor import compress, compress_rag_context
 
     # Compress a long system context
     result = compress(long_text, target_ratio=0.4, question="What is X?")
@@ -59,7 +59,7 @@ _lingua_cache: dict[str, Any] = {}  # model_id → loaded LLMLingua instance
 def _cfg() -> dict:
     # Delegates to services.config_cache for mtime-invalidated single-source loader.
     try:
-        from services.config_cache import get_config
+        from services.infrastructure.config_cache import get_config
         return get_config()
     except Exception:
         return {}
@@ -160,7 +160,7 @@ def _compress_with_selective_context(
     except Exception as exc:
         logger.warning("prompt_compressor: selective-context failed (%s), falling back", exc)
         try:
-            from services.degraded import mark_degraded
+            from services.infrastructure.degraded import mark_degraded
             mark_degraded("selective_context", str(exc))
         except Exception:
             pass
@@ -229,7 +229,7 @@ def _compress_with_lingua(
     except Exception as exc:
         logger.warning("prompt_compressor: LLMLingua failed (%s), falling back to heuristic", exc)
         try:
-            from services.degraded import mark_degraded
+            from services.infrastructure.degraded import mark_degraded
             mark_degraded("llmlingua", str(exc))
         except Exception:
             pass
@@ -273,7 +273,7 @@ def _compress_rag_with_lingua(
     except Exception as exc:
         logger.warning("prompt_compressor: LongLLMLingua failed (%s), heuristic fallback", exc)
         try:
-            from services.degraded import mark_degraded
+            from services.infrastructure.degraded import mark_degraded
             mark_degraded("longllmlingua", str(exc))
         except Exception:
             pass

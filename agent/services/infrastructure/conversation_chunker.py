@@ -12,7 +12,7 @@ Config keys:
     chunk_handoff_max_tokens    int   (default 600)
 
 Usage:
-    from services.conversation_chunker import should_chunk, build_handoff_summary
+    from services.infrastructure.conversation_chunker import should_chunk, build_handoff_summary
 """
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ class ChunkHandoff:
 
 def _cfg() -> dict:
     try:
-        from services.config_cache import get_config
+        from services.infrastructure.config_cache import get_config
         return get_config()
     except Exception:
         try:
@@ -115,9 +115,9 @@ def build_handoff_summary(
 
     # Compress if too long
     try:
-        from services.token_count import count_tokens
+        from services.llm.token_count import count_tokens
         if count_tokens(context_summary) > max_tokens:
-            from services.prompt_compressor import compress
+            from services.prompts.prompt_compressor import compress
             result = compress(context_summary, token_budget=max_tokens)
             context_summary = result.get("compressed", context_summary)
     except Exception:
@@ -163,7 +163,7 @@ def format_continuation_prompt(handoff: ChunkHandoff) -> str:
 def save_chunk_to_memory(handoff: ChunkHandoff) -> None:
     """Persist chunk handoff as a learning so it survives context boundaries."""
     try:
-        from services.memory_router import save_learning
+        from services.memory.memory_router import save_learning
         content = (
             f"[Chunk {handoff.chunk_number} handoff] Goal: {handoff.goal}\n"
             f"Steps: {handoff.total_steps_so_far}\n"

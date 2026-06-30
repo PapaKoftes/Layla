@@ -14,7 +14,7 @@ if str(AGENT) not in sys.path:
 
 def test_tool_policy_profile_minimal():
     from layla.tools.registry import TOOLS
-    from services.tool_policy import resolve_effective_tools
+    from services.tools.tool_policy import resolve_effective_tools
 
     cfg = {
         "tools_profile": "minimal",
@@ -29,7 +29,7 @@ def test_tool_policy_profile_minimal():
 
 def test_tool_policy_deny_wins():
     from layla.tools.registry import TOOLS
-    from services.tool_policy import resolve_effective_tools
+    from services.tools.tool_policy import resolve_effective_tools
 
     cfg = {
         "tools_profile": "full",
@@ -41,7 +41,7 @@ def test_tool_policy_deny_wins():
 
 
 def test_tool_loop_repeat_stop():
-    from services.tool_loop_detection import push_and_evaluate
+    from services.tools.tool_loop_detection import push_and_evaluate
 
     cfg = {
         "tool_loop_detection_enabled": True,
@@ -64,7 +64,7 @@ def test_tool_loop_repeat_stop():
 
 
 def test_http_cache_ttl():
-    from services import http_response_cache as hc
+    from services.retrieval import http_response_cache as hc
 
     hc.clear_cache()
     cfg = {"http_cache_ttl_seconds": 60, "http_cache_max_entries": 10}
@@ -75,14 +75,14 @@ def test_http_cache_ttl():
 
 
 def test_shell_session_reject_blocked():
-    from services.shell_sessions import shell_session_tool
+    from services.infrastructure.shell_sessions import shell_session_tool
 
     r = shell_session_tool(action="start", argv=["rm", "-rf", "/"], cwd=str(AGENT))
     assert r.get("ok") is False
 
 
 def test_markdown_skills_prompt(tmp_path):
-    from services.markdown_skills import load_markdown_skills_prompt
+    from services.skills.markdown_skills import load_markdown_skills_prompt
 
     d = tmp_path / "skills" / "demo"
     d.mkdir(parents=True)
@@ -96,7 +96,7 @@ def test_markdown_skills_prompt(tmp_path):
 
 
 def test_openai_compatible_urls_order():
-    from services.inference_router import _openai_compatible_base_urls
+    from services.llm.inference_router import _openai_compatible_base_urls
 
     cfg = {
         "llama_server_url": "http://a:8000",

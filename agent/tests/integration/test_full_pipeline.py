@@ -64,7 +64,7 @@ class TestProviderHealthIntegration:
     """Verify provider health tracking works end-to-end."""
 
     def test_health_lifecycle(self):
-        from services.provider_health import (
+        from services.infrastructure.provider_health import (
             get_all_status,
             is_healthy,
             record_failure,
@@ -93,7 +93,7 @@ class TestSkillPacksIntegration:
     """Verify skill pack subsystem works together."""
 
     def test_manifest_validation(self):
-        from services.skill_manifest import validate_manifest
+        from services.skills.skill_manifest import validate_manifest
         valid = {
             "name": "test-pack",
             "version": "1.0.0",
@@ -106,13 +106,13 @@ class TestSkillPacksIntegration:
         assert errors == []
 
     def test_manifest_rejects_invalid(self):
-        from services.skill_manifest import validate_manifest
+        from services.skills.skill_manifest import validate_manifest
         invalid = {"name": "test"}  # Missing required fields
         errors = validate_manifest(invalid)
         assert len(errors) > 0
 
     def test_registry_lifecycle(self, tmp_path):
-        import services.skill_registry as sr
+        import services.skills.skill_registry as sr
         old_db = sr._DB_PATH
         old_conn = sr._conn
         sr._conn = None  # Force fresh connection to new DB
@@ -146,7 +146,7 @@ class TestWebSocketIntegration:
     async def test_ws_manager_lifecycle(self):
         from unittest.mock import AsyncMock
 
-        from services.ws_manager import MSG_SYSTEM, ConnectionManager, create_message
+        from services.infrastructure.ws_manager import MSG_SYSTEM, ConnectionManager, create_message
 
         mgr = ConnectionManager()
         ws = AsyncMock()
@@ -166,7 +166,7 @@ class TestWebSocketIntegration:
 
     @pytest.mark.asyncio
     async def test_multi_agent_full_flow(self):
-        from services.multi_agent import run_multi_agent
+        from services.planning.multi_agent import run_multi_agent
         result = await run_multi_agent(
             "Fix the authentication bug and write unit tests for the new endpoint",
             cfg={},
@@ -180,13 +180,13 @@ class TestCrawlerIntegration:
     """Verify web crawler fallback chain."""
 
     def test_basic_always_available(self):
-        from services.web_crawler import get_crawler_status
+        from services.retrieval.web_crawler import get_crawler_status
         status = get_crawler_status(cfg={})
         assert status["basic"] is True
         assert "active" in status
 
     def test_docling_fallback(self, tmp_path):
-        from services.docling_ingest import ingest_file
+        from services.workspace.docling_ingest import ingest_file
         f = tmp_path / "test.txt"
         f.write_text("Integration test content for docling fallback.", encoding="utf-8")
         result = ingest_file(f, cfg={})

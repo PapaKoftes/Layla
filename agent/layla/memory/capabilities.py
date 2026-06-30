@@ -143,7 +143,7 @@ def record_practice(
         return event_id
     # Layla v3: maturity XP for capability practice (best-effort; never raise).
     try:
-        from services.maturity_engine import award_xp
+        from services.personality.maturity_engine import award_xp
 
         award_xp(30, reason=f"capability_practice:{domain_id.strip()[:60]}")
     except Exception:

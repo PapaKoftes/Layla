@@ -170,12 +170,12 @@ class TestPrivacyConfig:
 
 class TestMemoryRouterPrivacy:
     def test_max_privacy_from_config(self):
-        from services.memory_router import _max_privacy_from_config
+        from services.memory.memory_router import _max_privacy_from_config
         result = _max_privacy_from_config()
         assert result in ("public", "workspace", "personal", "sensitive")
 
     def test_query_accepts_max_privacy(self):
-        from services.memory_router import query
+        from services.memory.memory_router import query
         # Should not error even if no data
         results = query("test", max_privacy="public", limit=5)
         assert isinstance(results, list)

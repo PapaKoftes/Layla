@@ -8,14 +8,14 @@ import pytest
 
 class TestConnectionManager:
     def test_initial_state(self):
-        from services.ws_manager import ConnectionManager
+        from services.infrastructure.ws_manager import ConnectionManager
         mgr = ConnectionManager()
         assert mgr.client_count == 0
         assert mgr.get_connected_clients() == []
 
     @pytest.mark.asyncio
     async def test_connect(self):
-        from services.ws_manager import ConnectionManager
+        from services.infrastructure.ws_manager import ConnectionManager
         mgr = ConnectionManager()
         ws = AsyncMock()
         await mgr.connect(ws, "client-1")
@@ -24,7 +24,7 @@ class TestConnectionManager:
 
     @pytest.mark.asyncio
     async def test_disconnect(self):
-        from services.ws_manager import ConnectionManager
+        from services.infrastructure.ws_manager import ConnectionManager
         mgr = ConnectionManager()
         ws = AsyncMock()
         await mgr.connect(ws, "client-1")
@@ -34,13 +34,13 @@ class TestConnectionManager:
 
     @pytest.mark.asyncio
     async def test_disconnect_nonexistent(self):
-        from services.ws_manager import ConnectionManager
+        from services.infrastructure.ws_manager import ConnectionManager
         mgr = ConnectionManager()
         await mgr.disconnect("ghost")  # Should not raise
 
     @pytest.mark.asyncio
     async def test_send_personal(self):
-        from services.ws_manager import ConnectionManager
+        from services.infrastructure.ws_manager import ConnectionManager
         mgr = ConnectionManager()
         ws = AsyncMock()
         await mgr.connect(ws, "client-1")
@@ -49,7 +49,7 @@ class TestConnectionManager:
 
     @pytest.mark.asyncio
     async def test_broadcast(self):
-        from services.ws_manager import ConnectionManager
+        from services.infrastructure.ws_manager import ConnectionManager
         mgr = ConnectionManager()
         ws1 = AsyncMock()
         ws2 = AsyncMock()
@@ -61,7 +61,7 @@ class TestConnectionManager:
 
     @pytest.mark.asyncio
     async def test_broadcast_exclude(self):
-        from services.ws_manager import ConnectionManager
+        from services.infrastructure.ws_manager import ConnectionManager
         mgr = ConnectionManager()
         ws1 = AsyncMock()
         ws2 = AsyncMock()
@@ -73,7 +73,7 @@ class TestConnectionManager:
 
     @pytest.mark.asyncio
     async def test_broadcast_all(self):
-        from services.ws_manager import ConnectionManager
+        from services.infrastructure.ws_manager import ConnectionManager
         mgr = ConnectionManager()
         ws1 = AsyncMock()
         ws2 = AsyncMock()
@@ -85,7 +85,7 @@ class TestConnectionManager:
 
     @pytest.mark.asyncio
     async def test_get_connected_clients(self):
-        from services.ws_manager import ConnectionManager
+        from services.infrastructure.ws_manager import ConnectionManager
         mgr = ConnectionManager()
         ws = AsyncMock()
         await mgr.connect(ws, "client-1", room="lobby")
@@ -97,7 +97,7 @@ class TestConnectionManager:
 
     @pytest.mark.asyncio
     async def test_get_room_members(self):
-        from services.ws_manager import ConnectionManager
+        from services.infrastructure.ws_manager import ConnectionManager
         mgr = ConnectionManager()
         ws1 = AsyncMock()
         ws2 = AsyncMock()
@@ -109,14 +109,14 @@ class TestConnectionManager:
 
     @pytest.mark.asyncio
     async def test_empty_room_members(self):
-        from services.ws_manager import ConnectionManager
+        from services.infrastructure.ws_manager import ConnectionManager
         mgr = ConnectionManager()
         members = mgr.get_room_members("empty-room")
         assert members == []
 
     @pytest.mark.asyncio
     async def test_multiple_rooms(self):
-        from services.ws_manager import ConnectionManager
+        from services.infrastructure.ws_manager import ConnectionManager
         mgr = ConnectionManager()
         ws1 = AsyncMock()
         ws2 = AsyncMock()
@@ -128,7 +128,7 @@ class TestConnectionManager:
 
 class TestCreateMessage:
     def test_structure(self):
-        from services.ws_manager import MSG_SYSTEM, create_message
+        from services.infrastructure.ws_manager import MSG_SYSTEM, create_message
         msg = create_message(MSG_SYSTEM, {"text": "hello"})
         assert msg["type"] == "system"
         assert msg["data"]["text"] == "hello"
@@ -136,7 +136,7 @@ class TestCreateMessage:
         assert "timestamp" in msg
 
     def test_custom_sender(self):
-        from services.ws_manager import MSG_RESPONSE, create_message
+        from services.infrastructure.ws_manager import MSG_RESPONSE, create_message
         msg = create_message(MSG_RESPONSE, {}, sender="user")
         assert msg["sender"] == "user"
 
@@ -144,14 +144,14 @@ class TestCreateMessage:
 class TestHandleClientMessage:
     @pytest.mark.asyncio
     async def test_heartbeat(self):
-        from services.ws_manager import handle_client_message
+        from services.infrastructure.ws_manager import handle_client_message
         result = await handle_client_message({"type": "heartbeat"}, "c1")
         assert result is not None
         assert result["type"] == "heartbeat"
 
     @pytest.mark.asyncio
     async def test_unknown_type(self):
-        from services.ws_manager import handle_client_message
+        from services.infrastructure.ws_manager import handle_client_message
         result = await handle_client_message({"type": "unknown_xyz"}, "c1")
         # Should handle gracefully (return None or error)
         assert result is None or isinstance(result, dict)
@@ -159,7 +159,7 @@ class TestHandleClientMessage:
 
 class TestModuleSingleton:
     def test_manager_exists(self):
-        from services.ws_manager import manager
+        from services.infrastructure.ws_manager import manager
         assert manager is not None
         assert hasattr(manager, "connect")
         assert hasattr(manager, "broadcast")

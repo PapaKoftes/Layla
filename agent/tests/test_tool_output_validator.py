@@ -1,7 +1,7 @@
 """Tests for services/tool_output_validator.py."""
 from __future__ import annotations
 
-from services.tool_output_validator import validate_tool_output
+from services.tools.tool_output_validator import validate_tool_output
 
 
 def test_non_dict_wrapped() -> None:
