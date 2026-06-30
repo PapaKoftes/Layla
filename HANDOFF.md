@@ -59,6 +59,17 @@ See `.planning/ROADMAP.md` (Milestone 2, Phases 11–19) for full criteria. Next
 
 Known minor issue: local `_TESTCLIENT_FILES` hang on `.venv-test` (httpx version; CI-skipped) — pin/upgrade httpx so they run locally too.
 
+## 6a. INTEGRATION (the #1 next task) — merge this line onto the refactor
+`origin/master` (6a58e12) is a **645-file parallel refactor** (frontend rearchitecture, service reorg, agent-loop decomposition, Tier 0–5 hardening) — **canonical/keep it**. This session's line is `origin/friend-ready-session` (== local master, 54 commits). They must be merged; decision taken: *integrate mine onto their refactor*. A trial merge (`integration` branch off origin/master, merge master) succeeded with **all my new files auto-merging cleanly** and **25 conflicts** to resolve. It was aborted (not rushed) to avoid silently regressing security. Do it deliberately, verified by the test suite:
+
+**Resolution strategy (per conflict class):**
+- **New files (mine)** — auto-merge, no action: `fallback_store.py`, `secret_store.py`, `check_copyleft.py`, `benchmark_coding.py`, `provision_model.py`, `install/*`, `.planning/*`, `benchmarks/*`, `HANDOFF.md`, `recommend_kit` (additive in `model_selector.py`).
+- **UI (~11 files: `agent/ui/...`, `sw.js`, `layla-*.js`, `index.html`, `layla.css`)** — take the **refactor's** version (frontend rearch is canonical; Track B rebuilds UI in `ui-next/` anyway). Carry the original palette + per-aspect patterns into `ui-next/`.
+- **`pyproject.toml`** — combine: keep their extras (`tray`, `watcher`) + my **`cpu`** extra + `keyring` in core; **remove `PyMuPDF`** from `research` (AGPL — `scripts/check_copyleft.py` will flag it; the refactor still has it).
+- **Security/backend (14: `auth.py`, `tunnel_auth.py`, `runtime_safety.py`, `llm_gateway.py`, `tool_dispatch.py`, `model_manager.py`, `retrieval_cache.py`, `file_lock.py`, `dependency_recovery.py`, `cognitive_workspace.py`, `debate_engine.py`, `browser.py`, `user_profile.py`)** — careful three-way merge. **MUST preserve REQ-10/11/12**: `auth.real_client_ip` rightmost-trusted-hop + `_PROVIDER_HEADERS` + `require_auth_always`; `runtime_safety` log-redaction at `log_execution` + `resolve_config_secrets` + `tunnel_trusted_proxies`/`remote_require_auth_always` defaults; `tool_dispatch` redaction chokepoint; `conftest` `LAYLA_TEST_REAL_LLM` hang-guard; the `test_tunnel_auth` secure-contract test. Diff each file both ways; keep the refactor's structure + my security/feature deltas.
+- **Verify**: `CI=1 ../.venv-test/Scripts/python.exe -m pytest -m "not slow and not e2e_ui and not browser_smoke and not voice_smoke and not gpu_smoke and not endpoint"` must be green (theirs + mine); `python scripts/check_copyleft.py` passes (PyMuPDF gone); `recommend_kit`/`fallback_store`/`benchmark` tests pass on the merged tree.
+- Land on `master`, then the laptop `git clone` gets the unified result.
+
 ## 7. Install / connect (built this session — see install/)
 - **Fresh laptop:** `git clone … && powershell -File install\fresh_install.ps1` (compiler-free; auto-detects HW → downloads the right kit). Full guide: `install/INSTALL.md`.
 - **Connect to main PC (remote tunnel):** `install\connect_tunnel.ps1` on the host (cloudflared + bearer token; secure by REQ-10/11).
