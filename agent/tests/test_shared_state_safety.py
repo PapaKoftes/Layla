@@ -37,6 +37,13 @@ def _reset_shared_state():
     with ss._cancel_lock:
         ss._cancel_events.clear()
         ss._most_recent_conv_id = None
+    # ADR-002: also reset the new SessionContext store (steer hints etc. live here now)
+    try:
+        from services import session_context as _sc
+        with _sc._sessions_lock:
+            _sc._sessions.clear()
+    except Exception:
+        pass
     yield
 
 
