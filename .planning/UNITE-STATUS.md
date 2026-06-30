@@ -1,4 +1,4 @@
-# Unite Status — merge of friend-ready-session onto the refactor
+# Unite Status — ✅ COMPLETE (landed on master 4883a4b, 2143 tests pass)
 
 **Date:** 2026-06-30 · **Branch:** `integration` (local) → pushed to `origin/unite-integration`. **`master` is UNTOUCHED** (the refactor) until the suite is 100% green.
 
