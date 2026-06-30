@@ -21,23 +21,35 @@ if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
     winget install --id Cloudflare.cloudflared --accept-package-agreements --accept-source-agreements --silent
 }
 
-# 2) enable remote + ensure a bearer token in runtime_config.json
+# 2) enable remote + ensure a SECURE bearer token (stored as a hash; R5-safe).
+#    We store tunnel_token_hash (sha256 of the token) — never the plaintext key —
+#    matching services/governance/tunnel_auth.hash_token, so the deprecated
+#    remote_api_key path (now gated off by default) is not needed.
 $cfgPath = Join-Path $Repo "agent\runtime_config.json"
 $cfg = if (Test-Path $cfgPath) { Get-Content $cfgPath -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
 $cfg | Add-Member -NotePropertyName remote_enabled -NotePropertyValue $true -Force
-if (-not $cfg.remote_api_key) {
+$token = $null
+if (-not $cfg.tunnel_token_hash) {
     $token = ([guid]::NewGuid().ToString("N")) + ([guid]::NewGuid().ToString("N"))
-    $cfg | Add-Member -NotePropertyName remote_api_key -NotePropertyValue $token -Force
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $hash = ($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($token)) | ForEach-Object { $_.ToString("x2") }) -join ""
+    $cfg | Add-Member -NotePropertyName tunnel_token_hash -NotePropertyValue $hash -Force
+    $cfg | Add-Member -NotePropertyName tunnel_token_created_at -NotePropertyValue ((Get-Date).ToUniversalTime().ToString("o")) -Force
 }
 # remote_require_auth_always defaults on-when-exposed (REQ-11); leave it unset for auto.
 $cfg | ConvertTo-Json -Depth 12 | Set-Content $cfgPath -Encoding utf8
-Write-Host "[2/3] remote_enabled = true; bearer token ready."
+Write-Host "[2/3] remote_enabled = true; secure bearer token stored (hash only)."
 Write-Host ""
 Write-Host "  ===== GIVE THESE TO THE LAPTOP =====" -ForegroundColor Yellow
-Write-Host "  Bearer token : $($cfg.remote_api_key)"
-Write-Host "  (the public URL is printed by cloudflared below)"
-Write-Host "  On the laptop: set llama_server_url / remote host to the URL and send"
-Write-Host "  'Authorization: Bearer <token>'. See install\INSTALL.md (Connect)."
+if ($token) {
+    Write-Host "  Bearer token : $token"
+    Write-Host "  (shown once — stored only as a hash. To rotate, delete tunnel_token_hash and re-run.)"
+} else {
+    Write-Host "  A token hash already exists. To issue a fresh token, remove 'tunnel_token_hash'"
+    Write-Host "  from agent\runtime_config.json and re-run — or use scripts\pair.py."
+}
+Write-Host "  Then on the laptop send 'Authorization: Bearer <token>' to the tunnel URL below."
+Write-Host "  Easiest: run  python scripts\pair.py  on each PC (guided pairing + link test)."
 Write-Host ""
 
 # 3) make sure Layla is running, then open the tunnel
