@@ -395,6 +395,40 @@ def _get_completion_params(cfg: dict) -> dict:
     }
 
 
+def _aspect_model_override(aspect_id: str, cfg: dict) -> str | None:
+    """Model override configured for this aspect in the council, or None.
+
+    Configured via runtime_config "council_aspect_models": aspect_id -> model tag
+    ("coding"/"reasoning"/"chat") or a GGUF filename. Empty/absent => default model.
+    This is what makes the council a heterogeneous panel of models.
+    """
+    mapping = cfg.get("council_aspect_models")
+    if not isinstance(mapping, dict):
+        return None
+    val = mapping.get(str(aspect_id).lower())
+    val = str(val).strip() if val else ""
+    return val or None
+
+
+def _run_aspect_completion(aspect_id: str, cfg: dict, prompt: str, params: dict):
+    """run_completion with this aspect's model override applied for the call.
+
+    The override is a ContextVar and aspects run in pooled (reused) threads, so we
+    capture and restore the prior value to avoid leaking one aspect's model into the
+    next call on the same worker thread.
+    """
+    from services.llm_gateway import get_model_override, run_completion, set_model_override
+    override = _aspect_model_override(aspect_id, cfg)
+    if not override:
+        return run_completion(prompt, **params)
+    prev = get_model_override()
+    set_model_override(override)
+    try:
+        return run_completion(prompt, **params)
+    finally:
+        set_model_override(prev)
+
+
 def _generate_aspect_response(
     goal: str,
     aspect_id: str,
@@ -419,7 +453,7 @@ def _generate_aspect_response(
     )
 
     params = _get_completion_params(cfg)
-    result = run_completion(prompt, **params)
+    result = _run_aspect_completion(aspect_id, cfg, prompt, params)
     return _extract_text(result)
 
 
@@ -469,7 +503,7 @@ def _generate_critiques(
 
     params = _get_completion_params(cfg)
     params["max_tokens"] = min(params["max_tokens"], 400)  # critiques should be shorter
-    result = run_completion(prompt, **params)
+    result = _run_aspect_completion(aspect_id, cfg, prompt, params)
     return _extract_text(result)
 
 
