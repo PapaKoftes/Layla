@@ -414,20 +414,24 @@ def main() -> int:
         )
         cfg = _reload_cfg()
         _normalize_model_filename_in_cfg(cfg)
-        if not chroma_ok:
-            cfg["use_chroma"] = False
-            _persist_cfg(cfg)
-
-        want_chroma = bool(chroma_ok and cfg.get("use_chroma", True))
-        if want_chroma:
+        # REQ-72: semantic memory (RAG) runs even without native ChromaDB, via the
+        # SQLite+NumPy fallback store. ChromaDB being absent (e.g. the compiler-free
+        # `cpu` install) must NOT disable retrieval — that defeats the fallback and
+        # leaves a small local model ungrounded, which is its single biggest loss of
+        # correctness. So `use_chroma` records whether memory is ON; the backend
+        # (native Chroma vs fallback) is auto-selected at runtime. Only an explicit
+        # opt-out (use_chroma=false in config) hard-disables the vector layer.
+        memory_on = bool(cfg.get("use_chroma", True))
+        if memory_on:
             os.environ.pop("LAYLA_CHROMA_DISABLED", None)
         else:
             os.environ["LAYLA_CHROMA_DISABLED"] = "1"
 
-        if os.getenv("LAYLA_CHROMA_DISABLED") == "1":
-            print("[setup] Semantic memory: DISABLED")
+        backend = "ChromaDB (native)" if chroma_ok else "SQLite+NumPy fallback"
+        if memory_on:
+            print(f"[setup] Semantic memory: ENABLED ({backend})")
         else:
-            print("[setup] Semantic memory: ENABLED")
+            print("[setup] Semantic memory: DISABLED (use_chroma=false)")
 
         if model_ok:
             rp = _resolve_model_file_with_retry(cfg)
