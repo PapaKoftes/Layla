@@ -8,15 +8,16 @@ AGENT_UI = Path(__file__).resolve().parent.parent / "ui"
 
 
 def _aggregate_ui_chat_contract_text() -> str:
-    """Shell HTML plus all UI JS under agent/ui/js (bootstrap + app live here after extraction)."""
+    """Shell HTML plus all UI JS modules. Post ES-module migration these live under
+    ui/components, ui/core, ui/services and ui/main.js (the legacy ui/js is gone)."""
     parts: list[str] = []
     index = AGENT_UI / "index.html"
     if index.is_file():
         parts.append(index.read_text(encoding="utf-8"))
-    js_dir = AGENT_UI / "js"
-    if js_dir.is_dir():
-        for p in sorted(js_dir.glob("*.js")):
-            parts.append(p.read_text(encoding="utf-8"))
+    for p in sorted(AGENT_UI.rglob("*.js")):
+        if "vendor" in p.parts:
+            continue
+        parts.append(p.read_text(encoding="utf-8"))
     return "\n".join(parts)
 
 
