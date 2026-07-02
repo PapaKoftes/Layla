@@ -450,7 +450,7 @@ export async function refreshFileCheckpointsPanel() {
   if (!box) return;
   box.innerHTML = '<span style="color:var(--text-dim)">Loading…</span>';
   try {
-    const r = await fetch('/file_checkpoints?limit=40');
+    const r = await fetch('/memory/file_checkpoints?limit=40');
     const d = await r.json().catch(() => ({}));
     const items = Array.isArray(d && d.items) ? d.items : (Array.isArray(d && d.checkpoints) ? d.checkpoints : []);
     box.innerHTML = items.length
