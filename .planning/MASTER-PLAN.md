@@ -20,7 +20,7 @@ A build is *truly ready* only when ALL are true:
 ## Honest snapshot
 
 - **Substrate DONE:** R1–R8+R10, security (R5/R10/R11), self-test-gated installer machinery, pairing, RAG-grounding fix, GGUF/atomic-download hardening. **2512 tests green.**
-- **Ledger:** 4 done · 6 half · 26 open · 1 cut. **Upgrade path ~11% done.**
+- **Ledger:** 4 done · 6 half · 26 open · 1 cut. **Phase 2 (install) now DONE.**
 - **Not done:** the GUI build, the scope cut, the real install run, and 32 upgrade items.
 
 ---
@@ -45,11 +45,12 @@ historical art, subtle; you approve each pass against the **running app**.
 - **1.6 Responsive + a11y + polish + SIGN-OFF (M)** — mobile PWA, WCAG pass, then you say "locked."
 **Acceptance:** every screen matches #1; you approve; `check_ui_symbols.py` + e2e-ui green.
 
-## Phase 2 — PROVE THE INSTALL ⬜ (~1 pass)
+## Phase 2 - PROVE THE INSTALL ✅ (DONE 2026-07-02)
 - **2.1** Run `install\fresh_install.ps1` for real → creates `.venv` (compiler-free) → provisions a
   model → **`selftest --server` passes on `.venv`**. Fix anything that surfaces.
 - **2.2** Clean-profile / fresh-clone dry run so "clone → one command → working" is demonstrated.
 **Acceptance:** a real `.venv` exists and passes the self-test; install is proven, not inferred.
+**DONE:** Found the installer had NEVER run — `fresh_install.ps1`/`connect_tunnel.ps1` failed to PARSE (non-ASCII read as ANSI by PowerShell 5.1) + a `Find-Py312` bug. Fixed (ASCII-only + clean version check). `.venv` built end-to-end; `selftest` on `.venv` = PASS 0 warnings (model loads + real turn + RAG).
 
 ## Phase 3 — SCOPE CUT ⬜ (UPG-00a; the strategy's #1; ~2 passes)
 Reversible **parking behind flags**, not deletion (keep tests green):
