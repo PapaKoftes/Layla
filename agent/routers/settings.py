@@ -242,6 +242,10 @@ async def setup_download(url: str, filename: str = ""):
             progress_queue: queue.Queue = queue.Queue()
             error_holder = [None]
 
+            # Download to a .part temp, validate, then atomically rename into place — a dropped
+            # or blocked download must never leave a half-written .gguf that setup lists as a model.
+            dest_part = dest.with_name(dest.name + ".part")
+
             def _do_download():
                 try:
 
@@ -252,7 +256,7 @@ async def setup_download(url: str, filename: str = ""):
                         tot_mb = total / (1024 * 1024) if total > 0 else 0
                         progress_queue.put({"pct": pct, "dl_mb": round(dl_mb, 1), "tot_mb": round(tot_mb, 1)})
 
-                    urllib.request.urlretrieve(url, str(dest), _cb)
+                    urllib.request.urlretrieve(url, str(dest_part), _cb)
                 except Exception as exc:
                     error_holder[0] = str(exc)
                 finally:
@@ -275,8 +279,24 @@ async def setup_download(url: str, filename: str = ""):
                 await asyncio.sleep(0)
 
             if error_holder[0]:
+                try:
+                    dest_part.unlink()
+                except Exception:
+                    pass
                 yield f"data: {json.dumps({'error': error_holder[0]})}\n\n"
+            elif not _rs.is_valid_gguf(dest_part):
+                # Right-status download but wrong content (truncated / HTML error page).
+                try:
+                    dest_part.unlink()
+                except Exception:
+                    pass
+                yield f"data: {json.dumps({'error': 'Download incomplete or not a valid GGUF (truncated or blocked). Please try again.'})}\n\n"
             else:
+                try:
+                    dest_part.replace(dest)  # atomic rename into the final path
+                except Exception as _mv:
+                    yield f"data: {json.dumps({'error': f'could not finalize download: {_mv}'})}\n\n"
+                    return
                 try:
                     cfg2 = {}
                     if _rs.CONFIG_FILE.exists():

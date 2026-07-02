@@ -84,7 +84,7 @@ Legend — action: **interface** = call it as a dependency; **embed** = vendor/i
   (extends pairing).
 - `[ ]` **UPG-34 · build · V3 · (M × M)** — **Clients**: VS Code extension, CLI, **mobile PWA via the
   pairing tunnel** (phone → home instance). PWA/service-worker already present.
-- `[~]` **UPG-35 · build · V2 · (M × M)** — GGUF magic-byte validation done (setup-ready + downloader); resume/atomic + catalog checksums remain. **Safe browser model download**: route `/setup/download`
+- `[~]` **UPG-35 · build · V2 · (M × M)** — GGUF magic-byte validation (setup-ready + downloader) + **atomic .part→rename browser download** done; HTTP-range resume + catalog `sha256`/`size` + disk pre-check remain. **Safe browser model download**: route `/setup/download`
   through `model_downloader` (resume/atomic/validate); populate catalog `sha256`/`size`; disk pre-check;
   consolidate the 4 model catalogs to one.
 - `[ ]` **UPG-36 · build · V3 · (L × M)** — Accessibility (full WCAG pass; started), command palette,
