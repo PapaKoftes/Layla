@@ -30,12 +30,18 @@ Status: ⬜ todo · 🔧 in progress · ✅ done (verified) · ✂️ cut (remov
 - ✂️➡️ **Potato + semantic memory** → RECLASSIFIED (not a simple bug): `use_chroma=False` on potato is
   a *defensible* tradeoff — embeddings cost CPU/RAM the target hardware lacks. The real fix is CHEAP
   embeddings (FastEmbed/model2vec, Phase 4) so potato can afford semantic memory. Keep the flag until then.
+- ✅ **Growth velocity** → normalize the server `{week:count}` dict → array (verified: 10 bars render).
+- ✅ **Growth watcher** → map real fields `watch_dirs[]`/`files_ingested`/`files_skipped` (verified:
+  "● Running · 2 folders watched · 12 ingested · 2 skipped").
 - ⬜ **`min_adjusted_confidence`** slider → wire it into retrieval, or remove the control. *(next)*
-- ⬜ **Growth velocity + watcher widgets** → fix the dict-vs-array / field-name mismatch. *(next)*
 
 ## Pass 4 — voice sliders (dead)  [02][05]
-- ⬜ **Pitch/warmth/formality/speed** → pass to `/voice/speak`, or remove honestly.
-- ⬜ **TTS volume** → add a GainNode, or remove the slider.
+- ✅ **Speed slider** → `speakText` sends `speed`; `/voice/speak` honors it over the aspect default
+  (verified: body `speed:1.5`).
+- ✅ **TTS volume** → `speakText` routes audio through a GainNode reading the 0..1 volume (was wired
+  straight to destination). Client-only; audio-output not testable on the static preview.
+- ✂️➡️ **Character-Lab pitch/warmth/formality** → DEFER: kokoro-onnx TTS has no pitch/warmth/formality
+  params, so these can't drive TTS. Remove or repurpose them in the Character-Lab rework (repaint).
 
 ## Pass 5 — surface the flagship (backend-without-UI)  [03][04]
 - ⬜ **Verify / learn loop** → a real UI for `/verify/next` + `/verify/answer` (the "it learns" promise).

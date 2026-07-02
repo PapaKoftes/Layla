@@ -47,12 +47,19 @@ async def voice_speak(request: Request):
         body = await request.body()
         aspect_id = ""
         speed_override = None
+        user_speed = None
         try:
             import json as _j
 
             data = _j.loads(body)
             text = data.get("text", "")
             aspect_id = str(data.get("aspect_id", "")).strip().lower()
+            try:
+                _s = data.get("speed")
+                if _s is not None:
+                    user_speed = max(0.5, min(2.0, float(_s)))
+            except (TypeError, ValueError):
+                user_speed = None
         except Exception:
             text = body.decode("utf-8", errors="replace").strip()
         if not text:
@@ -64,6 +71,9 @@ async def voice_speak(request: Request):
         }
         if aspect_id in _ASPECT_SPEEDS:
             speed_override = _ASPECT_SPEEDS[aspect_id]
+        # An explicit user speed (settings slider) wins over the aspect default.
+        if user_speed is not None:
+            speed_override = user_speed
         wav = await asyncio.to_thread(speak_to_bytes, text, speed_override)
         if wav is None:
             rec = get_tts_recovery()
