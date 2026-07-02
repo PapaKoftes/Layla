@@ -263,7 +263,11 @@ export async function saveRelationshipCodex() {
 // ── Settings presets + appearance ───────────────────────────────────────────
 export async function applySettingsPreset(name) {
   try {
-    const r = await fetch('/settings/preset/' + encodeURIComponent(name), { method: 'POST' });
+    const r = await fetch('/settings/preset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ preset: name }),
+    });
     const d = await r.json().catch(function () { return {}; });
     showToast(d.ok ? 'Preset applied: ' + name : (d.error || 'failed'));
   } catch (_) {
@@ -312,9 +316,9 @@ export async function checkForUpdates() {
   const el = document.getElementById('update-status');
   if (el) el.textContent = 'Checking…';
   try {
-    const r = await fetch('/version/check_update');
+    const r = await fetch('/update/check');
     const d = await r.json().catch(function () { return {}; });
-    if (el) el.textContent = d.update_available ? ('Update available: ' + (d.latest || '')) : 'Up to date';
+    if (el) el.textContent = d.update_available ? ('Update available: ' + (d.latest_version || d.latest || '')) : 'Up to date';
   } catch (_) {
     if (el) el.textContent = 'Could not check';
   }
