@@ -5,6 +5,7 @@ full Python stack. API calls (/agent, /health, ...) return 204 so the shell
 renders without console errors. NOT for production.
 """
 import http.server
+import json as _json
 import os
 
 UI_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -18,6 +19,20 @@ API_PREFIXES = (
     "/system_export", "/debug", "/memory", "/research", "/plans", "/plan",
     "/improvements", "/autonomous", "/search", "/obsidian", "/remote", "/setup",
 )
+
+# Canned GET responses so the preview shows the real, set-up app (not first-run).
+_CANNED_GET = {
+    "/setup_status": {
+        "ready": True, "model_found": True, "model_valid": True,
+        "wizard_complete": True, "config_exists": True,
+        "model_filename": "preview-model.gguf", "resolved_model": "preview-model.gguf",
+        "available_models": ["preview-model.gguf"], "models_dir": "preview",
+        "performance_mode": "auto",
+        "hardware": {"ram_gb": 16, "gpu_vendor": "none", "vram_gb": 0, "tier": "balanced"},
+    },
+    "/onboarding/status": {"needs_onboarding": False, "in_progress": False, "state": None},
+    "/health": {"status": "ok", "model_loaded": True},
+}
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -39,6 +54,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def _maybe_stub_api(self):
         p = self.path.split("?")[0]
+        # Represent an ALREADY-SET-UP, healthy machine so the preview renders the
+        # real app shell instead of the first-run wizard/onboarding. This also
+        # exercises the wizard's "skip when ready" guard (wizard.js laylaWizardStart).
+        canned = _CANNED_GET.get(p)
+        if canned is not None and self.command == "GET":
+            body = _json.dumps(canned).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return True
         if p.startswith(API_PREFIXES):
             self.send_response(204)
             self.end_headers()
