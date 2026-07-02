@@ -169,12 +169,15 @@ body.overlay-scroll-lock {
     inset: 0;
     pointer-events: none !important;
     z-index: 0;
-    background-image: var(--asp-bg-pattern, none), url("/layla-ui/assets/patterns/floral-damask.svg");
-    background-size: 512px 512px, 340px 340px;
-    background-repeat: repeat, repeat;
+    /* Clean-#1 (Phase 1.2): ONE ornament rule — the subtle damask only. The busy
+       per-aspect circuit/constellation tiles are dropped for a calmer, streamlined
+       ground (per-aspect identity now comes from the --asp color, not a bg pattern).
+       To bring the tiles back, restore var(--asp-bg-pattern) as a first layer. */
+    background-image: url("/layla-ui/assets/patterns/floral-damask.svg");
+    background-size: 340px 340px;
+    background-repeat: repeat;
     opacity: calc(0.06 * var(--fx-strength));
     mix-blend-mode: screen;
-    filter: drop-shadow(0 0 0 var(--asp));
   }
 
 
@@ -198,8 +201,9 @@ body.overlay-scroll-lock {
     height: auto;
     max-height: 82vh;
     object-fit: contain;
-    filter: drop-shadow(0 0 calc(14px * var(--fx-strength)) rgba(192, 132, 252, 0.65))
-      drop-shadow(0 0 calc(36px * var(--fx-strength)) rgba(147, 51, 234, 0.45));
+    /* Clean-#1 (Phase 1.2): calmer spirit glow (was 14/36px, heavier alpha). */
+    filter: drop-shadow(0 0 calc(8px * var(--fx-strength)) rgba(192, 132, 252, 0.5))
+      drop-shadow(0 0 calc(18px * var(--fx-strength)) rgba(147, 51, 234, 0.28));
   }
 
   /* Aspect doodle overlay: css glyph + subtle ascii texture */
@@ -208,6 +212,7 @@ body.overlay-scroll-lock {
     inset: 0;
     pointer-events: none !important;
     z-index: 0;
+    display: none; /* clean-#1 (Phase 1.2): drop the ascii doodle texture (visual noise) */
     opacity: calc(0.09 * var(--fx-strength));
     font-size: 13px;
     letter-spacing: 3px;
