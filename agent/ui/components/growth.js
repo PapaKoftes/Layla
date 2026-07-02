@@ -152,8 +152,10 @@ function _populateStats(d) {
   _setText('growth-verify-rejected', _fmtNum(v.rejected || 0));
   _setText('growth-verify-pending', _fmtNum(v.pending || 0));
 
-  // Velocity sparkline (last 4 weeks)
-  _renderVelocitySparkline(d.velocity_by_week || []);
+  // Velocity sparkline (last 4 weeks). Server returns velocity_by_week as a
+  // {week: count} dict; normalize to the array the sparkline expects (was a
+  // dict-vs-array mismatch that left the sparkline blank).
+  _renderVelocitySparkline(_normalizeVelocity(d.velocity_by_week));
 
   // Capabilities list
   _renderCapabilities(d.capabilities || []);
@@ -178,6 +180,14 @@ function _pendingCount(d) {
 }
 
 // ── Velocity sparkline ──────────────────────────────────────────────────────
+function _normalizeVelocity(v) {
+  if (Array.isArray(v)) return v;
+  if (v && typeof v === 'object') {
+    return Object.keys(v).sort().map(function (wk) { return { week: wk, count: v[wk] || 0 }; });
+  }
+  return [];
+}
+
 function _renderVelocitySparkline(weeks) {
   const el = document.getElementById('growth-velocity-sparkline');
   if (!el) return;
@@ -273,17 +283,19 @@ function _renderWatcher(w) {
     return;
   }
 
+  // Field names match the server's get_stats(): watch_dirs[], files_ingested,
+  // files_skipped (was reading nonexistent watched_folders/files_processed/files_pending).
   const running = w.running ? '● Running' : '○ Stopped';
   const runColor = w.running ? '#4caf50' : '#f44336';
-  const watched = w.watched_folders || 0;
-  const processed = w.files_processed || 0;
-  const pending = w.files_pending || 0;
+  const watched = Array.isArray(w.watch_dirs) ? w.watch_dirs.length : (w.watched_folders || 0);
+  const processed = (w.files_ingested != null) ? w.files_ingested : (w.files_processed || 0);
+  const skipped = w.files_skipped || 0;
 
   let html = '<span style="color:' + runColor + '">' + running + '</span>';
   html += ' · ' + watched + ' folder' + (watched !== 1 ? 's' : '') + ' watched';
-  html += ' · ' + _fmtNum(processed) + ' processed';
-  if (pending > 0) {
-    html += ' · <span style="color:#ff9800">' + pending + ' pending</span>';
+  html += ' · ' + _fmtNum(processed) + ' ingested';
+  if (skipped > 0) {
+    html += ' · <span style="color:#ff9800">' + _fmtNum(skipped) + ' skipped</span>';
   }
   el.innerHTML = html;
 }
