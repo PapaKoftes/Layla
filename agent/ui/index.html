@@ -9,6 +9,7 @@
 <link rel="manifest" href="/manifest.json">
 <link rel="stylesheet" href="/layla-ui/css/layla.css">
 <link rel="stylesheet" href="/layla-ui/css/layla-enhanced.css">
+<link rel="stylesheet" href="/layla-ui/css/layla-rebuild.css">
 <script src="/layla-ui/vendor/js/marked.min.js"></script>
 <script src="/layla-ui/vendor/js/highlight.min.js"></script>
 <script src="/layla-ui/vendor/js/purify.min.js"></script>
@@ -369,7 +370,20 @@
       <textarea id="compose-draft" placeholder="Longer context, specs, pasted errors, draft text…" autocomplete="off" data-on-input="saveComposeDraft" aria-label="Working notes compose area"></textarea>
     </div>
     <div id="chat" role="log" aria-live="polite" aria-label="Chat history" aria-relevant="additions">
-      <div id="chat-empty"><!-- populated by renderPromptTilesAndEmptyState() --></div>
+      <div id="chat-empty">
+        <svg class="empty-damask" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+          <path d="M50 8c8 14-8 22 0 34 8-12-8-20 0-34zM50 92c-8-14 8-22 0-34-8 12 8 20 0 34zM8 50c14 8 22-8 34 0-12 8-20-8-34 0zM92 50c-14-8-22 8-34 0 12-8 20 8 34 0z"/>
+          <circle cx="50" cy="50" r="6"/><circle cx="50" cy="50" r="22"/>
+        </svg>
+        <div class="empty-wordmark">∴ LAYLA</div>
+        <div class="empty-tagline">A private AI that's yours — runs on your machine, remembers what matters.</div>
+        <div class="empty-prompts">
+          <button type="button" class="empty-prompt" data-action="fillPrompt" data-arg="Help me understand this codebase.">Understand a codebase</button>
+          <button type="button" class="empty-prompt" data-action="fillPrompt" data-arg="Fix a bug in my project.">Fix a bug</button>
+          <button type="button" class="empty-prompt" data-action="fillPrompt" data-arg="Explain a concept to me clearly.">Explain a concept</button>
+          <button type="button" class="empty-prompt" data-action="fillPrompt" data-arg="Remember this about me:">Teach me something</button>
+        </div>
+      </div>
     </div>
     <div class="input-area" id="input-area-drop" title="Drop files here to attach"
          ondragover="event.preventDefault(); this.style.borderColor='var(--asp)'"
