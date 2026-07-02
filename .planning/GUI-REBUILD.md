@@ -50,11 +50,24 @@ real thing, not prose.
 per-aspect --asp:  morrigan #c0395e · nyx #7d5bb8 · echo #3f6fb0 · eris #b5763a · cassandra #2f8f86 · lilith #a33b52
 --success #3fae6b · --danger #d0454e · --focus ring = accent @ 45%
 ```
-**Type** — professional + soul, **offline-safe**
-- `--font-display: 'Cinzel', serif` — the `∴ LAYLA` wordmark + a few headings ONLY.
-- `--font-ui: system-ui, -apple-system, 'Segoe UI', Inter, sans-serif` — all UI text (readable, zero-weight, always present).
-- `--font-mono: 'JetBrains Mono', monospace` — code, tokens, data.
-- Scale 12 / 13 / 14 / 16 / 20 / 28; weights 400 / 500 / 600 only.
+**Type** — **mono soul (LOCKED: your call — keep the terminal character)**, bundled/offline
+- `--font-ui: 'JetBrains Mono', monospace` — **ALL UI text.** The techy/terminal soul stays.
+- `--font-display: 'Cinzel', serif` — the `∴ LAYLA` wordmark only.
+- Readability by craft, not by switching fonts: generous line-height (1.5–1.65), tuned
+  letter-spacing, lowercase labels, calm spacing — mono done professionally, never cramped.
+- Scale 11 / 12 / 13 / 14 / 20 / 28; weights 400 / 500 / 700.
+
+> **Locked from your calls (2026-07-02):** (1) direction approved pending the full feature map;
+> (2) **mono everywhere** (JetBrains Mono UI + Cinzel wordmark), not system-sans; (3) **scope cut to
+> the wedge** — cluster/tribunal/gamification/HUD-chips parked behind flags, off the default surface;
+> (4) **colors = ours** — near-black + refined **crimson primary + violet**, per-aspect hue shifts
+> (`--accent #c0395e`, `--accent-2 #7d5bb8`); the black+dark-purple option was considered and rejected.
+>
+> **GATE before G1 (DONE — awaiting your sign-off):** the exhaustive audit is complete and synthesized
+> into [`GUI-FEATURE-MAP.md`](GUI-FEATURE-MAP.md) — every feature area → its new home, all ~70 config
+> keys → 8 grouped Settings pages, every overlay/action/pref → a nothing-lost ledger, and a 3-tier
+> progressive-disclosure model so the default surface stays calm. Two latent backend features surfaced
+> (language-learning = a wedge win). **G1 does not build until you sign off on that map.**
 
 **Space** 4·8·12·16·24·32·48 · **Radius** 6 / 10 / 14 · **Motion** 120ms hover, 200ms panels, no glows.
 **Ornament** the damask at **~4%**, only on empty states + the rail foot; a 2px accent hairline for active. That's the whole ornament budget.
