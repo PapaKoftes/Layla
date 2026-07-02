@@ -1,10 +1,11 @@
-# Layla — expose this machine's Layla over a secure Cloudflare tunnel (host side).
+# Layla - expose this machine's Layla over a secure Cloudflare tunnel (host side).
 #
 # Run this on the MAIN PC (the one with the model). It enables remote access with a
 # bearer token, then opens a public HTTPS tunnel the laptop can connect to from
 # anywhere. Security note: remote auth is REQUIRED by default when exposed (REQ-11),
 # and the client IP is derived from Cloudflare's unforgeable Cf-Connecting-Ip header
-# (REQ-10) — so a spoofed X-Forwarded-For cannot bypass the allowlist/auth.
+# (REQ-10), so a spoofed X-Forwarded-For cannot bypass the allowlist/auth.
+# (ASCII-only: Windows PowerShell 5.1 misreads non-ASCII in a BOM-less .ps1.)
 #
 #   powershell -ExecutionPolicy Bypass -File install\connect_tunnel.ps1
 #
@@ -13,7 +14,7 @@ $ErrorActionPreference = "Stop"
 $Repo = Split-Path -Parent $PSScriptRoot
 Set-Location $Repo
 
-Write-Host "  Layla — secure remote tunnel (host)" -ForegroundColor Magenta
+Write-Host "  Layla - secure remote tunnel (host)" -ForegroundColor Magenta
 
 # 1) cloudflared
 if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
@@ -22,7 +23,7 @@ if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
 }
 
 # 2) enable remote + ensure a SECURE bearer token (stored as a hash; R5-safe).
-#    We store tunnel_token_hash (sha256 of the token) — never the plaintext key —
+#    We store tunnel_token_hash (sha256 of the token), never the plaintext key,
 #    matching services/governance/tunnel_auth.hash_token, so the deprecated
 #    remote_api_key path (now gated off by default) is not needed.
 $cfgPath = Join-Path $Repo "agent\runtime_config.json"
@@ -43,10 +44,10 @@ Write-Host ""
 Write-Host "  ===== GIVE THESE TO THE LAPTOP =====" -ForegroundColor Yellow
 if ($token) {
     Write-Host "  Bearer token : $token"
-    Write-Host "  (shown once — stored only as a hash. To rotate, delete tunnel_token_hash and re-run.)"
+    Write-Host "  (shown once - stored only as a hash. To rotate, delete tunnel_token_hash and re-run.)"
 } else {
     Write-Host "  A token hash already exists. To issue a fresh token, remove 'tunnel_token_hash'"
-    Write-Host "  from agent\runtime_config.json and re-run — or use scripts\pair.py."
+    Write-Host "  from agent\runtime_config.json and re-run - or use scripts\pair.py."
 }
 Write-Host "  Then on the laptop send 'Authorization: Bearer <token>' to the tunnel URL below."
 Write-Host "  Easiest: run  python scripts\pair.py  on each PC (guided pairing + link test)."
