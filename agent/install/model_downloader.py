@@ -188,6 +188,13 @@ def _verify_before_commit(path: Path, model: dict[str, Any]) -> tuple[bool, str]
                 hasher.update(chunk)
         if hasher.hexdigest().lower() != expected_sha:
             return False, "SHA256 mismatch"
+    # GGUF magic: a right-sized file can still be an HTML error page or wrong content.
+    try:
+        with path.open("rb") as f:
+            if f.read(4) != b"GGUF":
+                return False, "Not a GGUF file (bad magic bytes) — truncated or error-page download"
+    except Exception as e:
+        return False, f"could not read file for validation: {e}"
     return True, ""
 
 

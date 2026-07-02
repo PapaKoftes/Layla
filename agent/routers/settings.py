@@ -55,7 +55,8 @@ def setup_status():
     models_dir_raw = cfg.get("models_dir")
     models_dir = Path(models_dir_raw).expanduser().resolve() if models_dir_raw else _rs.default_models_dir()
     model_path = _rs.resolve_model_path(cfg)
-    model_found = not placeholder and model_path.exists()
+    # A truncated/HTML "model" must NOT read as ready — validate the GGUF, not just existence.
+    model_found = not placeholder and _rs.is_valid_gguf(model_path)
     _search_roots = _rs.model_search_roots(cfg)
     models_search_roots = [str(r) for r in _search_roots]
     _seen_gguf: set[str] = set()
@@ -79,7 +80,7 @@ def setup_status():
     except Exception:
         pass
     performance_mode = str(cfg.get("performance_mode", "auto") or "auto").strip()
-    model_valid = bool(not placeholder and model_path.exists())
+    model_valid = bool(not placeholder and _rs.is_valid_gguf(model_path))
     resolved_model = model_path.name if model_found else (available_models[0] if available_models else "")
 
     sandbox_raw = (cfg.get("sandbox_root") or "").strip()
