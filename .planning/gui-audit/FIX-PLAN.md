@@ -8,8 +8,10 @@ Status: ⬜ todo · 🔧 in progress · ✅ done (verified) · ✂️ cut (remov
 - ✅ **Think-harder** → `send()` reads `#reasoning-effort` → `payload.reasoning_effort='high'` (verified).
 - ✅ **Working-notes draft** → cleared after capture (+localStorage) (verified: cleared, still sent this turn).
 - ✅ **Prompt-history ↑** → now `/history`, mapping `{prompts:[{prompt}]}` → strings (endpoint+shape fixed).
-- ⬜ **Context-usage bar** → feed `ctx_pct` from the SSE stream into `#ctx-bar-fill` + label. *(next)*
-- ⬜ **Pipeline-clarify** → render the server's `questions` into the panel + show it. *(next)*
+- ✅ **Context-usage bar** → SSE `ctx_pct` → `#ctx-bar-fill` width + label + green/amber/red + hint
+  (verified: mocked SSE ctx_pct:72 → width 72%, "Ctx: 72%").
+- ✅ **Pipeline-clarify** → renders the server's `questions` into the panel + shows it, both SSE-done
+  and JSON paths (verified: mocked pipeline_needs_input → panel visible with "1. …\n2. …").
 - ✂️➡️ **Compact conv-scoping** → DEFERRED: server compacts one global `shared_state` buffer
   (`session.py:35` `sync_compact_history()` takes no id). Needs a conversation-aware history model —
   fold into the duplication cleanup (00-SYNTHESIS §D), not a half-fix now.
