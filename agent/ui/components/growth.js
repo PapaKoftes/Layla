@@ -299,3 +299,65 @@ function _renderWatcher(w) {
   }
   el.innerHTML = html;
 }
+
+// ── Verification review — surfaces the "it learns" loop (was backend-only) ────
+// GET /verify/next -> show the fact -> Confirm/Reject -> POST /verify/answer -> next.
+let _verifyCurrentFactId = null;
+
+function _verifyActionsVisible(on) {
+  const actions = document.getElementById('verify-review-actions');
+  if (!actions) return;
+  actions.querySelectorAll('[data-verify-answer]').forEach(function (b) { b.style.display = on ? '' : 'none'; });
+}
+
+async function _verifyLoadNext() {
+  const body = document.getElementById('verify-review-body');
+  if (body) body.textContent = 'Loading…';
+  try {
+    const r = await fetch('/verify/next');
+    const d = await r.json();
+    if (!d || !d.ok) { if (body) body.textContent = 'Could not load: ' + ((d && d.error) || 'error'); return; }
+    if (!d.fact) {
+      _verifyCurrentFactId = null;
+      if (body) body.innerHTML = '<span style="color:var(--success,#3fae6b)">&#10003; All caught up — nothing to verify right now.</span>';
+      _verifyActionsVisible(false);
+      return;
+    }
+    _verifyCurrentFactId = d.fact.id;
+    const conf = Math.round((Number(d.fact.confidence) || 0) * 100);
+    const meta = escapeHtml(String(d.fact.source || 'inferred')) + ' · ' + conf + '% conf'
+      + (d.fact.prompt_number ? (' · ' + d.fact.prompt_number + '/' + d.fact.max_prompts) : '');
+    if (body) body.innerHTML = '<div style="margin-bottom:5px;color:var(--text-dim);font-size:0.6rem">Is this true? (' + meta + ')</div>'
+      + '<div style="color:var(--text)">' + escapeHtml(String(d.fact.fact || '')) + '</div>';
+    _verifyActionsVisible(true);
+  } catch (_e) {
+    if (body) body.textContent = 'Could not load verifications.';
+  }
+}
+
+async function _verifyAnswer(confirmed) {
+  if (!_verifyCurrentFactId) return;
+  const fid = _verifyCurrentFactId;
+  _verifyCurrentFactId = null;
+  try {
+    await fetch('/verify/answer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fact_id: fid, confirmed: !!confirmed, correction: '' }),
+    });
+  } catch (_e) { /* ignore; still advance */ }
+  try { if (typeof window.refreshGrowthDashboard === 'function') window.refreshGrowthDashboard(); } catch (_e) {}
+  await _verifyLoadNext();
+}
+
+export async function laylaVerifyReviewOpen() {
+  const card = document.getElementById('verify-review-card');
+  if (card) card.style.display = 'block';
+  await _verifyLoadNext();
+}
+export function laylaVerifyReviewClose() {
+  const card = document.getElementById('verify-review-card');
+  if (card) card.style.display = 'none';
+}
+export function laylaVerifyConfirm() { return _verifyAnswer(true); }
+export function laylaVerifyReject() { return _verifyAnswer(false); }
