@@ -134,6 +134,10 @@ def setup_status():
         "sandbox_root": sandbox_root,
         "hardware": hw,
         "performance_mode": performance_mode,
+        # Server-side "first-run already done" truth so the UI wizard doesn't
+        # re-nag on every launch (localStorage is per-browser + fragile, and the
+        # CLI installer sets up a model without ever running the GUI wizard).
+        "wizard_complete": bool(cfg.get("wizard_complete", False)),
     }
     if not model_valid:
         try:
