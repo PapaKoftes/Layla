@@ -22,12 +22,15 @@
   --text-dim:   #a294b0;
   --text-faint: #6f6180;
 
-  /* Brand — OUR colors: crimson soul + magenta accent + violet */
+  /* Brand — OUR colors, streamlined into one bloodline: deep crimson soul →
+     wine-rose CTA → violet. The CTA was a hot magenta (#c0006a) that read
+     candy-pink against the crimson; pulled toward wine so the accents feel
+     like one family, not three separate colors. */
   --crimson:  #8b0000;
   --violet:   #3d0050;
-  --accent:   #c0006a;    /* magenta — the Layla signature CTA */
-  --accent-2: #7a2ea0;    /* violet, visible on near-black (secondary) */
-  --accent-soft: rgba(192, 0, 106, 0.12);
+  --accent:   #b11655;    /* wine-rose — the Layla signature CTA (was #c0006a) */
+  --accent-2: #6e3a94;    /* muted violet, visible on near-black (secondary) */
+  --accent-soft: rgba(177, 22, 85, 0.13);
 
   /* Active aspect (JS rewrites --asp on switch) — default Morrigan crimson */
   --asp:      #8b0000;
