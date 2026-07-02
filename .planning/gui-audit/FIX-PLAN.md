@@ -17,15 +17,19 @@ Status: ⬜ todo · 🔧 in progress · ✅ done (verified) · ✂️ cut (remov
   pagination needs an `offset` param + DB support. Low impact; revisit if a user hits the cap.
 
 ## Pass 2 — broken endpoints (404s)  [03][06]
-- ⬜ **Checkpoints panel** → `/memory/file_checkpoints` (not `/file_checkpoints`).
-- ⬜ **Update-check** → `/update/check` (not `/version/check_update`).
-- ⬜ **Potato preset** → POST `/settings/preset` with `{preset:"potato"}` in body (not path).
-- ⬜ **Save appearance & lite** → correct DOM ids + real endpoint/keys, or cut if redundant.
+- ✅ **Checkpoints panel** → `/memory/file_checkpoints` (verified: GET /memory/file_checkpoints).
+- ✅ **Update-check** → `/update/check` + read `latest_version` (verified: GET /update/check).
+- ✅ **Potato preset** → POST `/settings/preset` body `{"preset":"potato"}` (verified: correct URL+body).
+- ⬜ **Save appearance & lite** → DEFER: reads nonexistent `#app-font-size`/`#app-anim-level` +
+  posts non-schema `ui_font_size`/`ui_animation_level`. Needs real appearance controls wired to
+  `/settings/appearance` (a small feature, not a one-line fix). Fold into the settings redesign.
 
 ## Pass 3 — wedge + silent-correctness bugs  [03]
-- ⬜ **Potato preset keeps semantic memory** → stop forcing `use_chroma=False` (fallback exists for low-end).
-- ⬜ **`min_adjusted_confidence`** slider → wire it into retrieval, or remove the control.
-- ⬜ **Growth velocity + watcher widgets** → fix the dict-vs-array / field-name mismatch.
+- ✂️➡️ **Potato + semantic memory** → RECLASSIFIED (not a simple bug): `use_chroma=False` on potato is
+  a *defensible* tradeoff — embeddings cost CPU/RAM the target hardware lacks. The real fix is CHEAP
+  embeddings (FastEmbed/model2vec, Phase 4) so potato can afford semantic memory. Keep the flag until then.
+- ⬜ **`min_adjusted_confidence`** slider → wire it into retrieval, or remove the control. *(next)*
+- ⬜ **Growth velocity + watcher widgets** → fix the dict-vs-array / field-name mismatch. *(next)*
 
 ## Pass 4 — voice sliders (dead)  [02][05]
 - ⬜ **Pitch/warmth/formality/speed** → pass to `/voice/speak`, or remove honestly.
