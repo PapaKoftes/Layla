@@ -54,11 +54,15 @@ def test_try_chroma_retrieval_hit_returns_payload():
     assert hit["match_score"] == 0.91
 
 
-def test_query_learnings_best_similarity_returns_none_when_empty(monkeypatch):
+def test_query_learnings_best_similarity_returns_none_when_empty(monkeypatch, tmp_path):
     from layla.memory import vector_store as vs
+    import layla.memory.fallback_store as fb
 
-    def fake_chroma():
-        return False
-
-    monkeypatch.setattr(vs, "_use_chroma", fake_chroma)
+    # No native chroma -> the SQLite+NumPy fallback serves retrieval (RAG-grounding fix).
+    # Point it at a FRESH empty dir so this asserts "empty store -> None", not leaked state.
+    monkeypatch.setattr(vs, "_use_chroma", lambda: False)
+    monkeypatch.setattr(vs, "_real_chroma", lambda: False)
+    monkeypatch.setattr(vs, "CHROMA_PATH", tmp_path)
+    monkeypatch.setattr(vs, "_chroma_collection", None)
+    fb.reset_fallback_cache()
     assert vs.query_learnings_best_similarity("hello", top_k=3) is None
