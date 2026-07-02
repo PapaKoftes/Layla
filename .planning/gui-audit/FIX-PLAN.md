@@ -33,7 +33,8 @@ Status: ⬜ todo · 🔧 in progress · ✅ done (verified) · ✂️ cut (remov
 - ✅ **Growth velocity** → normalize the server `{week:count}` dict → array (verified: 10 bars render).
 - ✅ **Growth watcher** → map real fields `watch_dirs[]`/`files_ingested`/`files_skipped` (verified:
   "● Running · 2 folders watched · 12 ingested · 2 skipped").
-- ⬜ **`min_adjusted_confidence`** slider → wire it into retrieval, or remove the control. *(next)*
+- ✅ **`min_adjusted_confidence`** → wired as a floor in `retrieve_relevant_memory` (services/retrieval),
+  reading the config key nothing previously read; default 0.0 keeps behavior unchanged (py_compile OK).
 
 ## Pass 4 — voice sliders (dead)  [02][05]
 - ✅ **Speed slider** → `speakText` sends `speed`; `/voice/speak` honors it over the aspect default
@@ -44,9 +45,14 @@ Status: ⬜ todo · 🔧 in progress · ✅ done (verified) · ✂️ cut (remov
   params, so these can't drive TTS. Remove or repurpose them in the Character-Lab rework (repaint).
 
 ## Pass 5 — surface the flagship (backend-without-UI)  [03][04]
-- ⬜ **Verify / learn loop** → a real UI for `/verify/next` + `/verify/answer` (the "it learns" promise).
-- ⬜ **Autonomous toggle** → add `autonomous_mode` to the settings schema so the built loop is reachable.
-- ⬜ (later) missions / spawn-agents surfacing — scope after the above land.
+- ✅ **Verify / learn loop** → a working review flow in the Growth panel: "Review pending facts →"
+  steps through `/verify/next` with True / Not-true → `/verify/answer`, refreshing stats. Verified end
+  to end (open → fact shown → confirm → answer `{fact_id,confirmed:true}` → next → "all caught up").
+  Minimal by design; the repaint gives it a fuller home.
+- ⏸️ **Autonomous toggle** → HELD for your call. `autonomous_mode` isn't merely missing from the
+  schema — it's **force-reset to False at startup** (runtime_safety.py:737) as a SAFETY gate. Enabling a
+  bounded autonomous agent loop is a product/safety decision, not a fix to make silently. Surfaced, not flipped.
+- ⬜ (later) missions / spawn-agents surfacing — repaint scope.
 
 ## Deferred to the repaint (G2–G6), tracked so they're not lost
 - Collapse duplications: one aspect model, one onboarding, one governor, one deliberation, one skill registry, one plan store. [00-SYNTHESIS §D]

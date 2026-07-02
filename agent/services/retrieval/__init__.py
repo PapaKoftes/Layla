@@ -95,8 +95,16 @@ def retrieve_relevant_memory(
 
             results = search_learnings_fts(task, n=k)
         results = _normalize_confidence(results)
-        if min_confidence > 0.0:
-            results = [r for r in results if r.get("confidence", 0.0) >= min_confidence]
+        # Honor the configured floor (memory_retrieval_min_adjusted_confidence) on top
+        # of any explicit caller min_confidence. This Settings key was defined + exposed
+        # but never actually read anywhere; default 0.0 keeps behavior unchanged.
+        try:
+            _cfg_floor = float(cfg.get("memory_retrieval_min_adjusted_confidence", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            _cfg_floor = 0.0
+        _eff_min = max(float(min_confidence or 0.0), max(0.0, min(1.0, _cfg_floor)))
+        if _eff_min > 0.0:
+            results = [r for r in results if r.get("confidence", 0.0) >= _eff_min]
         return results
     except Exception as e:
         logger.debug("retrieve_relevant_memory failed: %s", e)
