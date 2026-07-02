@@ -231,6 +231,37 @@ export async function compactConversation() {
 }
 
 // ── send() — main chat entry point ──────────────────────────────────────────
+// Live context-usage meter — fed by the SSE stream's ctx_pct frames (was a dead
+// "Ctx: —" placeholder). Green < 60%, amber 60–85%, red above; shows chunking hint.
+function laylaUpdateCtxBar(pct) {
+  var p = Number(pct);
+  if (!isFinite(p)) return;
+  if (p > 0 && p <= 1) p = p * 100; // tolerate a 0..1 fraction
+  p = Math.max(0, Math.min(100, Math.round(p)));
+  var fill = document.getElementById('ctx-bar-fill');
+  var label = document.getElementById('ctx-usage-label');
+  var hint = document.getElementById('token-pressure-hint');
+  if (fill) { fill.style.width = p + '%'; fill.style.background = p >= 85 ? '#d0454e' : (p >= 60 ? '#e0a020' : '#3a7'); }
+  if (label) label.textContent = 'Ctx: ' + p + '%';
+  if (hint) hint.style.display = p >= 60 ? '' : 'none';
+}
+
+// Pipeline clarify — render the server's questions into the panel and show it
+// (was: server returned questions, the UI only ever hid the panel + read answers).
+function laylaShowPipelineClarify(questions) {
+  var panel = document.getElementById('pipeline-clarify-panel');
+  if (!panel) return;
+  var qs = Array.isArray(questions) ? questions : (questions ? [questions] : []);
+  var text = qs.map(function (q, i) {
+    if (q && typeof q === 'object') return (i + 1) + '. ' + (q.question || q.text || q.prompt || JSON.stringify(q));
+    return (i + 1) + '. ' + String(q);
+  }).join('\n');
+  var pre = panel.querySelector('.pipeline-clarify-questions');
+  if (pre) pre.textContent = text || 'The pipeline needs a bit more detail to proceed.';
+  panel.style.display = 'block';
+  try { var ta = document.getElementById('pipeline-clarify-answers'); if (ta) ta.focus(); } catch (_e) { console.debug('app:', _e); }
+}
+
 export async function send() {
   _dbg('send() called');
   try { if (typeof window._hideMentionDropdown === 'function') window._hideMentionDropdown(); } catch (_e) { console.debug('app:', _e); }
@@ -452,6 +483,9 @@ export async function send() {
             var statusEl = div.querySelector('.tool-status-label');
             if (statusEl) statusEl.textContent = UX_STATE_LABELS[liveStatus] || liveStatus;
           }
+          if (typeof obj.ctx_pct === 'number') {
+            try { laylaUpdateCtxBar(obj.ctx_pct); } catch (_e) { console.debug('app:', _e); }
+          }
           if (obj.type === 'thinking' || obj.think) {
             var tt = String(obj.text || obj.think || '').trim();
             if (tt) appendThinkLine('✦ ' + tt);
@@ -525,6 +559,9 @@ export async function send() {
             if (_delibDone && _delibDone.mode && _delibDone.mode !== 'solo') {
               try { _renderDeliberationTranscript(div, _delibDone); } catch (_e) { console.debug('app:', _e); }
             }
+            if (obj.status === 'pipeline_needs_input') {
+              try { laylaShowPipelineClarify(obj.questions); } catch (_e) { console.debug('app:', _e); }
+            }
           }
         }
       }
@@ -552,6 +589,9 @@ export async function send() {
       var _uxStates = data && data.state && data.state.ux_states;
       var _memInf = data && data.state && data.state.memory_influenced;
       addMsg('layla', resp, replyAspect, _delib, _steps, _uxStates, _memInf);
+      if (data.status === 'pipeline_needs_input') {
+        try { laylaShowPipelineClarify(data.questions); } catch (_e) { console.debug('app:', _e); }
+      }
       if (window._ttsEnabled && resp && resp !== '(no output)') { try { if (typeof window.speakText === 'function') window.speakText(resp).catch(function () {}); } catch (_e) { console.debug('app:', _e); } }
       try { if (typeof window.refreshMaturityCard === 'function') window.refreshMaturityCard(true); } catch (_e) { console.debug('app:', _e); }
       try { laylaStreamStatsStop(); } catch (_e) { console.debug('app:', _e); }
