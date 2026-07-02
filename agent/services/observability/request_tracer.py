@@ -97,7 +97,9 @@ def _empty_trace(goal: str, aspect_id: str, reasoning_mode: str) -> dict:
             "planning_ms":  0.0,
             "total_ms":     0.0,
         },
-        "_t0": time.monotonic(),
+        # perf_counter, not monotonic: monotonic has ~15.6ms resolution on Windows,
+        # so a sub-tick turn would record total_ms as 0.0 (see trace_phase).
+        "_t0": time.perf_counter(),
     }
 
 
@@ -191,8 +193,8 @@ def finish_trace(
     if trace is None:
         return None
     try:
-        t0 = trace.get("_t0") or time.monotonic()
-        total_ms = round((time.monotonic() - t0) * 1000.0, 2)
+        t0 = trace.get("_t0") or time.perf_counter()
+        total_ms = round((time.perf_counter() - t0) * 1000.0, 2)
         trace["phases"]["total_ms"] = total_ms
         trace["finished_at"] = _now_iso()
         trace["status"] = status or "ok"
