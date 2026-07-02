@@ -1052,6 +1052,15 @@
             <span style="color:#f44336">&#10007; <span id="growth-verify-rejected">0</span> rejected</span>
             <span style="color:#ff9800">? <span id="growth-verify-pending">0</span> pending</span>
           </div>
+          <button type="button" class="tab-btn" style="margin-top:8px;font-size:0.62rem" data-action="laylaVerifyReviewOpen">Review pending facts &#8594;</button>
+          <div id="verify-review-card" style="display:none;margin-top:8px;padding:10px;background:var(--surface-2,var(--code-bg));border:1px solid var(--border);border-radius:8px">
+            <div id="verify-review-body" style="font-size:0.72rem;color:var(--text);line-height:1.5">Loading&#8230;</div>
+            <div id="verify-review-actions" style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+              <button type="button" class="tab-btn" style="font-size:0.62rem" data-action="laylaVerifyConfirm" data-verify-answer>&#10003; True</button>
+              <button type="button" class="tab-btn" style="font-size:0.62rem" data-action="laylaVerifyReject" data-verify-answer>&#10007; Not true</button>
+              <button type="button" class="tab-btn" style="font-size:0.62rem" data-action="laylaVerifyReviewClose">Close</button>
+            </div>
+          </div>
         </div>
         <!-- Capabilities -->
         <div class="growth-section">
