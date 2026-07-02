@@ -16,10 +16,15 @@ let _promptHistoryIdx = -1;
 
 function _ensurePromptHistory() {
   if (_promptHistoryList) return Promise.resolve();
-  return fetch('/conversations/prompt_history')
+  // Real endpoint is /history → {prompts:[{id,prompt,aspect,created_at}, ...]}
+  // (newest first). The UI recalls plain strings, so map to .prompt.
+  return fetch('/history')
     .then(r => r.json())
     .then(d => {
-      _promptHistoryList = Array.isArray(d && d.history) ? d.history : [];
+      const arr = Array.isArray(d && d.prompts) ? d.prompts : [];
+      _promptHistoryList = arr
+        .map(p => (p && typeof p === 'object') ? (p.prompt || '') : String(p || ''))
+        .filter(Boolean);
       _promptHistoryIdx = -1;
     })
     .catch(() => {
