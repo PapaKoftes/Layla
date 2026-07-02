@@ -386,6 +386,10 @@ function init() {
     laylaRunAutonomousResearch: research.laylaRunAutonomousResearch,
     // growth.js
     refreshGrowthDashboard: growth.refreshGrowthDashboard,
+    laylaVerifyReviewOpen: growth.laylaVerifyReviewOpen,
+    laylaVerifyReviewClose: growth.laylaVerifyReviewClose,
+    laylaVerifyConfirm: growth.laylaVerifyConfirm,
+    laylaVerifyReject: growth.laylaVerifyReject,
     // cluster.js
     refreshClusterStatus: cluster.refreshClusterStatus,
     generatePairingToken: cluster.generatePairingToken,
