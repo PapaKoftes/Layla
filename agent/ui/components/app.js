@@ -306,6 +306,12 @@ export async function send() {
     stream: !!streamMode,
   };
   if (modelOverride) payload.model_override = modelOverride;
+  // Wire the previously-dead composer toggles to the fields the server expects
+  // (agent.py reads req.plan_mode and req.reasoning_effort=="high").
+  var _planEl = document.getElementById('plan-mode-toggle');
+  if (_planEl && _planEl.checked) payload.plan_mode = true;
+  var _reEl = document.getElementById('reasoning-effort');
+  if (_reEl && _reEl.checked) payload.reasoning_effort = 'high';
   var _epSel = document.getElementById('engineering-pipeline-mode');
   if (_epSel && _epSel.value && _epSel.value !== 'chat') payload.engineering_pipeline_mode = _epSel.value;
   var _clarTa = document.getElementById('pipeline-clarify-answers');
@@ -314,6 +320,13 @@ export async function send() {
     _clarTa.value = '';
     var _cp = document.getElementById('pipeline-clarify-panel');
     if (_cp) _cp.style.display = 'none';
+  }
+
+  // Working notes are one-shot context for THIS turn — clear after capture so
+  // they don't silently ride along on every later message (was a context leak).
+  if (composeDraft && composeDraftEl) {
+    composeDraftEl.value = '';
+    try { localStorage.removeItem('layla_compose_draft'); } catch (_e) { console.debug('app:', _e); }
   }
 
   try { laylaShowTypingIndicator(msgAspect, streamMode ? 'connecting' : 'preparing_reply'); } catch (_e) { console.debug('app:', _e); }
