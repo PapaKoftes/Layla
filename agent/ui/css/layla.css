@@ -65,8 +65,13 @@ body.overlay-scroll-lock {
     --header-bar-min-h: 56px;
     --header-progress-h: 5px;
     --header-stack-h: calc(var(--header-bar-min-h) + var(--header-progress-h) + 2px);
-    /* Global visual intensity (hybrid: clean modern base + subtle Warframe accents) */
-    --fx-strength: 0.8;
+    /* Global visual intensity — dialed DOWN for the clean/streamlined #1 look:
+       less neon glow + animation, same colors + soul. (Was 0.8; raise toward 0.8
+       for more glow, or the Settings low-fx toggle for 0.) */
+    --fx-strength: 0.5;
+    /* Clean-#1 design system (Phase 1.1): codified spacing + radius scales. */
+    --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 22px; --sp-6: 32px;
+    --radius-sm: 4px; --radius: 8px; --radius-lg: 12px;
     /* Warframe-inspired UI language (angular HUD chrome) */
     --wf-cut: 12px;
     --wf-panel-bg: rgba(10, 0, 16, 0.74);
