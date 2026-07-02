@@ -1,4 +1,4 @@
-# Layla — DEPRECATED installer shim.
+# Layla - DEPRECATED installer shim.
 #
 # The old root installer compiled llama-cpp/chromadb (needs a C++ toolchain) and selected
 # Python via bare `python` — which is 3.14 on many machines and unsupported. It is retired

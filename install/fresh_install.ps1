@@ -1,4 +1,4 @@
-# Layla — fresh, compiler-free install (Windows / PowerShell).
+# Layla - fresh, compiler-free install (Windows / PowerShell).
 #
 # One command on a clean laptop: installs Python 3.12 if needed, builds a venv,
 # installs the COMPILER-FREE dependency set (llama-cpp + torch CPU wheels, no C++
@@ -10,6 +10,9 @@
 #   git clone https://github.com/PapaKoftes/Layla.git
 #   cd Layla
 #   powershell -ExecutionPolicy Bypass -File install\fresh_install.ps1
+#
+# NOTE: keep this file ASCII-only. Windows PowerShell 5.1 reads .ps1 as ANSI when
+# there is no BOM, so non-ASCII punctuation (em-dash, box-drawing) breaks parsing.
 #
 # Options:
 #   -Prefer quality|balanced|lite|speed   model bias for the detected hardware (default balanced)
@@ -31,14 +34,16 @@ $Repo = Split-Path -Parent $PSScriptRoot          # install\ -> repo root
 Set-Location $Repo
 
 Write-Host ""
-Write-Host "  Layla — fresh install (compiler-free)" -ForegroundColor Magenta
+Write-Host "  Layla - fresh install (compiler-free)" -ForegroundColor Magenta
 Write-Host "  -------------------------------------"
 
 function Find-Py312 {
+    # The py launcher selects the exact version for -3.12 / -3.11; a clean exit means
+    # that interpreter exists. No version-string parsing (avoids arg/quoting pitfalls).
     foreach ($v in @("3.12", "3.11")) {
         try {
-            $ver = & py "-$v" -c "import sys;print('%d.%d' % sys.version_info[:2])" 2>$null
-            if ($LASTEXITCODE -eq 0 -and ($ver -eq "3.12" -or $ver -eq "3.11")) { return @("py", "-$v") }
+            & py "-$v" -c "import sys" 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) { return @("py", "-$v") }
         } catch {}
     }
     return $null
@@ -46,10 +51,10 @@ function Find-Py312 {
 
 $VPy = ".\.venv\Scripts\python.exe"
 
-# ── -Verify: just run the self-test against the existing venv and exit ──────────
+# -Verify: just run the self-test against the existing venv and exit
 if ($Verify) {
     if (-not (Test-Path $VPy)) { throw "No .venv found. Run the installer first (without -Verify)." }
-    Write-Host "Running deep self-test (--server) ..." -ForegroundColor Cyan
+    Write-Host "Running deep self-test (server mode) ..." -ForegroundColor Cyan
     & $VPy scripts\selftest.py --server
     exit $LASTEXITCODE
 }
@@ -98,7 +103,7 @@ if ($SkipModel) {
     Pop-Location
 }
 
-# 6) DEEP SELF-TEST — prove the model loads + completes a real turn (SIGILL/OOM/corrupt-GGUF gate)
+# 6) DEEP SELF-TEST - prove the model loads + completes a real turn (SIGILL/OOM/corrupt-GGUF gate)
 if (-not $SkipModel) {
     Write-Host "[6/6] Deep self-test (model load + real inference turn) ..." -ForegroundColor Cyan
     & $VPy scripts\selftest.py
@@ -118,7 +123,7 @@ if (-not $SkipModel) {
             exit 1
         }
     }
-    Write-Host "  Self-test passed — Layla loads a model and completes a turn on this machine." -ForegroundColor Green
+    Write-Host "  Self-test passed - Layla loads a model and completes a turn on this machine." -ForegroundColor Green
 }
 
 Write-Host ""
