@@ -814,6 +814,24 @@ def resolve_model_path(cfg: dict | None = None) -> Path:
     return primary
 
 
+def is_valid_gguf(path) -> bool:
+    """True when *path* looks like a real, complete GGUF model file.
+
+    Guards against a truncated download or an HTML error page saved as ``.gguf``
+    being treated as a ready model: a genuine GGUF begins with the ``GGUF`` magic
+    and is far larger than any error page. Used by setup-readiness, the model
+    self-test, and the downloader's post-download verification.
+    """
+    try:
+        p = Path(path)
+        if not p.is_file() or p.stat().st_size < 1024:
+            return False
+        with open(p, "rb") as f:
+            return f.read(4) == b"GGUF"
+    except Exception:
+        return False
+
+
 _file_cache: dict[str, tuple[float, str]] = {}  # path -> (mtime, content)
 
 

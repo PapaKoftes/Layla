@@ -18,7 +18,7 @@ Legend — action: **interface** = call it as a dependency; **embed** = vendor/i
 - `[~]` **UPG-00b · build · MVP** — **R9 god-module splits** (vector_store/migrations/tool_dispatch/
   cursor-server) via aggregator pattern. Last "nothing-deferred" item; pairs with the OSS swaps that
   delete code. *(R1–R8 + R10 already done.)*
-- `[ ]` **UPG-00c · cut · MVP** — **Retire trap installers** (root `install.ps1`/`INSTALL.bat` —
+- `[x]` **UPG-00c · cut · MVP** — **Retire trap installers** (root `install.ps1`/`INSTALL.bat` —
   compiler path, 3.14-breaking). Redirect to `fresh_install.ps1`. *(Docs already deprecate them.)*
 
 ## Tier A — OSS reuse swaps (win-wins: less code AND better low-end quality)
@@ -84,7 +84,7 @@ Legend — action: **interface** = call it as a dependency; **embed** = vendor/i
   (extends pairing).
 - `[ ]` **UPG-34 · build · V3 · (M × M)** — **Clients**: VS Code extension, CLI, **mobile PWA via the
   pairing tunnel** (phone → home instance). PWA/service-worker already present.
-- `[ ]` **UPG-35 · build · V2 · (M × M)** — **Safe browser model download**: route `/setup/download`
+- `[~]` **UPG-35 · build · V2 · (M × M)** — GGUF magic-byte validation done (setup-ready + downloader); resume/atomic + catalog checksums remain. **Safe browser model download**: route `/setup/download`
   through `model_downloader` (resume/atomic/validate); populate catalog `sha256`/`size`; disk pre-check;
   consolidate the 4 model catalogs to one.
 - `[ ]` **UPG-36 · build · V3 · (L × M)** — Accessibility (full WCAG pass; started), command palette,
