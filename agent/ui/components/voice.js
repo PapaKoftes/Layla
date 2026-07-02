@@ -148,10 +148,16 @@ export async function speakText(text) {
   if (!_ttsEnabled || !text) return;
   try {
     const asp = appState.get('aspect.current') || 'morrigan';
+    // Speed slider now reaches the server (was ignored). The server treats an
+    // explicit speed as an override of the per-aspect default.
+    let spd = null;
+    try { const s = parseFloat(localStorage.getItem('layla_voice_speed')); if (isFinite(s) && s > 0) spd = Math.max(0.5, Math.min(2, s)); } catch (_) {}
+    const speakBody = { text, aspect_id: asp };
+    if (spd != null) speakBody.speed = spd;
     const resp = await fetch('/voice/speak', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, aspect_id: asp }),
+      body: JSON.stringify(speakBody),
     });
     if (resp.ok) {
       const arrayBuffer = await resp.arrayBuffer();
@@ -159,7 +165,14 @@ export async function speakText(text) {
       const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
       const source = audioCtx.createBufferSource();
       source.buffer = audioBuffer;
-      source.connect(audioCtx.destination);
+      // Volume: route through a GainNode (was wired straight to destination, so the
+      // volume slider did nothing). Reads the saved 0..1 volume.
+      let vol = 1;
+      try { const raw = parseFloat(localStorage.getItem('layla_voice_volume')); if (isFinite(raw)) vol = Math.max(0, Math.min(1, raw)); } catch (_) {}
+      const gain = audioCtx.createGain();
+      gain.gain.value = vol;
+      source.connect(gain);
+      gain.connect(audioCtx.destination);
       source.start();
       return;
     }
