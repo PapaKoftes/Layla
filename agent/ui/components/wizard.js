@@ -221,6 +221,27 @@ export async function laylaWizardStart() {
   try {
     if (localStorage.getItem(WIZ_KEY) === '1' || localStorage.getItem(WIZ_KEY_COMPAT) === '1') return;
   } catch (_) {}
+  // Consult SERVER truth before nagging. localStorage is per-browser + fragile,
+  // and the CLI installer provisions a model without ever running this wizard —
+  // so on a set-up machine the wizard was firing on every single launch. Skip it
+  // when the server says the wizard is complete OR the system is already ready
+  // (a valid model is configured). Only genuine first-run (no model) shows it.
+  try {
+    const _f = window.fetchWithTimeout
+      ? window.fetchWithTimeout('/setup_status', {}, 8000)
+      : fetch('/setup_status');
+    const res = await _f;
+    if (res && res.ok) {
+      const s = await res.json();
+      if (s && (s.wizard_complete === true || s.ready === true)) {
+        try {
+          localStorage.setItem(WIZ_KEY, '1');
+          localStorage.setItem(WIZ_KEY_COMPAT, '1');
+        } catch (_) {}
+        return;
+      }
+    }
+  } catch (_) { /* server unreachable — fall through to first-run wizard */ }
   bind();
   setVisible(true);
   step = 0;
