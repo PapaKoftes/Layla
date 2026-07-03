@@ -285,8 +285,11 @@ memory ✓`) → Start chatting. Personality/voice = optional "make it yours," n
 **Build approach:** rebuild design + structure from scratch, **reuse the working plumbing** (API layer,
 state bus, endpoint wiring). One stylesheet system (`tokens → base → components → screens`). **Stay vanilla
 ES modules** (zero build, offline-trivial; Svelte noted as optional-future). Order, shippable each step:
-**G1 design system ✅** (tokens + shell + empty state — `layla-rebuild.css`) · G2 chat (messages, composer,
-streaming, ⌘K palette) · G3 panels (the one card system) · G4 aspects (rail switch + retheme + creator in
+**G1 design system ✅** (tokens + shell + empty state — `layla-rebuild.css`) · G2 chat 🟡 (**⌘K command
+palette ✅** — `components/command-palette.js`: 20 commands in Aspect/Go-to/Chat/View, substring filter,
+keyboard nav with wrap, token-styled [surface-2 panel, wine-rose accent hairline, JetBrains Mono], repurposes
+the old ⌘K spotlight; verified live on the preview: open/filter/nav/run/close all green, 0 console errors;
+messages + composer + streaming still to do) · G3 panels (the one card system) · G4 aspects (rail switch + retheme + creator in
 Settings) · G5 startup (the 5-step + live self-test; folds in the onboarding-dedup) · G6 responsive + a11y
 + motion → SIGN-OFF. Each Gx reactable against the running app; `check_ui_symbols.py` + e2e-ui green.
 
