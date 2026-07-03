@@ -72,12 +72,35 @@ import functools as _functools  # noqa: E402
 _EMBED_CACHE_SIZE = 1024  # increased from 256; typical agent loops reuse learnings 2-5×
 
 
+class _Model2VecAdapter:
+    """Adapts a model2vec StaticModel to the SentenceTransformer.encode() interface
+    Layla's embed()/embed_batch() call. Static embeddings = pure numpy, no torch,
+    ~30k sentences/s on CPU, ~92% of MiniLM quality — the potato-tier default."""
+
+    def __init__(self, static_model):
+        self._m = static_model
+
+    def encode(self, texts, convert_to_numpy=True, normalize_embeddings=True, batch_size=256, **_kw):
+        import numpy as _np
+
+        if isinstance(texts, str):
+            texts = [texts]
+        vecs = self._m.encode(list(texts), batch_size=batch_size)
+        arr = _np.asarray(vecs, dtype="float32")
+        if arr.ndim == 1:
+            arr = arr[None, :]
+        if normalize_embeddings:
+            arr = arr / (_np.linalg.norm(arr, axis=1, keepdims=True) + 1e-12)
+        return arr
+
+
 def _get_embedder():
     """
-    Load the sentence-transformer model once and configure it for speed:
-    - nomic-embed-text-v1.5 (768d, best quality) with all-MiniLM fallback
-    - int8 quantization via quantize_model when available (2× faster CPU, ~same quality)
-    - half-precision on GPU via .half() (2× VRAM reduction, faster matmul)
+    Load the embedding model once. Preference order:
+    - model2vec static embeddings (numpy, NO torch, ~30k/s CPU, ~92% MiniLM quality) —
+      the low-end default when installed; drops the torch+sentence-transformers weight.
+    - sentence-transformers nomic-embed-text-v1.5 (768d) / all-MiniLM (384d) — the
+      "quality" embedder, used when `embedder_prefer_quality` is set OR model2vec is absent.
 
     Thread-safe: uses RLock to allow recursive acquisition in same thread.
     """
@@ -92,9 +115,31 @@ def _get_embedder():
         if _embedder is not None:
             return _embedder
         import logging
+        log = logging.getLogger("layla")
+
+        # Potato-tier default: model2vec static embeddings (no torch). Opt out with
+        # config embedder_prefer_quality=true, or it auto-falls-back if not installed.
+        _prefer_quality = False
+        try:
+            import runtime_safety as _rs
+            _prefer_quality = bool(_rs.load_config().get("embedder_prefer_quality", False))
+        except Exception:
+            _prefer_quality = False
+        if not _prefer_quality:
+            try:
+                from model2vec import StaticModel
+
+                _m2v_name = "minishlab/potion-base-8M"
+                _static = StaticModel.from_pretrained(_m2v_name)
+                _embedder = _Model2VecAdapter(_static)
+                _embedder_dim = int(_embedder.encode(["dimension probe"]).shape[1])
+                _current_model_name = _m2v_name
+                log.info("Embedding model: model2vec %s (%dd, static CPU, no torch)", _m2v_name, _embedder_dim)
+                return _embedder
+            except Exception as _m2v_err:
+                log.info("model2vec unavailable (%s); falling back to sentence-transformers", _m2v_err)
 
         from sentence_transformers import SentenceTransformer
-        log = logging.getLogger("layla")
         try:
             model = SentenceTransformer("nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True)
             _embedder_dim = 768
