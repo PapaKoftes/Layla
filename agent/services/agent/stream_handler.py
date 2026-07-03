@@ -184,7 +184,10 @@ def _stream_reason_body(
     cfg = runtime_safety.load_config()  # noqa: F841
     _delib_mode = str(cfg.get("deliberation_mode", "solo")).strip().lower()
     _delib_routed = False
-    if _delib_mode != "solo" and not cfg.get("skip_deliberation"):
+    # "auto" stays safe (solo-equivalent) until the governor auto-cap (UPG-14) decides —
+    # only EXPLICIT debate/council/tribunal force the multi-model engine. (Was: any
+    # non-solo, so the schema-default "auto" debated every turn + bypassed tools/approvals.)
+    if _delib_mode not in ("solo", "auto") and not cfg.get("skip_deliberation"):
         try:
             from services.planning.debate_engine import run_deliberation as _run_delib
             _delib_result = _run_delib(

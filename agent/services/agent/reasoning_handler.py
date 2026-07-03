@@ -165,7 +165,9 @@ def handle_reasoning_intent(
     _delib_routed = False
     text = ""
     deliberate = False
-    if _delib_mode != "solo":
+    # "auto" is solo-equivalent until the governor decides (see stream_handler); only
+    # explicit debate/council/tribunal force the multi-model engine.
+    if _delib_mode not in ("solo", "auto"):
         try:
             from services.planning.debate_engine import run_deliberation as _run_delib
 
