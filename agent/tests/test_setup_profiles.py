@@ -4,6 +4,7 @@ from __future__ import annotations
 from install.setup_profiles import (
     FEATURE_MANIFEST,
     PROFILES,
+    apply_setup,
     feature_by_id,
     features_to_install,
     profile_by_id,
@@ -71,3 +72,13 @@ def test_features_to_install_only_returns_installable():
 def test_unknown_profile_ignored():
     cfg = resolve_setup_config(["nonsense"])
     assert cfg["setup_profiles"] == []
+
+
+def test_apply_setup_merges_onto_current_without_saving():
+    current = {"model_filename": "x.gguf", "mcp_client_enabled": False, "keep_me": 1}
+    merged = apply_setup(["coding"], ["encryption"], current_cfg=current, save=False)
+    assert merged["keep_me"] == 1                       # untouched key preserved
+    assert merged["model_filename"] == "x.gguf"          # untouched key preserved
+    assert merged["mcp_client_enabled"] is True          # overridden by coding profile
+    assert merged["encryption_at_rest_enabled"] is True  # explicit feature
+    assert merged["setup_profiles"] == ["coding"]

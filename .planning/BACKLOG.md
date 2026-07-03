@@ -62,7 +62,8 @@ the potato thesis (load only what's needed) all plug into. Do this **before** th
   (reuse the resumable downloader from P0.2); toggles the flag on success.
 - **BL-205** ⬜ **Tool-enablement wiring** — the tool registry + `tool_policy`/visibility respect the profile's
   enabled set: only register/show the tools you need (the potato win — less RAM, cleaner tool list).
-- **BL-206** ⬜ Persist the chosen config as the startup default (ties into REQ-50 one-schema, BL-120).
+- **BL-206** 🟡 Persist core built — `apply_setup(profiles, features)` merges the resolved overrides onto the
+  current config and writes CONFIG_FILE + invalidates the cache (10 tests). Remaining: the router endpoint wiring.
 - **BL-207** ⬜ **Re-home the ~18 gated features (supersedes W2b)** as manifest entries — mostly "expose in the
   picker," genuinely-dead ones ✂️ cut. (Absorbs BL-060…BL-078.)
 - **BL-208** ⬜ Gate each of the 14 feature UIs (W2) behind its feature-enabled flag — the UI only shows what
