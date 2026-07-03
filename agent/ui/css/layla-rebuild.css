@@ -702,3 +702,31 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .setupwiz-note { flex: 1; font-size: var(--text-xs); color: var(--text-dim); }
 .setupwiz-note[data-ok="true"] { color: var(--success); }
 .setupwiz-back { margin-right: auto; }
+
+/* ── W2 · German learning panel (headline wedge) ─────────────────────────────── */
+.german-panel { max-width: 560px; max-height: 82vh; }
+.german-level { font-size: var(--text-xs); color: var(--text-faint); display: flex; align-items: center; gap: 6px; }
+.german-level-sel { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: var(--text-xs); padding: 2px 4px; }
+.german-body { overflow-y: auto; padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-5); }
+.german-sec { display: flex; flex-direction: column; gap: var(--sp-2); }
+.german-sec-title { font-size: var(--text-xs); text-transform: lowercase; letter-spacing: 0.08em; color: var(--text-faint); }
+.german-fc-stats { color: var(--text-dim); text-transform: none; letter-spacing: normal; }
+.german-input { width: 100%; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: var(--text-sm); padding: var(--sp-2) var(--sp-3); resize: vertical; }
+.german-input:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+.german-actions { display: flex; gap: var(--sp-2); }
+.german-result { font-size: var(--text-sm); }
+.german-ok { color: var(--success); font-size: var(--text-sm); }
+.german-errcount { color: var(--text-dim); font-size: var(--text-xs); margin-bottom: var(--sp-2); }
+.german-errs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.german-errs li { font-size: var(--text-sm); padding: var(--sp-2); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.german-err-match { color: var(--danger); }
+.german-err-hint { color: var(--success); }
+.german-card { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); padding: var(--sp-5); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); }
+.german-card-front { font-size: var(--text-xl, 1.25rem); color: var(--text); font-weight: 700; }
+.german-card-back { font-size: var(--text-lg); color: var(--accent); text-align: center; }
+.german-card-eg { font-size: var(--text-xs); color: var(--text-dim); margin-top: 4px; }
+.german-reveal { align-self: stretch; }
+.german-rate { display: flex; gap: var(--sp-2); align-self: stretch; }
+.german-rate button { flex: 1; background: var(--surface-3); border: 1px solid var(--border); color: var(--text-dim); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: var(--text-xs); padding: 6px 10px; cursor: pointer; }
+.german-rate button:hover { background: var(--accent-soft); color: var(--text); border-color: var(--accent); }
+.german-card-count { font-size: var(--text-xs); color: var(--text-faint); }
