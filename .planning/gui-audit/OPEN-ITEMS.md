@@ -37,7 +37,7 @@ Legend: ✅ fixed+verified this session · ⏸️ deferred with a stated reason 
 ## C. OPEN — audit found, I did NOT touch
 
 ### C1. Dead controls / dead chrome (chat) [01]
-24. ❌ Retry "↻ Regenerate" composer button — never un-hidden (feature works via Ctrl+R/menu; button is orphaned).
+24. ✅ Retry "↻ Regenerate" composer button — FSM now un-hides it when idle with a prior turn (verified).
 25. ❌ `#file-context-chips` element — defined, no writer → dead chrome.
 26. ❌ URL-detect "Fetch content" chip — only rewrites the prompt; doesn't actually fetch (label over-promises).
 27. ❌ `/ctx_viz` "Context visualizer" — opens raw JSON, no visual view.
@@ -130,7 +130,7 @@ Legend: ✅ fixed+verified this session · ⏸️ deferred with a stated reason 
 
 ## E. Broader plan not done (from MASTER-PLAN / UPGRADES)
 104. 🏗️ Phase 3 — scope cut (park cluster/tribunal/gamification behind flags).
-105. 🏗️ Phase 4 — foundation swaps (sqlite-vec, FastEmbed/model2vec, one SQLite memory, FlashRank).
+105. 🟡 Phase 4 — foundation swaps: **model2vec embedder DONE** (validated, torch dropped on hot path); sqlite-vec store, one-SQLite-memory, FlashRank rerank still open.
 106. 🏗️ Phase 5 — quality (constrained decoding, hybrid escalation, governor auto-cap, self-consistency, project-aware coding context).
 107. 🏗️ Phase 6 — ecosystem (Ollama backend, first-class `/v1`, MCP-only plugins).
 108. 🏗️ Phase 7 — polish (honesty card, Doctor panel, Castilla flagship, eval harness in CI, download robustness).
