@@ -18,7 +18,12 @@ SETTINGS_PRESETS: dict[str, dict[str, Any]] = {
         "max_runtime_seconds": 20,
         "research_max_tool_calls": 6,
         "research_max_runtime_seconds": 60,
-        "use_chroma": False,
+        # Semantic memory stays ON even on a potato — model2vec static embeddings
+        # (no torch) + sqlite-vec make it cheap, so the wedge ("it remembers") holds.
+        # embedder_prefer_quality off = the fast static embedder. (Was use_chroma:False
+        # before cheap embeddings existed.)
+        "use_chroma": True,
+        "embedder_prefer_quality": False,
         "completion_max_tokens": 192,
         "semantic_k": 3,
         "knowledge_chunks_k": 3,
