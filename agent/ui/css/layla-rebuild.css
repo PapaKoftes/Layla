@@ -758,3 +758,22 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .journal-etype { font-size: var(--text-xs); text-transform: lowercase; letter-spacing: 0.06em; color: var(--accent); }
 .journal-when { font-size: var(--text-xs); color: var(--text-faint); }
 .journal-etext { font-size: var(--text-sm); color: var(--text); line-height: 1.55; overflow-wrap: anywhere; margin-top: 2px; }
+
+/* ── W2 · Approvals & grants ─────────────────────────────────────────────────── */
+.approvals-panel { max-width: 560px; max-height: 82vh; }
+.approvals-body { overflow-y: auto; padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-5); }
+.approvals-sec { display: flex; flex-direction: column; gap: var(--sp-2); }
+.approvals-sec-title { font-size: var(--text-xs); text-transform: lowercase; letter-spacing: 0.08em; color: var(--text-faint); display: flex; align-items: center; justify-content: space-between; }
+.approvals-clear { background: transparent; border: 1px solid var(--border); color: var(--text-dim); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 2px 8px; cursor: pointer; text-transform: lowercase; }
+.approvals-clear:hover { background: var(--danger); color: #fff; border-color: transparent; }
+.approvals-item { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--sp-2) var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); }
+.approvals-item-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.approvals-tool { font-size: var(--text-sm); color: var(--accent); }
+.approvals-args { font-size: var(--text-xs); color: var(--text-dim); overflow-wrap: anywhere; }
+.approvals-acts { display: flex; gap: var(--sp-2); }
+.approvals-acts button { flex: 1; border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: var(--text-xs); padding: 4px 10px; cursor: pointer; border: 1px solid var(--border); }
+.approvals-yes { background: var(--accent); color: #fff; border-color: transparent; }
+.approvals-no { background: var(--surface-3); color: var(--text-dim); }
+.approvals-no:hover { background: var(--danger); color: #fff; border-color: transparent; }
+.approvals-grant { font-size: var(--text-sm); color: var(--text); padding: 4px 0; }
+.approvals-gscope { font-size: var(--text-xs); color: var(--text-faint); }
