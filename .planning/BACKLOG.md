@@ -60,8 +60,11 @@ the potato thesis (load only what's needed) all plug into. Do this **before** th
   Verified live (render + step flow + pre-seed + token styling).
 - **BL-204** 🟡 `POST /setup/feature/install` built — returns the install plan by default; on `confirm:true`
   pip-installs the deps + toggles flags (models via the resumable `/setup/download`). Tested (plan + unknown-feature).
-- **BL-205** ⬜ **Tool-enablement wiring** — the tool registry + `tool_policy`/visibility respect the profile's
-  enabled set: only register/show the tools you need (the potato win — less RAM, cleaner tool list).
+- **BL-205** 🟡 **Tool-enablement** — functionally done: feature tools already gate on their flag (mcp tools
+  check `mcp_client_enabled`, geometry on `geometry_frameworks_enabled`, …), and the profile sets those flags
+  via `apply_setup` → enabling a feature enables its tools, and `tool_visibility_cap`/routing already limit
+  what the model sees. Follow-up optimization: skip *registering* disabled-feature tools (less RAM, not just
+  call-time refusal).
 - **BL-206** 🟡 Persist core built — `apply_setup(profiles, features)` merges the resolved overrides onto the
   current config and writes CONFIG_FILE + invalidates the cache (10 tests). Remaining: the router endpoint wiring.
 - **BL-207** ⬜ **Re-home the ~18 gated features (supersedes W2b)** as manifest entries — mostly "expose in the
