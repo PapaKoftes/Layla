@@ -54,7 +54,7 @@ Legend: ✅ fixed+verified this session · ⏸️ deferred with a stated reason 
 36. ❌ Spawn tiny agents (`/agents/spawn`) — no UI. [05]
 37. ❌ Agent blackboard (`/agents/blackboard`) — no viewer. [05]
 38. ❌ Skill-packs / rollback / rl-preferences — code-complete, unsurfaced. [05]
-39. ❌ Study-plan delete — endpoint exists, no delete button. [05]
+39. ✅ Study-plan delete — added a delete button (data-action) + fixed the route type (`int`→`str`, ids are hex). [05]
 40. ❌ File-backed plans `/plan/*` — orphaned duplicate of the SQLite `/plans/*` path. [04]
 41. ❌ `cot_stats` — no UI caller. [04]
 42. ❌ ResourceGovernor (whisper/breathe/sprint) — not surfaced anywhere. [04]
@@ -79,7 +79,7 @@ Legend: ✅ fixed+verified this session · ⏸️ deferred with a stated reason 
 59. ❌ `ui_theme_preset` — inert (no loader in the UI). [06]
 60. ❌ `syncthing_*` keys — not even in the schema (config-file only). [06]
 61. ❌ `ui_font_size` / `ui_animation_level` — not schema keys (dead reference). [06]
-62. ❌ Config offers TTS voice `af_sky` that the kokoro catalog doesn't contain. [05]
+62. ✅ TTS voice list — replaced the fake `af_sky` with the 9 real kokoro voices. [05]
 63. ❌ "Agents" panel is a misnomer — it's a CPU/RAM gauge, not agents. [05]
 
 ### C4. Partial / half-wired
