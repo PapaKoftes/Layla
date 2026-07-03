@@ -246,21 +246,29 @@ async def setup_download(url: str, filename: str = ""):
             progress_queue: queue.Queue = queue.Queue()
             error_holder = [None]
 
-            # Download to a .part temp, validate, then atomically rename into place — a dropped
-            # or blocked download must never leave a half-written .gguf that setup lists as a model.
-            dest_part = dest.with_name(dest.name + ".part")
-
             def _do_download():
                 try:
+                    # Route through the resumable downloader: HTTP Range + .part.meta resume,
+                    # sha256/GGUF validation, atomic rename. (Was a bare urlretrieve that
+                    # restarted a multi-GB model from byte 0 on any dropped connection.)
+                    from install.model_downloader import download_model
 
-                    def _cb(block_num, block_size, total):
-                        dl = block_num * block_size
-                        pct = min(100, int(dl * 100 / total)) if total > 0 else 0
-                        dl_mb = dl / (1024 * 1024)
-                        tot_mb = total / (1024 * 1024) if total > 0 else 0
-                        progress_queue.put({"pct": pct, "dl_mb": round(dl_mb, 1), "tot_mb": round(tot_mb, 1)})
+                    def _cb(written, total):
+                        pct = min(100, int(written * 100 / total)) if total and total > 0 else 0
+                        progress_queue.put({
+                            "pct": pct,
+                            "dl_mb": round(written / (1024 * 1024), 1),
+                            "tot_mb": round((total or 0) / (1024 * 1024), 1),
+                        })
 
-                    urllib.request.urlretrieve(url, str(dest_part), _cb)
+                    res = download_model(
+                        {"download_url": url, "filename": fname},
+                        models_dir,
+                        progress=False,
+                        progress_cb=_cb,
+                    )
+                    if not res.get("ok"):
+                        error_holder[0] = res.get("error") or "download failed"
                 except Exception as exc:
                     error_holder[0] = str(exc)
                 finally:
@@ -283,24 +291,10 @@ async def setup_download(url: str, filename: str = ""):
                 await asyncio.sleep(0)
 
             if error_holder[0]:
-                try:
-                    dest_part.unlink()
-                except Exception:
-                    pass
                 yield f"data: {json.dumps({'error': error_holder[0]})}\n\n"
-            elif not _rs.is_valid_gguf(dest_part):
-                # Right-status download but wrong content (truncated / HTML error page).
-                try:
-                    dest_part.unlink()
-                except Exception:
-                    pass
-                yield f"data: {json.dumps({'error': 'Download incomplete or not a valid GGUF (truncated or blocked). Please try again.'})}\n\n"
             else:
-                try:
-                    dest_part.replace(dest)  # atomic rename into the final path
-                except Exception as _mv:
-                    yield f"data: {json.dumps({'error': f'could not finalize download: {_mv}'})}\n\n"
-                    return
+                # download_model already validated (GGUF magic + size) and atomically placed
+                # the file at dest — just record it as the active model.
                 try:
                     cfg2 = {}
                     if _rs.CONFIG_FILE.exists():
