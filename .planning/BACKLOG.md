@@ -85,7 +85,8 @@ Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "
 - **BL-041** ✅ Missions board UI — `components/missions.js` (⌘K → "Missions board"): start a mission, kanban
   columns (running/paused/queued/done) grouped from `/missions`, per-status actions (pause/resume/cancel).
   Verified live (empty state) + with mock data (columns/cards/actions render correctly); token-styled.
-- **BL-042** ⬜ Journal UI (3: journal/daily/create).
+- **BL-042** ✅ Journal UI — `components/journal.js` (⌘K → "Journal"): reads her entries (type badge + content
+  + timestamp) and adds one (type + content → POST /journal). Verified live (fetch) + mock render + styling.
 - **BL-043** ⬜ Sync / Syncthing UI (5: status/rescan/device-id/add-device/setup-guide) — UPG-33.
 - **BL-044** ⬜ Codex / relationship UI (6: get/put relationship, proposals gen/approve/dismiss).
 - **BL-045** ⬜ Intelligence / AirLLM / KB UI (13: info, airllm gen/chat/unload, compress/rag, optimize, kb build/articles).
