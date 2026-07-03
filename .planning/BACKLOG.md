@@ -42,7 +42,37 @@ the genuine gaps are narrower. Existing: `services/sandbox/python_runner.py` + `
 - **BL-026** ✅ Audit-by-default when remote — `main.py:1026` now forces `_audit_enabled` ON whenever `remote_enabled` (was reading the flag alone → remote could run with no audit trail; the "activates when remote" comment is now true). 217 auth/remote tests pass.
 - **BL-027** ⬜ R9: split `vector_store.py` (~1410) · **BL-028** ⬜ split `migrations.py` (~1362) · **BL-029** ⬜ split `tool_dispatch.py` · **BL-030** ⬜ split `cursor-layla-mcp/server.py` (~1296).
 
+## W-S — Intent-driven Setup & Profiles (the self-configuring onboarding — KEYSTONE)
+*Added 2026-07-03 per operator: the startup sequence must let you choose/download/install/enable the extra
+features and set a **startup default that fits what you want to do**, enabling only the tools you need. This
+becomes the backbone that W2 (feature UIs), W2b (gated features), G5 (startup flow), REQ-50 (one config) and
+the potato thesis (load only what's needed) all plug into. Do this **before** the W2 UIs.*
+- **BL-200** ⬜ **Feature manifest** — one registry declaring each optional feature: its config flag(s), extra
+  pip/deps + model(s) + on-disk size, install command, and the tool(s)/UI it unlocks. Single source the
+  onboarding + Settings read.
+- **BL-201** ⬜ **Use-case profiles** — Companion · Coding partner · Language-learning · Research · Power/Everything ·
+  Minimal(potato). Each = a curated set of {enabled tools, enabled features, default aspect(s), defaults
+  (deliberation/RAG/voice/etc.)}. Picking one writes a fitting startup config.
+- **BL-202** ⬜ Onboarding step **"what do you want to do?"** → apply a profile (multi-select ok).
+- **BL-203** ⬜ Onboarding step **"optional features"** — a checklist (each shows size/deps) to enable +
+  **download/install on the spot**: voice (whisper/kokoro), MCP plugins, elasticsearch/meilisearch, Discord,
+  geometry/CAD (cadquery/trimesh/openscad), remote access (tunnel/tailscale), full ML stack (rerankers/better
+  embeddings), German-learning, missions, etc.
+- **BL-204** ⬜ `POST /setup/feature/install` — installs a feature's deps (pip extra) + model(s) with progress
+  (reuse the resumable downloader from P0.2); toggles the flag on success.
+- **BL-205** ⬜ **Tool-enablement wiring** — the tool registry + `tool_policy`/visibility respect the profile's
+  enabled set: only register/show the tools you need (the potato win — less RAM, cleaner tool list).
+- **BL-206** ⬜ Persist the chosen config as the startup default (ties into REQ-50 one-schema, BL-120).
+- **BL-207** ⬜ **Re-home the ~18 gated features (supersedes W2b)** as manifest entries — mostly "expose in the
+  picker," genuinely-dead ones ✂️ cut. (Absorbs BL-060…BL-078.)
+- **BL-208** ⬜ Gate each of the 14 feature UIs (W2) behind its feature-enabled flag — the UI only shows what
+  you picked (no clutter).
+- **BL-209** ⬜ **Reconfigure later** — re-run setup / switch profile / toggle features from Settings; completes
+  G5 (BL-091) as the centerpiece flow.
+
 ## W2 — Surface the headless backend (BIGGEST UI GAP — 14 families, ~80 routes)
+*Each UI here plugs into W-S: it appears only when its feature is enabled, and its deps/model install via the
+onboarding feature-installer.*
 Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "~18" underestimate.
 - **BL-040** ⬜ **🇩🇪 German language-learning UI** (11 routes: profile/level/correct/corrections/calibrate/flashcards+SRS/stats) — the **headline wedge feature**, fully built backend, zero UI.
 - **BL-041** ⬜ Missions board UI (8: create/get/list/pause/resume/cancel/board/horizon).
@@ -61,8 +91,10 @@ Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "
 - **BL-054** ✅ (this session) System-diagnostics surfaced `cot_stats`/`metrics`/`security`/`capabilities`/`resources`; self-test surfaced `health`/`v1`.
 - **BL-055** ⬜ Correct PLAN.md P4 "~18" → 14 headless families (~80 routes).
 
-## W2b — Decide wire-or-cut on gated-OFF features (~18, default OFF, no toggle)
-Each: build a Settings toggle + minimal surface, OR ✂️ cut and delete the code/flag.
+## W2b — Gated-OFF features (~18) → now ABSORBED into W-S/BL-207
+Superseded by the Setup & Profiles keystone: each gated feature becomes a **feature-manifest entry**
+selectable in onboarding (with install-on-demand), not a lone dead flag. Mostly "expose in the picker";
+genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manifest's input set.
 - **BL-060** ⬜ `inline_initiative` · **BL-061** ⬜ `initiative_engine` · **BL-062** ⬜ `initiative_project_proposals`
 - **BL-063** ⬜ `engineering_pipeline` · **BL-064** ⬜ `mcp_client` (+ un-skip 8 MCP tests, BL-140) · **BL-065** ⬜ `multi_agent_orchestration`
 - **BL-066** ⬜ `litellm` · **BL-067** ⬜ `hyde` retrieval · **BL-068** ⬜ `elasticsearch` · **BL-069** ⬜ `meilisearch`
