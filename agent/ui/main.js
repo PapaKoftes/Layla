@@ -88,6 +88,9 @@ import * as workspace from './components/workspace.js';
 // Phase 2 batch 10
 import * as chatRender from './components/chat-render.js';
 
+// GUI rebuild G2 — ⌘K command palette
+import * as commandPalette from './components/command-palette.js';
+
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
 
@@ -472,6 +475,41 @@ function init() {
     attachFileChange: (e) => {
       if (e && e.target) input.attachFile(e.target);
     },
+  });
+
+  // ── GUI rebuild G2 · ⌘K command palette ────────────────────────────────────
+  // The aspects ARE the navigation (design principle 4): the palette makes
+  // switching persona + jumping to a screen the fastest gesture in the app.
+  const _PALETTE_ASPECTS = [
+    ['morrigan', 'Morrigan'], ['nyx', 'Nyx'], ['echo', 'Echo'],
+    ['eris', 'Eris'], ['cassandra', 'Cassandra'], ['lilith', 'Lilith'],
+  ];
+  const paletteCommands = [
+    ..._PALETTE_ASPECTS.map(([id, name]) => ({
+      id: 'asp-' + id, group: 'Aspect', label: 'Switch to ' + name,
+      keywords: ['persona', 'aspect', id],
+      run: () => { aspect.setAspect(id); aspect.toggleAspectDescription(id); },
+    })),
+    { id: 'go-settings', group: 'Go to', label: 'Settings', keywords: ['config', 'preferences'], run: () => settingsFull.openSettings() },
+    { id: 'go-lab', group: 'Go to', label: 'Character Lab', keywords: ['aspect', 'create', 'persona', 'edit'], run: () => characterCreator.openCharacterLab() },
+    { id: 'go-models', group: 'Go to', label: 'Models & Kits', keywords: ['model', 'gguf', 'kit'], run: () => models.openModelsPanel() },
+    { id: 'go-dashboard', group: 'Go to', label: 'Dashboard', keywords: ['status', 'health', 'system'], run: () => bootstrap.showMainPanel('status') },
+    { id: 'go-library', group: 'Go to', label: 'Library', keywords: ['workspace', 'memory', 'knowledge', 'files'], run: () => bootstrap.showMainPanel('workspace') },
+    { id: 'go-research', group: 'Go to', label: 'Research', keywords: ['investigate', 'mission'], run: () => bootstrap.showMainPanel('research') },
+    { id: 'go-artifacts', group: 'Go to', label: 'Artifacts', keywords: ['files', 'output'], run: () => bootstrap.showMainPanel('artifacts') },
+    { id: 'chat-new', group: 'Chat', label: 'New conversation', keywords: ['start', 'fresh'], run: () => conversations.startNewConversation() },
+    { id: 'chat-clear', group: 'Chat', label: 'Clear chat', keywords: ['reset'], run: () => input.clearChat() },
+    { id: 'chat-export', group: 'Chat', label: 'Export chat', keywords: ['save', 'download', 'markdown'], run: () => input.exportChat() },
+    { id: 'chat-retry', group: 'Chat', label: 'Retry last message', keywords: ['regenerate'], run: () => chatRender.retryLastMessage() },
+    { id: 'view-theme', group: 'View', label: 'Toggle theme', keywords: ['dark', 'light'], run: () => input.toggleTheme() },
+    { id: 'view-panel', group: 'View', label: 'Toggle context panel', keywords: ['right', 'sidebar'], run: () => input.toggleRightPanel() },
+    { id: 'view-shortcuts', group: 'View', label: 'Keyboard shortcuts', keywords: ['help', 'keys'], run: () => bootstrap.showKeyboardShortcutsSheet() },
+  ];
+  commandPalette.initCommandPalette(paletteCommands);
+  window.openCommandPalette = commandPalette.openCommandPalette;
+  registerActions({
+    openCommandPalette: commandPalette.openCommandPalette,
+    closeCommandPalette: commandPalette.closeCommandPalette,
   });
 
   // Apply timeout config from health response
