@@ -100,6 +100,8 @@ import * as setupProfiles from './components/setup-profiles.js';
 import * as german from './components/german.js';
 // W2 — Missions board
 import * as missions from './components/missions.js';
+// W2 — Journal
+import * as journal from './components/journal.js';
 
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
@@ -519,6 +521,7 @@ function init() {
     { id: 'setup-wizard', group: 'Go to', label: 'Set up / reconfigure Layla', keywords: ['setup', 'onboarding', 'profile', 'features', 'install', 'enable', 'reconfigure'], run: () => setupProfiles.openSetupProfiles() },
     { id: 'german', group: 'Go to', label: 'German (learn / check / flashcards)', keywords: ['deutsch', 'language', 'learning', 'correct', 'flashcards', 'cefr'], run: () => german.openGerman() },
     { id: 'missions', group: 'Go to', label: 'Missions board', keywords: ['mission', 'board', 'tasks', 'long', 'autonomous', 'kanban'], run: () => missions.openMissions() },
+    { id: 'journal', group: 'Go to', label: 'Journal', keywords: ['journal', 'diary', 'reflection', 'notes', 'entries'], run: () => journal.openJournal() },
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
@@ -535,6 +538,8 @@ function init() {
     closeGerman: german.closeGerman,
     openMissions: missions.openMissions,
     closeMissions: missions.closeMissions,
+    openJournal: journal.openJournal,
+    closeJournal: journal.closeJournal,
   });
 
   // Apply timeout config from health response
