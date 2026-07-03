@@ -286,17 +286,29 @@ export async function send() {
   try { laylaStreamStatsStart(''); } catch (_e) { console.debug('app:', _e); }
 
   var msgAspect = window.currentAspect;
-  var mentionMatch = msg.match(/^@([a-z]+)\s*/i);
+  // A leading @mention switches the aspect for this turn. Tolerate leading whitespace,
+  // accept an unambiguous partial/typo (@ny or @nyxx -> nyx when exactly one aspect
+  // matches), and — instead of the old silent no-op — tell the user when a @word looks
+  // like a mention but resolves to nothing.
+  var mentionMatch = msg.match(/^\s*@([a-z]+)\s*/i);
   if (mentionMatch) {
     try {
       var mentioned = mentionMatch[1].toLowerCase();
-      var ASPECTS = window.ASPECTS;
-      var found = (ASPECTS && ASPECTS.find)
-        ? ASPECTS.find(function (a) { return a.id === mentioned || (a.name || '').toLowerCase() === mentioned; })
-        : null;
+      var ASPECTS = window.ASPECTS || [];
+      var found = ASPECTS.find(function (a) { return a.id === mentioned || (a.name || '').toLowerCase() === mentioned; });
+      if (!found) {
+        var fuzzy = ASPECTS.filter(function (a) {
+          var id = a.id;
+          return id.indexOf(mentioned) === 0 || (mentioned.indexOf(id) === 0 && mentioned.length - id.length <= 2);
+        });
+        if (fuzzy.length === 1) found = fuzzy[0];
+      }
       if (found) {
         msgAspect = found.id;
         msg = msg.slice(mentionMatch[0].length).trim() || msg;
+      } else {
+        var _hint = ASPECTS.slice(0, 3).map(function (a) { return '@' + a.id; }).join(', ');
+        try { showToast('No aspect “@' + mentioned + '”. Try ' + (_hint || '@morrigan') + '…'); } catch (_t) {}
       }
     } catch (_e) { console.debug('app:', _e); }
   }

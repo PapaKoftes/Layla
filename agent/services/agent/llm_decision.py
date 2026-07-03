@@ -447,13 +447,27 @@ def llm_decision(
 
                 _llm_g = _get_llm()
                 if _llm_g is not None:
-                    _gd = run_gbnf_agent_decision(
-                        _llm_g,
-                        prompt,
-                        max_tokens=max_tok,
-                        temperature=0.1,
-                        valid_tools=valid_tools,
+                    from services.llm.self_consistency import (
+                        majority_decision,
+                        self_consistency_samples,
                     )
+
+                    _k = self_consistency_samples(cfg)
+                    if _k > 1:
+                        # Self-consistency: sample the constrained decision K times at a
+                        # higher temperature and keep the modal (action, tool). Costs K×
+                        # inference — high-stakes only; off by default (K=1).
+                        _samples = [
+                            run_gbnf_agent_decision(
+                                _llm_g, prompt, max_tokens=max_tok, temperature=0.6, valid_tools=valid_tools
+                            )
+                            for _ in range(_k)
+                        ]
+                        _gd = majority_decision([s for s in _samples if s is not None])
+                    else:
+                        _gd = run_gbnf_agent_decision(
+                            _llm_g, prompt, max_tokens=max_tok, temperature=0.1, valid_tools=valid_tools
+                        )
                     if _gd is not None:
                         return _gd
             except Exception as _exc:

@@ -312,6 +312,7 @@ def load_config() -> dict:
             "use_instructor_for_decisions": True,
             "structured_generation_enabled": True,
             "gbnf_decoding_enabled": True,
+            "self_consistency_samples": 1,
             "worker_pool_enabled": True,
             "max_workers": 0,
             "admin_mode": False,

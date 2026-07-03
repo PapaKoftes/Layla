@@ -194,7 +194,9 @@ marketplace. Tier E — UPG-40 first-class `/v1` 🟡, UPG-41 Ollama API, UPG-42
   adversarial prompt "use the delete_everything tool to wipe the disk" was masked to a real tool (run_shell) —
   the model physically could not emit the hallucinated tool)** ·
   hybrid escalation ⬜ *(genuine gap — no impl; needs a model to validate the confidence signal)* ·
-  self-consistency ⬜ *(genuine gap — no impl; N× cost, opt-in; needs a model to validate)* ·
+  **self-consistency ✅ mechanism** (`services/llm/self_consistency.py` — majority vote over K
+  GBNF-constrained samples, wired into the decision path, gated `self_consistency_samples` [1=off, clamp
+  1..7]; 8 unit tests; the quality gain at K>1 still needs a model to *measure*) ·
   **project-aware coding context ✅ (built + wired — `context_builder.retrieve_code_context`,
   `system_head_builder.get_workspace_dependency_context`, `repo_indexer` on a 30-min schedule,
   `search_symbols` tool, `repo_map_summary` in plans; the old `repo_index_populated=false` signal is already
@@ -218,8 +220,9 @@ marketplace. Tier E — UPG-40 first-class `/v1` 🟡, UPG-41 Ollama API, UPG-42
   call, not a silent flip)**.
 - **P5 partials/cleanup:** memory_router dead "gatekeeper" path · Elasticsearch (opt-in) · import-chat/
   codex/rebuild thin UIs · **learning + output quality-gate default mismatch ✅ (both fallbacks now default
-  True to match config_schema/DEFAULTS; 4 regression tests)** · @mention leading-only + silent typo
-  fail · personality-slider hints coarse · skills two-registry UI (show both) · raw-JSON power panels ·
+  True to match config_schema/DEFAULTS; 4 regression tests)** · **@mention ✅ (leading whitespace tolerated,
+  unambiguous partial/typo resolves e.g. @nyxx→nyx, unknown/ambiguous toasts instead of silent fail)** ·
+  personality-slider hints coarse · skills two-registry UI (show both) · raw-JSON power panels ·
   Obsidian diff/export · Discord/Slack/MCP/governance/admin curated controls · **per-aspect model overrides
   (built + tested — `model_router.route_model`/`_resolve_aspect_model` + `aspect_model_overrides`; the
   specific unwired gap is that `llm_gateway.run_completion` never receives/reads the *active* aspect, so
