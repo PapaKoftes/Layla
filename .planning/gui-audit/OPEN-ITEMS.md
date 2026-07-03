@@ -30,7 +30,7 @@ Legend: ✅ fixed+verified this session · ⏸️ deferred with a stated reason 
 18. ⏸️ Rail "Load more" pagination — server ignores `offset`; default `limit=200` suffices for now.
 19. ⏸️ "Save appearance & lite" — reads nonexistent DOM ids + posts non-schema keys; needs real controls wired to `/settings/appearance`.
 20. ⏸️ Character-Lab pitch/warmth/formality sliders — kokoro-onnx TTS has no such params; remove or repurpose in the Character-Lab rework.
-21. ⏸️ Potato + semantic memory (`use_chroma=False`) — defensible low-end tradeoff; real fix is cheap embeddings (Phase 4).
+21. ✅ Potato + semantic memory — RESOLVED: model2vec + sqlite-vec made it cheap, so the potato preset now keeps `use_chroma=True` (the wedge "it remembers" holds on low-end). Test updated.
 22. ⏸️ `min_adjusted_confidence` real-data test — logic verified; effect not exercised (no live memory in preview).
 23. ⏸️ Autonomous mode toggle — HELD: it's force-reset to False at startup as a **safety gate**; enabling it is your product/safety call, not a silent flip.
 
