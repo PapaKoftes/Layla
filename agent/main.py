@@ -807,7 +807,6 @@ from routers import aspects as aspects_router
 from routers import codex as codex_router
 from routers import improvements as improvements_router
 from routers import journal as journal_router
-from routers import plan_file as plan_file_router
 from routers import plans as plans_router
 from routers import projects as projects_router
 
@@ -817,7 +816,6 @@ app.include_router(journal_router.router)
 app.include_router(improvements_router.router)
 app.include_router(projects_router.router)
 app.include_router(plans_router.router)
-app.include_router(plan_file_router.router)
 
 from routers import (
     agent_tasks as agent_tasks_router,
