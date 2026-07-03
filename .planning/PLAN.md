@@ -192,7 +192,9 @@ marketplace. Tier E — UPG-40 first-class `/v1` 🟡, UPG-41 Ollama API, UPG-42
   path in `llm_decision`, gated `gbnf_decoding_enabled`; 19 tests compile every variant against the real
   `llama_cpp.LlamaGrammar` — model-in-the-loop reliability gain pending an app-running session)** ·
   hybrid escalation ⬜ · self-consistency ⬜ · project-aware coding context (repo-map + symbol index + `@file`) ⬜ ·
-  eval harness in CI ⬜.
+  **eval harness in CI ✅ (deterministic harness already CI-tested — extraction/sandbox/pass@1; added a live
+  pass@1 regression as a model-gated opt-in test: skips instantly by default, `LAYLA_BENCH_MODEL=/path.gguf`
+  enables it in CI, `LAYLA_BENCH_FLOOR` tunes the floor)**.
 - **P2 performance (tier-adaptive llama.cpp):** prefix/KV caching · KV-quant (q4_0 potato / q8_0 modest,
   needs flash-attn) · **lazy imports ✅ (startup graph — agent_loop+orchestrator+routers — imports in ~0.8s
   with torch/llama_cpp/sentence_transformers/transformers/chromadb all deferred; now guarded by a
