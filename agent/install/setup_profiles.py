@@ -136,3 +136,29 @@ def features_to_install(feature_ids) -> list[dict]:
             out.append({"id": fid, "label": feat["label"], "deps": feat.get("deps") or [],
                         "models": feat.get("models") or [], "size_mb": feat.get("size_mb", 0)})
     return out
+
+
+def apply_setup(profile_ids, feature_ids=None, *, current_cfg=None, save=True) -> dict:
+    """
+    Resolve the chosen profiles/features into config overrides, merge onto the current
+    config, and (optionally) persist as the startup default (BL-206). Returns the merged
+    config. `current_cfg` + `save=False` makes this pure/testable.
+    """
+    if current_cfg is not None:
+        cur = dict(current_cfg)
+    else:
+        import runtime_safety
+
+        cur = dict(runtime_safety.load_config())
+    merged = {**cur, **resolve_setup_config(profile_ids, feature_ids)}
+    if save:
+        import json
+
+        import runtime_safety
+
+        try:
+            runtime_safety.CONFIG_FILE.write_text(json.dumps(merged, indent=2), encoding="utf-8")
+            runtime_safety.invalidate_config_cache()
+        except Exception:
+            pass
+    return merged
