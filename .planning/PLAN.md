@@ -289,9 +289,14 @@ ES modules** (zero build, offline-trivial; Svelte noted as optional-future). Ord
 palette ✅** — `components/command-palette.js`: 20 commands in Aspect/Go-to/Chat/View, substring filter,
 keyboard nav with wrap, token-styled [surface-2 panel, wine-rose accent hairline, JetBrains Mono], repurposes
 the old ⌘K spotlight; verified live on the preview: open/filter/nav/run/close all green, 0 console errors;
-messages + composer + streaming still to do) · G3 panels (the one card system) · G4 aspects (rail switch + retheme + creator in
-Settings) · G5 startup (the 5-step + live self-test; folds in the onboarding-dedup) · G6 responsive + a11y
-+ motion → SIGN-OFF. Each Gx reactable against the running app; `check_ui_symbols.py` + e2e-ui green.
+**messages ✅** [you = accent-soft bubble, Layla = bare flush text, facet chip carries --asp, wine-rose
+brand], **composer ✅** [G1-styled, verified borderless], **streaming ✅** [typing dots → --asp]) · **G3 🟡**
+one form/card system (inputs/selects/textarea/buttons/cards tokenized — border/font/radius/padding; some
+legacy bg's kept a darker on-brand value, not fought) · **G4 ✅** aspect retheme verified (--asp flips per
+aspect live; exact per-aspect hues still need reconciling — the JS color source ≠ the CSS spec tokens, e.g.
+cassandra renders violet not teal) · G5 startup (5-step + live self-test; onboarding-dedup) ⬜ · **G6 ✅**
+a11y + motion (focus-visible accent rings on all controls, prefers-reduced-motion kill-switch) → SIGN-OFF.
+Each Gx reactable against the running app; **check_ui_symbols ✅** (now scans the real module tree) + e2e-ui.
 
 ---
 
