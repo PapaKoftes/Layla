@@ -223,7 +223,10 @@ def test_settings_preset_potato_writes_merged_config(tmp_path, monkeypatch):
     assert cfg["model_filename"] == "keep.gguf"
     assert cfg["temperature"] == 0.5
     assert cfg["performance_mode"] == "low"
-    assert cfg["use_chroma"] is False
+    # Potato keeps semantic memory ON now that model2vec + sqlite-vec make it cheap
+    # (no torch); embedder_prefer_quality stays off so it uses the fast static embedder.
+    assert cfg["use_chroma"] is True
+    assert cfg["embedder_prefer_quality"] is False
 
 
 def test_settings_preset_unknown_returns_400():
