@@ -435,6 +435,29 @@ def llm_decision(
         max_tok = 120 if reframe_candidate else (220 if show_thinking else 80)
         use_instructor = cfg.get("use_instructor_for_decisions", True)
         structured_on = bool(cfg.get("structured_generation_enabled", True))
+        # Native GBNF constrained decoding — zero extra dependency (llama.cpp's own
+        # grammar sampler). Pins action/priority to their enums and `tool` to the exact
+        # valid-tool set, so a small model cannot emit an unparseable decision or a
+        # hallucinated tool. First choice on a local model; falls through to
+        # outlines/instructor/plain on any miss.
+        if bool(cfg.get("gbnf_decoding_enabled", True)) and not (cfg.get("llama_server_url") or "").strip():
+            try:
+                from services.llm.gbnf_grammar import run_gbnf_agent_decision
+                from services.llm.llm_gateway import _get_llm
+
+                _llm_g = _get_llm()
+                if _llm_g is not None:
+                    _gd = run_gbnf_agent_decision(
+                        _llm_g,
+                        prompt,
+                        max_tokens=max_tok,
+                        temperature=0.1,
+                        valid_tools=valid_tools,
+                    )
+                    if _gd is not None:
+                        return _gd
+            except Exception as _exc:
+                logger.debug("llm_decision: gbnf constrained decode skipped: %s", _exc, exc_info=False)
         # Optional outlines + llama-cpp (wheels on 3.11—3.12); no-op if package missing
         if structured_on and not (cfg.get("llama_server_url") or "").strip():
             try:
