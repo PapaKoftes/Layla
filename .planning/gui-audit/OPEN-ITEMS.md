@@ -104,14 +104,14 @@ Legend: ✅ fixed+verified this session · ⏸️ deferred with a stated reason 
 82. ❌ Non-solo deliberation ⚠️ — silently skips tools/plans/approvals (advisory text only). [02]
 
 ### C5. Architectural duplications (collapse to one each)
-83. 🔁 Two aspect data models — `character_creator.ASPECT_DEFAULTS` (SQLite) vs `personalities/*.json` (divergent facts). [02]
-84. 🔁 Two onboarding systems — setup.js 3-step tour vs onboarding.js interview, sharing `#onboarding-overlay`. [startup]
-85. 🔁 Two "governor" systems — `performance_mode` vs idle `ResourceGovernor` (overlapping names). [04]
-86. 🔁 Two deliberation systems — debate engine vs single-model "inner voices". [02]
-87. 🔁 Two skill registries — Python `SKILLS` dict vs markdown `SKILL.md`. [05]
-88. 🔁 Two plan stores — SQLite `/plans/*` (UI) vs file `/plan/*` (orphaned). [04]
-89. 🔁 Two settings surfaces — flat schema modal vs curated right-panel (overlapping subsets). [06]
-90. 🔁 Duplicated XP thresholds / phase names client-side (`growth.js`) vs server (F7). [03]
+83. ✅ Two aspect data models — DE-DIVERGED: `get_character_summary` now derives title/tagline/color from `personalities/*.json` (canonical); ASPECT_DEFAULTS keeps only slider/lore. Full storage unification → G4. [dedup 4/8]
+84. ⏸️→G5 Two onboarding systems — the setup.js tour is dead (no-ops; child ids absent); collapse folds into the G5 startup rebuild rather than churn dead code twice. [startup]
+85. 🔁 Two "governor" systems — `performance_mode` vs idle `ResourceGovernor` (rename, not merge — different jobs; + fix the auto-vs-mid default drift). See DEDUP-PLAN. [04]
+86. 🔁 Two deliberation systems — debate engine vs single-model "inner voices" (rename, not merge — sequential fallbacks; + align deliberation_mode auto-vs-solo default). See DEDUP-PLAN. [02]
+87. 🔁 Two skill registries — Python `SKILLS` dict vs markdown `SKILL.md` (UI-only: show both "built-in" + "workspace"; do NOT merge in code). See DEDUP-PLAN. [05]
+88. ✅ Two plan stores — COLLAPSED: deleted orphaned file-backed `/plan/*` router; kept SQLite `/plans/*`. [dedup 1/8]
+89. ⏸️→G5 Two settings surfaces — the single grouped surface IS the G5 settings redesign; collapsing now = doing that IA, which G5 replaces. Repair the drifting controls only (done). [06]
+90. ✅ Duplicated XP thresholds — COLLAPSED: `growth.js` now uses the server's `xp_to_next` (single source of truth); deleted the client table. [dedup 3/8]
 
 ## D. NEVER BUILT — the redesign + product scope
 91. 🏗️ GUI rebuild **G2** (chat surface: bubbles/composer/palette) — only G1 (design-system layer) exists.
