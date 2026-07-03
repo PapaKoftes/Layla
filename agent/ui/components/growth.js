@@ -11,10 +11,9 @@ import { escapeHtml } from '../services/utils.js';
 // ── State ───────────────────────────────────────────────────────────────────
 let _refreshing = false;
 
-// XP thresholds per rank (rank N requires this much XP from rank N-1)
-const _XP_THRESHOLDS = [
-  500, 1000, 2000, 3000, 5000, 8000, 12000, 18000, 26000, 36000, 50000, 70000, 100000
-];
+// XP-to-next comes from the SERVER (maturity_engine.xp_needed_for_next) in the
+// /operator/profile payload — the single source of truth. No client threshold table
+// (it duplicated the server's ranks and could silently drift out of sync).
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function _esc(s) {
@@ -60,8 +59,9 @@ function _populateMaturity(p) {
   const phase = maturity.phase || 'awakening';
   const unlocks = maturity.unlocks || [];
 
-  // XP Progress bar
-  const xpNeeded = rank < _XP_THRESHOLDS.length ? _XP_THRESHOLDS[rank] : 100000;
+  // XP Progress bar — server's xp_to_next is authoritative; 100000 only if absent/max-rank.
+  const _srvNext = Number(maturity.xp_to_next);
+  const xpNeeded = (isFinite(_srvNext) && _srvNext > 0) ? _srvNext : 100000;
   const xpPct = Math.min(100, Math.round((xp / xpNeeded) * 100));
   const barEl = document.getElementById('growth-xp-bar-fill');
   if (barEl) {
