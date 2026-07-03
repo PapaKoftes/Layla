@@ -13,10 +13,12 @@ _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+|\n{2,}")
 
 
 def estimate_tokens(text: str) -> int:
-    """Rough token estimate: word count * 1.3."""
+    """Token estimate via the shared counter (tiktoken cl100k, ~4-char fallback) — was
+    a crude word*1.3 heuristic that under-counts code."""
     if not text:
         return 0
-    return int(len(text.split()) * 1.3)
+    from services.llm.token_count import count_tokens
+    return count_tokens(text)
 
 
 def chunk_text(

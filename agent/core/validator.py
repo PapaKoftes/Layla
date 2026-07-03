@@ -76,9 +76,10 @@ def validate(
     else:
         warnings.append(f"empty_result: {tool_name!r} returned no content")
 
-    # 3. Size check (approximate)
+    # 3. Size check — shared counter (tiktoken cl100k, ~4-char fallback), not a raw //4.
     result_str = _to_str(result)
-    approx_tokens = max(1, len(result_str) // 4)
+    from services.llm.token_count import count_tokens
+    approx_tokens = max(1, count_tokens(result_str))
     if approx_tokens > _MAX_RESULT_TOKENS:
         checks["size_ok"] = False
         warnings.append(
