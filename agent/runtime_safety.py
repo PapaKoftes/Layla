@@ -311,6 +311,7 @@ def load_config() -> dict:
             "browser_persistent_profiles": False,
             "use_instructor_for_decisions": True,
             "structured_generation_enabled": True,
+            "gbnf_decoding_enabled": True,
             "worker_pool_enabled": True,
             "max_workers": 0,
             "admin_mode": False,

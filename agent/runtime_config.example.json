@@ -78,6 +78,8 @@
   "deterministic_tool_routes": {},
   "use_instructor_for_decisions": true,
   "structured_generation_enabled": true,
+  "_comment_gbnf_decoding_enabled": "When true (and a local llama.cpp model is loaded, no llama_server_url), the agent decision is generated under a native GBNF grammar that pins action/priority to their enums and tool to the exact set of valid tool names — a small model then physically cannot emit an unparseable decision or a hallucinated tool. Zero extra dependency. Falls through to outlines/instructor/plain parsing if unavailable.",
+  "gbnf_decoding_enabled": true,
   "_comment_decision_few_shot_enabled": "When true, the decision prompt appends a few-shot block with valid one-line JSON examples (improves small-model reliability).",
   "decision_few_shot_enabled": true,
   "_comment_deterministic_tool_verification_enabled": "When true, deterministic semantic verification runs after tools (file exists, returncode==0, non-empty output). May downgrade ok->false if verification fails.",
