@@ -11,13 +11,16 @@ import { api } from '../services/api.js';
 import { escapeHtml, showToast } from '../services/utils.js';
 
 // ── Per-aspect color palette ─────────────────────────────────────────────────
+// Reconciled to the shipped design-system tokens (layla-rebuild.css --asp-*): these
+// are the aspect identity colors. Was a third, divergent source that rendered cassandra
+// purple and lilith magenta; now the live --asp matches each aspect's real hue.
 export const ASPECT_COLORS = {
-  morrigan:  { asp: '#8b0000', glow: 'rgba(139,0,0,0.28)',   mid: 'rgba(139,0,0,0.10)' },
-  nyx:       { asp: '#3a1f9a', glow: 'rgba(58,31,154,0.28)', mid: 'rgba(58,31,154,0.10)' },
-  echo:      { asp: '#006878', glow: 'rgba(0,104,120,0.28)', mid: 'rgba(0,104,120,0.10)' },
-  eris:      { asp: '#8a4000', glow: 'rgba(138,64,0,0.28)',  mid: 'rgba(138,64,0,0.10)' },
-  cassandra: { asp: '#4a1a7a', glow: 'rgba(74,26,122,0.28)', mid: 'rgba(74,26,122,0.10)' },
-  lilith:    { asp: '#6a0070', glow: 'rgba(106,0,112,0.28)', mid: 'rgba(106,0,112,0.10)' },
+  morrigan:  { asp: '#8b0000', glow: 'rgba(139,0,0,0.28)',    mid: 'rgba(139,0,0,0.10)' },
+  nyx:       { asp: '#6a1f9c', glow: 'rgba(106,31,156,0.28)', mid: 'rgba(106,31,156,0.10)' },
+  echo:      { asp: '#2f5aa8', glow: 'rgba(47,90,168,0.28)',  mid: 'rgba(47,90,168,0.10)' },
+  eris:      { asp: '#b06a1e', glow: 'rgba(176,106,30,0.28)', mid: 'rgba(176,106,30,0.10)' },
+  cassandra: { asp: '#1f7a72', glow: 'rgba(31,122,114,0.28)', mid: 'rgba(31,122,114,0.10)' },
+  lilith:    { asp: '#a33b52', glow: 'rgba(163,59,82,0.28)',  mid: 'rgba(163,59,82,0.10)' },
 };
 
 // ── Aspect registry ──────────────────────────────────────────────────────────
