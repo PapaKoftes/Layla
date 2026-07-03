@@ -46,6 +46,7 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
     {"key": "repeat_penalty", "type": "number", "category": "model", "default": 1.1, "min": 1, "max": 2, "hint": "Penalize repetition."},
     # ── Memory & retrieval ──
     {"key": "use_chroma", "type": "boolean", "category": "memory", "default": True, "hint": "Use ChromaDB for semantic search and learnings."},
+    {"key": "embedder_prefer_quality", "type": "boolean", "category": "memory", "default": False, "hint": "Prefer heavier sentence-transformers embeddings over fast model2vec static embeddings (needs torch; better quality, slower on low-end)."},
     {"key": "knowledge_chunks_k", "type": "number", "category": "memory", "default": 5, "min": 1, "max": 20, "hint": "Chunks retrieved from knowledge base."},
     {"key": "learnings_n", "type": "number", "category": "memory", "default": 30, "min": 5, "max": 100, "hint": "Learnings injected into context."},
     {"key": "semantic_k", "type": "number", "category": "memory", "default": 5, "min": 1, "max": 20, "hint": "Semantic search results."},
