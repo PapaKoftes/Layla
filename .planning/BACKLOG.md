@@ -78,7 +78,10 @@ the potato thesis (load only what's needed) all plug into. Do this **before** th
 *Each UI here plugs into W-S: it appears only when its feature is enabled, and its deps/model install via the
 onboarding feature-installer.*
 Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "~18" underestimate.
-- **BL-040** ⬜ **🇩🇪 German language-learning UI** (11 routes: profile/level/correct/corrections/calibrate/flashcards+SRS/stats) — the **headline wedge feature**, fully built backend, zero UI.
+- **BL-040** 🟡 **🇩🇪 German language-learning UI** — `components/german.js` (⌘K → "German"): CEFR level (get/set),
+  **check-my-German** (POST /correct → error list with match→hint), **flashcard review** (due → reveal → rate
+  again/hard/good/easy → SRS), live stats. Verified end-to-end on the running app (level B1, correction,
+  empty-deck review, token styling). Remaining: flashcard create/delete + calibration wizard (secondary).
 - **BL-041** ⬜ Missions board UI (8: create/get/list/pause/resume/cancel/board/horizon).
 - **BL-042** ⬜ Journal UI (3: journal/daily/create).
 - **BL-043** ⬜ Sync / Syncthing UI (5: status/rescan/device-id/add-device/setup-guide) — UPG-33.
