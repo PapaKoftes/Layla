@@ -655,3 +655,18 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .sysdiag-row .v { color: var(--text); text-align: right; overflow-wrap: anywhere; }
 .sysdiag-muted { color: var(--text-faint); font-size: var(--text-xs); }
 .sysdiag-err { color: var(--danger); font-size: var(--text-xs); }
+
+/* ── G5 · install self-test ("proof not a promise") ──────────────────────────
+   Each check shows a live dot (idle → running → pass/fail) with detail. */
+.selftest-panel { max-width: 460px; }
+.selftest-list { padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-1); }
+.selftest-row { display: flex; align-items: center; gap: var(--sp-3); font-size: var(--text-sm); padding: var(--sp-2) 0; }
+.selftest-dot { width: 18px; text-align: center; font-size: 14px; flex: none; color: var(--text-faint); }
+.selftest-dot[data-state="pass"] { color: var(--success); }
+.selftest-dot[data-state="fail"] { color: var(--danger); }
+.selftest-dot[data-state="running"] { color: var(--asp); }
+.selftest-label { flex: 1; color: var(--text); }
+.selftest-detail { color: var(--text-dim); font-size: var(--text-xs); text-align: right; overflow-wrap: anywhere; }
+.selftest-summary { padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--border); font-size: var(--text-sm); color: var(--text-dim); letter-spacing: 0.02em; }
+.selftest-summary[data-ok="true"] { color: var(--success); }
+.selftest-summary[hidden] { display: none; }
