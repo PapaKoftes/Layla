@@ -730,3 +730,18 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .german-rate button { flex: 1; background: var(--surface-3); border: 1px solid var(--border); color: var(--text-dim); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: var(--text-xs); padding: 6px 10px; cursor: pointer; }
 .german-rate button:hover { background: var(--accent-soft); color: var(--text); border-color: var(--accent); }
 .german-card-count { font-size: var(--text-xs); color: var(--text-faint); }
+
+/* ── W2 · Missions board ─────────────────────────────────────────────────────── */
+.missions-panel { max-width: 640px; max-height: 82vh; }
+.missions-create { display: flex; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border); }
+.missions-goal { flex: 1; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: var(--text-sm); padding: var(--sp-2) var(--sp-3); }
+.missions-goal:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+.missions-board { overflow-y: auto; padding: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-4); }
+.missions-col { display: flex; flex-direction: column; gap: var(--sp-2); }
+.missions-col-title { font-size: var(--text-xs); text-transform: lowercase; letter-spacing: 0.08em; color: var(--text-faint); }
+.missions-col-n { color: var(--text-dim); }
+.missions-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--sp-2) var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); }
+.missions-goal-txt { font-size: var(--text-sm); color: var(--text); overflow-wrap: anywhere; }
+.missions-acts { display: flex; gap: var(--sp-2); }
+.missions-acts button { background: var(--surface-3); border: 1px solid var(--border); color: var(--text-dim); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: var(--text-xs); padding: 3px 10px; cursor: pointer; }
+.missions-acts button:hover { background: var(--accent-soft); color: var(--text); border-color: var(--accent); }

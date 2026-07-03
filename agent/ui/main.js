@@ -98,6 +98,8 @@ import * as selfTest from './components/self-test.js';
 import * as setupProfiles from './components/setup-profiles.js';
 // W2 — German language-learning panel (headline wedge)
 import * as german from './components/german.js';
+// W2 — Missions board
+import * as missions from './components/missions.js';
 
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
@@ -516,6 +518,7 @@ function init() {
     { id: 'self-test', group: 'Go to', label: 'Run self-test', keywords: ['proof', 'health', 'verify', 'diagnose', 'works', 'model'], run: () => selfTest.openSelfTest() },
     { id: 'setup-wizard', group: 'Go to', label: 'Set up / reconfigure Layla', keywords: ['setup', 'onboarding', 'profile', 'features', 'install', 'enable', 'reconfigure'], run: () => setupProfiles.openSetupProfiles() },
     { id: 'german', group: 'Go to', label: 'German (learn / check / flashcards)', keywords: ['deutsch', 'language', 'learning', 'correct', 'flashcards', 'cefr'], run: () => german.openGerman() },
+    { id: 'missions', group: 'Go to', label: 'Missions board', keywords: ['mission', 'board', 'tasks', 'long', 'autonomous', 'kanban'], run: () => missions.openMissions() },
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
@@ -530,6 +533,8 @@ function init() {
     closeSetupProfiles: setupProfiles.closeSetupProfiles,
     openGerman: german.openGerman,
     closeGerman: german.closeGerman,
+    openMissions: missions.openMissions,
+    closeMissions: missions.closeMissions,
   });
 
   // Apply timeout config from health response
