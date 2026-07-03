@@ -82,7 +82,7 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
     {"key": "elasticsearch_index_prefix", "type": "string", "category": "memory", "default": "layla", "hint": "Index name prefix; learnings use {prefix}-learnings."},
     {"key": "elasticsearch_api_key", "type": "string", "category": "memory", "default": None, "hint": "Optional API key for Elasticsearch (cloud deployments)."},
     # ── Voice ──
-    {"key": "tts_voice", "type": "string", "category": "voice", "options": ["af_heart", "af_sky", "am_adam", "bf_emma", "bm_george"], "hint": "TTS voice."},
+    {"key": "tts_voice", "type": "string", "category": "voice", "options": ["af_heart", "af_bella", "af_sarah", "am_adam", "am_michael", "bf_emma", "bf_sarah", "bm_george", "bm_lewis"], "hint": "TTS voice (kokoro-onnx catalog)."},
     {"key": "whisper_model", "type": "string", "category": "voice", "options": ["tiny", "base", "small", "medium"], "hint": "STT model. tiny=fastest, medium=best."},
     {"key": "tts_speed", "type": "number", "category": "voice", "default": 1.0, "min": 0.5, "max": 2, "hint": "TTS playback speed."},
     # ── Scheduler ──
