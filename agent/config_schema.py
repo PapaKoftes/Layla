@@ -314,7 +314,6 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
     },
     {"key": "discord_webhook_url", "type": "string", "category": "integrations", "hint": "Discord webhook URL for discord_send. Server Settings → Integrations → Webhooks."},
     {"key": "discord_bot_token", "type": "string", "category": "integrations", "hint": "Discord bot token for full bot (voice, TTS, music). Create at Discord Developer Portal."},
-    {"key": "slack_webhook_url", "type": "string", "category": "integrations", "hint": "Slack incoming webhook URL for notifications."},
 ]
 
 
