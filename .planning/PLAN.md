@@ -216,9 +216,10 @@ marketplace. Tier E — UPG-40 first-class `/v1` 🟡, UPG-41 Ollama API, UPG-42
   skill-packs · **remote access / cloudflared / tailscale / syncthing / phone-URL** (unreachable from the
   GUI today) · **System-diagnostics ✅ overlay** (⌘K → "System diagnostics", `components/system-diagnostics.js`)
   surfaces **`cot_stats` + `/metrics/summary` + `/metrics/security` + `/doctor/capabilities`** — live fetch,
-  generic flattened render (small nested objects expand, empties → "none"), aspect-colored cards; verified
-  end-to-end on the running app (4 cards, real data). · audit log · tools-history · `/health/trace|deps` ·
-  image→vision composer · session-grants list · ResourceGovernor surface (add as a 5th card) · **autonomous-mode
+  generic flattened render (small nested objects expand, empties → "none"), aspect-colored cards — plus a
+  **`resources (governor)` ✅ card** (cpu/ram/gpu/throughput/latency picked from `/health` system_optimizer
+  via a dot-path `pick`); verified end-to-end on the running app (5 cards, real live data). · audit log ·
+  tools-history · `/health/trace|deps` · image→vision composer · session-grants list · **autonomous-mode
   toggle (product/safety decision — it's force-reset off at startup as a gate; enabling it is a deliberate
   call, not a silent flip)**.
 - **P5 partials/cleanup:** memory_router dead "gatekeeper" path · Elasticsearch (opt-in) · import-chat/
