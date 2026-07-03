@@ -296,8 +296,9 @@ the old ⌘K spotlight; verified live on the preview: open/filter/nav/run/close 
 brand], **composer ✅** [G1-styled, verified borderless], **streaming ✅** [typing dots → --asp]) · **G3 🟡**
 one form/card system (inputs/selects/textarea/buttons/cards tokenized — border/font/radius/padding; some
 legacy bg's kept a darker on-brand value, not fought) · **G4 ✅** aspect retheme verified (--asp flips per
-aspect live; exact per-aspect hues still need reconciling — the JS color source ≠ the CSS spec tokens, e.g.
-cassandra renders violet not teal) · G5 startup (5-step + live self-test; onboarding-dedup) ⬜ · **G6 ✅**
+aspect live AND now matches each identity token — the JS `ASPECT_COLORS` was a third divergent source
+[cassandra purple, lilith magenta]; reconciled to the CSS `--asp-*` tokens, verified all 6: morrigan crimson,
+nyx violet, echo blue, eris amber, cassandra teal, lilith rose) · G5 startup (5-step + live self-test; onboarding-dedup) ⬜ · **G6 ✅**
 a11y + motion (focus-visible accent rings on all controls, prefers-reduced-motion kill-switch) → SIGN-OFF.
 Each Gx reactable against the running app; **check_ui_symbols ✅** (now scans the real module tree) + e2e-ui.
 
