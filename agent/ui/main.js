@@ -353,6 +353,7 @@ function init() {
     studyTopicFromChatInput: workspace.studyTopicFromChatInput,
     studyTopicFromLastUserMessage: workspace.studyTopicFromLastUserMessage,
     addStudyPlan: workspace.addStudyPlan,
+    deleteStudyPlan: workspace.deleteStudyPlan,
     refreshLaylaPlansPanel: workspace.refreshLaylaPlansPanel,
     refreshFileCheckpointsPanel: workspace.refreshFileCheckpointsPanel,
     refreshSkillsList: workspace.refreshSkillsList,
