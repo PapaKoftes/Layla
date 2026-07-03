@@ -104,6 +104,8 @@ import * as missions from './components/missions.js';
 import * as journal from './components/journal.js';
 // W2 — Approvals + session grants
 import * as approvals from './components/approvals.js';
+// W2 — Self-improvement proposals
+import * as improvements from './components/improvements.js';
 
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
@@ -525,6 +527,7 @@ function init() {
     { id: 'missions', group: 'Go to', label: 'Missions board', keywords: ['mission', 'board', 'tasks', 'long', 'autonomous', 'kanban'], run: () => missions.openMissions() },
     { id: 'journal', group: 'Go to', label: 'Journal', keywords: ['journal', 'diary', 'reflection', 'notes', 'entries'], run: () => journal.openJournal() },
     { id: 'approvals', group: 'Go to', label: 'Approvals & grants', keywords: ['approval', 'pending', 'grant', 'permission', 'security', 'approve', 'deny'], run: () => approvals.openApprovals() },
+    { id: 'improvements', group: 'Go to', label: 'Improvements (self)', keywords: ['improve', 'proposal', 'self', 'growth', 'suggestion', 'approve'], run: () => improvements.openImprovements() },
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
@@ -545,6 +548,8 @@ function init() {
     closeJournal: journal.closeJournal,
     openApprovals: approvals.openApprovals,
     closeApprovals: approvals.closeApprovals,
+    openImprovements: improvements.openImprovements,
+    closeImprovements: improvements.closeImprovements,
   });
 
   // Apply timeout config from health response

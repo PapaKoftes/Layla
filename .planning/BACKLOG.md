@@ -91,7 +91,9 @@ Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "
 - **BL-044** ⬜ Codex / relationship UI (6: get/put relationship, proposals gen/approve/dismiss).
 - **BL-045** ⬜ Intelligence / AirLLM / KB UI (13: info, airllm gen/chat/unload, compress/rag, optimize, kb build/articles).
 - **BL-046** ⬜ Debate UI (2: debate, modes).
-- **BL-047** ⬜ Improvements UI (4: list/generate/approve_batch/reject).
+- **BL-047** ✅ Improvements UI — `components/improvements.js` (⌘K → "Improvements (self)"): lists
+  self-improvement proposals (title + description + status), generate, approve/reject (batch-of-one). Verified
+  live + mock render (item/status/actions, accent styling).
 - **BL-048** ⬜ Plans UI (5: get/patch/approve/execute/viz) + Projects UI (3: get/patch/delete).
 - **BL-049** ✅ Approvals + session-grants UI — `components/approvals.js` (⌘K → "Approvals & grants"): pending
   tool approvals (tool + args → approve[confirm-guarded, runs the tool]/deny) + active session grants with

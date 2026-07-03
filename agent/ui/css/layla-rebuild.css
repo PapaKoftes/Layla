@@ -777,3 +777,19 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .approvals-no:hover { background: var(--danger); color: #fff; border-color: transparent; }
 .approvals-grant { font-size: var(--text-sm); color: var(--text); padding: 4px 0; }
 .approvals-gscope { font-size: var(--text-xs); color: var(--text-faint); }
+
+/* ── W2 · Self-improvement proposals ─────────────────────────────────────────── */
+.improvements-panel { max-width: 560px; max-height: 82vh; }
+.improvements-list { overflow-y: auto; padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
+.improvements-item { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); }
+.improvements-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
+.improvements-title { font-size: var(--text-sm); color: var(--text); font-weight: 700; }
+.improvements-status { font-size: var(--text-xs); color: var(--text-faint); text-transform: lowercase; }
+.improvements-status[data-st="approved"] { color: var(--success); }
+.improvements-status[data-st="rejected"] { color: var(--danger); }
+.improvements-desc { font-size: var(--text-sm); color: var(--text-dim); line-height: 1.5; overflow-wrap: anywhere; }
+.improvements-acts { display: flex; gap: var(--sp-2); }
+.improvements-acts button { flex: 1; border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: var(--text-xs); padding: 4px 10px; cursor: pointer; border: 1px solid var(--border); }
+.improvements-yes { background: var(--accent); color: #fff; border-color: transparent; }
+.improvements-no { background: var(--surface-3); color: var(--text-dim); }
+.improvements-no:hover { background: var(--danger); color: #fff; border-color: transparent; }
