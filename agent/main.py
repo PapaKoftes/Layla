@@ -1023,7 +1023,12 @@ async def remote_auth_middleware(request: Request, call_next):
     # Extract bearer token from Authorization header
     req_path = (request.url.path or "").strip()
     req_method = request.method
-    _audit_enabled = cfg.get("tunnel_audit_enabled", False)
+    # Security (BL-026): audit is ON by default whenever remote access is enabled — you
+    # don't expose the agent through a tunnel without a trail. The explicit
+    # tunnel_audit_enabled flag can additionally force it on for local. (The old code read
+    # the flag alone, so the "activates when remote_enabled" comment was a lie: remote
+    # could run with no audit.)
+    _audit_enabled = bool(cfg.get("tunnel_audit_enabled", False)) or bool(cfg.get("remote_enabled", False))
     auth = (request.headers.get("Authorization") or "").strip()
     bearer_token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""
 
