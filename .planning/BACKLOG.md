@@ -12,11 +12,11 @@ tracking list; [PLAN.md](PLAN.md) holds the strategy/architecture and points her
 
 ## W0 — Stabilize & clean (quick, low-risk, do first)
 - **BL-001** ⬜ Restart the running app — stale `llm_gateway` in the 18.5h process makes chat 500 until reload.
-- **BL-002** ⬜ Dead flag `dynamic_tool_generation_enabled` (`runtime_safety.py:324`) — read nowhere → delete or wire.
-- **BL-003** ⬜ Dead flag `codex_semantic_enabled` (`runtime_safety.py:470`) — read nowhere → delete or wire.
-- **BL-004** ⬜ Dead flag `slack_webhook_url` (`config_schema.py`) — read nowhere → delete or wire.
-- **BL-005** ⬜ Delete tracked-dead files: `services/protocols.py`, `services/tool_generator.py`, `ui/js/layla-app.js.bak`.
-- **BL-006** ⬜ `vector_store.py:160-174` int8 quantization falls back to **deprecated `torch.quantization`** when torchao absent — replace/guard (breaks on newer torch).
+- **BL-002** ✅ Dead flag `dynamic_tool_generation_enabled` deleted (was read nowhere).
+- **BL-003** ✅ Dead flag `codex_semantic_enabled` deleted (was read nowhere).
+- **BL-004** ✅ Dead flag `slack_webhook_url` deleted (was read nowhere).
+- **BL-005** ✅ Tracked-dead files already gone (`protocols.py`/`tool_generator.py`/`layla-app.js.bak` don't exist).
+- **BL-006** ✅ Already safe — `vector_store.py` int8 path prefers torchao and **skips** quantization when absent (no deprecated `torch.quantization`); stale finding.
 - **BL-007** ⬜ `execution_state.py:80` coordinator + task-graph are **placeholders** — implement or remove.
 - **BL-008** ⬜ `projects_db.py:223` fallback for "not-yet-migrated" columns — add the migration.
 - **BL-009** ⬜ Back-compat shims audit — `research_lab/intelligence/stages/utils.py`, `background_job_worker.py`, `lens_refresh.py`, `probe_hardware.py`: keep-as-shim or remove callers then delete.

@@ -321,7 +321,6 @@ def load_config() -> dict:
             "tool_approval_bypass": False,
             "remote_cors_origins": [],
             "cloudflared_path": "",
-            "dynamic_tool_generation_enabled": False,
             # Autonomous Research v2 (Tier 0 only; proposal-only; local-first)
             "autonomous_mode": False,
             "autonomous_max_steps": 50,
@@ -467,7 +466,6 @@ def load_config() -> dict:
             "autonomy_optimizer_enabled": False,
             "autonomy_trust_tiers_enabled": True,  # gates capabilities behind XP thresholds (more cautious)
             "trust_tier_override": None,
-            "codex_semantic_enabled": False,
             "voice_adjustment_inject_enabled": False,
             "planning_outcome_bias_enabled": True,
             "relationship_codex_inject_enabled": False,
