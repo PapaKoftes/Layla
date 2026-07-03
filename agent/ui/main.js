@@ -90,6 +90,8 @@ import * as chatRender from './components/chat-render.js';
 
 // GUI rebuild G2 — ⌘K command palette
 import * as commandPalette from './components/command-palette.js';
+// GUI rebuild P4 — System diagnostics surface
+import * as systemDiagnostics from './components/system-diagnostics.js';
 
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
@@ -504,12 +506,15 @@ function init() {
     { id: 'view-theme', group: 'View', label: 'Toggle theme', keywords: ['dark', 'light'], run: () => input.toggleTheme() },
     { id: 'view-panel', group: 'View', label: 'Toggle context panel', keywords: ['right', 'sidebar'], run: () => input.toggleRightPanel() },
     { id: 'view-shortcuts', group: 'View', label: 'Keyboard shortcuts', keywords: ['help', 'keys'], run: () => bootstrap.showKeyboardShortcutsSheet() },
+    { id: 'sys-diagnostics', group: 'Go to', label: 'System diagnostics', keywords: ['metrics', 'cot', 'audit', 'capabilities', 'health', 'cost'], run: () => systemDiagnostics.openSystemDiagnostics() },
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
   registerActions({
     openCommandPalette: commandPalette.openCommandPalette,
     closeCommandPalette: commandPalette.closeCommandPalette,
+    openSystemDiagnostics: systemDiagnostics.openSystemDiagnostics,
+    closeSystemDiagnostics: systemDiagnostics.closeSystemDiagnostics,
   });
 
   // Apply timeout config from health response

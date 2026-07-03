@@ -214,8 +214,11 @@ marketplace. Tier E — UPG-40 first-class `/v1` 🟡, UPG-41 Ollama API, UPG-42
 - **P3 the GUI redesign G2–G6** (§6) — the big one, weeks of work, sign-off per pass.
 - **P4 backend-without-UI (build a surface or cut, ~18):** missions board · spawn-agents + blackboard ·
   skill-packs · **remote access / cloudflared / tailscale / syncthing / phone-URL** (unreachable from the
-  GUI today) · metrics · audit log · tools-history · `/health/trace|deps` · `/doctor/capabilities` ·
-  image→vision composer · session-grants list · `cot_stats` · ResourceGovernor surface · **autonomous-mode
+  GUI today) · **System-diagnostics ✅ overlay** (⌘K → "System diagnostics", `components/system-diagnostics.js`)
+  surfaces **`cot_stats` + `/metrics/summary` + `/metrics/security` + `/doctor/capabilities`** — live fetch,
+  generic flattened render (small nested objects expand, empties → "none"), aspect-colored cards; verified
+  end-to-end on the running app (4 cards, real data). · audit log · tools-history · `/health/trace|deps` ·
+  image→vision composer · session-grants list · ResourceGovernor surface (add as a 5th card) · **autonomous-mode
   toggle (product/safety decision — it's force-reset off at startup as a gate; enabling it is a deliberate
   call, not a silent flip)**.
 - **P5 partials/cleanup:** memory_router dead "gatekeeper" path · Elasticsearch (opt-in) · import-chat/
