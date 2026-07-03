@@ -194,8 +194,10 @@ marketplace. Tier E — UPG-40 first-class `/v1` 🟡, UPG-41 Ollama API, UPG-42
   hybrid escalation ⬜ · self-consistency ⬜ · project-aware coding context (repo-map + symbol index + `@file`) ⬜ ·
   eval harness in CI ⬜.
 - **P2 performance (tier-adaptive llama.cpp):** prefix/KV caching · KV-quant (q4_0 potato / q8_0 modest,
-  needs flash-attn) · lazy imports · model hot-swap + param labels · threads=physical · per-tier auto-config
-  + honesty card · drop torch entirely from `cpu` once model2vec proven.
+  needs flash-attn) · lazy imports · model hot-swap + param labels · **threads=physical ✅ (already wired —
+  `_auto_threads`: physical cores via `psutil.cpu_count(logical=False)`, one free, cap 16, governor-aware,
+  batch on logical; now test-locked, 5 tests)** · per-tier auto-config + honesty card · drop torch entirely
+  from `cpu` once model2vec proven.
 - **P3 the GUI redesign G2–G6** (§6) — the big one, weeks of work, sign-off per pass.
 - **P4 backend-without-UI (build a surface or cut, ~18):** missions board · spawn-agents + blackboard ·
   skill-packs · **remote access / cloudflared / tailscale / syncthing / phone-URL** (unreachable from the
