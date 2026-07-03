@@ -93,7 +93,9 @@ Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "
 - **BL-046** ⬜ Debate UI (2: debate, modes).
 - **BL-047** ⬜ Improvements UI (4: list/generate/approve_batch/reject).
 - **BL-048** ⬜ Plans UI (5: get/patch/approve/execute/viz) + Projects UI (3: get/patch/delete).
-- **BL-049** ⬜ Approvals + session-grants UI (6: pending/approve/deny, grants list/clear, refresh_lens).
+- **BL-049** ✅ Approvals + session-grants UI — `components/approvals.js` (⌘K → "Approvals & grants"): pending
+  tool approvals (tool + args → approve[confirm-guarded, runs the tool]/deny) + active session grants with
+  revoke-all. Verified live + mock (item/buttons/grant render, accent styling).
 - **BL-050** ⬜ Agent-tasks UI (9: background/steer/execute_plan/resume/tasks/cancel + decision_trace).
 - **BL-051** ⬜ tools-history UI (2: history/analysis).
 - **BL-052** ⬜ learn UI (2: schedule, verify/stats) + wakeup.

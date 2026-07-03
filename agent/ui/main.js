@@ -102,6 +102,8 @@ import * as german from './components/german.js';
 import * as missions from './components/missions.js';
 // W2 — Journal
 import * as journal from './components/journal.js';
+// W2 — Approvals + session grants
+import * as approvals from './components/approvals.js';
 
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
@@ -522,6 +524,7 @@ function init() {
     { id: 'german', group: 'Go to', label: 'German (learn / check / flashcards)', keywords: ['deutsch', 'language', 'learning', 'correct', 'flashcards', 'cefr'], run: () => german.openGerman() },
     { id: 'missions', group: 'Go to', label: 'Missions board', keywords: ['mission', 'board', 'tasks', 'long', 'autonomous', 'kanban'], run: () => missions.openMissions() },
     { id: 'journal', group: 'Go to', label: 'Journal', keywords: ['journal', 'diary', 'reflection', 'notes', 'entries'], run: () => journal.openJournal() },
+    { id: 'approvals', group: 'Go to', label: 'Approvals & grants', keywords: ['approval', 'pending', 'grant', 'permission', 'security', 'approve', 'deny'], run: () => approvals.openApprovals() },
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
@@ -540,6 +543,8 @@ function init() {
     closeMissions: missions.closeMissions,
     openJournal: journal.openJournal,
     closeJournal: journal.closeJournal,
+    openApprovals: approvals.openApprovals,
+    closeApprovals: approvals.closeApprovals,
   });
 
   // Apply timeout config from health response
