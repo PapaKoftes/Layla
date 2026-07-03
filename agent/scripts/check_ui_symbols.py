@@ -65,15 +65,23 @@ SKIP_CALL = frozenset(
     }
 )
 
-# How a symbol can be defined in bundled UI scripts
+# How a symbol can be defined in bundled UI scripts. Post-ES-module migration the
+# code lives in ui/components|core|services + main.js; a fn is a valid inline-handler
+# target if it's declared (incl. `export function`) or bridged onto window/registerActions.
 DEF_PATTERNS = [
     re.compile(r"(?:^|\n)\s*function\s+([a-zA-Z_$][\w$]*)\s*\("),
     re.compile(r"(?:^|\n)\s*async\s+function\s+([a-zA-Z_$][\w$]*)\s*\("),
+    re.compile(r"(?:^|\n)\s*export\s+function\s+([a-zA-Z_$][\w$]*)\s*\("),
+    re.compile(r"(?:^|\n)\s*export\s+async\s+function\s+([a-zA-Z_$][\w$]*)\s*\("),
+    re.compile(r"(?:^|\n)\s*export\s+(?:const|let)\s+([a-zA-Z_$][\w$]*)\s*="),
     re.compile(r"(?:^|\n)\s*window\.([a-zA-Z_$][\w$]*)\s*="),
     re.compile(r"(?:^|\n)\s*var\s+([a-zA-Z_$][\w$]*)\s*=\s*(?:async\s*)?function\b"),
     re.compile(r"(?:^|\n)\s*const\s+([a-zA-Z_$][\w$]*)\s*=\s*(?:async\s*)?\("),
     re.compile(r"(?:^|\n)\s*let\s+([a-zA-Z_$][\w$]*)\s*=\s*(?:async\s*)?\("),
 ]
+
+# Directories under ui/ that hold real handler code (skip third-party vendor bundles).
+_JS_SKIP_PARTS = frozenset({"vendor"})
 
 
 def _collect_defs(js_text: str) -> set[str]:
@@ -106,7 +114,9 @@ def main() -> int:
         print("check_ui_symbols: missing", UI_DIR, file=sys.stderr)
         return 2
 
-    js_files = sorted((UI_DIR / "js").rglob("*.js")) if (UI_DIR / "js").is_dir() else []
+    # Scan the whole ui/ module tree (components|core|services + main.js), not the
+    # long-gone ui/js/ bundle dir. Skip vendor third-party bundles.
+    js_files = [p for p in sorted(UI_DIR.rglob("*.js")) if not (_JS_SKIP_PARTS & set(p.parts))]
     combined_js = "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in js_files)
 
     # Also scan inline <script> blocks in all HTML files (functions defined there are valid)
