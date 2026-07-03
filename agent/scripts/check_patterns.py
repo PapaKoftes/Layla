@@ -137,6 +137,10 @@ def check_await_executor():
 # ---------------------------------------------------------------------------
 _RE_FTS_MATCH = re.compile(r'MATCH\s+\?', re.IGNORECASE)
 _RE_FTS_ESCAPE = re.compile(r'_fts_q|\.replace\s*\(.*["\']["\']["\']|replace\(.*\+\s*["\']"')  # common escape patterns
+# sqlite-vec vec0 KNN also uses `MATCH ?`, but the bound arg is a serialized float32
+# vector (a BLOB), not FTS5 text — quote-escaping it would corrupt the vector. These
+# are not FTS injection risks; recognise the sqlite-vec signature and skip them.
+_RE_VEC0_SAFE = re.compile(r'serialize_float32|vec_idx|vec0|distance_metric', re.IGNORECASE)
 
 def check_fts_escape():
     for f in py_files(REPO_ROOT):
@@ -149,6 +153,8 @@ def check_fts_escape():
             if _RE_FTS_MATCH.search(line):
                 # Check Â±6 lines around the MATCH for any escape pattern
                 window = "\n".join(src_lines[max(0, i - 6) : min(len(src_lines), i + 6)])
+                if _RE_VEC0_SAFE.search(window):
+                    continue  # bound-vector KNN, not an FTS5 text query
                 if not _RE_FTS_ESCAPE.search(window):
                     report("FTS_ESCAPE", f, i, line,
                            'FTS5 MATCH ? arg may not be quote-escaped; wrap with: \'"\' + q.replace(\'"\', \'""") + \'"\' ')
