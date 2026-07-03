@@ -82,7 +82,9 @@ Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "
   **check-my-German** (POST /correct → error list with match→hint), **flashcard review** (due → reveal → rate
   again/hard/good/easy → SRS), live stats. Verified end-to-end on the running app (level B1, correction,
   empty-deck review, token styling). Remaining: flashcard create/delete + calibration wizard (secondary).
-- **BL-041** ⬜ Missions board UI (8: create/get/list/pause/resume/cancel/board/horizon).
+- **BL-041** ✅ Missions board UI — `components/missions.js` (⌘K → "Missions board"): start a mission, kanban
+  columns (running/paused/queued/done) grouped from `/missions`, per-status actions (pause/resume/cancel).
+  Verified live (empty state) + with mock data (columns/cards/actions render correctly); token-styled.
 - **BL-042** ⬜ Journal UI (3: journal/daily/create).
 - **BL-043** ⬜ Sync / Syncthing UI (5: status/rescan/device-id/add-device/setup-guide) — UPG-33.
 - **BL-044** ⬜ Codex / relationship UI (6: get/put relationship, proposals gen/approve/dismiss).
