@@ -80,6 +80,8 @@
   "structured_generation_enabled": true,
   "_comment_gbnf_decoding_enabled": "When true (and a local llama.cpp model is loaded, no llama_server_url), the agent decision is generated under a native GBNF grammar that pins action/priority to their enums and tool to the exact set of valid tool names — a small model then physically cannot emit an unparseable decision or a hallucinated tool. Zero extra dependency. Falls through to outlines/instructor/plain parsing if unavailable.",
   "gbnf_decoding_enabled": true,
+  "_comment_self_consistency_samples": "K>1 samples the (GBNF-constrained) agent decision K times at a higher temperature and keeps the modal (action, tool) — a cheap accuracy lever for noisy small models on high-stakes turns. Costs K× inference, so default 1 (off). Clamped to 1..7.",
+  "self_consistency_samples": 1,
   "_comment_decision_few_shot_enabled": "When true, the decision prompt appends a few-shot block with valid one-line JSON examples (improves small-model reliability).",
   "decision_few_shot_enabled": true,
   "_comment_deterministic_tool_verification_enabled": "When true, deterministic semantic verification runs after tools (file exists, returncode==0, non-empty output). May downgrade ok->false if verification fails.",
