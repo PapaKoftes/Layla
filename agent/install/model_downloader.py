@@ -237,8 +237,10 @@ def _download_direct_http(
     model: dict[str, Any],
     *,
     progress: bool,
+    progress_cb=None,
 ) -> dict[str, Any]:
-    """Stream download with .part + .part.meta resume and atomic replace."""
+    """Stream download with .part + .part.meta resume and atomic replace.
+    progress_cb(bytes_written, total_or_None) fires per 1 MiB block (e.g. to drive an SSE bar)."""
     if not _is_safe_url(url):
         return {"ok": False, "path": None, "filename": None, "error": "URL not allowed (private/localhost blocked)"}
 
@@ -427,6 +429,11 @@ def _download_direct_http(
                         out.write(chunk)
                         offset += len(chunk)
                         downloaded_blocks += 1
+                        if progress_cb is not None:
+                            try:
+                                progress_cb(offset, total_size)
+                            except Exception:
+                                pass
                         if downloaded_blocks % 16 == 0:
                             _fsync_file(out)
                             write_meta(
@@ -489,6 +496,7 @@ def download_model(
     model: dict[str, Any],
     models_dir: Path | None = None,
     progress: bool = True,
+    progress_cb=None,
 ) -> dict[str, Any]:
     """
     Download a model from the catalog.
@@ -550,7 +558,7 @@ def download_model(
     # Fallback: direct URL download (SSRF: block private IPs)
     if not url:
         return {"ok": False, "path": None, "filename": None, "error": "No download URL"}
-    return _download_direct_http(url, dest, model, progress=progress)
+    return _download_direct_http(url, dest, model, progress=progress, progress_cb=progress_cb)
 
 
 def verify_file(path: Path, expected_sha256: str = "") -> bool:
