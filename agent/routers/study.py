@@ -191,7 +191,7 @@ def get_study_plans():
 
 
 @router.delete("/study_plans/{plan_id}")
-def delete_study_plan(plan_id: int):
+def delete_study_plan(plan_id: str):
     try:
         from layla.memory.db import _conn, migrate
 
