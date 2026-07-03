@@ -57,7 +57,7 @@ def stream_reason(
     Sets model ContextVar for this generator (autonomous_run clears it before streaming).
     """
     import runtime_safety
-    from services.llm.llm_gateway import set_model_override
+    from services.llm.llm_gateway import reset_active_aspect, set_active_aspect, set_model_override
 
     set_model_override(model_override)
     if not model_override:
@@ -70,6 +70,8 @@ def stream_reason(
                     set_model_override(classify_task_for_routing(goal, context or "", _cfg_route))
         except Exception as _exc:
             logger.debug("agent_loop:L591: %s", _exc, exc_info=False)
+    # Expose the active aspect so a per-aspect model override can win in the gateway.
+    _asp_tok = set_active_aspect(aspect_id)
     try:
         yield from _stream_reason_body(
             goal,
@@ -86,6 +88,7 @@ def stream_reason(
         )
     finally:
         set_model_override(None)
+        reset_active_aspect(_asp_tok)
 
 
 def _stream_reason_body(

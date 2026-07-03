@@ -233,6 +233,8 @@ _model_override_var: ContextVar[str | None] = ContextVar("model_override", defau
 _reasoning_effort_var: ContextVar[str | None] = ContextVar("reasoning_effort", default=None)
 # Current completion prompt snippet: enables routing when model_override is unset (single source of truth in _effective_model_filename)
 _routing_prompt_var: ContextVar[str | None] = ContextVar("routing_prompt", default=None)
+# Active aspect id for this request: lets a per-aspect model override (aspect_model_overrides) win in _effective_model_filename.
+_active_aspect_var: ContextVar[str | None] = ContextVar("active_aspect", default=None)
 
 
 def set_model_override(override: str | None) -> None:
@@ -253,6 +255,24 @@ def set_reasoning_effort(effort: str | None) -> None:
 def get_reasoning_effort() -> str | None:
     """Get reasoning effort for current request."""
     return _reasoning_effort_var.get(None)
+
+
+def set_active_aspect(aspect_id: str | None):
+    """Set the active aspect for this request; returns the token for leak-safe reset."""
+    return _active_aspect_var.set((aspect_id or "").strip() or None)
+
+
+def reset_active_aspect(token) -> None:
+    """Reset the active-aspect ContextVar using the token from set_active_aspect."""
+    try:
+        _active_aspect_var.reset(token)
+    except Exception:
+        pass
+
+
+def get_active_aspect() -> str | None:
+    """Get the active aspect id for the current request."""
+    return _active_aspect_var.get(None)
 
 
 def _prompt_is_router_internal(prompt: str) -> bool:
@@ -359,6 +379,19 @@ def _effective_model_filename(cfg: dict) -> str:
         if dm:
             return dm
         # If decision model isn't configured, fall through to normal routing.
+
+    # Per-aspect model override: if the active aspect pins a model (aspect_model_overrides),
+    # it wins over task-based routing. No-op when unset (the default for everyone).
+    try:
+        _aid = _active_aspect_var.get(None)
+        if _aid:
+            from services.llm.model_router import _resolve_aspect_model
+
+            _asp_model, _ = _resolve_aspect_model(_aid)
+            if _asp_model and str(_asp_model).strip():
+                return str(_asp_model).strip()
+    except Exception as _asp_e:
+        logger.debug("aspect model override resolve failed: %s", _asp_e)
 
     task: str | None = override if override in ("coding", "reasoning", "chat") else None
     if task is None and rp and not _prompt_is_router_internal(rp):
