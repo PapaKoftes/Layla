@@ -518,3 +518,115 @@ button { font-family: 'JetBrains Mono', monospace; }
 .cmdp-item-hint { font-size: 11px; color: var(--text-faint, #6f6180); flex: none; }
 .cmdp-empty { padding: 24px; text-align: center; color: var(--text-faint, #6f6180); font-size: 12px; font-family: 'JetBrains Mono', monospace; }
 .cmdp-empty[hidden] { display: none; }
+
+/* ── G2 · chat messages ──────────────────────────────────────────────────────
+   Calm + document-like: one readable column, assistant on surface, "you" on a
+   faint accent tint. The facet chip carries the aspect color — the one bit of
+   per-turn soul. No glow; the ornament budget is the chip + the code hairline. */
+.msg {
+  max-width: 760px; margin: 0 auto var(--sp-5); width: 100%;
+  display: flex; flex-direction: column; gap: var(--sp-2);
+}
+.msg:last-child { margin-bottom: var(--sp-3); }
+.msg-label {
+  display: flex; align-items: center; gap: var(--sp-2);
+  font-family: 'JetBrains Mono', monospace; font-size: var(--text-xs);
+  color: var(--text-faint); letter-spacing: 0.02em;
+}
+.msg-brand { color: var(--accent); font-weight: 700; letter-spacing: 0.04em; }
+.msg-you .msg-label > span:first-child { color: var(--text-dim); font-weight: 700; }
+.msg-facet-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px var(--sp-2); border-radius: 999px;
+  background: color-mix(in srgb, var(--asp) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--asp) 42%, transparent);
+  color: color-mix(in srgb, var(--asp) 68%, var(--text));
+  font-size: var(--text-xs);
+}
+.msg-facet-unknown { background: transparent; border-color: var(--border); color: var(--text-faint); }
+.msg-ts { margin-left: auto; color: var(--text-faint); font-size: var(--text-xs); opacity: 0.72; }
+.msg-bubble {
+  color: var(--text); font-size: var(--text-lg); line-height: 1.62;
+  overflow-wrap: anywhere; box-shadow: none;
+  border: 1px solid transparent; border-radius: var(--radius-lg);
+  padding: var(--sp-3) var(--sp-4);
+}
+/* You: the one subtle accent bubble */
+.msg-you .msg-bubble {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+/* Layla: bare text, flush under the label (calm — the reply is the hero) */
+.msg-layla .msg-bubble {
+  background: transparent; border-color: transparent;
+  padding-left: 0; padding-right: 0;
+}
+.md-content { line-height: 1.62; }
+.md-content > :first-child { margin-top: 0; }
+.md-content > :last-child { margin-bottom: 0; }
+.md-content p { margin: 0 0 var(--sp-3); }
+.md-content pre { border-radius: var(--radius); border: 1px solid var(--border); }
+.md-content :not(pre) > code {
+  background: var(--code-bg, #130013); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 1px 5px; font-size: 0.92em;
+}
+.md-content a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.md-content a:hover { color: color-mix(in srgb, var(--accent) 80%, #fff); }
+/* Typing indicator carries the aspect color */
+.typing-dots span { background: var(--asp); }
+
+/* ── G6 · focus, motion, a11y ────────────────────────────────────────────────
+   Keyboard focus is always visible (accent ring) but never on mouse click;
+   reduced-motion users get a still app. :where() keeps specificity 0 so any
+   component can still opt out. */
+:where(button, a, input, textarea, select, [tabindex], [role="option"], [role="tab"], [data-action]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.cmdp-input:focus-visible { outline: none; }
+.cmdp-item:focus, .cmdp-item:focus-visible { outline: none; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── G3 · one form + card system ─────────────────────────────────────────────
+   Sweep the settings/panel primitives into the token layer so every control
+   reads as one family. Excludes the composer textarea (intentionally borderless
+   inside .input-row) and the palette input (styled by class). */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not(.cmdp-input),
+select,
+textarea:not(#msg-input) {
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-family: 'JetBrains Mono', monospace; font-size: var(--text-sm);
+  padding: var(--sp-2) var(--sp-3);
+  transition: border-color var(--dur-fast);
+}
+input:not(.cmdp-input):focus, select:focus, textarea:not(#msg-input):focus {
+  outline: none; border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+}
+input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { color: var(--text-faint); }
+.setup-btn, .settings-btn, .panel-btn, .action-btn {
+  background: var(--surface-2); color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-family: 'JetBrains Mono', monospace; font-size: var(--text-sm);
+  padding: var(--sp-2) var(--sp-3);
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+}
+.setup-btn:hover, .settings-btn:hover, .panel-btn:hover, .action-btn:hover {
+  background: var(--surface-3); color: var(--text);
+}
+.setup-btn.primary, .setup-btn.primary:hover,
+.settings-btn.primary, .action-btn.primary {
+  background: var(--accent); color: #fff; border-color: transparent;
+}
+.card, .settings-card, .info-card, .dash-card, .section-card {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: none;
+}
