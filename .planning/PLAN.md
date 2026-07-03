@@ -172,8 +172,8 @@ your sign-off per pass**; everything else is drivable to green autonomously.
 
 **UPG backlog (canonical IDs; reconcile with §10 done-list):** Tier 0 — UPG-00a scope-cut, UPG-00b R9
 splits 🟡, UPG-00c ✅. Tier A (reuse win-wins) — UPG-01 hybrid escalation, **UPG-02 ✅**, **UPG-03 ✅**,
-UPG-04 FlashRank, **UPG-05 🟡 constrained decoding** (GBNF native layer built + wired, Outlines/instructor
-already present — "biggest small-model correctness win, cheapest"; model-in-loop proof pending), UPG-06 Ollama backend, UPG-07 RapidOCR/Piper, UPG-08 DSPy, UPG-09 Open WebUI call. Tier B —
+UPG-04 FlashRank, **UPG-05 ✅ constrained decoding** (GBNF native layer built + wired + model-in-loop proven
+on real Qwen-7B, Outlines/instructor already present — "biggest small-model correctness win, cheapest"), UPG-06 Ollama backend, UPG-07 RapidOCR/Piper, UPG-08 DSPy, UPG-09 Open WebUI call. Tier B —
 UPG-10 engine abstraction, UPG-11 one SQLite memory file, UPG-12 MCP-only plugins 🟡, UPG-13 Tauri, UPG-14
 governor auto-cap 🟡. Tier C — UPG-20 self-consistency, UPG-21 project-aware coding, UPG-22 eval-in-CI,
 UPG-23 Castilla, UPG-24 honesty card. Tier D — UPG-30 selftest ✅, UPG-31 Doctor panel, UPG-32 pairing ✅,
@@ -187,10 +187,12 @@ marketplace. Tier E — UPG-40 first-class `/v1` 🟡, UPG-41 Ollama API, UPG-42
   HTTP Range + `.part.meta` resume + sha256 + GGUF-magic + atomic rename, progress_cb drives the SSE bar)** ·
   httpx consolidation ⬜ · tenacity/diskcache/apscheduler replace bespoke retry/cache/scheduler ⬜
   (both deprioritised — replace *working* code, hard to verify in a test-only session).
-- **P1 small-model quality:** constrained decoding (GBNF) **🟡 grammar layer built + wired
+- **P1 small-model quality:** constrained decoding (GBNF) **✅ built + wired + model-in-loop PROVEN
   (`services/llm/gbnf_grammar.py`: pins action/priority enums + `tool` to the valid-tool set; first structured
-  path in `llm_decision`, gated `gbnf_decoding_enabled`; 19 tests compile every variant against the real
-  `llama_cpp.LlamaGrammar` — model-in-the-loop reliability gain pending an app-running session)** ·
+  path in `llm_decision`, gated `gbnf_decoding_enabled`; 19 unit tests compile every variant against the real
+  `llama_cpp.LlamaGrammar`. Live proof on real Qwen2.5-Coder-7B: 3 decisions all structurally valid; the
+  adversarial prompt "use the delete_everything tool to wipe the disk" was masked to a real tool (run_shell) —
+  the model physically could not emit the hallucinated tool)** ·
   hybrid escalation ⬜ *(genuine gap — no impl; needs a model to validate the confidence signal)* ·
   self-consistency ⬜ *(genuine gap — no impl; N× cost, opt-in; needs a model to validate)* ·
   **project-aware coding context ✅ (built + wired — `context_builder.retrieve_code_context`,
@@ -229,13 +231,14 @@ marketplace. Tier E — UPG-40 first-class `/v1` 🟡, UPG-41 Ollama API, UPG-42
 
 **Backlog reconciliation (2026-07-03, test-only session).** Probing each item against the live code found
 the codebase far more complete than this backlog implied. **Verified done + committed this session:** P0.1
-tiktoken, P0.2 resumable downloads, P1 GBNF layer, P1 eval-harness CI half, P2 threads=physical (locked),
-P2 lazy imports (locked), P5 quality-gate mismatch (fixed), project-aware coding context (built+wired),
-repo_index_populated signal (already fixed). **Genuine remaining gaps that need an app + a loaded model to
-build *and verify* (can't be proven in a pytest-only venv):** GBNF model-in-loop proof · hybrid escalation ·
-self-consistency · per-aspect override hot-path wiring · KV cache/quant · model hot-swap · the whole GUI
-G2–G6 · all P4 backend surfaces. Net: the test-only-verifiable lane is nearly drained; the substantive rest
-is app-running work.
+tiktoken, P0.2 resumable downloads, P1 GBNF (layer + wiring + **model-in-loop proof on real Qwen-7B**, incl. the
+adversarial hallucinated-tool case), P1 eval-harness CI half, P2 threads=physical (locked), P2 lazy imports
+(locked), P5 quality-gate mismatch (fixed), project-aware coding context (built+wired), repo_index_populated
+signal (already fixed). **Genuine remaining gaps that need an app + a loaded model to build *and verify*
+(can't be proven in a pytest-only venv):** hybrid escalation · self-consistency · per-aspect override
+hot-path wiring · KV cache/quant · model hot-swap · the whole GUI G2–G6 · all P4 backend surfaces. Net: the
+test-only-verifiable lane is drained; the substantive rest is app-running work (the box is RAM-tight —
+verification loads touch swap).
 
 ---
 
