@@ -212,7 +212,9 @@ marketplace. Tier E — UPG-40 first-class `/v1` 🟡, UPG-41 Ollama API, UPG-42
   batch on logical; now test-locked, 5 tests)** · per-tier auto-config + honesty card · drop torch entirely
   from `cpu` once model2vec proven.
 - **P3 the GUI redesign G2–G6** (§6) — the big one, weeks of work, sign-off per pass.
-- **P4 backend-without-UI (build a surface or cut, ~18):** missions board · spawn-agents + blackboard ·
+- **P4 backend-without-UI (build a surface or cut — the 2026-07-03 loop found this is NOT ~18 but 14
+  genuinely-headless router families / ~80 routes; see [BACKLOG.md](BACKLOG.md) W2. Headline: a complete
+  German language-learning system with no UI):** missions board · spawn-agents + blackboard ·
   skill-packs · **remote access / cloudflared / tailscale / syncthing / phone-URL** (unreachable from the
   GUI today) · **System-diagnostics ✅ overlay** (⌘K → "System diagnostics", `components/system-diagnostics.js`)
   surfaces **`cot_stats` + `/metrics/summary` + `/metrics/security` + `/doctor/capabilities`** — live fetch,
@@ -247,6 +249,19 @@ signal (already fixed). **Genuine remaining gaps that need an app + a loaded mod
 hot-path wiring · KV cache/quant · model hot-swap · the whole GUI G2–G6 · all P4 backend surfaces. Net: the
 test-only-verifiable lane is drained; the substantive rest is app-running work (the box is RAM-tight —
 verification loads touch swap).
+
+**Exhaustive completeness loop (2026-07-03).** A full sweep — planning backlog + 3 code sweeps
+(incompleteness markers · stubs/dead-code/30+ skipped tests · backend-without-UI/dead-config) — was run to
+dry and itemised in **[BACKLOG.md](BACKLOG.md)** (BL-001…BL-192, workstreams W0–W11; nothing dropped). Key
+new findings beyond this doc: (1) backend-without-UI is **14 headless router families / ~80 routes**, not
+"~18" — incl. a **complete German language-learning system with no UI** (the latent wedge win); (2) **~18
+features ship gated-OFF with no toggle** (initiative, mcp_client, litellm, hyde, elasticsearch, geometry
+frameworks, mem0, FabricationAssist-stub, …) — each is a wire-or-cut decision; (3) **3 dead config flags**
+(`dynamic_tool_generation_enabled`, `codex_semantic_enabled`, `slack_webhook_url` — read nowhere); (4)
+**encryption-at-rest is unimplemented** (`entity.py:57`) — belongs in the §7 security tier; (5) tech debt —
+deprecated `torch.quantization` fallback (`vector_store.py:160`), `execution_state` placeholders, dead files
+(`services/protocols.py`, `services/tool_generator.py`, `ui/js/layla-app.js.bak`). **BACKLOG.md is now the
+itemised source of truth; this doc holds strategy + architecture.**
 
 ---
 
