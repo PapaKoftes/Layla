@@ -32,7 +32,9 @@ def polish_output(text: str, cfg: dict | None = None) -> str:
         return ""
     t = re.sub(r"\n{3,}", "\n\n", t)
     try:
-        if cfg and bool(cfg.get("output_quality_gate_enabled", False)):
+        # Default True to match DEFAULTS (advertised default); a False fallback silently
+        # skipped polishing when a caller passed a cfg lacking the key.
+        if cfg and bool(cfg.get("output_quality_gate_enabled", True)):
             from services.infrastructure.output_quality import clean_output
 
             return clean_output(t, cfg=cfg)

@@ -204,7 +204,8 @@ marketplace. Tier E — UPG-40 first-class `/v1` 🟡, UPG-41 Ollama API, UPG-42
   toggle (product/safety decision — it's force-reset off at startup as a gate; enabling it is a deliberate
   call, not a silent flip)**.
 - **P5 partials/cleanup:** memory_router dead "gatekeeper" path · Elasticsearch (opt-in) · import-chat/
-  codex/rebuild thin UIs · learning quality-gate default mismatch · @mention leading-only + silent typo
+  codex/rebuild thin UIs · **learning + output quality-gate default mismatch ✅ (both fallbacks now default
+  True to match config_schema/DEFAULTS; 4 regression tests)** · @mention leading-only + silent typo
   fail · personality-slider hints coarse · skills two-registry UI (show both) · raw-JSON power panels ·
   Obsidian diff/export · Discord/Slack/MCP/governance/admin curated controls · per-aspect model+tool
   overrides (built, unwired) · Character-Lab color→chat + titles · dead chrome (`#file-context-chips`,

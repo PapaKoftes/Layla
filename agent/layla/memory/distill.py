@@ -44,7 +44,10 @@ def passes_learning_quality_gate(content: str) -> tuple[bool, float]:
         import runtime_safety
 
         cfg = runtime_safety.load_config()
-        if not cfg.get("learning_quality_gate_enabled", False):
+        # Default True to match config_schema + DEFAULTS (advertised default). A False
+        # fallback here silently disabled the gate whenever load_config was bypassed or
+        # returned a partial cfg — contradicting the documented contract.
+        if not cfg.get("learning_quality_gate_enabled", True):
             return True, 1.0
         min_s = float(cfg.get("learning_quality_min_score", 0.35))
     except Exception:
