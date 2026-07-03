@@ -162,10 +162,20 @@ export async function refreshStudyPlans() {
     const plans = Array.isArray(d && d.plans) ? d.plans : [];
     if (!plans.length) { box.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">No active study plans yet.</span>'; return; }
     box.innerHTML = plans.slice(0, 20).map(p =>
-      '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06)"><div><strong>' + escapeHtml(String(p.topic || '')) + '</strong></div>' +
-      '<div style="color:var(--text-dim);font-size:0.68rem">sessions: ' + escapeHtml(String(p.study_sessions != null ? p.study_sessions : 0)) + (p.last_studied ? (' · last: ' + escapeHtml(String(p.last_studied))) : '') + '</div></div>'
+      '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:flex-start;gap:8px">' +
+      '<div><div><strong>' + escapeHtml(String(p.topic || '')) + '</strong></div>' +
+      '<div style="color:var(--text-dim);font-size:0.68rem">sessions: ' + escapeHtml(String(p.study_sessions != null ? p.study_sessions : 0)) + (p.last_studied ? (' · last: ' + escapeHtml(String(p.last_studied))) : '') + '</div></div>' +
+      (p.id != null ? ('<button type="button" class="approve-btn" style="font-size:0.62rem;flex-shrink:0" data-action="deleteStudyPlan" data-arg="' + escapeHtml(String(p.id)) + '" title="Delete this study plan">✕</button>') : '') +
+      '</div>'
     ).join('');
   } catch (_) { box.innerHTML = '<span style="color:var(--text-dim)">Could not load study plans</span>'; }
+}
+
+// Delete a study plan (the DELETE endpoint existed but had no UI control).
+export async function deleteStudyPlan(id) {
+  if (id == null || id === '') return;
+  try { await fetch('/study_plans/' + encodeURIComponent(id), { method: 'DELETE' }); } catch (_) {}
+  try { refreshStudyPlans(); } catch (_) {}
 }
 
 export async function loadStudyPresetsAndSuggestions() {
