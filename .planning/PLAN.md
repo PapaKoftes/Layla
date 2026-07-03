@@ -191,7 +191,12 @@ marketplace. Tier E — UPG-40 first-class `/v1` 🟡, UPG-41 Ollama API, UPG-42
   (`services/llm/gbnf_grammar.py`: pins action/priority enums + `tool` to the valid-tool set; first structured
   path in `llm_decision`, gated `gbnf_decoding_enabled`; 19 tests compile every variant against the real
   `llama_cpp.LlamaGrammar` — model-in-the-loop reliability gain pending an app-running session)** ·
-  hybrid escalation ⬜ · self-consistency ⬜ · project-aware coding context (repo-map + symbol index + `@file`) ⬜ ·
+  hybrid escalation ⬜ *(genuine gap — no impl; needs a model to validate the confidence signal)* ·
+  self-consistency ⬜ *(genuine gap — no impl; N× cost, opt-in; needs a model to validate)* ·
+  **project-aware coding context ✅ (built + wired — `context_builder.retrieve_code_context`,
+  `system_head_builder.get_workspace_dependency_context`, `repo_indexer` on a 30-min schedule,
+  `search_symbols` tool, `repo_map_summary` in plans; the old `repo_index_populated=false` signal is already
+  fixed to treat no-/empty-workspace as N/A)** ·
   **eval harness in CI ✅ (deterministic harness already CI-tested — extraction/sandbox/pass@1; added a live
   pass@1 regression as a model-gated opt-in test: skips instantly by default, `LAYLA_BENCH_MODEL=/path.gguf`
   enables it in CI, `LAYLA_BENCH_FLOOR` tunes the floor)**.
@@ -213,11 +218,24 @@ marketplace. Tier E — UPG-40 first-class `/v1` 🟡, UPG-41 Ollama API, UPG-42
   codex/rebuild thin UIs · **learning + output quality-gate default mismatch ✅ (both fallbacks now default
   True to match config_schema/DEFAULTS; 4 regression tests)** · @mention leading-only + silent typo
   fail · personality-slider hints coarse · skills two-registry UI (show both) · raw-JSON power panels ·
-  Obsidian diff/export · Discord/Slack/MCP/governance/admin curated controls · per-aspect model+tool
-  overrides (built, unwired) · Character-Lab color→chat + titles · dead chrome (`#file-context-chips`,
+  Obsidian diff/export · Discord/Slack/MCP/governance/admin curated controls · **per-aspect model overrides
+  (built + tested — `model_router.route_model`/`_resolve_aspect_model` + `aspect_model_overrides`; the
+  specific unwired gap is that `llm_gateway.run_completion` never receives/reads the *active* aspect, so
+  overrides don't fire in the live single-aspect chat path — deferred: hot-path ContextVar wiring best
+  verified with a real generation)** · Character-Lab color→chat + titles · dead chrome (`#file-context-chips`,
   /ctx_viz raw JSON, reasoning-tree/chain renderers, diff-viewer stub, legacy localStorage sessions).
 - **P6 ecosystem/dream:** Ollama backend + `/v1` + MCP-only plugins · Tauri · clients · RapidOCR/Piper ·
   DSPy · MCP kit marketplace.
+
+**Backlog reconciliation (2026-07-03, test-only session).** Probing each item against the live code found
+the codebase far more complete than this backlog implied. **Verified done + committed this session:** P0.1
+tiktoken, P0.2 resumable downloads, P1 GBNF layer, P1 eval-harness CI half, P2 threads=physical (locked),
+P2 lazy imports (locked), P5 quality-gate mismatch (fixed), project-aware coding context (built+wired),
+repo_index_populated signal (already fixed). **Genuine remaining gaps that need an app + a loaded model to
+build *and verify* (can't be proven in a pytest-only venv):** GBNF model-in-loop proof · hybrid escalation ·
+self-consistency · per-aspect override hot-path wiring · KV cache/quant · model hot-swap · the whole GUI
+G2–G6 · all P4 backend surfaces. Net: the test-only-verifiable lane is nearly drained; the substantive rest
+is app-running work.
 
 ---
 
