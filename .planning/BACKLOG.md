@@ -34,7 +34,7 @@ the genuine gaps are narrower. Existing: `services/sandbox/python_runner.py` + `
   exists and filters retrieval/export, but rows are stored plaintext; secret_store is keyring-for-config-secrets,
   not bulk data. Real subproject: data-encryption key (keyring/passphrase) + encrypt-on-write/decrypt-on-read for
   sensitive entities + migration. Do it fully or not at all (half-crypto = false security).
-- **BL-021** 🟡 Shell deny-by-default + allowlist — allowlist exists (`agent_safety.py`); verify/tighten **deny-by-default when remote**.
+- **BL-021** ✅ Shell deny-by-default when remote — already enforced: both `/agent` and `/v1` force `allow_write=allow_run=False` for non-local callers (fail-closed), and `allow_run` gates the whole exec path. Remote cannot exec.
 - **BL-022** 🟡 Subprocess rlimits / job-object — EXISTS (`worker_os_limits.py`, `python_runner.py`); Linux cgroups path + coverage audit.
 - **BL-023** ⬜ Ephemeral-container (E2B) exec tier — GENUINE gap (not present).
 - **BL-024** 🟡 Per-invocation approvals — `approval_helpers.py` exists; polish + a UI (see BL-049).
@@ -47,12 +47,12 @@ the genuine gaps are narrower. Existing: `services/sandbox/python_runner.py` + `
 features and set a **startup default that fits what you want to do**, enabling only the tools you need. This
 becomes the backbone that W2 (feature UIs), W2b (gated features), G5 (startup flow), REQ-50 (one config) and
 the potato thesis (load only what's needed) all plug into. Do this **before** the W2 UIs.*
-- **BL-200** ⬜ **Feature manifest** — one registry declaring each optional feature: its config flag(s), extra
-  pip/deps + model(s) + on-disk size, install command, and the tool(s)/UI it unlocks. Single source the
-  onboarding + Settings read.
-- **BL-201** ⬜ **Use-case profiles** — Companion · Coding partner · Language-learning · Research · Power/Everything ·
-  Minimal(potato). Each = a curated set of {enabled tools, enabled features, default aspect(s), defaults
-  (deliberation/RAG/voice/etc.)}. Picking one writes a fitting startup config.
+- **BL-200** 🟡 **Feature manifest** built — `install/setup_profiles.py` `FEATURE_MANIFEST` (13 features:
+  voice, mcp, elasticsearch, meilisearch, discord, fabrication, remote, hyde, initiative, engineering,
+  ml_stack, **encryption** [= BL-020 as opt-in], cloud_models — each with flags + deps + models + size + unlocks).
+- **BL-201** 🟡 **Use-case profiles** built — Companion · Coding · Language-learning · Research · Power · Minimal(potato),
+  each with features + aspects + defaults; `resolve_setup_config()` merges profiles+features → startup config,
+  `features_to_install()` drives the installer. 9 unit tests pass. Remaining: onboarding UI + endpoints + persist.
 - **BL-202** ⬜ Onboarding step **"what do you want to do?"** → apply a profile (multi-select ok).
 - **BL-203** ⬜ Onboarding step **"optional features"** — a checklist (each shows size/deps) to enable +
   **download/install on the spot**: voice (whisper/kokoro), MCP plugins, elasticsearch/meilisearch, Discord,
