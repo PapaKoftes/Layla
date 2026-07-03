@@ -260,13 +260,11 @@ export function initBootstrap() {
         showKeyboardShortcutsSheet();
         return;
       }
-      // Ctrl+K focuses the conversation search (spotlight-like)
+      // Ctrl/⌘+K opens the command palette (G2) — the primary spotlight gesture.
       if ((e.ctrlKey || e.metaKey) && k === 'k') {
         e.preventDefault();
         e.stopPropagation();
-        try { if (typeof window.toggleChatRailMobile === 'function') window.toggleChatRailMobile(); } catch (_) {}
-        const s = document.getElementById('chat-rail-search');
-        if (s) { s.focus(); if (s.select) s.select(); }
+        try { if (typeof window.openCommandPalette === 'function') window.openCommandPalette(); } catch (_) {}
         return;
       }
       // Escape closes overlays
