@@ -630,3 +630,28 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
   background: var(--surface-2); border: 1px solid var(--border);
   border-radius: var(--radius); box-shadow: none;
 }
+
+/* ── P4 · system diagnostics overlay ─────────────────────────────────────────
+   Reuses the palette shell; each backend surface is one calm card, its title in
+   the active aspect color. */
+.sysdiag-panel { max-height: 74vh; }
+.sysdiag-title { flex: 1; color: var(--text); font-size: var(--text-sm); letter-spacing: 0.04em; text-transform: lowercase; }
+.sysdiag-refresh {
+  background: transparent; border: 1px solid var(--border); color: var(--text-dim);
+  border-radius: var(--radius-sm); font-size: var(--text-xs); padding: 2px 8px;
+  font-family: 'JetBrains Mono', monospace; cursor: pointer; text-transform: lowercase;
+}
+.sysdiag-refresh:hover { background: var(--surface-3); color: var(--text); }
+.sysdiag-list { overflow-y: auto; padding: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-3); }
+.sysdiag-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.sysdiag-card-title {
+  font-size: var(--text-xs); text-transform: lowercase; letter-spacing: 0.08em;
+  color: var(--asp); padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--border); background: var(--surface-2);
+}
+.sysdiag-body { padding: var(--sp-2) var(--sp-3); }
+.sysdiag-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); padding: 3px 0; font-size: var(--text-sm); }
+.sysdiag-row .k { color: var(--text-dim); white-space: nowrap; }
+.sysdiag-row .v { color: var(--text); text-align: right; overflow-wrap: anywhere; }
+.sysdiag-muted { color: var(--text-faint); font-size: var(--text-xs); }
+.sysdiag-err { color: var(--danger); font-size: var(--text-xs); }
