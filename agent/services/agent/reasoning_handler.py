@@ -214,7 +214,14 @@ def handle_reasoning_intent(
             )
 
         max_tok = cfg.get("completion_max_tokens", 256)
-        out = run_completion(prompt, max_tokens=max_tok, temperature=temperature, stream=False)
+        # Expose the active aspect so a per-aspect model override (aspect_model_overrides)
+        # can win in the gateway's model resolution. Leak-safe: reset in finally.
+        from services.llm.llm_gateway import reset_active_aspect, set_active_aspect
+        _asp_tok = set_active_aspect(active_aspect.get("id"))
+        try:
+            out = run_completion(prompt, max_tokens=max_tok, temperature=temperature, stream=False)
+        finally:
+            reset_active_aspect(_asp_tok)
         if isinstance(out, str):
             out = {"choices": [{"text": out}]}
         if isinstance(out, dict):

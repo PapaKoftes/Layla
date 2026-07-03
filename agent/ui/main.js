@@ -92,6 +92,8 @@ import * as chatRender from './components/chat-render.js';
 import * as commandPalette from './components/command-palette.js';
 // GUI rebuild P4 — System diagnostics surface
 import * as systemDiagnostics from './components/system-diagnostics.js';
+// GUI rebuild G5 — install self-test ("proof not a promise")
+import * as selfTest from './components/self-test.js';
 
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
@@ -507,6 +509,7 @@ function init() {
     { id: 'view-panel', group: 'View', label: 'Toggle context panel', keywords: ['right', 'sidebar'], run: () => input.toggleRightPanel() },
     { id: 'view-shortcuts', group: 'View', label: 'Keyboard shortcuts', keywords: ['help', 'keys'], run: () => bootstrap.showKeyboardShortcutsSheet() },
     { id: 'sys-diagnostics', group: 'Go to', label: 'System diagnostics', keywords: ['metrics', 'cot', 'audit', 'capabilities', 'health', 'cost'], run: () => systemDiagnostics.openSystemDiagnostics() },
+    { id: 'self-test', group: 'Go to', label: 'Run self-test', keywords: ['proof', 'health', 'verify', 'diagnose', 'works', 'model'], run: () => selfTest.openSelfTest() },
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
@@ -515,6 +518,8 @@ function init() {
     closeCommandPalette: commandPalette.closeCommandPalette,
     openSystemDiagnostics: systemDiagnostics.openSystemDiagnostics,
     closeSystemDiagnostics: systemDiagnostics.closeSystemDiagnostics,
+    openSelfTest: selfTest.openSelfTest,
+    runSelfTest: selfTest.runSelfTest,
   });
 
   // Apply timeout config from health response
