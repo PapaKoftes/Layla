@@ -870,6 +870,10 @@ export function laylaSyncChatChromeFromFSM(state) {
     try {
       var cancelBtn = document.getElementById('cancel-send-btn');
       if (cancelBtn) cancelBtn.style.display = inFlight ? 'inline-block' : 'none';
+      // Show the composer "Regenerate" button once idle with a prior turn to redo
+      // (it was display:none and nothing ever un-hid it — retryLastMessage works).
+      var retryBtn = document.getElementById('retry-btn');
+      if (retryBtn) retryBtn.style.display = (!inFlight && !!window._lastDisplayMsg) ? 'inline-block' : 'none';
     } catch (_) {}
     toggleSendButton();
     if (!canSend && st !== 'sending' && st !== 'streaming') {
