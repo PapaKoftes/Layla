@@ -165,12 +165,12 @@ class TestEstimateTokens:
     def test_single_word(self):
         from layla.ingestion.chunker import estimate_tokens
         result = estimate_tokens("hello")
-        assert result == int(1 * 1.3)
+        assert result == 1  # accurate count (tiktoken cl100k; the //4 fallback agrees)
 
     def test_multiple_words(self):
         from layla.ingestion.chunker import estimate_tokens
         result = estimate_tokens("one two three four five")
-        assert result == int(5 * 1.3)
+        assert result == 5  # accurate count (was the crude int(5*1.3)=6)
 
 
 class TestChunkText:
