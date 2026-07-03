@@ -11,6 +11,9 @@ let _root = null;
 let _open = false;
 
 const SECTIONS = [
+  // `pick` extracts a dot-path from the response before rendering (e.g. the governor/
+  // optimizer metrics live under system_optimizer in the big /health payload).
+  { key: 'resources', title: 'resources (governor)', url: '/health', pick: 'system_optimizer.metrics' },
   { key: 'cot', title: 'reasoning cost', url: '/agent/cot_stats' },
   { key: 'metrics', title: 'metrics', url: '/metrics/summary' },
   { key: 'security', title: 'security audit', url: '/metrics/security' },
@@ -101,7 +104,9 @@ async function _load() {
     try {
       const r = await fetch(s.url, { headers: { Accept: 'application/json' } });
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      body.innerHTML = _renderData(await r.json());
+      let data = await r.json();
+      if (s.pick) data = s.pick.split('.').reduce((o, k) => (o == null ? o : o[k]), data);
+      body.innerHTML = _renderData(data);
     } catch (e) {
       body.innerHTML = '<div class="sysdiag-err">unavailable — ' + _esc(e.message) + '</div>';
     }
