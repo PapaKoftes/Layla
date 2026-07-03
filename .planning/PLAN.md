@@ -172,8 +172,8 @@ your sign-off per pass**; everything else is drivable to green autonomously.
 
 **UPG backlog (canonical IDs; reconcile with §10 done-list):** Tier 0 — UPG-00a scope-cut, UPG-00b R9
 splits 🟡, UPG-00c ✅. Tier A (reuse win-wins) — UPG-01 hybrid escalation, **UPG-02 ✅**, **UPG-03 ✅**,
-UPG-04 FlashRank, UPG-05 constrained decoding (GBNF+Outlines — "biggest small-model correctness win,
-cheapest"), UPG-06 Ollama backend, UPG-07 RapidOCR/Piper, UPG-08 DSPy, UPG-09 Open WebUI call. Tier B —
+UPG-04 FlashRank, **UPG-05 🟡 constrained decoding** (GBNF native layer built + wired, Outlines/instructor
+already present — "biggest small-model correctness win, cheapest"; model-in-loop proof pending), UPG-06 Ollama backend, UPG-07 RapidOCR/Piper, UPG-08 DSPy, UPG-09 Open WebUI call. Tier B —
 UPG-10 engine abstraction, UPG-11 one SQLite memory file, UPG-12 MCP-only plugins 🟡, UPG-13 Tauri, UPG-14
 governor auto-cap 🟡. Tier C — UPG-20 self-consistency, UPG-21 project-aware coding, UPG-22 eval-in-CI,
 UPG-23 Castilla, UPG-24 honesty card. Tier D — UPG-30 selftest ✅, UPG-31 Doctor panel, UPG-32 pairing ✅,
@@ -182,10 +182,17 @@ marketplace. Tier E — UPG-40 first-class `/v1` 🟡, UPG-41 Ollama API, UPG-42
 
 **Near-term P0→P6 (the actionable order from here):**
 - **P0 quick wins (libs already in the `cpu` extra, just hand-rolled around):** tiktoken token-counting
-  (kills the `//4` heuristics) · httpx consolidation + **huggingface_hub resumable/checksummed downloads** ·
-  tenacity/diskcache/apscheduler replace bespoke retry/cache/scheduler.
-- **P1 small-model quality:** constrained decoding (GBNF/llguidance) · hybrid escalation · self-consistency ·
-  project-aware coding context (repo-map + symbol index + `@file`) · eval harness in CI.
+  **✅ (P0.1, kills the `//4` heuristics — chunker + validator route through `services.llm.token_count`)** ·
+  **resumable/checksummed downloads ✅ (P0.2 — `/setup/download` now routes through `model_downloader.download_model`:
+  HTTP Range + `.part.meta` resume + sha256 + GGUF-magic + atomic rename, progress_cb drives the SSE bar)** ·
+  httpx consolidation ⬜ · tenacity/diskcache/apscheduler replace bespoke retry/cache/scheduler ⬜
+  (both deprioritised — replace *working* code, hard to verify in a test-only session).
+- **P1 small-model quality:** constrained decoding (GBNF) **🟡 grammar layer built + wired
+  (`services/llm/gbnf_grammar.py`: pins action/priority enums + `tool` to the valid-tool set; first structured
+  path in `llm_decision`, gated `gbnf_decoding_enabled`; 19 tests compile every variant against the real
+  `llama_cpp.LlamaGrammar` — model-in-the-loop reliability gain pending an app-running session)** ·
+  hybrid escalation ⬜ · self-consistency ⬜ · project-aware coding context (repo-map + symbol index + `@file`) ⬜ ·
+  eval harness in CI ⬜.
 - **P2 performance (tier-adaptive llama.cpp):** prefix/KV caching · KV-quant (q4_0 potato / q8_0 modest,
   needs flash-attn) · lazy imports · model hot-swap + param labels · threads=physical · per-tier auto-config
   + honesty card · drop torch entirely from `cpu` once model2vec proven.
