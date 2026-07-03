@@ -88,10 +88,12 @@ def get_effective_config(base_cfg: dict | None = None) -> dict:
     gpu = metrics.get("gpu_percent", 0)
 
     # Performance mode: fixed profile before pressure-based tuning.
-    # Missing key = mid (backward compatible). Explicit "auto" = hardware-detected.
+    # Missing key resolves as "auto" (hardware-detected) to match the schema default
+    # (config_schema performance_mode default = "auto") — advertised == effective. Auto
+    # detection still falls back to "mid" if hardware probing fails (backward compatible).
     raw_pm = cfg.get("performance_mode")
     if raw_pm is None or str(raw_pm).strip() == "":
-        mode = "mid"
+        mode = "auto"
     else:
         mode = str(raw_pm).strip().lower()
     if mode == "auto":
