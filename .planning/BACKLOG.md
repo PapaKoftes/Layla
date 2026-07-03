@@ -24,17 +24,23 @@ tracking list; [PLAN.md](PLAN.md) holds the strategy/architecture and points her
 - **BL-011** ⬜ Uncalled standalone scripts (`seed_self_training_plans.py`, `export_finetune_data.py`, `download_docs.py`, `probe_hardware.py`) — move into a `scripts/` package or document as manual tools.
 
 ## W1 — Security & sandbox hardening (SHIP-BLOCKER — §7)
-- **BL-020** ⬜ **Sensitive-data encryption at rest** (`schemas/entity.py:57`, marked "ideally", not implemented).
-- **BL-021** ⬜ Shell **deny-by-default + allowlist** when remote.
-- **BL-022** ⬜ Subprocess **rlimits / cgroups / Windows job-object** for code exec.
-- **BL-023** ⬜ Ephemeral-container (E2B) exec tier.
-- **BL-024** ⬜ Per-invocation approvals.
-- **BL-025** ⬜ Egress control / network jail.
-- **BL-026** ⬜ Audit-by-default when remote.
-- **BL-027** ⬜ R9: split `vector_store.py` (~1410).
-- **BL-028** ⬜ R9: split `migrations.py` (~1362, hand-rolled ladder).
-- **BL-029** ⬜ R9: split `tool_dispatch.py`.
-- **BL-030** ⬜ R9: split `cursor-layla-mcp/server.py` (~1296).
+**AUDIT (2026-07-03):** the tier is **substantially built**, not "mostly NOT done" — much of the infra exists;
+the genuine gaps are narrower. Existing: `services/sandbox/python_runner.py` + `services/infrastructure/worker_os_limits.py`
+(subprocess RLIMIT / Windows Job Object), `services/safety/agent_safety.py` + `auth.py` + `tunnel_auth.py`
+(shell allowlist), `services/safety/url_guard.py` (SSRF / private-IP egress block), `services/agent/approval_helpers.py`
+(approvals), `services/observability/security_audit.py` (audit events), `services/safety/secret_store.py`
+(OS-keyring config secrets). Re-scoped below.
+- **BL-020** ⬜ **Encryption-at-rest for `sensitive`-level memory DATA** — GENUINE gap. The `sensitive` PrivacyLevel
+  exists and filters retrieval/export, but rows are stored plaintext; secret_store is keyring-for-config-secrets,
+  not bulk data. Real subproject: data-encryption key (keyring/passphrase) + encrypt-on-write/decrypt-on-read for
+  sensitive entities + migration. Do it fully or not at all (half-crypto = false security).
+- **BL-021** 🟡 Shell deny-by-default + allowlist — allowlist exists (`agent_safety.py`); verify/tighten **deny-by-default when remote**.
+- **BL-022** 🟡 Subprocess rlimits / job-object — EXISTS (`worker_os_limits.py`, `python_runner.py`); Linux cgroups path + coverage audit.
+- **BL-023** ⬜ Ephemeral-container (E2B) exec tier — GENUINE gap (not present).
+- **BL-024** 🟡 Per-invocation approvals — `approval_helpers.py` exists; polish + a UI (see BL-049).
+- **BL-025** 🟡 Egress control — `url_guard.py` blocks SSRF/private-IPs; full network-jail for exec is the gap.
+- **BL-026** 🟡 Audit-by-default when remote — `security_audit.py` + `tunnel_audit` exist; wire audit-ON-by-default when `remote_enabled`.
+- **BL-027** ⬜ R9: split `vector_store.py` (~1410) · **BL-028** ⬜ split `migrations.py` (~1362) · **BL-029** ⬜ split `tool_dispatch.py` · **BL-030** ⬜ split `cursor-layla-mcp/server.py` (~1296).
 
 ## W2 — Surface the headless backend (BIGGEST UI GAP — 14 families, ~80 routes)
 Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "~18" underestimate.
