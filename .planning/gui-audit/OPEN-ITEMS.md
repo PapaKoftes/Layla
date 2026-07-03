@@ -130,7 +130,7 @@ Legend: ✅ fixed+verified this session · ⏸️ deferred with a stated reason 
 
 ## E. Broader plan not done (from MASTER-PLAN / UPGRADES)
 104. 🏗️ Phase 3 — scope cut (park cluster/tribunal/gamification behind flags).
-105. 🟡 Phase 4 — foundation swaps: **model2vec embedder DONE** (validated, torch dropped on hot path); sqlite-vec store, one-SQLite-memory, FlashRank rerank still open.
+105. 🟡 Phase 4 — foundation swaps: **model2vec embedder + sqlite-vec store BOTH DONE** (validated: 230 memory tests + 12 fallback-store tests green, sqlite-vec KNN with NumPy fallback); one-SQLite-memory consolidation + FlashRank rerank still open.
 106. 🏗️ Phase 5 — quality (constrained decoding, hybrid escalation, governor auto-cap, self-consistency, project-aware coding context).
 107. 🏗️ Phase 6 — ecosystem (Ollama backend, first-class `/v1`, MCP-only plugins).
 108. 🏗️ Phase 7 — polish (honesty card, Doctor panel, Castilla flagship, eval harness in CI, download robustness).
