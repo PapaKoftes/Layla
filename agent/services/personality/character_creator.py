@@ -421,6 +421,16 @@ def set_main_aspect(aspect_id: str) -> dict[str, Any]:
 
 # ── Summary for diagnostics ─────────────────────────────────────────────────
 
+def _aspect_canonical(aspect_id: str) -> dict[str, Any]:
+    """Canonical identity (title/tagline/color) from personalities/*.json — the single
+    source of truth. Returns {} on any failure so display falls back to the stored profile."""
+    try:
+        from services.prompts.system_head_builder import aspect_dict_by_id
+        return aspect_dict_by_id(aspect_id) or {}
+    except Exception:
+        return {}
+
+
 def get_character_summary() -> dict[str, Any]:
     """Full summary for the character lab UI."""
     profiles = load_all_profiles()
@@ -439,13 +449,16 @@ def get_character_summary() -> dict[str, Any]:
     }
     for aid, profile in profiles.items():
         titles = get_available_titles(aid, rank)
-        active_title = profile.get("active_title", profile.get("title", ""))
+        canon = _aspect_canonical(aid)
+        # personalities/*.json owns the identity title (it was diverging from the
+        # ASPECT_DEFAULTS copy); an explicitly earned/selected active_title still wins.
+        active_title = profile.get("active_title") or canon.get("title") or profile.get("title", "")
         summary["aspects"][aid] = {
             "name": profile.get("name"),
             "symbol": profile.get("symbol"),
             "title": active_title,
-            "tagline": profile.get("tagline"),
-            "color_primary": profile.get("color_primary"),
+            "tagline": canon.get("tagline") or profile.get("tagline"),
+            "color_primary": canon.get("color") or canon.get("color_primary") or profile.get("color_primary"),
             "personality": {
                 t["id"]: profile.get(f"personality_{t['id']}", 5)
                 for t in PERSONALITY_TRAITS
