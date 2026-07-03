@@ -40,7 +40,6 @@ _TESTCLIENT_FILES = [
     "test_background_task_cancel.py",
     "test_codex_router.py",
     "test_plans_api.py",
-    "test_plan_file_routes.py",
     "test_platform_ui.py",
     "test_workspace_cognition_http.py",
     "test_session_export.py",
