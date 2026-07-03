@@ -39,7 +39,7 @@ the genuine gaps are narrower. Existing: `services/sandbox/python_runner.py` + `
 - **BL-023** ⬜ Ephemeral-container (E2B) exec tier — GENUINE gap (not present).
 - **BL-024** 🟡 Per-invocation approvals — `approval_helpers.py` exists; polish + a UI (see BL-049).
 - **BL-025** 🟡 Egress control — `url_guard.py` blocks SSRF/private-IPs; full network-jail for exec is the gap.
-- **BL-026** 🟡 Audit-by-default when remote — `security_audit.py` + `tunnel_audit` exist; wire audit-ON-by-default when `remote_enabled`.
+- **BL-026** ✅ Audit-by-default when remote — `main.py:1026` now forces `_audit_enabled` ON whenever `remote_enabled` (was reading the flag alone → remote could run with no audit trail; the "activates when remote" comment is now true). 217 auth/remote tests pass.
 - **BL-027** ⬜ R9: split `vector_store.py` (~1410) · **BL-028** ⬜ split `migrations.py` (~1362) · **BL-029** ⬜ split `tool_dispatch.py` · **BL-030** ⬜ split `cursor-layla-mcp/server.py` (~1296).
 
 ## W2 — Surface the headless backend (BIGGEST UI GAP — 14 families, ~80 routes)
