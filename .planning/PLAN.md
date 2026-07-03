@@ -228,10 +228,11 @@ marketplace. Tier E — UPG-40 first-class `/v1` 🟡, UPG-41 Ollama API, UPG-42
   unambiguous partial/typo resolves e.g. @nyxx→nyx, unknown/ambiguous toasts instead of silent fail)** ·
   personality-slider hints coarse · skills two-registry UI (show both) · raw-JSON power panels ·
   Obsidian diff/export · Discord/Slack/MCP/governance/admin curated controls · **per-aspect model overrides
-  (built + tested — `model_router.route_model`/`_resolve_aspect_model` + `aspect_model_overrides`; the
-  specific unwired gap is that `llm_gateway.run_completion` never receives/reads the *active* aspect, so
-  overrides don't fire in the live single-aspect chat path — deferred: hot-path ContextVar wiring best
-  verified with a real generation)** · Character-Lab color→chat + titles · dead chrome (`#file-context-chips`,
+  ✅ WIRED** (added an `_active_aspect_var` ContextVar + leak-safe `set_active_aspect`/`reset_active_aspect`;
+  `_effective_model_filename` now honours the active aspect's `aspect_model_overrides` [wins over task routing,
+  no-op by default]; set in both `reasoning_handler` [non-stream] and `stream_handler` [stream] with try/finally;
+  4 resolution tests. The 2-model swap itself needs a bigger box, but the resolution is proven) ·
+  Character-Lab color→chat + titles · dead chrome (`#file-context-chips`,
   /ctx_viz raw JSON, reasoning-tree/chain renderers, diff-viewer stub, legacy localStorage sessions).
 - **P6 ecosystem/dream:** Ollama backend + `/v1` + MCP-only plugins · Tauri · clients · RapidOCR/Piper ·
   DSPy · MCP kit marketplace.
@@ -302,7 +303,10 @@ one form/card system (inputs/selects/textarea/buttons/cards tokenized — border
 legacy bg's kept a darker on-brand value, not fought) · **G4 ✅** aspect retheme verified (--asp flips per
 aspect live AND now matches each identity token — the JS `ASPECT_COLORS` was a third divergent source
 [cassandra purple, lilith magenta]; reconciled to the CSS `--asp-*` tokens, verified all 6: morrigan crimson,
-nyx violet, echo blue, eris amber, cassandra teal, lilith rose) · G5 startup (5-step + live self-test; onboarding-dedup) ⬜ · **G6 ✅**
+nyx violet, echo blue, eris amber, cassandra teal, lilith rose) · **G5 🟡 live self-test ✅**
+(`components/self-test.js` — "proof not a promise": database + vector-memory + model-reply checks with live
+pass/fail states, ⌘K → "Run self-test"; verified live — db+mem pass, and it correctly caught + reported a
+real failure; the full 5-step onboarding flow around it still to wire) · **G6 ✅**
 a11y + motion (focus-visible accent rings on all controls, prefers-reduced-motion kill-switch) → SIGN-OFF.
 Each Gx reactable against the running app; **check_ui_symbols ✅** (now scans the real module tree) + e2e-ui.
 
