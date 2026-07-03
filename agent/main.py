@@ -865,6 +865,9 @@ from routers import (
     settings as settings_router,
 )
 from routers import (
+    setup_profiles as setup_profiles_router,
+)
+from routers import (
     sync as sync_router,
 )
 from routers import (
@@ -894,6 +897,7 @@ app.include_router(sync_router.router)             # Multi-device sync via Synct
 app.include_router(pairing_router.router)          # Phase 9: mDNS discovery + device pairing + cluster
 app.include_router(cluster_router.router)          # Phase 2: Cluster task dispatch + sync + pairing
 app.include_router(onboarding_router.router)       # Phase 4: Onboarding interview
+app.include_router(setup_profiles_router.router)   # W-S: intent-driven Setup & Profiles
 app.include_router(intelligence_router.router)     # AirLLM, compression, prompt optimizer, KB builder
 app.include_router(debate_router.router)            # Multi-aspect debate/council/tribunal engine
 app.include_router(metrics_router.router)           # Phase 3: Observability metrics endpoint

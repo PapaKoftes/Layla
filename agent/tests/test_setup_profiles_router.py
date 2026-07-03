@@ -1,0 +1,48 @@
+"""TestClient checks for the W-S onboarding router (routers/setup_profiles.py)."""
+from __future__ import annotations
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from routers import setup_profiles as sp
+
+_app = FastAPI()
+_app.include_router(sp.router)
+client = TestClient(_app)
+
+
+def test_get_setup_profiles():
+    r = client.get("/setup/profiles")
+    assert r.status_code == 200
+    d = r.json()
+    assert len(d["profiles"]) >= 6 and len(d["features"]) >= 13
+    assert any(p["id"] == "minimal" for p in d["profiles"])
+    assert any(f["id"] == "encryption" for f in d["features"])
+
+
+def test_install_plan_without_confirm_does_not_install():
+    r = client.post("/setup/feature/install", json={"feature_id": "voice"})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["ok"] is True and d["confirmed"] is False
+    assert "faster-whisper" in d["plan"]["deps"]
+
+
+def test_install_unknown_feature():
+    r = client.post("/setup/feature/install", json={"feature_id": "nope"})
+    assert r.json()["ok"] is False
+
+
+def test_apply_persists_selection(monkeypatch):
+    # Avoid touching the real config file: stub apply_setup.
+    import install.setup_profiles as spm
+
+    monkeypatch.setattr(
+        spm, "apply_setup",
+        lambda p, f, save=True: {"setup_profiles": list(p), "setup_features": ["mcp"] if "coding" in p else []},
+    )
+    r = client.post("/setup/apply", json={"profiles": ["coding"]})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["ok"] is True
+    assert d["profiles"] == ["coding"] and "mcp" in d["features"]

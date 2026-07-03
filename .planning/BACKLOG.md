@@ -53,13 +53,12 @@ the potato thesis (load only what's needed) all plug into. Do this **before** th
 - **BL-201** 🟡 **Use-case profiles** built — Companion · Coding · Language-learning · Research · Power · Minimal(potato),
   each with features + aspects + defaults; `resolve_setup_config()` merges profiles+features → startup config,
   `features_to_install()` drives the installer. 9 unit tests pass. Remaining: onboarding UI + endpoints + persist.
-- **BL-202** ⬜ Onboarding step **"what do you want to do?"** → apply a profile (multi-select ok).
-- **BL-203** ⬜ Onboarding step **"optional features"** — a checklist (each shows size/deps) to enable +
-  **download/install on the spot**: voice (whisper/kokoro), MCP plugins, elasticsearch/meilisearch, Discord,
-  geometry/CAD (cadquery/trimesh/openscad), remote access (tunnel/tailscale), full ML stack (rerankers/better
-  embeddings), German-learning, missions, etc.
-- **BL-204** ⬜ `POST /setup/feature/install` — installs a feature's deps (pip extra) + model(s) with progress
-  (reuse the resumable downloader from P0.2); toggles the flag on success.
+- **BL-202** 🟡 Backend done — `GET /setup/profiles` (manifest+profiles) + `POST /setup/apply` (persist).
+  Remaining: the onboarding "what do you want to do?" UI step.
+- **BL-203** 🟡 Backend done — features exposed via `GET /setup/profiles`. Remaining: the "optional features"
+  checklist UI (size/deps shown, install-on-the-spot button per feature).
+- **BL-204** 🟡 `POST /setup/feature/install` built — returns the install plan by default; on `confirm:true`
+  pip-installs the deps + toggles flags (models via the resumable `/setup/download`). Tested (plan + unknown-feature).
 - **BL-205** ⬜ **Tool-enablement wiring** — the tool registry + `tool_policy`/visibility respect the profile's
   enabled set: only register/show the tools you need (the potato win — less RAM, cleaner tool list).
 - **BL-206** 🟡 Persist core built — `apply_setup(profiles, features)` merges the resolved overrides onto the
