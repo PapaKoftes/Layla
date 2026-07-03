@@ -53,10 +53,11 @@ the potato thesis (load only what's needed) all plug into. Do this **before** th
 - **BL-201** 🟡 **Use-case profiles** built — Companion · Coding · Language-learning · Research · Power · Minimal(potato),
   each with features + aspects + defaults; `resolve_setup_config()` merges profiles+features → startup config,
   `features_to_install()` drives the installer. 9 unit tests pass. Remaining: onboarding UI + endpoints + persist.
-- **BL-202** 🟡 Backend done — `GET /setup/profiles` (manifest+profiles) + `POST /setup/apply` (persist).
-  Remaining: the onboarding "what do you want to do?" UI step.
-- **BL-203** 🟡 Backend done — features exposed via `GET /setup/profiles`. Remaining: the "optional features"
-  checklist UI (size/deps shown, install-on-the-spot button per feature).
+- **BL-202** ✅ "What do you want to do?" step — `components/setup-profiles.js` wizard renders the profile
+  cards (multi-select, accent selection), verified live on the preview.
+- **BL-203** ✅ "Optional features" step — checklist with size + deps shown per feature; **pre-seeds the
+  features implied by the chosen profile** (e.g. Coding→MCP pre-checked), user adjusts, → `POST /setup/apply`.
+  Verified live (render + step flow + pre-seed + token styling).
 - **BL-204** 🟡 `POST /setup/feature/install` built — returns the install plan by default; on `confirm:true`
   pip-installs the deps + toggles flags (models via the resumable `/setup/download`). Tested (plan + unknown-feature).
 - **BL-205** ⬜ **Tool-enablement wiring** — the tool registry + `tool_policy`/visibility respect the profile's
@@ -67,8 +68,8 @@ the potato thesis (load only what's needed) all plug into. Do this **before** th
   picker," genuinely-dead ones ✂️ cut. (Absorbs BL-060…BL-078.)
 - **BL-208** ⬜ Gate each of the 14 feature UIs (W2) behind its feature-enabled flag — the UI only shows what
   you picked (no clutter).
-- **BL-209** ⬜ **Reconfigure later** — re-run setup / switch profile / toggle features from Settings; completes
-  G5 (BL-091) as the centerpiece flow.
+- **BL-209** 🟡 **Reconfigure later** — the wizard is reachable any time via ⌘K → "Set up / reconfigure Layla".
+  Remaining: auto-open on genuine first-run + a Settings entry point.
 
 ## W2 — Surface the headless backend (BIGGEST UI GAP — 14 families, ~80 routes)
 *Each UI here plugs into W-S: it appears only when its feature is enabled, and its deps/model install via the
