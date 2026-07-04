@@ -273,6 +273,13 @@ def load_config() -> dict:
             "tool_call_timeout_seconds": 60,
             "approval_ttl_seconds": 3600,
             "hyde_enabled": False,
+            # BL-100 inline RAG grounding (cite-or-abstain). Off by default (non-invasive);
+            # "flag" annotates a grounding block, "abstain" recommends hedging when a
+            # substantive claim isn't supported by retrieved context. min_support is the
+            # lexical-support threshold (0-1) for the default model-free scorer.
+            "grounding_enabled": False,
+            "grounding_mode": "flag",
+            "grounding_min_support": 0.35,
             "ollama_base_url": "",
             "inference_backend": "llama_cpp",
             "context_auto_compact_ratio": 0.75,
