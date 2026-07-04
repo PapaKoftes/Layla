@@ -5,6 +5,7 @@ from install.setup_profiles import (
     FEATURE_MANIFEST,
     PROFILES,
     apply_setup,
+    enabled_feature_ids,
     feature_by_id,
     features_to_install,
     profile_by_id,
@@ -82,3 +83,28 @@ def test_apply_setup_merges_onto_current_without_saving():
     assert merged["mcp_client_enabled"] is True          # overridden by coding profile
     assert merged["encryption_at_rest_enabled"] is True  # explicit feature
     assert merged["setup_profiles"] == ["coding"]
+
+
+def test_enabled_feature_ids_empty_config():
+    assert enabled_feature_ids({}) == []
+    assert enabled_feature_ids(None) == []
+
+
+def test_enabled_feature_ids_reads_live_flags():
+    # A feature counts as enabled iff ALL its flags are truthy in the config.
+    cfg = resolve_setup_config(["coding"])  # enables 'mcp' (mcp_client_enabled)
+    assert "mcp" in enabled_feature_ids(cfg)
+    assert "voice" not in enabled_feature_ids(cfg)
+
+
+def test_enabled_feature_ids_partial_flags_not_enabled():
+    # 'voice' needs BOTH stt+tts prewarm flags — only one set → not enabled.
+    assert "voice" not in enabled_feature_ids({"voice_stt_prewarm_enabled": True})
+    assert "voice" in enabled_feature_ids(
+        {"voice_stt_prewarm_enabled": True, "voice_tts_prewarm_enabled": True}
+    )
+
+
+def test_enabled_feature_ids_matches_power_profile():
+    cfg = resolve_setup_config(["power"])
+    assert set(enabled_feature_ids(cfg)) == {f["id"] for f in FEATURE_MANIFEST}
