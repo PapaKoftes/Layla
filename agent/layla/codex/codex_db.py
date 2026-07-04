@@ -46,6 +46,13 @@ def _row_to_entity_dict(row) -> dict:
                 d[col] = json.loads(raw)
             except (json.JSONDecodeError, TypeError):
                 d[col] = []
+    # BL-020: transparently decrypt a sensitive description (no-op for plaintext rows).
+    if d.get("description"):
+        try:
+            from services.memory.memory_encryption import decrypt
+            d["description"] = decrypt(d["description"])
+        except Exception:
+            pass
     return d
 
 
