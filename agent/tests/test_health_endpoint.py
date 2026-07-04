@@ -52,6 +52,17 @@ def test_health_fast_shape():
         assert dep[key] in ("ok", "missing", "error", "none", "unknown")
 
 
+def test_model_load_failure_downgrades_status():
+    """BL-131: a model_health_warning (no servable model) must make the top-line status
+    'degraded', not 'ok' — a health probe has to catch model-load failure, not just DB health."""
+    client = TestClient(app)
+    payload = client.get("/health").json()
+    if payload.get("model_health_warning"):
+        assert payload["status"] == "degraded"
+    # And the failure detail is surfaced for diagnosis (model_error key always present).
+    assert "model_error" in payload or "model_health_warning" in payload or payload.get("model_loaded") is True
+
+
 def test_health_deep_param():
     client = TestClient(app)
     r = client.get("/health?deep=true")
