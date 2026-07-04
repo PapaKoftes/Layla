@@ -180,7 +180,10 @@ def test_builtin_config_defaults_production_contract(monkeypatch):
     assert cfg["completion_cache_enabled"] is True
     assert cfg["response_cache_enabled"] is True
     assert cfg["tool_loop_detection_enabled"] is True
-    assert cfg["performance_mode"] == "auto"
+    # performance_mode defaults to "auto"; load_config's lite_mode_auto step may auto-downgrade
+    # it to "low" on low-detected hardware (orthogonal, intended — see runtime_safety ~L675).
+    # Both satisfy the builtin-defaults contract, so the assertion is hardware-independent.
+    assert cfg["performance_mode"] in ("auto", "low")
     assert cfg["anti_drift_prompt_enabled"] is True
 
 

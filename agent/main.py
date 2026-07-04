@@ -223,13 +223,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Plugin load failed: %s", e)
 
-    # ── Subsystem: LLM request queue ──────────────────────────────────────────
-    try:
-        from services.llm.llm_gateway import llm_request_queue
-        llm_request_queue.start()
-        logger.info("LLM request queue worker started")
-    except Exception as e:
-        logger.warning("LLM request queue start failed: %s", e)
 
     # ── Subsystem: Worktree cleanup ───────────────────────────────────────────
     try:
@@ -622,12 +615,6 @@ async def lifespan(app: FastAPI):
         pass
     if hasattr(app.state, "scheduler"):
         app.state.scheduler.shutdown(wait=False)
-    try:
-        from services.llm.llm_gateway import llm_request_queue
-
-        await llm_request_queue.stop()
-    except Exception:
-        pass
 
 
 app = FastAPI(
