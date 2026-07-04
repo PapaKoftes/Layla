@@ -8,6 +8,11 @@ tracking list; [PLAN.md](PLAN.md) holds the strategy/architecture and points her
 **Status legend:** ⬜ open · 🟡 partial · ✅ done · ✂️ decided-cut. Each item has a stable `BL-###` id.
 **Workstreams W0–W11** are the execution order proposed in PLAN.md §5b; they map every loop bullet to work.
 
+> **Verification checkpoint (2026-07-04):** app **restarted** — all session routers live on :8000, model loaded,
+> chat confirmed end-to-end (`/v1/chat/completions` → 200). Full core suite **green: 2587 passed, 14 skipped, 0
+> failed** (excludes env-gated e2e/real-LLM/integration). One self-introduced regression (a `/health` status
+> over-reach) was caught by the suite and reverted. The session's ~70 commits are verified watertight.
+
 ---
 
 ## W0 — Stabilize & clean (quick, low-risk, do first)
