@@ -108,6 +108,8 @@ import * as approvals from './components/approvals.js';
 import * as improvements from './components/improvements.js';
 // W2 — Tool-call history & health
 import * as toolsHistory from './components/tools-history.js';
+// W2 — Multi-device sync
+import * as sync from './components/sync.js';
 
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
@@ -531,6 +533,7 @@ function init() {
     { id: 'approvals', group: 'Go to', label: 'Approvals & grants', keywords: ['approval', 'pending', 'grant', 'permission', 'security', 'approve', 'deny'], run: () => approvals.openApprovals() },
     { id: 'improvements', group: 'Go to', label: 'Improvements (self)', keywords: ['improve', 'proposal', 'self', 'growth', 'suggestion', 'approve'], run: () => improvements.openImprovements() },
     { id: 'tools-history', group: 'Go to', label: 'Tool history & health', keywords: ['tools', 'history', 'analysis', 'health', 'success', 'latency', 'debug'], run: () => toolsHistory.openToolsHistory() },
+    { id: 'sync', group: 'Go to', label: 'Sync (devices)', keywords: ['sync', 'syncthing', 'devices', 'multi', 'phone', 'pair'], run: () => sync.openSync() },
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
@@ -555,6 +558,8 @@ function init() {
     closeImprovements: improvements.closeImprovements,
     openToolsHistory: toolsHistory.openToolsHistory,
     closeToolsHistory: toolsHistory.closeToolsHistory,
+    openSync: sync.openSync,
+    closeSync: sync.closeSync,
   });
 
   // Apply timeout config from health response
