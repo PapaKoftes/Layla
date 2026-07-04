@@ -20,6 +20,7 @@ export async function laylaObsidianConnect() {
     if (data.ok) {
       localStorage.setItem('layla_obsidian_vault_path', vp);
       _obsStatus('Connected: ' + data.vault_path);
+      laylaObsidianStatus();
     } else { _obsStatus('Error: ' + (data.error || 'unknown'), true); }
   } catch(e) { _obsStatus('Network error: ' + e.message, true); }
 }
@@ -33,6 +34,55 @@ export async function laylaObsidianSync() {
       _obsStatus('Synced: ' + data.copied + ' copied, ' + data.skipped_conflicts + ' conflicts skipped');
     } else { _obsStatus('Error: ' + (data.error || 'unknown'), true); }
   } catch(e) { _obsStatus('Network error: ' + e.message, true); }
+}
+
+function _obsEsc(s) {
+  var d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+
+function _obsList(label, arr, color) {
+  if (!arr || !arr.length) return '';
+  var items = arr.slice(0, 40).map(function (p) { return '<li>' + _obsEsc(p) + '</li>'; }).join('');
+  var more = arr.length > 40 ? '<li>… +' + (arr.length - 40) + ' more</li>' : '';
+  return '<div class="obs-diff-sec"><div class="obs-diff-h" style="color:' + color + '">' +
+    _obsEsc(label) + ' (' + arr.length + ')</div><ul class="obs-diff-ul">' + items + more + '</ul></div>';
+}
+
+/** GET /obsidian/status — connection + pending-change counts. */
+export async function laylaObsidianStatus() {
+  try {
+    var res = await fetch('/obsidian/status');
+    var d = await res.json();
+    if (d && d.connected === false) { _obsStatus('Not connected'); return; }
+    if (d && d.ok === false) { _obsStatus('Error: ' + (d.error || 'unknown'), true); return; }
+    _obsStatus('Connected: ' + d.vault_path + ' — ' + (d.new || 0) + ' new · ' +
+      (d.updated || 0) + ' updated · ' + (d.conflicts || 0) + ' conflicts (' + (d.total_vault_files || 0) + ' files)');
+  } catch (e) { _obsStatus('Network error: ' + e.message, true); }
+}
+
+/** GET /obsidian/diff — dry-run preview of what the next sync would change. */
+export async function laylaObsidianDiff() {
+  var box = document.getElementById('obsidian-diff');
+  if (box) box.innerHTML = '<span class="settings-hint">Computing diff…</span>';
+  try {
+    var res = await fetch('/obsidian/diff');
+    var d = await res.json();
+    if (d && d.ok === false) {
+      if (box) box.innerHTML = '<span class="settings-hint" style="color:var(--error,#e74c3c)">Error: ' + _obsEsc(d.error || 'unknown') + '</span>';
+      return;
+    }
+    var html = _obsList('New', d.new, 'var(--success,#3fae6b)') +
+      _obsList('Updated', d.updated, 'var(--asp)') +
+      _obsList('Conflicts', d.conflicts, 'var(--danger,#e74c3c)');
+    var unchanged = (d.unchanged || []).length;
+    if (!html) html = '<span class="settings-hint">Nothing to sync — vault is up to date (' + unchanged + ' unchanged).</span>';
+    else html += '<div class="settings-hint" style="margin-top:4px">' + unchanged + ' unchanged · ' + (d.total_vault_files || 0) + ' vault files</div>';
+    if (box) box.innerHTML = html;
+  } catch (e) {
+    if (box) box.innerHTML = '<span class="settings-hint">Network error: ' + _obsEsc(e.message) + '</span>';
+  }
 }
 
 export async function laylaObsidianSuggest() {
