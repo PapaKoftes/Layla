@@ -94,8 +94,9 @@ the potato thesis (load only what's needed) all plug into. Do this **before** th
 - **BL-203** ✅ "Optional features" step — checklist with size + deps shown per feature; **pre-seeds the
   features implied by the chosen profile** (e.g. Coding→MCP pre-checked), user adjusts, → `POST /setup/apply`.
   Verified live (render + step flow + pre-seed + token styling).
-- **BL-204** 🟡 `POST /setup/feature/install` built — returns the install plan by default; on `confirm:true`
-  pip-installs the deps + toggles flags (models via the resumable `/setup/download`). Tested (plan + unknown-feature).
+- **BL-204** ✅ `POST /setup/feature/install` — returns the install plan by default; on `confirm:true` pip-installs
+  the deps + toggles flags (models via the resumable `/setup/download`). TestClient-tested (plan path + unknown
+  feature); the confirm path runs a real `pip install` (intentionally not unit-exercised — no live installs in CI).
 - **BL-205** 🟡 **Tool-enablement** — functionally done: feature tools already gate on their flag (mcp tools
   check `mcp_client_enabled`, geometry on `geometry_frameworks_enabled`, …), and the profile sets those flags
   via `apply_setup` → enabling a feature enables its tools, and `tool_visibility_cap`/routing already limit
