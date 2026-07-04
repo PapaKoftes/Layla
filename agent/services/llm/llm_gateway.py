@@ -1,11 +1,11 @@
 """
 Shared LLM completion gateway. Single point of access for local Llama or remote
-OpenAI-compatible server. Serializes all completion calls via asyncio queue.
+OpenAI-compatible server. Serializes all completion calls via a single lock
+(`llm_serialize_lock`); async paths run generation in an executor under that lock.
 """
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import logging
 import os
 import threading
@@ -68,8 +68,10 @@ def _evict_models_if_needed(max_resident: int) -> list[str]:
 
 # RLock: kept for legacy sync callers (e.g. prewarm_llm) and _get_llm internal locking.
 _llm_lock = threading.RLock()
-# llm_serialize_lock is kept as a shim for legacy sync callers (agent_loop imports it).
-# All async paths use LLMRequestQueue instead.
+# llm_serialize_lock is THE single serialization point for LLM access: sync callers take this
+# RLock directly; async paths run generation via run_in_executor under the same lock (see
+# inference_router). (A never-used asyncio LLMRequestQueue was removed — nothing submitted to it;
+# the single-lock model below is the whole concurrency story.)
 llm_serialize_lock = _llm_lock
 
 # When llm_serialize_per_workspace is true: agent runs hold per-workspace RLocks; local llama_cpp
@@ -101,101 +103,14 @@ def _resolve_workspace_lock_key(workspace_root: str) -> str:
         return raw[:512]
 
 
-# Priority constants for queue-based submission (async paths)
+# Task-priority constants (chat ahead of background) — used by the agent task scheduler and
+# resource_manager to order queued autonomous runs, NOT for LLM-call serialization.
 PRIORITY_CHAT = 0
 PRIORITY_BACKGROUND = 1
 
 
 class LLMTimeoutError(Exception):
     """Raised when an LLM request times out."""
-
-
-@dataclasses.dataclass
-class _LLMRequest:
-    prompt: str
-    params: dict
-    future: asyncio.Future
-    cancel_event: asyncio.Event | None
-    priority: int
-
-
-class LLMRequestQueue:
-    """
-    Asyncio-based request queue for serialised LLM access.
-    Replaces the threading.RLock bottleneck for async paths.
-    """
-
-    def __init__(self, maxsize: int = 20) -> None:
-        self._queue: asyncio.Queue[_LLMRequest] = asyncio.Queue(maxsize=maxsize)
-        self._worker_task: asyncio.Task | None = None
-
-    def start(self) -> None:
-        """Start background worker. Call from FastAPI lifespan startup."""
-        loop = asyncio.get_event_loop()
-        self._worker_task = loop.create_task(self._worker(), name="llm-queue-worker")
-
-    async def stop(self) -> None:
-        if self._worker_task and not self._worker_task.done():
-            self._worker_task.cancel()
-            try:
-                await self._worker_task
-            except asyncio.CancelledError:
-                pass
-
-    async def _worker(self) -> None:
-        """Single worker that processes requests one at a time."""
-        while True:
-            try:
-                req: _LLMRequest = await self._queue.get()
-                try:
-                    if req.cancel_event and req.cancel_event.is_set():
-                        if not req.future.done():
-                            req.future.cancel()
-                        continue
-                    loop = asyncio.get_event_loop()
-                    try:
-                        result = await loop.run_in_executor(
-                            None,
-                            lambda r=req: run_completion(
-                                r.prompt,
-                                **r.params,
-                            ),
-                        )
-                        if not req.future.done():
-                            req.future.set_result(result)
-                    except Exception as exc:
-                        if not req.future.done():
-                            req.future.set_exception(exc)
-                finally:
-                    self._queue.task_done()
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                logger.warning("LLMRequestQueue worker error: %s", e)
-
-    async def submit(
-        self,
-        prompt: str,
-        params: dict | None = None,
-        priority: int = PRIORITY_CHAT,
-        cancel_event: asyncio.Event | None = None,
-    ) -> Any:
-        """Submit a completion request and await the result."""
-        loop = asyncio.get_event_loop()
-        future: asyncio.Future = loop.create_future()
-        req = _LLMRequest(
-            prompt=prompt,
-            params=params or {},
-            future=future,
-            cancel_event=cancel_event,
-            priority=priority,
-        )
-        await self._queue.put(req)
-        return await future
-
-
-# Global queue instance — started in FastAPI lifespan
-llm_request_queue: LLMRequestQueue = LLMRequestQueue()
 
 
 async def run_completion_async(
