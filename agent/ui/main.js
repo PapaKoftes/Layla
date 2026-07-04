@@ -118,6 +118,8 @@ import * as codex from './components/codex.js';
 import * as verify from './components/verify.js';
 // W2 — Background agent tasks
 import * as agentTasks from './components/agent-tasks.js';
+// W2 — Knowledge base
+import * as kb from './components/kb.js';
 
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
@@ -546,6 +548,7 @@ function init() {
     { id: 'codex', group: 'Go to', label: 'Relationship codex', keywords: ['codex', 'relationship', 'entities', 'people', 'who', 'knows'], run: () => codex.openCodex() },
     { id: 'verify', group: 'Go to', label: 'Verify learnings', keywords: ['verify', 'learn', 'confirm', 'correct', 'facts', 'memory'], run: () => verify.openVerify() },
     { id: 'agent-tasks', group: 'Go to', label: 'Background tasks', keywords: ['background', 'tasks', 'agent', 'queue', 'running', 'async'], run: () => agentTasks.openAgentTasks() },
+    { id: 'kb', group: 'Go to', label: 'Knowledge base', keywords: ['knowledge', 'kb', 'articles', 'wiki', 'notes', 'reference', 'build'], run: () => kb.openKb() },
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
@@ -580,6 +583,8 @@ function init() {
     closeVerify: verify.closeVerify,
     openAgentTasks: agentTasks.openAgentTasks,
     closeAgentTasks: agentTasks.closeAgentTasks,
+    openKb: kb.openKb,
+    closeKb: kb.closeKb,
   });
 
   // Apply timeout config from health response
