@@ -298,10 +298,15 @@ def _migrate_impl() -> None:
             db.commit()
     except Exception:
         pass
-    # Spaced repetition: importance_score (0-1), next_review_at (ISO datetime)
+    # Spaced repetition: importance_score (0-1), next_review_at (ISO datetime), and the
+    # per-item SM-2 state so review intervals actually accumulate (BL-134): ease factor,
+    # last interval (days), and successful-repetition count.
     for col, spec in [
         ("importance_score", "REAL DEFAULT 0.5"),
         ("next_review_at", "TEXT"),
+        ("review_ease", "REAL DEFAULT 2.5"),
+        ("review_interval_days", "INTEGER DEFAULT 0"),
+        ("review_reps", "INTEGER DEFAULT 0"),
     ]:
         try:
             with _conn() as db:
