@@ -517,15 +517,13 @@ function init() {
   // ── GUI rebuild G2 · ⌘K command palette ────────────────────────────────────
   // The aspects ARE the navigation (design principle 4): the palette makes
   // switching persona + jumping to a screen the fastest gesture in the app.
-  const _PALETTE_ASPECTS = [
-    ['morrigan', 'Morrigan'], ['nyx', 'Nyx'], ['echo', 'Echo'],
-    ['eris', 'Eris'], ['cassandra', 'Cassandra'], ['lilith', 'Lilith'],
-  ];
+  // BL-122: derive from the single canonical roster (aspect.ASPECTS) — no duplicate
+  // list here, so adding/renaming an aspect only touches components/aspect.js.
   const paletteCommands = [
-    ..._PALETTE_ASPECTS.map(([id, name]) => ({
-      id: 'asp-' + id, group: 'Aspect', label: 'Switch to ' + name,
-      keywords: ['persona', 'aspect', id],
-      run: () => { aspect.setAspect(id); aspect.toggleAspectDescription(id); },
+    ...aspect.ASPECTS.map((a) => ({
+      id: 'asp-' + a.id, group: 'Aspect', label: 'Switch to ' + a.name,
+      keywords: ['persona', 'aspect', a.id],
+      run: () => { aspect.setAspect(a.id); aspect.toggleAspectDescription(a.id); },
     })),
     { id: 'go-settings', group: 'Go to', label: 'Settings', keywords: ['config', 'preferences'], run: () => settingsFull.openSettings() },
     { id: 'go-lab', group: 'Go to', label: 'Character Lab', keywords: ['aspect', 'create', 'persona', 'edit'], run: () => characterCreator.openCharacterLab() },
