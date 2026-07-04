@@ -54,6 +54,17 @@ FEATURE_MANIFEST = [
     {"id": "cloud_models", "label": "Cloud model providers",
      "flags": {"litellm_enabled": True}, "deps": ["litellm"], "models": [], "size_mb": 0,
      "unlocks": "route to OpenAI/etc. via LiteLLM"},
+    {"id": "multi_agent", "label": "Multi-agent deliberation",
+     "flags": {"multi_agent_orchestration_enabled": True}, "deps": [], "models": [], "size_mb": 0,
+     "unlocks": "aspect council / debate depth on deep-reasoning turns (the Deliberate panel)"},
+    {"id": "observability", "label": "Detailed tracing & telemetry",
+     "flags": {"trace_id_enabled": True, "telemetry_log_trivial": True}, "deps": [], "models": [], "size_mb": 0,
+     "unlocks": "per-request trace ids + verbose telemetry (diagnostics; a little overhead)"},
+    # Intentionally NOT surfaced as picker features (kept as internal/admin flags, not dropped):
+    #   • mem0_enabled — redundant memory backend, superseded by native memory (BL-078: cut from picker).
+    #   • tool_replay_policy / pkg_policy_strict — security-hardening toggles (admin, not a use-case feature).
+    #   • initiative_project_proposals — sub-capability folded under the `initiative` feature.
+    #   • ui_decision_trace — surfaced by the Background-tasks panel, not a standalone feature.
 ]
 
 _ALL_ASPECTS = ["morrigan", "nyx", "echo", "eris", "cassandra", "lilith"]
@@ -84,6 +95,24 @@ def feature_by_id(fid: str) -> dict | None:
 
 def profile_by_id(pid: str) -> dict | None:
     return next((p for p in PROFILES if p["id"] == pid), None)
+
+
+def enabled_feature_ids(cfg: dict | None = None) -> list[str]:
+    """Feature ids whose flags are ALL truthy in `cfg` — i.e. the feature's capability is
+    currently on. Drives UI gating (BL-208: the palette shows only what you enabled). Uses
+    the live flag state (so a manually-toggled flag counts too, not just wizard choices);
+    falls back to the persisted `setup_features` list for any flag-less feature."""
+    cfg = cfg or {}
+    setup_feats = set(cfg.get("setup_features") or [])
+    out: list[str] = []
+    for feat in FEATURE_MANIFEST:
+        flags = feat.get("flags") or {}
+        if flags:
+            if all(cfg.get(k) for k in flags):
+                out.append(feat["id"])
+        elif feat["id"] in setup_feats:
+            out.append(feat["id"])
+    return out
 
 
 def resolve_setup_config(profile_ids, feature_ids=None) -> dict:
