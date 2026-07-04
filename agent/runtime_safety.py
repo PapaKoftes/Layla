@@ -280,6 +280,8 @@ def load_config() -> dict:
             "grounding_enabled": False,
             "grounding_mode": "flag",
             "grounding_min_support": 0.35,
+            # BL-103 reranker backend: auto (flashrank→cross-encoder→bm25) | flashrank | cross_encoder | bm25.
+            "reranker_backend": "auto",
             "ollama_base_url": "",
             "inference_backend": "llama_cpp",
             "context_auto_compact_ratio": 0.75,
