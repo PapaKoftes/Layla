@@ -77,7 +77,10 @@ class ExecutionState(dict):
                 "_think_seq": 0,
                 "active_plan_id": (active_plan_id or "").strip(),
                 "plan_approved": bool(plan_approved),
-                # Plan / graph placeholders (coordinator + task graph)
+                # Plan / pipeline state — populated at runtime by the coordinator + task-graph
+                # (services/planning/coordinator.py:run_with_plan_graph, used by planner.py). `plan`
+                # holds the active plan graph; `pipeline_stage` transitions EXECUTE→VALIDATE→DEBUG→REFLECT
+                # (written by run_setup / run_finalizer / failure_recovery). `current_step` is reserved.
                 "plan": None,
                 "current_step": "",
                 "pipeline_stage": "EXECUTE",
