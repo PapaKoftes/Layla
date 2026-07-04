@@ -217,6 +217,7 @@
   <button data-action="exportChat toggleHeaderOverflow">📤 Export chat</button>
   <a href="/system_export" target="_blank" data-action="toggleHeaderOverflow">⊕ System export</a>
   <a href="/memory/export" download data-action="toggleHeaderOverflow">⬇ Memory bundle</a>
+  <button data-action="laylaImportMemoryBundle toggleHeaderOverflow">⬆ Import bundle</button>
   <hr>
   <button data-action="retryLastMessage toggleHeaderOverflow">↻ Retry last</button>
   <button data-action="clearChat toggleHeaderOverflow">🗑 Clear chat</button>
@@ -727,10 +728,12 @@
             <input type="text" id="obsidian-vault-path" placeholder="/path/to/ObsidianVault" class="settings-input" aria-label="Obsidian vault path">
             <div class="settings-row-inline" style="margin-top:6px">
               <button type="button" class="tab-btn" style="font-size:0.65rem" data-action="laylaObsidianConnect">Connect</button>
+              <button type="button" class="tab-btn" style="font-size:0.65rem" data-action="laylaObsidianDiff">Preview changes</button>
               <button type="button" class="tab-btn" style="font-size:0.65rem" data-action="laylaObsidianSync">Sync</button>
               <button type="button" class="tab-btn" style="font-size:0.65rem" data-action="laylaObsidianSuggest">Suggest exports</button>
             </div>
             <div id="obsidian-status" class="settings-hint" style="margin-top:4px">Not connected</div>
+            <div id="obsidian-diff" class="obs-diff"></div>
 
             <hr class="settings-divider" style="margin:12px 0">
 

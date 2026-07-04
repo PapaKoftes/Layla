@@ -401,6 +401,7 @@ function init() {
     // memory.js
     showMemorySubTab: memory.showMemorySubTab,
     laylaMemBrowse: memory.laylaMemBrowse,
+    laylaImportMemoryBundle: memory.laylaImportMemoryBundle,
     // artifacts.js
     laylaArtifactsScan: artifacts.laylaArtifactsScan,
     laylaArtifactsClear: artifacts.laylaArtifactsClear,
@@ -444,6 +445,8 @@ function init() {
     // obsidian.js
     laylaObsidianConnect: obsidian.laylaObsidianConnect,
     laylaObsidianSync: obsidian.laylaObsidianSync,
+    laylaObsidianStatus: obsidian.laylaObsidianStatus,
+    laylaObsidianDiff: obsidian.laylaObsidianDiff,
     laylaObsidianSuggest: obsidian.laylaObsidianSuggest,
     // models.js
     openModelsPanel: models.openModelsPanel,

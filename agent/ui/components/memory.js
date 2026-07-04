@@ -163,3 +163,40 @@ export async function laylaMemDelete(id) {
     showToast(`Error: ${err.message}`);
   }
 }
+
+/**
+ * POST /memory/import — restore a memory bundle ZIP (counterpart to the
+ * ⬇ Memory bundle export link). Opens a file picker and uploads the chosen
+ * .zip as multipart/form-data. Merges non-conflicting knowledge + learnings.
+ */
+export function laylaImportMemoryBundle() {
+  let inp = document.getElementById('memory-import-file');
+  if (!inp) {
+    inp = document.createElement('input');
+    inp.type = 'file';
+    inp.id = 'memory-import-file';
+    inp.accept = '.zip';
+    inp.style.display = 'none';
+    document.body.appendChild(inp);
+    inp.addEventListener('change', async () => {
+      const f = inp.files && inp.files[0];
+      inp.value = '';
+      if (!f) return;
+      if (!/\.zip$/i.test(f.name)) { showToast('Pick a .zip memory bundle'); return; }
+      showToast('Importing memory bundle…');
+      try {
+        const fd = new FormData();
+        fd.append('file', f, f.name);
+        const res = await fetch('/memory/import', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.ok === false) throw new Error(data.error || data.detail || 'import failed');
+        const kn = (data.knowledge_imported || []).length;
+        const le = data.learnings_added || 0;
+        showToast(`Imported ${kn} docs · ${le} learnings`);
+      } catch (err) {
+        showToast(`Import error: ${err.message}`);
+      }
+    });
+  }
+  inp.click();
+}
