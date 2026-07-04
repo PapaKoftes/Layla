@@ -22,11 +22,26 @@ tracking list; [PLAN.md](PLAN.md) holds the strategy/architecture and points her
 - **BL-004** ✅ Dead flag `slack_webhook_url` deleted (was read nowhere).
 - **BL-005** ✅ Tracked-dead files already gone (`protocols.py`/`tool_generator.py`/`layla-app.js.bak` don't exist).
 - **BL-006** ✅ Already safe — `vector_store.py` int8 path prefers torchao and **skips** quantization when absent (no deprecated `torch.quantization`); stale finding.
-- **BL-007** ⬜ `execution_state.py:80` coordinator + task-graph are **placeholders** — implement or remove.
-- **BL-008** ⬜ `projects_db.py:223` fallback for "not-yet-migrated" columns — add the migration.
-- **BL-009** ⬜ Back-compat shims audit — `research_lab/intelligence/stages/utils.py`, `background_job_worker.py`, `lens_refresh.py`, `probe_hardware.py`: keep-as-shim or remove callers then delete.
-- **BL-010** ⬜ `services/observability/_legacy_observability.py` — remove if superseded.
-- **BL-011** ⬜ Uncalled standalone scripts (`seed_self_training_plans.py`, `export_finetune_data.py`, `download_docs.py`, `probe_hardware.py`) — move into a `scripts/` package or document as manual tools.
+- **BL-007** ✅ Not placeholders — the coordinator + task-graph are **implemented & tested**: `planner.py` calls
+  `coordinator.run_with_plan_graph` (dedicated test green), `pipeline_stage` is written by run_setup/run_finalizer/
+  failure_recovery. Only the misleading `execution_state.py` comment was stale → reworded to describe live pipeline
+  state (`current_step` noted as reserved; kept for snapshot-shape stability).
+- **BL-008** ✅ Migration already exists — `migrations.py:~1167` `ALTER TABLE project_context ADD COLUMN`
+  {progress,blockers,last_discussed} (idempotent, runs at startup next to the working `lifecycle_stage` add). The
+  `projects_db.py` try/except is a deliberate defensive degrade, not a missing migration → comment clarified.
+- **BL-009** ✅ Shim audit — all 7 **retained** (each live: `research_lab/stages/utils` + `lens_refresh` +
+  `probe_hardware` imported via old path; `research_intelligence` doc-referenced; `background_job_worker` is the
+  subprocess **entrypoint**). **Found + fixed a real bug:** the `background_job_worker.py` root shim was pure
+  `import *` with no `__main__`, so the opt-in `background_use_subprocess_workers` path spawned a worker that
+  imported and exited **without running the job** — added `__main__` → `main()` delegation, verified (empty stdin
+  now returns structured `invalid_job_json` instead of silent exit 0). Boundary-test comments record the audit.
+- **BL-010** ✅ `_legacy_observability.py` is **not** superseded — its `log_*` helpers have ~7 active call sites
+  (planner, missions, learnings, run-setup), re-exported by `observability/__init__.py`. Retained; header note
+  added so it isn't mistaken for dead code ("_legacy" = pre-split layout, not deadness).
+- **BL-011** ✅ Not orphans — `probe_hardware.py` is imported (2 sites); the 3 standalone tools
+  (`seed_self_training_plans`, `export_finetune_data`, `download_docs`) are **intentional manual tools** (run as
+  `python agent/X.py`, documented in FINE-TUNING.md etc., 0 imports by design). Moving them would break the
+  boundary test + docs + their path-relative imports for no gain → documented as sanctioned root tools instead.
 
 ## W1 — Security & sandbox hardening (SHIP-BLOCKER — §7)
 **AUDIT (2026-07-03):** the tier is **substantially built**, not "mostly NOT done" — much of the infra exists;
