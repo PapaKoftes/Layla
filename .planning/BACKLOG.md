@@ -202,7 +202,14 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 - **BL-108** ⬜ REQ-82 coding scaffolding: repo-map ✅(wired) · diff-edit · **codebase RAG** · KV-cache reuse.
 
 ## W5 — Config & maintainability
-- **BL-120** ⬜ REQ-50 **one typed config schema** — kill the two-file `config.json` vs `runtime_config.json` drift.
+- **BL-120** ✅ Killed the `config.json` vs `runtime_config.json` drift. **Single source of truth** is
+  `runtime_config.json` via `runtime_safety.load_config()` (wrapped by `config_cache.get_config()`, the consolidated
+  R3 accessor). **Real bug fixed:** `prompt_optimizer._cfg()` read a phantom `services/config.json` that doesn't
+  exist → always returned `{}`, so its keys were silently never honored; now uses `config_cache` (416 real keys).
+  Corrected stale `config.json` references (docstrings + user-facing "set X in config.json" errors) across 8 modules
+  (airllm, syncthing, sync, intelligence, prompt_compressor/optimizer, kb_builder, mdns) → `runtime_config.json`;
+  removed orphaned imports. `config_schema.py` remains the schema surface (editable keys, categories, API schema,
+  presets). Verified: `_cfg()` now returns the live config; 158 prompt/config tests green.
 - **BL-121** 🟡 REQ-51 decompose `_autonomous_run_impl_core`; services stop importing `agent_loop` privates.
 - **BL-122** 🟡 REQ-52 define shared UI data (ASPECTS) once; reduce `window.*` globals.
 

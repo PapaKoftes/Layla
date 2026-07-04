@@ -106,7 +106,7 @@ class AirLLMChatRequest(BaseModel):
 def airllm_generate(req: AirLLMGenerateRequest):
     """
     Generate text from a local large model via AirLLM layer-by-layer inference.
-    Requires airllm_enabled=true and airllm_model_path set in config.json.
+    Requires airllm_enabled=true and airllm_model_path set in runtime_config.json.
     Generation is slower than full-VRAM inference but works on consumer GPUs.
     """
     from services.llm.airllm_runner import generate, is_available
