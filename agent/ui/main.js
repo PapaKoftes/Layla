@@ -116,6 +116,8 @@ import * as debate from './components/debate.js';
 import * as codex from './components/codex.js';
 // W2 — Verify learnings (the "it learns" loop)
 import * as verify from './components/verify.js';
+// W2 — Background agent tasks
+import * as agentTasks from './components/agent-tasks.js';
 
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
@@ -543,6 +545,7 @@ function init() {
     { id: 'debate', group: 'Go to', label: 'Deliberate (aspects)', keywords: ['debate', 'deliberate', 'council', 'tribunal', 'aspects', 'decide'], run: () => debate.openDebate() },
     { id: 'codex', group: 'Go to', label: 'Relationship codex', keywords: ['codex', 'relationship', 'entities', 'people', 'who', 'knows'], run: () => codex.openCodex() },
     { id: 'verify', group: 'Go to', label: 'Verify learnings', keywords: ['verify', 'learn', 'confirm', 'correct', 'facts', 'memory'], run: () => verify.openVerify() },
+    { id: 'agent-tasks', group: 'Go to', label: 'Background tasks', keywords: ['background', 'tasks', 'agent', 'queue', 'running', 'async'], run: () => agentTasks.openAgentTasks() },
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
@@ -575,6 +578,8 @@ function init() {
     closeCodex: codex.closeCodex,
     openVerify: verify.openVerify,
     closeVerify: verify.closeVerify,
+    openAgentTasks: agentTasks.openAgentTasks,
+    closeAgentTasks: agentTasks.closeAgentTasks,
   });
 
   // Apply timeout config from health response
