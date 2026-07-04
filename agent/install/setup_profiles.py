@@ -31,7 +31,10 @@ FEATURE_MANIFEST = [
      "flags": {"discord_bot_autostart": True}, "deps": ["discord.py"], "models": [], "size_mb": 0,
      "unlocks": "chat with Layla from Discord"},
     {"id": "fabrication", "label": "Geometry / CAD (fabrication)",
-     "flags": {"geometry_frameworks_enabled": True}, "deps": ["cadquery", "trimesh"], "models": [], "size_mb": 200,
+     # geometry_frameworks_enabled is a PER-BACKEND dict (the backends do enabled.get("cadquery",…));
+     # a bare bool would crash them (bool has no .get). Enable all three backends.
+     "flags": {"geometry_frameworks_enabled": {"cadquery": True, "trimesh": True, "openscad": True, "ezdxf": True}},
+     "deps": ["cadquery", "trimesh", "ezdxf"], "models": [], "size_mb": 200,
      "unlocks": "the FabricationAssist / geometry tools"},
     {"id": "remote", "label": "Remote access (phone / other devices)",
      "flags": {"remote_enabled": True}, "deps": [], "models": [], "size_mb": 0,

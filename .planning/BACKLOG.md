@@ -159,15 +159,26 @@ Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "
 Superseded by the Setup & Profiles keystone: each gated feature becomes a **feature-manifest entry**
 selectable in onboarding (with install-on-demand), not a lone dead flag. Mostly "expose in the picker";
 genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manifest's input set.
-- **BL-060** ⬜ `inline_initiative` · **BL-061** ⬜ `initiative_engine` · **BL-062** ⬜ `initiative_project_proposals`
-- **BL-063** ⬜ `engineering_pipeline` · **BL-064** ⬜ `mcp_client` (+ un-skip 8 MCP tests, BL-140) · **BL-065** ⬜ `multi_agent_orchestration`
-- **BL-066** ⬜ `litellm` · **BL-067** ⬜ `hyde` retrieval · **BL-068** ⬜ `elasticsearch` · **BL-069** ⬜ `meilisearch`
-- **BL-070** ⬜ `remote` (part of W2 remote-access) · **BL-071** ⬜ `discord_bot_autostart`
-- **BL-072** ⬜ `ui_decision_trace` (part of BL-050) · **BL-073** ⬜ `trace_id` / `tunnel_audit` / `telemetry_log_trivial`
-- **BL-074** ⬜ `tool_replay_policy` / `pkg_policy_strict` · **BL-075** ⬜ embedder/STT/TTS prewarm (expose in Settings)
-- **BL-076** ⬜ `geometry_frameworks_enabled` (cadquery/mesh/openscad backends all disabled) — wire or ✂️ cut
-- **BL-077** ⬜ FabricationAssist **stub runner** (`automation.py:324`, `engine_plans.py:335`) — implement or ✂️ cut
-- **BL-078** ⬜ mem0 integration (`mem0_integration.py:181`, disabled) — wire or ✂️ cut
+- **BL-060/061/062** ✅ `inline_initiative` + `initiative_engine` → the `initiative` manifest feature;
+  `initiative_project_proposals` folded under it (documented internal in BL-207).
+- **BL-063** ✅ `engineering_pipeline` → `engineering` feature · **BL-064** ✅ `mcp_client` → `mcp` feature (MCP
+  tests already pass, BL-140) · **BL-065** ✅ `multi_agent_orchestration` → `multi_agent` feature (added BL-207).
+- **BL-066** ✅ `litellm` → `cloud_models` · **BL-067** ✅ `hyde` → `hyde` · **BL-068** ✅ `elasticsearch` →
+  `search_elastic` · **BL-069** ✅ `meilisearch` → `search_meili`.
+- **BL-070** ✅ `remote` → `remote` feature (palette-gated, BL-208) · **BL-071** ✅ `discord_bot_autostart` →
+  `discord` feature.
+- **BL-072** ✅ `ui_decision_trace` → surfaced by the Background-tasks panel (BL-050) · **BL-073** ✅
+  `trace_id`/`telemetry_log_trivial` → `observability` feature (BL-207); `tunnel_audit` auto-on with remote (BL-026).
+- **BL-074** ✅ `tool_replay_policy`/`pkg_policy_strict` → security-hardening admin flags, kept internal
+  (documented in `setup_profiles.py`) · **BL-075** ✅ embedder/STT/TTS prewarm → `voice` (stt/tts) + `ml_stack`.
+- **BL-076** ✅ `geometry_frameworks_enabled` — the cadquery/mesh/openscad backends are real; **fixed a latent bug**:
+  the `fabrication` manifest feature set this to a bare bool `True`, but the backends do `enabled.get("cadquery",…)`
+  so a bool would `AttributeError`-crash them → now sets the correct per-backend dict `{cadquery,trimesh,openscad,ezdxf}`
+  matching `runtime_config.example.json`. Verified enable→dict→no crash.
+- **BL-077** ✅ FabricationAssist runner — the `StubRunner` is an **intentional safe default** (validate/echo);
+  real execution is opt-in `SubprocessJsonRunner` (config-gated) and the optional `fabrication_assist` package is
+  handled gracefully (`fabrication_assist_not_installed`). Not a gap — documented design; deps install via `fabrication`.
+- **BL-078** ✅ mem0 — ✂️ **cut** from the picker (redundant with native memory); flag kept internal only (BL-207).
 
 ## W3 — GUI finish (G2–G6)
 - **BL-090** 🟡 G3 full form/card tokenization (some legacy input bgs kept).
