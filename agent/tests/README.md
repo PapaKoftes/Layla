@@ -22,6 +22,7 @@ them with `pytest -rs` (nothing is silently skipped; this is the BL-145 contract
 | `test_fabrication_assist_runner.py`, `test_geometry_executor.py`, `test_machining_ir.py` | `ezdxf` | `pip install ezdxf` (the `fabrication` optional feature). |
 | `test_notebook_tools.py` | `nbformat` | `pip install nbformat`. |
 | `test_repo_indexer.py` | `networkx` | `pip install networkx`. |
+| `test_memory_encryption.py` (real-crypto cases) | `cryptography` | `pip install cryptography` (the `encryption` optional feature). Pure-logic + graceful-degradation cases run without it. |
 | `test_git_worktree_tools.py` | `git` on PATH | install git (present in CI). |
 | `test_sandbox.py` (one case) | **skips under `CI`** | runs locally; CI provides an explicit `runtime_config.json`. |
 
