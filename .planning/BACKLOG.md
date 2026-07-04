@@ -196,7 +196,12 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 - **BL-122** 🟡 REQ-52 define shared UI data (ASPECTS) once; reduce `window.*` globals.
 
 ## W6 — Reliability & data
-- **BL-130** ⬜ REQ-40 remove dead `LLMRequestQueue`; document the single-lock concurrency model.
+- **BL-130** ✅ Removed dead `LLMRequestQueue` — it was `.start()`/`.stop()`'d in main.py but **nothing ever
+  called `.submit()`** (worker spun on an empty queue; the "all async paths use the queue" comment was false).
+  Deleted the class + `_LLMRequest` + instance + the orphaned `dataclasses` import + the two main.py lifespan
+  hooks. Documented the real model: `llm_serialize_lock` (single RLock) serializes all LLM access; async paths
+  run generation in an executor under it. Also fixed a fragile pre-existing test (`performance_mode` builtin-default
+  contract now hardware-independent: accepts auto **or** the lite_mode_auto low-downgrade). 405→406 green.
 - **BL-131** 🟡 REQ-41 `save_learning` embed **outside** the write txn; `/health` reports model-load failure.
 - **BL-132** 🟡 REQ-42 backup includes the vector dir + WAL checkpoint + VACUUM.
 - **BL-133** 🟡 REQ-43 erasure removes vectors + scrubs PII/secrets from logs.
@@ -207,7 +212,8 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 - **BL-141** 🟡 Wire tiny real-LLM smoke in CI (`LAYLA_TEST_REAL_LLM` + a stub GGUF) → un-skip `test_inference_smoke.py` module + `test_benchmark_coding_model.py`.
 - **BL-142** ⬜ Playwright + `requirements-e2e.txt` in CI → un-skip `e2e_ui/test_ui_smoke.py`.
 - **BL-143** ⬜ `tree-sitter-python` → un-skip `test_workspace_index.py`.
-- **BL-144** ⬜ personalities-dir fixture → un-skip `test_aspect_behavior.py`.
+- **BL-144** ✅ Already runs — `personalities/` exists in the repo, so `test_aspect_behavior.py` executes (40
+  passed); the `skipif(not PERSONALITIES_DIR.exists())` is a graceful guard for stripped checkouts, not a gap.
 - **BL-145** ⬜ Document/gate the env-only smokes (GPU/voice/browser/cgroup) so they're intentional, not silent.
 
 ## W8 — Ecosystem (V2/V3)
