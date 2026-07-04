@@ -254,9 +254,10 @@ verification loads touch swap).
 (incompleteness markers · stubs/dead-code/30+ skipped tests · backend-without-UI/dead-config) — was run to
 dry and itemised in **[BACKLOG.md](BACKLOG.md)** (BL-001…BL-192, workstreams W0–W11; nothing dropped). Key
 new findings beyond this doc: (1) backend-without-UI is **14 headless router families / ~80 routes**, not
-"~18" — incl. a **complete German language-learning system with no UI** (the latent wedge win); (2) **~18
-features ship gated-OFF with no toggle** (initiative, mcp_client, litellm, hyde, elasticsearch, geometry
-frameworks, mem0, FabricationAssist-stub, …) — each is a wire-or-cut decision; (3) **3 dead config flags**
+"~18" — incl. a **complete German language-learning system with no UI** (the latent wedge win) — all 14 now
+have UI (W2 ✅); (2) **~18 features shipped gated-OFF with no toggle** (initiative, mcp_client, litellm, hyde,
+elasticsearch, geometry frameworks, mem0, FabricationAssist-stub, …) — **now re-homed into the 15-feature
+`FEATURE_MANIFEST`** with wire-or-cut decisions recorded (BL-207 ✅; mem0 & policy flags kept internal); (3) **3 dead config flags**
 (`dynamic_tool_generation_enabled`, `codex_semantic_enabled`, `slack_webhook_url` — read nowhere); (4)
 **encryption-at-rest is unimplemented** (`entity.py:57`) — belongs in the §7 security tier; (5) tech debt —
 deprecated `torch.quantization` fallback (`vector_store.py:160`), `execution_state` placeholders, dead files
@@ -273,13 +274,13 @@ one whisper-subtle damask; (3) professional defaults — Linear/Claude-grade cra
 **the aspects ARE the navigation** — switching personality is the primary gesture; (5) honest onboarding —
 tell the truth about the machine, prove it works before "ready."
 
-**Design system (LOCKED):**
-- Palette: `--bg #0a0710` · `--surface #130f1a` · `--surface-2 #1b1526` · `--surface-3 #241d31` ·
-  `--border #241d30` · `--border-2 #372c48` · `--text #ece7f3`/`--text-dim #9a8fa8`/`--text-faint #665d73` ·
-  `--accent #c0395e` (refined rose-crimson — the soul color) · `--accent-2 #7d5bb8` (violet). Per-aspect
-  `--asp`: morrigan #c0395e · nyx #7d5bb8 · echo #3f6fb0 · eris #b5763a · cassandra #2f8f86 · lilith
-  #a33b52. `--success #3fae6b · --danger #d0454e`. *(The shipped `layla-rebuild.css` uses the same family;
-  reconcile exact values to this spec when doing G2+.)*
+**Design system (LOCKED — values below are the shipped `layla-rebuild.css` `:root`, canonical as of 2026-07-04):**
+- Palette: `--bg #0a0008` (near-black, faint crimson-violet) · `--surface #17021c` · `--surface-2 #1f0626` ·
+  `--surface-3 #2b0c34` · `--text #ece7f3`/`--text-dim #a294b0`/`--text-faint #665d73` ·
+  `--accent #b11655` (**wine-rose** — the Layla signature CTA) · `--accent-2 #6e3a94` (muted violet). Per-aspect
+  `--asp`: morrigan #8b0000 · nyx #6a1f9c · echo #2f5aa8 · eris #b06a1e · cassandra #1f7a72 · lilith
+  #a33b52. `--success #3fae6b · --danger #d0454e`. *(Earlier drafts specced #0a0710/#c0395e ("calm #1") and
+  the original neon #0a0008/#c0006a; both are superseded — the wine-rose family above is what ships.)*
 - Type: **mono everywhere** — `'JetBrains Mono'` for all UI, `'Cinzel'` for the `∴ LAYLA` wordmark only.
   Readability by craft (line-height 1.5–1.65, tuned tracking, lowercase labels). Scale 11/12/13/14/20/28.
 - Space 4·8·12·16·24·32·48 · Radius 6/10/14 · Motion 120ms hover / 200ms panels, **no glows** · Ornament =
