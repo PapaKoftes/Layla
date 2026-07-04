@@ -209,7 +209,14 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   **off** → non-invasive). Verified: supported→cited, hallucinated→flagged, abstain-mode hedges, empty-ctx→unsupported,
   NLI hook used. _Remaining: wire the one call into the reasoning handler + measure the gain with a live NLI model._
 - **BL-101** ⬜ REQ-31 20–50 promptfoo golden set on PR + nightly.
-- **BL-102** ⬜ UPG-01 hybrid escalation (small→big on low confidence; needs a bigger box to exercise 2 models).
+- **BL-102** 🟡 UPG-01 hybrid escalation — **decision mechanism built + tested** (`services/llm/hybrid_escalation.py`,
+  `test_hybrid_escalation.py` 10 tests). `answer_confidence()` scores an answer [0,1] from cheap model-free signals
+  (explicit abstain ≤0.15, soft "not sure" ≤0.4, mild hedges, bare-fragment penalty) **and integrates the BL-100
+  grounding score** (unsupported claims → low confidence). `should_escalate()` fires only when enabled AND a distinct
+  bigger `escalation_model` is configured AND confidence < `escalation_confidence_threshold` (0.5) — a no-op on a
+  single-model box. `escalation_decision()` returns a telemetry record. Config in runtime_safety, default off.
+  Verified: confident→no-escalate, hedge/abstain/ungrounded→escalate, same-model target→no-op.
+  _Remaining: wire the re-ask into the router + measure on a 2-model box._
 - **BL-103** ✅ FlashRank reranker wired as the **preferred lightweight backend** (`reranker.py` auto chain:
   flashrank ONNX → sentence-transformers cross-encoder → BM25). **Fixed a perf bug**: the old code instantiated a
   CrossEncoder on **every** rerank call — now model instances are cached module-level (built once) with an
