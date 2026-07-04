@@ -487,7 +487,9 @@ def get_learnings_due_for_review(limit: int = 10) -> list[dict]:
 
 
 def schedule_next_review(learning_id: int, interval_hours: float = 24.0) -> None:
-    """Schedule next review for a learning. Uses simple interval (FSRS-style would need more params)."""
+    """Schedule next review for a learning at a fixed offset. For adaptive SM-2 scheduling
+    (interval grows/resets with recall quality) use `services.memory.spaced_repetition.review_item`,
+    which loads/persists per-item state via get_review_state / set_review_state."""
     migrate()
     from datetime import datetime, timedelta, timezone
     try:
@@ -497,6 +499,63 @@ def schedule_next_review(learning_id: int, interval_hours: float = 24.0) -> None
             db.commit()
     except Exception as e:
         logger.warning("schedule_next_review failed: %s", e)
+
+
+def get_review_state(learning_id: int) -> dict:
+    """Per-item SM-2 state (ease, interval_days, reps) for adaptive spaced repetition (BL-134).
+    Returns sensible defaults (2.5 / 0 / 0) for a never-reviewed or pre-migration item."""
+    migrate()
+    default = {"ease": 2.5, "interval_days": 0, "reps": 0}
+    try:
+        with _conn() as db:
+            cols = {r[1] for r in db.execute("PRAGMA table_info(learnings)").fetchall()}
+            if not {"review_ease", "review_interval_days", "review_reps"} <= cols:
+                return default
+            row = db.execute(
+                "SELECT review_ease, review_interval_days, review_reps FROM learnings WHERE id = ?",
+                (learning_id,),
+            ).fetchone()
+        if not row:
+            return default
+        return {
+            "ease": float(row[0]) if row[0] is not None else 2.5,
+            "interval_days": int(row[1]) if row[1] is not None else 0,
+            "reps": int(row[2]) if row[2] is not None else 0,
+        }
+    except Exception as e:
+        logger.warning("get_review_state failed: %s", e)
+        return default
+
+
+def set_review_state(
+    learning_id: int,
+    *,
+    ease: float,
+    interval_days: int,
+    reps: int,
+    interval_hours: float | None = None,
+) -> None:
+    """Persist per-item SM-2 state and schedule the next review (BL-134). `interval_hours`
+    overrides the next-review offset; defaults to interval_days * 24."""
+    migrate()
+    from datetime import datetime, timedelta, timezone
+    hours = interval_hours if interval_hours is not None else max(0.0, float(interval_days)) * 24.0
+    next_at = (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat()
+    try:
+        with _conn() as db:
+            cols = {r[1] for r in db.execute("PRAGMA table_info(learnings)").fetchall()}
+            if {"review_ease", "review_interval_days", "review_reps"} <= cols:
+                db.execute(
+                    """UPDATE learnings
+                       SET review_ease = ?, review_interval_days = ?, review_reps = ?, next_review_at = ?
+                       WHERE id = ?""",
+                    (float(ease), int(interval_days), int(reps), next_at, learning_id),
+                )
+            else:  # pre-migration fallback: at least schedule the next review
+                db.execute("UPDATE learnings SET next_review_at = ? WHERE id = ?", (next_at, learning_id))
+            db.commit()
+    except Exception as e:
+        logger.warning("set_review_state failed: %s", e)
 
 
 def set_learning_importance(learning_id: int, score: float) -> None:
