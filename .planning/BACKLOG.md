@@ -104,7 +104,9 @@ Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "
 - **BL-049** ✅ Approvals + session-grants UI — `components/approvals.js` (⌘K → "Approvals & grants"): pending
   tool approvals (tool + args → approve[confirm-guarded, runs the tool]/deny) + active session grants with
   revoke-all. Verified live + mock (item/buttons/grant render, accent styling).
-- **BL-050** ⬜ Agent-tasks UI (9: background/steer/execute_plan/resume/tasks/cancel + decision_trace).
+- **BL-050** ✅ Agent-tasks UI — `components/agent-tasks.js` (⌘K → "Background tasks"): start a background
+  agent task (goal → POST /agent/background), list from /agent/tasks (goal + status colored by state), cancel
+  active ones. Verified live + mock (running=cancelable/aspect-colored, completed=green). Remaining: steer/decision_trace (secondary).
 - **BL-051** ✅ tools-history UI — `components/tools-history.js` (⌘K → "Tool history & health"): read-only
   dashboard from `/tools/analysis` — summary (calls · success% · tools) + per-tool table (calls, success rate
   colored green/amber/red, avg latency). Verified live (empty) + mock (table + rate colors after a specificity fix).
