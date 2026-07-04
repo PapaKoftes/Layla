@@ -69,6 +69,36 @@ def is_sensitive_log_key(key: str) -> bool:
     return False
 
 
+import re as _re
+
+# HIGH-CONFIDENCE credential token formats — prefix-anchored so false positives are
+# essentially impossible (these strings are never legitimate diagnostic content). This
+# catches a secret embedded in a value under a NON-sensitive key (e.g. a token inside an
+# `args_preview`/`path`/command string), which the key-based pass can't see. Kept narrow on
+# purpose — do NOT add loose patterns (e.g. "any 32 hex chars") that would corrupt real logs.
+_SECRET_VALUE_PATTERNS = (
+    _re.compile(r"sk-(?:ant-|proj-|live-)?[A-Za-z0-9_-]{16,}"),   # OpenAI / Anthropic
+    _re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}"),                  # Slack
+    _re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}"),                    # GitHub PAT/OAuth
+    _re.compile(r"AKIA[0-9A-Z]{16}"),                              # AWS access key id
+    _re.compile(r"AIza[0-9A-Za-z_-]{35}"),                         # Google API key
+    _re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/-]{20,}=*"),          # Bearer <token>
+    _re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{6,}"),  # JWT
+    _re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"),  # PEM
+)
+
+
+def scrub_secret_tokens(text: str) -> str:
+    """Mask any high-confidence credential token embedded in a free-form string value.
+    Conservative: only unambiguous, prefix-anchored formats. Returns text unchanged if none."""
+    if not isinstance(text, str) or not text:
+        return text
+    out = text
+    for pat in _SECRET_VALUE_PATTERNS:
+        out = pat.sub(REDACTED, out)
+    return out
+
+
 def redact_payload(obj: Any, *, _depth: int = 0) -> Any:
     """Recursively redact secrets/PII and cap oversized content in a log payload.
 
@@ -93,6 +123,9 @@ def redact_payload(obj: Any, *, _depth: int = 0) -> Any:
         if len(obj) > _MAX_ITEMS:
             items.append(f"{_TRUNCATED} (+{len(obj) - _MAX_ITEMS} more)")
         return items
-    if isinstance(obj, str) and len(obj) > _MAX_STR:
-        return obj[:_MAX_STR] + "…" + _TRUNCATED
+    if isinstance(obj, str):
+        s = scrub_secret_tokens(obj)  # mask embedded credential tokens under non-secret keys
+        if len(s) > _MAX_STR:
+            return s[:_MAX_STR] + "…" + _TRUNCATED
+        return s
     return obj

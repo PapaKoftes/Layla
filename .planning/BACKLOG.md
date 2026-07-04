@@ -229,8 +229,17 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   run generation in an executor under it. Also fixed a fragile pre-existing test (`performance_mode` builtin-default
   contract now hardware-independent: accepts auto **or** the lite_mode_auto low-downgrade). 405→406 green.
 - **BL-131** 🟡 REQ-41 `save_learning` embed **outside** the write txn; `/health` reports model-load failure.
-- **BL-132** 🟡 REQ-42 backup includes the vector dir + WAL checkpoint + VACUUM.
-- **BL-133** 🟡 REQ-43 erasure removes vectors + scrubs PII/secrets from logs.
+- **BL-132** ✅ REQ-42 backup complete: vector dir already backed up (R4); added **WAL checkpoint(TRUNCATE)** on
+  the source before `.backup()` (fresh snapshot + bounded WAL on long-running DBs) and **VACUUM of the backup copy**
+  (compacts, reclaims free pages from deletes/erasure — never touches the live DB). `wal_truncated` in the result.
+  Verified (`test_db_backup_wal_vacuum.py`): data intact, backup is a self-contained single file, live DB usable after.
+- **BL-133** ✅ REQ-43. **Erasure removes vectors** — already: `delete_learnings_by_id` collects `embedding_id`s and
+  calls `delete_vectors_by_ids`, so forget/erase purges embeddings too. **Scrubs secrets/PII from logs** — the
+  key-based `redact_payload` now also runs a **high-confidence value scrubber** (`scrub_secret_tokens`: sk-/xoxb-/
+  ghp_/AKIA/AIza/Bearer/JWT/PEM, prefix-anchored → ~zero false positives) so a token embedded in a non-secret value
+  (`args_preview`, `path`) is masked too; wired into `security_audit._record` so events are redacted **before** they
+  hit the ring buffer or the log line. Verified (`test_secret_value_scrub.py` + existing `test_log_redaction`, 16 tests):
+  tokens masked, normal diagnostic strings untouched, audit events carry no raw secret.
 - **BL-134** ✅ Adaptive SM-2 spaced repetition now **actually accumulates**. The `sm2()` algorithm existed but
   `review_item()` reset ease/interval/reps to defaults every call, so intervals never grew (effectively fixed).
   Fix: persist per-item state — added `review_ease`/`review_interval_days`/`review_reps` columns (migration) +

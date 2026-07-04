@@ -36,8 +36,23 @@ def backup_database(keep: int = _DEFAULT_KEEP) -> dict:
         # Use SQLite .backup() API for safe hot backup
         src = sqlite3.connect(str(db_path))
         dst = sqlite3.connect(str(backup_path))
+        wal_truncated = False
         try:
+            # WAL checkpoint(TRUNCATE) first: fold committed WAL pages into the main file so the
+            # backup is maximally fresh AND the live WAL stays bounded on a long-running DB
+            # (BL-132). Best-effort — no-op in rollback-journal mode or if another writer holds it.
+            try:
+                row = src.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+                wal_truncated = bool(row and row[0] == 0)  # busy==0 → checkpoint completed
+            except Exception as we:
+                logger.debug("wal_checkpoint skipped: %s", we)
             src.backup(dst)
+            # VACUUM the *backup copy* (never the live DB) so stored backups are compacted —
+            # reclaims free pages from deletes/erasure. Safe: operates only on backup_path.
+            try:
+                dst.execute("VACUUM")
+            except Exception as vac:
+                logger.debug("backup VACUUM skipped: %s", vac)
             logger.info("DB backup created: %s (%.1f KB)", backup_path.name, backup_path.stat().st_size / 1024)
         finally:
             dst.close()
@@ -64,6 +79,7 @@ def backup_database(keep: int = _DEFAULT_KEEP) -> dict:
             "backup_path": str(backup_path),
             "size_kb": round(backup_path.stat().st_size / 1024, 1),
             "vectors_backed_up": vectors_backed_up,
+            "wal_truncated": wal_truncated,
             "pruned": pruned,
         }
     except Exception as e:
