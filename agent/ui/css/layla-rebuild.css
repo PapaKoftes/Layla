@@ -951,3 +951,10 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .proj-item:hover { border-color: var(--accent); background: var(--surface-3); }
 .proj-pname { font-size: var(--text-sm); font-weight: 600; }
 .proj-pws { font-size: var(--text-xs); color: var(--text-dim); font-family: 'JetBrains Mono', monospace; }
+
+/* W2 — Obsidian diff preview (BL-053) */
+.obs-diff { margin-top: 6px; }
+.obs-diff-sec { margin-top: 6px; }
+.obs-diff-h { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.obs-diff-ul { list-style: none; margin: 2px 0 0; padding: 0; }
+.obs-diff-ul li { font-family: 'JetBrains Mono', monospace; font-size: 0.62rem; color: var(--text-dim); line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
