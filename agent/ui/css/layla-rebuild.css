@@ -793,3 +793,16 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .improvements-yes { background: var(--accent); color: #fff; border-color: transparent; }
 .improvements-no { background: var(--surface-3); color: var(--text-dim); }
 .improvements-no:hover { background: var(--danger); color: #fff; border-color: transparent; }
+
+/* ── W2 · Tool history & health ──────────────────────────────────────────────── */
+.toolshist-panel { max-width: 560px; max-height: 82vh; }
+.toolshist-body { overflow-y: auto; padding: var(--sp-4); }
+.toolshist-summary { font-size: var(--text-sm); color: var(--text-dim); margin-bottom: var(--sp-3); letter-spacing: 0.02em; }
+.toolshist-table { display: flex; flex-direction: column; }
+.toolshist-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: var(--sp-3); padding: 5px 0; font-size: var(--text-sm); align-items: baseline; border-bottom: 1px solid var(--border); }
+.toolshist-th { color: var(--text-faint); font-size: var(--text-xs); text-transform: lowercase; letter-spacing: 0.06em; }
+.toolshist-row > span:not(.toolshist-name) { text-align: right; color: var(--text-dim); min-width: 40px; }
+.toolshist-name { color: var(--text); overflow-wrap: anywhere; }
+.toolshist-row > span.toolshist-rate.toolshist-ok { color: var(--success); }
+.toolshist-row > span.toolshist-rate.toolshist-warn { color: var(--asp-eris, #b06a1e); }
+.toolshist-row > span.toolshist-rate.toolshist-bad { color: var(--danger); }
