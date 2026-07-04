@@ -56,9 +56,10 @@ the potato thesis (load only what's needed) all plug into. Do this **before** th
   voice, mcp, elasticsearch, meilisearch, discord, fabrication, remote, hyde, initiative, engineering,
   ml_stack, **encryption** [= BL-020 as opt-in], cloud_models, **multi_agent, observability** — each with
   flags + deps + models + size + unlocks). `enabled_feature_ids(cfg)` resolves live capability state for gating.
-- **BL-201** 🟡 **Use-case profiles** built — Companion · Coding · Language-learning · Research · Power · Minimal(potato),
+- **BL-201** ✅ **Use-case profiles** built — Companion · Coding · Language-learning · Research · Power · Minimal(potato),
   each with features + aspects + defaults; `resolve_setup_config()` merges profiles+features → startup config,
-  `features_to_install()` drives the installer. 9 unit tests pass. Remaining: onboarding UI + endpoints + persist.
+  `features_to_install()` drives the installer. The once-"remaining" onboarding UI + endpoints + persist are all
+  now done (BL-202/203 wizard, `/setup/*` router, `apply_setup` persist). 19 unit tests pass.
 - **BL-202** ✅ "What do you want to do?" step — `components/setup-profiles.js` wizard renders the profile
   cards (multi-select, accent selection), verified live on the preview.
 - **BL-203** ✅ "Optional features" step — checklist with size + deps shown per feature; **pre-seeds the
@@ -71,8 +72,8 @@ the potato thesis (load only what's needed) all plug into. Do this **before** th
   via `apply_setup` → enabling a feature enables its tools, and `tool_visibility_cap`/routing already limit
   what the model sees. Follow-up optimization: skip *registering* disabled-feature tools (less RAM, not just
   call-time refusal).
-- **BL-206** 🟡 Persist core built — `apply_setup(profiles, features)` merges the resolved overrides onto the
-  current config and writes CONFIG_FILE + invalidates the cache (10 tests). Remaining: the router endpoint wiring.
+- **BL-206** ✅ Persist — `apply_setup(profiles, features)` merges the resolved overrides onto the current config,
+  writes CONFIG_FILE + invalidates the cache; the router endpoint (`POST /setup/apply`) is wired + TestClient-tested.
 - **BL-207** ✅ **Re-homed the gated features into the manifest** (now **15** features): added `multi_agent`
   (`multi_agent_orchestration_enabled` → the Deliberate panel) and `observability` (`trace_id_enabled` +
   `telemetry_log_trivial`). Deliberately kept as internal/admin flags (documented in `setup_profiles.py`, **not**
