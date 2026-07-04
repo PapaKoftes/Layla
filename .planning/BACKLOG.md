@@ -100,7 +100,7 @@ Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "
 - **BL-047** ✅ Improvements UI — `components/improvements.js` (⌘K → "Improvements (self)"): lists
   self-improvement proposals (title + description + status), generate, approve/reject (batch-of-one). Verified
   live + mock render (item/status/actions, accent styling).
-- **BL-048** ⬜ Plans UI (5: get/patch/approve/execute/viz) + Projects UI (3: get/patch/delete).
+- **BL-048** ✅ Plans & projects UI (`plans.js`, 2-tab overlay): Plans tab — workspace-scoped list, create-by-goal, expand steps, approve (draft→), execute (approved→), status badges (draft/approved/executing/done/failed). Projects tab — list/create, pick one → fills workspace field. ⌘K → "Plans & projects". Verified live+mock: 3 plans w/ correct badge colors (text-dim/success/asp), per-status actions, step toggle, tab switch. _(patch/viz + project patch/delete remain as inline edits — deferred, low-value.)_
 - **BL-049** ✅ Approvals + session-grants UI — `components/approvals.js` (⌘K → "Approvals & grants"): pending
   tool approvals (tool + args → approve[confirm-guarded, runs the tool]/deny) + active session grants with
   revoke-all. Verified live + mock (item/buttons/grant render, accent styling).
