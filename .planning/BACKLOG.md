@@ -137,7 +137,8 @@ Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "
   correction box → POST /verify/answer, then next. Verified live (empty) + mock (fact/stats/confirm/correct).
 - **BL-053** ✅ Calibration audit of the 6 componentized families (conversations, memory, character, research, workspace, obsidian). Method: extracted every route per router, diffed against fetched paths across ALL of `ui/`. **Closed the high-value gaps:** (1) Obsidian **status** + **diff** dry-run preview (`obsidian.js` + Options→Obsidian "Preview changes" button; connect now auto-loads counts; color-coded new/updated/conflicts file lists) — verified live+mock. (2) Memory **import** (`laylaImportMemoryBundle` in `memory.js` + overflow-menu "⬆ Import bundle"; multipart ZIP upload, counterpart to the existing export link) — verified live+mock (correct FormData POST, success toast). **Deliberately deferred (low-value/diagnostic/programmatic, not silently dropped):** `conversations/tags/suggest` (autosuggest; manual tags already work), `character/aspects/{id}/titles` + `earnable-titles` (read-only galleries; Lab already sets titles), `research_mission/debug` + `/verify` (diagnostics), `workspace/file_intent` + `project_discovery` + `file_content` (agent-internal, used programmatically), `memory/stats` (surfaced qualitatively in browser + diagnostics). Everything write-facing or user-blocking is now wired.
 - **BL-054** ✅ (this session) System-diagnostics surfaced `cot_stats`/`metrics`/`security`/`capabilities`/`resources`; self-test surfaced `health`/`v1`.
-- **BL-055** ⬜ Correct PLAN.md P4 "~18" → 14 headless families (~80 routes).
+- **BL-055** ✅ PLAN.md P4 corrected to **14 headless families / ~80 routes** (was "~18"); the separate "~18
+  gated-OFF features" finding now points to the 15-feature manifest (BL-207) with wire/cut decisions recorded.
 
 ## W2b — Gated-OFF features (~18) → now ABSORBED into W-S/BL-207
 Superseded by the Setup & Profiles keystone: each gated feature becomes a **feature-manifest entry**
@@ -159,7 +160,9 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 - **BL-092** 🟡 REQ-79 aspect creator (name/sigil/sliders/voice/prompt + kit).
 - **BL-093** 🟡 REQ-80 S.P.E.C.I.A.L.-style intake quiz.
 - **BL-094** ⬜ REQ-81 / G6 per-aspect motion & polish (focus/reduced-motion ✅; motion choreography open).
-- **BL-095** ⬜ Reconcile PLAN §6 palette spec (#0a0710/#c0395e) vs shipped tokens (#0a0008/#b11655) — pick one, remove the other from the doc. (Aspect hues already reconciled ✅.)
+- **BL-095** ✅ PLAN §6 palette reconciled to the **shipped** `layla-rebuild.css` `:root` (canonical): `--bg #0a0008`,
+  `--accent #b11655` wine-rose, per-aspect `--asp` (morrigan #8b0000 …). Superseded #0a0710/#c0395e ("calm #1")
+  and neon #0a0008/#c0006a noted as history, removed as the spec.
 
 ## W4 — Answer quality & eval
 - **BL-100** ⬜ REQ-30 inline RAG grounding (MiniCheck/NLI, CPU, cite-or-abstain, `grounding` block) — **the #1 correctness lever**.
