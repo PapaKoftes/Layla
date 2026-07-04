@@ -895,3 +895,25 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .atasks-status[data-st="failed"] { color: var(--danger); }
 .atasks-cancel { flex: none; background: var(--surface-3); border: 1px solid var(--border); color: var(--text-dim); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: var(--text-xs); padding: 3px 10px; cursor: pointer; }
 .atasks-cancel:hover { background: var(--danger); color: #fff; border-color: transparent; }
+
+/* W2 — Knowledge base (BL-045) */
+.kb-panel { max-width: 640px; }
+.kb-count { flex: none; font-size: var(--text-xs); color: var(--text-dim); margin-left: auto; margin-right: 8px; }
+.kb-build { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.kb-text { width: 100%; resize: vertical; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: inherit; font-size: var(--text-sm); padding: 8px 10px; box-sizing: border-box; }
+.kb-text:focus { outline: none; border-color: var(--accent); }
+.kb-buildrow { display: flex; gap: 8px; }
+.kb-topic { flex: 1; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: var(--text-sm); padding: 6px 10px; }
+.kb-topic:focus { outline: none; border-color: var(--accent); }
+.kb-buildbtn { flex: none; }
+.kb-body { max-height: 52vh; overflow-y: auto; padding: 8px 12px; }
+.kb-list { display: flex; flex-direction: column; gap: 4px; }
+.kb-artbtn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: inherit; padding: 8px 12px; cursor: pointer; }
+.kb-artbtn:hover { border-color: var(--accent); background: var(--surface-3); }
+.kb-arttitle { font-size: var(--text-sm); font-weight: 600; }
+.kb-arttopic { font-size: var(--text-xs); color: var(--text-dim); font-family: 'JetBrains Mono', monospace; }
+.kb-back { background: none; border: none; color: var(--accent); font-family: inherit; font-size: var(--text-sm); cursor: pointer; padding: 4px 0; margin-bottom: 8px; }
+.kb-back:hover { text-decoration: underline; }
+.kb-detail { display: flex; flex-direction: column; gap: 8px; }
+.kb-dtitle { font-size: var(--text-md); font-weight: 700; color: var(--accent); }
+.kb-dcontent { font-size: var(--text-sm); line-height: 1.55; white-space: pre-wrap; color: var(--text); }
