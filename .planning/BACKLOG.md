@@ -71,7 +71,13 @@ the potato thesis (load only what's needed) all plug into. Do this **before** th
   picker," genuinely-dead ones ✂️ cut. (Absorbs BL-060…BL-078.)
 - **BL-208** ⬜ Gate each of the 14 feature UIs (W2) behind its feature-enabled flag — the UI only shows what
   you picked (no clutter).
-- **BL-209** 🟡 **Reconfigure later** — the wizard is reachable any time via ⌘K → "Set up / reconfigure Layla".
+- **BL-209** ✅ **Wizard is now in the first-run sequence** (the operator's core ask) — after the model is ready,
+  `setup.js` `maybeStartSetupProfiles()` presents the profile/feature wizard *before* the mini onboarding tour,
+  shown once (localStorage `layla_setup_profiles_v1_done`), then chains onward on close. `window.openSetupProfiles`
+  exposed for boot; wizard emits `layla:profiles-applied` + `layla:setup-closed`. **Also reconfigure any time** via
+  ⌘K → "Set up / reconfigure Layla". Hardened the wizard against an error/404 `/setup/profiles` payload (was a
+  latent `.forEach` crash before the router is live). Verified live: first-run opens wizard (not just ⌘K), graceful
+  on malformed response, profile→implied-feature pre-seed intact.
   Remaining: auto-open on genuine first-run + a Settings entry point.
 
 ## W2 — Surface the headless backend (BIGGEST UI GAP — 14 families, ~80 routes)
