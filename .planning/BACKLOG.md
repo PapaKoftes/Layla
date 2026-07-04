@@ -90,7 +90,9 @@ Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "
 - **BL-043** ✅ Sync / Syncthing UI — `components/sync.js` (⌘K → "Sync (devices)"): status + peer devices +
   completion, this device's ID, rescan, and the setup guide (auto-opens when sync is off). Verified live
   (status off → 8-step guide renders). Remaining: add-device form (secondary).
-- **BL-044** ⬜ Codex / relationship UI (6: get/put relationship, proposals gen/approve/dismiss).
+- **BL-044** ✅ Codex / relationship UI — `components/codex.js` (⌘K → "Relationship codex"): workspace-scoped
+  (editable path field pre-filled from #workspace-path) — entities Layla knows about + proposals
+  (generate/approve/dismiss, query-param POSTs). Verified mock render (entities/sub/proposals/actions, accent).
 - **BL-045** ⬜ Intelligence / AirLLM / KB UI (13: info, airllm gen/chat/unload, compress/rag, optimize, kb build/articles).
 - **BL-046** ✅ Debate UI — `components/debate.js` (⌘K → "Deliberate (aspects)"): pick a mode (Auto/Solo/
   Debate/Council/Tribunal from `/debate/modes`, pill selector), pose a question → POST /debate → synthesized

@@ -842,3 +842,23 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .debate-result { display: flex; flex-direction: column; gap: var(--sp-2); }
 .debate-meta { font-size: var(--text-xs); color: var(--text-faint); }
 .debate-final { font-size: var(--text-sm); color: var(--text); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; padding: var(--sp-3); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); }
+
+/* ── W2 · Relationship codex ─────────────────────────────────────────────────── */
+.codex-panel { max-width: 560px; max-height: 82vh; }
+.codex-wsrow { padding: var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--border); }
+.codex-ws { width: 100%; box-sizing: border-box; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: var(--text-xs); padding: var(--sp-2) var(--sp-3); }
+.codex-ws:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+.codex-body { overflow-y: auto; padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-5); }
+.codex-sec { display: flex; flex-direction: column; gap: var(--sp-2); }
+.codex-sec-title { font-size: var(--text-xs); text-transform: lowercase; letter-spacing: 0.08em; color: var(--text-faint); }
+.codex-n { color: var(--text-dim); }
+.codex-entity { display: flex; align-items: baseline; gap: var(--sp-3); font-size: var(--text-sm); padding: 3px 0; }
+.codex-ename { color: var(--accent); }
+.codex-esub { color: var(--text-dim); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.codex-prop { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--sp-2) var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); }
+.codex-ptext { font-size: var(--text-sm); color: var(--text); overflow-wrap: anywhere; }
+.codex-pacts { display: flex; gap: var(--sp-2); }
+.codex-pacts button { flex: 1; border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: var(--text-xs); padding: 4px 10px; cursor: pointer; border: 1px solid var(--border); }
+.codex-yes { background: var(--accent); color: #fff; border-color: transparent; }
+.codex-no { background: var(--surface-3); color: var(--text-dim); }
+.codex-no:hover { background: var(--danger); color: #fff; border-color: transparent; }
