@@ -282,6 +282,11 @@ def load_config() -> dict:
             "grounding_min_support": 0.35,
             # BL-103 reranker backend: auto (flashrank→cross-encoder→bm25) | flashrank | cross_encoder | bm25.
             "reranker_backend": "auto",
+            # BL-102 hybrid escalation: re-ask a bigger model when the small model's answer looks
+            # low-confidence. Off + no target by default → no-op on a single-model box.
+            "hybrid_escalation_enabled": False,
+            "escalation_confidence_threshold": 0.5,
+            "escalation_model": "",
             "ollama_base_url": "",
             "inference_backend": "llama_cpp",
             "context_auto_compact_ratio": 0.75,
