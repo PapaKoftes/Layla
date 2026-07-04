@@ -203,7 +203,11 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   one-offs remain — setup-hw panel bg, warning-badge amber — that lack a matching token; left intentionally.)_
 - **BL-091** 🟡 G5 full 5-step onboarding **flow** (welcome · honesty-card · get-model · workspace · ready); self-test ✅.
 - **BL-092** 🟡 REQ-79 aspect creator (name/sigil/sliders/voice/prompt + kit).
-- **BL-093** 🟡 REQ-80 S.P.E.C.I.A.L.-style intake quiz.
+- **BL-093** ✅ REQ-80 S.P.E.C.I.A.L.-style intake quiz UI (`components/intake-quiz.js`) — surfaces the
+  `/operator/quiz/*` backend that had no UI: scenario questions across stages (single-select, accent-highlighted),
+  advances until the backend reports no more stages, then POSTs `/operator/quiz/submit` and renders the scored
+  identity **preview** (stat bars), "save & finish" persists (`finalize:true`). ⌘K → "Intake quiz". Verified
+  live+mock on :8777: question render, selection, stage→finish flow, stat bars (strength 7→70%), finalize submit.
 - **BL-094** ⬜ REQ-81 / G6 per-aspect motion & polish (focus/reduced-motion ✅; motion choreography open).
 - **BL-095** ✅ PLAN §6 palette reconciled to the **shipped** `layla-rebuild.css` `:root` (canonical): `--bg #0a0008`,
   `--accent #b11655` wine-rose, per-aspect `--asp` (morrigan #8b0000 …). Superseded #0a0710/#c0395e ("calm #1")

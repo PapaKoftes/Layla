@@ -122,6 +122,8 @@ import * as agentTasks from './components/agent-tasks.js';
 import * as kb from './components/kb.js';
 // W2 — Plans & projects
 import * as plans from './components/plans.js';
+// W3 — Intake quiz (REQ-80)
+import * as intakeQuiz from './components/intake-quiz.js';
 
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
@@ -555,6 +557,7 @@ function init() {
     { id: 'agent-tasks', group: 'Go to', label: 'Background tasks', keywords: ['background', 'tasks', 'agent', 'queue', 'running', 'async'], run: () => agentTasks.openAgentTasks() },
     { id: 'kb', group: 'Go to', label: 'Knowledge base', keywords: ['knowledge', 'kb', 'articles', 'wiki', 'notes', 'reference', 'build'], run: () => kb.openKb() },
     { id: 'plans', group: 'Go to', label: 'Plans & projects', keywords: ['plans', 'projects', 'goal', 'steps', 'approve', 'execute', 'planner', 'roadmap'], run: () => plans.openPlans() },
+    { id: 'intake-quiz', group: 'Go to', label: 'Intake quiz', keywords: ['quiz', 'intake', 'special', 'profile', 'stats', 'onboarding', 'personality'], run: () => intakeQuiz.openIntakeQuiz() },
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
@@ -605,6 +608,8 @@ function init() {
     closeKb: kb.closeKb,
     openPlans: plans.openPlans,
     closePlans: plans.closePlans,
+    openIntakeQuiz: intakeQuiz.openIntakeQuiz,
+    closeIntakeQuiz: intakeQuiz.closeIntakeQuiz,
   });
 
   // Apply timeout config from health response
