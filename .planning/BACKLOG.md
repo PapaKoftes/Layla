@@ -208,13 +208,19 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 - **BL-134** ⬜ `learnings.py:490` FSRS-style spaced repetition (currently simple interval).
 
 ## W7 — Test coverage (un-skip the 30+)
-- **BL-140** ⬜ Add `fake_mcp_stdio.py` fixture → un-skip **8 MCP stdio tests**.
+- **BL-140** ✅ `tests/fixtures/fake_mcp_stdio.py` present (minimal stdio MCP server: initialize / tools/call) →
+  `test_mcp_client_stdio.py` runs by default: **12 tests pass**, no skips.
 - **BL-141** 🟡 Wire tiny real-LLM smoke in CI (`LAYLA_TEST_REAL_LLM` + a stub GGUF) → un-skip `test_inference_smoke.py` module + `test_benchmark_coding_model.py`.
 - **BL-142** ⬜ Playwright + `requirements-e2e.txt` in CI → un-skip `e2e_ui/test_ui_smoke.py`.
-- **BL-143** ⬜ `tree-sitter-python` → un-skip `test_workspace_index.py`.
+- **BL-143** ✅ Resolved as **intentional optional dep** — tree-sitter is commented out in requirements.txt
+  ("optional, heavy install"); `test_code_intelligence.py`/`test_workspace_index.py` `importorskip` it and degrade
+  gracefully. Enablement (`pip install tree-sitter tree-sitter-python`) is now documented in `tests/README.md`.
 - **BL-144** ✅ Already runs — `personalities/` exists in the repo, so `test_aspect_behavior.py` executes (40
   passed); the `skipif(not PERSONALITIES_DIR.exists())` is a graceful guard for stripped checkouts, not a gap.
-- **BL-145** ⬜ Document/gate the env-only smokes (GPU/voice/browser/cgroup) so they're intentional, not silent.
+- **BL-145** ✅ Created `tests/README.md` — documents every gated suite (real-LLM `LAYLA_TEST_REAL_LLM`, bench
+  `LAYLA_BENCH_MODEL`, tree-sitter, playwright, ezdxf, nbformat, networkx, git, CI-conditional) with how to enable
+  each, plus the present fixtures (fake MCP, personalities/). Audited: all **19** skip markers carry an explicit
+  `reason=` (surface with `pytest -rs`) — no silent skips. New gated tests must add a reason + a README row.
 
 ## W8 — Ecosystem (V2/V3)
 - **BL-150** ⬜ UPG-06 Ollama backend · **BL-151** 🟡 UPG-40 first-class `/v1` (REQ-61 params, REQ-83 Cline/Continue/Aider) · **BL-152** ⬜ UPG-41 Ollama API surface
