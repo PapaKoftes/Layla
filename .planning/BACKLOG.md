@@ -227,7 +227,14 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 - **BL-105** ⬜ Measure self-consistency gain at K>1 (mechanism ✅; benchmark pending).
 - **BL-106** 🟡 REQ-20 tiny-model inference-smoke **CI job** (seam ready, job unwired — `stories260K`/SmolLM2).
 - **BL-107** 🟡 REQ-22 release-gate: pin seed/top_k.
-- **BL-108** ⬜ REQ-82 coding scaffolding: repo-map ✅(wired) · diff-edit · **codebase RAG** · KV-cache reuse.
+- **BL-108** 🟡 REQ-82 coding scaffolding: repo-map ✅(wired) · **diff-edit ✅ hardened** · codebase RAG 🟡 · KV-cache ⬜.
+  **diff-edit**: `apply_patch` was **positional** — it trusted `hunk.source_start` and removed lines there *without
+  verifying they match*, silently corrupting files when an LLM diff's line numbers drift. Now **content-verified**:
+  new `_locate_block` finds each hunk by its actual context+removed lines (exact, then whitespace-normalized,
+  nearest-to-hint), and the patch is **rejected without modifying the file** if any hunk doesn't match. Verified
+  (`test_apply_patch_robust.py` 4 tests): clean apply, relocates a hunk declared at the wrong line (L40→L2), refuses
+  a non-matching patch leaving the file byte-identical. _(codebase RAG: retrieval + BL-100 grounding exist; KV-cache
+  reuse remains — needs the inference layer.)_
 
 ## W5 — Config & maintainability
 - **BL-120** ✅ Killed the `config.json` vs `runtime_config.json` drift. **Single source of truth** is
