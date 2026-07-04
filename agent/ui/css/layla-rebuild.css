@@ -806,3 +806,23 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .toolshist-row > span.toolshist-rate.toolshist-ok { color: var(--success); }
 .toolshist-row > span.toolshist-rate.toolshist-warn { color: var(--asp-eris, #b06a1e); }
 .toolshist-row > span.toolshist-rate.toolshist-bad { color: var(--danger); }
+
+/* ── W2 · Multi-device sync ──────────────────────────────────────────────────── */
+.sync-panel { max-width: 560px; max-height: 82vh; }
+.sync-body { overflow-y: auto; padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); font-size: var(--text-sm); }
+.sync-status { color: var(--text); }
+.sync-off { color: var(--text-dim); }
+.sync-devices { display: flex; flex-direction: column; gap: 4px; }
+.sync-device { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-dim); }
+.sync-dot { font-size: 10px; color: var(--text-faint); }
+.sync-dot[data-on="1"] { color: var(--success); }
+.sync-dcomp { margin-left: auto; color: var(--text-faint); font-size: var(--text-xs); }
+.sync-devid { display: flex; flex-direction: column; gap: 2px; }
+.sync-devid-label { font-size: var(--text-xs); text-transform: lowercase; letter-spacing: 0.06em; color: var(--text-faint); }
+.sync-devid code { background: var(--code-bg, #130013); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 8px; font-size: var(--text-xs); color: var(--text-dim); overflow-wrap: anywhere; }
+.sync-guide { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
+.sync-guide summary { padding: var(--sp-2) var(--sp-3); cursor: pointer; font-size: var(--text-sm); color: var(--accent); }
+.sync-guide ol { margin: 0; padding: 0 var(--sp-4) var(--sp-3) var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-2); }
+.sync-guide li { font-size: var(--text-xs); color: var(--text-dim); }
+.sync-guide li b { color: var(--text); }
+.sync-guide li div { white-space: pre-wrap; margin-top: 2px; }

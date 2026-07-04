@@ -87,7 +87,9 @@ Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "
   Verified live (empty state) + with mock data (columns/cards/actions render correctly); token-styled.
 - **BL-042** ✅ Journal UI — `components/journal.js` (⌘K → "Journal"): reads her entries (type badge + content
   + timestamp) and adds one (type + content → POST /journal). Verified live (fetch) + mock render + styling.
-- **BL-043** ⬜ Sync / Syncthing UI (5: status/rescan/device-id/add-device/setup-guide) — UPG-33.
+- **BL-043** ✅ Sync / Syncthing UI — `components/sync.js` (⌘K → "Sync (devices)"): status + peer devices +
+  completion, this device's ID, rescan, and the setup guide (auto-opens when sync is off). Verified live
+  (status off → 8-step guide renders). Remaining: add-device form (secondary).
 - **BL-044** ⬜ Codex / relationship UI (6: get/put relationship, proposals gen/approve/dismiss).
 - **BL-045** ⬜ Intelligence / AirLLM / KB UI (13: info, airllm gen/chat/unload, compress/rag, optimize, kb build/articles).
 - **BL-046** ⬜ Debate UI (2: debate, modes).
