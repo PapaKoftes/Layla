@@ -22,7 +22,7 @@ function _esc(s) {
 
 function _profileImpliedFeatures() {
   const out = new Set();
-  (_data ? _data.profiles : []).forEach((p) => {
+  ((_data && _data.profiles) || []).forEach((p) => {
     if (_selProfiles.has(p.id)) (p.features || []).forEach((f) => out.add(f));
   });
   return out;
@@ -69,7 +69,7 @@ function _render() {
     next.textContent = 'continue';
     body.innerHTML = '<div class="setupwiz-q">what do you want to do?</div><div class="setupwiz-profiles"></div>';
     const wrap = body.querySelector('.setupwiz-profiles');
-    _data.profiles.forEach((p) => {
+    ((_data && _data.profiles) || []).forEach((p) => {
       const card = document.createElement('button');
       card.type = 'button';
       card.className = 'setupwiz-card' + (_selProfiles.has(p.id) ? ' is-sel' : '');
@@ -89,7 +89,7 @@ function _render() {
     _profileImpliedFeatures().forEach((f) => _selFeatures.add(f));
     body.innerHTML = '<div class="setupwiz-q">optional features — enable only what you need</div><div class="setupwiz-features"></div>';
     const wrap = body.querySelector('.setupwiz-features');
-    _data.features.forEach((f) => {
+    ((_data && _data.features) || []).forEach((f) => {
       const row = document.createElement('label');
       row.className = 'setupwiz-frow';
       const size = f.size_mb ? ' · ' + (f.size_mb >= 1000 ? (f.size_mb / 1000).toFixed(1) + ' GB' : f.size_mb + ' MB') : '';
@@ -130,6 +130,9 @@ async function _onNext() {
     const n = (d.features || []).length;
     note.textContent = '✓ configured — ' + n + ' feature' + (n === 1 ? '' : 's') + ' enabled';
     note.setAttribute('data-ok', 'true');
+    try { localStorage.setItem('layla_setup_profiles_v1_done', '1'); } catch (_) {}
+    // Let listeners (feature-gated palette, etc.) refresh against the new flags.
+    try { window.dispatchEvent(new CustomEvent('layla:profiles-applied', { detail: { features: d.features || [], profiles: d.profiles || [] } })); } catch (_) {}
     if (typeof window.showToast === 'function') window.showToast('Layla configured for you — ' + (d.profiles || []).join(', '));
     setTimeout(closeSetupProfiles, 1200);
   } catch (e) {
@@ -146,7 +149,10 @@ export async function openSetupProfiles() {
   _render();
   try {
     const r = await fetch('/setup/profiles', { headers: { Accept: 'application/json' } });
-    _data = await r.json();
+    const j = await r.json();
+    // Guard against an error/404 payload (e.g. {"detail":"Not Found"} before the
+    // setup router is live) that would otherwise crash _render on .forEach.
+    _data = (j && Array.isArray(j.profiles)) ? { profiles: j.profiles, features: Array.isArray(j.features) ? j.features : [] } : { profiles: [], features: [] };
   } catch (e) {
     _data = { profiles: [], features: [] };
   }
@@ -157,4 +163,8 @@ export function closeSetupProfiles() {
   if (!_root || !_open) return;
   _open = false;
   _root.hidden = true;
+  // Mark first-run setup as seen (shown once) and notify the boot sequence so it can
+  // continue to the mini onboarding tour. Reconfigure later via ⌘K.
+  try { localStorage.setItem('layla_setup_profiles_v1_done', '1'); } catch (_) {}
+  try { window.dispatchEvent(new CustomEvent('layla:setup-closed')); } catch (_) {}
 }

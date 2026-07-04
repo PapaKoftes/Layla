@@ -558,6 +558,8 @@ function init() {
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
+  // Expose the profile wizard so the first-run sequence (setup.js) can present it.
+  window.openSetupProfiles = setupProfiles.openSetupProfiles;
   registerActions({
     openCommandPalette: commandPalette.openCommandPalette,
     closeCommandPalette: commandPalette.closeCommandPalette,
