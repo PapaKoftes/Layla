@@ -19,7 +19,7 @@ Open-source projects integrated:
   - Outlines (https://github.com/outlines-dev/outlines)
     Type-safe structured generation — JSON, regex, CFG.
 
-Config keys in config.json:
+Config keys in runtime_config.json:
     prompt_optimizer_enabled        bool   (default true; tier-0 heuristic always runs)
     prompt_optimizer_use_dspy       bool   (default false; requires dspy-ai)
     prompt_optimizer_use_guidance   bool   (default false; requires guidance)
@@ -39,11 +39,9 @@ Usage:
 """
 from __future__ import annotations
 
-import json
 import logging
 import re
 import time
-from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("layla")
@@ -52,10 +50,12 @@ logger = logging.getLogger("layla")
 # ── Config ────────────────────────────────────────────────────────────────────
 
 def _cfg() -> dict:
+    # Single source of truth: the authoritative runtime_config.json (via config_cache →
+    # runtime_safety.load_config). Previously this read a separate services/config.json that
+    # does not exist, so it silently returned {} and this module's keys were never honored.
     try:
-        p = Path(__file__).resolve().parent.parent / "config.json"
-        with p.open(encoding="utf-8") as f:
-            return json.load(f)
+        from services.infrastructure.config_cache import get_config
+        return get_config()
     except Exception:
         return {}
 

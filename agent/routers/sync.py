@@ -11,7 +11,7 @@ Endpoints:
 All endpoints are safe to call even if Syncthing is not installed; they
 return {"enabled": false, ...} rather than erroring.
 
-Configuration keys in config.json:
+Configuration keys in runtime_config.json:
   syncthing_api_key     string   — Syncthing REST API key (required to enable)
   syncthing_base_url    string   — Default: http://127.0.0.1:8384
   syncthing_folder_id   string   — Default: "layla-data"
@@ -73,7 +73,7 @@ def get_sync_status():
     """
     Return current Syncthing sync state for the Layla data folder.
 
-    - `enabled` is False if syncthing_api_key is not set in config.json.
+    - `enabled` is False if syncthing_api_key is not set in runtime_config.json.
     - `running` is False if the Syncthing daemon is not reachable.
     - `folder_state` is one of: idle, syncing, error, unknown.
     - `completion` is 0.0–100.0 (this device's upload/download progress).
@@ -167,7 +167,7 @@ def setup_guide():
                 "step": 4,
                 "title": "Configure Layla",
                 "detail": (
-                    "Add to agent/config.json:\n"
+                    "Add to agent/runtime_config.json:\n"
                     '  "syncthing_api_key": "<your-api-key>",\n'
                     '  "syncthing_folder_id": "layla-data"'
                 ),

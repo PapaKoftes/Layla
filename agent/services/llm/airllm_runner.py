@@ -10,7 +10,7 @@ Trade-off: generation is ~10-50x slower than fully-loaded inference, but it work
 on 4-8GB VRAM cards. Best for long-form autonomous tasks, research generation,
 and KB synthesis where speed is less critical than capability.
 
-Config keys in config.json:
+Config keys in runtime_config.json:
     airllm_enabled          bool    — Enable AirLLM (default false; requires airllm package)
     airllm_model_path       str     — HuggingFace model ID or local path
                                       e.g. "mistralai/Mistral-7B-Instruct-v0.2"
@@ -200,11 +200,11 @@ def generate(
     On failure returns {"ok": False, "error": "..."}
     """
     if not _enabled():
-        return {"ok": False, "error": "AirLLM not enabled (set airllm_enabled=true in config.json)"}
+        return {"ok": False, "error": "AirLLM not enabled (set airllm_enabled=true in runtime_config.json)"}
 
     mp = model_path or _model_path()
     if not mp:
-        return {"ok": False, "error": "No airllm_model_path set in config.json"}
+        return {"ok": False, "error": "No airllm_model_path set in runtime_config.json"}
 
     try:
         import airllm  # noqa: F401
