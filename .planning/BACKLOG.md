@@ -226,7 +226,11 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 - **BL-104** ⬜ Measure GBNF accuracy gain (HumanEval-164 — the discriminating step past the 10-problem set).
 - **BL-105** ⬜ Measure self-consistency gain at K>1 (mechanism ✅; benchmark pending).
 - **BL-106** 🟡 REQ-20 tiny-model inference-smoke **CI job** (seam ready, job unwired — `stories260K`/SmolLM2).
-- **BL-107** 🟡 REQ-22 release-gate: pin seed/top_k.
+- **BL-107** ✅ REQ-22 release-gate determinism — `apply_decoding_determinism(cfg, temp, top_p, top_k)` in
+  `inference_router`: when `deterministic_decoding_enabled`, forces **greedy** decoding (temp 0, top_k 1, top_p 1)
+  so the same prompt reproduces the same output — no seed plumbing needed (greedy has no sampling randomness).
+  Wired into `run_completion`'s param resolution; off by default (chat stays sampled). Verified
+  (`test_decoding_determinism.py` 3 tests): off→passthrough, on→greedy, builtin default off.
 - **BL-108** 🟡 REQ-82 coding scaffolding: repo-map ✅(wired) · **diff-edit ✅ hardened** · codebase RAG 🟡 · KV-cache ⬜.
   **diff-edit**: `apply_patch` was **positional** — it trusted `hunk.source_start` and removed lines there *without
   verifying they match*, silently corrupting files when an LLM diff's line numbers drift. Now **content-verified**:

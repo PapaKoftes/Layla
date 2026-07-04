@@ -287,6 +287,9 @@ def load_config() -> dict:
             "hybrid_escalation_enabled": False,
             "escalation_confidence_threshold": 0.5,
             "escalation_model": "",
+            # BL-107 release-gate/eval determinism: force greedy decoding (temp 0, top_k 1) so
+            # the same prompt reproduces the same output. Off by default (normal chat stays sampled).
+            "deterministic_decoding_enabled": False,
             "ollama_base_url": "",
             "inference_backend": "llama_cpp",
             "context_auto_compact_ratio": 0.75,
