@@ -26,12 +26,23 @@ def _now_iso() -> str:
 
 
 def _record(event_type: str, **kwargs: Any) -> None:
-    """Internal: append a security event to the ring buffer and log it."""
+    """Internal: append a security event to the ring buffer and log it.
+
+    Event fields are passed through the secret/PII redactor (BL-133/REQ-43) before being
+    stored OR logged — a path/arg/token that carries a credential must not leak into the
+    security log or the in-memory ring buffer. Best-effort: falls back to raw if the
+    redactor is unavailable, never dropping the audit event.
+    """
     entry = {
         "timestamp": _now_iso(),
         "event_type": event_type,
         **{k: v for k, v in kwargs.items() if v is not None},
     }
+    try:
+        from services.safety.secret_filter import redact_payload
+        entry = redact_payload(entry)
+    except Exception:
+        pass
     with _lock:
         _events.append(entry)
     # Also emit as a structured log line
