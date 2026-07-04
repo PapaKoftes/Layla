@@ -862,3 +862,19 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .codex-yes { background: var(--accent); color: #fff; border-color: transparent; }
 .codex-no { background: var(--surface-3); color: var(--text-dim); }
 .codex-no:hover { background: var(--danger); color: #fff; border-color: transparent; }
+
+/* ── W2 · Verify learnings ───────────────────────────────────────────────────── */
+.verify-panel { max-width: 520px; max-height: 78vh; }
+.verify-stats { font-size: var(--text-xs); color: var(--text-faint); }
+.verify-body { overflow-y: auto; padding: var(--sp-5) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
+.verify-q { font-size: var(--text-xs); text-transform: lowercase; letter-spacing: 0.06em; color: var(--text-faint); }
+.verify-fact { font-size: var(--text-lg); color: var(--text); line-height: 1.55; padding: var(--sp-4); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); overflow-wrap: anywhere; }
+.verify-acts { display: flex; gap: var(--sp-2); }
+.verify-acts button { flex: 1; border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: var(--text-sm); padding: 8px 12px; cursor: pointer; border: 1px solid var(--border); }
+.verify-yes { background: var(--success); color: #04120a; border-color: transparent; font-weight: 700; }
+.verify-fix { background: var(--surface-3); color: var(--text-dim); }
+.verify-fix:hover { background: var(--surface-2); color: var(--text); }
+.verify-correct { display: flex; flex-direction: column; gap: var(--sp-2); }
+.verify-correct[hidden] { display: none; }
+.verify-correction { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: var(--text-sm); padding: var(--sp-2) var(--sp-3); resize: vertical; }
+.verify-correction:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
