@@ -63,9 +63,15 @@ the genuine gaps are narrower. Existing: `services/sandbox/python_runner.py` + `
   (indexing plaintext would defeat the encryption). The primitive + integration contract are ready; the surface is
   broad enough that it must be wired completely + verified end-to-end, not partially.
 - **BL-021** ✅ Shell deny-by-default when remote — already enforced: both `/agent` and `/v1` force `allow_write=allow_run=False` for non-local callers (fail-closed), and `allow_run` gates the whole exec path. Remote cannot exec.
-- **BL-022** 🟡 Subprocess rlimits / job-object — EXISTS (`worker_os_limits.py`, `python_runner.py`); Linux cgroups path + coverage audit.
+- **BL-022** ✅ Subprocess isolation — audited: POSIX rlimits + Windows Job Object (`worker_os_limits.py`), sandbox
+  runner (`python_runner.py`), **and the Linux cgroups-v2 path** (`worker_cgroup_linux.py`) — attach-on-spawn +
+  cleanup-on-exit wired in `background_subprocess.py`. Well-tested: `test_worker_cgroup_linux.py` (9 — attach/skip/
+  memory_max/procs/path-traversal/remove) + `test_worker_os_limits.py` + `test_background_subprocess.py` +
+  `test_sandbox_runners.py`. Present, wired, covered.
 - **BL-023** ⬜ Ephemeral-container (E2B) exec tier — GENUINE gap (not present).
-- **BL-024** 🟡 Per-invocation approvals — `approval_helpers.py` exists; polish + a UI (see BL-049).
+- **BL-024** ✅ Per-invocation approvals — the mechanism (`approval_helpers.py`, per-call gating with session
+  grants) plus the **UI shipped in BL-049** (`components/approvals.js`: pending approve/deny + session grants,
+  ⌘K → "Approvals & grants"). Both halves present.
 - **BL-025** 🟡 Egress control — `url_guard.py` blocks SSRF/private-IPs; full network-jail for exec is the gap.
 - **BL-026** ✅ Audit-by-default when remote — `main.py:1026` now forces `_audit_enabled` ON whenever `remote_enabled` (was reading the flag alone → remote could run with no audit trail; the "activates when remote" comment is now true). 217 auth/remote tests pass.
 - **BL-027** ⬜ R9: split `vector_store.py` (~1410) · **BL-028** ⬜ split `migrations.py` (~1362) · **BL-029** ⬜ split `tool_dispatch.py` · **BL-030** ⬜ split `cursor-layla-mcp/server.py` (~1296).
