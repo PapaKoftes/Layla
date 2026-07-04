@@ -201,8 +201,12 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   remaining clear **status colors** (`cluster-peer-status` online/offline → `--success`/`--danger`, pairing
   buttons → `--danger`). Verified live: the status dots resolve to `#3fae6b`/`#d0454e`. _(A few genuinely-semantic
   one-offs remain — setup-hw panel bg, warning-badge amber — that lack a matching token; left intentionally.)_
-- **BL-091** 🟡 G5 full 5-step onboarding **flow** (welcome · honesty-card · get-model · workspace · ready); self-test ✅.
-- **BL-092** 🟡 REQ-79 aspect creator (name/sigil/sliders/voice/prompt + kit).
+- **BL-091** 🟡 G5 onboarding — all steps **exist** across components: get-model + workspace (`setup.js`), honesty/VALUES
+  (onboarding tour), profile wizard (first-run, BL-209), "ready" proof (self-test). _Remaining: fuse them into one
+  linear 5-step welcome→ready flow rather than separate overlays._
+- **BL-092** 🟡 REQ-79 aspect creator — **core covered** by the Character Lab (`character-creator.js`): 13 personality
+  **sliders**, **voice** (voice-params), **prompt** (prompt-hints), appearance, per-aspect customize+reset+titles for
+  the 6 aspects. _Remaining: create a brand-NEW named aspect (needs a create-aspect backend) + sigil picker + kit bundle._
 - **BL-093** ✅ REQ-80 S.P.E.C.I.A.L.-style intake quiz UI (`components/intake-quiz.js`) — surfaces the
   `/operator/quiz/*` backend that had no UI: scenario questions across stages (single-select, accent-highlighted),
   advances until the backend reports no more stages, then POSTs `/operator/quiz/submit` and renders the scored
