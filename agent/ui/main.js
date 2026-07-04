@@ -548,8 +548,8 @@ function init() {
     { id: 'approvals', group: 'Go to', label: 'Approvals & grants', keywords: ['approval', 'pending', 'grant', 'permission', 'security', 'approve', 'deny'], run: () => approvals.openApprovals() },
     { id: 'improvements', group: 'Go to', label: 'Improvements (self)', keywords: ['improve', 'proposal', 'self', 'growth', 'suggestion', 'approve'], run: () => improvements.openImprovements() },
     { id: 'tools-history', group: 'Go to', label: 'Tool history & health', keywords: ['tools', 'history', 'analysis', 'health', 'success', 'latency', 'debug'], run: () => toolsHistory.openToolsHistory() },
-    { id: 'sync', group: 'Go to', label: 'Sync (devices)', keywords: ['sync', 'syncthing', 'devices', 'multi', 'phone', 'pair'], run: () => sync.openSync() },
-    { id: 'debate', group: 'Go to', label: 'Deliberate (aspects)', keywords: ['debate', 'deliberate', 'council', 'tribunal', 'aspects', 'decide'], run: () => debate.openDebate() },
+    { id: 'sync', group: 'Go to', label: 'Sync (devices)', keywords: ['sync', 'syncthing', 'devices', 'multi', 'phone', 'pair'], feature: 'remote', run: () => sync.openSync() },
+    { id: 'debate', group: 'Go to', label: 'Deliberate (aspects)', keywords: ['debate', 'deliberate', 'council', 'tribunal', 'aspects', 'decide'], feature: 'multi_agent', run: () => debate.openDebate() },
     { id: 'codex', group: 'Go to', label: 'Relationship codex', keywords: ['codex', 'relationship', 'entities', 'people', 'who', 'knows'], run: () => codex.openCodex() },
     { id: 'verify', group: 'Go to', label: 'Verify learnings', keywords: ['verify', 'learn', 'confirm', 'correct', 'facts', 'memory'], run: () => verify.openVerify() },
     { id: 'agent-tasks', group: 'Go to', label: 'Background tasks', keywords: ['background', 'tasks', 'agent', 'queue', 'running', 'async'], run: () => agentTasks.openAgentTasks() },
@@ -560,6 +560,16 @@ function init() {
   window.openCommandPalette = commandPalette.openCommandPalette;
   // Expose the profile wizard so the first-run sequence (setup.js) can present it.
   window.openSetupProfiles = setupProfiles.openSetupProfiles;
+  // BL-208: gate feature-tagged palette commands by which optional features are enabled.
+  // Fail-open (show all) until this resolves; refresh whenever the setup wizard applies.
+  const _refreshEnabledFeatures = () => {
+    fetch('/setup/state', { headers: { Accept: 'application/json' } })
+      .then((r) => r.json())
+      .then((d) => { if (d && Array.isArray(d.enabled_features)) commandPalette.setEnabledFeatures(d.enabled_features); })
+      .catch(() => {});
+  };
+  _refreshEnabledFeatures();
+  window.addEventListener('layla:profiles-applied', _refreshEnabledFeatures);
   registerActions({
     openCommandPalette: commandPalette.openCommandPalette,
     closeCommandPalette: commandPalette.closeCommandPalette,

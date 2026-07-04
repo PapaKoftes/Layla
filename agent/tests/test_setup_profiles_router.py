@@ -46,3 +46,16 @@ def test_apply_persists_selection(monkeypatch):
     d = r.json()
     assert d["ok"] is True
     assert d["profiles"] == ["coding"] and "mcp" in d["features"]
+
+
+def test_setup_state_reports_enabled_features(monkeypatch):
+    # Stub the live config so the route reflects a known flag state.
+    import runtime_safety
+
+    monkeypatch.setattr(runtime_safety, "load_config", lambda: {"mcp_client_enabled": True})
+    r = client.get("/setup/state")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["ok"] is True
+    assert "mcp" in d["enabled_features"]
+    assert "voice" not in d["enabled_features"]  # flags not set

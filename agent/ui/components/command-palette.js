@@ -19,6 +19,10 @@ let _empty = null;
 let _items = [];   // [{ cmd, el }] currently rendered
 let _sel = 0;
 let _open = false;
+// BL-208 feature gating: null = unknown → show everything (fail-open). A Set means
+// "only these optional features are enabled"; commands tagged with a disabled `feature`
+// are hidden so the palette shows only what you set up.
+let _enabledFeatures = null;
 
 function _norm(s) {
   return (s || '').toString().toLowerCase().trim();
@@ -65,9 +69,17 @@ function _matches(cmd, terms) {
   return terms.every(function (t) { return hay.indexOf(t) !== -1; });
 }
 
+function _featureOn(cmd) {
+  // Untagged commands (all the core UIs) always show. Tagged ones show while the
+  // enabled-feature set is unknown (fail-open) or once their feature is enabled.
+  if (!cmd.feature) return true;
+  if (_enabledFeatures === null) return true;
+  return _enabledFeatures.has(cmd.feature);
+}
+
 function _render(query) {
   const terms = _norm(query).split(/\s+/).filter(Boolean);
-  const matched = _commands.filter(function (c) { return _matches(c, terms); });
+  const matched = _commands.filter(function (c) { return _featureOn(c) && _matches(c, terms); });
   _list.innerHTML = '';
   _items = [];
   let lastGroup = null;
@@ -162,6 +174,15 @@ export function initCommandPalette(commands) {
 /** Replace the command list at runtime (e.g. after aspects change). */
 export function setCommands(commands) {
   _commands = Array.isArray(commands) ? commands.slice() : [];
+}
+
+/**
+ * Set which optional features are enabled (BL-208). Pass an array of feature ids to gate
+ * feature-tagged commands, or null to fail-open (show all). Re-renders if the palette is open.
+ */
+export function setEnabledFeatures(ids) {
+  _enabledFeatures = Array.isArray(ids) ? new Set(ids) : null;
+  if (_open && _input) _render(_input.value);
 }
 
 export function openCommandPalette() {
