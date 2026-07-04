@@ -172,22 +172,38 @@ def review_item(learning_id: int, quality: int, cfg: dict | None = None) -> dict
     cfg = cfg or {}
     quality = max(0, min(5, quality))
 
-    # Get current item state (use defaults if not tracked)
-    ease = float(cfg.get("sr_default_ease_factor", 2.5))
-    interval = 1
-    reps = 0
+    # Load the item's persisted SM-2 state so intervals actually accumulate across reviews
+    # (BL-134). Falls back to defaults for a never-reviewed / pre-migration item.
+    default_ease = float(cfg.get("sr_default_ease_factor", 2.5))
+    try:
+        from layla.memory.learnings import get_review_state
+        st = get_review_state(learning_id)
+        ease = st.get("ease", default_ease) or default_ease
+        interval = st.get("interval_days", 0) or 0
+        reps = st.get("reps", 0) or 0
+    except Exception as exc:
+        logger.debug("review_item load state failed: %s", exc)
+        ease, interval, reps = default_ease, 0, 0
 
     # Apply SM-2
     new_ease, new_interval, new_reps = sm2(ease, interval, reps, quality)
 
-    # Cap interval
+    # Cap interval and honor the configured minimum (don't schedule sooner than sr_min_interval_hours)
     max_days = int(cfg.get("sr_max_interval_days", 365))
     new_interval = min(new_interval, max_days)
+    min_hours = float(cfg.get("sr_min_interval_hours", 4.0))
+    interval_hours = max(min_hours, new_interval * 24.0)
 
-    # Schedule next review
+    # Persist the new state (ease/interval/reps) + schedule the next review
     try:
-        from layla.memory.learnings import schedule_next_review, set_learning_importance
-        schedule_next_review(learning_id, interval_hours=new_interval * 24.0)
+        from layla.memory.learnings import set_learning_importance, set_review_state
+        set_review_state(
+            learning_id,
+            ease=new_ease,
+            interval_days=new_interval,
+            reps=new_reps,
+            interval_hours=interval_hours,
+        )
         # Update confidence based on quality
         confidence = min(1.0, quality / 5.0)
         set_learning_importance(learning_id, confidence)
@@ -198,6 +214,7 @@ def review_item(learning_id: int, quality: int, cfg: dict | None = None) -> dict
         "learning_id": learning_id,
         "quality": quality,
         "passed": quality >= 3,
+        "prev_reps": reps,
         "new_ease_factor": round(new_ease, 2),
         "new_interval_days": new_interval,
         "new_reps": new_reps,

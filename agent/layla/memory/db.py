@@ -67,12 +67,14 @@ from layla.memory.learnings import (
     get_learnings_by_embedding_ids,
     get_learnings_due_for_review,
     get_recent_learnings,
+    get_review_state,
     get_top_learnings_for_planning,
     save_learning,
     save_outcome_evaluation,
     schedule_next_review,
     search_learnings_fts,
     set_learning_importance,
+    set_review_state,
 )
 from layla.memory.migrations import _MIGRATED, migrate
 from layla.memory.missions_db import (
@@ -185,6 +187,8 @@ __all__ = [
     'delete_learnings_by_id',
     'get_learnings_due_for_review',
     'schedule_next_review',
+    'get_review_state',
+    'set_review_state',
     'set_learning_importance',
     'save_study_plan',
     'get_active_study_plans',
