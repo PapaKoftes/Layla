@@ -54,18 +54,20 @@ the genuine gaps are narrower. Existing: `services/sandbox/python_runner.py` + `
 (shell allowlist), `services/safety/url_guard.py` (SSRF / private-IP egress block), `services/agent/approval_helpers.py`
 (approvals), `services/observability/security_audit.py` (audit events), `services/safety/secret_store.py`
 (OS-keyring config secrets). Re-scoped below.
-- **BL-020** 🟡 **Encryption-at-rest for `sensitive`-level memory DATA.** **Core primitive built + fully tested**
-  (`services/memory/memory_encryption.py`, `test_memory_encryption.py` 9 tests): Fernet (AES-128-CBC+HMAC) with the
-  key in the OS keyring via `secret_store` (0600 key-file fallback + warning when no keyring); version-marker
-  (`\x00enc1:`) so decrypt is transparent and a lost/rotated key yields a **visible** un-decrypted value, never
-  silent corruption; graceful no-op when disabled or `cryptography` is absent; `should_encrypt`/`maybe_encrypt`
-  policy gate (flag + `sensitive` only). Verified: round-trip hides plaintext, key persists across restarts, key
-  loss is visible-not-corrupt, double-encrypt is a no-op. **Remaining (deliberately NOT half-wired — the "fully or
-  not at all" rule):** the store integration + one-time migration — encrypt-on-write/decrypt-on-read for sensitive
-  **entities** (description + attributes across `memory_router`/`people_codex`/`person_dossier`) and any sensitive
-  **learnings** (content across ~7 read paths), with those rows **excluded from the plaintext FTS index + embeddings**
-  (indexing plaintext would defeat the encryption). The primitive + integration contract are ready; the surface is
-  broad enough that it must be wired completely + verified end-to-end, not partially.
+- **BL-020** ✅ **Encryption-at-rest for `sensitive`-level memory DATA — integrated end-to-end.** Primitive
+  (`memory_encryption.py`, 9 tests) + now the **store integration**: (a) **learnings** — `save_learning(...,
+  privacy_level="sensitive")` encrypts content at rest, persists the `privacy_level` column, and keeps the plaintext
+  **out of the embedding + Elasticsearch index** (the FTS trigger only ever sees the opaque ciphertext); every read
+  path (`get_recent_learnings`, `search_learnings_fts` incl. LIKE-fallback, `get_learnings_due_for_review`,
+  `get_top_learnings_for_planning`) decrypts transparently. (b) **entities** — `memory_router.upsert_entity`
+  (both INSERT + merge-UPDATE, the delegate for `codex_db.upsert_entity`) encrypts the `description`; both read
+  interfaces decrypt at their choke points (`memory_router.get_entity`/entity-search + `codex_db._row_to_entity_dict`
+  covering get/search/graph). Entities aren't vector-indexed, so no embedding leak there. `decrypt()` is a no-op on
+  plaintext so legacy rows coexist; `encrypt()` is idempotent so entity merges are safe; flag-gated (off ⇒ inert).
+  Verified: `test_learnings_encryption.py` (4) + `test_entity_encryption.py` (3) — encrypted at rest, not embedded,
+  privacy_level persisted, decrypted on every read path, plaintext/legacy coexistence, flag-off inertness.
+  _(Deliberately deferred: encrypting the structured `attributes` JSON blob — field-level, needs per-reader parsing —
+  and a one-time back-migration of any pre-existing sensitive rows. Neither blocks the encrypt-on-write path.)_
 - **BL-021** ✅ Shell deny-by-default when remote — already enforced: both `/agent` and `/v1` force `allow_write=allow_run=False` for non-local callers (fail-closed), and `allow_run` gates the whole exec path. Remote cannot exec.
 - **BL-022** ✅ Subprocess isolation — audited: POSIX rlimits + Windows Job Object (`worker_os_limits.py`), sandbox
   runner (`python_runner.py`), **and the Linux cgroups-v2 path** (`worker_cgroup_linux.py`) — attach-on-spawn +
