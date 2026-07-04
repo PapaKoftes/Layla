@@ -17,6 +17,26 @@ _rate_lock = threading.Lock()
 _recent_learning_ts: deque[float] = deque()
 
 
+# ── encryption-at-rest for `sensitive` learnings (BL-020) ────────────────────
+# decrypt() is a transparent no-op on plaintext, so wrapping every read is safe for
+# legacy rows; maybe_encrypt() only encrypts when the flag is on AND privacy=sensitive,
+# so with the feature off nothing changes.
+def _dec(v):
+    """Decrypt a stored content value (no-op for plaintext / when unavailable)."""
+    try:
+        from services.memory.memory_encryption import decrypt
+        return decrypt(v)
+    except Exception:
+        return v
+
+
+def _decrypt_rows(rows: list[dict], key: str = "content") -> list[dict]:
+    for r in rows:
+        if isinstance(r, dict) and r.get(key):
+            r[key] = _dec(r[key])
+    return rows
+
+
 # ── learnings ──────────────────────────────────────────────────────────────
 
 def save_learning(
@@ -28,9 +48,13 @@ def save_learning(
     score: float = 1.0,
     tags: str = "",
     aspect_id: str = "",
+    privacy_level: str = "",
 ) -> int:
     """Save a learning. Uses content_hash for dedup. confidence: 0.9 study, 0.7 LLM, 0.4 heuristic.
-    Hook: learning quality filter rejects short/uncertain entries; long content summarized before storing."""
+    Hook: learning quality filter rejects short/uncertain entries; long content summarized before storing.
+    `privacy_level="sensitive"` + the `encryption_at_rest_enabled` flag → content is encrypted at rest
+    (BL-020): stored ciphertext, dedup still on plaintext hash, and the plaintext is kept OUT of the
+    embedding + Elasticsearch index (FTS auto-indexes the opaque ciphertext, which cannot be searched)."""
     migrate()
     # Simple in-process rate limit: protects DB + vector store from rapid-fire learning spam.
     # Best-effort only (resets on restart).
@@ -80,9 +104,22 @@ def save_learning(
     except Exception:
         pass
     learning_type = kind if kind in ("fact", "preference", "strategy", "identity") else "fact"
-    content_hash = hashlib.sha1(content.encode("utf-8", errors="replace")).hexdigest()
+    content_hash = hashlib.sha1(content.encode("utf-8", errors="replace")).hexdigest()  # PLAINTEXT hash (dedup)
     score = max(0.0, min(1.0, float(score)))
     tags_s = (tags or "").strip()[:500]
+    # Encrypt at rest for sensitive content (BL-020). content_hash above stays plaintext so dedup
+    # is unaffected; `stored_content` is what actually lands in the row (+ the FTS trigger).
+    stored_content = content
+    _sensitive = False
+    if str(privacy_level or "").lower() == "sensitive":
+        try:
+            import runtime_safety
+            from services.memory.memory_encryption import maybe_encrypt
+            stored_content = maybe_encrypt(content, privacy_level, runtime_safety.load_config())
+            _sensitive = stored_content != content
+        except Exception:
+            stored_content = content
+            _sensitive = False
     with _conn() as db:
         try:
             has_hash = any(r[1] == "content_hash" for r in db.execute("PRAGMA table_info(learnings)").fetchall())
@@ -102,7 +139,7 @@ def save_learning(
                     """INSERT INTO learnings (content, type, created_at, embedding_id, learning_type, confidence, source, content_hash, score, tags)
                        VALUES (?,?,?,?,?,?,?,?,?,?)""",
                     (
-                        content,
+                        stored_content,
                         learning_type,
                         utcnow().isoformat(),
                         embedding_id,
@@ -118,18 +155,19 @@ def save_learning(
                 cur = db.execute(
                     """INSERT INTO learnings (content, type, created_at, embedding_id, learning_type, confidence, source, content_hash, score)
                        VALUES (?,?,?,?,?,?,?,?,?)""",
-                    (content, learning_type, utcnow().isoformat(), embedding_id, learning_type, confidence, source, content_hash, score),
+                    (stored_content, learning_type, utcnow().isoformat(), embedding_id, learning_type, confidence, source, content_hash, score),
                 )
         except sqlite3.OperationalError:
             cur = db.execute(
                 "INSERT INTO learnings (content, type, created_at, embedding_id, learning_type) VALUES (?,?,?,?,?)",
-                (content, learning_type, utcnow().isoformat(), embedding_id, learning_type),
+                (stored_content, learning_type, utcnow().isoformat(), embedding_id, learning_type),
             )
         db.commit()
         rid = cur.lastrowid
         if rid and int(rid) > 0:
-            # P1-9: dual-write consistency — if no embedding_id yet, try ChromaDB write now
-            if not embedding_id:
+            # P1-9: dual-write consistency — if no embedding_id yet, try ChromaDB write now.
+            # BL-020: never embed sensitive plaintext (the vector would leak its meaning).
+            if not embedding_id and not _sensitive:
                 try:
                     from layla.memory.vector_store import add_vector, embed
                     vec = embed(content)
@@ -165,19 +203,33 @@ def save_learning(
                         db.commit()
                     except Exception:
                         pass
-            try:
-                import runtime_safety
-                from services.retrieval.elasticsearch_bridge import index_learning
+            # BL-020: persist the privacy level so privacy-filtered retrieval (memory_router)
+            # and exports see it. Column has DEFAULT 'public'; only write when non-default.
+            _pl = str(privacy_level or "").strip().lower()
+            if _pl and _pl != "public":
+                try:
+                    has_priv_col = any(
+                        r[1] == "privacy_level" for r in db.execute("PRAGMA table_info(learnings)").fetchall()
+                    )
+                    if has_priv_col:
+                        db.execute("UPDATE learnings SET privacy_level=? WHERE id=?", (_pl, int(rid)))
+                        db.commit()
+                except Exception:
+                    pass
+            if not _sensitive:  # BL-020: keep sensitive plaintext out of the Elasticsearch index
+                try:
+                    import runtime_safety
+                    from services.retrieval.elasticsearch_bridge import index_learning
 
-                index_learning(
-                    runtime_safety.load_config(),
-                    rid=int(rid),
-                    text=content,
-                    tags=tags_s,
-                    source=source or "learning",
-                )
-            except Exception:
-                pass
+                    index_learning(
+                        runtime_safety.load_config(),
+                        rid=int(rid),
+                        text=content,
+                        tags=tags_s,
+                        source=source or "learning",
+                    )
+                except Exception:
+                    pass
         try:
             from services.observability import log_learning_saved
             log_learning_saved(content_preview=content[:80], source=source or "db")
@@ -276,6 +328,8 @@ def get_recent_learnings(n: int = 30, aspect_id: str | None = None, min_score: f
             ).fetchall()
         result = [dict(r) for r in reversed(rows)]
         for r in result:
+            if r.get("content"):
+                r["content"] = _dec(r["content"])  # BL-020: transparent decrypt (no-op for plaintext)
             if "learning_type" not in r and "type" in r:
                 r["learning_type"] = r["type"]
             if has_conf:
@@ -330,6 +384,8 @@ def search_learnings_fts(query: str, n: int = 20, aspect_id: str | None = None) 
             ).fetchall()
             result = [dict(r) for r in rows]
             for r in result:
+                if r.get("content"):
+                    r["content"] = _dec(r["content"])  # BL-020
                 conf = r.get("confidence")
                 created = r.get("created_at", "")
                 r["adjusted_confidence"] = _apply_confidence_decay(conf, created)
@@ -354,6 +410,8 @@ def search_learnings_fts(query: str, n: int = 20, aspect_id: str | None = None) 
                 ).fetchall()
                 result = [dict(r) for r in rows]
                 for r in result:
+                    if r.get("content"):
+                        r["content"] = _dec(r["content"])  # BL-020
                     r["adjusted_confidence"] = _apply_confidence_decay(r.get("confidence"), r.get("created_at", ""))
                 return result
             except Exception:
@@ -483,7 +541,7 @@ def get_learnings_due_for_review(limit: int = 10) -> list[dict]:
                LIMIT ?""",
             (now, limit),
         ).fetchall()
-    return [dict(r) for r in rows]
+    return _decrypt_rows([dict(r) for r in rows])  # BL-020
 
 
 def schedule_next_review(learning_id: int, interval_hours: float = 24.0) -> None:
@@ -604,7 +662,7 @@ def get_top_learnings_for_planning(limit: int = 5, *, min_confidence: float = 0.
             sql = f"SELECT {sel} FROM learnings {where} ORDER BY {', '.join(order)} LIMIT ?"
             args.append(lim)
             rows = db.execute(sql, tuple(args)).fetchall()
-            return [dict(r) for r in rows]
+            return _decrypt_rows([dict(r) for r in rows])  # BL-020
     except Exception:
         return []
 
