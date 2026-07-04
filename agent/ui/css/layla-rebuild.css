@@ -952,6 +952,26 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .proj-pname { font-size: var(--text-sm); font-weight: 600; }
 .proj-pws { font-size: var(--text-xs); color: var(--text-dim); font-family: 'JetBrains Mono', monospace; }
 
+/* W3 — Intake quiz (BL-093) */
+.quiz-panel { max-width: 600px; }
+.quiz-progress { flex: none; font-size: var(--text-xs); color: var(--text-dim); font-family: 'JetBrains Mono', monospace; margin-left: auto; margin-right: 8px; }
+.quiz-body { max-height: 56vh; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 18px; }
+.quiz-q { display: flex; flex-direction: column; gap: 8px; }
+.quiz-prompt { font-size: var(--text-md); font-weight: 600; color: var(--text); line-height: 1.4; }
+.quiz-opts { display: flex; flex-direction: column; gap: 6px; }
+.quiz-opt { text-align: left; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: inherit; font-size: var(--text-sm); padding: 9px 12px; cursor: pointer; transition: border-color 0.12s, background 0.12s; }
+.quiz-opt:hover { border-color: var(--accent); background: var(--surface-3); }
+.quiz-opt.is-sel { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.quiz-foot { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--border); }
+.quiz-note { flex: 1; font-size: var(--text-xs); color: var(--text-dim); }
+.quiz-note[data-ok="true"] { color: var(--success); }
+.quiz-preview { display: flex; flex-direction: column; gap: 8px; }
+.quiz-stat { display: flex; align-items: center; gap: 10px; }
+.quiz-statname { flex: none; width: 96px; font-size: var(--text-xs); font-family: 'JetBrains Mono', monospace; color: var(--text-dim); text-transform: capitalize; }
+.quiz-bar { flex: 1; height: 8px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.quiz-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.quiz-statval { flex: none; width: 22px; text-align: right; font-size: var(--text-xs); font-family: 'JetBrains Mono', monospace; color: var(--text); }
+
 /* W2 — Obsidian diff preview (BL-053) */
 .obs-diff { margin-top: 6px; }
 .obs-diff-sec { margin-top: 6px; }
