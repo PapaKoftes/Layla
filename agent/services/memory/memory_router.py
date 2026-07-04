@@ -235,11 +235,37 @@ def get_conversation(conversation_id: str, **kwargs: Any) -> dict | None:
 
 # ── Entity CRUD ────────────────────────────────────────────────────────────────
 
+# ── BL-020: encrypt sensitive entity descriptions at rest ────────────────────
+# Same contract as learnings: encrypt() is idempotent (no-op on already-ciphertext,
+# so merges are safe) and decrypt() is a transparent no-op on plaintext (legacy rows).
+def _enc_desc(text, privacy_level) -> str:
+    if not text:
+        return text
+    try:
+        from services.memory.memory_encryption import maybe_encrypt
+        return maybe_encrypt(text, privacy_level, _cfg())
+    except Exception:
+        return text
+
+
+def _dec_entity(d):
+    """Decrypt an entity dict's description in place (no-op for plaintext)."""
+    try:
+        from services.memory.memory_encryption import decrypt
+        if isinstance(d, dict) and d.get("description"):
+            d["description"] = decrypt(d["description"])
+    except Exception:
+        pass
+    return d
+
+
 def upsert_entity(entity: Entity) -> bool:
     """
     Write an entity to SQLite. If an entity with the same ID already exists,
     merge the records (union aliases/tags, keep higher confidence description).
     Returns True if written, False if skipped/failed.
+    A `sensitive` privacy_level + the encryption flag → the description is stored
+    encrypted at rest (BL-020); reads decrypt transparently.
     """
     try:
         from schemas.entity import validate_entity
@@ -265,15 +291,21 @@ def upsert_entity(entity: Entity) -> bool:
                 new_conf = max(float(existing["confidence"] or 0.0), entity.confidence)
                 new_desc = entity.description if entity.confidence >= float(existing["confidence"] or 0.0) \
                     else (existing["description"] or entity.description)
+                # Privacy from the incoming entity, falling back to the stored level.
+                try:
+                    _ex_priv = existing["privacy_level"] if "privacy_level" in existing.keys() else "public"
+                except Exception:
+                    _ex_priv = "public"
+                _u_priv = getattr(entity, "privacy_level", None) or _ex_priv or "public"
 
                 db.execute("""
                     UPDATE entities SET
                         aliases = ?, tags = ?, confidence = ?,
-                        description = ?, updated_at = ?, last_seen_at = ?
+                        description = ?, updated_at = ?, last_seen_at = ?, privacy_level = ?
                     WHERE id = ?
                 """, (
                     json.dumps(merged_aliases), json.dumps(merged_tags),
-                    new_conf, new_desc, now, now, entity.id,
+                    new_conf, _enc_desc(new_desc, _u_priv), now, now, _u_priv, entity.id,
                 ))
             else:
                 _priv = getattr(entity, "privacy_level", "public") or "public"
@@ -285,7 +317,7 @@ def upsert_entity(entity: Entity) -> bool:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     entity.id, entity.type, entity.canonical_name,
-                    json.dumps(entity.aliases), entity.description,
+                    json.dumps(entity.aliases), _enc_desc(entity.description, _priv),
                     json.dumps(entity.tags), entity.confidence,
                     entity.source, entity.evidence,
                     entity.created_at, entity.updated_at, entity.last_seen_at,
@@ -342,7 +374,7 @@ def get_entity(entity_id: str) -> dict | None:
         with _conn() as db:
             row = db.execute("SELECT * FROM entities WHERE id = ?", (entity_id,)).fetchone()
             if row:
-                return dict(row)
+                return _dec_entity(dict(row))  # BL-020: decrypt sensitive description
     except Exception as exc:
         logger.debug("memory_router: get_entity failed: %s", exc)
     return None
@@ -487,7 +519,7 @@ def _query_sqlite_entities(text: str, *, limit: int = 10, min_confidence: float 
                     LIMIT ?
                 """, (t, t, min_confidence, limit)).fetchall()
             for row in rows:
-                d = dict(row)
+                d = _dec_entity(dict(row))  # BL-020: decrypt sensitive description
                 results.append(MemoryResult(
                     id=d["id"],
                     content=f"{d['canonical_name']}: {d['description']}",
