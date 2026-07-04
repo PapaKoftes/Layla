@@ -366,6 +366,17 @@ def _resolve_model_override(override: str | None, cfg: dict) -> str | None:
     return override  # raw model name
 
 
+def apply_decoding_determinism(cfg: dict | None, temperature: float, top_p: float, top_k: int) -> "tuple[float, float, int]":
+    """Release-gate determinism (BL-107 / REQ-22): when `deterministic_decoding_enabled` is set,
+    force GREEDY decoding — temperature 0, top_k 1, top_p 1 — so eval / release-gate runs are
+    reproducible (same prompt → same output). Greedy needs no seed plumbing (there's no sampling
+    randomness to seed). Off by default, so normal chat keeps its configured sampling. Returns the
+    (possibly overridden) (temperature, top_p, top_k)."""
+    if cfg and cfg.get("deterministic_decoding_enabled", False):
+        return 0.0, 1.0, 1
+    return temperature, top_p, top_k
+
+
 def run_completion(
     prompt: str,
     max_tokens: int = 256,
@@ -393,6 +404,8 @@ def run_completion(
     top_p = float(cfg.get("top_p", 0.95))
     repeat_penalty = float(cfg.get("repeat_penalty", 1.1))
     top_k = max(1, int(cfg.get("top_k", 40)))
+    # Release-gate/eval determinism (BL-107): force greedy decoding when enabled.
+    temperature, top_p, top_k = apply_decoding_determinism(cfg, temperature, top_p, top_k)
     timeout = timeout_seconds if timeout_seconds is not None else 120
     backend = _get_backend(cfg)
     lock = _llm_lock
