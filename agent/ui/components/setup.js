@@ -193,7 +193,7 @@ export async function checkSetupStatus() {
     if (!res.ok || !s) { _renderSetupStatusError(res, s, null); return; }
     if (s.ready && s.model_found) {
       if (overlay) overlay.classList.remove('visible');
-      maybeStartOnboarding();
+      maybeStartSetupProfiles();
       return;
     }
     if (overlay) overlay.classList.add('visible');
@@ -282,7 +282,25 @@ export function dismissSetupOverlay(isSkip) {
   const o = document.getElementById('setup-overlay');
   if (o) o.classList.remove('visible');
   if (isSkip === true) saveSetupWorkspaceIfNeeded();
-  maybeStartOnboarding();
+  maybeStartSetupProfiles();
+}
+
+/**
+ * First-run: present the intent-driven profile wizard (pick a use-case → enable only the
+ * features you need → write a fitting startup default) BEFORE the mini onboarding tour.
+ * Shown once (localStorage marker); reconfigure later via ⌘K → "Set up / reconfigure".
+ * Falls through to the tour if already configured or the wizard isn't available.
+ */
+function maybeStartSetupProfiles() {
+  let done = false;
+  try { done = localStorage.getItem('layla_setup_profiles_v1_done') === '1'; } catch (_) {}
+  if (done || typeof window.openSetupProfiles !== 'function') { maybeStartOnboarding(); return; }
+  const onClosed = () => {
+    window.removeEventListener('layla:setup-closed', onClosed);
+    maybeStartOnboarding();
+  };
+  window.addEventListener('layla:setup-closed', onClosed);
+  try { window.openSetupProfiles(); } catch (_) { window.removeEventListener('layla:setup-closed', onClosed); maybeStartOnboarding(); }
 }
 
 // ── Onboarding ──────────────────────────────────────────────────────────────
