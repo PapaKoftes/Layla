@@ -93,7 +93,7 @@ Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "
 - **BL-044** ✅ Codex / relationship UI — `components/codex.js` (⌘K → "Relationship codex"): workspace-scoped
   (editable path field pre-filled from #workspace-path) — entities Layla knows about + proposals
   (generate/approve/dismiss, query-param POSTs). Verified mock render (entities/sub/proposals/actions, accent).
-- **BL-045** ⬜ Intelligence / AirLLM / KB UI (13: info, airllm gen/chat/unload, compress/rag, optimize, kb build/articles).
+- **BL-045** ✅ Knowledge-base UI (`kb.js`): browse `/intelligence/kb/articles`, read one (`/articles/{id}`), build from pasted text (`/build/text`). ⌘K → "Knowledge base". Verified live+mock: 2-article list w/ count, click→detail (accent title, pre-wrap content), back nav. _(AirLLM gen/chat/unload + compress/rag/optimize remain headless — low-value manual ops, deferred to a diagnostics sub-tab if ever needed.)_
 - **BL-046** ✅ Debate UI — `components/debate.js` (⌘K → "Deliberate (aspects)"): pick a mode (Auto/Solo/
   Debate/Council/Tribunal from `/debate/modes`, pill selector), pose a question → POST /debate → synthesized
   answer + participating aspects. Verified live (modes render, mode selection, styling; real run invokes the model).
