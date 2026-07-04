@@ -108,7 +108,9 @@ Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "
 - **BL-051** ✅ tools-history UI — `components/tools-history.js` (⌘K → "Tool history & health"): read-only
   dashboard from `/tools/analysis` — summary (calls · success% · tools) + per-tool table (calls, success rate
   colored green/amber/red, avg latency). Verified live (empty) + mock (table + rate colors after a specificity fix).
-- **BL-052** ⬜ learn UI (2: schedule, verify/stats) + wakeup.
+- **BL-052** ✅ Verify-learnings UI — `components/verify.js` (⌘K → "Verify learnings"): steps through the
+  `/verify/*` queue — shows a fact Layla's unsure about + pending count, confirm (green) or reveal a
+  correction box → POST /verify/answer, then next. Verified live (empty) + mock (fact/stats/confirm/correct).
 - **BL-053** ⬜ (calibration note) Families WITH components but some routes reached only via dynamic paths (conversations, memory, character, research, workspace, obsidian) — audit for genuinely-missing controls (e.g., `/character/*` 15 routes: creator is partial per REQ-79).
 - **BL-054** ✅ (this session) System-diagnostics surfaced `cot_stats`/`metrics`/`security`/`capabilities`/`resources`; self-test surfaced `health`/`v1`.
 - **BL-055** ⬜ Correct PLAN.md P4 "~18" → 14 headless families (~80 routes).
