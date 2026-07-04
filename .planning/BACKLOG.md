@@ -210,7 +210,12 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   NLI hook used. _Remaining: wire the one call into the reasoning handler + measure the gain with a live NLI model._
 - **BL-101** ⬜ REQ-31 20–50 promptfoo golden set on PR + nightly.
 - **BL-102** ⬜ UPG-01 hybrid escalation (small→big on low confidence; needs a bigger box to exercise 2 models).
-- **BL-103** ⬜ UPG-04 FlashRank reranker.
+- **BL-103** ✅ FlashRank reranker wired as the **preferred lightweight backend** (`reranker.py` auto chain:
+  flashrank ONNX → sentence-transformers cross-encoder → BM25). **Fixed a perf bug**: the old code instantiated a
+  CrossEncoder on **every** rerank call — now model instances are cached module-level (built once) with an
+  unavailable-backend memo. Config `reranker_backend` (auto|flashrank|cross_encoder|bm25). Verified
+  (`test_reranker_backends.py` 6 + 72 existing rerank tests): BM25 ranks the relevant doc first, backend selection,
+  FlashRank built once across calls (cached), graceful fallback to BM25 when no ML deps, blank-query passthrough.
 - **BL-104** ⬜ Measure GBNF accuracy gain (HumanEval-164 — the discriminating step past the 10-problem set).
 - **BL-105** ⬜ Measure self-consistency gain at K>1 (mechanism ✅; benchmark pending).
 - **BL-106** 🟡 REQ-20 tiny-model inference-smoke **CI job** (seam ready, job unwired — `stories260K`/SmolLM2).
