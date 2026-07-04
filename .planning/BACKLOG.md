@@ -199,7 +199,15 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   and neon #0a0008/#c0006a noted as history, removed as the spec.
 
 ## W4 — Answer quality & eval
-- **BL-100** ⬜ REQ-30 inline RAG grounding (MiniCheck/NLI, CPU, cite-or-abstain, `grounding` block) — **the #1 correctness lever**.
+- **BL-100** 🟡 REQ-30 inline RAG grounding — **mechanism built + fully tested** (`services/retrieval/grounding.py`,
+  `test_rag_grounding.py` 10 tests). Splits an answer into claims (skips questions/code/fragments), scores each for
+  support against retrieved passages, emits a `grounding` block (per-claim supported + best **source citation**,
+  overall score, cite-or-abstain). **Pluggable scorer**: model-free lexical containment by default (CPU,
+  deterministic — catches zero-support hallucinations), `set_scorer()` swaps in NLI/MiniCheck for entailment-grade
+  precision when a model is available. One-call `ground_answer(answer, query, cfg)` pulls passages from the KB and
+  maps citations. Config `grounding_enabled`/`grounding_mode`(off|flag|abstain)/`grounding_min_support` (default
+  **off** → non-invasive). Verified: supported→cited, hallucinated→flagged, abstain-mode hedges, empty-ctx→unsupported,
+  NLI hook used. _Remaining: wire the one call into the reasoning handler + measure the gain with a live NLI model._
 - **BL-101** ⬜ REQ-31 20–50 promptfoo golden set on PR + nightly.
 - **BL-102** ⬜ UPG-01 hybrid escalation (small→big on low confidence; needs a bigger box to exercise 2 models).
 - **BL-103** ⬜ UPG-04 FlashRank reranker.
