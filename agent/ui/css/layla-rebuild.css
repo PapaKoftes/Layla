@@ -878,3 +878,20 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .verify-correct[hidden] { display: none; }
 .verify-correction { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: var(--text-sm); padding: var(--sp-2) var(--sp-3); resize: vertical; }
 .verify-correction:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+
+/* ── W2 · Background tasks ───────────────────────────────────────────────────── */
+.atasks-panel { max-width: 560px; max-height: 82vh; }
+.atasks-create { display: flex; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border); }
+.atasks-goal { flex: 1; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: var(--text-sm); padding: var(--sp-2) var(--sp-3); }
+.atasks-goal:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+.atasks-list { overflow-y: auto; padding: var(--sp-3) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2); }
+.atasks-item { display: flex; align-items: center; gap: var(--sp-3); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--sp-2) var(--sp-3); }
+.atasks-main { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.atasks-goaltxt { font-size: var(--text-sm); color: var(--text); overflow-wrap: anywhere; }
+.atasks-meta { font-size: var(--text-xs); color: var(--text-faint); }
+.atasks-status { color: var(--text-dim); }
+.atasks-status[data-st="running"] { color: var(--asp); }
+.atasks-status[data-st="completed"] { color: var(--success); }
+.atasks-status[data-st="failed"] { color: var(--danger); }
+.atasks-cancel { flex: none; background: var(--surface-3); border: 1px solid var(--border); color: var(--text-dim); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: var(--text-xs); padding: 3px 10px; cursor: pointer; }
+.atasks-cancel:hover { background: var(--danger); color: #fff; border-color: transparent; }
