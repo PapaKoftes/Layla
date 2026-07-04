@@ -205,7 +205,12 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 - **BL-131** 🟡 REQ-41 `save_learning` embed **outside** the write txn; `/health` reports model-load failure.
 - **BL-132** 🟡 REQ-42 backup includes the vector dir + WAL checkpoint + VACUUM.
 - **BL-133** 🟡 REQ-43 erasure removes vectors + scrubs PII/secrets from logs.
-- **BL-134** ⬜ `learnings.py:490` FSRS-style spaced repetition (currently simple interval).
+- **BL-134** ✅ Adaptive SM-2 spaced repetition now **actually accumulates**. The `sm2()` algorithm existed but
+  `review_item()` reset ease/interval/reps to defaults every call, so intervals never grew (effectively fixed).
+  Fix: persist per-item state — added `review_ease`/`review_interval_days`/`review_reps` columns (migration) +
+  `get_review_state`/`set_review_state` in `learnings.py` (re-exported from `db.py`); `review_item` now loads prior
+  state, applies SM-2, and persists. Verified (new `test_spaced_repetition_sm2.py`, 3 tests): interval grows
+  1→6→>6 on success, resets to 1 on failure, state round-trips. 696-test memory suite green.
 
 ## W7 — Test coverage (un-skip the 30+)
 - **BL-140** ✅ `tests/fixtures/fake_mcp_stdio.py` present (minimal stdio MCP server: initialize / tools/call) →
