@@ -826,3 +826,19 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .sync-guide li { font-size: var(--text-xs); color: var(--text-dim); }
 .sync-guide li b { color: var(--text); }
 .sync-guide li div { white-space: pre-wrap; margin-top: 2px; }
+
+/* ── W2 · Deliberation ───────────────────────────────────────────────────────── */
+.debate-panel { max-width: 560px; max-height: 82vh; }
+.debate-body { overflow-y: auto; padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
+.debate-modes { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.debate-mode { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); border-radius: 999px; font-family: 'JetBrains Mono', monospace; font-size: var(--text-xs); padding: 4px 12px; cursor: pointer; }
+.debate-mode:hover { border-color: var(--border-2); color: var(--text); }
+.debate-mode.is-sel { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+.debate-mode-n { color: var(--text-faint); }
+.debate-goal { width: 100%; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: var(--text-sm); padding: var(--sp-2) var(--sp-3); resize: vertical; }
+.debate-goal:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+.debate-actions { display: flex; align-items: center; gap: var(--sp-3); }
+.debate-note { font-size: var(--text-xs); color: var(--text-dim); }
+.debate-result { display: flex; flex-direction: column; gap: var(--sp-2); }
+.debate-meta { font-size: var(--text-xs); color: var(--text-faint); }
+.debate-final { font-size: var(--text-sm); color: var(--text); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; padding: var(--sp-3); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); }

@@ -92,7 +92,9 @@ Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "
   (status off → 8-step guide renders). Remaining: add-device form (secondary).
 - **BL-044** ⬜ Codex / relationship UI (6: get/put relationship, proposals gen/approve/dismiss).
 - **BL-045** ⬜ Intelligence / AirLLM / KB UI (13: info, airllm gen/chat/unload, compress/rag, optimize, kb build/articles).
-- **BL-046** ⬜ Debate UI (2: debate, modes).
+- **BL-046** ✅ Debate UI — `components/debate.js` (⌘K → "Deliberate (aspects)"): pick a mode (Auto/Solo/
+  Debate/Council/Tribunal from `/debate/modes`, pill selector), pose a question → POST /debate → synthesized
+  answer + participating aspects. Verified live (modes render, mode selection, styling; real run invokes the model).
 - **BL-047** ✅ Improvements UI — `components/improvements.js` (⌘K → "Improvements (self)"): lists
   self-improvement proposals (title + description + status), generate, approve/reject (batch-of-one). Verified
   live + mock render (item/status/actions, accent styling).
