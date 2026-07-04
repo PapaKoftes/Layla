@@ -20,7 +20,7 @@ TIER 3 — Heuristic sentence-scoring (always available, zero dependencies)
 TIER 4 — Truncation fallback
   Hard-trim to token budget with sentence-boundary awareness.
 
-Config keys in config.json:
+Config keys in runtime_config.json:
     prompt_compression_enabled    bool   (default true for tier-3+)
     prompt_compression_tier       int    1|2|3|4 (default: highest available tier)
     prompt_compression_ratio      float  Target compression: 0.1–0.9 (default 0.5)
@@ -184,7 +184,7 @@ def _load_lingua(model_id: str) -> Any:
     # The default config model "microsoft/phi-2" is a causal LM, which is what
     # the original LLMLingua expects, so we set use_llmlingua2=False here.
     # If you change prompt_compression_model to an LLMLingua-2 BERT model,
-    # also set prompt_compression_use_v2=true in config.json.
+    # also set prompt_compression_use_v2=true in runtime_config.json.
     use_v2 = bool(_cfg().get("prompt_compression_use_v2", False))
     compressor = PromptCompressor(
         model_name=model_id,

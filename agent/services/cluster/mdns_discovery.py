@@ -15,7 +15,7 @@ Metadata advertised:
 All operations are safe to call even when zeroconf is not installed;
 they degrade to no-ops with logged warnings.
 
-Config keys in config.json:
+Config keys in runtime_config.json:
   mdns_enabled         bool    Enable/disable mDNS broadcast (default: true)
   mdns_device_name     string  Override device name (default: hostname)
   hardware_tier        string  cpu | gpu_low | gpu_mid | gpu_high
