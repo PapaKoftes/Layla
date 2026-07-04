@@ -23,6 +23,22 @@ def get_setup_profiles():
     return {"profiles": PROFILES, "features": FEATURE_MANIFEST}
 
 
+@router.get("/setup/state")
+def get_setup_state():
+    """Which optional features are currently enabled — drives UI gating (BL-208): the
+    command palette hides feature-tagged entries whose feature is off. Fail-open by design;
+    the frontend shows everything until this resolves."""
+    from install.setup_profiles import enabled_feature_ids
+
+    try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+    except Exception:
+        cfg = {}
+    return {"ok": True, "enabled_features": enabled_feature_ids(cfg)}
+
+
 @router.post("/setup/apply")
 def apply_setup_profiles(body: dict):
     """Apply chosen profile(s) + feature(s) → merge onto config + persist as the startup

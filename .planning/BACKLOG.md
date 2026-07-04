@@ -11,7 +11,12 @@ tracking list; [PLAN.md](PLAN.md) holds the strategy/architecture and points her
 ---
 
 ## W0 — Stabilize & clean (quick, low-risk, do first)
-- **BL-001** ⬜ Restart the running app — stale `llm_gateway` in the 18.5h process makes chat 500 until reload.
+- **BL-001** ⬜ Restart the running app — the 18.5h process predates **every** router added this session
+  (`/setup/*`, GBNF, self-consistency, …) so the live instance 404s them until bounced. **De-risked:** the new
+  code imports + mounts cleanly (14 TestClient tests green against the same `main.py` app), so a restart is safe —
+  `cd agent && python serve.py` after stopping the current process. Left as a user-triggered deploy step (bouncing
+  a live session is the operator's call); all new endpoints are already correctness-verified via TestClient, so this
+  is deployment, not a correctness gap.
 - **BL-002** ✅ Dead flag `dynamic_tool_generation_enabled` deleted (was read nowhere).
 - **BL-003** ✅ Dead flag `codex_semantic_enabled` deleted (was read nowhere).
 - **BL-004** ✅ Dead flag `slack_webhook_url` deleted (was read nowhere).
@@ -47,9 +52,10 @@ the genuine gaps are narrower. Existing: `services/sandbox/python_runner.py` + `
 features and set a **startup default that fits what you want to do**, enabling only the tools you need. This
 becomes the backbone that W2 (feature UIs), W2b (gated features), G5 (startup flow), REQ-50 (one config) and
 the potato thesis (load only what's needed) all plug into. Do this **before** the W2 UIs.*
-- **BL-200** 🟡 **Feature manifest** built — `install/setup_profiles.py` `FEATURE_MANIFEST` (13 features:
+- **BL-200** ✅ **Feature manifest** built — `install/setup_profiles.py` `FEATURE_MANIFEST` (**15 features**:
   voice, mcp, elasticsearch, meilisearch, discord, fabrication, remote, hyde, initiative, engineering,
-  ml_stack, **encryption** [= BL-020 as opt-in], cloud_models — each with flags + deps + models + size + unlocks).
+  ml_stack, **encryption** [= BL-020 as opt-in], cloud_models, **multi_agent, observability** — each with
+  flags + deps + models + size + unlocks). `enabled_feature_ids(cfg)` resolves live capability state for gating.
 - **BL-201** 🟡 **Use-case profiles** built — Companion · Coding · Language-learning · Research · Power · Minimal(potato),
   each with features + aspects + defaults; `resolve_setup_config()` merges profiles+features → startup config,
   `features_to_install()` drives the installer. 9 unit tests pass. Remaining: onboarding UI + endpoints + persist.
@@ -67,10 +73,19 @@ the potato thesis (load only what's needed) all plug into. Do this **before** th
   call-time refusal).
 - **BL-206** 🟡 Persist core built — `apply_setup(profiles, features)` merges the resolved overrides onto the
   current config and writes CONFIG_FILE + invalidates the cache (10 tests). Remaining: the router endpoint wiring.
-- **BL-207** ⬜ **Re-home the ~18 gated features (supersedes W2b)** as manifest entries — mostly "expose in the
-  picker," genuinely-dead ones ✂️ cut. (Absorbs BL-060…BL-078.)
-- **BL-208** ⬜ Gate each of the 14 feature UIs (W2) behind its feature-enabled flag — the UI only shows what
-  you picked (no clutter).
+- **BL-207** ✅ **Re-homed the gated features into the manifest** (now **15** features): added `multi_agent`
+  (`multi_agent_orchestration_enabled` → the Deliberate panel) and `observability` (`trace_id_enabled` +
+  `telemetry_log_trivial`). Deliberately kept as internal/admin flags (documented in `setup_profiles.py`, **not**
+  dropped): `mem0_enabled` (redundant backend, ✂️ cut from picker per BL-078), `tool_replay_policy`/`pkg_policy_strict`
+  (security-hardening, admin), `initiative_project_proposals` (folded under `initiative`), `ui_decision_trace`
+  (surfaced by the Background-tasks panel). Absorbs BL-060…BL-078.
+- **BL-208** ✅ **Feature-gated command palette** — `command-palette.js` now filters commands by a `feature` tag:
+  untagged (all core UIs) always show; tagged ones hide when their feature is off; **fail-open** (show all) until
+  `/setup/state` resolves. New `GET /setup/state` → `enabled_feature_ids(cfg)` (flags-truthy = capability on);
+  boot fetches it + refreshes on `layla:profiles-applied`. Tagged `sync`→`remote`, `debate`→`multi_agent` (the
+  only two current commands that genuinely require an optional feature; the rest are core, intentionally ungated so
+  nothing working gets hidden). Verified live: fail-open shows all; `remote` off hides only Sync; `remote` on
+  restores it. +5 tests (19 total green).
 - **BL-209** ✅ **Wizard is now in the first-run sequence** (the operator's core ask) — after the model is ready,
   `setup.js` `maybeStartSetupProfiles()` presents the profile/feature wizard *before* the mini onboarding tour,
   shown once (localStorage `layla_setup_profiles_v1_done`), then chains onward on close. `window.openSetupProfiles`
