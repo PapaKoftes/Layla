@@ -11,12 +11,11 @@ tracking list; [PLAN.md](PLAN.md) holds the strategy/architecture and points her
 ---
 
 ## W0 — Stabilize & clean (quick, low-risk, do first)
-- **BL-001** ⬜ Restart the running app — the 18.5h process predates **every** router added this session
-  (`/setup/*`, GBNF, self-consistency, …) so the live instance 404s them until bounced. **De-risked:** the new
-  code imports + mounts cleanly (14 TestClient tests green against the same `main.py` app), so a restart is safe —
-  `cd agent && python serve.py` after stopping the current process. Left as a user-triggered deploy step (bouncing
-  a live session is the operator's call); all new endpoints are already correctness-verified via TestClient, so this
-  is deployment, not a correctness gap.
+- **BL-001** ✅ **Restarted** — stopped the stale 2-day process (which predated every router added this session)
+  and relaunched `uvicorn main:app` on the `.venv` interpreter (the base Python312 had lost `uvicorn`; `.venv` has
+  0.49.0). Health 200 in ~3s, **model_loaded=True, 197 tools**, no console errors. Verified live: `/setup/profiles`
+  now returns **6 profiles / 15 features** (was 404), `/setup/state` → real `enabled_features`, `multi_agent` +
+  `observability` present. All this session's routers are now live on :8000.
 - **BL-002** ✅ Dead flag `dynamic_tool_generation_enabled` deleted (was read nowhere).
 - **BL-003** ✅ Dead flag `codex_semantic_enabled` deleted (was read nowhere).
 - **BL-004** ✅ Dead flag `slack_webhook_url` deleted (was read nowhere).
