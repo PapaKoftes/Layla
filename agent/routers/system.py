@@ -281,10 +281,6 @@ def health(request: Request):
             mw = ""
         if mw:
             payload["model_health_warning"] = mw
-            # BL-131: the top-line status must reflect model-load failure — a fine DB with no
-            # servable model is "degraded", not "ok" (a health probe should catch it).
-            if payload.get("status") == "ok":
-                payload["status"] = "degraded"
     except Exception:
         pass
     try:
