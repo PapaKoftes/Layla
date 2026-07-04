@@ -528,8 +528,36 @@ def search_replace(root: str, find: str, replace: str, file_glob: str = "*", dry
         "use_regex": use_regex,
     }
 
+def _locate_block(lines: list, block: list, hint: int = 0) -> "int | None":
+    """Find where `block` (a list of source-side lines) occurs in `lines`, preferring a match
+    nearest `hint`. Exact match first, then a whitespace-normalized match (tolerates re-indent
+    / trailing-space drift). Returns the start index, or None if it doesn't occur. An empty
+    block (pure insertion) resolves to the clamped hint. This is what makes patch application
+    robust to LLM diffs whose declared line numbers are slightly off — instead of removing the
+    wrong lines, we relocate to the real content (or refuse)."""
+    if not block:
+        return max(0, min(hint, len(lines)))
+    n = len(block)
+    if n > len(lines):
+        return None
+    candidates = sorted(range(0, len(lines) - n + 1), key=lambda p: abs(p - hint))
+    for p in candidates:                       # 1) exact
+        if lines[p:p + n] == block:
+            return p
+    nb = [x.strip() for x in block]
+    for p in candidates:                       # 2) whitespace-normalized
+        if [x.strip() for x in lines[p:p + n]] == nb:
+            return p
+    return None
+
+
 def apply_patch(original_path: str, patch_text: str) -> dict:
-    """Apply a unified diff patch using unidiff (pure Python, Windows-safe). Creates a backup first."""
+    """Apply a unified diff patch using unidiff (pure Python, Windows-safe). Creates a backup first.
+
+    Content-verified: each hunk is located by its actual context+removed lines (fuzzy on
+    whitespace, tolerant of off-by-N declared positions). If any hunk doesn't match the file,
+    the patch is REJECTED without modifying the file — a positional apply would otherwise
+    silently corrupt it when the model's line numbers drift."""
     target = _resolve_sandboxed_path(original_path)
     ok, err = _ensure_inside_sandbox(target)
     if not ok:
@@ -552,18 +580,27 @@ def apply_patch(original_path: str, patch_text: str) -> dict:
         patch_set = unidiff.PatchSet(patch_text.splitlines(keepends=True))
         original_lines = target.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
         result_lines = list(original_lines)
+        failures: list[str] = []
+        applied = 0
         for patched_file in patch_set:
-            offset = 0
             for hunk in patched_file:
-                src_start = hunk.source_start - 1 + offset
-                removed = [line.value for line in hunk if line.is_removed]
-                added = [line.value for line in hunk if line.is_added]
-                # Remove old lines, insert new ones
-                result_lines[src_start: src_start + len(removed)] = added
-                offset += len(added) - len(removed)
+                # source side = context + removed (what should already be in the file);
+                # target side = context + added (what replaces it).
+                source_seq = [line.value for line in hunk if line.is_context or line.is_removed]
+                target_seq = [line.value for line in hunk if line.is_context or line.is_added]
+                pos = _locate_block(result_lines, source_seq, hint=hunk.source_start - 1)
+                if pos is None:
+                    failures.append(f"hunk @L{hunk.source_start} did not match file content")
+                    continue
+                result_lines[pos: pos + len(source_seq)] = target_seq
+                applied += 1
+        if failures:
+            # Do NOT write a partially/mis-applied patch — leave the file untouched.
+            return {"ok": False, "error": "patch did not apply cleanly: " + "; ".join(failures),
+                    "hint": "re-read the file; the diff's context lines don't match", "backup": str(backup)}
         target.write_text("".join(result_lines), encoding="utf-8")
         _clear_read_freshness(target)
-        return {"ok": True, "path": str(target), "backup": str(backup)}
+        return {"ok": True, "path": str(target), "backup": str(backup), "hunks_applied": applied}
     except Exception as e:
         return {"ok": False, "error": str(e), "backup": str(backup)}
 
