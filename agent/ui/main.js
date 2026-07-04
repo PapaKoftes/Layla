@@ -114,6 +114,8 @@ import * as sync from './components/sync.js';
 import * as debate from './components/debate.js';
 // W2 — Relationship codex
 import * as codex from './components/codex.js';
+// W2 — Verify learnings (the "it learns" loop)
+import * as verify from './components/verify.js';
 
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
@@ -540,6 +542,7 @@ function init() {
     { id: 'sync', group: 'Go to', label: 'Sync (devices)', keywords: ['sync', 'syncthing', 'devices', 'multi', 'phone', 'pair'], run: () => sync.openSync() },
     { id: 'debate', group: 'Go to', label: 'Deliberate (aspects)', keywords: ['debate', 'deliberate', 'council', 'tribunal', 'aspects', 'decide'], run: () => debate.openDebate() },
     { id: 'codex', group: 'Go to', label: 'Relationship codex', keywords: ['codex', 'relationship', 'entities', 'people', 'who', 'knows'], run: () => codex.openCodex() },
+    { id: 'verify', group: 'Go to', label: 'Verify learnings', keywords: ['verify', 'learn', 'confirm', 'correct', 'facts', 'memory'], run: () => verify.openVerify() },
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
@@ -570,6 +573,8 @@ function init() {
     closeDebate: debate.closeDebate,
     openCodex: codex.openCodex,
     closeCodex: codex.closeCodex,
+    openVerify: verify.openVerify,
+    closeVerify: verify.closeVerify,
   });
 
   // Apply timeout config from health response
