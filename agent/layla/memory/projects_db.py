@@ -220,7 +220,9 @@ def set_project_context(
             placeholders = ", ".join(f"{c}=?" for c in cols)
             db.execute(f"UPDATE project_context SET {placeholders} WHERE id=1", vals)
         except sqlite3.OperationalError:
-            # Fallback if new columns not yet migrated
+            # Defensive fallback only. The progress/blockers/last_discussed columns ARE added by
+            # migrations.py (ALTER TABLE project_context, ~line 1167); this path just degrades
+            # gracefully to the core columns if a write ever races an unmigrated DB.
             db.execute(
                 """UPDATE project_context SET project_name=?, domains=?, key_files=?, goals=?, lifecycle_stage=?, updated_at=? WHERE id=1""",
                 (cur["project_name"], json.dumps(cur["domains"]), json.dumps(cur["key_files"]), cur["goals"], cur.get("lifecycle_stage", ""), now),
