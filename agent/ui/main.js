@@ -106,6 +106,8 @@ import * as journal from './components/journal.js';
 import * as approvals from './components/approvals.js';
 // W2 — Self-improvement proposals
 import * as improvements from './components/improvements.js';
+// W2 — Tool-call history & health
+import * as toolsHistory from './components/tools-history.js';
 
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
@@ -528,6 +530,7 @@ function init() {
     { id: 'journal', group: 'Go to', label: 'Journal', keywords: ['journal', 'diary', 'reflection', 'notes', 'entries'], run: () => journal.openJournal() },
     { id: 'approvals', group: 'Go to', label: 'Approvals & grants', keywords: ['approval', 'pending', 'grant', 'permission', 'security', 'approve', 'deny'], run: () => approvals.openApprovals() },
     { id: 'improvements', group: 'Go to', label: 'Improvements (self)', keywords: ['improve', 'proposal', 'self', 'growth', 'suggestion', 'approve'], run: () => improvements.openImprovements() },
+    { id: 'tools-history', group: 'Go to', label: 'Tool history & health', keywords: ['tools', 'history', 'analysis', 'health', 'success', 'latency', 'debug'], run: () => toolsHistory.openToolsHistory() },
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
@@ -550,6 +553,8 @@ function init() {
     closeApprovals: approvals.closeApprovals,
     openImprovements: improvements.openImprovements,
     closeImprovements: improvements.closeImprovements,
+    openToolsHistory: toolsHistory.openToolsHistory,
+    closeToolsHistory: toolsHistory.closeToolsHistory,
   });
 
   // Apply timeout config from health response
