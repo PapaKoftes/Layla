@@ -111,6 +111,8 @@ KNOWN_ROOT_FILES: set[str] = {
     "execution_state.py",
     "tui.py",
     "diagnose_startup.py",
+    "serve.py",       # server launcher (START.bat runs `python serve.py`)
+    "port_guard.py",  # serve.py's port-conflict helper
     # Backward-compat shims — audited (BL-009): all RETAINED, each still live via the old root
     # path (imports and/or docs); not deletable. Implementation lives in services/ sub-packages.
     "research_lab.py",           # imported via old path (3 sites)
