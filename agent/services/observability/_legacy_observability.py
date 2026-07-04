@@ -3,6 +3,11 @@ Structured logging for agent events.
 Uses loguru when available, else standard logging.
 Events include: timestamp, event_type, duration, status (per v1 spec).
 Also records to performance_monitor for system_optimizer metrics.
+
+NOTE (BL-010): "_legacy" here means the pre-split module layout, NOT dead code. The
+`log_*` helpers below are re-exported by `services/observability/__init__.py` and remain
+in active use (~7 call sites: planner, missions, learnings, run-setup). Do not delete —
+retained deliberately, not superseded.
 """
 import logging
 from typing import Any

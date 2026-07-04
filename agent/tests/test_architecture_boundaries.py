@@ -111,15 +111,17 @@ KNOWN_ROOT_FILES: set[str] = {
     "execution_state.py",
     "tui.py",
     "diagnose_startup.py",
-    # Backward-compat shims (implementation moved to services/ sub-packages):
-    "research_lab.py",
-    "research_intelligence.py",
-    "research_stages.py",
-    "research_utils.py",
-    "lens_refresh.py",
-    "probe_hardware.py",
-    "background_job_worker.py",
-    # These exist but should eventually be moved into packages:
+    # Backward-compat shims — audited (BL-009): all RETAINED, each still live via the old root
+    # path (imports and/or docs); not deletable. Implementation lives in services/ sub-packages.
+    "research_lab.py",           # imported via old path (3 sites)
+    "research_intelligence.py",  # root path referenced by ARCHITECTURE/design docs
+    "research_stages.py",        # imported via old path (5 sites)
+    "research_utils.py",         # imported via old path
+    "lens_refresh.py",           # imported via old path (2 sites)
+    "probe_hardware.py",         # imported (2 sites)
+    "background_job_worker.py",  # subprocess ENTRYPOINT (WORKER_SCRIPT) — must keep + run main()
+    # Intentional standalone manual/maintenance tools (BL-011) — run as `python agent/X.py`,
+    # documented (FINE-TUNING.md etc.); 0 imports BY DESIGN, kept at root deliberately.
     "download_docs.py",
     "seed_self_training_plans.py",
     "export_finetune_data.py",
