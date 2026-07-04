@@ -99,7 +99,9 @@ Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "
   tool approvals (tool + args → approve[confirm-guarded, runs the tool]/deny) + active session grants with
   revoke-all. Verified live + mock (item/buttons/grant render, accent styling).
 - **BL-050** ⬜ Agent-tasks UI (9: background/steer/execute_plan/resume/tasks/cancel + decision_trace).
-- **BL-051** ⬜ tools-history UI (2: history/analysis).
+- **BL-051** ✅ tools-history UI — `components/tools-history.js` (⌘K → "Tool history & health"): read-only
+  dashboard from `/tools/analysis` — summary (calls · success% · tools) + per-tool table (calls, success rate
+  colored green/amber/red, avg latency). Verified live (empty) + mock (table + rate colors after a specificity fix).
 - **BL-052** ⬜ learn UI (2: schedule, verify/stats) + wakeup.
 - **BL-053** ⬜ (calibration note) Families WITH components but some routes reached only via dynamic paths (conversations, memory, character, research, workspace, obsidian) — audit for genuinely-missing controls (e.g., `/character/*` 15 routes: creator is partial per REQ-79).
 - **BL-054** ✅ (this session) System-diagnostics surfaced `cot_stats`/`metrics`/`security`/`capabilities`/`resources`; self-test surfaced `health`/`v1`.
