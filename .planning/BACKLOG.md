@@ -280,12 +280,13 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   hooks. Documented the real model: `llm_serialize_lock` (single RLock) serializes all LLM access; async paths
   run generation in an executor under it. Also fixed a fragile pre-existing test (`performance_mode` builtin-default
   contract now hardware-independent: accepts auto **or** the lite_mode_auto low-downgrade). 405→406 green.
-- **BL-131** ✅ REQ-41. **embed outside the write txn** — already satisfied: `save_learning` `db.commit()`s the
-  INSERT *before* computing `embed(content)`, and `_conn()` is a thread-local pooled connection, so no write lock /
-  transaction is held during the (slow) embedding. **`/health` reports model-load failure** — `model_error` +
-  `model_health_warning` were surfaced; now the **top-line `status` downgrades to "degraded"** when a warning is
-  present (a fine DB with no servable model is not "ok"). Verified (`test_health_endpoint.py`): the warning⇒degraded
-  invariant holds, failure detail always surfaced.
+- **BL-131** ✅ REQ-41. **embed outside the write txn** — already satisfied: `save_learning` commits the INSERT
+  before `embed(content)`; `_conn()` is thread-local pooled, so no write lock is held during embedding.
+  **`/health` reports model-load failure** — already surfaced via `model_error` + `model_health_warning`
+  (kept). _Correction: an over-reaching attempt to also flip the top-line `status` to "degraded" on model
+  failure was **reverted** — `status` is the infra-health contract (DB); model readiness is reported separately
+  so callers can tell "service up" from "can't answer yet". The broad suite caught it (`test_smoke_comprehensive`
+  expects `status=="ok"`); test now asserts the **reporting**, not a status flip._
 - **BL-132** ✅ REQ-42 backup complete: vector dir already backed up (R4); added **WAL checkpoint(TRUNCATE)** on
   the source before `.backup()` (fresh snapshot + bounded WAL on long-running DBs) and **VACUUM of the backup copy**
   (compacts, reclaims free pages from deletes/erasure — never touches the live DB). `wal_truncated` in the result.
