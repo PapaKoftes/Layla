@@ -110,6 +110,8 @@ import * as improvements from './components/improvements.js';
 import * as toolsHistory from './components/tools-history.js';
 // W2 — Multi-device sync
 import * as sync from './components/sync.js';
+// W2 — Multi-aspect deliberation
+import * as debate from './components/debate.js';
 
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
@@ -534,6 +536,7 @@ function init() {
     { id: 'improvements', group: 'Go to', label: 'Improvements (self)', keywords: ['improve', 'proposal', 'self', 'growth', 'suggestion', 'approve'], run: () => improvements.openImprovements() },
     { id: 'tools-history', group: 'Go to', label: 'Tool history & health', keywords: ['tools', 'history', 'analysis', 'health', 'success', 'latency', 'debug'], run: () => toolsHistory.openToolsHistory() },
     { id: 'sync', group: 'Go to', label: 'Sync (devices)', keywords: ['sync', 'syncthing', 'devices', 'multi', 'phone', 'pair'], run: () => sync.openSync() },
+    { id: 'debate', group: 'Go to', label: 'Deliberate (aspects)', keywords: ['debate', 'deliberate', 'council', 'tribunal', 'aspects', 'decide'], run: () => debate.openDebate() },
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
@@ -560,6 +563,8 @@ function init() {
     closeToolsHistory: toolsHistory.closeToolsHistory,
     openSync: sync.openSync,
     closeSync: sync.closeSync,
+    openDebate: debate.openDebate,
+    closeDebate: debate.closeDebate,
   });
 
   // Apply timeout config from health response
