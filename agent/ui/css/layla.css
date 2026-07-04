@@ -2617,11 +2617,11 @@ body.overlay-scroll-lock {
   }
   .btn-pair { border-color: var(--accent); color: var(--accent); }
   .btn-pair:hover { background: var(--accent); color: #000; }
-  .btn-unpair { border-color: #a33; color: #c44; }
-  .btn-unpair:hover { background: #a33; color: #fff; }
+  .btn-unpair { border-color: var(--danger); color: #c44; }
+  .btn-unpair:hover { background: var(--danger); color: #fff; }
   .btn-health:hover { border-color: var(--text-dim); }
   .btn-discovery { transition: background 0.2s; }
-  .btn-discovery.active { background: #a33 !important; border-color: #a33 !important; }
+  .btn-discovery.active { background: var(--danger) !important; border-color: var(--danger) !important; }
   .peers-empty { font-size: 0.65rem; color: var(--text-dim); padding: 8px 0; text-align: center; }
   .paired-device-meta { font-size: 0.62rem; color: var(--text-dim); margin-bottom: 4px; }
   .paired-device-perms { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 4px; }
@@ -3114,8 +3114,8 @@ body.overlay-scroll-lock {
   border-radius: 50%;
   flex-shrink: 0;
 }
-.cluster-peer-status.online { background: #4caf50; }
-.cluster-peer-status.offline { background: #f44336; }
+.cluster-peer-status.online { background: var(--success); }
+.cluster-peer-status.offline { background: var(--danger); }
 
 /* ── Mobile responsive overrides for new Phase 5/6 components ─────────── */
 @media (max-width: 768px) {

@@ -195,7 +195,11 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 - **BL-078** ✅ mem0 — ✂️ **cut** from the picker (redundant with native memory); flag kept internal only (BL-207).
 
 ## W3 — GUI finish (G2–G6)
-- **BL-090** 🟡 G3 full form/card tokenization (some legacy input bgs kept).
+- **BL-090** ✅ G3 form/card tokenization — audited: the active `layla-rebuild.css` is fully tokenized (inputs,
+  cards, composer use `var(--surface*)`); the legacy `layla.css` input fields already use tokens too. Tokenized the
+  remaining clear **status colors** (`cluster-peer-status` online/offline → `--success`/`--danger`, pairing
+  buttons → `--danger`). Verified live: the status dots resolve to `#3fae6b`/`#d0454e`. _(A few genuinely-semantic
+  one-offs remain — setup-hw panel bg, warning-badge amber — that lack a matching token; left intentionally.)_
 - **BL-091** 🟡 G5 full 5-step onboarding **flow** (welcome · honesty-card · get-model · workspace · ready); self-test ✅.
 - **BL-092** 🟡 REQ-79 aspect creator (name/sigil/sliders/voice/prompt + kit).
 - **BL-093** 🟡 REQ-80 S.P.E.C.I.A.L.-style intake quiz.
