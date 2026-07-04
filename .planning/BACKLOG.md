@@ -50,10 +50,18 @@ the genuine gaps are narrower. Existing: `services/sandbox/python_runner.py` + `
 (shell allowlist), `services/safety/url_guard.py` (SSRF / private-IP egress block), `services/agent/approval_helpers.py`
 (approvals), `services/observability/security_audit.py` (audit events), `services/safety/secret_store.py`
 (OS-keyring config secrets). Re-scoped below.
-- **BL-020** ⬜ **Encryption-at-rest for `sensitive`-level memory DATA** — GENUINE gap. The `sensitive` PrivacyLevel
-  exists and filters retrieval/export, but rows are stored plaintext; secret_store is keyring-for-config-secrets,
-  not bulk data. Real subproject: data-encryption key (keyring/passphrase) + encrypt-on-write/decrypt-on-read for
-  sensitive entities + migration. Do it fully or not at all (half-crypto = false security).
+- **BL-020** 🟡 **Encryption-at-rest for `sensitive`-level memory DATA.** **Core primitive built + fully tested**
+  (`services/memory/memory_encryption.py`, `test_memory_encryption.py` 9 tests): Fernet (AES-128-CBC+HMAC) with the
+  key in the OS keyring via `secret_store` (0600 key-file fallback + warning when no keyring); version-marker
+  (`\x00enc1:`) so decrypt is transparent and a lost/rotated key yields a **visible** un-decrypted value, never
+  silent corruption; graceful no-op when disabled or `cryptography` is absent; `should_encrypt`/`maybe_encrypt`
+  policy gate (flag + `sensitive` only). Verified: round-trip hides plaintext, key persists across restarts, key
+  loss is visible-not-corrupt, double-encrypt is a no-op. **Remaining (deliberately NOT half-wired — the "fully or
+  not at all" rule):** the store integration + one-time migration — encrypt-on-write/decrypt-on-read for sensitive
+  **entities** (description + attributes across `memory_router`/`people_codex`/`person_dossier`) and any sensitive
+  **learnings** (content across ~7 read paths), with those rows **excluded from the plaintext FTS index + embeddings**
+  (indexing plaintext would defeat the encryption). The primitive + integration contract are ready; the surface is
+  broad enough that it must be wired completely + verified end-to-end, not partially.
 - **BL-021** ✅ Shell deny-by-default when remote — already enforced: both `/agent` and `/v1` force `allow_write=allow_run=False` for non-local callers (fail-closed), and `allow_run` gates the whole exec path. Remote cannot exec.
 - **BL-022** 🟡 Subprocess rlimits / job-object — EXISTS (`worker_os_limits.py`, `python_runner.py`); Linux cgroups path + coverage audit.
 - **BL-023** ⬜ Ephemeral-container (E2B) exec tier — GENUINE gap (not present).
