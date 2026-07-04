@@ -10,7 +10,7 @@ Layla uses this service to:
 Syncthing must be installed separately:
   https://syncthing.net/downloads/
 
-The API key lives in config.json → "syncthing_api_key".
+The API key lives in runtime_config.json → "syncthing_api_key".
 The GUI/REST base URL defaults to http://127.0.0.1:8384 (Syncthing default).
 The folder ID defaults to "layla-data" (user must configure this in Syncthing).
 
@@ -37,7 +37,7 @@ _TIMEOUT_S = 5  # seconds for each REST call
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _get_config() -> dict:
-    """Load agent config.json lazily (delegates to services.config_cache)."""
+    """Load agent runtime_config.json lazily (delegates to services.config_cache)."""
     try:
         from services.infrastructure.config_cache import get_config
         return get_config()
@@ -120,7 +120,7 @@ def get_status() -> dict:
             "folder_state": "unknown",
             "completion": 0.0,
             "devices": [],
-            "error": "syncthing_api_key not set in config.json",
+            "error": "syncthing_api_key not set in runtime_config.json",
         }
 
     if not is_running():

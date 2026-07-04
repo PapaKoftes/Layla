@@ -23,7 +23,7 @@ Open-source projects integrated:
   - spaCy (https://spacy.io) / transformers
     NLP for entity recognition, relationship extraction, co-reference resolution.
 
-Config keys in config.json:
+Config keys in runtime_config.json:
     kb_output_dir              str   Default: agent/knowledge/_generated
     kb_use_unstructured        bool  (default true if installed)
     kb_use_storm               bool  (default false; needs OpenAI key or local LLM)
