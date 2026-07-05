@@ -63,6 +63,9 @@ FEATURE_MANIFEST = [
     {"id": "observability", "label": "Detailed tracing & telemetry",
      "flags": {"trace_id_enabled": True, "telemetry_log_trivial": True}, "deps": [], "models": [], "size_mb": 0,
      "unlocks": "per-request trace ids + verbose telemetry (diagnostics; a little overhead)"},
+    {"id": "vision", "label": "Visual understanding (images)",
+     "flags": {"vision_enabled": True}, "deps": ["pillow", "pytesseract"], "models": [], "size_mb": 0,
+     "unlocks": "the analyze_image tool + image inputs on /v1: describe images (local GGUF VLM or BLIP) and OCR text"},
     # Intentionally NOT surfaced as picker features (kept as internal/admin flags, not dropped):
     #   • mem0_enabled — redundant memory backend, superseded by native memory (BL-078: cut from picker).
     #   • tool_replay_policy / pkg_policy_strict — security-hardening toggles (admin, not a use-case feature).
