@@ -376,8 +376,9 @@ adaptive-tool-learning=`strategy_stats`/`experience_replay`, context-compression
   + scheduler: rules like "on new file in X → summarize", "on git commit → re-index". `/automation/*` + UI.
 - **BL-234** 🟡 **Temporal memory timeline** — episodes + PKG timeline nodes exist; add a **timeline API + UI** to
   navigate memories chronologically and reconstruct events.
-- **BL-235** 🟡 **Decision memory** — `cognitive_workspace` already evaluates + rejects alternatives; **persist** the
-  chosen option + rationale + rejected alternatives + assumptions to a `decisions` store, queryable later.
+- **BL-235** ✅ **Decision memory** — BUILT — `services/memory/decision_memory.py` (SQLite `decisions.db`): stores
+  chosen option + rationale + rejected alternatives + assumptions + goal/context. `run_deliberation()` persists every
+  real decision (best-effort). `/decisions` list/search/get + record. Verified (test_decision_memory.py, 5).
 - **BL-236** 🟡 **Personal operating manual** — evolve `user_identity`/operator-profile into a living "how you work"
   doc (preferences, habits, comm style, recurring workflows) that personalizes prompts.
 - **BL-237** 🟡 **Explainable reasoning mode** — a concise, human-readable "why" summary of a conclusion/plan

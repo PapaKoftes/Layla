@@ -110,9 +110,23 @@ def run_deliberation(goal: str, context: str = "") -> dict[str, Any]:
     rationale = result.get("rationale", "")
     approach_def = APPROACHES.get(chosen_key, APPROACHES["reasoning"])
     strategy_hint = approach_def.get("bias", "")
+    chosen_name = approach_def.get("name", "Reasoning-first")
+
+    # BL-235: persist the decision — chosen + rationale + rejected alternatives — so
+    # a later turn can recall *why*. Best-effort; never let it break deliberation.
+    try:
+        from services.memory.decision_memory import record_decision
+        rejected = [a for a in approaches if a.get("key") != chosen_key]
+        record_decision(
+            goal, chosen_key, chosen_name=chosen_name, rationale=rationale,
+            alternatives=rejected, context=context,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.debug("decision_memory record skipped: %s", e)
+
     return {
         "chosen_key": chosen_key,
-        "chosen_name": approach_def.get("name", "Reasoning-first"),
+        "chosen_name": chosen_name,
         "rationale": rationale,
         "strategy_hint": strategy_hint,
         "approaches": approaches,
