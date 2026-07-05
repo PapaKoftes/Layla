@@ -5,7 +5,6 @@ import re
 import threading
 import time
 from collections.abc import Callable
-from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -15,18 +14,14 @@ from typing import Any
 # text available so memory writes, reflection, and trace endpoints can refer to
 # what the user actually said. These contextvars are set in `autonomous_run`
 # right after capturing/optimizing the goal and read by `_autonomous_run_impl_core`.
-_goal_original_var: ContextVar[str] = ContextVar("layla_goal_original", default="")
-_goal_optimized_var: ContextVar[str] = ContextVar("layla_goal_optimized", default="")
-
-
-def get_last_goal_original() -> str:
-    """Public accessor for the most recent user-authored goal (pre-optimizer)."""
-    return _goal_original_var.get()
-
-
-def get_last_goal_optimized() -> str:
-    """Public accessor for the optimizer's rewrite of the most recent goal."""
-    return _goal_optimized_var.get()
+# BL-121: the vars + accessors now live in services.agent.goal_context (a neutral
+# module) so services don't import agent_loop privates; re-exported here for back-compat.
+from services.agent.goal_context import (  # noqa: E402,F401
+    _goal_optimized_var,
+    _goal_original_var,
+    get_last_goal_optimized,
+    get_last_goal_original,
+)
 
 import psutil
 
