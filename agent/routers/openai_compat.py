@@ -33,6 +33,40 @@ def v1_models():
     return JSONResponse({"object": "list", "data": models})
 
 
+def _extract_sampling(body: dict) -> dict:
+    """BL-151: pull the standard OpenAI sampling params coding clients (Cline/Continue/
+    Aider) send. Accepted gracefully; `stop` is honoured on the final text (see
+    `_apply_stop`). We deliberately do NOT feed request temperature/max_tokens into the
+    agent's internal decision calls — that would corrupt tool-decision JSON."""
+    b = body or {}
+    stop = b.get("stop")
+    if isinstance(stop, str):
+        stop = [stop]
+    elif isinstance(stop, list):
+        stop = [str(s) for s in stop if isinstance(s, str) and s]
+    else:
+        stop = []
+    return {
+        "temperature": b.get("temperature"),
+        "max_tokens": b.get("max_tokens"),
+        "top_p": b.get("top_p"),
+        "stop": stop[:4],  # OpenAI caps stop at 4
+        "seed": b.get("seed"),
+    }
+
+
+def _apply_stop(text: str, stop: list[str]) -> str:
+    """Truncate `text` at the earliest stop sequence (OpenAI `stop` semantics)."""
+    if not text or not stop:
+        return text
+    cut = len(text)
+    for s in stop:
+        i = text.find(s)
+        if i != -1:
+            cut = min(cut, i)
+    return text[:cut]
+
+
 def _v1_error(message: str, code: str = "invalid_request_error", status_code: int = 400, param: str | None = None):
     return JSONResponse(
         {"error": {"message": message, "type": "invalid_request_error", "param": param, "code": code}},
@@ -145,6 +179,7 @@ async def v1_chat_completions(req: dict, request: Request):
         return _v1_error(str(e), code="model_not_found", status_code=404, param="model")
 
     stream = bool((req or {}).get("stream", False))
+    sampling = _extract_sampling(body)  # BL-151: honour standard OpenAI params
     workspace_root = (req or {}).get("workspace_root", "") or ""
     allow_write = (req or {}).get("allow_write") is True
     allow_run = (req or {}).get("allow_run") is True
@@ -379,6 +414,8 @@ async def v1_chat_completions(req: dict, request: Request):
         response_text = "I couldn't understand the request. Please rephrase."
     elif not response_text:
         response_text = "No response. Try again or rephrase."
+
+    response_text = _apply_stop(response_text, sampling["stop"])  # BL-151: honour stop sequences
 
     append_h("user", goal)
     append_h("assistant", response_text)
