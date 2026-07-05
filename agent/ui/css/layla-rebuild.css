@@ -978,3 +978,19 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .obs-diff-h { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
 .obs-diff-ul { list-style: none; margin: 2px 0 0; padding: 0; }
 .obs-diff-ul li { font-family: 'JetBrains Mono', monospace; font-size: 0.62rem; color: var(--text-dim); line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── G6 · per-aspect motion choreography (BL-094) ────────────────────────────
+   Register the aspect colour vars as animatable <color>s so switching an aspect
+   EASES the accent hue across the whole UI (every var(--asp)/glow/mid consumer)
+   instead of snapping. reduced-motion users get an instant swap — the global
+   prefers-reduced-motion block above zeroes transition-duration, so this is inert
+   for them. @property is Chromium-native (the app's runtime); a browser without it
+   simply falls back to the old instant swap (progressive enhancement). */
+@property --asp      { syntax: '<color>'; inherits: true; initial-value: #8b0000; }
+@property --asp-glow { syntax: '<color>'; inherits: true; initial-value: rgba(139,0,0,0.22); }
+@property --asp-mid  { syntax: '<color>'; inherits: true; initial-value: rgba(139,0,0,0.12); }
+:root {
+  transition: --asp 450ms cubic-bezier(0.4, 0, 0.2, 1),
+              --asp-glow 450ms cubic-bezier(0.4, 0, 0.2, 1),
+              --asp-mid 450ms cubic-bezier(0.4, 0, 0.2, 1);
+}
