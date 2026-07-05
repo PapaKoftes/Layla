@@ -292,10 +292,11 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   removed orphaned imports. `config_schema.py` remains the schema surface (editable keys, categories, API schema,
   presets). Verified: `_cfg()` now returns the live config; 158 prompt/config tests green.
 - **BL-121** 🟡 REQ-51 decompose `_autonomous_run_impl_core`; services stop importing `agent_loop` privates.
-- **BL-122** 🟡 REQ-52 — **ASPECTS now single-source-of-truth**: `main.js` derived its palette aspect-switch
-  commands from a duplicate `_PALETTE_ASPECTS` roster; now maps over the canonical `aspect.ASPECTS` (verified
-  behavior-identical: same 6 ids/labels). Adding/renaming an aspect touches only `components/aspect.js`. _(The
-  broader `window.*` compat-globals reduction remains an ongoing cleanup — many are intentional back-compat shims.)_
+- **BL-122** ✅ REQ-52 — **ASPECTS single-source-of-truth**: `main.js` maps over the canonical `aspect.ASPECTS` (no
+  duplicate `_PALETTE_ASPECTS`), and a new guard test (`test_aspects_single_source.py`) parses the frontend roster and
+  asserts it equals the backend `orchestrator._load_aspects()` set — so adding/renaming/removing an aspect on only one
+  side now fails CI. _(The `window.*` compat-globals are intentional back-compat shims, kept by design — not roster
+  duplication.)_
 
 ## W6 — Reliability & data
 - **BL-130** ✅ Removed dead `LLMRequestQueue` — it was `.start()`/`.stop()`'d in main.py but **nothing ever
