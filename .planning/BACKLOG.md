@@ -86,7 +86,7 @@ the genuine gaps are narrower. Existing: `services/sandbox/python_runner.py` + `
   composes with url_guard + the OS rlimits/cgroups tier. Verified: `test_sandbox_runners.py` — network blocked when
   disallowed, reachable when enabled.
 - **BL-026** ✅ Audit-by-default when remote — `main.py:1026` now forces `_audit_enabled` ON whenever `remote_enabled` (was reading the flag alone → remote could run with no audit trail; the "activates when remote" comment is now true). 217 auth/remote tests pass.
-- **BL-027** ⬜ R9: split `vector_store.py` (~1410) · **BL-028** ⬜ split `migrations.py` (~1362) · **BL-029** ⬜ split `tool_dispatch.py` · **BL-030** ⬜ split `cursor-layla-mcp/server.py` (~1296).
+- **BL-027** ⬜ R9: split `vector_store.py` (~1410) · **BL-028** ✅ split `migrations.py` (1442→941): the 3 self-contained data-backfill migrations (FK orphan cleanup, learnings.json import, ~440-line evolution-layer backfill) extracted to `data_migrations.py` (528), re-exported so `_migrate_impl` + callers are unchanged. Suite caught a silent-skip (missing `sqlite3` import → swallowed by try/except); fixed. 2596 green · **BL-029** ⬜ split `tool_dispatch.py` · **BL-030** ⬜ split `cursor-layla-mcp/server.py` (~1296).
 
 ## W-S — Intent-driven Setup & Profiles (the self-configuring onboarding — KEYSTONE)
 *Added 2026-07-03 per operator: the startup sequence must let you choose/download/install/enable the extra
