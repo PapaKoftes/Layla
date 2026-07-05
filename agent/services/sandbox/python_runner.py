@@ -43,7 +43,29 @@ def _apply_resource_limits() -> None:
         pass
 
 
-def run_python_file(code: str, cwd: Path, *, inside_sandbox_check: Any = None) -> dict[str, Any]:
+# BL-025: an app-level network jail for sandboxed exec. Loaded via a sitecustomize.py at
+# interpreter startup (so it runs before the user script AND doesn't shift its line numbers).
+# Blocks the paths every Python HTTP client goes through (socket + DNS), so requests/urllib/
+# httpx all fail closed. Not a kernel-level jail (a raw syscall could bypass), but it stops the
+# realistic cases and composes with url_guard (egress allowlist) + the OS rlimits/cgroups tier.
+_NET_JAIL = (
+    "# Layla sandbox network jail (BL-025)\n"
+    "try:\n"
+    "    import socket as _sk\n"
+    "    def _blocked(*a, **k):\n"
+    "        raise OSError('network access is disabled in the Layla sandbox')\n"
+    "    for _n in ('socket', 'create_connection', 'socketpair', 'create_server',\n"
+    "               'getaddrinfo', 'gethostbyname', 'gethostbyname_ex'):\n"
+    "        try:\n"
+    "            setattr(_sk, _n, _blocked)\n"
+    "        except Exception:\n"
+    "            pass\n"
+    "except Exception:\n"
+    "    pass\n"
+)
+
+
+def run_python_file(code: str, cwd: Path, *, inside_sandbox_check: Any = None, allow_network: bool = True) -> dict[str, Any]:
     if inside_sandbox_check is not None and not inside_sandbox_check(cwd):
         return {"ok": False, "error": "cwd outside sandbox"}
     timeout = _python_timeout_seconds(30.0)
@@ -55,6 +77,12 @@ def run_python_file(code: str, cwd: Path, *, inside_sandbox_check: Any = None) -
         tmpdir = Path(tempfile.mkdtemp(prefix="layla_py_"))
         script_path = tmpdir / "script.py"
         script_path.write_text(code or "", encoding="utf-8")
+        env: dict[str, str] | None = None
+        if not allow_network:
+            # sitecustomize is auto-imported at startup when its dir is on PYTHONPATH.
+            (tmpdir / "sitecustomize.py").write_text(_NET_JAIL, encoding="utf-8")
+            env = dict(os.environ)
+            env["PYTHONPATH"] = str(tmpdir) + os.pathsep + env.get("PYTHONPATH", "")
         run_kw: dict[str, Any] = {
             "args": [sys.executable, str(script_path)],
             "cwd": str(cwd),
@@ -64,6 +92,8 @@ def run_python_file(code: str, cwd: Path, *, inside_sandbox_check: Any = None) -
             "errors": "replace",
             "timeout": timeout,
         }
+        if env is not None:
+            run_kw["env"] = env
         if preexec is not None:
             run_kw["preexec_fn"] = preexec
         proc = subprocess.run(**run_kw)
