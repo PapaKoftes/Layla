@@ -300,6 +300,12 @@ function maybeStartSetupProfiles() {
     maybeStartOnboarding();
   };
   window.addEventListener('layla:setup-closed', onClosed);
+  // BL-091: on the very first run, show the welcome + honesty card first — it hands off to the
+  // profile wizard itself (its "set me up" button calls window.openSetupProfiles). If the welcome
+  // was already seen, go straight to the wizard.
+  try {
+    if (typeof window.maybeShowWelcome === 'function' && window.maybeShowWelcome()) return;
+  } catch (_) {}
   try { window.openSetupProfiles(); } catch (_) { window.removeEventListener('layla:setup-closed', onClosed); maybeStartOnboarding(); }
 }
 

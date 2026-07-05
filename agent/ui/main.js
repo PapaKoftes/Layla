@@ -126,6 +126,8 @@ import * as plans from './components/plans.js';
 import * as intakeQuiz from './components/intake-quiz.js';
 // W3 — Custom aspect creator (REQ-79)
 import * as customAspect from './components/custom-aspect.js';
+// G5 — First-run welcome (BL-091)
+import * as welcome from './components/welcome.js';
 
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
@@ -559,11 +561,14 @@ function init() {
     { id: 'plans', group: 'Go to', label: 'Plans & projects', keywords: ['plans', 'projects', 'goal', 'steps', 'approve', 'execute', 'planner', 'roadmap'], run: () => plans.openPlans() },
     { id: 'intake-quiz', group: 'Go to', label: 'Intake quiz', keywords: ['quiz', 'intake', 'special', 'profile', 'stats', 'onboarding', 'personality'], run: () => intakeQuiz.openIntakeQuiz() },
     { id: 'custom-aspect', group: 'Go to', label: 'Create custom aspect', keywords: ['aspect', 'create', 'custom', 'persona', 'new', 'sigil', 'character'], run: () => customAspect.openCustomAspect() },
+    { id: 'welcome', group: 'Go to', label: 'Welcome / about Layla', keywords: ['welcome', 'about', 'intro', 'onboarding', 'values', 'honesty', 'start'], run: () => welcome.openWelcome() },
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
-  // Expose the profile wizard so the first-run sequence (setup.js) can present it.
+  // Expose the profile wizard + welcome so the first-run sequence (setup.js) can present them.
   window.openSetupProfiles = setupProfiles.openSetupProfiles;
+  window.openWelcome = welcome.openWelcome;
+  window.maybeShowWelcome = welcome.maybeShowWelcome;
   // BL-208: gate feature-tagged palette commands by which optional features are enabled.
   // Fail-open (show all) until this resolves; refresh whenever the setup wizard applies.
   const _refreshEnabledFeatures = () => {
@@ -613,6 +618,8 @@ function init() {
     closeIntakeQuiz: intakeQuiz.closeIntakeQuiz,
     openCustomAspect: customAspect.openCustomAspect,
     closeCustomAspect: customAspect.closeCustomAspect,
+    openWelcome: welcome.openWelcome,
+    closeWelcome: welcome.closeWelcome,
   });
 
   // Apply timeout config from health response
