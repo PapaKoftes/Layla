@@ -56,6 +56,11 @@ function _build() {
           '<div class="german-fc"></div>' +
           '<div class="german-actions"><button type="button" class="german-fc-start setup-btn">review due</button></div>' +
         '</section>' +
+        '<section class="german-sec">' +
+          '<div class="german-sec-title">correction history</div>' +
+          '<div class="german-hist"></div>' +
+          '<div class="german-actions"><button type="button" class="german-hist-load setup-btn">show recent</button></div>' +
+        '</section>' +
       '</div>' +
     '</div>';
   document.body.appendChild(_root);
@@ -63,7 +68,29 @@ function _build() {
   _root.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeGerman(); } });
   _root.querySelector('.german-check').addEventListener('click', _check);
   _root.querySelector('.german-fc-start').addEventListener('click', _startReview);
+  _root.querySelector('.german-hist-load').addEventListener('click', _loadCorrections);
   _root.querySelector('.german-level-sel').addEventListener('change', (e) => _setLevel(e.target.value));
+}
+
+async function _loadCorrections() {
+  const box = _root.querySelector('.german-hist');
+  box.innerHTML = '<div class="sysdiag-muted">loading…</div>';
+  try {
+    const d = await _get('/german/corrections?limit=20');
+    const recs = d.records || [];
+    if (!recs.length) { box.innerHTML = '<div class="sysdiag-muted">no corrections yet — check some German above</div>'; return; }
+    box.innerHTML = '<ul class="german-histlist">' + recs.map((r) => {
+      const orig = _esc(r.original ?? r.text ?? r.input ?? '');
+      const fixed = _esc(r.corrected ?? r.correction ?? r.fixed ?? '');
+      const n = (r.errors != null) ? r.errors : (Array.isArray(r.issues) ? r.issues.length : null);
+      return '<li><div class="german-hist-orig">' + orig + '</div>' +
+        (fixed ? '<div class="german-hist-fixed">→ ' + fixed + '</div>' : '') +
+        (n != null ? '<div class="german-hist-meta">' + n + ' issue' + (n === 1 ? '' : 's') +
+          (r.level ? ' · ' + _esc(r.level) : '') + '</div>' : '') + '</li>';
+    }).join('') + '</ul>';
+  } catch (e) {
+    box.innerHTML = '<div class="sysdiag-err">error — ' + _esc(e.message || e) + '</div>';
+  }
 }
 
 async function _check() {
