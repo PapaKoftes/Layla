@@ -81,6 +81,25 @@ def finalize_run_state(
                 daemon=True,
                 name="auto-learn",
             ).start()
+        # A1 (BL-100/BL-102): run the groundedness + escalation assessment on the final answer
+        # and attach it as `answer_quality` when the feature is enabled. `assess_answer` is a
+        # cheap no-op while both flags are off, so this is inert by default and never mutates the
+        # answer — the UI/caller can surface citations, confidence, and abstain/escalate signals.
+        if final_text and not state.get("refused"):
+            try:
+                from services.llm.answer_assessment import assess_answer
+
+                _aq_cfg = runtime_safety_module.load_config()
+                _q = assess_answer(
+                    final_text,
+                    state.get("original_goal") or goal or "",
+                    _aq_cfg,
+                    current_model=str(_aq_cfg.get("model_filename") or ""),
+                )
+                if _q and (_q.get("grounding", {}).get("enabled") or _q.get("escalate")):
+                    state["answer_quality"] = _q
+            except Exception as _aq_exc:
+                logger.debug("answer_quality assessment failed: %s", _aq_exc)
     # Conversation entity extraction: extract entities from every exchange for codex/wiki
     _conv_final_text = ""
     try:

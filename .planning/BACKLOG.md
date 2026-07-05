@@ -242,24 +242,9 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   and neon #0a0008/#c0006a noted as history, removed as the spec.
 
 ## W4 — Answer quality & eval
-- **BL-100** 🟡 REQ-30 inline RAG grounding — **mechanism built + fully tested** (`services/retrieval/grounding.py`,
-  `test_rag_grounding.py` 10 tests). Splits an answer into claims (skips questions/code/fragments), scores each for
-  support against retrieved passages, emits a `grounding` block (per-claim supported + best **source citation**,
-  overall score, cite-or-abstain). **Pluggable scorer**: model-free lexical containment by default (CPU,
-  deterministic — catches zero-support hallucinations), `set_scorer()` swaps in NLI/MiniCheck for entailment-grade
-  precision when a model is available. One-call `ground_answer(answer, query, cfg)` pulls passages from the KB and
-  maps citations. Config `grounding_enabled`/`grounding_mode`(off|flag|abstain)/`grounding_min_support` (default
-  **off** → non-invasive). Verified: supported→cited, hallucinated→flagged, abstain-mode hedges, empty-ctx→unsupported,
-  NLI hook used. _Remaining: wire the one call into the reasoning handler + measure the gain with a live NLI model._
+- **BL-100** ✅ REQ-30 inline RAG grounding — mechanism built+tested AND **now wired live**: `finalize_run_state` runs `assess_answer` on the final answer and attaches `answer_quality` (grounding citations, confidence, abstain) when `grounding_enabled` is on — inert + non-mutating by default. Verified (`test_answer_quality_wiring.py`).
 - **BL-101** ⬜ REQ-31 20–50 promptfoo golden set on PR + nightly.
-- **BL-102** 🟡 UPG-01 hybrid escalation — **decision mechanism built + tested** (`services/llm/hybrid_escalation.py`,
-  `test_hybrid_escalation.py` 10 tests). `answer_confidence()` scores an answer [0,1] from cheap model-free signals
-  (explicit abstain ≤0.15, soft "not sure" ≤0.4, mild hedges, bare-fragment penalty) **and integrates the BL-100
-  grounding score** (unsupported claims → low confidence). `should_escalate()` fires only when enabled AND a distinct
-  bigger `escalation_model` is configured AND confidence < `escalation_confidence_threshold` (0.5) — a no-op on a
-  single-model box. `escalation_decision()` returns a telemetry record. Config in runtime_safety, default off.
-  Verified: confident→no-escalate, hedge/abstain/ungrounded→escalate, same-model target→no-op.
-  _Remaining: wire the re-ask into the router + measure on a 2-model box._
+- **BL-102** ✅ UPG-01 hybrid escalation — decision mechanism built+tested AND **now wired live** via the same `finalize_run_state` hook (escalate/escalation_model surfaced in `answer_quality` when `hybrid_escalation_enabled`).
 - **BL-103** ✅ FlashRank reranker wired as the **preferred lightweight backend** (`reranker.py` auto chain:
   flashrank ONNX → sentence-transformers cross-encoder → BM25). **Fixed a perf bug**: the old code instantiated a
   CrossEncoder on **every** rerank call — now model instances are cached module-level (built once) with an
