@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Layla",
+  "version": "0.1.0",
+  "identifier": "com.layla.desktop",
+  "build": {
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Layla",
+        "width": 1200,
+        "height": 820,
+        "minWidth": 720,
+        "minHeight": 560,
+        "resizable": true,
+        "url": "http://127.0.0.1:8000/ui"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.png"]
+  }
+}
