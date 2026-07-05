@@ -368,7 +368,7 @@ adaptive-tool-learning=`strategy_stats`/`experience_replay`, context-compression
   `analyze_image` tool + image input on `/v1` (content parts). Gated feature `vision`.
 - **BL-231** ⬜ **Workflow recorder & macro engine** — record a run's tool/step sequence → save as a named **macro**
   → replay/adapt later. Builds on the existing step history + missions; store macros in SQLite; `/macros/*` + UI.
-- **BL-232** ⬜ **Cross-project reasoning** — OSS: **`networkx`** graph over the entity codex + per-project memories to
+- **BL-232** ✅ **Cross-project reasoning** — BUILT — OSS: **`networkx`** graph over the entity codex + per-project memories to
   surface shared entities / transferable knowledge across repos. `/intelligence/cross-project` + a codex view.
 - **BL-233** ⬜ **Event-driven automation engine** — a rule layer (event→action) over the existing `watchdog` watcher
   + scheduler: rules like "on new file in X → summarize", "on git commit → re-index". `/automation/*` + UI.
