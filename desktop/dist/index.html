@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Layla</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0a0008; color: #8b0000;
+      font-family: serif; display: grid; place-items: center; }
+    a { color: #b11655; }
+  </style>
+</head>
+<body>
+  <!-- Fallback shown only if the local server isn't reachable; the window is
+       configured to load http://127.0.0.1:8000/ui directly (tauri.conf.json). -->
+  <main style="text-align:center">
+    <div style="font-size:64px">∴</div>
+    <p>Waiting for Layla at <code>127.0.0.1:8000</code>…</p>
+    <p><a href="http://127.0.0.1:8000/ui">Open Layla</a></p>
+  </main>
+  <script>
+    // If Layla is up, jump straight into the UI.
+    setInterval(function () {
+      fetch("http://127.0.0.1:8000/health").then(function (r) {
+        if (r.ok) location.href = "http://127.0.0.1:8000/ui";
+      }).catch(function () {});
+    }, 1500);
+  </script>
+</body>
+</html>
