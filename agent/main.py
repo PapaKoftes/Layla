@@ -882,6 +882,9 @@ from routers import (
     explain as explain_router,
 )
 from routers import (
+    learned_skills as learned_skills_router,
+)
+from routers import (
     sync as sync_router,
 )
 from routers import (
@@ -921,6 +924,7 @@ app.include_router(decisions_router.router)        # BL-235: decision memory
 app.include_router(timeline_router.router)         # BL-234: temporal memory timeline
 app.include_router(automation_router.router)       # BL-233: event-driven automation
 app.include_router(explain_router.router)          # BL-237: explainable reasoning mode
+app.include_router(learned_skills_router.router)   # BL-238: skill acquisition from tasks
 app.include_router(intelligence_router.router)     # AirLLM, compression, prompt optimizer, KB builder
 app.include_router(debate_router.router)            # Multi-aspect debate/council/tribunal engine
 app.include_router(metrics_router.router)           # Phase 3: Observability metrics endpoint
