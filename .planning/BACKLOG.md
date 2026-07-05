@@ -236,7 +236,7 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 
 ## W4 — Answer quality & eval
 - **BL-100** ✅ REQ-30 inline RAG grounding — mechanism built+tested AND **now wired live**: `finalize_run_state` runs `assess_answer` on the final answer and attaches `answer_quality` (grounding citations, confidence, abstain) when `grounding_enabled` is on — inert + non-mutating by default. Verified (`test_answer_quality_wiring.py`).
-- **BL-101** ⬜ REQ-31 20–50 promptfoo golden set on PR + nightly.
+- **BL-101** 🟡 REQ-31 golden set — **built**: `eval/golden_set.json` (14 cases: honesty/factual/math/code/reasoning/safety/German) + `eval/run_golden.py` (self-contained stdlib runner, hits `/v1`, 6 assertion types, reports pass-rate). Doubles as the **A/B rig** for BL-104/105 (run with a flag on vs off, diff pass-rate). Tested (`test_golden_eval.py`, 2 — structure + checker). _(Remaining: wire into CI on PR + nightly — needs a runner, BL-142.)_
 - **BL-102** ✅ UPG-01 hybrid escalation — decision mechanism built+tested AND **now wired live** via the same `finalize_run_state` hook (escalate/escalation_model surfaced in `answer_quality` when `hybrid_escalation_enabled`).
 - **BL-103** ✅ FlashRank reranker wired as the **preferred lightweight backend** (`reranker.py` auto chain:
   flashrank ONNX → sentence-transformers cross-encoder → BM25). **Fixed a perf bug**: the old code instantiated a
