@@ -57,6 +57,18 @@ _NEEDS_TOOLS_SIGNALS = (
     # exec / system
     "run ", "execute", "install", "pip ", "npm ", "git ", "the terminal", "shell command",
     "compile", "build the",
+    # file write / path operations
+    "write path", "write to", "with content", "append to", "save to", "overwrite",
+    "output to", "into the file", "write file",
+)
+
+# a filesystem path (Windows drive, or a path starting with / ./ ../ ~/) → needs a tool.
+# Deliberately narrow so casual slashes ("km/h", "and/or") don't trigger it.
+_PATH_RE = re.compile(r"[A-Za-z]:[\\/]|(?:^|\s)(?:\.{1,2}/|~/|/)[\w.-]+/")
+_FILENAME_RE = re.compile(
+    r"\b[\w-]+\.(?:txt|py|json|md|js|ts|jsx|tsx|csv|ya?ml|html?|css|xml|cpp?|hpp?|java|go|"
+    r"rs|sh|toml|ini|log|pdf|png|jpe?g|gguf|env|cfg|sql|rb|php)\b",
+    re.IGNORECASE,
 )
 
 
@@ -72,6 +84,9 @@ def is_self_contained_question(goal: str) -> bool:
     if len(g) < 3 or len(g) > 2000:
         return False
     if any(sig in gl for sig in _NEEDS_TOOLS_SIGNALS):
+        return False
+    # a filesystem path or a filename with a known extension → a tool is needed
+    if _PATH_RE.search(g) or _FILENAME_RE.search(g):
         return False
     # a lone possessive "my"/"our" often implies personal data → let the loop decide
     if re.search(r"\b(my|our)\b", gl) and "?" in gl:
