@@ -399,8 +399,11 @@ adaptive-tool-learning=`strategy_stats`/`experience_replay`, context-compression
   validation + `{{param}}` replay), identity in a `learned_skill` store (name auto-derived from the goal). Learned
   skills are discoverable/invocable beyond installed packs: `invoke_skill` replays, `forget_skill` removes both.
   `/skills/learned` list/acquire/get/invoke/forget. Verified (test_skill_acquisition.py, 6).
-- **BL-239** 🟡 **Plugin SDK polish** — the `plugin_loader`/`install_from_git` SDK exists; add **docs + a
-  `cookiecutter` plugin template + version pinning** so users can build/package/share cleanly.
+- **BL-239** ✅ **Plugin SDK polish** — BUILT — `services/skills/plugin_sdk.py`: `scaffold_plugin()` generates a plugin
+  skeleton (via **`cookiecutter`** against the shipped `plugins/_template/` when available, else a built-in render of
+  the same layout) + `validate_manifest()` enforcing the contract incl. **version pinning** (semver `version` +
+  `requires.layla_api` range checked against `LAYLA_PLUGIN_API`). Top-level **PLUGINS.md** dev guide. `/plugins`
+  scaffold/validate/api-version. Verified (test_plugin_sdk.py, 9).
 - **BL-240** ✅ **Goals: proactive progress + suggestions** — BUILT — `services/planning/goal_tracker.py`: reads the
   goals/goal_progress store as a dashboard (latest %, days-idle, momentum) and derives proactive nudges — stalled
   goals to resume, near-done to finish, fresh to break down. `collect_initiative_hints` now folds in
