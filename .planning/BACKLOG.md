@@ -8,17 +8,23 @@ tracking list; [PLAN.md](PLAN.md) holds the strategy/architecture and points her
 **Status legend:** ⬜ open · 🟡 partial · ✅ done · ✂️ decided-cut. Each item has a stable `BL-###` id.
 **Workstreams W0–W11** are the execution order proposed in PLAN.md §5b; they map every loop bullet to work.
 
-> **Verification checkpoint (2026-07-04):** app **restarted** — all session routers live on :8000, model loaded,
-> chat confirmed end-to-end (`/v1/chat/completions` → 200). Full core suite **green: 2596 passed, 14 skipped, 0
-> failed** (excludes env-gated e2e/real-LLM/integration). Regressions the suite caught were reverted/fixed.
+> **Verification checkpoint (2026-07-05):** full core suite **green: 2701 passed, 14 skipped, 0 failed** (excludes
+> env-gated e2e/real-LLM/integration). Every W13 change was suite-gated + committed; regressions the suite caught
+> were fixed (incl. a real-registry replay bug + the memory-router boundary ratchet held at 84/85).
 >
-> **Watertight-product scope is COMPLETE.** W0–W7 + the R9 god-splits (BL-027–030) + the W-S keystone + the
-> security tier (incl. **encryption-at-rest end-to-end** BL-020 and the **exec network-jail** BL-025) are done and
-> verified. **The only remaining OPEN items are not watertight-product work:** (a) infra-blocked — BL-023 E2B
-> (paid cloud), BL-142 Playwright CI (runner); (b) compute-blocked *measurement* — BL-101/104/105 (mechanisms
-> built + unit-tested; only the benchmark numbers need a model + time); (c) **W8–W11 V2/V3 roadmap** — new major
-> features (Ollama, Tauri shell, editor/PWA clients, kit marketplace, DSPy, HF Hub, multilingual, cross-instance
-> sync) + the bespoke→library dep-swaps (BL-180/181, behaviour-change risk). ~79 commits this cycle; ships watertight.
+> **Watertight-product scope is COMPLETE, and so is the W13 intelligence tier** (the 26-feature audit plan):
+> **BL-230** vision (GGUF VLM + OCR), **BL-231** macro engine, **BL-232** cross-project reasoning, **BL-233**
+> event-automation, **BL-234** temporal timeline, **BL-235** decision memory, **BL-236** operating manual,
+> **BL-237** explainable reasoning, **BL-238** skill acquisition, **BL-239** plugin SDK, **BL-240** proactive goals,
+> **BL-241** world-state model, **BL-242** feedback learning — all built, tested, pushed.
+>
+> **Every remaining OPEN item is externally blocked or deliberately parked** — none is completable by building
+> harder: (a) infra-blocked — BL-023 E2B (paid cloud), BL-142 Playwright CI + BL-141/106/101-CI (need a runner);
+> (b) compute-blocked *measurement* — BL-104/105/108-KVcache (mechanisms built + unit-tested; the numbers need a
+> GGUF model + time); (c) **explicitly deferred** — BL-221 WebUI review (operator: "once we're done"), W11
+> companion-depth (ADR-006 "later": BL-190/191/192); (d) **deprioritized churn / V2-V3 horizon** — Tauri/editor/PWA
+> clients (BL-154/155), multilingual flagship (BL-160), dep-swaps (BL-180/181, behaviour-change risk), refactors
+> (BL-121/122). ~92 BL items done · 0 failed.
 
 ---
 
