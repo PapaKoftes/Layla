@@ -35,3 +35,8 @@ def test_degenerate_fence_loop_collapses_to_empty():
 
 def test_objective_echo_cut():
     assert strip_junk_from_reply("The answer is Paris. Objective: Research capital") == "The answer is Paris."
+
+
+def test_echo_patterns_marker_cut():
+    assert strip_junk_from_reply("The capital of France is Paris.\nEcho (patterns/preferences):") == "The capital of France is Paris."
+    assert strip_junk_from_reply('The reversed string is "olleh".\nECHO: internal') == 'The reversed string is "olleh".'
