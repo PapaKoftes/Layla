@@ -128,6 +128,8 @@ import * as intakeQuiz from './components/intake-quiz.js';
 import * as customAspect from './components/custom-aspect.js';
 // G5 — First-run welcome (BL-091)
 import * as welcome from './components/welcome.js';
+// W8 — Kit marketplace (BL-156)
+import * as marketplace from './components/marketplace.js';
 
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
@@ -562,6 +564,7 @@ function init() {
     { id: 'intake-quiz', group: 'Go to', label: 'Intake quiz', keywords: ['quiz', 'intake', 'special', 'profile', 'stats', 'onboarding', 'personality'], run: () => intakeQuiz.openIntakeQuiz() },
     { id: 'custom-aspect', group: 'Go to', label: 'Create custom aspect', keywords: ['aspect', 'create', 'custom', 'persona', 'new', 'sigil', 'character'], run: () => customAspect.openCustomAspect() },
     { id: 'welcome', group: 'Go to', label: 'Welcome / about Layla', keywords: ['welcome', 'about', 'intro', 'onboarding', 'values', 'honesty', 'start'], run: () => welcome.openWelcome() },
+    { id: 'marketplace', group: 'Go to', label: 'Kit marketplace', keywords: ['kit', 'marketplace', 'install', 'features', 'bundle', 'store', 'capabilities'], run: () => marketplace.openMarketplace() },
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
@@ -620,6 +623,8 @@ function init() {
     closeCustomAspect: customAspect.closeCustomAspect,
     openWelcome: welcome.openWelcome,
     closeWelcome: welcome.closeWelcome,
+    openMarketplace: marketplace.openMarketplace,
+    closeMarketplace: marketplace.closeMarketplace,
   });
 
   // Apply timeout config from health response
