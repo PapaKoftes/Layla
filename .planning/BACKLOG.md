@@ -330,7 +330,7 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 - **BL-160** ⬜ UPG-23 Castilla multilingual flagship · **BL-161** ⬜ UPG-33 memory/knowledge sync across paired instances
 
 ## W9 — Foundation-swap tail + scope-cut + install
-- **BL-170** ✅ UPG-10 engine abstraction — `services/llm/inference_router.py` IS the abstraction: one interface routing to `llama_cpp` | `openai_compatible` | `ollama` | `litellm` | `cluster`, with `inference_backend` config + auto-detection. Tested (`test_inference_router.py`) · **BL-171** ⬜ UPG-11 one-SQLite memory file · **BL-172** 🟡 UPG-14 governor auto-cap
+- **BL-170** ✅ UPG-10 engine abstraction — `services/llm/inference_router.py` IS the abstraction: one interface routing to `llama_cpp` | `openai_compatible` | `ollama` | `litellm` | `cluster`, with `inference_backend` config + auto-detection. Tested (`test_inference_router.py`) · **BL-171** ⬜ UPG-11 one-SQLite memory file · **BL-172** ✅ UPG-14 governor auto-cap — `resource_governor.py` `ResourceGovernor` dynamically caps CPU by activity mode (WHISPER 5% / BREATHE 25% / SPRINT 80%), enabled by default, ticked from main.py + the scheduler, with priority/throttle callbacks. Tested (`test_resource_governor.py`, `test_governor_castilla.py`)
 - **BL-173** ⬜ Phase 3 **scope-cut**: park cluster/tribunal/gamification-headline/HUD-chips behind reversible flags
 - **BL-174** 🟡 REQ-72 install slice · REQ-73 first-run kit provisioning · REQ-75 full-app E2E + **one-command install** · REQ-76 each aspect = curated kit · REQ-85 kit upgrades (embedding-per-tier ✅, IQ-quant catalog, benchmark-driven selection)
 
