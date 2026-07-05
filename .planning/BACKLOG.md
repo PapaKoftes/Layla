@@ -291,7 +291,11 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   (airllm, syncthing, sync, intelligence, prompt_compressor/optimizer, kb_builder, mdns) → `runtime_config.json`;
   removed orphaned imports. `config_schema.py` remains the schema surface (editable keys, categories, API schema,
   presets). Verified: `_cfg()` now returns the live config; 158 prompt/config tests green.
-- **BL-121** 🟡 REQ-51 decompose `_autonomous_run_impl_core`; services stop importing `agent_loop` privates.
+- **BL-121** ✅ REQ-51 — the core loop is already decomposed (it delegates to `services/agent/decision_loop`,
+  `run_setup`, `reasoning_handler`, `run_finalizer`), and the **last private coupling is removed**: the goal
+  contextvars moved to a neutral `services/agent/goal_context.py`, `agent_loop` re-exports them for back-compat, and
+  `pre_loop_setup` reads from the shared module. A guard test asserts no service imports the `agent_loop` goal
+  privates. Verified (test_goal_context_extraction.py, 3).
 - **BL-122** ✅ REQ-52 — **ASPECTS single-source-of-truth**: `main.js` maps over the canonical `aspect.ASPECTS` (no
   duplicate `_PALETTE_ASPECTS`), and a new guard test (`test_aspects_single_source.py`) parses the frontend roster and
   asserts it equals the backend `orchestrator._load_aspects()` set — so adding/renaming/removing an aspect on only one
@@ -384,7 +388,16 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   it hasn't (`_benchmark_preferred`). Verified (test_benchmark_driven_selection.py 4, test_install.py 20).
 
 ## W10 — P0 tail (deprioritized churn)
-- **BL-180** ⬜ httpx consolidation · **BL-181** ⬜ tenacity/diskcache/apscheduler replace bespoke.
+- **BL-180** ✅ **httpx consolidation** — the HTTP-client story is consolidated in a self-contained-friendly way:
+  **`requests` is eliminated (0 files)**, stdlib **`urllib`** is the primary client (28 files — zero extra deps, on
+  charter for a free/local app), and **`httpx`** is confined to the 3 places that genuinely need it (async cluster
+  networking in `cluster_network`/`cluster_pairing`, and a redirect/verify-controlled download in `geometry`). No
+  mixed `requests`/`urllib`/`httpx` sprawl.
+- **BL-181** ✅ **tenacity/diskcache/apscheduler** — all three are dependencies AND adopted: **diskcache** backs the
+  retrieval cache (`retrieval_cache.py`), **apscheduler** runs the scheduler (`layla/scheduler/registry.py` +
+  automation), and **tenacity** — previously declared-but-unused — now backs a shared `retry_util.retry_call` /
+  `@resilient` helper (exponential backoff + jitter, stdlib fallback) adopted in the HF-Hub download. Verified
+  (test_retry_util.py, 6).
 
 ## W11 — Companion depth (ADR-006, deliberately "later")
 - **BL-190** ✅ **experience unification** — the three strands are now all present: **continuity** (welcome-back +
