@@ -769,6 +769,15 @@ def build_system_head(
     except Exception as _ge:
         logger.debug("german_mode inject failed: %s", _ge)
 
+    # BL-160: multilingual flagship — converse natively in the configured response language.
+    try:
+        from services.prompts.response_language import build_language_block, response_language_from_config
+        _lang_block = build_language_block(response_language_from_config(cfg if isinstance(cfg, dict) else {}))
+        if _lang_block:
+            system_instructions = system_instructions + "\n\n" + _lang_block
+    except Exception as _le:
+        logger.debug("response_language inject failed: %s", _le)
+
     # Memory sections (canonical order)
     from services.context.context_merge_layers import MEMORY_SECTION_ORDER
     memory_sections: dict[str, str] = {}
