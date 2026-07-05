@@ -1092,3 +1092,26 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
               --asp-glow 450ms cubic-bezier(0.4, 0, 0.2, 1),
               --asp-mid 450ms cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* ── BL-221: mobile scaling — sidebar is an off-canvas drawer, not a content-eater ──
+   This sheet loads last, so these rules authoritatively win the cascade: on narrow
+   screens the sidebar defaults off-screen and slides in only when the hamburger adds
+   `.mobile-open`, and the main chat area gets the full width. */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: var(--header-stack-h, 0);
+    bottom: 0;
+    width: min(280px, 84vw) !important;
+    min-width: 0 !important;
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 6px 0 28px rgba(0, 0, 0, 0.45);
+    will-change: transform;
+  }
+  .sidebar.mobile-open { transform: translateX(0); }
+  #main-chat-area, .main-area { width: 100% !important; }
+  #sidebar-backdrop.visible { display: block; }
+}
