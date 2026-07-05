@@ -237,7 +237,12 @@ def setup_download_hf(body: dict):
     models_dir = _P(md_raw).expanduser().resolve() if md_raw else _rs.default_models_dir()
     models_dir.mkdir(parents=True, exist_ok=True)
     try:
-        path = hf_hub_download(repo_id=repo_id, filename=fname, local_dir=str(models_dir))
+        # BL-181: standard tenacity-backed retry for the flaky network fetch.
+        from services.infrastructure.retry_util import retry_call
+        path = retry_call(
+            lambda: hf_hub_download(repo_id=repo_id, filename=fname, local_dir=str(models_dir)),
+            attempts=3, label="hf_hub_download",
+        )
         # Guard: the resolved file must live under the models dir.
         _P(path).resolve().relative_to(models_dir.resolve())
         return {"ok": True, "path": str(path), "filename": fname, "repo_id": repo_id}
