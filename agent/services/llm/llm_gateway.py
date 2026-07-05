@@ -342,6 +342,27 @@ def _effective_model_filename(cfg: dict) -> str:
     return (cfg.get("model_filename") or "your-model.gguf").strip()
 
 
+def _apply_prompt_cache(inst, cache_mb: int) -> bool:
+    """Attach a bounded LlamaRAMCache so the shared prompt prefix isn't re-prefilled (BL-108)."""
+    try:
+        from llama_cpp import LlamaRAMCache
+    except Exception:
+        try:
+            from llama_cpp.llama_cache import LlamaRAMCache  # older layout
+        except Exception:
+            logger.debug("kv prompt cache: LlamaRAMCache unavailable")
+            return False
+    if not hasattr(inst, "set_cache"):
+        return False
+    capacity = max(1, int(cache_mb)) * 1024 * 1024
+    try:
+        inst.set_cache(LlamaRAMCache(capacity_bytes=capacity))
+    except TypeError:
+        inst.set_cache(LlamaRAMCache(capacity))
+    logger.info("KV prompt-prefix cache enabled (%d MB)", cache_mb)
+    return True
+
+
 def _get_llm():
     global _llm
     try:
@@ -514,6 +535,16 @@ def _get_llm():
                 inst.scores = np.ndarray((n_ctx, inst._n_vocab), dtype=np.single)
         except Exception as _e:
             logger.debug("scores resize check failed: %s", _e)
+
+        # BL-108: KV-cache prompt-prefix reuse. Layla's system prompt is large and stable
+        # across turns; a LlamaRAMCache lets llama.cpp skip re-prefilling the shared prefix,
+        # cutting time-to-first-token on every follow-up. Opt-in (kv_prompt_cache_enabled),
+        # bounded by kv_prompt_cache_mb. Best-effort — never block model load.
+        try:
+            if cfg.get("kv_prompt_cache_enabled"):
+                _apply_prompt_cache(inst, int(cfg.get("kv_prompt_cache_mb", 512) or 512))
+        except Exception as _kv:
+            logger.debug("kv prompt cache setup skipped: %s", _kv)
 
         # F9: bound the resident-model cache before inserting so routing can't OOM.
         try:
