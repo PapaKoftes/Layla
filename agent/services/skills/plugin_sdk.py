@@ -78,8 +78,9 @@ def validate_manifest(manifest: dict, *, current_api: str = LAYLA_PLUGIN_API) ->
         elif not _api_satisfied(api_req, current_api):
             errors.append(f"requires.layla_api {api_req!r} not satisfied by current API {current_api}")
 
-    if not (manifest.get("skills") or manifest.get("tools") or manifest.get("capabilities")):
-        warnings.append("plugin declares no skills, tools, or capabilities")
+    if not (manifest.get("skills") or manifest.get("tools")
+            or manifest.get("capabilities") or manifest.get("mcp_servers")):
+        warnings.append("plugin declares no skills, tools, capabilities, or mcp_servers")
 
     return {"ok": not errors, "errors": errors, "warnings": warnings}
 
