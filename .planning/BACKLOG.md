@@ -223,9 +223,7 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 - **BL-091** 🟡 G5 onboarding — all steps **exist** across components: get-model + workspace (`setup.js`), honesty/VALUES
   (onboarding tour), profile wizard (first-run, BL-209), "ready" proof (self-test). _Remaining: fuse them into one
   linear 5-step welcome→ready flow rather than separate overlays._
-- **BL-092** 🟡 REQ-79 aspect creator — **core covered** by the Character Lab (`character-creator.js`): 13 personality
-  **sliders**, **voice** (voice-params), **prompt** (prompt-hints), appearance, per-aspect customize+reset+titles for
-  the 6 aspects. _Remaining: create a brand-NEW named aspect (needs a create-aspect backend) + sigil picker + kit bundle._
+- **BL-092** ✅ REQ-79 aspect creator — the Character Lab already covers customizing the 6 (sliders/voice/prompt/titles); **now you can also create your OWN named aspect** (`custom_aspects.py` + `/character/custom-aspects` + `components/custom-aspect.js`, ⌘K → "Create custom aspect"). A custom aspect inherits behaviour/voice/model from a chosen **base built-in** and overrides name/sigil/tagline/accent/prompt-hint; **additive** — persisted as `user_identity` keys, resolved via `all_aspect_ids()` + `load_aspect_profile` custom path, so the 6 built-ins are never touched. Verified: `test_custom_aspects.py` (4 — create→resolve→set-main→delete, built-ins untouched, validation, router round-trip) + live UI (base dropdown, POST spec, list w/ accent sigil).
 - **BL-093** ✅ REQ-80 S.P.E.C.I.A.L.-style intake quiz UI (`components/intake-quiz.js`) — surfaces the
   `/operator/quiz/*` backend that had no UI: scenario questions across stages (single-select, accent-highlighted),
   advances until the backend reports no more stages, then POSTs `/operator/quiz/submit` and renders the scored
@@ -259,7 +257,7 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   so the same prompt reproduces the same output — no seed plumbing needed (greedy has no sampling randomness).
   Wired into `run_completion`'s param resolution; off by default (chat stays sampled). Verified
   (`test_decoding_determinism.py` 3 tests): off→passthrough, on→greedy, builtin default off.
-- **BL-108** 🟡 REQ-82 coding scaffolding: repo-map ✅(wired) · **diff-edit ✅ hardened** · codebase RAG 🟡 · KV-cache ⬜.
+- **BL-108** 🟡 REQ-82 coding scaffolding: repo-map ✅(wired) · diff-edit ✅ hardened · **codebase RAG ✅** (confirmed wired end-to-end: `context_builder` calls `workspace_index.retrieve_code_context` — real semantic retrieval over the `workspace` Chroma collection — and formats the scored chunks into the answer prompt; symbol index via `repo_indexer` runs at startup + on a scheduler job) · **KV-cache reuse ⬜** (the only remainder — a llama.cpp prompt-prefix caching perf optimization; needs the model + gateway-level work).
   **diff-edit**: `apply_patch` was **positional** — it trusted `hunk.source_start` and removed lines there *without
   verifying they match*, silently corrupting files when an LLM diff's line numbers drift. Now **content-verified**:
   new `_locate_block` finds each hunk by its actual context+removed lines (exact, then whitespace-normalized,
