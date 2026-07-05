@@ -342,7 +342,7 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 - **BL-191** ⬜ growth-system polish · **BL-192** ⬜ memory/learning verification pipeline
 
 ## W12 — Post-feature polish + generalization (operator, 2026-07-05)
-- **BL-220** 🟡 **Generalized multi-language tutor** — extend the German tutor (BL-040) into a **language-agnostic**
+- **BL-220** ✅ **Generalized multi-language tutor** — BUILT — extend the German tutor (BL-040) into a **language-agnostic**
   learning system that works for **any** language, shipping **German + Italian + Spanish** now. Design: a `LANGUAGES`
   registry (code · name · native · CEFR-applicable · has-rule-patterns); **LLM-based correction** as the generalized
   engine (prompt the model as a `{language}` tutor at CEFR `{level}` → errors + corrected text), keeping German's fast
