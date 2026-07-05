@@ -198,7 +198,10 @@ def strip_junk_from_reply(text: str) -> str:
         t = re.sub(r"^\s*assistant\s*:\s*I\s+replied\.\s*", "", t, count=1, flags=re.IGNORECASE).strip()
         if t == prev:
             break
-    t = re.sub(r"^\s*\[EARNED_TITLE[^\]]*\]\s*", "", t, flags=re.IGNORECASE).strip()
+    # Strip the earned-title marker ANYWHERE (it leaks mid/trailing, e.g. "365 [EARNED_TITLE: …]").
+    t = re.sub(r"\s*\[EARNED_TITLE[^\]]*\]\s*", " ", t, flags=re.IGNORECASE).strip()
+    # Drop a dangling, unmatched code fence left at the very end.
+    t = re.sub(r"\s*```\s*$", "", t).strip()
     t = re.sub(r"^(Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\s*:\s*", "", t).strip()
     t = re.sub(r"\[System:\s*Your last response[^\]]*\]\s*", "", t, flags=re.IGNORECASE | re.DOTALL).strip()
     for _marker in (r"(?:^|\n)\s*#{1,3}\s*(TASK|CONTEXT|SCRATCHPAD|REPO)\b", r"(?:^|\n)\s*Current goal\s*:", r"(?:^|\n)\s*\[Active aspect\s*:", r"(?:^|\n)\s*Last user message\s*:", r"(?:^|\n)\s*Repo snapshot\s*:", r"(?:^|\n)\s*Repo structure\s*:", r"(?:^|\n)\s*##"):
