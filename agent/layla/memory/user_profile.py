@@ -288,6 +288,30 @@ def add_goal_progress(goal_id: str, note: str = "", progress_pct: float = 0) -> 
         db.commit()
 
 
+def get_goal_progress(goal_id: str) -> list[dict]:
+    """Return progress entries for a goal (oldest first)."""
+    if not goal_id:
+        return []
+    migrate()
+    with _conn() as db:
+        rows = db.execute(
+            "SELECT note, progress_pct, created_at FROM goal_progress WHERE goal_id=? ORDER BY created_at ASC",
+            (goal_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def set_goal_status(goal_id: str, status: str) -> None:
+    """Update a goal's status (active|done|paused|dropped)."""
+    if not goal_id:
+        return
+    migrate()
+    with _conn() as db:
+        db.execute("UPDATE goals SET status=?, updated_at=? WHERE id=?",
+                   (status, utcnow().isoformat(), goal_id))
+        db.commit()
+
+
 def get_active_goals(project_id: str = "") -> list[dict]:
     """Return active goals, optionally filtered by project."""
     migrate()
