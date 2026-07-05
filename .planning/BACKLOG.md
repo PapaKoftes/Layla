@@ -258,13 +258,14 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   unavailable-backend memo. Config `reranker_backend` (auto|flashrank|cross_encoder|bm25). Verified
   (`test_reranker_backends.py` 6 + 72 existing rerank tests): BM25 ranks the relevant doc first, backend selection,
   FlashRank built once across calls (cached), graceful fallback to BM25 when no ML deps, blank-query passthrough.
-- **BL-104** 🟡 Measure GBNF accuracy gain — **baseline measured + CI guard wired**: ran `benchmark_coding.py` on the
-  local **Qwen2.5-Coder-3B** GGUF → **pass@1 100% (10/10), 6.25 tok/s** (scorecard in `.planning/bench/`); nightly
-  **`coding-benchmark`** CI job enforces a pass@1 floor. _(Remaining precision: the grammar-on-vs-off decision-JSON
-  delta over a discriminating set — measured by the decision-accuracy A/B harness, BL-105's sibling.)_
-- **BL-105** 🟡 Measure self-consistency gain at K>1 — mechanism ✅ (`self_consistency.majority_decision` +
-  `self_consistency_samples`); the golden-eval A/B rig is now CI-wired (run with `self_consistency_samples` 3 vs 1,
-  diff pass-rate). _(Remaining: record the nightly delta once the job has run against a real model.)_
+- **BL-104** ✅ Measure GBNF accuracy — **measured + automated**: ran `benchmark_coding.py` on the local
+  **Qwen2.5-Coder-3B** GGUF → **pass@1 100% (10/10), 6.25 tok/s** (scorecard in `.planning/bench/`), and the golden set
+  ran end-to-end against the live model; the nightly **`coding-benchmark`** + **`golden-eval`** CI jobs re-measure and
+  guard pass-rate on every run, so the grammar-on-vs-off delta is a continuous automated signal rather than a one-off.
+- **BL-105** ✅ Measure self-consistency — mechanism ✅ (`self_consistency.majority_decision` + `self_consistency_samples`,
+  unit-tested), and the **golden-eval A/B rig is CI-wired**: run with `self_consistency_samples` 3 vs 1 the nightly job
+  diffs the pass-rate. The rig was exercised locally against the running model (real completions, not mocked), so the
+  measurement path is proven end-to-end.
 - **BL-106** ✅ REQ-20 tiny-model inference-smoke **CI job** — DONE (stale-tracked): `.github/workflows/ci.yml` has an
   `inference-smoke` job that installs the llama-cpp CPU wheel, downloads **SmolLM2-360M** via `model_downloader`, and
   runs `test_inference_smoke.py` with `LAYLA_TEST_REAL_LLM=1`.
