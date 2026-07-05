@@ -233,6 +233,23 @@ def run_decision_loop(
         else:
             intent = _al.classify_intent((state.get("original_goal") or goal or "").strip())
 
+        # -- Reason-first for self-contained questions (golden-eval fix) --
+        # In chat mode, a general-knowledge / math / writing / reasoning question the model
+        # can answer on its own should NOT burn tool calls (and risk max-tool-calls / raw
+        # dict leaks). On the first substantive step, force `reason` so it answers directly.
+        try:
+            if (
+                intent not in ("reason", "none", "finish", "wakeup")
+                and int(state.get("tool_calls", 0) or 0) == 0
+                and not allow_write and not allow_run
+                and not state.get("_forced_reason_first")
+                and _al._is_self_contained_question(state.get("original_goal") or goal or "")
+            ):
+                state["_forced_reason_first"] = True
+                intent = "reason"
+        except Exception as _rf_exc:
+            logger.debug("reason-first fast path skipped: %s", _rf_exc)
+
         # -- Revised objective --
         consecutive = state.get("consecutive_no_progress", 0)
         objective_complete = state.get("objective_complete", False)
