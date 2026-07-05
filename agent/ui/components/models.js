@@ -36,7 +36,49 @@ export function openModelsPanel() {
   const ov = document.getElementById('models-overlay');
   if (!ov) return;
   ov.classList.add('visible');
+  _wireHfDownload();
   refreshModelsPanel();
+}
+
+// ── Download from Hugging Face (BL-159) ────────────────────────────────────────
+let _hfWired = false;
+function _wireHfDownload() {
+  if (_hfWired) return;
+  const btn = document.getElementById('models-hf-btn');
+  if (!btn) return;
+  _hfWired = true;
+  btn.addEventListener('click', downloadFromHuggingFace);
+}
+
+export async function downloadFromHuggingFace() {
+  const repo = (document.getElementById('models-hf-repo') || {}).value || '';
+  const file = (document.getElementById('models-hf-file') || {}).value || '';
+  const status = document.getElementById('models-hf-status');
+  if (!repo.trim() || !file.trim()) {
+    if (status) status.textContent = 'Enter both a repo id and a filename.';
+    return;
+  }
+  const btn = document.getElementById('models-hf-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'fetching…'; }
+  if (status) status.textContent = 'Downloading ' + file + ' from ' + repo + '…';
+  try {
+    const res = await fetch('/setup/download-hf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repo_id: repo.trim(), filename: file.trim() }),
+    });
+    const d = await res.json();
+    if (d && d.ok) {
+      if (status) status.textContent = 'Downloaded ✓ ' + (d.filename || file) + ' — now selectable above.';
+      refreshModelsPanel();
+    } else {
+      if (status) status.textContent = 'Failed: ' + ((d && d.error) || 'unknown error');
+    }
+  } catch (e) {
+    if (status) status.textContent = 'Error: ' + (e && e.message ? e.message : e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'fetch'; }
+  }
 }
 
 export function closeModelsPanel() {

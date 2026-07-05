@@ -24,7 +24,7 @@ from typing import Any, Generator
 logger = logging.getLogger("layla")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-_BACKENDS = ("llama_cpp", "openai_compatible", "ollama", "litellm")
+_BACKENDS = ("llama_cpp", "openai_compatible", "ollama", "litellm", "onnx")
 _AUTO = "auto"
 
 
@@ -41,6 +41,9 @@ def _detect_backend(cfg: dict) -> str:
     explicit = (cfg.get("inference_backend") or "").strip().lower()
     if explicit and explicit != _AUTO and explicit in _BACKENDS:
         return explicit
+    # ONNX Runtime GenAI backend (BL-159): auto-selected when an ONNX model dir is set.
+    if (cfg.get("onnx_model_path") or "").strip():
+        return "onnx"
     if (cfg.get("ollama_base_url") or "").strip():
         return "ollama"
     url = (cfg.get("llama_server_url") or "").strip().rstrip("/")
@@ -377,6 +380,60 @@ def apply_decoding_determinism(cfg: dict | None, temperature: float, top_p: floa
     return temperature, top_p, top_k
 
 
+_onnx_cache: dict[str, Any] = {}
+
+
+def _onnx_error(msg: str) -> dict:
+    return {"choices": [{"message": {"role": "assistant", "content": ""}, "finish_reason": "error"}],
+            "error": msg, "backend": "onnx"}
+
+
+def run_completion_onnx(
+    cfg: dict, prompt: str, max_tokens: int, temperature: float,
+    stop: list[str] | None, stream: bool, timeout: int,
+) -> dict:
+    """ONNX Runtime GenAI backend (BL-159) — local inference for ONNX-format models.
+
+    Prebuilt-OSS: `onnxruntime-genai`. Degrades gracefully — a missing library or model
+    dir returns an OpenAI-shaped error dict rather than raising, so callers/tests are safe.
+    (Streaming falls back to a single block; the agent tolerates non-streamed completions.)
+    """
+    model_dir = (cfg.get("onnx_model_path") or "").strip()
+    if not model_dir or not Path(model_dir).exists():
+        return _onnx_error(f"onnx_model_path not found: {model_dir!r}")
+    try:
+        import onnxruntime_genai as og
+    except Exception:
+        return _onnx_error("onnxruntime-genai not installed (pip install onnxruntime-genai)")
+    try:
+        cached = _onnx_cache.get(model_dir)
+        if cached is None:
+            model = og.Model(model_dir)
+            tokenizer = og.Tokenizer(model)
+            cached = _onnx_cache[model_dir] = (model, tokenizer)
+        model, tokenizer = cached
+        params = og.GeneratorParams(model)
+        params.set_search_options(
+            max_length=int(max_tokens) + len(prompt.split()),
+            temperature=float(max(0.0, temperature)),
+            do_sample=temperature > 0.0,
+        )
+        params.input_ids = tokenizer.encode(prompt)
+        out_tokens = model.generate(params)
+        text = tokenizer.decode(out_tokens[0]) if out_tokens else ""
+        if text.startswith(prompt):
+            text = text[len(prompt):]
+        for s in stop or []:
+            i = text.find(s)
+            if i != -1:
+                text = text[:i]
+        return {"choices": [{"message": {"role": "assistant", "content": text.strip()},
+                             "finish_reason": "stop"}], "backend": "onnx"}
+    except Exception as e:  # noqa: BLE001
+        logger.warning("onnx completion failed: %s", e)
+        return _onnx_error(f"onnx inference error: {e}")
+
+
 def run_completion(
     prompt: str,
     max_tokens: int = 256,
@@ -434,6 +491,8 @@ def run_completion(
         except ImportError:
             logger.warning("inference_router: litellm backend selected but not installed; falling back to llama_cpp")
             # Fall through to llama_cpp
+    if backend == "onnx":
+        return run_completion_onnx(cfg, prompt, max_tokens, temperature, stop, stream, timeout)
     if backend == "ollama":
         return run_completion_ollama(
             cfg, prompt, max_tokens, temperature, top_p, repeat_penalty, top_k,

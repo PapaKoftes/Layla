@@ -1218,6 +1218,15 @@
         <div class="models-section-title">Download a model</div>
         <div id="models-catalog"></div>
       </div>
+      <div class="models-section">
+        <div class="models-section-title">Download from Hugging Face</div>
+        <div class="models-hf-row">
+          <input id="models-hf-repo" type="text" placeholder="repo id — e.g. bartowski/Qwen2.5-Coder-3B-Instruct-GGUF" />
+          <input id="models-hf-file" type="text" placeholder="filename — e.g. Qwen2.5-Coder-3B-Instruct-Q4_K_M.gguf" />
+          <button id="models-hf-btn" type="button" class="setup-btn">fetch</button>
+        </div>
+        <div id="models-hf-status" class="hint"></div>
+      </div>
       <div id="models-progress" class="models-progress" style="display:none">
         <div class="models-progress-track"><div id="models-progress-bar" class="models-progress-bar"></div></div>
         <div id="models-progress-label" class="hint"></div>
