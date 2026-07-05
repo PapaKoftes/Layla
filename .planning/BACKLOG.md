@@ -218,7 +218,12 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   advances until the backend reports no more stages, then POSTs `/operator/quiz/submit` and renders the scored
   identity **preview** (stat bars), "save & finish" persists (`finalize:true`). ⌘K → "Intake quiz". Verified
   live+mock on :8777: question render, selection, stage→finish flow, stat bars (strength 7→70%), finalize submit.
-- **BL-094** ⬜ REQ-81 / G6 per-aspect motion & polish (focus/reduced-motion ✅; motion choreography open).
+- **BL-094** ✅ REQ-81 / G6 per-aspect motion — aspect switches now **ease the accent hue** across the whole UI
+  instead of snapping: registered `--asp`/`--asp-glow`/`--asp-mid` as animatable `@property <color>`s with a 450ms
+  `:root` transition, so every `var(--asp)` consumer interpolates on switch. reduced-motion users get an instant
+  swap (the global reduce block zeroes transition-duration). Verified live: mid-transition `--asp` sampled an
+  interpolated colour between the old + new hue (rgb(115,23,43) between morrigan-red and echo-blue). Overlays
+  already animate (cmdp-rise/fade); focus/reduced-motion were already ✅.
 - **BL-095** ✅ PLAN §6 palette reconciled to the **shipped** `layla-rebuild.css` `:root` (canonical): `--bg #0a0008`,
   `--accent #b11655` wine-rose, per-aspect `--asp` (morrigan #8b0000 …). Superseded #0a0710/#c0395e ("calm #1")
   and neon #0a0008/#c0006a noted as history, removed as the spec.
