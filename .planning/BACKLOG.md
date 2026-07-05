@@ -149,10 +149,7 @@ the potato thesis (load only what's needed) all plug into. Do this **before** th
 *Each UI here plugs into W-S: it appears only when its feature is enabled, and its deps/model install via the
 onboarding feature-installer.*
 Genuinely headless (no `ui/components/*` exists — verified). Corrects PLAN's "~18" underestimate.
-- **BL-040** 🟡 **🇩🇪 German language-learning UI** — `components/german.js` (⌘K → "German"): CEFR level (get/set),
-  **check-my-German** (POST /correct → error list with match→hint), **flashcard review** (due → reveal → rate
-  again/hard/good/easy → SRS), live stats. Verified end-to-end on the running app (level B1, correction,
-  empty-deck review, token styling). Remaining: flashcard create/delete + calibration wizard (secondary).
+- **BL-040** ✅ 🇩🇪 German UI — complete: check-my-German (`/correct`), flashcard **SRS** (due/review/grade/stats), CEFR **level**, **correction history** (`/corrections`), and now the **placement quiz** (`/calibrate` — sentences per level A1-B2, self-rate comprehension → recommended CEFR level → one-click apply). Verified live+mock (4-level flow, per-level scores, recommended-level + use).
 - **BL-041** ✅ Missions board UI — `components/missions.js` (⌘K → "Missions board"): start a mission, kanban
   columns (running/paused/queued/done) grouped from `/missions`, per-status actions (pause/resume/cancel).
   Verified live (empty state) + with mock data (columns/cards/actions render correctly); token-styled.
