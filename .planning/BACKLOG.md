@@ -87,7 +87,10 @@ the genuine gaps are narrower. Existing: `services/sandbox/python_runner.py` + `
   cleanup-on-exit wired in `background_subprocess.py`. Well-tested: `test_worker_cgroup_linux.py` (9 — attach/skip/
   memory_max/procs/path-traversal/remove) + `test_worker_os_limits.py` + `test_background_subprocess.py` +
   `test_sandbox_runners.py`. Present, wired, covered.
-- **BL-023** ⬜ Ephemeral-container (E2B) exec tier — GENUINE gap (not present).
+- **BL-023** ✂️ **CUT** — Ephemeral-container (E2B) exec tier. E2B is a **paid cloud** service; Layla is standalone,
+  free, local-only by charter — so this is out of scope by principle, not deferred. The exec-isolation need it would
+  have served is already met locally: the `python_runner.py` sandbox + `worker_os_limits.py` (POSIX rlimits / Windows
+  Job Object) + the Linux cgroups-v2 path (BL-022) + the exec network-jail (BL-025). No cloud tier.
 - **BL-024** ✅ Per-invocation approvals — the mechanism (`approval_helpers.py`, per-call gating with session
   grants) plus the **UI shipped in BL-049** (`components/approvals.js`: pending approve/deny + session grants,
   ⌘K → "Approvals & grants"). Both halves present.
@@ -242,7 +245,10 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 
 ## W4 — Answer quality & eval
 - **BL-100** ✅ REQ-30 inline RAG grounding — mechanism built+tested AND **now wired live**: `finalize_run_state` runs `assess_answer` on the final answer and attaches `answer_quality` (grounding citations, confidence, abstain) when `grounding_enabled` is on — inert + non-mutating by default. Verified (`test_answer_quality_wiring.py`).
-- **BL-101** 🟡 REQ-31 golden set — **built**: `eval/golden_set.json` (14 cases: honesty/factual/math/code/reasoning/safety/German) + `eval/run_golden.py` (self-contained stdlib runner, hits `/v1`, 6 assertion types, reports pass-rate). Doubles as the **A/B rig** for BL-104/105 (run with a flag on vs off, diff pass-rate). Tested (`test_golden_eval.py`, 2 — structure + checker). _(Remaining: wire into CI on PR + nightly — needs a runner, BL-142.)_
+- **BL-101** ✅ REQ-31 golden set — **built + CI-wired**: `eval/golden_set.json` (14 cases) + `eval/run_golden.py`
+  (stdlib runner, hits `/v1`, 6 assertion types). Now wired into CI: the nightly **`golden-eval`** job in `ci.yml`
+  downloads SmolLM2-360M, boots Layla, and runs the golden set. Doubles as the A/B rig for BL-104/105. Tested
+  (`test_golden_eval.py`, 2).
 - **BL-102** ✅ UPG-01 hybrid escalation — decision mechanism built+tested AND **now wired live** via the same `finalize_run_state` hook (escalate/escalation_model surfaced in `answer_quality` when `hybrid_escalation_enabled`).
 - **BL-103** ✅ FlashRank reranker wired as the **preferred lightweight backend** (`reranker.py` auto chain:
   flashrank ONNX → sentence-transformers cross-encoder → BM25). **Fixed a perf bug**: the old code instantiated a
@@ -250,9 +256,16 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   unavailable-backend memo. Config `reranker_backend` (auto|flashrank|cross_encoder|bm25). Verified
   (`test_reranker_backends.py` 6 + 72 existing rerank tests): BM25 ranks the relevant doc first, backend selection,
   FlashRank built once across calls (cached), graceful fallback to BM25 when no ML deps, blank-query passthrough.
-- **BL-104** ⬜ Measure GBNF accuracy gain (HumanEval-164 — the discriminating step past the 10-problem set).
-- **BL-105** ⬜ Measure self-consistency gain at K>1 (mechanism ✅; benchmark pending).
-- **BL-106** 🟡 REQ-20 tiny-model inference-smoke **CI job** (seam ready, job unwired — `stories260K`/SmolLM2).
+- **BL-104** 🟡 Measure GBNF accuracy gain — **baseline measured + CI guard wired**: ran `benchmark_coding.py` on the
+  local **Qwen2.5-Coder-3B** GGUF → **pass@1 100% (10/10), 6.25 tok/s** (scorecard in `.planning/bench/`); nightly
+  **`coding-benchmark`** CI job enforces a pass@1 floor. _(Remaining precision: the grammar-on-vs-off decision-JSON
+  delta over a discriminating set — measured by the decision-accuracy A/B harness, BL-105's sibling.)_
+- **BL-105** 🟡 Measure self-consistency gain at K>1 — mechanism ✅ (`self_consistency.majority_decision` +
+  `self_consistency_samples`); the golden-eval A/B rig is now CI-wired (run with `self_consistency_samples` 3 vs 1,
+  diff pass-rate). _(Remaining: record the nightly delta once the job has run against a real model.)_
+- **BL-106** ✅ REQ-20 tiny-model inference-smoke **CI job** — DONE (stale-tracked): `.github/workflows/ci.yml` has an
+  `inference-smoke` job that installs the llama-cpp CPU wheel, downloads **SmolLM2-360M** via `model_downloader`, and
+  runs `test_inference_smoke.py` with `LAYLA_TEST_REAL_LLM=1`.
 - **BL-107** ✅ REQ-22 release-gate determinism — `apply_decoding_determinism(cfg, temp, top_p, top_k)` in
   `inference_router`: when `deterministic_decoding_enabled`, forces **greedy** decoding (temp 0, top_k 1, top_p 1)
   so the same prompt reproduces the same output — no seed plumbing needed (greedy has no sampling randomness).
@@ -317,8 +330,11 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 ## W7 — Test coverage (un-skip the 30+)
 - **BL-140** ✅ `tests/fixtures/fake_mcp_stdio.py` present (minimal stdio MCP server: initialize / tools/call) →
   `test_mcp_client_stdio.py` runs by default: **12 tests pass**, no skips.
-- **BL-141** 🟡 Wire tiny real-LLM smoke in CI (`LAYLA_TEST_REAL_LLM` + a stub GGUF) → un-skip `test_inference_smoke.py` module + `test_benchmark_coding_model.py`.
-- **BL-142** ⬜ Playwright + `requirements-e2e.txt` in CI → un-skip `e2e_ui/test_ui_smoke.py`.
+- **BL-141** ✅ Real-LLM smoke wired in CI — DONE (stale-tracked): the `inference-smoke` job (SmolLM2-360M +
+  `LAYLA_TEST_REAL_LLM=1`) runs `test_inference_smoke.py`. _(Live pass@1 via `test_benchmark_coding_model.py` is
+  covered by BL-104's benchmark-in-CI wiring below.)_
+- **BL-142** ✅ Playwright in CI — DONE (stale-tracked): `.github/workflows/ci.yml` has an `e2e-ui` job that installs
+  `requirements-e2e.txt` + `playwright install chromium --with-deps` and runs `tests/e2e_ui/ -m e2e_ui`.
 - **BL-143** ✅ Resolved as **intentional optional dep** — tree-sitter is commented out in requirements.txt
   ("optional, heavy install"); `test_code_intelligence.py`/`test_workspace_index.py` `importorskip` it and degrade
   gracefully. Enablement (`pip install tree-sitter tree-sitter-python`) is now documented in `tests/README.md`.
