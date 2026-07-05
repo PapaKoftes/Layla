@@ -169,6 +169,7 @@ from services.agent.response_builder import (
     iter_with_response_pacing as _iter_with_response_pacing_impl,
     looks_like_raw_tool_dict as _looks_like_raw_tool_dict,
     synthesize_direct_answer as _synthesize_direct_answer,
+    is_self_contained_question as _is_self_contained_question,
 )
 from services.agent.verification_engine import (
     VERIFY_TOOLS as _VERIFY_TOOLS_IMPL,
