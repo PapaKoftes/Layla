@@ -873,6 +873,9 @@ from routers import (
     decisions as decisions_router,
 )
 from routers import (
+    timeline as timeline_router,
+)
+from routers import (
     sync as sync_router,
 )
 from routers import (
@@ -909,6 +912,7 @@ app.include_router(kits_router.router)             # BL-156: kit marketplace
 app.include_router(cross_project_router.router)    # BL-232: cross-project reasoning
 app.include_router(macros_router.router)           # BL-231: workflow recorder & macro engine
 app.include_router(decisions_router.router)        # BL-235: decision memory
+app.include_router(timeline_router.router)         # BL-234: temporal memory timeline
 app.include_router(intelligence_router.router)     # AirLLM, compression, prompt optimizer, KB builder
 app.include_router(debate_router.router)            # Multi-aspect debate/council/tribunal engine
 app.include_router(metrics_router.router)           # Phase 3: Observability metrics endpoint
