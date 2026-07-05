@@ -317,7 +317,13 @@ async def v1_chat_completions(req: dict, request: Request):
                 if not response_text:
                     steps = result.get("steps") or []
                     final = steps[-1].get("result", "") if steps else ""
-                    response_text = final if isinstance(final, str) else json.dumps(final) if final else ""
+                    response_text = final if isinstance(final, str) else ""
+                # Never stream a raw tool-result dict as the answer — synthesize instead.
+                from agent_loop import _looks_like_raw_tool_dict, _synthesize_direct_answer
+                if (not response_text or _looks_like_raw_tool_dict(response_text)) and not result.get("refused"):
+                    _direct = _synthesize_direct_answer(goal, aspect_id=aspect_id or result.get("aspect", ""))
+                    if _direct:
+                        response_text = _direct
                 if not response_text:
                     response_text = "No response."
                 for chunk in [response_text[i : i + 120] for i in range(0, len(response_text), 120)]:
@@ -403,7 +409,14 @@ async def v1_chat_completions(req: dict, request: Request):
     if not response_text:
         steps = result.get("steps") or []
         final = steps[-1].get("result", "") if steps else ""
-        response_text = final if isinstance(final, str) else json.dumps(final) if final else ""
+        response_text = final if isinstance(final, str) else ""
+    # A run that only made (failed) tool calls must never leak a raw tool-result dict as
+    # the answer — synthesize a direct model answer to the original question instead.
+    from agent_loop import _looks_like_raw_tool_dict, _synthesize_direct_answer
+    if (not response_text or _looks_like_raw_tool_dict(response_text)) and not result.get("refused"):
+        _direct = _synthesize_direct_answer(goal, aspect_id=aspect_id or result.get("aspect", ""))
+        if _direct:
+            response_text = _direct
     if not response_text and result.get("status") == "system_busy":
         response_text = "System is under load (CPU or RAM). Try again in a moment."
     elif not response_text and result.get("status") == "timeout":

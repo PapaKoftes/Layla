@@ -167,6 +167,8 @@ from services.agent.response_builder import (
     strip_junk_from_reply as _strip_junk_from_reply_impl,
     clean_response_text as _clean_response_text_impl,
     iter_with_response_pacing as _iter_with_response_pacing_impl,
+    looks_like_raw_tool_dict as _looks_like_raw_tool_dict,
+    synthesize_direct_answer as _synthesize_direct_answer,
 )
 from services.agent.verification_engine import (
     VERIFY_TOOLS as _VERIFY_TOOLS_IMPL,
