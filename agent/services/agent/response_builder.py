@@ -4,6 +4,7 @@ Response text cleaning and formatting for the agent loop.
 Extracted from agent_loop.py — Phase 2 decomposition.
 These functions clean model output before it reaches the user.
 """
+import json
 import logging
 import re
 import time
@@ -35,6 +36,54 @@ def is_junk_reply(content: str) -> bool:
         if hits >= 2:
             return True
     return False
+
+
+def looks_like_raw_tool_dict(text: str) -> bool:
+    """True when `text` is a dumped tool-result dict leaking through as an 'answer'.
+
+    The agent sometimes finishes a run having only made tool calls (no natural-language
+    reason step); the raw `{"ok": false, "error": ...}` then leaks to the user. Detect
+    that shape so callers can synthesize a real answer instead of showing JSON.
+    """
+    t = (text or "").strip()
+    if not (t.startswith("{") and t.endswith("}")):
+        return False
+    try:
+        d = json.loads(t)
+    except Exception:
+        return False
+    if not isinstance(d, dict):
+        return False
+    keys = set(d.keys())
+    return bool(keys & {"ok", "error", "reason", "_deterministic_return", "_empty_output", "message"})
+
+
+def synthesize_direct_answer(goal: str, *, aspect_id: str = "", max_tokens: int = 320) -> str:
+    """Answer the user's question directly from the model (no tools).
+
+    The escape hatch for trivial Q&A the agent wrongly routed into (failed) tool calls:
+    ask the model to just answer. Best-effort — returns "" if the model is unavailable.
+    """
+    g = (goal or "").strip()
+    if not g:
+        return ""
+    try:
+        from services.llm.llm_gateway import run_completion
+        prompt = (
+            "Answer the user's question or request directly, correctly, and concisely. "
+            "Do not mention tools, files, or steps — just give the answer.\n\n"
+            f"User: {g}\nAnswer:"
+        )
+        out = run_completion(prompt, max_tokens=max_tokens, temperature=0.2, stream=False)
+        if isinstance(out, dict):
+            text = ((out.get("choices") or [{}])[0].get("message") or {}).get("content", "") or ""
+            text = clean_response_text(text)
+            text = truncate_at_next_user_turn(text).strip()
+            if text and not looks_like_raw_tool_dict(text):
+                return text
+    except Exception as e:  # noqa: BLE001
+        logger.debug("synthesize_direct_answer failed: %s", e)
+    return ""
 
 
 def quick_reply_for_trivial_turn(goal: str) -> str:
