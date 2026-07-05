@@ -9,9 +9,16 @@ tracking list; [PLAN.md](PLAN.md) holds the strategy/architecture and points her
 **Workstreams W0–W11** are the execution order proposed in PLAN.md §5b; they map every loop bullet to work.
 
 > **Verification checkpoint (2026-07-04):** app **restarted** — all session routers live on :8000, model loaded,
-> chat confirmed end-to-end (`/v1/chat/completions` → 200). Full core suite **green: 2587 passed, 14 skipped, 0
-> failed** (excludes env-gated e2e/real-LLM/integration). One self-introduced regression (a `/health` status
-> over-reach) was caught by the suite and reverted. The session's ~70 commits are verified watertight.
+> chat confirmed end-to-end (`/v1/chat/completions` → 200). Full core suite **green: 2596 passed, 14 skipped, 0
+> failed** (excludes env-gated e2e/real-LLM/integration). Regressions the suite caught were reverted/fixed.
+>
+> **Watertight-product scope is COMPLETE.** W0–W7 + the R9 god-splits (BL-027–030) + the W-S keystone + the
+> security tier (incl. **encryption-at-rest end-to-end** BL-020 and the **exec network-jail** BL-025) are done and
+> verified. **The only remaining OPEN items are not watertight-product work:** (a) infra-blocked — BL-023 E2B
+> (paid cloud), BL-142 Playwright CI (runner); (b) compute-blocked *measurement* — BL-101/104/105 (mechanisms
+> built + unit-tested; only the benchmark numbers need a model + time); (c) **W8–W11 V2/V3 roadmap** — new major
+> features (Ollama, Tauri shell, editor/PWA clients, kit marketplace, DSPy, HF Hub, multilingual, cross-instance
+> sync) + the bespoke→library dep-swaps (BL-180/181, behaviour-change risk). ~79 commits this cycle; ships watertight.
 
 ---
 
