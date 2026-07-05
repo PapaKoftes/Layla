@@ -867,6 +867,9 @@ from routers import (
     cross_project as cross_project_router,
 )
 from routers import (
+    macros as macros_router,
+)
+from routers import (
     sync as sync_router,
 )
 from routers import (
@@ -901,6 +904,7 @@ app.include_router(onboarding_router.router)       # Phase 4: Onboarding intervi
 app.include_router(setup_profiles_router.router)   # W-S: intent-driven Setup & Profiles
 app.include_router(kits_router.router)             # BL-156: kit marketplace
 app.include_router(cross_project_router.router)    # BL-232: cross-project reasoning
+app.include_router(macros_router.router)           # BL-231: workflow recorder & macro engine
 app.include_router(intelligence_router.router)     # AirLLM, compression, prompt optimizer, KB builder
 app.include_router(debate_router.router)            # Multi-aspect debate/council/tribunal engine
 app.include_router(metrics_router.router)           # Phase 3: Observability metrics endpoint
