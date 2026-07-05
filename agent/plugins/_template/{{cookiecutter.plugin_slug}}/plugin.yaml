@@ -1,0 +1,20 @@
+# Layla plugin manifest — see PLUGINS.md
+name: {{ cookiecutter.plugin_name }}
+version: {{ cookiecutter.version }}
+description: {{ cookiecutter.description }}
+author: {{ cookiecutter.author }}
+
+# Version pinning: which Layla plugin API this targets.
+requires:
+  layla_api: ">=1.0"
+
+# Declarative skills: a named tool sequence the agent can run.
+skills:
+  - name: {{ cookiecutter.plugin_slug }}_hello
+    description: Example skill — replace with your own.
+    tools: [read_file]
+    execution_steps:
+      - "Describe the first step here."
+
+# (optional) tools: []
+# (optional) capabilities: []
