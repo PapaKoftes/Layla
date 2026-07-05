@@ -363,9 +363,13 @@ adaptive-tool-learning=`strategy_stats`/`experience_replay`, context-compression
 `model_router`, what-if-sandbox=`cognitive_workspace`, curiosity=`curiosity_engine`, autonomous-maintenance=
 `self_improvement`+`system_doctor`, multi-agent=`coordinator`, checkpoint/rollback=`file_checkpoints`, confidence=
 `answer_assessment`, resource-scheduling=`resource_governor`, marketplace=`kit_catalog`). The rest, prefer prebuilt OSS:*
-- **BL-230** ⬜ **Visual understanding (VLM)** — OSS: a **moondream2 / LLaVA / Qwen2-VL GGUF via llama.cpp multimodal**
-  (llama-cpp-python chat handler) as an optional vision backend + **`pytesseract`+`Pillow`** OCR fallback. Add an
-  `analyze_image` tool + image input on `/v1` (content parts). Gated feature `vision`.
+- **BL-230** ✅ **Visual understanding (VLM)** — BUILT — `services/vision/vlm_backend.py`: optional local **GGUF
+  multimodal** backend (LLaVA/moondream2/Qwen2-VL via **llama-cpp-python**'s `Llava15ChatHandler`, gated by
+  `vision_model_path`+`vision_mmproj_path`), degrading gracefully when absent. `services/vision/image_analysis.py`
+  unifies it with the pre-existing BLIP captioner + Tesseract/EasyOCR OCR into one `analyze_image`. New **`analyze_image`
+  tool** (198 total) + **image input on `/v1`** (data-URI content parts → decoded in-sandbox → analyzed → injected,
+  SSRF-safe, gated). Gated feature **`vision`** in the setup manifest. `/vision/analyze` + `/vision/status`. Verified
+  (test_vision.py, 10). _(GGUF inference itself is model/compute-blocked; the plumbing + fallbacks are tested via mocks.)_
 - **BL-231** ✅ **Workflow recorder & macro engine** — BUILT — `services/skills/macros.py`: SQLite macro store;
   `record_from_run()` extracts a run's successful `{tool,args}` steps (tool steps now carry a compact args snapshot);
   `replay_macro()` re-dispatches through the live `TOOLS` registry with `{{param}}` substitution, confirm-gated +

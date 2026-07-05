@@ -89,6 +89,17 @@ def test_replay_stops_on_error(_tmp_db):
     assert calls == [{"x": 1}]
 
 
+def test_replay_resolves_real_registry_shape(tmp_path, monkeypatch):
+    # the real TOOLS registry maps name -> {"fn": fn, ...}, not a bare callable
+    monkeypatch.setattr(mac, "_db_path", lambda: tmp_path / "m.db")
+    calls = []
+    real_shaped = {"echo": {"fn": lambda **kw: (calls.append(kw) or {"ok": True}), "description": "x"}}
+    monkeypatch.setattr("layla.tools.registry.TOOLS", real_shaped, raising=False)
+    mac.record_macro("m", [{"tool": "echo", "args": {"x": 1}}])
+    r = mac.replay_macro("m", confirm=True)
+    assert r["ok"] and r["ran"] == 1 and calls == [{"x": 1}]
+
+
 def test_delete():
     mac.record_macro("gone", [{"tool": "echo", "args": {}}])
     assert mac.delete_macro("gone")["ok"]
