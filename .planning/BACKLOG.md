@@ -341,6 +341,22 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 - **BL-190** ⬜ experience unification (continuity memory · passive initiative · emotional presence)
 - **BL-191** ⬜ growth-system polish · **BL-192** ⬜ memory/learning verification pipeline
 
+## W12 — Post-feature polish + generalization (operator, 2026-07-05)
+- **BL-220** 🟡 **Generalized multi-language tutor** — extend the German tutor (BL-040) into a **language-agnostic**
+  learning system that works for **any** language, shipping **German + Italian + Spanish** now. Design: a `LANGUAGES`
+  registry (code · name · native · CEFR-applicable · has-rule-patterns); **LLM-based correction** as the generalized
+  engine (prompt the model as a `{language}` tutor at CEFR `{level}` → errors + corrected text), keeping German's fast
+  regex `_ERROR_PATTERNS` as an optional supplement; per-`(user, language)` profile/level; flashcard SRS tagged by
+  language; per-language calibration sentences (curated starters for de/it/es, LLM-generated for the long tail). New
+  `/language/*` API (language-parametrized) with `/german/*` kept as a compat alias; UI gets a **language picker** so
+  the same panel teaches any language. Adding a language = one registry entry (+ optional starter sentences);
+  correction/flashcards/level work for free via the LLM path.
+- **BL-221** ⬜ **Thorough WebUI review (scaling + design)** — operator flagged the web UI has **scaling issues** and
+  feels **awkwardly designed in places**. Deferred by explicit decision to **after feature-complete**: a dedicated
+  pass over responsive scaling (viewport/zoom/DPR), layout/spacing rhythm, overlay sizing, and visual polish across
+  the panels. **Not started now** — parked here so it isn't lost. (Distinct from G2–G6 which built the design system;
+  this is the QA/polish sweep over how it actually renders at different sizes.)
+
 ---
 
 ## Definition-of-Done gates (the "truly-ready" bar)
