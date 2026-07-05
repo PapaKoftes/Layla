@@ -100,6 +100,14 @@ def finalize_run_state(
                     state["answer_quality"] = _q
             except Exception as _aq_exc:
                 logger.debug("answer_quality assessment failed: %s", _aq_exc)
+        # BL-237: attach a concise, human-readable "why" (distinct from raw CoT) when the
+        # explainable-reasoning flag is on. Deterministic — reuses the trace, no extra model call.
+        try:
+            if runtime_safety_module.load_config().get("explainable_reasoning_enabled"):
+                from services.agent.explain import explain_state
+                state["explanation"] = explain_state(state, answer=final_text)
+        except Exception as _ex_exc:
+            logger.debug("explanation build failed: %s", _ex_exc)
     # Conversation entity extraction: extract entities from every exchange for codex/wiki
     _conv_final_text = ""
     try:
