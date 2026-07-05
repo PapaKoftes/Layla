@@ -132,6 +132,8 @@ import * as welcome from './components/welcome.js';
 import * as marketplace from './components/marketplace.js';
 // W12 — Generalized language tutor (BL-220)
 import * as tutor from './components/tutor.js';
+// W13 — Workflow recorder & macro engine (BL-231)
+import * as macros from './components/macros.js';
 
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
@@ -568,6 +570,7 @@ function init() {
     { id: 'welcome', group: 'Go to', label: 'Welcome / about Layla', keywords: ['welcome', 'about', 'intro', 'onboarding', 'values', 'honesty', 'start'], run: () => welcome.openWelcome() },
     { id: 'marketplace', group: 'Go to', label: 'Kit marketplace', keywords: ['kit', 'marketplace', 'install', 'features', 'bundle', 'store', 'capabilities'], run: () => marketplace.openMarketplace() },
     { id: 'tutor', group: 'Go to', label: 'Language tutor', keywords: ['language', 'tutor', 'learn', 'german', 'italian', 'spanish', 'french', 'cefr', 'flashcards', 'deutsch', 'italiano', 'espanol'], run: () => tutor.openTutor() },
+    { id: 'macros', group: 'Go to', label: 'Macros / workflows', keywords: ['macro', 'workflow', 'replay', 'record', 'automation', 'routine', 'repeat'], run: () => macros.openMacros() },
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
@@ -630,6 +633,8 @@ function init() {
     closeMarketplace: marketplace.closeMarketplace,
     openTutor: tutor.openTutor,
     closeTutor: tutor.closeTutor,
+    openMacros: macros.openMacros,
+    closeMacros: macros.closeMacros,
   });
 
   // Apply timeout config from health response
