@@ -61,6 +61,11 @@ function _build() {
           '<div class="german-hist"></div>' +
           '<div class="german-actions"><button type="button" class="german-hist-load setup-btn">show recent</button></div>' +
         '</section>' +
+        '<section class="german-sec">' +
+          '<div class="german-sec-title">find my level</div>' +
+          '<div class="german-cal"></div>' +
+          '<div class="german-actions"><button type="button" class="german-cal-start setup-btn">start placement</button></div>' +
+        '</section>' +
       '</div>' +
     '</div>';
   document.body.appendChild(_root);
@@ -69,7 +74,60 @@ function _build() {
   _root.querySelector('.german-check').addEventListener('click', _check);
   _root.querySelector('.german-fc-start').addEventListener('click', _startReview);
   _root.querySelector('.german-hist-load').addEventListener('click', _loadCorrections);
+  _root.querySelector('.german-cal-start').addEventListener('click', _startCalibration);
   _root.querySelector('.german-level-sel').addEventListener('change', (e) => _setLevel(e.target.value));
+}
+
+const _CAL_LEVELS = ['A1', 'A2', 'B1', 'B2'];
+
+async function _startCalibration() {
+  const box = _root.querySelector('.german-cal');
+  box.innerHTML = '<div class="sysdiag-muted">loading…</div>';
+  try {
+    const byLevel = await Promise.all(_CAL_LEVELS.map(async (lv) => {
+      const d = await _get('/german/calibrate/' + lv);
+      return { level: lv, sentences: (d && d.sentences) || [] };
+    }));
+    box.innerHTML = byLevel.map((g) =>
+      '<div class="german-cal-lv" data-level="' + g.level + '">' +
+      '<div class="german-cal-head"><span class="german-cal-badge">' + _esc(g.level) + '</span>' +
+      '<span class="german-cal-q">how much did you understand?</span>' +
+      '<select class="german-cal-score">' + [0, 1, 2, 3, 4, 5].map((n) =>
+        '<option value="' + n + '"' + (n === 3 ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></div>' +
+      '<ul class="german-cal-sents">' + g.sentences.slice(0, 3).map((s) =>
+        '<li>' + _esc(typeof s === 'string' ? s : (s.text || s.sentence || JSON.stringify(s))) + '</li>').join('') + '</ul></div>'
+    ).join('') + '<div class="german-actions"><button type="button" class="german-cal-submit setup-btn primary">get my level</button></div><div class="german-cal-result"></div>';
+    box.querySelector('.german-cal-submit').addEventListener('click', _submitCalibration);
+  } catch (e) {
+    box.innerHTML = '<div class="sysdiag-err">error — ' + _esc(e.message || e) + '</div>';
+  }
+}
+
+async function _submitCalibration() {
+  const box = _root.querySelector('.german-cal');
+  const answers = [...box.querySelectorAll('.german-cal-lv')].map((el) => ({
+    level: el.getAttribute('data-level'),
+    score: parseInt(el.querySelector('.german-cal-score').value, 10) || 0,
+  }));
+  const res = box.querySelector('.german-cal-result');
+  res.innerHTML = '<div class="sysdiag-muted">scoring…</div>';
+  try {
+    const d = await _post('/german/calibrate', { answers });
+    if (d.ok === false) throw new Error(d.error || 'failed');
+    const lvl = d.recommended_level || d.level || d.recommended || '';
+    res.innerHTML = lvl
+      ? '<div class="german-ok">recommended level: <strong>' + _esc(lvl) + '</strong> ' +
+        '<button type="button" class="german-cal-use setup-btn" data-lvl="' + _esc(lvl) + '">use this level</button></div>'
+      : '<div class="sysdiag-muted">' + _esc(JSON.stringify(d).slice(0, 200)) + '</div>';
+    const useBtn = res.querySelector('.german-cal-use');
+    if (useBtn) useBtn.addEventListener('click', () => {
+      const sel = _root.querySelector('.german-level-sel');
+      if (sel) { sel.value = useBtn.getAttribute('data-lvl'); _setLevel(sel.value); }
+      if (window.showToast) window.showToast('Level set to ' + useBtn.getAttribute('data-lvl'));
+    });
+  } catch (e) {
+    res.innerHTML = '<div class="sysdiag-err">error — ' + _esc(e.message || e) + '</div>';
+  }
 }
 
 async function _loadCorrections() {
