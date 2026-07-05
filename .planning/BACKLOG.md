@@ -324,7 +324,7 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   `reason=` (surface with `pytest -rs`) — no silent skips. New gated tests must add a reason + a README row.
 
 ## W8 — Ecosystem (V2/V3)
-- **BL-150** ⬜ UPG-06 Ollama backend · **BL-151** 🟡 UPG-40 first-class `/v1` (REQ-61 params, REQ-83 Cline/Continue/Aider) · **BL-152** ⬜ UPG-41 Ollama API surface
+- **BL-150** ✅ UPG-06 Ollama backend — already implemented in `inference_router.py`: `_detect_backend` routes to `ollama` (via `ollama_base_url`/port-11434/explicit `inference_backend`), `run_completion_ollama` uses Ollama's OpenAI-compatible `/v1/chat/completions`. Tested (`test_inference_router.py`, 9) · **BL-151** 🟡 UPG-40 first-class `/v1` (REQ-61 params, REQ-83 Cline/Continue/Aider) · **BL-152** ✅ UPG-41 Ollama API surface — `routers/ollama_compat.py`: Layla now **serves** Ollama's native API (`/api/tags` lists layla+aspects, `/api/chat`, `/api/generate`, `/api/version`) by reusing the `/v1` handler (all agent logic + local-only write/run security carry over). Any Ollama client (Open WebUI, ollama-python, editor plugins) can point at Layla. Tested (`test_ollama_compat.py`, 4). _(Also enables BL-158 Open-WebUI.)_
 - **BL-153** 🟡 UPG-12 MCP-only plugins · **BL-154** ⬜ UPG-13 Tauri shell · **BL-155** ⬜ UPG-34 VS Code / CLI / mobile-PWA clients
 - **BL-156** ⬜ UPG-37 kit marketplace · **BL-157** ⬜ UPG-08 DSPy · **BL-158** ⬜ UPG-09 Open WebUI call · **BL-159** ⬜ UPG-42 HF Hub + ONNX
 - **BL-160** ⬜ UPG-23 Castilla multilingual flagship · **BL-161** ⬜ UPG-33 memory/knowledge sync across paired instances
