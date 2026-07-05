@@ -374,8 +374,11 @@ adaptive-tool-learning=`strategy_stats`/`experience_replay`, context-compression
   surface shared entities / transferable knowledge across repos. `/intelligence/cross-project` + a codex view.
 - **BL-233** ⬜ **Event-driven automation engine** — a rule layer (event→action) over the existing `watchdog` watcher
   + scheduler: rules like "on new file in X → summarize", "on git commit → re-index". `/automation/*` + UI.
-- **BL-234** 🟡 **Temporal memory timeline** — episodes + PKG timeline nodes exist; add a **timeline API + UI** to
-  navigate memories chronologically and reconstruct events.
+- **BL-234** ✅ **Temporal memory timeline** — BUILT (API) — `services/memory/timeline.py` over the existing
+  `timeline_events`/`episodes`/`episode_events` tables: `query_timeline` (range/type/project/importance + paginate),
+  `timeline_days` (per-day buckets for a calendar/heatmap), `list_episodes` + `reconstruct_episode` (episode + its
+  events, chronological). `/timeline`, `/timeline/days`, `/timeline/episodes[/{id}]`. Verified (test_timeline.py, 4).
+  _(UI surface folds into the deferred BL-221 WebUI pass.)_
 - **BL-235** ✅ **Decision memory** — BUILT — `services/memory/decision_memory.py` (SQLite `decisions.db`): stores
   chosen option + rationale + rejected alternatives + assumptions + goal/context. `run_deliberation()` persists every
   real decision (best-effort). `/decisions` list/search/get + record. Verified (test_decision_memory.py, 5).
