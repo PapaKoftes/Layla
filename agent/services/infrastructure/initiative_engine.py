@@ -62,6 +62,17 @@ def collect_initiative_hints(state: dict[str, Any], cfg: dict[str, Any]) -> list
         except Exception:
             pass
 
+    # BL-240: fold in proactive goal nudges (stalled / near-done goals) so long-term
+    # goals get surfaced over weeks, not only reacted to within a turn. Best-effort.
+    if len(out) < 4:
+        try:
+            from services.planning.goal_tracker import initiative_goal_hints
+            for gh in initiative_goal_hints(str(state.get("project_id") or "")):
+                if gh not in out:
+                    out.append(gh)
+        except Exception:
+            pass
+
     seen: set[str] = set()
     deduped: list[str] = []
     for h in out:
