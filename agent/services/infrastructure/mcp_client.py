@@ -39,21 +39,45 @@ class McpStdioServerSpec:
         return cls(name=name, command=cmd, args=args)
 
 
+# BL-153: MCP-only plugins — servers declared in a plugin's plugin.yaml `mcp_servers`
+# block are registered here at load time and merged into the active server set.
+_plugin_mcp_servers: list[dict[str, Any]] = []
+
+
+def register_plugin_mcp_servers(servers: list[dict]) -> int:
+    """Register MCP stdio servers contributed by plugins (idempotent by name)."""
+    added = 0
+    have = {s.get("name") for s in _plugin_mcp_servers}
+    for s in servers or []:
+        if isinstance(s, dict) and s.get("command") and s.get("name") not in have:
+            _plugin_mcp_servers.append(dict(s))
+            have.add(s.get("name"))
+            added += 1
+    return added
+
+
+def clear_plugin_mcp_servers() -> None:
+    _plugin_mcp_servers.clear()
+
+
 def load_mcp_stdio_servers(cfg: dict) -> list[McpStdioServerSpec]:
-    """Parse runtime_config `mcp_stdio_servers` list of {name, command, args}."""
+    """Parse `mcp_stdio_servers` from config + any plugin-declared MCP servers."""
     if not cfg.get("mcp_client_enabled"):
         return []
     raw = cfg.get("mcp_stdio_servers")
-    if not isinstance(raw, list):
-        return []
+    raw = raw if isinstance(raw, list) else []
     out: list[McpStdioServerSpec] = []
-    for i, item in enumerate(raw):
+    seen: set[str] = set()
+    for i, item in enumerate([*raw, *_plugin_mcp_servers]):
         if not isinstance(item, dict):
             continue
         name = str(item.get("name") or f"server_{i}")
+        if name in seen:
+            continue
         spec = McpStdioServerSpec.from_dict(name, item)
         if spec:
             out.append(spec)
+            seen.add(name)
     return out
 
 
