@@ -78,7 +78,13 @@ the genuine gaps are narrower. Existing: `services/sandbox/python_runner.py` + `
 - **BL-024** ✅ Per-invocation approvals — the mechanism (`approval_helpers.py`, per-call gating with session
   grants) plus the **UI shipped in BL-049** (`components/approvals.js`: pending approve/deny + session grants,
   ⌘K → "Approvals & grants"). Both halves present.
-- **BL-025** 🟡 Egress control — `url_guard.py` blocks SSRF/private-IPs; full network-jail for exec is the gap.
+- **BL-025** ✅ Egress control — `url_guard.py` blocks SSRF/private-IPs for the agent's own fetches, and now
+  **sandboxed `run_python` exec is network-jailed** (BL-025 gap closed): the previously declared-but-unwired
+  `autonomous_allow_network` flag is enforced — when off (default), `python_runner` installs a `sitecustomize.py`
+  that blocks `socket`/`getaddrinfo`/DNS at interpreter startup (so requests/urllib/httpx all fail closed), without
+  shifting user-code line numbers. Not a kernel jail (a raw syscall could bypass) but stops the realistic cases and
+  composes with url_guard + the OS rlimits/cgroups tier. Verified: `test_sandbox_runners.py` — network blocked when
+  disallowed, reachable when enabled.
 - **BL-026** ✅ Audit-by-default when remote — `main.py:1026` now forces `_audit_enabled` ON whenever `remote_enabled` (was reading the flag alone → remote could run with no audit trail; the "activates when remote" comment is now true). 217 auth/remote tests pass.
 - **BL-027** ⬜ R9: split `vector_store.py` (~1410) · **BL-028** ⬜ split `migrations.py` (~1362) · **BL-029** ⬜ split `tool_dispatch.py` · **BL-030** ⬜ split `cursor-layla-mcp/server.py` (~1296).
 
