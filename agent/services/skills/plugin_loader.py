@@ -51,6 +51,18 @@ def load_plugins(cfg: dict | None = None) -> dict:
         skills = data.get("skills") or []
         tools = data.get("tools") or []
         capabilities = data.get("capabilities") or []
+
+        # BL-153: MCP-only plugins — register any MCP stdio servers this plugin declares.
+        mcp_servers = data.get("mcp_servers") or []
+        if mcp_servers and isinstance(mcp_servers, list):
+            try:
+                from services.infrastructure.mcp_client import register_plugin_mcp_servers
+                n = register_plugin_mcp_servers([s for s in mcp_servers if isinstance(s, dict)])
+                if n:
+                    result.setdefault("mcp_servers", 0)
+                    result["mcp_servers"] += n
+            except Exception as e:
+                result["errors"].append(f"{name}: mcp_servers register failed: {e}")
         if skills and not isinstance(skills, list):
             result["errors"].append(f"{name}: skills must be a list")
             skills = []
