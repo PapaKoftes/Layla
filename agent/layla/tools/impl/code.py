@@ -91,8 +91,16 @@ def run_python(code: str, cwd: str) -> dict:
     try:
         from services.sandbox.python_runner import run_python_file
 
+        # BL-025: enforce the (previously declared-but-unwired) network policy. Sandboxed exec
+        # is network-jailed unless `autonomous_allow_network` is explicitly enabled.
+        allow_net = False
+        try:
+            import runtime_safety
+            allow_net = bool(runtime_safety.load_config().get("autonomous_allow_network", False))
+        except Exception:
+            allow_net = False
         cwd_path = Path(cwd)
-        return run_python_file(code or "", cwd_path, inside_sandbox_check=inside_sandbox)
+        return run_python_file(code or "", cwd_path, inside_sandbox_check=inside_sandbox, allow_network=allow_net)
     except Exception as e:
         logger.debug("python runner failed, fallback: %s", e)
     cwd_path = Path(cwd)
