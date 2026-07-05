@@ -400,8 +400,10 @@ adaptive-tool-learning=`strategy_stats`/`experience_replay`, context-compression
   `cookiecutter` plugin template + version pinning** so users can build/package/share cleanly.
 - **BL-240** 🟡 **Goals: proactive progress + suggestions** — tie the goals/plans store to the initiative engine so
   Layla tracks progress over weeks and proactively suggests next actions.
-- **BL-241** 🟡 **World state model** — a unified live view over `project_context` + `repo_indexer` + machine/hardware
-  probe + open repos, so decisions use current state, not isolated turns.
+- **BL-241** ✅ **World state model** — BUILT — `services/workspace/world_state.py`: `snapshot()` assembles one live
+  view from existing sources — current `project_context`, known/open projects, `repo_indexer` stats, hardware probe,
+  resource-governor mode — each read best-effort so a missing subsystem degrades that field, not the snapshot.
+  `summarize()` gives a compact prompt-injectable digest. `/world` + `/world/summary`. Verified (test_world_state.py, 3).
 - **BL-242** 🟡 **Learning from feedback wiring** — route explicit user corrections (verify UI + a 👍/👎 signal) into
   future behavior (prompt/preferences), closing the loop that `rl_feedback` started.
 
