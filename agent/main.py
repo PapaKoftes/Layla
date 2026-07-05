@@ -888,6 +888,9 @@ from routers import (
     world_state as world_state_router,
 )
 from routers import (
+    operating_manual as operating_manual_router,
+)
+from routers import (
     sync as sync_router,
 )
 from routers import (
@@ -929,6 +932,7 @@ app.include_router(automation_router.router)       # BL-233: event-driven automa
 app.include_router(explain_router.router)          # BL-237: explainable reasoning mode
 app.include_router(learned_skills_router.router)   # BL-238: skill acquisition from tasks
 app.include_router(world_state_router.router)      # BL-241: world state model
+app.include_router(operating_manual_router.router) # BL-236: personal operating manual
 app.include_router(intelligence_router.router)     # AirLLM, compression, prompt optimizer, KB builder
 app.include_router(debate_router.router)            # Multi-aspect debate/council/tribunal engine
 app.include_router(metrics_router.router)           # Phase 3: Observability metrics endpoint

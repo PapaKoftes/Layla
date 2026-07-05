@@ -385,8 +385,11 @@ adaptive-tool-learning=`strategy_stats`/`experience_replay`, context-compression
 - **BL-235** ✅ **Decision memory** — BUILT — `services/memory/decision_memory.py` (SQLite `decisions.db`): stores
   chosen option + rationale + rejected alternatives + assumptions + goal/context. `run_deliberation()` persists every
   real decision (best-effort). `/decisions` list/search/get + record. Verified (test_decision_memory.py, 5).
-- **BL-236** 🟡 **Personal operating manual** — evolve `user_identity`/operator-profile into a living "how you work"
-  doc (preferences, habits, comm style, recurring workflows) that personalizes prompts.
+- **BL-236** ✅ **Personal operating manual** — BUILT — `services/personality/operating_manual.py`: `build_manual()`
+  consolidates derived identity (verbosity/humour/formality/response-length, always current) + operator-quiz work
+  domains/traits + a growing store of user-appended notes (habits, workflows, comm-style) into one living doc.
+  `manual_markdown()` + `manual_for_prompt()` (compact digest for prompt personalization). `/manual` + `/manual/notes`
+  CRUD + `/manual/summary`. Verified (test_operating_manual.py, 5).
 - **BL-237** ✅ **Explainable reasoning mode** — BUILT — `services/agent/explain.py`: `build_explanation()` distils a
   run's trace (think-thoughts + tool sequence with ✓/✗ outcomes + conclusion) into a structured + markdown "why",
   deterministic (no extra model call). `run_finalizer` attaches `state["explanation"]` when
