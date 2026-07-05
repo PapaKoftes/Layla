@@ -357,6 +357,40 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   the panels. **Not started now** — parked here so it isn't lost. (Distinct from G2–G6 which built the design system;
   this is the QA/polish sweep over how it actually renders at different sizes.)
 
+## W13 — Capability audit (operator's 26-feature review, 2026-07-05) — OSS-first
+*Audited the operator's 26 requested capabilities against the codebase. **12 already built** (fs-watcher=`watchdog`,
+adaptive-tool-learning=`strategy_stats`/`experience_replay`, context-compression=`prompt_compressor`, model-routing=
+`model_router`, what-if-sandbox=`cognitive_workspace`, curiosity=`curiosity_engine`, autonomous-maintenance=
+`self_improvement`+`system_doctor`, multi-agent=`coordinator`, checkpoint/rollback=`file_checkpoints`, confidence=
+`answer_assessment`, resource-scheduling=`resource_governor`, marketplace=`kit_catalog`). The rest, prefer prebuilt OSS:*
+- **BL-230** ⬜ **Visual understanding (VLM)** — OSS: a **moondream2 / LLaVA / Qwen2-VL GGUF via llama.cpp multimodal**
+  (llama-cpp-python chat handler) as an optional vision backend + **`pytesseract`+`Pillow`** OCR fallback. Add an
+  `analyze_image` tool + image input on `/v1` (content parts). Gated feature `vision`.
+- **BL-231** ⬜ **Workflow recorder & macro engine** — record a run's tool/step sequence → save as a named **macro**
+  → replay/adapt later. Builds on the existing step history + missions; store macros in SQLite; `/macros/*` + UI.
+- **BL-232** ⬜ **Cross-project reasoning** — OSS: **`networkx`** graph over the entity codex + per-project memories to
+  surface shared entities / transferable knowledge across repos. `/intelligence/cross-project` + a codex view.
+- **BL-233** ⬜ **Event-driven automation engine** — a rule layer (event→action) over the existing `watchdog` watcher
+  + scheduler: rules like "on new file in X → summarize", "on git commit → re-index". `/automation/*` + UI.
+- **BL-234** 🟡 **Temporal memory timeline** — episodes + PKG timeline nodes exist; add a **timeline API + UI** to
+  navigate memories chronologically and reconstruct events.
+- **BL-235** 🟡 **Decision memory** — `cognitive_workspace` already evaluates + rejects alternatives; **persist** the
+  chosen option + rationale + rejected alternatives + assumptions to a `decisions` store, queryable later.
+- **BL-236** 🟡 **Personal operating manual** — evolve `user_identity`/operator-profile into a living "how you work"
+  doc (preferences, habits, comm style, recurring workflows) that personalizes prompts.
+- **BL-237** 🟡 **Explainable reasoning mode** — a concise, human-readable "why" summary of a conclusion/plan
+  (distinct from raw CoT), gated by a flag; reuses the existing reasoning trace.
+- **BL-238** 🟡 **Skill acquisition from tasks** — learn a reusable executable **skill** from a successful task's
+  tool/step sequence and register it (extends `skill_registry` beyond installed packs).
+- **BL-239** 🟡 **Plugin SDK polish** — the `plugin_loader`/`install_from_git` SDK exists; add **docs + a
+  `cookiecutter` plugin template + version pinning** so users can build/package/share cleanly.
+- **BL-240** 🟡 **Goals: proactive progress + suggestions** — tie the goals/plans store to the initiative engine so
+  Layla tracks progress over weeks and proactively suggests next actions.
+- **BL-241** 🟡 **World state model** — a unified live view over `project_context` + `repo_indexer` + machine/hardware
+  probe + open repos, so decisions use current state, not isolated turns.
+- **BL-242** 🟡 **Learning from feedback wiring** — route explicit user corrections (verify UI + a 👍/👎 signal) into
+  future behavior (prompt/preferences), closing the loop that `rl_feedback` started.
+
 ---
 
 ## Definition-of-Done gates (the "truly-ready" bar)
