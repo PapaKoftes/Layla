@@ -401,8 +401,12 @@ adaptive-tool-learning=`strategy_stats`/`experience_replay`, context-compression
   `/skills/learned` list/acquire/get/invoke/forget. Verified (test_skill_acquisition.py, 6).
 - **BL-239** 🟡 **Plugin SDK polish** — the `plugin_loader`/`install_from_git` SDK exists; add **docs + a
   `cookiecutter` plugin template + version pinning** so users can build/package/share cleanly.
-- **BL-240** 🟡 **Goals: proactive progress + suggestions** — tie the goals/plans store to the initiative engine so
-  Layla tracks progress over weeks and proactively suggests next actions.
+- **BL-240** ✅ **Goals: proactive progress + suggestions** — BUILT — `services/planning/goal_tracker.py`: reads the
+  goals/goal_progress store as a dashboard (latest %, days-idle, momentum) and derives proactive nudges — stalled
+  goals to resume, near-done to finish, fresh to break down. `collect_initiative_hints` now folds in
+  `initiative_goal_hints()`, so long-term goals surface over weeks, not just within a turn. Added `get_goal_progress`
+  + `set_goal_status` readers to user_profile. `/goals` dashboard + `/goals/suggestions` + create/progress/status.
+  Verified (test_goal_tracker.py, 4).
 - **BL-241** ✅ **World state model** — BUILT — `services/workspace/world_state.py`: `snapshot()` assembles one live
   view from existing sources — current `project_context`, known/open projects, `repo_indexer` stats, hardware probe,
   resource-governor mode — each read best-effort so a missing subsystem degrades that field, not the snapshot.
