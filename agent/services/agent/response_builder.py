@@ -198,9 +198,21 @@ def strip_junk_from_reply(text: str) -> str:
         t = re.sub(r"^\s*assistant\s*:\s*I\s+replied\.\s*", "", t, count=1, flags=re.IGNORECASE).strip()
         if t == prev:
             break
-    # Strip the earned-title marker ANYWHERE (it leaks mid/trailing, e.g. "365 [EARNED_TITLE: …]").
+    # Strip control markers that leak anywhere in the reply.
     t = re.sub(r"\s*\[EARNED_TITLE[^\]]*\]\s*", " ", t, flags=re.IGNORECASE).strip()
-    # Drop a dangling, unmatched code fence left at the very end.
+    t = re.sub(r"\s*\[REFUSED[^\]]*\]\s*", " ", t, flags=re.IGNORECASE).strip()
+    t = re.sub(r"\s*\[merg[^\]]*\]?\s*$", "", t, flags=re.IGNORECASE).strip()
+    # Cut everything from a leaked internal 'Objective:' echo onward (anywhere but the very
+    # start, so a legitimate answer that opens with the word isn't truncated).
+    _obj = re.search(r"(?:^|\s)Objective\s*:", t, re.IGNORECASE)
+    if _obj and _obj.start() > 0:
+        t = t[:_obj.start()].strip()
+    # Drop a degenerate tail: trailing lines that are only code-fences, lone single
+    # characters, or blank — the shape a looping model produces after its real answer.
+    _lines = t.split("\n")
+    while _lines and re.fullmatch(r"\s*(?:`{2,}|[A-Za-z]?)\s*", _lines[-1] or ""):
+        _lines.pop()
+    t = "\n".join(_lines).strip()
     t = re.sub(r"\s*```\s*$", "", t).strip()
     t = re.sub(r"^(Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\s*:\s*", "", t).strip()
     t = re.sub(r"\[System:\s*Your last response[^\]]*\]\s*", "", t, flags=re.IGNORECASE | re.DOTALL).strip()

@@ -22,3 +22,16 @@ def test_midline_earned_title_stripped():
 
 def test_clean_answer_untouched():
     assert strip_junk_from_reply("The capital of France is Paris.") == "The capital of France is Paris."
+
+
+def test_refused_marker_and_fence_tail_stripped():
+    raw = '[EARNED_TITLE: String Wizard] The reversed string is "olleh". [REFUSED: no more] ```\n\n\ns\n```'
+    assert strip_junk_from_reply(raw) == 'The reversed string is "olleh".'
+
+
+def test_degenerate_fence_loop_collapses_to_empty():
+    assert strip_junk_from_reply("[EARNED_TITLE: X]\n```\n\n\ns\n```\n\ns\n```") == ""
+
+
+def test_objective_echo_cut():
+    assert strip_junk_from_reply("The answer is Paris. Objective: Research capital") == "The answer is Paris."

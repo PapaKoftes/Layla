@@ -428,6 +428,16 @@ async def v1_chat_completions(req: dict, request: Request):
     elif not response_text:
         response_text = "No response. Try again or rephrase."
 
+    # Final safety clean: strip any leaked control markers / prompt echoes / fence loops
+    # regardless of which internal path produced the text.
+    try:
+        from agent_loop import strip_junk_from_reply as _strip_junk
+        _cleaned = _strip_junk(response_text)
+        if _cleaned:
+            response_text = _cleaned
+    except Exception:
+        pass
+
     response_text = _apply_stop(response_text, sampling["stop"])  # BL-151: honour stop sequences
 
     append_h("user", goal)
