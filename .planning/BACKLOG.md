@@ -391,8 +391,11 @@ adaptive-tool-learning=`strategy_stats`/`experience_replay`, context-compression
   run's trace (think-thoughts + tool sequence with ✓/✗ outcomes + conclusion) into a structured + markdown "why",
   deterministic (no extra model call). `run_finalizer` attaches `state["explanation"]` when
   `explainable_reasoning_enabled` is on (inert by default). `POST /explain` for any trace. Verified (test_explain.py, 5).
-- **BL-238** 🟡 **Skill acquisition from tasks** — learn a reusable executable **skill** from a successful task's
-  tool/step sequence and register it (extends `skill_registry` beyond installed packs).
+- **BL-238** ✅ **Skill acquisition from tasks** — BUILT — `services/skills/skill_acquisition.py`: `acquire_from_run()`
+  turns a successful run's tool sequence into a named **learned skill** — steps stored as a macro (BL-231, reused for
+  validation + `{{param}}` replay), identity in a `learned_skill` store (name auto-derived from the goal). Learned
+  skills are discoverable/invocable beyond installed packs: `invoke_skill` replays, `forget_skill` removes both.
+  `/skills/learned` list/acquire/get/invoke/forget. Verified (test_skill_acquisition.py, 6).
 - **BL-239** 🟡 **Plugin SDK polish** — the `plugin_loader`/`install_from_git` SDK exists; add **docs + a
   `cookiecutter` plugin template + version pinning** so users can build/package/share cleanly.
 - **BL-240** 🟡 **Goals: proactive progress + suggestions** — tie the goals/plans store to the initiative engine so
