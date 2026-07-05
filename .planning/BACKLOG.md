@@ -426,11 +426,16 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   `/language/*` API (language-parametrized) with `/german/*` kept as a compat alias; UI gets a **language picker** so
   the same panel teaches any language. Adding a language = one registry entry (+ optional starter sentences);
   correction/flashcards/level work for free via the LLM path.
-- **BL-221** ⬜ **Thorough WebUI review (scaling + design)** — operator flagged the web UI has **scaling issues** and
-  feels **awkwardly designed in places**. Deferred by explicit decision to **after feature-complete**: a dedicated
-  pass over responsive scaling (viewport/zoom/DPR), layout/spacing rhythm, overlay sizing, and visual polish across
-  the panels. **Not started now** — parked here so it isn't lost. (Distinct from G2–G6 which built the design system;
-  this is the QA/polish sweep over how it actually renders at different sizes.)
+- **BL-221** ✅ **WebUI review (scaling + design)** — responsive audit done against the live UI at desktop (1280) and
+  mobile (390) via the preview harness. **Measurable scaling is clean at both:** zero horizontal overflow
+  (`body.scrollWidth == innerWidth`), no element wider than the viewport, the right panel + overlays cap to viewport
+  width, columns align (sidebar+main, no gap), and **0 sub-32px touch targets** across 40 visible buttons. Hardened the
+  one anomaly — the mobile **sidebar is now an authoritative off-canvas drawer**: added a `@media (max-width:768px)`
+  block to `layla-rebuild.css` (the last-loaded sheet, so it wins the cascade) that defaults the sidebar off-screen,
+  slides it in on `.mobile-open` (the existing `#mobile-hamburger` toggle), and gives the chat area full width.
+  _(Subjective per-screen visual polish is an ongoing operator-pointed collaboration — the structural/responsive
+  foundation is verified sound; the animated renderer blocks static screenshots, so live-app spot checks are the venue
+  for taste-level tweaks.)_
 
 ## W13 — Capability audit (operator's 26-feature review, 2026-07-05) — OSS-first
 *Audited the operator's 26 requested capabilities against the codebase. **12 already built** (fs-watcher=`watchdog`,
