@@ -52,6 +52,23 @@ class DispatchResult:
 _cached_imports = None
 
 
+def _compact_args(args: Any, *, max_str: int = 500) -> dict:
+    """A shallow, size-capped snapshot of tool args for step recording / macros.
+
+    Truncates long string values so replaying/recording a run as a macro (BL-231)
+    stays cheap; non-dict inputs collapse to ``{}``.
+    """
+    if not isinstance(args, dict):
+        return {}
+    out: dict = {}
+    for k, v in args.items():
+        if isinstance(v, str) and len(v) > max_str:
+            out[k] = v[:max_str] + f"…(+{len(v) - max_str} chars)"
+        else:
+            out[k] = v
+    return out
+
+
 def _imports():
     """Return ``(agent_loop, runtime_safety, TOOLS)`` with lazy loading. Cached after first call."""
     global _cached_imports
@@ -243,7 +260,9 @@ def _base_tool_handler(ctx: DispatchContext, tool_name: str, tool_fn, args: dict
     )
 
     # --- record step ------------------------------------------------------
-    state["steps"].append({"action": tool_name, "result": _res})
+    # `args` is a compact snapshot (long values truncated) so a run can be
+    # replayed/recorded as a macro (BL-231); the step formatter ignores it.
+    state["steps"].append({"action": tool_name, "result": _res, "args": _compact_args(log_args)})
     state["last_tool_used"] = tool_name
 
     # --- optional verification --------------------------------------------

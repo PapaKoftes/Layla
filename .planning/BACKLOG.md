@@ -366,8 +366,10 @@ adaptive-tool-learning=`strategy_stats`/`experience_replay`, context-compression
 - **BL-230** ⬜ **Visual understanding (VLM)** — OSS: a **moondream2 / LLaVA / Qwen2-VL GGUF via llama.cpp multimodal**
   (llama-cpp-python chat handler) as an optional vision backend + **`pytesseract`+`Pillow`** OCR fallback. Add an
   `analyze_image` tool + image input on `/v1` (content parts). Gated feature `vision`.
-- **BL-231** ⬜ **Workflow recorder & macro engine** — record a run's tool/step sequence → save as a named **macro**
-  → replay/adapt later. Builds on the existing step history + missions; store macros in SQLite; `/macros/*` + UI.
+- **BL-231** ✅ **Workflow recorder & macro engine** — BUILT — `services/skills/macros.py`: SQLite macro store;
+  `record_from_run()` extracts a run's successful `{tool,args}` steps (tool steps now carry a compact args snapshot);
+  `replay_macro()` re-dispatches through the live `TOOLS` registry with `{{param}}` substitution, confirm-gated +
+  stop-on-error. `/macros/*` router + `components/macros.js` (⌘K "Macros / workflows"). Verified (test_macros.py, 9).
 - **BL-232** ✅ **Cross-project reasoning** — BUILT — OSS: **`networkx`** graph over the entity codex + per-project memories to
   surface shared entities / transferable knowledge across repos. `/intelligence/cross-project` + a codex view.
 - **BL-233** ⬜ **Event-driven automation engine** — a rule layer (event→action) over the existing `watchdog` watcher
