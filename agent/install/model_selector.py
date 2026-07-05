@@ -127,7 +127,38 @@ def recommend_model(
         return (mem_req, jinx, q4_boost, nm)
 
     compatible.sort(key=sort_key)
-    return compatible[0] if compatible else None
+    if not compatible:
+        return None
+    # REQ-85: benchmark-driven selection — when this box has already measured some of the
+    # memory-compatible models, prefer the best-measured one (quality then speed) over the
+    # static fits-first heuristic. No stored benchmarks ⇒ this is a no-op (fits-first stands).
+    best = _benchmark_preferred(compatible)
+    return best if best is not None else compatible[0]
+
+
+def _benchmark_preferred(candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Among candidates, the one with the best stored benchmark (pass@1, then tok/s)."""
+    try:
+        from services.llm.model_benchmark import get_all_benchmarks
+        marks = get_all_benchmarks() or {}
+    except Exception:
+        return None
+    if not marks:
+        return None
+
+    def _score(m: dict) -> tuple | None:
+        for key in ((m.get("filename") or ""), (m.get("name") or "")):
+            b = marks.get(key)
+            if isinstance(b, dict):
+                return (float(b.get("pass_at_1", 0) or 0), float(b.get("tok_per_s", 0) or 0))
+        return None
+
+    scored = [(c, _score(c)) for c in candidates]
+    scored = [(c, s) for c, s in scored if s is not None]
+    if not scored:
+        return None
+    scored.sort(key=lambda cs: cs[1], reverse=True)
+    return scored[0][0]
 
 
 # ---------------------------------------------------------------------------
