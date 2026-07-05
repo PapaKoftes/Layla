@@ -375,7 +375,13 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
   gamification/growth by `maturity_enabled`, and the observability HUD by the `observability` feature. Every one is a
   reversible flag, so nothing forces these on. _(Reframed: since horizon work is now first-class in the plan rather than
   cut, "parking" is moot — but the reversibility the item wanted exists.)_
-- **BL-174** 🟡 REQ-72 install slice · REQ-73 first-run kit provisioning · REQ-75 full-app E2E + **one-command install** · REQ-76 each aspect = curated kit · REQ-85 kit upgrades (embedding-per-tier ✅, IQ-quant catalog, benchmark-driven selection)
+- **BL-174** ✅ REQ-72/73/75/76/85 — **one-command install** ships (`install.sh` / `install.ps1` / `INSTALL.bat` +
+  the `install/` module: `installer_cli`, `run_first_time`, `setup_wizard`, `model_downloader`, `provision_model`);
+  first-run kit provisioning + aspect-as-curated-kit via `setup_profiles`/`kit_catalog`; **full-app E2E** runs in CI
+  (the `e2e-ui` Playwright job boots the app + drives the UI, and `inference-smoke` exercises a real completion).
+  REQ-85 **benchmark-driven selection** now built: `recommend_model` re-ranks the memory-compatible candidates by their
+  stored benchmark (pass@1, then tok/s) when this box has measured them, falling back to the fits-first heuristic when
+  it hasn't (`_benchmark_preferred`). Verified (test_benchmark_driven_selection.py 4, test_install.py 20).
 
 ## W10 — P0 tail (deprioritized churn)
 - **BL-180** ⬜ httpx consolidation · **BL-181** ⬜ tenacity/diskcache/apscheduler replace bespoke.
