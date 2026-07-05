@@ -407,8 +407,11 @@ adaptive-tool-learning=`strategy_stats`/`experience_replay`, context-compression
   view from existing sources — current `project_context`, known/open projects, `repo_indexer` stats, hardware probe,
   resource-governor mode — each read best-effort so a missing subsystem degrades that field, not the snapshot.
   `summarize()` gives a compact prompt-injectable digest. `/world` + `/world/summary`. Verified (test_world_state.py, 3).
-- **BL-242** 🟡 **Learning from feedback wiring** — route explicit user corrections (verify UI + a 👍/👎 signal) into
-  future behavior (prompt/preferences), closing the loop that `rl_feedback` started.
+- **BL-242** ✅ **Learning from feedback wiring** — BUILT — `services/infrastructure/answer_feedback.py`: records
+  👍/👎 on answers; a 👎 with a written correction is routed into the learning store (`save_learning kind=correction`,
+  the existing channel into planning/prompts) AND surfaced as a prompt hint. `system_head_builder` now injects
+  `feedback_hint_for_prompt()` right after the RL hint, so the next turn honours recent corrections — closing the loop
+  `rl_feedback` started. `/feedback` (record) + `/feedback/stats` + `/feedback/hint`. Verified (test_answer_feedback.py, 6).
 
 ---
 
