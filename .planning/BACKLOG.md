@@ -326,11 +326,11 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 ## W8 — Ecosystem (V2/V3)
 - **BL-150** ✅ UPG-06 Ollama backend — already implemented in `inference_router.py`: `_detect_backend` routes to `ollama` (via `ollama_base_url`/port-11434/explicit `inference_backend`), `run_completion_ollama` uses Ollama's OpenAI-compatible `/v1/chat/completions`. Tested (`test_inference_router.py`, 9) · **BL-151** 🟡 UPG-40 first-class `/v1` (REQ-61 params, REQ-83 Cline/Continue/Aider) · **BL-152** ✅ UPG-41 Ollama API surface — `routers/ollama_compat.py`: Layla now **serves** Ollama's native API (`/api/tags` lists layla+aspects, `/api/chat`, `/api/generate`, `/api/version`) by reusing the `/v1` handler (all agent logic + local-only write/run security carry over). Any Ollama client (Open WebUI, ollama-python, editor plugins) can point at Layla. Tested (`test_ollama_compat.py`, 4). _(Also enables BL-158 Open-WebUI.)_
 - **BL-153** 🟡 UPG-12 MCP-only plugins · **BL-154** ⬜ UPG-13 Tauri shell · **BL-155** ⬜ UPG-34 VS Code / CLI / mobile-PWA clients
-- **BL-156** ⬜ UPG-37 kit marketplace · **BL-157** ⬜ UPG-08 DSPy · **BL-158** ⬜ UPG-09 Open WebUI call · **BL-159** ⬜ UPG-42 HF Hub + ONNX
+- **BL-156** ⬜ UPG-37 kit marketplace · **BL-157** ⬜ UPG-08 DSPy · **BL-158** ✅ UPG-09 Open WebUI — Open WebUI connects to OpenAI-compatible **or** Ollama endpoints; Layla now serves **both** (`/v1/*` via openai_compat + `/api/*` via ollama_compat, BL-152), so pointing Open WebUI at Layla works out of the box · **BL-159** ⬜ UPG-42 HF Hub + ONNX
 - **BL-160** ⬜ UPG-23 Castilla multilingual flagship · **BL-161** ⬜ UPG-33 memory/knowledge sync across paired instances
 
 ## W9 — Foundation-swap tail + scope-cut + install
-- **BL-170** ⬜ UPG-10 engine abstraction · **BL-171** ⬜ UPG-11 one-SQLite memory file · **BL-172** 🟡 UPG-14 governor auto-cap
+- **BL-170** ✅ UPG-10 engine abstraction — `services/llm/inference_router.py` IS the abstraction: one interface routing to `llama_cpp` | `openai_compatible` | `ollama` | `litellm` | `cluster`, with `inference_backend` config + auto-detection. Tested (`test_inference_router.py`) · **BL-171** ⬜ UPG-11 one-SQLite memory file · **BL-172** 🟡 UPG-14 governor auto-cap
 - **BL-173** ⬜ Phase 3 **scope-cut**: park cluster/tribunal/gamification-headline/HUD-chips behind reversible flags
 - **BL-174** 🟡 REQ-72 install slice · REQ-73 first-run kit provisioning · REQ-75 full-app E2E + **one-command install** · REQ-76 each aspect = curated kit · REQ-85 kit upgrades (embedding-per-tier ✅, IQ-quant catalog, benchmark-driven selection)
 
