@@ -192,6 +192,20 @@ def delete_macro(macro_id: int | str) -> dict[str, Any]:
 
 
 # ── replay ───────────────────────────────────────────────────────────────────
+def _resolve_tool_fn(tool: str, tools: dict) -> Any:
+    """Get the callable for a tool. Registry entries are `{"fn": fn, ...}`; also
+    tolerate a bare callable (used in tests / lightweight registries)."""
+    entry = tools.get(tool)
+    if entry is None:
+        return None
+    if callable(entry):
+        return entry
+    if isinstance(entry, dict):
+        fn = entry.get("fn")
+        return fn if callable(fn) else None
+    return None
+
+
 def _apply_params(value: Any, params: dict[str, str]) -> Any:
     if isinstance(value, str):
         return _PARAM.sub(lambda m: str(params.get(m.group(1), m.group(0))), value)
@@ -233,7 +247,7 @@ def replay_macro(
     for i, st in enumerate(macro["steps"]):
         tool = st["tool"]
         args = _apply_params(dict(st.get("args") or {}), params)
-        fn = TOOLS.get(tool)
+        fn = _resolve_tool_fn(tool, TOOLS)
         if fn is None:
             results.append({"step": i, "tool": tool, "ok": False, "error": "tool no longer available"})
             ok_all = False

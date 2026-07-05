@@ -473,6 +473,21 @@ def context_compress(text: str, target_tokens: int = 2000, strategy: str = "smar
             "compressed_tokens": rough_tokens(compressed), "text": compressed,
             "ratio": round(rough_tokens(compressed) / original_tokens, 3)}
 
+def analyze_image(path: str, prompt: str = "", ocr: bool = True) -> dict:
+    """
+    Understand an image: describe it (local GGUF vision model when configured, else the
+    BLIP captioner) and optionally extract any text via OCR — one unified result. `prompt`
+    lets you ask a specific question when the GGUF VLM backend is active.
+    """
+    target = Path(path)
+    if not inside_sandbox(target):
+        return {"ok": False, "error": "Outside sandbox"}
+    if not target.exists():
+        return {"ok": False, "error": "File not found"}
+    from services.vision.image_analysis import analyze_image as _analyze
+    return _analyze(str(target), prompt, ocr=bool(ocr))
+
+
 def describe_image(path: str, detail: str = "brief") -> dict:
     """
     Generate a natural language description of an image.
