@@ -970,6 +970,16 @@ def build_system_head(
         except Exception:
             pass
 
+        # BL-242: fold explicit user corrections (👎 + written correction) back into the
+        # prompt so the next turn honours them — closes the answer-feedback loop.
+        try:
+            from services.infrastructure.answer_feedback import feedback_hint_for_prompt
+            fb_hint = feedback_hint_for_prompt()
+            if fb_hint:
+                memory_sections["answer_feedback"] = fb_hint
+        except Exception:
+            pass
+
     if goal and len(goal) > 100 and not _small_model:
         try:
             from services.infrastructure.reasoning_strategies import get_strategy_prompt_hint
