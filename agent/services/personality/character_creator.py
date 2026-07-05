@@ -251,14 +251,32 @@ def save_aspect_customization(aspect_id: str, customizations: dict[str, Any]) ->
     return {"ok": True, "saved_keys": saved_keys, "aspect_id": aspect_id}
 
 
+def all_aspect_ids() -> list[str]:
+    """The 6 built-ins plus any user-created custom aspects (BL-092). Built-ins always first."""
+    try:
+        from services.personality.custom_aspects import custom_aspect_ids
+        return list(ALL_ASPECTS) + [a for a in custom_aspect_ids() if a not in ALL_ASPECTS]
+    except Exception:
+        return list(ALL_ASPECTS)
+
+
 def load_aspect_profile(aspect_id: str) -> dict[str, Any]:
     """
     Load the full profile for an aspect: defaults merged with operator customizations.
+    Custom aspects (BL-092) inherit their base_aspect's defaults, then apply their overrides.
     """
     if aspect_id not in ALL_ASPECTS:
-        return {"ok": False, "error": f"Unknown aspect: {aspect_id}"}
-
-    defaults = dict(ASPECT_DEFAULTS.get(aspect_id, {}))
+        # Custom aspect? Inherit the base_aspect defaults + the custom overrides.
+        try:
+            from services.personality.custom_aspects import apply_overrides, get_custom_aspect
+            cust = get_custom_aspect(aspect_id)
+        except Exception:
+            cust = None
+        if not cust:
+            return {"ok": False, "error": f"Unknown aspect: {aspect_id}"}
+        defaults = apply_overrides(dict(ASPECT_DEFAULTS.get(cust.get("base_aspect") or "morrigan", {})), cust)
+    else:
+        defaults = dict(ASPECT_DEFAULTS.get(aspect_id, {}))
 
     try:
         from layla.memory.db import get_all_user_identity
@@ -411,8 +429,8 @@ def advance_tutorial(step: int) -> dict[str, Any]:
 
 
 def set_main_aspect(aspect_id: str) -> dict[str, Any]:
-    """Set the operator's main/default aspect."""
-    if aspect_id not in ALL_ASPECTS:
+    """Set the operator's main/default aspect (a built-in or a custom aspect, BL-092)."""
+    if aspect_id not in all_aspect_ids():
         return {"ok": False, "error": f"Unknown aspect: {aspect_id}"}
     from layla.memory.db import set_user_identity
     set_user_identity("main_aspect", aspect_id)
