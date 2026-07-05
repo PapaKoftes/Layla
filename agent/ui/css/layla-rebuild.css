@@ -998,6 +998,19 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .ca-del { flex: none; background: var(--surface-3); border: 1px solid var(--border); color: var(--text-dim); border-radius: var(--radius-sm); font-family: 'JetBrains Mono', monospace; font-size: var(--text-xs); padding: 3px 10px; cursor: pointer; }
 .ca-del:hover { background: var(--danger); color: #fff; border-color: transparent; }
 
+/* G5 — First-run welcome (BL-091) */
+.welcome-panel { max-width: 480px; }
+.welcome-body { padding: 34px 30px 20px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.welcome-icon { font-size: 2.4rem; color: var(--accent); line-height: 1; }
+.welcome-title { font-size: var(--text-lg, 1.15rem); font-weight: 700; color: var(--text); text-transform: lowercase; letter-spacing: 0.02em; }
+.welcome-text { font-size: var(--text-sm); line-height: 1.6; color: var(--text-dim); max-width: 40ch; }
+.welcome-foot { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-top: 1px solid var(--border); }
+.welcome-dots { flex: 1; display: flex; gap: 6px; }
+.welcome-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--surface-3); border: 1px solid var(--border); transition: background 0.2s; }
+.welcome-dot.on { background: var(--accent); border-color: transparent; }
+.welcome-skip { background: none; border: none; color: var(--text-dim); font-family: inherit; font-size: var(--text-sm); cursor: pointer; padding: 4px 8px; }
+.welcome-skip:hover { color: var(--text); }
+
 /* W2 — Obsidian diff preview (BL-053) */
 .obs-diff { margin-top: 6px; }
 .obs-diff-sec { margin-top: 6px; }
