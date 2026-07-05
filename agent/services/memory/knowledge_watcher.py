@@ -196,11 +196,11 @@ class KnowledgeWatcher:
 
                 def on_created(self, event):
                     if not event.is_directory:
-                        self._watcher._on_file_change(Path(event.src_path))
+                        self._watcher._on_file_change(Path(event.src_path), kind="file_created")
 
                 def on_modified(self, event):
                     if not event.is_directory:
-                        self._watcher._on_file_change(Path(event.src_path))
+                        self._watcher._on_file_change(Path(event.src_path), kind="file_modified")
 
             observer = Observer()
             handler = _Handler(self)
@@ -247,7 +247,7 @@ class KnowledgeWatcher:
 
     # ── File processing ──────────────────────────────────────────────
 
-    def _on_file_change(self, path: Path) -> None:
+    def _on_file_change(self, path: Path, kind: str = "file_modified") -> None:
         """Called when a file is created or modified."""
         if not _should_process(path):
             return
@@ -270,6 +270,13 @@ class KnowledgeWatcher:
             return
 
         self._ingest_file(path)
+
+        # BL-233: let user-defined automation rules react to the change (best-effort).
+        try:
+            from services.automation.rules_engine import dispatch_event
+            dispatch_event("file_modified", {"path": str(path)})
+        except Exception as e:  # noqa: BLE001
+            logger.debug("automation dispatch on file change failed: %s", e)
 
     def _should_ingest(self) -> bool:
         """Check if the resource governor allows ingestion."""
