@@ -300,6 +300,14 @@ nothing overwhelms; the aspect creator lives in Settings, not the rail. *(The ex
 "nothing-lost" ledger was written as `GUI-FEATURE-MAP.md`; it's in git history — recover it when building
 G3/Settings if the per-key detail is needed. Latent wedge win to surface: language-learning UI.)*
 
+**Generalized language learning (operator 2026-07-05 — BL-220):** the German tutor generalizes into a
+**language-agnostic** system — learn *any* language, with German + Italian + Spanish shipping first. The engine
+is **LLM-based correction** (prompt the model as a `{language}` CEFR-`{level}` tutor), so a new language is one
+registry entry; German keeps its fast regex rules as a supplement. Per-`(user,language)` profiles, language-tagged
+flashcard SRS, per-language calibration. This is the "in your language" wedge turned into "learn any language."
+**Deferred (BL-221):** a thorough **WebUI scaling+design review** — the operator flagged responsive/scaling and
+some awkward layouts; a dedicated QA/polish sweep happens *after* feature-complete, not inline.
+
 **Startup (calm, honest, 5 steps):** (1) Welcome `∴ LAYLA` — "A private AI that's yours — runs on your
 machine, remembers what matters." (2) Your machine (honesty card) — "16 GB · CPU → Qwen2.5-Coder-3B, fast
 for edits and chat." (3) Get the model — one resumable bar / "Found it ✓". (4) Your space — a workspace
