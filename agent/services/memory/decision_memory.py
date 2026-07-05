@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import time
 from contextlib import contextmanager
@@ -19,12 +20,14 @@ from typing import Any
 logger = logging.getLogger("layla")
 
 
+def _data_dir() -> Path:
+    """Layla's data directory (same LAYLA_DATA_DIR the memory layer uses)."""
+    raw = (os.environ.get("LAYLA_DATA_DIR") or "").strip()
+    return Path(raw).expanduser().resolve() if raw else Path.home() / ".layla"
+
+
 def _db_path() -> Path:
-    try:
-        from layla.memory.db_connection import _resolve_db_path
-        return _resolve_db_path().parent / "decisions.db"
-    except Exception:
-        return Path.home() / ".layla" / "decisions.db"
+    return _data_dir() / "decisions.db"
 
 
 @contextmanager
@@ -102,12 +105,12 @@ def list_decisions(*, limit: int = 50, project: str = "") -> list[dict]:
     with _db() as conn:
         if project:
             rows = conn.execute(
-                "SELECT * FROM decision WHERE project=? ORDER BY created_at DESC LIMIT ?",
+                "SELECT * FROM decision WHERE project=? ORDER BY created_at DESC, id DESC LIMIT ?",
                 (project, limit),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM decision ORDER BY created_at DESC LIMIT ?", (limit,)
+                "SELECT * FROM decision ORDER BY created_at DESC, id DESC LIMIT ?", (limit,)
             ).fetchall()
         return [_row(r) for r in rows]
 
@@ -118,7 +121,7 @@ def search_decisions(query: str, *, limit: int = 20) -> list[dict]:
     with _db() as conn:
         rows = conn.execute(
             "SELECT * FROM decision WHERE goal LIKE ? OR rationale LIKE ? OR chosen LIKE ?"
-            " ORDER BY created_at DESC LIMIT ?",
+            " ORDER BY created_at DESC, id DESC LIMIT ?",
             (q, q, q, limit),
         ).fetchall()
         return [_row(r) for r in rows]

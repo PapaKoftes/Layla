@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import sqlite3
 import time
@@ -22,6 +23,12 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("layla")
+
+
+def _data_dir() -> Path:
+    """Layla's data directory (same LAYLA_DATA_DIR the memory layer uses)."""
+    raw = (os.environ.get("LAYLA_DATA_DIR") or "").strip()
+    return Path(raw).expanduser().resolve() if raw else Path.home() / ".layla"
 
 # actions that are loop bookkeeping, never part of a replayable macro
 _NON_TOOL_ACTIONS = {
@@ -32,11 +39,7 @@ _PARAM = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
 
 # ── storage ──────────────────────────────────────────────────────────────────
 def _db_path() -> Path:
-    try:
-        from layla.memory.db_connection import _resolve_db_path
-        return _resolve_db_path().parent / "macros.db"
-    except Exception:
-        return Path.home() / ".layla" / "macros.db"
+    return _data_dir() / "macros.db"
 
 
 @contextmanager

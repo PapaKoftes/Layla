@@ -372,8 +372,11 @@ adaptive-tool-learning=`strategy_stats`/`experience_replay`, context-compression
   stop-on-error. `/macros/*` router + `components/macros.js` (⌘K "Macros / workflows"). Verified (test_macros.py, 9).
 - **BL-232** ✅ **Cross-project reasoning** — BUILT — OSS: **`networkx`** graph over the entity codex + per-project memories to
   surface shared entities / transferable knowledge across repos. `/intelligence/cross-project` + a codex view.
-- **BL-233** ⬜ **Event-driven automation engine** — a rule layer (event→action) over the existing `watchdog` watcher
-  + scheduler: rules like "on new file in X → summarize", "on git commit → re-index". `/automation/*` + UI.
+- **BL-233** ✅ **Event-driven automation engine** — BUILT — `services/automation/rules_engine.py`: SQLite rule store
+  (event→action) + `dispatch_event()` matching (event type + fnmatch glob) that runs actions reusing existing
+  capabilities (run_macro/record_timeline/reindex/log). `knowledge_watcher` emits `file_created`/`file_modified`
+  events into it; `POST /automation/emit` lets git hooks/schedulers fire `git_commit`/`schedule`. Each action is
+  isolated so one bad rule never blocks others or the watcher. `/automation/rules` CRUD. Verified (test_automation.py, 7).
 - **BL-234** ✅ **Temporal memory timeline** — BUILT (API) — `services/memory/timeline.py` over the existing
   `timeline_events`/`episodes`/`episode_events` tables: `query_timeline` (range/type/project/importance + paginate),
   `timeline_days` (per-day buckets for a calendar/heatmap), `list_episodes` + `reconstruct_episode` (episode + its
