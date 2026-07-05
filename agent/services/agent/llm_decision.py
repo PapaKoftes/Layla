@@ -109,10 +109,32 @@ def get_tools_for_goal(
                 logger.debug("tool_recommend visibility cap failed: %s", e, exc_info=True)
                 top_n = max(1, cap - 5)
                 names = set(list(names)[:top_n]) | {"reason", "read_file", "list_dir", "search_memories", "save_note"}
+        # BL-205: drop tools whose gating `feature` is disabled, so the model never
+        # sees (or wastes prompt tokens on, or picks) a tool that would only refuse at
+        # call-time. Fail-open — any resolution error leaves the set untouched.
+        names = _drop_disabled_feature_tools(names, tools_registry, cfg)
         return frozenset(names)
     except Exception as e:
         logger.warning("_get_tools_for_goal failed, returning all tools: %s", e)
         return valid_tools_all
+
+
+def _drop_disabled_feature_tools(names: set, tools_registry: dict, cfg: dict) -> set:
+    """Remove tools whose registry `feature` tag is not in the enabled feature set."""
+    try:
+        from install.setup_profiles import enabled_feature_ids
+        enabled = set(enabled_feature_ids(cfg))
+    except Exception:
+        return names  # fail-open: never hide tools on a resolution error
+    kept = set()
+    for n in names:
+        meta = tools_registry.get(n) or {}
+        feat = meta.get("feature") if isinstance(meta, dict) else None
+        if feat and feat not in enabled:
+            continue
+        kept.add(n)
+    # never let the filter strip the core reasoning tools
+    return kept | ({"reason"} & set(names))
 
 
 # ---------------------------------------------------------------------------

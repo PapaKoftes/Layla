@@ -125,11 +125,13 @@ the potato thesis (load only what's needed) all plug into. Do this **before** th
 - **BL-204** ✅ `POST /setup/feature/install` — returns the install plan by default; on `confirm:true` pip-installs
   the deps + toggles flags (models via the resumable `/setup/download`). TestClient-tested (plan path + unknown
   feature); the confirm path runs a real `pip install` (intentionally not unit-exercised — no live installs in CI).
-- **BL-205** 🟡 **Tool-enablement** — functionally done: feature tools already gate on their flag (mcp tools
-  check `mcp_client_enabled`, geometry on `geometry_frameworks_enabled`, …), and the profile sets those flags
-  via `apply_setup` → enabling a feature enables its tools, and `tool_visibility_cap`/routing already limit
-  what the model sees. Follow-up optimization: skip *registering* disabled-feature tools (less RAM, not just
-  call-time refusal).
+- **BL-205** ✅ **Tool-enablement** — feature tools gate on their flag at call-time (`mcp_client_enabled`,
+  `geometry_frameworks_enabled`, …) AND are now **hidden from the model's decision set** when their feature is off:
+  `_drop_disabled_feature_tools()` in `llm_decision.get_tools_for_goal` filters any tool whose registry `feature` tag
+  isn't in `enabled_feature_ids(cfg)` (fail-open, never strips `reason`). This is the safe form of the "don't surface
+  disabled tools" optimization — fewer prompt tokens + no dead choices — without making the registry tool-count
+  config-dependent (which would break the count contract) or hiding tools when a feature is toggled on at runtime.
+  Verified (test_tool_feature_gating.py, 4).
 - **BL-206** ✅ Persist — `apply_setup(profiles, features)` merges the resolved overrides onto the current config,
   writes CONFIG_FILE + invalidates the cache; the router endpoint (`POST /setup/apply`) is wired + TestClient-tested.
 - **BL-207** ✅ **Re-homed the gated features into the manifest** (now **15** features): added `multi_agent`
