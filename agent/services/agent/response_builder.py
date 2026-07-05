@@ -231,7 +231,7 @@ def strip_junk_from_reply(text: str) -> str:
     t = re.sub(r"(?<=\S)[ \t]*`{3,}[ \t]*$", "", t).strip()
     t = re.sub(r"^(Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\s*:\s*", "", t).strip()
     t = re.sub(r"\[System:\s*Your last response[^\]]*\]\s*", "", t, flags=re.IGNORECASE | re.DOTALL).strip()
-    for _marker in (r"(?:^|\n)\s*#{1,3}\s*(TASK|CONTEXT|SCRATCHPAD|REPO)\b", r"(?:^|\n)\s*Current goal\s*:", r"(?:^|\n)\s*\[Active aspect\s*:", r"(?:^|\n)\s*Last user message\s*:", r"(?:^|\n)\s*Repo snapshot\s*:", r"(?:^|\n)\s*Repo structure\s*:", r"(?:^|\n)\s*##"):
+    for _marker in (r"(?:^|\n)\s*#{1,3}\s*(TASK|CONTEXT|SCRATCHPAD|REPO)\b", r"(?:^|\n)\s*Current goal\s*:", r"(?:^|\n)\s*\[Active aspect\s*:", r"(?:^|\n)\s*Last user message\s*:", r"(?:^|\n)\s*Repo snapshot\s*:", r"(?:^|\n)\s*Repo structure\s*:", r"(?:^|\n)\s*##", r"(?:^|\s)Echo\s*\(patterns/preferences\)\s*:", r"(?:^|\n)\s*ECHO\s*:"):
         m = re.search(_marker, t, re.IGNORECASE)
         if m:
             t = t[:m.start()].strip()
