@@ -38,6 +38,47 @@ def is_junk_reply(content: str) -> bool:
     return False
 
 
+# Signals that a question genuinely needs tools/context (workspace, memory, web, exec,
+# or the user's own data) — if any appears, it is NOT self-contained and the agent should
+# be free to use tools. Kept as multi-word phrases so common words don't over-trigger.
+_NEEDS_TOOLS_SIGNALS = (
+    # workspace / files / code-in-repo
+    "this file", "the file", "this repo", "the repo", "this project", "my project",
+    "the code", "this code", "my code", "the codebase", "workspace", "directory",
+    "read ", "open ", "edit ", "create a file", "write a file", "save ", "delete ",
+    "list dir", "list the", "in the folder", "the function ", "this function",
+    # memory / recall / personal data
+    "remember", "recall", "we discussed", "did we", "last time", "earlier you",
+    "my note", "our conversation", "what did we", "what's my", "what is my", "my name",
+    "my todo", "my goal", "my plan",
+    # web / current events
+    "search for", "google", "look up", "latest", "current news", "today's", "weather",
+    "browse", "http://", "https://", "www.",
+    # exec / system
+    "run ", "execute", "install", "pip ", "npm ", "git ", "the terminal", "shell command",
+    "compile", "build the",
+)
+
+
+def is_self_contained_question(goal: str) -> bool:
+    """True when a goal is answerable from the model alone — no tools/files/memory/web.
+
+    Used to keep the agent from wasting its tool budget (and hitting max-tool-calls) on
+    general-knowledge / math / writing / translation / reasoning questions it can just
+    answer. Conservative: any signal that real context is needed returns False.
+    """
+    g = (goal or "").strip()
+    gl = g.lower()
+    if len(g) < 3 or len(g) > 2000:
+        return False
+    if any(sig in gl for sig in _NEEDS_TOOLS_SIGNALS):
+        return False
+    # a lone possessive "my"/"our" often implies personal data → let the loop decide
+    if re.search(r"\b(my|our)\b", gl) and "?" in gl:
+        return False
+    return True
+
+
 def looks_like_raw_tool_dict(text: str) -> bool:
     """True when `text` is a dumped tool-result dict leaking through as an 'answer'.
 
