@@ -31,6 +31,11 @@ TOOLS = {
         "category": "data",
         "description": "Generate a text description of an image using a vision model.",
     },
+    "analyze_image": {
+        "dangerous": False, "require_approval": False, "risk_level": "low",
+        "category": "data", "feature": "vision",
+        "description": "Understand an image: describe it (local GGUF vision model or BLIP) and OCR any text in one call. Pass a prompt to ask a specific question about the image.",
+    },
     "summarize_text": {
         "dangerous": False, "require_approval": False, "risk_level": "low",
         "category": "data",

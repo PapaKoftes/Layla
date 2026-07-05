@@ -40,11 +40,65 @@ def _v1_error(message: str, code: str = "invalid_request_error", status_code: in
     )
 
 
+def _vision_enabled() -> bool:
+    try:
+        import runtime_safety
+        cfg = runtime_safety.load_config() or {}
+        if cfg.get("vision_enabled"):
+            return True
+        feats = cfg.get("enabled_features")
+        return isinstance(feats, (list, tuple, set)) and "vision" in feats
+    except Exception:
+        return False
+
+
+def _analyze_image_part(image_url: str) -> str:
+    """BL-230: turn a data-URI image part into text the text model can read.
+
+    Decodes into the sandbox (so the existing sandbox-checked vision tools accept it),
+    runs the unified analyzer, and returns a compact `[Image: … | text in image: …]`
+    line. Best-effort + gated by the `vision` feature — returns "" on any failure.
+    """
+    if not image_url.startswith("data:image/"):
+        return ""  # only local data URIs (no outbound fetch — SSRF-safe)
+    import base64 as _b64
+    import uuid as _uuid
+    from pathlib import Path as _Path
+    tmp = None
+    try:
+        header, _, b64 = image_url.partition(",")
+        ext = header.split("/", 1)[1].split(";", 1)[0] if "/" in header else "png"
+        ext = {"jpeg": "jpg"}.get(ext, ext)[:5]
+        from layla.tools.sandbox_core import _get_sandbox
+        tmp_dir = _Path(_get_sandbox()) / ".layla_vision_tmp"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        tmp = tmp_dir / f"{_uuid.uuid4().hex}.{ext}"
+        tmp.write_bytes(_b64.b64decode(b64))
+        from services.vision.image_analysis import analyze_image
+        r = analyze_image(str(tmp))
+        bits = []
+        if r.get("description"):
+            bits.append("Image: " + str(r["description"]).strip())
+        if r.get("ocr_text"):
+            bits.append("text in image: " + str(r["ocr_text"]).strip()[:1000])
+        return "[" + " | ".join(bits) + "]" if bits else ""
+    except Exception as e:  # noqa: BLE001
+        logger.debug("v1 image part analysis skipped: %s", e)
+        return ""
+    finally:
+        try:
+            if tmp is not None and tmp.exists():
+                tmp.unlink()
+        except Exception:
+            pass
+
+
 def _normalize_openai_content(content: Any) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
         parts: list[str] = []
+        vision_on = None  # resolve lazily, only if an image part appears
         for part in content:
             if not isinstance(part, dict):
                 continue
@@ -53,6 +107,17 @@ def _normalize_openai_content(content: Any) -> str:
                 text = part.get("text")
                 if isinstance(text, str) and text.strip():
                     parts.append(text)
+            elif ptype in {"image_url", "input_image"}:
+                if vision_on is None:
+                    vision_on = _vision_enabled()
+                if not vision_on:
+                    continue
+                iu = part.get("image_url")
+                url = iu.get("url") if isinstance(iu, dict) else iu
+                if isinstance(url, str) and url:
+                    ctx = _analyze_image_part(url)
+                    if ctx:
+                        parts.append(ctx)
         return "\n".join(parts).strip()
     return ""
 
