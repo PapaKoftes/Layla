@@ -16,6 +16,39 @@ def languages():
     return {"ok": True, "languages": list_languages()}
 
 
+@router.get("/language/response")
+def get_response_language():
+    """BL-160: the language Layla converses in + the full supported set."""
+    from services.prompts.response_language import supported_languages
+    try:
+        from runtime_safety import load_config
+        current = str((load_config() or {}).get("response_language") or "")
+    except Exception:
+        current = ""
+    return {"ok": True, "current": current, "supported": supported_languages()}
+
+
+@router.post("/language/response")
+async def set_response_language(request: Request):
+    """Set the companion's response language (persists `response_language` to config)."""
+    from services.prompts.response_language import normalize_language, build_language_block
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    raw = str((body or {}).get("language") or "").strip()
+    key = normalize_language(raw) if raw else ""
+    try:
+        from services.infrastructure.setup_engine import save_config
+        from runtime_safety import load_config
+        cfg = load_config() or {}
+        cfg["response_language"] = key
+        save_config(cfg)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "response_language": key, "preview": build_language_block(key)}
+
+
 @router.get("/language/{lang}/profile")
 def profile(lang: str):
     from services.infrastructure.language_tutor import get_profile
