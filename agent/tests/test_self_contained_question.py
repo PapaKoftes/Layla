@@ -28,8 +28,18 @@ def test_tool_needing_questions_are_not():
         "Summarize this repo's architecture",
         "Install numpy and import it",
         "What's in my todo list?",
+        r"Write path C:\Users\me\golden_e2e.txt with content golden_line_content",
+        "Write path /home/me/notes.txt with content hello",
+        "Read config.json and tell me the port",
+        "Edit ./src/main.py to add logging",
     ]:
         assert not rb.is_self_contained_question(q), q
+
+
+def test_casual_slashes_stay_self_contained():
+    # narrow path regex must not trip on everyday slashes/units
+    for q in ["What is 60 km/h in mph?", "Is it and/or in logic?", "Define n/a"]:
+        assert rb.is_self_contained_question(q), q
 
 
 def test_empty_or_huge_is_not_self_contained():
