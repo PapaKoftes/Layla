@@ -387,8 +387,10 @@ adaptive-tool-learning=`strategy_stats`/`experience_replay`, context-compression
   real decision (best-effort). `/decisions` list/search/get + record. Verified (test_decision_memory.py, 5).
 - **BL-236** 🟡 **Personal operating manual** — evolve `user_identity`/operator-profile into a living "how you work"
   doc (preferences, habits, comm style, recurring workflows) that personalizes prompts.
-- **BL-237** 🟡 **Explainable reasoning mode** — a concise, human-readable "why" summary of a conclusion/plan
-  (distinct from raw CoT), gated by a flag; reuses the existing reasoning trace.
+- **BL-237** ✅ **Explainable reasoning mode** — BUILT — `services/agent/explain.py`: `build_explanation()` distils a
+  run's trace (think-thoughts + tool sequence with ✓/✗ outcomes + conclusion) into a structured + markdown "why",
+  deterministic (no extra model call). `run_finalizer` attaches `state["explanation"]` when
+  `explainable_reasoning_enabled` is on (inert by default). `POST /explain` for any trace. Verified (test_explain.py, 5).
 - **BL-238** 🟡 **Skill acquisition from tasks** — learn a reusable executable **skill** from a successful task's
   tool/step sequence and register it (extends `skill_registry` beyond installed packs).
 - **BL-239** 🟡 **Plugin SDK polish** — the `plugin_loader`/`install_from_git` SDK exists; add **docs + a
