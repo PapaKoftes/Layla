@@ -1045,6 +1045,11 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .mkt-install { flex: none; }
 .mkt-installed { flex: none; font-size: var(--text-xs); color: var(--success); font-family: 'JetBrains Mono', monospace; }
 
+/* W8 — Hugging Face model download (BL-159) */
+.models-hf-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
+.models-hf-row input { flex: 1 1 240px; min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 10px; color: var(--text); font-size: var(--text-xs); }
+.models-hf-row .setup-btn { flex: none; }
+
 /* W13 — Macros / workflows (BL-231) */
 .mac-body { padding: 8px 4px; max-height: 62vh; overflow-y: auto; }
 .mac-item { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 8px; }
