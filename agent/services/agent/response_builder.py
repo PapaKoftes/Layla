@@ -207,13 +207,28 @@ def strip_junk_from_reply(text: str) -> str:
     _obj = re.search(r"(?:^|\s)Objective\s*:", t, re.IGNORECASE)
     if _obj and _obj.start() > 0:
         t = t[:_obj.start()].strip()
-    # Drop a degenerate tail: trailing lines that are only code-fences, lone single
-    # characters, or blank — the shape a looping model produces after its real answer.
+    # Drop a *degenerate* tail: trailing lines that are only code-fences, lone single
+    # characters, or blank — the shape a looping model emits after its real answer.
+    # Conservative: only remove the run when it clearly loops (>=2 bare fences, or a lone
+    # single char) so a legitimate single closing ``` of a real code block is preserved.
     _lines = t.split("\n")
-    while _lines and re.fullmatch(r"\s*(?:`{2,}|[A-Za-z]?)\s*", _lines[-1] or ""):
-        _lines.pop()
-    t = "\n".join(_lines).strip()
-    t = re.sub(r"\s*```\s*$", "", t).strip()
+    _tail_len = 0
+    _fences = _lonechars = 0
+    for _ln in reversed(_lines):
+        if re.fullmatch(r"\s*(?:`{2,}|[A-Za-z]?)\s*", _ln or ""):
+            _tail_len += 1
+            if re.fullmatch(r"\s*`{2,}\s*", _ln or ""):
+                _fences += 1
+            elif re.fullmatch(r"\s*[A-Za-z]\s*", _ln or ""):
+                _lonechars += 1
+        else:
+            break
+    if _tail_len and (_fences >= 2 or _lonechars >= 1):
+        t = "\n".join(_lines[: len(_lines) - _tail_len]).strip()
+    # A dangling fence left INLINE at the end of a content line ("…olleh\". ```") is junk;
+    # a fence on its own line (a real code block's close) is preceded by a newline, so the
+    # `\S` lookbehind spares it.
+    t = re.sub(r"(?<=\S)[ \t]*`{3,}[ \t]*$", "", t).strip()
     t = re.sub(r"^(Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\s*:\s*", "", t).strip()
     t = re.sub(r"\[System:\s*Your last response[^\]]*\]\s*", "", t, flags=re.IGNORECASE | re.DOTALL).strip()
     for _marker in (r"(?:^|\n)\s*#{1,3}\s*(TASK|CONTEXT|SCRATCHPAD|REPO)\b", r"(?:^|\n)\s*Current goal\s*:", r"(?:^|\n)\s*\[Active aspect\s*:", r"(?:^|\n)\s*Last user message\s*:", r"(?:^|\n)\s*Repo snapshot\s*:", r"(?:^|\n)\s*Repo structure\s*:", r"(?:^|\n)\s*##"):
