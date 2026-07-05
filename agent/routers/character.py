@@ -177,3 +177,27 @@ def all_earnable_titles():
     """All earnable titles across all aspects (with unlock conditions)."""
     from services.personality.character_creator import EARNABLE_TITLES
     return EARNABLE_TITLES
+
+
+# ── Custom aspects (BL-092 — create your own) ────────────────────────────────
+
+@router.get("/custom-aspects")
+def list_custom():
+    """List user-created custom aspects, plus the built-in ids they can inherit from."""
+    from services.personality.character_creator import ALL_ASPECTS
+    from services.personality.custom_aspects import list_custom_aspects
+    return {"ok": True, "custom": list_custom_aspects(), "base_aspects": list(ALL_ASPECTS)}
+
+
+@router.post("/custom-aspects")
+def create_custom(body: dict):
+    """Create/update a custom aspect (id, name, symbol/sigil, base_aspect, prompt_hint, …)."""
+    from services.personality.custom_aspects import save_custom_aspect
+    return save_custom_aspect(body or {})
+
+
+@router.delete("/custom-aspects/{aspect_id}")
+def remove_custom(aspect_id: str):
+    """Delete a custom aspect."""
+    from services.personality.custom_aspects import delete_custom_aspect
+    return {"ok": delete_custom_aspect(aspect_id)}
