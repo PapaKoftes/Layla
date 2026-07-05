@@ -834,6 +834,9 @@ from routers import (
     openai_compat as openai_compat_router,
 )
 from routers import (
+    ollama_compat as ollama_compat_router,
+)
+from routers import (
     pairing as pairing_router,
 )
 from routers import (
@@ -873,6 +876,7 @@ app.include_router(conversations_router.router)
 app.include_router(knowledge_router.router)
 app.include_router(workspace_router.router)
 app.include_router(openai_compat_router.router)
+app.include_router(ollama_compat_router.router)
 app.include_router(missions_router.router)
 app.include_router(voice_router.router)
 app.include_router(tools_history_router.router)  # Phase 0.2: tool call history
