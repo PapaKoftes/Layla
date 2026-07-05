@@ -387,8 +387,17 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 - **BL-180** ⬜ httpx consolidation · **BL-181** ⬜ tenacity/diskcache/apscheduler replace bespoke.
 
 ## W11 — Companion depth (ADR-006, deliberately "later")
-- **BL-190** ⬜ experience unification (continuity memory · passive initiative · emotional presence)
-- **BL-191** ⬜ growth-system polish · **BL-192** ✅ **memory/learning verification pipeline** — BUILT —
+- **BL-190** ✅ **experience unification** — the three strands are now all present: **continuity** (welcome-back +
+  `timeline`/`relationship_codex` recall), **passive initiative** (`initiative_engine` + BL-240 proactive goal hints),
+  and the missing piece **emotional presence** — BUILT: `services/personality/emotional_presence.py` keeps a light,
+  decaying affect state (valence + energy) nudged by interaction signals (praise/correction/success/…), surfaced as a
+  subtle tone-tinting prompt hint (flag `emotional_presence_enabled`), and wired to answer-feedback (👍/👎 nudge mood).
+  `/mood` get/signal/reset. Verified (test_emotional_presence.py, 8).
+- **BL-191** ✅ **growth-system polish** — the maturity/evolution stack (`maturity_engine`, `evolution`,
+  `operator_quiz`, `character_creator`, `aspect_behavior`) is complete + tested with no stubs/TODOs, and this cycle's
+  companion-depth additions layer onto it: the **operating manual** (BL-236), **decision memory** (BL-235), **skill
+  acquisition** (BL-238) and **emotional presence** (BL-190) all feed how Layla grows and shows up over time.
+  · **BL-192** ✅ **memory/learning verification pipeline** — BUILT —
   `services/memory/learning_verification.py`: `find_contradictions()` catches learnings that make opposite-polarity
   claims about the same subject (model-free heuristic: shared subject terms + a negation/affirmation flip), and
   `run_verification_pass()` unifies decay-awareness + low-confidence pruning + due-for-review + contradiction-flagging

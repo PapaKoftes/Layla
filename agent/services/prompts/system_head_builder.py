@@ -778,6 +778,16 @@ def build_system_head(
     except Exception as _le:
         logger.debug("response_language inject failed: %s", _le)
 
+    # BL-190: emotional presence — let a light, decaying mood tint tone (flag-gated).
+    try:
+        if isinstance(cfg, dict) and cfg.get("emotional_presence_enabled"):
+            from services.personality.emotional_presence import mood_hint
+            _mh = mood_hint()
+            if _mh:
+                system_instructions = system_instructions + "\n\n" + _mh
+    except Exception as _me:
+        logger.debug("emotional_presence inject failed: %s", _me)
+
     # Memory sections (canonical order)
     from services.context.context_merge_layers import MEMORY_SECTION_ORDER
     memory_sections: dict[str, str] = {}
