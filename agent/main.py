@@ -818,6 +818,9 @@ from routers import (
     german as german_router,
 )
 from routers import (
+    language as language_router,
+)
+from routers import (
     intelligence as intelligence_router,
 )
 from routers import (
@@ -886,6 +889,7 @@ app.include_router(tools_history_router.router)  # Phase 0.2: tool call history
 app.include_router(search_router.router)  # Phase 1.4: global smart search
 app.include_router(obsidian_router.router)  # Phase 5.1: Obsidian vault connector
 app.include_router(german_router.router)           # Item #10: German language learning mode
+app.include_router(language_router.router)         # BL-220: generalized multi-language tutor
 app.include_router(agent_tasks_router.router)      # Background task resume + plan execution
 app.include_router(sync_router.router)             # Multi-device sync via Syncthing
 app.include_router(pairing_router.router)          # Phase 9: mDNS discovery + device pairing + cluster

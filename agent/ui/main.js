@@ -130,6 +130,8 @@ import * as customAspect from './components/custom-aspect.js';
 import * as welcome from './components/welcome.js';
 // W8 — Kit marketplace (BL-156)
 import * as marketplace from './components/marketplace.js';
+// W12 — Generalized language tutor (BL-220)
+import * as tutor from './components/tutor.js';
 
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
@@ -565,6 +567,7 @@ function init() {
     { id: 'custom-aspect', group: 'Go to', label: 'Create custom aspect', keywords: ['aspect', 'create', 'custom', 'persona', 'new', 'sigil', 'character'], run: () => customAspect.openCustomAspect() },
     { id: 'welcome', group: 'Go to', label: 'Welcome / about Layla', keywords: ['welcome', 'about', 'intro', 'onboarding', 'values', 'honesty', 'start'], run: () => welcome.openWelcome() },
     { id: 'marketplace', group: 'Go to', label: 'Kit marketplace', keywords: ['kit', 'marketplace', 'install', 'features', 'bundle', 'store', 'capabilities'], run: () => marketplace.openMarketplace() },
+    { id: 'tutor', group: 'Go to', label: 'Language tutor', keywords: ['language', 'tutor', 'learn', 'german', 'italian', 'spanish', 'french', 'cefr', 'flashcards', 'deutsch', 'italiano', 'espanol'], run: () => tutor.openTutor() },
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
@@ -625,6 +628,8 @@ function init() {
     closeWelcome: welcome.closeWelcome,
     openMarketplace: marketplace.openMarketplace,
     closeMarketplace: marketplace.closeMarketplace,
+    openTutor: tutor.openTutor,
+    closeTutor: tutor.closeTutor,
   });
 
   // Apply timeout config from health response
