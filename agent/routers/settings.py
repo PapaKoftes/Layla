@@ -211,6 +211,40 @@ def _sse_error(msg: str) -> StreamingResponse:
     )
 
 
+@router.post("/setup/download-hf")
+def setup_download_hf(body: dict):
+    """Pull a GGUF straight from the HuggingFace Hub by repo id (BL-159).
+
+    Body: {repo_id: "TheBloke/Model-GGUF", filename: "model.Q4_K_M.gguf"}. Downloads into the
+    models dir via huggingface_hub (resumable + cached). Returns the local path; the caller then
+    sets `model_filename` to the file. Validated to a plain .gguf basename (no path traversal)."""
+    from pathlib import Path as _P
+
+    body = body or {}
+    repo_id = str(body.get("repo_id") or "").strip()
+    filename = str(body.get("filename") or "").strip()
+    if not repo_id or "/" not in repo_id or ".." in repo_id:
+        return {"ok": False, "error": "repo_id required, e.g. 'TheBloke/Model-GGUF'"}
+    fname = _P(filename).name.strip()
+    if not fname or not fname.endswith(".gguf") or "\x00" in fname or any(ord(c) < 32 for c in fname):
+        return {"ok": False, "error": "filename required, must be a plain *.gguf name"}
+    try:
+        from huggingface_hub import hf_hub_download
+    except Exception:
+        return {"ok": False, "error": "huggingface_hub not installed"}
+    cfg = _rs.load_config()
+    md_raw = cfg.get("models_dir")
+    models_dir = _P(md_raw).expanduser().resolve() if md_raw else _rs.default_models_dir()
+    models_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        path = hf_hub_download(repo_id=repo_id, filename=fname, local_dir=str(models_dir))
+        # Guard: the resolved file must live under the models dir.
+        _P(path).resolve().relative_to(models_dir.resolve())
+        return {"ok": True, "path": str(path), "filename": fname, "repo_id": repo_id}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @router.get("/setup/download")
 async def setup_download(url: str, filename: str = ""):
     """Stream model download progress as SSE events. url: HuggingFace direct .gguf URL."""
