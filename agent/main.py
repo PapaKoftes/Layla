@@ -897,6 +897,9 @@ from routers import (
     goals as goals_router,
 )
 from routers import (
+    plugins as plugins_router,
+)
+from routers import (
     sync as sync_router,
 )
 from routers import (
@@ -941,6 +944,7 @@ app.include_router(world_state_router.router)      # BL-241: world state model
 app.include_router(operating_manual_router.router) # BL-236: personal operating manual
 app.include_router(feedback_router.router)         # BL-242: learning from feedback
 app.include_router(goals_router.router)            # BL-240: goals proactive progress
+app.include_router(plugins_router.router)          # BL-239: plugin SDK (scaffold/validate)
 app.include_router(intelligence_router.router)     # AirLLM, compression, prompt optimizer, KB builder
 app.include_router(debate_router.router)            # Multi-aspect debate/council/tribunal engine
 app.include_router(metrics_router.router)           # Phase 3: Observability metrics endpoint

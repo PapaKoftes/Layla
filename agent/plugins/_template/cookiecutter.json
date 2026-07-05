@@ -1,0 +1,7 @@
+{
+  "plugin_name": "My Plugin",
+  "plugin_slug": "{{ cookiecutter.plugin_name.lower().replace(' ', '_').replace('-', '_') }}",
+  "description": "A Layla plugin.",
+  "author": "you",
+  "version": "0.1.0"
+}
