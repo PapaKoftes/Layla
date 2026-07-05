@@ -906,6 +906,9 @@ from routers import (
     learning_verification as learning_verification_router,
 )
 from routers import (
+    mood as mood_router,
+)
+from routers import (
     sync as sync_router,
 )
 from routers import (
@@ -953,6 +956,7 @@ app.include_router(goals_router.router)            # BL-240: goals proactive pro
 app.include_router(plugins_router.router)          # BL-239: plugin SDK (scaffold/validate)
 app.include_router(vision_router.router)           # BL-230: visual understanding (VLM/OCR)
 app.include_router(learning_verification_router.router)  # BL-192: learning verification pipeline
+app.include_router(mood_router.router)             # BL-190: emotional presence
 app.include_router(intelligence_router.router)     # AirLLM, compression, prompt optimizer, KB builder
 app.include_router(debate_router.router)            # Multi-aspect debate/council/tribunal engine
 app.include_router(metrics_router.router)           # Phase 3: Observability metrics endpoint

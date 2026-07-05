@@ -89,6 +89,12 @@ def record_feedback(
     routed = False
     if rating == "down" and correction:
         routed = _route_correction_to_learning(goal, correction)
+    # BL-190: let the feedback tint Layla's mood (praise on 👍, correction on 👎).
+    try:
+        from services.personality.emotional_presence import register_signal
+        register_signal("praise" if rating == "up" else "correction")
+    except Exception as e:  # noqa: BLE001
+        logger.debug("mood nudge from feedback skipped: %s", e)
     with _db() as conn:
         cur = conn.execute(
             "INSERT INTO answer_feedback (conversation_id, rating, goal, answer, correction,"
