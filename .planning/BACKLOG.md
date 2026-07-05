@@ -361,7 +361,11 @@ genuinely-dead ones ✂️ cut. The per-flag list below is retained as the manif
 
 ## W11 — Companion depth (ADR-006, deliberately "later")
 - **BL-190** ⬜ experience unification (continuity memory · passive initiative · emotional presence)
-- **BL-191** ⬜ growth-system polish · **BL-192** ⬜ memory/learning verification pipeline
+- **BL-191** ⬜ growth-system polish · **BL-192** ✅ **memory/learning verification pipeline** — BUILT —
+  `services/memory/learning_verification.py`: `find_contradictions()` catches learnings that make opposite-polarity
+  claims about the same subject (model-free heuristic: shared subject terms + a negation/affirmation flip), and
+  `run_verification_pass()` unifies decay-awareness + low-confidence pruning + due-for-review + contradiction-flagging
+  into one report. `/memory/verification/run` + `/contradictions`. Verified (test_learning_verification.py, 5).
 
 ## W12 — Post-feature polish + generalization (operator, 2026-07-05)
 - **BL-220** ✅ **Generalized multi-language tutor** — BUILT — extend the German tutor (BL-040) into a **language-agnostic**
