@@ -124,6 +124,8 @@ import * as kb from './components/kb.js';
 import * as plans from './components/plans.js';
 // W3 — Intake quiz (REQ-80)
 import * as intakeQuiz from './components/intake-quiz.js';
+// W3 — Custom aspect creator (REQ-79)
+import * as customAspect from './components/custom-aspect.js';
 
 // Phase 2 batch 11 (core orchestrator — must be last)
 import * as app from './components/app.js';
@@ -556,6 +558,7 @@ function init() {
     { id: 'kb', group: 'Go to', label: 'Knowledge base', keywords: ['knowledge', 'kb', 'articles', 'wiki', 'notes', 'reference', 'build'], run: () => kb.openKb() },
     { id: 'plans', group: 'Go to', label: 'Plans & projects', keywords: ['plans', 'projects', 'goal', 'steps', 'approve', 'execute', 'planner', 'roadmap'], run: () => plans.openPlans() },
     { id: 'intake-quiz', group: 'Go to', label: 'Intake quiz', keywords: ['quiz', 'intake', 'special', 'profile', 'stats', 'onboarding', 'personality'], run: () => intakeQuiz.openIntakeQuiz() },
+    { id: 'custom-aspect', group: 'Go to', label: 'Create custom aspect', keywords: ['aspect', 'create', 'custom', 'persona', 'new', 'sigil', 'character'], run: () => customAspect.openCustomAspect() },
   ];
   commandPalette.initCommandPalette(paletteCommands);
   window.openCommandPalette = commandPalette.openCommandPalette;
@@ -608,6 +611,8 @@ function init() {
     closePlans: plans.closePlans,
     openIntakeQuiz: intakeQuiz.openIntakeQuiz,
     closeIntakeQuiz: intakeQuiz.closeIntakeQuiz,
+    openCustomAspect: customAspect.openCustomAspect,
+    closeCustomAspect: customAspect.closeCustomAspect,
   });
 
   // Apply timeout config from health response
