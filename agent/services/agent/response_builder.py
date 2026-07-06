@@ -102,12 +102,19 @@ def looks_like_raw_tool_dict(text: str) -> bool:
     that shape so callers can synthesize a real answer instead of showing JSON.
     """
     t = (text or "").strip()
-    if not (t.startswith("{") and t.endswith("}")):
+    # Strip a markdown code fence — models almost always wrap JSON in ```json … ```.
+    _m = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", t, re.DOTALL | re.IGNORECASE)
+    if _m:
+        t = _m.group(1).strip()
+    if not ((t.startswith("{") and t.endswith("}")) or (t.startswith("[") and t.endswith("]"))):
         return False
     try:
         d = json.loads(t)
     except Exception:
         return False
+    # Unwrap a single-element list wrapper: [{"ok": false, …}].
+    if isinstance(d, list):
+        d = d[0] if len(d) == 1 and isinstance(d[0], dict) else None
     if not isinstance(d, dict):
         return False
     keys = set(d.keys())
