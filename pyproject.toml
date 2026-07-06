@@ -97,8 +97,16 @@ llm = [
     "instructor>=1.0,<2",
 ]
 voice = [
-    "faster-whisper>=1.0",
-    "kokoro-onnx>=0.3",
+    "faster-whisper>=1.0",   # STT (MIT)
+    "pyttsx3>=2.90",         # TTS — system voice, permissive default (tts.py fallback)
+]
+# Premium Kokoro TTS is an EXPLICIT opt-in — kept OUT of [voice] and [all] because
+# every kokoro-onnx release pulls phonemizer-fork (GPLv3+), a strong-copyleft dep
+# incompatible with Layla's "Free for non-commercial use" license (REQ-02,
+# scripts/check_copyleft.py). Install only if you accept GPLv3 in your environment:
+#     pip install layla[voice-kokoro]
+voice-kokoro = [
+    "kokoro-onnx>=0.3",      # WARNING: pulls phonemizer-fork (GPLv3+)
     "soundfile>=0.12",
 ]
 vision = [
