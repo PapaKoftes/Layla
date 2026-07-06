@@ -30,6 +30,10 @@ pytestmark = pytest.mark.e2e_ui
 def _dismiss_wizard(page: Page) -> None:
     # The onboarding wizard is a modal overlay that blocks clicks until completion.
     # For E2E smoke tests we bypass it to validate baseline UI contracts.
+    # Pin a desktop viewport so the responsive shell is deterministic — the live UI
+    # is the `.topbar` inside `.main-area`; the legacy `<header>` is display:none
+    # ("Preserved IDs for JS compatibility"), so tests must target the visible shell.
+    page.set_viewport_size({"width": 1440, "height": 900})
     page.add_init_script("localStorage.setItem('layla_wizard_v2_done','1'); localStorage.setItem('layla_wizard_done','1');")
 
 
@@ -43,14 +47,20 @@ def test_ui_shell_loads(page: Page, base_url: str) -> None:
     _dismiss_wizard(page)
     page.goto(f"{base_url}/ui", wait_until="domcontentloaded", timeout=90000)
     expect(page.locator("#msg-input")).to_be_visible(timeout=45000)
-    expect(page.locator("#header-system-status")).to_be_visible(timeout=15000)
+    # Status pill lives in the live `.topbar` shell (the legacy `<header>` one,
+    # #header-system-status, is display:none — preserved for JS only).
+    expect(page.locator("#topbar-system-status")).to_be_visible(timeout=15000)
 
 
 def test_settings_modal_opens(page: Page, base_url: str) -> None:
     _dismiss_wizard(page)
     page.goto(f"{base_url}/ui", wait_until="domcontentloaded", timeout=90000)
-    page.get_by_role("button", name="Settings").click()
-    expect(page.locator("#settings-overlay.visible")).to_be_visible(timeout=15000)
+    # The visible settings entry point is the topbar ⚙ (openOverlayPanel → prefs);
+    # target it specifically to avoid matching the sidebar's "Settings" nav button.
+    # (The full-modal openSettings flow lives only on the hidden legacy header.)
+    page.locator('.topbar-btn[data-action="openOverlayPanel"][data-arg="prefs"]').click()
+    expect(page.locator("#layla-right-panel.rp-open")).to_be_visible(timeout=15000)
+    expect(page.locator('#panel-prefs[data-rcp="prefs"]')).to_be_visible(timeout=15000)
 
 
 def test_help_shortcuts_sheet(page: Page, base_url: str) -> None:
