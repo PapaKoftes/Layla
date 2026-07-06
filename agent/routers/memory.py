@@ -457,3 +457,18 @@ async def delete_learning(learning_id: int):
         return {"ok": True}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.get("/conflicts")
+def memory_conflicts(unresolved_only: bool = Query(True), limit: int = Query(50, ge=1, le=500)):
+    """List memory self-consistency conflicts — new learnings that likely contradict a stored one."""
+    from services.memory.consistency_guard import list_conflicts
+    return {"ok": True, "conflicts": list_conflicts(unresolved_only=unresolved_only, limit=limit)}
+
+
+@router.post("/conflicts/{conflict_id}/resolve")
+def resolve_memory_conflict(conflict_id: int):
+    """Mark a flagged conflict as reconciled/dismissed."""
+    from services.memory.consistency_guard import resolve_conflict
+    ok = resolve_conflict(conflict_id)
+    return JSONResponse({"ok": ok}, status_code=200 if ok else 404)
