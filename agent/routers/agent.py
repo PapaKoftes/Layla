@@ -64,11 +64,11 @@ from services.infrastructure.agent_task_runner import (
 )
 from services.infrastructure.resource_manager import PRIORITY_BACKGROUND
 
-from .agent_tasks import router as _agent_tasks_router
 from .learn import router as _learn_router
 
 router.include_router(_learn_router)
-router.include_router(_agent_tasks_router)
+# NOTE: agent_tasks is mounted once, directly in main.py (app.include_router). Do not
+# also self-include it here or its routes register twice (duplicate-route hazard).
 
 
 def _get_image_context(image_url: str = "", image_base64: str = "", workspace_root: str = "") -> str:
