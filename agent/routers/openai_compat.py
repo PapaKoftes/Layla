@@ -457,6 +457,10 @@ async def v1_chat_completions(req: dict, request: Request):
         _cleaned = _strip_junk(response_text)
         if _cleaned:
             response_text = _cleaned
+        elif response_text and response_text.strip():
+            # strip() emptied it → the whole reply was leaked markers with no real answer.
+            # Never return the raw leak to the client; degrade to a graceful fallback.
+            response_text = "No response. Try again or rephrase."
     except Exception:
         pass
 

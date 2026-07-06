@@ -208,6 +208,10 @@ def strip_junk_from_reply(text: str) -> str:
     # Strip control markers that leak anywhere in the reply.
     t = re.sub(r"\s*\[EARNED_TITLE[^\]]*\]\s*", " ", t, flags=re.IGNORECASE).strip()
     t = re.sub(r"\s*\[REFUSED[^\]]*\]\s*", " ", t, flags=re.IGNORECASE).strip()
+    # '[Active aspect: NAME]' is a self-contained control marker: remove just the bracket
+    # (like EARNED_TITLE) so a *leading* leak keeps the real answer that follows it, rather
+    # than truncating-to-end and dropping the whole reply.
+    t = re.sub(r"\s*\[Active aspect[^\]]*\]\s*", " ", t, flags=re.IGNORECASE).strip()
     t = re.sub(r"\s*\[merg[^\]]*\]?\s*$", "", t, flags=re.IGNORECASE).strip()
     # Cut from a leaked internal '[TOOL: …]' framing marker onward (and a trailing rule
     # left before it), e.g. "…the country.\n---\n[TOOL: markdown]\n# Research …".
@@ -244,7 +248,7 @@ def strip_junk_from_reply(text: str) -> str:
     t = re.sub(r"(?<=\S)[ \t]*`{3,}[ \t]*$", "", t).strip()
     t = re.sub(r"^(Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\s*:\s*", "", t).strip()
     t = re.sub(r"\[System:\s*Your last response[^\]]*\]\s*", "", t, flags=re.IGNORECASE | re.DOTALL).strip()
-    for _marker in (r"(?:^|\n)\s*#{1,3}\s*(TASK|CONTEXT|SCRATCHPAD|REPO)\b", r"(?:^|\n)\s*Current goal\s*:", r"(?:^|\n)\s*\[Active aspect\s*:", r"(?:^|\n)\s*Last user message\s*:", r"(?:^|\n)\s*Repo snapshot\s*:", r"(?:^|\n)\s*Repo structure\s*:", r"(?:^|\n)\s*##", r"(?:^|\s|\[)Echo\s*\(patterns/preferences\)\s*:", r"(?:^|\n)\s*\[?ECHO\s*:"):
+    for _marker in (r"(?:^|\n)\s*#{1,3}\s*(TASK|CONTEXT|SCRATCHPAD|REPO)\b", r"(?:^|\n)\s*Current goal\s*:", r"(?:^|\n)\s*Last user message\s*:", r"(?:^|\n)\s*Repo snapshot\s*:", r"(?:^|\n)\s*Repo structure\s*:", r"(?:^|\n)\s*##", r"(?:^|\s|\[)Echo\s*\(patterns/preferences\)\s*:", r"(?:^|\n)\s*\[?ECHO\s*:"):
         m = re.search(_marker, t, re.IGNORECASE)
         if m:
             t = t[:m.start()].strip()
