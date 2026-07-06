@@ -21,7 +21,9 @@ def _is_localhost(host: str | None) -> bool:
         from constants import LOCALHOST_HOSTS
         return host in LOCALHOST_HOSTS
     except ImportError:
-        return host in ("127.0.0.1", "::1", "localhost", "0.0.0.0", "testclient")
+        # Mirror constants.LOCALHOST_HOSTS. 0.0.0.0 is deliberately excluded — it is a
+        # bind-any sentinel, never a real client peer, so treating it as loopback is a footgun.
+        return host in ("127.0.0.1", "::1", "localhost", "testclient", "::ffff:127.0.0.1")
 
 
 def check_auth(token: str, client_host: str, cfg: dict) -> tuple[bool, str]:

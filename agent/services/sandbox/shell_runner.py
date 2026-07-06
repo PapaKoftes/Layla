@@ -57,13 +57,14 @@ def _cmd_blocked(argv: list[str], blocklist: tuple[str, ...] = _DEFAULT_BLOCKLIS
     if not argv:
         return "Empty command"
     cmd = argv[0].lower().lstrip("./\\")
-    for blocked in blocklist:
-        if cmd == blocked or cmd.endswith(blocked):
-            return f"Command blocked: {argv[0]}"
+    base = cmd.split("/")[-1].split("\\")[-1]
+    # Basename equality, NOT endswith: "/usr/bin/rm" (base "rm") is blocked, but legitimate
+    # names that merely end with a blocked token ("charm", "add", "disc") are not.
+    if base in blocklist or cmd in blocklist:
+        return f"Command blocked: {argv[0]}"
     restrict, allow_extra = _allowlist_config()
     if restrict:
         allowed = {"git", "python", "pytest", "pip", "uv", "cargo", "go", "npm", "node", "rg", "dir", "ls"} | set(allow_extra)
-        base = cmd.split("/")[-1].split("\\")[-1]
         if base not in allowed:
             return f"Command not in allowlist: {argv[0]}"
     return None

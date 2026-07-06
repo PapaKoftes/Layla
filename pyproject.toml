@@ -39,7 +39,6 @@ core = [
     "requests>=2.31",
     "tenacity>=8.2",
     # Database & storage
-    "sqlite-utils>=3.35",
     "diskcache>=5.6",
     # Embeddings & RAG (integral to memory system)
     "sentence-transformers>=3.0,<4",
@@ -72,7 +71,6 @@ cpu = [
     "httpx>=0.27",
     "requests>=2.31",
     "tenacity>=8.2",
-    "sqlite-utils>=3.35",
     "diskcache>=5.6",
     "model2vec>=0.5,<1",
     "sqlite-vec>=0.1,<1",
