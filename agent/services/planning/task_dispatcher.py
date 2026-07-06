@@ -59,7 +59,7 @@ class TaskDispatcher:
         str
             instance_id of the target node, or "queued".
         """
-        from services.cluster.work_unit import TaskType, TaskPriority
+        from services.cluster.work_unit import TaskPriority, TaskType
 
         task_type = task_dict.get("type", "inference")
         priority = task_dict.get("priority", TaskPriority.NORMAL)

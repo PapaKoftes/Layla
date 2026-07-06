@@ -13,7 +13,7 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-import services.llm.llm_gateway as g # noqa: E402
+import services.llm.llm_gateway as g  # noqa: E402
 
 
 class _Fake:

@@ -58,8 +58,9 @@ def mmr_rerank(query: str, docs: list[dict], k: int = 5, lambda_: float = 0.7) -
     """
     if not docs or k <= 0:
         return docs[:k]
-    from layla.memory.vector_store import embed, embed_batch  # BL-027: lazy, avoids import cycle
     import numpy as np
+
+    from layla.memory.vector_store import embed, embed_batch  # BL-027: lazy, avoids import cycle
     query_vec = embed(query)
     contents = [(d.get("content") or d.get("text") or "")[:512] for d in docs]
     if not any(c for c in contents):

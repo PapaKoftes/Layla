@@ -267,9 +267,10 @@ class DroneWorker:
     def _handle_backup(self, payload: dict) -> dict:
         """Perform a database backup."""
         try:
-            from layla.memory.db_connection import _resolve_db_path
             import shutil
             from datetime import datetime, timezone
+
+            from layla.memory.db_connection import _resolve_db_path
 
             db_path = _resolve_db_path()
             if not db_path.exists():
@@ -471,7 +472,7 @@ class QueenWorker:
     def _should_work(self) -> bool:
         """Only run tasks when governor mode is BREATHE or SPRINT."""
         try:
-            from services.infrastructure.resource_governor import get_governor, ResourceMode
+            from services.infrastructure.resource_governor import ResourceMode, get_governor
             mode = get_governor().mode
             return mode in (ResourceMode.BREATHE, ResourceMode.SPRINT)
         except Exception:

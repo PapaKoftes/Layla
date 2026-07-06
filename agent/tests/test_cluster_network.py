@@ -4,20 +4,20 @@ from __future__ import annotations
 import sys
 import time
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.cluster.cluster_network import (
+    CLUSTER_CONFIG_FILE,
     ClusterNetwork,
+    NodeRole,
     Peer,
     PeerStatus,
-    NodeRole,
     load_cluster_config,
     save_cluster_config,
-    CLUSTER_CONFIG_FILE,
 )
 
 

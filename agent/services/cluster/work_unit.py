@@ -11,7 +11,7 @@ from __future__ import annotations
 import enum
 import logging
 import uuid
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -166,6 +166,7 @@ class TaskQueue:
     def submit(self, unit: WorkUnit) -> str:
         """Insert a new work unit.  Returns the task ID."""
         import json
+
         from layla.memory.db_connection import _conn
         with _conn() as db:
             db.execute(
@@ -198,6 +199,7 @@ class TaskQueue:
         to prevent races between nodes.
         """
         import json
+
         from layla.memory.db_connection import _conn
 
         type_filter = ""
@@ -239,6 +241,7 @@ class TaskQueue:
     def complete(self, task_id: str, result: dict | None = None) -> None:
         """Mark a task as done with optional result."""
         import json
+
         from layla.memory.db_connection import _conn
         with _conn() as db:
             db.execute(

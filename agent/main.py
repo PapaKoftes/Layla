@@ -415,7 +415,7 @@ async def lifespan(app: FastAPI):
         import runtime_safety as _rs_gov
         _cfg_gov = _rs_gov.load_config()
         if _cfg_gov.get("resource_governor_enabled", True):
-            from services.infrastructure.resource_governor import get_governor, ResourceMode
+            from services.infrastructure.resource_governor import ResourceMode, get_governor
             _governor_instance = get_governor(_cfg_gov)
             logger.info("resource governor initialised (mode: %s)", _governor_instance.mode.value)
 
@@ -457,6 +457,7 @@ async def lifespan(app: FastAPI):
                             _whisper_unload_timer[0].cancel()
                             _whisper_unload_timer[0] = None
                         import threading as _thr
+
                         from services.llm.llm_gateway import prewarm_llm
                         _thr.Thread(target=prewarm_llm, daemon=True, name="sprint-prewarm").start()
                     elif old_mode == ResourceMode.WHISPER:
@@ -807,46 +808,85 @@ app.include_router(plans_router.router)
 from routers import (
     agent_tasks as agent_tasks_router,
 )
+from routers import (
+    automation as automation_router,
+)
 from routers import character as character_router
+from routers import (
+    cluster as cluster_router,
+)
 from routers import (  # noqa: E402
     conversations as conversations_router,
+)
+from routers import (
+    cross_project as cross_project_router,
 )
 from routers import (
     debate as debate_router,
 )
 from routers import (
+    decisions as decisions_router,
+)
+from routers import (
+    explain as explain_router,
+)
+from routers import (
+    feedback as feedback_router,
+)
+from routers import (
     german as german_router,
 )
 from routers import (
-    language as language_router,
+    goals as goals_router,
 )
 from routers import (
     intelligence as intelligence_router,
 )
 from routers import (
+    kits as kits_router,
+)
+from routers import (
     knowledge as knowledge_router,
+)
+from routers import (
+    language as language_router,
+)
+from routers import (
+    learned_skills as learned_skills_router,
+)
+from routers import (
+    learning_verification as learning_verification_router,
+)
+from routers import (
+    macros as macros_router,
 )
 from routers import metrics as metrics_router
 from routers import (
     missions as missions_router,
 )
 from routers import (
-    obsidian as obsidian_router,
+    mood as mood_router,
 )
 from routers import (
-    openai_compat as openai_compat_router,
+    obsidian as obsidian_router,
 )
 from routers import (
     ollama_compat as ollama_compat_router,
 )
 from routers import (
+    onboarding as onboarding_router,
+)
+from routers import (
+    openai_compat as openai_compat_router,
+)
+from routers import (
+    operating_manual as operating_manual_router,
+)
+from routers import (
     pairing as pairing_router,
 )
 from routers import (
-    cluster as cluster_router,
-)
-from routers import (
-    onboarding as onboarding_router,
+    plugins as plugins_router,
 )
 from routers import (
     search as search_router,
@@ -861,64 +901,25 @@ from routers import (
     setup_profiles as setup_profiles_router,
 )
 from routers import (
-    kits as kits_router,
-)
-from routers import (
-    cross_project as cross_project_router,
-)
-from routers import (
-    macros as macros_router,
-)
-from routers import (
-    decisions as decisions_router,
+    sync as sync_router,
 )
 from routers import (
     timeline as timeline_router,
 )
 from routers import (
-    automation as automation_router,
-)
-from routers import (
-    explain as explain_router,
-)
-from routers import (
-    learned_skills as learned_skills_router,
-)
-from routers import (
-    world_state as world_state_router,
-)
-from routers import (
-    operating_manual as operating_manual_router,
-)
-from routers import (
-    feedback as feedback_router,
-)
-from routers import (
-    goals as goals_router,
-)
-from routers import (
-    plugins as plugins_router,
+    tools_history as tools_history_router,
 )
 from routers import (
     vision as vision_router,
-)
-from routers import (
-    learning_verification as learning_verification_router,
-)
-from routers import (
-    mood as mood_router,
-)
-from routers import (
-    sync as sync_router,
-)
-from routers import (
-    tools_history as tools_history_router,
 )
 from routers import (
     voice as voice_router,
 )
 from routers import (
     workspace as workspace_router,
+)
+from routers import (
+    world_state as world_state_router,
 )
 
 app.include_router(settings_router.router)
