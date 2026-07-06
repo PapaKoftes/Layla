@@ -93,3 +93,28 @@ def test_send_button_posts_to_agent(page: Page, base_url: str) -> None:
     ):
         page.locator("#msg-input").fill("e2e ping")
         page.locator("#send-btn").click()
+
+
+def test_i18n_language_switch_and_rtl(page: Page, base_url: str) -> None:
+    """i18n: switching to Spanish translates the chrome; Arabic sets dir=rtl."""
+    _dismiss_wizard(page)
+    page.goto(f"{base_url}/ui", wait_until="domcontentloaded", timeout=90000)
+    expect(page.locator("#msg-input")).to_be_visible(timeout=45000)
+    # setLanguage returns a promise (loads the catalog); Playwright awaits it.
+    page.evaluate("() => window.i18n.setLanguage('es', {persistServer:false})")
+    expect(page.locator("#tab-prefs")).to_have_text("Ajustes", timeout=10000)
+    page.evaluate("() => window.i18n.setLanguage('ar', {persistServer:false})")
+    expect(page.locator("html")).to_have_attribute("dir", "rtl", timeout=10000)
+    page.evaluate("() => window.i18n.setLanguage('en', {persistServer:false})")
+    expect(page.locator("#tab-prefs")).to_have_text("Settings", timeout=10000)
+
+
+def test_toast_has_aria_live(page: Page, base_url: str) -> None:
+    """a11y: toast notifications carry role/aria-live so screen readers announce them."""
+    _dismiss_wizard(page)
+    page.goto(f"{base_url}/ui", wait_until="domcontentloaded", timeout=90000)
+    expect(page.locator("#msg-input")).to_be_visible(timeout=45000)
+    page.evaluate("async () => { const u = await import('/layla-ui/services/utils.js'); u.showToast('e2e toast'); }")
+    toast = page.locator(".toast").first
+    expect(toast).to_have_attribute("role", "status", timeout=5000)
+    expect(toast).to_have_attribute("aria-live", "polite", timeout=5000)
