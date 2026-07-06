@@ -72,8 +72,9 @@ _TIER1_COMPOUND_PATTERNS: list[tuple[re.Pattern, str]] = [
 _TIER2_COMPOUND_PATTERNS: list[tuple[re.Pattern, str]] = [
     # Self-harm instructions: requires method + instruction context
     (re.compile(
-        r"(?=.*\b(how\s+to|steps\s+to|guide\s+to|instructions?\s+for|method\s+for)\b)"
-        r"(?=.*\b(kill\s+yourself|commit\s+suicide|self.harm|cut\s+yourself|overdose)\b)",
+        r"(?=.*\b(how\s+to|steps\s+to|guide\s+to|instructions?\s+for|method\s+for|painless(?:ly)?|best\s+way)\b)"
+        r"(?=.*\b(kill\s+yourself|commit\s+suicide|self.harm|cut\s+yourself|overdose|"
+        r"end\s+(?:my|your|it)\s+(?:life|all)|take\s+my\s+own\s+life)\b)",
         re.IGNORECASE | re.DOTALL,
     ), "self_harm_instructions"),
 ]
@@ -116,14 +117,39 @@ def check_output(text: str, cfg: dict) -> GuardResult:
     return _check(text, cfg)
 
 
+# Leetspeak → letter, so "r@ns0mw4re" normalises to "ransomware" for matching only.
+_LEET = str.maketrans({"@": "a", "4": "a", "3": "e", "1": "i", "!": "i", "0": "o",
+                       "5": "s", "$": "s", "7": "t", "+": "t", "8": "b", "9": "g"})
+
+
+def _match_variants(text: str) -> list[str]:
+    """The forms an obfuscated payload might take — checked so evasions hit the same
+    compound patterns: original, leetspeak-decoded, and de-spaced ('r a n s o m' → …)."""
+    low = text.lower()
+    deleet = low.translate(_LEET)
+    # collapse runs of single chars separated by whitespace/punctuation into one token
+    despaced = re.sub(r"\b(\w)(?:[\s.\-_*]+(\w)\b)+",
+                      lambda m: "".join(re.findall(r"\w", m.group(0))), low)
+    despaced_deleet = despaced.translate(_LEET)
+    # de-dup while preserving order
+    seen, out = set(), []
+    for v in (text, deleet, despaced, despaced_deleet):
+        if v not in seen:
+            seen.add(v)
+            out.append(v)
+    return out
+
+
 def _check(text: str, cfg: dict) -> GuardResult:
     """Internal check against all tiers."""
     if not text or len(text) < 10:
         return GuardResult()
 
+    _variants = _match_variants(text)
+
     # Tier 1: Always blocked
     for pattern, category in _TIER1_COMPOUND_PATTERNS:
-        if pattern.search(text):
+        if any(pattern.search(v) for v in _variants):
             content_hash = hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()[:16]
             logger.warning("content_guard: TIER1 block category=%s hash=%s", category, content_hash)
             return GuardResult(
@@ -136,7 +162,7 @@ def _check(text: str, cfg: dict) -> GuardResult:
     # Tier 2: Blocked unless age_verified or hardcoded_only mode
     if not cfg.get("content_guard_age_verified", False) and not cfg.get("content_guard_hardcoded_only", False):
         for pattern, category in _TIER2_COMPOUND_PATTERNS:
-            if pattern.search(text):
+            if any(pattern.search(v) for v in _variants):
                 content_hash = hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()[:16]
                 logger.warning("content_guard: TIER2 block category=%s hash=%s", category, content_hash)
                 return GuardResult(
