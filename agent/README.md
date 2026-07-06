@@ -173,4 +173,4 @@ python -m pytest tests/ -x -q --timeout=30
 
 ## License
 
-Proprietary. All rights reserved.
+Layla Non-Commercial Source License — free for non-commercial use. See [LICENSE](../LICENSE).
