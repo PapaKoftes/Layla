@@ -1,0 +1,156 @@
+{
+  "app": {
+    "name": "Layla",
+    "tagline": "本地优先的 AI 伙伴"
+  },
+  "action": {
+    "send": "发送",
+    "cancel": "取消",
+    "close": "关闭",
+    "save": "保存",
+    "save_reload": "保存并重新加载",
+    "clear": "清除",
+    "copy": "复制",
+    "apply": "应用",
+    "apply_all": "全部应用",
+    "execute": "执行",
+    "browse": "浏览",
+    "connect": "连接",
+    "configure": "配置",
+    "back": "返回",
+    "next": "下一步",
+    "dismiss": "忽略",
+    "refresh": "刷新",
+    "load": "加载",
+    "retry": "重试",
+    "download": "下载",
+    "compact": "压缩",
+    "regenerate": "重新生成",
+    "delete": "删除",
+    "rename": "重命名",
+    "export": "导出",
+    "import": "导入",
+    "new_chat": "新建对话"
+  },
+  "nav": {
+    "chat": "对话",
+    "dashboard": "仪表板",
+    "settings": "设置",
+    "panels": "面板",
+    "more_actions": "更多操作",
+    "toggle_theme": "切换深色/浅色",
+    "toggle_sidebar": "切换侧边栏",
+    "open_chats": "打开对话",
+    "capabilities": "功能",
+    "character_lab": "角色实验室",
+    "cluster": "集群",
+    "checkpoints": "检查点",
+    "artifacts": "产物",
+    "awareness": "感知",
+    "growth": "成长",
+    "missions": "任务"
+  },
+  "chat": {
+    "placeholder": "给 Layla 发消息…",
+    "server_status": "服务器状态",
+    "llm_status": "LLM 状态",
+    "session_duration": "会话时长",
+    "context_usage_high": "上下文占用较高",
+    "thinking": "思考中…",
+    "detecting": "检测中…"
+  },
+  "settings": {
+    "title": "设置",
+    "loading": "加载中…",
+    "load_error": "无法加载设置。Layla 正在运行吗？",
+    "language": "界面语言",
+    "language_hint": "Layla 网页界面的语言。",
+    "chat_streaming": "对话与流式传输",
+    "build_updates": "构建与更新",
+    "check_updates": "检查更新",
+    "appearance": "外观 / 精简模式",
+    "deliberation": "深思",
+    "depth": "深度",
+    "coding": "编码",
+    "admin_mode": "管理员模式",
+    "autonomous_execution": "自主执行",
+    "config_reference": "配置参考",
+    "choose_voice": "选择语音",
+    "avatar_seed": "头像种子",
+    "avatar_style": "头像样式"
+  },
+  "model": {
+    "download_a_model": "下载模型",
+    "download_from_hf": "从 Hugging Face 下载",
+    "download_selected": "下载所选项",
+    "warming_up": "正在加载模型 — 预热中…",
+    "cannot_reach": "无法连接 Layla — 服务器正在运行吗？"
+  },
+  "onboarding": {
+    "welcome": "欢迎使用 Layla",
+    "get_started": "让我们开始设置吧。",
+    "detect_hardware": "检测硬件",
+    "choose_model": "选择模型",
+    "workspace": "工作区",
+    "character": "角色",
+    "voice": "语音",
+    "finish": "完成",
+    "skip": "暂时跳过"
+  },
+  "help": {
+    "title": "帮助与快捷键",
+    "send": "Enter — 发送 · Shift+Enter — 换行",
+    "open_sheet": "Ctrl+/ — 打开此面板",
+    "search_chat": "Ctrl+F — 在对话中搜索",
+    "clear_input": "Ctrl+K — 清除输入",
+    "regenerate": "Ctrl+R — 重新生成上一条回复",
+    "escape": "Escape — 关闭浮层、停止麦克风",
+    "command_palette": "Ctrl+K — 命令面板"
+  },
+  "panel": {
+    "execution_trace": "执行跟踪",
+    "coordinator_tasks": "协调器任务",
+    "engine_plans": "引擎计划",
+    "file_checkpoints": "文件检查点",
+    "facts": "事实",
+    "confidence": "置信度",
+    "council": "议会",
+    "debate": "辩论",
+    "discovered_peers": "已发现的节点",
+    "enable_clustering": "启用集群"
+  },
+  "search": {
+    "placeholder": "搜索…",
+    "all_types": "所有类型",
+    "elasticsearch": "Elasticsearch（关键词）",
+    "no_results": "无结果"
+  },
+  "status": {
+    "active": "活动",
+    "auto": "自动",
+    "default": "默认",
+    "disabled": "已禁用",
+    "enabled": "已启用",
+    "ready": "已就绪。需要做什么？"
+  },
+  "toast": {
+    "saved": "已保存",
+    "copied": "已复制",
+    "export_downloaded": "导出已下载",
+    "export_failed": "导出失败",
+    "compact_done": "上下文已压缩",
+    "compact_failed": "压缩失败",
+    "generic_error": "出了点问题。请查看服务器日志。"
+  },
+  "error": {
+    "network": "无法连接 Layla — 服务器正在运行吗？",
+    "request_failed": "请求处理时失败。",
+    "no_response": "无响应。请重试或换种说法。",
+    "model_not_ready": "模型尚未就绪。请在设置中配置模型。"
+  },
+  "confirm": {
+    "apply_to_file": "应用到文件？",
+    "requires_approval": "应用（需要批准）",
+    "delete_conversation": "删除此对话？"
+  }
+}

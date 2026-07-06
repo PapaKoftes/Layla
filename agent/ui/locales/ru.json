@@ -1,0 +1,156 @@
+{
+  "app": {
+    "name": "Layla",
+    "tagline": "Локальный ИИ-компаньон"
+  },
+  "action": {
+    "send": "Отправить",
+    "cancel": "Отмена",
+    "close": "Закрыть",
+    "save": "Сохранить",
+    "save_reload": "Сохранить и перезагрузить",
+    "clear": "Очистить",
+    "copy": "Копировать",
+    "apply": "Применить",
+    "apply_all": "Применить все",
+    "execute": "Выполнить",
+    "browse": "Обзор",
+    "connect": "Подключить",
+    "configure": "Настроить",
+    "back": "Назад",
+    "next": "Далее",
+    "dismiss": "Закрыть",
+    "refresh": "Обновить",
+    "load": "Загрузить",
+    "retry": "Повторить",
+    "download": "Скачать",
+    "compact": "Сжать",
+    "regenerate": "Сгенерировать заново",
+    "delete": "Удалить",
+    "rename": "Переименовать",
+    "export": "Экспорт",
+    "import": "Импорт",
+    "new_chat": "Новый чат"
+  },
+  "nav": {
+    "chat": "Чат",
+    "dashboard": "Панель",
+    "settings": "Настройки",
+    "panels": "Панели",
+    "more_actions": "Ещё действия",
+    "toggle_theme": "Тёмная/светлая тема",
+    "toggle_sidebar": "Показать/скрыть боковую панель",
+    "open_chats": "Открытые чаты",
+    "capabilities": "Возможности",
+    "character_lab": "Лаборатория персонажей",
+    "cluster": "Кластер",
+    "checkpoints": "Контрольные точки",
+    "artifacts": "Артефакты",
+    "awareness": "Осознанность",
+    "growth": "Развитие",
+    "missions": "Миссии"
+  },
+  "chat": {
+    "placeholder": "Написать Layla…",
+    "server_status": "Статус сервера",
+    "llm_status": "Статус LLM",
+    "session_duration": "Длительность сессии",
+    "context_usage_high": "Высокая загрузка контекста",
+    "thinking": "Думаю…",
+    "detecting": "Определяю…"
+  },
+  "settings": {
+    "title": "Настройки",
+    "loading": "Загрузка…",
+    "load_error": "Не удалось загрузить настройки. Layla запущена?",
+    "language": "Язык интерфейса",
+    "language_hint": "Язык веб-интерфейса Layla.",
+    "chat_streaming": "Чат и потоковая передача",
+    "build_updates": "Сборка и обновления",
+    "check_updates": "Проверить обновления",
+    "appearance": "Оформление / облегчённый режим",
+    "deliberation": "Обдумывание",
+    "depth": "Глубина",
+    "coding": "Программирование",
+    "admin_mode": "Режим администратора",
+    "autonomous_execution": "Автономное выполнение",
+    "config_reference": "Справочник по конфигурации",
+    "choose_voice": "Выберите голос",
+    "avatar_seed": "Сид аватара",
+    "avatar_style": "Стиль аватара"
+  },
+  "model": {
+    "download_a_model": "Скачать модель",
+    "download_from_hf": "Скачать с Hugging Face",
+    "download_selected": "Скачать выбранное",
+    "warming_up": "Загрузка модели — разогрев…",
+    "cannot_reach": "Не удаётся подключиться к Layla — сервер запущен?"
+  },
+  "onboarding": {
+    "welcome": "Добро пожаловать в Layla",
+    "get_started": "Давайте всё настроим.",
+    "detect_hardware": "Определить оборудование",
+    "choose_model": "Выбрать модель",
+    "workspace": "Рабочая область",
+    "character": "Персонаж",
+    "voice": "Голос",
+    "finish": "Завершить",
+    "skip": "Пропустить пока"
+  },
+  "help": {
+    "title": "Справка и сочетания клавиш",
+    "send": "Enter — Отправить · Shift+Enter — Новая строка",
+    "open_sheet": "Ctrl+/ — Открыть эту панель",
+    "search_chat": "Ctrl+F — Поиск в чате",
+    "clear_input": "Ctrl+K — Очистить ввод",
+    "regenerate": "Ctrl+R — Сгенерировать последний ответ заново",
+    "escape": "Escape — Закрыть окна, остановить микрофон",
+    "command_palette": "Ctrl+K — Палитра команд"
+  },
+  "panel": {
+    "execution_trace": "Трассировка выполнения",
+    "coordinator_tasks": "Задачи координатора",
+    "engine_plans": "Планы движка",
+    "file_checkpoints": "Контрольные точки файлов",
+    "facts": "Факты",
+    "confidence": "Уверенность",
+    "council": "Совет",
+    "debate": "Дебаты",
+    "discovered_peers": "Обнаруженные узлы",
+    "enable_clustering": "Включить кластеризацию"
+  },
+  "search": {
+    "placeholder": "Поиск…",
+    "all_types": "Все типы",
+    "elasticsearch": "Elasticsearch (по ключевым словам)",
+    "no_results": "Нет результатов"
+  },
+  "status": {
+    "active": "Активно",
+    "auto": "Авто",
+    "default": "По умолчанию",
+    "disabled": "Отключено",
+    "enabled": "Включено",
+    "ready": "Готово. Что вам нужно?"
+  },
+  "toast": {
+    "saved": "Сохранено",
+    "copied": "Скопировано",
+    "export_downloaded": "Экспорт скачан",
+    "export_failed": "Ошибка экспорта",
+    "compact_done": "Контекст сжат",
+    "compact_failed": "Не удалось сжать",
+    "generic_error": "Что-то пошло не так. Проверьте журналы сервера."
+  },
+  "error": {
+    "network": "Не удаётся подключиться к Layla — сервер запущен?",
+    "request_failed": "Ошибка при обработке запроса.",
+    "no_response": "Нет ответа. Попробуйте ещё раз или переформулируйте.",
+    "model_not_ready": "Модель не готова. Настройте модель в разделе «Настройки»."
+  },
+  "confirm": {
+    "apply_to_file": "Применить к файлу?",
+    "requires_approval": "Применить (требуется подтверждение)",
+    "delete_conversation": "Удалить этот разговор?"
+  }
+}
