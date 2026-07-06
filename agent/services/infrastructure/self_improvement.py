@@ -56,7 +56,7 @@ def _apply_config_keys(config_keys: dict[str, Any]) -> dict[str, Any]:
         return {"ok": True, "applied": {}, "changed": False}
 
     try:
-        from runtime_safety import CONFIG_FILE, invalidate_config_cache
+        from runtime_safety import CONFIG_FILE, atomic_write_config
 
         try:
             data = json.loads(CONFIG_FILE.read_text(encoding="utf-8")) if CONFIG_FILE.exists() else {}
@@ -72,9 +72,7 @@ def _apply_config_keys(config_keys: dict[str, Any]) -> dict[str, Any]:
                 changed = True
 
         if changed:
-            CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-            CONFIG_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-            invalidate_config_cache()
+            atomic_write_config(data)
         return {"ok": True, "applied": clean, "changed": changed}
     except Exception as e:
         return {"ok": False, "error": str(e)}
