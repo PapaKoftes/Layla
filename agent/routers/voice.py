@@ -33,9 +33,9 @@ async def voice_transcribe(request: Request):
             )
         text = await asyncio.to_thread(transcribe_bytes, audio_bytes)
         return JSONResponse({"ok": True, "text": text})
-    except Exception as e:
-        logger.warning("STT error: %s", e)
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+    except Exception:
+        logger.exception("STT error")
+        return JSONResponse({"ok": False, "error": "Transcription failed."}, status_code=500)
 
 
 @router.post("/voice/speak")
@@ -90,6 +90,6 @@ async def voice_speak(request: Request):
                 status_code=503,
             )
         return Response(content=wav, media_type="audio/wav")
-    except Exception as e:
-        logger.warning("TTS error: %s", e)
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+    except Exception:
+        logger.exception("TTS error")
+        return JSONResponse({"ok": False, "error": "Speech synthesis failed."}, status_code=500)
