@@ -36,3 +36,28 @@ jobs:
             installer/output/*.exe
             installer/output/SHA256SUMS.txt
 
+  publish-release:
+    needs: build-windows-installer
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # required to create the GitHub Release
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download built installer
+        uses: actions/download-artifact@v4
+        with:
+          name: layla-windows-installer
+          path: dist-release
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # tag name (v*) drives the release; body pulls the matching CHANGELOG section
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          files: |
+            dist-release/*.exe
+            dist-release/SHA256SUMS.txt
+      # NOTE: Linux/macOS ship via the source installers (install.sh) — see INSTALL.md.
+      # A packaged Linux/macOS build is a future addition; the Windows installer + the
+      # cross-platform install.sh cover the supported install paths today.
+
