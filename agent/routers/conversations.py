@@ -121,3 +121,53 @@ def delete_conversation_api(conversation_id: str):
         return JSONResponse({"ok": True})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+# ── Branching / time-travel (git-for-dialogue) ──────────────────────────────
+
+@router.post("/conversations/{conversation_id}/fork")
+def fork_conversation_api(conversation_id: str, req: dict = Body(default={})):
+    """Branch a conversation at a message (or fully). Body: {at_message_id?, title?}.
+    Returns the new branch conversation, which can continue independently."""
+    try:
+        from layla.memory.db import fork_conversation
+
+        body = req if isinstance(req, dict) else {}
+        branch = fork_conversation(
+            conversation_id,
+            at_message_id=(body.get("at_message_id") or "").strip(),
+            new_title=(body.get("title") or "").strip(),
+        )
+        if not branch:
+            return JSONResponse({"ok": False, "error": "source conversation or message not found"}, status_code=404)
+        return JSONResponse({"ok": True, "conversation": branch})
+    except Exception:
+        logger.exception("fork_conversation failed")
+        return JSONResponse({"ok": False, "error": "Fork failed."}, status_code=500)
+
+
+@router.get("/conversations/{conversation_id}/branches")
+def conversation_branches_api(conversation_id: str):
+    """The fork tree around a conversation: its parent (if a fork) + its direct branches."""
+    try:
+        from layla.memory.db import list_branches
+
+        tree = list_branches(conversation_id)
+        if tree is None:
+            return JSONResponse({"ok": False, "error": "Not found"}, status_code=404)
+        return JSONResponse({"ok": True, **tree})
+    except Exception:
+        logger.exception("list_branches failed")
+        return JSONResponse({"ok": False, "error": "Failed."}, status_code=500)
+
+
+@router.get("/conversations/{conversation_id}/compare/{other_id}")
+def compare_conversations_api(conversation_id: str, other_id: str):
+    """Diff two conversations (branch vs parent/sibling): common prefix + each divergent tail."""
+    try:
+        from layla.memory.db import compare_conversations
+
+        return JSONResponse({"ok": True, **compare_conversations(conversation_id, other_id)})
+    except Exception:
+        logger.exception("compare_conversations failed")
+        return JSONResponse({"ok": False, "error": "Failed."}, status_code=500)

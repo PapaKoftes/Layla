@@ -22,6 +22,11 @@ def isolated_db(tmp_path):
             db_mod._MIGRATED = False
         mig.migrate()
         yield db_path
+    # Teardown (patches restored): clear the global migration guard so a later test using a
+    # different DB-isolation mechanism re-runs migrate() against its own DB.
+    mig._MIGRATED = False
+    if hasattr(db_mod, "_MIGRATED"):
+        db_mod._MIGRATED = False
 
 
 def _insert(content: str) -> int:
