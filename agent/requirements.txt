@@ -32,7 +32,6 @@ numpy>=1.24,<3
 psutil>=5.9
 trafilatura>=1.6               # Web article extraction (clean text, no nav/ads)
 textual>=0.40
-sqlite-utils>=3.35
 beautifulsoup4>=4.12
 apscheduler>=3.10,<4
 networkx>=3.0
