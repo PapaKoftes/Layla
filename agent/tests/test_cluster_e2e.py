@@ -21,7 +21,7 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -30,9 +30,8 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-from main import app  # noqa: E402
 import routers.cluster as _cluster_router  # noqa: E402
-
+from main import app  # noqa: E402
 
 # ── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -381,7 +380,7 @@ def test_sync_push_skips_empty(client):
 def test_sync_pull_returns_learnings(client):
     """Push a learning, then pull since before that time."""
     content = f"Pull test {uuid.uuid4().hex[:8]}"
-    timestamp_before = datetime.now(timezone.utc).isoformat()
+    datetime.now(timezone.utc).isoformat()
 
     # Push
     client.post("/cluster/sync/push", json={
@@ -499,8 +498,8 @@ def test_full_cluster_lifecycle(client):
     assert pair_r.status_code == 200
     pair_data = pair_r.json()
     assert pair_data.get("ok") is True
-    cluster_secret = pair_data["cluster_secret"]
-    cluster_id = pair_data["cluster_id"]
+    pair_data["cluster_secret"]
+    pair_data["cluster_id"]
 
     # === Step 3: Drone sends heartbeat ===
     hb_r = client.post("/cluster/heartbeat", json={
@@ -554,7 +553,7 @@ def test_full_cluster_lifecycle(client):
     })
     pulled = pull_r.json().get("learnings", [])
     found = any(l["content"] == knowledge_content for l in pulled)
-    assert found, f"Drone's learning not found in queen's pull results"
+    assert found, "Drone's learning not found in queen's pull results"
 
     # === Step 8: Verify cluster status reflects activity ===
     status_r = client.get("/cluster/status")

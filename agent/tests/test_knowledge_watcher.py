@@ -13,11 +13,10 @@ from services.memory.knowledge_watcher import (
     SKIP_PATTERNS,
     SUPPORTED_EXTENSIONS,
     KnowledgeWatcher,
-    _FileTracker,
     _file_hash,
+    _FileTracker,
     _should_process,
 )
-
 
 # ── SUPPORTED_EXTENSIONS / SKIP_PATTERNS ───────────────────────────────
 

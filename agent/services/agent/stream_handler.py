@@ -20,9 +20,14 @@ _SANITIZED_PLACEHOLDER: str = "[...]"
 # Cross-request reasoning-mode smoothing -- shared with the non-streaming path.
 from services.agent.reasoning_state import (
     get as _rstate_get,
+)
+from services.agent.reasoning_state import (
     get_lock as _rstate_get_lock,
+)
+from services.agent.reasoning_state import (
     set_ as _rstate_set,
 )
+
 _reason_mode_lock = _rstate_get_lock()
 
 
@@ -109,12 +114,18 @@ def _stream_reason_body(
     import runtime_safety
     from services.agent.response_builder import (
         is_junk_reply as _is_junk_reply,
+    )
+    from services.agent.response_builder import (
         iter_with_response_pacing as _iter_with_response_pacing,
     )
     from services.llm.llm_gateway import get_stop_sequences, run_completion
     from services.prompts.system_head_builder import (
         build_system_head as _build_system_head,
+    )
+    from services.prompts.system_head_builder import (
         enrich_deliberation_context as _enrich_deliberation_context,
+    )
+    from services.prompts.system_head_builder import (
         semantic_recall as _semantic_recall,
     )
 

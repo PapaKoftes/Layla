@@ -36,12 +36,14 @@ def run_decision_loop(
     import agent_loop as _al
     import runtime_safety
     from layla.tools.registry import TOOLS
+    from services.agent.reasoning_handler import handle_reasoning_intent
+    from services.infrastructure.resource_manager import classify_load
     from services.safety.agent_safety import (
         maybe_planning_strict_refusal as _maybe_planning_strict_refusal,
+    )
+    from services.safety.agent_safety import (
         maybe_step_tool_allowlist_refusal as _maybe_step_tool_allowlist_refusal,
     )
-    from services.infrastructure.resource_manager import classify_load
-    from services.agent.reasoning_handler import handle_reasoning_intent
 
     cfg = run_params["cfg"]
     active_aspect = run_params["active_aspect"]
@@ -49,7 +51,7 @@ def run_decision_loop(
     max_tool_calls = run_params["max_tool_calls"]
     max_tool_calls_effective = run_params["max_tool_calls_effective"]
     max_runtime = run_params["max_runtime"]
-    temperature = run_params["temperature"]
+    run_params["temperature"]
     reasoning_mode = run_params["reasoning_mode"]
     _precomputed_recall = run_params["_precomputed_recall"]
     _dignity_boundary_prompt = run_params["_dignity_boundary_prompt"]
@@ -490,6 +492,8 @@ def _run_concurrent_batch(
     from layla.tools.registry import TOOLS
     from services.safety.agent_safety import (
         maybe_planning_strict_refusal as _maybe_planning_strict_refusal,
+    )
+    from services.safety.agent_safety import (
         maybe_step_tool_allowlist_refusal as _maybe_step_tool_allowlist_refusal,
     )
 

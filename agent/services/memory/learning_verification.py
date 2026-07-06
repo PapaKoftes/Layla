@@ -65,7 +65,7 @@ def run_verification_pass(
     *, sample: int = 200, prune_threshold: float = 0.08, prune: bool = True,
 ) -> dict[str, Any]:
     """One consistency pass over recent learnings — decay-aware, prune, flag contradictions."""
-    from layla.memory.learnings import get_recent_learnings, get_learnings_due_for_review
+    from layla.memory.learnings import get_learnings_due_for_review, get_recent_learnings
 
     learnings = get_recent_learnings(n=sample) or []
     # decay is already applied to `adjusted_confidence` on read; count the weakened ones

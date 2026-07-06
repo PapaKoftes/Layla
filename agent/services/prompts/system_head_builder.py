@@ -745,7 +745,8 @@ def build_system_head(
 
     # Maturity unlocks: inject current rank capabilities
     try:
-        from services.personality.maturity_engine import get_state as _me_get_state, get_unlocks_text as _me_unlocks_text
+        from services.personality.maturity_engine import get_state as _me_get_state
+        from services.personality.maturity_engine import get_unlocks_text as _me_unlocks_text
         _me_state = _me_get_state()
         _unlocks_str = _me_unlocks_text({"rank": _me_state.rank})
         if _unlocks_str:

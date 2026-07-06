@@ -31,7 +31,7 @@ def get_response_language():
 @router.post("/language/response")
 async def set_response_language(request: Request):
     """Set the companion's response language (persists `response_language` to config)."""
-    from services.prompts.response_language import normalize_language, build_language_block
+    from services.prompts.response_language import build_language_block, normalize_language
     try:
         body = await request.json()
     except Exception:
@@ -39,8 +39,8 @@ async def set_response_language(request: Request):
     raw = str((body or {}).get("language") or "").strip()
     key = normalize_language(raw) if raw else ""
     try:
-        from services.infrastructure.setup_engine import save_config
         from runtime_safety import load_config
+        from services.infrastructure.setup_engine import save_config
         cfg = load_config() or {}
         cfg["response_language"] = key
         save_config(cfg)

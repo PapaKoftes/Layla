@@ -10,9 +10,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from services.infrastructure.resource_governor import (
+    GovernorState,
     ResourceGovernor,
     ResourceMode,
-    GovernorState,
     get_last_input_seconds,
 )
 

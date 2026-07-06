@@ -37,6 +37,8 @@ def handle_reasoning_intent(
     from services.infrastructure.output_polish import polish_output as _polish_output
     from services.prompts.system_head_builder import (
         build_system_head as _build_system_head,
+    )
+    from services.prompts.system_head_builder import (
         enrich_deliberation_context as _enrich_deliberation_context,
     )
 

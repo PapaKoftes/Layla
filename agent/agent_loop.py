@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import psutil
+
 # Goal preservation: the prompt optimizer (in `autonomous_run`) may rewrite the
 # user's goal before downstream processing. We must keep the canonical original
 # text available so memory writes, reflection, and trace endpoints can refer to
@@ -23,8 +25,6 @@ from services.agent.goal_context import (  # noqa: E402,F401
     get_last_goal_original,
 )
 
-import psutil
-
 logger = logging.getLogger("layla")
 
 import orchestrator  # noqa: E402
@@ -33,43 +33,49 @@ from core.executor import run_tool as _run_tool  # noqa: E402
 from decision_schema import parse_decision as _parse_decision  # noqa: E402
 from layla.memory.db import get_aspect_memories as _db_get_aspect_memories  # noqa: E402
 from layla.memory.db import get_recent_learnings as _db_get_learnings  # noqa: E402
+
 # NOTE: _db_migrate import removed — migration runs once in main.py lifespan.
 from layla.tools.registry import TOOLS, set_effective_sandbox  # noqa: E402
-from services.agent.step_formatting import (
-    VALID_TOOLS as _VALID_TOOLS,
-    format_steps as _format_steps,
-    summarize_steps_deterministic as _summarize_steps_deterministic,
-)
 from services.agent.intent_classifier import (
-    classify_intent,
-    _extract_path,
     _extract_file_and_content,
+    _extract_path,
     _extract_shell_argv,
+    classify_intent,
 )
 from services.agent.llm_decision import (
     format_recovery_hint_for_prompt as _format_recovery_hint_for_prompt_impl,
+)
+from services.agent.llm_decision import (
     get_tools_for_goal as _get_tools_for_goal_impl,
+)
+from services.agent.llm_decision import (
     llm_decision as _llm_decision_impl,
 )
 from services.agent.postchecks import (
-    _run_git_auto_commit,
-    _run_auto_lint_test_fix,
     _edit_tool_lint_path,
+    _run_auto_lint_test_fix,
+    _run_git_auto_commit,
+)
+from services.agent.probe_helpers import (
+    apply_probe_guidance as _apply_probe_guidance_impl,
+)
+from services.agent.probe_helpers import (
+    maybe_preprobe_file as _maybe_preprobe_file_impl,
 )
 from services.agent.probe_helpers import (
     probe_store as _probe_store_impl,
-    maybe_preprobe_file as _maybe_preprobe_file_impl,
-    apply_probe_guidance as _apply_probe_guidance_impl,
 )
-from services.safety.agent_safety import (  # noqa: E402
-    maybe_planning_strict_refusal as _maybe_planning_strict_refusal,
+from services.agent.step_formatting import (
+    VALID_TOOLS as _VALID_TOOLS,
 )
-from services.safety.agent_safety import (
-    maybe_step_tool_allowlist_refusal as _maybe_step_tool_allowlist_refusal,
+from services.agent.step_formatting import (
+    format_steps as _format_steps,
+)
+from services.agent.step_formatting import (
+    summarize_steps_deterministic as _summarize_steps_deterministic,
 )
 from services.context.context_manager import DEFAULT_BUDGETS, build_system_prompt  # noqa: E402
 from services.context.context_window_ux import emit_context_window_ux
-from services.llm.llm_gateway import get_stop_sequences, llm_serialize_lock, run_completion  # noqa: E402
 from services.infrastructure.outcome_writer import (  # noqa: E402
     _auto_extract_learnings,
     _extract_patch_text,
@@ -83,6 +89,13 @@ from services.infrastructure.resource_manager import (  # noqa: E402
     classify_load,
     schedule_slot,
 )
+from services.llm.llm_gateway import get_stop_sequences, llm_serialize_lock, run_completion  # noqa: E402
+from services.safety.agent_safety import (  # noqa: E402
+    maybe_planning_strict_refusal as _maybe_planning_strict_refusal,
+)
+from services.safety.agent_safety import (
+    maybe_step_tool_allowlist_refusal as _maybe_step_tool_allowlist_refusal,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENT_DIR = Path(__file__).resolve().parent
@@ -92,6 +105,128 @@ RESEARCH_LAB_ROOT = AGENT_DIR / ".research_lab"
 # System head builder: extracted to services/system_head_builder.py
 # These imports maintain backward compatibility for internal callers.
 # ---------------------------------------------------------------------------
+from services.agent.approval_helpers import (
+    _admin_pre_mutate,
+    _approval_preview_diff,
+    _has_any_grant,
+    _write_pending,
+)
+from services.agent.response_builder import (
+    clean_response_text as _clean_response_text_impl,
+)
+
+# ---------------------------------------------------------------------------
+# Phase 2 decomposition: delegated modules under services/agent/
+# ---------------------------------------------------------------------------
+from services.agent.response_builder import (
+    is_junk_reply as _is_junk_reply_impl,
+)
+from services.agent.response_builder import (
+    is_self_contained_question as _is_self_contained_question,
+)
+from services.agent.response_builder import (
+    iter_with_response_pacing as _iter_with_response_pacing_impl,
+)
+from services.agent.response_builder import (
+    looks_like_raw_tool_dict as _looks_like_raw_tool_dict,
+)
+from services.agent.response_builder import (
+    quick_reply_for_trivial_turn as _quick_reply_for_trivial_turn_impl,
+)
+from services.agent.response_builder import (
+    strip_junk_from_reply as _strip_junk_from_reply_impl,
+)
+from services.agent.response_builder import (
+    synthesize_direct_answer as _synthesize_direct_answer,
+)
+from services.agent.response_builder import (
+    truncate_at_next_user_turn as _truncate_at_next_user_turn_impl,
+)
+from services.agent.run_finalizer import (
+    finalize_run_state as _finalize_run_state_impl,
+)
+
+# ---------------------------------------------------------------------------
+# Streaming handler: extracted to services/agent/stream_handler.py
+# ---------------------------------------------------------------------------
+from services.agent.stream_handler import (
+    _stream_reason_body as _stream_reason_body_impl,
+)
+from services.agent.stream_handler import (
+    stream_reason as _stream_reason_impl,
+)
+from services.agent.tool_guards import (
+    run_tool_guards as _run_tool_guards_impl,
+)
+from services.agent.tool_helpers import (
+    apply_lite_mode_overrides as _apply_lite_mode_overrides_impl,
+)
+from services.agent.tool_helpers import (
+    get_effective_config as _get_effective_config_impl,
+)
+from services.agent.tool_helpers import (
+    inject_cancel_message as _inject_cancel_message_impl,
+)
+from services.agent.tool_helpers import (
+    inject_workspace_args as _inject_workspace_args_impl,
+)
+from services.agent.tool_helpers import (
+    normalize_mcp_tool_args as _normalize_mcp_tool_args_impl,
+)
+from services.agent.tool_helpers import (
+    path_under_lab as _path_under_lab_impl,
+)
+from services.agent.tool_helpers import (
+    register_exact_tool_call as _register_exact_tool_call_impl,
+)
+from services.agent.tool_helpers import (
+    research_response_asks_user as _research_response_asks_user_impl,
+)
+from services.agent.ux_emitter import (
+    BackgroundProgressSteps as _BackgroundProgressSteps_impl,
+)
+from services.agent.ux_emitter import (
+    emit_context_window_ux as _emit_context_window_ux_impl,
+)
+from services.agent.ux_emitter import (
+    emit_tool_start as _emit_tool_start_impl,
+)
+from services.agent.ux_emitter import (
+    emit_tool_step as _emit_tool_step_impl,
+)
+from services.agent.ux_emitter import (
+    emit_ux as _emit_ux_impl,
+)
+from services.agent.ux_emitter import (
+    summarize_tool_result as _summarize_tool_result_impl,
+)
+from services.agent.verification_engine import (
+    SKIP_TOOL_OUTPUT_VALIDATION as _SKIP_TOOL_OUTPUT_VALIDATION_IMPL,
+)
+from services.agent.verification_engine import (
+    VERIFY_TOOLS as _VERIFY_TOOLS_IMPL,
+)
+from services.agent.verification_engine import (
+    apply_deterministic_tool_verification as _apply_deterministic_tool_verification_impl,
+)
+from services.agent.verification_engine import (
+    log_tool_outcome as _log_tool_outcome_impl,
+)
+from services.agent.verification_engine import (
+    maybe_validate_tool_output as _maybe_validate_tool_output_impl,
+)
+from services.agent.verification_engine import (
+    observe_environment as _observe_environment_impl,
+)
+from services.agent.verification_engine import (
+    run_edit_postchecks as _run_edit_postchecks_impl,
+)
+from services.agent.verification_engine import (
+    run_verification_after_tool as _run_verification_after_tool_impl,
+)
+from services.agent.verification_engine import (
+    verify_tool_progress as _verify_tool_progress_impl,
+)
 from services.prompts.system_head_builder import (
     append_persona_focus_to_personality as _append_persona_focus_to_personality,
 )
@@ -147,70 +282,6 @@ from services.tools.tool_dispatch import (
 # ---------------------------------------------------------------------------
 from services.tools.tool_dispatch import (  # noqa: E402
     dispatch_tool_intent as _dispatch_tool_intent,
-)
-
-# ---------------------------------------------------------------------------
-# Streaming handler: extracted to services/agent/stream_handler.py
-# ---------------------------------------------------------------------------
-from services.agent.stream_handler import (
-    _stream_reason_body as _stream_reason_body_impl,
-    stream_reason as _stream_reason_impl,
-)
-
-# ---------------------------------------------------------------------------
-# Phase 2 decomposition: delegated modules under services/agent/
-# ---------------------------------------------------------------------------
-from services.agent.response_builder import (
-    is_junk_reply as _is_junk_reply_impl,
-    quick_reply_for_trivial_turn as _quick_reply_for_trivial_turn_impl,
-    truncate_at_next_user_turn as _truncate_at_next_user_turn_impl,
-    strip_junk_from_reply as _strip_junk_from_reply_impl,
-    clean_response_text as _clean_response_text_impl,
-    iter_with_response_pacing as _iter_with_response_pacing_impl,
-    looks_like_raw_tool_dict as _looks_like_raw_tool_dict,
-    synthesize_direct_answer as _synthesize_direct_answer,
-    is_self_contained_question as _is_self_contained_question,
-)
-from services.agent.verification_engine import (
-    VERIFY_TOOLS as _VERIFY_TOOLS_IMPL,
-    SKIP_TOOL_OUTPUT_VALIDATION as _SKIP_TOOL_OUTPUT_VALIDATION_IMPL,
-    log_tool_outcome as _log_tool_outcome_impl,
-    maybe_validate_tool_output as _maybe_validate_tool_output_impl,
-    apply_deterministic_tool_verification as _apply_deterministic_tool_verification_impl,
-    verify_tool_progress as _verify_tool_progress_impl,
-    observe_environment as _observe_environment_impl,
-    run_verification_after_tool as _run_verification_after_tool_impl,
-    run_edit_postchecks as _run_edit_postchecks_impl,
-)
-from services.agent.ux_emitter import (
-    BackgroundProgressSteps as _BackgroundProgressSteps_impl,
-    emit_ux as _emit_ux_impl,
-    emit_tool_start as _emit_tool_start_impl,
-    summarize_tool_result as _summarize_tool_result_impl,
-    emit_tool_step as _emit_tool_step_impl,
-    emit_context_window_ux as _emit_context_window_ux_impl,
-)
-from services.agent.tool_helpers import (
-    normalize_mcp_tool_args as _normalize_mcp_tool_args_impl,
-    inject_workspace_args as _inject_workspace_args_impl,
-    inject_cancel_message as _inject_cancel_message_impl,
-    register_exact_tool_call as _register_exact_tool_call_impl,
-    apply_lite_mode_overrides as _apply_lite_mode_overrides_impl,
-    get_effective_config as _get_effective_config_impl,
-    path_under_lab as _path_under_lab_impl,
-    research_response_asks_user as _research_response_asks_user_impl,
-)
-from services.agent.tool_guards import (
-    run_tool_guards as _run_tool_guards_impl,
-)
-from services.agent.run_finalizer import (
-    finalize_run_state as _finalize_run_state_impl,
-)
-from services.agent.approval_helpers import (
-    _approval_preview_diff,
-    _has_any_grant,
-    _admin_pre_mutate,
-    _write_pending,
 )
 
 # ---------------------------------------------------------------------------
@@ -276,9 +347,14 @@ _clean_response_text = _clean_response_text_impl
 # Cross-request reasoning-mode smoothing -- shared with the streaming path.
 from services.agent.reasoning_state import (
     get as _rstate_get,
+)
+from services.agent.reasoning_state import (
     get_lock as _rstate_get_lock,
+)
+from services.agent.reasoning_state import (
     set_ as _rstate_set,
 )
+
 _reason_mode_lock = _rstate_get_lock()
 _load_lock = threading.Lock()
 
