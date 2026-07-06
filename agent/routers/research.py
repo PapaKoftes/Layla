@@ -227,6 +227,12 @@ async def research_mission(request: Request):
                     report,
                     encoding="utf-8",
                 )
+                # Ingest the finished report into the searchable KB (recallable memory).
+                try:
+                    from services.infrastructure.research_report import save_report_to_kb
+                    await asyncio.to_thread(save_report_to_kb, report, title=f"Research mission ({mission_type})")
+                except Exception as _kb_e:
+                    logger.debug("research KB ingest skipped: %s", _kb_e)
             except Exception as e:
                 logger.warning("save research mission output failed: %s", e)
 
@@ -453,6 +459,11 @@ async def research(req: dict):
                             report or text,
                             encoding="utf-8",
                         )
+                        try:
+                            from services.infrastructure.research_report import save_report_to_kb
+                            save_report_to_kb(report or text, title="Research output")  # sync generator context
+                        except Exception as _kb_e:
+                            logger.debug("research KB ingest skipped: %s", _kb_e)
                     except Exception as e:
                         logger.debug("save research output failed: %s", e)
                 yield f"data: {json.dumps({'done': True, 'content': text, 'report': report or text, 'citations': citations, 'report_format': report_format, 'reasoning_mode': result.get('reasoning_mode')})}\n\n"
@@ -513,6 +524,11 @@ async def research(req: dict):
                 report or response_text,
                 encoding="utf-8",
             )
+            try:
+                from services.infrastructure.research_report import save_report_to_kb
+                await asyncio.to_thread(save_report_to_kb, report or response_text, title="Research output")
+            except Exception as _kb_e:
+                logger.debug("research KB ingest skipped: %s", _kb_e)
         except Exception as e:
             logger.debug("save research output failed: %s", e)
 
