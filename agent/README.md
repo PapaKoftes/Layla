@@ -50,7 +50,7 @@ python main.py
 | Skill Packs | Install custom tool packs from Git with manifest validation and sandboxing |
 | Search | Meilisearch + Elasticsearch + SQLite FTS fallback chain |
 | Research | Deep research missions with web crawling, PDF parsing, ArXiv/Wikipedia |
-| Voice | Kokoro TTS + Faster Whisper STT, per-aspect voice settings |
+| Voice | pyttsx3 TTS (default) + Faster Whisper STT; Kokoro opt-in (GPLv3), per-aspect voice settings |
 | Scheduler | APScheduler with 11 background jobs (memory consolidation, study review, health checks) |
 | MCP | Model Context Protocol client and server for tool interop |
 | Safety | Dignity engine, content guard, approval gates, trust tiers, audit trail |

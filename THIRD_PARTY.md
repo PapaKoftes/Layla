@@ -63,7 +63,7 @@ faster-whisper (MIT) · pyttsx3 (MPL-2.0, the shipped default TTS) · soundfile 
 kokoro-onnx — **GPLv3+** (it pulls `phonemizer-fork`, GNU GPL v3). Strong copyleft is
 incompatible with Layla's non-commercial source license, so it is **not** in the default
 install or the `voice` extra. Install explicitly only if you accept GPLv3:
-`pip install layla[voice-kokoro]`.
+`pip install kokoro-onnx soundfile` (or, from the source tree, `pip install ".[voice-kokoro]"`).
 
 ### `vision`
 easyocr (Apache-2.0)
