@@ -75,6 +75,13 @@ def run(base_url: str, model: str, limit: int, timeout: int, label: str) -> dict
 
 
 def main() -> int:
+    # Model replies can contain non-Latin-1 glyphs (aspect sigils like ⚔, ∴). On a
+    # Windows cp1252 console the diagnostic prints below would raise UnicodeEncodeError
+    # and abort the whole eval. Force UTF-8 with replacement so the run never dies on I/O.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     ap = argparse.ArgumentParser()
     ap.add_argument("--base-url", default="http://127.0.0.1:8000")
     ap.add_argument("--model", default="layla")

@@ -40,3 +40,13 @@ def test_objective_echo_cut():
 def test_echo_patterns_marker_cut():
     assert strip_junk_from_reply("The capital of France is Paris.\nEcho (patterns/preferences):") == "The capital of France is Paris."
     assert strip_junk_from_reply('The reversed string is "olleh".\nECHO: internal') == 'The reversed string is "olleh".'
+
+
+def test_bracketed_echo_marker_cut():
+    # Golden-eval live-probe finding: the marker leaked wrapped in brackets, which the
+    # old `(?:^|\s)` guard missed because `[` precedes "Echo" (regression fix).
+    assert strip_junk_from_reply("[Echo (patterns/preferences): title]") == ""
+    assert strip_junk_from_reply("The capital of France is Paris. [Echo (patterns/preferences): brevity]") == "The capital of France is Paris."
+    assert strip_junk_from_reply("[ECHO: internal note] leaked") == ""
+    # Conservative: a mid-line `echo:` in legit shell content must NOT be stripped.
+    assert strip_junk_from_reply("To print: echo: hello world") == "To print: echo: hello world"
