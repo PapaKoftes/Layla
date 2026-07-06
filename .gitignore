@@ -167,3 +167,9 @@ layla-gpt-context.zip
 /build/
 installer/payload/
 installer/output/
+
+# Runtime-generated data + DB/vector backups (operator/machine state, never committed)
+/backups/
+agent/services/.layla/
+**/.layla/
+agent/all_routes.txt

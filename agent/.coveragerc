@@ -12,8 +12,9 @@ omit =
     */__pycache__/*
 
 [report]
-# Ratchet upward as tests grow (branch coverage is stricter than line-only).
-fail_under = 28
+# Ratchet: measured branch coverage is ~48%; floor set just below so it can't silently
+# regress. Raise this toward the actual number as tests grow — never lower it.
+fail_under = 45
 precision = 0
 show_missing = false
 skip_covered = true

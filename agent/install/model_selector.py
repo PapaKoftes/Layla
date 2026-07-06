@@ -99,6 +99,25 @@ def models_for_picker(
         e["recommended"] = e["filename"] == recommended
 
     categories = sorted({e["category"] for e in out})
+
+    # Hardware note (#24): warn honestly when the box is tight for the recommended pick,
+    # so the installer doesn't silently ship a model that will thrash / trip the governor.
+    note = ""
+    rec_entry = next((e for e in out if e["recommended"]), None)
+    any_unc_viable = any(e["viable"] and e["uncensored"] for e in out)
+    if not vbudget:  # CPU-only box
+        if not any_unc_viable:
+            smallest_unc = min((e for e in out if e["uncensored"]), key=lambda e: e["ram_required"], default=None)
+            need = int(smallest_unc["ram_required"]) if smallest_unc else 6
+            note = (f"No uncensored model fits ~{ram_gb:.0f} GB RAM — the smallest needs ~{need} GB. "
+                    f"Close other apps to free RAM, or pick a smaller (possibly restricted) model.")
+        elif rec_entry and (ram_gb - rec_entry["ram_required"]) < 4:
+            note = (f"The recommended uncensored model needs ~{int(rec_entry['ram_required'])} GB of your "
+                    f"~{ram_gb:.0f} GB — it will fit but run slowly on CPU and needs headroom "
+                    f"(close other apps). A smaller model is snappier.")
+        elif rec_entry:
+            note = "CPU-only: responses take tens of seconds to a couple of minutes; that's normal without a GPU."
+
     return {
         "models": out,
         "recommended": recommended,
@@ -106,6 +125,7 @@ def models_for_picker(
         "uncensored_first": uncensored_first,
         "ram_gb": ram_gb,
         "vram_gb": vram_gb,
+        "hardware_note": note,
     }
 
 
