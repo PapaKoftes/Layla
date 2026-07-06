@@ -1,0 +1,156 @@
+{
+  "app": {
+    "name": "Layla",
+    "tagline": "Compagnon IA local d'abord"
+  },
+  "action": {
+    "send": "Envoyer",
+    "cancel": "Annuler",
+    "close": "Fermer",
+    "save": "Enregistrer",
+    "save_reload": "Enregistrer et recharger",
+    "clear": "Effacer",
+    "copy": "Copier",
+    "apply": "Appliquer",
+    "apply_all": "Tout appliquer",
+    "execute": "Exécuter",
+    "browse": "Parcourir",
+    "connect": "Connecter",
+    "configure": "Configurer",
+    "back": "Retour",
+    "next": "Suivant",
+    "dismiss": "Ignorer",
+    "refresh": "Actualiser",
+    "load": "Charger",
+    "retry": "Réessayer",
+    "download": "Télécharger",
+    "compact": "Compacter",
+    "regenerate": "Régénérer",
+    "delete": "Supprimer",
+    "rename": "Renommer",
+    "export": "Exporter",
+    "import": "Importer",
+    "new_chat": "Nouvelle discussion"
+  },
+  "nav": {
+    "chat": "Discussion",
+    "dashboard": "Tableau de bord",
+    "settings": "Paramètres",
+    "panels": "Panneaux",
+    "more_actions": "Plus d'actions",
+    "toggle_theme": "Basculer clair/sombre",
+    "toggle_sidebar": "Basculer la barre latérale",
+    "open_chats": "Ouvrir les discussions",
+    "capabilities": "Capacités",
+    "character_lab": "Labo de personnages",
+    "cluster": "Cluster",
+    "checkpoints": "Points de contrôle",
+    "artifacts": "Artefacts",
+    "awareness": "Conscience",
+    "growth": "Croissance",
+    "missions": "Missions"
+  },
+  "chat": {
+    "placeholder": "Message à Layla…",
+    "server_status": "État du serveur",
+    "llm_status": "État du LLM",
+    "session_duration": "Durée de la session",
+    "context_usage_high": "Utilisation du contexte élevée",
+    "thinking": "Réflexion…",
+    "detecting": "Détection…"
+  },
+  "settings": {
+    "title": "Paramètres",
+    "loading": "Chargement…",
+    "load_error": "Impossible de charger les paramètres. Layla est-il en cours d'exécution ?",
+    "language": "Langue de l'interface",
+    "language_hint": "Langue de l'interface web de Layla.",
+    "chat_streaming": "Discussion et streaming",
+    "build_updates": "Build et mises à jour",
+    "check_updates": "Rechercher des mises à jour",
+    "appearance": "Apparence / mode allégé",
+    "deliberation": "Délibération",
+    "depth": "Profondeur",
+    "coding": "Programmation",
+    "admin_mode": "Mode administrateur",
+    "autonomous_execution": "Exécution autonome",
+    "config_reference": "Référence de configuration",
+    "choose_voice": "Choisir une voix",
+    "avatar_seed": "Graine d'avatar",
+    "avatar_style": "Style d'avatar"
+  },
+  "model": {
+    "download_a_model": "Télécharger un modèle",
+    "download_from_hf": "Télécharger depuis Hugging Face",
+    "download_selected": "Télécharger la sélection",
+    "warming_up": "Chargement du modèle — préchauffage…",
+    "cannot_reach": "Impossible de joindre Layla — le serveur est-il en cours d'exécution ?"
+  },
+  "onboarding": {
+    "welcome": "Bienvenue dans Layla",
+    "get_started": "Procédons à votre configuration.",
+    "detect_hardware": "Détecter le matériel",
+    "choose_model": "Choisir un modèle",
+    "workspace": "Espace de travail",
+    "character": "Personnage",
+    "voice": "Voix",
+    "finish": "Terminer",
+    "skip": "Ignorer pour l'instant"
+  },
+  "help": {
+    "title": "Aide et raccourcis",
+    "send": "Enter — Envoyer · Shift+Enter — Nouvelle ligne",
+    "open_sheet": "Ctrl+/ — Ouvrir ce panneau",
+    "search_chat": "Ctrl+F — Rechercher dans la discussion",
+    "clear_input": "Ctrl+K — Effacer la saisie",
+    "regenerate": "Ctrl+R — Régénérer la dernière réponse",
+    "escape": "Escape — Fermer les superpositions, arrêter le micro",
+    "command_palette": "Ctrl+K — Palette de commandes"
+  },
+  "panel": {
+    "execution_trace": "Trace d'exécution",
+    "coordinator_tasks": "Tâches du coordinateur",
+    "engine_plans": "Plans du moteur",
+    "file_checkpoints": "Points de contrôle de fichiers",
+    "facts": "Faits",
+    "confidence": "Confiance",
+    "council": "Conseil",
+    "debate": "Débat",
+    "discovered_peers": "Pairs découverts",
+    "enable_clustering": "Activer le clustering"
+  },
+  "search": {
+    "placeholder": "Rechercher…",
+    "all_types": "Tous les types",
+    "elasticsearch": "Elasticsearch (mot-clé)",
+    "no_results": "Aucun résultat"
+  },
+  "status": {
+    "active": "Actif",
+    "auto": "Auto",
+    "default": "Par défaut",
+    "disabled": "Désactivé",
+    "enabled": "Activé",
+    "ready": "Prêt. De quoi avez-vous besoin ?"
+  },
+  "toast": {
+    "saved": "Enregistré",
+    "copied": "Copié",
+    "export_downloaded": "Export téléchargé",
+    "export_failed": "Échec de l'export",
+    "compact_done": "Contexte compacté",
+    "compact_failed": "Échec du compactage",
+    "generic_error": "Une erreur s'est produite. Consultez les journaux du serveur."
+  },
+  "error": {
+    "network": "Impossible de joindre Layla — le serveur est-il en cours d'exécution ?",
+    "request_failed": "La requête a échoué lors du traitement.",
+    "no_response": "Aucune réponse. Réessayez ou reformulez.",
+    "model_not_ready": "Modèle non prêt. Configurez un modèle dans les Paramètres."
+  },
+  "confirm": {
+    "apply_to_file": "Appliquer au fichier ?",
+    "requires_approval": "Appliquer (approbation requise)",
+    "delete_conversation": "Supprimer cette conversation ?"
+  }
+}

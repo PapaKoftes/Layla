@@ -1,0 +1,156 @@
+{
+  "app": {
+    "name": "Layla",
+    "tagline": "로컬 우선 AI 컴패니언"
+  },
+  "action": {
+    "send": "보내기",
+    "cancel": "취소",
+    "close": "닫기",
+    "save": "저장",
+    "save_reload": "저장 후 새로고침",
+    "clear": "지우기",
+    "copy": "복사",
+    "apply": "적용",
+    "apply_all": "모두 적용",
+    "execute": "실행",
+    "browse": "찾아보기",
+    "connect": "연결",
+    "configure": "구성",
+    "back": "뒤로",
+    "next": "다음",
+    "dismiss": "닫기",
+    "refresh": "새로고침",
+    "load": "불러오기",
+    "retry": "다시 시도",
+    "download": "다운로드",
+    "compact": "압축",
+    "regenerate": "재생성",
+    "delete": "삭제",
+    "rename": "이름 바꾸기",
+    "export": "내보내기",
+    "import": "가져오기",
+    "new_chat": "새 채팅"
+  },
+  "nav": {
+    "chat": "채팅",
+    "dashboard": "대시보드",
+    "settings": "설정",
+    "panels": "패널",
+    "more_actions": "추가 작업",
+    "toggle_theme": "다크/라이트 전환",
+    "toggle_sidebar": "사이드바 전환",
+    "open_chats": "채팅 열기",
+    "capabilities": "기능",
+    "character_lab": "캐릭터 랩",
+    "cluster": "클러스터",
+    "checkpoints": "체크포인트",
+    "artifacts": "아티팩트",
+    "awareness": "인식",
+    "growth": "성장",
+    "missions": "미션"
+  },
+  "chat": {
+    "placeholder": "Layla에게 메시지…",
+    "server_status": "서버 상태",
+    "llm_status": "LLM 상태",
+    "session_duration": "세션 시간",
+    "context_usage_high": "컨텍스트 사용량 높음",
+    "thinking": "생각 중…",
+    "detecting": "감지 중…"
+  },
+  "settings": {
+    "title": "설정",
+    "loading": "불러오는 중…",
+    "load_error": "설정을 불러올 수 없습니다. Layla가 실행 중인가요?",
+    "language": "인터페이스 언어",
+    "language_hint": "Layla 웹 인터페이스의 언어입니다.",
+    "chat_streaming": "채팅 및 스트리밍",
+    "build_updates": "빌드 및 업데이트",
+    "check_updates": "업데이트 확인",
+    "appearance": "모양 / 라이트 모드",
+    "deliberation": "숙고",
+    "depth": "깊이",
+    "coding": "코딩",
+    "admin_mode": "관리자 모드",
+    "autonomous_execution": "자율 실행",
+    "config_reference": "구성 참조",
+    "choose_voice": "음성 선택",
+    "avatar_seed": "아바타 시드",
+    "avatar_style": "아바타 스타일"
+  },
+  "model": {
+    "download_a_model": "모델 다운로드",
+    "download_from_hf": "Hugging Face에서 다운로드",
+    "download_selected": "선택 항목 다운로드",
+    "warming_up": "모델 불러오는 중 — 준비 중…",
+    "cannot_reach": "Layla에 연결할 수 없습니다 — 서버가 실행 중인가요?"
+  },
+  "onboarding": {
+    "welcome": "Layla에 오신 것을 환영합니다",
+    "get_started": "설정을 시작해 볼까요.",
+    "detect_hardware": "하드웨어 감지",
+    "choose_model": "모델 선택",
+    "workspace": "워크스페이스",
+    "character": "캐릭터",
+    "voice": "음성",
+    "finish": "완료",
+    "skip": "나중에 하기"
+  },
+  "help": {
+    "title": "도움말 및 단축키",
+    "send": "Enter — 보내기 · Shift+Enter — 줄바꿈",
+    "open_sheet": "Ctrl+/ — 이 시트 열기",
+    "search_chat": "Ctrl+F — 채팅에서 검색",
+    "clear_input": "Ctrl+K — 입력 지우기",
+    "regenerate": "Ctrl+R — 마지막 답변 재생성",
+    "escape": "Escape — 오버레이 닫기, 마이크 중지",
+    "command_palette": "Ctrl+K — 명령 팔레트"
+  },
+  "panel": {
+    "execution_trace": "실행 추적",
+    "coordinator_tasks": "코디네이터 작업",
+    "engine_plans": "엔진 계획",
+    "file_checkpoints": "파일 체크포인트",
+    "facts": "사실",
+    "confidence": "신뢰도",
+    "council": "카운슬",
+    "debate": "토론",
+    "discovered_peers": "발견된 피어",
+    "enable_clustering": "클러스터링 활성화"
+  },
+  "search": {
+    "placeholder": "검색…",
+    "all_types": "모든 유형",
+    "elasticsearch": "Elasticsearch(키워드)",
+    "no_results": "결과 없음"
+  },
+  "status": {
+    "active": "활성",
+    "auto": "자동",
+    "default": "기본값",
+    "disabled": "비활성화됨",
+    "enabled": "활성화됨",
+    "ready": "준비 완료. 무엇을 도와드릴까요?"
+  },
+  "toast": {
+    "saved": "저장됨",
+    "copied": "복사됨",
+    "export_downloaded": "내보내기 다운로드됨",
+    "export_failed": "내보내기 실패",
+    "compact_done": "컨텍스트 압축됨",
+    "compact_failed": "압축 실패",
+    "generic_error": "문제가 발생했습니다. 서버 로그를 확인하세요."
+  },
+  "error": {
+    "network": "Layla에 연결할 수 없습니다 — 서버가 실행 중인가요?",
+    "request_failed": "처리 중 요청이 실패했습니다.",
+    "no_response": "응답이 없습니다. 다시 시도하거나 다르게 표현해 보세요.",
+    "model_not_ready": "모델이 준비되지 않았습니다. 설정에서 모델을 구성하세요."
+  },
+  "confirm": {
+    "apply_to_file": "파일에 적용할까요?",
+    "requires_approval": "적용(승인 필요)",
+    "delete_conversation": "이 대화를 삭제할까요?"
+  }
+}
