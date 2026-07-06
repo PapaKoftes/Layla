@@ -256,7 +256,7 @@ jobs:
             --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu \
             --only-binary llama-cpp-python --prefer-binary
           pip install -r requirements.txt
-      - name: Download the coding model
+      - name: Download the coding model (3B — pinned by exact catalog name)
         run: |
           mkdir -p models
           python - <<'PY'
@@ -265,17 +265,22 @@ jobs:
           sys.path.insert(0, "agent")
           from install.model_downloader import download_model
           d = json.load(open("agent/models/model_catalog.json"))
-          m = next(x for x in d["models"] if "Coder" in x.get("name", "") or "coder" in x.get("filename", "").lower())
+          m = next(x for x in d["models"] if x.get("name") == "qwen2.5-coder-3b-instruct-Q4_K_M")
           r = download_model(m, models_dir=Path("models"), progress=False)
           assert r.get("ok"), r
-          print("MODEL_PATH=models/" + r["filename"])
+          # hard-fail on filename drift instead of letting the test skip silently
+          assert (Path("models") / r["filename"]).exists(), r["filename"]
+          print("downloaded:", r["filename"])
           PY
       - name: Live pass@1 regression (floor guard)
         working-directory: agent
         env:
           LAYLA_BENCH_MODEL: ../models/Qwen2.5-Coder-3B-Instruct-Q4_K_M.gguf
           LAYLA_BENCH_FLOOR: "0.6"
-        run: python -m pytest tests/test_benchmark_coding_model.py -v --tb=short --timeout=1200
+        run: |
+          # Guard: the benchmark test skips when the model is absent — fail loud instead.
+          test -f "$LAYLA_BENCH_MODEL" || { echo "bench model missing: $LAYLA_BENCH_MODEL"; exit 1; }
+          python -m pytest tests/test_benchmark_coding_model.py -v --tb=short --timeout=1200
 
   golden-eval:
     name: Golden-set eval (real model, nightly)
@@ -310,17 +315,28 @@ jobs:
           assert r.get("ok"), r
           print("downloaded:", r.get("filename"))
           PY
-      - name: Start Layla + run golden set
+      - name: Start Layla + run golden set (with a real pass-rate floor)
         working-directory: agent
         run: |
           cat > runtime_config.json << 'EOF'
           { "model_filename": "SmolLM2-360M-Instruct-Q2_K.gguf", "use_chroma": false,
             "sandbox_root": "/tmp/layla-ci", "max_tool_calls": 3, "max_runtime_seconds": 60,
-            "n_ctx": 2048, "n_gpu_layers": 0 }
+            "n_ctx": 2048, "n_gpu_layers": 0, "scheduler_study_enabled": false,
+            "embedder_prewarm_enabled": false }
           EOF
           mkdir -p /tmp/layla-ci
-          python -m uvicorn main:app --host 127.0.0.1 --port 8000 &
+          python -m uvicorn main:app --host 127.0.0.1 --port 8000 > /tmp/layla-server.log 2>&1 &
           SERVER_PID=$!
-          for i in $(seq 1 60); do curl -sf http://127.0.0.1:8000/health && break; sleep 2; done
-          python eval/run_golden.py --base-url http://127.0.0.1:8000 --model layla || true
+          # Readiness loop that FAILS if the server never becomes healthy (C2 fix).
+          ready=""
+          for i in $(seq 1 90); do
+            if curl -sf http://127.0.0.1:8000/health >/dev/null; then ready=1; break; fi
+            sleep 2
+          done
+          if [ -z "$ready" ]; then echo "server never became healthy:"; cat /tmp/layla-server.log; kill $SERVER_PID 2>/dev/null || true; exit 1; fi
+          # run_golden.py is a report (always exit 0) — capture the pass-rate and gate on a floor.
+          python eval/run_golden.py --base-url http://127.0.0.1:8000 --model layla | tee /tmp/golden.out
           kill $SERVER_PID 2>/dev/null || true
+          rate=$(grep -oiE 'passed \(([0-9]+)%\)' /tmp/golden.out | grep -oE '[0-9]+' | tail -1)
+          echo "golden pass-rate: ${rate:-0}%"
+          test "${rate:-0}" -ge 40 || { echo "golden pass-rate ${rate:-0}% below floor 40%"; exit 1; }
