@@ -15,7 +15,7 @@ class AnalyzeBody(BaseModel):
 
 @router.get("/status")
 def status():
-    from services.vision.vlm_backend import vlm_available, vision_paths
+    from services.vision.vlm_backend import vision_paths, vlm_available
     model, mmproj = vision_paths()
     return {
         "gguf_vlm_available": vlm_available(),

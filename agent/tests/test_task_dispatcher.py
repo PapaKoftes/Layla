@@ -3,15 +3,15 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from services.cluster.cluster_network import NodeRole, Peer, PeerStatus
+from services.cluster.work_unit import TaskPriority, TaskType
 from services.planning.task_dispatcher import TaskDispatcher
-from services.cluster.work_unit import TaskType, TaskPriority
-from services.cluster.cluster_network import Peer, PeerStatus, NodeRole
 
 
 @pytest.fixture

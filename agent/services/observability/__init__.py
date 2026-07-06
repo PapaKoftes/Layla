@@ -5,26 +5,6 @@ compatibility (services.observability was originally a single file).
 """
 from __future__ import annotations
 
-# New observability primitives
-from services.observability.event_logger import get_recent_events, log_event
-from services.observability.metrics import MetricsCollector, metrics
-from services.observability.security_audit import (
-    get_recent_security_events,
-    get_security_summary,
-    log_action_denied,
-    log_approval_escalation,
-    log_dangerous_tool_usage,
-    log_policy_bypass_attempt,
-    log_protected_file_attempt,
-    log_sandbox_violation,
-)
-from services.observability.tracing import (
-    CorrelationContext,
-    generate_correlation_id,
-    get_current_correlation_id,
-    trace_request,
-)
-
 # Legacy re-exports — all existing callers of `from services.observability import X` continue to work
 from services.observability._legacy_observability import (  # noqa: F401
     log_agent_decision,
@@ -54,6 +34,26 @@ from services.observability._legacy_observability import (  # noqa: F401
     log_tool_call,
     log_tool_result,
     tool_health_snapshot,
+)
+
+# New observability primitives
+from services.observability.event_logger import get_recent_events, log_event
+from services.observability.metrics import MetricsCollector, metrics
+from services.observability.security_audit import (
+    get_recent_security_events,
+    get_security_summary,
+    log_action_denied,
+    log_approval_escalation,
+    log_dangerous_tool_usage,
+    log_policy_bypass_attempt,
+    log_protected_file_attempt,
+    log_sandbox_violation,
+)
+from services.observability.tracing import (
+    CorrelationContext,
+    generate_correlation_id,
+    get_current_correlation_id,
+    trace_request,
 )
 
 __all__ = [

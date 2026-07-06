@@ -129,8 +129,8 @@ def _validate_cluster_auth(request: Request) -> bool:
 
     # Fallback to tunnel auth
     try:
-        from services.governance.tunnel_auth import validate_token
         from runtime_safety import load_config
+        from services.governance.tunnel_auth import validate_token
         cfg = load_config()
         valid, _ = validate_token(token, cfg)
         return valid
@@ -154,7 +154,7 @@ async def cluster_heartbeat(body: HeartbeatRequest, request: Request):
     _require_auth(request)
 
     try:
-        from services.cluster.cluster_network import get_cluster_network, PeerStatus
+        from services.cluster.cluster_network import PeerStatus, get_cluster_network
         net = get_cluster_network()
         peer = net.get_peer(body.instance_id)
         if peer:
@@ -204,7 +204,7 @@ async def cluster_task_submit(body: TaskSubmitRequest, request: Request):
     _require_auth(request)
 
     try:
-        from services.cluster.work_unit import WorkUnit, TaskType, TaskStatus, get_task_queue
+        from services.cluster.work_unit import TaskStatus, TaskType, WorkUnit, get_task_queue
 
         unit = WorkUnit(
             id=body.id if body.id else uuid.uuid4().hex[:16],
@@ -267,9 +267,10 @@ async def cluster_sync_push(body: SyncPushRequest, request: Request):
     imported = 0
     skipped = 0
     try:
+        import hashlib as _hashlib
+
         from layla.memory.db_connection import _conn
         from layla.time_utils import utcnow
-        import hashlib as _hashlib
 
         with _conn() as db:
             for learning in body.learnings:

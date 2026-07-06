@@ -202,7 +202,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"agent/tests/*" = ["F811"]   # redefined-while-unused (fixture names)
+"agent/tests/*" = ["F811", "E702"]   # F811: fixture-name reuse; E702: `app = FastAPI(); app.include_router(...)` one-liners are idiomatic in tests
 "agent/tests/test_fabrication_assist*.py" = ["E402"]   # sys.path bootstrap before repo imports
 
 [tool.pytest.ini_options]

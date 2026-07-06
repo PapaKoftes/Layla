@@ -11,8 +11,8 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-from services.infrastructure.agent_loop_formatting import format_tool_steps_for_prompt  # noqa: E402
 from services.context.context_window_ux import emit_context_window_ux  # noqa: E402
+from services.infrastructure.agent_loop_formatting import format_tool_steps_for_prompt  # noqa: E402
 
 
 def test_format_tool_steps_for_prompt_empty():

@@ -20,12 +20,17 @@ logger = logging.getLogger("layla.tool_dispatch")
 
 # BL-029: shared foundation (context/result classes + helpers + intent set) split out.
 from services.tools.tool_dispatch_base import (  # noqa: E402,F401
-    DispatchContext, DispatchResult, _HARDCODED_INTENTS,
-    _approval_break, _base_tool_handler, _deterministic_verify_retry,
-    _imports, _is_approval_bypassed, _lab_blocked, _rebuild_goal,
+    _HARDCODED_INTENTS,
+    DispatchContext,
+    DispatchResult,
+    _approval_break,
+    _base_tool_handler,
+    _deterministic_verify_retry,
+    _imports,
+    _is_approval_bypassed,
+    _lab_blocked,
+    _rebuild_goal,
 )
-
-
 
 # ===================================================================
 # WRITE FILE

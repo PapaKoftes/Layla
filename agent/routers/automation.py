@@ -39,7 +39,7 @@ class EmitBody(BaseModel):
 
 @router.get("/rules")
 def list_rules():
-    from services.automation.rules_engine import EVENT_TYPES, ACTION_TYPES, list_rules
+    from services.automation.rules_engine import ACTION_TYPES, EVENT_TYPES, list_rules
     return {"rules": list_rules(), "event_types": list(EVENT_TYPES), "action_types": list(ACTION_TYPES)}
 
 

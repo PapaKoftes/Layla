@@ -45,6 +45,7 @@ def test_prompt_injection_wires_block(monkeypatch):
 def test_router_get_and_set(monkeypatch, tmp_path):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
+
     from routers import language as lang_router
 
     saved = {}

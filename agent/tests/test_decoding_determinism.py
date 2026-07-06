@@ -17,10 +17,11 @@ def test_enabled_forces_greedy():
 
 
 def test_builtin_config_has_flag_off_by_default():
-    import runtime_safety
     import tempfile
     import uuid
     from pathlib import Path
+
+    import runtime_safety
 
     fake = Path(tempfile.gettempdir()) / f"det_cfg_{uuid.uuid4().hex}.json"
     import pytest

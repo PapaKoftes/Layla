@@ -180,9 +180,10 @@ def buffer_for_sync(content: str, learning_type: str = "fact", **kwargs) -> None
     pending_sync table to push to QUEEN on reconnect.
     """
     try:
+        import uuid
+
         from layla.memory.db_connection import _conn
         from layla.time_utils import utcnow
-        import uuid
 
         content_hash = hashlib.sha256(content.encode()).hexdigest()[:32]
         with _conn() as db:

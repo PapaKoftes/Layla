@@ -330,12 +330,12 @@ def health(request: Request):
     except Exception:
         pass
     try:
+        from services.infrastructure.system_optimizer import get_effective_config
         from services.observability.health_snapshot import (
             build_dependency_status,
             build_effective_config_public,
             build_features_enabled,
         )
-        from services.infrastructure.system_optimizer import get_effective_config
 
         _eff = get_effective_config(cfg)
         payload["effective_limits"] = {

@@ -86,7 +86,7 @@ def test_routers_dont_import_db_directly():
                     names = [alias.name for alias in (node.names or [])]
                     if "get_connection" in names:
                         violations.append(f"{py_file.name}: direct DB import ({node.module})")
-    assert not violations, f"Router DB-bypass violations:\n  " + "\n  ".join(violations)
+    assert not violations, "Router DB-bypass violations:\n  " + "\n  ".join(violations)
 
 
 # ---------------------------------------------------------------------------
