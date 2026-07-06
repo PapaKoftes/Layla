@@ -1,0 +1,156 @@
+{
+  "app": {
+    "name": "Layla",
+    "tagline": "ローカルファーストのAIコンパニオン"
+  },
+  "action": {
+    "send": "送信",
+    "cancel": "キャンセル",
+    "close": "閉じる",
+    "save": "保存",
+    "save_reload": "保存して再読み込み",
+    "clear": "クリア",
+    "copy": "コピー",
+    "apply": "適用",
+    "apply_all": "すべて適用",
+    "execute": "実行",
+    "browse": "参照",
+    "connect": "接続",
+    "configure": "設定",
+    "back": "戻る",
+    "next": "次へ",
+    "dismiss": "閉じる",
+    "refresh": "更新",
+    "load": "読み込み",
+    "retry": "再試行",
+    "download": "ダウンロード",
+    "compact": "圧縮",
+    "regenerate": "再生成",
+    "delete": "削除",
+    "rename": "名前を変更",
+    "export": "エクスポート",
+    "import": "インポート",
+    "new_chat": "新しいチャット"
+  },
+  "nav": {
+    "chat": "チャット",
+    "dashboard": "ダッシュボード",
+    "settings": "設定",
+    "panels": "パネル",
+    "more_actions": "その他の操作",
+    "toggle_theme": "ダーク/ライト切り替え",
+    "toggle_sidebar": "サイドバーの切り替え",
+    "open_chats": "チャットを開く",
+    "capabilities": "機能",
+    "character_lab": "キャラクターラボ",
+    "cluster": "クラスター",
+    "checkpoints": "チェックポイント",
+    "artifacts": "成果物",
+    "awareness": "アウェアネス",
+    "growth": "成長",
+    "missions": "ミッション"
+  },
+  "chat": {
+    "placeholder": "Laylaにメッセージ…",
+    "server_status": "サーバーの状態",
+    "llm_status": "LLMの状態",
+    "session_duration": "セッション時間",
+    "context_usage_high": "コンテキスト使用量が多い",
+    "thinking": "思考中…",
+    "detecting": "検出中…"
+  },
+  "settings": {
+    "title": "設定",
+    "loading": "読み込み中…",
+    "load_error": "設定を読み込めませんでした。Laylaは実行中ですか？",
+    "language": "インターフェース言語",
+    "language_hint": "Laylaのウェブインターフェースの言語。",
+    "chat_streaming": "チャットとストリーミング",
+    "build_updates": "ビルドと更新",
+    "check_updates": "更新を確認",
+    "appearance": "外観 / ライトモード",
+    "deliberation": "熟考",
+    "depth": "深度",
+    "coding": "コーディング",
+    "admin_mode": "管理者モード",
+    "autonomous_execution": "自律実行",
+    "config_reference": "設定リファレンス",
+    "choose_voice": "音声を選択",
+    "avatar_seed": "アバターシード",
+    "avatar_style": "アバタースタイル"
+  },
+  "model": {
+    "download_a_model": "モデルをダウンロード",
+    "download_from_hf": "Hugging Faceからダウンロード",
+    "download_selected": "選択項目をダウンロード",
+    "warming_up": "モデルを読み込み中 — ウォームアップ中…",
+    "cannot_reach": "Laylaに接続できません — サーバーは実行中ですか？"
+  },
+  "onboarding": {
+    "welcome": "Laylaへようこそ",
+    "get_started": "セットアップを始めましょう。",
+    "detect_hardware": "ハードウェアを検出",
+    "choose_model": "モデルを選択",
+    "workspace": "ワークスペース",
+    "character": "キャラクター",
+    "voice": "音声",
+    "finish": "完了",
+    "skip": "後で設定"
+  },
+  "help": {
+    "title": "ヘルプとショートカット",
+    "send": "Enter — 送信 · Shift+Enter — 改行",
+    "open_sheet": "Ctrl+/ — このシートを開く",
+    "search_chat": "Ctrl+F — チャット内を検索",
+    "clear_input": "Ctrl+K — 入力をクリア",
+    "regenerate": "Ctrl+R — 直前の返信を再生成",
+    "escape": "Escape — オーバーレイを閉じる、マイクを停止",
+    "command_palette": "Ctrl+K — コマンドパレット"
+  },
+  "panel": {
+    "execution_trace": "実行トレース",
+    "coordinator_tasks": "コーディネータータスク",
+    "engine_plans": "エンジンプラン",
+    "file_checkpoints": "ファイルチェックポイント",
+    "facts": "ファクト",
+    "confidence": "信頼度",
+    "council": "カウンシル",
+    "debate": "ディベート",
+    "discovered_peers": "検出されたピア",
+    "enable_clustering": "クラスタリングを有効化"
+  },
+  "search": {
+    "placeholder": "検索…",
+    "all_types": "すべての種類",
+    "elasticsearch": "Elasticsearch（キーワード）",
+    "no_results": "結果なし"
+  },
+  "status": {
+    "active": "アクティブ",
+    "auto": "自動",
+    "default": "デフォルト",
+    "disabled": "無効",
+    "enabled": "有効",
+    "ready": "準備完了。何をしましょうか？"
+  },
+  "toast": {
+    "saved": "保存しました",
+    "copied": "コピーしました",
+    "export_downloaded": "エクスポートをダウンロードしました",
+    "export_failed": "エクスポートに失敗しました",
+    "compact_done": "コンテキストを圧縮しました",
+    "compact_failed": "圧縮に失敗しました",
+    "generic_error": "問題が発生しました。サーバーログを確認してください。"
+  },
+  "error": {
+    "network": "Laylaに接続できません — サーバーは実行中ですか？",
+    "request_failed": "処理中にリクエストが失敗しました。",
+    "no_response": "応答がありません。もう一度試すか、言い換えてください。",
+    "model_not_ready": "モデルの準備ができていません。設定でモデルを構成してください。"
+  },
+  "confirm": {
+    "apply_to_file": "ファイルに適用しますか？",
+    "requires_approval": "適用（承認が必要）",
+    "delete_conversation": "この会話を削除しますか？"
+  }
+}

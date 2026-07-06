@@ -1,0 +1,156 @@
+{
+  "app": {
+    "name": "Layla",
+    "tagline": "Local-first AI companion"
+  },
+  "action": {
+    "send": "Send",
+    "cancel": "Cancel",
+    "close": "Close",
+    "save": "Save",
+    "save_reload": "Save & reload",
+    "clear": "Clear",
+    "copy": "Copy",
+    "apply": "Apply",
+    "apply_all": "Apply all",
+    "execute": "Execute",
+    "browse": "Browse",
+    "connect": "Connect",
+    "configure": "Configure",
+    "back": "Back",
+    "next": "Next",
+    "dismiss": "Dismiss",
+    "refresh": "Refresh",
+    "load": "Load",
+    "retry": "Retry",
+    "download": "Download",
+    "compact": "Compact",
+    "regenerate": "Regenerate",
+    "delete": "Delete",
+    "rename": "Rename",
+    "export": "Export",
+    "import": "Import",
+    "new_chat": "New chat"
+  },
+  "nav": {
+    "chat": "Chat",
+    "dashboard": "Dashboard",
+    "settings": "Settings",
+    "panels": "Panels",
+    "more_actions": "More actions",
+    "toggle_theme": "Toggle dark/light",
+    "toggle_sidebar": "Toggle sidebar",
+    "open_chats": "Open chats",
+    "capabilities": "Capabilities",
+    "character_lab": "Character Lab",
+    "cluster": "Cluster",
+    "checkpoints": "Checkpoints",
+    "artifacts": "Artifacts",
+    "awareness": "Awareness",
+    "growth": "Growth",
+    "missions": "Missions"
+  },
+  "chat": {
+    "placeholder": "Message Layla…",
+    "server_status": "Server status",
+    "llm_status": "LLM status",
+    "session_duration": "Session duration",
+    "context_usage_high": "Context usage high",
+    "thinking": "Thinking…",
+    "detecting": "Detecting…"
+  },
+  "settings": {
+    "title": "Settings",
+    "loading": "Loading…",
+    "load_error": "Could not load settings. Is Layla running?",
+    "language": "Interface language",
+    "language_hint": "Language of the Layla web interface.",
+    "chat_streaming": "Chat & Streaming",
+    "build_updates": "Build & updates",
+    "check_updates": "Check for updates",
+    "appearance": "Appearance / lite mode",
+    "deliberation": "Deliberation",
+    "depth": "Depth",
+    "coding": "Coding",
+    "admin_mode": "Admin mode",
+    "autonomous_execution": "Autonomous execution",
+    "config_reference": "Config Reference",
+    "choose_voice": "Choose a voice",
+    "avatar_seed": "Avatar seed",
+    "avatar_style": "Avatar style"
+  },
+  "model": {
+    "download_a_model": "Download a model",
+    "download_from_hf": "Download from Hugging Face",
+    "download_selected": "Download Selected",
+    "warming_up": "Loading model — warming up…",
+    "cannot_reach": "Cannot reach Layla — is the server running?"
+  },
+  "onboarding": {
+    "welcome": "Welcome to Layla",
+    "get_started": "Let's get you set up.",
+    "detect_hardware": "Detect hardware",
+    "choose_model": "Choose a model",
+    "workspace": "Workspace",
+    "character": "Character",
+    "voice": "Voice",
+    "finish": "Finish",
+    "skip": "Skip for now"
+  },
+  "help": {
+    "title": "Help & shortcuts",
+    "send": "Enter — Send · Shift+Enter — New line",
+    "open_sheet": "Ctrl+/ — Open this sheet",
+    "search_chat": "Ctrl+F — Search in chat",
+    "clear_input": "Ctrl+K — Clear input",
+    "regenerate": "Ctrl+R — Regenerate last reply",
+    "escape": "Escape — Close overlays, stop mic",
+    "command_palette": "Ctrl+K — Command palette"
+  },
+  "panel": {
+    "execution_trace": "Execution trace",
+    "coordinator_tasks": "Coordinator tasks",
+    "engine_plans": "Engine plans",
+    "file_checkpoints": "File checkpoints",
+    "facts": "Facts",
+    "confidence": "Confidence",
+    "council": "Council",
+    "debate": "Debate",
+    "discovered_peers": "Discovered peers",
+    "enable_clustering": "Enable Clustering"
+  },
+  "search": {
+    "placeholder": "Search…",
+    "all_types": "All types",
+    "elasticsearch": "Elasticsearch (keyword)",
+    "no_results": "No results"
+  },
+  "status": {
+    "active": "Active",
+    "auto": "Auto",
+    "default": "Default",
+    "disabled": "Disabled",
+    "enabled": "Enabled",
+    "ready": "Ready. What do you need?"
+  },
+  "toast": {
+    "saved": "Saved",
+    "copied": "Copied",
+    "export_downloaded": "Export downloaded",
+    "export_failed": "Export failed",
+    "compact_done": "Context compacted",
+    "compact_failed": "Compact failed",
+    "generic_error": "Something went wrong. Check the server logs."
+  },
+  "error": {
+    "network": "Cannot reach Layla — is the server running?",
+    "request_failed": "The request failed while processing.",
+    "no_response": "No response. Try again or rephrase.",
+    "model_not_ready": "Model not ready. Configure a model in Settings."
+  },
+  "confirm": {
+    "apply_to_file": "Apply to file?",
+    "requires_approval": "Apply (requires approval)",
+    "delete_conversation": "Delete this conversation?"
+  }
+}

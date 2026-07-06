@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="/layla-ui/css/layla.css">
 <link rel="stylesheet" href="/layla-ui/css/layla-enhanced.css">
 <link rel="stylesheet" href="/layla-ui/css/layla-rebuild.css">
+<link rel="stylesheet" href="/layla-ui/css/rtl.css">
 <script src="/layla-ui/vendor/js/marked.min.js"></script>
 <script src="/layla-ui/vendor/js/highlight.min.js"></script>
 <script src="/layla-ui/vendor/js/purify.min.js"></script>
@@ -110,7 +111,7 @@
               <div class="setup-section-title">Models already downloaded</div>
               <div id="setup-existing-list"></div>
             </div>
-            <div class="setup-section-title">Download a Model</div>
+            <div class="setup-section-title" data-i18n="model.download_a_model">Download a Model</div>
             <div id="setup-model-list"><div style="color:var(--text-dim);font-size:0.8rem">Loading catalog…</div></div>
             <div class="setup-section-title">Or paste a direct HuggingFace .gguf URL</div>
             <div class="setup-custom-url">
@@ -120,9 +121,9 @@
             <div class="setup-progress"><div class="setup-progress-bar" id="setup-progress-bar"></div></div>
             <div id="setup-done-msg"></div>
             <div class="setup-btns">
-              <button class="setup-btn primary" id="setup-download-btn" data-action="startModelDownload" disabled>Download Selected</button>
+              <button class="setup-btn primary" id="setup-download-btn" data-action="startModelDownload" disabled data-i18n="model.download_selected">Download Selected</button>
               <button class="setup-btn" type="button" id="setup-retry-btn" style="display:none" data-action="retryModelDownload">Retry download</button>
-              <button class="setup-btn skip" data-action="dismissSetupOverlay" data-arg="true">Skip for now</button>
+              <button class="setup-btn skip" data-action="dismissSetupOverlay" data-arg="true" data-i18n="onboarding.skip">Skip for now</button>
             </div>
           </div>
         </div>
@@ -143,7 +144,7 @@
         </div>
       </div>
       <div class="wizard-step" data-wstep="4">
-        <h2 style="margin:0 0 8px;color:var(--asp);font-family:'Cinzel',serif">Choose a voice</h2>
+        <h2 style="margin:0 0 8px;color:var(--asp);font-family:'Cinzel',serif" data-i18n="settings.choose_voice">Choose a voice</h2>
         <p style="margin:0 0 10px;color:var(--text-dim);line-height:1.6">Pick your default facet. You can change per message with <code>@aspect</code>.</p>
         <div id="wizard-aspects" style="display:grid;grid-template-columns:1fr 1fr;gap:8px"></div>
       </div>
@@ -162,15 +163,15 @@
       </div>
     </div>
     <div class="wizard-actions">
-      <button type="button" class="tab-btn" id="wizard-back-btn">Back</button>
-      <button type="button" class="tab-btn" id="wizard-next-btn" style="background:var(--asp-mid);border-color:var(--asp)">Next</button>
+      <button type="button" class="tab-btn" id="wizard-back-btn" data-i18n="action.back">Back</button>
+      <button type="button" class="tab-btn" id="wizard-next-btn" style="background:var(--asp-mid);border-color:var(--asp)" data-i18n="action.next">Next</button>
     </div>
     <div class="wizard-hint">Tip: Escape won’t dismiss until the end.</div>
   </div>
 </div>
 <a href="#chat" class="skip-to-content">Skip to chat</a>
 <header>
-  <button id="mobile-hamburger" class="mobile-hamburger" data-action="toggleMobileSidebar" title="Toggle sidebar" aria-label="Toggle sidebar">☰</button>
+  <button id="mobile-hamburger" class="mobile-hamburger" data-action="toggleMobileSidebar" title="Toggle sidebar" aria-label="Toggle sidebar" data-i18n-title="nav.toggle_sidebar" data-i18n-aria-label="nav.toggle_sidebar">☰</button>
   <div class="title">∴ LAYLA</div>
   <div class="header-core">
     <div id="aspect-badge" class="aspect-badge">∴ MORRIGAN</div>
@@ -181,11 +182,11 @@
   </div>
   <div class="header-actions">
     <button type="button" id="compact-chat-btn" data-action="compactConversation" title="Compact context" class="header-action-btn">⊙ Compact</button>
-    <button data-action="toggleTheme" id="theme-btn" title="Toggle dark/light" aria-label="Toggle theme" class="header-action-btn">🌙</button>
-    <button data-action="openSettings" title="Settings" aria-label="Settings" class="header-action-btn">⚙</button>
-    <button type="button" id="chat-rail-toggle" data-action="toggleChatRailMobile" title="Chats" aria-label="Open chats" class="header-action-btn rp-mobile-only">💬</button>
-    <button type="button" class="rp-toggle-btn header-action-btn" data-action="toggleRightPanel" title="Panels" aria-label="Toggle right panel">☰ Panels</button>
-    <button type="button" class="header-action-btn header-overflow-trigger" id="header-overflow-btn" data-action="toggleHeaderOverflow" title="More actions" aria-label="More actions">⋮</button>
+    <button data-action="toggleTheme" id="theme-btn" title="Toggle dark/light" aria-label="Toggle theme" data-i18n-title="nav.toggle_theme" class="header-action-btn">🌙</button>
+    <button data-action="openSettings" title="Settings" aria-label="Settings" data-i18n-title="nav.settings" data-i18n-aria-label="nav.settings" class="header-action-btn">⚙</button>
+    <button type="button" id="chat-rail-toggle" data-action="toggleChatRailMobile" title="Chats" aria-label="Open chats" data-i18n-aria-label="nav.open_chats" class="header-action-btn rp-mobile-only">💬</button>
+    <button type="button" class="rp-toggle-btn header-action-btn" data-action="toggleRightPanel" title="Panels" aria-label="Toggle right panel" data-i18n-title="nav.panels">☰ Panels</button>
+    <button type="button" class="header-action-btn header-overflow-trigger" id="header-overflow-btn" data-action="toggleHeaderOverflow" title="More actions" aria-label="More actions" data-i18n-title="nav.more_actions" data-i18n-aria-label="nav.more_actions">⋮</button>
   </div>
   <!-- Preserved IDs for JS compatibility (hidden from view) -->
   <div aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden;pointer-events:none">
@@ -196,7 +197,7 @@
     <select id="model-override" title="Model for this request">
       <option value="">Default</option><option value="coding">Coding</option><option value="reasoning">Reasoning</option><option value="chat">Chat</option>
     </select>
-    <button id="charlab-open-btn" tabindex="-1">Character Lab</button>
+    <button id="charlab-open-btn" tabindex="-1" data-i18n="nav.character_lab">Character Lab</button>
     <button id="sidebar-compact-btn" tabindex="-1">Compact</button>
     <button id="open-cli-btn" tabindex="-1">Terminal</button>
   </div>
@@ -316,14 +317,14 @@
       <div class="dash-card dash-card-clickable" id="dash-facts" title="Total learned facts — click to open Knowledge" role="button" tabindex="0" data-action="showWorkspaceKnowledge">
         <span class="dash-card-icon">◉</span>
         <div class="dash-card-body">
-          <span class="dash-card-label">Facts</span>
+          <span class="dash-card-label" data-i18n="panel.facts">Facts</span>
           <span class="dash-card-value" id="dash-facts-val">—</span>
         </div>
       </div>
       <div class="dash-card dash-card-clickable" id="dash-cluster" title="Cluster node status — click to open Cluster" role="button" tabindex="0" data-action="showMainPanel" data-arg="cluster">
         <span class="dash-card-icon">⬡</span>
         <div class="dash-card-body">
-          <span class="dash-card-label">Cluster</span>
+          <span class="dash-card-label" data-i18n="nav.cluster">Cluster</span>
           <span class="dash-card-value" id="dash-cluster-val">—</span>
         </div>
       </div>
@@ -357,16 +358,16 @@
       <span id="topbar-session-time" class="topbar-pill" title="Session duration">0:00</span>
       <div class="topbar-spacer"></div>
       <button type="button" class="topbar-btn" data-action="compactConversation" title="Compact context">⊙ Compact</button>
-      <button type="button" class="topbar-btn" data-action="toggleTheme" title="Toggle dark/light" aria-label="Toggle theme">🌙</button>
-      <button type="button" class="topbar-btn" data-action="openOverlayPanel" data-arg="prefs" title="Settings" aria-label="Settings">⚙</button>
-      <button type="button" class="rp-toggle-btn" data-action="toggleRightPanel" title="Panels" aria-label="Toggle panels">☰ Panels</button>
-      <button type="button" class="topbar-btn header-overflow-trigger" data-action="toggleHeaderOverflow" title="More actions" aria-label="More actions">⋮</button>
+      <button type="button" class="topbar-btn" data-action="toggleTheme" title="Toggle dark/light" aria-label="Toggle theme" data-i18n-title="nav.toggle_theme">🌙</button>
+      <button type="button" class="topbar-btn" data-action="openOverlayPanel" data-arg="prefs" title="Settings" aria-label="Settings" data-i18n-title="nav.settings" data-i18n-aria-label="nav.settings">⚙</button>
+      <button type="button" class="rp-toggle-btn" data-action="toggleRightPanel" title="Panels" aria-label="Toggle panels" data-i18n-title="nav.panels">☰ Panels</button>
+      <button type="button" class="topbar-btn header-overflow-trigger" data-action="toggleHeaderOverflow" title="More actions" aria-label="More actions" data-i18n-title="nav.more_actions" data-i18n-aria-label="nav.more_actions">⋮</button>
     </div>
     <div id="context-chip" class="context-chip" title="Active thread context">No chat selected — start a new chat or pick one from the list.</div>
     <div id="compose-panel" class="compose-panel" aria-label="Working notes">
       <div class="compose-panel-head">
         <span>Working notes → merged into request context (not shown as a user chat line)</span>
-        <button type="button" class="tab-btn" data-action="toggleComposePanel" data-arg="false" style="font-size:0.65rem;padding:3px 8px">Close</button>
+        <button type="button" class="tab-btn" data-action="toggleComposePanel" data-arg="false" style="font-size:0.65rem;padding:3px 8px" data-i18n="action.close">Close</button>
       </div>
       <textarea id="compose-draft" placeholder="Longer context, specs, pasted errors, draft text…" autocomplete="off" data-on-input="saveComposeDraft" aria-label="Working notes compose area"></textarea>
     </div>
@@ -402,7 +403,7 @@
         <pre class="pipeline-clarify-questions" style="white-space:pre-wrap;margin:0 0 8px;font-family:inherit;font-size:0.7rem;color:var(--text-dim)"></pre>
         <label for="pipeline-clarify-answers" style="display:block;margin-bottom:4px;color:var(--text-dim)">Your answers (sent as <code>clarification_reply</code> on next Send)</label>
         <textarea id="pipeline-clarify-answers" rows="3" style="width:100%;box-sizing:border-box;font-size:0.72rem;padding:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px" placeholder="Answer the questions above, then Send again with the same goal in mind."></textarea>
-        <button type="button" class="tab-btn" style="margin-top:6px;font-size:0.65rem" data-action="dismissPipelineClarify">Dismiss</button>
+        <button type="button" class="tab-btn" style="margin-top:6px;font-size:0.65rem" data-action="dismissPipelineClarify" data-i18n="action.dismiss">Dismiss</button>
       </div>
       <div class="input-row">
         <div class="mention-wrap">
@@ -415,7 +416,7 @@
         <button id="mic-btn" data-action="toggleMic" title="Click to record voice" aria-label="Record voice">🎤</button>
         <button id="retry-btn" data-action="retryLastMessage" title="Regenerate last reply (Ctrl+R)" aria-label="Regenerate last reply" style="display:none;font-size:0.75rem;padding:4px 8px">↻ Regenerate</button>
         <button type="button" id="cancel-send-btn" data-action="cancelActiveSend" title="Stop generation" aria-label="Stop generation" style="display:none;font-size:0.75rem;padding:4px 8px">Stop</button>
-        <button type="button" id="send-btn" data-action="triggerSend" aria-label="Send message">Send</button>
+        <button type="button" id="send-btn" data-action="triggerSend" aria-label="Send message" data-i18n="action.send">Send</button>
       </div>
       <div id="ctx-usage-row" style="display:flex;align-items:center;gap:8px;padding:4px 8px 0;font-size:0.65rem;color:var(--text-dim)">
         <div style="flex:1;height:3px;background:var(--border);border-radius:2px;overflow:hidden;min-width:40px">
@@ -434,22 +435,22 @@
 <aside id="layla-right-panel" class="layla-right-panel" aria-label="Layla control center">
   <div class="panel-close-row">
     <button type="button" class="panel-close-btn" data-action="closeRightPanel" aria-label="Close panel">← Back</button>
-    <span class="panel-close-title">Panels</span>
+    <span class="panel-close-title" data-i18n="nav.panels">Panels</span>
   </div>
   <div class="rcp-tabs" role="tablist" aria-label="Panel tabs">
-      <button type="button" class="rcp-tab active" role="tab" aria-selected="true" data-rcp="status" id="tab-status" aria-controls="panel-status">Dashboard</button>
-      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="prefs" id="tab-prefs" aria-controls="panel-prefs">Settings</button>
+      <button type="button" class="rcp-tab active" role="tab" aria-selected="true" data-rcp="status" id="tab-status" aria-controls="panel-status" data-i18n="nav.dashboard">Dashboard</button>
+      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="prefs" id="tab-prefs" aria-controls="panel-prefs" data-i18n="nav.settings">Settings</button>
       <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="workspace" id="tab-workspace" aria-controls="panel-workspace">Library</button>
       <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="research" id="tab-research" aria-controls="panel-research">Research</button>
-      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="artifacts" id="tab-artifacts" aria-controls="panel-artifacts">Artifacts</button>
+      <button type="button" class="rcp-tab" role="tab" aria-selected="false" data-rcp="artifacts" id="tab-artifacts" aria-controls="panel-artifacts" data-i18n="nav.artifacts">Artifacts</button>
     </div>
     <div class="rcp-body">
       <section class="rcp-page active" data-rcp="status" role="tabpanel" aria-hidden="false" id="panel-status" aria-labelledby="tab-status">
         <div class="rta-card">
-          <div class="panel-title" style="margin-bottom:6px">Build &amp; updates</div>
+          <div class="panel-title" style="margin-bottom:6px" data-i18n="settings.build_updates">Build &amp; updates</div>
           <div id="app-version" style="margin-bottom:6px;color:var(--text-dim);font-size:0.72rem">Version: loading...</div>
           <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">
-            <button type="button" class="tab-btn" data-action="checkForUpdates">Check for updates</button>
+            <button type="button" class="tab-btn" data-action="checkForUpdates" data-i18n="settings.check_updates">Check for updates</button>
             <button type="button" class="tab-btn" data-action="laylaRunSetupAuto">/setup/auto</button>
             <button type="button" class="tab-btn" data-action="laylaRunDoctor">/doctor</button>
           </div>
@@ -465,7 +466,7 @@
           <div id="runtime-options-panel"><span style="color:var(--text-dim);font-size:0.7rem">Loading…</span></div>
         </div>
         <details class="dashboard-section">
-          <summary class="dashboard-section-title">Execution trace</summary>
+          <summary class="dashboard-section-title" data-i18n="panel.execution_trace">Execution trace</summary>
           <p class="rta-muted" style="margin:0 0 6px">Last agent run for this chat (<code>/debug/state</code>).</p>
           <div class="rta-card">
             <button type="button" class="tab-btn" data-action="wsRefreshExecutionPanels">Refresh trace</button>
@@ -473,7 +474,7 @@
           </div>
         </details>
         <details class="dashboard-section">
-          <summary class="dashboard-section-title">Coordinator tasks</summary>
+          <summary class="dashboard-section-title" data-i18n="panel.coordinator_tasks">Coordinator tasks</summary>
           <p class="rta-muted" style="margin:0 0 6px">Persisted runs (<code>/debug/tasks</code>).</p>
           <div class="rta-card">
             <button type="button" class="tab-btn" data-action="wsRefreshExecutionPanels">Refresh tasks</button>
@@ -505,7 +506,7 @@
             </div>
             <details class="dashboard-section" style="margin-top:8px">
               <summary class="dashboard-section-title">Capabilities &amp; learning types</summary>
-              <div class="panel-title" style="margin-bottom:6px;font-size:0.72rem">Capabilities</div>
+              <div class="panel-title" style="margin-bottom:6px;font-size:0.72rem" data-i18n="nav.capabilities">Capabilities</div>
               <div id="growth-capabilities-list" style="margin-bottom:12px;font-size:0.7rem">Loading...</div>
               <div class="panel-title" style="margin-bottom:6px;font-size:0.72rem">Learning Types</div>
               <div id="growth-types-list" style="margin-bottom:12px;font-size:0.7rem">Loading...</div>
@@ -517,12 +518,12 @@
         </div>
 
         <!-- Cluster Status (merged from Cluster tab) -->
-        <div class="rta-section-title">Cluster</div>
+        <div class="rta-section-title" data-i18n="nav.cluster">Cluster</div>
         <div id="cluster-status-panel">
           <!-- Phase 5B: Cluster Setup Controls -->
           <div class="cluster-setup-section">
             <div class="cluster-toggle">
-              <span class="cluster-toggle-label">Enable Clustering</span>
+              <span class="cluster-toggle-label" data-i18n="panel.enable_clustering">Enable Clustering</span>
               <div id="cluster-enable-toggle" class="cluster-toggle-switch" data-action="toggleClusterEnabled" title="Toggle cluster networking"></div>
             </div>
             <div id="cluster-pair-as-drone" style="display:none;margin-top:6px">
@@ -572,9 +573,33 @@
 
       <section class="rcp-page" data-rcp="prefs" role="tabpanel" aria-hidden="true" id="panel-prefs" aria-labelledby="tab-prefs">
 
+        <!-- ═══ GROUP 0: Interface language ═══ -->
+        <details class="settings-accordion" open>
+          <summary class="settings-accordion-title" data-i18n="settings.language">Interface language</summary>
+          <div class="settings-accordion-body">
+            <label class="option-row" for="ui-language-select">
+              <span data-i18n="settings.language">Interface language</span>
+              <select id="ui-language-select" aria-label="Interface language" data-i18n-aria-label="settings.language">
+                <option value="en">English</option>
+                <option value="es">Español</option>
+                <option value="de">Deutsch</option>
+                <option value="fr">Français</option>
+                <option value="it">Italiano</option>
+                <option value="pt">Português</option>
+                <option value="ru">Русский</option>
+                <option value="ja">日本語</option>
+                <option value="zh">中文</option>
+                <option value="ko">한국어</option>
+                <option value="ar">العربية</option>
+              </select>
+            </label>
+            <p class="rta-muted" style="margin:4px 0 0;font-size:0.68rem" data-i18n="settings.language_hint">Language of the Layla web interface.</p>
+          </div>
+        </details>
+
         <!-- ═══ GROUP 1: Chat & Streaming ═══ -->
         <details class="settings-accordion" open>
-          <summary class="settings-accordion-title">Chat &amp; Streaming</summary>
+          <summary class="settings-accordion-title" data-i18n="settings.chat_streaming">Chat &amp; Streaming</summary>
           <div class="settings-accordion-body">
             <label class="option-row" title="See her reply as it types">
               <input type="checkbox" id="stream-toggle" checked> Stream responses
@@ -601,7 +626,7 @@
                 </select>
               </label>
               <label class="option-row" title="Deliberation: how many aspects weigh in">
-                <span class="settings-label">Deliberation</span>
+                <span class="settings-label" data-i18n="settings.deliberation">Deliberation</span>
                 <select id="deliberation-mode-select" class="settings-select" data-on-change="setDeliberationMode" data-pass-value>
                   <option value="solo">Solo</option>
                   <option value="auto" selected>Auto</option>
@@ -701,7 +726,7 @@
         <details class="settings-accordion" id="prefs-research-section">
           <summary class="settings-accordion-title">Research Mission <button type="button" class="settings-link-btn" data-action="focusResearchPanel" data-action-stop title="Open Research tab">Results →</button></summary>
           <div class="settings-accordion-body">
-            <label class="settings-group-label">Depth</label>
+            <label class="settings-group-label" data-i18n="settings.depth">Depth</label>
             <div class="settings-row-inline">
               <label class="settings-radio"><input type="radio" name="mission-depth" value="map"> Map</label>
               <label class="settings-radio"><input type="radio" name="mission-depth" value="deep" checked> Deep</label>
@@ -777,7 +802,7 @@
       <section class="rcp-page" data-rcp="workspace" role="tabpanel" aria-hidden="true" id="panel-workspace" aria-labelledby="tab-workspace">
         <div class="rcp-subtabs" role="tablist" aria-label="Workspace tools">
           <button type="button" class="rcp-subtab active" data-rcp-sub="models">Models</button>
-          <button type="button" class="rcp-subtab" data-rcp-sub="awareness">Awareness</button>
+          <button type="button" class="rcp-subtab" data-rcp-sub="awareness" data-i18n="nav.awareness">Awareness</button>
           <button type="button" class="rcp-subtab" data-rcp-sub="knowledge">Knowledge</button>
           <button type="button" class="rcp-subtab" data-rcp-sub="study">Study &amp; plans</button>
           <button type="button" class="rcp-subtab" data-rcp-sub="memory">Memory</button>
@@ -832,7 +857,7 @@
             <input type="text" id="study-input" placeholder="New topic..." data-on-keydown-enter="addStudyPlan">
             <button data-action="addStudyPlan">+</button>
           </div>
-          <div class="panel-title" style="margin-top:14px">Engine plans</div>
+          <div class="panel-title" style="margin-top:14px" data-i18n="panel.engine_plans">Engine plans</div>
           <p class="rta-muted" style="margin:0 0 8px;font-size:0.68rem">Durable plans (draft → approve → execute). Uses workspace path from <strong>Settings</strong> when set.</p>
           <button type="button" class="approve-btn" style="font-size:0.7rem;margin-bottom:8px" data-action="refreshLaylaPlansPanel">Refresh list</button>
           <div id="layla-plans-last-exec" style="font-size:0.68rem;margin-bottom:8px;color:var(--text-dim)"></div>
@@ -841,7 +866,7 @@
           <!-- Autonomous execution monitor (Phase 2.2) -->
           <div id="auto-monitor-panel" style="display:none;margin-top:12px;border:1px solid var(--asp-line,var(--border));border-radius:4px;padding:8px;background:rgba(0,0,0,0.15)">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-              <span class="panel-title" style="margin:0;font-size:0.7rem">Autonomous execution</span>
+              <span class="panel-title" style="margin:0;font-size:0.7rem" data-i18n="settings.autonomous_execution">Autonomous execution</span>
               <div style="display:flex;gap:4px">
                 <button type="button" data-action="laylaAutoStop" class="approve-btn" style="font-size:0.6rem;padding:2px 6px;background:rgba(231,76,60,0.2);border-color:#e74c3c;color:#e74c3c">Stop</button>
                 <button type="button" data-action="laylaAutoMonitorClose" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.8rem" title="Hide panel">✕</button>
@@ -863,14 +888,14 @@
           <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">
             <button type="button" class="rcp-subtab active" data-mem-sub="browse" data-action="showMemorySubTab" data-arg="browse" style="font-size:0.65rem;padding:3px 8px">Browse</button>
             <button type="button" class="rcp-subtab" data-mem-sub="search" data-action="showMemorySubTab" data-arg="search" style="font-size:0.65rem;padding:3px 8px">Search</button>
-            <button type="button" class="rcp-subtab" data-mem-sub="checkpoints" data-action="showMemorySubTab" data-arg="checkpoints" style="font-size:0.65rem;padding:3px 8px">Checkpoints</button>
+            <button type="button" class="rcp-subtab" data-mem-sub="checkpoints" data-action="showMemorySubTab" data-arg="checkpoints" style="font-size:0.65rem;padding:3px 8px" data-i18n="nav.checkpoints">Checkpoints</button>
           </div>
 
           <!-- Browse sub-tab -->
           <div data-mem-subpage="browse">
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
               <select id="mem-browse-type" style="font-size:0.68rem;padding:3px;background:var(--code-bg);color:var(--text);border:1px solid var(--border);border-radius:3px" data-on-change="laylaMemBrowseReset">
-                <option value="">All types</option>
+                <option value="" data-i18n="search.all_types">All types</option>
                 <option value="fact">Fact</option>
                 <option value="strategy">Strategy</option>
                 <option value="outcome">Outcome</option>
@@ -895,7 +920,7 @@
             <div class="panel-title">Semantic search</div>
             <input id="memory-search" placeholder="Search memories…" data-on-input="onMemorySearch" autocomplete="off">
             <div id="memory-search-results" style="font-size:0.72rem"><span style="color:var(--text-dim);font-size:0.7rem">Type to search learnings</span></div>
-            <div class="panel-title" style="margin-top:10px">Elasticsearch (keyword)</div>
+            <div class="panel-title" style="margin-top:10px" data-i18n="search.elasticsearch">Elasticsearch (keyword)</div>
             <p class="rta-muted" style="margin:0 0 6px;font-size:0.65rem">Optional mirror. When off, use semantic search above.</p>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;align-items:center">
               <input type="text" id="es-learning-search" placeholder="Keyword search…" style="flex:1;min-width:140px;padding:4px;box-sizing:border-box" data-on-keydown-enter="runElasticsearchLearningSearch">
@@ -906,7 +931,7 @@
 
           <!-- Checkpoints sub-tab -->
           <div data-mem-subpage="checkpoints" style="display:none">
-            <div class="panel-title">File checkpoints</div>
+            <div class="panel-title" data-i18n="panel.file_checkpoints">File checkpoints</div>
             <p class="rta-muted" style="margin:0 0 6px;font-size:0.65rem">Snapshots before writes. Restore may require approval (Safety tab).</p>
             <button type="button" class="approve-btn" style="font-size:0.65rem;margin-bottom:6px" data-action="refreshFileCheckpointsPanel">Refresh list</button>
             <div id="file-checkpoints-list" style="font-size:0.68rem;max-height:280px;overflow-y:auto"><span style="color:var(--text-dim);font-size:0.7rem">Click Refresh to load</span></div>
@@ -952,9 +977,9 @@
             </div>
             <textarea id="artifact-edit-content" style="width:100%;min-height:320px;box-sizing:border-box;font-family:ui-monospace,monospace;font-size:0.72rem;padding:10px;background:var(--code-bg);color:var(--text);border:1px solid var(--border);border-radius:4px;resize:vertical" spellcheck="false"></textarea>
             <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
-              <button type="button" class="approve-btn" style="font-size:0.72rem" data-action="laylaArtifactCopyEdit" title="Copy content">Copy</button>
+              <button type="button" class="approve-btn" style="font-size:0.72rem" data-action="laylaArtifactCopyEdit" title="Copy content" data-i18n="action.copy">Copy</button>
               <button type="button" class="approve-btn" style="font-size:0.72rem" data-action="laylaArtifactSendEdit" title="Send edited version to Layla">Send edits</button>
-              <button type="button" class="tab-btn" style="font-size:0.72rem" data-action="laylaArtifactEditClose">Cancel</button>
+              <button type="button" class="tab-btn" style="font-size:0.72rem" data-action="laylaArtifactEditClose" data-i18n="action.cancel">Cancel</button>
             </div>
           </div>
         </div>
@@ -1036,7 +1061,7 @@
         <div class="growth-section">
           <div class="growth-section-title">Knowledge</div>
           <div class="growth-stat-row">
-            <div class="growth-stat-card"><div class="growth-stat-value" id="growth-total-facts">—</div><div class="growth-stat-label">Facts</div></div>
+            <div class="growth-stat-card"><div class="growth-stat-value" id="growth-total-facts">—</div><div class="growth-stat-label" data-i18n="panel.facts">Facts</div></div>
             <div class="growth-stat-card"><div class="growth-stat-value" id="growth-verified-pct">—</div><div class="growth-stat-label">Verified</div></div>
             <div class="growth-stat-card"><div class="growth-stat-value" id="growth-week-count">—</div><div class="growth-stat-label">This Week</div></div>
             <div class="growth-stat-card"><div class="growth-stat-value" id="growth-pending-verify">—</div><div class="growth-stat-label">Pending</div></div>
@@ -1067,7 +1092,7 @@
         </div>
         <!-- Capabilities -->
         <div class="growth-section">
-          <div class="growth-section-title">Capabilities</div>
+          <div class="growth-section-title" data-i18n="nav.capabilities">Capabilities</div>
           <div id="growth-capabilities-list">No capabilities tracked yet</div>
         </div>
         <!-- Learning types -->
@@ -1112,7 +1137,7 @@
     <!-- Similar plans (Phase 2.3) -->
     <div id="plan-viz-similar" style="display:none;font-size:0.68rem;color:var(--text);border-top:1px solid var(--border);padding-top:8px"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button type="button" class="approve-btn" style="font-size:0.72rem" data-action="laylaCloseViz">Close</button>
+      <button type="button" class="approve-btn" style="font-size:0.72rem" data-action="laylaCloseViz" data-i18n="action.close">Close</button>
     </div>
   </div>
 </div>
@@ -1126,7 +1151,7 @@
 
 <div id="keyboard-shortcuts-sheet" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10005;align-items:center;justify-content:center;padding:20px" onclick="if (event.target === this) hideKeyboardShortcutsSheet()">
   <div style="max-width:440px;width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:16px 18px;max-height:85vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.35)" onclick="event.stopPropagation()">
-    <h3 style="margin:0 0 12px;font-size:1rem;font-family:'Cinzel',serif;color:var(--asp)">Help &amp; shortcuts</h3>
+    <h3 style="margin:0 0 12px;font-size:1rem;font-family:'Cinzel',serif;color:var(--asp)" data-i18n="help.title">Help &amp; shortcuts</h3>
     <div style="font-size:0.8rem;line-height:1.5;color:var(--text);margin:0 0 12px">
       <div style="color:var(--text-dim)">Quick guide</div>
       <ul style="margin:6px 0 0 16px;padding:0;font-size:0.82rem;line-height:1.6;color:var(--text)">
@@ -1139,15 +1164,15 @@
     </div>
     <div style="color:var(--text-dim);font-size:0.78rem;margin:0 0 6px">Keyboard shortcuts</div>
     <ul style="margin:0;padding-left:18px;font-size:0.85rem;line-height:1.75;color:var(--text)">
-      <li>Enter — Send · Shift+Enter — New line</li>
-      <li>Ctrl+K — Clear input</li>
-      <li>Ctrl+R — Regenerate last reply</li>
-      <li>Ctrl+/ — Open this sheet</li>
-      <li>Ctrl+F — Search in chat</li>
+      <li data-i18n="help.send">Enter — Send · Shift+Enter — New line</li>
+      <li data-i18n="help.clear_input">Ctrl+K — Clear input</li>
+      <li data-i18n="help.regenerate">Ctrl+R — Regenerate last reply</li>
+      <li data-i18n="help.open_sheet">Ctrl+/ — Open this sheet</li>
+      <li data-i18n="help.search_chat">Ctrl+F — Search in chat</li>
       <li>Arrow Up / Down — Recent prompts (caret at start/end)</li>
-      <li>Escape — Close overlays, stop mic</li>
+      <li data-i18n="help.escape">Escape — Close overlays, stop mic</li>
     </ul>
-    <button type="button" class="setup-btn primary" style="margin-top:16px;width:100%" data-action="hideKeyboardShortcutsSheet">Close</button>
+    <button type="button" class="setup-btn primary" style="margin-top:16px;width:100%" data-action="hideKeyboardShortcutsSheet" data-i18n="action.close">Close</button>
   </div>
 </div>
 
@@ -1161,14 +1186,14 @@
     </div>
     <div class="settings-config-ref">
       <a href="/system_export" target="_blank" title="Full config export">⊕ export config</a>
-      <span class="hint"> — Advanced: edit <code>agent/runtime_config.json</code> directly. <a href="/docs/CONFIG_REFERENCE.md" target="_blank">Config Reference</a> · <a href="/docs/POTATO_MODE.md" target="_blank">Potato mode</a></span>
+      <span class="hint"> — Advanced: edit <code>agent/runtime_config.json</code> directly. <a href="/docs/CONFIG_REFERENCE.md" target="_blank" data-i18n="settings.config_reference">Config Reference</a> · <a href="/docs/POTATO_MODE.md" target="_blank">Potato mode</a></span>
     </div>
     <div class="settings-presets" style="margin:8px 0;padding:8px;border:1px solid rgba(255,255,255,0.12);border-radius:8px">
       <span class="hint">Low-resource preset (merges into config; restart server for full effect):</span>
       <button type="button" class="settings-save" style="margin-left:8px" data-action="applySettingsPreset" data-arg="potato">Apply potato preset</button>
     </div>
     <div class="settings-admin" style="margin:8px 0;padding:8px;border:1px solid rgba(255,255,255,0.12);border-radius:8px">
-      <div class="hint" style="margin-bottom:6px"><strong>Admin mode</strong> — toggle <code>admin_mode</code> / <code>admin_auto_checkpoint</code> / <code>admin_blocklist_override</code> in the settings form above (save applies).</div>
+      <div class="hint" style="margin-bottom:6px"><strong data-i18n="settings.admin_mode">Admin mode</strong> — toggle <code>admin_mode</code> / <code>admin_auto_checkpoint</code> / <code>admin_blocklist_override</code> in the settings form above (save applies).</div>
       <div style="margin-top:8px;font-size:0.7rem;color:var(--text-dim)">Undo last Layla git checkpoint (needs git repo + last commit subject contains <code>layla-checkpoint</code>):</div>
       <input type="text" id="admin-undo-workspace" placeholder="Workspace root path" style="width:100%;max-width:420px;margin-top:4px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--code-bg);color:var(--text)" />
       <button type="button" class="settings-save" style="margin-top:6px" data-action="laylaGitUndoCheckpoint">Git undo last checkpoint</button>
@@ -1197,7 +1222,7 @@
     </div>
     <div class="settings-btns">
       <button class="settings-save" data-action="saveSettings">Save Settings</button>
-      <button class="settings-close" data-action="closeSettings">Close</button>
+      <button class="settings-close" data-action="closeSettings" data-i18n="action.close">Close</button>
       <span class="settings-save-msg" id="settings-save-msg">✓ Saved</span>
     </div>
   </div>
@@ -1215,11 +1240,11 @@
         <div id="models-installed"></div>
       </div>
       <div class="models-section">
-        <div class="models-section-title">Download a model</div>
+        <div class="models-section-title" data-i18n="model.download_a_model">Download a model</div>
         <div id="models-catalog"></div>
       </div>
       <div class="models-section">
-        <div class="models-section-title">Download from Hugging Face</div>
+        <div class="models-section-title" data-i18n="model.download_from_hf">Download from Hugging Face</div>
         <div class="models-hf-row">
           <input id="models-hf-repo" type="text" placeholder="repo id — e.g. bartowski/Qwen2.5-Coder-3B-Instruct-GGUF" />
           <input id="models-hf-file" type="text" placeholder="filename — e.g. Qwen2.5-Coder-3B-Instruct-Q4_K_M.gguf" />
@@ -1234,7 +1259,7 @@
     </div>
     <div class="settings-btns">
       <button class="settings-save" data-action="refreshModelsPanel">Refresh</button>
-      <button class="settings-close" data-action="closeModelsPanel">Close</button>
+      <button class="settings-close" data-action="closeModelsPanel" data-i18n="action.close">Close</button>
     </div>
   </div>
 </div>
@@ -1246,8 +1271,8 @@
     <div id="batch-diff-tabs" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;max-height:120px;overflow-y:auto"></div>
     <div id="batch-diff-content" class="diff-panel" style="min-height:200px;max-height:50vh;overflow:auto;white-space:pre-wrap;font-family:JetBrains Mono,monospace;font-size:0.72rem"></div>
     <div class="diff-actions" style="margin-top:10px">
-      <button class="diff-cancel-btn" data-action="closeBatchDiffViewer">Cancel</button>
-      <button class="diff-confirm-btn" id="batch-apply-btn" data-action="confirmApplyBatch">Apply all</button>
+      <button class="diff-cancel-btn" data-action="closeBatchDiffViewer" data-i18n="action.cancel">Cancel</button>
+      <button class="diff-confirm-btn" id="batch-apply-btn" data-action="confirmApplyBatch" data-i18n="action.apply_all">Apply all</button>
     </div>
   </div>
 </div>
@@ -1255,7 +1280,7 @@
 <!-- Diff viewer overlay -->
 <div id="diff-overlay" onclick="if(event.target===this) closeDiffViewer()">
   <div class="diff-modal">
-    <h2>Apply to file?</h2>
+    <h2 data-i18n="confirm.apply_to_file">Apply to file?</h2>
     <div class="diff-filename" id="diff-filepath"></div>
     <div class="diff-panels">
       <div class="diff-panel" id="diff-left">
@@ -1268,8 +1293,8 @@
       </div>
     </div>
     <div class="diff-actions">
-      <button class="diff-cancel-btn" data-action="closeDiffViewer">Cancel</button>
-      <button class="diff-confirm-btn" id="diff-confirm-btn" data-action="confirmApplyFile">Apply (requires approval)</button>
+      <button class="diff-cancel-btn" data-action="closeDiffViewer" data-i18n="action.cancel">Cancel</button>
+      <button class="diff-confirm-btn" id="diff-confirm-btn" data-action="confirmApplyFile" data-i18n="confirm.requires_approval">Apply (requires approval)</button>
     </div>
   </div>
 </div>

@@ -1,0 +1,156 @@
+{
+  "app": {
+    "name": "Layla",
+    "tagline": "رفيق ذكاء اصطناعي يعمل محليًا"
+  },
+  "action": {
+    "send": "إرسال",
+    "cancel": "إلغاء",
+    "close": "إغلاق",
+    "save": "حفظ",
+    "save_reload": "حفظ وإعادة تحميل",
+    "clear": "مسح",
+    "copy": "نسخ",
+    "apply": "تطبيق",
+    "apply_all": "تطبيق الكل",
+    "execute": "تنفيذ",
+    "browse": "تصفح",
+    "connect": "اتصال",
+    "configure": "تهيئة",
+    "back": "رجوع",
+    "next": "التالي",
+    "dismiss": "تجاهل",
+    "refresh": "تحديث",
+    "load": "تحميل",
+    "retry": "إعادة المحاولة",
+    "download": "تنزيل",
+    "compact": "ضغط",
+    "regenerate": "إعادة التوليد",
+    "delete": "حذف",
+    "rename": "إعادة تسمية",
+    "export": "تصدير",
+    "import": "استيراد",
+    "new_chat": "محادثة جديدة"
+  },
+  "nav": {
+    "chat": "محادثة",
+    "dashboard": "لوحة التحكم",
+    "settings": "الإعدادات",
+    "panels": "اللوحات",
+    "more_actions": "إجراءات أخرى",
+    "toggle_theme": "تبديل الوضع الداكن/الفاتح",
+    "toggle_sidebar": "إظهار/إخفاء الشريط الجانبي",
+    "open_chats": "المحادثات المفتوحة",
+    "capabilities": "الإمكانات",
+    "character_lab": "مختبر الشخصيات",
+    "cluster": "العنقود",
+    "checkpoints": "نقاط التحقق",
+    "artifacts": "المخرجات",
+    "awareness": "الوعي",
+    "growth": "النمو",
+    "missions": "المهام"
+  },
+  "chat": {
+    "placeholder": "راسِل Layla…",
+    "server_status": "حالة الخادم",
+    "llm_status": "حالة النموذج اللغوي",
+    "session_duration": "مدة الجلسة",
+    "context_usage_high": "استخدام السياق مرتفع",
+    "thinking": "يفكر…",
+    "detecting": "يكتشف…"
+  },
+  "settings": {
+    "title": "الإعدادات",
+    "loading": "جارٍ التحميل…",
+    "load_error": "تعذّر تحميل الإعدادات. هل Layla قيد التشغيل؟",
+    "language": "لغة الواجهة",
+    "language_hint": "لغة واجهة الويب الخاصة بـ Layla.",
+    "chat_streaming": "المحادثة والبث",
+    "build_updates": "الإصدار والتحديثات",
+    "check_updates": "التحقق من التحديثات",
+    "appearance": "المظهر / الوضع الخفيف",
+    "deliberation": "التداول",
+    "depth": "العمق",
+    "coding": "البرمجة",
+    "admin_mode": "وضع المسؤول",
+    "autonomous_execution": "التنفيذ المستقل",
+    "config_reference": "مرجع الإعدادات",
+    "choose_voice": "اختر صوتًا",
+    "avatar_seed": "بذرة الصورة الرمزية",
+    "avatar_style": "نمط الصورة الرمزية"
+  },
+  "model": {
+    "download_a_model": "تنزيل نموذج",
+    "download_from_hf": "التنزيل من Hugging Face",
+    "download_selected": "تنزيل المحدد",
+    "warming_up": "جارٍ تحميل النموذج — قيد التهيئة…",
+    "cannot_reach": "تعذّر الوصول إلى Layla — هل الخادم قيد التشغيل؟"
+  },
+  "onboarding": {
+    "welcome": "مرحبًا بك في Layla",
+    "get_started": "لنجهّز كل شيء لك.",
+    "detect_hardware": "اكتشاف العتاد",
+    "choose_model": "اختيار نموذج",
+    "workspace": "مساحة العمل",
+    "character": "الشخصية",
+    "voice": "الصوت",
+    "finish": "إنهاء",
+    "skip": "تخطٍّ الآن"
+  },
+  "help": {
+    "title": "المساعدة والاختصارات",
+    "send": "Enter — إرسال · Shift+Enter — سطر جديد",
+    "open_sheet": "Ctrl+/ — فتح هذه اللوحة",
+    "search_chat": "Ctrl+F — البحث في المحادثة",
+    "clear_input": "Ctrl+K — مسح الإدخال",
+    "regenerate": "Ctrl+R — إعادة توليد آخر رد",
+    "escape": "Escape — إغلاق النوافذ وإيقاف الميكروفون",
+    "command_palette": "Ctrl+K — لوحة الأوامر"
+  },
+  "panel": {
+    "execution_trace": "أثر التنفيذ",
+    "coordinator_tasks": "مهام المنسّق",
+    "engine_plans": "خطط المحرك",
+    "file_checkpoints": "نقاط تحقق الملفات",
+    "facts": "الحقائق",
+    "confidence": "الثقة",
+    "council": "المجلس",
+    "debate": "النقاش",
+    "discovered_peers": "الأقران المكتشفون",
+    "enable_clustering": "تفعيل التجميع"
+  },
+  "search": {
+    "placeholder": "بحث…",
+    "all_types": "جميع الأنواع",
+    "elasticsearch": "Elasticsearch (كلمة مفتاحية)",
+    "no_results": "لا توجد نتائج"
+  },
+  "status": {
+    "active": "نشط",
+    "auto": "تلقائي",
+    "default": "افتراضي",
+    "disabled": "معطّل",
+    "enabled": "مُفعّل",
+    "ready": "جاهز. ماذا تحتاج؟"
+  },
+  "toast": {
+    "saved": "تم الحفظ",
+    "copied": "تم النسخ",
+    "export_downloaded": "تم تنزيل التصدير",
+    "export_failed": "فشل التصدير",
+    "compact_done": "تم ضغط السياق",
+    "compact_failed": "فشل الضغط",
+    "generic_error": "حدث خطأ ما. تحقّق من سجلات الخادم."
+  },
+  "error": {
+    "network": "تعذّر الوصول إلى Layla — هل الخادم قيد التشغيل؟",
+    "request_failed": "فشل الطلب أثناء المعالجة.",
+    "no_response": "لا يوجد رد. حاول مرة أخرى أو أعد الصياغة.",
+    "model_not_ready": "النموذج غير جاهز. هيّئ نموذجًا في الإعدادات."
+  },
+  "confirm": {
+    "apply_to_file": "تطبيق على الملف؟",
+    "requires_approval": "تطبيق (يتطلب موافقة)",
+    "delete_conversation": "حذف هذه المحادثة؟"
+  }
+}

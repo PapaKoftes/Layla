@@ -38,6 +38,7 @@ import { bus } from './core/bus.js';
 import { appState, ChatState } from './core/state.js';
 import { overlayManager } from './core/overlay.js';
 import { registerActions, initActions } from './core/actions.js';
+import { initI18n, applyTranslations, setLanguage, currentLanguage } from './core/i18n.js';
 import { api } from './services/api.js';
 import { healthService } from './services/health.js';
 
@@ -256,6 +257,28 @@ function _registerOverlays() {
 
 // ── Initialize ───────────────────────────────────────────────────────────────
 function init() {
+  // i18n: load the active language, set <html lang/dir>, translate the static shell.
+  // Non-blocking; re-applies after DOM builds and on every language change.
+  initI18n()
+    .then(() => {
+      try { applyTranslations(document); } catch (_) {}
+      // Reflect the active language in the settings selector (if present).
+      try {
+        const sel = document.getElementById('ui-language-select');
+        if (sel) sel.value = currentLanguage();
+      } catch (_) {}
+    })
+    .catch(() => {});
+  try {
+    window.addEventListener('layla:languagechange', () => { try { applyTranslations(document); } catch (_) {} });
+  } catch (_) {}
+  // Language selector → switch UI language (id-based; no-op until the element exists).
+  try {
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.id === 'ui-language-select') setLanguage(e.target.value);
+    });
+  } catch (_) {}
+
   // Register all overlays
   _registerOverlays();
 

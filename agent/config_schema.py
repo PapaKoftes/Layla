@@ -36,6 +36,7 @@ SETTINGS_PRESETS: dict[str, dict[str, Any]] = {
 # Categories for UI grouping. "core" = always visible; "advanced" = collapsible.
 EDITABLE_SCHEMA: list[dict[str, Any]] = [
     # ── Core (always shown) ──
+    {"key": "ui_language", "type": "string", "category": "core", "default": "en", "hint": "Web UI language (en, es, de, fr, it, pt, ja, zh, ar, ru, ko). Falls back to English for missing strings."},
     {"key": "model_filename", "type": "string", "category": "core", "hint": "GGUF filename in models/ folder. Restart required."},
     {"key": "models_dir", "type": "string", "category": "core", "hint": "Path to models folder. Default: repo/models/ or ~/.layla/models/"},
     {"key": "sandbox_root", "type": "string", "category": "core", "hint": "Workspace root. Layla can only read/write within this path."},
