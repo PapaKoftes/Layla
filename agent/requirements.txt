@@ -53,10 +53,19 @@ playwright>=1.40
 faster-whisper>=1.0             # CPU/CUDA Whisper inference; models auto-download
 
 # Voice: Text-to-Speech (choose one)
-kokoro-onnx>=0.3                # High-quality ONNX TTS (~80 MB), no cloud
+# Default (permissive, MPL-2.0): system TTS, zero download, always license-clean.
+pyttsx3>=2.90                   # System TTS — the shipped default (services/infrastructure/tts.py falls back to it)
 # sounddevice>=0.4              # Optional: TUI /voice (pip install sounddevice)
-soundfile>=0.12                 # Required by kokoro-onnx for WAV encoding
-# pyttsx3>=2.90                 # Fallback: zero-download system TTS (lower quality)
+#
+# OPT-IN premium TTS — NOT installed by default because it pulls a strong-copyleft
+# transitive dependency (phonemizer-fork, GPLv3+) which is INCOMPATIBLE with Layla's
+# "Free for non-commercial use" license (see scripts/check_copyleft.py / REQ-02).
+# Every kokoro-onnx release requires phonemizer-fork, so there is no clean pin. If you
+# personally accept GPLv3 terms in your own environment, install it yourself:
+#     pip install kokoro-onnx soundfile
+# tts.py auto-detects it and prefers it over pyttsx3 when present.
+# kokoro-onnx>=0.3             # High-quality ONNX TTS (~80 MB) — GPLv3 phonemizer-fork, opt-in only
+# soundfile>=0.12             # (only needed alongside kokoro-onnx, for WAV encoding)
 
 # ─── Research & Information ───────────────────────────────────────────────────
 pypdf>=4.0                      # PDF reading (BSD-licensed). NOTE: PyMuPDF (fitz)
