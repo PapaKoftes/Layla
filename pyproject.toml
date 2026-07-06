@@ -206,13 +206,20 @@ ignore = [
 "agent/tests/test_fabrication_assist*.py" = ["E402"]   # sys.path bootstrap before repo imports
 
 [tool.pytest.ini_options]
+# NOTE: agent/pytest.ini is the CANONICAL config (CI runs from agent/, so it wins).
+# This block is kept in sync with it so running pytest from the repo ROOT behaves the
+# same — same markers, same --strict-markers — instead of silently diverging.
 testpaths = ["agent/tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --strict-markers"
 markers = [
-  "slow: tests that take noticeably longer",
+  "slow: tests that require a live LLM model",
+  "endpoint: tests that spin up a FastAPI TestClient or hit real HTTP routes",
   "e2e_ui: Playwright browser tests against live uvicorn (install requirements-e2e.txt + playwright browsers)",
+  "browser_smoke: Playwright Chromium launch + navigation",
+  "voice_smoke: STT/TTS micro calls (may download models)",
+  "gpu_smoke: GPU GGUF load (requires LAYLA_GPU_SMOKE + LAYLA_GPU_SMOKE_GGUF)",
 ]
 asyncio_mode = "auto"
 filterwarnings = [
