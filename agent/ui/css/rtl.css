@@ -1,0 +1,43 @@
+/*
+ * rtl.css — right-to-left layout adjustments for Arabic/Hebrew/Persian.
+ * Activated only when core/i18n.js sets <html dir="rtl">. The browser mirrors text
+ * direction and flex order automatically; these rules fix the LTR-hardcoded bits.
+ */
+[dir="rtl"] body,
+[dir="rtl"] .chat-message,
+[dir="rtl"] .msg-bubble,
+[dir="rtl"] .settings-accordion-body,
+[dir="rtl"] .rcp-page,
+[dir="rtl"] .sidebar,
+[dir="rtl"] textarea,
+[dir="rtl"] input[type="text"] {
+  text-align: right;
+  direction: rtl;
+}
+
+/* Keep code, model output, and shortcut hints LTR (they are language-neutral / Latin). */
+[dir="rtl"] pre,
+[dir="rtl"] code,
+[dir="rtl"] .hljs,
+[dir="rtl"] .kbd,
+[dir="rtl"] .cmdp-input,
+[dir="rtl"] input[type="number"] {
+  direction: ltr;
+  text-align: left;
+  unicode-bidi: plaintext;
+}
+
+/* Mirror the chat send row + option rows so controls sit on the correct side. */
+[dir="rtl"] .input-row,
+[dir="rtl"] .option-row,
+[dir="rtl"] .header-actions,
+[dir="rtl"] .topbar {
+  flex-direction: row-reverse;
+}
+
+/* Flip the off-canvas mobile drawer to slide in from the right. */
+[dir="rtl"] .sidebar.mobile-open { left: auto; right: 0; }
+[dir="rtl"] #sidebar-backdrop { left: 0; right: auto; }
+
+/* Directional icons that imply "forward/next" should point the other way in RTL. */
+[dir="rtl"] .icon-flip { transform: scaleX(-1); }
