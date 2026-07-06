@@ -188,7 +188,5 @@ def load_existing() -> dict:
 
 
 def save_config(cfg: dict) -> None:
-    _rs.CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _rs.CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
-    _rs.invalidate_config_cache()
+    _rs.atomic_write_config(cfg)
 
