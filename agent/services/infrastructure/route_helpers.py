@@ -27,69 +27,28 @@ def get_cached_plugins(cfg: dict) -> dict:
     return _plugins_cache
 
 
-def coerce_setting_value(key: str, v: Any, schema: list[dict]) -> Any:
-    """Coerce value to schema type (number, boolean) when needed."""
-    for e in schema:
-        if e.get("key") == key:
-            t = e.get("type")
-            if t == "number" and v is not None:
-                try:
-                    return float(v) if isinstance(v, str) and "." in str(v) else int(v)
-                except (ValueError, TypeError):
-                    return v
-            if t == "boolean":
-                if isinstance(v, bool):
-                    return v
-                return str(v).lower() in ("true", "1", "yes", "on")
-            break
-    return v
-
-
 def sync_save_settings(body: dict) -> dict:
-    """Blocking: merge editable keys into runtime_config.json and invalidate config cache."""
+    """Blocking: merge editable keys into runtime_config.json (race-safe, atomic, clamped)."""
     import runtime_safety as _rs
-    from config_schema import EDITABLE_SCHEMA, get_editable_keys
 
-    editable = get_editable_keys()
-    cfg = {}
-    if _rs.CONFIG_FILE.exists():
-        try:
-            cfg = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    saved = []
-    for k, v in body.items():
-        if k in editable:
-            coerced = coerce_setting_value(k, v, EDITABLE_SCHEMA)
-            cfg[k] = coerced
-            saved.append(k)
-    _rs.CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _rs.CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
-    _rs.invalidate_config_cache()
+    # save_config_keys reads+writes under _config_lock and clamps each value to the
+    # schema (config_schema.coerce_and_clamp), so out-of-range input can't be persisted
+    # and two concurrent writers can't lose each other's changes.
+    saved = _rs.save_config_keys(body, editable_only=True, clamp=True)
     return {"ok": True, "saved": saved}
 
 
 def sync_apply_runtime_preset(name: str) -> dict:
-    """Blocking: merge named preset into runtime_config.json."""
+    """Blocking: merge named preset into runtime_config.json (race-safe, atomic, clamped)."""
     import runtime_safety as _rs
-    from config_schema import EDITABLE_SCHEMA, SETTINGS_PRESETS, apply_settings_preset
+    from config_schema import SETTINGS_PRESETS, apply_settings_preset
 
     if name.lower() not in SETTINGS_PRESETS:
         raise ValueError("unknown_preset")
-    cfg: dict = {}
-    if _rs.CONFIG_FILE.exists():
-        try:
-            cfg = json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    merged, applied = apply_settings_preset(cfg, name)
+    merged, applied = apply_settings_preset({}, name)
     if merged is None:
         raise ValueError("unknown_preset")
-    for k in applied:
-        merged[k] = coerce_setting_value(k, merged[k], EDITABLE_SCHEMA)
-    _rs.CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _rs.CONFIG_FILE.write_text(json.dumps(merged, indent=2), encoding="utf-8")
-    _rs.invalidate_config_cache()
+    _rs.save_config_keys({k: merged[k] for k in applied}, editable_only=True, clamp=True)
     return {"ok": True, "preset": name.lower(), "applied": applied}
 
 
@@ -134,26 +93,14 @@ def sync_create_and_run_mission(body: dict) -> dict:
 
 
 def sync_save_appearance(body: dict) -> dict:
-    import json as _json
-
     import runtime_safety as _rs
 
-    cfg: dict = {}
-    if _rs.CONFIG_FILE.exists():
-        try:
-            cfg = _json.loads(_rs.CONFIG_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    for k in ("ui_avatar_seed", "ui_avatar_style", "ui_tts_rate", "chat_lite_mode", "ui_decision_trace_enabled", "ui_appearance_json"):
-        if k in body:
-            cfg[k] = body[k]
-    _rs.CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _rs.CONFIG_FILE.write_text(_json.dumps(cfg, indent=2), encoding="utf-8")
-    _rs.invalidate_config_cache()
-    _allowed = frozenset(
-        {"ui_avatar_seed", "ui_avatar_style", "ui_tts_rate", "chat_lite_mode", "ui_decision_trace_enabled", "ui_appearance_json"}
-    )
-    return {"ok": True, "saved": [k for k in body if k in _allowed]}
+    _allowed = ("ui_avatar_seed", "ui_avatar_style", "ui_tts_rate", "chat_lite_mode", "ui_decision_trace_enabled", "ui_appearance_json")
+    # These are UI-only keys (not in EDITABLE_SCHEMA) → editable_only=False, clamp=False.
+    # Still race-safe + atomic via save_config_keys.
+    updates = {k: body[k] for k in _allowed if k in body}
+    saved = _rs.save_config_keys(updates, editable_only=False, clamp=False)
+    return {"ok": True, "saved": saved}
 
 
 def sync_compact_history() -> dict:

@@ -364,8 +364,7 @@ async def setup_download(url: str, filename: str = ""):
                         cfg2 = {**DEFAULTS, **rec["config"]}
                     cfg2["model_filename"] = fname
                     cfg2["models_dir"] = str(models_dir)
-                    _rs.CONFIG_FILE.write_text(json.dumps(cfg2, indent=2), encoding="utf-8")
-                    _rs.invalidate_config_cache()
+                    _rs.atomic_write_config(cfg2)
                 except Exception as cfg_err:
                     logger.warning("setup_download: config save failed: %s", cfg_err)
                 yield f"data: {json.dumps({'pct': 100, 'done': True, 'filename': fname})}\n\n"
