@@ -120,9 +120,13 @@ class TestGetDueItems:
 
 
 class TestReviewItem:
+    # Pin the persisted SM-2 state to a fresh baseline so new_reps is deterministic:
+    # review_item() reads get_review_state() from the shared DB, and other tests here
+    # also review item id=1, so without this the reps count depended on test order.
+    @patch("layla.memory.learnings.get_review_state", return_value={"reps": 0, "interval_days": 0, "ease": 2.5})
     @patch("layla.memory.learnings.set_learning_importance")
     @patch("layla.memory.learnings.schedule_next_review")
-    def test_review_pass(self, mock_sched, mock_imp):
+    def test_review_pass(self, mock_sched, mock_imp, mock_state):
         from services.memory.spaced_repetition import review_item
         result = review_item(1, quality=4)
         assert result["passed"] is True
