@@ -23,24 +23,13 @@ _TIMEOUT = 15
 
 
 def _is_safe_url(url: str) -> bool:
-    """Return True if URL is safe (no private/localhost). SSRF mitigation."""
+    """SSRF mitigation — delegates to the hardened url_guard (DNS resolution + rebinding,
+    obfuscated-IP normalization, scheme allow-list, credentials rejected). One source of
+    truth: services/safety/url_guard.py. The previous local prefix-check missed DNS
+    rebinding, decimal/hex IPs, 192.168.*, and allowed file://."""
     try:
-        parsed = urlparse(url)
-        host = (parsed.hostname or "").lower()
-        if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
-            return False
-        if host.startswith("127.") or host.startswith("10.") or host.startswith("169.254."):
-            return False
-        if host.startswith("172."):
-            parts = host.split(".")
-            if len(parts) >= 2:
-                try:
-                    b = int(parts[1])
-                except ValueError:
-                    b = -1
-                if 16 <= b <= 31:
-                    return False
-        return True
+        from services.safety.url_guard import is_safe_url
+        return is_safe_url(url)
     except Exception:
         return False
 
