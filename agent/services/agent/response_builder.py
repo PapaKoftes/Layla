@@ -209,6 +209,12 @@ def strip_junk_from_reply(text: str) -> str:
     t = re.sub(r"\s*\[EARNED_TITLE[^\]]*\]\s*", " ", t, flags=re.IGNORECASE).strip()
     t = re.sub(r"\s*\[REFUSED[^\]]*\]\s*", " ", t, flags=re.IGNORECASE).strip()
     t = re.sub(r"\s*\[merg[^\]]*\]?\s*$", "", t, flags=re.IGNORECASE).strip()
+    # Cut from a leaked internal '[TOOL: …]' framing marker onward (and a trailing rule
+    # left before it), e.g. "…the country.\n---\n[TOOL: markdown]\n# Research …".
+    _tool = re.search(r"\[TOOL\b", t, re.IGNORECASE)
+    if _tool:
+        t = t[:_tool.start()].strip()
+    t = re.sub(r"(?:\s*-{3,}\s*)+$", "", t).strip()
     # Cut everything from a leaked internal 'Objective:' echo onward (anywhere but the very
     # start, so a legitimate answer that opens with the word isn't truncated).
     _obj = re.search(r"(?:^|\s)Objective\s*:", t, re.IGNORECASE)
