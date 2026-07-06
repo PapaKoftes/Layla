@@ -1734,6 +1734,8 @@ body.overlay-scroll-lock {
     padding: 2px 8px; border-radius: 999px; background: var(--asp); color: #fff; margin-left: 6px;
   }
   .models-badge-warn { background: #7a5a00; }
+  .models-badge-unc { background: #2f7a4a; text-transform: none; letter-spacing: 0.02em; }
+  .models-badge-cat { background: var(--surface-2, #2a2530); color: var(--text-muted, #b9a); text-transform: none; }
   .models-btn {
     flex-shrink: 0; padding: 6px 14px; background: var(--asp); border: none; color: #fff;
     border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.74rem;
