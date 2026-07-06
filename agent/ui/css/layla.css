@@ -42,6 +42,7 @@ body.overlay-scroll-lock {
     --crimson: #8b0000;
     --violet: #3d0050;
     --accent: #c0006a;
+    --accent-text: #e85d8a;
     --text: #d4c5e2;
     --text-dim: #9a8aaa;
     --code-bg: #130013;
@@ -90,6 +91,7 @@ body.overlay-scroll-lock {
     --crimson: #6b0000;
     --violet: #4a2060;
     --accent: #8b0050;
+    --accent-text: #d64f82;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -439,7 +441,7 @@ body.overlay-scroll-lock {
   .dashboard-stat-value {
     font-size: 1.3rem;
     font-weight: bold;
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .dashboard-stat-label {
     font-size: 0.62rem;
@@ -1837,7 +1839,7 @@ body.overlay-scroll-lock {
     transition: opacity 0.15s;
   }
   .msg:hover .msg-remember-btn { opacity: 1; }
-  .msg-remember-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .msg-remember-btn:hover { color: var(--accent-text); border-color: var(--accent-text); }
   .msg-remember-btn:disabled { opacity: 0.4; cursor: wait; }
   .msg-correct-btn {
     margin-left: 4px;
@@ -2617,7 +2619,7 @@ body.overlay-scroll-lock {
     color: var(--text);
     transition: border-color 0.15s, background 0.15s;
   }
-  .btn-pair { border-color: var(--accent); color: var(--accent); }
+  .btn-pair { border-color: var(--accent-text); color: var(--accent-text); }
   .btn-pair:hover { background: var(--accent); color: #000; }
   .btn-unpair { border-color: var(--danger); color: #c44; }
   .btn-unpair:hover { background: var(--danger); color: #fff; }
@@ -2628,7 +2630,7 @@ body.overlay-scroll-lock {
   .paired-device-meta { font-size: 0.62rem; color: var(--text-dim); margin-bottom: 4px; }
   .paired-device-perms { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 4px; }
   .perm-toggle { font-size: 0.62rem; color: var(--text-dim); display: flex; align-items: center; gap: 3px; cursor: pointer; }
-  .perm-toggle.on { color: var(--accent); }
+  .perm-toggle.on { color: var(--accent-text); }
   .perm-toggle input[type=checkbox] { width: 12px; height: 12px; }
   /* Pairing overlay */
   .pairing-overlay {
@@ -2649,7 +2651,7 @@ body.overlay-scroll-lock {
     text-align: center;
   }
   .pairing-dialog-header {
-    font-size: 1rem; font-weight: 700; color: var(--accent);
+    font-size: 1rem; font-weight: 700; color: var(--accent-text);
     margin-bottom: 12px;
   }
   .pairing-dialog-body p { font-size: 0.8rem; color: var(--text); margin: 0 0 12px; }
@@ -2659,7 +2661,7 @@ body.overlay-scroll-lock {
   .pin-digit {
     font-family: 'JetBrains Mono', monospace;
     font-size: 2rem; font-weight: 700;
-    color: var(--accent);
+    color: var(--accent-text);
     background: var(--bg, #080810);
     border: 1px solid var(--border);
     border-radius: 4px;
@@ -2667,14 +2669,14 @@ body.overlay-scroll-lock {
     display: flex; align-items: center; justify-content: center;
   }
   .pin-ttl { font-size: 0.68rem; color: var(--text-dim); }
-  .pin-countdown { font-size: 0.72rem; color: var(--accent); margin-top: 4px; }
+  .pin-countdown { font-size: 0.72rem; color: var(--accent-text); margin-top: 4px; }
   .pairing-dialog-actions { margin-top: 16px; }
   .pairing-dialog-actions button {
     font-size: 0.75rem; padding: 4px 16px;
     border: 1px solid var(--border); border-radius: 2px;
     background: transparent; color: var(--text); cursor: pointer;
   }
-  .pairing-dialog-actions button:hover { border-color: var(--accent); }
+  .pairing-dialog-actions button:hover { border-color: var(--accent-text); }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    RESPONSIVE BREAKPOINTS
@@ -2991,7 +2993,7 @@ body.overlay-scroll-lock {
   font-size: 0.85rem;
   font-weight: 600;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .growth-stat-label {
   font-size: 0.5rem;
@@ -3042,7 +3044,7 @@ body.overlay-scroll-lock {
   width: 12px;
   height: 12px;
   border: 2px solid rgba(255,255,255,0.1);
-  border-top-color: var(--accent);
+  border-top-color: var(--accent-text);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
