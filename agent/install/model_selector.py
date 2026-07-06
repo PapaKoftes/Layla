@@ -25,6 +25,99 @@ def load_catalog() -> list[dict[str, Any]]:
         return []
 
 
+def _parse_size_b(size: str) -> float:
+    """'7B'/'1.1B'/'20B' -> billions of params (for a quality proxy)."""
+    try:
+        return float(str(size or "0").upper().replace("B", "").strip())
+    except Exception:
+        return 0.0
+
+
+def models_for_picker(
+    ram_gb: float, vram_gb: float = 0.0, *, uncensored_first: bool = True,
+) -> dict[str, Any]:
+    """Full model catalog shaped for an install-time picker.
+
+    Every entry is annotated with `viable` (fits this box's RAM/VRAM within headroom) and
+    the list is ordered so the user sees the best choices first. With `uncensored_first`
+    (the default — the operator wants a jailbroken model that answers everything), models
+    with `uncensored: true` sort ahead of restricted ones; within that, viable-and-bigger
+    (higher quality) first. `recommended` marks the best *uncensored, viable* pick — the
+    largest that fits, so answers are as correct as possible while staying unrestricted.
+    """
+    budget = max(1.0, float(ram_gb or 0) ) * _RAM_HEADROOM
+    vbudget = max(0.0, float(vram_gb or 0)) * _RAM_HEADROOM
+    out: list[dict[str, Any]] = []
+    for m in load_catalog():
+        ram_req = float(m.get("ram_required", 999) or 999)
+        vram_req = float(m.get("vram_required", 0) or 0)
+        viable = ram_req <= budget or (vram_req > 0 and vram_req <= vbudget)
+        out.append({
+            "name": m.get("name", ""),
+            "family": m.get("family", ""),
+            "category": m.get("category", "general"),
+            "size": m.get("size", ""),
+            "size_b": _parse_size_b(m.get("size", "")),
+            "quant": m.get("quant", ""),
+            "ram_required": ram_req,
+            "vram_required": vram_req,
+            "uncensored": bool(m.get("uncensored", False)),
+            "repo_id": m.get("repo_id", ""),
+            "filename": m.get("filename", ""),
+            "download_url": m.get("download_url", ""),
+            "desc": m.get("desc", ""),
+            "viable": viable,
+        })
+
+    def _sort_key(e: dict) -> tuple:
+        unc = 0 if (uncensored_first and e["uncensored"]) else 1
+        via = 0 if e["viable"] else 1
+        # among viable, prefer bigger (better quality); among non-viable, prefer smaller.
+        quality = -e["size_b"] if e["viable"] else e["size_b"]
+        return (unc, via, quality, e["category"], e["name"])
+
+    out.sort(key=_sort_key)
+
+    # Recommended pick: the best *companion-suitable* uncensored model that fits AND stays
+    # usable. Prefer general/creative/fast categories (a coder/reasoning model makes a poor
+    # everyday companion), and — with no GPU — cap size to what's responsive on CPU while
+    # still favouring the largest within that cap (quality). Falls back gracefully.
+    _companion_cats = {"general", "creative", "fast"}
+    _cpu_cap_b = _CPU_USABLE_MAX_B if not vbudget else 999.0
+    _cands = [
+        e for e in out
+        if e["viable"] and e["uncensored"] and e["category"] in _companion_cats
+        and (e["size_b"] <= _cpu_cap_b or e["size_b"] == 0)
+    ]
+    _cands.sort(key=lambda e: -e["size_b"])  # biggest usable = best quality
+    recommended = (
+        _cands[0]["filename"] if _cands
+        else next((e["filename"] for e in out if e["viable"] and e["uncensored"]), None)
+        or next((e["filename"] for e in out if e["viable"]), None)
+    )
+    for e in out:
+        e["recommended"] = e["filename"] == recommended
+
+    categories = sorted({e["category"] for e in out})
+    return {
+        "models": out,
+        "recommended": recommended,
+        "categories": categories,
+        "uncensored_first": uncensored_first,
+        "ram_gb": ram_gb,
+        "vram_gb": vram_gb,
+    }
+
+
+def recommend_uncensored_model(ram_gb: float, vram_gb: float = 0.0) -> dict[str, Any] | None:
+    """The best uncensored model that fits this box (largest viable uncensored)."""
+    picker = models_for_picker(ram_gb, vram_gb, uncensored_first=True)
+    for e in picker["models"]:
+        if e["viable"] and e["uncensored"]:
+            return e
+    return None
+
+
 def validate_catalog_entries(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Keep only entries usable for download/recommendation.

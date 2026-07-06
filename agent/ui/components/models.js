@@ -175,14 +175,20 @@ function _renderCatalog(models) {
     const name = m.name || m.key || ('model ' + i);
     const viable = m.viable !== false;
     const flags = [];
+    if (m.uncensored) flags.push('<span class="models-badge models-badge-unc" title="No restrictions — answers everything">🔓 uncensored</span>');
     if (m.recommended) flags.push('<span class="models-badge">recommended</span>');
+    if (m.category) flags.push('<span class="models-badge models-badge-cat">' + escapeHtml(m.category) + '</span>');
     if (!viable) flags.push('<span class="models-badge models-badge-warn">heavy</span>');
-    const ram = (m.ram_gb != null) ? (' · needs ~' + m.ram_gb + ' GB') : '';
+    const meta = [];
+    if (m.size) meta.push(m.size);
+    if (m.quant) meta.push(m.quant);
+    if (m.ram_gb != null) meta.push('needs ~' + m.ram_gb + ' GB');
+    const metaStr = meta.length ? (' · ' + meta.join(' · ')) : '';
     const hasUrl = !!m.url;
     return '<div class="models-row models-catalog-row" style="opacity:' + (viable ? '1' : '0.6') + '">' +
       '<div class="models-row-main">' +
         '<span class="models-row-name">' + escapeHtml(name) + '</span> ' + flags.join('') +
-        '<div class="hint">' + escapeHtml(m.desc || '') + escapeHtml(ram) + '</div>' +
+        '<div class="hint">' + escapeHtml(m.desc || '') + escapeHtml(metaStr) + '</div>' +
       '</div>' +
       (hasUrl
         ? '<button type="button" class="models-btn" data-action="downloadCatalogModel" data-arg="' + i + '">Download</button>'

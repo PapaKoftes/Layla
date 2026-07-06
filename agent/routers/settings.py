@@ -154,47 +154,47 @@ def setup_status():
 
 
 @router.get("/setup/models")
-def setup_models():
-    """Return the model catalog for the first-run picker."""
+def setup_models(uncensored_first: bool = True):
+    """Model catalog for the install/first-run picker — the full 42-model catalog,
+    hardware-filtered and ordered with **uncensored/jailbroken models first** (the
+    operator wants a model that answers everything as correctly as possible), then
+    biggest-that-fits (quality). Each row carries `uncensored`/`category`/`quant` so the
+    UI can badge + group them; `recommended` is the best companion-suitable uncensored
+    pick for this box."""
     try:
-        from services.infrastructure.setup_engine import MODELS_CATALOG as _MODELS_CATALOG
-        from services.infrastructure.setup_engine import detect_gpu, detect_ram_gb, recommend_model
+        from install.model_selector import models_for_picker
+        from services.infrastructure.setup_engine import detect_gpu, detect_ram_gb
 
-        ram = detect_ram_gb()
-        vendor, vram = detect_gpu()
-        rec = recommend_model(ram or 0, vram or 0, vendor or "none")
-        tier = rec.get("model_tier") or "medium"
-        tier_keys = {
-            "tiny": ("phi3-mini",),
-            "small": ("dolphin-mistral-7b",),
-            "medium": ("dolphin-llama3-8b", "hermes-3-8b", "dolphin-mistral-7b"),
-            "medium-large": ("dolphin-llama3-8b", "hermes-3-8b"),
-            "large": ("dolphin-llama3-70b",),
-        }
-        preferred = list(tier_keys.get(tier, ("dolphin-mistral-7b",)))
+        ram = detect_ram_gb() or 0
+        _vendor, vram = detect_gpu()
+        picker = models_for_picker(ram, vram or 0, uncensored_first=bool(uncensored_first))
+        # shape each entry for models.js (name/key/viable/recommended/desc/ram_gb/url) while
+        # keeping the richer fields (uncensored/category/quant/size/repo_id).
         catalog = []
-        recommended_key = None
-        rec_matched = False
-        for m in _MODELS_CATALOG:
-            viable = m.get("ram_gb", 99) <= (ram or 99)
-            is_rec = bool(viable and (m.get("key") in preferred) and not rec_matched)
-            if is_rec:
-                rec_matched = True
-                recommended_key = m.get("key")
-            catalog.append({**m, "viable": viable, "recommended": is_rec})
-        if not recommended_key:
-            for m in catalog:
-                if m.get("viable"):
-                    recommended_key = m.get("key")
-                    m["recommended"] = True
-                    break
+        for e in picker["models"]:
+            catalog.append({
+                "key": e["filename"],
+                "name": e["name"],
+                "filename": e["filename"],
+                "url": e.get("download_url", ""),
+                "repo_id": e.get("repo_id", ""),
+                "ram_gb": e["ram_required"],
+                "desc": e["desc"],
+                "category": e["category"],
+                "size": e["size"],
+                "quant": e["quant"],
+                "uncensored": e["uncensored"],
+                "viable": e["viable"],
+                "recommended": e["recommended"],
+            })
         return {
             "ok": True,
             "catalog": catalog,
             "ram_gb": ram,
-            "recommended_key": recommended_key,
-            "recommended_tier": tier,
-            "suggestion": rec.get("suggestion") or "",
+            "vram_gb": vram or 0,
+            "recommended_key": picker["recommended"],
+            "categories": picker["categories"],
+            "uncensored_first": bool(uncensored_first),
         }
     except Exception as e:
         return {"ok": False, "error": str(e), "catalog": []}
