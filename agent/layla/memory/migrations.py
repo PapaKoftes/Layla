@@ -148,6 +148,22 @@ def _migrate_impl() -> None:
         """)
         db.execute("CREATE INDEX IF NOT EXISTS idx_outcome_evaluations_cid_id_desc ON outcome_evaluations(conversation_id, id DESC)")
 
+        # Memory self-consistency guard: candidate conflicts flagged when a new learning
+        # likely contradicts a stored one (services/memory/consistency_guard.py).
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS memory_conflicts (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                new_id           INTEGER,
+                new_content      TEXT NOT NULL,
+                existing_id      INTEGER,
+                existing_content TEXT NOT NULL,
+                reason           TEXT NOT NULL,
+                created_at       TEXT NOT NULL,
+                resolved         INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        db.execute("CREATE INDEX IF NOT EXISTS idx_memory_conflicts_resolved_id ON memory_conflicts(resolved, id DESC)")
+
         # FTS5 virtual table for exact/keyword search over learnings content
         db.execute("""
             CREATE VIRTUAL TABLE IF NOT EXISTS learnings_fts
