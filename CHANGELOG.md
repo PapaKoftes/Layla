@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## Unreleased
+## [1.5.0] — 2026-07-06
+
+### Intelligence tier (W13)
+- Visual understanding (local GGUF VLM + BLIP + Tesseract/EasyOCR, `analyze_image` tool, `/v1` image inputs), workflow **macros** + event-driven **automation**, cross-project reasoning, temporal timeline, decision memory, personal operating manual, explainable reasoning, skill acquisition, plugin SDK + MCP-only plugins, proactive goals, world-state model, learning-from-feedback, emotional presence.
+
+### Models & install
+- **Uncensored-first model picker** over the full 42-model catalog, hardware-filtered, with a RAM warning when a box is tight; HF-Hub download button; ONNX Runtime backend; benchmark-driven selection; multilingual response-language; first-class `/v1` params (Cline/Continue/Aider).
+
+### Correctness & quality
+- Reason-first routing so trivial Q&A is answered directly (not tool-detoured); a `/v1` backstop + output-discipline prompt + junk cleaner so internal markers never leak into answers; KV-cache prompt-prefix reuse.
+
+### Security & release hardening
+- `/v1` content-guard floor now covers all paths; content_guard evasion-hardening (leetspeak/synonyms); `/v1` image-decode DoS cap; macro/automation local-only guards; expanded remote-protected settings; `/v1` RCE-guard + shell deny-by-default now behaviorally tested. CI: nightly benchmark + golden-eval gates actually fail now; pip-audit + gitleaks; `--strict-markers`; coverage ratchet 28→45%.
 
 ### Maximum practical parity (daily driver + docs)
 
