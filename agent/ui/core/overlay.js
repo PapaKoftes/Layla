@@ -77,6 +77,44 @@ function register(id, config) {
 /**
  * Open an overlay. Closes any existing overlay in the same tier.
  */
+// ── Focus trap (a11y / WCAG 2.4.3) ──────────────────────────────────────────
+const _focusReturn = new Map();   // id -> element to restore focus to on close
+const _trapHandlers = new Map();  // id -> keydown handler
+
+function _focusableIn(el) {
+  return Array.from(el.querySelectorAll(
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  )).filter((n) => n.offsetParent !== null);
+}
+
+function _installFocusTrap(id, el) {
+  // Only trap genuine modal dialogs (aria-modal="true"), never side panels.
+  if (!el || el.getAttribute('aria-modal') !== 'true') return;
+  _focusReturn.set(id, document.activeElement);
+  const nodes = _focusableIn(el);
+  if (nodes.length) { try { nodes[0].focus(); } catch (_) {} }
+  const handler = (e) => {
+    if (e.key !== 'Tab') return;
+    const f = _focusableIn(el);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
+    else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
+    else if (!el.contains(document.activeElement)) { first.focus(); e.preventDefault(); }
+  };
+  el.addEventListener('keydown', handler);
+  _trapHandlers.set(id, handler);
+}
+
+function _removeFocusTrap(id, el) {
+  const h = _trapHandlers.get(id);
+  if (h && el) el.removeEventListener('keydown', h);
+  _trapHandlers.delete(id);
+  const ret = _focusReturn.get(id);
+  _focusReturn.delete(id);
+  if (ret && typeof ret.focus === 'function') { try { ret.focus(); } catch (_) {} }
+}
+
 function open(id, data) {
   const config = _registry.get(id);
   if (!config) {
@@ -108,6 +146,7 @@ function open(id, data) {
     el.style.display = '';
     el.removeAttribute('hidden');
     el.setAttribute('aria-hidden', 'false');
+    _installFocusTrap(id, el);   // trap focus for modal dialogs (a11y)
   }
 
   // Show backdrop if needed
@@ -156,6 +195,7 @@ function close(id) {
     el.classList.remove('overlay-active');
     el.classList.remove('visible');
     el.setAttribute('aria-hidden', 'true');
+    _removeFocusTrap(id, el);   // release trap + restore focus (a11y)
     // Don't set display:none — let CSS handle visibility via the class
   }
 

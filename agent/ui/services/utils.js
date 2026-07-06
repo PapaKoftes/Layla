@@ -59,6 +59,11 @@ export function sanitizeHtml(html) {
 export function showToast(msg, opts) {
   const t = document.createElement('div');
   t.className = 'toast';
+  // a11y: announce to screen readers. Errors are assertive; everything else polite.
+  const assertive = !!(opts && opts.assertive);
+  t.setAttribute('role', assertive ? 'alert' : 'status');
+  t.setAttribute('aria-live', assertive ? 'assertive' : 'polite');
+  t.setAttribute('aria-atomic', 'true');
   if (opts && opts.html) { t.innerHTML = msg; } else { t.textContent = msg; }
   document.body.appendChild(t);
   const duration = (opts && opts.duration) || 2200;
