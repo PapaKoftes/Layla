@@ -15,10 +15,24 @@ title = "Layla gitleaks configuration"
 useDefault = true
 
 [allowlist]
-description = "Model-registry `\"key\": \"<lowercase-slug>\"` literals are model IDs, not secrets."
+description = "Model-registry slugs + known-safe fixture/doc/hash paths (verified false positives)."
 # Match against the whole offending line so this only exempts the model-registry
 # construct; anything with uppercase/underscore/random entropy still trips.
 regexTarget = "line"
 regexes = [
   '''"key"\s*:\s*"[a-z0-9][a-z0-9.-]{2,60}"''',
+]
+# Path allowlist — these 3 files legitimately contain secret-shaped strings that are
+# NOT credentials. A push scan only diffs new commits so it never saw them; a
+# workflow_dispatch/schedule scan reads full history and (correctly, per the rules)
+# flagged them. Each verified by hand:
+#   - tests/test_secret_value_scrub.py: intentional FAKE tokens (e.g. AWS's documented
+#     AKIAIOSFODNN7EXAMPLE) that are the *fixtures* for the secret-scrubber test.
+#   - docs/REMOTE_ACCESS.md: a `curl -H "Authorization: Bearer YOUR_TOKEN_HERE"` example.
+#   - cluster_config.json: `cluster_secret_hash` is a one-way hash (not a plaintext
+#     secret) in local operator state.
+paths = [
+  '''agent/tests/test_secret_value_scrub\.py''',
+  '''agent/docs/REMOTE_ACCESS\.md''',
+  '''agent/cluster_config\.json''',
 ]
