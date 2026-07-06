@@ -322,6 +322,55 @@ def get_editable_keys() -> set[str]:
     return {e["key"] for e in EDITABLE_SCHEMA}
 
 
+_SCHEMA_BY_KEY: dict[str, dict[str, Any]] = {e["key"]: e for e in EDITABLE_SCHEMA}
+
+
+def _is_float_field(entry: dict[str, Any]) -> bool:
+    """A number field is float-typed if its default or a fractional bound is a float."""
+    if isinstance(entry.get("default"), float):
+        return True
+    for bound in ("min", "max"):
+        bv = entry.get(bound)
+        if isinstance(bv, float) and not bv.is_integer():
+            return True
+    return False
+
+
+def coerce_and_clamp(key: str, value: Any) -> Any:
+    """Coerce a settings value to its schema type and clamp numbers to [min, max].
+
+    Single source of truth used by BOTH the write path (POST /settings, presets,
+    appearance) and the read path (runtime_safety.load_config). A malformed or
+    out-of-range value therefore cannot reach the model layer regardless of whether
+    it arrived from the UI/API or a hand-edited runtime_config.json — e.g.
+    temperature=50 clamps to 1.5, n_gpu_layers=-999 clamps to -1, n_ctx="abc" falls
+    back to the default. Unknown keys pass through unchanged; booleans are
+    normalised; un-parseable numbers fall back to the schema default.
+    """
+    entry = _SCHEMA_BY_KEY.get(key)
+    if entry is None:
+        return value
+    t = entry.get("type")
+    if t == "number":
+        if value is None:
+            return entry.get("default")
+        try:
+            num = float(value)
+        except (ValueError, TypeError):
+            return entry.get("default")
+        lo, hi = entry.get("min"), entry.get("max")
+        if lo is not None and num < lo:
+            num = float(lo)
+        if hi is not None and num > hi:
+            num = float(hi)
+        return num if _is_float_field(entry) else int(num)
+    if t == "boolean":
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in ("true", "1", "yes", "on")
+    return value
+
+
 def get_schema_by_category() -> dict[str, list[dict]]:
     """Schema grouped by category for UI."""
     out: dict[str, list[dict]] = {}
