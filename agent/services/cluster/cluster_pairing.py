@@ -122,11 +122,11 @@ class ClusterPairing:
         Returns dict with cluster_id, cluster_secret, queen_address.
         """
         from services.cluster.cluster_network import (
+            NodeRole,
+            Peer,
+            PeerStatus,
             load_cluster_config,
             save_cluster_config,
-            Peer,
-            NodeRole,
-            PeerStatus,
         )
 
         config = load_cluster_config()

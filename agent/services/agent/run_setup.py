@@ -176,9 +176,8 @@ def setup_autonomous_run(
     # ------------------------------------------------------------------
     # 3. System overload check + early return
     # ------------------------------------------------------------------
-    from services.infrastructure.resource_manager import PRIORITY_CHAT
-
     import orchestrator
+    from services.infrastructure.resource_manager import PRIORITY_CHAT
 
     def _overloaded_now() -> bool:
         try:
@@ -219,7 +218,8 @@ def setup_autonomous_run(
         from services.personality.aspect_behavior import apply_reasoning_depth as _ab_apply_depth
 
         reasoning_mode = _ab_apply_depth(active_aspect, reasoning_mode)
-        from services.agent.reasoning_state import get_lock as _rstate_get_lock2, set_ as _rstate_set2
+        from services.agent.reasoning_state import get_lock as _rstate_get_lock2
+        from services.agent.reasoning_state import set_ as _rstate_set2
         with _rstate_get_lock2():
             _rstate_set2(reasoning_mode)
     except Exception as _ab_err:
@@ -367,7 +367,6 @@ def setup_autonomous_run(
     # 10. State creation + initialization
     # ------------------------------------------------------------------
     from execution_state import create_execution_state
-
     from services.prompts.system_head_builder import decompose_goal as _decompose_goal
     from services.prompts.system_head_builder import is_lightweight_chat_turn as _is_lightweight_chat_turn
 
@@ -552,6 +551,7 @@ def setup_autonomous_run(
     # ------------------------------------------------------------------
     try:
         import random as _rng
+
         from services.planning.verification_queue import get_next_verification
         _pending_v = get_next_verification()
         if _pending_v and _rng.random() < 0.3:  # 30% chance per turn
@@ -668,8 +668,8 @@ def _run_planning_block(
     _emit_run_telemetry,
 ) -> dict | None:
     """Run the planning block. Returns a result dict if planning completed, else None."""
-    from services.prompts.system_head_builder import is_lightweight_chat_turn as _is_lightweight_chat_turn
-
+    import agent_loop as _al
+    from services.infrastructure.resource_manager import classify_load
     from services.observability import log_agent_plan_completed, log_agent_plan_created, log_planner_invoked
     from services.planning.planner import (
         create_plan,
@@ -678,9 +678,7 @@ def _run_planning_block(
         should_plan,
         validate_plan_before_execution,
     )
-    from services.infrastructure.resource_manager import classify_load
-
-    import agent_loop as _al
+    from services.prompts.system_head_builder import is_lightweight_chat_turn as _is_lightweight_chat_turn
 
     _ct_plan = state.get("coordinator_trace") or {}
     try:

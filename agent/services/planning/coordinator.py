@@ -24,8 +24,8 @@ class TaskClassification:
 
 
 def classify(goal: str, context: str, cfg: dict, *, research_mode: bool = False) -> TaskClassification:
-    from services.llm.model_router import classify_task_for_routing
     from services.infrastructure.reasoning_classifier import classify_reasoning_need
+    from services.llm.model_router import classify_task_for_routing
 
     task_kind = classify_task_for_routing(goal, context or "", cfg)
     rdepth = classify_reasoning_need(goal, context or "", research_mode=research_mode)

@@ -28,7 +28,10 @@ def retry_call(
     attempts = max(1, int(attempts))
     try:
         from tenacity import (
-            retry, stop_after_attempt, wait_exponential_jitter, retry_if_exception_type,
+            retry,
+            retry_if_exception_type,
+            stop_after_attempt,
+            wait_exponential_jitter,
         )
 
         @retry(
