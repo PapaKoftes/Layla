@@ -279,10 +279,16 @@ Cursor integration via MCP — see [.cursor/rules/layla-assistant.mdc](.cursor/r
 |---------|----------------|
 | **Web UI** | http://localhost:8000/ui |
 | **OpenAPI** | http://localhost:8000/docs |
-| **CLI** | `python layla.py` |
+| **CLI** | `./layla` (Linux/macOS) · `layla.cmd` (Windows) · `layla --help` for flags |
 | **TUI** | `cd agent && python tui.py` |
 | **OpenAI-compatible** | `http://localhost:8000/v1` |
 | **Discord** | [discord_bot/README.md](discord_bot/README.md) |
+
+**Languages:** the web interface is translatable into 11 languages (English, Spanish,
+German, French, Italian, Portuguese, Russian, Japanese, Chinese, Korean, Arabic — with
+right-to-left layout for Arabic) — switch it in **Settings → Interface language**. Untranslated
+strings fall back to English. Separately, set `response_language` to have the model *reply* in
+your language.
 
 ---
 
