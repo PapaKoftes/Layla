@@ -373,8 +373,30 @@ def relationship_codex_context(cfg: dict, workspace_root: str) -> tuple[str, boo
 
 
 # ---------------------------------------------------------------------------
-# Main entry point
+# Output discipline — the LAST thing the model reads, to stop weak models echoing
+# the internal scaffolding (section labels, [EARNED_TITLE]/[TOOL]/[REFUSED] markers,
+# "Objective:", "Echo (patterns/preferences):") back into their reply. This is the
+# root-cause complement to the output-side cleaner in response_builder.
 # ---------------------------------------------------------------------------
+
+_OUTPUT_DISCIPLINE = (
+    "## Output discipline\n"
+    "Reply with ONLY your message to the user, as plain prose. Do NOT repeat, echo, or "
+    "reproduce any of the context above — no section headers, no bracketed control markers "
+    "([EARNED_TITLE], [TOOL], [REFUSED], [merge…]), no 'Objective:' or 'Echo "
+    "(patterns/preferences):' lines, no 'Research …' restatements, and no stray code fences. "
+    "Do not narrate your process or your tools. Just give the answer."
+)
+
+
+def _append_output_discipline(head: str, cfg: dict) -> str:
+    try:
+        if cfg.get("output_discipline_enabled", True):
+            return (head or "").rstrip() + "\n\n" + _OUTPUT_DISCIPLINE
+    except Exception:
+        pass
+    return head
+
 
 def build_system_head(
     goal: str = "",
@@ -1161,7 +1183,7 @@ def build_system_head(
         head = assembled if assembled.strip() else "You are Layla, a bounded AI companion and engineering agent."
         if cfg.get("custom_system_prefix"):
             head = head + "\n\n" + cfg["custom_system_prefix"].strip()
-        return head
+        return _append_output_discipline(head, cfg)
 
     # Legacy path: no budget enforcement
     parts = [system_instructions]
@@ -1180,4 +1202,4 @@ def build_system_head(
     head = "\n\n".join(parts) if parts else "You are Layla, a bounded AI companion and engineering agent."
     if cfg.get("custom_system_prefix"):
         head = head + "\n\n" + cfg["custom_system_prefix"].strip()
-    return head
+    return _append_output_discipline(head, cfg)
