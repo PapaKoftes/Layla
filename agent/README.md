@@ -13,7 +13,7 @@ venv\Scripts\activate        # Windows
 pip install -r requirements.txt   # Full install (~4GB)
 # pip install -e ".[core]"        # Core only (~250MB) — see docs/INSTALL_PROFILES.md
 
-python main.py
+python serve.py                   # canonical launcher (port-conflict guard); or: uvicorn main:app --host 127.0.0.1 --port 8000
 # Open http://127.0.0.1:8000/ui
 ```
 
