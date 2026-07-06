@@ -165,3 +165,27 @@ def format_research_report(
         f"{citations_md or '(none)'}\n"
     ).strip() + "\n"
 
+
+def save_report_to_kb(report: str, *, title: str = "Research report") -> dict | None:
+    """Ingest a finished research report into the SEARCHABLE knowledge base so it becomes
+    recallable memory — not just a .research_brain/ file surfaced by /research_output.
+
+    Best-effort and gated by `research_kb_ingest_enabled` (default True). Reuses the
+    existing kb_builder pipeline (chunk → build articles → save + embed); returns the
+    kb_builder.save() result, or None if skipped/failed. Short reports (< 200 chars) are
+    skipped as not worth an article.
+    """
+    if not report or len(report.strip()) < 200:
+        return None
+    try:
+        import runtime_safety
+        if not runtime_safety.load_config().get("research_kb_ingest_enabled", True):
+            return None
+    except Exception:
+        pass
+    try:
+        from services.workspace.kb_builder import build_kb_from_texts
+        return build_kb_from_texts([report], topic=title)
+    except Exception:
+        return None
+
