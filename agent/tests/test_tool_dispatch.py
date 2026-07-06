@@ -292,6 +292,29 @@ class TestShellHandler:
         assert result.flow == "break"
         assert ctx.state["status"] == "finished"
 
+    @patch("services.tools.tool_dispatch._imports")
+    def test_deny_by_default_on_real_second_gate(self, mock_imports):
+        """Audit C2: allow_run=True but a non-whitelisted dangerous command with no grant
+        must still require approval and NOT execute — the deny-by-default branch that was
+        once inverted. Existing tests only hit the first (allow_run=False) gate."""
+        al = MagicMock()
+        al._extract_shell_argv.return_value = ["rm", "-rf", "/"]
+        al._has_any_grant.return_value = False           # no session grant
+        al._write_pending.return_value = "approval-danger"
+        rs = MagicMock()
+        rs.is_tool_allowed.return_value = False           # not on the allowlist
+        shell_fn = MagicMock()
+        mock_imports.return_value = (al, rs, {"shell": {"fn": shell_fn}})
+
+        ctx = _make_ctx(allow_run=True, cfg={})           # passes gate 1, must trip gate 2
+        result = dispatch_tool_intent("shell", "rm -rf /", ctx)
+
+        assert result.handled is True and result.flow == "break"
+        assert ctx.state["status"] == "finished"
+        last = ctx.state["steps"][-1]["result"]
+        assert last.get("reason") == "approval_required"
+        shell_fn.assert_not_called()                      # the dangerous command never ran
+
 
 class TestMCPHandler:
     @patch("services.tools.tool_dispatch._imports")
