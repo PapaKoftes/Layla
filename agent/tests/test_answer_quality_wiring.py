@@ -25,7 +25,8 @@ def _run_finalize(cfg, monkeypatch, answer="Layla runs fully local on CPU with l
         "original_goal": "how does layla run",
         "conversation_id": "",
     }
-    noop = lambda *a, **k: None
+    def noop(*a, **k):
+        return None
     finalize_run_state(
         state,
         {"id": "morrigan"},

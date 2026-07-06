@@ -32,7 +32,7 @@ def test_dashboard_status_classification(isolated_db):
     from layla.memory import user_profile as up
     g_near = up.add_goal("almost there")
     up.add_goal_progress(g_near, "nearly", 90)
-    g_fresh = up.add_goal("brand new")           # no progress → on_track/breakdown
+    up.add_goal("brand new")           # no progress → on_track/breakdown
     up.add_goal("also fresh")
 
     dash = gt.goal_dashboard()

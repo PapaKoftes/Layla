@@ -47,8 +47,8 @@ def test_run_deliberation_empty_goal():
 
 def test_run_deliberation_returns_structure(monkeypatch):
     """run_deliberation returns chosen_key, rationale, strategy_hint, approaches."""
-    from services.planning import cognitive_workspace
     from services.llm import llm_gateway
+    from services.planning import cognitive_workspace
 
     def mock_generate(*a, **k):
         return {"choices": [{"message": {"content": '{"approaches":[{"id":"A","name":"Search-first","brief":"gather","key":"search"},{"id":"B","name":"Reasoning-first","brief":"think","key":"reasoning"},{"id":"C","name":"Tool-first","brief":"explore","key":"tools"}]}'}}]}
@@ -79,8 +79,8 @@ def test_run_deliberation_returns_structure(monkeypatch):
 
 def test_run_deliberation_fallback_without_llm(monkeypatch):
     """When LLM fails, fallback returns canonical approaches and reasoning-first."""
-    from services.planning import cognitive_workspace
     from services.llm import llm_gateway
+    from services.planning import cognitive_workspace
 
     monkeypatch.setattr(llm_gateway, "run_completion", lambda *a, **k: {"choices": [{}]})
 

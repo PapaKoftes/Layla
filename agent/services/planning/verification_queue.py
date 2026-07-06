@@ -20,7 +20,7 @@ import hashlib
 import json
 import logging
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -247,8 +247,8 @@ class VerificationQueue:
                             pass
                         # Phase 3C: Auto-generate wiki entry from verified fact
                         try:
-                            from autonomous.wiki import build_candidate, write_wiki_entry
                             import runtime_safety
+                            from autonomous.wiki import build_candidate, write_wiki_entry
                             _wiki_cfg = runtime_safety.load_config()
                             _wiki_candidate = build_candidate(
                                 title=fact_content[:60],

@@ -277,7 +277,7 @@ def step_model(hw: dict[str, Any]) -> dict[str, Any]:
     tier = hw.get("hardware_tier", "cpu")
     rec = MODEL_RECOMMENDATIONS.get(tier, MODEL_RECOMMENDATIONS["cpu"])
 
-    print(f"    Based on your hardware, I recommend:")
+    print("    Based on your hardware, I recommend:")
     print(f"    Model: {rec['name']}")
     print(f"    Size:  {rec['size_gb']} GB")
     print(f"    Why:   {rec['description']}")

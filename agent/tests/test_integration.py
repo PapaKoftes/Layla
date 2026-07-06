@@ -16,14 +16,14 @@ require the full runtime. Instead they validate:
 8. Scheduler registry creates all expected jobs
 """
 
-import sys
+import hashlib
 import os
 import sqlite3
+import sys
 import tempfile
-import hashlib
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-from datetime import datetime, timezone, timedelta
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -117,8 +117,8 @@ class TestGovernorDispatcherIntegration:
     """Verify that governor mode changes affect dispatcher decisions."""
 
     def test_whisper_mode_offloads_to_drone(self):
+        from services.cluster.work_unit import TaskType, WorkUnit
         from services.planning.task_dispatcher import TaskDispatcher
-        from services.cluster.work_unit import WorkUnit, TaskType
 
         disp = TaskDispatcher()
 
@@ -146,8 +146,8 @@ class TestGovernorDispatcherIntegration:
         assert decision in ("drone-1", "queued")
 
     def test_sprint_mode_prefers_local(self):
+        from services.cluster.work_unit import TaskType, WorkUnit
         from services.planning.task_dispatcher import TaskDispatcher
-        from services.cluster.work_unit import WorkUnit, TaskType
 
         disp = TaskDispatcher()
 
@@ -378,7 +378,7 @@ class TestTaskQueueLifecycle:
     """Verify complete task lifecycle: submit → claim → complete/fail."""
 
     def test_full_lifecycle(self):
-        from services.cluster.work_unit import WorkUnit, TaskType, TaskStatus
+        from services.cluster.work_unit import TaskStatus, TaskType, WorkUnit
 
         task = WorkUnit(type=TaskType.EMBEDDING, payload={"text": "test"})
 
@@ -399,7 +399,7 @@ class TestTaskQueueLifecycle:
         assert task.result == {"embedding": [0.1, 0.2, 0.3]}
 
     def test_fail_then_retry(self):
-        from services.cluster.work_unit import WorkUnit, TaskType, TaskStatus
+        from services.cluster.work_unit import TaskStatus, TaskType, WorkUnit
 
         task = WorkUnit(type=TaskType.INGESTION, payload={"file": "test.pdf"})
         task.mark_running("queen-node-1")
@@ -448,6 +448,7 @@ class TestPairingTokenLifecycle:
 
     def test_expired_token_rejected(self):
         import time
+
         from services.cluster.cluster_pairing import ClusterPairing
 
         cp = ClusterPairing()
@@ -469,7 +470,7 @@ class TestNodeSyncDedup:
 
     def test_import_deduplicates_by_hash(self):
         db = _make_in_memory_db()
-        fake = _FakeConn(db)
+        _FakeConn(db)
 
         content = "Python list comprehensions are faster than for loops"
         content_hash = hashlib.sha256(content.encode()).hexdigest()[:32]

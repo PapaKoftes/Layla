@@ -136,8 +136,8 @@ def test_empty_required_string_rejected(monkeypatch):
 
 def test_all_dangerous_tools_have_schemas():
     """Every tool marked dangerous in domain manifests must have a TOOL_SCHEMAS entry."""
-    from services.tools.tool_args import TOOL_SCHEMAS
     from layla.tools import registry
+    from services.tools.tool_args import TOOL_SCHEMAS
 
     missing = []
     for name, meta in registry.TOOLS.items():

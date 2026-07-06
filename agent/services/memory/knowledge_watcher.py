@@ -187,8 +187,8 @@ class KnowledgeWatcher:
 
         # Try watchdog first
         try:
+            from watchdog.events import FileCreatedEvent, FileModifiedEvent, FileSystemEventHandler
             from watchdog.observers import Observer
-            from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileModifiedEvent
 
             class _Handler(FileSystemEventHandler):
                 def __init__(self, watcher: KnowledgeWatcher):
@@ -293,7 +293,7 @@ class KnowledgeWatcher:
             # Try ingestion pipeline first
             try:
                 from layla.ingestion.pipeline import process_file
-                result = process_file(str(path))
+                process_file(str(path))
                 self._tracker.mark_processed(path)
                 self._files_ingested += 1
                 logger.info("Knowledge watcher: ingested %s", path.name)

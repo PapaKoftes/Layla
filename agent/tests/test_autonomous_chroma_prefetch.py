@@ -55,8 +55,8 @@ def test_try_chroma_retrieval_hit_returns_payload():
 
 
 def test_query_learnings_best_similarity_returns_none_when_empty(monkeypatch, tmp_path):
-    from layla.memory import vector_store as vs
     import layla.memory.fallback_store as fb
+    from layla.memory import vector_store as vs
 
     # No native chroma -> the SQLite+NumPy fallback serves retrieval (RAG-grounding fix).
     # Point it at a FRESH empty dir so this asserts "empty store -> None", not leaked state.

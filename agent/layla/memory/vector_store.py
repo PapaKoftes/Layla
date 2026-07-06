@@ -769,9 +769,11 @@ def search_hybrid(query: str, k: int = 5, *, coding_boost: bool = False) -> list
 
 # BL-027: cross-encoder + MMR reranking split into vector_store_rerank.py (re-exported).
 from layla.memory.vector_store_rerank import (  # noqa: E402,F401
-    _get_bge_cross_encoder, _get_cross_encoder, mmr_rerank, rerank,
+    _get_bge_cross_encoder,
+    _get_cross_encoder,
+    mmr_rerank,
+    rerank,
 )
-
 
 # ─── HyDE — Hypothetical Document Embeddings ─────────────────────────────────
 
