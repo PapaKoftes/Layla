@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+# Layla launcher (Linux/macOS). Runs the server from the source tree.
+# Usage: ./layla [--help] [--host ADDR] [--port N] [--no-browser] [--reload]
+DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$DIR/agent" || exit 1
+exec python serve.py "$@"
