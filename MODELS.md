@@ -170,9 +170,11 @@ pip install faster-whisper
 ```
 Model auto-downloads. Set `whisper_model` in config: `"base"` (fast) or `"small"` / `"medium"` (better accuracy).
 
-**Text-to-speech (kokoro-onnx):**
+**Text-to-speech:** the shipped default is **pyttsx3** (system voice, permissive MPL-2.0, zero download) — Layla falls back to it automatically.
+
+For higher-quality offline TTS, **kokoro-onnx is opt-in** (it is **not** in the default install because it pulls `phonemizer-fork`, which is **GPLv3+** — incompatible with Layla's license). Install it yourself only if you accept GPLv3:
 ```bash
-pip install kokoro-onnx soundfile
+pip install "layla[voice-kokoro]"   # or: pip install kokoro-onnx soundfile
 ```
 ~80 MB download, fully offline, high quality. Set `tts_voice` in config (default: `"af_heart"`).
 

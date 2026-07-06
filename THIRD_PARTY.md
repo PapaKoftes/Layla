@@ -57,7 +57,13 @@ orjson (Apache-2.0 / MIT) · PyYAML (MIT) · unidiff (MIT) · Pillow (HPND / MIT
 llama-cpp-python (MIT) · litellm (MIT) · instructor (MIT)
 
 ### `voice`
-faster-whisper (MIT) · kokoro-onnx (Apache-2.0) · soundfile (BSD-3)
+faster-whisper (MIT) · pyttsx3 (MPL-2.0, the shipped default TTS) · soundfile (BSD-3)
+
+### `voice-kokoro` (opt-in only)
+kokoro-onnx — **GPLv3+** (it pulls `phonemizer-fork`, GNU GPL v3). Strong copyleft is
+incompatible with Layla's non-commercial source license, so it is **not** in the default
+install or the `voice` extra. Install explicitly only if you accept GPLv3:
+`pip install layla[voice-kokoro]`.
 
 ### `vision`
 easyocr (Apache-2.0)

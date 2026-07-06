@@ -156,7 +156,7 @@ Switch in the sidebar or invoke by name:
 - File read/write/edit, patches, shell, Python  
 - Web search, Playwright browser automation, screenshots  
 - Repo search (grep/glob), Git operations  
-- 195 registered tools — see [AGENTS.md](AGENTS.md) and [docs/TECH_STACK_AND_CAPABILITIES.md](docs/TECH_STACK_AND_CAPABILITIES.md)  
+- 198 registered tools — see [AGENTS.md](AGENTS.md) and [docs/TECH_STACK_AND_CAPABILITIES.md](docs/TECH_STACK_AND_CAPABILITIES.md)  
 
 **Memory**
 
@@ -164,7 +164,7 @@ Switch in the sidebar or invoke by name:
 
 **Voice (optional deps)**
 
-- faster-whisper (STT), kokoro-onnx (TTS)  
+- faster-whisper (STT), pyttsx3 (TTS — shipped default); optional kokoro-onnx (higher quality, GPLv3, opt-in via `layla[voice-kokoro]`)  
 
 **Missions**
 
