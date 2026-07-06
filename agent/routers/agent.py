@@ -467,8 +467,9 @@ async def agent(req: AgentRequest, request: Request):
                 "cited_sources": [],
                 "load": _json_safe(classify_load()),
             })
-        except Exception as _pe:
-            return JSONResponse({"ok": False, "error": f"Plan generation failed: {_pe}"}, status_code=500)
+        except Exception:
+            logger.exception("plan generation failed")
+            return JSONResponse({"ok": False, "error": "Plan generation failed. Check the server logs for details."}, status_code=500)
 
     if plan_mode and (goal or "").strip() and not _ep_enabled:
         try:
@@ -529,8 +530,9 @@ async def agent(req: AgentRequest, request: Request):
                 "memory_influenced": [],
                 "cited_sources": [],
             })
-        except Exception as _pe:
-            return JSONResponse({"ok": False, "error": f"Plan generation failed: {_pe}"}, status_code=500)
+        except Exception:
+            logger.exception("plan generation failed")
+            return JSONResponse({"ok": False, "error": "Plan generation failed. Check the server logs for details."}, status_code=500)
 
     try:
         from layla.memory.db import save_session_prompt
@@ -892,9 +894,12 @@ async def agent(req: AgentRequest, request: Request):
                     yield f"data: {json.dumps(_done_ns)}\n\n"
             except Exception as e:
                 logger.exception("stream_agent failed")
-                err = str(e)
-                if "model" in err.lower() or "path" in err.lower():
-                    err = f"Model error: {err}. Configure runtime_config.json. See MODELS.md."
+                # Detail logged server-side; do not stream raw exception text to the client.
+                low = str(e).lower()
+                if "model" in low or "path" in low:
+                    err = "Model error: the LLM could not be loaded. Set model_filename in runtime_config.json and ensure the .gguf file exists. See MODELS.md."
+                else:
+                    err = "The request failed while processing. Check the server logs for details."
                 yield f"data: {json.dumps({'done': True, 'content': err, 'ux_states': [], 'memory_influenced': []})}\n\n"
             finally:
                 watch_task.cancel()
@@ -936,11 +941,15 @@ async def agent(req: AgentRequest, request: Request):
         )
     except Exception as e:
         logger.exception("agent run failed")
-        err_msg = str(e)
-        if "model" in err_msg.lower() or "path" in err_msg.lower() or "file" in err_msg.lower():
-            err_msg = f"Model error: {err_msg}. Configure model_filename in runtime_config.json and ensure the .gguf file exists. See MODELS.md."
+        # Detail is logged server-side; never echo raw exception text / internal paths
+        # to the client (info disclosure). Keep the actionable model-config hint only.
+        low = str(e).lower()
+        if "model" in low or "path" in low or "file" in low:
+            err_msg = "Model error: the LLM could not be loaded. Set model_filename in runtime_config.json and ensure the .gguf file exists. See MODELS.md."
+        else:
+            err_msg = "The request failed while processing. Check the server logs for details."
         _append_history("user", goal)
-        _append_history("assistant", "I couldn't reply ÔÇö see error below.")
+        _append_history("assistant", "I couldn't reply - see the message above.")
         return JSONResponse({
             "response": err_msg,
             "state": {"status": "error", "steps": []},
@@ -951,7 +960,7 @@ async def agent(req: AgentRequest, request: Request):
             "ux_states": [],
             "memory_influenced": [],
             "cited_sources": [],
-        })
+        }, status_code=500)
 
     steps = result.get("steps") or []
     final = steps[-1].get("result", "") if steps else ""
