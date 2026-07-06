@@ -99,6 +99,22 @@ export function initActions() {
     }
   });
 
+  // ── Keyboard activation for non-native [data-action] controls (a11y / WCAG 2.1.1) ──
+  // Native <button>/<a> fire click on Enter/Space themselves; role="button" divs and
+  // tabindex cards do not. Route those through a synthetic click so they are operable
+  // by keyboard, reusing the click delegation above.
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    var el = e.target;
+    while (el && el !== document && !el.getAttribute('data-action')) el = el.parentElement;
+    if (!el || el === document) return;
+    var tag = el.tagName;
+    if (tag === 'BUTTON' || tag === 'A' || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    if (el.getAttribute('role') !== 'button' && !el.hasAttribute('tabindex')) return;
+    e.preventDefault();   // stop Space from scrolling the page
+    el.click();
+  });
+
   // ── Change delegation ──
   document.addEventListener('change', function (e) {
     var el = e.target;
