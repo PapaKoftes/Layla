@@ -1,0 +1,24 @@
+# Gitleaks configuration for Layla.
+#
+# We keep gitleaks' full built-in rule set (useDefault) and add ONE narrow
+# allowlist. The `generic-api-key` rule mis-fires on the model-registry dict
+# literals in first_run.py / setup_engine.py / services/llm/model_manager.py,
+# e.g.  {"key": "dolphin-mistral-7b", "name": "Dolphin Mistral 7B ...", ...}
+# The `"key"` value there is a *model identifier* (an all-lowercase slug), not a
+# credential. Real API keys carry uppercase / underscores / high entropy, so the
+# lowercase-slug shape below cannot match one — this narrows the false positive
+# without blanket-allowlisting the files (a real secret in them would still fire).
+
+title = "Layla gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Model-registry `\"key\": \"<lowercase-slug>\"` literals are model IDs, not secrets."
+# Match against the whole offending line so this only exempts the model-registry
+# construct; anything with uppercase/underscore/random entropy still trips.
+regexTarget = "line"
+regexes = [
+  '''"key"\s*:\s*"[a-z0-9][a-z0-9.-]{2,60}"''',
+]
