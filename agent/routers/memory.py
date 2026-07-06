@@ -133,9 +133,18 @@ async def memory_forget_identity(key: str):
 @router.get("/export")
 async def export_bundle():
     """
-    Export a ZIP bundle containing:
+    Portable KNOWLEDGE + LEARNINGS bundle (for moving/sharing curated memory between
+    instances). This is NOT a full backup — it does NOT include the SQLite database
+    (conversations, timeline, goals, identity, aspect memories) or the knowledge graph.
+
+    For a complete point-in-time backup of the whole database, use the automatic nightly
+    DB backup (services/infrastructure/db_backup.py → backups/layla_*.db, scheduled) or
+    the `db_backup` tool; the entire data directory (LAYLA_DATA_DIR) is a file the operator
+    owns and can copy at any time.
+
+    The ZIP contains:
     - All knowledge/*.md and knowledge/*.txt files
-    - All learnings as learnings.json
+    - Learnings as learnings.json (most-recent 5000)
     - A manifest.json with export metadata
     """
     buf = io.BytesIO()
