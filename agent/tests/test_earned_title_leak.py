@@ -50,3 +50,16 @@ def test_bracketed_echo_marker_cut():
     assert strip_junk_from_reply("[ECHO: internal note] leaked") == ""
     # Conservative: a mid-line `echo:` in legit shell content must NOT be stripped.
     assert strip_junk_from_reply("To print: echo: hello world") == "To print: echo: hello world"
+
+
+def test_leading_active_aspect_marker_preserves_answer():
+    # Golden-eval live-probe finding: a weak model prepended [EARNED_TITLE: …] and
+    # [Active aspect: …] before the real answer. [Active aspect: …] used to truncate the
+    # whole reply to end (dropping the answer → strip returned "" → /v1 kept the raw leak).
+    # It must now be removed like EARNED_TITLE, preserving the answer that follows.
+    assert strip_junk_from_reply(
+        "[EARNED_TITLE: Water boiling at sea level]\n\n[Active aspect: Morrigan]\nWater boils at 100 C."
+    ) == "Water boils at 100 C."
+    assert strip_junk_from_reply("[Active aspect: Nyx]\nParis.") == "Paris."
+    # A *trailing* system-head echo (real content first) must still be cut.
+    assert strip_junk_from_reply("The answer is 42.\nCurrent goal: solve stuff") == "The answer is 42."
