@@ -458,37 +458,37 @@ def _get_llm():
         except Exception as _hp_err:
             logger.debug("hardware_probe apply_to_config skipped: %s", _hp_err)
 
-        n_ctx = max(512, int(cfg.get("n_ctx", 4096)))
-        n_batch = max(1, min(n_ctx, int(cfg.get("n_batch", 512))))
+        n_ctx = max(512, _safe_int(cfg.get("n_ctx", 4096), 4096))
+        n_batch = max(1, min(n_ctx, _safe_int(cfg.get("n_batch", 512), 512)))
 
         # Auto-detect thread counts if not in config
         auto_t = _auto_threads()
-        n_threads = max(1, int(cfg["n_threads"])) if cfg.get("n_threads") else auto_t
+        n_threads = max(1, _safe_int(cfg["n_threads"], auto_t)) if cfg.get("n_threads") else auto_t
         # Dynamic governor: when the user is active, load with fewer threads so a
         # generation can't choke a low-end laptop; use all cores when idle (Castilla).
         if cfg.get("resource_governor_enabled", True):
             try:
                 from services.infrastructure.resource_governor import get_governor
-                _phys = int(cfg.get("n_threads") or auto_t)
+                _phys = _safe_int(cfg.get("n_threads") or auto_t, auto_t)
                 n_threads = max(1, get_governor().get_inference_threads(_phys))
             except Exception as _gov_e:
                 logger.debug("governor inference-threads unavailable: %s", _gov_e)
         # Batch threads: more threads help here; use logical count capped at 2× physical
         n_threads_batch = (
-            max(1, int(cfg["n_threads_batch"])) if cfg.get("n_threads_batch")
+            max(1, _safe_int(cfg["n_threads_batch"], n_threads)) if cfg.get("n_threads_batch")
             else min(n_threads * 2, (os.cpu_count() or n_threads))
         )
 
         # n_keep: pin this many tokens in KV cache during context-shifting.
         # Set to system prompt token estimate so the identity is never evicted.
         # ~1 token per 4 chars; system prompts are typically 500-2000 chars.
-        n_keep = max(64, int(cfg.get("n_keep", 512)))
+        n_keep = max(64, _safe_int(cfg.get("n_keep", 512), 512))
 
         use_flash = bool(cfg.get("flash_attn", True))
         kwargs = {
             "model_path": str(model_path),
             "n_ctx": n_ctx,
-            "n_gpu_layers": int(cfg.get("n_gpu_layers", -1)),  # -1 = full GPU offload when VRAM allows
+            "n_gpu_layers": _safe_int(cfg.get("n_gpu_layers", -1), -1),  # -1 = full GPU offload when VRAM allows
             "n_batch": n_batch,
             "n_threads": n_threads,
             "n_threads_batch": n_threads_batch,
@@ -667,16 +667,23 @@ def get_stop_sequences():
 
 
 def _count_tokens(text: str) -> int:
-    """Count tokens using tiktoken (cl100k_base, approximate for GGUF)."""
+    """Count tokens — delegates to the canonical cached counter (services.llm.token_count).
+
+    The previous local copy re-created the tiktoken encoding on EVERY call, which is
+    wasteful on the per-chunk streaming hot path; count_tokens caches the encoding."""
     if not text:
         return 0
+    from services.llm.token_count import count_tokens
+    return count_tokens(text)
+
+
+def _safe_int(val, default: int) -> int:
+    """int() that degrades to a default instead of crashing model load on a garbage
+    config value (e.g. n_keep="abc" in a hand-edited runtime_config.json)."""
     try:
-        import tiktoken
-        enc = tiktoken.get_encoding("cl100k_base")
-        return len(enc.encode(text))
-    except Exception as e:
-        logger.debug("tiktoken count failed: %s", e)
-        return max(0, len(text) // 4)
+        return int(val)
+    except (ValueError, TypeError):
+        return default
 
 
 def _add_usage(prompt_tokens: int, completion_tokens: int) -> None:
