@@ -222,6 +222,25 @@ jobs:
         env:
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
 
+  package-build:
+    name: Package build (wheel + sdist)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      # Release-readiness (#19): the project must build a clean wheel + sdist from
+      # pyproject (catches packages.find / include / metadata errors an editable install
+      # hides). Full clean-machine install of install.sh is a separate manual/release step.
+      - name: Build distribution
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          python -m twine check dist/*
+
   inference-smoke:
     name: Inference smoke (real tiny model)
     runs-on: ubuntu-latest
