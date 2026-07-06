@@ -257,6 +257,20 @@ def save_learning(
                 t.start()
             except Exception:
                 pass
+        # Memory self-consistency guard: flag (don't block) if this new learning likely
+        # contradicts a stored one, for later reconcile. Non-blocking; skip sensitive plaintext.
+        if rid and content and not _sensitive:
+            try:
+                import threading
+                def _consistency():
+                    try:
+                        from services.memory.consistency_guard import check_and_flag
+                        check_and_flag(content, new_id=int(rid))
+                    except Exception:
+                        pass
+                threading.Thread(target=_consistency, daemon=True, name="memory-consistency").start()
+            except Exception:
+                pass
         try:
             from services.memory.personal_knowledge_graph import invalidate_personal_graph
             invalidate_personal_graph()
