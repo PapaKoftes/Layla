@@ -63,6 +63,16 @@ def test_settings_modal_opens(page: Page, base_url: str) -> None:
     expect(page.locator('#panel-prefs[data-rcp="prefs"]')).to_be_visible(timeout=15000)
 
 
+def test_command_palette_opens_on_ctrl_k(page: Page, base_url: str) -> None:
+    """⌘K/Ctrl+K opens the command palette (previously untested)."""
+    _dismiss_wizard(page)
+    page.goto(f"{base_url}/ui", wait_until="domcontentloaded", timeout=90000)
+    expect(page.locator("#msg-input")).to_be_visible(timeout=45000)
+    page.keyboard.press("Control+k")
+    expect(page.locator("#cmd-palette")).to_be_visible(timeout=15000)
+    expect(page.locator("#cmd-palette .cmdp-input")).to_be_focused(timeout=5000)
+
+
 def test_help_shortcuts_sheet(page: Page, base_url: str) -> None:
     _dismiss_wizard(page)
     page.goto(f"{base_url}/ui", wait_until="domcontentloaded", timeout=90000)
