@@ -494,6 +494,14 @@ def _migrate_impl() -> None:
             """)
             db.execute("CREATE INDEX IF NOT EXISTS idx_conversations_updated_at ON conversations(updated_at DESC)")
             db.execute("CREATE INDEX IF NOT EXISTS idx_conv_msgs_conversation_id ON conversation_messages(conversation_id, created_at)")
+            # Conversation branching / time-travel: link a fork to its parent + the message it
+            # branched from (layla.memory.conversations.fork_conversation). Additive columns.
+            _conv_cols = {r[1] for r in db.execute("PRAGMA table_info(conversations)").fetchall()}
+            if "parent_id" not in _conv_cols:
+                db.execute("ALTER TABLE conversations ADD COLUMN parent_id TEXT DEFAULT ''")
+            if "forked_at_message_id" not in _conv_cols:
+                db.execute("ALTER TABLE conversations ADD COLUMN forked_at_message_id TEXT DEFAULT ''")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_conversations_parent_id ON conversations(parent_id)")
             db.execute("""
                 CREATE VIRTUAL TABLE IF NOT EXISTS conversation_messages_fts
                 USING fts5(content, conversation_id UNINDEXED, content='conversation_messages', content_rowid='rowid')

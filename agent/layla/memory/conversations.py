@@ -303,3 +303,93 @@ def search_conversations_filtered(query: str, limit: int = 50, tag: str | None =
     return [dict(r) for r in rows]
 
 
+# ── Conversation branching / time-travel (git-for-dialogue) ─────────────────
+
+def fork_conversation(source_id: str, *, at_message_id: str = "", new_title: str = "") -> dict | None:
+    """Branch a conversation: create a NEW conversation that copies the source's messages up
+    to (and including) at_message_id, linked back to the source. Empty at_message_id copies
+    the whole conversation. The new branch can then continue independently ("rewind + explore
+    a different path"). Returns the new conversation row, or None if source/message not found."""
+    import uuid
+
+    migrate()
+    src = (source_id or "").strip()
+    parent = get_conversation(src)
+    if not parent:
+        return None
+    msgs = get_conversation_messages(src, limit=2000)
+    if at_message_id:
+        idx = next((i for i, m in enumerate(msgs) if m.get("id") == at_message_id), None)
+        if idx is None:
+            return None
+        msgs = msgs[: idx + 1]
+
+    new_id = str(uuid.uuid4())
+    base_title = (new_title or "").strip() or ((parent.get("title") or "Conversation") + " (branch)")
+    now = utcnow().isoformat()
+    with _conn() as db:
+        db.execute(
+            """INSERT INTO conversations
+               (id, title, aspect_id, dominant_aspect, created_at, updated_at, message_count, parent_id, forked_at_message_id)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (
+                new_id, base_title[:120], parent.get("aspect_id", "") or "", parent.get("dominant_aspect", "") or "",
+                now, now, len(msgs), src, (at_message_id or ""),
+            ),
+        )
+        for m in msgs:
+            db.execute(
+                """INSERT INTO conversation_messages
+                   (id, conversation_id, role, content, aspect_id, created_at, token_count)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (str(uuid.uuid4()), new_id, m.get("role", ""), m.get("content", ""),
+                 m.get("aspect_id", "") or "", m.get("created_at", now), int(m.get("token_count", 0) or 0)),
+            )
+        db.commit()
+    return get_conversation(new_id)
+
+
+def list_branches(conversation_id: str) -> dict | None:
+    """Return this conversation's branch relationships: its parent (if it is itself a fork)
+    and its direct children (branches forked from it), for a fork tree / picker."""
+    migrate()
+    cid = (conversation_id or "").strip()
+    conv = get_conversation(cid)
+    if not conv:
+        return None
+    with _conn() as db:
+        children = db.execute(
+            """SELECT id, title, created_at, forked_at_message_id, message_count
+               FROM conversations WHERE parent_id=? ORDER BY created_at ASC""",
+            (cid,),
+        ).fetchall()
+    return {
+        "id": cid,
+        "parent_id": conv.get("parent_id") or "",
+        "forked_at_message_id": conv.get("forked_at_message_id") or "",
+        "branches": [dict(r) for r in children],
+    }
+
+
+def compare_conversations(a_id: str, b_id: str) -> dict:
+    """Diff two conversations (typically a branch vs its parent): the common leading prefix
+    by (role, content), then each side's divergent tail — time-travel compare."""
+    migrate()
+    a = get_conversation_messages((a_id or "").strip(), limit=2000)
+    b = get_conversation_messages((b_id or "").strip(), limit=2000)
+    common = 0
+    for ma, mb in zip(a, b):
+        if ma.get("role") == mb.get("role") and ma.get("content") == mb.get("content"):
+            common += 1
+        else:
+            break
+    _slim = lambda ms: [{"role": m.get("role"), "content": m.get("content")} for m in ms]  # noqa: E731
+    return {
+        "a_id": a_id,
+        "b_id": b_id,
+        "common_prefix_len": common,
+        "a_divergent": _slim(a[common:]),
+        "b_divergent": _slim(b[common:]),
+    }
+
+
