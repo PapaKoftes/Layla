@@ -626,6 +626,44 @@ app = FastAPI(
 )
 app.add_middleware(GZipMiddleware, minimum_size=500)  # compress responses > 500 bytes
 
+# Default browser security headers (defense-in-depth; no critical vuln relies on these).
+# 'unsafe-inline' is required because index.html ships inline <script>/<style> and is served
+# as a static file (no per-request nonce injection). This still blocks external script/style
+# injection, framing (clickjacking), MIME-sniffing, object embeds, and base-URI hijacking.
+_SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; "
+        "font-src 'self'; "
+        "connect-src 'self'; "
+        "media-src 'self' blob:; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'"
+    ),
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "geolocation=(), camera=(), payment=(), microphone=(self)",
+}
+
+
+@app.middleware("http")
+async def _security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    try:
+        import runtime_safety as _rs_sec
+        if _rs_sec.load_config().get("security_headers_enabled", True):
+            for k, v in _SECURITY_HEADERS.items():
+                response.headers.setdefault(k, v)
+    except Exception:
+        for k, v in _SECURITY_HEADERS.items():
+            response.headers.setdefault(k, v)
+    return response
+
 
 @app.exception_handler(Exception)
 async def _unhandled_exception_handler(request: Request, exc: Exception):
