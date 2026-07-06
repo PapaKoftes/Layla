@@ -32,6 +32,11 @@ jobs:
         working-directory: agent
         run: |
           pip install --upgrade pip
+          # Pre-install the prebuilt CPU llama-cpp wheel so requirements.txt doesn't
+          # compile it from source on every unit run (minutes; needs a C toolchain).
+          pip install "llama-cpp-python>=0.3.1,<0.4" \
+            --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu \
+            --only-binary llama-cpp-python --prefer-binary
           pip install -r requirements.txt
 
       - name: Verify editable install (fabrication_assist + layla packages)
@@ -41,6 +46,12 @@ jobs:
 
       - name: License compliance — no strong-copyleft deps (REQ-02)
         run: python scripts/check_copyleft.py
+
+      - name: Dependency vulnerability audit (pip-audit)
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit --skip-editable --progress-spinner off || echo "::warning::pip-audit reported advisories (non-blocking; review)"
 
       - name: Check UI onclick/onchange symbols
         working-directory: agent
@@ -89,12 +100,16 @@ jobs:
         working-directory: agent
         run: |
           pip install --upgrade pip
+          pip install "llama-cpp-python>=0.3.1,<0.4" --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu --only-binary llama-cpp-python --prefer-binary
           pip install -r requirements.txt
 
       - name: Verify editable install (fabrication_assist + layla packages)
         run: |
           pip install -e .
           python -c "import fabrication_assist; import layla"
+
+      - name: License compliance — no strong-copyleft deps (REQ-02)
+        run: python scripts/check_copyleft.py
 
       - name: Check UI onclick/onchange symbols
         working-directory: agent
@@ -194,6 +209,18 @@ jobs:
 
       - name: Check with ruff
         run: python -m ruff check agent fabrication_assist
+
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so the scan sees prior commits
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
 
   inference-smoke:
     name: Inference smoke (real tiny model)
