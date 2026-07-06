@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from services.agent import llm_decision as ld
 
-
 _REGISTRY = {
     "read_file": {"category": "file"},
     "analyze_image": {"category": "data", "feature": "vision"},

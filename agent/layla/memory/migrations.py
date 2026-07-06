@@ -931,10 +931,8 @@ def _migrate_impl() -> None:
 # Re-exported here so _migrate_impl's calls (and any migrations.X callers) keep working.
 from layla.memory.data_migrations import (  # noqa: E402
     _cleanup_orphaned_records,
-    _migrate_learnings_json,
     _migrate_evolution_layer,
+    _migrate_learnings_json,
 )
-
-
 
 __all__ = ["migrate", "_MIGRATED", "_MIGRATION_LOCK"]

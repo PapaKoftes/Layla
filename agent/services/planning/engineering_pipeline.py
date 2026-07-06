@@ -373,8 +373,8 @@ def run_execute_pipeline(
     """
     import time
 
-    from services.planning.planner import create_plan, execute_plan, normalize_plan_steps_tools
     from services.infrastructure.resource_manager import classify_load
+    from services.planning.planner import create_plan, execute_plan, normalize_plan_steps_tools
 
     t0 = time.perf_counter()
     cl = run_clarifier(goal, context, cfg, clarification_reply=clarification_reply)

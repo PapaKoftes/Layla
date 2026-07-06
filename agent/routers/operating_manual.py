@@ -26,7 +26,8 @@ def get_summary(max_chars: int = 600):
 
 @router.get("/notes")
 def list_notes():
-    from services.personality.operating_manual import NOTE_CATEGORIES, list_notes as _list
+    from services.personality.operating_manual import NOTE_CATEGORIES
+    from services.personality.operating_manual import list_notes as _list
     return {"notes": _list(), "categories": list(NOTE_CATEGORIES)}
 
 

@@ -20,7 +20,6 @@ from services.infrastructure.session_context import (
     remove_session,
 )
 
-
 # ── Steer hints ──────────────────────────────────────────────────────────
 
 
@@ -269,7 +268,7 @@ def test_concurrent_blackboard():
 
 
 def test_session_count():
-    from services.infrastructure.session_context import session_count, _sessions, _sessions_lock
+    from services.infrastructure.session_context import _sessions, _sessions_lock, session_count
 
     with _sessions_lock:
         before = len(_sessions)
@@ -279,7 +278,7 @@ def test_session_count():
 
 
 def test_prune_stale_sessions():
-    from services.infrastructure.session_context import prune_stale_sessions, _sessions, _sessions_lock
+    from services.infrastructure.session_context import _sessions, _sessions_lock, prune_stale_sessions
 
     # Create a session with artificially old _created_at
     ctx = get_or_create_session("prune-old")
@@ -293,7 +292,7 @@ def test_prune_stale_sessions():
 def test_prune_keeps_fresh_sessions():
     from services.infrastructure.session_context import prune_stale_sessions
 
-    ctx = get_or_create_session("prune-fresh")
+    get_or_create_session("prune-fresh")
     # _created_at is just now, so it should survive pruning
     prune_stale_sessions(max_age_seconds=3600)
     assert get_session("prune-fresh") is not None

@@ -475,8 +475,8 @@ async def agent(req: AgentRequest, request: Request):
             from pathlib import Path
 
             from layla.tools.registry import inside_sandbox
-            from services.planning.planner import create_plan
             from services.memory.project_memory import persist_plan_to_memory
+            from services.planning.planner import create_plan
 
             digest = ""
             if (workspace_root or "").strip():

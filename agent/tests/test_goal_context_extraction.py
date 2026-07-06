@@ -17,6 +17,7 @@ def test_shared_module_defines_goal_vars():
 
 def test_agent_loop_reexports_for_backcompat():
     import agent_loop
+
     # back-compat: the old import path still resolves the same objects
     from services.agent.goal_context import _goal_original_var
     assert agent_loop._goal_original_var is _goal_original_var

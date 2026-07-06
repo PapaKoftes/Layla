@@ -115,7 +115,6 @@ def save_config(cfg: dict) -> None:
 from install.checks import prompt_ask as ask  # noqa: E402
 from install.checks import prompt_yn as yn  # noqa: E402
 
-
 # ── Main wizard ────────────────────────────────────────────────────────────
 
 _MODELS_CATALOG = [

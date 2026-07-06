@@ -32,13 +32,17 @@ def query_timeline(
     where = ["importance >= ?"]
     params: list[Any] = [float(min_importance)]
     if since:
-        where.append("timestamp >= ?"); params.append(since)
+        where.append("timestamp >= ?")
+        params.append(since)
     if until:
-        where.append("timestamp <= ?"); params.append(until)
+        where.append("timestamp <= ?")
+        params.append(until)
     if event_type:
-        where.append("event_type = ?"); params.append(event_type)
+        where.append("event_type = ?")
+        params.append(event_type)
     if project_id:
-        where.append("project_id = ?"); params.append(project_id)
+        where.append("project_id = ?")
+        params.append(project_id)
     clause = " AND ".join(where)
     with _conn() as db:
         total = db.execute(f"SELECT COUNT(*) FROM timeline_events WHERE {clause}", params).fetchone()[0]

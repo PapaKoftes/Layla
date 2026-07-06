@@ -141,8 +141,8 @@ class TestComplete:
     @patch("services.llm.litellm_gateway._load_gateway_config")
     @patch("services.llm.litellm_gateway._configure_api_keys")
     def test_basic_completion(self, mock_keys, mock_cfg, mock_import):
-        from services.llm.litellm_gateway import complete
         from services.infrastructure.provider_health import reset_all
+        from services.llm.litellm_gateway import complete
         reset_all()
 
         mock_lit = MagicMock()
@@ -172,8 +172,8 @@ class TestComplete:
     @patch("services.llm.litellm_gateway._load_gateway_config")
     @patch("services.llm.litellm_gateway._configure_api_keys")
     def test_failover_to_next_provider(self, mock_keys, mock_cfg, mock_import):
-        from services.llm.litellm_gateway import complete
         from services.infrastructure.provider_health import reset_all
+        from services.llm.litellm_gateway import complete
         reset_all()
 
         mock_lit = MagicMock()
@@ -211,8 +211,8 @@ class TestComplete:
     @patch("services.llm.litellm_gateway._load_gateway_config")
     @patch("services.llm.litellm_gateway._configure_api_keys")
     def test_all_fail_raises(self, mock_keys, mock_cfg, mock_import):
-        from services.llm.litellm_gateway import complete
         from services.infrastructure.provider_health import reset_all
+        from services.llm.litellm_gateway import complete
         reset_all()
 
         mock_lit = MagicMock()
@@ -250,8 +250,8 @@ class TestCompleteStream:
     @patch("services.llm.litellm_gateway._load_gateway_config")
     @patch("services.llm.litellm_gateway._configure_api_keys")
     def test_stream_yields_chunks(self, mock_keys, mock_cfg, mock_import):
-        from services.llm.litellm_gateway import complete_stream
         from services.infrastructure.provider_health import reset_all
+        from services.llm.litellm_gateway import complete_stream
         reset_all()
 
         chunks = _make_mock_stream_chunks(["Hello", " ", "world"])
@@ -278,8 +278,8 @@ class TestCompleteStream:
     @patch("services.llm.litellm_gateway._load_gateway_config")
     @patch("services.llm.litellm_gateway._configure_api_keys")
     def test_stream_failover(self, mock_keys, mock_cfg, mock_import):
-        from services.llm.litellm_gateway import complete_stream
         from services.infrastructure.provider_health import reset_all
+        from services.llm.litellm_gateway import complete_stream
         reset_all()
 
         def side_effect(**kwargs):
@@ -316,8 +316,8 @@ class TestRunCompletionLitellm:
     @patch("services.llm.litellm_gateway._load_gateway_config")
     @patch("services.llm.litellm_gateway._configure_api_keys")
     def test_returns_openai_compatible_format(self, mock_keys, mock_cfg, mock_import):
-        from services.llm.litellm_gateway import run_completion_litellm
         from services.infrastructure.provider_health import reset_all
+        from services.llm.litellm_gateway import run_completion_litellm
         reset_all()
 
         mock_lit = MagicMock()
@@ -344,8 +344,8 @@ class TestRunCompletionLitellm:
     @patch("services.llm.litellm_gateway._load_gateway_config")
     @patch("services.llm.litellm_gateway._configure_api_keys")
     def test_stream_returns_generator(self, mock_keys, mock_cfg, mock_import):
-        from services.llm.litellm_gateway import run_completion_litellm
         from services.infrastructure.provider_health import reset_all
+        from services.llm.litellm_gateway import run_completion_litellm
         reset_all()
 
         chunks = _make_mock_stream_chunks(["Hi", "!"])

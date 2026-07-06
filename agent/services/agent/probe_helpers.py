@@ -9,10 +9,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import runtime_safety
 from constants import LARGE_FILE_HINT_LINES, MAX_SAFE_READ_BYTES
 from layla.tools.registry import TOOLS
-
-import runtime_safety
 
 logger = logging.getLogger("layla")
 

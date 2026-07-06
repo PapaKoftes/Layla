@@ -351,7 +351,12 @@ async def setup_download(url: str, filename: str = ""):
                         except Exception:
                             pass
                     if not cfg2:
-                        from services.infrastructure.setup_engine import DEFAULTS, detect_gpu, detect_ram_gb, recommend_model
+                        from services.infrastructure.setup_engine import (
+                            DEFAULTS,
+                            detect_gpu,
+                            detect_ram_gb,
+                            recommend_model,
+                        )
 
                         ram = detect_ram_gb()
                         vendor, vram = detect_gpu()
@@ -374,8 +379,7 @@ async def setup_download(url: str, filename: str = ""):
 def get_settings():
     """Return all editable settings. Missing keys use schema defaults."""
     from config_schema import EDITABLE_SCHEMA
-
-    from services.safety.secret_filter import is_secret_key, REDACTED
+    from services.safety.secret_filter import REDACTED, is_secret_key
 
     full_cfg = _rs.load_config()
     out = {}

@@ -321,6 +321,7 @@ jobs:
       - name: Live pass@1 regression (floor guard)
         working-directory: agent
         env:
+          LAYLA_TEST_REAL_LLM: "1"   # opt out of the conftest _block_llama_cpp_on_ci guard — this job WANTS the real model
           LAYLA_BENCH_MODEL: ../models/Qwen2.5-Coder-3B-Instruct-Q4_K_M.gguf
           LAYLA_BENCH_FLOOR: "0.6"
         run: |

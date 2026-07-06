@@ -900,8 +900,8 @@ def execute_plan_with_optional_graph(
         done_row["task"] = task
         return done_row
 
-    from services.planning.coordinator import run_with_plan_graph
     from services.observability.trace_export import maybe_span
+    from services.planning.coordinator import run_with_plan_graph
 
     with maybe_span(c, "plan_execution", steps=len(norm), graph_enabled="true"):
         try:

@@ -31,7 +31,7 @@ def check_memory_command(goal: str, aspect_id: str = "") -> dict | None:
         if result.is_command:
             active_asp = orchestrator.select_aspect(goal, force_aspect=aspect_id)
             # BL-121: read goal context from the shared module, not agent_loop privates
-            from services.agent.goal_context import _goal_original_var
+            from services.agent.goal_context import _goal_optimized_var, _goal_original_var
             _go = _goal_original_var.get() or goal
             return {
                 "goal": goal,

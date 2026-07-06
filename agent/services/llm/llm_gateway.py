@@ -133,11 +133,19 @@ async def run_completion_async(
     timeout_sec = runtime_safety.load_config().get("llm_timeout_seconds", 120)
     if cancel_event and cancel_event.is_set():
         raise asyncio.CancelledError("Request cancelled before submission")
-    try:
-        return await asyncio.wait_for(
-            llm_request_queue.submit(prompt, p, priority=priority, cancel_event=cancel_event),
-            timeout=timeout_sec,
+    # Run the sync completion off the event loop. (Historically this referenced an
+    # `llm_request_queue` that was never wired — an undefined-name latent bug; delegating
+    # to run_completion via a thread is the correct, working async wrapper.)
+    def _run() -> Any:
+        return run_completion(
+            prompt,
+            max_tokens=int(p.get("max_tokens", 256) or 256),
+            temperature=float(p.get("temperature", 0.2) or 0.2),
+            stop=p.get("stop"),
+            stream=False,
         )
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(_run), timeout=timeout_sec)
     except asyncio.TimeoutError:
         raise LLMTimeoutError(f"LLM request timed out after {timeout_sec}s")
 
@@ -369,7 +377,11 @@ def _get_llm():
         from llama_cpp import Llama
     except ImportError as e:
         import runtime_safety
-        from services.infrastructure.dependency_recovery import ensure_feature, llama_cpp_import_recovery, merge_recovery_message
+        from services.infrastructure.dependency_recovery import (
+            ensure_feature,
+            llama_cpp_import_recovery,
+            merge_recovery_message,
+        )
 
         ok, rec = ensure_feature("llama_cpp", runtime_safety.load_config())
         if ok:
