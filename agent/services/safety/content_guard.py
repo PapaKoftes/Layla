@@ -125,6 +125,10 @@ _LEET = str.maketrans({"@": "a", "4": "a", "3": "e", "1": "i", "!": "i", "0": "o
 def _match_variants(text: str) -> list[str]:
     """The forms an obfuscated payload might take — checked so evasions hit the same
     compound patterns: original, leetspeak-decoded, and de-spaced ('r a n s o m' → …)."""
+    # Security review Finding 4: cap the normalized window so building 4 copies + running
+    # the de-space regex can't be a CPU/RAM amplifier on a huge input. Malicious payloads
+    # are short; real prose past ~20KB doesn't need de-obfuscation.
+    text = (text or "")[:20_000]
     low = text.lower()
     deleet = low.translate(_LEET)
     # collapse runs of single chars separated by whitespace/punctuation into one token

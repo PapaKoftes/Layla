@@ -4,9 +4,12 @@ Call sites: agent_loop decision/tool dispatch; keep logic here to avoid drift.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from layla.tools.registry import TOOLS
+
+logger = logging.getLogger("layla")
 
 _PLANNING_STRICT_EXCEPTION_DANGEROUS = frozenset({"scan_repo", "update_project_memory"})
 _PLANNING_STRICT_RUN_TOOLS = frozenset({
@@ -72,7 +75,16 @@ def maybe_step_tool_allowlist_refusal(intent: str, _cfg: dict) -> dict | None:
         return None
     try:
         from services.tools.tool_allowlist_context import get_plan_step_tool_allowlist
-    except Exception:
+    except Exception as _imp_exc:
+        # The allowlist is *sourced from* this module, so a missing module means there is
+        # no allowlist to enforce — failing closed here would break all tool use. But the
+        # import failing is an anomaly a security control must not swallow silently: audit it.
+        try:
+            from services.observability.security_audit import log_action_denied
+            log_action_denied(intent, reason="allowlist_module_unavailable", tool=intent)
+            logger.warning("step-tool allowlist unavailable (import failed: %s) — gate inactive", _imp_exc)
+        except Exception:
+            pass
         return None
     al = get_plan_step_tool_allowlist()
     if not al or len(al) == 0:

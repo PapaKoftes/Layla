@@ -96,13 +96,19 @@ def _analyze_image_part(image_url: str) -> str:
     if not image_url.startswith("data:image/"):
         return ""  # only local data URIs (no outbound fetch — SSRF-safe)
     import base64 as _b64
+    import re as _re
     import uuid as _uuid
     from pathlib import Path as _Path
     tmp = None
     try:
         header, _, b64 = image_url.partition(",")
+        # Security review Finding 2: cap the decode so a huge data-URI can't exhaust RAM/disk.
+        if len(b64) > 20_000_000:  # ~15 MB decoded — plenty for a real image
+            logger.warning("v1 image part rejected: base64 too large (%d chars)", len(b64))
+            return ""
         ext = header.split("/", 1)[1].split(";", 1)[0] if "/" in header else "png"
-        ext = {"jpeg": "jpg"}.get(ext, ext)[:5]
+        ext = {"jpeg": "jpg"}.get(ext, ext)
+        ext = _re.sub(r"[^a-z0-9]", "", ext.lower())[:5] or "png"   # sanitize (no traversal)
         from layla.tools.sandbox_core import _get_sandbox
         tmp_dir = _Path(_get_sandbox()) / ".layla_vision_tmp"
         tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -226,6 +232,22 @@ async def v1_chat_completions(req: dict, request: Request):
 
     if not goal:
         return _v1_error("No user message content found in 'messages'.", param="messages")
+
+    # Security review Finding 3: the deterministic content-guard floor lived only in the
+    # autonomous_run path, so the reason-first / quick-reply / synthesize path every remote
+    # caller and trivial turn takes SKIPPED it. Apply it here so it covers ALL /v1 paths.
+    try:
+        import runtime_safety as _rs_cg
+        from services.safety.content_guard import check_input as _cg_check
+        _cg = _cg_check(goal, _rs_cg.load_config())
+        if _cg.blocked:
+            logger.warning("content_guard: /v1 input blocked tier=%s cat=%s", _cg.tier, _cg.category)
+            return _v1_error(
+                "This request was blocked by the content safety filter.",
+                code="content_blocked", status_code=400,
+            )
+    except Exception as _cg_exc:
+        logger.debug("content_guard /v1 check skipped: %s", _cg_exc)
 
     append_h = get_append_history()
 
