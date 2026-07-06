@@ -38,6 +38,14 @@ _REMOTE_PROTECTED_KEYS = frozenset({
     "allowed_hosts",
     "tunnel_enabled",
     "tunnel_token_hash",
+    # Security review Findings 7/8: a remote /settings write must not be able to point
+    # plugin/MCP/model loading at attacker-staged files or executables.
+    "plugins_dir",
+    "mcp_stdio_servers",
+    "mcp_client_enabled",
+    "onnx_model_path",
+    "vision_model_path",
+    "vision_mmproj_path",
 })
 
 
@@ -195,6 +203,7 @@ def setup_models(uncensored_first: bool = True):
             "recommended_key": picker["recommended"],
             "categories": picker["categories"],
             "uncensored_first": bool(uncensored_first),
+            "hardware_note": picker.get("hardware_note", ""),
         }
     except Exception as e:
         return {"ok": False, "error": str(e), "catalog": []}
