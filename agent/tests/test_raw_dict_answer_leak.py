@@ -23,6 +23,17 @@ def test_looks_like_raw_tool_dict_ignores_real_answers():
     assert not rb.looks_like_raw_tool_dict('{"title": "a normal json object without error keys"}')
 
 
+def test_looks_like_raw_tool_dict_catches_fenced_and_list_wrapped():
+    # models almost always wrap JSON in a code fence — these MUST be caught (audit M2)
+    assert rb.looks_like_raw_tool_dict('```json\n{"ok": false, "error": "Path not found"}\n```')
+    assert rb.looks_like_raw_tool_dict('```\n{"ok": false, "reason": "tool_policy_denied"}\n```')
+    assert rb.looks_like_raw_tool_dict('[{"ok": false, "error": "boom"}]')
+    # a fenced real code block is not a tool-dict leak
+    assert not rb.looks_like_raw_tool_dict('```python\ndef foo(): pass\n```')
+    # a multi-element list is not a single leaked tool result
+    assert not rb.looks_like_raw_tool_dict('[{"ok": true}, {"ok": false}]')
+
+
 def test_synthesize_direct_answer_uses_model(monkeypatch):
     def _fake_completion(prompt, **kw):
         assert "capital of France" in prompt
