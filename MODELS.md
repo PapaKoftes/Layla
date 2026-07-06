@@ -174,7 +174,8 @@ Model auto-downloads. Set `whisper_model` in config: `"base"` (fast) or `"small"
 
 For higher-quality offline TTS, **kokoro-onnx is opt-in** (it is **not** in the default install because it pulls `phonemizer-fork`, which is **GPLv3+** — incompatible with Layla's license). Install it yourself only if you accept GPLv3:
 ```bash
-pip install "layla[voice-kokoro]"   # or: pip install kokoro-onnx soundfile
+pip install kokoro-onnx soundfile
+# or, from the Layla source tree: pip install ".[voice-kokoro]"
 ```
 ~80 MB download, fully offline, high quality. Set `tts_voice` in config (default: `"af_heart"`).
 
