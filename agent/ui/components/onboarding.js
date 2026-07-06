@@ -79,20 +79,36 @@ function _createOverlay() {
   const el = document.createElement('div');
   el.id = 'onboarding-overlay';
   el.className = 'onboarding-overlay';
+  // a11y: this is a modal dialog — announce it as one and label it.
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-modal', 'true');
+  el.setAttribute('aria-label', 'Meet Layla — first-run setup');
   el.innerHTML =
     '<div class="onboarding-modal">' +
       '<div class="onboarding-header">' +
-        '<span class="onboarding-title">∴ Meet Layla</span>' +
-        '<button type="button" class="onboarding-close" id="onboarding-close-btn" title="Close">&times;</button>' +
+        '<span class="onboarding-title" id="onboarding-title">∴ Meet Layla</span>' +
+        '<button type="button" class="onboarding-close" id="onboarding-close-btn" title="Close" aria-label="Close">&times;</button>' +
       '</div>' +
       '<div class="onboarding-content"></div>' +
     '</div>';
+  el.setAttribute('aria-labelledby', 'onboarding-title');
 
   document.body.appendChild(el);
   _overlay = el;
 
   // Make visible
   el.classList.add('visible');
+
+  // a11y: remember focus to restore on close, and trap Tab within the dialog.
+  el._prevFocus = document.activeElement;
+  el.addEventListener('keydown', function (e) {
+    if (e.key !== 'Tab') return;
+    const f = el.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])');
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
+    else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
+  });
 
   // Close button
   const closeBtn = document.getElementById('onboarding-close-btn');
@@ -110,8 +126,10 @@ function _ensureOverlay() {
 
 function _closeOverlay() {
   if (_overlay) {
+    const prev = _overlay._prevFocus;
     _overlay.remove();
     _overlay = null;
+    if (prev && typeof prev.focus === 'function') { try { prev.focus(); } catch (_) {} }
   }
   _state = null;
   _stageInfo = null;
