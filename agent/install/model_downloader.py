@@ -19,7 +19,6 @@ import os
 import urllib.request
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 logger = logging.getLogger("layla")
 
