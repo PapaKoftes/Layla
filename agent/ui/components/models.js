@@ -171,7 +171,9 @@ function _renderCatalog(models) {
     return;
   }
   const ramCap = (models && typeof models.ram_gb === 'number') ? models.ram_gb : null;
-  el.innerHTML = _catalog.map((m, i) => {
+  const note = models && models.hardware_note
+    ? '<div class="models-hw-note">⚠ ' + escapeHtml(models.hardware_note) + '</div>' : '';
+  el.innerHTML = note + _catalog.map((m, i) => {
     const name = m.name || m.key || ('model ' + i);
     const viable = m.viable !== false;
     const flags = [];

@@ -214,7 +214,9 @@ class TestStepToolAllowlistRefusal:
     # -- Import failure of allowlist module → None (fail-open) --
 
     def test_import_failure_returns_none(self):
-        """When tool_allowlist_context cannot be imported, the gate fails open."""
+        """When tool_allowlist_context can't import, the gate fails open (the allowlist is
+        SOURCED from that module, so there's nothing to enforce) — but it must AUDIT-LOG
+        the anomaly, not swallow it silently (audit M1)."""
         import builtins
         import sys
 
@@ -228,9 +230,13 @@ class TestStepToolAllowlistRefusal:
         # Remove cached module so the lazy import inside the function re-triggers
         saved = sys.modules.pop("services.tools.tool_allowlist_context", None)
         try:
-            with patch.object(builtins, "__import__", side_effect=_blocking_import):
+            with patch.object(builtins, "__import__", side_effect=_blocking_import), \
+                 patch("services.observability.security_audit.log_action_denied") as mock_log:
                 result = maybe_step_tool_allowlist_refusal("shell", {})
             assert result is None
+            # the import failure is audited, not silent
+            mock_log.assert_called_once()
+            assert mock_log.call_args.kwargs.get("reason") == "allowlist_module_unavailable"
         finally:
             if saved is not None:
                 sys.modules["services.tools.tool_allowlist_context"] = saved
