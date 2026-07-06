@@ -106,13 +106,69 @@ _hw_lock = threading.Lock()
 _hardware_probe_cache: dict | None = None
 
 
+def _reset_config_cache_locked() -> None:
+    """Clear the TTL config cache. Caller MUST already hold _config_lock."""
+    global _config_cache, _config_mtime, _config_last_check
+    _config_cache = None
+    _config_mtime = 0.0
+    _config_last_check = 0.0
+
+
 def invalidate_config_cache() -> None:
     """Clear the TTL config cache under lock. Use after writing runtime_config.json."""
-    global _config_cache, _config_mtime, _config_last_check
     with _config_lock:
-        _config_cache = None
-        _config_mtime = 0.0
-        _config_last_check = 0.0
+        _reset_config_cache_locked()
+
+
+def atomic_write_config(cfg: dict) -> None:
+    """Atomically persist a full config dict and invalidate the cache.
+
+    Writes to a sibling temp file then os.replace()s it into place, so a crash or
+    power-loss mid-write can never leave a truncated/empty runtime_config.json
+    (which would silently revert every setting — including security ones — to
+    defaults). Serialised on _config_lock so concurrent writers don't interleave.
+    """
+    with _config_lock:
+        CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = CONFIG_FILE.with_name(CONFIG_FILE.name + ".tmp")
+        tmp.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+        os.replace(tmp, CONFIG_FILE)
+        _reset_config_cache_locked()
+
+
+def save_config_keys(updates: dict, *, editable_only: bool = True, clamp: bool = True) -> list[str]:
+    """Race-safe read-modify-write of specific config keys.
+
+    Reads the current runtime_config.json, applies (clamped) updates for the given
+    keys, and atomically writes the result — the whole read+write happens under
+    _config_lock, so two concurrent /settings writes can't lose each other's
+    changes (the classic read-modify-write lost-update race). Returns the keys
+    actually saved.
+    """
+    from config_schema import coerce_and_clamp, get_editable_keys
+
+    editable = get_editable_keys() if editable_only else None
+    with _config_lock:
+        cfg: dict = {}
+        if CONFIG_FILE.exists():
+            try:
+                loaded = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    cfg = loaded
+            except Exception as e:
+                logger.debug("save_config_keys read failed: %s", e)
+        saved: list[str] = []
+        for k, v in updates.items():
+            if editable is not None and k not in editable:
+                continue
+            cfg[k] = coerce_and_clamp(k, v) if clamp else v
+            saved.append(k)
+        CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = CONFIG_FILE.with_name(CONFIG_FILE.name + ".tmp")
+        tmp.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+        os.replace(tmp, CONFIG_FILE)
+        _reset_config_cache_locked()
+    return saved
 
 
 def _probe_hardware() -> dict:
@@ -697,6 +753,16 @@ def load_config() -> dict:
             data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
             if isinstance(data, dict):
                 defaults.update(data)
+                # Validate/clamp editable numeric+boolean keys so a hand-edited
+                # runtime_config.json (temperature=50, n_gpu_layers=-999, n_ctx="abc")
+                # can never reach llama.cpp as an out-of-range/garbage value.
+                try:
+                    from config_schema import _SCHEMA_BY_KEY, coerce_and_clamp
+                    for _k in _SCHEMA_BY_KEY:
+                        if _k in data:
+                            defaults[_k] = coerce_and_clamp(_k, defaults[_k])
+                except Exception as _ce:
+                    logger.debug("config clamp skipped: %s", _ce)
         except Exception as e:
             logger.debug("runtime_safety config load failed: %s", e)
         # Startup gate (main.py): Chroma wheels unusable on this interpreter — disable semantic layer only.
