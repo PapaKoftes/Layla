@@ -25,6 +25,13 @@ import webbrowser
 
 
 def _load_port(default: int = 8000) -> int:
+    # --port / LAYLA_PORT wins over runtime_config.json.
+    _env = (os.environ.get("LAYLA_PORT") or "").strip()
+    if _env:
+        try:
+            return int(_env)
+        except ValueError:
+            pass
     try:
         import runtime_safety
 
@@ -52,7 +59,38 @@ def _open_browser_soon(url: str, delay: float = 2.5) -> None:
     threading.Thread(target=_go, daemon=True).start()
 
 
+def _parse_args(argv=None) -> None:
+    """Parse CLI flags into the env vars main() already reads (so `layla --help` works
+    while the LAYLA_* env-var interface stays fully backward-compatible)."""
+    import argparse
+
+    p = argparse.ArgumentParser(
+        prog="layla",
+        description="Start the Layla server (local-first AI companion). Opens the Web UI at /ui.",
+        epilog="All flags have LAYLA_* env-var equivalents (LAYLA_HOST, LAYLA_PORT, LAYLA_NO_BROWSER, LAYLA_RELOAD).",
+    )
+    p.add_argument("--host", metavar="ADDR", help="Bind address (default 127.0.0.1; env LAYLA_HOST).")
+    p.add_argument("--port", type=int, metavar="N", help="Port (default 8000 / runtime_config.json; env LAYLA_PORT).")
+    p.add_argument("--no-browser", action="store_true", help="Do not auto-open the browser (env LAYLA_NO_BROWSER=1).")
+    p.add_argument("--reload", action="store_true", help="Dev auto-reload (env LAYLA_RELOAD=1). Not for production.")
+    try:
+        from version import __version__ as _v
+    except Exception:
+        _v = "?"
+    p.add_argument("--version", action="version", version=f"Layla {_v}")
+    a = p.parse_args(argv)
+    if a.host:
+        os.environ["LAYLA_HOST"] = a.host
+    if a.port is not None:
+        os.environ["LAYLA_PORT"] = str(a.port)
+    if a.no_browser:
+        os.environ["LAYLA_NO_BROWSER"] = "1"
+    if a.reload:
+        os.environ["LAYLA_RELOAD"] = "1"
+
+
 def main() -> int:
+    _parse_args()
     host = os.environ.get("LAYLA_HOST", "127.0.0.1").strip() or "127.0.0.1"
     port = _load_port()
 
