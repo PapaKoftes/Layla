@@ -998,6 +998,19 @@ async def agent(req: AgentRequest, request: Request):
         response_text = polish_output(response_text, cfg)
     result["reasoning_tree_summary"] = _build_reasoning_tree_summary(result)
 
+    # Post-model safety floor (symmetric with check_input): a Tier-1/Tier-2 payload the
+    # model produced is replaced with a safe message before it is persisted or returned.
+    try:
+        import runtime_safety as _rs_out
+        from services.safety.content_guard import blocked_response as _blk_out
+        from services.safety.content_guard import check_output as _cg_out
+        _out = _cg_out(response_text, _rs_out.load_config())
+        if _out.blocked:
+            logger.warning("content_guard: /agent output blocked tier=%s cat=%s", _out.tier, _out.category)
+            response_text = _blk_out(_out)
+    except Exception:
+        pass
+
     append_conv_history(conversation_id, "user", goal)
     append_conv_history(conversation_id, "assistant", response_text)
     try:

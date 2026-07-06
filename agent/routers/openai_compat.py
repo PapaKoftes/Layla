@@ -468,6 +468,20 @@ async def v1_chat_completions(req: dict, request: Request):
 
     response_text = _apply_stop(response_text, sampling["stop"])  # BL-151: honour stop sequences
 
+    # Post-model safety floor: deterministically re-check the assembled reply (symmetric
+    # with the check_input on the way in). A Tier-1/Tier-2 payload the model produced is
+    # replaced with a safe message before it reaches the client.
+    try:
+        import runtime_safety as _rs_out
+        from services.safety.content_guard import blocked_response as _blocked_out
+        from services.safety.content_guard import check_output as _cg_out
+        _out = _cg_out(response_text, _rs_out.load_config())
+        if _out.blocked:
+            logger.warning("content_guard: /v1 output blocked tier=%s cat=%s", _out.tier, _out.category)
+            response_text = _blocked_out(_out)
+    except Exception:
+        pass
+
     append_h("user", goal)
     append_h("assistant", response_text)
     try:
