@@ -7,44 +7,8 @@ on:
     - cron: "0 7 * * *"
 
 jobs:
-  e2e-ui:
-    name: E2E UI (Playwright)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-      - name: Install dependencies
-        working-directory: agent
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-e2e.txt
-      - name: Install Playwright Chromium
-        working-directory: agent
-        run: python -m playwright install chromium --with-deps
-      - name: Write CI runtime config
-        working-directory: agent
-        run: |
-          mkdir -p /tmp/layla-ci
-          cat > runtime_config.json << 'EOF'
-          {
-            "model_filename": "ci-stub.gguf",
-            "use_chroma": false,
-            "sandbox_root": "/tmp/layla-ci",
-            "max_tool_calls": 2,
-            "max_runtime_seconds": 30,
-            "n_ctx": 2048,
-            "n_gpu_layers": 0,
-            "scheduler_study_enabled": false
-          }
-          EOF
-      - name: Run Playwright UI tests
-        working-directory: agent
-        run: pytest tests/e2e_ui/ -v --tb=short -m e2e_ui --timeout=120
-
+  # NOTE: the E2E-UI (Playwright) job lives in ci.yml so it runs on every PR/push
+  # (fast, ci-stub model) — it was duplicated here and has been removed to de-dup.
   browser-smoke:
     name: Browser smoke (Chromium)
     runs-on: ubuntu-latest
