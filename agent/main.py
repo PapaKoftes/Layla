@@ -627,6 +627,20 @@ app = FastAPI(
 app.add_middleware(GZipMiddleware, minimum_size=500)  # compress responses > 500 bytes
 
 
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    """Safety net for any route that doesn't handle its own error: log the full
+    exception server-side and return a sanitized 500 so a traceback / internal path
+    never reaches the client (info disclosure)."""
+    from fastapi.responses import JSONResponse as _JSONResponse
+
+    logger.exception("unhandled error on %s %s", request.method, request.url.path)
+    return _JSONResponse(
+        {"error": {"message": "Internal server error.", "type": "internal_server_error"}},
+        status_code=500,
+    )
+
+
 def _tracked_thread(target, name: str, daemon: bool = True) -> threading.Thread:
     """Start a thread and register it for clean shutdown."""
     t = threading.Thread(target=target, name=name, daemon=daemon)

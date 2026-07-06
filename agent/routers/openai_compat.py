@@ -423,9 +423,11 @@ async def v1_chat_completions(req: dict, request: Request):
             show_thinking=show_thinking,
             conversation_id=conversation_id,
         )
-    except Exception as e:
+    except Exception:
+        # Detail is logged server-side (logger.exception); never leak exception text /
+        # internal paths to the client (info disclosure — this endpoint can be remote).
         logger.exception("/v1/chat/completions failed")
-        return _v1_error(f"Internal server error: {e}", code="internal_server_error", status_code=500)
+        return _v1_error("Internal server error.", code="internal_server_error", status_code=500)
 
     response_text = (result.get("response") or "").strip()
     if not response_text:
