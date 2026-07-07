@@ -105,6 +105,13 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "default": "auto",
         "hint": "CPU/RAM caps: low tightens ctx and tool budgets. auto = hardware tier.",
     },
+    {
+        "key": "auto_tune_enabled",
+        "type": "boolean",
+        "category": "limits",
+        "default": True,
+        "hint": "Hardware-adaptive optimization: auto-detect the machine tier and set inference + pipeline weight (context size, prompt budget, extra LLM calls, timeouts) for the best speed/quality on ANY hardware. Turn off for fully manual control. Lock individual keys via auto_tune_locked_keys.",
+    },
     {"key": "max_tool_calls", "type": "number", "category": "limits", "default": 5, "min": 1, "max": 50, "hint": "Max tool calls per agent turn (non-research)."},
     {"key": "max_runtime_seconds", "type": "number", "category": "limits", "default": 900, "min": 5, "max": 3600, "hint": "Max wall time per agent turn (seconds). Align with ui_agent_stream_timeout_seconds so the server does not stop before the browser."},
     {"key": "tool_call_timeout_seconds", "type": "number", "category": "limits", "default": 60, "min": 5, "max": 600, "hint": "Max seconds a single tool call may run before being killed."},
