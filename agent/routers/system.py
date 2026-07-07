@@ -361,6 +361,11 @@ def health(request: Request):
             "ui_agent_json_timeout_seconds": cfg.get("ui_agent_json_timeout_seconds"),
             "ui_stalled_silence_ms": cfg.get("ui_stalled_silence_ms"),
         }
+        # Hardware-adaptive optimization: which tier was detected + applied (or null if opted out).
+        payload["auto_tune"] = {
+            "enabled": bool(cfg.get("auto_tune_enabled", True)),
+            "tier": cfg.get("_auto_tune_tier"),
+        }
         try:
             mf = (cfg.get("model_filename") or "")
             payload["active_model"] = Path(str(mf)).name if mf else ""
