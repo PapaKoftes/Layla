@@ -84,14 +84,22 @@ body.overlay-scroll-lock {
   body.theme-light {
     --bg: #f5f0f8;
     --bg2: #ebe5f0;
+    --surface: #ffffff;
+    --surface-2: #f3eef8;
+    --surface-3: #e7ddf0;
     --text: #2a1a35;
     --text-dim: #4a3a55;
+    --text-faint: #6a5f78;
     --code-bg: #e8e0f0;
-    --border: #c0b0d0;
+    --border: #d5c8e0;
+    --border-2: #c3b2d6;
     --crimson: #6b0000;
     --violet: #4a2060;
     --accent: #8b0050;
-    --accent-text: #d64f82;
+    --accent-text: #b0286a;   /* darker wine-rose — AA on the light bg (was #d64f82, too light) */
+    --accent-2: #6e3a94;
+    --success: #2e8b57;
+    --danger: #c0392b;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -100,7 +108,7 @@ body.overlay-scroll-lock {
   body {
     background: var(--bg);
     color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-ui);
     font-size: 14px;
     min-height: 100vh;
     overflow-x: hidden;
@@ -1052,10 +1060,10 @@ body.overlay-scroll-lock {
     text-overflow: ellipsis;
   }
   /* Governor mode color coding */
-  .dash-card[data-mode="whisper"] .dash-card-icon { color: #4ecdc4; }
+  .dash-card[data-mode="whisper"] .dash-card-icon { color: var(--accent-2); }
   .dash-card[data-mode="breathe"] .dash-card-icon { color: #ffe66d; }
   .dash-card[data-mode="sprint"] .dash-card-icon  { color: #ff6b6b; }
-  .dash-card[data-mode="whisper"] .dash-card-value { color: #4ecdc4; }
+  .dash-card[data-mode="whisper"] .dash-card-value { color: var(--accent-2); }
   .dash-card[data-mode="breathe"] .dash-card-value { color: #ffe66d; }
   .dash-card[data-mode="sprint"] .dash-card-value  { color: #ff6b6b; }
 
@@ -2952,7 +2960,7 @@ body.overlay-scroll-lock {
   background: rgba(255,255,255,0.08);
   border: 1px solid rgba(255,255,255,0.15);
 }
-.growth-rank-badge.phase-awakening { border-color: #4ecdc4; color: #4ecdc4; }
+.growth-rank-badge.phase-awakening { border-color: var(--accent-2); color: var(--accent-2); }
 .growth-rank-badge.phase-attunement { border-color: #f093fb; color: #f093fb; }
 .growth-rank-badge.phase-resonance { border-color: #4facfe; color: #4facfe; }
 .growth-rank-badge.phase-sovereignty { border-color: #fa709a; color: #fa709a; }

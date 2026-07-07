@@ -437,8 +437,8 @@ select:focus-visible {
 .charlab-btn-main:hover { background: color-mix(in srgb, var(--detail-color, #555) 15%, transparent); }
 .charlab-btn-reset {
   background: transparent;
-  color: #8b0000;
-  border-color: #8b0000;
+  color: var(--danger);
+  border-color: var(--danger);
 }
 .charlab-btn-reset:hover { background: rgba(139,0,0,0.12); }
 

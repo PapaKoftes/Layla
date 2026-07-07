@@ -829,7 +829,7 @@ export function initApp() {
           var loaded = d.model_loaded;
           msb.textContent = loaded ? '● Model OK' : '○ No model';
           msb.title = loaded ? ('Model loaded' + (raw ? ': ' + raw : '')) : 'No model loaded';
-          msb.style.color = loaded ? '#4ecdc4' : 'var(--text-dim)';
+          msb.style.color = loaded ? 'var(--success)' : 'var(--text-dim)';
         }
       }).catch(function () { el.textContent = 'offline'; });
     }
