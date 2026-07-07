@@ -474,13 +474,15 @@ def _get_llm():
         # Auto-detect thread counts if not in config
         auto_t = _auto_threads()
         n_threads = max(1, _safe_int(cfg["n_threads"], auto_t)) if cfg.get("n_threads") else auto_t
-        # Dynamic governor: when the user is active, load with fewer threads so a
-        # generation can't choke a low-end laptop; use all cores when idle (Castilla).
-        if cfg.get("resource_governor_enabled", True):
+        # Dynamic governor: throttle threads when the user is active so a *background*
+        # generation can't choke a low-end laptop. BUT an explicit n_threads is a deliberate
+        # operator choice and must win — otherwise the foreground model the user is actively
+        # waiting on gets silently halved (WHISPER = active user = *every* interactive turn),
+        # which is the opposite of helpful. Only auto-throttle when n_threads was NOT pinned.
+        if cfg.get("resource_governor_enabled", True) and not cfg.get("n_threads"):
             try:
                 from services.infrastructure.resource_governor import get_governor
-                _phys = _safe_int(cfg.get("n_threads") or auto_t, auto_t)
-                n_threads = max(1, get_governor().get_inference_threads(_phys))
+                n_threads = max(1, get_governor().get_inference_threads(auto_t))
             except Exception as _gov_e:
                 logger.debug("governor inference-threads unavailable: %s", _gov_e)
         # Batch threads: more threads help here; use logical count capped at 2× physical
@@ -494,7 +496,11 @@ def _get_llm():
         # ~1 token per 4 chars; system prompts are typically 500-2000 chars.
         n_keep = max(64, _safe_int(cfg.get("n_keep", 512), 512))
 
-        use_flash = bool(cfg.get("flash_attn", True))
+        # Flash attention gives no speedup on CPU in llama-cpp-python and (by enabling the
+        # Q8_0 KV-quant below) actually SLOWS CPU attention — so default it OFF when running
+        # CPU-only (n_gpu_layers == 0). GPU runs still default it on.
+        _cpu_only = _safe_int(cfg.get("n_gpu_layers", -1), -1) == 0
+        use_flash = bool(cfg.get("flash_attn", not _cpu_only))
         kwargs = {
             "model_path": str(model_path),
             "n_ctx": n_ctx,
@@ -518,7 +524,7 @@ def _get_llm():
 
         # Speculative decoding (prompt lookup) can significantly increase throughput.
         # Safe on older llama-cpp-python: unsupported kwargs are stripped by the TypeError fallback below.
-        if cfg.get("speculative_decoding_enabled", True):
+        if cfg.get("speculative_decoding_enabled", False):
             try:
                 from llama_cpp.llama_speculative import LlamaPromptLookupDecoding
 
