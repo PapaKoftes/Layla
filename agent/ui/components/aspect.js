@@ -25,12 +25,12 @@ export const ASPECT_COLORS = {
 
 // ── Aspect registry ──────────────────────────────────────────────────────────
 export const ASPECTS = [
-  { id: 'morrigan',  sym: '⚔', name: 'Morrigan',  desc: 'Code, debug, architecture — the blade' },
-  { id: 'nyx',       sym: '✦', name: 'Nyx',       desc: 'Research, depth, synthesis' },
-  { id: 'echo',      sym: '◎', name: 'Echo',      desc: 'Reflection, patterns, memory' },
-  { id: 'eris',      sym: '⚡', name: 'Eris',      desc: 'Creative chaos, banter, lateral leaps' },
-  { id: 'cassandra', sym: '⌖', name: 'Cassandra', desc: 'Unfiltered oracle — sees it first' },
-  { id: 'lilith',    sym: '⊛', name: 'Lilith',    desc: 'Sovereign will, ethics, full honesty' },
+  { id: 'morrigan',  sym: '⚔', name: 'Morrigan',  fn: 'Coding',   desc: 'Code, debug, architecture — the blade' },
+  { id: 'nyx',       sym: '✦', name: 'Nyx',       fn: 'Research',  desc: 'Research, depth, synthesis' },
+  { id: 'echo',      sym: '◎', name: 'Echo',      fn: 'Memory',    desc: 'Reflection, patterns, memory' },
+  { id: 'eris',      sym: '⚡', name: 'Eris',      fn: 'Ideas',     desc: 'Creative chaos, banter, lateral leaps' },
+  { id: 'cassandra', sym: '⌖', name: 'Cassandra', fn: 'Critique',  desc: 'Unfiltered oracle — sees it first' },
+  { id: 'lilith',    sym: '⊛', name: 'Lilith',    fn: 'Ethics',    desc: 'Sovereign will, ethics, full honesty' },
 ];
 
 const ASPECT_SYMBOLS = { morrigan:'⚔', nyx:'✦', echo:'◎', eris:'⚡', cassandra:'⌖', lilith:'⊛' };
@@ -73,6 +73,11 @@ export function setAspect(id, force) {
   document.querySelectorAll('.aspect-btn').forEach(b => b.classList.remove('active'));
   const btn = document.getElementById('btn-' + id);
   if (btn) btn.classList.add('active');
+
+  // Reflect the active aspect in the collapsed sidebar summary (name · function)
+  const _meta = ASPECTS.find(a => a.id === id) || ASPECTS[0];
+  const sva = document.getElementById('sidebar-voices-active');
+  if (sva) sva.textContent = _meta.name + (_meta.fn ? ' · ' + _meta.fn : '');
 
   // Update badges
   const sym = ASPECT_SYMBOLS[id] || '∴';
