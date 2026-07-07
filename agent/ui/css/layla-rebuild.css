@@ -1138,6 +1138,22 @@ code, pre, kbd, samp, tt, .hljs, .mono, .code, .pill,
 .sidebar-voices-active { color: var(--accent-text); font-weight: 500; margin-left: auto; font-size: var(--text-xs); }
 .sidebar-voices[open] .sidebar-voices-active { opacity: .5; }
 
+/* Pending-approvals badge — visible, pulsing pill in the topbar. Approvals used to hide in
+   a collapsed Settings accordion + the command palette; this makes them impossible to miss
+   and opens the approvals panel on click. Hidden (display:none) when nothing pends. */
+.topbar-approvals {
+  font-family: var(--font-ui); font-size: var(--text-xs); font-weight: 600;
+  color: #fff; background: var(--danger); border: none;
+  border-radius: 999px; padding: 3px 11px; cursor: pointer; white-space: nowrap;
+  animation: approvals-pulse 2s ease-in-out infinite;
+}
+.topbar-approvals:hover { filter: brightness(1.12); }
+@keyframes approvals-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--danger) 60%, transparent); }
+  50%      { box-shadow: 0 0 0 5px transparent; }
+}
+@media (prefers-reduced-motion: reduce) { .topbar-approvals { animation: none; } }
+
 /* ── BL-221: mobile scaling — sidebar is an off-canvas drawer, not a content-eater ──
    This sheet loads last, so these rules authoritatively win the cascade: on narrow
    screens the sidebar defaults off-screen and slides in only when the hamburger adds
