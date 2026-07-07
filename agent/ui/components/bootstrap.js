@@ -347,6 +347,22 @@ export function initBootstrap() {
     }
   }, true);
 
+  // U5: the right panel is an on-demand overlay — it must NEVER auto-open on load
+  // (it's 520px and covers the composer). Any startup path that opened it (e.g. a
+  // "no model -> show setup" flow) is overridden here so the user lands on a clean
+  // chat canvas. Deferred so it runs after synchronous init openers; a following tick
+  // catches async ones. User-initiated opens happen only after load, so this is safe.
+  const _ensureRightPanelClosed = function () {
+    try {
+      const rp = document.getElementById('layla-right-panel');
+      if (rp) rp.classList.remove('rp-open');
+      const bd = document.getElementById('rp-backdrop');
+      if (bd) { bd.classList.remove('visible'); bd.setAttribute('aria-hidden', 'true'); }
+    } catch (_) {}
+  };
+  setTimeout(_ensureRightPanelClosed, 0);
+  setTimeout(_ensureRightPanelClosed, 350);
+
   // Phase 4B: Auto-switch to default aspect from onboarding
   // MIGRATION NOTE: ES module health service also handles this via
   // profile:default-aspect bus event. Both paths are safe — the second
