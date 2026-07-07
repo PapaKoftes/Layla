@@ -241,7 +241,9 @@ bus.on('health:deep-update', (d) => {
   if (tail) {
     const i = Math.max(tail.lastIndexOf('/'), tail.lastIndexOf('\\'));
     if (i >= 0) tail = tail.slice(i + 1);
-    if (tail.length > 28) tail = tail.slice(0, 28);
+    tail = tail.replace(/\.gguf$/i, '');   // drop the redundant extension (was cut to ".g")
+    // Middle-ellipsize so BOTH the name and the meaningful quant (…Q4_K_M) survive.
+    if (tail.length > 30) tail = tail.slice(0, 16) + '…' + tail.slice(-12);
   }
   el.textContent = mode + (tail ? ' · ' + tail : '');
   el.title = raw || '';

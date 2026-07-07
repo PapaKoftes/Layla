@@ -87,8 +87,12 @@ PROFILES = [
      "features": ["voice"], "aspects": ["cassandra", "echo"], "defaults": {}},
     {"id": "research", "label": "Research", "desc": "Missions, knowledge base, web + deep research.",
      "features": ["search_elastic"], "aspects": ["cassandra", "echo"], "defaults": {}},
-    {"id": "power", "label": "Power user (everything)", "desc": "Enable every feature.",
-     "features": [f["id"] for f in FEATURE_MANIFEST], "aspects": _ALL_ASPECTS, "defaults": {}},
+    # SECURITY: "everything" deliberately EXCLUDES `remote` — remote access exposes the
+    # app to the network, so it must always be a separate, explicit opt-in (with its own
+    # warning), never a side effect of picking a broad profile. Users enable it via the
+    # `remote` feature toggle. (Was: every feature incl. remote → silently opened a listener.)
+    {"id": "power", "label": "Power user (everything)", "desc": "Enable every feature (except remote access — opt in separately).",
+     "features": [f["id"] for f in FEATURE_MANIFEST if f["id"] != "remote"], "aspects": _ALL_ASPECTS, "defaults": {}},
     {"id": "minimal", "label": "Minimal (potato)", "desc": "Lean chat only — least RAM.",
      "features": [], "aspects": ["morrigan"],
      "defaults": {"performance_mode": "potato"}},
