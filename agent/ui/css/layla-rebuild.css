@@ -1140,6 +1140,9 @@ code, pre, kbd, samp, tt, .hljs, .mono, .code, .pill,
    This sheet loads last, so these rules authoritatively win the cascade: on narrow
    screens the sidebar defaults off-screen and slides in only when the hamburger adds
    `.mobile-open`, and the main chat area gets the full width. */
+/* U8: the sidebar toggle lives in the live topbar (the legacy header is display:none,
+   which is why mobile had no working hamburger). Hidden on desktop. */
+.topbar-hamburger { display: none; }
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
@@ -1157,4 +1160,14 @@ code, pre, kbd, samp, tt, .hljs, .mono, .code, .pill,
   .sidebar.mobile-open { transform: translateX(0); }
   #main-chat-area, .main-area { width: 100% !important; }
   #sidebar-backdrop.visible { display: block; }
+
+  /* U8: single-row topbar with a working sidebar toggle (was wrapping to 3 rows/111px) */
+  .topbar-hamburger { display: inline-flex !important; align-items: center; justify-content: center; }
+  .topbar { flex-wrap: nowrap !important; overflow-x: auto; gap: 4px; scrollbar-width: none; }
+  .topbar::-webkit-scrollbar { display: none; }
+  .topbar #topbar-system-status,
+  .topbar #topbar-session-time,
+  .topbar .topbar-btn[data-action="compactConversation"] { display: none; }
+  /* U8: force the drawer open past any conflicting .sidebar transform rule */
+  .sidebar.mobile-open { transform: translateX(0) !important; }
 }
