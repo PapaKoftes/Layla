@@ -6,7 +6,7 @@
  * bump required for changes to reach existing installs. Bump CACHE only to force
  * an immediate purge. The activate handler deletes superseded caches.
  */
-const CACHE = "layla-ui-v6";
+const CACHE = "layla-ui-v7";
 const PRECACHE = [
   "/ui/",
   "/manifest.json",
@@ -48,7 +48,11 @@ self.addEventListener("fetch", (event) => {
       caches.open(CACHE).then((cache) =>
         cache.match(req).then((hit) => {
           // Background refresh: fetch fresh, update cache; fall back to cache on failure.
-          const network = fetch(req).then((res) => {
+          // cache:"reload" BYPASSES the browser HTTP cache so revalidation always hits the
+          // network — otherwise a heuristically-cached CSS/JS makes stale-while-revalidate
+          // serve stale forever (the SW re-caches the HTTP-cached stale copy). This is what
+          // guarantees a UI update actually reaches the user on the next load.
+          const network = fetch(new Request(req.url, { cache: "reload" })).then((res) => {
             if (res && res.ok) cache.put(req, res.clone());
             return res;
           }).catch(() => hit);
