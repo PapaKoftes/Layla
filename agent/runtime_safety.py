@@ -237,7 +237,12 @@ def _hardware_derived_defaults() -> dict:
     if vram_gb >= 2:
         return {"n_ctx": 2048, "n_gpu_layers": 10, "n_batch": 128, "use_mlock": False, "completion_max_tokens": 256}
     # CPU-only or no GPU
-    return {"n_ctx": 2048, "n_gpu_layers": 0, "n_batch": 128, "use_mlock": ram_gb >= 16, "completion_max_tokens": 256}
+    if ram_gb >= 8:
+        # A capable CPU box (8GB+): a larger context + batch materially help coding and CPU
+        # prefill, and there's ample RAM headroom (KV at 4096 for a 3-7B Q4 is well under 1GB).
+        # n_batch=128 badly under-utilizes CPU SIMD on big prompts — 512 is the CPU sweet spot.
+        return {"n_ctx": 4096, "n_gpu_layers": 0, "n_batch": 512, "use_mlock": ram_gb >= 16, "completion_max_tokens": 256}
+    return {"n_ctx": 2048, "n_gpu_layers": 0, "n_batch": 128, "use_mlock": False, "completion_max_tokens": 256}
 
 
 def load_config() -> dict:
@@ -309,7 +314,7 @@ def load_config() -> dict:
             "plan_step_default_read_tools": ["read_file", "list_dir", "grep_code"],
             "file_plan_refinement_enabled": False,
             "ui_agent_stream_timeout_seconds": 900,
-            "ui_agent_json_timeout_seconds": 720,
+            "ui_agent_json_timeout_seconds": 900,  # must be >= max_runtime_seconds (was 720 < 900)
             "ui_stream_keepalive_seconds": 20,
             "ui_stalled_silence_ms": 0,
             "honesty_and_boundaries_enabled": True,
@@ -326,7 +331,7 @@ def load_config() -> dict:
             "chat_light_max_runtime_seconds": 90,
             "max_plan_depth": 3,
             "max_tool_calls": 20,
-            "tool_call_timeout_seconds": 60,
+            "tool_call_timeout_seconds": 180,  # was 60 — real pytest/build/install steps exceed 60s and got killed
             "approval_ttl_seconds": 3600,
             "hyde_enabled": False,
             # BL-100 inline RAG grounding (cite-or-abstain). Off by default (non-invasive);
@@ -354,7 +359,7 @@ def load_config() -> dict:
             "tool_step_context_max_tokens": 500,
             "system_head_budget_ratio": 0.35,
             "tiered_prompt_budget_enabled": True,
-            "llm_timeout_seconds": 120,
+            "llm_timeout_seconds": 180,  # must be >= llm_local_timeout_seconds (180); was 120 < 180 → false mid-gen timeouts
             "agent_timeout_seconds": 300,
             "tool_timeout_seconds": 30,
             "tool_routing_enabled": True,
