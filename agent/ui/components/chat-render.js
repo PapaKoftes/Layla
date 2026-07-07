@@ -17,6 +17,7 @@ import { facetMetaFromNameOrId, formatLaylaLabelHtml } from '../components/aspec
 // ── UX state labels ───────────────────────────────────────────────────────────
 export const UX_STATE_LABELS = {
   connecting: 'Connecting',
+  loading_model: 'Loading model… (first message can take a bit)',
   waiting_first_token: 'Waiting for first token',
   streaming: 'Streaming response',
   tool_running: 'Running tool',
