@@ -329,6 +329,8 @@ header .title { color: var(--text); font-weight: 700; }
   border: 1px solid var(--border);
   border-radius: var(--radius);
   transition: border-color var(--dur-fast);
+  padding: 3px 5px;          /* U4: breathing room — was a thin bar */
+  align-items: center;
 }
 .input-row:focus-within { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 #msg-input {
