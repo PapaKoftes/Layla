@@ -1,0 +1,20 @@
+# Keep POSIX shell scripts + launchers LF — CRLF breaks bash on macOS/Linux
+# (the installer and `./layla` launcher must stay LF regardless of contributor OS).
+*.sh        text eol=lf
+*.command   text eol=lf
+layla       text eol=lf
+
+# Windows scripts stay CRLF
+*.ps1       text eol=crlf
+*.cmd       text eol=crlf
+*.bat       text eol=crlf
+
+# Binary assets — never apply EOL/text conversion
+*.woff2     binary
+*.ttf       binary
+*.woff      binary
+*.gguf      binary
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.ico       binary

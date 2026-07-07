@@ -94,23 +94,39 @@ Layla is a **local-first AI companion and engineering agent**. She runs on your 
 
 **Prerequisite:** Python **3.11 or 3.12** (**3.13+** — including **3.14** — is not supported for the full dependency stack yet).
 
-### Windows
+### Quickest — one command (installs Python **and** every dependency)
 
-1. Install Python 3.11 or 3.12 from [python.org](https://python.org) — enable **Add Python to PATH**
-2. Run **`install.ps1`** (PowerShell) or double-click **`INSTALL.bat`**
-3. Hardware wizard can recommend and download a model
-4. **`START.bat`** → [http://localhost:8000/ui](http://localhost:8000/ui)
+You do **not** need Python or any build tools first. [uv](https://docs.astral.sh/uv/) fetches a
+standalone Python, installs **prebuilt CPU wheels** (no compiler on any OS), provisions a model for
+your hardware, and runs a deep self-test.
 
-### Linux / macOS
+**Windows** (PowerShell):
+
+```powershell
+git clone https://github.com/PapaKoftes/Layla.git
+cd Layla
+powershell -ExecutionPolicy Bypass -File install\bootstrap.ps1
+.\layla.cmd            # then open http://127.0.0.1:8000/ui
+```
+
+**macOS / Linux:**
 
 ```bash
 git clone https://github.com/PapaKoftes/Layla.git
 cd Layla
-bash install.sh    # venv, deps, optional Playwright, hardware wizard
-bash start.sh      # launch when ready
+./install/bootstrap.sh
+./layla                # then open http://127.0.0.1:8000/ui
 ```
 
-**Packaged Windows installer:** see [`installer/README.md`](installer/README.md) (payload build via `build_installer.ps1`, compile via [Inno Setup](installer/layla.iss)). End users get an **embedded CPython** under `python\\` (no system Python required). Build machines still need **Python 3.11/3.12** for PyInstaller (use `py -3.12` if `python` is newer). Runtime data may live under `%LOCALAPPDATA%\\Layla` via `LAYLA_DATA_DIR`.
+macOS users can also double-click **`install/Install Layla.command`**.
+Options: `--prefer quality|balanced|lite|speed`, `--skip-model`, `--verify` (PowerShell:
+`-Prefer`, `-SkipModel`, `-Verify`).
+
+### Alternatives
+
+- **Windows, system Python + winget:** `powershell -ExecutionPolicy Bypass -File install\fresh_install.ps1` (installs Python 3.12 via winget; compiler-free wheels). The old `install.ps1` / `INSTALL.bat` are thin shims that forward here.
+- **Linux/macOS, system Python:** `bash install.sh` then `bash start.sh` (needs Python 3.11/3.12; on Linux this path compiles llama-cpp and requires `build-essential cmake`).
+- **Packaged Windows installer** (double-click `.exe`, embedded CPython): see [`installer/README.md`](installer/README.md). Runtime data may live under `%LOCALAPPDATA%\\Layla` via `LAYLA_DATA_DIR`.
 
 ---
 
