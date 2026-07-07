@@ -23,6 +23,11 @@ logger = logging.getLogger("layla")
 
 CLUSTER_CONFIG_FILE = Path(__file__).resolve().parent.parent.parent / "cluster_config.json"
 HEARTBEAT_TIMEOUT_FACTOR = 3  # Mark peer offline after 3x heartbeat interval
+HEARTBEAT_INTERVAL_DEFAULT = 30  # seconds (matches cluster_heartbeat_interval default)
+# A peer with no heartbeat within this window reads as OFFLINE regardless of its stored
+# status — so dead nodes (or leftover test data in cluster_config.json) never linger as
+# "online" when the health-check loop isn't running (e.g. clustering disabled).
+PEER_ONLINE_MAX_AGE = HEARTBEAT_INTERVAL_DEFAULT * HEARTBEAT_TIMEOUT_FACTOR  # 90s
 
 
 # ── Enums ────────────────────────────────────────────────────────────────
@@ -60,7 +65,16 @@ class Peer:
     latency_ms: float = 0.0
 
     def is_online(self) -> bool:
-        return self.status in (PeerStatus.ONLINE, PeerStatus.DEGRADED)
+        # Stored status alone is stale-prone: a peer loaded from cluster_config.json keeps
+        # its last status forever, and _check_peer_health only runs while clustering is
+        # enabled. A STALE heartbeat means the node is gone even if status says online (this
+        # is what left 200+ dead test-drones showing "online"). last_heartbeat == 0 means
+        # "just added / not yet reported" — trust the status in that grace case.
+        if self.status not in (PeerStatus.ONLINE, PeerStatus.DEGRADED):
+            return False
+        if self.last_heartbeat > 0 and (time.time() - self.last_heartbeat) > PEER_ONLINE_MAX_AGE:
+            return False
+        return True
 
     def has_capability(self, task_type: str) -> bool:
         """Check if peer can handle this task type."""
