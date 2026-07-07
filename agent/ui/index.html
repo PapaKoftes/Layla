@@ -182,7 +182,7 @@
   </div>
   <div class="header-actions">
     <button type="button" id="compact-chat-btn" data-action="compactConversation" title="Compact context" class="header-action-btn">⊙ Compact</button>
-    <button data-action="toggleTheme" id="theme-btn" title="Toggle dark/light" aria-label="Toggle theme" data-i18n-title="nav.toggle_theme" class="header-action-btn">🌙</button>
+    <button data-action="toggleTheme" id="theme-btn" title="Toggle dark/light" aria-label="Toggle theme" data-i18n-title="nav.toggle_theme" class="header-action-btn">◐</button>
     <button data-action="openSettings" title="Settings" aria-label="Settings" data-i18n-title="nav.settings" data-i18n-aria-label="nav.settings" class="header-action-btn">⚙</button>
     <button type="button" id="chat-rail-toggle" data-action="toggleChatRailMobile" title="Chats" aria-label="Open chats" data-i18n-aria-label="nav.open_chats" class="header-action-btn rp-mobile-only">💬</button>
     <button type="button" class="rp-toggle-btn header-action-btn" data-action="toggleRightPanel" title="Panels" aria-label="Toggle right panel" data-i18n-title="nav.panels">☰ Panels</button>
@@ -262,30 +262,30 @@
       </details>
       <div class="maturity-hint">Growth is real. Click to open Growth panel.</div>
     </div>
-    <details class="sidebar-voices" open>
-      <summary class="sidebar-voices-title">Voices</summary>
+    <details class="sidebar-voices" id="sidebar-voices">
+      <summary class="sidebar-voices-title">Aspect<span class="sidebar-voices-active" id="sidebar-voices-active">Morrigan · Coding</span></summary>
       <div class="aspect-option expandable" id="aspect-opt-morrigan">
-        <button class="aspect-btn active" data-action="setAspect" data-arg="morrigan" data-action-stop id="btn-morrigan" aria-label="Switch to Morrigan aspect" aria-pressed="true">⚔ Morrigan</button>
+        <button class="aspect-btn active" data-action="setAspect" data-arg="morrigan" data-action-stop id="btn-morrigan" aria-label="Switch to Morrigan aspect (coding)" aria-pressed="true">⚔ Morrigan · Coding</button>
         <span class="aspect-desc">Software engineering: coding, debugging, refactoring, and system architecture.</span>
       </div>
       <div class="aspect-option expandable" id="aspect-opt-nyx">
-        <button class="aspect-btn" data-action="setAspect" data-arg="nyx" data-action-stop id="btn-nyx" aria-label="Switch to Nyx aspect" aria-pressed="false">✦ Nyx</button>
+        <button class="aspect-btn" data-action="setAspect" data-arg="nyx" data-action-stop id="btn-nyx" aria-label="Switch to Nyx aspect (research)" aria-pressed="false">✦ Nyx · Research</button>
         <span class="aspect-desc">Research and analysis: deep dives, technical explanations, and synthesis.</span>
       </div>
       <div class="aspect-option expandable" id="aspect-opt-echo">
-        <button class="aspect-btn" data-action="setAspect" data-arg="echo" data-action-stop id="btn-echo" aria-label="Switch to Echo aspect" aria-pressed="false">◎ Echo</button>
+        <button class="aspect-btn" data-action="setAspect" data-arg="echo" data-action-stop id="btn-echo" aria-label="Switch to Echo aspect (memory)" aria-pressed="false">◎ Echo · Memory</button>
         <span class="aspect-desc">Continuity and context: memory tracking, user patterns, and long-term consistency.</span>
       </div>
       <div class="aspect-option expandable" id="aspect-opt-eris">
-        <button class="aspect-btn" data-action="setAspect" data-arg="eris" data-action-stop id="btn-eris" aria-label="Switch to Eris aspect" aria-pressed="false">⚡ Eris</button>
+        <button class="aspect-btn" data-action="setAspect" data-arg="eris" data-action-stop id="btn-eris" aria-label="Switch to Eris aspect (ideas)" aria-pressed="false">⚡ Eris · Ideas</button>
         <span class="aspect-desc">Creative ideation: brainstorming, unconventional options, and exploratory thinking.</span>
       </div>
       <div class="aspect-option expandable" id="aspect-opt-cassandra">
-        <button class="aspect-btn" data-action="setAspect" data-arg="cassandra" data-action-stop id="btn-cassandra" aria-label="Switch to Cassandra aspect" aria-pressed="false">⌖ Cassandra</button>
+        <button class="aspect-btn" data-action="setAspect" data-arg="cassandra" data-action-stop id="btn-cassandra" aria-label="Switch to Cassandra aspect (critique)" aria-pressed="false">⌖ Cassandra · Critique</button>
         <span class="aspect-desc">Rapid critique: direct first-pass judgments and blunt feedback.</span>
       </div>
       <div class="aspect-option expandable" id="aspect-opt-lilith">
-        <button class="aspect-btn" data-action="setAspect" data-arg="lilith" data-action-stop id="btn-lilith" aria-label="Switch to Lilith aspect" aria-pressed="false">⊛ Lilith</button>
+        <button class="aspect-btn" data-action="setAspect" data-arg="lilith" data-action-stop id="btn-lilith" aria-label="Switch to Lilith aspect (ethics)" aria-pressed="false">⊛ Lilith · Ethics</button>
         <span class="aspect-desc">Safety and boundaries: ethics checks, refusal logic, and high-risk decision review.</span>
       </div>
     </details>
@@ -294,8 +294,8 @@
       <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="status"><span class="sidebar-nav-icon">◈</span> Dashboard</button>
       <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="prefs"><span class="sidebar-nav-icon">⚙</span> Settings</button>
       <button type="button" class="sidebar-nav-btn" data-action="openModelsPanel"><span class="sidebar-nav-icon">◆</span> Models</button>
-      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="workspace"><span class="sidebar-nav-icon">📚</span> Library</button>
-      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="research"><span class="sidebar-nav-icon">🔬</span> Research</button>
+      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="workspace"><span class="sidebar-nav-icon">▤</span> Library</button>
+      <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="research"><span class="sidebar-nav-icon">⌕</span> Research</button>
       <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="artifacts"><span class="sidebar-nav-icon">⬡</span> Artifacts</button>
     </nav>
     <!-- Live dashboard cards -->
@@ -358,12 +358,12 @@
       <span id="topbar-session-time" class="topbar-pill" title="Session duration">0:00</span>
       <div class="topbar-spacer"></div>
       <button type="button" class="topbar-btn" data-action="compactConversation" title="Compact context">⊙ Compact</button>
-      <button type="button" class="topbar-btn" data-action="toggleTheme" title="Toggle dark/light" aria-label="Toggle theme" data-i18n-title="nav.toggle_theme">🌙</button>
+      <button type="button" class="topbar-btn" data-action="toggleTheme" title="Toggle dark/light" aria-label="Toggle theme" data-i18n-title="nav.toggle_theme">◐</button>
       <button type="button" class="topbar-btn" data-action="openOverlayPanel" data-arg="prefs" title="Settings" aria-label="Settings" data-i18n-title="nav.settings" data-i18n-aria-label="nav.settings">⚙</button>
       <button type="button" class="rp-toggle-btn" data-action="toggleRightPanel" title="Panels" aria-label="Toggle panels" data-i18n-title="nav.panels">☰ Panels</button>
       <button type="button" class="topbar-btn header-overflow-trigger" data-action="toggleHeaderOverflow" title="More actions" aria-label="More actions" data-i18n-title="nav.more_actions" data-i18n-aria-label="nav.more_actions">⋮</button>
     </div>
-    <div id="context-chip" class="context-chip" title="Active thread context">No chat selected — start a new chat or pick one from the list.</div>
+    <div id="context-chip" class="context-chip" title="Active thread context" style="display:none"></div>
     <div id="compose-panel" class="compose-panel" aria-label="Working notes">
       <div class="compose-panel-head">
         <span>Working notes → merged into request context (not shown as a user chat line)</span>
@@ -411,9 +411,9 @@
           <textarea id="msg-input" rows="1" placeholder="Ask Layla… drop a file, or type @nyx, @morrigan… (Shift+Enter for newline)" data-on-keydown="onInputKeydown" data-on-input="onInputChange" aria-label="Message input" aria-multiline="true"></textarea>
         </div>
         <label title="Attach file" aria-label="Attach file" style="cursor:pointer;padding:0 8px;display:flex;align-items:center;color:var(--text-dim);font-size:1rem">
-          📎<input type="file" id="file-attach" style="display:none" data-on-change="attachFileChange" aria-label="File attachment">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3 3 0 0 1 4.24 4.24l-9.2 9.19a1 1 0 0 1-1.41-1.41l8.49-8.49"/></svg><input type="file" id="file-attach" style="display:none" data-on-change="attachFileChange" aria-label="File attachment">
         </label>
-        <button id="mic-btn" data-action="toggleMic" title="Click to record voice" aria-label="Record voice">🎤</button>
+        <button id="mic-btn" data-action="toggleMic" title="Click to record voice" aria-label="Record voice"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2"/><path d="M12 19v3"/></svg></button>
         <button id="retry-btn" data-action="retryLastMessage" title="Regenerate last reply (Ctrl+R)" aria-label="Regenerate last reply" style="display:none;font-size:0.75rem;padding:4px 8px">↻ Regenerate</button>
         <button type="button" id="cancel-send-btn" data-action="cancelActiveSend" title="Stop generation" aria-label="Stop generation" style="display:none;font-size:0.75rem;padding:4px 8px">Stop</button>
         <button type="button" id="send-btn" data-action="triggerSend" aria-label="Send message" data-i18n="action.send">Send</button>
@@ -425,7 +425,7 @@
         <span id="ctx-usage-label">Ctx: —</span>
         <span id="token-pressure-hint" style="display:none;color:#fa0;font-size:0.6rem" title="Context is above 60% — Layla will chunk tasks automatically">⚡ chunking</span>
       </div>
-      <span class="input-hint" style="display:block;font-size:var(--text-xs);color:var(--text-dim);margin-top:4px;padding:0 4px">Attach files with 📎 or paste. Enter to send, Shift+Enter for newline. Ctrl+K to clear. ↑ cycles recent prompts.</span>
+      <span class="input-hint" style="display:block;font-size:var(--text-xs);color:var(--text-dim);margin-top:4px;padding:0 4px">Attach files or paste. Enter to send, Shift+Enter for newline. Ctrl+K to clear. ↑ cycles recent prompts.</span>
     </div>
   </main>
 
