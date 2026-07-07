@@ -168,14 +168,6 @@ def quick_reply_for_trivial_turn(goal: str) -> str:
         gl,
     ):
         return "I'm good. What do you need?"
-    # Bare greetings: answer instantly with NO model call / no cold-load. A greeting
-    # should never spin up the 3B on a potato box (the "typed hello, waited 100s" case).
-    if re.match(
-        r"^(hi+|hey+|hello+|yo+|sup|howdy|heya|hiya|hey there|"
-        r"good\s?(morning|afternoon|evening|day))[!.\s]*$",
-        gl,
-    ):
-        return "Hey — what do you need?"
     return ""
 
 
