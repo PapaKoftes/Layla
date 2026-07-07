@@ -187,15 +187,26 @@ class TestBuildBehaviorBlock:
         assert "refuse" in block.lower()
 
     def test_no_behavior_empty_block(self):
-        assert build_behavior_block(_aspect("morrigan")) == ""
+        # Truly neutral aspect: no behavior config AND no tool preferences → empty block.
+        assert build_behavior_block(_aspect("neutral_test")) == ""
 
     def test_none_aspect_empty_block(self):
         assert build_behavior_block(None) == ""
         assert build_behavior_block({}) == ""
 
     def test_all_defaults_empty_block(self):
-        a = _aspect("echo", _beh(depth="auto", length="medium", steps=6, topics=[]))
+        a = _aspect("neutral_test", _beh(depth="auto", length="medium", steps=6, topics=[]))
         assert build_behavior_block(a) == ""
+
+    def test_tool_bias_injected_for_real_aspects(self):
+        # U9: aspects with tool preferences get a "Tool bias" line so switching aspect
+        # changes HOW Layla works (tool choice), not just tone.
+        lilith = build_behavior_block(_aspect("lilith"))
+        assert "Tool bias" in lilith and "avoid" in lilith and "run_shell" in lilith
+        morrigan = build_behavior_block(_aspect("morrigan"))
+        assert "Tool bias" in morrigan and "prefer" in morrigan and "create_plan" in morrigan
+        # Unknown aspect → no tool-bias line.
+        assert "Tool bias" not in build_behavior_block(_aspect("neutral_test"))
 
 
 # ---------------------------------------------------------------------------
