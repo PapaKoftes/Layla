@@ -453,15 +453,33 @@ export async function send() {
         statusEl.textContent = UX_STATE_LABELS.waiting_first_token || 'Waiting for first token';
         try { laylaNotifyStreamPhase(div, liveStatus); } catch (_e) { console.debug('app:', _e); }
       }, 1800);
-      var stallMs = laylaStalledSilenceMs();
+      // Connection-audit fix: a bare keepalive `pulse` proves the SOCKET is alive, NOT that
+      // work is progressing — so pulses must NOT reset these timers (that's the bug that let
+      // the UI spin "Thinking" forever during a hung/cold model load). Only real frames
+      // (ux_state/token/tool/thinking/done) count as progress via _markRealProgress().
+      var STALL_WARN_MS = 20000;      // soft "still working — model may be loading" hint
+      var HARD_SILENCE_MS = 150000;   // no real progress frame this long → abort + offer retry
+      var hardTimer = null;
       function _showStalled() {
-        liveStatus = 'stalled';
+        liveStatus = 'still_working';
         var statusEl = div.querySelector('.tool-status-label');
         if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; var mb = div.querySelector('.msg-bubble'); if (mb) mb.appendChild(statusEl); }
-        statusEl.textContent = (UX_STATE_LABELS.stalled || 'Stalled') + ' — ' + (UX_STATE_LABELS.retry_hint || 'Retry suggested');
-        try { laylaNotifyStreamPhase(div, 'stalled'); } catch (_e) { console.debug('app:', _e); }
+        statusEl.textContent = UX_STATE_LABELS.still_working || 'Still working… (the model may be loading)';
+        try { laylaNotifyStreamPhase(div, 'still_working'); } catch (_e) { console.debug('app:', _e); }
       }
-      stalledTimer = setTimeout(_showStalled, stallMs);
+      function _hardTimeout() {
+        // No REAL progress frame for HARD_SILENCE_MS (bare keepalive pulses don't count) →
+        // the stream is stuck. Abort → reader.read() rejects → the outer catch shows an
+        // error + Retry and `finally` clears the busy flag, so the chat never soft-bricks
+        // into an un-sendable state (the exact "connecting forever" bug).
+        try { ac.abort(); } catch (_e) { console.debug('app:', _e); }
+      }
+      function _markRealProgress() {
+        clearTimeout(stalledTimer); stalledTimer = setTimeout(_showStalled, STALL_WARN_MS);
+        clearTimeout(hardTimer); hardTimer = setTimeout(_hardTimeout, HARD_SILENCE_MS);
+      }
+      stalledTimer = setTimeout(_showStalled, STALL_WARN_MS);
+      hardTimer = setTimeout(_hardTimeout, HARD_SILENCE_MS);
       while (true) {
         var _read = await reader.read();
         var value = _read.value;
@@ -476,12 +494,15 @@ export async function send() {
           try { obj = JSON.parse(line.slice(6)); } catch (_) { obj = null; }
           if (!obj) continue;
           if (obj.pulse === true) {
-            clearTimeout(stalledTimer);
-            stalledTimer = setTimeout(_showStalled, stallMs);
+            // keepalive only: the socket is alive, but this is NOT progress — do NOT reset
+            // the stall/hard timers (resetting them here is what let it spin forever).
+          } else {
+            _markRealProgress();   // any real (non-pulse) frame counts as progress
           }
           if (obj.error) {
             clearTimeout(firstTokenTimer);
             clearTimeout(stalledTimer);
+            clearTimeout(hardTimer);
             clearInterval(metaTimer);
             try { div.remove(); } catch (_e) { console.debug('app:', _e); }
             try { laylaRemoveTypingIndicator(); } catch (_e) { console.debug('app:', _e); }
@@ -539,8 +560,6 @@ export async function send() {
                 bubble.innerHTML = '';
               }
             }
-            clearTimeout(stalledTimer);
-            stalledTimer = setTimeout(_showStalled, stallMs);
             full += String(obj.token);
             if (bubble) {
               // Render markdown during streaming for better readability
@@ -553,6 +572,7 @@ export async function send() {
           if (obj.done) {
             clearTimeout(firstTokenTimer);
             clearTimeout(stalledTimer);
+            clearTimeout(hardTimer);
             clearInterval(metaTimer);
             liveStatus = 'done';
             try { laylaNotifyStreamPhase(div, 'done'); } catch (_e) { console.debug('app:', _e); }
@@ -629,6 +649,7 @@ export async function send() {
     window._laylaSendBusy = false;
     try { if (firstTokenTimer) clearTimeout(firstTokenTimer); } catch (_e) { console.debug('app:', _e); }
     try { if (stalledTimer) clearTimeout(stalledTimer); } catch (_e) { console.debug('app:', _e); }
+    try { if (typeof hardTimer !== 'undefined' && hardTimer) clearTimeout(hardTimer); } catch (_e) { console.debug('app:', _e); }
     try { if (metaTimer) clearInterval(metaTimer); } catch (_e) { console.debug('app:', _e); }
     try { laylaRemoveTypingIndicator(); } catch (_e) { console.debug('app:', _e); }
     try { if (window.laylaChatFSM) window.laylaChatFSM.finishOk(); } catch (_e) { console.debug('app:', _e); }

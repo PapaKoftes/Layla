@@ -676,6 +676,15 @@ async def agent(req: AgentRequest, request: Request):
             watch_task = asyncio.create_task(_watch_client_disconnect(request, client_abort))
             try:
                 yield f"data: {json.dumps({'ux_state': 'thinking'})}\n\n"
+                # If no model is resident yet, tell the client it's LOADING (not just
+                # "thinking"), so a cold first-load shows a truthful state instead of an
+                # ambiguous spinner (and the client's stall/hard timers reflect a real load).
+                try:
+                    from services.llm.llm_gateway import model_is_loaded
+                    if not model_is_loaded():
+                        yield f"data: {json.dumps({'ux_state': 'loading_model'})}\n\n"
+                except Exception:
+                    pass
                 _last_stream_activity = time.monotonic()
                 while thread.is_alive() or not ux_state_queue.empty():
                     try:

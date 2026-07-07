@@ -20,6 +20,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _llm = None  # legacy: first loaded instance (health/UI)
 _llm_by_path: dict[str, Any] = {}  # resolved model path -> Llama (task-based routing)
 
+
+def model_is_loaded() -> bool:
+    """True if a model is actually RESIDENT in this process (not merely present on disk).
+
+    model_loaded_status() reports OK whenever the GGUF exists, so it can't tell a warm
+    process from a cold one. This lets the chat stream show a truthful "Loading model…"
+    state on the first cold request instead of an ambiguous "thinking" spinner.
+    """
+    return _llm is not None or bool(_llm_by_path)
+
 _DEFAULT_MAX_RESIDENT_MODELS = 2  # cap on concurrently-loaded GGUF models (memory bound, F9)
 
 

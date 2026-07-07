@@ -6,7 +6,7 @@
  * bump required for changes to reach existing installs. Bump CACHE only to force
  * an immediate purge. The activate handler deletes superseded caches.
  */
-const CACHE = "layla-ui-v9";
+const CACHE = "layla-ui-v10";
 const PRECACHE = [
   "/ui/",
   "/manifest.json",
