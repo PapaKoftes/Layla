@@ -207,6 +207,25 @@ def build_behavior_block(aspect: dict) -> str:
             "If the request directly involves these, refuse clearly and briefly."
         )
 
+    # Tool bias (U9): each aspect favours/avoids certain tools — surfacing this in the
+    # prompt makes switching aspect change HOW Layla works (tool choice), not just tone.
+    # The preferences already existed (ASPECT_TOOL_PREFERENCES) but were never injected.
+    aid = str((aspect or {}).get("id", "")).strip().lower()
+    prefs = ASPECT_TOOL_PREFERENCES.get(aid)
+    if prefs:
+        boost = prefs.get("boost") or []
+        suppress = prefs.get("suppress") or []
+        bits: list[str] = []
+        if boost:
+            bits.append("prefer " + ", ".join(boost))
+        if suppress:
+            bits.append("avoid " + ", ".join(suppress))
+        if bits:
+            parts.append(
+                "Tool bias for this aspect: " + "; ".join(bits)
+                + " — unless the task clearly needs otherwise."
+            )
+
     return "\n".join(parts)
 
 
