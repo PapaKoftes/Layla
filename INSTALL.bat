@@ -1,8 +1,5 @@
 @echo off
-rem Layla - DEPRECATED installer shim. The old batch installer needed a C++ toolchain and a
-rem bare `python` (often 3.14, unsupported). Forwarding to the compiler-free installer.
-echo.
-echo   [deprecated] This installer needed a C++ toolchain. Using the compiler-free installer instead:
-echo     install\fresh_install.ps1
-echo.
-powershell -ExecutionPolicy Bypass -File "%~dp0install\fresh_install.ps1" %*
+rem Layla installer (Windows) - one command, powered by uv. Fetches Python + every
+rem dependency (prebuilt CPU wheels, no compiler, no admin), provisions a model, self-tests.
+rem Canonical path; forwards to install\bootstrap.ps1.
+powershell -ExecutionPolicy Bypass -File "%~dp0install\bootstrap.ps1" %*
