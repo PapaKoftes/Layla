@@ -121,6 +121,17 @@ class TestPeerDataclass:
         assert Peer(instance_id="x", status=PeerStatus.DEGRADED).is_online() is True
         assert Peer(instance_id="x", status=PeerStatus.OFFLINE).is_online() is False
 
+    def test_peer_stale_heartbeat_reads_offline(self):
+        # A peer whose stored status says "online" but hasn't heart-beated in ages must read
+        # OFFLINE (the 200+ dead test-drones bug). A zero heartbeat = just added → trusted.
+        import time as _t
+        fresh = Peer(instance_id="fresh", status=PeerStatus.ONLINE, last_heartbeat=_t.time())
+        stale = Peer(instance_id="stale", status=PeerStatus.ONLINE, last_heartbeat=_t.time() - 99999)
+        never = Peer(instance_id="never", status=PeerStatus.ONLINE, last_heartbeat=0.0)
+        assert fresh.is_online() is True
+        assert stale.is_online() is False
+        assert never.is_online() is True
+
     def test_peer_has_capability(self):
         p = Peer(instance_id="x", capabilities=["inference", "embedding"])
         assert p.has_capability("inference") is True
