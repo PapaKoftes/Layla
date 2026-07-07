@@ -1122,6 +1122,20 @@ code, pre, kbd, samp, tt, .hljs, .mono, .code, .pill,
   font-family: var(--font-mono);
 }
 
+/* ── U5 · De-densify the primary rail ────────────────────────────────────────
+   Operator telemetry (governor / facts / cluster / uptime) and the XP/maturity
+   card belong in the Dashboard & Growth panels, not the sidebar where they
+   out-competed New chat + conversations + aspect. Kept in the DOM so their JS
+   updaters keep running; just not shown in the rail. */
+.sidebar #maturity-card,
+.sidebar #sidebar-dashboard { display: none; }
+
+/* Collapsed aspect switcher — the summary carries the active aspect (name · function) */
+.sidebar-voices > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; }
+.sidebar-voices > summary::-webkit-details-marker { display: none; }
+.sidebar-voices-active { color: var(--accent-text); font-weight: 500; margin-left: auto; font-size: var(--text-xs); }
+.sidebar-voices[open] .sidebar-voices-active { opacity: .5; }
+
 /* ── BL-221: mobile scaling — sidebar is an off-canvas drawer, not a content-eater ──
    This sheet loads last, so these rules authoritatively win the cascade: on narrow
    screens the sidebar defaults off-screen and slides in only when the hamburger adds
