@@ -129,7 +129,7 @@ function _phaseDisplayName(phase) {
 
 function _phaseGradient(phase) {
   const gradients = {
-    awakening: 'linear-gradient(90deg, #4ecdc4, #44a08d)',
+    awakening: 'linear-gradient(90deg, var(--accent-2), var(--accent))',
     attunement: 'linear-gradient(90deg, #f093fb, #f5576c)',
     resonance: 'linear-gradient(90deg, #4facfe, #00f2fe)',
     sovereignty: 'linear-gradient(90deg, #fa709a, #fee140)',
