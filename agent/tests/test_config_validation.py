@@ -83,8 +83,14 @@ def test_appearance_keys_write_without_clamp(tmp_path):
 
 # ── load_config clamps a hand-edited garbage file ────────────────────────────
 def test_load_config_clamps_hand_edited_garbage(tmp_path):
+    # auto_tune_enabled=False so this exercises the CLAMP path in isolation. With auto-tune on
+    # (production default), n_gpu_layers is set authoritatively by the detected hardware tier —
+    # which supersedes any hand-edited value anyway — so the clamp is only observable with it off.
     cfgfile = tmp_path / "runtime_config.json"
-    cfgfile.write_text(json.dumps({"temperature": 999, "n_gpu_layers": -999, "sandbox_root": str(tmp_path / "sb")}), encoding="utf-8")
+    cfgfile.write_text(
+        json.dumps({"temperature": 999, "n_gpu_layers": -999, "auto_tune_enabled": False, "sandbox_root": str(tmp_path / "sb")}),
+        encoding="utf-8",
+    )
     with patch.object(rs, "CONFIG_FILE", cfgfile):
         rs.invalidate_config_cache()
         cfg = rs.load_config()

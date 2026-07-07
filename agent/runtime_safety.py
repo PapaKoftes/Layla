@@ -101,6 +101,7 @@ _config_mtime: float = 0.0
 _config_last_check: float = 0.0
 _CONFIG_CHECK_TTL: float = 2.0  # skip stat() for 2 s during hot loops
 _config_lock = threading.Lock()
+_applying_auto_tune: bool = False  # re-entrancy guard: auto-tune → get_recommended_settings → load_config
 _file_cache_lock = threading.Lock()
 _hw_lock = threading.Lock()
 _hardware_probe_cache: dict | None = None
@@ -247,11 +248,17 @@ def _hardware_derived_defaults() -> dict:
 
 def load_config() -> dict:
     """Load runtime config. Cached: skips disk stat for _CONFIG_CHECK_TTL seconds during hot loops."""
-    global _config_cache, _config_mtime, _config_last_check
+    global _config_cache, _config_mtime, _config_last_check, _applying_auto_tune
     now = time.monotonic()
     # Fast path: TTL not expired and cache warm — zero I/O, no lock needed (read-only reference)
     if _config_cache is not None and (now - _config_last_check) < _CONFIG_CHECK_TTL:
         return _config_cache
+    # Re-entrancy guard: the auto-tune overlay (below) calls hardware_detect.get_recommended_settings()
+    # which calls load_config() again on THIS thread. _config_lock is a plain Lock, so re-locking
+    # would deadlock — return the last-known config (or {}) without taking the lock. The inner
+    # caller only needs a few keys (e.g. model_path) and tolerates a stale/empty read.
+    if _applying_auto_tune:
+        return _config_cache if _config_cache is not None else {}
     with _config_lock:
         # Re-check inside lock to avoid redundant reloads from concurrent threads
         now = time.monotonic()
@@ -791,6 +798,19 @@ def load_config() -> dict:
             defaults = resolve_config_secrets(defaults)
         except Exception as e:
             logger.debug("secret resolution skipped: %s", e)
+        # Hardware-adaptive optimization suite: overlay the auto-tune profile (inference +
+        # pipeline weight for the detected hardware tier) AUTHORITATIVELY, so the machine is
+        # always configured for its capability without hand-tuning. Off via auto_tune_enabled
+        # =false; per-key opt-out via auto_tune_locked_keys. Guarded above against the re-entry
+        # from get_recommended_settings() (which calls load_config()).
+        try:
+            _applying_auto_tune = True
+            from services.infrastructure.auto_tune import apply_auto_tune
+            defaults = apply_auto_tune(defaults)
+        except Exception as _at_err:
+            logger.debug("auto-tune overlay skipped: %s", _at_err)
+        finally:
+            _applying_auto_tune = False
         _config_cache = defaults
         _config_mtime = current_mtime
         return _config_cache
