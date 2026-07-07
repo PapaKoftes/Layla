@@ -166,9 +166,24 @@ def run_decision_loop(
         if isinstance(state.get("steps"), list) and len(state["steps"]) > max(6, step_thr):
             state["steps_summary"] = _al._summarize_steps_deterministic(state["steps"], keep_last=5, max_lines=12)
 
-        # -- LLM decision call --
+        # -- FAST PATH: a self-contained question on the first step (read-only chat) is forced
+        #    to `reason` below anyway, so skip the decision LLM call entirely — otherwise a
+        #    trivial question pays TWO sequential model calls (decision + answer, ~25s each on
+        #    CPU) when the decision was a foregone conclusion. Same outcome, half the latency. --
+        _force_reason_now = False
+        try:
+            _force_reason_now = bool(
+                int(state.get("tool_calls", 0) or 0) == 0
+                and not allow_write and not allow_run
+                and not state.get("_forced_reason_first")
+                and _al._is_self_contained_question(state.get("original_goal") or goal or "")
+            )
+        except Exception:
+            _force_reason_now = False
+
+        # -- LLM decision call (skipped on the fast path above) --
         _t0 = time.perf_counter()
-        decision = _al._llm_decision(
+        decision = None if _force_reason_now else _al._llm_decision(
             goal_for_decision, state, context, active_aspect, show_thinking, conversation_history or []
         )
         if decision and isinstance(decision, dict):
@@ -251,6 +266,12 @@ def run_decision_loop(
                 intent = "reason"
         except Exception as _rf_exc:
             logger.debug("reason-first fast path skipped: %s", _rf_exc)
+
+        # When we skipped the decision call above, force `reason` so the self-contained
+        # question is answered directly (equivalent to what the reason-first path would do).
+        if _force_reason_now:
+            state["_forced_reason_first"] = True
+            intent = "reason"
 
         # -- Revised objective --
         consecutive = state.get("consecutive_no_progress", 0)
