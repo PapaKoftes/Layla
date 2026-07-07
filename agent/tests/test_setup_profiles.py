@@ -42,11 +42,23 @@ def test_coding_profile_enables_mcp_and_tool_first():
     assert "mcp" in cfg["setup_features"]
 
 
-def test_power_profile_enables_all_features():
+def test_power_profile_enables_all_features_except_remote():
+    # SECURITY: "everything" EXCLUDES `remote` — network exposure is a deliberate opt-in.
     cfg = resolve_setup_config(["power"])
-    assert set(cfg["setup_features"]) == {f["id"] for f in FEATURE_MANIFEST}
+    assert set(cfg["setup_features"]) == {f["id"] for f in FEATURE_MANIFEST if f["id"] != "remote"}
     assert cfg.get("voice_stt_prewarm_enabled") is True
     assert cfg.get("encryption_at_rest_enabled") is True
+    assert cfg.get("remote_enabled") is None  # not silently enabled by "enable everything"
+
+
+def test_no_profile_silently_enables_remote_access():
+    # remote_enabled exposes the app to the network; it must never be a side effect of a
+    # broad profile choice — only the explicit `remote` feature toggle may set it (W1 fix).
+    for p in PROFILES:
+        cfg = resolve_setup_config([p["id"]])
+        assert cfg.get("remote_enabled") is None, f"{p['id']} silently enabled remote access"
+    # explicit opt-in still works
+    assert resolve_setup_config([], ["remote"]).get("remote_enabled") is True
 
 
 def test_explicit_features_union_with_profile():
@@ -107,4 +119,4 @@ def test_enabled_feature_ids_partial_flags_not_enabled():
 
 def test_enabled_feature_ids_matches_power_profile():
     cfg = resolve_setup_config(["power"])
-    assert set(enabled_feature_ids(cfg)) == {f["id"] for f in FEATURE_MANIFEST}
+    assert set(enabled_feature_ids(cfg)) == {f["id"] for f in FEATURE_MANIFEST if f["id"] != "remote"}
