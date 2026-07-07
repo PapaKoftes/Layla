@@ -149,6 +149,18 @@ export async function refreshApprovals() {
     if (res && res.ok) { try { data = await res.json(); } catch (_) {} }
     const pending = Array.isArray(data && data.pending) ? data.pending : [];
     const todo = pending.filter(function (e) { return (e && e.status) === 'pending'; });
+    // Surface the pending count in the topbar so approvals are never invisible/buried.
+    try {
+      const _badge = document.getElementById('topbar-approvals');
+      if (_badge) {
+        if (todo.length) {
+          _badge.textContent = '⚠ ' + todo.length + (todo.length === 1 ? ' approval' : ' approvals');
+          _badge.style.display = '';
+        } else {
+          _badge.style.display = 'none';
+        }
+      }
+    } catch (_) {}
     if (!todo.length) {
       box.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">No pending approvals</span>';
       return;

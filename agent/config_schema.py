@@ -305,6 +305,13 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "default": False,
         "hint": "DANGEROUS: allow shell blocklist bypass when admin_mode. Do not enable on shared machines.",
     },
+    {
+        "key": "tool_approval_bypass",
+        "type": "boolean",
+        "category": "safety",
+        "default": False,
+        "hint": "DANGEROUS: auto-approve ALL tools with no prompt and no checkpoint (the easy 'yes to everything' switch). Off by default; disable when not needed.",
+    },
     # ── Integrations (Discord, Slack, etc.) ──
     {
         "key": "mcp_client_enabled",

@@ -38,7 +38,7 @@ let _ttsEnabled = false;
 let _streamEnabled = false;
 
 try {
-  _ttsEnabled = localStorage.getItem('layla_tts') !== 'false';
+  _ttsEnabled = localStorage.getItem('layla_tts') === 'true';  // opt-in: speaking replies OFF by default
   _streamEnabled = localStorage.getItem('layla_stream') !== 'false';
 } catch (_) {}
 

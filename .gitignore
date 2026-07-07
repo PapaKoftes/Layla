@@ -173,3 +173,6 @@ installer/output/
 agent/services/.layla/
 **/.layla/
 agent/all_routes.txt
+
+# Operator cluster state (contains cluster_secret_hash; per-machine, not for the repo)
+agent/cluster_config.json
