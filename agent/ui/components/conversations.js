@@ -50,6 +50,12 @@ function _saveCurrentSession() {
 export function updateContextChip() {
   const el = document.getElementById('context-chip');
   if (!el) return;
+  // U5: the empty-state hero is the sole empty state — no competing "No chat selected"
+  // line. The chip only appears once a real conversation is active (it carries thread
+  // context, which is meaningless with nothing loaded).
+  const hasConv = typeof window.currentConversationId !== 'undefined' && !!window.currentConversationId;
+  if (!hasConv) { el.style.display = 'none'; return; }
+  el.style.display = '';
   const asp = (typeof window.currentAspect !== 'undefined' ? window.currentAspect : 'morrigan') || 'morrigan';
   const wsEl = document.getElementById('workspace-path');
   const ws = (wsEl && wsEl.value || '').trim() || '(default sandbox)';
