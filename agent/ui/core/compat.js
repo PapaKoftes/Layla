@@ -251,7 +251,7 @@ bus.on('health:deep-update', (d) => {
   if (msb) {
     msb.textContent = d.model_loaded ? '● Model OK' : '○ No model';
     msb.title = d.model_loaded ? ('Model loaded' + (raw ? ': ' + raw : '')) : 'No model loaded';
-    msb.style.color = d.model_loaded ? '#4ecdc4' : 'var(--text-dim)';
+    msb.style.color = d.model_loaded ? 'var(--success)' : 'var(--text-dim)';
   }
 });
 
