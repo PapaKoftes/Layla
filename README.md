@@ -124,8 +124,8 @@ Options: `--prefer quality|balanced|lite|speed`, `--skip-model`, `--verify` (Pow
 
 ### Alternatives
 
-- **Windows, system Python + winget:** `powershell -ExecutionPolicy Bypass -File install\fresh_install.ps1` (installs Python 3.12 via winget; compiler-free wheels). The old `install.ps1` / `INSTALL.bat` are thin shims that forward here.
-- **Linux/macOS, system Python:** `bash install.sh` then `bash start.sh` (needs Python 3.11/3.12; on Linux this path compiles llama-cpp and requires `build-essential cmake`).
+- The repo-root **`install.sh`** (Linux/macOS) and **`install.ps1`** / **`INSTALL.bat`** (Windows) now run the same uv installer — use whichever entry point you prefer.
+- **Prefer your own system Python + winget** (no uv): `powershell -ExecutionPolicy Bypass -File install\fresh_install.ps1` on Windows, which installs Python 3.12 via winget and uses the same compiler-free wheels.
 - **Packaged Windows installer** (double-click `.exe`, embedded CPython): see [`installer/README.md`](installer/README.md). Runtime data may live under `%LOCALAPPDATA%\\Layla` via `LAYLA_DATA_DIR`.
 
 ---
