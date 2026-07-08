@@ -9,6 +9,7 @@ Uses the existing agent_loop infrastructure for each sub-agent.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
 import re
 import time
@@ -23,6 +24,32 @@ logger = logging.getLogger("layla")
 
 _active_tasks: dict[str, dict] = {}
 _completed_count: int = 0
+
+# Re-entrancy guard: set while a subtask's own agent run is executing, so a subtask can never
+# re-decompose into another multi-agent run (infinite recursion). Checked at the wiring site
+# (should_use_multi_agent). A ContextVar so it is isolated per async context / to_thread call.
+_in_subtask: contextvars.ContextVar[bool] = contextvars.ContextVar("_in_subtask", default=False)
+
+
+def in_subtask() -> bool:
+    """True when the current execution is already inside a multi-agent subtask."""
+    return bool(_in_subtask.get())
+
+
+def _extract_subtask_reply(state: dict) -> str:
+    """Pull the natural-language answer out of an autonomous_run() result dict."""
+    if not isinstance(state, dict):
+        return ""
+    for key in ("response", "reply"):
+        v = (state.get(key) or "").strip() if isinstance(state.get(key), str) else ""
+        if v:
+            return v
+    steps = state.get("steps") or []
+    if steps:
+        last = steps[-1].get("result")
+        if isinstance(last, str) and last.strip():
+            return last.strip()
+    return ""
 
 # ---------------------------------------------------------------------------
 # 1. Decomposition heuristic
@@ -151,12 +178,30 @@ def _build_subtask_list(parts: list[str], original: str) -> list[dict]:
 _SUBTASK_TIMEOUT_S = 120
 
 
-async def _run_one_subtask(subtask: dict, cfg: dict | None) -> dict:
-    """Execute a single subtask and return its result dict.
+def _run_subtask_sync(description: str, aspect_id: str, cfg: dict | None) -> dict:
+    """Run one subtask through the real agent loop (synchronous; holds the LLM lock).
 
-    For now each subtask captures description without calling the full agent
-    loop (Phase 8 integration).
+    Executes with the re-entrancy guard set so this subtask cannot itself fan out into
+    another multi-agent run. Read-only by default (no write/exec) — a delegated subtask
+    should reason and report, not mutate the workspace behind the operator's back.
     """
+    import agent_loop as _al
+    token = _in_subtask.set(True)
+    try:
+        return _al.autonomous_run(
+            description,
+            aspect_id=aspect_id or "",
+            allow_write=False,
+            allow_run=False,
+            stream_final=False,
+            skip_engineering_pipeline=True,   # a subtask must not re-enter the engineering pipeline
+        )
+    finally:
+        _in_subtask.reset(token)
+
+
+async def _run_one_subtask(subtask: dict, cfg: dict | None) -> dict:
+    """Execute a single subtask through the agent loop and return its result dict."""
     global _completed_count
 
     task_id = subtask["id"]
@@ -166,11 +211,13 @@ async def _run_one_subtask(subtask: dict, cfg: dict | None) -> dict:
     try:
         logger.debug("multi_agent: starting subtask %s — %s", task_id, subtask["description"])
 
-        # Placeholder execution — will integrate with agent_loop in Phase 8.
-        # Simulate a lightweight async operation so the coroutine is awaitable.
-        await asyncio.sleep(0)
-
-        result_text = f"[subtask {task_id}] completed: {subtask['description']}"
+        # autonomous_run is synchronous and serializes on the single LLM lock, so run it in a
+        # worker thread; the outer dispatch_subtasks already applies _SUBTASK_TIMEOUT_S.
+        state = await asyncio.to_thread(
+            _run_subtask_sync, subtask["description"], subtask.get("aspect_id", "") or "", cfg,
+        )
+        result_text = _extract_subtask_reply(state) or f"(subtask {task_id} produced no output)"
+        ok = str((state or {}).get("status", "")) not in {"error", "timeout", "parse_failed"}
 
         duration_ms = (time.monotonic() - start) * 1000
         logger.debug("multi_agent: subtask %s finished in %.1f ms", task_id, duration_ms)
@@ -179,7 +226,7 @@ async def _run_one_subtask(subtask: dict, cfg: dict | None) -> dict:
             "id": task_id,
             "description": subtask["description"],
             "result": result_text,
-            "ok": True,
+            "ok": ok,
             "duration_ms": round(duration_ms, 2),
         }
     except Exception as exc:
@@ -307,15 +354,23 @@ def aggregate_results(results: list[dict]) -> dict:
     all_ok = all(r.get("ok") for r in results)
     total_ms = sum(r.get("duration_ms", 0.0) for r in results)
 
-    lines: list[str] = []
-    for r in results:
-        status = "OK" if r.get("ok") else "FAILED"
-        lines.append(f"[{status}] {r.get('description', '?')}")
-
-    summary = "\n".join(lines)
-    if not all_ok:
+    # Compose the actual subtask answers into one coherent response (not just a status list).
+    # Single subtask → return its answer verbatim (no scaffolding). Multiple → label each part.
+    if len(results) == 1:
+        summary = (results[0].get("result") or "").strip()
+    else:
+        blocks: list[str] = []
+        for r in results:
+            desc = (r.get("description") or "").strip()
+            body = (r.get("result") or "").strip()
+            if r.get("ok"):
+                blocks.append(f"**{desc}**\n\n{body}" if body else f"**{desc}**")
+            else:
+                blocks.append(f"**{desc}** — could not complete: {body}")
+        summary = "\n\n".join(blocks)
         failed = sum(1 for r in results if not r.get("ok"))
-        summary += f"\n\n{failed}/{len(results)} subtask(s) failed."
+        if failed:
+            summary += f"\n\n({failed}/{len(results)} subtask(s) did not complete.)"
 
     return {
         "ok": all_ok,
@@ -328,6 +383,22 @@ def aggregate_results(results: list[dict]) -> dict:
 # ---------------------------------------------------------------------------
 # 5. High-level entry point
 # ---------------------------------------------------------------------------
+
+
+def should_use_multi_agent(task: str, cfg: dict | None) -> bool:
+    """Gate: route this turn through multi-agent decomposition?
+
+    True only when the operator enabled it, we're not already inside a subtask (no recursion),
+    the task looks compound, and it actually decomposes into 2+ independent parts.
+    """
+    cfg = cfg or {}
+    if not cfg.get("multi_agent_orchestration_enabled"):
+        return False
+    if in_subtask():
+        return False
+    if not is_decomposable(task):
+        return False
+    return len(decompose_task(task)) >= 2
 
 
 async def run_multi_agent(task: str, *, cfg: dict | None = None) -> dict:

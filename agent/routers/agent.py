@@ -751,6 +751,52 @@ async def agent(req: AgentRequest, request: Request):
                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
             )
 
+        # ── Multi-agent orchestration ─────────────────────────────────────────────────
+        # A compound task ("research X and refactor Y") is decomposed into subtasks, each run
+        # through the agent loop, then the answers are synthesized. Gated by
+        # multi_agent_orchestration_enabled (auto-tune turns it on only for GPU tiers). Recursion
+        # is structurally impossible: subtasks call autonomous_run directly, never this router.
+        _use_ma = False
+        try:
+            from services.planning.multi_agent import run_multi_agent, should_use_multi_agent
+            _use_ma = should_use_multi_agent(goal, cfg)
+        except Exception:
+            _use_ma = False
+        if _use_ma:
+            _ma_abort = threading.Event()
+
+            async def agen_ma():
+                watch_task = asyncio.create_task(_watch_client_disconnect(request, _ma_abort))
+                try:
+                    yield f"data: {json.dumps({'ux_state': 'thinking'})}\n\n"
+                    yield f"data: {json.dumps({'ux_state': 'multi_agent'})}\n\n"
+                    try:
+                        agg = await run_multi_agent(goal, cfg=cfg)
+                    except Exception:
+                        logger.exception("multi_agent run failed")
+                        agg = {"summary": "", "subtask_results": []}
+                    text = polish_output(strip_junk_from_reply(agg.get("summary") or ""), cfg) \
+                        or "I couldn't complete that multi-part request. Try splitting it into separate messages."
+                    append_conv_history(conversation_id, "user", goal)
+                    append_conv_history(conversation_id, "assistant", text)
+                    _append_history("user", goal)
+                    _append_history("assistant", text)
+                    _subs = [{"description": r.get("description"), "ok": bool(r.get("ok"))}
+                             for r in agg.get("subtask_results", [])]
+                    yield f"data: {json.dumps({'done': True, 'content': text, 'ux_states': [], 'memory_influenced': [], 'reasoning_mode': 'multi_agent', 'conversation_id': conversation_id, 'subtasks': _subs})}\n\n"
+                finally:
+                    watch_task.cancel()
+                    try:
+                        await watch_task
+                    except Exception:
+                        pass
+
+            return StreamingResponse(
+                agen_ma(),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+
         ux_state_queue = queue.Queue()
         result_holder = []
         error_holder = []

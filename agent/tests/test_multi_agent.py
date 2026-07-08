@@ -5,6 +5,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
+@pytest.fixture
+def mock_agent_loop():
+    """Subtasks run through the real agent loop; mock it so dispatch/aggregate tests are
+    deterministic and fast (no model needed)."""
+    import agent_loop as _al
+    orig = _al.autonomous_run
+    _al.autonomous_run = lambda desc, **kw: {"response": f"done: {desc}", "status": "ok", "steps": []}
+    try:
+        yield
+    finally:
+        _al.autonomous_run = orig
+
+
 class TestIsDecomposable:
     def test_simple_task(self):
         from services.planning.multi_agent import is_decomposable
@@ -97,7 +110,7 @@ class TestAggregateResults:
 
 class TestDispatchSubtasks:
     @pytest.mark.asyncio
-    async def test_single_subtask(self):
+    async def test_single_subtask(self, mock_agent_loop):
         from services.planning.multi_agent import dispatch_subtasks
         subtasks = [{"id": "1", "description": "Test task", "priority": 1, "depends_on": []}]
         results = await dispatch_subtasks(subtasks, cfg={})
@@ -107,7 +120,7 @@ class TestDispatchSubtasks:
         assert "duration_ms" in results[0]
 
     @pytest.mark.asyncio
-    async def test_parallel_subtasks(self):
+    async def test_parallel_subtasks(self, mock_agent_loop):
         from services.planning.multi_agent import dispatch_subtasks
         subtasks = [
             {"id": "1", "description": "Task A", "priority": 1, "depends_on": []},
@@ -125,7 +138,7 @@ class TestDispatchSubtasks:
 
 class TestRunMultiAgent:
     @pytest.mark.asyncio
-    async def test_simple_task(self):
+    async def test_simple_task(self, mock_agent_loop):
         from services.planning.multi_agent import run_multi_agent
         result = await run_multi_agent("Fix the bug", cfg={})
         assert isinstance(result, dict)
@@ -133,7 +146,7 @@ class TestRunMultiAgent:
         assert "summary" in result
 
     @pytest.mark.asyncio
-    async def test_compound_task(self):
+    async def test_compound_task(self, mock_agent_loop):
         from services.planning.multi_agent import run_multi_agent
         result = await run_multi_agent("Research Python and write tests", cfg={})
         assert isinstance(result, dict)
