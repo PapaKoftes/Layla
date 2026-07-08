@@ -120,7 +120,11 @@ class TestSaveOutcomeMemory:
 
     @patch("services.infrastructure.reflection_engine.run_reflection", new=MagicMock())
     @patch("services.memory.memory_router.save_learning")
-    def test_no_tool_steps_still_saves(self, mock_save):
+    def test_reply_only_run_saves_no_learning(self, mock_save):
+        # A reply-only run (no tool steps) must NOT store an "Objective: … Replied. Snippet: …"
+        # echo as a learning — that run-log noise polluted the learnings table and hijacked
+        # later unrelated turns (a bare "hello" got answered as a remembered topic). Only
+        # tool-success patterns + distilled facts become learnings now.
         from services.infrastructure.outcome_writer import _save_outcome_memory
         state = {
             "status": "finished",
@@ -128,7 +132,7 @@ class TestSaveOutcomeMemory:
             "steps": [{"action": "reason", "result": "The answer is 42."}],
         }
         _save_outcome_memory(state)
-        assert mock_save.call_count >= 1
+        mock_save.assert_not_called()
 
 
 class TestAutoExtractLearnings:
