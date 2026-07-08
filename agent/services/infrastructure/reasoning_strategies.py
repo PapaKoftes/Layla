@@ -64,14 +64,5 @@ def get_strategy_prompt_hint(goal: str) -> str:
     return "Reasoning strategies to consider:\n" + "\n".join(parts)
 
 
-def try_strategies(goal: str, strategies: list[str] | None = None) -> dict[str, Any]:
-    """
-    Placeholder for multi-strategy execution.
-    In full implementation, would run LLM with each strategy and compare.
-    For now, returns strategy hints for the main agent to use.
-    """
-    strat = strategies or get_strategy_for_task(goal)
-    return {
-        "suggested_strategies": strat,
-        "hint": get_strategy_prompt_hint(goal),
-    }
+# (removed try_strategies — a dead placeholder with zero callers; the wired strategy helpers
+#  are get_strategy_for_task + get_strategy_prompt_hint above.)
