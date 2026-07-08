@@ -103,15 +103,17 @@ def test_log_execution_writes_redacted(tmp_path, monkeypatch):
     import runtime_safety as rs
 
     gov = tmp_path / ".governance"
+    log = gov / "execution_log.jsonl"  # append-only JSON-lines (C1: was an O(n^2) JSON array)
     monkeypatch.setattr(rs, "GOV_PATH", gov)
-    monkeypatch.setattr(rs, "EXEC_LOG_FILE", gov / "execution_log.json")
+    monkeypatch.setattr(rs, "EXEC_LOG_FILE", log)
 
     rs.log_execution("mcp_tools_call", {"name": "x", "args": {"api_key": "sk-LEAK",
                                                               "q": "hello"}})
-    data = json.loads((gov / "execution_log.json").read_text(encoding="utf-8"))
-    entry = data[-1]
+    # one JSON object per line — parse the last line
+    lines = [ln for ln in log.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    entry = json.loads(lines[-1])
     assert entry["tool"] == "mcp_tools_call"
     assert entry["payload"]["args"]["api_key"] == REDACTED
     assert entry["payload"]["args"]["q"] == "hello"
     # the raw secret must not appear anywhere in the persisted file
-    assert "sk-LEAK" not in (gov / "execution_log.json").read_text(encoding="utf-8")
+    assert "sk-LEAK" not in log.read_text(encoding="utf-8")
