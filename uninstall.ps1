@@ -86,6 +86,24 @@ foreach ($ruleName in @("Layla API (TCP 8000)", "Layla mDNS (UDP 5353)")) {
 # Remove Scheduled Task
 Unregister-ScheduledTask -TaskName "Jinx Agent Server" -Confirm:$false -ErrorAction SilentlyContinue
 
+# Remove the LAYLA_INSTALL_ROOT env var (the Inno path sets it machine-wide; only its own
+# uninstaller removed it, so a source-tree install + Inno mix could orphan it).
+foreach ($scope in @('User','Machine')) {
+    try {
+        if ([Environment]::GetEnvironmentVariable('LAYLA_INSTALL_ROOT', $scope)) {
+            [Environment]::SetEnvironmentVariable('LAYLA_INSTALL_ROOT', $null, $scope)
+            Write-Host "         Removed env var LAYLA_INSTALL_ROOT ($scope)" -ForegroundColor Green
+        }
+    } catch { }
+}
+
+# Shared packages we deliberately do NOT auto-remove (they may be used by other software) — list
+# them so the user can uninstall manually if Layla was the only consumer.
+Write-Host ""
+Write-Host "         Note: these were installed via winget and are NOT auto-removed (may be shared):" -ForegroundColor DarkYellow
+Write-Host "           - Python 3.12   (uninstall: winget uninstall Python.Python.3.12)" -ForegroundColor DarkGray
+Write-Host "           - cloudflared   (uninstall: winget uninstall Cloudflare.cloudflared)  [only if you used the tunnel]" -ForegroundColor DarkGray
+
 Write-Host "         Done." -ForegroundColor Green
 
 # ── Step 4: Remove virtual environment ─────────────────────────────────

@@ -296,7 +296,7 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "type": "boolean",
         "category": "safety",
         "default": False,
-        "hint": "Auto-approve dangerous tools (still audited; shell blocklists apply unless admin_blocklist_override).",
+        "hint": "Auto-approve dangerous tools (still audited). The hard shell command blocklist (rm/dd/format/…) always applies regardless.",
     },
     {
         "key": "admin_auto_checkpoint",
@@ -310,7 +310,7 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "type": "boolean",
         "category": "safety",
         "default": False,
-        "hint": "DANGEROUS: allow shell blocklist bypass when admin_mode. Do not enable on shared machines.",
+        "hint": "Relaxes admin-mode APPROVAL gating for otherwise-blocklisted tools. NOTE: the hard shell command blocklist (rm/dd/format/…) still applies regardless — this does not grant those commands. Do not enable on shared machines.",
     },
     {
         "key": "tool_approval_bypass",
