@@ -18,6 +18,30 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _AGENT_DIR = Path(__file__).resolve().parent.parent.parent
 _GOV_PATH = _AGENT_DIR / ".governance"
 _AUDIT_LOG = _GOV_PATH / "audit.log"
+_EXEC_LOG = _GOV_PATH / "execution_log.jsonl"          # append-only tool log (C1)
+_EXEC_LOG_LEGACY = _GOV_PATH / "execution_log.json"    # pre-1.0 array format — remove once
+_AUTONOMOUS_AUDIT = _GOV_PATH / "autonomous_audit.jsonl"  # per-step autonomous log (H7)
+
+
+def _tail_trim_file(path: Path, max_bytes: int) -> None:
+    """Best-effort: if `path` exceeds max_bytes, keep only the trailing max_bytes, starting at a
+    line boundary. Shared by the flat audit log and the append-only JSONL logs so none grows
+    without bound over a year of operation."""
+    try:
+        if max_bytes <= 0 or not path.exists():
+            return
+        if int(path.stat().st_size) <= max_bytes:
+            return
+        with open(str(path), "rb") as f:
+            f.seek(-max_bytes, 2)
+            tail = f.read(max_bytes)
+        i = tail.find(b"\n")
+        if 0 < i < len(tail) - 1:
+            tail = tail[i + 1:]
+        with open(str(path), "wb") as f:
+            f.write(tail)
+    except Exception:
+        pass
 
 
 # ── mission worker ──────────────────────────────────────────────────────
@@ -96,29 +120,16 @@ def _bg_cleanup() -> None:
         prune_low_confidence_learnings(threshold=th)
         apply_retention_policies(_c)
         try:
-            # Keep flat audit log bounded (best-effort). If it's too large, keep only the tail.
-            max_bytes = int(_c.get("audit_log_max_bytes", 2_000_000) or 2_000_000)
-            if max_bytes > 0 and _AUDIT_LOG.exists():
+            # Keep the append-only logs bounded (best-effort) — tail-trim to the configured cap.
+            _tail_trim_file(_AUDIT_LOG, int(_c.get("audit_log_max_bytes", 2_000_000) or 2_000_000))
+            _tail_trim_file(_EXEC_LOG, int(_c.get("execution_log_max_bytes", 5_000_000) or 5_000_000))
+            _tail_trim_file(_AUTONOMOUS_AUDIT, int(_c.get("autonomous_audit_max_bytes", 5_000_000) or 5_000_000))
+            # One-time: drop the pre-1.0 whole-file execution_log.json (superseded by .jsonl).
+            if _EXEC_LOG_LEGACY.exists():
                 try:
-                    sz = int(_AUDIT_LOG.stat().st_size)
+                    _EXEC_LOG_LEGACY.unlink()
                 except Exception:
-                    sz = 0
-                if sz > max_bytes:
-                    try:
-                        with open(str(_AUDIT_LOG), "rb") as f:
-                            f.seek(-max_bytes, 2)
-                            tail = f.read(max_bytes)
-                        # Ensure we start at a line boundary if possible.
-                        try:
-                            i = tail.find(b"\n")
-                            if i > 0 and i < len(tail) - 1:
-                                tail = tail[i + 1:]
-                        except Exception:
-                            pass
-                        with open(str(_AUDIT_LOG), "wb") as f:
-                            f.write(tail)
-                    except Exception:
-                        pass
+                    pass
         except Exception:
             pass
         try:
