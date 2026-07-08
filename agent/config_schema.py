@@ -402,11 +402,69 @@ def get_schema_by_category() -> dict[str, list[dict]]:
     return out
 
 
+# Human-readable label overrides for keys the generic humanizer can't get right
+# (acronyms, domain terms). Anything not listed is title-cased from the key.
+_LABEL_OVERRIDES: dict[str, str] = {
+    "n_ctx": "Context window (tokens)",
+    "n_batch": "Batch size",
+    "n_gpu_layers": "GPU layers",
+    "max_tool_calls": "Max tool calls per turn",
+    "max_runtime_seconds": "Max time per turn (seconds)",
+    "tool_call_timeout_seconds": "Tool-call timeout (seconds)",
+    "approval_ttl_seconds": "Approval expiry (seconds)",
+    "completion_max_tokens": "Max reply length (tokens)",
+    "enable_cot": "Chain-of-thought reasoning",
+    "hyde_enabled": "HyDE retrieval",
+    "use_chroma": "Use Chroma vector store",
+    "nsfw_allowed": "Allow NSFW content",
+    "tts_voice": "Voice (text-to-speech)",
+    "tts_speed": "Speech speed",
+    "whisper_model": "Speech-to-text model",
+    "plugins_enabled": "Allow plugin code execution",
+    "mcp_client_enabled": "MCP client",
+    "remote_enabled": "Remote API access",
+    "remote_api_key": "Remote API key",
+    "remote_cors_origins": "Allowed browser origins (CORS)",
+    "llama_server_url": "External llama.cpp server URL",
+    "models_max_keep": "GGUF models to keep",
+    "semantic_k": "Memories retrieved per query",
+    "learnings_n": "Recent learnings injected",
+    "people_codex_enabled": "Remember people you mention",
+    "skill_deps_require_pinned": "Require pinned skill dependencies",
+    "agent_hooks_enabled": "Allow agent hooks (subprocess)",
+    "confirm_autonomous": "Confirm autonomous actions",
+}
+
+_LABEL_ACRONYMS = {"ui": "UI", "api": "API", "cors": "CORS", "url": "URL", "ttl": "TTL",
+                   "id": "ID", "llm": "LLM", "gpu": "GPU", "cpu": "CPU", "tts": "TTS",
+                   "stt": "STT", "cot": "CoT", "rag": "RAG", "mcp": "MCP", "nsfw": "NSFW",
+                   "kv": "KV", "db": "DB", "os": "OS", "hyde": "HyDE"}
+
+
+def humanize_key(key: str) -> str:
+    """Turn a snake_case config key into a human-readable label."""
+    if key in _LABEL_OVERRIDES:
+        return _LABEL_OVERRIDES[key]
+    words = [w for w in str(key).split("_") if w]
+    if not words:
+        return str(key)
+    out = []
+    for i, w in enumerate(words):
+        if w in _LABEL_ACRONYMS:
+            out.append(_LABEL_ACRONYMS[w])
+        elif i == 0:
+            out.append(w[:1].upper() + w[1:])
+        else:
+            out.append(w)
+    return " ".join(out)
+
+
 def get_schema_for_api() -> dict[str, Any]:
-    """Schema formatted for GET /settings/schema."""
+    """Schema formatted for GET /settings/schema. Attaches a human-readable label per field."""
+    fields = [{**f, "label": f.get("label") or humanize_key(f["key"])} for f in EDITABLE_SCHEMA]
     return {
         "categories": list(get_schema_by_category().keys()),
-        "fields": EDITABLE_SCHEMA,
+        "fields": fields,
         "config_file": "agent/runtime_config.json",
         "docs": "docs/CONFIG_REFERENCE.md",
         "presets": list(SETTINGS_PRESETS.keys()),
