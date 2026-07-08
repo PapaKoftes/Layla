@@ -111,15 +111,10 @@ def vector_store(text: str, metadata: dict | None = None, collection: str = "mem
         from services.memory.memory_router import save_learning  # canonical write path
         meta = metadata or {}
         kind = meta.get("kind", "tool_store")
+        # save_learning already embeds the content and records its embedding_id against the row.
+        # The previous extra add_vector() here minted a SECOND vector with a fresh UUID linked to
+        # no table row — orphaned at birth and impossible to reclaim (audit M3). Removed.
         save_learning(content=text[:800], kind=kind)
-        # Also embed into vector store
-        try:
-            from layla.memory.vector_store import add_vector, embed
-            vec = embed(text[:800])
-            meta_with_content = {**meta, "content": text[:800]}
-            add_vector(vec, meta_with_content)
-        except Exception:
-            pass
         return {"ok": True, "stored": text[:100], "collection": collection, "kind": kind}
     except Exception as e:
         return {"ok": False, "error": str(e)}
