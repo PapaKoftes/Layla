@@ -237,6 +237,31 @@ def truncate_at_next_user_turn(text: str) -> str:
     return t
 
 
+_STREAM_MARKER_RE = re.compile(
+    r"\[(?:EARNED_TITLE|TOOL|REFUSED|INQUIRY|MERGE|THINK|PLAN|STEP|ANSWER|CONCLUSION|"
+    r"ASPECT|NOTE|SYSTEM|CONTEXT|Active aspect)\b[^\]]*\]",
+    re.IGNORECASE,
+)
+
+
+def stream_safe_prefix(raw: str, already_emitted: int) -> tuple[str, int]:
+    """Incremental marker filter for the streaming hot path.
+
+    Returns ``(delta, new_emitted_len)`` — the next chunk safe to send to the client and the
+    updated emitted length. Holds back everything from an UNCLOSED ``[`` (a marker still being
+    generated) and strips any COMPLETE ``[MARKER …]`` before emitting, so control tags never
+    flash mid-stream. The final done-frame still runs full strip_junk_from_reply.
+    """
+    safe_end = len(raw)
+    lb = raw.rfind("[")
+    if lb != -1 and "]" not in raw[lb:]:
+        safe_end = lb  # a bracket is open — hold from it until it closes (or the stream ends)
+    clean = _STREAM_MARKER_RE.sub("", raw[:safe_end])
+    if len(clean) <= already_emitted:
+        return "", already_emitted
+    return clean[already_emitted:], len(clean)
+
+
 def _collapse_repetition(text: str) -> str:
     """Cut a reply where it degenerates into repeated / near-duplicate sentences.
 
@@ -299,6 +324,21 @@ def strip_junk_from_reply(text: str) -> str:
     # than truncating-to-end and dropping the whole reply.
     t = re.sub(r"\s*\[Active aspect[^\]]*\]\s*", " ", t, flags=re.IGNORECASE).strip()
     t = re.sub(r"\s*\[merg[^\]]*\]?\s*$", "", t, flags=re.IGNORECASE).strip()
+    # Truncated trailing control marker: an open bracket + marker-ish text with NO closing ']'
+    # because the stream hit max_tokens mid-marker, e.g. "…\n[Active aspect" or "…[EARNED_TITLE".
+    t = re.sub(
+        r"\[\s*(?:Active aspect|EARNED_TITLE|TOOL|REFUSED|INQUIRY|MERGE|SYSTEM|CONTEXT|ASPECT|NOTE|STEP|PLAN|THINK)[^\]]*$",
+        "", t, flags=re.IGNORECASE,
+    ).strip()
+    # Empty / label-only code fence the model left dangling (```plaintext\n\n``` or a lone ```lang).
+    t = re.sub(r"```[a-zA-Z]*\s*```", "", t).strip()
+    t = re.sub(r"```[a-zA-Z]*\s*$", "", t).strip()
+    # Immediate duplicated 2-4 word phrase ("To Layla To Layla" → "To Layla") — a small-model echo.
+    for _ in range(3):
+        _prev = t
+        t = re.sub(r"\b(\w[\w']*(?:\s+\w[\w']*){1,3})\s+\1\b", r"\1", t).strip()
+        if t == _prev:
+            break
     # Cut from a leaked internal '[TOOL: …]' framing marker onward (and a trailing rule
     # left before it), e.g. "…the country.\n---\n[TOOL: markdown]\n# Research …".
     _tool = re.search(r"\[TOOL\b", t, re.IGNORECASE)
