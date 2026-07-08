@@ -53,6 +53,38 @@ def _prune_old_models(cfg: dict) -> int:
         return 0
 
 
+def _prune_temp_tool_outputs(days: int = 7) -> int:
+    """Remove Layla's tool-output files (charts/TTS/screenshots/extracted frames) left in the
+    system temp dir older than `days` (M7). Targets ONLY Layla's own 'layla_*'/'frames_*' names,
+    so no unrelated temp files are touched. Returns count removed."""
+    import shutil
+    import tempfile
+    import time as _t
+    removed = 0
+    try:
+        if days <= 0:
+            return 0
+        tmp = Path(tempfile.gettempdir())
+        cutoff = _t.time() - days * 86400
+        for p in tmp.glob("layla_*"):
+            try:
+                if p.is_file() and p.stat().st_mtime < cutoff:
+                    p.unlink()
+                    removed += 1
+            except Exception:
+                pass
+        for d in tmp.glob("frames_*"):
+            try:
+                if d.is_dir() and d.stat().st_mtime < cutoff:
+                    shutil.rmtree(str(d), ignore_errors=True)
+                    removed += 1
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return removed
+
+
 def _tail_trim_file(path: Path, max_bytes: int) -> None:
     """Best-effort: if `path` exceeds max_bytes, keep only the trailing max_bytes, starting at a
     line boundary. Shared by the flat audit log and the append-only JSONL logs so none grows
@@ -179,6 +211,7 @@ def _bg_cleanup() -> None:
                 db.execute("PRAGMA incremental_vacuum")
                 db.commit()
             _prune_old_models(_c)  # opt-in GGUF retention (models_max_keep); no-op by default
+            _prune_temp_tool_outputs(int(_c.get("retention_temp_output_days", 7) or 7))  # M7
         except Exception:
             pass
         try:
