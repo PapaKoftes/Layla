@@ -635,6 +635,116 @@ async def agent(req: AgentRequest, request: Request):
         if _pulse_sec < 0:
             _pulse_sec = 0.0
 
+        # ── Self-contained Q&A fast-path ──────────────────────────────────────────────
+        # A general how-to / explain / code-gen question (no concrete file/repo, no write/exec)
+        # is answerable directly. Stream it straight from the reason model and SKIP the whole
+        # agentic pipeline (coordinator / planning / tools) — on a small local model that pipeline
+        # thrashes to the tool limit and can't stream, so a plain question would otherwise take
+        # 60-90s and return "Stopped after maximum tool calls" instead of a direct answer. This is
+        # upstream of every planning entry point, so no downstream gate can re-route it.
+        _fast_reason = False
+        try:
+            from services.agent.response_builder import is_self_contained_question as _isq_r
+            _fast_reason = bool(
+                _isq_r(goal or "")
+                and not plan_mode and not understand_mode
+                and not (workspace_root or "").strip()
+                and not allow_write and not allow_run
+                and not (clarification_reply or "").strip()
+                and not (req.project_id or "").strip()
+                and (_ep_mode == "chat")
+            )
+        except Exception:
+            _fast_reason = False
+
+        if _fast_reason:
+            _client_abort_fast = threading.Event()
+
+            async def agen_fast():
+                watch_task = asyncio.create_task(_watch_client_disconnect(request, _client_abort_fast))
+                try:
+                    yield f"data: {json.dumps({'ux_state': 'thinking'})}\n\n"
+                    try:
+                        from services.llm.llm_gateway import model_is_loaded
+                        if not model_is_loaded():
+                            yield f"data: {json.dumps({'ux_state': 'loading_model'})}\n\n"
+                    except Exception:
+                        pass
+                    tok_q: queue.Queue = queue.Queue()
+                    full: list = []
+
+                    def _worker() -> None:
+                        try:
+                            for t in stream_reason(
+                                goal,
+                                context=context,
+                                conversation_history=list(conv_history) if conv_history else list(_history),
+                                aspect_id=aspect_id,
+                                show_thinking=show_thinking,
+                                model_override=model_override or None,
+                                skip_self_reflection=True,
+                                reasoning_mode_override="light",
+                                persona_focus=persona_focus or "",
+                            ):
+                                tok_q.put(t)
+                        except Exception as ex:
+                            logger.warning("fast stream_reason worker: %s", ex)
+                        finally:
+                            tok_q.put(None)
+
+                    threading.Thread(target=_worker, daemon=True).start()
+                    _empty = object()
+                    _last = time.monotonic()
+                    while True:
+                        def _get():
+                            try:
+                                return tok_q.get(timeout=0.25)
+                            except queue.Empty:
+                                return _empty
+                        got = await asyncio.to_thread(_get)
+                        if got is _empty:
+                            if _pulse_sec > 0 and (time.monotonic() - _last) >= _pulse_sec:
+                                yield f"data: {json.dumps({'pulse': True})}\n\n"
+                                _last = time.monotonic()
+                            continue
+                        if got is None:
+                            break
+                        _last = time.monotonic()
+                        if isinstance(got, str) and got.startswith("__DELIB_META__"):
+                            continue
+                        full.append(got)
+                        yield f"data: {json.dumps({'token': got})}\n\n"
+                    text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply("".join(full))), cfg)
+                    if not text.strip():
+                        text = "Sorry — I couldn't generate a response just then. Please try again."
+                    append_conv_history(conversation_id, "user", goal)
+                    append_conv_history(conversation_id, "assistant", text)
+                    _append_history("user", goal)
+                    _append_history("assistant", text)
+                    try:
+                        from layla.memory.db import append_conversation_message, create_conversation
+                        create_conversation(conversation_id, aspect_id=aspect_id or "")
+                        append_conversation_message(conversation_id, "user", goal, aspect_id=aspect_id or "")
+                        append_conversation_message(conversation_id, "assistant", text, aspect_id=aspect_id or "")
+                    except Exception:
+                        pass
+                    yield f"data: {json.dumps({'done': True, 'content': text, 'ux_states': [], 'memory_influenced': [], 'reasoning_mode': 'light', 'conversation_id': conversation_id})}\n\n"
+                except Exception:
+                    logger.exception("fast agen failed")
+                    yield f"data: {json.dumps({'done': True, 'content': 'Sorry — something went wrong generating a reply. Please try again.', 'ux_states': [], 'memory_influenced': []})}\n\n"
+                finally:
+                    watch_task.cancel()
+                    try:
+                        await watch_task
+                    except Exception:
+                        pass
+
+            return StreamingResponse(
+                agen_fast(),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+
         ux_state_queue = queue.Queue()
         result_holder = []
         error_holder = []
@@ -860,9 +970,12 @@ async def agent(req: AgentRequest, request: Request):
                 else:
                     steps = result.get("steps") or []
                     final = steps[-1].get("result", "") if steps else ""
-                    response_text = final if isinstance(final, str) else json.dumps(final) if final else ""
-                    if not response_text:
-                        response_text = (result.get("response") or result.get("reply") or "").strip()
+                    # Prefer the run's synthesized prose answer. NEVER json.dumps a raw tool-result
+                    # dict into the reply — that leaked internal payloads like
+                    # {"ok": true, "memories": [...]} straight to the user as the message.
+                    response_text = (result.get("response") or result.get("reply") or "").strip()
+                    if not response_text and isinstance(final, str):
+                        response_text = final.strip()
                     if not response_text and result.get("status") == "tool_limit":
                         response_text = "Stopped after maximum tool calls. Try a simpler request or say 'continue'."
                     if not response_text and result.get("status") == "parse_failed":

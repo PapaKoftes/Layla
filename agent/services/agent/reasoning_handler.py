@@ -261,12 +261,27 @@ def handle_reasoning_intent(
     # ------------------------------------------------------------------
     et_match = re.search(r"\[EARNED_TITLE:\s*(.+?)\]\s*$", text, re.IGNORECASE)
     if et_match:
-        try:
-            from layla.memory.db import save_earned_title
+        # Only persist a title the USER actually granted (the prompt says titles come
+        # "if the user says you earned a title"). Without this gate a small model
+        # self-awards a hallucinated title (e.g. "Water Wizard"), it gets injected into
+        # every later prompt, and the model fixates on it — derailing even a plain "hello".
+        _ug = (goal or "").lower()
+        _user_granted = any(
+            kw in _ug for kw in (
+                "you earned", "you've earned", "you have earned", "i grant", "i dub",
+                "your title", "you are now", "i name you", "i'll call you", "call you",
+                "award you", "bestow", "title of",
+            )
+        )
+        if _user_granted:
+            try:
+                from layla.memory.db import save_earned_title
 
-            save_earned_title(active_aspect.get("id", ""), et_match.group(1).strip())
-        except Exception as _exc:
-            logger.debug("agent_loop:L4130: %s", _exc, exc_info=False)
+                save_earned_title(active_aspect.get("id", ""), et_match.group(1).strip())
+            except Exception as _exc:
+                logger.debug("agent_loop:L4130: %s", _exc, exc_info=False)
+        else:
+            logger.debug("earned-title self-award ignored (user did not grant): %s", et_match.group(1).strip()[:40])
         text = re.sub(r"\s*\[EARNED_TITLE:\s*.+?\]\s*$", "", text, flags=re.IGNORECASE).strip()
 
     # ------------------------------------------------------------------

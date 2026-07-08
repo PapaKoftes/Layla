@@ -111,9 +111,9 @@ def setup_autonomous_run(
         if reasoning_mode == "deep" and (cfg.get("performance_mode") or "").strip().lower() in ("low",):
             reasoning_mode = "light"
         with _al._reason_mode_lock:
-            _prev_reasoning_mode = _al._last_reasoning_mode
+            _prev_reasoning_mode = _al._rstate_get()
             reasoning_mode = stabilize_reasoning_mode(_prev_reasoning_mode, reasoning_mode)
-            _al._last_reasoning_mode = reasoning_mode
+            _al._rstate_set(reasoning_mode)
     except Exception as e:
         logger.warning("reasoning_classifier failed: %s", e)
         reasoning_mode = "light"
@@ -695,6 +695,18 @@ def _run_planning_block(
         and not _is_lightweight_chat_turn(goal, reasoning_mode)
     )
     _non_trivial = bool(should_plan(goal, cfg, plan_depth=plan_depth, state=state) or _force_plan)
+    # A self-contained general question (how-to / explain / code-gen with no concrete file/repo)
+    # is answered directly by the streamed reason path. Never route it into multi-step planning
+    # + tools — on a small local model that thrashes to the tool limit and cannot stream, so the
+    # user waits a long time for "Stopped after maximum tool calls" instead of a direct answer.
+    # This wins even over a high coordinator complexity_score (_force_plan): such a question is
+    # answerable from the model alone by definition, so a plan is never the right route.
+    try:
+        from services.agent.response_builder import is_self_contained_question as _isq
+        if _isq(goal or ""):
+            return None
+    except Exception as _e:
+        logger.debug("self-contained plan-skip check failed: %s", _e)
     if not (reasoning_mode != "none" and _non_trivial and bool(cfg.get("planning_enabled", True))):
         return None
 

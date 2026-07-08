@@ -71,6 +71,25 @@ _FILENAME_RE = re.compile(
     re.IGNORECASE,
 )
 
+# A general how-to / explain / define / code-generation question is answerable from the model
+# itself even when it mentions read/open/write/file/code — it asks ABOUT a concept, it does not
+# ask Layla to operate on the user's files. Without this, "how do I read a file in python?"
+# trips the broad "read " signal below and gets routed into (failing) tool calls.
+_GENERAL_QA_PREFIXES = (
+    "how do i", "how do you", "how can i", "how would i", "how to", "how does", "how is",
+    "what is", "what's", "what are", "what does", "whats the", "explain", "define", "describe",
+    "why ", "when should", "when do", "difference between", "compare ", "pros and cons",
+    "write a function", "write a python", "write a script", "give me an example",
+    "show me an example", "example of", "teach me", "help me understand", "can you explain",
+)
+# Signals that a question points at a CONCRETE file/repo/workspace (these genuinely need tools
+# and so must veto the general-QA short-circuit above).
+_WORKSPACE_REF_SIGNALS = (
+    "this file", "the file", "this repo", "the repo", "this project", "my project",
+    "the code", "this code", "my code", "the codebase", "workspace", "in the folder",
+    "the function ", "this function", "my note", "our conversation",
+)
+
 
 def is_self_contained_question(goal: str) -> bool:
     """True when a goal is answerable from the model alone — no tools/files/memory/web.
@@ -83,6 +102,14 @@ def is_self_contained_question(goal: str) -> bool:
     gl = g.lower()
     if len(g) < 3 or len(g) > 2000:
         return False
+    # General how-to / explain / code-generation Q&A is self-contained even when it mentions
+    # file/read/write/code words — but only if it doesn't point at a concrete file/repo/path.
+    _points_at_workspace = bool(
+        _PATH_RE.search(g) or _FILENAME_RE.search(g)
+        or any(s in gl for s in _WORKSPACE_REF_SIGNALS)
+    )
+    if not _points_at_workspace and any(gl.startswith(p) for p in _GENERAL_QA_PREFIXES):
+        return True
     if any(sig in gl for sig in _NEEDS_TOOLS_SIGNALS):
         return False
     # a filesystem path or a filename with a known extension → a tool is needed
@@ -208,6 +235,13 @@ def strip_junk_from_reply(text: str) -> str:
     # Strip control markers that leak anywhere in the reply.
     t = re.sub(r"\s*\[EARNED_TITLE[^\]]*\]\s*", " ", t, flags=re.IGNORECASE).strip()
     t = re.sub(r"\s*\[REFUSED[^\]]*\]\s*", " ", t, flags=re.IGNORECASE).strip()
+    # Catch-all for the rest of the internal scaffolding vocabulary a small model echoes
+    # (INQUIRY, MERGE, THINK, PLAN, STEP, ANSWER, CONCLUSION, ASPECT, …) so no bracketed
+    # control tag survives into the visible reply.
+    t = re.sub(
+        r"\s*\[(?:INQUIRY|MERGE|THINK|PLAN|STEP|ANSWER|CONCLUSION|ASPECT|NOTE|SYSTEM|CONTEXT)\b[^\]]*\]\s*",
+        " ", t, flags=re.IGNORECASE,
+    ).strip()
     # '[Active aspect: NAME]' is a self-contained control marker: remove just the bracket
     # (like EARNED_TITLE) so a *leading* leak keeps the real answer that follows it, rather
     # than truncating-to-end and dropping the whole reply.
