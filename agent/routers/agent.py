@@ -769,6 +769,14 @@ async def agent(req: AgentRequest, request: Request):
                 watch_task = asyncio.create_task(_watch_client_disconnect(request, _ma_abort))
                 try:
                     yield f"data: {json.dumps({'ux_state': 'thinking'})}\n\n"
+                    # Surface a cold model load so the UI shows "Loading model…" rather than a
+                    # generic wait — multi-agent runs are heavy and cold-start is the worst case.
+                    try:
+                        from services.llm.llm_gateway import model_is_loaded
+                        if not model_is_loaded():
+                            yield f"data: {json.dumps({'ux_state': 'loading_model'})}\n\n"
+                    except Exception:
+                        pass
                     yield f"data: {json.dumps({'ux_state': 'multi_agent'})}\n\n"
                     try:
                         agg = await run_multi_agent(goal, cfg=cfg)
