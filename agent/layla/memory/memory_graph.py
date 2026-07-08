@@ -88,6 +88,25 @@ def save_graph(graph: dict) -> None:
         _save_graph(G)
 
 
+def _prune_graph_if_needed(G, max_nodes: int | None = None) -> int:
+    """Cap the knowledge-graph node count so a whole-file-rewrite graph can't grow forever
+    (audit H2). Removes the OLDEST nodes (by created_at) beyond the cap; their edges go with
+    them. Caller holds _graph_lock. Returns count removed."""
+    try:
+        if max_nodes is None:
+            import runtime_safety
+            max_nodes = int(runtime_safety.load_config().get("knowledge_graph_max_nodes", 5000) or 5000)
+        if max_nodes <= 0 or G.number_of_nodes() <= max_nodes:
+            return 0
+        nodes = sorted(G.nodes(data=True), key=lambda nd: str((nd[1] or {}).get("created_at", "")))
+        over = G.number_of_nodes() - max_nodes
+        for nid, _ in nodes[:over]:
+            G.remove_node(nid)
+        return over
+    except Exception:
+        return 0
+
+
 def add_node(label: str, metadata: dict = None) -> int:
     """Add a node to the knowledge graph. Returns the new node id.
 
@@ -119,6 +138,7 @@ def add_node(label: str, metadata: dict = None) -> int:
         except Exception:
             pass
 
+        _prune_graph_if_needed(G)
         _save_graph(G)
         return node_id
 
