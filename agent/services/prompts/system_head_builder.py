@@ -611,16 +611,21 @@ def build_system_head(
     except Exception as _mu_exc:
         logger.debug("context[maturity_unlocks] failed: %s", _mu_exc)
 
-    # Aspect memories
+    # Aspect memories — relevance-gated against the goal and skipped on phatic/lightweight
+    # turns, exactly like learnings/semantic_recall. Otherwise a wall of prior per-aspect
+    # observations gets dumped into every unrelated turn (the same hijack class as learnings).
     aspect_memories = ""
     n_mem = cfg.get("aspect_memories_n", 10)
-    if aspect:
+    if aspect and not _skip_expensive:
         aid = aspect.get("id", "")
         if aid:
             try:
                 mems = _db_get_aspect_memories(aid, n_mem)
                 if mems:
                     lines = [m.get("content", "") for m in mems if m.get("content")]
+                    _goal_tokens = _content_tokens(goal or "")
+                    if _goal_tokens:
+                        lines = [ln for ln in lines if _content_tokens(ln) & _goal_tokens]
                     if lines:
                         aspect_memories = "Recent observations for this aspect:\n" + "\n".join(lines[:n_mem])
             except Exception as _e:
@@ -970,7 +975,7 @@ def build_system_head(
     except Exception as _wm_e:
         logger.debug("context[working_memory] failed: %s", _wm_e)
 
-    if not _small_model:
+    if not _small_model and not _skip_expensive:
         try:
             from layla.memory.db import get_recent_conversation_summaries
             summaries = get_recent_conversation_summaries(n=3)

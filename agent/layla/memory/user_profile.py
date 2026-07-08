@@ -10,11 +10,28 @@ from layla.time_utils import utcnow
 logger = logging.getLogger("layla")
 
 
+def _reject_memory(content: str) -> bool:
+    """Drop run-log echoes / leaked-marker text before it lands in a durable store.
+
+    save_learning is gated by passes_learning_quality_gate; the sibling primitives
+    (relationship_memory, timeline, aspect_memories) had no such guard, so the same
+    'Objective: … replied: …' / '[EARNED_TITLE:…]' junk could enter through them and
+    then hijack the prompt. This closes that door for all of them.
+    """
+    try:
+        from layla.memory.distill import is_memory_junk
+        return is_memory_junk(content)
+    except Exception:
+        return False
+
+
 # ── relationship memory (companion intelligence) ────────────────────────────
 
 def add_relationship_memory(user_event: str, embedding_id: str = "") -> None:
     """Store a meaningful interaction summary for companion context. Optionally embeds for retrieval."""
     if not (user_event or "").strip():
+        return
+    if _reject_memory(user_event):
         return
     migrate()
     event_text = (user_event or "").strip()[:4000]
@@ -63,6 +80,8 @@ def add_timeline_event(
 ) -> int:
     """Store a timeline event for personal memory. event_type: life_event|project_milestone|goal|blocker|conversation_summary."""
     if not (content or "").strip():
+        return -1
+    if _reject_memory(content):
         return -1
     migrate()
     event_type = event_type if event_type in TIMELINE_EVENT_TYPES else "life_event"
@@ -365,6 +384,8 @@ def get_active_goals(project_id: str = "") -> list[dict]:
 # ── aspect memories ────────────────────────────────────────────────────────
 
 def save_aspect_memory(aspect_id: str, content: str) -> None:
+    if _reject_memory(content):
+        return
     migrate()
     with _conn() as db:
         db.execute(
