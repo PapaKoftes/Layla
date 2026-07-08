@@ -634,6 +634,20 @@ def build_system_head(
     repo_struct = get_repo_structure(workspace_root)
     if repo_struct:
         workspace_context_parts.append(f"Repo structure (top-level): {repo_struct}")
+    # When project memory is sparse, inject a deterministic workspace-discovery brief (wires the
+    # previously-orphan project_discovery_hooks module). Gated by project_discovery_auto_inject.
+    if workspace_root and cfg.get("project_discovery_auto_inject", False):
+        try:
+            from services.workspace.project_discovery_hooks import (
+                build_workspace_discovery_brief,
+                workspace_memory_is_sparse,
+            )
+            if workspace_memory_is_sparse(Path(workspace_root)):
+                _brief = build_workspace_discovery_brief(str(workspace_root), cfg)
+                if _brief:
+                    workspace_context_parts.append(_brief)
+        except Exception as _pdh:
+            logger.debug("project_discovery_hooks inject skipped: %s", _pdh)
 
     coding_keywords = ("code", "debug", "fix", "implement", "refactor", "function", "class", "module", "file", "grep", "read_file", "write_file")
     if not _skip_expensive and goal and workspace_root and any(kw in goal.lower() for kw in coding_keywords):
