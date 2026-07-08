@@ -1179,8 +1179,27 @@ def build_system_head(
         logger.debug("hardware_probe capability_summary inject skipped: %s", _hw_e)
 
     # Section dict assembly
+    # Durable facts (name, timezone, tooling, project roots) are HARD ground truth.
+    # They get their OWN high-priority section — injected verbatim, NEVER routed
+    # through semantic ranking, and ordered right after the identity block so token
+    # pressure can't crowd them out. This is the deterministic half of the RAG split;
+    # RAG stays for documents/learnings.
+    durable_facts_block = ""
+    try:
+        from layla.memory.user_profile import get_durable_facts as _get_durable
+        _durable = _get_durable()
+        if _durable:
+            _fact_lines = "\n".join(f"- {label}: {value}" for label, value in _durable)
+            durable_facts_block = (
+                "## Durable facts about the user (authoritative — treat as ground truth, do not second-guess or re-ask)\n"
+                + _fact_lines
+            )
+    except Exception as _df_exc:
+        logger.debug("context[durable_facts] failed: %s", _df_exc)
+
     sections = {
         "system_instructions": system_instructions,
+        "durable_facts": durable_facts_block,
         "pinned_context": pinned_block,
         "agent_state": workspace_context,
         "current_goal": current_goal,
@@ -1229,6 +1248,8 @@ def build_system_head(
 
     # Legacy path: no budget enforcement
     parts = [system_instructions]
+    if durable_facts_block:
+        parts.append(durable_facts_block)
     if pinned_block:
         parts.append(pinned_block[:1500])
     if workspace_context:

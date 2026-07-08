@@ -101,7 +101,46 @@ def get_recent_timeline_events(n: int = 10, min_importance: float = 0.0) -> list
 
 # ── user identity (long-term companion context) ───────────────────────────────
 
-USER_IDENTITY_KEYS = ("verbosity", "humor_tolerance", "formality", "response_length", "life_narrative_summary")
+# Style/tone preferences — soft, injected as "onboarding prefs".
+_STYLE_IDENTITY_KEYS = ("verbosity", "humor_tolerance", "formality", "response_length", "life_narrative_summary")
+
+# Durable identity facts — HARD ground truth (name, timezone, tooling, project
+# roots). These are injected verbatim and NEVER routed through semantic ranking,
+# so they can't be crowded out of context by document/learning recall. Ordered
+# map of storage-key → human label used in the authoritative-facts prompt block.
+DURABLE_FACT_KEYS: dict[str, str] = {
+    "name": "Name",
+    "pronouns": "Pronouns",
+    "timezone": "Timezone",
+    "locale": "Locale / language",
+    "os_platform": "Operating system",
+    "editor": "Preferred editor",
+    "indent_style": "Indent style",
+    "shell": "Preferred shell",
+    "project_roots": "Project roots",
+}
+
+# Union accepted by update_user_identity_tool / set_user_identity validation.
+USER_IDENTITY_KEYS = _STYLE_IDENTITY_KEYS + tuple(DURABLE_FACT_KEYS)
+
+
+def get_durable_facts() -> list[tuple[str, str]]:
+    """Return present durable identity facts as ordered ``(label, value)`` pairs.
+
+    Deterministic: reads the ``user_identity`` KV store directly and returns only
+    the canonical durable keys that have a non-empty value, in ``DURABLE_FACT_KEYS``
+    order. Callers inject these verbatim — they are authoritative, not ranked.
+    """
+    try:
+        stored = get_all_user_identity()
+    except Exception:
+        return []
+    out: list[tuple[str, str]] = []
+    for _k, _label in DURABLE_FACT_KEYS.items():
+        _v = (stored.get(_k) or "").strip()
+        if _v:
+            out.append((_label, _v[:400]))
+    return out
 
 
 def get_user_identity(key: str) -> dict | None:
