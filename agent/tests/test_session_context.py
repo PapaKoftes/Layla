@@ -278,15 +278,26 @@ def test_session_count():
 
 
 def test_prune_stale_sessions():
-    from services.infrastructure.session_context import _sessions, _sessions_lock, prune_stale_sessions
+    # Pruning is IDLE-based (last access), not creation-age — otherwise a long-lived active
+    # conversation would be wrongly evicted. Simulate an idle session by ageing its last-access.
+    from services.infrastructure.session_context import _session_access, _sessions_lock, prune_stale_sessions
 
-    # Create a session with artificially old _created_at
-    ctx = get_or_create_session("prune-old")
-    ctx._created_at = time.monotonic() - 7200  # 2 hours ago
+    get_or_create_session("prune-old")
+    with _sessions_lock:
+        _session_access["prune-old"] = time.monotonic() - 7200  # last touched 2 hours ago
 
     removed = prune_stale_sessions(max_age_seconds=3600)
     assert removed >= 1
     assert get_session("prune-old") is None
+
+
+def test_prune_keeps_recently_active_session():
+    # Regression for the latent bug: a session accessed recently must NOT be pruned even if old.
+    from services.infrastructure.session_context import prune_stale_sessions
+
+    get_or_create_session("prune-active")  # just accessed → last-access = now
+    prune_stale_sessions(max_age_seconds=1)
+    assert get_session("prune-active") is not None
 
 
 def test_prune_keeps_fresh_sessions():

@@ -145,6 +145,19 @@ def append_conv_history(conversation_id: str, role: str, content: str) -> None:
         _t.Thread(target=_compact_bg, args=((conversation_id or "").strip() or "default",), daemon=True, name="auto-compact").start()
 
 
+def prune_conversation_histories(max_conversations: int = 500) -> int:
+    """Bound the in-memory per-conversation history dict (each value a deque(maxlen=20)). Without
+    this it grew one entry per distinct conversation for the whole process lifetime. Drops the
+    oldest-inserted conversations beyond the cap (durable history lives in SQLite). Returns count."""
+    with _conv_hist_lock:
+        over = len(_conv_histories) - max(1, int(max_conversations))
+        if over <= 0:
+            return 0
+        for cid in list(_conv_histories.keys())[:over]:
+            _conv_histories.pop(cid, None)
+        return over
+
+
 def get_touch_activity() -> Callable[[], None]:
     if _touch_activity is None:
         raise RuntimeError("shared_state not initialized")
