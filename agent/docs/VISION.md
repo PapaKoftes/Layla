@@ -341,12 +341,12 @@ That distinction is the entire future of the project.
 |--------|-------|
 | Python LOC | ~24,270 |
 | JavaScript LOC | ~12,870 |
-| API Endpoints | 337 |
+| API Endpoints | 363 |
 | SQLite Tables | 49 |
 | Service Subdirectories | 19 |
 | Real Service Modules | 216 |
 | Backward-Compat Shims | 204 |
-| Test Functions | 11,187 |
+| Tests (collected) | 2,936 |
 | Agent Loop | 910 lines (down from 1,574) |
 | Inference Backends | 4 (llama.cpp, Ollama, OpenAI, LiteLLM) |
 | Aspects | 6 (Morrigan, Nyx, Echo, Eris, Cassandra, Lilith) |
