@@ -50,6 +50,10 @@ def _make_connection() -> sqlite3.Connection:
     c.execute("PRAGMA mmap_size=268435456")  # 256 MB
     c.execute("PRAGMA busy_timeout=5000")   # 5 s wait on SQLITE_BUSY
     c.execute("PRAGMA foreign_keys=ON")     # enforce FK constraints
+    # Reclaim space over time on NEW databases (no-op on existing auto_vacuum=NONE files until a
+    # full VACUUM). Paired with a periodic incremental_vacuum in the daily maintenance job so the
+    # file tracks current data instead of only ever growing (audit: live DB never shrank).
+    c.execute("PRAGMA auto_vacuum=INCREMENTAL")
     return c
 
 
