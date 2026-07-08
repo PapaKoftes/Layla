@@ -113,9 +113,16 @@ def _bg_initiative() -> None:
 def _bg_cleanup() -> None:
     try:
         import runtime_safety as _rs
-        from services.memory.memory_consolidation import apply_retention_policies, prune_low_confidence_learnings
+        from services.memory.memory_consolidation import (
+            apply_retention_policies,
+            decay_stored_confidence,
+            prune_low_confidence_learnings,
+        )
 
         _c = _rs.load_config()
+        # B2: decay stored confidence FIRST so stale memories drift below the threshold, THEN
+        # archive the ones that crossed it — this is what makes the store actually forget.
+        decay_stored_confidence(_c)
         th = float(_c.get("memory_cleanup_confidence_threshold", 0.08) or 0.08)
         prune_low_confidence_learnings(threshold=th)
         apply_retention_policies(_c)
