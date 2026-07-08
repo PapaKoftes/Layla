@@ -100,8 +100,21 @@ def is_self_contained_question(goal: str) -> bool:
     """
     g = (goal or "").strip()
     gl = g.lower()
-    if len(g) < 3 or len(g) > 2000:
+    if not g or len(g) > 2000:
         return False
+    # Greetings / acknowledgements / tiny chit-chat → answer directly in a SINGLE voice
+    # (no tools, no planning, and critically no multi-aspect deliberation — for "hi" that
+    # concatenated several aspects' greetings into a repeating loop with stray [REFUSED:] tags).
+    if re.match(
+        r"^(hi+|hey+|hello+|yo|sup|hiya|howdy|greetings|gm|gn|"
+        r"good\s?(morning|afternoon|evening|night)|thx|thanks?|thank\s?you|ty|"
+        r"ok(ay)?|k|yes|yep|yeah|no|nope|cool|nice|great|awesome|sure|"
+        r"how\s?are\s?you|how'?s\s?it\s?going|what'?s\s?up|wassup|hru)[\s!.?,]*$",
+        gl,
+    ):
+        return True
+    if len(g) < 3:
+        return True
     # General how-to / explain / code-generation Q&A is self-contained even when it mentions
     # file/read/write/code words — but only if it doesn't point at a concrete file/repo/path.
     _points_at_workspace = bool(
@@ -203,23 +216,62 @@ def truncate_at_next_user_turn(text: str) -> str:
     if not text or not text.strip():
         return (text or "").strip()
     t = text.strip()
+    # A leading fake "User:" turn (any case) — strip it, keep the real reply that follows.
     if re.match(r"^\s*User\s*:", t, re.IGNORECASE):
         m = re.search(r"^\s*User\s*:[^\n]*?\s+([A-Za-z]+)\s*:", t, re.IGNORECASE)
         if m:
             t = t[m.start(1):].strip()
         else:
             first_line_end = t.find("\n")
-            if first_line_end != -1:
-                t = t[first_line_end + 1:].strip()
-            else:
-                t = ""
-    m = re.search(r"\n\s*User\s*:", t, re.IGNORECASE)
-    if m:
-        return t[:m.start()].strip()
-    m = re.search(r"\s+User\s*:", t, re.IGNORECASE)
-    if m:
-        return t[:m.start()].strip()
+            t = t[first_line_end + 1:].strip() if first_line_end != -1 else ""
+    # Cut where the model starts role-playing the NEXT turn as "User:", "You:" or "Human:".
+    # Case-SENSITIVE (capitalized tag) + word boundary so an ordinary "thank you:" is not
+    # mistaken for a turn, and only at a real boundary (line start / after newline / after
+    # sentence-ending punctuation) — e.g. "…grass is green. You: hey there".
+    for mt in re.finditer(r"\b(?:User|You|Human)\s*:", t):
+        i = mt.start()
+        prev = t[:i].rstrip()
+        if i == 0 or t[i - 1] == "\n" or (prev and prev[-1] in ".!?"):
+            cut = t[:i].strip()
+            return cut if cut else t
     return t
+
+
+def _collapse_repetition(text: str) -> str:
+    """Cut a reply where it degenerates into repeated / near-duplicate sentences.
+
+    Small local models loop — e.g. "Hi! What do you need? Hi there, can you clarify? Hello
+    again, could you be specific?" — one greeting restated a dozen ways. Keep the first coherent
+    run: walk sentences and stop at the first one whose 5-word normalized prefix was already
+    seen. Conservative: only engages on 4+ sentences so it never touches a normal short reply,
+    and it does NOT run inside fenced code blocks (repeated lines there can be legitimate).
+    """
+    if not text or len(text) < 120 or "```" in text:
+        return text
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    if len(parts) < 4:
+        return text
+    # Greeting loop: the model restates a greeting several *different* ways ("Greetings…
+    # Hello! … Hi there … Hello again …"). Lexical prefixes differ, so detect repeated greeting
+    # OPENERS and cut at the second one — keeping the first clean greeting + its follow-up.
+    _greet = re.compile(r"^(hi|hey+|hello|greetings|hiya|howdy|yo|sup)\b", re.IGNORECASE)
+    greet_idxs = [i for i, p in enumerate(parts) if _greet.match(p.strip())]
+    if len(greet_idxs) >= 2:
+        cut = greet_idxs[1]
+        return (" ".join(parts[:cut]).strip() or parts[0].strip())
+    # General loop: cut at the first sentence whose 5-word normalized prefix already appeared.
+    seen: set[str] = set()
+    kept: list[str] = []
+    for p in parts:
+        norm = re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", "", p.lower())).strip()
+        key = " ".join(norm.split()[:5])
+        if key and len(key) > 6 and key in seen:
+            break
+        if key:
+            seen.add(key)
+        kept.append(p)
+    out = " ".join(kept).strip()
+    return out or text
 
 
 def strip_junk_from_reply(text: str) -> str:
@@ -286,6 +338,7 @@ def strip_junk_from_reply(text: str) -> str:
         m = re.search(_marker, t, re.IGNORECASE)
         if m:
             t = t[:m.start()].strip()
+    t = _collapse_repetition(t)
     if is_junk_reply(t):
         return ""
     return t
