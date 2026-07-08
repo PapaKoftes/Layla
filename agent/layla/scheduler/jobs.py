@@ -231,6 +231,16 @@ def _bg_cleanup() -> None:
         except Exception:
             pass
         try:
+            # Populate the people codex from recent conversations (wires the previously-orphan
+            # people_codex module). Best-effort; gated so operators can turn it off.
+            if _c.get("people_codex_enabled", True):
+                from services.memory.people_codex import save_people_to_codex, scan_conversations_for_people
+                _ppl = scan_conversations_for_people(limit=int(_c.get("people_codex_scan_limit", 100) or 100))
+                if _ppl:
+                    save_people_to_codex(_ppl)
+        except Exception as _pe:
+            logger.debug("people_codex scan skipped: %s", _pe)
+        try:
             # Bound the in-memory conversation registries — they grew one entry per distinct
             # conversation for the whole process lifetime (durable copies are in SQLite).
             from services.infrastructure.session_context import prune_stale_sessions
