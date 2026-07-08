@@ -1238,6 +1238,18 @@ def build_system_head(
     except Exception as _df_exc:
         logger.debug("context[durable_facts] failed: %s", _df_exc)
 
+    # Standing interaction directives the user explicitly asked Layla to keep ("always be
+    # concise", "call me by my first name"). Always injected verbatim — a directive must
+    # apply to every turn, so it is NOT relevance-gated. Folded into the authoritative
+    # durable-facts section so token pressure can't evict it.
+    try:
+        from services.personality.operating_manual import directives_for_prompt as _dfp
+        _directives = _dfp()
+        if _directives:
+            durable_facts_block = (durable_facts_block + "\n\n" + _directives) if durable_facts_block else _directives
+    except Exception as _dir_exc:
+        logger.debug("context[directives] failed: %s", _dir_exc)
+
     sections = {
         "system_instructions": system_instructions,
         "durable_facts": durable_facts_block,
