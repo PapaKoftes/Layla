@@ -670,8 +670,10 @@ async def agent(req: AgentRequest, request: Request):
                             yield f"data: {json.dumps({'ux_state': 'loading_model'})}\n\n"
                     except Exception:
                         pass
+                    from services.agent.response_builder import stream_safe_prefix
                     tok_q: queue.Queue = queue.Queue()
                     full: list = []
+                    _emitted = 0
 
                     def _worker() -> None:
                         try:
@@ -713,7 +715,11 @@ async def agent(req: AgentRequest, request: Request):
                         if isinstance(got, str) and got.startswith("__DELIB_META__"):
                             continue
                         full.append(got)
-                        yield f"data: {json.dumps({'token': got})}\n\n"
+                        # Stream only marker-safe text: hold back an unclosed "[" and strip any
+                        # complete [MARKER …] so control tags never flash mid-stream.
+                        _delta, _emitted = stream_safe_prefix("".join(full), _emitted)
+                        if _delta:
+                            yield f"data: {json.dumps({'token': _delta})}\n\n"
                     text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply("".join(full))), cfg)
                     if not text.strip():
                         text = "Sorry — I couldn't generate a response just then. Please try again."
