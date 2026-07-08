@@ -33,6 +33,7 @@ def get_last_prompt_metrics() -> tuple[dict, int]:
 # Aligned with context_budget.DEFAULT_BUDGETS
 DEFAULT_BUDGETS = {
     "system_instructions": 800,
+    "durable_facts": 250,
     "pinned_context": 400,
     "agent_state": 400,
     "current_goal": 100,
@@ -282,6 +283,10 @@ def build_system_prompt(
 
     order = [
         "system_instructions",
+        # Durable identity facts are authoritative ground truth — placed right after
+        # the identity block (and ahead of goal/memory/knowledge) so token pressure
+        # can never crowd the user's name/timezone/tooling out of context.
+        "durable_facts",
         # Current goal/sub-objectives must be early so it survives token pressure.
         # This is especially important when identity/personality blocks are large.
         "current_goal",
