@@ -92,14 +92,43 @@ def is_lightweight_chat_turn(goal: str, reasoning_mode: str) -> bool:
     return False
 
 
-def load_learnings(aspect_id: str = "") -> str:
-    """Load recent learnings text for the given aspect."""
+# Stopwords stripped before scoring learning<->goal relevance (keep it tiny + language-neutral-ish).
+_LEARN_STOP = frozenset((
+    "the", "a", "an", "and", "or", "but", "if", "of", "to", "in", "on", "for", "is", "are",
+    "was", "were", "be", "been", "it", "this", "that", "these", "those", "with", "as", "at",
+    "by", "from", "i", "you", "me", "my", "your", "we", "us", "do", "does", "did", "can",
+    "what", "how", "why", "when", "who", "show", "tell", "give", "please", "hello", "hi", "hey",
+    "thanks", "thank", "ok", "okay", "yes", "no", "sure", "help",
+))
+
+
+def _content_tokens(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-zA-Z][a-zA-Z0-9_+#-]{2,}", (text or "").lower()) if w not in _LEARN_STOP}
+
+
+def load_learnings(aspect_id: str = "", goal: str = "") -> str:
+    """Load learnings text for the given aspect, filtered to what's relevant to ``goal``.
+
+    Recent learnings used to be dumped into every prompt unconditionally, which let an
+    off-topic memory (e.g. a stored "research Python decorators" objective) hijack an
+    unrelated turn like "hello" — the model would answer the remembered topic and copy
+    its template. Now, when a goal is given, a learning is only injected if it shares a
+    real content token with the goal; otherwise the relevance-gated semantic_recall
+    section (below) is the sole memory source. An empty goal keeps the old recent-dump.
+    """
     try:
         cfg = runtime_safety.load_config()
         n = cfg.get("learnings_n", 30)
         min_score = float(cfg.get("learning_min_score", 0.3) or 0.3)
         rows = _db_get_learnings(n=n, aspect_id=aspect_id or None, min_score=min_score)
-        return "\n".join(r["content"] for r in rows if r.get("content"))
+        contents = [r["content"] for r in rows if r.get("content")]
+        # When a goal is given, keep only learnings that share a real content token with it.
+        # A phatic goal ("hello") tokenizes to nothing -> matches nothing (not everything).
+        # An empty goal (caller opted out of filtering) keeps the recent dump.
+        if (goal or "").strip():
+            goal_tokens = _content_tokens(goal)
+            contents = [c for c in contents if _content_tokens(c) & goal_tokens]
+        return "\n".join(contents)
     except Exception as _e:
         logger.debug("load_learnings failed: %s", _e)
         return ""
@@ -493,7 +522,14 @@ def build_system_head(
     else:
         knowledge = knowledge.strip()
 
-    learnings = load_learnings(aspect_id=(aspect.get("id") or "") if aspect else "").strip()
+    # Relevance-gate recent learnings against the goal, and skip them entirely on
+    # phatic/lightweight turns (a greeting must not pull in remembered topics).
+    if _skip_expensive:
+        learnings = ""
+    else:
+        learnings = load_learnings(
+            aspect_id=(aspect.get("id") or "") if aspect else "", goal=goal or "",
+        ).strip()
 
     # Build aspect identity
     if aspect:

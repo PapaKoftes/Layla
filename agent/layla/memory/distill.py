@@ -38,8 +38,24 @@ def score_learning_content(content: str) -> float:
     return min(1.0, max(0.0, score))
 
 
+# Structural junk that is never knowledge, regardless of score: stored run objectives,
+# research answer-templates echoed verbatim, and leaked control markers. These polluted
+# the learnings table and hijacked unrelated turns when injected as "Things I remember".
+_LEARNING_REJECT_RE = re.compile(
+    r"^\s*Objective:\s"                                        # stored run objective echo
+    r"|Provide:\s*a concise overview,\s*key concepts"          # research answer template
+    r"|Cite sources where possible"
+    r"|\[(?:EARNED_TITLE|Active aspect|REFUSED|TOOL|SYSTEM)\b",  # leaked control markers
+    re.IGNORECASE,
+)
+
+
 def passes_learning_quality_gate(content: str) -> tuple[bool, float]:
     """When learning_quality_gate_enabled, reject low-score content before DB insert."""
+    # Hard structural reject (applies even if the gate is disabled): run-log echoes and
+    # leaked markers are noise, not knowledge, and must never enter the learnings table.
+    if content and _LEARNING_REJECT_RE.search(content):
+        return False, 0.0
     try:
         import runtime_safety
 
