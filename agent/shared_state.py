@@ -145,17 +145,39 @@ def append_conv_history(conversation_id: str, role: str, content: str) -> None:
         _t.Thread(target=_compact_bg, args=((conversation_id or "").strip() or "default",), daemon=True, name="auto-compact").start()
 
 
+def _cap_dict(d: dict, cap: int) -> int:
+    """Drop oldest-inserted entries so len(d) <= cap. Returns count removed. Not lock-safe on its
+    own — caller holds the relevant lock (or the dict is only touched here)."""
+    over = len(d) - max(1, int(cap))
+    if over <= 0:
+        return 0
+    for k in list(d.keys())[:over]:
+        d.pop(k, None)
+    return over
+
+
 def prune_conversation_histories(max_conversations: int = 500) -> int:
-    """Bound the in-memory per-conversation history dict (each value a deque(maxlen=20)). Without
-    this it grew one entry per distinct conversation for the whole process lifetime. Drops the
-    oldest-inserted conversations beyond the cap (durable history lives in SQLite). Returns count."""
+    """Bound ALL the in-memory per-conversation registries (M6). Each grew one entry per distinct
+    conversation for the whole process lifetime — the history deques AND the legacy trace/snapshot
+    dicts (_last_coordinator_trace, _last_execution_snapshot, _last_decision_trace,
+    _last_outcome_evaluation, _steer_hints, _blackboard). Durable copies live in SQLite. Drops
+    oldest-inserted beyond the cap. Returns total entries removed."""
+    cap = max(1, int(max_conversations))
+    removed = 0
     with _conv_hist_lock:
-        over = len(_conv_histories) - max(1, int(max_conversations))
-        if over <= 0:
-            return 0
-        for cid in list(_conv_histories.keys())[:over]:
-            _conv_histories.pop(cid, None)
-        return over
+        removed += _cap_dict(_conv_histories, cap)
+    # These have their own accesses but are plain dicts; cap them best-effort under a broad guard.
+    try:
+        removed += _cap_dict(_last_outcome_evaluation, cap)
+        removed += _cap_dict(_last_coordinator_trace, cap)
+        removed += _cap_dict(_last_execution_snapshot, cap)
+        removed += _cap_dict(_last_decision_trace, cap)
+        removed += _cap_dict(_blackboard, cap)
+        with _steer_lock:
+            removed += _cap_dict(_steer_hints, cap)
+    except Exception:
+        pass
+    return removed
 
 
 def get_touch_activity() -> Callable[[], None]:

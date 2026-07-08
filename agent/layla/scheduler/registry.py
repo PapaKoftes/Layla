@@ -69,7 +69,24 @@ def create_scheduler(cfg: dict) -> BackgroundScheduler:
     """
     global _scheduler
 
-    sched = BackgroundScheduler(timezone="UTC")
+    # M8: without job_defaults, a job delayed by _llm_lock contention or laptop sleep/hibernate
+    # past APScheduler's 1s default misfire_grace was SILENTLY DROPPED ("background intelligence
+    # randomly not happening"). coalesce collapses a backlog into one run; a sized executor keeps
+    # the ~18 jobs (several doing serialized LLM work) from starving each other.
+    try:
+        from apscheduler.executors.pool import ThreadPoolExecutor as _APSThreadPool
+        _executors = {"default": _APSThreadPool(max_workers=int(cfg.get("scheduler_max_workers", 6) or 6))}
+    except Exception:
+        _executors = None
+    _job_defaults = {
+        "coalesce": True,
+        "max_instances": 1,
+        "misfire_grace_time": int(cfg.get("scheduler_misfire_grace_seconds", 300) or 300),
+    }
+    if _executors:
+        sched = BackgroundScheduler(timezone="UTC", job_defaults=_job_defaults, executors=_executors)
+    else:
+        sched = BackgroundScheduler(timezone="UTC", job_defaults=_job_defaults)
 
     # ── Mission worker: always run (v1.1 long-running tasks) ────────────
     try:
@@ -116,7 +133,7 @@ def create_scheduler(cfg: dict) -> BackgroundScheduler:
             interval_min = max(5, min(120, int(float(cfg.get("scheduler_interval_minutes", 30)))))
         except (TypeError, ValueError):
             interval_min = 30
-        sched.add_job(_scheduled_study_job, IntervalTrigger(minutes=interval_min))
+        sched.add_job(_scheduled_study_job, IntervalTrigger(minutes=interval_min), id="scheduled_study")
 
         # Knowledge distillation + experience replay (intelligence systems)
         try:
@@ -145,7 +162,7 @@ def create_scheduler(cfg: dict) -> BackgroundScheduler:
                 days = max(1, min(365, int(cfg["lens_refresh_interval_days"])))
                 from lens_refresh import rebuild_lens_knowledge
 
-                sched.add_job(rebuild_lens_knowledge, IntervalTrigger(days=days))
+                sched.add_job(rebuild_lens_knowledge, IntervalTrigger(days=days), id="lens_refresh")
                 logger.info("lens refresh scheduled every %s days", days)
             except (TypeError, ValueError) as e:
                 logger.warning("lens refresh not scheduled: %s", e)
