@@ -136,6 +136,20 @@ def deny_approval(req: dict):
     return JSONResponse({"ok": True})
 
 
+@router.post("/pending/clear")
+def clear_pending():
+    """Clear the entire pending-approvals list (e.g. accumulated stale/denied entries).
+
+    Pending approvals are decisions the agent is waiting on; clearing them denies-by-default
+    (the agent treats an absent approval as not-granted). The audit log retains the history.
+    """
+    try:
+        get_write_pending_list()([])
+        return JSONResponse({"ok": True, "cleared": True})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
+
+
 @router.get("/session/grants")
 def get_session_grants():
     """Return all active in-memory session grants."""
