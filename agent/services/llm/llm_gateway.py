@@ -671,7 +671,7 @@ def get_stop_sequences():
     # Stop the model from echoing system-prompt section headers back into replies.
     # SmolLM2 and similar small models tend to repeat ## CONTEXT / ## TASK verbatim.
     return [
-        "\nUser:", " User:",
+        "\nUser:", " User:", "\nYou:", " You:", "\nHuman:",
         "\n## ", "## CONTEXT", "## TASK", "## SCRATCHPAD", "## REPO",
         # Prevent fake multi-speaker roleplay (model echoes aspect names as dialogue tags)
         "\nMorrigan:", "\nNyx:", "\nEcho:", "\nEris:", "\nCassandra:", "\nLilith:",
