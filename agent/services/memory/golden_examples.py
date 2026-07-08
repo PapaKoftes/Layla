@@ -56,6 +56,14 @@ def store_golden_example(
     dp = (decision_pattern or "").strip()
     if not gs or not dp:
         return False
+    # Never replay a goal that carries a leaked control marker / run-echo (it would be
+    # printed back into a future prompt as "Similar goal: …").
+    try:
+        from layla.memory.distill import is_memory_junk
+        if is_memory_junk(gs):
+            return False
+    except Exception:
+        pass
 
     migrate()
     ts = utcnow().isoformat()
