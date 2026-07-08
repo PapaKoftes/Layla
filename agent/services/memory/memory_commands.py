@@ -69,6 +69,19 @@ class MemoryCommandResult:
 # Handlers
 # ---------------------------------------------------------------------------
 
+# Phrasings that signal a standing interaction DIRECTIVE (how to behave) rather than a
+# FACT to recall. Directives go to the operating manual (always injected verbatim); facts
+# go to learnings (relevance-gated semantic recall). This is why "remember to always be
+# concise" now actually sticks on every turn.
+_DIRECTIVE_RE = re.compile(
+    r"\b(always|never|don'?t|do not|stop|please)\b.*\b(be|use|call|speak|talk|reply|respond|answer|write|address|refer|keep|avoid|start|end)\b"
+    r"|\bcall me\b|\brefer to me\b|\baddress me\b"
+    r"|\bi (prefer|want|like) (you|it|things|answers|replies)\b"
+    r"|\bbe (more|less)\b|\bkeep it\b|\bfrom now on\b|\bgoing forward\b",
+    re.IGNORECASE,
+)
+
+
 def _handle_remember(content: str, aspect_id: str = "") -> MemoryCommandResult:
     content = content.strip()
     if len(content) < _MIN_CONTENT_LEN:
@@ -77,6 +90,19 @@ def _handle_remember(content: str, aspect_id: str = "") -> MemoryCommandResult:
             response="Too short to be worth storing. Give me something specific.",
             error="too_short",
         )
+    # Interaction directive -> operating manual (always-injected), not a relevance-gated learning.
+    if _DIRECTIVE_RE.search(content):
+        try:
+            from services.personality.operating_manual import add_note
+            r = add_note("comm_style", content)
+            if r.get("ok"):
+                preview = content[:80] + ("..." if len(content) > 80 else "")
+                return MemoryCommandResult(
+                    is_command=True, command="remember", items_affected=1,
+                    response=f'Got it — I\'ll keep this in mind every time: "{preview}"',
+                )
+        except Exception as _de:
+            logger.debug("directive store failed, falling back to learning: %s", _de)
     try:
         from services.memory.memory_router import save_learning  # canonical write path
         row_id = save_learning(
