@@ -166,14 +166,26 @@ class TestWebSocketIntegration:
 
     @pytest.mark.asyncio
     async def test_multi_agent_full_flow(self):
-        from services.planning.multi_agent import run_multi_agent
-        result = await run_multi_agent(
-            "Fix the authentication bug and write unit tests for the new endpoint",
-            cfg={},
-        )
+        import agent_loop as _al
+        from services.planning import multi_agent as ma
+        # Subtasks now run through the REAL agent loop; mock it so the flow is deterministic
+        # (no model on CI). Each subtask returns a normal success state.
+        def _fake_run(desc, **kw):
+            return {"response": f"done: {desc}", "status": "ok", "steps": []}
+        orig = _al.autonomous_run
+        _al.autonomous_run = _fake_run
+        try:
+            result = await ma.run_multi_agent(
+                "Fix the authentication bug and write unit tests for the new endpoint",
+                cfg={},
+            )
+        finally:
+            _al.autonomous_run = orig
         assert result["ok"] is True
         assert len(result["subtask_results"]) >= 2
         assert result["total_duration_ms"] >= 0
+        # The synthesis must contain the real subtask answers, not the old fake placeholder.
+        assert "done:" in result["summary"] and "[subtask" not in result["summary"]
 
 
 class TestCrawlerIntegration:
