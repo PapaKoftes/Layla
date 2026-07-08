@@ -62,6 +62,18 @@ _NEEDS_TOOLS_SIGNALS = (
     "output to", "into the file", "write file",
 )
 
+# The subset of tool signals a general how-to / explain question would NEVER contain —
+# memory/personal/web/exec. These VETO the general-QA fast-path shortcut (unlike the soft
+# file/read/open/code signals, which a legitimate "how do I read a file?" question does mention).
+_HARD_TOOL_SIGNALS = (
+    "remember", "recall", "we discussed", "did we", "last time", "earlier you",
+    "my note", "our conversation", "what did we", "what's my", "what is my", "my name",
+    "my todo", "my goal", "my plan", "my project", "my code",
+    "search for", "google", "look up", "latest", "current news", "today's", "weather",
+    "browse", "http://", "https://", "www.",
+    "run ", "execute", "install", "pip ", "npm ", "git ", "the terminal", "shell command",
+)
+
 # a filesystem path (Windows drive, or a path starting with / ./ ../ ~/) → needs a tool.
 # Deliberately narrow so casual slashes ("km/h", "and/or") don't trigger it.
 _PATH_RE = re.compile(r"[A-Za-z]:[\\/]|(?:^|\s)(?:\.{1,2}/|~/|/)[\w.-]+/")
@@ -113,15 +125,18 @@ def is_self_contained_question(goal: str) -> bool:
         gl,
     ):
         return True
+    # Non-greeting inputs shorter than 3 chars ("x", "?") aren't real questions — let the loop decide.
     if len(g) < 3:
-        return True
+        return False
     # General how-to / explain / code-generation Q&A is self-contained even when it mentions
-    # file/read/write/code words — but only if it doesn't point at a concrete file/repo/path.
+    # file/read/write/code words — but only if it doesn't point at a concrete file/repo/path AND
+    # carries no hard tool signal (memory/personal/web/exec, e.g. "what's my name?").
     _points_at_workspace = bool(
         _PATH_RE.search(g) or _FILENAME_RE.search(g)
         or any(s in gl for s in _WORKSPACE_REF_SIGNALS)
     )
-    if not _points_at_workspace and any(gl.startswith(p) for p in _GENERAL_QA_PREFIXES):
+    _hard = any(s in gl for s in _HARD_TOOL_SIGNALS) or bool(re.search(r"\b(my|our)\b", gl) and "?" in gl)
+    if not _points_at_workspace and not _hard and any(gl.startswith(p) for p in _GENERAL_QA_PREFIXES):
         return True
     if any(sig in gl for sig in _NEEDS_TOOLS_SIGNALS):
         return False
@@ -332,7 +347,9 @@ def strip_junk_from_reply(text: str) -> str:
     ).strip()
     # Empty / label-only code fence the model left dangling (```plaintext\n\n``` or a lone ```lang).
     t = re.sub(r"```[a-zA-Z]*\s*```", "", t).strip()
-    t = re.sub(r"```[a-zA-Z]*\s*$", "", t).strip()
+    # A dangling OPENING fence at the very end: require a language tag (```python) so a legitimate
+    # BARE closing ``` of a real code block is preserved — matching ```\s*$ would eat it.
+    t = re.sub(r"```[a-zA-Z]+\s*$", "", t).strip()
     # Immediate duplicated 2-4 word phrase ("To Layla To Layla" → "To Layla") — a small-model echo.
     for _ in range(3):
         _prev = t
