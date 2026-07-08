@@ -723,16 +723,25 @@ try:
     import runtime_safety as _cors_rs
 
     _origins = _cors_rs.load_config().get("remote_cors_origins") or []
-    if isinstance(_origins, list) and any(str(o).strip() for o in _origins):
-        from fastapi.middleware.cors import CORSMiddleware
+    if isinstance(_origins, list):
+        _clean_origins = [str(o).strip() for o in _origins if str(o).strip()]
+        # A3c: a wildcard origin combined with credentials reflects ANY site's Origin and lets it
+        # make authenticated cross-site requests. Drop "*" (keep explicit origins) so credentials
+        # are only ever granted to origins the operator named.
+        if "*" in _clean_origins:
+            logger.warning("remote_cors_origins contains '*' — dropping it (wildcard + credentials "
+                           "is unsafe); list explicit origins instead")
+            _clean_origins = [o for o in _clean_origins if o != "*"]
+        if _clean_origins:
+            from fastapi.middleware.cors import CORSMiddleware
 
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=[str(o).strip() for o in _origins if str(o).strip()],
-            allow_credentials=True,
-            allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
-        )
+            app.add_middleware(
+                CORSMiddleware,
+                allow_origins=_clean_origins,
+                allow_credentials=True,
+                allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
+            )
 except Exception:
     pass
 

@@ -23,6 +23,13 @@ def load_plugins(cfg: dict | None = None) -> dict:
 
     result = {"skills_added": 0, "tools_added": 0, "capabilities_added": 0, "errors": []}
 
+    # A6a: executing a plugin's tools.py runs ARBITRARY Python in Layla's main process. That must
+    # be opt-in — default OFF — so merely dropping a directory into plugins/ (or sharing a
+    # malicious plugin) can't silently gain code execution at startup. Prompt-only skills/
+    # capabilities (declarative text) still load; only the code path is gated. Set
+    # plugins_enabled=true (an explicit operator action) to allow plugin code.
+    _plugin_code_allowed = bool((cfg or {}).get("plugins_enabled", False))
+
     if not plugins_dir.exists():
         return result
 
@@ -91,7 +98,13 @@ def load_plugins(cfg: dict | None = None) -> dict:
         if tools:
             try:
                 tools_module = plugin_path / "tools.py"
-                if tools_module.exists():
+                if tools_module.exists() and not _plugin_code_allowed:
+                    result["errors"].append(
+                        f"{name}.tools: plugin code NOT executed — set plugins_enabled=true to allow "
+                        f"plugins to run Python (default off for safety)."
+                    )
+                    logger.warning("plugin '%s' has tools.py but plugins_enabled is off — skipping code exec", name)
+                elif tools_module.exists():
                     import importlib.util
                     spec = importlib.util.spec_from_file_location(f"plugin_{name}_tools", tools_module)
                     if spec and spec.loader:

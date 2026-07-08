@@ -122,6 +122,36 @@ def invalidate_config_cache() -> None:
         _reset_config_cache_locked()
 
 
+_PLAINTEXT_SECRET_KEYS = (
+    "remote_api_key", "discord_bot_token", "spotify_client_secret", "slack_bot_token",
+    "slack_app_token", "telegram_bot_token", "firecrawl_api_key", "tailscale_auth_key",
+    "elasticsearch_api_key", "meilisearch_api_key", "qdrant_api_key", "mem0_api_key",
+)
+_warned_plaintext_secrets = False
+
+
+def _warn_plaintext_secrets(cfg: dict) -> None:
+    """Warn ONCE if provider secrets are stored as plaintext in runtime_config.json (A1). The file
+    is chmod 0600 now, but the OS keyring (used when saving via the UI) is stronger."""
+    global _warned_plaintext_secrets
+    if _warned_plaintext_secrets:
+        return
+    try:
+        present = [k for k in _PLAINTEXT_SECRET_KEYS if str(cfg.get(k) or "").strip()]
+        _lk = cfg.get("litellm_api_keys")
+        if isinstance(_lk, dict) and any(str(v).strip() for v in _lk.values()):
+            present.append("litellm_api_keys")
+        if present:
+            _warned_plaintext_secrets = True
+            logger.warning(
+                "Provider secret(s) stored in plaintext in runtime_config.json: %s. The file is "
+                "restricted to owner-only (0600); for stronger protection save secrets via the UI "
+                "(uses the OS keyring when available).", ", ".join(present),
+            )
+    except Exception:
+        pass
+
+
 def atomic_write_config(cfg: dict) -> None:
     """Atomically persist a full config dict and invalidate the cache.
 
@@ -134,8 +164,19 @@ def atomic_write_config(cfg: dict) -> None:
         CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = CONFIG_FILE.with_name(CONFIG_FILE.name + ".tmp")
         tmp.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+        # A1: runtime_config.json can hold provider secrets/tokens in plaintext (on keyring-less
+        # boxes). Restrict it to owner-only BEFORE it lands, so it isn't group/world-readable.
+        try:
+            os.chmod(tmp, 0o600)
+        except Exception:
+            pass  # best-effort (no-op on filesystems without POSIX perms, e.g. some Windows FS)
         os.replace(tmp, CONFIG_FILE)
+        try:
+            os.chmod(CONFIG_FILE, 0o600)
+        except Exception:
+            pass
         _reset_config_cache_locked()
+        _warn_plaintext_secrets(cfg)
 
 
 def save_config_keys(updates: dict, *, editable_only: bool = True, clamp: bool = True) -> list[str]:
