@@ -49,4 +49,18 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "  [!] Removal may have failed. Try running as Administrator." -ForegroundColor Yellow
 }
 
+# Remove the inbound firewall rules that install_service.ps1 created, so uninstall leaves no
+# orphaned allow-rules pointing at a program that no longer exists. Match the exact DisplayNames.
+foreach ($ruleName in @("Layla API (TCP 8000)", "Layla mDNS (UDP 5353)")) {
+    try {
+        $rule = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
+        if ($rule) {
+            Remove-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
+            Write-Host "  Removed firewall rule: $ruleName" -ForegroundColor Green
+        }
+    } catch {
+        Write-Host "  [!] Could not remove firewall rule '$ruleName' (run as Administrator to clean it up)." -ForegroundColor Yellow
+    }
+}
+
 Write-Host ""
