@@ -23,6 +23,7 @@ export const UX_STATE_LABELS = {
   tool_running: 'Running tool',
   verifying: 'Verifying',
   thinking: 'Thinking',
+  multi_agent: 'Coordinating sub-agents…',
   stalled: 'Stalled',
   retry_hint: 'Retry suggested',
   changing_approach: 'Changing approach',
