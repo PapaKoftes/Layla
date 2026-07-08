@@ -276,6 +276,10 @@ def rebuild_collection() -> dict:
 
             learnings = get_recent_learnings(n=10000)
             for row in learnings:
+                # get_recent_learnings yields sqlite3.Row (no .get); normalize to dict so the
+                # chroma rebuild doesn't abort and drop every semantic recall to the FTS fallback.
+                if not isinstance(row, dict):
+                    row = dict(row)
                 content = row.get("content") or ""
                 if not content.strip():
                     continue
