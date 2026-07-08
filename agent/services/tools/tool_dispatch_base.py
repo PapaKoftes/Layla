@@ -104,6 +104,17 @@ def _is_approval_bypassed(ctx: DispatchContext, tool_name: str) -> bool:
     """
     if not ctx.cfg.get("tool_approval_bypass", False):
         return False
+    # A2b: never honor the approval bypass while the server is remotely exposed. Otherwise an
+    # authenticated remote caller's writes/exec would run unsupervised (the remote allow_write
+    # strip is overridden by this flag). Unsupervised local exec OR remote exposure — not both.
+    if ctx.cfg.get("remote_enabled", False):
+        if "__remote_bypass_blocked" not in _bypass_warned:
+            _bypass_warned.add("__remote_bypass_blocked")
+            logger.warning(
+                "tool_approval_bypass IGNORED because remote_enabled is on — approvals stay "
+                "enforced while the server is network-exposed (safety)."
+            )
+        return False
     if tool_name not in _bypass_warned:
         _bypass_warned.add(tool_name)
         logger.warning(

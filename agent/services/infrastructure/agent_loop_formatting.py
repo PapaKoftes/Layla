@@ -22,6 +22,16 @@ def format_tool_steps_for_prompt(steps: list, cfg: dict[str, Any] | None = None)
     if cfg.get("context_aggressive_compress_enabled"):
         max_tok = min(max_tok, 320)
 
+    # A4: content fetched from the network can carry injected instructions. Redact known injection
+    # phrases and frame these results as reference data (parity with the document-ingest path)
+    # before they flow into the next reasoning prompt — the ingest path did this, the live
+    # fetch/crawl path did not.
+    _NET_ACTIONS = {
+        "fetch_url", "fetch_article", "crawl_site", "web_crawl", "crawl_url", "read_url",
+        "browser_navigate", "browser_get_text", "web_search", "search_web",
+    }
+    _guard = bool(cfg.get("doc_injection_guard_enabled", True))
+
     lines = []
     for s in steps:
         action = s.get("action", "")
@@ -38,5 +48,11 @@ def format_tool_steps_for_prompt(steps: list, cfg: dict[str, Any] | None = None)
         else:
             blob = str(result)
         blob = truncate_tool_output_for_prompt(blob, max_tokens=max_tok)
+        if _guard and blob and action in _NET_ACTIONS:
+            try:
+                from services.workspace.doc_ingestion import _apply_injection_guard, _data_framing_prefix
+                blob = _data_framing_prefix() + _apply_injection_guard(blob, True)
+            except Exception:
+                pass
         lines.append(f"{action}: {blob}")
     return "\n".join(lines)
