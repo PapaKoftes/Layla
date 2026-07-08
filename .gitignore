@@ -176,3 +176,8 @@ agent/all_routes.txt
 
 # Operator cluster state (contains cluster_secret_hash; per-machine, not for the repo)
 agent/cluster_config.json
+
+# Operator runtime state (per-machine, mutated at runtime — must never be committed)
+agent/layla/memory/knowledge_graph.graphml
+agent/runtime_config.json.audit-aside
+agent/runtime_config.json.audit-*

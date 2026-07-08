@@ -190,11 +190,12 @@ def _median(xs: list[float]) -> float:
     return xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2
 
 
-def run_suite(url: str, warmup: bool = True) -> dict[str, Any]:
+def run_suite(url: str, warmup: bool = True, limit: int = 0) -> dict[str, Any]:
     if warmup:
         run_case(url, "hello")  # load the model so the first scored case isn't cold
     results = []
-    for case in BATTERY:
+    battery = BATTERY[:limit] if limit and limit > 0 else BATTERY
+    for case in battery:
         r = run_case(url, case["prompt"])
         hy = score_hygiene(r["reply"]) if r["ok"] else {k: False for k in
              ("marker_leak", "json_leak", "turn_leak", "greeting_loop", "tool_thrash")}
@@ -248,6 +249,7 @@ def main() -> int:
     ap.add_argument("--out", default="", help="write scorecard JSON here")
     ap.add_argument("--no-warmup", action="store_true", help="skip the model warm-up turn")
     ap.add_argument("--list", action="store_true", help="print the battery and exit")
+    ap.add_argument("--limit", type=int, default=0, help="run only the first N cases (0 = all)")
     args = ap.parse_args()
 
     if args.list:
@@ -265,8 +267,9 @@ def main() -> int:
         print(f"ERROR: server not reachable at {args.url} ({e}). Start it first.", file=sys.stderr)
         return 2
 
-    print(f"Layla product benchmark -> {args.url}  ({len(BATTERY)} cases)\n")
-    report = run_suite(args.url, warmup=not args.no_warmup)
+    _n = min(args.limit, len(BATTERY)) if args.limit and args.limit > 0 else len(BATTERY)
+    print(f"Layla product benchmark -> {args.url}  ({_n} cases)\n")
+    report = run_suite(args.url, warmup=not args.no_warmup, limit=args.limit)
     s = report["summary"]
     print("\n-- SCORECARD ---------------------------------------------")
     print(f"  quality pass rate   : {s['quality_pass_rate']*100:.0f}%  (n={s['quality_n']} checkable)")
