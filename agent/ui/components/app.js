@@ -576,6 +576,11 @@ export async function send() {
             clearInterval(metaTimer);
             liveStatus = 'done';
             try { laylaNotifyStreamPhase(div, 'done'); } catch (_e) { console.debug('app:', _e); }
+            // The server's done frame carries the CLEANED, polished final text (control
+            // markers stripped, tool-echoes cut). The live `full` is the raw token stream and
+            // can contain leaked scaffolding ([TOOL:…], [EARNED_TITLE:…], etc.), so prefer
+            // obj.content for the final render — and sync `full` so TTS/artifacts match.
+            if (typeof obj.content === 'string' && obj.content.trim()) { full = obj.content; }
             if (bubble) {
               if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
                 try { bubble.innerHTML = sanitize(marked.parse(full)); } catch (_mdErr) { bubble.textContent = full; }
