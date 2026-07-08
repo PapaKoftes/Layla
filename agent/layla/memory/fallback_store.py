@@ -52,8 +52,16 @@ class FallbackCollection:
         self.name = name
         self._lock = threading.RLock()
         p = Path(path)
+        self._path = p
         p.parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(str(p), check_same_thread=False)
+        # Reclaim space over time: without this the file only ever grew — deletes left free
+        # pages forever (audit H3). Must be set before the first table is created to take on a
+        # NEW db; existing files pick it up on the next full VACUUM (see vacuum()).
+        try:
+            self._db.execute("PRAGMA auto_vacuum=INCREMENTAL")
+        except Exception:
+            pass
         # Optional sqlite-vec acceleration for the no-filter query path. Prebuilt
         # wheel → keeps the compiler-free property; degrades to NumPy on any error.
         self._vec_ok = False
@@ -76,6 +84,18 @@ class FallbackCollection:
                 self._rebuild_vec_index()
             except Exception:
                 self._vec_ok = False
+
+    def vacuum(self) -> bool:
+        """Reclaim free pages so the file tracks current data instead of its high-water mark.
+        A full VACUUM also applies the auto_vacuum=INCREMENTAL setting to a pre-existing db.
+        Best-effort; returns True if it ran."""
+        try:
+            with self._lock:
+                self._db.execute("VACUUM")
+                self._db.commit()
+            return True
+        except Exception:
+            return False
 
     # ---- sqlite-vec index (optional; mirrors the vectors table) ----
     def _create_vec_index(self, dim: int) -> None:
@@ -340,6 +360,24 @@ def get_fallback_collection(name: str, base_dir: str | Path) -> FallbackCollecti
         if name not in _collections:
             _collections[name] = FallbackCollection(name, Path(base_dir) / f"fallback_{name}.sqlite")
         return _collections[name]
+
+
+def vacuum_open_fallback_stores(min_bytes: int = 20_000_000) -> int:
+    """VACUUM any open fallback store whose file exceeds min_bytes (self-gating so we only pay
+    the cost when there's meaningful reclaimable space). Called from the daily maintenance job.
+    Returns the number vacuumed."""
+    done = 0
+    with _factory_lock:
+        cols = list(_collections.values())
+    for col in cols:
+        try:
+            p = getattr(col, "_path", None)
+            if p and p.exists() and int(p.stat().st_size) >= min_bytes:
+                if col.vacuum():
+                    done += 1
+        except Exception:
+            pass
+    return done
 
 
 def reset_fallback_cache() -> None:
