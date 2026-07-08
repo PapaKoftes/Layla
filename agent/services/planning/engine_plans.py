@@ -394,8 +394,16 @@ def execute_next_file_plan_step(plan: Any, workspace_root: str, payload: dict[st
     )
     success = bool(done_row.get("governance_ok"))
     attempt = max(0, int(done_row.get("attempts", 1)) - 1)
+    # Optional single-pass refinement of the step's reply (self-gated by file_plan_refinement_enabled,
+    # default off) — makes that previously-dead flag live. Bounded cost; returns original on failure.
+    _step_resp = last_resp.get("response", "")
+    try:
+        from services.planning.plan_refinement import refine_output_text
+        _step_resp = refine_output_text(_step_resp)
+    except Exception:
+        pass
     step.outputs = {
-        "response": last_resp.get("response", ""),
+        "response": _step_resp,
         "state": last_resp.get("state", {}),
         "validation_ok": success,
         "validation_error": done_row.get("validation_error", ""),
