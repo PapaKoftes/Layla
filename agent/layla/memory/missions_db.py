@@ -259,6 +259,39 @@ def update_background_task(
         db.commit()
 
 
+def reap_orphaned_tasks() -> int:
+    """On startup, reset background_tasks/missions rows left in a running state by a crash to
+    'interrupted' (audit 7a). Without this a task that died with the server shows 'running
+    forever' in the UI and never self-heals. Marked interrupted — NOT re-queued — so a task with
+    side effects isn't silently re-executed; the user resumes manually. Returns rows updated."""
+    n = 0
+    try:
+        migrate()
+        now = utcnow().isoformat()
+        with _conn() as db:
+            for table in ("background_tasks", "missions"):
+                try:
+                    cols = {r[1] for r in db.execute(f"PRAGMA table_info({table})").fetchall()}
+                    if "status" not in cols:
+                        continue
+                    set_updated = ", updated_at=?" if "updated_at" in cols else ""
+                    params = ((now,) if set_updated else ())
+                    cur = db.execute(
+                        f"UPDATE {table} SET status='interrupted'{set_updated} "
+                        f"WHERE status IN ('running','started','in_progress')",
+                        params,
+                    )
+                    n += int(cur.rowcount or 0)
+                except Exception:
+                    pass
+            db.commit()
+        if n:
+            logger.info("reaped %d orphaned running task/mission row(s) -> interrupted", n)
+    except Exception as e:
+        logger.debug("reap_orphaned_tasks: %s", e)
+    return n
+
+
 def get_background_task(task_id: str) -> dict | None:
     """Fetch one persisted background task."""
     migrate()

@@ -191,6 +191,23 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning("knowledge index failed: %s", e)
 
+    # ── Subsystem: DB integrity gate (audit 3a) ───────────────────────────────
+    # Verify the DB isn't corrupt BEFORE migrate() tries to touch it — a corrupt file otherwise
+    # makes migrate() throw (swallowed below) and the app runs broken. Recovers from backup.
+    try:
+        from layla.memory.db_connection import verify_and_recover_db
+        _db_state = verify_and_recover_db()
+        if _db_state not in ("ok", "recovered"):
+            try:
+                from services.infrastructure.degraded import mark_degraded
+                mark_degraded("database", f"integrity: {_db_state}")
+            except Exception:
+                pass
+        if _db_state != "ok":
+            logger.warning("DB integrity gate: %s", _db_state)
+    except Exception as e:
+        logger.warning("DB integrity gate skipped: %s", e)
+
     # ── Subsystem: DB migration ───────────────────────────────────────────────
     try:
         from layla.memory.db import migrate
@@ -198,6 +215,13 @@ async def lifespan(app: FastAPI):
         logger.info("DB migration complete")
     except Exception as e:
         logger.warning("DB migration failed: %s", e)
+
+    # ── Recovery: reset tasks left 'running' by a prior crash (audit 7a) ───────
+    try:
+        from layla.memory.missions_db import reap_orphaned_tasks
+        reap_orphaned_tasks()
+    except Exception as e:
+        logger.debug("orphaned-task reaper skipped: %s", e)
 
     # ── Subsystem: Tool registry ──────────────────────────────────────────────
     try:
