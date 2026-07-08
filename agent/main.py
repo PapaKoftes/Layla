@@ -640,6 +640,15 @@ async def lifespan(app: FastAPI):
         pass
     if hasattr(app.state, "scheduler"):
         app.state.scheduler.shutdown(wait=False)
+    # Checkpoint the WAL into the main DB and close this thread's connection on the way out, so
+    # the -wal/-shm files don't linger large after a clean shutdown (audit 2c). Best-effort.
+    try:
+        from layla.memory.db_connection import _conn, close_thread_connection
+        with _conn() as _db:
+            _db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        close_thread_connection()
+    except Exception:
+        pass
 
 
 app = FastAPI(
