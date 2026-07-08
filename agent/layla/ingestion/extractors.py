@@ -25,6 +25,14 @@ def extract_text(file_path: Path) -> str:
 
     suffix = file_path.suffix.lower()
 
+    # Optional upgrade: when docling_enabled (and the docling dep is installed), use it for the
+    # rich formats it handles (better layout/table extraction than PyPDF/python-docx). Falls
+    # through to the built-in extractors below on any miss, so this only ever adds quality.
+    if suffix in (".pdf", ".docx", ".pptx", ".html", ".htm"):
+        _docling = _try_docling(file_path, suffix)
+        if _docling:
+            return _docling
+
     # Plain text files
     if suffix in _PLAIN_EXTENSIONS:
         return _read_plain(file_path)
@@ -43,6 +51,32 @@ def extract_text(file_path: Path) -> str:
 
     # Unknown -- try plain text, return empty on binary
     return _read_plain(file_path)
+
+
+def _try_docling(file_path: Path, suffix: str) -> str:
+    """Rich-format extraction via docling when `docling_enabled` AND the dep is installed.
+
+    Returns "" on any miss (flag off, dep absent, or extraction failure) so `extract_text`
+    falls through to the built-in PyPDF/python-docx path — this only ever adds quality, never
+    removes the working baseline. Wiring this makes the previously-dead `docling_enabled` flag live.
+    """
+    try:
+        import runtime_safety
+        cfg = runtime_safety.load_config()
+    except Exception:
+        return ""
+    if not cfg.get("docling_enabled", False):
+        return ""
+    try:
+        from services.workspace import docling_ingest
+        if not docling_ingest.is_available():
+            return ""
+        res = docling_ingest.ingest_file(file_path, cfg=cfg)
+        if res.get("ok") and res.get("chunks"):
+            return "\n\n".join(res["chunks"])
+    except Exception as e:
+        logger.debug("docling extraction failed for %s (%s); using built-in extractor", file_path, e)
+    return ""
 
 
 def _read_plain(file_path: Path) -> str:
