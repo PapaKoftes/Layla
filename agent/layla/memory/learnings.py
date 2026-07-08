@@ -491,9 +491,10 @@ def get_learnings_by_embedding_ids(embedding_ids: list[str]) -> dict[str, dict]:
             tuple(embedding_ids),
         ).fetchall()
         for r in rows:
+            # rows are sqlite3.Row (no .get); index by name, guarding the optional column.
             rid = r["embedding_id"]
-            conf = r.get("confidence")
-            created = r.get("created_at", "")
+            conf = r["confidence"] if has_conf else None
+            created = r["created_at"] if "created_at" in r.keys() else ""
             result[rid] = {
                 "confidence": float(conf) if conf is not None else 0.5,
                 "created_at": created,
