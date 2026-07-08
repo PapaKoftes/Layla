@@ -136,11 +136,27 @@ def apply_retention_policies(cfg: dict | None = None) -> dict[str, Any]:
                 cols_cache[table] = cols
                 return cols
 
+            _orphan_vector_ids: list[str] = []  # H1: vectors whose rows we're deleting
             for table, days, _ in policies:
                 if "created_at" not in _cols(table):
                     continue
                 cutoff = _cutoff(days)
                 try:
+                    # If the table's rows carry vectors, collect their embedding_ids BEFORE the
+                    # delete so we can drop the vectors too — otherwise they orphan in the vector
+                    # store and keep surfacing stale content the product has "forgotten" (H1).
+                    if "embedding_id" in _cols(table):
+                        try:
+                            _rows = db.execute(
+                                f"SELECT embedding_id FROM {table} "
+                                f"WHERE created_at < ? AND embedding_id IS NOT NULL AND embedding_id != ''",
+                                (cutoff,),
+                            ).fetchall()
+                            _orphan_vector_ids.extend(
+                                (r[0] if isinstance(r, (tuple, list)) else r["embedding_id"]) for r in _rows
+                            )
+                        except Exception:
+                            pass
                     cur = db.execute(f"DELETE FROM {table} WHERE created_at < ?", (cutoff,))
                     n = int(cur.rowcount or 0) if cur else 0
                     if n:
@@ -179,6 +195,15 @@ def apply_retention_policies(cfg: dict | None = None) -> dict[str, Any]:
                     out["actions"].append(f"retention:{table}:cap_skip:{e}")
 
             db.commit()
+        # H1: after the layla.db transaction commits, drop the vectors whose rows were deleted
+        # (the vector store is a separate file/Chroma, so this is done outside the DB lock).
+        if _orphan_vector_ids:
+            try:
+                from layla.memory.vector_store import delete_vectors_by_ids
+                delete_vectors_by_ids(_orphan_vector_ids)
+                out["actions"].append(f"retention:vectors_deleted:{len(_orphan_vector_ids)}")
+            except Exception as e:
+                out["actions"].append(f"retention:vectors_delete_skip:{e}")
         # Cleanup completed/archived study plans (keep actives forever; delete old non-active plans).
         try:
             days = int((c.get("retention_completed_study_plans_days", 90) or 90))
@@ -222,6 +247,51 @@ def reinforce_learning(learning_id: int, *, success: bool = True) -> None:
             db.commit()
     except Exception as e:
         logger.debug("reinforce_learning: %s", e)
+
+
+def decay_stored_confidence(cfg: dict | None = None) -> int:
+    """Age-decay the STORED confidence of learnings so unused memories actually fade (audit B2).
+
+    Root cause fixed: confidence decay was READ-time only; the stored `confidence` was never
+    decremented (reinforce only ratcheted it UP), so ingested rows (default 0.5) could never
+    reach the 0.08 archive threshold — the memory store grew forever and retrieval got noisier.
+
+    Each run multiplies stored confidence by a <1 factor for rows past a short grace period.
+    `reinforce_learning` (+0.04/use) counteracts this, so frequently-used memories survive while
+    stale ones drift below the threshold and are archived by prune_low_confidence_learnings.
+    Returns rows affected. Idempotent-safe: applied once per daily cleanup.
+    """
+    cfg = cfg or {}
+    try:
+        decay = float(cfg.get("learnings_confidence_decay_per_day", 0.98) or 0.98)
+    except (TypeError, ValueError):
+        decay = 0.98
+    if not (0.0 < decay < 1.0):
+        return 0  # decay disabled / misconfigured — never boost or zero out
+    try:
+        grace_days = max(0, int(cfg.get("learnings_decay_grace_days", 7) or 7))
+    except (TypeError, ValueError):
+        grace_days = 7
+    try:
+        from layla.memory.db_connection import _conn
+        from layla.memory.migrations import migrate
+        migrate()
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=grace_days)).isoformat()
+        with _conn() as db:
+            cols = {r[1] for r in db.execute("PRAGMA table_info(learnings)").fetchall()}
+            if "confidence" not in cols:
+                return 0
+            cur = db.execute(
+                "UPDATE learnings SET confidence = confidence * ? "
+                "WHERE confidence IS NOT NULL AND created_at < ?",
+                (decay, cutoff),
+            )
+            n = int(cur.rowcount or 0)
+            db.commit()
+        return n
+    except Exception as e:
+        logger.debug("decay_stored_confidence: %s", e)
+        return 0
 
 
 def prune_low_confidence_learnings(threshold: float = 0.08, batch: int = 25) -> int:
