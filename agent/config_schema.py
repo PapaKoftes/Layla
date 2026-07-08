@@ -123,8 +123,11 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
     {"key": "research_max_runtime_seconds", "type": "number", "category": "limits", "default": 1800, "min": 30, "max": 14400, "hint": "Max wall time for research-style runs (seconds)."},
     # ── Safety & behavior ──
     {"key": "safe_mode", "type": "boolean", "category": "safety", "default": True, "hint": "Require approval for file writes and code execution."},
-    {"key": "plugins_enabled", "type": "boolean", "category": "safety", "default": False, "hint": "Allow skill plugins to EXECUTE Python code (exec_module). Off = declarative skills only. Security-sensitive: only enable for plugins you trust."},
+    {"key": "plugins_enabled", "type": "boolean", "category": "safety", "default": False, "hint": "Allow skill plugins to EXECUTE Python code (exec_module) and contribute MCP subprocess servers. Off = declarative skills only. Security-sensitive: only enable for plugins you trust."},
     {"key": "skill_venv_enabled", "type": "boolean", "category": "safety", "default": False, "hint": "On skill-pack install, provision a per-pack venv and pip-install its declared dependencies (heavier install; rolled back atomically on failure)."},
+    {"key": "skill_deps_require_pinned", "type": "boolean", "category": "safety", "default": True, "hint": "Reject skill-pack installs whose dependencies aren't version-pinned (name==x.y.z). Prevents supply-chain drift from floating deps."},
+    {"key": "agent_hooks_enabled", "type": "boolean", "category": "safety", "default": True, "hint": "Allow operator-configured agent_hooks (session_start/pre_tool/post_tool) to run subprocess commands. session_start hooks run automatically when this is on."},
+    {"key": "hooks_require_allow_run", "type": "boolean", "category": "safety", "default": True, "hint": "pre_tool/post_tool hooks run only when the turn has allow_run (or this is off). Keep on unless you trust every configured hook."},
     {"key": "uncensored", "type": "boolean", "category": "safety", "default": True, "hint": "Uncensored model behavior."},
     {
         "key": "nsfw_allowed",

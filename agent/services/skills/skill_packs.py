@@ -18,6 +18,25 @@ def _manifest_path(pack_dir: Path) -> Path:
     return pack_dir / "manifest.json"
 
 
+def _unpinned_dependencies(deps: list[str]) -> list[str]:
+    """Return the dependency specifiers that are NOT version-pinned.
+
+    Pinned = an exact version (``name==1.2.3``) or a direct reference to an
+    immutable artifact (a URL / VCS ref via ``name @ ...``). Everything else —
+    a bare name, or a floating range (``>=``, ``~=``, ``*``) — is unpinned and
+    can silently pull a different (possibly hostile) version on reinstall.
+    """
+    bad: list[str] = []
+    for d in deps:
+        spec = (d or "").strip()
+        if not spec:
+            continue
+        if "==" in spec or " @ " in spec or spec.count("@") and "://" in spec:
+            continue
+        bad.append(spec)
+    return bad
+
+
 def _rollback_cleanup(slug: str, dest: Path) -> None:
     """Atomically undo a partial install (pack dir + venv + registry entry).
 
@@ -113,6 +132,22 @@ def install_from_git(url: str, name: str | None = None) -> dict[str, Any]:
             manifest_data = json.loads(_manifest_path(dest).read_text(encoding="utf-8"))
         except Exception:
             pass
+
+    # A6b: supply-chain — reject installs whose declared deps aren't version-pinned.
+    try:
+        from runtime_safety import load_config
+        _cfg = load_config() or {}
+    except Exception:
+        _cfg = {}
+    _declared_deps = [d for d in (manifest_data or {}).get("dependencies", []) if isinstance(d, str)]
+    if _cfg.get("skill_deps_require_pinned", True):
+        _unpinned = _unpinned_dependencies(_declared_deps)
+        if _unpinned:
+            _rollback_cleanup(slug, dest)
+            return {
+                "ok": False,
+                "error": "unpinned dependencies (set skill_deps_require_pinned=false to allow): " + ", ".join(_unpinned),
+            }
 
     # Phase 6: register in skill_registry if available
     try:
