@@ -79,6 +79,7 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "default": False,
         "hint": "Sparse .layla/project_memory.json: inject deterministic workspace scan into context (filesystem only).",
     },
+    {"key": "people_codex_enabled", "type": "boolean", "category": "memory", "default": True, "hint": "Daily maintenance scans recent conversations for people you mention and saves them to the people codex."},
     {"key": "learning_quality_gate_enabled", "type": "boolean", "category": "memory", "default": True, "hint": "Reject low-quality distill content before DB insert (see distill.passes_learning_quality_gate)."},
     {"key": "learning_quality_min_score", "type": "number", "category": "memory", "default": 0.35, "min": 0.05, "max": 1.0, "hint": "Minimum heuristic score when learning_quality_gate_enabled is true."},
     {"key": "file_checkpoint_enabled", "type": "boolean", "category": "memory", "default": True, "hint": "Snapshot files before write_file / apply_patch / search_replace / write_files_batch for restore_file_checkpoint."},
@@ -116,11 +117,14 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
     {"key": "max_runtime_seconds", "type": "number", "category": "limits", "default": 900, "min": 5, "max": 3600, "hint": "Max wall time per agent turn (seconds). Align with ui_agent_stream_timeout_seconds so the server does not stop before the browser."},
     {"key": "tool_call_timeout_seconds", "type": "number", "category": "limits", "default": 60, "min": 5, "max": 600, "hint": "Max seconds a single tool call may run before being killed."},
     {"key": "approval_ttl_seconds", "type": "number", "category": "limits", "default": 3600, "min": 60, "max": 86400, "hint": "Seconds before a pending approval expires (default: 1 hour)."},
+    {"key": "models_max_keep", "type": "number", "category": "limits", "default": 0, "min": 0, "max": 100, "hint": "Daily maintenance prunes downloaded GGUFs to the newest N (the active model is always kept). 0 = keep all."},
     {"key": "hyde_enabled", "type": "boolean", "category": "limits", "default": False, "hint": "Enable HyDE retrieval (generates a hypothetical answer before embedding — extra LLM call per query, improves recall quality)."},
     {"key": "research_max_tool_calls", "type": "number", "category": "limits", "default": 20, "min": 1, "max": 100, "hint": "Max tool calls when research_mode is on."},
     {"key": "research_max_runtime_seconds", "type": "number", "category": "limits", "default": 1800, "min": 30, "max": 14400, "hint": "Max wall time for research-style runs (seconds)."},
     # ── Safety & behavior ──
     {"key": "safe_mode", "type": "boolean", "category": "safety", "default": True, "hint": "Require approval for file writes and code execution."},
+    {"key": "plugins_enabled", "type": "boolean", "category": "safety", "default": False, "hint": "Allow skill plugins to EXECUTE Python code (exec_module). Off = declarative skills only. Security-sensitive: only enable for plugins you trust."},
+    {"key": "skill_venv_enabled", "type": "boolean", "category": "safety", "default": False, "hint": "On skill-pack install, provision a per-pack venv and pip-install its declared dependencies (heavier install; rolled back atomically on failure)."},
     {"key": "uncensored", "type": "boolean", "category": "safety", "default": True, "hint": "Uncensored model behavior."},
     {
         "key": "nsfw_allowed",
