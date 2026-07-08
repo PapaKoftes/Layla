@@ -133,6 +133,18 @@ def _bg_cleanup() -> None:
         except Exception:
             pass
         try:
+            # Bound the in-memory conversation registries — they grew one entry per distinct
+            # conversation for the whole process lifetime (durable copies are in SQLite).
+            from services.infrastructure.session_context import prune_stale_sessions
+            _idle = float(_c.get("session_idle_prune_seconds", 3600) or 3600)
+            _npr = prune_stale_sessions(max_age_seconds=_idle)
+            import shared_state as _ss
+            _npr += _ss.prune_conversation_histories(int(_c.get("conversation_history_max", 500) or 500))
+            if _npr:
+                logger.debug("_bg_cleanup: pruned %d idle session/history entries", _npr)
+        except Exception:
+            pass
+        try:
             # Research output retention (best-effort): remove old timestamped markdown files.
             days = int(_c.get("retention_research_output_days", 90) or 90)
             if days > 0:
