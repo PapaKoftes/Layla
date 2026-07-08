@@ -1,6 +1,6 @@
 # Capabilities
 
-Layla's capability system allows multiple implementations per capability (e.g. vector_search → chromadb, faiss, qdrant). The system discovers candidates, benchmarks them, validates in sandbox, and selects the best-performing implementation automatically.
+Layla's capability system allows multiple implementations per capability (e.g. vector_search → chromadb, faiss, qdrant). Candidates are curated in the registry; the system benchmarks them, validates in sandbox, and selects the best-performing implementation automatically.
 
 ---
 
@@ -16,30 +16,6 @@ Each capability may have multiple implementations:
 | `embedding` | sentence_transformers, openai | sentence_transformers |
 | `reranker` | cross_encoder, cohere | cross_encoder |
 | `web_scraper` | trafilatura, beautifulsoup | trafilatura |
-
----
-
-## Capability Discovery
-
-**Module:** `agent/services/capability_discovery.py`
-
-Scans for candidate libraries:
-
-- **PyPI** — known packages per capability
-- **GitHub** — trending repos (known list)
-- **HuggingFace** — models for embedding/rerank
-
-```python
-from services.capability_discovery import discover_candidates, discover_all_capabilities
-
-# Single capability
-candidates = discover_candidates("vector_search")
-
-# All capabilities
-all_ = discover_all_capabilities()
-```
-
-Results are cached in `agent/.capability_discovery_cache/` (6h TTL).
 
 ---
 

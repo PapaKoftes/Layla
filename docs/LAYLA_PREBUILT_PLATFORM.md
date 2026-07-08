@@ -233,7 +233,6 @@ The platform is organized into 10 capability domains. Each domain has a purpose,
 |--------|------|------|
 | study_service | `agent/services/study_service.py` | Autonomous study plan execution |
 | self_improvement | `agent/services/self_improvement.py` | evaluate_capabilities(), detect_missing_capabilities(), propose_capability_integrations(), propose_improvements() |
-| capability_discovery | `agent/services/capability_discovery.py` | Scan PyPI, GitHub, HuggingFace for candidate libraries |
 | benchmark_suite | `agent/services/benchmark_suite.py` | Latency, throughput, memory benchmarks; stores in capability_implementations |
 | sandbox_validator | `agent/services/sandbox_validator.py` | Import check + benchmark before enabling capability |
 | performance_monitor | `agent/services/performance_monitor.py` | Tool latency, retrieval latency, token throughput |
@@ -245,7 +244,7 @@ The platform is organized into 10 capability domains. Each domain has a purpose,
 
 **Future improvements:**
 
-- **Auto-discovery validation** — capability_discovery + sandbox_validator; run on schedule or first-run
+- **Registry validation** — sandbox_validator benchmarks + validates the registry's curated implementations; run on schedule or first-run
 - **RL feedback loop** — usefulness_score, learning_quality_score exist; extend for reinforcement
 - **Capability benchmarking on install** — Run benchmark_suite during first_run for default impls
 
@@ -337,7 +336,6 @@ flowchart TB
     subgraph Self [Self Improvement]
         StudySvc[study_service]
         SelfImp[self_improvement]
-        CapDisc[capability_discovery]
     end
 
     UI --> Conv
