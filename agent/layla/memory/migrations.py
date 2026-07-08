@@ -18,6 +18,9 @@ _MIGRATION_LOCK = threading.Lock()
 # Version 0: pre-versioning (all tables created with IF NOT EXISTS)
 # Version 1: baseline — all existing tables, columns, indexes present
 # Future migrations: check `if version < N` and run only new changes
+# CODE_SCHEMA_VERSION is the newest schema this BUILD understands. A future migration must bump
+# BOTH this and the version stamped at the end of _migrate_impl. It backs the downgrade guard.
+CODE_SCHEMA_VERSION = 1
 
 
 def _get_schema_version(conn) -> int:
@@ -83,6 +86,22 @@ def _migrate_impl() -> None:
             "INSERT OR IGNORE INTO schema_version (id, version, updated_at) VALUES (1, 0, datetime('now'))"
         )
         db.commit()
+
+        # Downgrade guard (audit 4b): don't silently run an OLDER build against a NEWER DB. An
+        # older build would run its own DDL, then query assuming its own (now-missing) columns —
+        # surfacing as confusing runtime errors. Warn loudly + flag degraded instead.
+        _on_disk_ver = _get_schema_version(db)
+        if _on_disk_ver > CODE_SCHEMA_VERSION:
+            logger.critical(
+                "DB schema_version %d is NEWER than this build supports (%d) — Layla was likely "
+                "downgraded. Expect missing-column errors; update Layla or restore a matching backup.",
+                _on_disk_ver, CODE_SCHEMA_VERSION,
+            )
+            try:
+                from services.infrastructure.degraded import mark_degraded
+                mark_degraded("database", f"schema newer than build ({_on_disk_ver}>{CODE_SCHEMA_VERSION})")
+            except Exception:
+                pass
         db.execute("""
             CREATE TABLE IF NOT EXISTS learnings (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
