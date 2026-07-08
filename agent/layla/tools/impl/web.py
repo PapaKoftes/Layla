@@ -43,6 +43,26 @@ def fetch_url_tool(url: str, store: bool = False) -> dict:
                 return hit
     except Exception:
         cfg = {}
+    # Route through the configured external crawler (firecrawl / crawl4ai) when one is set —
+    # makes the previously-dead crawler_backend flag live. The default "auto"/"basic" keeps the
+    # built-in fetch_url so nothing changes unless the operator opts into a richer backend.
+    try:
+        _cb = str((cfg or {}).get("crawler_backend", "auto")).strip().lower()
+        if _cb in ("firecrawl", "crawl4ai"):
+            from services.retrieval.web_crawler import crawl_url as _crawl
+            _res = _crawl(url, cfg=cfg, backend=_cb)
+            if _res.get("ok") and (_res.get("content") or "").strip():
+                _out = {"ok": True, "url": url, "title": _res.get("title", ""),
+                        "content": _res["content"], "backend": _res.get("backend", _cb)}
+                try:
+                    if not store:
+                        from services.retrieval.http_response_cache import set_cached
+                        set_cached(f"fetch:{url}", _out, cfg)
+                except Exception:
+                    pass
+                return _out
+    except Exception:
+        pass
     from layla.tools.web import fetch_url
 
     out = fetch_url(url, store=store)
