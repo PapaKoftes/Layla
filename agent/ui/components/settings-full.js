@@ -7,6 +7,15 @@
 
 import { escapeHtml, showToast, laylaConfirm } from '../services/utils.js';
 
+// Fallback client-side humanizer (backend normally supplies f.label). snake_case -> Title.
+const _ACRONYMS = { ui: 'UI', api: 'API', cors: 'CORS', url: 'URL', ttl: 'TTL', id: 'ID', llm: 'LLM', gpu: 'GPU', cpu: 'CPU', tts: 'TTS', stt: 'STT', cot: 'CoT', rag: 'RAG', mcp: 'MCP', nsfw: 'NSFW', db: 'DB', os: 'OS' };
+function humanizeKey(key) {
+  return String(key || '').split('_').filter(Boolean).map(function (w, i) {
+    if (_ACRONYMS[w]) return _ACRONYMS[w];
+    return i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w;
+  }).join(' ');
+}
+
 // ── Settings overlay ────────────────────────────────────────────────────────
 export async function openSettings() {
   const ov = document.getElementById('settings-overlay');
@@ -29,14 +38,16 @@ export async function openSettings() {
       fields.forEach(function (f) {
         const k = f.key;
         const v = cfg[k];
+        // Human-readable label from the backend (falls back to a title-cased key).
+        const lbl = escapeHtml(f.label || humanizeKey(k));
         const id = 'cfg_' + String(k).replace(/[^a-zA-Z0-9_]/g, '_');
         const hint = String(f.hint || '').replace(/</g, '&lt;');
         if (f.type === 'boolean') {
-          html += '<div class="settings-row settings-section"><label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;text-transform:none;color:var(--text)"><input type="checkbox" id="' + id + '" ' + (v ? 'checked' : '') + '/> ' + escapeHtml(k) + '</label><div class="hint">' + hint + '</div></div>';
+          html += '<div class="settings-row settings-section"><label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;text-transform:none;color:var(--text)"><input type="checkbox" id="' + id + '" ' + (v ? 'checked' : '') + '/> ' + lbl + '</label><div class="hint">' + hint + '</div></div>';
         } else if (f.type === 'number') {
-          html += '<div class="settings-row settings-section"><label>' + escapeHtml(k) + '</label><input type="number" id="' + id + '" value="' + (v != null ? String(v) : '') + '" step="any"/><div class="hint">' + hint + '</div></div>';
+          html += '<div class="settings-row settings-section"><label>' + lbl + '</label><input type="number" id="' + id + '" value="' + (v != null ? String(v) : '') + '" step="any"/><div class="hint">' + hint + '</div></div>';
         } else {
-          html += '<div class="settings-row settings-section"><label>' + escapeHtml(k) + '</label><input type="text" id="' + id + '" value="' + escapeHtml(String(v != null ? v : '')) + '"/><div class="hint">' + hint + '</div></div>';
+          html += '<div class="settings-row settings-section"><label>' + lbl + '</label><input type="text" id="' + id + '" value="' + escapeHtml(String(v != null ? v : '')) + '"/><div class="hint">' + hint + '</div></div>';
         }
       });
       formEl.innerHTML = html;
