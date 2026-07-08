@@ -833,8 +833,12 @@ def run_completion(
 
         # ── LiteLLM multi-provider gateway ────────────────────────────────
         # When litellm_enabled is true, delegate to litellm_gateway which
-        # provides automatic failover across 100+ LLM providers.
-        if cfg.get("litellm_enabled", False):
+        # provides automatic failover across 100+ LLM providers. Only take this
+        # path when a model is actually configured — otherwise litellm raises
+        # "No model specified" on EVERY turn and falls back to local anyway,
+        # burning a failed attempt + error-log spam on each request.
+        _litellm_model_cfg = (model_override or cfg.get("litellm_default_model") or "").strip()
+        if cfg.get("litellm_enabled", False) and _litellm_model_cfg:
             try:
                 from services.llm.litellm_gateway import complete as _litellm_complete
                 from services.llm.litellm_gateway import complete_stream as _litellm_stream

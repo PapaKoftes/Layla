@@ -27,6 +27,20 @@ logger = logging.getLogger("layla")
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
+def _row_content(r: Any) -> str:
+    """Extract 'content' from a recall row that may be a dict OR a sqlite3.Row.
+
+    sqlite3.Row supports item access but not .get(), so a bare r.get('content')
+    threw 'sqlite3.Row object has no attribute get' and killed the whole recall.
+    """
+    if isinstance(r, dict):
+        return r.get("content", "") or ""
+    try:
+        return r["content"] or ""
+    except (KeyError, IndexError, TypeError):
+        return ""
+
+
 # ---------------------------------------------------------------------------
 # Constants for lightweight-turn detection
 # ---------------------------------------------------------------------------
@@ -165,14 +179,14 @@ def semantic_recall(query: str, k: int = 5, domain_boost_terms: list[str] | None
         )
         if not results:
             return ""
-        lines = [r.get("content", "") for r in results if r.get("content")]
+        lines = [c for c in (_row_content(r) for r in results) if c]
         return "\n".join(lines)
     except Exception as e:
         logger.warning("ChromaDB failed, falling back to FTS: %s", e)
         try:
             from layla.memory.db import search_learnings_fts
             results = search_learnings_fts(query, n=k)
-            lines = "\n".join(r.get("content", "") for r in results if r.get("content"))
+            lines = "\n".join(c for c in (_row_content(r) for r in results) if c)
             if lines.strip():
                 logger.info("retrieval fallback: semantic recall using FTS (%d rows)", len(results))
             return lines
@@ -381,11 +395,10 @@ def relationship_codex_context(cfg: dict, workspace_root: str) -> tuple[str, boo
 
 _OUTPUT_DISCIPLINE = (
     "## Output discipline\n"
-    "Reply with ONLY your message to the user, as plain prose. Do NOT repeat, echo, or "
-    "reproduce any of the context above — no section headers, no bracketed control markers "
-    "([EARNED_TITLE], [TOOL], [REFUSED], [merge…]), no 'Objective:' or 'Echo "
-    "(patterns/preferences):' lines, no 'Research …' restatements, and no stray code fences. "
-    "Do not narrate your process or your tools. Just give the answer."
+    "Reply with ONLY your message to the user, as plain conversational prose. Do NOT repeat, "
+    "echo, or reproduce any of the context above — no section headers, no bracketed control "
+    "tags, no restated objectives, and no stray code fences. Do not narrate your process or "
+    "your tools. Just give the answer."
 )
 
 

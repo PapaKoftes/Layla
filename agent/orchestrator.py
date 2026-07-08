@@ -441,8 +441,7 @@ def build_deliberation_prompt(
         f"\n[CONCLUSION — {concluder_name.upper()}]: "
         "One direct answer. Do not echo or repeat the aspect lines. "
         + conclusion_refusal
-        + "If the user says you earned a title, end with [EARNED_TITLE: Title Name].\n"
-        f"{concluder_name}:"
+        + f"{concluder_name}:"
     )
     return prompt
 
@@ -477,7 +476,6 @@ def build_standard_prompt(
     parts.append(
         anchor + " Reply as " + name + " only, in her voice. "
         + refusal_clause
-        + "If the user says you earned a title, end with [EARNED_TITLE: Title Name]."
     )
     if convo_block:
         parts.append(f"Recent conversation:\n{convo_block}")
