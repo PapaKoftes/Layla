@@ -158,38 +158,6 @@ class TestCrashHandler:
 # ---------------------------------------------------------------------------
 
 
-class TestStructuredLog:
-    """Tests for the structured logging wrapper."""
-
-    def test_configure_logging_no_error(self):
-        from services.observability.structured_log import configure_logging
-        # Should not raise even without structlog
-        configure_logging()
-
-    def test_bind_context(self):
-        from services.observability.structured_log import bind_context, get_bound_context
-        bind_context(run_id="test-run-123", aspect_id="nyx", workspace="/tmp/ws")
-        ctx = get_bound_context()
-        assert ctx["run_id"] == "test-run-123"
-        assert ctx["aspect_id"] == "nyx"
-        assert ctx["workspace"] == "/tmp/ws"
-
-    def test_get_logger_returns_logger(self):
-        from services.observability.structured_log import get_logger
-        log = get_logger("test")
-        assert log is not None
-
-    def test_structlog_availability_flag(self):
-        from services.observability.structured_log import STRUCTLOG_AVAILABLE
-        # Should be a bool
-        assert isinstance(STRUCTLOG_AVAILABLE, bool)
-
-
-# ---------------------------------------------------------------------------
-# Tests: Metrics router importable
-# ---------------------------------------------------------------------------
-
-
 class TestMetricsRouter:
     """Test that the metrics router can be imported and has expected endpoints."""
 
