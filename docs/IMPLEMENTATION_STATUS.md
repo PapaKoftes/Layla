@@ -179,7 +179,7 @@ Maps each capability domain to implemented modules and missing components. See [
 | Agent Runtime | `agent_loop.py` (+ `tool_policy.py`, `tool_loop_detection.py`, **`services/decision_policy.py`** PolicyCaps clamp per tick), `task_graph.py`, `shared_state.py` (blackboard, decision trace), `decision_schema.py`, `mission_manager.py`, `routers/*.py` | Parallel agent roles (run_parallel_ready) — done; OpenTelemetry; GET **`/agent/decision_trace`**, **`/agents/blackboard/{job_id}`** |
 | Skill Library | `layla/skills/registry.py`, `markdown_skills.py`, `skills/` (optional `SKILL.md`), `plugin_loader.py`, `planner.py` | DAG composition, skill metrics |
 | Hardware Intelligence | `hardware_detect.py`, `first_run.py`, `agent/install/` (hardware_probe, model_selector, model_downloader, installer_cli), `runtime_safety._probe_hardware`, `runtime_safety.resolve_model_path` | First-run installer: detect hardware, recommend from catalog, download to ~/.layla/models, generate config. Metal refinement, disk benchmark, thermal (psutil) |
-| Self Improvement | `study_service.py`, `self_improvement.py`, `capability_discovery.py`, `integration_sandbox.py`, `benchmark_suite.py`, `sandbox_validator.py`, `distill.py`, `performance_monitor.py`, `system_optimizer.py`, `capabilities/registry.py` | Capability evolution pipeline — done; runtime optimization — done; RL feedback loop |
+| Self Improvement | `study_service.py`, `self_improvement.py`, `integration_sandbox.py`, `benchmark_suite.py`, `sandbox_validator.py`, `distill.py`, `performance_monitor.py`, `system_optimizer.py`, `capabilities/registry.py` | Runtime optimization — done; RL feedback loop; implementations curated in the registry + benchmarked/validated |
 | User Interface | `ui/index.html`, `tui.py`, `cursor-layla-mcp/server.py`, `layla.py` | Web `/ui`: left Options → Content policy (`/settings`); tiered right column (Status, Workspace, Safety, Research, Help); Layla + facet chip; stream typing dots; GET /platform/* APIs |
 
 ---
@@ -188,7 +188,7 @@ Maps each capability domain to implemented modules and missing components. See [
 
 | Step | Module | Description |
 |------|--------|-------------|
-| Discover | `capability_discovery.py` | `discover_candidate_libraries`, `fetch_pypi_candidates`, `fetch_github_candidates` |
+| Curate | `capabilities/registry.py` | Candidate implementations are curated in the registry (one entry per capability) |
 | Sandbox | `integration_sandbox.py` | Temp venv, install, compatibility tests, benchmarks |
 | Benchmark | `benchmark_suite.py` | vector_search, embedding, reranker, web_scraper; stores in `capability_implementations` |
 | Promote | `capabilities/registry.py` | Priority: config override → best benchmark → default |
