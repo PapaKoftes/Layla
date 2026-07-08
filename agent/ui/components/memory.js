@@ -63,24 +63,47 @@ export async function laylaMemBrowse(page) {
   }
 }
 
+// Human-readable, colour-coded kind labels (raw kinds are opaque: outcome, user_fact…).
+const _MEM_KIND = {
+  user_fact:  { label: 'You told me', color: '#5ac8fa' },
+  fact:       { label: 'Fact',        color: '#5ac8fa' },
+  preference: { label: 'Preference',  color: '#c084fc' },
+  strategy:   { label: 'What worked', color: '#4caf50' },
+  outcome:    { label: 'Outcome',     color: '#8aa0b4' },
+  general:    { label: 'Learned',     color: '#f7c94b' },
+};
+function _memKind(t) { return _MEM_KIND[String(t || 'general')] || { label: String(t || 'general'), color: 'var(--asp)' }; }
+function _relTime(iso) {
+  if (!iso) return '';
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return String(iso).slice(0, 10);
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 90) return 'just now';
+  if (s < 5400) return Math.round(s / 60) + 'm ago';
+  if (s < 129600) return Math.round(s / 3600) + 'h ago';
+  const d = Math.round(s / 86400);
+  return d < 30 ? d + 'd ago' : String(iso).slice(0, 10);
+}
+
 function _renderMemList(items, listEl) {
   if (!listEl) return;
   if (!items.length) {
-    listEl.innerHTML = '<span style="color:var(--text-dim);font-size:0.7rem">No learnings found.</span>';
+    listEl.innerHTML = '<span style="color:var(--text-dim);font-size:0.7rem">No learnings yet — things you tell Layla to remember, and what she picks up as you work, show up here.</span>';
     return;
   }
   listEl.innerHTML = items.map(r => {
     const conf = Math.round((r.confidence || 0.5) * 100);
     const confColor = conf >= 80 ? '#4caf50' : conf >= 50 ? '#f7c94b' : '#e74c3c';
-    return `<div class="mem-item" data-id="${r.id}" style="border:1px solid var(--border);border-radius:4px;padding:7px 8px;margin-bottom:5px;background:var(--code-bg)">
+    const kind = _memKind(r.type);
+    return `<div class="mem-item" data-id="${r.id}" style="border:1px solid var(--border);border-left:3px solid ${kind.color};border-radius:4px;padding:7px 8px;margin-bottom:5px;background:var(--code-bg)">
       <div style="display:flex;align-items:flex-start;gap:6px">
-        <span style="font-size:0.6rem;color:var(--asp);min-width:56px;text-align:center;padding:2px 4px;border:1px solid var(--asp);border-radius:2px;margin-top:1px">${_mesc(r.type || 'fact')}</span>
+        <span style="font-size:0.58rem;font-weight:600;color:${kind.color};min-width:64px;text-align:center;padding:2px 4px;border:1px solid ${kind.color};border-radius:3px;margin-top:1px;white-space:nowrap">${_mesc(kind.label)}</span>
         <div style="flex:1;min-width:0">
-          <div id="mem-content-${r.id}" style="font-size:0.7rem;color:var(--text);word-break:break-word;margin-bottom:4px">${_mesc(r.content || '')}</div>
-          <div style="font-size:0.6rem;color:var(--text-dim);display:flex;gap:8px;flex-wrap:wrap">
-            <span style="color:${confColor}">conf: ${conf}%</span>
-            ${r.tags ? `<span>${_mesc(r.tags)}</span>` : ''}
-            ${r.created_at ? `<span>${_mesc(r.created_at.slice(0,10))}</span>` : ''}
+          <div id="mem-content-${r.id}" style="font-size:0.72rem;line-height:1.4;color:var(--text);word-break:break-word;margin-bottom:4px">${_mesc(r.content || '')}</div>
+          <div style="font-size:0.6rem;color:var(--text-dim);display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <span style="color:${confColor}" title="confidence">●&nbsp;${conf}%</span>
+            ${r.tags ? `<span title="tags">#${_mesc(String(r.tags).replace(/,/g, ' #'))}</span>` : ''}
+            ${r.created_at ? `<span title="${_mesc(r.created_at)}">${_mesc(_relTime(r.created_at))}</span>` : ''}
           </div>
         </div>
         <div style="display:flex;gap:3px;flex-shrink:0">
