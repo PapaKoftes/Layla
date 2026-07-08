@@ -238,6 +238,9 @@ class SessionContext:
 
 _sessions_lock = threading.Lock()
 _sessions: dict[str, SessionContext] = {}
+# Last-access time per session (monotonic). Tracked alongside the registry so pruning evicts by
+# IDLE time, not creation age — otherwise a long-lived active conversation would be dropped.
+_session_access: dict[str, float] = {}
 
 
 def get_or_create_session(conversation_id: str) -> SessionContext:
@@ -248,6 +251,7 @@ def get_or_create_session(conversation_id: str) -> SessionContext:
         if ctx is None:
             ctx = SessionContext(cid)
             _sessions[cid] = ctx
+        _session_access[cid] = time.monotonic()
         return ctx
 
 
@@ -255,7 +259,10 @@ def get_session(conversation_id: str) -> SessionContext | None:
     """Get an existing SessionContext without creating one."""
     cid = (conversation_id or "").strip() or "default"
     with _sessions_lock:
-        return _sessions.get(cid)
+        ctx = _sessions.get(cid)
+        if ctx is not None:
+            _session_access[cid] = time.monotonic()
+        return ctx
 
 
 def remove_session(conversation_id: str) -> None:
@@ -263,6 +270,7 @@ def remove_session(conversation_id: str) -> None:
     cid = (conversation_id or "").strip() or "default"
     with _sessions_lock:
         _sessions.pop(cid, None)
+        _session_access.pop(cid, None)
 
 
 def list_sessions() -> list[str]:
@@ -272,15 +280,16 @@ def list_sessions() -> list[str]:
 
 
 def prune_stale_sessions(max_age_seconds: float = 3600) -> int:
-    """Remove sessions older than *max_age_seconds*. Returns count removed."""
+    """Remove sessions IDLE longer than *max_age_seconds* (by last access, not creation).
+    Returns count removed. Wired into the daily _bg_cleanup so the in-memory session registry
+    can't grow one entry per distinct conversation for the whole process lifetime."""
     now = time.monotonic()
-    to_remove: list[str] = []
     with _sessions_lock:
-        for cid, ctx in _sessions.items():
-            if now - ctx._created_at > max_age_seconds:
-                to_remove.append(cid)
+        to_remove = [cid for cid in list(_sessions.keys())
+                     if now - _session_access.get(cid, 0.0) > max_age_seconds]
         for cid in to_remove:
             _sessions.pop(cid, None)
+            _session_access.pop(cid, None)
     return len(to_remove)
 
 
