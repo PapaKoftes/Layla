@@ -77,6 +77,28 @@ class TestDecomposeTask:
         assert len(subtasks) <= 1
 
 
+class TestExtractSubtaskReply:
+    def test_strips_leaked_control_markers(self):
+        # A weak model can echo control markers into a subtask reply; they must be
+        # scrubbed (same sanitizer as the main chat path) before aggregation.
+        from services.planning.multi_agent import _extract_subtask_reply
+        state = {"response": "The sea is vast.\n[Active aspect: Morrigan] Reply as her. [REFUSED: no]"}
+        out = _extract_subtask_reply(state)
+        assert "Active aspect" not in out
+        assert "REFUSED" not in out
+        assert "The sea is vast." in out
+
+    def test_falls_back_to_last_step_result(self):
+        from services.planning.multi_agent import _extract_subtask_reply
+        state = {"steps": [{"result": "step one"}, {"result": "final answer"}]}
+        assert _extract_subtask_reply(state) == "final answer"
+
+    def test_empty_state_returns_empty(self):
+        from services.planning.multi_agent import _extract_subtask_reply
+        assert _extract_subtask_reply({}) == ""
+        assert _extract_subtask_reply(None) == ""
+
+
 class TestAggregateResults:
     def test_all_success(self):
         from services.planning.multi_agent import aggregate_results

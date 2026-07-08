@@ -36,6 +36,23 @@ def in_subtask() -> bool:
     return bool(_in_subtask.get())
 
 
+def _clean_reply(text: str) -> str:
+    """Apply the same leak-scrubbing the main chat path uses to a subtask reply.
+
+    Subtasks run the full agent loop, so a weak model can echo control markers
+    ('[Active aspect: …]', '[REFUSED: …]', leaked objectives) into its answer.
+    Route them through strip_junk_from_reply so the aggregate stays clean.
+    """
+    t = (text or "").strip()
+    if not t:
+        return ""
+    try:
+        from services.agent.response_builder import strip_junk_from_reply
+        return strip_junk_from_reply(t).strip()
+    except Exception:
+        return t
+
+
 def _extract_subtask_reply(state: dict) -> str:
     """Pull the natural-language answer out of an autonomous_run() result dict."""
     if not isinstance(state, dict):
@@ -43,12 +60,12 @@ def _extract_subtask_reply(state: dict) -> str:
     for key in ("response", "reply"):
         v = (state.get(key) or "").strip() if isinstance(state.get(key), str) else ""
         if v:
-            return v
+            return _clean_reply(v)
     steps = state.get("steps") or []
     if steps:
         last = steps[-1].get("result")
         if isinstance(last, str) and last.strip():
-            return last.strip()
+            return _clean_reply(last)
     return ""
 
 # ---------------------------------------------------------------------------
