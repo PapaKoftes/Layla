@@ -291,6 +291,39 @@ export function _addApplyBtnToCodeBlock(wrap, codeEl) {
   wrap.appendChild(applyBtn);
 }
 
+// Enhance every <pre> code block inside a rendered markdown container: syntax highlight +
+// a "copy" button (ChatGPT-style) + an "apply-to-file" button. Idempotent — the streaming
+// path re-renders the bubble on each token, so this skips blocks already wrapped.
+export function enhanceCodeBlocks(mdEl) {
+  if (!mdEl || !mdEl.querySelectorAll) return;
+  mdEl.querySelectorAll('pre').forEach(function (pre) {
+    if (pre.parentNode && pre.parentNode.classList && pre.parentNode.classList.contains('code-wrap')) return;
+    var code = pre.querySelector('code');
+    if (code && window.hljs) { try { window.hljs.highlightElement(code); } catch (_e) { /* highlight is best-effort */ } }
+    var wrap = document.createElement('div');
+    wrap.className = 'code-wrap';
+    pre.parentNode.insertBefore(wrap, pre);
+    wrap.appendChild(pre);
+    var copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'copy-btn';
+    copyBtn.textContent = 'copy';
+    copyBtn.setAttribute('aria-label', 'Copy code');
+    copyBtn.onclick = function () {
+      var clipText = code ? code.innerText : pre.innerText;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(clipText).then(function () {
+          copyBtn.textContent = 'copied';
+          copyBtn.classList.add('copied');
+          setTimeout(function () { copyBtn.textContent = 'copy'; copyBtn.classList.remove('copied'); }, 1800);
+        });
+      }
+    };
+    wrap.appendChild(copyBtn);
+    if (code) _addApplyBtnToCodeBlock(wrap, code);
+  });
+}
+
 // ── Empty state ───────────────────────────────────────────────────────────────
 export function hideEmpty() {
   var e = document.getElementById('chat-empty');
@@ -472,31 +505,7 @@ export function addMsg(role, text, aspectName, deliberated, steps, uxStates, mem
       var parsed = '';
       try { parsed = marked.parse(text || ''); } catch (_) { parsed = (text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
       md.innerHTML = sanitizeHtml(parsed);
-      // Syntax highlight + copy buttons on code blocks
-      md.querySelectorAll('pre').forEach(function (pre) {
-        var code = pre.querySelector('code');
-        if (code && window.hljs) window.hljs.highlightElement(code);
-        var wrap = document.createElement('div');
-        wrap.className = 'code-wrap';
-        pre.parentNode.insertBefore(wrap, pre);
-        wrap.appendChild(pre);
-        var copyBtn = document.createElement('button');
-        copyBtn.className = 'copy-btn';
-        copyBtn.textContent = 'copy';
-        copyBtn.onclick = function () {
-          var clipText = code ? code.innerText : pre.innerText;
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(clipText).then(function () {
-              copyBtn.textContent = 'copied';
-              copyBtn.classList.add('copied');
-              setTimeout(function () { copyBtn.textContent = 'copy'; copyBtn.classList.remove('copied'); }, 1800);
-            });
-          }
-        };
-        wrap.appendChild(copyBtn);
-        // Apply-to-file button (if filename detectable)
-        if (code) _addApplyBtnToCodeBlock(wrap, code);
-      });
+      enhanceCodeBlocks(md);   // syntax highlight + copy + apply-to-file buttons
       bubble.appendChild(md);
     } else {
       bubble.textContent = text;
