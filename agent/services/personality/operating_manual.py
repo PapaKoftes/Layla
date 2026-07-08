@@ -66,6 +66,12 @@ def add_note(category: str, text: str) -> dict[str, Any]:
     text = (text or "").strip()
     if not text:
         return {"ok": False, "error": "text required"}
+    try:
+        from layla.memory.distill import is_memory_junk
+        if is_memory_junk(text):
+            return {"ok": False, "error": "rejected (run-echo/marker text)"}
+    except Exception:
+        pass
     category = category if category in NOTE_CATEGORIES else "other"
     with _db() as conn:
         cur = conn.execute(
@@ -151,6 +157,29 @@ def manual_markdown() -> str:
     if len(lines) <= 2:
         lines.append("_The manual is empty — it fills in as Layla learns how you work._")
     return "\n".join(lines).strip()
+
+
+_DIRECTIVE_CATEGORIES = ("comm_style", "preference", "habit", "workflow")
+
+
+def directives_for_prompt(max_chars: int = 500) -> str:
+    """Verbatim, always-injected interaction directives the user asked Layla to keep.
+
+    Unlike learnings/semantic-recall (relevance-gated), a directive like "always be concise"
+    or "call me by my first name" must apply to EVERY turn — so it lives here and is injected
+    whole. Only the interaction-shaping note categories; facts belong in learnings/durable facts.
+    """
+    try:
+        notes = [n for n in list_notes() if n.get("category") in _DIRECTIVE_CATEGORIES and (n.get("text") or "").strip()]
+    except Exception:
+        return ""
+    if not notes:
+        return ""
+    lines = [f"- {(n['text'] or '').strip()}" for n in notes]
+    body = "\n".join(lines)
+    if len(body) > max_chars:
+        body = body[:max_chars].rsplit("\n", 1)[0]
+    return "## How the user wants you to interact (their standing instructions — follow these)\n" + body
 
 
 def manual_for_prompt(max_chars: int = 600) -> str:
