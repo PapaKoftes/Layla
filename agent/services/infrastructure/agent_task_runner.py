@@ -17,6 +17,26 @@ logger = logging.getLogger("layla")
 
 _TASKS: dict[str, dict] = {}
 _TASKS_LOCK = threading.Lock()
+_MAX_FINISHED_TASKS = 100  # bound the in-memory registry (durable copy lives in SQLite)
+_TERMINAL_STATES = {"done", "completed", "failed", "error", "cancelled", "timeout"}
+
+
+def _evict_finished_tasks_locked() -> None:
+    """Keep the in-memory _TASKS registry bounded: retain all non-terminal tasks plus only the
+    most recent _MAX_FINISHED_TASKS finished ones. Without this the dict grew for the whole
+    process lifetime, each terminal row still holding its full autonomous-run result +
+    progress events. Older finished tasks are always recoverable from the SQLite copy.
+    Caller must hold _TASKS_LOCK."""
+    try:
+        finished = [(tid, t) for tid, t in _TASKS.items()
+                    if str(t.get("status", "")) in _TERMINAL_STATES]
+        if len(finished) <= _MAX_FINISHED_TASKS:
+            return
+        finished.sort(key=lambda kv: str(kv[1].get("created_at", "")))
+        for tid, _ in finished[: len(finished) - _MAX_FINISHED_TASKS]:
+            _TASKS.pop(tid, None)
+    except Exception:
+        pass
 
 
 def _build_reasoning_tree_summary(state: dict) -> dict:
@@ -325,6 +345,7 @@ def enqueue_threaded_autonomous(req: dict, *, default_priority: int, kind: str) 
             **task_row_extra,
         }
         _TASKS[task_id] = task_row
+        _evict_finished_tasks_locked()
     try:
         from layla.memory.db import save_background_task
 
