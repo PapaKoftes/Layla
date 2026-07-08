@@ -39,6 +39,25 @@ def _evict_finished_tasks_locked() -> None:
         pass
 
 
+def cancel_all_workers() -> int:
+    """Terminate any live subprocess workers on shutdown (2e) so a child build/run doesn't outlive
+    the parent (the classic 'zombie build still running after Ctrl-C'). Returns count cancelled."""
+    n = 0
+    try:
+        from services.infrastructure.background_subprocess import cancel_worker
+        with _TASKS_LOCK:
+            procs = [t.get("worker_proc") for t in _TASKS.values() if t.get("worker_proc")]
+        for proc in procs:
+            try:
+                cancel_worker(proc, grace_seconds=2.0)
+                n += 1
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return n
+
+
 def _build_reasoning_tree_summary(state: dict) -> dict:
     """Summary-only reasoning tree; no chain-of-thought text."""
     st = state or {}

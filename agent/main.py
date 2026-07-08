@@ -640,6 +640,14 @@ async def lifespan(app: FastAPI):
         pass
     if hasattr(app.state, "scheduler"):
         app.state.scheduler.shutdown(wait=False)
+    # Terminate any live subprocess workers so a child build/run doesn't outlive us (audit 2e).
+    try:
+        from services.infrastructure.agent_task_runner import cancel_all_workers
+        _nw = cancel_all_workers()
+        if _nw:
+            logger.info("cancelled %d live subprocess worker(s) on shutdown", _nw)
+    except Exception:
+        pass
     # Checkpoint the WAL into the main DB and close this thread's connection on the way out, so
     # the -wal/-shm files don't linger large after a clean shutdown (audit 2c). Best-effort.
     try:

@@ -37,6 +37,18 @@ def _health_checks() -> tuple[bool, str]:
     except Exception as e:
         logger.debug("health db: %s", e)
         return False, "db_unavailable"
+    # Lifecycle-1: a read-only / relocated DB previously reported healthy (the check was read-only).
+    # Probe writability so a read-only mount or a full/locked-out DB surfaces here.
+    try:
+        import os as _os
+
+        from layla.memory.db_connection import _resolve_db_path
+        _dbp = _resolve_db_path()
+        _target = _dbp if _dbp.exists() else _dbp.parent
+        if not _os.access(str(_target), _os.W_OK):
+            return False, "db_readonly"
+    except Exception as e:
+        logger.debug("health db writability: %s", e)
     return True, "ok"
 
 
@@ -369,6 +381,14 @@ def health(request: Request):
         try:
             mf = (cfg.get("model_filename") or "")
             payload["active_model"] = Path(str(mf)).name if mf else ""
+            # Lifecycle-1: surface whether the configured model file actually exists on disk, so a
+            # missing GGUF is visible in /health instead of only failing at the first inference.
+            try:
+                import runtime_safety as _rs_h
+                _mdir = Path(cfg.get("models_dir") or _rs_h.default_models_dir())
+                payload["model_present"] = bool(mf) and (_mdir / Path(str(mf)).name).exists()
+            except Exception:
+                payload["model_present"] = None
         except Exception:
             payload["active_model"] = ""
         payload["effective_config"] = build_effective_config_public(cfg, _eff)

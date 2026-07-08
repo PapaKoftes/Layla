@@ -193,6 +193,22 @@ def _bg_cleanup() -> None:
             _tail_trim_file(_AUDIT_LOG, int(_c.get("audit_log_max_bytes", 2_000_000) or 2_000_000))
             _tail_trim_file(_EXEC_LOG, int(_c.get("execution_log_max_bytes", 5_000_000) or 5_000_000))
             _tail_trim_file(_AUTONOMOUS_AUDIT, int(_c.get("autonomous_audit_max_bytes", 5_000_000) or 5_000_000))
+            # LOW: the other append-only logs + crash dumps also had no rotation.
+            _tail_trim_file(_GOV_PATH / "layla-events.log", int(_c.get("events_log_max_bytes", 2_000_000) or 2_000_000))
+            _tail_trim_file(Path.home() / ".layla" / "investigation_reuse.jsonl",
+                            int(_c.get("investigation_reuse_max_bytes", 5_000_000) or 5_000_000))
+            try:
+                _cd = Path.home() / ".layla" / "crashes"
+                if _cd.is_dir():
+                    _keep = int(_c.get("crash_dumps_keep", 50) or 50)
+                    _dumps = sorted(_cd.glob("crash_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+                    for _old in _dumps[_keep:]:
+                        try:
+                            _old.unlink()
+                        except Exception:
+                            pass
+            except Exception:
+                pass
             # One-time: drop the pre-1.0 whole-file execution_log.json (superseded by .jsonl).
             if _EXEC_LOG_LEGACY.exists():
                 try:

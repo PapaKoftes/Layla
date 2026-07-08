@@ -109,6 +109,10 @@ def schedule_slot(priority: int = PRIORITY_AGENT):
         if snap["cpu_percent"] >= hard_cpu or snap["ram_percent"] >= hard_ram:
             raise RuntimeError("system_busy")
 
+    # 6a: bound the wait. Without a deadline a single wedged slot-holder (e.g. a hung native
+    # llama.cpp call) blocked EVERY queued request forever. After admission_max_wait_seconds we
+    # give up and raise system_busy (the caller already handles it gracefully) rather than hang.
+    _deadline = time.monotonic() + float(cfg.get("admission_max_wait_seconds", 300) or 300)
     with _cv:
         jid = _next_job_id
         _next_job_id += 1
@@ -122,6 +126,14 @@ def schedule_slot(priority: int = PRIORITY_AGENT):
                 heapq.heappop(_queue)
                 _active_jobs += 1
                 break
+            if time.monotonic() > _deadline:
+                try:
+                    _queue.remove(entry)
+                    heapq.heapify(_queue)
+                except ValueError:
+                    pass
+                _cv.notify_all()
+                raise RuntimeError("system_busy")
             _cv.wait(timeout=0.05)
 
     try:
