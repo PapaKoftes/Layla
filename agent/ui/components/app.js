@@ -32,7 +32,7 @@ import {
   laylaShowTypingIndicator, laylaRemoveTypingIndicator,
   toggleSendButton, UX_STATE_LABELS,
   laylaAgentStreamTimeoutMs, laylaStalledSilenceMs,
-  _renderDeliberationTranscript,
+  _renderDeliberationTranscript, enhanceCodeBlocks,
 } from './chat-render.js';
 import { formatLaylaLabelHtml } from './aspect.js';
 
@@ -584,6 +584,8 @@ export async function send() {
             if (bubble) {
               if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
                 try { bubble.innerHTML = sanitize(marked.parse(full)); } catch (_mdErr) { bubble.textContent = full; }
+                // ChatGPT-style copyable code blocks (syntax highlight + copy + apply buttons).
+                try { enhanceCodeBlocks(bubble); } catch (_e) { console.debug('app:', _e); }
               } else { bubble.textContent = full; }
             }
             if (thinkBox) { try { thinkBox.open = false; } catch (_e) { console.debug('app:', _e); } }
