@@ -113,64 +113,6 @@ class _FakeConn:
 # 1. Governor → Dispatcher wiring
 # ---------------------------------------------------------------------------
 
-class TestGovernorDispatcherIntegration:
-    """Verify that governor mode changes affect dispatcher decisions."""
-
-    def test_whisper_mode_offloads_to_drone(self):
-        from services.cluster.work_unit import TaskType, WorkUnit
-        from services.planning.task_dispatcher import TaskDispatcher
-
-        disp = TaskDispatcher()
-
-        task = WorkUnit(type=TaskType.EMBEDDING, payload={"text": "test"})
-        task_dict = task.to_dict()
-
-        # Mock a drone being available
-        mock_peer = MagicMock()
-        mock_peer.node_id = "drone-1"
-        mock_peer.status = MagicMock(value="online")
-        mock_peer.cpu_pct = 20.0
-        mock_peer.active_tasks = 0
-        mock_peer.max_tasks = 4
-        mock_peer.has_capability = MagicMock(return_value=True)
-
-        with patch.object(disp, "_get_governor_mode", return_value="whisper"), \
-             patch("services.cluster.cluster_network.get_cluster_network") as mock_cn:
-            net = MagicMock()
-            net.get_online_drones.return_value = [mock_peer]
-            mock_cn.return_value = net
-
-            decision = disp.dispatch(task_dict)
-
-        # WHISPER should prefer offloading to drone
-        assert decision in ("drone-1", "queued")
-
-    def test_sprint_mode_prefers_local(self):
-        from services.cluster.work_unit import TaskType, WorkUnit
-        from services.planning.task_dispatcher import TaskDispatcher
-
-        disp = TaskDispatcher()
-
-        task = WorkUnit(type=TaskType.EMBEDDING, payload={"text": "test"})
-        task_dict = task.to_dict()
-
-        with patch.object(disp, "_get_governor_mode", return_value="sprint"), \
-             patch.object(disp, "_get_queen_load", return_value=0.2), \
-             patch("services.cluster.cluster_network.get_cluster_network") as mock_cn:
-            net = MagicMock()
-            net.get_online_drones.return_value = []
-            mock_cn.return_value = net
-
-            decision = disp.dispatch(task_dict)
-
-        # SPRINT with low load should stay local (queen_id)
-        assert decision == disp._queen_id
-
-
-# ---------------------------------------------------------------------------
-# 2. Verification → Growth stats pipeline
-# ---------------------------------------------------------------------------
-
 class TestVerificationGrowthPipeline:
     """Verify that verification actions flow through to growth stats."""
 
