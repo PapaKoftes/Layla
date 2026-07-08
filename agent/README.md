@@ -99,7 +99,7 @@ agent/
     css/layla.css          # Main stylesheet (2,200+ lines, Warframe theme)
     js/                    # 16 ES modules (8,000+ lines)
     index.html             # Three-panel SPA
-  tests/                   # 11,000+ test functions
+  tests/                   # 2,900+ tests (2,936 collected)
   docs/                    # Setup guides, ADRs, vision roadmap
 discord_bot/
   bot.py                   # Discord bot with 20+ slash commands
