@@ -16,7 +16,8 @@ AGENT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = AGENT_DIR.parent
 GOV_PATH = AGENT_DIR / ".governance"
 APPROVAL_FILE = GOV_PATH / "approvals.json"
-EXEC_LOG_FILE = GOV_PATH / "execution_log.json"
+EXEC_LOG_FILE = GOV_PATH / "execution_log.jsonl"  # append-only JSON-lines (see log_execution)
+_EXEC_LOG_LEGACY = GOV_PATH / "execution_log.json"  # pre-1.0 whole-file array; removed by _bg_cleanup
 IDENTITY_FILE = AGENT_DIR / "system_identity.txt"
 PERSONALITY_EXPRESSION_FILE = AGENT_DIR / "personality_expression.txt"
 COGNITIVE_LENS_FILE = AGENT_DIR / "cognitive_lens.txt"
@@ -1118,14 +1119,12 @@ def log_execution(tool_name: str, payload: dict) -> None:
     }
     try:
         GOV_PATH.mkdir(parents=True, exist_ok=True)
+        # Append-only JSON-lines: one object per line, NO read-back. The previous whole-file
+        # read+append+rewrite was O(n) per call — O(n²) over a session — and grew unbounded.
+        # A single open-append is O(1); _bg_cleanup tail-trims this file to execution_log_max_bytes.
+        line = json.dumps(entry, ensure_ascii=False)
         with path_lock(EXEC_LOG_FILE):
-            data = []
-            if EXEC_LOG_FILE.exists():
-                try:
-                    data = json.loads(EXEC_LOG_FILE.read_text(encoding="utf-8"))
-                except Exception:
-                    data = []
-            data.append(entry)
-            EXEC_LOG_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            with open(EXEC_LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
     except Exception:
         pass
