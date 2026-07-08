@@ -106,3 +106,63 @@ def close_thread_connection() -> None:
             pass
         _thread_local.connection = None
         _thread_local.connection_path = None
+
+
+def verify_and_recover_db() -> str:
+    """Startup integrity gate (audit 3a). Run PRAGMA quick_check on the live DB; if it is
+    corrupt, move it aside and restore the newest backup — otherwise migrate() throws, gets
+    swallowed as a warning, and the app runs broken, failing on every DB-touching request.
+
+    Returns: 'ok' (healthy or fresh install) | 'recovered' (restored from backup) |
+    'corrupt_no_backup' (moved aside; a fresh DB will be created) | 'error'.
+    """
+    import shutil
+    try:
+        db_path = Path(_resolve_db_path())
+        if not db_path.exists() or int(db_path.stat().st_size) == 0:
+            return "ok"  # fresh install — nothing to check
+        c = None
+        try:
+            c = sqlite3.connect(str(db_path))
+            row = c.execute("PRAGMA quick_check").fetchone()
+            if row and str(row[0]).lower() == "ok":
+                return "ok"
+            logger.critical("layla.db failed integrity check: %s", (row[0] if row else "unknown"))
+        except Exception as e:
+            logger.critical("layla.db could not be opened for integrity check: %s", e)
+        finally:
+            # MUST close before moving the file — an open handle locks it on Windows (WinError 32).
+            if c is not None:
+                try:
+                    c.close()
+                except Exception:
+                    pass
+        # Corrupt: move the bad file (+ WAL/SHM) aside, then restore the newest backup.
+        bad = Path(str(db_path) + ".corrupt")
+        try:
+            shutil.move(str(db_path), str(bad))
+            for suffix in ("-wal", "-shm"):
+                s = Path(str(db_path) + suffix)
+                if s.exists():
+                    s.unlink()
+        except Exception as e:
+            logger.critical("could not move corrupt DB aside: %s", e)
+            return "error"
+        backup_dir = db_path.parent / "backups"
+        backups = (sorted(backup_dir.glob("layla_*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
+                   if backup_dir.is_dir() else [])
+        if backups:
+            try:
+                shutil.copy2(str(backups[0]), str(db_path))
+                logger.critical("Recovered layla.db from backup %s (corrupt db saved as %s)",
+                                backups[0].name, bad.name)
+                return "recovered"
+            except Exception as e:
+                logger.critical("backup restore failed: %s (corrupt db saved as %s)", e, bad.name)
+                return "error"
+        logger.critical("No backup available to restore; a fresh DB will be created "
+                        "(corrupt db saved as %s)", bad.name)
+        return "corrupt_no_backup"
+    except Exception as e:
+        logger.error("verify_and_recover_db: %s", e)
+        return "error"

@@ -78,7 +78,22 @@ def write_file(path: str, content: str) -> dict:
         pass
     _maybe_file_checkpoint(target, "write_file")
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content, encoding="utf-8")
+    # Atomic write: temp file in the SAME dir + os.replace, so a crash/power-loss mid-write leaves
+    # either the old file or the fully-written new one — never a truncated partial (audit 7d). The
+    # previous write_text() truncated in place; this matches write_files_batch's durability (the
+    # single-file path was the common one AND the unsafe one).
+    _raw = content.encode("utf-8")
+    _fd, _tmp = tempfile.mkstemp(prefix=".layla_wf_", suffix=target.suffix or ".tmp", dir=str(target.parent))
+    try:
+        with os.fdopen(_fd, "wb") as _wf:
+            _wf.write(_raw)
+        Path(_tmp).replace(target)
+    except Exception:
+        try:
+            Path(_tmp).unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise
     _clear_read_freshness(target)
     return {"ok": True, "path": str(target)}
 
