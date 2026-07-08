@@ -63,9 +63,23 @@ class TestExtractPatchText:
 
 class TestMaybeSaveEchoMemory:
     @patch("services.infrastructure.outcome_writer._db_save_aspect_memory")
-    def test_echo_active_saves_immediately(self, mock_save):
+    def test_echo_no_longer_saves_raw_exchange(self, mock_save):
+        # The raw "User: … Echo replied: …" exchange echo was removed (run-log noise that
+        # could carry leaked markers into prompt injection). With no history, nothing saves.
         from services.infrastructure.outcome_writer import _maybe_save_echo_memory
         _maybe_save_echo_memory("echo", "Hello", "Hi there", [])
+        mock_save.assert_not_called()
+
+    @patch("services.infrastructure.outcome_writer._db_save_aspect_memory")
+    def test_echo_saves_distilled_session_pattern(self, mock_save):
+        # With real history (>=2 user topics) Echo still stores its distilled session-pattern note.
+        from services.infrastructure.outcome_writer import _maybe_save_echo_memory
+        history = [
+            {"role": "user", "content": "how do I center a div"},
+            {"role": "assistant", "content": "use flexbox"},
+            {"role": "user", "content": "what about vertical centering"},
+        ]
+        _maybe_save_echo_memory("echo", "what about vertical centering", "align-items: center", history)
         mock_save.assert_called()
 
     @patch("services.infrastructure.outcome_writer._db_save_aspect_memory")

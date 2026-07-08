@@ -43,9 +43,10 @@ def _maybe_save_echo_memory(
     turn_count = len(conversation_history) if conversation_history else 0
     is_echo = aspect_id == "echo"
 
-    if is_echo:
-        summary = f"User: {user_msg[:120]}. Echo replied: {reply[:250]}."
-        _db_save_aspect_memory("echo", summary)
+    # NOTE: we no longer store the raw "User: <msg>. Echo replied: <reply>" exchange as an
+    # aspect memory — that verbatim echo was run-log noise (and could carry a leaked marker)
+    # that then got injected into unrelated turns. The distilled session-pattern note below
+    # (recurring topics only) is the useful signal Echo actually needs.
 
     if turn_count > 0 and (turn_count % 5 == 0 or is_echo):
         try:
