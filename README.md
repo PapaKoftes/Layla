@@ -128,6 +128,12 @@ Options: `--prefer quality|balanced|lite|speed`, `--skip-model`, `--verify` (Pow
 - **Prefer your own system Python + winget** (no uv): `powershell -ExecutionPolicy Bypass -File install\fresh_install.ps1` on Windows, which installs Python 3.12 via winget and uses the same compiler-free wheels.
 - **Packaged Windows installer** (double-click `.exe`, embedded CPython): see [`installer/README.md`](installer/README.md). Runtime data may live under `%LOCALAPPDATA%\\Layla` via `LAYLA_DATA_DIR`.
 
+### Uninstall
+
+- **Windows** — run **`uninstall.ps1`** (or `uninstall.bat`) from the repo root. It stops/removes the `LaylaSvc` service, the `Jinx Agent Server` scheduled task, the two firewall rules, the `LAYLA_INSTALL_ROOT` env var, and the `.venv`; it then offers to delete your data (`~/.layla`, models). If you used the packaged `.exe`, use its own entry in **Add/Remove Programs**.
+- **Shared packages are NOT auto-removed** (they may be used by other software): Python 3.12 and, if you enabled the tunnel, `cloudflared` — the uninstaller prints the `winget uninstall` commands so you can remove them manually.
+- **macOS/Linux** — delete the repo folder and `~/.layla`; no system services are installed.
+
 ---
 
 ## Getting a model
