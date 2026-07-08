@@ -8,7 +8,7 @@ one **QUEEN** (desktop) and one or more **DRONE** workers (laptops).
 ## Prerequisites
 
 - **Windows 10/11** on all machines
-- **Python 3.10+** installed and on PATH
+- **Python 3.11 or 3.12** installed and on PATH (`requires-python = ">=3.11,<3.13"`)
 - **Git** (recommended for updates)
 - **Tailscale** installed on all machines (for cross-network mesh VPN)
 - All machines on the same Tailscale network (or same LAN for mDNS discovery)

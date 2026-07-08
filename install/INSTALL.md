@@ -85,7 +85,8 @@ Skip the tunnel and use the LAN address the wizard prints.
 - **chromadb errors**: you don't need it — `[cpu]` omits it and memory falls back automatically.
 - **Slow generation**: expected on CPU. Use `-Prefer lite`/`speed`, or run the model on the main
   PC and connect the laptop to it via the pairing wizard.
-- **Use the supported installer**: `install\fresh_install.ps1` (compiler-free). The older root
-  `install.ps1` / `INSTALL.bat` require a build toolchain and are deprecated — prefer the above.
+- **Use the supported installer**: the root `install.ps1` / `INSTALL.bat` (or `install.sh` on
+  Unix) now forward to `install\bootstrap.ps1`, the compiler-free uv installer — no build
+  toolchain required. `install\fresh_install.ps1` remains available for a from-scratch reinstall.
 ```
 

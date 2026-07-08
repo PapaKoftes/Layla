@@ -15,9 +15,10 @@ services:
       # Optional: mount your knowledge docs directory
       # - ./knowledge:/app/knowledge:ro
     environment:
-      - LAYLA_DB_PATH=/app/data/layla.db
-      # Copy your runtime_config.json here and reference it:
-      # - LAYLA_CONFIG_PATH=/app/data/runtime_config.json
+      # All persistent state (SQLite DB, runtime_config.json, downloaded models) resolves
+      # from LAYLA_DATA_DIR — point it at the mounted volume so it survives recreation.
+      # (The old LAYLA_DB_PATH / LAYLA_CONFIG_PATH env vars were read nowhere in the app.)
+      - LAYLA_DATA_DIR=/app/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
