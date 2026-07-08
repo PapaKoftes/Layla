@@ -115,7 +115,7 @@ jobs:
       - name: Generate doctor-report.json
         working-directory: agent
         run: |
-          python -c "import json; from services.system_doctor import run_capability_probe, run_diagnostics; d=run_diagnostics(); d['capability_probe']=run_capability_probe(browser_launch=False, voice_micro=False); print(json.dumps(d, indent=2))" > doctor-report.json
+          python -c "import json; from services.infrastructure.system_doctor import run_capability_probe, run_diagnostics; d=run_diagnostics(); d['capability_probe']=run_capability_probe(browser_launch=False, voice_micro=False); print(json.dumps(d, indent=2))" > doctor-report.json
       - uses: actions/upload-artifact@v4
         with:
           name: doctor-report
