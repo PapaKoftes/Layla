@@ -303,6 +303,24 @@ def handle_reasoning_intent(
     text = _polish_output(text, cfg)
 
     # ------------------------------------------------------------------
+    # Context attribution (default on) — attribute the reply to the memory it drew on, so the UI
+    # can show provenance. Makes the previously-dead context_attribution_enabled flag live.
+    # ------------------------------------------------------------------
+    try:
+        if cfg.get("context_attribution_enabled", True) and text and (_precomputed_recall or "").strip():
+            from services.context.context_attribution import attribute_response, persist_attributions
+            _attr = attribute_response(
+                text,
+                [{"id": "memory_recall", "label": "Recalled memory", "content": _precomputed_recall}],
+                cfg=cfg,
+            )
+            _rid = str(state.get("execution_id") or "")
+            if _rid:
+                persist_attributions(_rid, _attr)
+    except Exception as _ce:
+        logger.debug("context_attribution skipped: %s", _ce)
+
+    # ------------------------------------------------------------------
     # Initiative suggestion
     # ------------------------------------------------------------------
     try:

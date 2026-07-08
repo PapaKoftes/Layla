@@ -177,9 +177,23 @@ def semantic_recall(query: str, k: int = 5, domain_boost_terms: list[str] | None
             augmented_query, k=k, use_rerank=True, use_mmr=use_mmr, use_hyde=use_hyde,
             domain_boost_keywords=domain_boost_terms,
         )
-        if not results:
+        lines = [c for c in (_row_content(r) for r in results) if c] if results else []
+        # mem0: when enabled + installed, merge external-memory hits into recall (makes the
+        # previously-dead mem0_enabled flag live). Best-effort; never blocks local recall.
+        if cfg.get("mem0_enabled"):
+            try:
+                from services.retrieval.mem0_integration import is_available, search_memories
+                if is_available():
+                    _m = search_memories(cfg, query, limit=k)
+                    for _hit in (_m.get("results") or _m.get("memories") or []):
+                        _txt = (_hit.get("memory") or _hit.get("text") or _hit.get("content") or "").strip() \
+                            if isinstance(_hit, dict) else str(_hit).strip()
+                        if _txt and _txt not in lines:
+                            lines.append(_txt)
+            except Exception as _me:
+                logger.debug("mem0 recall merge skipped: %s", _me)
+        if not lines:
             return ""
-        lines = [c for c in (_row_content(r) for r in results) if c]
         return "\n".join(lines)
     except Exception as e:
         logger.warning("ChromaDB failed, falling back to FTS: %s", e)
