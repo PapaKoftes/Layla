@@ -66,9 +66,20 @@ def load_mcp_stdio_servers(cfg: dict) -> list[McpStdioServerSpec]:
         return []
     raw = cfg.get("mcp_stdio_servers")
     raw = raw if isinstance(raw, list) else []
+    # Operator-configured servers (mcp_stdio_servers) run under mcp_client_enabled —
+    # that is the operator's explicit choice. Plugin-DECLARED servers, however, ship a
+    # subprocess command inside third-party plugin code, so they additionally require
+    # plugin code-execution consent (plugins_enabled) — otherwise an untrusted plugin
+    # could launch an arbitrary process the moment the MCP client is switched on.
+    plugin_servers = list(_plugin_mcp_servers) if cfg.get("plugins_enabled") else []
+    if _plugin_mcp_servers and not cfg.get("plugins_enabled"):
+        logger.warning(
+            "mcp_client: ignoring %d plugin-declared MCP server(s) because plugins_enabled is off",
+            len(_plugin_mcp_servers),
+        )
     out: list[McpStdioServerSpec] = []
     seen: set[str] = set()
-    for i, item in enumerate([*raw, *_plugin_mcp_servers]):
+    for i, item in enumerate([*raw, *plugin_servers]):
         if not isinstance(item, dict):
             continue
         name = str(item.get("name") or f"server_{i}")
