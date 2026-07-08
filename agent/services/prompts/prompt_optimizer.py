@@ -205,10 +205,9 @@ _INTENT_TEMPLATES: dict[str, str] = {
         "Cover: purpose, inputs/outputs, edge cases, algorithmic complexity, and usage examples."
     ),
     "research": (
-        "Research {subject}. "
-        "Provide: a concise overview, key concepts, current best practices, "
-        "relevant tools/libraries, and practical recommendations. "
-        "Cite sources where possible."
+        "Research {subject} and answer directly. "
+        "Cover what actually matters for the question at the depth it calls for; "
+        "cite sources where it helps. Do not pad with a fixed section skeleton."
     ),
     "analysis": (
         "Analyze {subject} covering: {details}. "
@@ -239,11 +238,33 @@ def _extract_subject(text: str, intent: str) -> str:
     return " ".join(words[:min(8, len(words))])
 
 
+# Turns we must NOT restructure: short/conversational ones, or ones that already state
+# their own length/format. Imposing an essay template on "what's a decorator? one sentence"
+# both overrides the user AND makes a small model emit rigid Overview/Key-Concepts/...
+# scaffolding on every reply. Layla is a chat companion — enhance, never override.
+_PRESERVE_PHRASING_RE = re.compile(
+    r"\b(one|1|single|a)\s+(sentence|word|line|paragraph)\b"
+    r"|\b(brief(ly)?|short(ly)?|concise(ly)?|quick(ly)?|simply|eli5|one-?liner)\b"
+    r"|\btl;?dr\b|\bin\s+\d+\s+words?\b",
+    re.IGNORECASE,
+)
+
+
+def _should_preserve_user_phrasing(text: str) -> bool:
+    """True when the optimizer must leave the user's wording alone (short or self-constrained)."""
+    t = (text or "").strip()
+    if len(t.split()) <= 12:
+        return True
+    return bool(_PRESERVE_PHRASING_RE.search(t))
+
+
 def _structural_rewrite(text: str, intent: str) -> str | None:
     """
     Apply an intent-specific template to restructure the prompt.
     Returns rewritten string, or None if no template applies.
     """
+    if _should_preserve_user_phrasing(text):
+        return None
     template = _INTENT_TEMPLATES.get(intent)
     if not template:
         return None
@@ -264,8 +285,8 @@ _FORMAT_HINTS: dict[str, str] = {
     "code_write":    "\n\nOutput format: provide only the code block(s) with explanatory comments inline. No preamble.",
     "code_fix":      "\n\nOutput format: (1) Root cause, (2) Fixed code, (3) Test to verify the fix.",
     "code_refactor": "\n\nOutput format: (1) List of changes, (2) Full refactored code.",
-    "research":      "\n\nOutput format: structured markdown with headers: Overview | Key Concepts | Tools | Recommendations | References.",
-    "analysis":      "\n\nOutput format: structured markdown with headers: Summary | Findings | Implications | Recommendations.",
+    "research":      "\n\nUse structure only if the answer is long enough to need it; a short question gets a short direct answer.",
+    "analysis":      "\n\nLead with the answer/summary; add structure only if the depth warrants it.",
     "planning":      "\n\nOutput format: numbered step list with: step name | effort | depends_on | success_criteria.",
     "writing":       "\n\nOutput format: clean markdown prose. Use headers if document length > 200 words.",
     "data_transform":"\n\nOutput format: provide the transformation code and a worked example.",
@@ -429,8 +450,10 @@ def optimize(
     elif output_fmt == "code":
         enrichments.append("[Required output: only code, no prose explanation.]")
 
-    # Add output format template for intent
-    format_hint = _FORMAT_HINTS.get(intent, "")
+    # Add output format template for intent — but NEVER on short/self-constrained turns
+    # (forcing "Overview | Key Concepts | Tools | …" headers onto "what's X? one sentence"
+    # is the scaffolding that made every reply read like a textbook).
+    format_hint = "" if _should_preserve_user_phrasing(user_message) else _FORMAT_HINTS.get(intent, "")
 
     # ── Step 5: Guidance constraints (optional)
     guidance_hint = _guidance_constrain(optimized, intent)

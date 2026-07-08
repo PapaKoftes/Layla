@@ -50,6 +50,16 @@ _LEARNING_REJECT_RE = re.compile(
 )
 
 
+def is_memory_junk(content: str) -> bool:
+    """Structural check shared by every durable-memory write primitive.
+
+    True when content is a run-log echo ('Objective: …', 'User: … replied: …'), a research
+    answer-template, or carries a leaked control marker — none of which is knowledge and all
+    of which hijack the prompt when later injected. Cheap regex; no config, no scoring.
+    """
+    return bool(content and _LEARNING_REJECT_RE.search(content))
+
+
 def passes_learning_quality_gate(content: str) -> tuple[bool, float]:
     """When learning_quality_gate_enabled, reject low-score content before DB insert."""
     # Hard structural reject (applies even if the gate is disabled): run-log echoes and
