@@ -151,6 +151,7 @@ from layla.memory.telemetry_db import (
     log_telemetry_event,
 )
 from layla.memory.user_profile import (
+    DURABLE_FACT_KEYS,
     TIMELINE_EVENT_TYPES,
     USER_IDENTITY_KEYS,
     add_episode_event,
@@ -162,6 +163,7 @@ from layla.memory.user_profile import (
     get_active_goals,
     get_all_user_identity,
     get_aspect_memories,
+    get_durable_facts,
     get_earned_title,
     get_recent_episodes,
     get_recent_relationship_memories,
@@ -245,8 +247,10 @@ __all__ = [
     'add_timeline_event',
     'get_recent_timeline_events',
     'USER_IDENTITY_KEYS',
+    'DURABLE_FACT_KEYS',
     'get_user_identity',
     'get_all_user_identity',
+    'get_durable_facts',
     'set_user_identity',
     'create_episode',
     'add_episode_event',
