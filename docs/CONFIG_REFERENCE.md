@@ -59,8 +59,8 @@ For advanced users. Edit `agent/runtime_config.json` directly, or use **Settings
 | `safe_mode` | boolean | true | Require approval for file writes and code execution. |
 | `uncensored` | boolean | true | Uncensored model behavior. |
 | `nsfw_allowed` | boolean | true | When true with `uncensored`, system head allows adult/NSFW policy lines. Web UI: left **Options → Content policy** or ⚙ Settings → Safety. |
-| `max_tool_calls` | number | 2 | Max tool calls per agent turn (before effective-config / pressure tuning). |
-| `max_runtime_seconds` | number | 30 | Max wall-clock time for a normal agent turn (research uses `research_max_runtime_seconds`). |
+| `max_tool_calls` | number | 5 | Max tool calls per agent turn (before effective-config / pressure tuning). |
+| `max_runtime_seconds` | number | 900 | Max wall-clock time for a normal agent turn (research uses `research_max_runtime_seconds`). |
 | `tool_call_timeout_seconds` | number | 60 | Max seconds a single tool call may run before being killed (5–600). |
 | `approval_ttl_seconds` | number | 3600 | Seconds before a pending approval expires and returns 410 (60–86400). Default: 1 hour. |
 | `chat_light_max_runtime_seconds` | number | 90 | Wall-clock cap for short non-tool chat (`_is_lightweight_chat_turn`); bounded by `max_runtime_seconds`, floor 30s. |

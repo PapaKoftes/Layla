@@ -49,6 +49,7 @@ import {
 import {
   laylaSearchOpenConv, laylaSearchOpenMemory,
   laylaSearchOpenWorkspace, laylaSearchOpenKnowledge,
+  laylaGlobalSearchInput,
 } from '../components/search.js';
 
 import { laylaShowPlanViz } from '../components/plan-viz.js';
@@ -397,6 +398,9 @@ window.laylaSearchOpenConv = laylaSearchOpenConv;
 window.laylaSearchOpenMemory = laylaSearchOpenMemory;
 window.laylaSearchOpenWorkspace = laylaSearchOpenWorkspace;
 window.laylaSearchOpenKnowledge = laylaSearchOpenKnowledge;
+// index.html search input calls this inline via onfocus — bridge it so focus doesn't throw
+// ReferenceError (typing already routes through the data-on-input delegated action).
+window.laylaGlobalSearchInput = laylaGlobalSearchInput;
 
 // ── plan-viz.js ── (B: dynamic onclick in workspace.js)
 window.laylaShowPlanViz = laylaShowPlanViz;

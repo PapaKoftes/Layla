@@ -22,7 +22,7 @@ your rules.
 | Artifact detection + panel | ✅ REAL | `ui/js/layla-artifacts.js`, server-side extraction |
 | Memory/learnings browser | ✅ REAL | `ui/js/layla-memory.js`, `routers/memory.py` |
 | Global smart search | ✅ REAL | `ui/js/layla-search.js`, `routers/search.py` |
-| Voice TTS/STT | ✅ REAL | faster-whisper + kokoro-onnx in requirements.txt |
+| Voice TTS/STT | ✅ REAL | faster-whisper (STT) in base requirements; kokoro-onnx (TTS) is an opt-in `[voice-kokoro]` extra — GPLv3, not in base requirements.txt |
 | Plan visualization | ✅ REAL | `ui/js/layla-plan-viz.js` |
 | Autonomous monitoring | ⚠️ PARTIAL | `ui/js/layla-autonomous.js` exists; event coverage incomplete |
 | German language learning | ✅ REAL | `services/german_mode.py`, `routers/german.py` |

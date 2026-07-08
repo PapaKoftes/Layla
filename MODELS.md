@@ -62,7 +62,7 @@ Lightweight, fast, surprisingly capable.
 | Model | Size | HuggingFace Link |
 |---|---|---|
 | **Qwen2.5-7B-Instruct-Q5_K_M** | ~5 GB | [bartowski/Qwen2.5-7B-Instruct-GGUF](https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF) |
-| **Llama-3.2-8B-Instruct-Q4_K_M** | ~5 GB | [bartowski/Llama-3.2-8B-Instruct-GGUF](https://huggingface.co/bartowski/Llama-3.2-8B-Instruct-GGUF) |
+| **Llama-3.1-8B-Instruct-Q4_K_M** | ~5 GB | [bartowski/Meta-Llama-3.1-8B-Instruct-GGUF](https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF) |
 | **Phi-3.5-mini-instruct-Q4_K_M** | ~2.5 GB | [bartowski/Phi-3.5-mini-instruct-GGUF](https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF) |
 | **Qwen2.5-Coder-7B-Instruct-Q5_K_M** *(coding)* | ~5 GB | [bartowski/Qwen2.5-Coder-7B-Instruct-GGUF](https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF) |
 

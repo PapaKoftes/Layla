@@ -20,8 +20,10 @@ VOLUME ["/app/models", "/app/data"]
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app/agent
 
-# Default config: database and knowledge under /app/data (set in runtime_config.json)
-ENV LAYLA_DB_PATH=/app/data/layla.db
+# Persist DB, runtime_config.json, and models under the mounted /app/data volume.
+# The app resolves all of these from LAYLA_DATA_DIR (db_connection.py / runtime_safety.py);
+# the old LAYLA_DB_PATH was read nowhere, so the DB silently landed outside the volume.
+ENV LAYLA_DATA_DIR=/app/data
 
 EXPOSE 8000
 
