@@ -18,6 +18,21 @@ def _manifest_path(pack_dir: Path) -> Path:
     return pack_dir / "manifest.json"
 
 
+def _rollback_cleanup(slug: str, dest: Path) -> None:
+    """Atomically undo a partial install (pack dir + venv + registry entry).
+
+    Prefers the dedicated ``skill_rollback`` module (which also tears down any
+    provisioned venv and registry row); falls back to a plain rmtree so a
+    failed install can never leave a half-written pack behind.
+    """
+    try:
+        from services.skills.skill_rollback import rollback_install
+        rollback_install(slug, dest)
+    except Exception as _rb_err:
+        logger.debug("skill_rollback unavailable, falling back to rmtree: %s", _rb_err)
+        shutil.rmtree(dest, ignore_errors=True)
+
+
 def list_installed() -> list[dict[str, Any]]:
     INSTALLED_DIR.mkdir(parents=True, exist_ok=True)
     out = []
@@ -77,7 +92,7 @@ def install_from_git(url: str, name: str | None = None) -> dict[str, Any]:
     except Exception as e:
         return {"ok": False, "error": str(e)}
     if not _manifest_path(dest).exists():
-        shutil.rmtree(dest, ignore_errors=True)
+        _rollback_cleanup(slug, dest)
         return {"ok": False, "error": "cloned repo missing manifest.json"}
 
     # Phase 6: validate manifest via skill_manifest module
@@ -86,11 +101,11 @@ def install_from_git(url: str, name: str | None = None) -> dict[str, Any]:
         from services.skills.skill_manifest import load_manifest, validate_manifest
         manifest_data = load_manifest(dest)
         if manifest_data is None:
-            shutil.rmtree(dest, ignore_errors=True)
+            _rollback_cleanup(slug, dest)
             return {"ok": False, "error": "manifest.json could not be parsed"}
         errors = validate_manifest(manifest_data)
         if errors:
-            shutil.rmtree(dest, ignore_errors=True)
+            _rollback_cleanup(slug, dest)
             return {"ok": False, "error": f"manifest validation failed: {'; '.join(errors)}"}
     except ImportError:
         # skill_manifest not available — allow install with basic check only
@@ -110,6 +125,32 @@ def install_from_git(url: str, name: str | None = None) -> dict[str, Any]:
         )
     except Exception as _reg_err:
         logger.debug("skill_registry registration skipped: %s", _reg_err)
+
+    # Optional sandbox provisioning: create a per-pack venv and install the
+    # manifest's declared pip dependencies. Off by default (heavy on low-end
+    # hardware, and declarative skills need no venv). When it fails we roll the
+    # whole install back atomically so no half-provisioned pack survives.
+    try:
+        from runtime_safety import load_config
+        _cfg = load_config() or {}
+    except Exception:
+        _cfg = {}
+    deps = [d for d in (manifest_data or {}).get("dependencies", []) if isinstance(d, str)]
+    if _cfg.get("skill_venv_enabled", False):
+        try:
+            from services.skills.skill_sandbox import create_venv, install_dependencies
+            ok_v, msg_v = create_venv(slug)
+            if not ok_v:
+                _rollback_cleanup(slug, dest)
+                return {"ok": False, "error": f"venv provisioning failed: {msg_v}"}
+            if deps:
+                ok_d, msg_d = install_dependencies(slug, deps)
+                if not ok_d:
+                    _rollback_cleanup(slug, dest)
+                    return {"ok": False, "error": f"dependency install failed: {msg_d}"}
+        except Exception as _venv_err:
+            _rollback_cleanup(slug, dest)
+            return {"ok": False, "error": f"venv provisioning error: {_venv_err}"}
 
     return {"ok": True, "path": str(dest), "id": slug}
 
