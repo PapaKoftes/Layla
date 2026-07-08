@@ -110,6 +110,11 @@ def apply_retention_policies(cfg: dict | None = None) -> dict[str, Any]:
             ("goal_progress", int(c.get("retention_goal_progress_days", 365)), None),
             ("aspect_memories", int(c.get("retention_aspect_memories_days", 365)), None),
             ("session_prompts", int(c.get("retention_session_prompts_days", 180)), None),
+            # M2: previously-unbounded tables. Each guarded by _cols() (skipped if absent/no created_at).
+            ("journal", int(c.get("retention_journal_days", 365)), None),
+            ("scheduler_history", int(c.get("retention_scheduler_history_days", 90)), None),
+            ("capability_events", int(c.get("retention_capability_events_days", 180)), None),
+            ("wakeup_log", int(c.get("retention_wakeup_log_days", 180)), None),
         ]
 
         # Special-case age-based retention (non-created_at)
@@ -121,6 +126,10 @@ def apply_retention_policies(cfg: dict | None = None) -> dict[str, Any]:
             ("tool_outcomes", int(c.get("retention_tool_outcomes_max_rows", 50000))),
             ("conversation_messages", int(c.get("retention_conversation_messages_max_rows", 200000))),
             ("outcome_evaluations", int(c.get("retention_outcome_evaluations_max_rows", 5000))),
+            # M2: learnings_archive is an INSERT-only sink (prune archives INTO it, nothing prunes
+            # it) — hard-cap it. strategy_stats grows with routing history.
+            ("learnings_archive", int(c.get("retention_learnings_archive_max_rows", 20000))),
+            ("strategy_stats", int(c.get("retention_strategy_stats_max_rows", 10000))),
         ]
 
         with _conn() as db:
