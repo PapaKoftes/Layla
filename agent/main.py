@@ -810,12 +810,44 @@ def _append_history(role: str, content: str) -> None:
 from shared_state import pending_file_lock as _pending_file_lock  # noqa: E402
 
 
+def _pending_is_actionable(entry: dict, now_iso: str) -> bool:
+    """A pending entry the user can still act on: status 'pending' and not past expiry.
+
+    Approved/denied entries belong to the audit log, not the pending list; expired ones
+    are dead. Filtering here (and self-healing the file below) keeps the approvals panel a
+    short list of real decisions instead of an ever-growing wall of resolved/expired junk.
+    """
+    if not isinstance(entry, dict):
+        return False
+    if (entry.get("status") or "pending") != "pending":
+        return False
+    exp = entry.get("expires_at")
+    if exp and isinstance(exp, str) and exp <= now_iso:  # ISO-8601 UTC strings sort chronologically
+        return False
+    return True
+
+
 def _read_pending() -> list:
     try:
         with _pending_file_lock:
-            if PENDING_FILE.exists():
-                data = json.loads(PENDING_FILE.read_text(encoding="utf-8"))
-                return data if isinstance(data, list) else []
+            if not PENDING_FILE.exists():
+                return []
+            data = json.loads(PENDING_FILE.read_text(encoding="utf-8"))
+            if not isinstance(data, list):
+                return []
+            now_iso = utcnow().isoformat()
+            live = [e for e in data if _pending_is_actionable(e, now_iso)]
+            # Self-heal: if we filtered anything, persist the pruned list so it can't grow
+            # unbounded. Also cap to the most recent 100 real pending entries as a backstop.
+            if len(live) > 100:
+                live = live[-100:]
+            if len(live) != len(data):
+                try:
+                    GOV_PATH.mkdir(parents=True, exist_ok=True)
+                    PENDING_FILE.write_text(json.dumps(live, indent=2), encoding="utf-8")
+                except Exception as _pe:
+                    logger.debug("_read_pending self-heal write failed: %s", _pe)
+            return live
     except Exception as e:
         logger.debug("_read_pending failed: %s", e)
     return []

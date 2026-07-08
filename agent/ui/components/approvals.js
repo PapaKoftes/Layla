@@ -35,7 +35,16 @@ function _build() {
         '<button type="button" class="sysdiag-refresh approvals-refresh">refresh</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="approvals-body">' +
-        '<section class="approvals-sec"><div class="approvals-sec-title">pending <button type="button" class="approvals-denyall" hidden>deny all</button></div><div class="approvals-pending"></div></section>' +
+        '<section class="approvals-sec">' +
+          '<div class="approvals-sec-title">' +
+            '<span>Pending decisions</span>' +
+            '<span class="approvals-count"></span>' +
+            '<span style="flex:1"></span>' +
+            '<button type="button" class="approvals-denyall" hidden>deny all</button>' +
+            '<button type="button" class="approvals-clearpending" hidden>clear all</button>' +
+          '</div>' +
+          '<div class="approvals-pending"></div>' +
+        '</section>' +
         '<section class="approvals-sec"><div class="approvals-sec-title">session grants <button type="button" class="approvals-clear">revoke all</button></div><div class="approvals-grants"></div></section>' +
       "</div>" +
     "</div>";
@@ -45,7 +54,30 @@ function _build() {
   _root.querySelector(".approvals-refresh").addEventListener("click", _load);
   _root.querySelector(".approvals-clear").addEventListener("click", _clearGrants);
   _root.querySelector(".approvals-denyall").addEventListener("click", _denyAllPending);
+  _root.querySelector(".approvals-clearpending").addEventListener("click", _clearAllPending);
 }
+
+// Human-readable one-liner per tool, so a row reads like a decision instead of raw JSON.
+function _argSummary(tool, args) {
+  if (!args || typeof args !== "object") return "";
+  const a = args;
+  switch (tool) {
+    case "write_file": case "apply_patch": case "search_replace":
+      return a.path || a.file || "";
+    case "git_commit":
+      return a.message ? '"' + String(a.message).slice(0, 60) + '"' : "commit";
+    case "run_shell": case "shell": case "run":
+      return a.command || a.cmd || "";
+    case "mcp_tools_call":
+      return (a.server ? a.server + ":" : "") + (a.tool || a.name || "");
+    default: {
+      const s = JSON.stringify(a);
+      return s.length > 80 ? s.slice(0, 80) + "…" : s;
+    }
+  }
+}
+
+const _RISK_COLOR = { high: "#e74c3c", medium: "#f7c94b", low: "#4caf50" };
 
 // Client-side expiry: the backend rejects expired entries on /approve, but /pending
 // can still list them until acted on. Drop anything past its expires_at so the panel
@@ -64,30 +96,52 @@ function _load() {
 
 async function _loadPending() {
   const box = _root.querySelector(".approvals-pending");
+  const countEl = _root.querySelector(".approvals-count");
+  const denyAllBtn = _root.querySelector(".approvals-denyall");
+  const clearBtn = _root.querySelector(".approvals-clearpending");
   box.innerHTML = '<div class="sysdiag-muted">loading…</div>';
   try {
     const d = await _get("/pending");
     const pending = (d.pending || []).filter((p) => (p.status || "pending") === "pending" && _notExpired(p));
-    const denyAllBtn = _root.querySelector(".approvals-denyall");
+    if (countEl) countEl.textContent = pending.length ? String(pending.length) : "";
     if (denyAllBtn) denyAllBtn.hidden = pending.length < 2;
-    if (!pending.length) { box.innerHTML = '<div class="sysdiag-muted">nothing pending</div>'; return; }
-    box.innerHTML = "";
-    pending.forEach((p) => {
-      const el = document.createElement("div");
-      el.className = "approvals-item";
-      const args = p.args ? JSON.stringify(p.args).slice(0, 120) : "";
-      el.innerHTML =
-        '<div class="approvals-item-main"><span class="approvals-tool">' + _esc(p.tool || "?") + "</span>" +
-        '<span class="approvals-args">' + _esc(args) + "</span></div>" +
-        '<div class="approvals-acts"><button type="button" class="approvals-yes" data-id="' + _esc(p.id) + '">approve</button>' +
-        '<button type="button" class="approvals-no" data-id="' + _esc(p.id) + '">deny</button></div>';
-      box.appendChild(el);
-    });
+    if (clearBtn) clearBtn.hidden = pending.length < 1;
+    if (!pending.length) {
+      box.innerHTML = '<div class="approvals-empty">✓ Nothing waiting on you — the agent isn\'t blocked on any approvals.</div>';
+      return;
+    }
+    // Group by tool so N writes/commits collapse into one tidy section instead of a wall.
+    const groups = {};
+    pending.forEach((p) => { (groups[p.tool || "?"] = groups[p.tool || "?"] || []).push(p); });
+    box.innerHTML = Object.keys(groups).sort().map((tool) => {
+      const items = groups[tool];
+      const rows = items.map((p) => {
+        const risk = String(p.risk_level || "").toLowerCase();
+        const dot = _RISK_COLOR[risk] ? '<span class="approvals-risk" title="' + _esc(risk) + ' risk" style="background:' + _RISK_COLOR[risk] + '"></span>' : "";
+        return '<div class="approvals-item">' +
+          '<div class="approvals-item-main">' + dot +
+            '<span class="approvals-args" title="' + _esc(JSON.stringify(p.args || {})) + '">' + _esc(_argSummary(tool, p.args) || "—") + '</span>' +
+          '</div>' +
+          '<div class="approvals-acts">' +
+            '<button type="button" class="approvals-yes" data-id="' + _esc(p.id) + '" title="Approve">✓</button>' +
+            '<button type="button" class="approvals-no" data-id="' + _esc(p.id) + '" title="Deny">✕</button>' +
+          '</div></div>';
+      }).join("");
+      return '<div class="approvals-group">' +
+        '<div class="approvals-group-head"><span class="approvals-tool">' + _esc(tool) + '</span>' +
+        '<span class="approvals-group-count">' + items.length + '</span></div>' + rows + '</div>';
+    }).join("");
     box.querySelectorAll(".approvals-yes").forEach((b) => b.addEventListener("click", () => _decide(b.getAttribute("data-id"), true)));
     box.querySelectorAll(".approvals-no").forEach((b) => b.addEventListener("click", () => _decide(b.getAttribute("data-id"), false)));
   } catch (e) {
     box.innerHTML = '<div class="sysdiag-err">error — ' + _esc(e.message || e) + "</div>";
   }
+}
+
+async function _clearAllPending() {
+  if (!window.confirm("Clear all pending approvals? The agent treats anything unapproved as denied.")) return;
+  try { await _post("/pending/clear", {}); if (window.showToast) window.showToast("Cleared pending approvals"); } catch (_) {}
+  _loadPending();
 }
 
 async function _loadGrants() {
