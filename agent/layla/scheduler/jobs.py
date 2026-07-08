@@ -23,6 +23,36 @@ _EXEC_LOG_LEGACY = _GOV_PATH / "execution_log.json"    # pre-1.0 array format â€
 _AUTONOMOUS_AUDIT = _GOV_PATH / "autonomous_audit.jsonl"  # per-step autonomous log (H7)
 
 
+def _prune_old_models(cfg: dict) -> int:
+    """Delete GGUF models beyond the newest `models_max_keep`, ALWAYS keeping the active one.
+
+    OFF by default (models_max_keep=0): superseded GGUFs are tens of GB (audit H8), but a user's
+    downloaded models must never be auto-deleted by surprise â€” this only prunes when the operator
+    opts in by setting a keep-count. Returns count deleted."""
+    try:
+        keep = int(cfg.get("models_max_keep", 0) or 0)
+        if keep <= 0:
+            return 0
+        import runtime_safety as _rs
+        mdir = Path(cfg.get("models_dir") or _rs.default_models_dir())
+        if not mdir.is_dir():
+            return 0
+        active = (cfg.get("model_filename") or "").strip()
+        ggufs = sorted(mdir.glob("*.gguf"), key=lambda p: p.stat().st_mtime, reverse=True)
+        candidates = [g for g in ggufs if g.name != active]  # newest-first, never the active model
+        deleted = 0
+        for g in candidates[keep:]:
+            try:
+                g.unlink()
+                deleted += 1
+                logger.info("_bg_cleanup: pruned superseded model %s", g.name)
+            except Exception:
+                pass
+        return deleted
+    except Exception:
+        return 0
+
+
 def _tail_trim_file(path: Path, max_bytes: int) -> None:
     """Best-effort: if `path` exceeds max_bytes, keep only the trailing max_bytes, starting at a
     line boundary. Shared by the flat audit log and the append-only JSONL logs so none grows
@@ -137,6 +167,18 @@ def _bg_cleanup() -> None:
                     _EXEC_LOG_LEGACY.unlink()
                 except Exception:
                     pass
+        except Exception:
+            pass
+        try:
+            # Reclaim disk: VACUUM oversized fallback vector stores (self-gating on size), and
+            # incremental-vacuum the live DB (effective on new auto_vacuum=INCREMENTAL installs).
+            from layla.memory.fallback_store import vacuum_open_fallback_stores
+            vacuum_open_fallback_stores(int(_c.get("vector_vacuum_min_bytes", 20_000_000) or 20_000_000))
+            from layla.memory.db_connection import _conn
+            with _conn() as db:
+                db.execute("PRAGMA incremental_vacuum")
+                db.commit()
+            _prune_old_models(_c)  # opt-in GGUF retention (models_max_keep); no-op by default
         except Exception:
             pass
         try:
