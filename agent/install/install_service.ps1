@@ -149,6 +149,11 @@ if ($startNow -ne 'n') {
         Write-Host "  Layla is running!" -ForegroundColor Green
         Write-Host "  Open http://localhost:8000/ui in your browser."
         Write-Host ""
+        Write-Host "  [!] NOTE: the service binds 0.0.0.0:8000 (LAN-accessible, for cluster/DRONE" -ForegroundColor Yellow
+        Write-Host "      nodes) — unlike the desktop app, which is localhost-only. Anyone on your" -ForegroundColor Yellow
+        Write-Host "      network can reach it. Keep remote_enabled off (default) so it requires" -ForegroundColor Yellow
+        Write-Host "      no auth only from loopback; enable auth before exposing it further." -ForegroundColor Yellow
+        Write-Host ""
     } else {
         Write-Host "  [!] Failed to start. Check logs at: $LogDir" -ForegroundColor Yellow
     }
