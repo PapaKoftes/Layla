@@ -80,7 +80,13 @@ def get_user_identity_tool() -> dict:
         return {"ok": False, "error": str(e)}
 
 def update_user_identity_tool(key: str, snapshot: str) -> dict:
-    """Update user identity. key: verbosity|humor_tolerance|formality|response_length|life_narrative_summary. snapshot: description."""
+    """Save a durable fact about the user (injected verbatim into every prompt, never ranked).
+
+    Style keys: verbosity | humor_tolerance | formality | response_length | life_narrative_summary.
+    Durable identity keys: name | pronouns | timezone | locale | os_platform | editor | indent_style | shell | project_roots.
+    Use this the moment the user states a stable fact about themselves (their name, timezone,
+    that they prefer spaces over tabs, their project directories, etc.). snapshot: the value.
+    """
     try:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
