@@ -290,9 +290,33 @@ class FallbackCollection:
         if where:
             rows = [r for r in rows if self._match(json.loads(r[2] or "{}"), where)]
         res: dict[str, list] = {"ids": [], "distances": [], "metadatas": [], "documents": []}
-        mat = (np.stack([np.frombuffer(r[1], dtype="float32") for r in rows])
-               if rows else np.empty((0, 0), dtype="float32"))
-        for q in (query_embeddings or []):
+        # Vectors may have been written by different embedder models over the store's
+        # lifetime, so buffer lengths can differ. np.stack() requires uniform shape, so keep
+        # only rows whose dimension matches the query (mixed dims => skip, never crash).
+        q_list = list(query_embeddings or [])
+        target_dim = None
+        for q in q_list:
+            try:
+                target_dim = int(_f32(q).shape[0])
+                break
+            except Exception:
+                continue
+        if target_dim is None and rows:
+            try:
+                target_dim = int(np.frombuffer(rows[0][1], dtype="float32").shape[0])
+            except Exception:
+                target_dim = None
+        _vecs: list = []
+        _kept: list = []
+        for r in rows:
+            v = np.frombuffer(r[1], dtype="float32")
+            if target_dim is not None and int(v.shape[0]) != target_dim:
+                continue
+            _vecs.append(v)
+            _kept.append(r)
+        rows = _kept
+        mat = np.stack(_vecs) if _vecs else np.empty((0, 0), dtype="float32")
+        for q in q_list:
             if not rows:
                 for key in res:
                     res[key].append([])
