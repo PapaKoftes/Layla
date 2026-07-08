@@ -35,7 +35,7 @@ function _build() {
         '<button type="button" class="sysdiag-refresh approvals-refresh">refresh</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="approvals-body">' +
-        '<section class="approvals-sec"><div class="approvals-sec-title">pending</div><div class="approvals-pending"></div></section>' +
+        '<section class="approvals-sec"><div class="approvals-sec-title">pending <button type="button" class="approvals-denyall" hidden>deny all</button></div><div class="approvals-pending"></div></section>' +
         '<section class="approvals-sec"><div class="approvals-sec-title">session grants <button type="button" class="approvals-clear">revoke all</button></div><div class="approvals-grants"></div></section>' +
       "</div>" +
     "</div>";
@@ -44,6 +44,17 @@ function _build() {
   _root.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); closeApprovals(); } });
   _root.querySelector(".approvals-refresh").addEventListener("click", _load);
   _root.querySelector(".approvals-clear").addEventListener("click", _clearGrants);
+  _root.querySelector(".approvals-denyall").addEventListener("click", _denyAllPending);
+}
+
+// Client-side expiry: the backend rejects expired entries on /approve, but /pending
+// can still list them until acted on. Drop anything past its expires_at so the panel
+// reflects auto-expire immediately.
+function _notExpired(p) {
+  const exp = p && p.expires_at;
+  if (!exp) return true;
+  const t = Date.parse(exp);
+  return Number.isNaN(t) || t > Date.now();
 }
 
 function _load() {
@@ -56,7 +67,9 @@ async function _loadPending() {
   box.innerHTML = '<div class="sysdiag-muted">loading…</div>';
   try {
     const d = await _get("/pending");
-    const pending = (d.pending || []).filter((p) => (p.status || "pending") === "pending");
+    const pending = (d.pending || []).filter((p) => (p.status || "pending") === "pending" && _notExpired(p));
+    const denyAllBtn = _root.querySelector(".approvals-denyall");
+    if (denyAllBtn) denyAllBtn.hidden = pending.length < 2;
     if (!pending.length) { box.innerHTML = '<div class="sysdiag-muted">nothing pending</div>'; return; }
     box.innerHTML = "";
     pending.forEach((p) => {
@@ -97,6 +110,21 @@ async function _decide(id, approve) {
   if (!id) return;
   if (approve && !window.confirm("Approve — this runs the tool. Continue?")) return;
   try { await _post(approve ? "/approve" : "/deny", { id }); } catch (_) {}
+  _loadPending();
+}
+
+async function _denyAllPending() {
+  try {
+    const d = await _get("/pending");
+    const ids = (d.pending || [])
+      .filter((p) => (p.status || "pending") === "pending" && _notExpired(p))
+      .map((p) => p.id)
+      .filter(Boolean);
+    if (!ids.length) { _loadPending(); return; }
+    if (!window.confirm("Deny all " + ids.length + " pending approval(s)?")) return;
+    await Promise.all(ids.map((id) => _post("/deny", { id }).catch(() => {})));
+    if (window.showToast) window.showToast("Denied " + ids.length + " pending approval(s)");
+  } catch (_) {}
   _loadPending();
 }
 
