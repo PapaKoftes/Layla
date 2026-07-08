@@ -72,6 +72,17 @@ if (Test-Path $nssmPath) {
     sc.exe delete "LaylaSvc" 2>$null
 }
 
+# Remove the inbound firewall rules install_service.ps1 created (else they orphan, pointing at
+# a program that no longer exists — a security-hygiene leak). Match the exact DisplayNames.
+foreach ($ruleName in @("Layla API (TCP 8000)", "Layla mDNS (UDP 5353)")) {
+    try {
+        if (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue) {
+            Remove-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
+            Write-Host "         Removed firewall rule: $ruleName" -ForegroundColor Green
+        }
+    } catch { }
+}
+
 # Remove Scheduled Task
 Unregister-ScheduledTask -TaskName "Jinx Agent Server" -Confirm:$false -ErrorAction SilentlyContinue
 
