@@ -77,36 +77,13 @@ def _save_outcome_memory(state: dict) -> None:
     tool_steps = [s for s in steps if s.get("action") and s["action"] != "reason"]
     if state.get("status") != "finished":
         return
-    # Prefer the user's actual text for outcome summaries stored as learnings.
-    objective = (state.get("original_goal") or state.get("objective") or "")[:200]
-    if tool_steps:
-        actions = ", ".join(s["action"] for s in tool_steps[:5])
-        facts = []
-        for s in tool_steps:
-            r = s.get("result") or {}
-            if isinstance(r, dict) and r.get("ok"):
-                if r.get("path"):
-                    facts.append(f"path:{r.get('path', '')[:80]}")
-                if r.get("entries") and isinstance(r["entries"], list):
-                    facts.append(f"listed {len(r['entries'])} items")
-        summary = f"Objective: {objective}. Did: {actions}. " + (" ".join(facts[:3]) if facts else "Completed.")
-    else:
-        final_text = ""
-        for s in reversed(steps):
-            if s.get("action") == "reason":
-                r = s.get("result", "")
-                final_text = r if isinstance(r, str) else ""
-                break
-        snippet = (final_text.strip()[:140] + ("..." if len(final_text.strip()) > 140 else "")) if final_text else ""
-        summary = f"Objective: {objective}. Replied. " + (f"Snippet: {snippet}" if snippet else "Completed.")
-    if len(summary) > 400:
-        summary = summary[:397] + "..."
-    try:
-        from services.memory.memory_router import save_learning  # canonical write path
-
-        save_learning(content=summary, kind="outcome")
-    except Exception as e:
-        logger.debug("outcome memory save failed: %s", e)
+    # NOTE: we deliberately do NOT store an "Objective: <goal>. Replied. Snippet: <reply>"
+    # summary as a learning. That echoed the run's own prompt+reply into the learnings table,
+    # so every trivial turn ("hello", "ready") — and worse, a research turn carrying its
+    # answer template — became an injected "memory" that hijacked later unrelated turns
+    # (a bare "hello" would get answered as the remembered topic, template and all). Durable
+    # knowledge comes from the distiller (facts) + the precise tool-success patterns below;
+    # a raw objective/reply echo is run-log noise, not knowledge.
 
     # Layla v3: tool success patterns (high precision, deterministic).
     # Persist compact "what worked" snippets from successful tool steps.
