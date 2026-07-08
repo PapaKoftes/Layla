@@ -19,7 +19,8 @@ def test_register_and_merge_into_load():
         {"name": "bad", "args": []},   # no command → skipped
     ])
     assert added == 1
-    specs = mc.load_mcp_stdio_servers({"mcp_client_enabled": True, "mcp_stdio_servers": []})
+    # Plugin-declared servers require plugin code-exec consent (plugins_enabled).
+    specs = mc.load_mcp_stdio_servers({"mcp_client_enabled": True, "plugins_enabled": True, "mcp_stdio_servers": []})
     names = {s.name for s in specs}
     assert "weather" in names
     weather = next(s for s in specs if s.name == "weather")
@@ -28,7 +29,7 @@ def test_register_and_merge_into_load():
 
 def test_config_and_plugin_servers_both_present():
     mc.register_plugin_mcp_servers([{"name": "plugin_srv", "command": "psrv"}])
-    cfg = {"mcp_client_enabled": True, "mcp_stdio_servers": [{"name": "cfg_srv", "command": "csrv"}]}
+    cfg = {"mcp_client_enabled": True, "plugins_enabled": True, "mcp_stdio_servers": [{"name": "cfg_srv", "command": "csrv"}]}
     names = {s.name for s in mc.load_mcp_stdio_servers(cfg)}
     assert names == {"cfg_srv", "plugin_srv"}
 
@@ -36,9 +37,22 @@ def test_config_and_plugin_servers_both_present():
 def test_dedup_by_name():
     mc.register_plugin_mcp_servers([{"name": "dup", "command": "a"}])
     mc.register_plugin_mcp_servers([{"name": "dup", "command": "b"}])   # ignored — same name
-    cfg = {"mcp_client_enabled": True}
+    cfg = {"mcp_client_enabled": True, "plugins_enabled": True}
     specs = mc.load_mcp_stdio_servers(cfg)
     assert [s.name for s in specs].count("dup") == 1
+
+
+def test_plugin_servers_gated_by_plugins_enabled():
+    # A6c: a plugin ships a subprocess command; with plugins_enabled OFF it must be
+    # ignored even when the MCP client is on, while operator-configured servers stay.
+    mc.register_plugin_mcp_servers([{"name": "plugin_srv", "command": "psrv"}])
+    cfg = {"mcp_client_enabled": True, "mcp_stdio_servers": [{"name": "cfg_srv", "command": "csrv"}]}
+    names = {s.name for s in mc.load_mcp_stdio_servers(cfg)}
+    assert names == {"cfg_srv"}          # plugin server dropped
+    # Flipping plugins_enabled on lets it through.
+    cfg["plugins_enabled"] = True
+    names_on = {s.name for s in mc.load_mcp_stdio_servers(cfg)}
+    assert names_on == {"cfg_srv", "plugin_srv"}
 
 
 def test_disabled_mcp_returns_nothing():
