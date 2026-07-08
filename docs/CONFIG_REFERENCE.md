@@ -123,6 +123,41 @@ For advanced users. Edit `agent/runtime_config.json` directly, or use **Settings
 
 ---
 
+## Maintenance & retention (advanced)
+
+These knobs bound long-term disk/memory growth. They are **not** shown in the
+settings UI — hand-edit `runtime_config.json` (they are read as-is by `load_config`).
+The daily `_bg_cleanup` job applies them.
+
+**Forgetting (RAG confidence decay).** Stored learning confidence fades so stale
+facts sink below the recall floor without being deleted outright:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `learnings_confidence_decay_per_day` | number | 0.98 | Daily multiplier applied to stored confidence past the grace window (~91-day fade horizon). `>=1` or `<=0` disables decay. |
+| `learnings_decay_grace_days` | number | 7 | Rows younger than this are never decayed. |
+
+**Growth caps.** In-memory + on-disk structures are bounded:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `knowledge_graph_max_nodes` | number | 5000 | Max nodes in the knowledge graph; oldest-by-created_at pruned on insert. |
+| `retrieval_cache_max_entries` | number | 500 | LRU bound on the retrieval cache. |
+| `admission_max_wait_seconds` | number | 300 | Max time a queued request waits for an inference slot before `system_busy`. |
+| `models_max_keep` | number | 0 | Prune downloaded GGUFs to the newest N (active model always kept); `0` = keep all. |
+| `retention_temp_output_days` | number | 7 | Age (days) before `layla_*`/`frames_*` temp tool outputs are removed. |
+| `people_codex_scan_limit` | number | 100 | Conversations scanned per run when populating the people codex. |
+
+**Data retention.** `apply_retention_policies` prunes historical tables. Every key
+follows one of two patterns — override any you want; unset keys use the defaults below:
+
+- `retention_<table>_days` — delete rows older than N days. Applies to (default): `audit` (365), `tool_calls` (90), `tool_outcomes` (90), `route_telemetry` (90), `telemetry_events` (90), `scheduler_history` (90), `conversation_messages` (90), `conversation_summaries` (365), `journal` (365), `timeline_events` (365), `episode_events` (365), `goal_progress` (365), `relationship_memory` (365), `aspect_memories` (365), `model_outcomes` (180), `outcome_evaluations` (180), `capability_events` (180), `session_prompts` (180), `wakeup_log` (180), `completed_study_plans` (90).
+- `retention_<table>_max_rows` — keep only the newest N rows. Applies to (default): `tool_outcomes` (50000), `conversation_messages` (200000), `outcome_evaluations` (5000), `learnings_archive` (20000), `strategy_stats` (10000).
+
+Set any `*_days` key to `0` to disable age-based pruning for that table.
+
+---
+
 ## Remote / external
 
 | Key | Type | Default | Description |
