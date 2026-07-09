@@ -150,6 +150,25 @@ export async function startNewConversation() {
   }
 }
 
+export async function clearAllConversations() {
+  if (!(await laylaConfirm('Delete ALL conversations? This cannot be undone.'))) return;
+  try {
+    const r = await fetch('/conversations/clear_all', { method: 'POST' });
+    const d = await r.json().catch(() => ({}));
+    if (d && d.ok) {
+      showToast('Cleared ' + (d.removed || 0) + ' conversation' + ((d.removed === 1) ? '' : 's'));
+      try { localStorage.removeItem('layla_current_conversation_id'); } catch (_) {}
+      window.currentConversationId = '';
+      await startNewConversation();
+      _renderSessionList();
+    } else {
+      showToast('Could not clear: ' + ((d && d.error) || r.status));
+    }
+  } catch (_) {
+    showToast('Network error');
+  }
+}
+
 // ── Boot: load active conversation ──────────────────────────────────────────
 export async function tryLoadActiveConversationOnBoot() {
   const id = localStorage.getItem('layla_current_conversation_id');
@@ -308,7 +327,7 @@ export async function _renderSessionList(isAppendArg) {
           (proj ? '<span class="conv-proj">' + escapeHtml(proj.slice(0, 16)) + '</span>' : '') +
           (tags.length ? ('<span class="conv-proj" title="Tags">' + escapeHtml(tags.join(' · ').slice(0, 28)) + '</span>') : '') +
           '</span>' +
-          escapeHtml((s.title || 'New chat').slice(0, 72)) +
+          escapeHtml((s.title || 'New chat').slice(0, 110)) +
           '</span><span class="sess-date" title="' + escapeHtml(String((s.updated_at || '').replace('T', ' ').slice(0, 16))) + '">' +
           escapeHtml(_relTimeShort(s.updated_at || s.created_at)) +
           '</span>';
