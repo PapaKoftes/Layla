@@ -851,7 +851,7 @@ async def agent(req: AgentRequest, request: Request):
                     except Exception:
                         logger.exception("multi_agent run failed")
                         agg = {"summary": "", "subtask_results": []}
-                    text = polish_output(strip_junk_from_reply(agg.get("summary") or ""), cfg) \
+                    text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply(agg.get("summary") or "")), cfg) \
                         or "I couldn't complete that multi-part request. Try splitting it into separate messages."
                     append_conv_history(conversation_id, "user", goal)
                     append_conv_history(conversation_id, "assistant", text)
