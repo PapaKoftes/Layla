@@ -648,6 +648,7 @@ async def agent(req: AgentRequest, request: Request):
             _fast_reason = bool(
                 _isq_r(goal or "")
                 and not plan_mode and not understand_mode
+                and not show_thinking  # thinking mode = deliberation; use the full pipeline
                 and not (workspace_root or "").strip()
                 and not allow_write and not allow_run
                 and not (clarification_reply or "").strip()
@@ -674,6 +675,7 @@ async def agent(req: AgentRequest, request: Request):
                     tok_q: queue.Queue = queue.Queue()
                     full: list = []
                     _emitted = 0
+                    _fast_delib_meta = None
 
                     def _worker() -> None:
                         try:
@@ -712,7 +714,16 @@ async def agent(req: AgentRequest, request: Request):
                         if got is None:
                             break
                         _last = time.monotonic()
+                        # Intercept the deliberation trace marker (reaches the fast path only
+                        # when the always-on deliberation_enabled flag is set) so the thinking
+                        # trace still renders instead of being silently dropped.
                         if isinstance(got, str) and got.startswith("__DELIB_META__"):
+                            try:
+                                _dm_json = got.split("__DELIB_META__")[1].split("__DELIB_END__")[0]
+                                _fast_delib_meta = json.loads(_dm_json)  # noqa: F841 — used in done frame
+                                yield f"data: {json.dumps({'deliberation': _fast_delib_meta})}\n\n"
+                            except Exception:
+                                pass
                             continue
                         full.append(got)
                         # Stream only marker-safe text: hold back an unclosed "[" and strip any
@@ -734,7 +745,10 @@ async def agent(req: AgentRequest, request: Request):
                         append_conversation_message(conversation_id, "assistant", text, aspect_id=aspect_id or "")
                     except Exception:
                         pass
-                    yield f"data: {json.dumps({'done': True, 'content': text, 'ux_states': [], 'memory_influenced': [], 'reasoning_mode': 'light', 'conversation_id': conversation_id})}\n\n"
+                    _fast_done = {'done': True, 'content': text, 'ux_states': [], 'memory_influenced': [], 'reasoning_mode': 'light', 'conversation_id': conversation_id}
+                    if _fast_delib_meta:
+                        _fast_done["deliberation"] = _fast_delib_meta
+                    yield f"data: {json.dumps(_fast_done)}\n\n"
                 except Exception:
                     logger.exception("fast agen failed")
                     yield f"data: {json.dumps({'done': True, 'content': 'Sorry — something went wrong generating a reply. Please try again.', 'ux_states': [], 'memory_influenced': []})}\n\n"

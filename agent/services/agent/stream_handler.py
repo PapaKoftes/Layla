@@ -123,9 +123,6 @@ def _stream_reason_body(
         build_system_head as _build_system_head,
     )
     from services.prompts.system_head_builder import (
-        enrich_deliberation_context as _enrich_deliberation_context,
-    )
-    from services.prompts.system_head_builder import (
         semantic_recall as _semantic_recall,
     )
 
@@ -230,26 +227,28 @@ def _stream_reason_body(
     if _delib_routed:
         return
 
-    # "Show the reasoning trace" (show_thinking) must NOT turn on the 6-aspect debate prompt —
-    # that seeds six "[⚔ MORRIGAN] …" scaffold lines the small model fills in, so the reply
-    # reads as ~6 stitched answers. Deliberation is a separate, explicit decision.
-    deliberate = orchestrator.should_deliberate(goal, active_aspect)
-    if deliberate:
-        prompt = orchestrator.build_deliberation_prompt(
-            message=goal, active_aspect=active_aspect, context=_enrich_deliberation_context(context),
-        )
-        if head:
-            prompt = head + "\n\n" + prompt
-        if convo_block:
-            prompt = prompt + f"\n\nRecent conversation:\n{convo_block}"
-    else:
-        prompt = orchestrator.build_standard_prompt(
-            message=goal, aspect=active_aspect, context=context,
-            head=head, convo_block=convo_block,
-        )
     temperature = cfg.get("temperature", 0.2)
     max_tok = cfg.get("completion_max_tokens", 256)
     stop = get_stop_sequences()
+
+    # Thinking mode: an explicit show_thinking (or the enabled deliberation flag) runs ONE
+    # multi-POV pass. The synthesized CONCLUSION is the reply the user sees; the per-aspect
+    # POV lines go ONLY into the collapsible thinking trace — never stitched into the reply.
+    # (The old bug: build_deliberation_prompt's six "[⚔ MORRIGAN] …" scaffold lines streamed
+    # straight into the bubble, so a reply read as ~6 stitched answers.)
+    deliberate = bool(show_thinking) or orchestrator.should_deliberate(goal, active_aspect)
+    if deliberate:
+        yield from _stream_deliberation(
+            goal=goal, active_aspect=active_aspect, context=context,
+            head=head, convo_block=convo_block,
+            temperature=temperature, max_tok=max_tok, stop=stop,
+        )
+        return
+
+    prompt = orchestrator.build_standard_prompt(
+        message=goal, aspect=active_aspect, context=context,
+        head=head, convo_block=convo_block,
+    )
     gen = run_completion(prompt, max_tokens=max_tok, temperature=temperature, stream=True, stop=stop)
     try:
         _pace_ms = int(cfg.get("response_pacing_ms", 0) or 0)
@@ -307,3 +306,78 @@ def _stream_reason_body(
     if held_tokens and not _is_junk_reply(buffer):
         for t in held_tokens:
             yield t
+
+
+def _stream_deliberation(
+    *,
+    goal: str,
+    active_aspect: dict,
+    context: str,
+    head: str,
+    convo_block: str,
+    temperature: float,
+    max_tok: int,
+    stop: list,
+):
+    """Run one multi-POV deliberation pass and yield (trace-meta, then reply).
+
+    The reply the user sees is the synthesized CONCLUSION only. The per-aspect POV lines
+    are parsed out and emitted as ``__DELIB_META__…__DELIB_END__`` — the SSE layer turns
+    that into the collapsible thinking trace and never puts it in the reply body.
+
+    Buffered on purpose: the conclusion is produced AFTER the POV block, so there's nothing
+    stream-able until the whole pass finishes. Thinking mode is the explicit "take your
+    time" mode, so trading live tokens for a clean single-voice answer is the right call.
+    """
+    import orchestrator
+    from services.agent.response_builder import is_junk_reply as _is_junk_reply
+    from services.llm.llm_gateway import run_completion
+    from services.prompts.system_head_builder import (
+        enrich_deliberation_context as _enrich_deliberation_context,
+    )
+    prompt = orchestrator.build_deliberation_prompt(
+        message=goal, active_aspect=active_aspect,
+        context=_enrich_deliberation_context(context),
+    )
+    if head:
+        prompt = head + "\n\n" + prompt
+    if convo_block:
+        prompt = prompt + f"\n\nRecent conversation:\n{convo_block}"
+
+    # Room for N short POV lines + the conclusion (the standard 256 cap truncates the answer).
+    try:
+        delib_max = max(int(max_tok or 256), 512)
+    except (TypeError, ValueError):
+        delib_max = 512
+    concluder_name = str((active_aspect or {}).get("name", "") or "")
+
+    raw_parts: list[str] = []
+    try:
+        for token in run_completion(
+            prompt, max_tokens=delib_max, temperature=temperature, stream=True, stop=stop
+        ):
+            raw_parts.append(token)
+            if any(s in "".join(raw_parts[-4:]) for s in stop):
+                break
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("deliberation completion failed: %s", exc)
+    raw = "".join(raw_parts)
+
+    reply, aspect_responses = orchestrator.split_deliberation_output(raw, concluder_name)
+
+    # Emit the thinking trace (only if we actually parsed distinct POVs — else it's just a
+    # normal answer and there's nothing to show in the trace).
+    if aspect_responses:
+        _meta = {
+            "__deliberation__": True,
+            "mode": "tribunal",  # all aspects contributed; UI label = "✦ Tribunal"
+            "participating_aspects": list(aspect_responses.keys()),
+            "aspect_responses": aspect_responses,
+            "critiques": {},
+            "synthesis_notes": "",
+        }
+        yield f"__DELIB_META__{_json_delib.dumps(_meta, ensure_ascii=False)}__DELIB_END__"
+
+    reply = (reply or "").strip()
+    if reply and not _is_junk_reply(reply):
+        yield reply
