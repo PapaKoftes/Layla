@@ -109,12 +109,12 @@ def get_conversation(conversation_id: str) -> dict | None:
     return dict(row) if row else None
 
 
-def list_conversations(limit: int = 200) -> list[dict]:
+def list_conversations(limit: int = 200, offset: int = 0) -> list[dict]:
     migrate()
     with _conn() as db:
         rows = db.execute(
-            "SELECT * FROM conversations ORDER BY updated_at DESC LIMIT ?",
-            (max(1, min(int(limit), 1000)),),
+            "SELECT * FROM conversations ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+            (max(1, min(int(limit), 1000)), max(0, int(offset or 0))),
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -295,31 +295,33 @@ def suggest_conversation_tags(prefix: str = "", limit: int = 20) -> list[str]:
     return uniq
 
 
-def list_conversations_filtered(limit: int = 200, tag: str | None = None) -> list[dict]:
+def list_conversations_filtered(limit: int = 200, tag: str | None = None, offset: int = 0) -> list[dict]:
     migrate()
     t = (tag or "").strip().lower()
     if not t:
-        return list_conversations(limit=limit)
+        return list_conversations(limit=limit, offset=offset)
     with _conn() as db:
         rows = db.execute(
-            "SELECT * FROM conversations WHERE (','||COALESCE(tags,'')||',') LIKE ? ORDER BY updated_at DESC LIMIT ?",
-            (f"%,{t},%", max(1, min(int(limit), 1000))),
+            "SELECT * FROM conversations WHERE (','||COALESCE(tags,'')||',') LIKE ? "
+            "ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+            (f"%,{t},%", max(1, min(int(limit), 1000)), max(0, int(offset or 0))),
         ).fetchall()
     return [dict(r) for r in rows]
 
 
-def search_conversations_filtered(query: str, limit: int = 50, tag: str | None = None) -> list[dict]:
+def search_conversations_filtered(query: str, limit: int = 50, tag: str | None = None, offset: int = 0) -> list[dict]:
     migrate()
     q = (query or "").strip()
     t = (tag or "").strip().lower()
     if not q:
-        return list_conversations_filtered(limit=limit, tag=t or None)
+        return list_conversations_filtered(limit=limit, tag=t or None, offset=offset)
     tag_sql = ""
     args: list = [f"%{q}%", f"%{q}%"]
     if t:
         tag_sql = " AND (','||COALESCE(c.tags,'')||',') LIKE ?"
         args.append(f"%,{t},%")
     args.append(max(1, min(int(limit), 500)))
+    args.append(max(0, int(offset or 0)))
     with _conn() as db:
         rows = db.execute(
             f"""SELECT DISTINCT c.*
@@ -327,7 +329,7 @@ def search_conversations_filtered(query: str, limit: int = 50, tag: str | None =
                LEFT JOIN conversation_messages m ON m.conversation_id = c.id
                WHERE (c.title LIKE ? OR m.content LIKE ?){tag_sql}
                ORDER BY c.updated_at DESC
-               LIMIT ?""",
+               LIMIT ? OFFSET ?""",
             tuple(args),
         ).fetchall()
     return [dict(r) for r in rows]
