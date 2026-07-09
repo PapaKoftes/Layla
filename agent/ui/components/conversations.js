@@ -181,6 +181,32 @@ function _togglePinned(id) {
   _setPinned(ids.slice(0, 50));
 }
 
+// ── Date bucketing for the rail (Today / Yesterday / … like Claude/ChatGPT) ──
+function _dateBucket(iso) {
+  const t = Date.parse(String(iso || '').replace(' ', 'T'));
+  if (!t) return 'Older';
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dayMs = 86400000;
+  if (t >= startOfToday) return 'Today';
+  if (t >= startOfToday - dayMs) return 'Yesterday';
+  if (t >= startOfToday - 7 * dayMs) return 'Previous 7 days';
+  if (t >= startOfToday - 30 * dayMs) return 'Previous 30 days';
+  return 'Older';
+}
+
+function _relTimeShort(iso) {
+  const t = Date.parse(String(iso || '').replace(' ', 'T'));
+  if (!t) return '';
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 60) return 'now';
+  if (s < 3600) return Math.floor(s / 60) + 'm';
+  if (s < 86400) return Math.floor(s / 3600) + 'h';
+  if (s < 604800) return Math.floor(s / 86400) + 'd';
+  const d = new Date(t);
+  return (d.getMonth() + 1) + '/' + d.getDate();
+}
+
 // ── Render session list ─────────────────────────────────────────────────────
 export async function _renderSessionList(isAppendArg) {
   const container = document.getElementById('chat-rail-list');
@@ -253,13 +279,24 @@ export async function _renderSessionList(isAppendArg) {
         const oldMore = container.querySelector('.rail-load-more');
         if (oldMore) oldMore.remove();
       }
+      let _lastGroup = isAppend ? (container.getAttribute('data-last-group') || null) : null;
       conversations.forEach((s) => {
+        const isPinned = pinned.indexOf(String(s.id)) >= 0;
+        // Date-bucketed section dividers (pinned float to their own group at the top).
+        const group = isPinned ? '⟡ Pinned' : _dateBucket(s.updated_at || s.created_at);
+        if (group !== _lastGroup) {
+          const gd = document.createElement('div');
+          gd.className = 'rail-group-divider';
+          gd.textContent = group;
+          gd.style.cssText = 'font-size:0.56rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--asp);opacity:0.7;padding:9px 6px 3px;border-top:1px solid var(--border);margin-top:3px';
+          container.appendChild(gd);
+          _lastGroup = group;
+        }
         const item = document.createElement('div');
         const active = String(s.id) === String(window.currentConversationId);
         item.className = 'session-item chat-rail-item' + (active ? ' active' : '');
         try { item.setAttribute('data-conv-id', String(s.id || '')); } catch (_) {}
         const asp = String(s.aspect_id || '').toLowerCase();
-        const isPinned = pinned.indexOf(String(s.id)) >= 0;
         const proj = String(s.project_id || '').trim();
         const tagsRaw = String(s.tags || '').trim();
         const tags = tagsRaw ? tagsRaw.split(',').map(t => (t || '').trim()).filter(Boolean).slice(0, 3) : [];
@@ -272,8 +309,8 @@ export async function _renderSessionList(isAppendArg) {
           (tags.length ? ('<span class="conv-proj" title="Tags">' + escapeHtml(tags.join(' · ').slice(0, 28)) + '</span>') : '') +
           '</span>' +
           escapeHtml((s.title || 'New chat').slice(0, 72)) +
-          '</span><span class="sess-date">' +
-          escapeHtml(String((s.updated_at || '').replace('T', ' ').slice(0, 16))) +
+          '</span><span class="sess-date" title="' + escapeHtml(String((s.updated_at || '').replace('T', ' ').slice(0, 16))) + '">' +
+          escapeHtml(_relTimeShort(s.updated_at || s.created_at)) +
           '</span>';
         const renBtn = document.createElement('button');
         renBtn.className = 'sess-del';
@@ -365,6 +402,7 @@ export async function _renderSessionList(isAppendArg) {
         });
         container.appendChild(item);
       });
+      try { container.setAttribute('data-last-group', _lastGroup || ''); } catch (_) {}
       _railOffset = pageOffset + convs.length;
       if (_railHasMore) {
         const moreBtn = document.createElement('button');
