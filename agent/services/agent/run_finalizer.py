@@ -61,11 +61,40 @@ def finalize_run_state(
         except Exception as _ev_exc:
             logger.warning("outcome evaluation failed (feedback loop at risk): %s", _ev_exc)
         save_outcome_memory_fn(state)
+        # Emotional presence (BL-190): nudge mood from this turn — the user's sentiment (praise /
+        # correction / frustration) and a failed task outcome. Previously mood only ever moved from
+        # the (unsurfaced) 👍/👎 UI, so it stayed permanently neutral and mood_hint injected nothing.
+        try:
+            if runtime_safety_module.load_config().get("emotional_presence_enabled", True):
+                from services.personality.emotional_presence import register_from_turn
+                _ev = state.get("outcome_evaluation") or {}
+                _succ = _ev.get("success") if isinstance(_ev, dict) else None
+                register_from_turn(str(goal or ""), outcome_success=_succ)
+        except Exception as _mood_exc:
+            logger.debug("emotional_presence turn nudge failed: %s", _mood_exc)
         try:
             from layla.memory.distill import run_distill_after_outcome
             run_distill_after_outcome(n=50)
         except Exception as e:
             logger.debug("distill after outcome failed: %s", e)
+        # Skill acquisition (BL-238): a finished multi-step run is a reusable procedure. Turn its
+        # successful tool sequence into a named learned skill so `learned_skills` actually fills
+        # from what Layla DID (previously acquire_from_run had no caller and the store stayed empty).
+        # Selective (≥3 tool steps) so ordinary chat/Q&A turns never mint a skill; non-blocking.
+        try:
+            if runtime_safety_module.load_config().get("skill_acquisition_enabled", True):
+                import threading as _t
+
+                def _acquire_skill() -> None:
+                    try:
+                        from services.skills.skill_acquisition import acquire_from_run
+                        acquire_from_run(state, min_steps=3)
+                    except Exception as _sk_exc:
+                        logger.debug("skill acquisition failed: %s", _sk_exc)
+
+                _t.Thread(target=_acquire_skill, daemon=True, name="skill-acquire").start()
+        except Exception as _sk_gate_exc:
+            logger.debug("skill acquisition gate failed: %s", _sk_gate_exc)
         # Auto-learning: extract and persist 1-2 insights from every substantive exchange
         final_text = ""
         for s in reversed(state.get("steps", [])):
