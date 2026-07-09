@@ -348,7 +348,7 @@ export function renderPromptTilesAndEmptyState() {
           '<div><strong style="color:var(--asp-nyx)">Persistent Memory</strong> — She remembers conversations, learns from interactions, and improves over time. Browse in Library tab.</div>' +
           '<div><strong style="color:var(--asp-echo)">Deliberation</strong> — For complex questions, multiple aspects can debate and synthesize a response. Set mode in Settings.</div>' +
           '<div><strong style="color:var(--asp-eris)">Tools</strong> — File operations, code execution, web search, research missions. Enable in Settings &rarr; Permissions.</div>' +
-          '<div><strong style="color:var(--asp-cassandra)">Keyboard</strong> — Enter to send, Shift+Enter for newline, Ctrl+K to search chats, Ctrl+/ for shortcuts.</div>' +
+          '<div><strong style="color:var(--asp-cassandra)">Keyboard</strong> — Enter to send, Shift+Enter for newline, Ctrl+K for commands, Ctrl+F to search chats, Ctrl+/ for shortcuts.</div>' +
         '</div>' +
         '<button type="button" onclick="try{localStorage.setItem(\'layla_onboarded\',\'1\');this.parentNode.style.display=\'none\';}catch(_){}" style="margin-top:10px;padding:6px 16px;font-size:0.7rem;background:var(--asp-mid);border:1px solid var(--asp);color:var(--text);border-radius:4px;cursor:pointer;font-family:\'JetBrains Mono\',monospace">Got it</button>' +
       '</div>';

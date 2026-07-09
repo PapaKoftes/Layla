@@ -113,7 +113,8 @@ export function _isEnterKey(e) {
 
 export function onInputKeydown(e) {
   if (e.ctrlKey || e.metaKey) {
-    if (e.key === 'k') { e.preventDefault(); const inp = document.getElementById('msg-input'); if (inp) { inp.value = ''; if (typeof window.toggleSendButton === 'function') window.toggleSendButton(); } return; }
+    // Ctrl/⌘+K is reserved for the command palette (handled globally in bootstrap.js) — do NOT
+    // bind it here to "clear input"; that shadowed the palette and mislabeled the shortcut.
     if (e.key === 'r') { e.preventDefault(); if (typeof window.retryLastMessage === 'function') window.retryLastMessage(); return; }
     if (e.key === '/') { e.preventDefault(); showPanelTab('help'); return; }
     if (e.key === 'f') { e.preventDefault(); openChatSearch(); return; }
