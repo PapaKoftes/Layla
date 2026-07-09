@@ -100,7 +100,17 @@ def run_decision_loop(
             state["status"] = "timeout"
             break
 
-        if state["tool_calls"] >= max_tool_calls_effective:
+        # Two independent stop conditions, both ending in the SAME forced wrap-up answer:
+        #  1. tool_calls >= cap        — the real tool-EXECUTION budget is spent.
+        #  2. blocked_calls >= backstop — the model kept proposing tools that guards/policy
+        #     REJECTED (nothing executed). Rejections no longer burn (1)'s budget — that was the
+        #     misfire that tripped "max tool calls" on simple turns — but a runaway rejection
+        #     loop must still terminate, so it gets its own separate, generous bound.
+        _blocked_cap = max(6, max_tool_calls_effective * 2)
+        if (
+            state["tool_calls"] >= max_tool_calls_effective
+            or int(state.get("blocked_calls", 0) or 0) >= _blocked_cap
+        ):
             state["status"] = "tool_limit"
             # Exhausting the tool budget must still END WITH AN ANSWER. Previously this broke
             # straight out and the router surfaced the internal status as the reply ("Stopped
@@ -331,7 +341,8 @@ def run_decision_loop(
         # -- Planning strict refusal --
         _ps = _maybe_planning_strict_refusal(intent, cfg, state, allow_write, allow_run)
         if _ps:
-            state["tool_calls"] += 1
+            # Refusal — no tool ran. Accrue to blocked_calls, not the real tool budget.
+            state["blocked_calls"] = state.get("blocked_calls", 0) + 1
             state["steps"].append({"action": intent, "result": _ps})
             _al._log_tool_outcome(intent, _ps)
             state["last_tool_used"] = intent
@@ -342,7 +353,8 @@ def run_decision_loop(
         if intent not in ("reason", "finish", "wakeup", "none") and intent in _VALID_TOOLS:
             _alr = _maybe_step_tool_allowlist_refusal(intent, cfg)
             if _alr:
-                state["tool_calls"] += 1
+                # Allowlist refusal — no tool ran. Accrue to blocked_calls.
+                state["blocked_calls"] = state.get("blocked_calls", 0) + 1
                 state["steps"].append({"action": intent, "result": _alr})
                 _al._log_tool_outcome(intent, _alr)
                 state["last_tool_used"] = intent
@@ -561,7 +573,8 @@ def _run_concurrent_batch(
             break
     if _blocked_bt:
         _tcheck, _pbx = _blocked_bt
-        state["tool_calls"] += 1
+        # Batch pre-check refused this tool — nothing ran. Accrue to blocked_calls.
+        state["blocked_calls"] = state.get("blocked_calls", 0) + 1
         state["steps"].append({"action": _tcheck, "result": _pbx})
         _al._log_tool_outcome(_tcheck, _pbx)
         state["last_tool_used"] = _tcheck
