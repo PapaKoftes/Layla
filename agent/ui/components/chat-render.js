@@ -470,7 +470,13 @@ export function addMsg(role, text, aspectName, deliberated, steps, uxStates, mem
     if (facet) {
       var chip = document.createElement('span');
       chip.className = 'msg-facet-chip';
-      chip.textContent = facet.sym + ' ' + facet.name;
+      // Wrap the sigil in its own node so the canonical .aspect-sigil rule normalizes it
+      // (node-based, no innerHTML — keeps the existing zero-injection surface).
+      var _sig = document.createElement('span');
+      _sig.className = 'aspect-sigil';
+      _sig.textContent = facet.sym;
+      chip.appendChild(_sig);
+      chip.appendChild(document.createTextNode(' ' + facet.name));
       chip.title = 'Facet (voice)';
       label.appendChild(chip);
     } else if (aspectName) {

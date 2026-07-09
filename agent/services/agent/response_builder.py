@@ -252,9 +252,14 @@ def truncate_at_next_user_turn(text: str) -> str:
     return t
 
 
+# Bracketed control/scaffold tags stripped from streamed + final output. The trailing
+# alternation matches per-aspect deliberation scaffold like "[⚔ MORRIGAN]" / "[✦ NYX]"
+# (the [^\]]* before the name absorbs the sigil) so multi-aspect debate lines can never
+# leak into a reply even if deliberation is somehow triggered.
 _STREAM_MARKER_RE = re.compile(
     r"\[(?:EARNED_TITLE|TOOL|REFUSED|INQUIRY|MERGE|THINK|PLAN|STEP|ANSWER|CONCLUSION|"
-    r"ASPECT|NOTE|SYSTEM|CONTEXT|Active aspect)\b[^\]]*\]",
+    r"ASPECT|NOTE|SYSTEM|CONTEXT|Active aspect|"
+    r"[^\]]*\b(?:MORRIGAN|NYX|ECHO|ERIS|CASSANDRA|LILITH))\b[^\]]*\]",
     re.IGNORECASE,
 )
 
@@ -314,6 +319,39 @@ def _collapse_repetition(text: str) -> str:
     return out or text
 
 
+_FENCE_BLOCK_RE = re.compile(r"```[^\n]*\n.*?\n```", re.DOTALL)
+
+
+def _collapse_duplicate_blocks(text: str) -> str:
+    """Remove a trailing fenced code block that is a byte-identical reprint of an earlier one.
+
+    A looping/KV-retried generation re-emits its answer, so the reply ends with the SAME
+    ```code``` block it already showed (the 'code block then mangled duplicate' bug). The
+    generic prose de-duper skips anything containing a fence, so this is the fence-safe path:
+    it only cuts when the LAST block exactly matches an earlier block (normalized whitespace),
+    dropping the duplicate and any lead-in prose after the original — never touching a reply
+    whose fenced blocks are all distinct, and never editing content inside a single block.
+    """
+    if not text or text.count("```") < 4:
+        return text
+    blocks = list(_FENCE_BLOCK_RE.finditer(text))
+    if len(blocks) < 2:
+        return text
+
+    def _norm(m):
+        return re.sub(r"\s+", " ", m.group(0)).strip().lower()
+
+    last = blocks[-1]
+    last_norm = _norm(last)
+    for b in blocks[:-1]:
+        if _norm(b) == last_norm:
+            # everything from the last (duplicate) block to the end is a reprint — cut it,
+            # then trim a dangling lead-in line if it too duplicates earlier prose.
+            head = text[: last.start()].rstrip()
+            return head
+    return text
+
+
 def strip_junk_from_reply(text: str) -> str:
     """Remove repeated 'assistant: I replied.' and other junk from a reply before saving/displaying."""
     if not text or not text.strip():
@@ -338,6 +376,13 @@ def strip_junk_from_reply(text: str) -> str:
     # (like EARNED_TITLE) so a *leading* leak keeps the real answer that follows it, rather
     # than truncating-to-end and dropping the whole reply.
     t = re.sub(r"\s*\[Active aspect[^\]]*\]\s*", " ", t, flags=re.IGNORECASE).strip()
+    # Per-aspect deliberation scaffold like '[⚔ MORRIGAN]' / '[✦ NYX]' — strip the bracket so a
+    # stray debate line can never render as part of a reply (defense-in-depth; deliberation is
+    # off by default). The [^\]]* before the name absorbs the sigil.
+    t = re.sub(
+        r"\s*\[[^\]]*\b(?:MORRIGAN|NYX|ECHO|ERIS|CASSANDRA|LILITH)\b[^\]]*\]\s*",
+        " ", t, flags=re.IGNORECASE,
+    ).strip()
     t = re.sub(r"\s*\[merg[^\]]*\]?\s*$", "", t, flags=re.IGNORECASE).strip()
     # Truncated trailing control marker: an open bracket + marker-ish text with NO closing ']'
     # because the stream hit max_tokens mid-marker, e.g. "…\n[Active aspect" or "…[EARNED_TITLE".
@@ -396,6 +441,7 @@ def strip_junk_from_reply(text: str) -> str:
         if m:
             t = t[:m.start()].strip()
     t = _collapse_repetition(t)
+    t = _collapse_duplicate_blocks(t)  # fence-safe: cut a reprinted trailing code block
     if is_junk_reply(t):
         return ""
     return t

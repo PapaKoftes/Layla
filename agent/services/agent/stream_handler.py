@@ -230,7 +230,10 @@ def _stream_reason_body(
     if _delib_routed:
         return
 
-    deliberate = show_thinking or orchestrator.should_deliberate(goal, active_aspect)
+    # "Show the reasoning trace" (show_thinking) must NOT turn on the 6-aspect debate prompt —
+    # that seeds six "[⚔ MORRIGAN] …" scaffold lines the small model fills in, so the reply
+    # reads as ~6 stitched answers. Deliberation is a separate, explicit decision.
+    deliberate = orchestrator.should_deliberate(goal, active_aspect)
     if deliberate:
         prompt = orchestrator.build_deliberation_prompt(
             message=goal, active_aspect=active_aspect, context=_enrich_deliberation_context(context),

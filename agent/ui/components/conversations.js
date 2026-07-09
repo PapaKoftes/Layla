@@ -10,6 +10,11 @@
 
 import { escapeHtml, showToast, laylaConfirm, laylaPrompt, sanitizeHtml } from '../services/utils.js';
 
+// Expose the sidebar re-fetch so app.js can refresh it when a turn completes — otherwise a
+// new chat keeps its creation-time placeholder and never shows the server-generated title
+// (the "title stuck loading" bug). _renderSessionList is a hoisted function declaration.
+try { window.refreshConversationList = _renderSessionList; } catch (_e) { /* no-op */ }
+
 // ── State ───────────────────────────────────────────────────────────────────
 const SESSIONS_KEY = 'layla_sessions';
 const MAX_SESSIONS = 10;
