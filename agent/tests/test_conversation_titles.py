@@ -41,6 +41,23 @@ def test_synthesizer_needs_some_content():
     assert synthesize_conversation_title("", "") == ""
 
 
+def test_synthesizer_uses_streamed_tokens_not_dict_keys(monkeypatch):
+    # Regression: run_completion(stream=False) returns a dict; ''.join()-ing it iterates the KEYS
+    # ("id","object","choices",...) → the "IDObject" title bug. Must consume stream=True tokens.
+    import services.llm.llm_gateway as gw
+
+    def _fake(prompt, **kw):
+        assert kw.get("stream") is True, "title synth must stream (not join a response dict)"
+        for tok in ("C ", "Variable ", "Initialization"):
+            yield tok
+
+    monkeypatch.setattr(gw, "run_completion", _fake)
+    from services.agent.title_synthesizer import synthesize_conversation_title
+    t = synthesize_conversation_title("best way to initialize a variable in C")
+    assert t == "C Variable Initialization"
+    assert "object" not in t.lower() and t != "IDObject"
+
+
 def test_title_synthesis_flag_default_on():
     import runtime_safety
     assert runtime_safety.load_config().get("conversation_title_synthesis_enabled") is True

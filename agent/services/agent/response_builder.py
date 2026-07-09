@@ -365,6 +365,11 @@ def strip_junk_from_reply(text: str) -> str:
     # Strip control markers that leak anywhere in the reply.
     t = re.sub(r"\s*\[EARNED_TITLE[^\]]*\]\s*", " ", t, flags=re.IGNORECASE).strip()
     t = re.sub(r"\s*\[REFUSED[^\]]*\]\s*", " ", t, flags=re.IGNORECASE).strip()
+    # Unbracketed 'REFUSED: reason' — a small model appends a fake refusal tail AFTER an actual
+    # answer ("int x = 0;\nREFUSED: too broad"). It's leaked control scaffolding, not prose, so cut
+    # from a line-anchored REFUSED: to the end. Case-SENSITIVE (the marker is always upper-case) so
+    # legit prose like "the request was refused: here's why" is untouched.
+    t = re.sub(r"(?:^|\n)[ \t]*REFUSED[ \t]*:.*\Z", "", t, flags=re.DOTALL).strip()
     # Catch-all for the rest of the internal scaffolding vocabulary a small model echoes
     # (INQUIRY, MERGE, THINK, PLAN, STEP, ANSWER, CONCLUSION, ASPECT, …) so no bracketed
     # control tag survives into the visible reply.
@@ -397,6 +402,10 @@ def strip_junk_from_reply(text: str) -> str:
         "", t, flags=re.IGNORECASE,
     ).strip()
     t = re.sub(r"\s*\[merg[^\]]*\]?\s*$", "", t, flags=re.IGNORECASE).strip()
+    # A lone, dangling '[' at the very end (the stream ended mid-marker, or the model emitted a
+    # stray open bracket). stream_safe_prefix holds it mid-stream but it survives into the final
+    # text. Strip a trailing '[' with nothing but whitespace after it (keeps real "arr[0]" etc.).
+    t = re.sub(r"\s*\[\s*$", "", t).strip()
     # Truncated trailing control marker: an open bracket + marker-ish text with NO closing ']'
     # because the stream hit max_tokens mid-marker, e.g. "…\n[Active aspect" or "…[EARNED_TITLE".
     t = re.sub(

@@ -51,10 +51,16 @@ def synthesize_conversation_title(user_msg: str, assistant_msg: str = "") -> str
             + (f"Assistant: {assistant_msg.strip()[:400]}\n" if assistant_msg.strip() else "")
             + "Title:"
         )
-        out = run_completion(prompt, max_tokens=16, temperature=0.3, stream=False, stop=["\n"])
-        if hasattr(out, "__iter__") and not isinstance(out, str):
-            out = "".join(out)
-        return _clean_title(str(out))
+        # stream=True yields TOKEN STRINGS (what the rest of the codebase consumes). stream=False
+        # returns an OpenAI-style dict {"id","object","choices",...}; ''.join()-ing that iterates
+        # the dict KEYS → "idobjectchoices…" → the "IDObject" title bug. Always stream + join text.
+        parts = []
+        for tok in run_completion(prompt, max_tokens=16, temperature=0.3, stream=True, stop=["\n"]):
+            if isinstance(tok, str):
+                parts.append(tok)
+            if sum(len(p) for p in parts) > 120:
+                break
+        return _clean_title("".join(parts))
     except Exception as exc:  # pragma: no cover - defensive; caller falls back
         logger.debug("title synthesis failed: %s", exc)
         return ""
