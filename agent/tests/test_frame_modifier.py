@@ -35,7 +35,11 @@ from services.personality.frame_modifier import (
 # ---------------------------------------------------------------------------
 
 def _stats(**kwargs) -> dict[str, int]:
-    base = {k: 5 for k in ("technical", "creative", "analytical", "social", "patience", "ambition")}
+    # Neutral for BOTH families: the generic competency stats AND the FRAME voice axes. The FRAME
+    # axes are seeded to a non-neutral operator default in production (edge=7, nerve=7, …), so to
+    # test the generic-stat layer in isolation we explicitly neutralize the FRAME axes here.
+    base = {k: 5 for k in ("technical", "creative", "analytical", "social", "patience", "ambition",
+                           "edge", "nerve", "signal", "iron", "frame", "wire", "drive")}
     base.update(kwargs)
     return base
 
@@ -174,13 +178,13 @@ def test_max_hints_cap():
     assert len(hints) <= 3
 
 
-def test_default_cap_is_six():
+def test_default_cap_is_eight():
     extreme = _stats(
         technical=10, creative=10, analytical=10,
         social=10, patience=10, ambition=10,
     )
     hints = build_frame_modifiers(extreme)
-    assert len(hints) <= 6
+    assert len(hints) <= 8  # default cap raised to 8 so FRAME voice axes + a few calibrated stats fit
 
 
 # ---------------------------------------------------------------------------
