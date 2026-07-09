@@ -49,6 +49,18 @@ class TestAspectTagStripping:
         assert rb._STREAM_MARKER_RE.search("[⚔ MORRIGAN]")
         assert rb._STREAM_MARKER_RE.search("[✦ NYX] hello")
 
+    def test_invented_allcaps_marker_stripped(self):
+        from services.agent.response_builder import strip_junk_from_reply
+        # a small model invents "[AFFIRMATIVE: …]" style scaffold — must be stripped.
+        assert "AFFIRMATIVE" not in strip_junk_from_reply("Sup. [AFFIRMATIVE: if user is rude]")
+
+    def test_allcaps_marker_strip_is_code_safe(self):
+        from services.agent.response_builder import strip_junk_from_reply
+        # colon-required + case-sensitive: array/dict access and log levels must survive.
+        out = strip_junk_from_reply("Use dict[KEY] and arr[IDX]. Log [ERROR] ref [1].")
+        for keep in ("dict[KEY]", "arr[IDX]", "[ERROR]", "[1]"):
+            assert keep in out
+
 
 class TestDuplicateBlockCollapse:
     _DUP = "Here is the script:\n```bash\nssh user@host\n```\nRemember to replace it.\n```bash\nssh user@host\n```"
