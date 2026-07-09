@@ -315,7 +315,18 @@ def should_deliberate(message: str, aspect: dict | None = None) -> bool:
     True when the message is complex, ambiguous, or explicitly asks for deliberation.
     Heuristics: length > 60 words, or key phrases present.
     Optional: aspect with decision_bias "exploratory" increases likelihood; "efficient" decreases.
+
+    Gated OFF by default: the multi-aspect debate prompt seeds "[⚔ MORRIGAN] …" lines for
+    every roster aspect, which a small model renders as ~6 stitched answers in the reply.
+    Normal chat must be single-voice, so this only fires when an operator explicitly enables
+    `deliberation_enabled`.
     """
+    try:
+        import runtime_safety
+        if not (runtime_safety.load_config() or {}).get("deliberation_enabled", False):
+            return False
+    except Exception:
+        return False
     deliberation_phrases = [
         "what do you think",
         "what should i",

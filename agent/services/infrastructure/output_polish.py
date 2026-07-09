@@ -26,7 +26,14 @@ def polish_output(text: str, cfg: dict | None = None) -> str:
     if not text:
         return ""
     if _looks_like_code_or_structured(text):
-        return text.strip()
+        # Skip prose cleanup (it would mangle code/JSON) — but STILL collapse an exact
+        # reprinted trailing code block, so a looping/retried generation can't leave a
+        # duplicated code answer in the reply. Runs on the None-cfg branch too.
+        try:
+            from services.agent.response_builder import _collapse_duplicate_blocks
+            return _collapse_duplicate_blocks(text.strip()).strip()
+        except Exception:
+            return text.strip()
     t = text.strip()
     if not t:
         return ""
