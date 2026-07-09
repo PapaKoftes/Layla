@@ -95,6 +95,34 @@ class TestThinkingModeDeliberation:
             assert leak not in reply
 
 
+class TestPhaticReplyLengthCap:
+    """A phatic turn ('hi') gets a short, warm reply — generation is capped hard so the
+    small model can't ramble/drift. Substantive short questions keep the full budget."""
+
+    def _record_max_tokens(self, monkeypatch, goal):
+        import services.agent.stream_handler as sh
+        import services.llm.llm_gateway as gw
+        seen = {}
+
+        def _fake(prompt, **kw):
+            seen["max_tokens"] = kw.get("max_tokens")
+            yield "ok."
+
+        monkeypatch.setattr(gw, "run_completion", _fake)
+        # light mode = the fast/phatic path; is_lightweight_chat_turn only fires there
+        list(sh.stream_reason(goal, reasoning_mode_override="light", aspect_id="morrigan"))
+        return seen.get("max_tokens")
+
+    def test_phatic_turn_is_capped(self, monkeypatch):
+        cap = self._record_max_tokens(monkeypatch, "hi")
+        assert cap is not None and cap <= 80, f"phatic reply should be capped, got {cap}"
+
+    def test_substantive_short_question_keeps_budget(self, monkeypatch):
+        # 'who are you' is short but substantive → NOT lightweight → full budget (> the cap)
+        cap = self._record_max_tokens(monkeypatch, "who are you?")
+        assert cap is not None and cap > 80, f"substantive turn must keep full budget, got {cap}"
+
+
 class TestAspectTagStripping:
     def test_bracketed_aspect_tags_removed(self):
         from services.agent.response_builder import strip_junk_from_reply
@@ -125,6 +153,21 @@ class TestAspectTagStripping:
         # a name used mid-sentence / in code must NOT be stripped
         assert "Layla.process()" in strip_junk_from_reply("Call Layla.process() to start.")
         assert strip_junk_from_reply("The capital is Paris.") == "The capital is Paris."
+
+    def test_midline_prompt_section_echo_stripped(self):
+        # A small model can echo a scaffold header MID-LINE then repeat itself:
+        # "… here?  ## SYSTEM\n\n<repeats the prompt>". Everything from the ALL-CAPS section
+        # name on is leaked scaffolding and must be cut (the line-anchored strippers miss it).
+        from services.agent.response_builder import strip_junk_from_reply
+        live = "How can I assist you today? What brings you here?  ## SYSTEM\n\nHow can I assist you today?"
+        out = strip_junk_from_reply(live)
+        assert "SYSTEM" not in out and "##" not in out
+        assert out.endswith("What brings you here?")
+        for scaffold in ("Done. ## TASK\n\nx", "Sure! ## OBJECTIVE echo", "ok ## CONTEXT dump"):
+            assert "##" not in strip_junk_from_reply(scaffold)
+        # case-SENSITIVE: title-case markdown + the plain words must survive untouched
+        assert "Context matters" in strip_junk_from_reply("The answer is 42 ## Context matters here.")
+        assert "operating system" in strip_junk_from_reply("The operating system boots fast.")
 
 
 class TestPromptHygiene:
