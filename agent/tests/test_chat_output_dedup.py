@@ -154,6 +154,16 @@ class TestAspectTagStripping:
         assert "Layla.process()" in strip_junk_from_reply("Call Layla.process() to start.")
         assert strip_junk_from_reply("The capital is Paris.") == "The capital is Paris."
 
+    def test_unbracketed_refused_tail_and_lone_bracket_stripped(self):
+        from services.agent.response_builder import strip_junk_from_reply as s
+        # a fake refusal tail appended after a real answer must be cut, keeping the answer
+        assert s("int x = 0;\nREFUSED: Your question is too broad.") == "int x = 0;"
+        # a lone dangling '[' at the end (leaked scaffolding) is removed
+        assert s("interesting conversations. [") == "interesting conversations."
+        # but legit prose 'refused:' and real bracket code survive
+        assert "refused:" in s("The request was refused: here is why.").lower()
+        assert "arr[0]" in s("Use arr[0] for the first element.")
+
     def test_midline_prompt_section_echo_stripped(self):
         # A small model can echo a scaffold header MID-LINE then repeat itself:
         # "… here?  ## SYSTEM\n\n<repeats the prompt>". Everything from the ALL-CAPS section
