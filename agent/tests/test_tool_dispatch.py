@@ -154,7 +154,11 @@ class TestWriteFileHandler:
         result = dispatch_tool_intent("write_file", "write /some/path.py content", ctx)
         assert result.handled is True
         assert result.flow == "continue"
-        assert ctx.state["tool_calls"] == 1
+        # Blocked → NO tool ran, so the real tool-execution budget must stay at 0; the rejection
+        # accrues to the separate blocked_calls ledger. (Counting rejections against tool_calls was
+        # the cap-misfire that tripped "max tool calls" on trivial turns.)
+        assert ctx.state["tool_calls"] == 0
+        assert ctx.state["blocked_calls"] == 1
 
     @patch("services.tools.tool_dispatch._imports")
     def test_approval_required(self, mock_imports):

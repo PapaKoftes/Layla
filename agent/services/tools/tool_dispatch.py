@@ -52,7 +52,8 @@ def _handle_write_file(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
     # --- lab-root path ---------------------------------------------------
     if lab_root:
         if not al._path_under_lab(path, lab_root):
-            state["tool_calls"] += 1
+            # Rejected (write outside lab) — no tool ran; accrue to blocked_calls.
+            state["blocked_calls"] = state.get("blocked_calls", 0) + 1
             state["steps"].append({
                 "action": "write_file",
                 "result": {"ok": False, "reason": "research_lab_only",
@@ -330,7 +331,8 @@ def _handle_run_python(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
 
     if lab_root:
         if not ctx.allow_run:
-            state["tool_calls"] += 1
+            # Rejected (run_python disabled in research) — no tool ran.
+            state["blocked_calls"] = state.get("blocked_calls", 0) + 1
             state["steps"].append({
                 "action": "run_python",
                 "result": {"ok": False, "reason": "disabled_in_research",
@@ -339,7 +341,8 @@ def _handle_run_python(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
             return DispatchResult(handled=True, flow="continue", goal=_rebuild_goal(state))
 
         if not al._path_under_lab(workspace, lab_root):
-            state["tool_calls"] += 1
+            # Rejected (run_python cwd outside lab) — no tool ran.
+            state["blocked_calls"] = state.get("blocked_calls", 0) + 1
             state["steps"].append({
                 "action": "run_python",
                 "result": {"ok": False, "reason": "research_lab_only",
@@ -421,7 +424,8 @@ def _handle_apply_patch(intent: str, goal: str, ctx: DispatchContext) -> Dispatc
     except (TypeError, ValueError):
         max_patch_lines = 0
     if max_patch_lines and patch_body and patch_body.count("\n") > max_patch_lines:
-        state["tool_calls"] += 1
+        # Rejected (patch exceeds max_patch_lines) — no tool ran.
+        state["blocked_calls"] = state.get("blocked_calls", 0) + 1
         state["steps"].append({
             "action": "apply_patch",
             "result": {"ok": False, "error": "diff_too_large",
@@ -469,7 +473,8 @@ def _handle_replace_in_file(intent: str, goal: str, ctx: DispatchContext) -> Dis
     state, cfg, workspace, decision = ctx.state, ctx.cfg, ctx.workspace, ctx.decision
 
     if state.get("research_lab_root"):
-        state["tool_calls"] += 1
+        # Rejected (replace_in_file not allowed in research) — no tool ran.
+        state["blocked_calls"] = state.get("blocked_calls", 0) + 1
         state["steps"].append({
             "action": "replace_in_file",
             "result": {"ok": False, "reason": "not_allowed_in_research"},
@@ -486,7 +491,8 @@ def _handle_replace_in_file(intent: str, goal: str, ctx: DispatchContext) -> Dis
         rcount = 1
 
     if not path or not old_text:
-        state["tool_calls"] += 1
+        # Rejected (missing required args) — no tool ran.
+        state["blocked_calls"] = state.get("blocked_calls", 0) + 1
         state["steps"].append({
             "action": "replace_in_file",
             "result": {"ok": False, "error": "replace_in_file requires path and old_text in args"},
