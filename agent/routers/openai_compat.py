@@ -306,6 +306,12 @@ async def v1_chat_completions(req: dict, request: Request):
 
                     import threading as _threading
                     _threading.Thread(target=_stream_worker, daemon=True).start()
+                    # Filter the live token stream the SAME way the /agent router does: hold an
+                    # unclosed "[", strip complete [MARKER …] tags, and strip a leading persona
+                    # label so control scaffolding never streams raw to an OpenAI-SDK client. The
+                    # old /v1 stream emitted every token verbatim (no cleaning at all).
+                    from services.agent.response_builder import stream_safe_prefix as _ssp_v1
+                    _v1_emitted = 0
                     while True:
                         token = await asyncio.to_thread(tok_q.get)
                         if token is None:
@@ -313,12 +319,15 @@ async def v1_chat_completions(req: dict, request: Request):
                         if not token:
                             continue
                         response_text += token
+                        _v1_delta, _v1_emitted = _ssp_v1(response_text, _v1_emitted)
+                        if not _v1_delta:
+                            continue
                         evt = {
                             "id": completion_id,
                             "object": "chat.completion.chunk",
                             "created": int(time.time()),
                             "model": model_name,
-                            "choices": [{"index": 0, "delta": {"content": token}, "finish_reason": None}],
+                            "choices": [{"index": 0, "delta": {"content": _v1_delta}, "finish_reason": None}],
                         }
                         yield f"data: {json.dumps(evt)}\n\n"
             else:
@@ -348,6 +357,16 @@ async def v1_chat_completions(req: dict, request: Request):
                         response_text = _direct
                 if not response_text:
                     response_text = "No response."
+                # Clean the tool-run answer BEFORE chunking it to the client — this branch streamed
+                # result["response"] raw (leading label / control tags leaked to OpenAI-SDK clients).
+                try:
+                    from services.agent.response_builder import strip_junk_from_reply as _sj_v1b
+                    from services.agent.response_builder import truncate_at_next_user_turn as _tr_v1b
+                    _cl_v1b = _tr_v1b(_sj_v1b(response_text))
+                    if _cl_v1b.strip():
+                        response_text = _cl_v1b
+                except Exception:
+                    pass
                 for chunk in [response_text[i : i + 120] for i in range(0, len(response_text), 120)]:
                     evt = {
                         "id": completion_id,
@@ -357,6 +376,17 @@ async def v1_chat_completions(req: dict, request: Request):
                         "choices": [{"index": 0, "delta": {"content": chunk}, "finish_reason": None}],
                     }
                     yield f"data: {json.dumps(evt)}\n\n"
+            # Clean the STORED + next-turn-context copy (the token branch's live deltas were made
+            # marker-safe by stream_safe_prefix; the persisted text needs the full cleaner so a
+            # leaked leading label / trailing scaffold never re-enters the model as convo context).
+            try:
+                from services.agent.response_builder import strip_junk_from_reply as _sj_v1
+                from services.agent.response_builder import truncate_at_next_user_turn as _tr_v1
+                _cleaned_v1 = _tr_v1(_sj_v1(response_text))
+                if _cleaned_v1.strip():
+                    response_text = _cleaned_v1
+            except Exception:
+                pass
             if not response_text:
                 response_text = "No response."
             done_evt = {
