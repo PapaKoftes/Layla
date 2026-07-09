@@ -486,13 +486,19 @@ export async function send() {
       }
       stalledTimer = setTimeout(_showStalled, STALL_WARN_MS);
       hardTimer = setTimeout(_hardTimeout, HARD_SILENCE_MS);
+      var _sseBuf = '';
       while (true) {
         var _read = await reader.read();
         var value = _read.value;
         var done = _read.done;
         if (done) break;
-        var chunk = dec.decode(value, { stream: true });
-        var lines = chunk.split('\n');
+        // Carry incomplete lines across reads: a `data:` frame split across two network chunks
+        // was being JSON.parsed as a half-line (throws → discarded) and its continuation arrived
+        // headless and skipped — silently truncating the bubble, or losing the done frame so the
+        // raw streamed text (with leaked scaffolding) was never replaced by the cleaned content.
+        _sseBuf += dec.decode(value, { stream: true });
+        var lines = _sseBuf.split('\n');
+        _sseBuf = lines.pop();  // last element is the possibly-incomplete trailing line
         for (var li = 0; li < lines.length; li++) {
           var line = lines[li];
           if (!line.startsWith('data: ')) continue;
@@ -571,9 +577,15 @@ export async function send() {
             }
             full += String(obj.token);
             if (bubble) {
-              // Render markdown during streaming for better readability
+              // Render markdown during streaming for better readability.
               if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
-                try { bubble.innerHTML = sanitize(marked.parse(full)); } catch (_mdErr) { bubble.textContent = full; }
+                // Balance an unclosed ``` fence: a lone opening fence makes `marked` render
+                // EVERYTHING after it as one code block (the whole reply "bleeds" into monospace)
+                // until the closing fence streams in. Temporarily close it for the live render;
+                // the done frame re-renders the real (cleaned) text, so nothing is lost.
+                var _mdSrc = full;
+                if (((full.match(/```/g) || []).length % 2)) _mdSrc = full + '\n```';
+                try { bubble.innerHTML = sanitize(marked.parse(_mdSrc)); } catch (_mdErr) { bubble.textContent = full; }
               } else { bubble.textContent = full; }
             }
             // Advance the char counter on a size DELTA, not an exact multiple — multi-char
