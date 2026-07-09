@@ -102,6 +102,34 @@ def run_decision_loop(
 
         if state["tool_calls"] >= max_tool_calls_effective:
             state["status"] = "tool_limit"
+            # Exhausting the tool budget must still END WITH AN ANSWER. Previously this broke
+            # straight out and the router surfaced the internal status as the reply ("Stopped
+            # after maximum tool calls…") — even when the gathered tool results were plenty to
+            # answer from. Force ONE wrap-up reasoning pass that synthesizes from the work above;
+            # in the streaming case this hands off via stream_pending so the answer streams.
+            if not (state.get("response") or "").strip():
+                try:
+                    _wrap_goal = (
+                        goal
+                        + "\n\n(Tool budget exhausted — do NOT use more tools. Answer the user "
+                        "directly now from what you already gathered above; if something is "
+                        "missing, say what briefly.)"
+                    )
+                    _g2, _wrap_flow = handle_reasoning_intent(
+                        state=state,
+                        run_params=run_params,
+                        goal=_wrap_goal,
+                        context=context,
+                        conversation_history=conversation_history,
+                        show_thinking=show_thinking,
+                        stream_final=stream_final,
+                        ux_state_queue=ux_state_queue,
+                        persona_focus_id=persona_focus_id,
+                    )
+                    if _wrap_flow == "return":
+                        return state, _g2
+                except Exception as _wrap_exc:
+                    logger.debug("tool_limit wrap-up reasoning failed: %s", _wrap_exc)
             break
 
         # -- Strategy shift hint --
