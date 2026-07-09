@@ -755,6 +755,17 @@ def build_system_head(
 
     if sub_goals:
         workspace_context_parts.append("Sub-objectives for this run: " + "; ".join(sub_goals[:3]))
+    # BL-241 world model — situational awareness (current project/blockers, repo index, machine,
+    # mode) belongs in the agent_state section (its own budget) so it isn't first-to-truncate at
+    # the tail of system_instructions. Was an inert GET /world nobody read. Skipped on phatic turns.
+    try:
+        if not _skip_expensive and isinstance(cfg, dict) and cfg.get("world_state_inject_enabled", True):
+            from services.workspace.world_state import summarize as _world_summarize
+            _ws = (_world_summarize() or "").strip()
+            if _ws:
+                workspace_context_parts.append("Situational awareness: " + _ws)
+    except Exception as _we:
+        logger.debug("world_state inject failed: %s", _we)
     if workspace_context_parts:
         workspace_context = "Current working context:\n" + "\n".join(workspace_context_parts)
     else:
@@ -900,6 +911,7 @@ def build_system_head(
                 system_instructions = system_instructions + "\n\n" + _mh
     except Exception as _me:
         logger.debug("emotional_presence inject failed: %s", _me)
+
 
     # Memory sections (canonical order)
     from services.context.context_merge_layers import MEMORY_SECTION_ORDER
