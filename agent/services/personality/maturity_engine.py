@@ -24,6 +24,30 @@ logger = logging.getLogger("layla.maturity")
 
 PhaseId = Literal["awakening", "attunement", "resonance", "sovereignty", "transcendence"]
 
+# Ordered, low→high. Single source of truth for phase-name comparisons: gate sites MUST use
+# the predicates below (is_early_phase / is_high_trust_phase / VALID_PHASES), NEVER hand-typed
+# string literals — three features (proactive initiative, observation mode, voice evolution)
+# silently died on typo'd names like "nascent"/"adept"/"veteran"/"transcendent" that are NOT
+# valid phases. test_maturity_phase_gates.py asserts nobody reintroduces those.
+PHASE_ORDER: tuple[str, ...] = ("awakening", "attunement", "resonance", "sovereignty", "transcendence")
+VALID_PHASES: frozenset[str] = frozenset(PHASE_ORDER)
+_EARLY_PHASES: frozenset[str] = frozenset(("awakening", "attunement"))
+_HIGH_TRUST_PHASES: frozenset[str] = frozenset(("resonance", "sovereignty", "transcendence"))
+
+
+def is_valid_phase(phase: str) -> bool:
+    return str(phase or "").strip().lower() in VALID_PHASES
+
+
+def is_early_phase(phase: str) -> bool:
+    """First-contact phases — cautious, observation-mode behavior belongs here."""
+    return str(phase or "").strip().lower() in _EARLY_PHASES
+
+
+def is_high_trust_phase(phase: str) -> bool:
+    """Later phases where proactive initiative / autonomous suggestions are unlocked."""
+    return str(phase or "").strip().lower() in _HIGH_TRUST_PHASES
+
 
 def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
