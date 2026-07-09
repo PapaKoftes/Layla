@@ -16,6 +16,44 @@ function humanizeKey(key) {
   }).join(' ');
 }
 
+// ── Feature areas (grouped capabilities the user can switch on/off) ──────────
+async function _renderFeatureThemes() {
+  let themes = [];
+  try {
+    const d = await (await fetch('/settings/themes')).json();
+    themes = (d && d.themes) || [];
+  } catch (_e) { return ''; }
+  if (!themes.length) return '';
+  const rows = themes.map(function (t) {
+    const id = 'theme_' + String(t.key).replace(/[^a-zA-Z0-9_]/g, '_');
+    return '<div class="settings-row settings-section" style="border-left:3px solid var(--asp);padding-left:8px">' +
+      '<label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;text-transform:none;color:var(--text);font-weight:600">' +
+      '<input type="checkbox" id="' + id + '" ' + (t.enabled ? 'checked' : '') +
+      ' onchange="window.laylaToggleFeatureTheme(\'' + escapeHtml(t.key) + '\', this.checked)"/> ' +
+      escapeHtml(t.label) + '</label>' +
+      '<div class="hint">' + escapeHtml(t.desc) + '</div></div>';
+  }).join('');
+  return '<div class="settings-row" style="margin-bottom:10px">' +
+    '<div style="font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-faint);margin-bottom:6px">Feature areas</div>' +
+    '<div class="hint" style="margin-bottom:8px">Turn whole capability areas on or off — Layla only carries what you switch on.</div>' +
+    rows +
+    '<div style="border-bottom:1px solid var(--border);margin:12px 0 4px"></div>' +
+    '</div>';
+}
+
+export async function laylaToggleFeatureTheme(key, enabled) {
+  try {
+    const r = await fetch('/settings/themes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: key, enabled: !!enabled }),
+    });
+    const d = await r.json();
+    if (d && d.ok) showToast((enabled ? 'Enabled: ' : 'Disabled: ') + key.replace(/_/g, ' '));
+    else showToast('Could not update feature area');
+  } catch (_e) { showToast('Could not update feature area'); }
+}
+try { window.laylaToggleFeatureTheme = laylaToggleFeatureTheme; } catch (_e) { /* no-op */ }
+
 // ── Settings overlay ────────────────────────────────────────────────────────
 export async function openSettings() {
   const ov = document.getElementById('settings-overlay');
@@ -34,7 +72,7 @@ export async function openSettings() {
     if (formEl) {
       formEl.style.display = 'block';
       const fields = schema.fields || [];
-      let html = '';
+      let html = await _renderFeatureThemes();
       fields.forEach(function (f) {
         const k = f.key;
         const v = cfg[k];

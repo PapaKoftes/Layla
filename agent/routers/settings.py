@@ -405,6 +405,37 @@ def get_settings_schema():
     return get_schema_for_api()
 
 
+@router.get("/settings/themes")
+def get_feature_themes_route():
+    """Feature areas (grouped capabilities) with their current on/off state."""
+    from config_schema import get_feature_themes
+
+    return {"ok": True, "themes": get_feature_themes(_rs.load_config())}
+
+
+@router.post("/settings/themes")
+async def apply_feature_theme_route(req: Request):
+    """Switch a feature area on/off. Body: {key: str, enabled: bool}. Only the theme's own
+    flags are written (whitelist), so this can never set an arbitrary config key."""
+    try:
+        body = await req.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+    key = str((body or {}).get("key") or "").strip()
+    enabled = bool((body or {}).get("enabled"))
+    from config_schema import feature_theme_updates
+    updates = feature_theme_updates(key, enabled)
+    if updates is None:
+        return JSONResponse({"ok": False, "error": "unknown theme"}, status_code=400)
+    try:
+        # editable_only=False: some theme flags (cluster_enabled, scheduler_study_enabled) are
+        # not individually in EDITABLE_SCHEMA. Safe because `updates` is the theme whitelist.
+        saved = _rs.save_config_keys(updates, editable_only=False, clamp=False)
+        return JSONResponse({"ok": True, "key": key, "enabled": enabled, "saved": saved})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 @router.get("/settings/appearance")
 def get_settings_appearance():
     c = _rs.load_config()
