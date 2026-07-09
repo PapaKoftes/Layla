@@ -56,7 +56,7 @@ export function formatLaylaLabelHtml(aspectId) {
   const a = ASPECTS.find(x => x.id === aid) || ASPECTS[0];
   const sym = String(a.sym || '').replace(/</g, '&lt;');
   const name = String(a.name || '').replace(/</g, '&lt;');
-  return `<span class="msg-brand">Layla</span><span class="msg-facet-chip" title="Facet (voice)">${sym} ${name}</span>`;
+  return `<span class="msg-brand">Layla</span><span class="msg-facet-chip" title="Facet (voice)"><span class="aspect-sigil">${sym}</span> ${name}</span>`;
 }
 
 // ── Aspect switching ─────────────────────────────────────────────────────────
@@ -81,15 +81,18 @@ export function setAspect(id, force) {
 
   // Update badges
   const sym = ASPECT_SYMBOLS[id] || '∴';
+  // Wrap the sigil in .aspect-sigil so one canonical rule normalizes it (the badge otherwise
+  // inherits Cinzel serif; sym/id come from the fixed ASPECT_SYMBOLS map so this is injection-safe).
+  const _sigilHtml = '<span class="aspect-sigil">' + sym + '</span> ' + id.toUpperCase();
   const badge = document.getElementById('aspect-badge');
   if (badge) {
-    badge.textContent = sym + ' ' + id.toUpperCase();
+    badge.innerHTML = _sigilHtml;
     badge.style.animation = 'none';
     void badge.offsetWidth;
     badge.style.animation = '';
   }
   const topBadge = document.getElementById('topbar-aspect-badge');
-  if (topBadge) topBadge.textContent = sym + ' ' + id.toUpperCase();
+  if (topBadge) topBadge.innerHTML = _sigilHtml;
 
   // Apply CSS custom properties
   const c = ASPECT_COLORS[id] || ASPECT_COLORS.morrigan;

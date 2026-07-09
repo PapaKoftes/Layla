@@ -446,6 +446,7 @@ export async function send() {
         streamMeta.textContent = 'Status: ' + (UX_STATE_LABELS[liveStatus] || liveStatus) + ' · ' + secs + 's · ' + (full || '').length + ' chars';
       }, 500);
       var gotToken = false;
+      var _lastCharsReported = 0;
       firstTokenTimer = setTimeout(function () {
         liveStatus = 'waiting_first_token';
         var statusEl = div.querySelector('.tool-status-label');
@@ -457,15 +458,20 @@ export async function send() {
       // work is progressing — so pulses must NOT reset these timers (that's the bug that let
       // the UI spin "Thinking" forever during a hung/cold model load). Only real frames
       // (ux_state/token/tool/thinking/done) count as progress via _markRealProgress().
-      var STALL_WARN_MS = 20000;      // soft "still working — model may be loading" hint
+      // Soft-stall warning must be STRICTLY ABOVE the server keepalive (default 20s) or a
+      // healthy-but-slow first token on a cold model trips "Still working… · 0 chars" every time.
+      var STALL_WARN_MS = Math.max(45000, (typeof laylaStalledSilenceMs === 'function' ? laylaStalledSilenceMs() : 45000));
       var HARD_SILENCE_MS = 150000;   // no real progress frame this long → abort + offer retry
       var hardTimer = null;
       function _showStalled() {
         liveStatus = 'still_working';
         var statusEl = div.querySelector('.tool-status-label');
         if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; var mb = div.querySelector('.msg-bubble'); if (mb) mb.appendChild(statusEl); }
-        statusEl.textContent = UX_STATE_LABELS.still_working || 'Still working… (the model may be loading)';
-        try { laylaNotifyStreamPhase(div, 'still_working'); } catch (_e) { console.debug('app:', _e); }
+        // Before the first token, a slow wait is model warm-up (prefill), not a stall.
+        statusEl.textContent = gotToken
+          ? (UX_STATE_LABELS.still_working || 'Still working…')
+          : (UX_STATE_LABELS.loading_model || 'Warming up the model… (first reply can take a bit)');
+        try { laylaNotifyStreamPhase(div, gotToken ? 'still_working' : 'loading_model'); } catch (_e) { console.debug('app:', _e); }
       }
       function _hardTimeout() {
         // No REAL progress frame for HARD_SILENCE_MS (bare keepalive pulses don't count) →
@@ -559,6 +565,9 @@ export async function send() {
                 bubble.classList.remove('stream-md-placeholder');
                 bubble.innerHTML = '';
               }
+              // Real text is now flowing — clear any lingering "Still working…" status label
+              // (the server never emits ux_state:'streaming', so nothing else clears it).
+              try { var _sl = div.querySelector('.tool-status-label'); if (_sl) _sl.textContent = (UX_STATE_LABELS.streaming || 'Streaming response'); } catch (_e) { console.debug('app:', _e); }
             }
             full += String(obj.token);
             if (bubble) {
@@ -567,7 +576,9 @@ export async function send() {
                 try { bubble.innerHTML = sanitize(marked.parse(full)); } catch (_mdErr) { bubble.textContent = full; }
               } else { bubble.textContent = full; }
             }
-            try { if (full.length % 200 === 0) laylaStreamStatsChars(full.length); } catch (_e) { console.debug('app:', _e); }
+            // Advance the char counter on a size DELTA, not an exact multiple — multi-char
+            // token deltas step over `% 200 === 0` and freeze the counter at "0 chars".
+            try { if (full.length - _lastCharsReported >= 48) { _lastCharsReported = full.length; laylaStreamStatsChars(full.length); } } catch (_e) { console.debug('app:', _e); }
           }
           if (obj.done) {
             clearTimeout(firstTokenTimer);
@@ -591,6 +602,9 @@ export async function send() {
             if (thinkBox) { try { thinkBox.open = false; } catch (_e) { console.debug('app:', _e); } }
             if (window._ttsEnabled && full) { try { if (typeof window.speakText === 'function') window.speakText(full).catch(function () {}); } catch (_e) { console.debug('app:', _e); } }
             try { if (typeof window.refreshMaturityCard === 'function') window.refreshMaturityCard(true); } catch (_e) { console.debug('app:', _e); }
+            // Refresh the chat sidebar so a brand-new conversation's server-generated title
+            // (and updated ordering) replaces the creation-time placeholder.
+            try { if (typeof window.refreshConversationList === 'function') window.refreshConversationList(); } catch (_e) { console.debug('app:', _e); }
             try { laylaStreamStatsChars(full.length); laylaStreamStatsStop(); } catch (_e) { console.debug('app:', _e); }
             try { if (typeof window.laylaIngestArtifacts === 'function') window.laylaIngestArtifacts(full); } catch (_e) { console.debug('app:', _e); }
             // Render full deliberation transcript if available
