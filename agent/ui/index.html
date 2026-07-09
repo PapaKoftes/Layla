@@ -181,6 +181,7 @@
     <span id="session-time" class="header-pill" title="Session duration">0:00</span>
   </div>
   <div class="header-actions">
+    <button type="button" id="cmd-palette-btn" data-action="openCommandPalette" title="Command palette — every panel &amp; command (Ctrl+K)" aria-label="Open command palette" class="header-action-btn">❯ Commands</button>
     <button type="button" id="compact-chat-btn" data-action="compactConversation" title="Compact context" class="header-action-btn">⊙ Compact</button>
     <button data-action="toggleTheme" id="theme-btn" title="Toggle dark/light" aria-label="Toggle theme" data-i18n-title="nav.toggle_theme" class="header-action-btn">◐</button>
     <button data-action="openSettings" title="Settings" aria-label="Settings" data-i18n-title="nav.settings" data-i18n-aria-label="nav.settings" class="header-action-btn">⚙</button>
@@ -427,7 +428,7 @@
         <span id="ctx-usage-label">Ctx: —</span>
         <span id="token-pressure-hint" style="display:none;color:#fa0;font-size:0.6rem" title="Context is above 60% — Layla will chunk tasks automatically">⚡ chunking</span>
       </div>
-      <span class="input-hint" style="display:block;font-size:var(--text-xs);color:var(--text-dim);margin-top:4px;padding:0 4px">Attach files or paste. Enter to send, Shift+Enter for newline. Ctrl+K to clear. ↑ cycles recent prompts.</span>
+      <span class="input-hint" style="display:block;font-size:var(--text-xs);color:var(--text-dim);margin-top:4px;padding:0 4px">Attach files or paste. Enter to send, Shift+Enter for newline. Ctrl+K opens commands, Ctrl+F searches chats. ↑ cycles recent prompts.</span>
     </div>
   </main>
 
@@ -1167,7 +1168,7 @@
     <div style="color:var(--text-dim);font-size:0.78rem;margin:0 0 6px">Keyboard shortcuts</div>
     <ul style="margin:0;padding-left:18px;font-size:0.85rem;line-height:1.75;color:var(--text)">
       <li data-i18n="help.send">Enter — Send · Shift+Enter — New line</li>
-      <li data-i18n="help.clear_input">Ctrl+K — Clear input</li>
+      <li data-i18n="help.command_palette">Ctrl+K — Command palette (all panels &amp; commands)</li>
       <li data-i18n="help.regenerate">Ctrl+R — Regenerate last reply</li>
       <li data-i18n="help.open_sheet">Ctrl+/ — Open this sheet</li>
       <li data-i18n="help.search_chat">Ctrl+F — Search in chat</li>
