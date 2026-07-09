@@ -26,6 +26,100 @@ export function showMemorySubTab(sub) {
     btn.classList.toggle('active', btn.getAttribute('data-mem-sub') === sub);
   });
   if (sub === 'browse' && !_memTotal) laylaMemBrowse(0);
+  if (sub === 'about') renderMemoryAbout();
+}
+
+// ── "About you": what Layla knows (GET /memory/about) ───────────────────────
+// Internal user_identity keys (calibration/maturity/bookkeeping) are NOT facts about the
+// user — hide them so the panel reads like Claude/ChatGPT "memories about you".
+const _MEM_ABOUT_INTERNAL = /^(stat_|maturity_|interaction_history|tutorial|main_aspect|personality_last|last_wakeup|earned_title|quiz_completed|_migrated|response$|voice_adjustment|custom_|frame_)/i;
+
+function _memAboutIsFact(key, val) {
+  const k = String(key || '').toLowerCase();
+  if (_MEM_ABOUT_INTERNAL.test(k)) return false;
+  const sv = String(val == null ? '' : val).trim();
+  if (!sv) return false;
+  if (sv.startsWith('{') || sv.startsWith('[')) return false;  // serialized blobs aren't facts
+  return true;
+}
+
+function _memAboutSection(title, bodyHtml) {
+  return `<div style="margin:0 0 12px"><div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--asp);margin-bottom:5px">${_mesc(title)}</div>${bodyHtml}</div>`;
+}
+
+export async function renderMemoryAbout() {
+  const box = document.getElementById('mem-about');
+  const sum = document.getElementById('mem-about-summary');
+  if (!box) return;
+  box.innerHTML = '<span style="color:var(--text-dim)">Loading…</span>';
+  let d;
+  try {
+    d = await (await fetch('/memory/about')).json();
+  } catch (err) {
+    box.innerHTML = `<span style="color:var(--text-dim)">Couldn't load: ${_mesc(String(err))}</span>`;
+    return;
+  }
+  const parts = [];
+
+  // Durable facts (identity KV) — each with a forget (✕) control.
+  const idEntries = Object.entries(d.identity || {}).filter(([k, v]) => _memAboutIsFact(k, v));
+  if (idEntries.length) {
+    const rows = idEntries.map(([k, v]) =>
+      `<div class="mem-fact" data-key="${_mesc(k)}" style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;border:1px solid var(--border);border-left:3px solid var(--asp-morrigan,var(--asp));border-radius:4px;padding:6px 8px;margin-bottom:4px;background:var(--code-bg)">
+        <div><span style="color:var(--text-dim);font-size:0.62rem">${_mesc(k.replace(/_/g, ' '))}</span><br><span style="color:var(--text)">${_mesc(v)}</span></div>
+        <button type="button" title="Forget this" data-action="laylaForgetIdentity" data-arg="${_mesc(k)}" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.85rem;line-height:1">✕</button>
+      </div>`).join('');
+    parts.push(_memAboutSection('Durable facts', rows));
+  }
+
+  // People & bonds
+  const rels = d.relationship_memories || [];
+  if (rels.length) {
+    const rows = rels.map(r =>
+      `<div style="border-left:2px solid var(--asp-nyx,var(--violet));padding:3px 8px;margin-bottom:3px"><span style="color:var(--text)">${_mesc(r.content || r.summary || r.memory || '')}</span> <span style="color:var(--text-dim);font-size:0.6rem">${_mesc(_relTime(r.created_at))}</span></div>`).join('');
+    parts.push(_memAboutSection('People & bonds', rows));
+  }
+
+  // Timeline
+  const tl = d.timeline || [];
+  if (tl.length) {
+    const rows = tl.map(e =>
+      `<div style="display:flex;gap:8px;margin-bottom:3px"><span style="color:var(--asp-cassandra,var(--asp));font-size:0.6rem;white-space:nowrap">${_mesc(_relTime(e.created_at))}</span><span style="color:var(--text)">${_mesc(e.description || e.summary || e.content || e.event || '')}</span></div>`).join('');
+    parts.push(_memAboutSection('Timeline', rows));
+  }
+
+  // Goals
+  const goals = d.goals || [];
+  if (goals.length) {
+    const rows = goals.map(g =>
+      `<div style="border-left:2px solid var(--asp-lilith,var(--asp));padding:3px 8px;margin-bottom:3px">${_mesc(g.goal || g.title || g.description || g.text || '')}${g.progress != null ? ` <span style="color:var(--text-dim);font-size:0.6rem">(${_mesc(g.progress)}%)</span>` : ''}</div>`).join('');
+    parts.push(_memAboutSection('Goals', rows));
+  }
+
+  if (sum) {
+    sum.textContent = `${idEntries.length} facts · ${rels.length} bonds · ${tl.length} events · ${goals.length} goals · ${d.learnings_count || 0} learnings`;
+  }
+  box.innerHTML = parts.length
+    ? parts.join('')
+    : '<span style="color:var(--text-dim)">Nothing yet. As you talk and work, Layla files what matters about you here — you can edit or forget any of it.</span>';
+}
+
+export async function laylaForgetIdentity(key) {
+  if (!key) return;
+  if (!(await laylaConfirm(`Forget what Layla knows for "${String(key).replace(/_/g, ' ')}"?`))) return;
+  try {
+    const res = await fetch(`/memory/identity/${encodeURIComponent(key)}`, { method: 'DELETE' });
+    const d = await res.json().catch(() => ({}));
+    if (d && d.ok !== false) {
+      const el = document.querySelector(`.mem-fact[data-key="${CSS.escape(key)}"]`);
+      if (el) el.remove();
+      showToast('Forgotten');
+    } else {
+      showToast('Could not forget: ' + ((d && d.error) || res.status));
+    }
+  } catch (e) {
+    showToast('Forget failed');
+  }
 }
 
 // ── Browse / load ───────────────────────────────────────────────────────────

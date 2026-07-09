@@ -601,6 +601,9 @@ def load_config() -> dict:
             # Async LLM polish of the conversation rail title on the first exchange (ChatGPT-style),
             # over the instant extractive title. Off → keep the extractive title only.
             "conversation_title_synthesis_enabled": True,
+            # Deterministic capture of durable facts the operator explicitly states ("call me X",
+            # "my timezone is Y") into user_identity, with a "memory updated" receipt.
+            "identity_capture_enabled": True,
             "autonomy_optimizer_enabled": False,
             "autonomy_trust_tiers_enabled": True,  # gates capabilities behind XP thresholds (more cautious)
             "trust_tier_override": None,
