@@ -667,7 +667,9 @@ def load_config() -> dict:
             "lens_refresh_interval_days": 7,
             "enable_operational_guidance": True,
             "enable_cognitive_workspace": True,
-            "deliberation_enabled": True,
+            # OFF by default: the multi-aspect debate prompt seeds six "[⚔ MORRIGAN] …" lines
+            # that a small model renders as ~6 stitched answers. Normal chat is single-voice.
+            "deliberation_enabled": False,
             "deliberation_min_length": 100,
             "engineering_pipeline_enabled": False,
             "engineering_pipeline_default_mode": "chat",

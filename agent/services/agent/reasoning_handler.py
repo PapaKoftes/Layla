@@ -195,7 +195,9 @@ def handle_reasoning_intent(
     # Deliberation / standard prompt + LLM completion
     # ------------------------------------------------------------------
     if not _delib_routed:
-        deliberate = show_thinking or orchestrator.should_deliberate(goal, active_aspect)
+        # show_thinking is a UI trace toggle, not a request for the 6-aspect debate prompt
+        # (see stream_handler) — gate deliberation on the explicit signal only.
+        deliberate = orchestrator.should_deliberate(goal, active_aspect)
         if deliberate:
             prompt = orchestrator.build_deliberation_prompt(
                 message=goal,

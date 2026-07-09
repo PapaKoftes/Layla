@@ -555,6 +555,19 @@ button { font-family: var(--font-ui); }   /* U1: controls use the UI sans (was m
   color: color-mix(in srgb, var(--asp) 68%, var(--text));
   font-size: var(--text-xs);
 }
+
+/* Canonical aspect-sigil rule — the SINGLE source of truth for how ⚔ ✦ ◎ ⚡ ⌖ ⊛ render,
+   everywhere they appear (message chip, badges, sidebar). font-variant-emoji:text forces
+   the text (monochrome) presentation so ⚡ (U+26A1) stops rendering as a color emoji on
+   Windows while the others render as text — the main "same sigil looks different" cause. */
+.aspect-sigil {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-emoji: text;
+  font-size: 1em; font-weight: 400; font-style: normal;
+  letter-spacing: 0; line-height: 1; display: inline-block;
+}
+/* Larger glyph containers keep their size but also render text-presentation, so ⚡ matches. */
+.tile-icon, .dash-card-icon { font-variant-emoji: text; }
 .msg-facet-unknown { background: transparent; border-color: var(--border); color: var(--text-faint); }
 .msg-ts { margin-left: auto; color: var(--text-faint); font-size: var(--text-xs); opacity: 0.72; }
 .msg-bubble {

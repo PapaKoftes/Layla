@@ -288,6 +288,7 @@ def run_completion_llama_cpp(
         return llm.create_completion(prompt, stream=stream_mode, **kwargs)
     if stream:
         def gen():
+            yielded_any = False
             for _attempt in range(2):
                 try:
                     with _llm_lock:
@@ -303,19 +304,22 @@ def run_completion_llama_cpp(
                         ):
                             t = (chunk.get("choices") or [{}])[0].get("text") or ""
                             if t:
+                                yielded_any = True
                                 yield t
                     return  # success
                 except Exception as _se:
                     _emsg = str(_se)
-                    if "broadcast" in _emsg or "shape" in _emsg:
-                        # KV cache corruption — invalidate and retry once
+                    # KV-cache corruption ("broadcast"/"shape"): only retry if we have NOT
+                    # emitted anything yet. Retrying AFTER partial output re-runs the whole
+                    # completion and re-yields every token, concatenating a second (mangled)
+                    # copy onto the consumer's buffer — the duplicated/mangled-reply bug.
+                    if ("broadcast" in _emsg or "shape" in _emsg) and _attempt == 0 and not yielded_any:
                         try:
                             from services.llm.llm_gateway import invalidate_llm_cache
                             invalidate_llm_cache()
                         except Exception:
                             pass
-                        if _attempt == 0:
-                            continue
+                        continue
                     raise
         return gen()
     import concurrent.futures as _cf
