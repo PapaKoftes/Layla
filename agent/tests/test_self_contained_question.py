@@ -48,6 +48,20 @@ def test_empty_or_huge_is_not_self_contained():
     assert not rb.is_self_contained_question("a" * 2500)
 
 
+def test_installed_adjective_is_self_contained_but_imperative_install_is_not():
+    # "install" (bare substring) matched "installed", so "list your capabilities, especially the
+    # installed ones" was routed into the tool loop and burned the tool budget without answering.
+    # A question ABOUT what's installed is answerable directly; an imperative install still needs tools.
+    for q in [
+        "can you list in a table everything that you are capable of doing, especially the installed ones?",
+        "what features are installed",
+        "which capabilities do i have installed",
+    ]:
+        assert rb.is_self_contained_question(q), q
+    for q in ["install numpy for me", "pip install requests", "npm install react"]:
+        assert not rb.is_self_contained_question(q), q
+
+
 def test_reexported_from_agent_loop():
     import agent_loop
     assert agent_loop._is_self_contained_question("What is the capital of France?")
