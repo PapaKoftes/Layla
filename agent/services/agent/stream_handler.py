@@ -229,6 +229,17 @@ def _stream_reason_body(
 
     temperature = cfg.get("temperature", 0.2)
     max_tok = cfg.get("completion_max_tokens", 256)
+    # Phatic turns ("hi", "thanks", "how are you") get a SHORT, warm reply — cap generation
+    # hard so the small model can't ramble into a wall of text or drift theatrical after it
+    # has already answered (the first sentence is fine; the last 150 tokens are where "the
+    # abyss calls to us…" creeps in). Substantive short questions ("who are you") are NOT
+    # lightweight, so they keep the full budget.
+    try:
+        from services.prompts.system_head_builder import is_lightweight_chat_turn as _is_light
+        if _is_light(goal, _stream_rmode):
+            max_tok = min(int(max_tok or 256), int(cfg.get("chat_light_max_tokens", 80) or 80))
+    except Exception:
+        pass
     stop = get_stop_sequences()
 
     # Thinking mode: an explicit show_thinking (or the enabled deliberation flag) runs ONE
@@ -259,13 +270,18 @@ def _stream_reason_body(
     held_tokens: list[str] = []   # tokens held while we check for JSON blob start
     _json_suppressed = False
     _PROMPT_ECHO_RE = re.compile(r"(?:^|\n)\s*(##\s*(TASK|CONTEXT|SCRATCHPAD|REPO)\b|Current goal\s*:|\[Active aspect\s*:|Last user message\s*:|Repo snapshot\s*:|Repo structure\s*:)", re.IGNORECASE | re.MULTILINE)
+    # A section header can also leak MID-LINE ("… here?  ## SYSTEM\n\n<repeats prompt>"), which
+    # the line-anchored pattern above misses. Case-SENSITIVE: an ALL-CAPS section name is
+    # unambiguously scaffold, whereas a natural '## Context' heading is title-case.
+    _PROMPT_ECHO_MIDLINE_RE = re.compile(r"#{1,3}[ \t]*(?:SYSTEM|TASK|CONTEXT|SCRATCHPAD|REPO|OBJECTIVE|INSTRUCTIONS)\b")
     for token in gen:
         buffer += token
         if any(s in buffer for s in stop):
             break
-        # Stop streaming if model starts echoing system prompt markers
-        if _PROMPT_ECHO_RE.search(buffer):
-            m = _PROMPT_ECHO_RE.search(buffer)
+        # Stop streaming if model starts echoing system prompt markers (line-anchored or mid-line)
+        _echo_m = _PROMPT_ECHO_RE.search(buffer) or _PROMPT_ECHO_MIDLINE_RE.search(buffer)
+        if _echo_m:
+            m = _echo_m
             clean = buffer[:m.start()].strip()
             if held_tokens:
                 # Still in the initial buffer phase — yield clean text, discard junk tokens

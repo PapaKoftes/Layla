@@ -449,6 +449,14 @@ def strip_junk_from_reply(text: str) -> str:
     t = re.sub(r"(?<=\S)[ \t]*`{3,}[ \t]*$", "", t).strip()
     t = re.sub(r"^(Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\s*:\s*", "", t).strip()
     t = re.sub(r"\[System:\s*Your last response[^\]]*\]\s*", "", t, flags=re.IGNORECASE | re.DOTALL).strip()
+    # A prompt-section header (## SYSTEM / ## TASK / …) can leak MID-LINE when the small model
+    # echoes the scaffold after its answer ("… here?  ## SYSTEM\n\n<repeats the prompt>"). The
+    # line-anchored markers below only catch it at a line start, so truncate at the uppercase
+    # section name anywhere. Case-SENSITIVE on purpose: a natural '## Context' heading in prose
+    # is title-case, so an ALL-CAPS '## CONTEXT' is unambiguously leaked scaffolding.
+    _mecho = re.search(r"#{1,3}[ \t]*(?:SYSTEM|TASK|CONTEXT|SCRATCHPAD|REPO|OBJECTIVE|INSTRUCTIONS)\b", t)
+    if _mecho:
+        t = t[: _mecho.start()].strip()
     for _marker in (r"(?:^|\n)\s*#{1,3}\s*(TASK|CONTEXT|SCRATCHPAD|REPO)\b", r"(?:^|\n)\s*Current goal\s*:", r"(?:^|\n)\s*Last user message\s*:", r"(?:^|\n)\s*Repo snapshot\s*:", r"(?:^|\n)\s*Repo structure\s*:", r"(?:^|\n)\s*##", r"(?:^|\s|\[)Echo\s*\(patterns/preferences\)\s*:", r"(?:^|\n)\s*\[?ECHO\s*:"):
         m = re.search(_marker, t, re.IGNORECASE)
         if m:
