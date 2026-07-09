@@ -43,13 +43,43 @@ def get_recent_conversation_summaries(n: int = 5) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+import re as _re
+
+# Leading politeness / question framing to strip so the title is the topic, not "can you help me…".
+_TITLE_FILLER_RE = _re.compile(
+    r"^(hey|hi|hello|ok|okay|so|um|please|pls|can you|could you|would you|will you|"
+    r"i want to|i wanna|i need to|i'?d like to|help me|let'?s|lets|"
+    r"how (do|can|would|should) i|how to|what'?s|what is|what are|tell me( about)?|"
+    r"give me|show me|explain|write( me)?|make( me)?|create|build)\s+",
+    _re.IGNORECASE,
+)
+
+
 def _auto_name_conversation(first_user_message: str) -> str:
-    t = (first_user_message or "").strip().replace("\n", " ")
+    """A short topic title extracted from the first message (not a raw 40-char truncation).
+
+    This is the instant placeholder; an LLM may polish it async on the first exchange
+    (see services/agent/title_synthesizer.py). Returns 'New chat' only for empty input.
+    """
+    t = _re.sub(r"\s+", " ", (first_user_message or "").strip())
     if not t:
         return "New chat"
-    if len(t) <= 40:
-        return t
-    return t[:40].rstrip() + "..."
+    # Strip chained leading filler ("can you help me …" → "…") up to a few times, but never to empty.
+    core = t
+    for _ in range(3):
+        stripped = _TITLE_FILLER_RE.sub("", core).strip()
+        if not stripped or stripped == core:
+            break
+        core = stripped
+    core = _re.sub(r"[,\s]+(please|pls|thanks|thank you|thx)\s*$", "", core, flags=_re.IGNORECASE).strip() or t
+    words = core.split()
+    title = " ".join(words[:7])
+    if len(title) > 52:
+        title = title[:52].rsplit(" ", 1)[0]
+    title = title.rstrip(" .,:;-?!—")
+    if not title:
+        return "New chat"
+    return title[:1].upper() + title[1:]
 
 
 def create_conversation(conversation_id: str, title: str = "", aspect_id: str = "") -> dict:

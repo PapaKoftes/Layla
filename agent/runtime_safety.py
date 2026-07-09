@@ -598,6 +598,9 @@ def load_config() -> dict:
             # BL-241: inject the world-model summary (project/blockers/index/machine) so responses
             # are situationally aware, instead of world_state being an inert GET /world nobody reads.
             "world_state_inject_enabled": True,
+            # Async LLM polish of the conversation rail title on the first exchange (ChatGPT-style),
+            # over the instant extractive title. Off → keep the extractive title only.
+            "conversation_title_synthesis_enabled": True,
             "autonomy_optimizer_enabled": False,
             "autonomy_trust_tiers_enabled": True,  # gates capabilities behind XP thresholds (more cautious)
             "trust_tier_override": None,

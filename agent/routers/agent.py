@@ -223,6 +223,41 @@ def _no_model_response(message: str) -> JSONResponse:
     )
 
 
+def _maybe_synth_title(conversation_id: str, user_msg: str, assistant_text: str) -> None:
+    """On the FIRST exchange, async-polish the auto title into an LLM-synthesized topic name.
+
+    Non-blocking (background thread) so it never adds latency to the reply — the instant
+    extractive title from _auto_name_conversation already shows in the rail; this replaces it
+    with a crisper name that lands on the next rail refresh. Flag-gated; safe no-op on failure.
+    """
+    cid = (conversation_id or "").strip()
+    if not cid or not (user_msg or "").strip():
+        return
+    try:
+        import runtime_safety
+        if not runtime_safety.load_config().get("conversation_title_synthesis_enabled", True):
+            return
+        from layla.memory.db import get_conversation
+        conv = get_conversation(cid) or {}
+        # first exchange only (user + assistant just persisted → count ~2); don't clobber later
+        if int(conv.get("message_count") or 0) > 2:
+            return
+
+        def _bg() -> None:
+            try:
+                from services.agent.title_synthesizer import synthesize_conversation_title
+                t = synthesize_conversation_title(user_msg, assistant_text)
+                if t:
+                    from layla.memory.db import rename_conversation
+                    rename_conversation(cid, t)
+            except Exception as _tx:
+                logger.debug("title synth bg failed: %s", _tx)
+
+        threading.Thread(target=_bg, daemon=True, name="title-synth").start()
+    except Exception as _te:
+        logger.debug("title synth gate failed: %s", _te)
+
+
 @router.get("/agent/decision_trace")
 def get_decision_trace(conversation_id: str = "default"):
     """Last run decision policy trace (caps + tool samples) for debugging."""
@@ -567,6 +602,7 @@ async def agent(req: AgentRequest, request: Request):
             create_conversation(conversation_id, aspect_id=aspect_id or "morrigan")
             append_conversation_message(conversation_id, "user", goal, aspect_id=aspect_id or "morrigan")
             append_conversation_message(conversation_id, "assistant", fast_reply, aspect_id=aspect_id or "morrigan")
+            _maybe_synth_title(conversation_id, goal, fast_reply)
         except Exception:
             pass
         _append_history("user", goal)
@@ -743,6 +779,7 @@ async def agent(req: AgentRequest, request: Request):
                         create_conversation(conversation_id, aspect_id=aspect_id or "")
                         append_conversation_message(conversation_id, "user", goal, aspect_id=aspect_id or "")
                         append_conversation_message(conversation_id, "assistant", text, aspect_id=aspect_id or "")
+                        _maybe_synth_title(conversation_id, goal, text)
                     except Exception:
                         pass
                     _fast_done = {'done': True, 'content': text, 'ux_states': [], 'memory_influenced': [], 'reasoning_mode': 'light', 'conversation_id': conversation_id}
@@ -1017,6 +1054,7 @@ async def agent(req: AgentRequest, request: Request):
                         create_conversation(conversation_id, aspect_id=result.get("aspect", ""))
                         append_conversation_message(conversation_id, "user", goal, aspect_id=result.get("aspect", ""))
                         append_conversation_message(conversation_id, "assistant", text, aspect_id=result.get("aspect", ""))
+                        _maybe_synth_title(conversation_id, goal, text)
                     except Exception:
                         pass
                     _append_history("user", goal)
@@ -1072,6 +1110,7 @@ async def agent(req: AgentRequest, request: Request):
                         create_conversation(conversation_id, aspect_id=result.get("aspect", ""))
                         append_conversation_message(conversation_id, "user", goal, aspect_id=result.get("aspect", ""))
                         append_conversation_message(conversation_id, "assistant", response_text, aspect_id=result.get("aspect", ""))
+                        _maybe_synth_title(conversation_id, goal, response_text)
                     except Exception:
                         pass
                     _append_history("user", goal)
