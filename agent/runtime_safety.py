@@ -590,6 +590,11 @@ def load_config() -> dict:
             "inline_initiative_enabled": False,
             "initiative_engine_enabled": False,
             "initiative_project_proposals_enabled": False,
+            # BL-190 mood: was read at system_head_builder.py:896 but set nowhere, so it defaulted
+            # off and never injected. On + nudged from the turn loop = a mood that actually carries.
+            "emotional_presence_enabled": True,
+            # BL-238: learn a reusable skill from a finished multi-step run (≥3 tool steps).
+            "skill_acquisition_enabled": True,
             "autonomy_optimizer_enabled": False,
             "autonomy_trust_tiers_enabled": True,  # gates capabilities behind XP thresholds (more cautious)
             "trust_tier_override": None,

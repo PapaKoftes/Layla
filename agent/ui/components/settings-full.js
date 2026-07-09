@@ -269,43 +269,67 @@ export function onWorkspacePresetSelect() {
 }
 
 // ── Relationship codex ──────────────────────────────────────────────────────
+// Relationship codex — per-workspace .layla/relationship_codex.json. The backend route is
+// /codex/relationship (workspace-scoped, returns {ok, data}); this panel was wired to a
+// non-existent /codex/user endpoint AND a non-existent #codex-user-data element, so Load did
+// nothing. Now it targets the real textarea + endpoint and sources the Settings workspace path.
+function _codexWorkspace() {
+  const el = document.getElementById('workspace-path');
+  return (el && el.value || '').trim();
+}
+
 export async function refreshRelationshipCodex() {
-  const pre = document.getElementById('codex-user-data');
-  if (!pre) return;
-  pre.textContent = 'Loading…';
+  const ta = document.getElementById('relationship-codex-json');
+  const status = document.getElementById('relationship-codex-status');
+  if (!ta) return;
+  const ws = _codexWorkspace();
+  if (!ws) {
+    if (status) status.textContent = 'Set a workspace path in Library → Workspace first, then Load.';
+    return;
+  }
+  if (status) status.textContent = 'Loading…';
   try {
-    const r = await fetch('/codex/user');
+    const r = await fetch('/codex/relationship?workspace_root=' + encodeURIComponent(ws));
     const d = await r.json();
-    if (d && d.ok && d.user) {
-      pre.textContent = JSON.stringify(d.user, null, 2);
+    if (d && d.ok) {
+      ta.value = JSON.stringify(d.data || { entities: {} }, null, 2);
+      if (status) status.textContent = 'Loaded from ' + (d.path || ws);
     } else {
-      pre.textContent = d ? JSON.stringify(d, null, 2) : '(no data)';
+      if (status) status.textContent = 'Error: ' + ((d && d.error) || r.status);
     }
   } catch (e) {
-    pre.textContent = 'Error: ' + (e && e.message ? e.message : e);
+    if (status) status.textContent = 'Error: ' + (e && e.message ? e.message : e);
   }
 }
 
 export async function saveRelationshipCodex() {
-  const pre = document.getElementById('codex-user-data');
-  if (!pre) return;
-  const raw = (pre.textContent || '').trim();
+  const ta = document.getElementById('relationship-codex-json');
+  const status = document.getElementById('relationship-codex-status');
+  if (!ta) return;
+  const ws = _codexWorkspace();
+  if (!ws) {
+    if (status) status.textContent = 'Set a workspace path in Library → Workspace first.';
+    return;
+  }
+  const raw = (ta.value || '').trim();
   if (!raw) return;
   let payload;
   try { payload = JSON.parse(raw); } catch (_) {
-    showToast('Invalid JSON');
+    if (status) status.textContent = 'Invalid JSON — fix and try again.';
     return;
   }
+  if (payload && typeof payload === 'object' && !payload.entities) payload.entities = {};
   try {
-    const res = await fetch('/codex/user', {
+    const res = await fetch('/codex/relationship?workspace_root=' + encodeURIComponent(ws), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(function () { return {}; });
-    showToast((data && data.ok) ? 'Saved codex' : ('Save failed: ' + ((data && data.error) || res.status)));
+    if (status) status.textContent = (data && data.ok) ? 'Saved' : ('Save failed: ' + ((data && data.error) || res.status));
+    if (data && data.ok && typeof showToast === 'function') showToast('Saved codex');
   } catch (e) {
-    showToast('Save error: ' + ((e && e.message) || e));
+    if (status) status.textContent = 'Save error: ' + ((e && e.message) || e);
   }
 }
 

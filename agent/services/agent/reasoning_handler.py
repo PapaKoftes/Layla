@@ -329,9 +329,13 @@ def handle_reasoning_intent(
         cfg_inline = runtime_safety.load_config()
         if cfg_inline.get("inline_initiative_enabled", False):
             from services.personality.maturity_engine import get_state as _get_maturity_state
+            from services.personality.maturity_engine import is_high_trust_phase
 
             ms = _get_maturity_state()
-            if ms.phase in ("adept", "veteran", "transcendent"):
+            # Proactive initiative unlocks in the later (high-trust) phases. Was gated on
+            # ("adept","veteran","transcendent") — none of which are valid PhaseId values —
+            # so this was silently dead regardless of the flag.
+            if is_high_trust_phase(ms.phase):
                 from services.infrastructure.initiative_inline import maybe_append_inline_suggestion
 
                 text = maybe_append_inline_suggestion(text, state=state, cfg=cfg_inline)

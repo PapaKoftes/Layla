@@ -442,7 +442,7 @@ export async function runElasticsearchLearningSearch() {
   if (!q) { box.innerHTML = '<span style="color:var(--text-dim);font-size:0.7rem">Enter a keyword query.</span>'; return; }
   box.innerHTML = '<span style="color:var(--text-dim)">Loading…</span>';
   try {
-    const r = await fetch('/elasticsearch/search?q=' + encodeURIComponent(q) + '&limit=20');
+    const r = await fetch('/memory/elasticsearch/search?q=' + encodeURIComponent(q) + '&limit=20');
     const d = await r.json().catch(() => ({}));
     const hits = Array.isArray(d && d.hits) ? d.hits : [];
     box.innerHTML = hits.length

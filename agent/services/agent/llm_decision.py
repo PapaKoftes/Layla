@@ -241,16 +241,19 @@ def llm_decision(
             logger.debug("decision_bias_prompt_extension failed: %s", e, exc_info=True)
             bias_hint = f"Decision bias: {', '.join(bias)}. Prefer tools and approach that match.\n"
 
-    # Layla v3: observation mode (trial phase). In nascent phase, bias toward answering/learning
+    # Layla v3: observation mode (trial phase). In the early phases, bias toward answering/learning
     # unless the operator explicitly asked for action.
     observation_hint = ""
     try:
         cfg_obs = runtime_safety.load_config()
         if cfg_obs.get("observation_mode_enabled", True):
             from services.personality.maturity_engine import get_state as _get_maturity_state
+            from services.personality.maturity_engine import is_early_phase
 
             ms = _get_maturity_state()
-            if ms.phase == "nascent":
+            # Was gated on == "nascent", which is NOT a valid PhaseId, so a brand-new install
+            # never got the intended early-phase restraint. Real early phases: awakening/attunement.
+            if is_early_phase(ms.phase):
                 _goal_l = (goal or "").lower()
                 explicit_action = any(
                     kw in _goal_l
@@ -273,7 +276,7 @@ def llm_decision(
                 )
                 if not explicit_action:
                     observation_hint = (
-                        "Observation mode (nascent): prefer action=\"reason\" (explain, ask clarifiers, learn). "
+                        "Observation mode (early phase): prefer action=\"reason\" (explain, ask clarifiers, learn). "
                         "Choose action=\"tool\" only if explicitly requested or necessary to answer.\n"
                     )
     except Exception as _exc:
