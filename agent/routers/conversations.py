@@ -28,21 +28,21 @@ def create_conversation_api(req: dict = Body(default={})):
 
 
 @router.get("/conversations")
-def list_conversations_api(limit: int = 200, tag: str = ""):
+def list_conversations_api(limit: int = 200, tag: str = "", offset: int = 0):
     try:
         from layla.memory.db import list_conversations_filtered
 
-        return JSONResponse({"ok": True, "conversations": list_conversations_filtered(limit=limit, tag=tag or None)})
+        return JSONResponse({"ok": True, "conversations": list_conversations_filtered(limit=limit, tag=tag or None, offset=offset)})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 @router.get("/conversations/search")
-def search_conversations_api(q: str = "", limit: int = 50, tag: str = ""):
+def search_conversations_api(q: str = "", limit: int = 50, tag: str = "", offset: int = 0):
     try:
         from layla.memory.db import search_conversations_filtered
 
-        return JSONResponse({"ok": True, "conversations": search_conversations_filtered(q, limit=limit, tag=tag or None)})
+        return JSONResponse({"ok": True, "conversations": search_conversations_filtered(q, limit=limit, tag=tag or None, offset=offset)})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
