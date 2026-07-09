@@ -190,6 +190,13 @@ def apply_setup(profile_ids, feature_ids=None, *, current_cfg=None, save=True) -
 
         cur = dict(runtime_safety.load_config())
     merged = {**cur, **resolve_setup_config(profile_ids, feature_ids)}
+    # Never persist remote_enabled without an auth credential. That state makes EVERY request —
+    # including plain localhost — 403 "no auth configured" (require_auth_always auto-on when
+    # remote_enabled), locking the operator out of their own local instance; and remote access
+    # with no token is useless anyway. Enabling remote is a deliberate, token-first step (rotate a
+    # tunnel token, then flip the flag), not something a setup checkbox should silently do.
+    if merged.get("remote_enabled") and not merged.get("tunnel_token_hash") and not merged.get("remote_api_key"):
+        merged["remote_enabled"] = False
     if save:
         import json
 
