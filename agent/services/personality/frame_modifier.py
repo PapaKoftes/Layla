@@ -132,6 +132,99 @@ def _social_hints(v: int) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# FRAME behavioral axes (North Star §"FRAME calibration") — the axes that actually
+# shape VOICE, distinct from the generic competency stats above. These are seeded to the
+# operator default so the antihero register is on out-of-box (profile beats defaults),
+# calibrated to "direct + keep some warmth" (not the raw EDGE=8/NERVE=9 brutal default):
+#   EDGE=7 blunt-but-not-harsh · NERVE=7 pushes back · SIGNAL=4 short-by-default ·
+#   IRON=5 neutral (KEEPS warmth — not full logic-first) · FRAME=7 structured ·
+#   WIRE=7 technical depth · DRIVE=7 decisive.
+# `layla stat <axis> <n>` overrides any of them. Scale 1-10; dead zone 5-6 fires nothing.
+_FRAME_AXES: tuple[str, ...] = ("edge", "nerve", "signal", "iron", "frame", "wire", "drive")
+_FRAME_DEFAULTS: dict[str, int] = {
+    "edge": 7, "nerve": 7, "signal": 4, "iron": 5, "frame": 7, "wire": 7, "drive": 7,
+}
+
+
+def _edge_hints(v: int) -> list[str]:
+    if v >= _HIGH:
+        return ["Be direct and lead with the answer. Drop corporate softening, hedges, and filler "
+                "disclaimers; don't cushion an accurate but unwelcome point. Direct, not harsh — "
+                "warmth is fine when it's earned, never as default padding."]
+    if v <= _LOW:
+        return ["Soften delivery: cushion hard news, add reassurance, prefer gentle framing."]
+    return []
+
+
+def _nerve_hints(v: int) -> list[str]:
+    if v >= _HIGH:
+        return ["Push back when the operator's premise, plan, or claim looks wrong — argue the "
+                "point directly and say why, then help execute. Don't just defer to a bad "
+                "instruction because it was given. You're not a yes-machine."]
+    if v <= _LOW:
+        return ["Defer to the operator's stated approach; raise concerns lightly, don't argue."]
+    return []
+
+
+def _signal_hints(v: int) -> list[str]:
+    if v >= _HIGH:
+        return ["Expand by default: give thorough, well-structured answers with context and detail."]
+    if v <= _LOW:
+        return ["Short by default: lead with the answer in a sentence or a few; expand only when "
+                "asked. No padding, no recap, no throat-clearing."]
+    return []
+
+
+def _iron_hints(v: int) -> list[str]:
+    if v >= _HIGH:
+        return ["Acknowledge feeling first: name the emotional stakes before the technical answer."]
+    if v <= _LOW:
+        return ["Logic-first: minimize reassurance and feelings-framing; go straight to the problem."]
+    return []
+
+
+def _frame_hints(v: int) -> list[str]:
+    if v >= _HIGH:
+        return ["Use structure when it carries information — short lists, tables, numbered steps, "
+                "checkboxes — not as decoration."]
+    if v <= _LOW:
+        return ["Prefer flowing prose over structure; avoid heavy formatting."]
+    return []
+
+
+def _wire_hints(v: int) -> list[str]:
+    if v >= _HIGH:
+        return ["Assume deep technical fluency on engineering topics: skip basics, use precise "
+                "terms, prefer terse diffs and code over prose."]
+    if v <= _LOW:
+        return ["Assume limited technical background: define terms, add small worked examples."]
+    return []
+
+
+def _drive_hints(v: int) -> list[str]:
+    if v >= _HIGH:
+        return ["Fast, decisive energy: commit to a recommendation rather than listing every "
+                "option; pick a path and say why."]
+    if v <= _LOW:
+        return ["Measured pace: lay out options and trade-offs; let the operator choose."]
+    return []
+
+
+_FRAME_HINT_FNS = {
+    "edge": _edge_hints, "nerve": _nerve_hints, "signal": _signal_hints, "iron": _iron_hints,
+    "frame": _frame_hints, "wire": _wire_hints, "drive": _drive_hints,
+}
+
+
+def _frame_axis_hints(stats: dict[str, int]) -> list[str]:
+    """Voice-shaping FRAME axes first (highest priority so they survive the max_hints cap)."""
+    out: list[str] = []
+    for axis in _FRAME_AXES:
+        out.extend(_FRAME_HINT_FNS[axis](stats.get(axis, _FRAME_DEFAULTS[axis])))
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Two-stat combination rules (only fired when both stats are at threshold)
 # ---------------------------------------------------------------------------
 
@@ -200,7 +293,7 @@ def _combination_hints(stats: dict[str, int]) -> list[str]:
 # Public API
 # ---------------------------------------------------------------------------
 
-def build_frame_modifiers(stats: dict[str, int], max_hints: int = 6) -> list[str]:
+def build_frame_modifiers(stats: dict[str, int], max_hints: int = 8) -> list[str]:
     """
     Convert a stat dict to a list of behavioral modifier strings.
     Returns empty list when the profile is fully neutral (all stats 5-6).
@@ -217,7 +310,11 @@ def build_frame_modifiers(stats: dict[str, int], max_hints: int = 6) -> list[str
 
     hints: list[str] = []
 
-    # Single-stat rules (order determines display priority)
+    # FRAME voice axes FIRST — these define the antihero register and must survive the cap.
+    hints.extend(_frame_axis_hints(stats))
+
+    # Single-stat competency rules (from the operator quiz; neutral by default so they only
+    # add on top of the FRAME axes when the operator has actually calibrated them).
     hints.extend(_technical_hints(stats.get("technical",  5)))
     hints.extend(_patience_hints(  stats.get("patience",   5)))
     hints.extend(_ambition_hints(  stats.get("ambition",   5)))
@@ -231,7 +328,7 @@ def build_frame_modifiers(stats: dict[str, int], max_hints: int = 6) -> list[str
     return hints[:max_hints]
 
 
-def build_frame_block(stats: dict[str, int], max_hints: int = 6) -> str:
+def build_frame_block(stats: dict[str, int], max_hints: int = 8) -> str:
     """
     Build the full prompt injection block.
     Returns empty string when no modifiers apply (neutral profile).
@@ -244,15 +341,23 @@ def build_frame_block(stats: dict[str, int], max_hints: int = 6) -> str:
 
 def load_stats_from_identity(uid: dict[str, Any]) -> dict[str, int]:
     """
-    Extract stat dict from a user_identity flat KV dict.
-    Missing stats default to 5 (neutral).
+    Extract the stat dict from a user_identity flat KV dict.
+
+    Two families: the generic competency stats from the operator quiz (default 5 = neutral,
+    so they only fire when the operator actually calibrated them), and the FRAME voice axes,
+    which default to the seeded operator profile (_FRAME_DEFAULTS = direct + keep some warmth)
+    so the antihero register is on out-of-box — "profile beats defaults", the North Star's #2.
+    `layla stat <axis> <n>` writes stat_<axis> and overrides the seed.
     """
     from services.personality.operator_quiz import STAT_IDS, _clamp_int
 
-    return {
+    stats: dict[str, int] = {
         sid: _clamp_int(uid.get(f"stat_{sid}"), 1, 10, 5)
         for sid in STAT_IDS
     }
+    for axis in _FRAME_AXES:
+        stats[axis] = _clamp_int(uid.get(f"stat_{axis}"), 1, 10, _FRAME_DEFAULTS[axis])
+    return stats
 
 
 def write_profile_snapshot(uid: dict[str, Any]) -> None:
