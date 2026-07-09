@@ -441,7 +441,13 @@ _OUTPUT_DISCIPLINE = (
     "Reply with ONLY your message to the user, as plain conversational prose. Do NOT repeat, "
     "echo, or reproduce any of the context above — no section headers, no bracketed control "
     "tags, no restated objectives, and no stray code fences. Do not narrate your process or "
-    "your tools. Just give the answer."
+    "your tools. Do not write your own name or a speaker label, and do not echo the user's "
+    "message back. Just give the answer.\n"
+    "This is a written TEXT chat: you are typing, not speaking — never mention audio, voice, "
+    "microphones, or 'talking'. Talk like a real, sharp person messaging: natural and direct. "
+    "No theatrical or roleplay openings ('Greetings, traveler', 'What quest do you seek'), no "
+    "narrating what you are. Match length to the message — a short or casual message gets a "
+    "short, warm reply; save depth for when it's actually asked for."
 )
 
 
@@ -517,7 +523,9 @@ def build_system_head(
             if state is not None:
                 state["cited_knowledge_sources"] = []
 
-    if not knowledge.strip():
+    if not knowledge.strip() and not _skip_expensive:
+        # Static reference docs are grounding for real work — never dump them into a phatic
+        # "hi"/"thanks" turn (that both bloats the prompt and drifts a small model off-topic).
         knowledge = runtime_safety.load_knowledge_docs(max_bytes=cfg.get("knowledge_max_bytes", 4000)).strip()
     else:
         knowledge = knowledge.strip()
@@ -1028,7 +1036,20 @@ def build_system_head(
         from layla.memory.db import get_all_user_identity
         uid = get_all_user_identity()
         if uid:
-            parts = [f"{k}: {v}" for k, v in uid.items() if v]
+            # The user_identity table is a grab-bag: alongside real user context (verbosity,
+            # work domains) it holds INTERNAL state — interaction_history_* (a JSON blob with
+            # recent_tools/type_counts), maturity/stat/tutorial counters, aspect bookkeeping.
+            # Never dump those into the prompt (noise that derails a small model). Skip internal
+            # keys and any value that's a serialized JSON blob.
+            _internal = ("interaction_history", "maturity_", "stat_", "tutorial", "main_aspect",
+                         "personality_last", "last_wakeup", "custom", "earned_title", "_migrated")
+            def _is_user_ctx(k, v):
+                kl = str(k).lower()
+                if any(kl.startswith(p) or p in kl for p in _internal):
+                    return False
+                sv = str(v).strip()
+                return not (sv.startswith("{") or sv.startswith("["))  # drop JSON blobs
+            parts = [f"{k}: {v}" for k, v in uid.items() if v and _is_user_ctx(k, v)]
             if parts:
                 _style_identity_parts.append("User/companion context:\n" + "\n".join(parts))
             try:

@@ -485,7 +485,7 @@ def build_standard_prompt(
     if head:
         parts.append(head)
     parts.append(
-        anchor + " Reply as " + name + " only, in her voice. "
+        anchor + " Reply as " + name + " only, in her style. "
         + refusal_clause
     )
     if convo_block:

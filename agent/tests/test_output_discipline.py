@@ -25,4 +25,8 @@ def test_discipline_can_be_disabled():
 def test_discipline_is_the_tail():
     # it must be the LAST thing the model reads (highest instruction recency)
     head = shb._append_output_discipline("SYSTEM\n\nsome context", {})
-    assert head.rstrip().endswith("Just give the answer.")
+    tail = head.rstrip()
+    assert tail.endswith("save depth for when it's actually asked for.")
+    # the grounding must forbid theatrical/audio drift + self-name echo
+    for phrase in ("Just give the answer.", "theatrical", "typing, not speaking", "Match length"):
+        assert phrase in tail

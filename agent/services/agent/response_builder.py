@@ -388,6 +388,14 @@ def strip_junk_from_reply(text: str) -> str:
     # — the colon form is the scaffold shape. Case-SENSITIVE and colon-REQUIRED so code stays
     # intact (dict[KEY], arr[IDX], a bare "[ERROR]" log line, and "[1]" citations are all safe).
     t = re.sub(r"\s*\[[A-Z][A-Z0-9_]{2,}\s*:[^\]]*\]\s*", " ", t).strip()
+    # Trailing self-name restart: after a finished sentence the model sometimes appends its own
+    # name (and echoes the user) as a fake new turn — "…journey begin. Layla. Hello." Strip a
+    # dangling "<Name>." (+ optional echoed greeting) that follows sentence-ending punctuation.
+    t = re.sub(
+        r"(?<=[.!?])\s+(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\s*[.:]?\s*"
+        r"(?:hi|hey|hello|sup|yo)?\s*[.!?]?\s*$",
+        "", t, flags=re.IGNORECASE,
+    ).strip()
     t = re.sub(r"\s*\[merg[^\]]*\]?\s*$", "", t, flags=re.IGNORECASE).strip()
     # Truncated trailing control marker: an open bracket + marker-ish text with NO closing ']'
     # because the stream hit max_tokens mid-marker, e.g. "…\n[Active aspect" or "…[EARNED_TITLE".
