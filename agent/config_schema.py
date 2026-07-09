@@ -472,6 +472,78 @@ def get_schema_for_api() -> dict[str, Any]:
     }
 
 
+# ── Feature themes ──────────────────────────────────────────────────────────
+# High-level "feature areas" the user can switch on/off as a group, so an install only
+# carries the capabilities it needs. Each theme maps to a DISJOINT set of runtime-config
+# flags that ACTUALLY gate that feature (verified — no no-op toggles). A theme is "on" when
+# every one of its flags is at its enabled value. Applying a theme sets exactly those flags
+# (a whitelist), so this can never write an arbitrary key.
+FEATURE_THEMES: list[dict[str, Any]] = [
+    {
+        "key": "automation",
+        "label": "Background automation",
+        "desc": "Scheduled study sessions and autonomous work while you're away.",
+        "flags": {"scheduler_study_enabled": True},
+    },
+    {
+        "key": "advanced_search",
+        "label": "Advanced retrieval & search",
+        "desc": "HyDE query expansion and the optional Elasticsearch backend for deeper memory search.",
+        "flags": {"hyde_enabled": True, "elasticsearch_enabled": True},
+    },
+    {
+        "key": "people_workspace",
+        "label": "People & workspace awareness",
+        "desc": "Remember people you mention and auto-scan your project for context.",
+        "flags": {"people_codex_enabled": True, "project_discovery_auto_inject": True},
+    },
+    {
+        "key": "clustering",
+        "label": "Device clustering",
+        "desc": "Distribute heavy work across paired devices on your network.",
+        "flags": {"cluster_enabled": True},
+    },
+    {
+        "key": "external_tools",
+        "label": "External tools (MCP + plugins)",
+        "desc": "Connect MCP tool servers and run skill plugins. Security-sensitive — enables code execution.",
+        "flags": {"mcp_client_enabled": True, "plugins_enabled": True},
+    },
+    {
+        "key": "remote_access",
+        "label": "Remote access",
+        "desc": "Reach Layla from another device over your network or a tunnel.",
+        "flags": {"remote_enabled": True},
+    },
+]
+
+# Every flag any theme controls — the whitelist apply is allowed to touch.
+_THEME_FLAG_WHITELIST: set[str] = {k for t in FEATURE_THEMES for k in t["flags"]}
+
+
+def get_feature_themes(cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the themes with a computed on/off state from the current config."""
+    cfg = cfg or {}
+    out = []
+    for t in FEATURE_THEMES:
+        enabled = all(bool(cfg.get(k)) == bool(v) for k, v in t["flags"].items())
+        out.append({"key": t["key"], "label": t["label"], "desc": t["desc"],
+                    "flags": list(t["flags"].keys()), "enabled": enabled})
+    return out
+
+
+def feature_theme_updates(theme_key: str, enabled: bool) -> dict[str, Any] | None:
+    """Return the {flag: value} updates to switch a theme on/off, or None if unknown.
+
+    Enabling sets each flag to its theme value; disabling sets it to the opposite. Only
+    flags in the theme's own declared set are returned (whitelist).
+    """
+    t = next((t for t in FEATURE_THEMES if t["key"] == theme_key), None)
+    if not t:
+        return None
+    return {k: (bool(v) if enabled else (not bool(v))) for k, v in t["flags"].items()}
+
+
 def apply_settings_preset(existing_cfg: dict[str, Any], preset_name: str) -> tuple[dict[str, Any] | None, list[str]]:
     """
     Merge preset values into a copy of existing_cfg.
