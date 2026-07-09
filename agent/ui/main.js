@@ -376,6 +376,7 @@ function init() {
     triggerSend: bootstrap.triggerSend,
     // conversations.js
     startNewConversation: conversations.startNewConversation,
+    clearAllConversations: conversations.clearAllConversations,
     toggleChatRailMobile: conversations.toggleChatRailMobile,
     closeChatRailMobile: conversations.closeChatRailMobile,
     createProjectQuick: conversations.createProjectQuick,

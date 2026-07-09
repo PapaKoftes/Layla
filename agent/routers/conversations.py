@@ -123,6 +123,18 @@ def delete_conversation_api(conversation_id: str):
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
+@router.post("/conversations/clear_all")
+def clear_all_conversations_api():
+    """Delete every conversation + its messages. Returns how many were removed."""
+    try:
+        from layla.memory.db import clear_all_conversations
+
+        removed = clear_all_conversations()
+        return JSONResponse({"ok": True, "removed": removed})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 # ── Branching / time-travel (git-for-dialogue) ──────────────────────────────
 
 @router.post("/conversations/{conversation_id}/fork")
