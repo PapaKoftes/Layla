@@ -181,7 +181,8 @@ def _approval_break(intent, args, ctx) -> DispatchResult:
 
 def _lab_blocked(intent, state) -> DispatchResult:
     """Block a tool in research-lab mode and continue."""
-    state["tool_calls"] += 1
+    # Rejected — no tool ran; accrue to blocked_calls, not the real tool budget.
+    state["blocked_calls"] = state.get("blocked_calls", 0) + 1
     state["steps"].append({
         "action": intent,
         "result": {"ok": False, "reason": "not_allowed_in_research",

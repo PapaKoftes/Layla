@@ -27,7 +27,14 @@ def run_tool_guards(
     valid_tools: frozenset[str],
 ) -> tuple[bool, str]:
     """Run post-batch tool guards (policy, loop, args, dup, recovery).
-    Returns (blocked, goal). If blocked, caller should continue the loop."""
+    Returns (blocked, goal). If blocked, caller should continue the loop.
+
+    NOTE: a guard rejection here means NO tool executed. It must accrue to
+    ``blocked_calls`` (a separate, generously-bounded counter) and NOT to
+    ``tool_calls`` — the real tool-execution budget the max-tool-calls cap
+    guards. Counting rejections against ``tool_calls`` was the cap-misfire:
+    a few disallowed/looped/duplicate decisions on a simple turn exhausted the
+    work budget without ever running a tool, tripping "max tool calls"."""
     # OpenClaw-style tool policy: block execution outside effective tool set
     if intent not in ("reason", "finish", "wakeup") and intent in valid_tools:
         from services.tools.tool_policy import tool_allowed
@@ -45,7 +52,7 @@ def run_tool_guards(
         except Exception as _dp_exc:
             logger.warning("decision_policy caps skipped at dispatch: %s", _dp_exc)
         if not tool_allowed(intent, _vt):
-            state["tool_calls"] += 1
+            state["blocked_calls"] = state.get("blocked_calls", 0) + 1
             _tpd = {
                 "ok": False,
                 "reason": "tool_policy_denied",
@@ -68,7 +75,7 @@ def run_tool_guards(
                 cfg, state, intent, decision, reasoning_mode=state.get("reasoning_mode"),
             )
             if _loop_ev and _loop_ev.startswith("STOP:"):
-                state["tool_calls"] += 1
+                state["blocked_calls"] = state.get("blocked_calls", 0) + 1
                 _tlr = {
                     "ok": False,
                     "reason": "tool_loop_detected",
@@ -90,7 +97,7 @@ def run_tool_guards(
 
             _verr = validate_tool_invocation(intent, decision, goal, workspace)
             if _verr:
-                state["tool_calls"] += 1
+                state["blocked_calls"] = state.get("blocked_calls", 0) + 1
                 state["steps"].append({"action": intent, "result": _verr})
                 log_tool_outcome_fn(intent, _verr)
                 state["last_tool_used"] = intent
@@ -106,7 +113,7 @@ def run_tool_guards(
             _eck = exact_call_key(intent, decision)
             _seen = state.setdefault("_recent_exact_calls", set())
             if _eck in _seen:
-                state["tool_calls"] += 1
+                state["blocked_calls"] = state.get("blocked_calls", 0) + 1
                 _tdup = {
                     "ok": False,
                     "reason": "tool_loop_detected",
@@ -125,7 +132,7 @@ def run_tool_guards(
             from services.infrastructure.failure_recovery import block_repeated_mutating_under_retry_constrained
 
             if block_repeated_mutating_under_retry_constrained(state, intent):
-                state["tool_calls"] += 1
+                state["blocked_calls"] = state.get("blocked_calls", 0) + 1
                 _br = {
                     "ok": False,
                     "reason": "retry_constrained_block",
