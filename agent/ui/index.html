@@ -889,13 +889,25 @@
         <div class="rcp-subpage" data-rcp-sub="memory">
           <!-- Memory sub-tabs -->
           <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px">
-            <button type="button" class="rcp-subtab active" data-mem-sub="browse" data-action="showMemorySubTab" data-arg="browse" style="font-size:0.65rem;padding:3px 8px">Browse</button>
+            <button type="button" class="rcp-subtab active" data-mem-sub="about" data-action="showMemorySubTab" data-arg="about" style="font-size:0.65rem;padding:3px 8px">About you</button>
+            <button type="button" class="rcp-subtab" data-mem-sub="browse" data-action="showMemorySubTab" data-arg="browse" style="font-size:0.65rem;padding:3px 8px">Browse</button>
             <button type="button" class="rcp-subtab" data-mem-sub="search" data-action="showMemorySubTab" data-arg="search" style="font-size:0.65rem;padding:3px 8px">Search</button>
             <button type="button" class="rcp-subtab" data-mem-sub="checkpoints" data-action="showMemorySubTab" data-arg="checkpoints" style="font-size:0.65rem;padding:3px 8px" data-i18n="nav.checkpoints">Checkpoints</button>
           </div>
 
+          <!-- About-you sub-tab: what Layla knows about you (GET /memory/about) -->
+          <div data-mem-subpage="about">
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+              <button type="button" class="approve-btn" style="font-size:0.65rem" data-action="renderMemoryAbout">Refresh</button>
+              <span id="mem-about-summary" style="font-size:0.64rem;color:var(--text-dim)"></span>
+            </div>
+            <div id="mem-about" style="font-size:0.7rem;max-height:360px;overflow-y:auto">
+              <span style="color:var(--text-dim)">Loading what Layla knows about you…</span>
+            </div>
+          </div>
+
           <!-- Browse sub-tab -->
-          <div data-mem-subpage="browse">
+          <div data-mem-subpage="browse" style="display:none">
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:center">
               <select id="mem-browse-type" style="font-size:0.68rem;padding:3px;background:var(--code-bg);color:var(--text);border:1px solid var(--border);border-radius:3px" data-on-change="laylaMemBrowseReset">
                 <option value="" data-i18n="search.all_types">All types</option>

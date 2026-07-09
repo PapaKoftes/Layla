@@ -612,6 +612,31 @@ export async function send() {
             if (_delibDone && _delibDone.mode && _delibDone.mode !== 'solo') {
               try { _renderDeliberationTranscript(div, _delibDone); } catch (_e) { console.debug('app:', _e); }
             }
+            // "Memory updated" receipt — a small chip when Layla filed a durable fact this turn.
+            if (obj.memory_updated && typeof obj.memory_updated === 'string' && obj.memory_updated.trim()) {
+              try {
+                var _mchip = document.createElement('div');
+                _mchip.className = 'memory-receipt';
+                _mchip.style.cssText = 'margin-top:6px;font-size:0.66rem;color:var(--text-dim);display:flex;gap:8px;align-items:center;flex-wrap:wrap';
+                var _mtxt = document.createElement('span');
+                _mtxt.textContent = '✦ ' + obj.memory_updated;
+                var _mlink = document.createElement('a');
+                _mlink.textContent = 'Manage';
+                _mlink.href = '#';
+                _mlink.style.cssText = 'color:var(--asp);cursor:pointer';
+                _mlink.addEventListener('click', function (e) {
+                  e.preventDefault();
+                  try {
+                    if (typeof window.showMainPanel === 'function') window.showMainPanel('workspace');
+                    var s = document.querySelector('[data-rcp-sub="memory"]'); if (s) s.click();
+                    var a = document.querySelector('[data-mem-sub="about"]'); if (a) a.click();
+                  } catch (_) {}
+                });
+                _mchip.appendChild(_mtxt);
+                _mchip.appendChild(_mlink);
+                div.appendChild(_mchip);
+              } catch (_e) { console.debug('app:', _e); }
+            }
             if (obj.status === 'pipeline_needs_input') {
               try { laylaShowPipelineClarify(obj.questions); } catch (_e) { console.debug('app:', _e); }
             }
