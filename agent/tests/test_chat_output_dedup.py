@@ -37,6 +37,64 @@ class TestDeliberationOffByDefault:
         assert orchestrator.should_deliberate("what do you think about this?", None) is True
 
 
+class TestThinkingModeDeliberation:
+    """Thinking mode = one multi-POV pass → single synthesized reply + collapsible trace.
+    The old bug streamed all six "[⚔ MORRIGAN] …" POV lines into the reply body."""
+
+    _RAW = (
+        "[⚔ MORRIGAN] (blunt): Use a read timeout.\n"
+        "[✦ NYX] (layered): Cap the retry loop too.\n"
+        "[◎ ECHO] (reflective): Same bug as last week.\n"
+        "[⚡ ERIS] (sideways): or just fail fast.\n"
+        "[⌖ CASSANDRA] (immediate): it is the timeout.\n"
+        "[⊛ LILITH] (honest): no deadline is set anywhere.\n"
+        "[CONCLUSION — MORRIGAN]: Add a read timeout and cap the retry loop."
+    )
+
+    def test_split_reply_is_conclusion_only(self):
+        import orchestrator
+        reply, resp = orchestrator.split_deliberation_output(self._RAW, "Morrigan")
+        # the reply the user sees is ONLY the synthesized conclusion …
+        assert reply == "Add a read timeout and cap the retry loop."
+        # … with no aspect tags, names, or POV text leaking in
+        for leak in ("MORRIGAN", "NYX", "[", "fail fast", "last week"):
+            assert leak not in reply
+        # … and every POV becomes a trace entry keyed by aspect id
+        assert set(resp) == {"morrigan", "nyx", "echo", "eris", "cassandra", "lilith"}
+        assert "read timeout" in resp["morrigan"] and "deadline" in resp["lilith"]
+
+    def test_split_fallback_no_marker(self):
+        import orchestrator
+        # no CONCLUSION marker => whole thing is the reply, empty trace (never crashes)
+        reply, resp = orchestrator.split_deliberation_output("plain answer, no markers", "Morrigan")
+        assert reply == "plain answer, no markers" and resp == {}
+
+    def test_show_thinking_dispatches_to_deliberation(self, monkeypatch):
+        # show_thinking must run the deliberation pass: exactly one trace-meta frame,
+        # reply = conclusion, POV text never in the reply body.
+        import json as _json
+
+        import services.agent.stream_handler as sh
+        import services.llm.llm_gateway as gw
+        raw = self._RAW
+
+        def _fake(prompt, **kw):
+            for i in range(0, len(raw), 40):
+                yield raw[i:i + 40]
+
+        monkeypatch.setattr(gw, "run_completion", _fake)
+        frames = list(sh.stream_reason("why does it hang?", show_thinking=True, aspect_id="morrigan"))
+        metas = [f for f in frames if isinstance(f, str) and f.startswith("__DELIB_META__")]
+        reply = "".join(f for f in frames if isinstance(f, str) and not f.startswith("__DELIB_META__"))
+        assert len(metas) == 1
+        meta = _json.loads(metas[0].split("__DELIB_META__")[1].split("__DELIB_END__")[0])
+        assert meta["mode"] == "tribunal"
+        assert set(meta["aspect_responses"]) == {"morrigan", "nyx", "echo", "eris", "cassandra", "lilith"}
+        assert "Add a read timeout" in reply
+        for leak in ("MORRIGAN", "[", "fail fast"):
+            assert leak not in reply
+
+
 class TestAspectTagStripping:
     def test_bracketed_aspect_tags_removed(self):
         from services.agent.response_builder import strip_junk_from_reply
@@ -74,8 +132,8 @@ class TestPromptHygiene:
         # interaction_history_* (recent_tools JSON) + maturity/stat/tutorial state must never
         # be dumped into the prompt as "User/companion context".
         import orchestrator
-        from services.prompts.system_head_builder import build_system_head
         from layla.memory.user_profile import set_user_identity
+        from services.prompts.system_head_builder import build_system_head
         set_user_identity("interaction_history_morrigan", '{"recent_tools":["read_file"],"total_interactions":9}')
         set_user_identity("formality", "casual")
         asp = orchestrator.select_aspect("Hello", force_aspect="morrigan")
