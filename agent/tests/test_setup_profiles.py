@@ -19,6 +19,18 @@ def test_every_profile_references_valid_features():
             assert feature_by_id(fid) is not None, f"{p['id']} references unknown feature {fid}"
 
 
+def test_remote_never_enabled_without_a_token():
+    # Selecting "remote" without a token must NOT persist remote_enabled: that state 403s every
+    # request (including localhost) with "no auth configured" and bricks the local operator.
+    m = apply_setup([], ["remote"], current_cfg={}, save=False)
+    assert m.get("remote_enabled") is False
+    # With a token present, enabling remote is fine.
+    m2 = apply_setup([], ["remote"], current_cfg={"tunnel_token_hash": "deadbeef"}, save=False)
+    assert m2.get("remote_enabled") is True
+    m3 = apply_setup([], ["remote"], current_cfg={"remote_api_key": "k", "allow_legacy_remote_api_key": True}, save=False)
+    assert m3.get("remote_enabled") is True
+
+
 def test_every_feature_has_required_keys():
     for f in FEATURE_MANIFEST:
         for k in ("id", "label", "flags", "deps", "models", "size_mb", "unlocks"):
