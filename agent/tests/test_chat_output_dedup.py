@@ -61,6 +61,35 @@ class TestAspectTagStripping:
         for keep in ("dict[KEY]", "arr[IDX]", "[ERROR]", "[1]"):
             assert keep in out
 
+    def test_trailing_selfname_echo_stripped(self):
+        from services.agent.response_builder import strip_junk_from_reply
+        assert strip_junk_from_reply("Let your journey begin. Layla. Hello.") == "Let your journey begin."
+        # a name used mid-sentence / in code must NOT be stripped
+        assert "Layla.process()" in strip_junk_from_reply("Call Layla.process() to start.")
+        assert strip_junk_from_reply("The capital is Paris.") == "The capital is Paris."
+
+
+class TestPromptHygiene:
+    def test_internal_identity_keys_not_injected(self):
+        # interaction_history_* (recent_tools JSON) + maturity/stat/tutorial state must never
+        # be dumped into the prompt as "User/companion context".
+        import orchestrator
+        from services.prompts.system_head_builder import build_system_head
+        from layla.memory.user_profile import set_user_identity
+        set_user_identity("interaction_history_morrigan", '{"recent_tools":["read_file"],"total_interactions":9}')
+        set_user_identity("formality", "casual")
+        asp = orchestrator.select_aspect("Hello", force_aspect="morrigan")
+        head = build_system_head(goal="Hello", aspect=asp, reasoning_mode="light")
+        assert "recent_tools" not in head
+        assert "interaction_history" not in head
+
+    def test_no_reference_docs_on_lightweight_turn(self):
+        import orchestrator
+        from services.prompts.system_head_builder import build_system_head
+        asp = orchestrator.select_aspect("hi", force_aspect="morrigan")
+        head = build_system_head(goal="hi", aspect=asp, reasoning_mode="light")
+        assert "Reference docs" not in head
+
 
 class TestDuplicateBlockCollapse:
     _DUP = "Here is the script:\n```bash\nssh user@host\n```\nRemember to replace it.\n```bash\nssh user@host\n```"
