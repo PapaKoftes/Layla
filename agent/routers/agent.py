@@ -258,6 +258,23 @@ def _maybe_synth_title(conversation_id: str, user_msg: str, assistant_text: str)
         logger.debug("title synth gate failed: %s", _te)
 
 
+def _mem_receipt(user_msg: str) -> str:
+    """Persist any durable fact the user stated this turn; return a receipt for the done-frame.
+
+    Fast (regex only) so it's fine synchronously in the done-path. Powers the 'memory updated'
+    chip and makes the durable fact show up in the About-you panel. Flag-gated; '' on nothing.
+    """
+    try:
+        import runtime_safety
+        if not runtime_safety.load_config().get("identity_capture_enabled", True):
+            return ""
+        from services.memory.identity_extractor import capture_identity_from_turn
+        return capture_identity_from_turn(user_msg or "")
+    except Exception as _me:
+        logger.debug("identity capture failed: %s", _me)
+        return ""
+
+
 @router.get("/agent/decision_trace")
 def get_decision_trace(conversation_id: str = "default"):
     """Last run decision policy trace (caps + tool samples) for debugging."""
@@ -782,7 +799,7 @@ async def agent(req: AgentRequest, request: Request):
                         _maybe_synth_title(conversation_id, goal, text)
                     except Exception:
                         pass
-                    _fast_done = {'done': True, 'content': text, 'ux_states': [], 'memory_influenced': [], 'reasoning_mode': 'light', 'conversation_id': conversation_id}
+                    _fast_done = {'done': True, 'content': text, 'ux_states': [], 'memory_influenced': [], 'reasoning_mode': 'light', 'conversation_id': conversation_id, 'memory_updated': _mem_receipt(goal)}
                     if _fast_delib_meta:
                         _fast_done["deliberation"] = _fast_delib_meta
                     yield f"data: {json.dumps(_fast_done)}\n\n"
@@ -1078,6 +1095,7 @@ async def agent(req: AgentRequest, request: Request):
                         "steps": _steps_safe,
                         "run_budget_summary": result.get("run_budget_summary") or {},
                         "confidence": result.get("confidence") or {},
+                        "memory_updated": _mem_receipt(goal),
                     }
                     if _cfg_stream.get("ui_decision_trace_enabled"):
                         _done_stream["decision_trace"] = (result.get("decision_trace") or [])[-15:]
