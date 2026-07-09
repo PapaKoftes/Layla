@@ -24,6 +24,14 @@ def _clean_title(raw: str) -> str:
     t = re.sub(r"^(title|topic)\s*[:\-]\s*", "", t, flags=re.IGNORECASE).strip()
     t = t.strip("\"'`“”‘’ ")                            # surrounding quotes
     t = re.sub(r"\[[^\]]*\]", "", t).strip()            # any bracketed marker
+    # A leaked leading aspect/persona label ("⚔ Morrigan: …", "Morrigan: …", "Layla: …") — the
+    # title model echoes the speaker tag just like the reply model does. Strip an optional leading
+    # sigil + optional name + colon/dash so the rail shows the topic, not the tag.
+    t = re.sub(
+        r"^\s*[⚔✦◎⚡⌖⊛]?\s*(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\s*[:\-–—]\s*",
+        "", t, flags=re.IGNORECASE,
+    ).strip()
+    t = t.lstrip("⚔✦◎⚡⌖⊛ ").strip()                     # a bare leading sigil with no name
     t = re.sub(r"\s+", " ", t)
     t = t.rstrip(" .,:;-—!?")
     if len(t) > _MAX_TITLE_LEN:
