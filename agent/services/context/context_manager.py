@@ -319,8 +319,20 @@ def build_system_prompt(
     remaining = total_budget
     # Reserve a small slice for critical context so large identity/personality blocks
     # can't starve the workspace context entirely (important for tests + reliability).
-    _reserve_agent_state = max(60, int(budgets.get("agent_state", 120) or 120))
-    _reserve_current_goal = max(40, int(budgets.get("current_goal", 60) or 60))
+    # Reserve what the section actually NEEDS (its content size), capped by its budget —
+    # reserving the full nominal budget starved SYSTEM on small windows: a 25-token
+    # agent_state reserved 400 tokens, leaving identity+persona ~12 tokens, and the
+    # whole SYSTEM section silently vanished on low tiers.
+    # +24 pad covers the "## TASK"/"## SCRATCHPAD" structure headers and estimator noise so the
+    # reserved section actually fits whole instead of losing its tail by a couple of tokens.
+    _reserve_agent_state = min(
+        max(60, int(budgets.get("agent_state", 120) or 120)),
+        token_estimate((sections.get("agent_state") or "").strip()) + 24,
+    )
+    _reserve_current_goal = min(
+        max(40, int(budgets.get("current_goal", 60) or 60)),
+        token_estimate((sections.get("current_goal") or "").strip()) + 24,
+    )
 
     for key in order:
         raw = (sections.get(key) or "").strip()
@@ -361,7 +373,9 @@ def build_system_prompt(
         truncated = truncate_to_tokens(raw, max_tok)
         tok = token_estimate(truncated)
         if tok > max_tok:
-            truncated = truncate_to_tokens(raw, max_tok - 20)
+            # Floor the retry: for small max_tok, `max_tok - 20` went ≤ 0 and the section became
+            # an empty string that was silently skipped — not even recorded as dropped.
+            truncated = truncate_to_tokens(raw, max(24, max_tok - 20))
             tok = token_estimate(truncated)
         metrics["section_tokens"][key] = tok
         if tok < token_estimate(raw):

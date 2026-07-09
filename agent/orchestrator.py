@@ -446,9 +446,10 @@ def build_deliberation_prompt(
     for name, symbol, cue in deliberation_lines:
         prompt += f"\n[{symbol} {name}] ({cue}):\n"
 
-    # Deliberation conclusion: only the active aspect's refusal authority determines if [REFUSED:] applies.
-    active_can_refuse = active_aspect.get("can_refuse") or active_aspect.get("will_refuse")
-    conclusion_refusal = "If you must refuse, start with [REFUSED: reason]. " if active_can_refuse else ""
+    # Deliberation conclusion: only a will_refuse gatekeeper (Lilith) is taught the [REFUSED:]
+    # marker. can_refuse is true on EVERY aspect, so keying on it injected the marker every turn
+    # and primed false refusals appended to real answers (see build_standard_prompt).
+    conclusion_refusal = "If you must refuse, start with [REFUSED: reason]. " if active_aspect.get("will_refuse") else ""
     prompt += (
         f"\n[CONCLUSION — {concluder_name.upper()}]: "
         "One direct answer. Do not echo or repeat the aspect lines. "
@@ -534,11 +535,13 @@ def build_standard_prompt(
     # One-line character anchor so the model knows who is speaking, without echoing the full system head
     anchor = f"[Active aspect: {name}" + (f" — {title}" if title else "") + "]"
 
-    # Only aspects that have explicit refusal authority should see the [REFUSED:] tag instruction.
-    # For all others, the content-policy block in the system head already handles declining in plain language.
-    # Sending [REFUSED:] to non-refusal aspects causes the model to over-apply it on benign questions.
-    can_refuse = aspect.get("can_refuse") or aspect.get("will_refuse")
-    refusal_clause = "If you must refuse, start with [REFUSED: reason]. " if can_refuse else ""
+    # Only the ACTIVE GATEKEEPER aspect (will_refuse — Lilith) is taught the [REFUSED:] marker.
+    # The old gate keyed on can_refuse — but EVERY aspect ships can_refuse:true, so the marker
+    # instruction was injected on every turn and a small model pattern-completed it: it would
+    # ANSWER a benign question and then append "REFUSED: too broad" (the transcript bug). The
+    # streaming path never even parses the marker, so for non-gatekeepers it was pure priming.
+    # Everyone else declines in plain language per the content-policy block in the system head.
+    refusal_clause = "If you must refuse, start with [REFUSED: reason]. " if aspect.get("will_refuse") else ""
 
     parts = []
     if head:

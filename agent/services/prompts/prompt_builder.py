@@ -195,7 +195,13 @@ def build_core_sys_parts(
             "Still refuse clearly (in prose) for minors, non-consent, illegality, or governance bypass."
         )
     if personality:
-        sys_parts.append(personality)
+        # Insert the aspect persona (anchor + voice/style card) right after the core line, BEFORE
+        # the long base identity + policy boilerplate. The system_instructions section is
+        # budget-truncated from the TAIL on low tiers (~400 tok), and with the persona appended
+        # last it was ALWAYS cut — the model never saw "Reply as Morrigan — blunt, no flattery"
+        # and improvised theatrically off the identity prose instead. Truncation must eat the
+        # manifesto's tail, never who is speaking.
+        sys_parts.insert(1, personality)
     if cfg.get("multi_agent_orchestration_enabled") and (reasoning_mode or "").strip().lower() == "deep":
         _dap = (
             "Multi-agent discipline (single pass): plan briefly, implement precisely, then sanity-check.\n"
