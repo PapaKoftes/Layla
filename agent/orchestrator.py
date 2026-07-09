@@ -7,6 +7,7 @@ and decides whether to deliberate.
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 from pathlib import Path
@@ -455,6 +456,64 @@ def build_deliberation_prompt(
         + f"{concluder_name}:"
     )
     return prompt
+
+
+# Map an aspect display NAME (as it appears in a "[⚔ MORRIGAN] …" trace line) to its id.
+_ASPECT_NAME_TO_ID = {
+    "morrigan": "morrigan", "nyx": "nyx", "echo": "echo",
+    "eris": "eris", "cassandra": "cassandra", "lilith": "lilith",
+}
+
+
+def split_deliberation_output(
+    raw: str, concluder_name: str = ""
+) -> tuple[str, dict[str, str]]:
+    """Split a single-call deliberation completion into (reply, {aspect_id: pov_text}).
+
+    The deliberation prompt makes the model write one short line per aspect and then a
+    ``[CONCLUSION — NAME]:`` answer. In "thinking mode" the CONCLUSION is the reply the
+    user sees and the per-aspect lines are the collapsible thinking trace — never the
+    other way round. Returns (reply, aspect_responses); if no conclusion marker is found
+    the whole thing is treated as the reply (safe fallback) with no trace.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return "", {}
+    # Everything from the CONCLUSION marker onward is the answer.
+    m = re.search(r"\[\s*CONCLUSION\b[^\]]*\]\s*:?\s*", text, re.IGNORECASE)
+    if not m and concluder_name:
+        # Fallback: a bare "<Concluder>:" label near the end of the text.
+        m = re.search(rf"(?:^|\n)\s*{re.escape(concluder_name)}\s*:\s*", text, re.IGNORECASE)
+    if not m:
+        return text, {}
+    pov_block = text[: m.start()].strip()
+    reply = text[m.end():].strip()
+    # Strip a leading "Name:" the model sometimes prefixes onto the conclusion.
+    if concluder_name:
+        reply = re.sub(rf"^\s*{re.escape(concluder_name)}\s*:\s*", "", reply, flags=re.IGNORECASE).strip()
+    return (reply or pov_block), _parse_deliberation_trace(pov_block)
+
+
+def _parse_deliberation_trace(pov_block: str) -> dict[str, str]:
+    """Parse "[⚔ MORRIGAN] (cue): text" trace lines into {aspect_id: text}."""
+    responses: dict[str, str] = {}
+    if not pov_block.strip():
+        return responses
+    # Split on each "[<symbol> NAME]" marker, keeping the NAME so we can attribute the text.
+    parts = re.split(r"\[\s*\S?\s*([A-Za-z]+)\s*\]", pov_block)
+    # parts = [pre, NAME1, body1, NAME2, body2, ...]
+    for i in range(1, len(parts) - 1, 2):
+        name = (parts[i] or "").strip().lower()
+        aid = _ASPECT_NAME_TO_ID.get(name)
+        if not aid:
+            continue
+        body = (parts[i + 1] or "").strip()
+        # Drop a leading "(cue …):" the prompt seeds before the model's own words.
+        body = re.sub(r"^\s*\([^)]*\)\s*:?\s*", "", body).strip()
+        body = body.strip(" \t\r\n:-—")
+        if body:
+            responses[aid] = body[:800]
+    return responses
 
 
 def build_standard_prompt(

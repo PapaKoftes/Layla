@@ -173,6 +173,13 @@ def test_builtin_config_defaults_production_contract(monkeypatch):
     monkeypatch.setattr(runtime_safety, "_config_cache", None)
     monkeypatch.setattr(runtime_safety, "_config_mtime", 0.0)
     monkeypatch.setattr(runtime_safety, "_config_last_check", 0.0)
+    # Isolate the *builtin* contract from the hardware auto-tune layer: apply_auto_tune runs
+    # authoritatively inside load_config and legitimately lowers timeouts (e.g.
+    # max_runtime_seconds 900→300) on a low/"potato" tier, so without this the assertion
+    # tests hardware detection, not the builtins it claims to. (Same hardware-independence
+    # the performance_mode assertion below already accounts for.)
+    import services.infrastructure.auto_tune as _auto_tune
+    monkeypatch.setattr(_auto_tune, "apply_auto_tune", lambda d: d)
 
     cfg = runtime_safety.load_config()
     assert cfg["max_tool_calls"] == 20
