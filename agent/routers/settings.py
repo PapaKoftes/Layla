@@ -677,10 +677,14 @@ async def operator_profile_set_stat(req: Request):
         return JSONResponse({"ok": False, "error": "stat required"}, status_code=400)
     try:
         from layla.memory.db import set_user_identity
+        from services.personality.frame_modifier import _FRAME_AXES
         from services.personality.operator_quiz import STAT_IDS, _clamp_int
 
-        if stat not in STAT_IDS:
-            return JSONResponse({"ok": False, "error": "unknown_stat", "known": list(STAT_IDS)}, status_code=400)
+        # Accept both the generic competency stats AND the FRAME voice axes (edge/nerve/signal/…)
+        # so `layla stat edge 8` etc. can retune the voice.
+        known = tuple(STAT_IDS) + _FRAME_AXES
+        if stat not in known:
+            return JSONResponse({"ok": False, "error": "unknown_stat", "known": list(known)}, status_code=400)
         v = _clamp_int(value, 1, 10, 5)
         set_user_identity(f"stat_{stat}", str(v))
         return JSONResponse({"ok": True, "stat": stat, "value": v})
