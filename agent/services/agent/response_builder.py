@@ -54,8 +54,10 @@ _NEEDS_TOOLS_SIGNALS = (
     # web / current events
     "search for", "google", "look up", "latest", "current news", "today's", "weather",
     "browse", "http://", "https://", "www.",
-    # exec / system
-    "run ", "execute", "install", "pip ", "npm ", "git ", "the terminal", "shell command",
+    # exec / system. NB "install " keeps the trailing space so the imperative ("install numpy")
+    # triggers but the adjective ("installed features", "what's installed") does NOT — the latter
+    # is a question about state she can answer directly, not a command to run.
+    "run ", "execute", "install ", "pip ", "npm ", "git ", "the terminal", "shell command",
     "compile", "build the",
     # file write / path operations
     "write path", "write to", "with content", "append to", "save to", "overwrite",
@@ -71,7 +73,7 @@ _HARD_TOOL_SIGNALS = (
     "my todo", "my goal", "my plan", "my project", "my code",
     "search for", "google", "look up", "latest", "current news", "today's", "weather",
     "browse", "http://", "https://", "www.",
-    "run ", "execute", "install", "pip ", "npm ", "git ", "the terminal", "shell command",
+    "run ", "execute", "install ", "pip ", "npm ", "git ", "the terminal", "shell command",
 )
 
 # a filesystem path (Windows drive, or a path starting with / ./ ../ ~/) → needs a tool.
