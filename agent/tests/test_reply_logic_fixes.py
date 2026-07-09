@@ -104,3 +104,66 @@ def test_discipline_forbids_persona_recital():
     from services.prompts import system_head_builder as shb
     head = shb._append_output_discipline("X", {})
     assert "never quote, recite, or perform" in head.lower() or "never \nquote" in head.lower()
+
+
+# ── 4. Tool-cap misfire: guard REJECTIONS accrue to blocked_calls, not tool_calls ──
+#
+# THE bug the operator caught ("stopping cause too many tool calls on such a simple request …
+# it's hitting on one tool call"): every guard/policy REJECTION did `state["tool_calls"] += 1`
+# even though NO tool executed. So a handful of disallowed / looped / duplicate / bad-arg tool
+# picks on a trivial turn exhausted the real work budget (cap ~5) and tripped "max tool calls"
+# with zero work done. Rejections now accrue to a SEPARATE, generously-bounded counter.
+
+def _reject_once(state):
+    """Drive one guard rejection (tool_policy_denied) in full isolation — no model, no config."""
+    from services.agent.tool_guards import run_tool_guards
+    return run_tool_guards(
+        intent="read_file",
+        decision={"tool": "read_file", "args": {}},
+        state=state,
+        cfg={"decision_policy_enabled": False},
+        goal=state["original_goal"],
+        workspace="",
+        context="",
+        get_tools_for_goal_fn=lambda *a, **k: frozenset(),   # nothing allowed → policy denies
+        log_tool_outcome_fn=lambda *a, **k: None,
+        format_steps_fn=lambda steps: "",
+        valid_tools=frozenset({"read_file"}),
+    )
+
+
+def test_guard_rejection_increments_blocked_calls_not_tool_calls():
+    state = {"original_goal": "what is 2+2?", "steps": [], "tool_calls": 0}
+    blocked, _goal = _reject_once(state)
+    assert blocked is True
+    assert state["tool_calls"] == 0            # real tool-EXECUTION budget untouched
+    assert state["blocked_calls"] == 1         # rejection counted on its own ledger
+    assert state["steps"][-1]["result"]["reason"] == "tool_policy_denied"
+
+
+def test_many_rejections_never_exhaust_the_real_tool_budget():
+    # 20 rejected decisions in a row: the real budget (cap ~5) must stay pristine so the turn
+    # can still do — and finish — actual work instead of dead-ending on "max tool calls".
+    state = {"original_goal": "hi", "steps": [], "tool_calls": 0}
+    for _ in range(20):
+        _reject_once(state)
+    assert state["tool_calls"] == 0
+    assert state["blocked_calls"] == 20
+
+
+def test_tool_guards_never_touch_the_real_tool_budget():
+    # Every path in tool_guards is a rejection (nothing runs) → it must only ever move
+    # blocked_calls. A stray `tool_calls += 1` here is the misfire creeping back.
+    src = (AGENT_DIR / "services" / "agent" / "tool_guards.py").read_text(encoding="utf-8")
+    assert 'tool_calls"] += 1' not in src
+    assert 'blocked_calls"]' in src
+
+
+def test_blocked_calls_backstop_guards_the_tool_limit_branch():
+    # Rejections no longer bound the loop via the tool budget, so a SEPARATE generous backstop
+    # must still force the wrap-up answer if the model gets stuck proposing rejected tools.
+    # Pin it: the tool_limit branch fires on the real cap OR a blocked_calls overflow.
+    src = (AGENT_DIR / "services" / "agent" / "decision_loop.py").read_text(encoding="utf-8")
+    seg = src.split("_blocked_cap = ", 1)[1].split('state["status"] = "tool_limit"', 1)[0]
+    assert "max_tool_calls_effective" in seg          # condition 1: real budget spent
+    assert 'state.get("blocked_calls"' in seg          # condition 2: rejection backstop
