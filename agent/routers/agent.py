@@ -648,8 +648,15 @@ async def agent(req: AgentRequest, request: Request):
     cache_enabled = bool(cfg.get("response_cache_enabled", False))
     cache_ttl = int(cfg.get("response_cache_ttl_seconds", 300) or 0)
     cache_max_entries = int(cfg.get("response_cache_max_entries", 300) or 300)
+    # The response cache is keyed ONLY on (goal, aspect). A reply generated WITH conversation
+    # history is not a pure function of (goal, aspect) — caching it would replay one conversation's
+    # context into another that merely repeats the same message text (cross-conversation bleed). So
+    # the cache is restricted to STATELESS turns (no prior history); once a conversation has history
+    # it is never read from / written to the shared cache.
+    _cache_stateless = not conv_history
     if (
         cache_enabled
+        and _cache_stateless
         and not stream
         and not allow_write
         and not allow_run
@@ -666,6 +673,9 @@ async def agent(req: AgentRequest, request: Request):
                 if isinstance(cached["state"], dict):
                     cached["state"]["status"] = "cache_hit"
                     cached["state"].setdefault("steps", [])
+                # Re-stamp the CURRENT request's conversation_id — the cached payload carries the
+                # original requester's id, which would misattribute this reply to another conversation.
+                cached["conversation_id"] = conversation_id
                 _append_history("user", goal)
                 _append_history("assistant", cached.get("response", ""))
                 return JSONResponse(cached, status_code=200)
@@ -1062,6 +1072,12 @@ async def agent(req: AgentRequest, request: Request):
                         truncate_at_next_user_turn(strip_junk_from_reply("".join(full))),
                         cfg,
                     )
+                    # Empty cleaned reply must NOT ship as empty done-frame content: the client's
+                    # done handler keeps the RAW streamed text (with any leaked scaffolding) when
+                    # content is blank, and TTS would then speak it. Give this branch the same
+                    # standby the fast path uses so done.content is always non-empty and clean.
+                    if not (text or "").strip():
+                        text = "Sorry — I couldn't generate a response just then. Please try again."
                     result["reasoning_tree_summary"] = _build_reasoning_tree_summary(result)
                     append_conv_history(conversation_id, "user", goal)
                     append_conv_history(conversation_id, "assistant", text)
@@ -1113,6 +1129,18 @@ async def agent(req: AgentRequest, request: Request):
                     response_text = (result.get("response") or result.get("reply") or "").strip()
                     if not response_text and isinstance(final, str):
                         response_text = final.strip()
+                    # Clean the synthesized answer the SAME way the token-streaming branch does
+                    # (line ~1071). This tool-using done-frame previously applied only .strip(), so a
+                    # leaked leading speaker label / control tag in a tool-run answer reached the
+                    # client, the DB, and next-turn context uncleaned. Guard: only take the cleaned
+                    # text when non-empty, so a degenerate reply still falls through to the standby.
+                    if response_text:
+                        try:
+                            _rc = polish_output(truncate_at_next_user_turn(strip_junk_from_reply(response_text)), _cfg_stream)
+                            if _rc.strip():
+                                response_text = _rc
+                        except Exception:
+                            pass
                     if not response_text and result.get("status") == "tool_limit":
                         response_text = "Stopped after maximum tool calls. Try a simpler request or say 'continue'."
                     if not response_text and result.get("status") == "parse_failed":
@@ -1341,6 +1369,7 @@ async def agent(req: AgentRequest, request: Request):
         pass
     if (
         cache_enabled
+        and _cache_stateless  # never cache a history-conditioned reply (cross-conversation bleed)
         and not stream
         and not allow_write
         and not allow_run

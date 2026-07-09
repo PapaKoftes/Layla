@@ -662,24 +662,41 @@ def cancel_idle_unload() -> None:
 
 
 def get_stop_sequences():
-    """Stop sequences so the model does not continue into the next turn."""
-    import runtime_safety
-    cfg = runtime_safety.load_config()
-    stop = cfg.get("stop_sequences")
-    if isinstance(stop, list) and stop:
-        return [str(s) for s in stop if s]
-    # Stop the model from echoing system-prompt section headers back into replies.
-    # SmolLM2 and similar small models tend to repeat ## CONTEXT / ## TASK verbatim.
-    return [
+    """Stop sequences so the model does not continue into the next turn.
+
+    The ``builtin`` list below is the maintained anti-echo defense (next-turn speaker tags,
+    aspect-name dialogue tags, leaked scaffold section headers, endoftext). An operator's
+    ``stop_sequences`` config is MERGED into it (union), NOT used as a wholesale replacement:
+    the old ``if stop: return stop`` short-circuit meant ANY config value — including the
+    2-element ``["\\nUser:", " User:"]`` seed the installer ships — silently disabled the entire
+    built-in list, which was the config-layer root enabler of the leading-aspect-tag and
+    section-header leaks. Merging keeps the anti-leak stops always active while still honoring
+    operator-added custom stops.
+    """
+    builtin = [
         "\nUser:", " User:", "\nYou:", " You:", "\nHuman:",
-        "\n## ", "## CONTEXT", "## TASK", "## SCRATCHPAD", "## REPO",
-        # Prevent fake multi-speaker roleplay (model echoes aspect names as dialogue tags)
-        "\nMorrigan:", "\nNyx:", "\nEcho:", "\nEris:", "\nCassandra:", "\nLilith:",
-        "Morrigan:", "Echo:", "Nyx:",  # also at position 0 if response starts with them
+        # Leaked ALL-CAPS scaffold section headers. NOTE: the generic "\n## " stop was removed —
+        # it also aborted generation the instant the model wrote ANY markdown H2, so legitimate
+        # structured/multi-section answers were truncated mid-reply (the generation-time twin of
+        # the strip-time "##" wipe). Only the known scaffold names are stopped now.
+        "## SYSTEM", "## CONTEXT", "## TASK", "## SCRATCHPAD", "## REPO", "## OBJECTIVE", "## INSTRUCTIONS",
+        # Prevent fake multi-speaker roleplay (model echoes aspect / persona names as dialogue tags),
+        # both after a newline and at position 0 if the reply opens with one.
+        "\nMorrigan:", "\nNyx:", "\nEcho:", "\nEris:", "\nCassandra:", "\nLilith:", "\nLayla:",
+        "Morrigan:", "Nyx:", "Echo:", "Eris:", "Cassandra:", "Lilith:", "Layla:",
         # Prevent memory-artifact leakage
         "\nReplied.", "Snippet:", "\nSnippet:",
         "<|endoftext|>", "<|im_end|>",
     ]
+    import runtime_safety
+    cfg = runtime_safety.load_config()
+    stop = cfg.get("stop_sequences")
+    merged = list(builtin)
+    if isinstance(stop, list):
+        for s in stop:
+            if s and str(s) not in merged:
+                merged.append(str(s))
+    return merged
 
 
 def _count_tokens(text: str) -> int:
