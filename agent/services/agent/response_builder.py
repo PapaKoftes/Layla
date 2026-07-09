@@ -265,6 +265,74 @@ _STREAM_MARKER_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Canonical persona/aspect labels. A weak model routinely opens its reply with a speaker tag that
+# MIRRORS the UI's own aspect chip ("Morrigan:", "⚔ Morrigan:", "**Morrigan:**", "## Morrigan",
+# "Layla ⚔ Morrigan:", a bare sigil) — so the same tag renders TWICE ("two tags, one broken").
+# The old strip only caught the bare `Name:` form. _strip_leading_speaker_label() below covers the
+# full decorated/sigil/heading/Layla/newline vocabulary, NAME-GATED so a real heading ("## Overview")
+# or prose that merely starts with a word is never touched.
+_ASPECT_NAMES_BASE = ("Layla", "Morrigan", "Nyx", "Echo", "Eris", "Cassandra", "Lilith")
+_ASPECT_SIGILS = "⚔✦◎⚡⌖⊛"
+
+
+def _strip_leading_speaker_label(t: str, extra_names: tuple[str, ...] = ()) -> str:
+    """Remove a leading speaker/persona label that mirrors the UI's aspect chip.
+
+    NAME-GATED: the label must contain 'Layla', a Layla sigil, or a (built-in or custom) aspect
+    name — so a legitimate markdown heading ('## Overview') or prose beginning with an ordinary
+    word is never stripped. Handles: bare 'Morrigan:', 'Layla:', sigil forms '⚔ Morrigan[:]',
+    markdown '**Morrigan:**' / '## Morrigan' / '> Morrigan:', name-on-its-own-line 'Morrigan\\n',
+    the composite 'Layla ⚔ Morrigan:', and a bare leading sigil. Only strips when real prose
+    follows (never nukes the whole reply — that would trip the empty-reply fallback)."""
+    if not t:
+        return t
+    names = tuple(n for n in (_ASPECT_NAMES_BASE + tuple(extra_names)) if n)
+    if not names:
+        return t
+    name_alt = "|".join(re.escape(n) for n in names)
+    sig = "[" + _ASPECT_SIGILS + "]"
+    core = r"(?:Layla\b[ \t]*)?(?:" + sig + r"[ \t]*)?(?:(?:" + name_alt + r")\b[ \t]*)?"
+    # Case 1 — colon-terminated, optionally wrapped in markdown emphasis/heading/blockquote.
+    pat_colon = re.compile(
+        r"^[ \t]*(?:>[ \t]*)?(?:#{1,3}[ \t]*)?(?:[*_]{1,2})?[ \t]*"
+        r"(?P<label>" + core + r")(?:[*_]{1,2})?[ \t]*:[ \t]*(?:[*_]{1,2}[ \t]*)?",
+        re.IGNORECASE,
+    )
+    # Case 2 — the label sits alone on the first line (newline-terminated).
+    pat_line = re.compile(
+        r"^[ \t]*(?:>[ \t]*)?(?:#{1,3}[ \t]*)?(?:[*_]{1,2})?[ \t]*"
+        r"(?P<label>" + core + r")(?:[*_]{1,2})?[ \t]*\n+",
+        re.IGNORECASE,
+    )
+    # Case 3 — DECORATED label (heading/emphasis/blockquote/sigil present) then whitespace+prose.
+    # A bare name+space is intentionally NOT matched here (that needs a colon/newline) so prose
+    # like "Echo the input back" is untouched.
+    pat_dec = re.compile(
+        r"^[ \t]*(?P<deco>(?:>[ \t]*)|(?:#{1,3}[ \t]*)|(?:[*_]{1,2})|(?:" + sig + r"[ \t]*))"
+        r"(?:>[ \t]*|#{1,3}[ \t]*|[*_]{1,2}|[ \t])*"
+        r"(?P<label>" + core + r")(?:[*_]{1,2})?[ \t]+(?=\S)",
+        re.IGNORECASE,
+    )
+
+    def _has_token(label: str) -> bool:
+        if re.search(sig, label):
+            return True
+        return bool(re.search(r"\b(?:" + name_alt + r")\b", label, re.IGNORECASE))
+
+    for pat in (pat_colon, pat_line, pat_dec):
+        m = pat.match(t)
+        if not m:
+            continue
+        label = m.group("label") or ""
+        deco = m.groupdict().get("deco") or ""
+        if not _has_token(label) and not re.search(sig, deco):
+            continue
+        rest = t[m.end():].lstrip()
+        if not rest:
+            return t  # never nuke the whole reply
+        return rest
+    return t
+
 
 def stream_safe_prefix(raw: str, already_emitted: int) -> tuple[str, int]:
     """Incremental marker filter for the streaming hot path.
@@ -279,9 +347,41 @@ def stream_safe_prefix(raw: str, already_emitted: int) -> tuple[str, int]:
     if lb != -1 and "]" not in raw[lb:]:
         safe_end = lb  # a bracket is open — hold from it until it closes (or the stream ends)
     clean = _STREAM_MARKER_RE.sub("", raw[:safe_end])
+    # Before anything is emitted, a leading speaker label ("Morrigan:", "⚔ Morrigan", "**Nyx:**")
+    # must never flash live. Strip a COMPLETE one; while the buffer could still be a partial label
+    # mid-generation (short, no terminator yet), hold so we never paint half a tag. Once emission
+    # has started the label is already gone/handled, so only gate on already_emitted == 0.
+    if already_emitted == 0 and clean:
+        _stripped = _strip_leading_speaker_label(clean)
+        if _stripped != clean:
+            clean = _stripped
+        elif _maybe_partial_leading_label(clean):
+            return "", 0
     if len(clean) <= already_emitted:
         return "", already_emitted
     return clean[already_emitted:], len(clean)
+
+
+def _maybe_partial_leading_label(s: str) -> bool:
+    """True if ``s`` (the not-yet-emitted stream head) could still be an in-progress speaker label
+    that hasn't terminated. Conservative: only holds a SHORT head that either opens with markdown/
+    sigil decoration or is a strict prefix of an aspect/Layla name, and only until a ':'/newline or
+    clear non-label content arrives — so ordinary replies are never delayed more than a token."""
+    if not s or "\n" in s or ":" in s:
+        return False
+    head = s.lstrip()
+    if not head or len(head) > 32:
+        return False
+    if re.match(r"^(?:>|#{1,3}|[*_]{1,2}|[" + _ASPECT_SIGILS + r"])", head):
+        return True
+    low = head.lower()
+    for _n in _ASPECT_NAMES_BASE:
+        nl = _n.lower()
+        if nl.startswith(low) and low != nl:          # still typing the name
+            return True
+        if low.startswith(nl) and len(low) <= len(nl) + 2:  # name done, terminator not yet here
+            return True
+    return False
 
 
 def _collapse_repetition(text: str) -> str:
@@ -458,7 +558,11 @@ def strip_junk_from_reply(text: str) -> str:
     # a fence on its own line (a real code block's close) is preceded by a newline, so the
     # `\S` lookbehind spares it.
     t = re.sub(r"(?<=\S)[ \t]*`{3,}[ \t]*$", "", t).strip()
-    t = re.sub(r"^(Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\s*:\s*", "", t).strip()
+    # Leading speaker/persona label — "Morrigan:", "⚔ Morrigan:", "**Morrigan:**", "## Morrigan",
+    # "Layla ⚔ Morrigan:", a bare sigil — the "two tags, one broken" leak. Name-gated so a real
+    # heading ("## Overview") is untouched. Runs BEFORE the section-header truncation below, so a
+    # leading "## Morrigan" is DE-LABELED (the answer after it is kept) rather than truncated away.
+    t = _strip_leading_speaker_label(t).strip()
     t = re.sub(r"\[System:\s*Your last response[^\]]*\]\s*", "", t, flags=re.IGNORECASE | re.DOTALL).strip()
     # A prompt-section header (## SYSTEM / ## TASK / …) can leak MID-LINE when the small model
     # echoes the scaffold after its answer ("… here?  ## SYSTEM\n\n<repeats the prompt>"). The
@@ -468,7 +572,12 @@ def strip_junk_from_reply(text: str) -> str:
     _mecho = re.search(r"#{1,3}[ \t]*(?:SYSTEM|TASK|CONTEXT|SCRATCHPAD|REPO|OBJECTIVE|INSTRUCTIONS)\b", t)
     if _mecho:
         t = t[: _mecho.start()].strip()
-    for _marker in (r"(?:^|\n)\s*#{1,3}\s*(TASK|CONTEXT|SCRATCHPAD|REPO)\b", r"(?:^|\n)\s*Current goal\s*:", r"(?:^|\n)\s*Last user message\s*:", r"(?:^|\n)\s*Repo snapshot\s*:", r"(?:^|\n)\s*Repo structure\s*:", r"(?:^|\n)\s*##", r"(?:^|\s|\[)Echo\s*\(patterns/preferences\)\s*:", r"(?:^|\n)\s*\[?ECHO\s*:"):
+    # NOTE: a bare "(?:^|\n)\s*##" used to live in this tuple and truncated the reply at the FIRST
+    # markdown heading — so ANY legitimate answer opening with "## Overview" / "## Steps" was cut to
+    # EMPTY and replaced by the "Sorry — I couldn't generate a response" fallback. Removed. Scaffold
+    # headers stay covered: the case-sensitive _mecho cut above handles "## SYSTEM"/"## TASK"/…, and
+    # the first pattern below truncates a leaked lowercase scaffold header by its known section name.
+    for _marker in (r"(?:^|\n)\s*#{1,3}\s*(SYSTEM|TASK|CONTEXT|SCRATCHPAD|REPO|OBJECTIVE|INSTRUCTIONS)\b", r"(?:^|\n)\s*Current goal\s*:", r"(?:^|\n)\s*Last user message\s*:", r"(?:^|\n)\s*Repo snapshot\s*:", r"(?:^|\n)\s*Repo structure\s*:", r"(?:^|\s|\[)Echo\s*\(patterns/preferences\)\s*:", r"(?:^|\n)\s*\[?ECHO\s*:"):
         m = re.search(_marker, t, re.IGNORECASE)
         if m:
             t = t[:m.start()].strip()
@@ -528,6 +637,10 @@ def clean_response_text(text: str) -> str:
             continue
         break
     text = "\n".join(lines).strip()
+    # De-label a leading persona/speaker tag on the reasoning_handler path too (parity with
+    # strip_junk_from_reply) — this path had NO leading-name strip at all, so "Layla:"/"⚔ Morrigan:"
+    # leaked straight through the deliberation/reasoning replies.
+    text = _strip_leading_speaker_label(text).strip()
     if not text or text.lower().strip() == "assistant:" or is_junk_reply(text):
         text = ""
     return text

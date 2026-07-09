@@ -31,7 +31,18 @@ export function escapeHtml(s) {
 // ── Text cleaning ────────────────────────────────────────────────────────────
 export function cleanLaylaText(s) {
   if (typeof s !== 'string') return (s == null || s === undefined) ? '' : String(s);
-  return s.replace(/\s*\[EARNED_TITLE:\s*[^\]]+\]\s*$/gi, '').trim();
+  var t = s.replace(/\s*\[EARNED_TITLE:\s*[^\]]+\]\s*$/gi, '');
+  // Defense-in-depth for the "two tags, one broken" leak: strip a leading persona/speaker label
+  // the backend may have missed (older stored replies, non-stream/reload path). Name-GATED —
+  // "Layla", a Layla sigil, or an aspect name must be present — so a real markdown heading
+  // ("## Overview") or ordinary prose is never touched, and only when real prose follows.
+  var lead = /^[ \t]*(?:>[ \t]*)?(?:#{1,3}[ \t]*)?(?:[*_]{1,2}[ \t]*)?((?:Layla\b[ \t]*)?(?:[⚔✦◎⚡⌖⊛][ \t]*)?(?:(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b[ \t]*)?)(?:[*_]{1,2})?[ \t]*(?::[ \t]*(?:[*_]{1,2}[ \t]*)?|\n+)/i;
+  var m = t.match(lead);
+  if (m && m[1] && (/[⚔✦◎⚡⌖⊛]/.test(m[1]) || /\b(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b/i.test(m[1]))) {
+    var rest = t.slice(m[0].length).replace(/^\s+/, '');
+    if (rest) t = rest;
+  }
+  return t.trim();
 }
 
 export function sanitizeHtml(html) {
