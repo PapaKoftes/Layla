@@ -492,7 +492,12 @@ def split_deliberation_output(
     # Strip a leading "Name:" the model sometimes prefixes onto the conclusion.
     if concluder_name:
         reply = re.sub(rf"^\s*{re.escape(concluder_name)}\s*:\s*", "", reply, flags=re.IGNORECASE).strip()
-    return (reply or pov_block), _parse_deliberation_trace(pov_block)
+    # A CONCLUSION marker WAS found (the no-marker case returned early above). If the model wrote
+    # the marker but no answer after it, `reply` is empty — do NOT fall back to `pov_block`: that
+    # promoted the raw "[⚔ MORRIGAN] (blunt): …" POV/trace scaffold into the visible reply (the
+    # "reply reads as ~6 stitched answers" bug the split exists to prevent). Return the empty reply
+    # so the caller substitutes its standby, while the POV block is still surfaced only as trace.
+    return reply, _parse_deliberation_trace(pov_block)
 
 
 def _parse_deliberation_trace(pov_block: str) -> dict[str, str]:

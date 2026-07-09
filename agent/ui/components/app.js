@@ -603,7 +603,13 @@ export async function send() {
             // markers stripped, tool-echoes cut). The live `full` is the raw token stream and
             // can contain leaked scaffolding ([TOOL:…], [EARNED_TITLE:…], etc.), so prefer
             // obj.content for the final render — and sync `full` so TTS/artifacts match.
-            if (typeof obj.content === 'string' && obj.content.trim()) { full = obj.content; }
+            // Prefer the server's cleaned content. If it is present but EMPTY (the reply cleaned
+            // down to nothing), do NOT keep the raw streamed `full` — that still carries any leaked
+            // leading tag / scaffolding and would be rendered, spoken by TTS, and scanned for
+            // artifacts. Use a neutral standby so all three consumers get clean text.
+            if (typeof obj.content === 'string') {
+              full = obj.content.trim() ? obj.content : "Sorry — I couldn't generate a response just then. Please try again.";
+            }
             if (bubble) {
               if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
                 try { bubble.innerHTML = sanitize(marked.parse(full)); } catch (_mdErr) { bubble.textContent = full; }
