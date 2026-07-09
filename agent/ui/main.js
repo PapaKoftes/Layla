@@ -436,6 +436,8 @@ function init() {
     // memory.js
     showMemorySubTab: memory.showMemorySubTab,
     laylaMemBrowse: memory.laylaMemBrowse,
+    renderMemoryAbout: memory.renderMemoryAbout,
+    laylaForgetIdentity: memory.laylaForgetIdentity,
     laylaImportMemoryBundle: memory.laylaImportMemoryBundle,
     // artifacts.js
     laylaArtifactsScan: artifacts.laylaArtifactsScan,
@@ -563,6 +565,7 @@ function init() {
     { id: 'go-models', group: 'Go to', label: 'Models & Kits', keywords: ['model', 'gguf', 'kit'], run: () => models.openModelsPanel() },
     { id: 'go-dashboard', group: 'Go to', label: 'Dashboard', keywords: ['status', 'health', 'system'], run: () => bootstrap.showMainPanel('status') },
     { id: 'go-library', group: 'Go to', label: 'Library', keywords: ['workspace', 'memory', 'knowledge', 'files'], run: () => bootstrap.showMainPanel('workspace') },
+    { id: 'go-memories', group: 'Go to', label: 'Memories — what Layla knows about you', keywords: ['memory', 'memories', 'about', 'remember', 'facts', 'you', 'profile'], run: () => { bootstrap.showMainPanel('workspace'); setTimeout(() => { const s = document.querySelector('[data-rcp-sub="memory"]'); if (s) s.click(); const a = document.querySelector('[data-mem-sub="about"]'); if (a) a.click(); }, 60); } },
     { id: 'go-research', group: 'Go to', label: 'Research', keywords: ['investigate', 'mission'], run: () => bootstrap.showMainPanel('research') },
     { id: 'go-artifacts', group: 'Go to', label: 'Artifacts', keywords: ['files', 'output'], run: () => bootstrap.showMainPanel('artifacts') },
     { id: 'chat-new', group: 'Chat', label: 'New conversation', keywords: ['start', 'fresh'], run: () => conversations.startNewConversation() },
