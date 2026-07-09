@@ -918,6 +918,8 @@ async def agent(req: AgentRequest, request: Request):
                 if result.get("status") == "stream_pending":
                     goal_for_stream = result.get("goal_for_stream", goal)
                     full = []
+                    _emitted = 0  # chars already streamed marker-safe (see stream_safe_prefix)
+                    from services.agent.response_builder import stream_safe_prefix as _ssp
                     tok_q: queue.Queue = queue.Queue()
 
                     def _stream_worker() -> None:
@@ -976,7 +978,12 @@ async def agent(req: AgentRequest, request: Request):
                                 pass
                             continue
                         full.append(token)
-                        yield f"data: {json.dumps({'token': token})}\n\n"
+                        # Stream only marker-safe text (hold an unclosed "[", strip complete
+                        # [MARKER …] / [⚔ MORRIGAN] tags) so control/aspect scaffolding never
+                        # flashes live while the header already shows "Layla ⚔ Morrigan".
+                        _delta, _emitted = _ssp("".join(full), _emitted)
+                        if _delta:
+                            yield f"data: {json.dumps({'token': _delta})}\n\n"
                     try:
                         import runtime_safety
 
