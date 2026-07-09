@@ -142,6 +142,17 @@ def delete_conversation(conversation_id: str) -> bool:
         return cur.rowcount > 0
 
 
+def clear_all_conversations() -> int:
+    """Delete every conversation and its messages. Returns the number of conversations removed."""
+    migrate()
+    with _conn() as db:
+        n = db.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
+        db.execute("DELETE FROM conversation_messages")
+        db.execute("DELETE FROM conversations")
+        db.commit()
+    return int(n or 0)
+
+
 def append_conversation_message(
     conversation_id: str,
     role: str,
