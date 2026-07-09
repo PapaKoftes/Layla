@@ -115,6 +115,8 @@ import * as sync from './components/sync.js';
 import * as debate from './components/debate.js';
 // W2 — Relationship codex
 import * as codex from './components/codex.js';
+// Intelligence dashboard — surfaces mood/goals/world/timeline/decisions/skills
+import * as intelligence from './components/intelligence.js';
 // W2 — Verify learnings (the "it learns" loop)
 import * as verify from './components/verify.js';
 // W2 — Background agent tasks
@@ -587,6 +589,7 @@ function init() {
     { id: 'sync', group: 'Go to', label: 'Sync (devices)', keywords: ['sync', 'syncthing', 'devices', 'multi', 'phone', 'pair'], feature: 'remote', run: () => sync.openSync() },
     { id: 'debate', group: 'Go to', label: 'Deliberate (aspects)', keywords: ['debate', 'deliberate', 'council', 'tribunal', 'aspects', 'decide'], feature: 'multi_agent', run: () => debate.openDebate() },
     { id: 'codex', group: 'Go to', label: 'Relationship codex', keywords: ['codex', 'relationship', 'entities', 'people', 'who', 'knows'], run: () => codex.openCodex() },
+    { id: 'intelligence', group: 'Go to', label: 'Intelligence — mood, goals, world, timeline', keywords: ['intelligence', 'mood', 'goals', 'world', 'timeline', 'decisions', 'skills', 'growth', 'status'], run: () => intelligence.openIntelligence() },
     { id: 'verify', group: 'Go to', label: 'Verify learnings', keywords: ['verify', 'learn', 'confirm', 'correct', 'facts', 'memory'], run: () => verify.openVerify() },
     { id: 'agent-tasks', group: 'Go to', label: 'Background tasks', keywords: ['background', 'tasks', 'agent', 'queue', 'running', 'async'], run: () => agentTasks.openAgentTasks() },
     { id: 'kb', group: 'Go to', label: 'Knowledge base', keywords: ['knowledge', 'kb', 'articles', 'wiki', 'notes', 'reference', 'build'], run: () => kb.openKb() },
@@ -640,6 +643,7 @@ function init() {
     openDebate: debate.openDebate,
     closeDebate: debate.closeDebate,
     openCodex: codex.openCodex,
+    openIntelligence: intelligence.openIntelligence,
     closeCodex: codex.closeCodex,
     openVerify: verify.openVerify,
     closeVerify: verify.closeVerify,
