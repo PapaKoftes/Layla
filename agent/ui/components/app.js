@@ -584,7 +584,10 @@ export async function send() {
                 // until the closing fence streams in. Temporarily close it for the live render;
                 // the done frame re-renders the real (cleaned) text, so nothing is lost.
                 var _mdSrc = full;
-                if (((full.match(/(?:^|\n)[ \t]*```/g) || []).length % 2)) _mdSrc = full + '\n```';
+                // Count ``` and ~~~ fences independently (same-char open/close) and close whichever
+                // is unclosed — a lone ~~~ opener bled the rest of the reply into monospace too.
+                if (((_mdSrc.match(/(?:^|\n)[ \t]*`{3,}/g) || []).length % 2)) _mdSrc += '\n```';
+                if (((_mdSrc.match(/(?:^|\n)[ \t]*~{3,}/g) || []).length % 2)) _mdSrc += '\n~~~';
                 try { bubble.innerHTML = sanitize(marked.parse(_mdSrc)); } catch (_mdErr) { bubble.textContent = full; }
               } else { bubble.textContent = full; }
             }
@@ -620,8 +623,9 @@ export async function send() {
                 // reply truncated at a role boundary mid-code-block reaches here with an odd fence
                 // count, and without this the whole tail rendered as one grey monospace block.
                 var _dsrc = full;
-                if (((full.match(/(?:^|\n)[ \t]*```/g) || []).length % 2)) _dsrc += '\n```';
-                if (((full.match(/~~~/g) || []).length % 2)) _dsrc += '\n~~~';
+                // Line-anchored counts (an INLINE ``` / ~~~ inside prose must not flip the balance).
+                if (((full.match(/(?:^|\n)[ \t]*`{3,}/g) || []).length % 2)) _dsrc += '\n```';
+                if (((full.match(/(?:^|\n)[ \t]*~{3,}/g) || []).length % 2)) _dsrc += '\n~~~';
                 try { bubble.innerHTML = sanitize(marked.parse(_dsrc)); } catch (_mdErr) { bubble.textContent = full; }
                 // ChatGPT-style copyable code blocks (syntax highlight + copy + apply buttons).
                 try { enhanceCodeBlocks(bubble); } catch (_e) { console.debug('app:', _e); }
