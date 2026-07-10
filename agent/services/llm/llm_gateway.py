@@ -680,10 +680,13 @@ def get_stop_sequences():
         # structured/multi-section answers were truncated mid-reply (the generation-time twin of
         # the strip-time "##" wipe). Only the known scaffold names are stopped now.
         "## SYSTEM", "## CONTEXT", "## TASK", "## SCRATCHPAD", "## REPO", "## OBJECTIVE", "## INSTRUCTIONS",
-        # Prevent fake multi-speaker roleplay (model echoes aspect / persona names as dialogue tags),
-        # both after a newline and at position 0 if the reply opens with one.
+        # Prevent fake multi-speaker roleplay (model echoes aspect / persona names as dialogue tags)
+        # AFTER a newline. NOTE: the BARE position-0 forms ("Morrigan:") were removed — build_standard_prompt
+        # primes the completion with a trailing "{name}:", so a small model routinely opens its answer by
+        # restating that name; a bare position-0 stop then aborted the WHOLE reply at token 0, collapsing a
+        # legitimate short answer to a bare "Morrigan" / the empty-reply standby. strip_junk_from_reply now
+        # removes any leading label robustly, so the bare stops are redundant as well as harmful.
         "\nMorrigan:", "\nNyx:", "\nEcho:", "\nEris:", "\nCassandra:", "\nLilith:", "\nLayla:",
-        "Morrigan:", "Nyx:", "Echo:", "Eris:", "Cassandra:", "Lilith:", "Layla:",
         # Prevent memory-artifact leakage
         "\nReplied.", "Snippet:", "\nSnippet:",
         "<|endoftext|>", "<|im_end|>",
