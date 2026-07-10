@@ -189,6 +189,11 @@ def _extract_artifacts(text: str) -> list[dict]:
         _fence = m.group(1)[0]   # the fence CHAR ('`' or '~'); close must use the SAME char
         info = (m.group(2) or "").strip()
         lang = (info.split()[0] if info else "text") or "text"   # first token of the info string
+        # Clamp to a safe language-token shape — the info string is model/RAG/web-controlled and this
+        # value is rendered by the UI; without whitespace an HTML payload ("<img/src=x/onerror=…>")
+        # would survive split() as one token. Anything else falls back to "text".
+        if not re.match(r"^[\w.+#-]{1,20}$", lang):
+            lang = "text"
         body: list[str] = []
         j = i + 1
         closed = False
@@ -227,6 +232,24 @@ def _aspect_extra_names(result) -> tuple:
         return (n,) if n and n.lower() != "layla" else ()
     except Exception:
         return ()
+
+
+def _apply_output_floor(text: str, cfg: dict | None = None) -> tuple[str, bool]:
+    """Post-model content-safety floor: replace a Tier-1/Tier-2 payload with a safe message before it
+    reaches the done-frame / persistence. The non-stream JSON path already did this inline; the four
+    SSE streaming done-frames did NOT, so unsafe generated content was shipped, stored, and re-fed as
+    context on the default (streaming) UI path. Returns (text, blocked); never raises."""
+    try:
+        import runtime_safety as _rs_out
+        from services.safety.content_guard import blocked_response as _blk_out
+        from services.safety.content_guard import check_output as _cg_out
+        _out = _cg_out(text, cfg if cfg is not None else _rs_out.load_config())
+        if _out.blocked:
+            logger.warning("content_guard: /agent stream output blocked tier=%s cat=%s", _out.tier, _out.category)
+            return _blk_out(_out), True
+    except Exception:
+        pass
+    return text, False
 
 
 def _model_ready_message() -> str | None:
@@ -845,6 +868,7 @@ async def agent(req: AgentRequest, request: Request):
                     text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply("".join(full))), cfg)
                     if not text.strip():
                         text = "Sorry — I couldn't generate a response just then. Please try again."
+                    text, _fast_blocked = _apply_output_floor(text, cfg)  # safety floor (parity w/ non-stream)
                     append_conv_history(conversation_id, "user", goal)
                     append_conv_history(conversation_id, "assistant", text)
                     _append_history("user", goal)
@@ -858,6 +882,8 @@ async def agent(req: AgentRequest, request: Request):
                     except Exception:
                         pass
                     _fast_done = {'done': True, 'content': text, 'ux_states': [], 'memory_influenced': [], 'reasoning_mode': 'light', 'conversation_id': conversation_id, 'memory_updated': _mem_receipt(goal)}
+                    if _fast_blocked:
+                        _fast_done["blocked"] = True   # tell the UI to replace the streamed tokens with content
                     _fast_arts = _extract_artifacts(text)
                     if _fast_arts:
                         _fast_done["artifacts"] = _fast_arts   # hardened server extraction for the panel
@@ -914,6 +940,7 @@ async def agent(req: AgentRequest, request: Request):
                         agg = {"summary": "", "subtask_results": []}
                     text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply(agg.get("summary") or "")), cfg) \
                         or "I couldn't complete that multi-part request. Try splitting it into separate messages."
+                    text, _ma_blocked = _apply_output_floor(text, cfg)  # safety floor (parity w/ non-stream)
                     append_conv_history(conversation_id, "user", goal)
                     append_conv_history(conversation_id, "assistant", text)
                     _append_history("user", goal)
@@ -932,6 +959,8 @@ async def agent(req: AgentRequest, request: Request):
                     _subs = [{"description": r.get("description"), "ok": bool(r.get("ok"))}
                              for r in agg.get("subtask_results", [])]
                     _ma_done = {'done': True, 'content': text, 'ux_states': [], 'memory_influenced': [], 'reasoning_mode': 'multi_agent', 'conversation_id': conversation_id, 'subtasks': _subs}
+                    if _ma_blocked:
+                        _ma_done["blocked"] = True
                     _ma_arts = _extract_artifacts(text)
                     if _ma_arts:
                         _ma_done["artifacts"] = _ma_arts
@@ -1144,6 +1173,7 @@ async def agent(req: AgentRequest, request: Request):
                     # standby the fast path uses so done.content is always non-empty and clean.
                     if not (text or "").strip():
                         text = "Sorry — I couldn't generate a response just then. Please try again."
+                    text, _st_blocked = _apply_output_floor(text, cfg)  # safety floor (parity w/ non-stream)
                     result["reasoning_tree_summary"] = _build_reasoning_tree_summary(result)
                     append_conv_history(conversation_id, "user", goal)
                     append_conv_history(conversation_id, "assistant", text)
@@ -1179,6 +1209,8 @@ async def agent(req: AgentRequest, request: Request):
                         "confidence": result.get("confidence") or {},
                         "memory_updated": _mem_receipt(goal),
                     }
+                    if _st_blocked:
+                        _done_stream["blocked"] = True
                     if _cfg_stream.get("ui_decision_trace_enabled"):
                         _done_stream["decision_trace"] = (result.get("decision_trace") or [])[-15:]
                     _st_arts = _extract_artifacts(text)
@@ -1216,6 +1248,7 @@ async def agent(req: AgentRequest, request: Request):
                         response_text = "I couldn't understand the request. Please rephrase."
                     if not response_text:
                         response_text = "No response. Try again or rephrase."
+                    response_text, _ns_blocked = _apply_output_floor(response_text, _cfg_stream)  # safety floor
                     result["reasoning_tree_summary"] = _build_reasoning_tree_summary(result)
                     append_conv_history(conversation_id, "user", goal)
                     append_conv_history(conversation_id, "assistant", response_text)
@@ -1242,6 +1275,8 @@ async def agent(req: AgentRequest, request: Request):
                         "run_budget_summary": result.get("run_budget_summary") or {},
                         "confidence": result.get("confidence") or {},
                     }
+                    if _ns_blocked:
+                        _done_ns["blocked"] = True
                     if _cfg_stream.get("ui_decision_trace_enabled"):
                         _done_ns["decision_trace"] = (result.get("decision_trace") or [])[-15:]
                     _ns_arts = _extract_artifacts(response_text)

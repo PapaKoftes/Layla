@@ -70,11 +70,12 @@ async def run_debate(req: DebateRequest):
             "critiques": result.critiques,
             "participating_aspects": result.participating_aspects,
             "synthesis_notes": result.synthesis_notes,
-            "aspect_models": result.aspect_models,
+            "aspect_models": getattr(result, "aspect_models", {}),  # defensive: never 500 on a schema drift
         }
     except Exception as exc:
+        # Detail logged server-side; do not leak the raw exception string to the client.
         logger.error("debate endpoint failed: %s", exc, exc_info=True)
-        return _JSONResp({"ok": False, "error": str(exc)}, status_code=500)
+        return _JSONResp({"ok": False, "error": "Deliberation failed. Please try again."}, status_code=500)
 
 
 @router.get("/debate/modes")
