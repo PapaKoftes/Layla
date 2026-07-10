@@ -44,6 +44,10 @@ def _clean_title(raw: str) -> str:
             "", t, flags=re.IGNORECASE,
         ).strip()
     t = t.lstrip("⚔✦◎⚡⌖⊛ ").strip()                     # a bare leading sigil with no name
+    # A bare role label ("Assistant:", "User:", "Human:") the title model echoes from the prompt
+    # frame ("User: …\nAssistant: …\nTitle:"). It is NOT an aspect name, so _strip_leading_speaker_label
+    # (name-gated) leaves it — strip it here so the rail shows the topic, not "Assistant: <topic>".
+    t = re.sub(r"^\s*(?:assistant|user|human|system)\s*:\s*", "", t, flags=re.IGNORECASE).strip()
     t = re.sub(r"\s+", " ", t)
     t = t.rstrip(" .,:;-—!?")
     if len(t) > _MAX_TITLE_LEN:
@@ -51,7 +55,12 @@ def _clean_title(raw: str) -> str:
     # reject junk (empty, pure punctuation, or an echoed instruction)
     if not t or not re.search(r"[A-Za-z0-9]", t):
         return ""
-    if re.search(r"\b(as an ai|i cannot|i can't|sure[,!]|here (is|are)|okay|user:|assistant:)\b", t, re.IGNORECASE):
+    # Echoed-instruction / affirmation junk. Split from a single \b-wrapped alternation: a trailing
+    # \b never matched the alternatives that END in punctuation ("assistant:", "user:", "sure!") —
+    # a ':'/'!' → space transition is not a word boundary — so those forms silently leaked as titles.
+    if re.search(r"\b(?:as an ai|i cannot|i can't|here (?:is|are)|okay)\b", t, re.IGNORECASE):
+        return ""
+    if re.match(r"^\s*(?:sure\s*[!,.]|user\s*:|assistant\s*:)", t, re.IGNORECASE):
         return ""
     return t[:1].upper() + t[1:]
 

@@ -1311,13 +1311,20 @@ async def agent(req: AgentRequest, request: Request):
 
     steps = result.get("steps") or []
     final = steps[-1].get("result", "") if steps else ""
-    _raw_final = final if isinstance(final, str) else json.dumps(final) if final else ""
     _extra_names = _aspect_extra_names(result)
+    # Prefer the run's SYNTHESIZED prose answer over the last raw step result — and NEVER json.dumps a
+    # raw tool-result dict into the reply. The old `json.dumps(final)` leaked payloads like
+    # {"ok": false, "error": "invalid_args", ...} or a memory dump verbatim as the message (strip_junk
+    # can't recognize a bare JSON dict). Mirror the streaming tool branch (see ~line 1182): use `final`
+    # only when it is already a string.
+    _raw_final = (result.get("response") or result.get("reply") or "").strip()
+    if not _raw_final and isinstance(final, str):
+        _raw_final = final
     # truncate_at_next_user_turn (parity with the streaming paths) — the non-stream JSON path omitted
     # it, so a fabricated "User: …" next-turn the small model hallucinated leaked into the reply.
     response_text = truncate_at_next_user_turn(strip_junk_from_reply(_raw_final, _extra_names))
-    if not response_text:
-        _raw_alt = (result.get("response") or result.get("reply") or "").strip()
+    if not response_text and isinstance(final, str):
+        _raw_alt = final.strip()
         response_text = truncate_at_next_user_turn(strip_junk_from_reply(_raw_alt, _extra_names))
     # When the model generated only echo (stripped to empty), substitute a graceful standby line
     # rather than the generic error. This happens when a small model starts with ## CONTEXT or
@@ -1433,7 +1440,10 @@ async def agent(req: AgentRequest, request: Request):
         cache_enabled
         and _cache_stateless  # never cache a history-conditioned reply (cross-conversation bleed)
         and not _cache_shaped  # nor a reply shaped by per-turn model/thinking/persona/research params
-        and not stream
+        and result.get("status") == "finished"  # only STABLE successes — never a transient
+        and not result.get("refused")            # failure (system_busy/timeout/tool_limit/…) or refusal,
+        and not _was_all_echo                    # or an all-echo standby, which would replay as a stale
+        and not stream                           # "answer" to later same-(goal,aspect) callers for the TTL.
         and not allow_write
         and not allow_run
         and not context
