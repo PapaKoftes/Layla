@@ -87,6 +87,67 @@ def test_stream_safe_prefix_passes_ordinary_text():
     assert delta == "Here is the answer."
 
 
+def _stream_live(tokens):
+    """Reconstruct what the client actually paints, feeding tokens ONE AT A TIME the way the
+    router does (buffer grows, stream_safe_prefix called per token). The re-audit found the
+    single-buffer test missed this incremental path — the label completes before the answer."""
+    buf, emitted, live = "", 0, ""
+    for tk in tokens:
+        buf += tk
+        delta, emitted = stream_safe_prefix(buf, emitted)
+        live += delta
+    return live
+
+
+def test_stream_incremental_never_flashes_label_and_reconstructs_answer():
+    # Each case: tokens streamed one at a time -> the live-painted text must equal the clean answer
+    # with NO leaked label and NO mangling (the "Morriganan:" counter-desync bug).
+    # label cases: the leaked tag must NEVER appear in the live-painted text
+    label_cases = [
+        (["##", " Mor", "rig", "an", "\n", "The", " capital", " is", " Paris."], "The capital is Paris."),
+        (["Mor", "rig", "an", ":", " The", " answer", " is", " 4."], "The answer is 4."),
+        ([_SIG, " Mor", "rig", "an", ":", " Hello", " there"], "Hello there"),
+        (["Layla", ":", "\n", "Paris."], "Paris."),
+        (["**", "Nyx", ":", "**", " Layered", " take."], "Layered take."),
+    ]
+    for tokens, expected in label_cases:
+        live = _stream_live(tokens)
+        assert live.strip() == expected, f"{tokens!r} -> {live!r} (expected {expected!r})"
+        for bad in ("Morrigan", "Layla", "Nyx", _SIG):
+            assert bad not in live, f"leaked {bad!r} in live stream {live!r}"
+    # non-label cases: reconstruct exactly (name-in-prose and plain prose both stream whole)
+    for tokens, expected in [
+        (["Morrigan", " is", " a", " goddess."], "Morrigan is a goddess."),
+        (["The", " answer", " is", " 42."], "The answer is 42."),
+    ]:
+        assert _stream_live(tokens).strip() == expected
+
+
+def test_echo_memory_marker_truncates_not_strips_in_place():
+    # A leading "[ECHO: …]" is a truncation point, not an inline tag; it must null the whole leak
+    # fragment ("[ECHO: note] leaked" -> "") rather than strand "leaked". Regression: the per-aspect
+    # strip (…ECHO…) removed just the bracket and left the fragment.
+    assert strip_junk_from_reply("[ECHO: internal note] leaked") == ""
+    assert strip_junk_from_reply("[Echo (patterns/preferences): x]") == ""
+    # legit mid-line shell 'echo:' is untouched
+    assert strip_junk_from_reply("To print: echo: hello world") == "To print: echo: hello world"
+
+
+def test_dash_separated_leading_label_stripped_but_hyphens_safe():
+    assert strip_junk_from_reply("Morrigan - here is the fix.") == "here is the fix."
+    assert strip_junk_from_reply(_SIG + " Nyx — cap retries.") == "cap retries."
+    # hyphenated words and em-dash asides in prose must survive
+    assert strip_junk_from_reply("Morrigan-based routing is used here.") == "Morrigan-based routing is used here."
+    assert strip_junk_from_reply("The build - which is slow - needs a cache.") == "The build - which is slow - needs a cache."
+
+
+def test_completion_gate_default_is_off():
+    # completion_gate_enabled=True appends retry-injection text a weak model can echo verbatim into
+    # the reply. The runtime loader default had drifted to True (schema says False); realigned.
+    import runtime_safety
+    assert runtime_safety.load_config().get("completion_gate_enabled") is False
+
+
 # ── 4. The reasoning_handler path also strips a leading label (it had none) ─────────────────────
 
 def test_clean_response_text_strips_leading_label():

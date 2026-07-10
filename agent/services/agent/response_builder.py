@@ -313,13 +313,21 @@ def _strip_leading_speaker_label(t: str, extra_names: tuple[str, ...] = ()) -> s
         r"(?P<label>" + core + r")(?:[*_]{1,2})?[ \t]+(?=\S)",
         re.IGNORECASE,
     )
+    # Case 4 — dash-separated label: "Morrigan - <prose>" / "⚔ Nyx — <prose>" (spaced hyphen or
+    # en/em dash, no colon). Name-gated; the REQUIRED surrounding spaces keep "Morrigan-based"
+    # (no spaces) and ordinary hyphenated prose safe.
+    pat_dash = re.compile(
+        r"^[ \t]*(?:>[ \t]*)?(?:#{1,3}[ \t]*)?(?:[*_]{1,2})?[ \t]*"
+        r"(?P<label>" + core + r")(?:[*_]{1,2})?[ \t]+[-–—][ \t]+(?=\S)",
+        re.IGNORECASE,
+    )
 
     def _has_token(label: str) -> bool:
         if re.search(sig, label):
             return True
         return bool(re.search(r"\b(?:" + name_alt + r")\b", label, re.IGNORECASE))
 
-    for pat in (pat_colon, pat_line, pat_dec):
+    for pat in (pat_colon, pat_line, pat_dash, pat_dec):
         m = pat.match(t)
         if not m:
             continue
@@ -347,19 +355,38 @@ def stream_safe_prefix(raw: str, already_emitted: int) -> tuple[str, int]:
     if lb != -1 and "]" not in raw[lb:]:
         safe_end = lb  # a bracket is open — hold from it until it closes (or the stream ends)
     clean = _STREAM_MARKER_RE.sub("", raw[:safe_end])
-    # Before anything is emitted, a leading speaker label ("Morrigan:", "⚔ Morrigan", "**Nyx:**")
-    # must never flash live. Strip a COMPLETE one; while the buffer could still be a partial label
-    # mid-generation (short, no terminator yet), hold so we never paint half a tag. Once emission
-    # has started the label is already gone/handled, so only gate on already_emitted == 0.
-    if already_emitted == 0 and clean:
+    # A leading speaker label ("Morrigan:", "⚔ Morrigan", "**Nyx:**", "## Morrigan\n") must never
+    # flash live. Strip it on EVERY call so `clean` is the SAME (stripped) string across the whole
+    # stream — `already_emitted` is measured against it, so stripping only at emitted==0 mangled the
+    # counter (raw vs stripped length mismatch → "TheMorrigan…"). While the buffer is still a
+    # completed-but-answerless label, or a partial label mid-generation, HOLD until the answer text
+    # arrives (so the name-gated strip fires against non-empty rest) instead of painting half a tag.
+    if clean:
+        # Check HOLD *before* taking any strip: the strip is non-monotonic across tokens (it removes
+        # a bare sigil prefix early — "⚔ Mor" -> "Mor" — but leaves a complete-but-answerless label
+        # "⚔ Morrigan:" unchanged), so emitting a partial strip and then flipping desyncs the emitted
+        # counter ("Morriganan:"). While the head is still resolving a label, HOLD.
+        if already_emitted == 0 and (_is_bare_leading_label(clean) or _maybe_partial_leading_label(clean)):
+            return "", 0
         _stripped = _strip_leading_speaker_label(clean)
         if _stripped != clean:
             clean = _stripped
-        elif _maybe_partial_leading_label(clean):
-            return "", 0
     if len(clean) <= already_emitted:
         return "", already_emitted
     return clean[already_emitted:], len(clean)
+
+
+def _is_bare_leading_label(s: str) -> bool:
+    """True if the WHOLE buffer is a leading speaker label with no answer prose yet (the label
+    completed — colon/newline/decoration/dash — before the answer streamed in). Detected by
+    appending a sentinel prose char and checking the name-gated strip then fires; used by
+    stream_safe_prefix to HOLD such a buffer instead of flashing the bare label live."""
+    if not s or not s.strip():
+        return False
+    if _strip_leading_speaker_label(s) != s:
+        return False  # s already strips → real prose follows the label → NOT a bare/answerless label
+    probe = s + "\x00x"
+    return _strip_leading_speaker_label(probe) != probe
 
 
 def _maybe_partial_leading_label(s: str) -> bool:
@@ -464,6 +491,18 @@ def strip_junk_from_reply(text: str) -> str:
         t = re.sub(r"^\s*assistant\s*:\s*I\s+replied\.\s*", "", t, count=1, flags=re.IGNORECASE).strip()
         if t == prev:
             break
+    # Echo memory-artifact marker is a TRUNCATION point, not an inline tag: cut from a bracketed /
+    # line-start "[ECHO: …]" / "[Echo (patterns/preferences): …]" / "\nECHO:" onward. This MUST run
+    # before the bracket strips below — the per-aspect strip (…ECHO…) and ALLCAPS catch-all would
+    # otherwise remove just the bracket and strand the trailing leak fragment ("[ECHO: note] leaked"
+    # must become "" not "leaked"). Mid-line lowercase "echo:" (shell) is untouched (not line-anchored).
+    _echo_cut = None
+    for _ep in (r"(?:^|\s|\[)Echo\s*\(patterns/preferences\)\s*:", r"(?:^|\n)\s*\[?ECHO\s*:"):
+        _m = re.search(_ep, t, re.IGNORECASE)
+        if _m and (_echo_cut is None or _m.start() < _echo_cut):
+            _echo_cut = _m.start()
+    if _echo_cut is not None:
+        t = t[:_echo_cut].strip()
     # Strip control markers that leak anywhere in the reply.
     t = re.sub(r"\s*\[EARNED_TITLE[^\]]*\]\s*", " ", t, flags=re.IGNORECASE).strip()
     t = re.sub(r"\s*\[REFUSED[^\]]*\]\s*", " ", t, flags=re.IGNORECASE).strip()
