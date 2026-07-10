@@ -414,7 +414,11 @@ def load_config() -> dict:
             "tool_routing_enabled": True,
             # Quality enforcement: match runtime_config.example.json; explicit false in runtime_config.json still overrides.
             "deterministic_tool_routes_enabled": True,
-            "completion_gate_enabled": True,
+            # Default MUST be False (matches config_schema.py:176). When True, the completion gate
+            # appends retry-injection text ("[System: Your last response…]") to the goal, which a
+            # weak model can echo VERBATIM into the reply — a reply-bleedover source. The loader
+            # default had drifted to True (fresh installs shipped the leak risk); realigned to False.
+            "completion_gate_enabled": False,
             "tools_profile": "full",
             "tools_allow": [],
             "tools_deny": [],
