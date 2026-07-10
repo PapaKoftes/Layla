@@ -92,8 +92,8 @@ def check_config(cfg: dict) -> list[ConfigIssue]:
     # --- speculative_decoding_enabled ---
     spec = cfg.get("speculative_decoding_enabled")
     if spec is True:
-        # Check if there's a guard in llm_gateway.py
-        gw_path = Path(__file__).resolve().parent.parent / "services" / "llm_gateway.py"
+        # Check if there's a guard in llm_gateway.py (moved to services/llm/ during decomposition).
+        gw_path = Path(__file__).resolve().parent.parent / "services" / "llm" / "llm_gateway.py"
         has_guard = False
         if gw_path.exists():
             src = gw_path.read_text(encoding="utf-8", errors="replace")
