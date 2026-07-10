@@ -387,6 +387,19 @@ async def v1_chat_completions(req: dict, request: Request):
                     response_text = _cleaned_v1
             except Exception:
                 pass
+            # Post-model safety floor (parity with the non-stream branch at ~line 504): the streaming
+            # tokens already emitted live, but the PERSISTED + stored copy must never keep unsafe model
+            # output — it would re-enter the model as conversation context on later turns.
+            try:
+                import runtime_safety as _rs_sout
+                from services.safety.content_guard import blocked_response as _blocked_sout
+                from services.safety.content_guard import check_output as _cg_sout
+                _sout = _cg_sout(response_text, _rs_sout.load_config())
+                if _sout.blocked:
+                    logger.warning("content_guard: /v1 STREAM output blocked tier=%s cat=%s", _sout.tier, _sout.category)
+                    response_text = _blocked_sout(_sout)
+            except Exception:
+                pass
             if not response_text:
                 response_text = "No response."
             done_evt = {

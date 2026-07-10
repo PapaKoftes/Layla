@@ -699,11 +699,35 @@ export async function send() {
     // Phase 6B: Enhanced error recovery with retry button
     var isTimeout = /timeout|abort|network/i.test(errMsg);
     var isServerDown = /fetch|network|failed to fetch/i.test(errMsg);
-    var retryHtml = '<div class="layla-error-banner">';
-    retryHtml += '<span>' + (isTimeout ? 'Connection timed out' : isServerDown ? 'Server unreachable' : 'Error: ' + errMsg.substring(0, 120)) + '</span>';
-    retryHtml += '<button onclick="document.getElementById(\'chat-input\').value=\'' + (msg || '').replace(/'/g, "\\'").substring(0, 200) + '\';send()">Retry</button>';
-    retryHtml += '</div>';
-    addMsg('layla', retryHtml);
+    // Build the error banner via DOM nodes (NOT an HTML string through addMsg → sanitizeHtml, which
+    // strips <button>/onclick), with a real click handler pointing at the actual input id 'msg-input'
+    // (the old inline handler used a non-existent 'chat-input', so even an un-sanitized button threw).
+    try {
+      var _chatEl2 = document.getElementById('chat');
+      var _wrap = document.createElement('div');
+      _wrap.className = 'msg msg-layla';
+      var _banner = document.createElement('div');
+      _banner.className = 'layla-error-banner';
+      var _span = document.createElement('span');
+      _span.textContent = isTimeout ? 'Connection timed out' : (isServerDown ? 'Server unreachable' : ('Error: ' + errMsg.substring(0, 120)));
+      var _btn = document.createElement('button');
+      _btn.type = 'button';
+      _btn.textContent = 'Retry';
+      _btn.addEventListener('click', function () {
+        try {
+          var _inp = document.getElementById('msg-input');
+          if (_inp) _inp.value = msg || '';
+          var _send = (typeof send === 'function') ? send : (typeof window.send === 'function' ? window.send : null);
+          if (_send) _send();
+        } catch (_re) { console.debug('app:', _re); }
+      });
+      _banner.appendChild(_span);
+      _banner.appendChild(_btn);
+      _wrap.appendChild(_banner);
+      if (_chatEl2) _chatEl2.appendChild(_wrap);
+    } catch (_be) {
+      try { addMsg('layla', isServerDown ? 'Server unreachable — try again.' : 'Connection error — try again.'); } catch (_e2) { console.debug('app:', _e2); }
+    }
     // Check if server is down and show model loading state
     if (isServerDown) {
       try { _checkServerHealth(); } catch (_hc) {}
