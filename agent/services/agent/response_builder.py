@@ -250,14 +250,25 @@ def truncate_at_next_user_turn(text: str) -> str:
     if not text or not text.strip():
         return (text or "").strip()
     t = text.strip()
-    # A leading fake "User:" turn (any case) — strip it, keep the real reply that follows.
-    if re.match(r"^\s*User\s*:", t, re.IGNORECASE):
-        m = re.search(r"^\s*User\s*:[^\n]*?\s+([A-Za-z]+)\s*:", t, re.IGNORECASE)
+    # A leading fake "User:"/"Human:"/"You:" turn (any case) — strip it, keep the real reply that
+    # follows, then RE-STRIP a leading speaker label the turn-removal just EXPOSED. strip_junk_from_reply
+    # runs its label strip BEFORE this truncate, so an "<Aspect>:" hidden on line 2 behind the fake
+    # "User:" line survived (the "two tags" role-play leak); re-running the strip here closes it.
+    if re.match(r"^\s*(?:User|Human|You)\s*:", t, re.IGNORECASE):
+        m = re.search(r"^\s*(?:User|Human|You)\s*:[^\n]*?\s+([A-Za-z]+)\s*:", t, re.IGNORECASE)
         if m:
             t = t[m.start(1):].strip()
         else:
             first_line_end = t.find("\n")
             t = t[first_line_end + 1:].strip() if first_line_end != -1 else ""
+        # Re-strip the exposed head: an aspect label ("Morrigan:") and/or a bare role line
+        # ("Assistant\n", "Human:") the model stacked behind the fake turn. Bounded loop for stacks.
+        for _ in range(3):
+            _before = t
+            t = _strip_leading_speaker_label(t).strip()
+            t = re.sub(r"^[ \t]*(?:Assistant|Human|User|You)[ \t]*(?::[ \t]*|\n+)", "", t, flags=re.IGNORECASE).strip()
+            if t == _before:
+                break
     # Cut where the model starts role-playing the NEXT turn as "User:", "You:" or "Human:".
     # Case-SENSITIVE (capitalized tag) + word boundary so an ordinary "thank you:" is not
     # mistaken for a turn, and only at a real boundary (line start / after newline / after
@@ -646,7 +657,15 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = ()) -> str:
     # otherwise remove just the bracket and strand the trailing leak fragment ("[ECHO: note] leaked"
     # must become "" not "leaked"). Mid-line lowercase "echo:" (shell) is untouched (not line-anchored).
     _echo_cut = None
-    for _ep in (r"(?:^|\s|\[)Echo\s*\(patterns/preferences\)\s*:", r"(?:^|\n)\s*\[?ECHO\s*:"):
+    # NOTE the bare (unbracketed) marker is matched case-SENSITIVE via (?-i:ECHO): the internal marker
+    # is always ALL-CAPS "ECHO:", whereas the *Echo aspect* speaks as "Echo: …" — matching that
+    # case-insensitively wiped every Echo-aspect reply that opened with its own name to "". The bracketed
+    # form stays case-insensitive (the bracket is the unambiguous internal-marker signal).
+    for _ep in (
+        r"(?:^|\s|\[)Echo\s*\(patterns/preferences\)\s*:",
+        r"(?:^|\n)\s*\[ECHO\s*:",
+        r"(?:^|\n)\s*(?-i:ECHO)\s*:",
+    ):
         _m = re.search(_ep, t, re.IGNORECASE)
         if _m and (_echo_cut is None or _m.start() < _echo_cut):
             _echo_cut = _m.start()
@@ -782,7 +801,7 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = ()) -> str:
     # EMPTY and replaced by the "Sorry — I couldn't generate a response" fallback. Removed. Scaffold
     # headers stay covered: the case-sensitive _mecho cut above handles "## SYSTEM"/"## TASK"/…, and
     # the first pattern below truncates a leaked lowercase scaffold header by its known section name.
-    for _marker in (r"(?:^|\n)\s*#{1,3}\s*(SYSTEM|TASK|CONTEXT|SCRATCHPAD|REPO|OBJECTIVE|INSTRUCTIONS)\b", r"(?:^|\n)\s*Current goal\s*:", r"(?:^|\n)\s*Last user message\s*:", r"(?:^|\n)\s*Repo snapshot\s*:", r"(?:^|\n)\s*Repo structure\s*:", r"(?:^|\s|\[)Echo\s*\(patterns/preferences\)\s*:", r"(?:^|\n)\s*\[?ECHO\s*:"):
+    for _marker in (r"(?:^|\n)\s*#{1,3}\s*(SYSTEM|TASK|CONTEXT|SCRATCHPAD|REPO|OBJECTIVE|INSTRUCTIONS)\b", r"(?:^|\n)\s*Current goal\s*:", r"(?:^|\n)\s*Last user message\s*:", r"(?:^|\n)\s*Repo snapshot\s*:", r"(?:^|\n)\s*Repo structure\s*:", r"(?:^|\s|\[)Echo\s*\(patterns/preferences\)\s*:", r"(?:^|\n)\s*\[ECHO\s*:", r"(?:^|\n)\s*(?-i:ECHO)\s*:"):
         m = re.search(_marker, t, re.IGNORECASE)
         if m:
             t = t[:m.start()].strip()

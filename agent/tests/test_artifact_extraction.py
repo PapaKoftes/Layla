@@ -136,3 +136,29 @@ class TestExtractArtifacts:
         text = '```json\n{\n  "key": "value",\n  "num": 42\n}\n```'
         arts = _extract_artifacts(text)
         assert arts[0]["lang"] == "json"
+
+    # ── Round-9: info-string / truncated / tilde fences (the client used to silently drop these) ──
+
+    def test_info_string_fence_lang_is_first_token(self):
+        # A fence carrying an info string ("```python title=x") must still yield lang="python".
+        arts = _extract_artifacts("```python title=example.py\nprint('a')\nprint('b')\n```")
+        assert len(arts) == 1
+        assert arts[0]["lang"] == "python"
+
+    def test_unclosed_block_flagged_truncated(self):
+        # A reply cut at max_tokens before the closing fence still yields the block, flagged truncated.
+        arts = _extract_artifacts("```python\nprint(1)\nprint(2)\nprint(3)")
+        assert len(arts) == 1
+        assert arts[0].get("truncated") is True
+
+    def test_tilde_fence_supported(self):
+        arts = _extract_artifacts("~~~python\nprint(1)\nprint(2)\n~~~")
+        assert len(arts) == 1
+        assert arts[0]["lang"] == "python"
+        assert "truncated" not in arts[0]
+
+    def test_tilde_close_does_not_pair_with_backtick_open(self):
+        # A backtick-opened block must not be closed by a stray ~~~ line (and vice-versa).
+        arts = _extract_artifacts("```python\nprint(1)\nprint(2)\n~~~\nprint(3)\n```")
+        assert len(arts) == 1
+        assert "print(3)" in arts[0]["content"]
