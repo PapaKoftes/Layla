@@ -481,11 +481,40 @@ def _collapse_duplicate_blocks(text: str) -> str:
     return text
 
 
-def strip_junk_from_reply(text: str) -> str:
-    """Remove repeated 'assistant: I replied.' and other junk from a reply before saving/displaying."""
+_REASONING_BLOCK_RE = re.compile(
+    r"<(think|thinking|reasoning|scratchpad|reflection)\b[^>]*>.*?</\1\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _strip_reasoning_traces(t: str) -> str:
+    """Remove reasoning/CoT-model thinking wrappers (Qwen-QwQ, DeepSeek-R1, gpt-oss-harmony) — the
+    model's PRIVATE chain-of-thought, never meant for the user. Handles paired
+    <think>/<thinking>/<reasoning>/<scratchpad>/<reflection> blocks, the OpenAI-harmony
+    <|channel|>analysis…<|end|> segment + leftover control tokens, and a DANGLING unclosed leading
+    <think>… (stream cut at max_tokens before the close tag)."""
+    if not t or "<" not in t:
+        return t
+    t = _REASONING_BLOCK_RE.sub("", t)
+    # OpenAI-harmony: drop the analysis channel entirely; unwrap the final message content.
+    t = re.sub(r"<\|channel\|>\s*analysis.*?<\|(?:end|return)\|>", "", t, flags=re.IGNORECASE | re.DOTALL)
+    t = re.sub(r"<\|start\|>\s*assistant\s*<\|channel\|>\s*final\s*<\|message\|>", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"<\|(?:im_start|im_end|start|end|return|message|channel|assistant|user|system)\|>", "", t, flags=re.IGNORECASE)
+    # A dangling unclosed <think …> (max_tokens cut before the close) — everything after is trace.
+    t = re.sub(r"<(?:think|thinking|reasoning|scratchpad|reflection)\b[^>]*>.*\Z", "", t, flags=re.IGNORECASE | re.DOTALL)
+    return t.strip()
+
+
+def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = ()) -> str:
+    """Remove repeated 'assistant: I replied.' and other junk from a reply before saving/displaying.
+
+    ``aspect_names`` = extra (e.g. custom-aspect) display names to also strip as a leading speaker
+    label, beyond the built-in aspects."""
     if not text or not text.strip():
         return (text or "").strip()
-    t = text.strip()
+    t = _strip_reasoning_traces(text.strip())
+    if not t:
+        return ""
     for _ in range(50):
         prev = t
         t = re.sub(r"^\s*assistant\s*:\s*I\s+replied\.\s*", "", t, count=1, flags=re.IGNORECASE).strip()
@@ -525,15 +554,21 @@ def strip_junk_from_reply(text: str) -> str:
     # Per-aspect deliberation scaffold like '[⚔ MORRIGAN]' / '[✦ NYX]' — strip the bracket so a
     # stray debate line can never render as part of a reply (defense-in-depth; deliberation is
     # off by default). The [^\]]* before the name absorbs the sigil.
+    # Per-aspect scaffold '[⚔ MORRIGAN]' / '[✦ NYX]', AND a bracketed leading name '[Morrigan]:' —
+    # the trailing ':?' consumes a colon that sits OUTSIDE the bracket, so '[Morrigan]: answer' does
+    # not leave a dangling ': answer' orphan. Name-gated (an aspect name must be inside the bracket).
     t = re.sub(
-        r"\s*\[[^\]]*\b(?:MORRIGAN|NYX|ECHO|ERIS|CASSANDRA|LILITH)\b[^\]]*\]\s*",
+        r"\s*\[[^\]]*\b(?:MORRIGAN|NYX|ECHO|ERIS|CASSANDRA|LILITH)\b[^\]]*\]\s*:?\s*",
         " ", t, flags=re.IGNORECASE,
     ).strip()
     # Generic control-marker catch-all: small models INVENT bracketed ALL-CAPS scaffold tags
     # ([AFFIRMATIVE: …], [OBSERVATION: …]) we can't enumerate. Strip any "[ALLCAPS: …]" token
     # — the colon form is the scaffold shape. Case-SENSITIVE and colon-REQUIRED so code stays
     # intact (dict[KEY], arr[IDX], a bare "[ERROR]" log line, and "[1]" citations are all safe).
-    t = re.sub(r"\s*\[[A-Z][A-Z0-9_]{2,}\s*:[^\]]*\]\s*", " ", t).strip()
+    # EXCLUDE "[TOOL:" — like ECHO, it is a TRUNCATION point (the tool body after it is leaked
+    # scaffolding), handled by the dedicated "[TOOL" cut below; stripping just the bracket here left
+    # the whole tool body ("[TOOL: web_search]\nquery…RAW RESULTS…") in the reply.
+    t = re.sub(r"\s*\[(?!TOOL\b)[A-Z][A-Z0-9_]{2,}\s*:[^\]]*\]\s*", " ", t).strip()
     # Trailing self-name restart: after a finished sentence the model sometimes appends its own
     # name (and echoes the user) as a fake new turn — "…journey begin. Layla. Hello." Strip a
     # dangling "<Name>." (+ optional echoed greeting) that follows sentence-ending punctuation.
@@ -601,7 +636,7 @@ def strip_junk_from_reply(text: str) -> str:
     # "Layla ⚔ Morrigan:", a bare sigil — the "two tags, one broken" leak. Name-gated so a real
     # heading ("## Overview") is untouched. Runs BEFORE the section-header truncation below, so a
     # leading "## Morrigan" is DE-LABELED (the answer after it is kept) rather than truncated away.
-    t = _strip_leading_speaker_label(t).strip()
+    t = _strip_leading_speaker_label(t, tuple(aspect_names)).strip()
     t = re.sub(r"\[System:\s*Your last response[^\]]*\]\s*", "", t, flags=re.IGNORECASE | re.DOTALL).strip()
     # A prompt-section header (## SYSTEM / ## TASK / …) can leak MID-LINE when the small model
     # echoes the scaffold after its answer ("… here?  ## SYSTEM\n\n<repeats the prompt>"). The
@@ -627,8 +662,11 @@ def strip_junk_from_reply(text: str) -> str:
     return t
 
 
-def clean_response_text(text: str) -> str:
+def clean_response_text(text: str, aspect_names: tuple[str, ...] = ()) -> str:
     """Strip echoed system head, instruction-like lines, and junk from model output."""
+    if not text:
+        return ""
+    text = _strip_reasoning_traces(text)
     if not text:
         return ""
     if text[0].lower() == "n" and len(text) > 4 and text[1:].strip().lower().startswith("you are layla"):
@@ -679,7 +717,7 @@ def clean_response_text(text: str) -> str:
     # De-label a leading persona/speaker tag on the reasoning_handler path too (parity with
     # strip_junk_from_reply) — this path had NO leading-name strip at all, so "Layla:"/"⚔ Morrigan:"
     # leaked straight through the deliberation/reasoning replies.
-    text = _strip_leading_speaker_label(text).strip()
+    text = _strip_leading_speaker_label(text, tuple(aspect_names)).strip()
     if not text or text.lower().strip() == "assistant:" or is_junk_reply(text):
         text = ""
     return text

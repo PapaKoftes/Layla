@@ -486,6 +486,14 @@ def split_deliberation_output(
         # Fallback: a bare "<Concluder>:" label near the end of the text.
         m = re.search(rf"(?:^|\n)\s*{re.escape(concluder_name)}\s*:\s*", text, re.IGNORECASE)
     if not m:
+        # No CONCLUSION marker. If the text is instead a raw multi-aspect POV DUMP — the weak model
+        # regenerated the seeded "[<sigil> NAME] (cue): …" scaffold and hit the token budget before
+        # the conclusion — do NOT promote that scaffold to the reply (the "reply reads as ~6 stitched
+        # answers" bug). Surface it ONLY as trace and return an empty reply so the caller substitutes
+        # its standby. A plain marker-less answer (0–1 aspect labels) is returned as-is.
+        _pov_labels = re.findall(r"\[[^\]]*\b(?:MORRIGAN|NYX|ECHO|ERIS|CASSANDRA|LILITH)\b[^\]]*\]", text, re.IGNORECASE)
+        if len(_pov_labels) >= 2:
+            return "", _parse_deliberation_trace(text)
         return text, {}
     pov_block = text[: m.start()].strip()
     reply = text[m.end():].strip()
