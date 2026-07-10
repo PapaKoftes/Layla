@@ -81,6 +81,9 @@ async def ollama_chat(req: dict, request: Request):
         "stream": False,
         "workspace_root": body.get("workspace_root", "") or (body.get("options") or {}).get("workspace_root", ""),
     }
+    _stop = (body.get("options") or {}).get("stop")   # Ollama nests stop under options; forward it to v1.
+    if _stop:
+        oai["stop"] = _stop
     resp = await v1_chat_completions(oai, request)
     content, d = _content_of(resp)
     if not d.get("choices") and d.get("error"):
@@ -107,6 +110,9 @@ async def ollama_generate(req: dict, request: Request):
         "stream": False,
         "workspace_root": body.get("workspace_root", "") or (body.get("options") or {}).get("workspace_root", ""),
     }
+    _stop = (body.get("options") or {}).get("stop")   # Ollama nests stop under options; forward it to v1.
+    if _stop:
+        oai["stop"] = _stop
     resp = await v1_chat_completions(oai, request)
     content, d = _content_of(resp)
     if not d.get("choices") and d.get("error"):
