@@ -315,6 +315,9 @@ async def v1_chat_completions(req: dict, request: Request):
                     # old /v1 stream emitted every token verbatim (no cleaning at all).
                     from services.agent.response_builder import stream_safe_prefix as _ssp_v1
                     _v1_emitted = 0
+                    _v1_shown = ""                      # accumulated LIVE-emitted (clean) text
+                    _v1_stop = sampling.get("stop") or []   # client stop list (OpenAI contract)
+                    _v1_stopped = False
                     while True:
                         token = await asyncio.to_thread(tok_q.get)
                         if token is None:
@@ -329,14 +332,27 @@ async def v1_chat_completions(req: dict, request: Request):
                         _v1_delta, _v1_emitted = _ssp_v1(response_text, _v1_emitted)
                         if not _v1_delta:
                             continue
-                        evt = {
-                            "id": completion_id,
-                            "object": "chat.completion.chunk",
-                            "created": int(time.time()),
-                            "model": model_name,
-                            "choices": [{"index": 0, "delta": {"content": _v1_delta}, "finish_reason": None}],
-                        }
-                        yield f"data: {json.dumps(evt)}\n\n"
+                        # Honor the client `stop` on the LIVE delta flow too (not just the stored copy):
+                        # once a stop sequence lands inside the accumulated shown text, emit only the
+                        # pre-stop remainder and stop yielding further content (OpenAI stream contract).
+                        if _v1_stop:
+                            _combined = _v1_shown + _v1_delta
+                            _truncated = _apply_stop(_combined, _v1_stop)
+                            if _truncated != _combined:
+                                _v1_delta = _truncated[len(_v1_shown):]
+                                _v1_stopped = True
+                            _v1_shown = _truncated
+                        if _v1_delta:
+                            evt = {
+                                "id": completion_id,
+                                "object": "chat.completion.chunk",
+                                "created": int(time.time()),
+                                "model": model_name,
+                                "choices": [{"index": 0, "delta": {"content": _v1_delta}, "finish_reason": None}],
+                            }
+                            yield f"data: {json.dumps(evt)}\n\n"
+                        if _v1_stopped:
+                            break
             else:
                 result = await asyncio.to_thread(
                     autonomous_run,
@@ -371,6 +387,12 @@ async def v1_chat_completions(req: dict, request: Request):
                     from services.agent.response_builder import truncate_at_next_user_turn as _tr_v1b
                     _cl_v1b = _tr_v1b(_sj_v1b(response_text))
                     if _cl_v1b.strip():
+                        try:
+                            import runtime_safety as _rs_v1b
+                            from services.infrastructure.output_polish import polish_output as _po_v1b
+                            _cl_v1b = _po_v1b(_cl_v1b, _rs_v1b.load_config())
+                        except Exception:
+                            pass
                         response_text = _cl_v1b
                     elif response_text.strip():
                         response_text = "No response. Try again or rephrase."   # all-scaffold → standby, not raw
@@ -393,6 +415,15 @@ async def v1_chat_completions(req: dict, request: Request):
                 from services.agent.response_builder import truncate_at_next_user_turn as _tr_v1
                 _cleaned_v1 = _tr_v1(_sj_v1(response_text))
                 if _cleaned_v1.strip():
+                    # polish_output (hedge strip + paragraph dedup) — parity with the /agent stored
+                    # copy; strip_junk alone misses a leading "As an AI…" hedge and a duplicated
+                    # 1-sentence paragraph, so that drift persisted and re-entered context on /v1.
+                    try:
+                        import runtime_safety as _rs_v1
+                        from services.infrastructure.output_polish import polish_output as _po_v1
+                        _cleaned_v1 = _po_v1(_cleaned_v1, _rs_v1.load_config())
+                    except Exception:
+                        pass
                     response_text = _cleaned_v1
                 elif response_text.strip():
                     # strip_junk INTENTIONALLY emptied an all-scaffold reply (e.g. only a "[TOOL: …]"
@@ -528,6 +559,17 @@ async def v1_chat_completions(req: dict, request: Request):
             # strip() emptied it → the whole reply was leaked markers with no real answer.
             # Never return the raw leak to the client; degrade to a graceful fallback.
             response_text = "No response. Try again or rephrase."
+    except Exception:
+        pass
+
+    # polish_output (hedge strip + paragraph dedup) — parity with /agent; the whole /v1 endpoint
+    # lacked it, so a leading "As an AI…" hedge / duplicated paragraph drifted into the reply + context.
+    try:
+        import runtime_safety as _rs_po_ns
+        from services.infrastructure.output_polish import polish_output as _po_ns
+        _polished = _po_ns(response_text, _rs_po_ns.load_config())
+        if _polished.strip():
+            response_text = _polished
     except Exception:
         pass
 
