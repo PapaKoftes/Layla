@@ -323,9 +323,11 @@ def run_deliberation(
         )
     except Exception as exc:
         logger.warning("debate_engine: synthesis failed: %s", exc)
-        # Fallback: concatenate available aspect responses
-        valid = [f"[{aid}] {r}" for aid, r in aspect_responses.items() if r and "unable to respond" not in r.lower()]
-        final_response = "\n\n".join(valid) if valid else "[All aspects were unable to respond]"
+        # Fallback: concatenate available aspect responses. Use a clean capitalized display-name
+        # attribution ("Morrigan: …"), NOT the raw internal "[morrigan]" scaffold id — the latter
+        # bypassed the reply-cleaning floor and rendered as literal bracketed ids in the /debate panel.
+        valid = [f"{aid.capitalize()}: {r}" for aid, r in aspect_responses.items() if r and "unable to respond" not in r.lower()]
+        final_response = "\n\n".join(valid) if valid else "All aspects were unable to respond just now — try again."
         synthesis_notes = "synthesis_failed"
 
     return DeliberationResult(
