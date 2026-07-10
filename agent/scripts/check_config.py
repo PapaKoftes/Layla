@@ -163,15 +163,16 @@ def check_config(cfg: dict) -> list[ConfigIssue]:
                  "Server will fail to load at startup.")
 
     # --- stop_sequences override ---
+    # get_stop_sequences() now MERGES a config override into the maintained built-in anti-echo
+    # list (union) instead of replacing it, so a custom override can no longer disable the
+    # aspect-name / scaffold-header stops. The old "your override lacks '## '" warning described
+    # exactly the replace-semantics failure mode that no longer exists, so it is gone. Only flag a
+    # genuinely malformed value (non-list or non-string entries).
     stop = cfg.get("stop_sequences")
-    if isinstance(stop, list):
-        has_section_stop = any("## " in s for s in stop)
-        if not has_section_stop:
-            warn("stop_sequences", stop,
-                 "Custom stop_sequences override doesn't include '\\n## '. "
-                 "Small models echo system prompt section headers (## CONTEXT, ## TASK). "
-                 "Default get_stop_sequences() in llm_gateway.py handles this — "
-                 "only a problem if you're overriding via config.")
+    if stop is not None and not isinstance(stop, list):
+        warn("stop_sequences", stop, "Must be a list of strings; ignored otherwise.")
+    elif isinstance(stop, list) and any(not isinstance(s, str) for s in stop):
+        warn("stop_sequences", stop, "Contains non-string entries; those will be coerced/skipped.")
 
     # --- max_tool_calls ---
     mtc = cfg.get("max_tool_calls")
