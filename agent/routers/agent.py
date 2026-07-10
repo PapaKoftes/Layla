@@ -183,17 +183,18 @@ def _extract_artifacts(text: str) -> list[dict]:
     n = len(src_lines)
     i = 0
     while i < n and len(artifacts) < 20:
-        m = re.match(r"^\s*```(.*)$", src_lines[i])
+        m = re.match(r"^\s*(```+|~~~+)(.*)$", src_lines[i])   # ``` or ~~~ (CommonMark both fence chars)
         if not m:
             i += 1
             continue
-        info = (m.group(1) or "").strip()
+        _fence = m.group(1)[0]   # the fence CHAR ('`' or '~'); close must use the SAME char
+        info = (m.group(2) or "").strip()
         lang = (info.split()[0] if info else "text") or "text"   # first token of the info string
         body: list[str] = []
         j = i + 1
         closed = False
         while j < n:
-            if re.match(r"^\s*```\s*$", src_lines[j]):   # a bare closing fence on its own line
+            if re.match(rf"^\s*{re.escape(_fence)}{{3,}}\s*$", src_lines[j]):   # bare close, same fence char
                 closed = True
                 break
             body.append(src_lines[j])
@@ -855,6 +856,9 @@ async def agent(req: AgentRequest, request: Request):
                     except Exception:
                         pass
                     _fast_done = {'done': True, 'content': text, 'ux_states': [], 'memory_influenced': [], 'reasoning_mode': 'light', 'conversation_id': conversation_id, 'memory_updated': _mem_receipt(goal)}
+                    _fast_arts = _extract_artifacts(text)
+                    if _fast_arts:
+                        _fast_done["artifacts"] = _fast_arts   # hardened server extraction for the panel
                     if _fast_delib_meta:
                         _fast_done["deliberation"] = _fast_delib_meta
                     yield f"data: {json.dumps(_fast_done)}\n\n"
@@ -914,7 +918,11 @@ async def agent(req: AgentRequest, request: Request):
                     _append_history("assistant", text)
                     _subs = [{"description": r.get("description"), "ok": bool(r.get("ok"))}
                              for r in agg.get("subtask_results", [])]
-                    yield f"data: {json.dumps({'done': True, 'content': text, 'ux_states': [], 'memory_influenced': [], 'reasoning_mode': 'multi_agent', 'conversation_id': conversation_id, 'subtasks': _subs})}\n\n"
+                    _ma_done = {'done': True, 'content': text, 'ux_states': [], 'memory_influenced': [], 'reasoning_mode': 'multi_agent', 'conversation_id': conversation_id, 'subtasks': _subs}
+                    _ma_arts = _extract_artifacts(text)
+                    if _ma_arts:
+                        _ma_done["artifacts"] = _ma_arts
+                    yield f"data: {json.dumps(_ma_done)}\n\n"
                 finally:
                     watch_task.cancel()
                     try:
@@ -1160,6 +1168,9 @@ async def agent(req: AgentRequest, request: Request):
                     }
                     if _cfg_stream.get("ui_decision_trace_enabled"):
                         _done_stream["decision_trace"] = (result.get("decision_trace") or [])[-15:]
+                    _st_arts = _extract_artifacts(text)
+                    if _st_arts:
+                        _done_stream["artifacts"] = _st_arts
                     # Include deliberation metadata if available (streaming path)
                     _dm = result.get("_deliberation_meta")
                     if _dm:
@@ -1220,6 +1231,9 @@ async def agent(req: AgentRequest, request: Request):
                     }
                     if _cfg_stream.get("ui_decision_trace_enabled"):
                         _done_ns["decision_trace"] = (result.get("decision_trace") or [])[-15:]
+                    _ns_arts = _extract_artifacts(response_text)
+                    if _ns_arts:
+                        _done_ns["artifacts"] = _ns_arts
                     # Include deliberation metadata if available (non-streaming path)
                     _dm_ns = result.get("deliberation_result")
                     if _dm_ns:
