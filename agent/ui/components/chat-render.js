@@ -680,14 +680,16 @@ export function _renderDeliberationTranscript(msgDiv, meta) {
       card.appendChild(header);
       var body = document.createElement('div');
       body.style.cssText = 'font-size:0.72rem;color:var(--text);line-height:1.4;white-space:pre-wrap';
-      body.textContent = String(responses[asp] || '').trim().slice(0, 800);
+      // Clean each per-voice card (reasoning traces / control markers / leading labels leaked into
+      // the raw aspect POV text otherwise render verbatim in the transcript sub-cards).
+      body.textContent = cleanLaylaText(String(responses[asp] || '')).trim().slice(0, 800);
       card.appendChild(body);
 
       // Show critique for this aspect if available
       if (hasCritiques && critiques[asp]) {
         var crit = document.createElement('div');
         crit.style.cssText = 'margin-top:4px;padding:4px 6px;font-size:0.66rem;color:var(--text-dim);border-top:1px solid rgba(255,255,255,0.06);font-style:italic';
-        crit.textContent = '↳ Critique: ' + String(critiques[asp] || '').trim().slice(0, 400);
+        crit.textContent = '↳ Critique: ' + cleanLaylaText(String(critiques[asp] || '')).trim().slice(0, 400);
         card.appendChild(crit);
       }
       respSection.appendChild(card);
