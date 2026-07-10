@@ -234,6 +234,16 @@ def handle_reasoning_intent(
             text = ""
         text = (text or "").strip()
         text = _al.truncate_at_next_user_turn(text)
+        if deliberate:
+            # Separate the conclusion from the multi-aspect POV scaffold — parity with the streaming
+            # _stream_deliberation path. Without this the raw "[⚔ NAME] (cue): …" block (and the
+            # stitched per-aspect answers) leaked verbatim as the reply. A missing/empty conclusion
+            # returns "" so the caller substitutes its standby rather than the scaffold.
+            try:
+                _concl, _ = orchestrator.split_deliberation_output(text, active_aspect.get("name") or "")
+                text = _concl
+            except Exception:
+                pass
 
     text = _al._clean_response_text(text)
 

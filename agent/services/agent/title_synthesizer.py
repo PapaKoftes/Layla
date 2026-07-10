@@ -32,10 +32,17 @@ def _clean_title(raw: str) -> str:
     # A leaked leading aspect/persona label ("⚔ Morrigan: …", "Morrigan: …", "Layla: …") — the
     # title model echoes the speaker tag just like the reply model does. Strip an optional leading
     # sigil + optional name + colon/dash so the rail shows the topic, not the tag.
-    t = re.sub(
-        r"^\s*[⚔✦◎⚡⌖⊛]?\s*(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\s*[:\-–—]\s*",
-        "", t, flags=re.IGNORECASE,
-    ).strip()
+    # Reuse the robust backend leading-label stripper so the title path covers the SAME forms as the
+    # reply path — markdown-wrapped ("**Morrigan:**", "## Morrigan", "> Morrigan:"), composite
+    # ("Layla ⚔ Morrigan:"), sigil and dash — instead of a weaker hand-rolled regex that missed them.
+    try:
+        from services.agent.response_builder import _strip_leading_speaker_label as _sls
+        t = _sls(t).strip()
+    except Exception:
+        t = re.sub(
+            r"^\s*[⚔✦◎⚡⌖⊛]?\s*(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\s*[:\-–—]\s*",
+            "", t, flags=re.IGNORECASE,
+        ).strip()
     t = t.lstrip("⚔✦◎⚡⌖⊛ ").strip()                     # a bare leading sigil with no name
     t = re.sub(r"\s+", " ", t)
     t = t.rstrip(" .,:;-—!?")
