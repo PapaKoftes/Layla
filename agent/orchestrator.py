@@ -482,9 +482,17 @@ def split_deliberation_output(
         return "", {}
     # Everything from the CONCLUSION marker onward is the answer.
     m = re.search(r"\[\s*CONCLUSION\b[^\]]*\]\s*:?\s*", text, re.IGNORECASE)
-    if not m and concluder_name:
-        # Fallback: a bare "<Concluder>:" label near the end of the text.
-        m = re.search(rf"(?:^|\n)\s*{re.escape(concluder_name)}\s*:\s*", text, re.IGNORECASE)
+    if not m and concluder_name and re.search(
+        r"\[[^\]]*\b(?:MORRIGAN|NYX|ECHO|ERIS|CASSANDRA|LILITH)\b[^\]]*\]", text, re.IGNORECASE
+    ):
+        # Fallback: a bare "<Concluder>:" line as the conclusion boundary — but ONLY when the text
+        # actually carries POV scaffold (a bracketed aspect label) before it. Without scaffold a bare
+        # "<Name>:" is ordinary answer content, not a conclusion (most acutely the active aspect Echo
+        # vs a shell "echo: …" line) — matching it silently dropped the real leading answer. Use the
+        # LAST such line: the conclusion sits at the END, after the POV block, not the first occurrence.
+        _cands = list(re.finditer(rf"(?:^|\n)\s*{re.escape(concluder_name)}\s*:\s*", text, re.IGNORECASE))
+        if _cands:
+            m = _cands[-1]
     if not m:
         # No CONCLUSION marker. If the text is instead a raw multi-aspect POV DUMP — the weak model
         # regenerated the seeded "[<sigil> NAME] (cue): …" scaffold and hit the token budget before
