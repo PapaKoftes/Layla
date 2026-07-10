@@ -573,3 +573,19 @@ def test_dead_snippet_stop_removed_from_builtins():
     assert "\nReplied." not in stops
     # The real anti-echo speaker-tag stops are still present.
     assert "\nMorrigan:" in stops
+
+
+# ── 16. Round-10: deliberation bare-concluder fallback must not eat a shell "echo:" answer line ────
+
+def test_deliberation_bare_concluder_requires_pov_scaffold():
+    import orchestrator
+    SIG = "⚔"
+    # Active aspect Echo, NO POV scaffold: a shell "echo:" line is answer content, not a conclusion
+    # boundary — the whole answer must survive (was silently truncated to "hello world").
+    reply, _ = orchestrator.split_deliberation_output("run this:\necho: hello world", "Echo")
+    assert reply == "run this:\necho: hello world"
+    # A genuine deliberation (POV brackets present) still splits at the trailing bare "Echo:" conclusion.
+    raw = f"[{SIG} MORRIGAN] (blunt): fast fix\n[{SIG} ECHO] (soft): gentle\nEcho: the final answer is 42."
+    reply2, meta2 = orchestrator.split_deliberation_output(raw, "Echo")
+    assert reply2 == "the final answer is 42."
+    assert len(meta2) >= 1                       # the POV lines went to the trace, not the bubble
