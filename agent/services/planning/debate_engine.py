@@ -582,13 +582,17 @@ def _synthesize(
     final_response = raw
     synthesis_notes = ""
 
-    notes_match = re.search(
-        r"SYNTHESIS_NOTES:\s*(.+)",
-        raw,
-        re.DOTALL | re.IGNORECASE,
-    )
+    # case-SENSITIVE + whitespace-boundary: the marker is always emitted UPPER-case. Case-INSENSITIVE
+    # matching truncated the answer at any in-prose lowercase "synthesis_notes:" (e.g. a reply ABOUT
+    # writing synthesis notes). NOT strictly line-anchored, because the reply cleaner collapses the
+    # marker's preceding newline into a space before this split runs — so require only a preceding
+    # whitespace/start boundary. The empty-answer fallback below covers a notes-first completion.
+    notes_match = re.search(r"(?:^|\s)SYNTHESIS_NOTES\s*:\s*(.+)", raw, re.DOTALL)
     if notes_match:
         synthesis_notes = notes_match.group(1).strip()
-        final_response = raw[:notes_match.start()].strip()
+        _fr = raw[:notes_match.start()].strip()
+        # Empty answer before the marker (notes-first / notes-only) — keep the whole raw rather than
+        # silently stranding the real answer in the never-rendered notes field.
+        final_response = _fr if _fr else raw.strip()
 
     return final_response, synthesis_notes

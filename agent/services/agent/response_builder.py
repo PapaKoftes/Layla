@@ -35,6 +35,23 @@ def is_junk_reply(content: str) -> bool:
         hits = sum(1 for k in _decision_keys if k in stripped)
         if hits >= 2:
             return True
+        # A raw tool-RESULT dict ({"ok": false, "error": "…"} / {"ok": true, "_empty_output": true})
+        # has only ONE decision key, so it slipped past the >=2 check and leaked verbatim into the
+        # /agent bubble. If the WHOLE reply parses to a dict whose keys are ALL internal tool-result/
+        # status keys (no prose), it is scaffolding, never a user reply.
+        if stripped.endswith("}"):
+            try:
+                import json as _json
+                _obj = _json.loads(stripped)
+                _tool_keys = {
+                    "ok", "error", "reason", "message", "_empty_output", "action", "tool", "thought",
+                    "args", "objective_complete", "status", "path", "output", "result", "tool_calls",
+                    "memories", "approval_id", "approval_required", "stdout", "stderr", "returncode",
+                }
+                if isinstance(_obj, dict) and _obj and all(str(k) in _tool_keys for k in _obj):
+                    return True
+            except Exception:
+                pass
     return False
 
 
@@ -398,6 +415,17 @@ def stream_safe_prefix(raw: str, already_emitted: int) -> tuple[str, int]:
     _rt = re.search(r"<(?:think|thinking|reasoning|scratchpad|reflection)\b", raw[:safe_end], re.IGNORECASE)
     if _rt and not re.search(r"</(?:think|thinking|reasoning|scratchpad|reflection)\s*>", raw[_rt.start():safe_end], re.IGNORECASE):
         safe_end = min(safe_end, _rt.start())
+    # Also hold from a trailing PARTIAL '<' opener the tokenizer split across chunks ('<', '<t',
+    # '<thi' before the whole '<think>' — the word-boundary regex above needs the full tag). Without
+    # this the '<' fragment leaked live and, once the block later stripped, the emit counter desynced
+    # and sliced into the answer ("<eal answer."). Mirror the '[' hold. Only fires when the trailing
+    # fragment is a genuine prefix of a reasoning opener, so ordinary "a < b" is untouched.
+    _openers = ("<think", "<thinking", "<reasoning", "<scratchpad", "<reflection")
+    _lt = raw.rfind("<", 0, safe_end)
+    if _lt != -1 and ">" not in raw[_lt:safe_end]:
+        _frag = raw[_lt:safe_end].lower()
+        if any(op.startswith(_frag) for op in _openers):
+            safe_end = min(safe_end, _lt)
     clean = _strip_reasoning_traces(_STREAM_MARKER_RE.sub("", raw[:safe_end]))
     # A leading speaker label ("Morrigan:", "⚔ Morrigan", "**Nyx:**", "## Morrigan\n") must never
     # flash live. Strip it on EVERY call so `clean` is the SAME (stripped) string across the whole
@@ -581,6 +609,24 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = ()) -> str:
     t = _strip_reasoning_traces(text.strip())
     if not t:
         return ""
+    # Protect fenced code blocks from the prose scrubbers below: unguarded, the ALLCAPS-bracket
+    # replace mangles legit code like `fmt = "[ERROR: %(msg)s]"`, and the `## SECTION` / `[TOOL:`
+    # truncations blank the whole reply (and the artifact panel) when those tokens sit inside a
+    # ```md / ```bash block. Mask each COMPLETE ```…``` block with a null-delimited sentinel, scrub
+    # the prose, then restore before the fence-aware collapse functions run.
+    _masked_fences: list[str] = []
+
+    def _mask_fence(_m: "re.Match") -> str:
+        _blk = _m.group(0)
+        # Only protect fences with SUBSTANTIVE content. A degenerate/empty fence ("```\n\n\ns\n```"
+        # a looping model emits) must stay UNmasked so the degenerate-tail scrubbers can remove it.
+        _interior = _blk[_blk.find("\n") + 1 : _blk.rfind("```")]
+        if len(re.sub(r"\s", "", _interior)) < 3:
+            return _blk
+        _masked_fences.append(_blk)
+        return "\x00F" + str(len(_masked_fences) - 1) + "F\x00"
+
+    t = _FENCE_BLOCK_RE.sub(_mask_fence, t)
     for _ in range(50):
         prev = t
         t = re.sub(r"^\s*assistant\s*:\s*I\s+replied\.\s*", "", t, count=1, flags=re.IGNORECASE).strip()
@@ -732,6 +778,10 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = ()) -> str:
         m = re.search(_marker, t, re.IGNORECASE)
         if m:
             t = t[:m.start()].strip()
+    # Restore the protected fenced code blocks (verbatim) before the fence-aware collapse functions.
+    if _masked_fences:
+        for _i, _blk in enumerate(_masked_fences):
+            t = t.replace("\x00F" + str(_i) + "F\x00", _blk)
     t = _collapse_repetition(t)
     t = _collapse_duplicate_blocks(t)  # fence-safe: cut a reprinted trailing code block
     if is_junk_reply(t):
