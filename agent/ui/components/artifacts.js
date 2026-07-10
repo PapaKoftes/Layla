@@ -29,7 +29,8 @@ export function laylaExtractArtifacts(text) {
     const fenceChar = open[1][0];                 // '`' or '~' — the close must use the same char
     const closeRe = new RegExp('^\\s*' + (fenceChar === '`' ? '`' : '~') + '{3,}\\s*$');
     const info = (open[2] || '').trim();
-    const lang = (info ? info.split(/\s+/)[0] : 'text') || 'text';   // first token of the info string
+    let lang = (info ? info.split(/\s+/)[0] : 'text') || 'text';   // first token of the info string
+    if (!/^[\w.+#-]{1,20}$/.test(lang)) lang = 'text';             // clamp (parity with the server)
     const body = [];
     let j = i + 1;
     let closed = false;
@@ -108,18 +109,24 @@ function _renderArtifactsList() {
     return;
   }
   el.innerHTML = _artifacts.map(a => {
-    const preview = (a.content || '').slice(0, 120).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // a.lang comes from the code-fence info string (model/RAG/web-controlled) — escape it or an
+    // info string like "```<img src=x onerror=…>" becomes a real <img> in this innerHTML sink (the
+    // artifacts panel bypasses the prose bubble's DOMPurify path). a.id is internal but escaped for
+    // defense-in-depth; the preview uses escapeHtml too (was only escaping < / >, not & / quotes).
+    const _id = escapeHtml(String(a.id || ''));
+    const _lang = escapeHtml(String(a.lang || 'text'));
+    const preview = escapeHtml((a.content || '').slice(0, 120));
     const lines = (a.content || '').split('\n').length;
-    return `<div class="artifact-card" id="${a.id}" style="background:var(--code-bg);border:1px solid var(--border);border-radius:4px;padding:8px;position:relative">
+    return `<div class="artifact-card" id="${_id}" style="background:var(--code-bg);border:1px solid var(--border);border-radius:4px;padding:8px;position:relative">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-        <span style="font-size:0.68rem;color:var(--asp);font-family:ui-monospace,monospace">${a.lang}</span>
+        <span style="font-size:0.68rem;color:var(--asp);font-family:ui-monospace,monospace">${_lang}</span>
         <span style="font-size:0.62rem;color:var(--text-dim)">${lines} line${lines !== 1 ? 's' : ''}</span>
       </div>
       <pre style="margin:0;font-size:0.62rem;max-height:80px;overflow:hidden;color:var(--text-dim);white-space:pre-wrap;word-break:break-all">${preview}${a.content.length > 120 ? '…' : ''}</pre>
       <div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">
-        <button type="button" onclick="laylaArtifactCopy('${a.id}')" class="approve-btn" style="font-size:0.62rem;padding:2px 6px">Copy</button>
-        <button type="button" onclick="laylaArtifactEdit('${a.id}')" class="approve-btn" style="font-size:0.62rem;padding:2px 6px">Edit &amp; send</button>
-        <button type="button" onclick="laylaArtifactRemove('${a.id}')" class="tab-btn" style="font-size:0.62rem;padding:2px 6px;background:transparent;border-color:var(--border);color:var(--text-dim)">✕</button>
+        <button type="button" onclick="laylaArtifactCopy('${_id}')" class="approve-btn" style="font-size:0.62rem;padding:2px 6px">Copy</button>
+        <button type="button" onclick="laylaArtifactEdit('${_id}')" class="approve-btn" style="font-size:0.62rem;padding:2px 6px">Edit &amp; send</button>
+        <button type="button" onclick="laylaArtifactRemove('${_id}')" class="tab-btn" style="font-size:0.62rem;padding:2px 6px;background:transparent;border-color:var(--border);color:var(--text-dim)">✕</button>
       </div>
     </div>`;
   }).join('');
