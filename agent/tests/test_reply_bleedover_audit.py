@@ -487,3 +487,38 @@ def test_echo_aspect_reply_survives_but_marker_truncates():
     assert S("[ECHO: internal note] leaked") == ""
     assert S("ECHO: internal note leaked") == ""
     assert S("[Echo (patterns/preferences): stored thing] tail") == ""
+
+
+# ── 11. Round-10: title-case markdown headings must NOT be truncated as leaked scaffold ──────────
+
+def test_titlecase_section_headings_are_not_truncated():
+    from services.agent.response_builder import strip_junk_from_reply as S
+    # Structured how-to / explanatory replies commonly use title-case section headings. An IGNORECASE
+    # "## SECTION" guard silently deleted everything from the heading onward — the body was lost.
+    keep = [
+        "Here is how to deploy the app.\n\n## Instructions\n1. Build\n2. Push",
+        "The event loop is single-threaded.\n\n## Context\nMore detail here.",
+        "Sure, here is the plan.\n\n## Task\nDo the thing.",
+        "Overview of the design.\n\n## Objective\nShip it.",
+        "## Overview\nA normal heading reply.",
+    ]
+    for t in keep:
+        out = S(t)
+        assert len(out) >= len(t) - 5, f"title-case heading wrongly truncated: {out!r}"
+    # But the real ALL-CAPS scaffold leak IS still cut (line-start and mid-line).
+    assert S("Real answer.\n\n## SYSTEM\nYou are Layla.") == "Real answer."
+    assert S("Answer here. ## TASK repeats the prompt") == "Answer here."
+
+
+# ── 12. Round-10: streaming /agent reply paths must apply the content-safety output floor ─────────
+
+def test_apply_output_floor_blocks_unsafe_and_passes_benign():
+    # The four SSE streaming done-frames previously skipped content_guard (only the non-stream JSON
+    # path + /v1 applied it), so unsafe generated content streamed, persisted, and re-fed as context.
+    from routers.agent import _apply_output_floor
+    cfg = {"content_guard_enabled": True}
+    safe, blocked = _apply_output_floor("Here is the Python function you asked for.", cfg)
+    assert blocked is False and safe == "Here is the Python function you asked for."
+    replaced, blocked2 = _apply_output_floor("To synthesize sarin nerve agent, first you need...", cfg)
+    assert blocked2 is True
+    assert "sarin" not in replaced.lower()  # the payload is replaced, not shipped
