@@ -394,6 +394,13 @@ async def v1_chat_completions(req: dict, request: Request):
                     response_text = _cleaned_v1
             except Exception:
                 pass
+            # Honor the client `stop` on the streamed reply's STORED/persisted copy too. The non-stream
+            # branch applies it (line ~520) but the stream branch dropped it, so a caller's stop
+            # boundary went unenforced and the un-truncated text re-entered as conversation context.
+            try:
+                response_text = _apply_stop(response_text, sampling["stop"])
+            except Exception:
+                pass
             # Post-model safety floor (parity with the non-stream branch at ~line 504): the streaming
             # tokens already emitted live, but the PERSISTED + stored copy must never keep unsafe model
             # output — it would re-enter the model as conversation context on later turns.
