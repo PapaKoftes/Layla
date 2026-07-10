@@ -83,14 +83,26 @@ def save_custom_aspect(spec: dict[str, Any]) -> dict[str, Any]:
         set_user_identity(_PREFIX + aid, json.dumps(rec, ensure_ascii=False))
     except Exception as e:
         return {"ok": False, "error": str(e)}
+    _invalidate_reply_name_cache()  # so the reply-cleaner strips this new name immediately
     return {"ok": True, "aspect": rec}
+
+
+def _invalidate_reply_name_cache() -> None:
+    """Tell the reply-cleaner to re-read the custom-aspect display names (leading-label strip)."""
+    try:
+        from services.agent.response_builder import reset_custom_aspect_name_cache
+        reset_custom_aspect_name_cache()
+    except Exception:
+        pass
 
 
 def delete_custom_aspect(aspect_id: str) -> bool:
     # delete_user_identity lives in user_profile (db.py doesn't re-export it).
     try:
         from layla.memory.user_profile import delete_user_identity
-        return bool(delete_user_identity(_PREFIX + str(aspect_id or "").strip().lower()))
+        ok = bool(delete_user_identity(_PREFIX + str(aspect_id or "").strip().lower()))
+        _invalidate_reply_name_cache()
+        return ok
     except Exception:
         return False
 
