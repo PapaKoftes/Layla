@@ -36,6 +36,21 @@ def test_llm_title_cleaner_rejects_scaffolding():
     assert _clean_title("...") == ""
 
 
+def test_llm_title_cleaner_handles_role_tags_and_affirmations():
+    # Round-9: the reject regex wrapped colon/punctuation alternatives in \b...\b, so "Assistant:",
+    # "User:" and "Sure!" never matched and leaked verbatim as the conversation title.
+    from services.agent.title_synthesizer import _clean_title
+    # A bare role tag echoed from the prompt frame is stripped, leaving the clean topic.
+    assert _clean_title("Assistant: Python Async Basics") == "Python Async Basics"
+    assert _clean_title("User: hello there") == "Hello there"
+    # Affirmation openers are rejected (fall back to the extractive title).
+    assert _clean_title("Sure! Async/Await Explained") == ""
+    assert _clean_title("Sure, Python Tips") == ""
+    assert _clean_title("Okay here is a title") == ""
+    # A legitimate topic that merely contains a keyword is kept.
+    assert _clean_title("CI Setup Guide") == "CI Setup Guide"
+
+
 def test_synthesizer_needs_some_content():
     from services.agent.title_synthesizer import synthesize_conversation_title
     assert synthesize_conversation_title("", "") == ""
