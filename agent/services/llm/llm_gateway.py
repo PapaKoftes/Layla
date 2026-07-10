@@ -687,8 +687,10 @@ def get_stop_sequences():
         # legitimate short answer to a bare "Morrigan" / the empty-reply standby. strip_junk_from_reply now
         # removes any leading label robustly, so the bare stops are redundant as well as harmful.
         "\nMorrigan:", "\nNyx:", "\nEcho:", "\nEris:", "\nCassandra:", "\nLilith:", "\nLayla:",
-        # Prevent memory-artifact leakage
-        "\nReplied.", "Snippet:", "\nSnippet:",
+        # NOTE: the old "Objective: … Replied. Snippet: <reply>" outcome-summary format these guarded
+        # against was deliberately removed (outcome_writer.py) and is no longer produced anywhere. The
+        # bare, UNANCHORED "Snippet:" was pure downside — it halted generation mid-reply whenever a
+        # legitimate answer used a "Snippet:" section label. Dropped all three dead memory-artifact stops.
         "<|endoftext|>", "<|im_end|>",
     ]
     import runtime_safety
