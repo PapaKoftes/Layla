@@ -644,6 +644,9 @@ export async function send() {
             // Render full deliberation transcript if available
             var _delibDone = obj.deliberation || div._deliberationMeta;
             if (_delibDone && _delibDone.mode && _delibDone.mode !== 'solo') {
+              // Drop the inline LIVE badge first — the transcript's own <summary> carries the same
+              // mode label, so keeping both showed the deliberation indicator twice per turn.
+              try { var _liveBadge = div.querySelector('.deliberation-label'); if (_liveBadge) _liveBadge.remove(); } catch (_e) { console.debug('app:', _e); }
               try { _renderDeliberationTranscript(div, _delibDone); } catch (_e) { console.debug('app:', _e); }
             }
             // "Memory updated" receipt — a small chip when Layla filed a durable fact this turn.
