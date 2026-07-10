@@ -472,3 +472,19 @@ def test_deliberation_handles_llm_failure(mock_completion, mock_personality):
     # Synthesis should have failed gracefully
     assert result.synthesis_notes == "synthesis_failed"
     assert "unable to respond" in result.final_response.lower()
+
+
+# Round-10: /debate returned HTTP 500 because the router read result.aspect_models, which the
+# DeliberationResult dataclass never declared. The field now exists (default {}) and is populated.
+def test_deliberation_result_has_aspect_models_field():
+    from services.planning.debate_engine import DeliberationResult
+    r = DeliberationResult(mode="solo", final_response="hi")
+    assert r.aspect_models == {}          # default — router's getattr/attr access can never 500
+
+
+@patch("services.planning.debate_engine._load_aspect_personality", side_effect=lambda aid: _FAKE_PERSONALITIES.get(aid, {"id": aid, "name": aid}))
+@patch("services.llm.llm_gateway.run_completion", side_effect=_mock_run_completion)
+def test_run_deliberation_populates_aspect_models(mock_completion, mock_personality):
+    from services.planning.debate_engine import run_deliberation
+    result = run_deliberation(goal="Should I refactor?", state={}, cfg={}, mode="debate", aspects=["morrigan", "nyx"])
+    assert set(result.aspect_models.keys()) == {"morrigan", "nyx"}   # one entry per participating aspect

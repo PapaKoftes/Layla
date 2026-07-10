@@ -269,7 +269,12 @@ def _stream_reason_body(
     buffer = ""
     held_tokens: list[str] = []   # tokens held while we check for JSON blob start
     _json_suppressed = False
-    _PROMPT_ECHO_RE = re.compile(r"(?:^|\n)\s*(##\s*(TASK|CONTEXT|SCRATCHPAD|REPO)\b|Current goal\s*:|\[Active aspect\s*:|Last user message\s*:|Repo snapshot\s*:|Repo structure\s*:)", re.IGNORECASE | re.MULTILINE)
+    # NOTE: the "##\s*(TASK|CONTEXT|SCRATCHPAD|REPO)" alternative was REMOVED from this IGNORECASE
+    # pattern — under IGNORECASE it matched TITLE-CASE headings ("## Context", "## Task") and truncated
+    # the live stream, silently dropping the body of any structured reply. The case-SENSITIVE
+    # _PROMPT_ECHO_MIDLINE_RE below already catches the real ALL-CAPS scaffold header (line-start or
+    # mid-line). The remaining alternatives here are unambiguous scaffold phrases, IGNORECASE-safe.
+    _PROMPT_ECHO_RE = re.compile(r"(?:^|\n)\s*(Current goal\s*:|\[Active aspect\s*:|Last user message\s*:|Repo snapshot\s*:|Repo structure\s*:)", re.IGNORECASE | re.MULTILINE)
     # A section header can also leak MID-LINE ("… here?  ## SYSTEM\n\n<repeats prompt>"), which
     # the line-anchored pattern above misses. Case-SENSITIVE: an ALL-CAPS section name is
     # unambiguously scaffold, whereas a natural '## Context' heading is title-case.

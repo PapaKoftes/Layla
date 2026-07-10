@@ -97,6 +97,7 @@ class DeliberationResult:
     critiques: dict[str, str] = field(default_factory=dict)          # {aspect_id: critique_text}
     participating_aspects: list[str] = field(default_factory=list)   # aspect IDs
     synthesis_notes: str = ""                             # Key agreements/disagreements
+    aspect_models: dict[str, str] = field(default_factory=dict)      # {aspect_id: model tag ("" = default)}
 
 
 # ---------------------------------------------------------------------------
@@ -275,6 +276,7 @@ def run_deliberation(
             critiques={},
             participating_aspects=[aspect_id],
             synthesis_notes="",
+            aspect_models={aspect_id: _aspect_model_override(aspect_id, cfg) or ""},
         )
 
     # Phase 0b: select participating aspects
@@ -339,6 +341,7 @@ def run_deliberation(
         critiques=critiques,
         participating_aspects=list(aspects),
         synthesis_notes=synthesis_notes,
+        aspect_models={aid: (_aspect_model_override(aid, cfg) or "") for aid in aspects},
     )
 
 
