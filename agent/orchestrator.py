@@ -502,6 +502,14 @@ def split_deliberation_output(
     # Strip a leading "Name:" the model sometimes prefixes onto the conclusion.
     if concluder_name:
         reply = re.sub(rf"^\s*{re.escape(concluder_name)}\s*:\s*", "", reply, flags=re.IGNORECASE).strip()
+    # TRAILING POV scaffold: a weak model sometimes emits the CONCLUSION first and then re-lists the
+    # seeded "[⚔ NAME] (cue): …" POV lines AFTER it. Those are trace, not answer — cut the reply at the
+    # first such label and fold them into the POV block (thinking panel), so they never stitch into
+    # the visible bubble ("… O(1) lookups. (blunt): fast fix (layered): …").
+    _trailing = re.search(r"\[[^\]]*\b(?:MORRIGAN|NYX|ECHO|ERIS|CASSANDRA|LILITH)\b[^\]]*\]", reply, re.IGNORECASE)
+    if _trailing:
+        pov_block = (pov_block + "\n" + reply[_trailing.start():]).strip()
+        reply = reply[:_trailing.start()].strip()
     # A CONCLUSION marker WAS found (the no-marker case returned early above). If the model wrote
     # the marker but no answer after it, `reply` is empty — do NOT fall back to `pov_block`: that
     # promoted the raw "[⚔ MORRIGAN] (blunt): …" POV/trace scaffold into the visible reply (the
