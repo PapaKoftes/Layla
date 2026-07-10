@@ -26,7 +26,6 @@ from shared_state import (
     append_conv_history,
     get_append_history,
     get_conv_history,
-    get_history,
     get_touch_activity,
 )
 
@@ -340,7 +339,10 @@ def agent_steer(req: SteerRequest):
 @router.post("/agent")
 async def agent(req: AgentRequest, request: Request):
     get_touch_activity()()
-    _history = get_history()
+    # NOTE: reads of the process-global _history deque were removed — per-turn context is now scoped
+    # strictly to conversation_id via conv_history, so a new conversation's first turn can never be
+    # conditioned on a PRIOR conversation's messages (cross-conversation content bleed). Writes to
+    # the global history are kept for the legacy /history view.
     _append_history = get_append_history()
     goal = req.message
     context = req.context or ""
@@ -791,7 +793,7 @@ async def agent(req: AgentRequest, request: Request):
                             for t in stream_reason(
                                 goal,
                                 context=context,
-                                conversation_history=list(conv_history) if conv_history else list(_history),
+                                conversation_history=list(conv_history),
                                 aspect_id=aspect_id,
                                 show_thinking=show_thinking,
                                 model_override=model_override or None,
@@ -949,7 +951,7 @@ async def agent(req: AgentRequest, request: Request):
                     workspace_root=workspace_root,
                     allow_write=allow_write,
                     allow_run=allow_run,
-                    conversation_history=list(conv_history) if conv_history else list(_history),
+                    conversation_history=list(conv_history),
                     aspect_id=aspect_id,
                     show_thinking=show_thinking,
                     stream_final=True,
@@ -1058,7 +1060,7 @@ async def agent(req: AgentRequest, request: Request):
                             for t in stream_reason(
                                 goal_for_stream,
                                 context=context,
-                                conversation_history=list(conv_history) if conv_history else list(_history),
+                                conversation_history=list(conv_history),
                                 aspect_id=aspect_id,
                                 show_thinking=show_thinking,
                                 model_override=model_override or None,
@@ -1271,7 +1273,7 @@ async def agent(req: AgentRequest, request: Request):
             workspace_root=workspace_root,
             allow_write=allow_write,
             allow_run=allow_run,
-            conversation_history=list(conv_history) if conv_history else list(_history),
+            conversation_history=list(conv_history),
             aspect_id=aspect_id,
             show_thinking=show_thinking,
             stream_final=stream,
