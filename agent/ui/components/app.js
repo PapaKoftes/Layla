@@ -22,7 +22,7 @@
  *   refreshWorkspacePresetsDropdown, sanitizeHtml
  */
 
-import { escapeHtml, showToast, _dbg } from '../services/utils.js';
+import { escapeHtml, showToast, _dbg, cleanLaylaText } from '../services/utils.js';
 import {
   addMsg, addSeparator, hideEmpty,
   laylaHeaderProgressStart, laylaHeaderProgressStop,
@@ -610,6 +610,10 @@ export async function send() {
             if (typeof obj.content === 'string') {
               full = obj.content.trim() ? obj.content : "Sorry — I couldn't generate a response just then. Please try again.";
             }
+            // Frontend defense-in-depth: the streaming render never called cleanLaylaText (unlike the
+            // non-stream/reload path via addMsg), so a decorated persona chip label the backend strip
+            // missed rendered as a second broken tag. Clean the done-frame content here too.
+            try { full = cleanLaylaText(full); } catch (_cl) { console.debug('app:', _cl); }
             if (bubble) {
               if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
                 try { bubble.innerHTML = sanitize(marked.parse(full)); } catch (_mdErr) { bubble.textContent = full; }
