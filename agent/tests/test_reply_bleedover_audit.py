@@ -289,6 +289,63 @@ def test_stream_parity_reasoning_stacked_assistant():
         assert "<think" not in got and "Morrigan" not in got
 
 
+def test_fenced_code_is_never_mutated_by_scrubbers():
+    # strip_junk_from_reply must NOT touch content inside a ```code``` block — it was corrupting
+    # legit code containing marker-shaped tokens (and truncating the whole reply at a `## TASK`
+    # header or `[TOOL:` inside a fence), landing in both the bubble AND the artifact panel.
+    c1 = 'Use this:\n```python\nfmt = "[ERROR: %(msg)s]"\nlog.basicConfig(format=fmt)\n```'
+    assert '[ERROR: %(msg)s]' in strip_junk_from_reply(c1)
+    c2 = 'Template:\n```md\n## TASK\nSummarize.\n\n## CONTEXT\nBeginner.\n```'
+    out = strip_junk_from_reply(c2)
+    assert '## TASK' in out and '## CONTEXT' in out
+    c3 = 'Run:\n```bash\n# [TOOL: curl] fetches\ncurl -s x\n```'
+    assert '[TOOL: curl]' in strip_junk_from_reply(c3)
+    # scaffolding OUTSIDE a fence is still stripped
+    assert strip_junk_from_reply("The answer.\n\n## SYSTEM\nleaked prompt") == "The answer."
+    assert strip_junk_from_reply("[OBSERVATION: x] real answer") == "real answer"
+
+
+def test_reasoning_split_tag_does_not_leak_or_mangle_stream():
+    def live(tokens):
+        buf, em, out = "", 0, ""
+        for tk in tokens:
+            buf += tk
+            d, em = stream_safe_prefix(buf, em)
+            out += d
+        return out
+    # the <think opener split across tokens must not leak '<thin' nor slice into the answer
+    assert live(["<", "think", ">", "cot", "</think>", "Real answer."]).strip() == "Real answer."
+    assert live(list("<think>secret</think>Answer 42")).strip() == "Answer 42"
+    # a legitimate lone '<' in prose survives
+    assert live(["a ", "< ", "b is", " true."]).strip() == "a < b is true."
+
+
+def test_raw_tool_result_dict_is_junk():
+    import json
+
+    from services.agent.response_builder import is_junk_reply
+    assert is_junk_reply(json.dumps({"ok": False, "error": "Path not found"}))
+    assert is_junk_reply(json.dumps({"ok": True, "_empty_output": True}))
+    assert is_junk_reply(json.dumps({"ok": False, "reason": "tool_policy_denied"}))
+    # a real JSON answer the user asked for (has non-tool keys) is NOT flagged
+    assert not is_junk_reply(json.dumps({"city": "Paris", "population": 2148000}))
+
+
+def test_synthesis_notes_split_is_anchored():
+    # The debate_engine SYNTHESIS_NOTES split must be line-anchored + case-sensitive so an in-prose
+    # "synthesis_notes:" (a reply ABOUT writing notes) never truncates the answer, while a real
+    # line-start "SYNTHESIS_NOTES:" block is still split off.
+    import re as _re
+    pat = r"(?:^|\s)SYNTHESIS_NOTES\s*:\s*(.+)"
+    # lowercase in-prose "synthesis_notes:" must NOT match (case-sensitive)
+    assert _re.search(pat, "Here is guidance on writing synthesis_notes: keep it short.", _re.DOTALL) is None
+    # a real UPPER-case marker (even after the newline was collapsed to a space) still splits
+    assert _re.search(pat, "The plan is sound. SYNTHESIS_NOTES: all agree.", _re.DOTALL) is not None
+    # verify the source actually uses the case-sensitive whitespace-boundary form
+    src = (AGENT_DIR / "services" / "planning" / "debate_engine.py").read_text(encoding="utf-8")
+    assert "(?:^|\\s)SYNTHESIS_NOTES" in src
+
+
 def test_custom_aspect_name_registry_auto_strips(monkeypatch):
     # The module registry lets every path (no extra_names threading) strip a custom persona name.
     import services.agent.response_builder as rb

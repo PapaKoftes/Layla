@@ -436,8 +436,12 @@ export async function sendResearch(customMessage) {
       streamMeta.textContent = 'Done · ' + Math.max(0, Math.floor((Date.now() - streamStartedAt) / 1000)) + 's · ' + (full || '').length + ' chars';
 
       full = _cleanLaylaText(full);
+      // Balance an unclosed fence on the final render too (parity with the live render above).
+      let _fsrc = full;
+      if (((full.match(/```/g) || []).length % 2)) _fsrc += '\n```';
+      if (((full.match(/~~~/g) || []).length % 2)) _fsrc += '\n~~~';
       let parsedFinal = full;
-      try { if (typeof marked !== 'undefined') parsedFinal = _sanitizeHtml(marked.parse(full)); } catch (_) {}
+      try { if (typeof marked !== 'undefined') parsedFinal = _sanitizeHtml(marked.parse(_fsrc)); } catch (_) {}
       bubble.innerHTML = parsedFinal;
       try {
         const msgBubble = div.querySelector('.msg-bubble');
