@@ -918,6 +918,17 @@ async def agent(req: AgentRequest, request: Request):
                     append_conv_history(conversation_id, "assistant", text)
                     _append_history("user", goal)
                     _append_history("assistant", text)
+                    # Durable persistence + title synth — mirrors every other reply branch (agen_fast
+                    # 852-859, stream_pending, non-stream). Without it a multi-agent turn lived only in
+                    # the in-memory deque (lost on restart) and the conversation kept its placeholder title.
+                    try:
+                        from layla.memory.db import append_conversation_message, create_conversation
+                        create_conversation(conversation_id, aspect_id=aspect_id or "")
+                        append_conversation_message(conversation_id, "user", goal, aspect_id=aspect_id or "")
+                        append_conversation_message(conversation_id, "assistant", text, aspect_id=aspect_id or "")
+                        _maybe_synth_title(conversation_id, goal, text)
+                    except Exception:
+                        pass
                     _subs = [{"description": r.get("description"), "ok": bool(r.get("ok"))}
                              for r in agg.get("subtask_results", [])]
                     _ma_done = {'done': True, 'content': text, 'ux_states': [], 'memory_influenced': [], 'reasoning_mode': 'multi_agent', 'conversation_id': conversation_id, 'subtasks': _subs}
