@@ -539,3 +539,37 @@ def test_label_strip_preserves_answer_opening_emphasis():
     assert S("**Morrigan:** use a set.") == "use a set."
     assert S("**Morrigan:** **Use a set.**") == "**Use a set.**"
     assert S("**Morrigan**: normal answer.") == "normal answer."
+
+
+# ── 14. Round-10: streaming filter strips invented ALLCAPS scaffold tags (parity w/ done-frame) ────
+
+def test_stream_strips_invented_allcaps_marker():
+    from services.agent.response_builder import stream_safe_prefix as P, strip_junk_from_reply as S
+
+    def _live(tokens):
+        buf, em, out = "", 0, ""
+        for tk in tokens:
+            buf += tk
+            d, em = P(buf, em)
+            out += d
+        return out
+
+    # A CLOSED, non-enumerated ALLCAPS tag no longer flashes live in the bubble.
+    assert "OBSERVATION" not in _live(["Yes. ", "[OBSERVATION: x] ", "Here."])
+    assert "AFFIRMATIVE" not in _live(["[AFFIRMATIVE: yes] ", "Sure."])
+    # Parity: the done-frame strip removes the same tag.
+    assert "OBSERVATION" not in S("Yes. [OBSERVATION: x] Here.")
+    # Title-case (non-scaffold) bracket text is preserved (must be genuinely ALL-CAPS to strip).
+    assert "Info" in _live(["See ", "[Info: title-case is fine] ", "ok"])
+
+
+# ── 15. Round-10: the dead unanchored "Snippet:" stop no longer truncates legit replies ───────────
+
+def test_dead_snippet_stop_removed_from_builtins():
+    from services.llm.llm_gateway import get_stop_sequences
+    stops = get_stop_sequences()
+    assert "Snippet:" not in stops        # unanchored → truncated any reply using a "Snippet:" label
+    assert "\nSnippet:" not in stops
+    assert "\nReplied." not in stops
+    # The real anti-echo speaker-tag stops are still present.
+    assert "\nMorrigan:" in stops
