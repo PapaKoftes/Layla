@@ -211,6 +211,41 @@ def test_extract_artifacts_infostring_and_truncated():
     assert b and b[0].get("truncated") is True
 
 
+# ── Round 4: stacked labels, assistant role, deliberation single-POV, title parity ──────────────
+
+def test_stacked_double_labels_all_stripped():
+    # The model can STACK two leading labels; a single pass leaked the second ("two tags").
+    assert strip_junk_from_reply("Layla\nMorrigan\nThe answer is 42.") == "The answer is 42."
+    assert strip_junk_from_reply("Nyx\nEcho\nThe answer is 42.") == "The answer is 42."
+    assert strip_junk_from_reply("assistant: Morrigan: Here is the fix.") == "Here is the fix."
+
+
+def test_leading_assistant_label_stripped_but_prose_safe():
+    assert strip_junk_from_reply("assistant: the answer is four.") == "the answer is four."
+    assert strip_junk_from_reply("Assistant\nHere is the code.") == "Here is the code."
+    # bare "Assistant" as a prose word (no colon/newline) must survive
+    assert strip_junk_from_reply("Assistant chefs prepare the meal.") == "Assistant chefs prepare the meal."
+
+
+def test_bare_name_stops_removed_anchored_kept():
+    import runtime_safety
+    from services.llm import llm_gateway
+    ss = llm_gateway.get_stop_sequences()
+    assert "\nMorrigan:" in ss and "Morrigan:" not in ss   # anchored kept, bare removed (#5)
+
+
+def test_deliberation_single_pov_line_does_not_leak():
+    import orchestrator
+    reply, _ = orchestrator.split_deliberation_output("[" + _SIG + " MORRIGAN] (blunt): only one line", "Morrigan")
+    assert not reply.strip()
+
+
+def test_title_synth_covers_markdown_and_composite_labels():
+    from services.agent.title_synthesizer import _clean_title
+    assert _clean_title("**Morrigan:** Auth Refactor") == "Auth Refactor"
+    assert _clean_title("Layla " + _SIG + " Morrigan: Auth Refactor") == "Auth Refactor"
+
+
 # ── 4. The reasoning_handler path also strips a leading label (it had none) ─────────────────────
 
 def test_clean_response_text_strips_leading_label():
@@ -227,15 +262,19 @@ def test_stop_sequences_merge_keeps_builtin_antileak_list(monkeypatch):
     monkeypatch.setattr(runtime_safety, "load_config",
                         lambda: {**_orig(), "stop_sequences": ["\nUser:", " User:"]})
     ss = llm_gateway.get_stop_sequences()
-    for must in ("Morrigan:", "Layla:", "Nyx:", "Eris:", "Cassandra:", "Lilith:", "## SYSTEM"):
+    for must in ("\nMorrigan:", "\nLayla:", "\nNyx:", "\nEris:", "\nCassandra:", "\nLilith:", "## SYSTEM"):
         assert must in ss, must
     # the over-broad generic heading stop (blocked legit markdown headings) is gone
     assert "\n## " not in ss
+    # BARE position-0 name stops are gone: they aborted a legitimate short reply at token 0 when the
+    # model restated its primed "{name}:" (the leak is instead removed by strip_junk_from_reply).
+    for gone in ("Morrigan:", "Layla:", "Nyx:"):
+        assert gone not in ss, gone
     # operator custom stop is still honored (union, not replace)
     monkeypatch.setattr(runtime_safety, "load_config",
                         lambda: {**_orig(), "stop_sequences": ["<<CUSTOM_STOP>>"]})
     ss2 = llm_gateway.get_stop_sequences()
-    assert "<<CUSTOM_STOP>>" in ss2 and "Morrigan:" in ss2
+    assert "<<CUSTOM_STOP>>" in ss2 and "\nMorrigan:" in ss2
 
 
 # ── 6. Deliberation: an empty CONCLUSION must NOT promote the raw POV/trace block ───────────────

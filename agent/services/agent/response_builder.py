@@ -636,7 +636,18 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = ()) -> str:
     # "Layla ⚔ Morrigan:", a bare sigil — the "two tags, one broken" leak. Name-gated so a real
     # heading ("## Overview") is untouched. Runs BEFORE the section-header truncation below, so a
     # leading "## Morrigan" is DE-LABELED (the answer after it is kept) rather than truncated away.
-    t = _strip_leading_speaker_label(t, tuple(aspect_names)).strip()
+    # LOOP: the model can STACK labels ("Layla\nMorrigan\nAnswer" / "assistant: Morrigan: Answer") —
+    # a single pass strips only the first, leaking the second. Also strip a leading "assistant:"/
+    # "Assistant" role label. Iterate until stable (bounded).
+    _names = tuple(aspect_names)
+    for _ in range(5):
+        _prev = t
+        t = _strip_leading_speaker_label(t, _names).strip()
+        # A leading "assistant:" / "Assistant\n" role label (colon- or newline-terminated so prose
+        # like "Assistant chefs prepare…" is untouched).
+        t = re.sub(r"^\s*assistant[ \t]*(?::[ \t]*|\n+)", "", t, flags=re.IGNORECASE).strip()
+        if t == _prev:
+            break
     t = re.sub(r"\[System:\s*Your last response[^\]]*\]\s*", "", t, flags=re.IGNORECASE | re.DOTALL).strip()
     # A prompt-section header (## SYSTEM / ## TASK / …) can leak MID-LINE when the small model
     # echoes the scaffold after its answer ("… here?  ## SYSTEM\n\n<repeats the prompt>"). The
