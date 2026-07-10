@@ -39,12 +39,16 @@ export function cleanLaylaText(s) {
   // the backend may have missed (older stored replies, non-stream/reload path). Name-GATED —
   // "Layla", a Layla sigil, or an aspect name must be present — so a real markdown heading
   // ("## Overview") or ordinary prose is never touched, and only when real prose follows. The
-  // optional "(…)" after the name covers the decorated "Morrigan (Coding): …" chip form.
-  var lead = /^[ \t]*(?:>[ \t]*)?(?:#{1,3}[ \t]*)?(?:[*_]{1,2}[ \t]*)?((?:Layla\b[ \t]*)?(?:[⚔✦◎⚡⌖⊛][ \t]*)?(?:(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b[ \t]*)?(?:\([^)\n]*\)[ \t]*)?)(?:[*_]{1,2})?[ \t]*(?::[ \t]*(?:[*_]{1,2}[ \t]*)?|\n+)/i;
-  var m = t.match(lead);
-  if (m && m[1] && (/[⚔✦◎⚡⌖⊛]/.test(m[1]) || /\b(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b/i.test(m[1]))) {
-    var rest = t.slice(m[0].length).replace(/^\s+/, '');
-    if (rest) t = rest;
+  // optional "(…)" OR "— Title"/"- Title"/", Title" after the name covers the decorated chip forms
+  // ("Morrigan (Coding): …", "Morrigan — The Blade: …"). Loops for a stacked label pair.
+  var lead = /^[ \t]*(?:>[ \t]*)?(?:#{1,3}[ \t]*)?(?:[*_]{1,2}[ \t]*)?((?:Layla\b[ \t]*)?(?:[⚔✦◎⚡⌖⊛][ \t]*)?(?:(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b[ \t]*)?(?:\([^)\n]*\)[ \t]*)?(?:[-–—,][ \t]*[^:\n]{1,30}[ \t]*)?)(?:[*_]{1,2})?[ \t]*(?::[ \t]*(?:[*_]{1,2}[ \t]*)?|\n+)/i;
+  for (var _i = 0; _i < 2; _i++) {
+    var m = t.match(lead);
+    if (m && m[1] && (/[⚔✦◎⚡⌖⊛]/.test(m[1]) || /\b(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b/i.test(m[1]))) {
+      var rest = t.slice(m[0].length).replace(/^\s+/, '');
+      if (rest) { t = rest; continue; }
+    }
+    break;
   }
   return t.trim();
 }
