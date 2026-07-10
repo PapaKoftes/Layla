@@ -109,6 +109,9 @@ def test_stream_incremental_never_flashes_label_and_reconstructs_answer():
         ([_SIG, " Mor", "rig", "an", ":", " Hello", " there"], "Hello there"),
         (["Layla", ":", "\n", "Paris."], "Paris."),
         (["**", "Nyx", ":", "**", " Layered", " take."], "Layered take."),
+        # composite chip form "Layla ⚔ Morrigan:" split across tokens (the round-5 leak+mangle case)
+        (["Layla", " " + _SIG, " Mor", "rigan", ":", " The", " capital", " is", " Paris", "."], "The capital is Paris."),
+        (["Layla", " Morrigan", ":", " answer", " here"], "answer here"),
     ]
     for tokens, expected in label_cases:
         live = _stream_live(tokens)
