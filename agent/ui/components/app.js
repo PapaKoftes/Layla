@@ -584,7 +584,7 @@ export async function send() {
                 // until the closing fence streams in. Temporarily close it for the live render;
                 // the done frame re-renders the real (cleaned) text, so nothing is lost.
                 var _mdSrc = full;
-                if (((full.match(/```/g) || []).length % 2)) _mdSrc = full + '\n```';
+                if (((full.match(/(?:^|\n)[ \t]*```/g) || []).length % 2)) _mdSrc = full + '\n```';
                 try { bubble.innerHTML = sanitize(marked.parse(_mdSrc)); } catch (_mdErr) { bubble.textContent = full; }
               } else { bubble.textContent = full; }
             }
@@ -620,7 +620,7 @@ export async function send() {
                 // reply truncated at a role boundary mid-code-block reaches here with an odd fence
                 // count, and without this the whole tail rendered as one grey monospace block.
                 var _dsrc = full;
-                if (((full.match(/```/g) || []).length % 2)) _dsrc += '\n```';
+                if (((full.match(/(?:^|\n)[ \t]*```/g) || []).length % 2)) _dsrc += '\n```';
                 if (((full.match(/~~~/g) || []).length % 2)) _dsrc += '\n~~~';
                 try { bubble.innerHTML = sanitize(marked.parse(_dsrc)); } catch (_mdErr) { bubble.textContent = full; }
                 // ChatGPT-style copyable code blocks (syntax highlight + copy + apply buttons).

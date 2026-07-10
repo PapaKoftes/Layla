@@ -320,6 +320,34 @@ def test_reasoning_split_tag_does_not_leak_or_mangle_stream():
     assert live(["a ", "< ", "b is", " true."]).strip() == "a < b is true."
 
 
+def test_decorated_chip_label_never_flashes_or_mangles_stream():
+    # Round-9 desync: decorated chip forms ("Nyx (Coding):", "Morrigan — The Blade:") were removed by
+    # the done-frame strip but NOT held by the streaming gate, so the head flashed live and the emit
+    # counter desynced INTO the answer ("The Blade— The Blade:"). Drive token-by-token like the router.
+    def live(tokens):
+        buf, em, out = "", 0, ""
+        for tk in tokens:
+            buf += tk
+            d, em = stream_safe_prefix(buf, em)
+            out += d
+        return out
+    for s in [
+        "Nyx (Coding): Here is the answer.",
+        "Morrigan (The Blade): Here is the answer.",
+        "Morrigan — The Blade: Answer text here.",
+        "Morrigan, The Blade: Answer here.",
+        "Morrigan " + "⚡" + ": the answer.",   # name-before-sigil
+    ]:
+        got = live(list(s))  # char-by-char (worst case)
+        for bad in ("Morrigan", "Nyx", "Coding", "Blade", "⚔", "⚡"):
+            assert bad not in got, f"{s!r} leaked {bad!r}: {got!r}"
+        assert got.strip().endswith(("answer.", "here.", "now.")), f"{s!r} answer mangled: {got!r}"
+    # legit prose that merely starts with a name / has parens must stream WHOLE (not held-mangled)
+    for prose in ["Nyx and Echo are two aspects.", "Morrigan is the war goddess of myth.",
+                  "Use map(f, xs) to apply f.", "Layla is an AI assistant."]:
+        assert live(list(prose)) == prose, prose
+
+
 def test_raw_tool_result_dict_is_junk():
     import json
 

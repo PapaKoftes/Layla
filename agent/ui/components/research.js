@@ -412,7 +412,7 @@ export async function sendResearch(customMessage) {
                 // opening fence makes marked render the whole rest of the reply as one code block
                 // (bleeds to monospace) until the close streams in. The done frame re-renders clean.
                 let _mdSrc = full;
-                if (((full.match(/```/g) || []).length % 2)) _mdSrc = full + '\n```';
+                if (((full.match(/(?:^|\n)[ \t]*```/g) || []).length % 2)) _mdSrc = full + '\n```';
                 let parsed = full;
                 try { if (typeof marked !== 'undefined') parsed = _sanitizeHtml(marked.parse(_mdSrc)); } catch (_) {}
                 bubble.innerHTML = parsed;
@@ -438,7 +438,7 @@ export async function sendResearch(customMessage) {
       full = _cleanLaylaText(full);
       // Balance an unclosed fence on the final render too (parity with the live render above).
       let _fsrc = full;
-      if (((full.match(/```/g) || []).length % 2)) _fsrc += '\n```';
+      if (((full.match(/(?:^|\n)[ \t]*```/g) || []).length % 2)) _fsrc += '\n```';
       if (((full.match(/~~~/g) || []).length % 2)) _fsrc += '\n~~~';
       let parsedFinal = full;
       try { if (typeof marked !== 'undefined') parsedFinal = _sanitizeHtml(marked.parse(_fsrc)); } catch (_) {}
