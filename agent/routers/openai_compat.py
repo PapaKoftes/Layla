@@ -267,6 +267,9 @@ async def v1_chat_completions(req: dict, request: Request):
             if not allow_write and not allow_run:
                 quick = _quick_reply_for_trivial_turn(goal)
                 if quick:
+                    from services.agent.response_builder import strip_junk_from_reply as _sj_q
+                    quick = _sj_q(quick)  # output floor — the /v1 quick-reply path emitted/stored raw
+                if quick:
                     response_text = quick
                     evt = {
                         "id": completion_id,
@@ -317,6 +320,10 @@ async def v1_chat_completions(req: dict, request: Request):
                         if token is None:
                             break
                         if not token:
+                            continue
+                        # Deliberation sentinel (internal per-aspect POV trace) — the /agent router
+                        # intercepts it; the /v1 stream must SKIP it, not ship it as assistant content.
+                        if isinstance(token, str) and token.startswith("__DELIB_META__"):
                             continue
                         response_text += token
                         _v1_delta, _v1_emitted = _ssp_v1(response_text, _v1_emitted)
@@ -427,7 +434,8 @@ async def v1_chat_completions(req: dict, request: Request):
     if not allow_write and not allow_run:
         quick = _quick_reply_for_trivial_turn(goal)
         if quick:
-            response_text = quick
+            from services.agent.response_builder import strip_junk_from_reply as _sj_nq
+            response_text = _sj_nq(quick) or quick  # output floor (the /v1 quick path stored raw)
             append_h("user", goal)
             append_h("assistant", response_text)
             try:

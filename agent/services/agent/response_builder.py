@@ -434,22 +434,24 @@ def stream_safe_prefix(raw: str, already_emitted: int) -> tuple[str, int]:
     # completed-but-answerless label, or a partial label mid-generation, HOLD until the answer text
     # arrives (so the name-gated strip fires against non-empty rest) instead of painting half a tag.
     if clean:
-        # Check HOLD *before* taking any strip: the strip is non-monotonic across tokens (it removes
-        # a bare sigil prefix early — "⚔ Mor" -> "Mor" — but leaves a complete-but-answerless label
-        # "⚔ Morrigan:" unchanged), so emitting a partial strip and then flipping desyncs the emitted
-        # counter ("Morriganan:"). While the head is still resolving a label, HOLD.
-        # LOOP the strip FIRST (STACKED labels "Layla\nMorrigan\nAnswer" + a leading "assistant:")
-        # so `clean` is the fully de-labelled string, consistent across the whole stream — parity
-        # with the done-frame's multi-pass loop.
+        # (1) HOLD an in-progress (UN-terminated) label BEFORE any strip. The strip is non-monotonic:
+        # pat_dash strips "Morrigan — " early, but once the ":" arrives "Morrigan — Title:" becomes a
+        # WHOLESALE label — emitting the pat_dash-partial then flipping desyncs the counter
+        # ("The Blade— The Blade:"). _maybe_partial recognizes the no-terminator decorated/name/
+        # composite forms (mirrors _strip_leading_speaker_label's coverage), so hold until resolved.
+        if already_emitted == 0 and _maybe_partial_leading_label(clean):
+            return "", 0
+        # (2) LOOP-strip COMPLETE (terminated) labels — incl. STACKED "Layla\nMorrigan\nAnswer" + a
+        # leading "assistant:" — so `clean` is the fully de-labelled string, consistent across the
+        # whole stream (parity with the done-frame's multi-pass loop).
         for _ in range(5):
             _stripped = _strip_leading_speaker_label(clean)
             _stripped = re.sub(r"^[ \t]*assistant[ \t]*(?::[ \t]*|\n+)", "", _stripped, flags=re.IGNORECASE)
             if _stripped == clean:
                 break
             clean = _stripped
-        # THEN, at stream start, if what REMAINS is still a bare/partial label (the next stacked
-        # label hasn't terminated yet), HOLD until the answer prose arrives — otherwise the bare 2nd
-        # label flashes live and desyncs the emit counter ("Morrigan\nr.").
+        # (3) If what REMAINS after stripping complete labels is STILL a bare/partial label (the next
+        # stacked label hasn't terminated yet), HOLD until the answer prose arrives.
         if already_emitted == 0 and (_is_bare_leading_label(clean) or _maybe_partial_leading_label(clean)):
             return "", 0
     if len(clean) <= already_emitted:
@@ -478,29 +480,35 @@ def _maybe_partial_leading_label(s: str) -> bool:
     if not s or "\n" in s or ":" in s:
         return False
     head = s.lstrip()
-    if not head or len(head) > 32:
+    if not head or len(head) > 64:
         return False
-    if re.match(r"^(?:>|#{1,3}|[*_]{1,2}|[" + _ASPECT_SIGILS + r"])", head):
+    sig = "[" + _ASPECT_SIGILS + "]"
+    # (a) opens with markdown/sigil/blockquote decoration — any decorated label could follow.
+    if re.match(r"^(?:>|#{1,3}|[*_]{1,2}|" + sig + r")", head):
         return True
+    names = _ASPECT_NAMES_BASE + ("assistant",) + _known_custom_aspect_names()
     low = head.lower()
-    for _n in _ASPECT_NAMES_BASE + ("assistant",):   # aspect names + the "assistant:" role label
+    # (b) a strict PREFIX of a name still being typed ("Mor" -> Morrigan).
+    for _n in names:
         nl = _n.lower()
-        if nl.startswith(low) and low != nl:          # still typing the name
+        if nl.startswith(low) and low != nl:
             return True
-        if low.startswith(nl) and len(low) <= len(nl) + 2:  # name done, terminator not yet here
-            return True
-    # Composite chip form being typed — "Layla ⚔ Mor…" / "Layla Morrigan…". The UI chip is always
-    # "Layla <sigil> <Name>", so the leaked echo starts with the complete word "Layla" followed by a
-    # sigil or an aspect name; the branches above miss it ('L' is not a decoration char and
-    # 'layla ⚔ mor' is no single-name prefix). This is exactly the form _strip_leading_speaker_label
-    # removes once the ':' arrives (core = Layla + sigil + name), so HOLD it until then instead of
-    # flashing 'Layla ⚔ Morrigan:' live and desyncing the emit counter. Gated to Layla-first so a
-    # non-chip, non-strippable "Morrigan ⚔ foo" is not held-then-leaked.
-    _name_alt = "|".join(_ASPECT_NAMES_BASE)
+    # (c) THE GENERIC HOLD: a complete name (optionally Layla-/sigil-wrapped) followed ONLY by an
+    # in-progress deco_after decoration (a sigil, "(Title", ", Title", "— Title") and nothing else
+    # yet — i.e. the head is a strict PREFIX of a label _strip_leading_speaker_label WILL remove once
+    # ':' arrives. Holding exactly these (anchored $, so "Morrigan is fierce" prose is NOT held)
+    # guarantees no emitted prefix is later stripped, which is what desynced the counter for every
+    # decorated form. Mirrors _strip_leading_speaker_label.deco_after so hold == strip.
+    name_alt = "|".join(re.escape(n) for n in names if n)
     if re.match(
-        r"^Layla\b[ \t]*(?:[" + _ASPECT_SIGILS + r"]|(?:" + _name_alt + r")\b)",
+        r"^(?:Layla\b[ \t]*)?(?:" + sig + r"[ \t]*)?(?:" + name_alt + r")\b[ \t]*(?:" + sig + r"[ \t]*)?"
+        r"(?:\([^)\n]*\)?[ \t]*|[-–—,][ \t]*[^:\n]{0,40}[ \t]*)?$",
         head, re.IGNORECASE,
     ):
+        return True
+    # (d) composite chip with a PARTIAL second name ("Layla ⚔ Mor") — the sigil is always present in
+    # the UI chip, so require it (so a plain "Layla foo" 2-word reply is not held).
+    if re.match(r"^Layla\b[ \t]*" + sig + r"[ \t]*[A-Za-z]*$", head, re.IGNORECASE):
         return True
     return False
 
