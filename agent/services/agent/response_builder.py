@@ -351,8 +351,12 @@ def _strip_leading_speaker_label(t: str, extra_names: tuple[str, ...] = ()) -> s
     sig = "[" + _ASPECT_SIGILS + "]"
     # `core` = optional "Layla", a sigil on EITHER side of the name (sigil-then-name "⚔ Morrigan"
     # AND name-then-sigil "Morrigan ⚡"), and an optional aspect name — requiring ≥1 real token.
+    # Name boundary: "(?![A-Za-z0-9])" instead of "\b" so a name wrapped in UNDERSCORE emphasis
+    # ("__Nyx__:") is still recognized — "\b" fails between "x" and "_" (both word chars), which let
+    # the whole "__Nyx__:" label leak. It still rejects "Nyxlike" (followed by a letter) as prose.
+    _nb = r"(?![A-Za-z0-9])"
     core = (
-        r"(?:Layla\b[ \t]*)?(?:" + sig + r"[ \t]*)?(?:(?:" + name_alt + r")\b[ \t]*)?(?:" + sig + r"[ \t]*)?"
+        r"(?:Layla" + _nb + r"[ \t]*)?(?:" + sig + r"[ \t]*)?(?:(?:" + name_alt + r")" + _nb + r"[ \t]*)?(?:" + sig + r"[ \t]*)?"
     )
     # Decoration allowed BETWEEN the name and the ':' — the chip anchor "[Active aspect: Morrigan —
     # The Blade]" gets reformatted by the model as "Morrigan (The Blade):", "Morrigan (Coding):",
@@ -360,9 +364,16 @@ def _strip_leading_speaker_label(t: str, extra_names: tuple[str, ...] = ()) -> s
     # LABEL group still gates on a real name, so "(Coding): …" alone (no name) is never stripped.
     deco_after = r"(?:[ \t]*\([^)\n]*\))?(?:[ \t]*[-–—,][ \t]*[^:\n]{1,30})?"
     # Case 1 — colon-terminated, optionally wrapped in markdown emphasis/heading/blockquote.
+    # The label's OPENING emphasis is captured as `em`; a trailing emphasis marker is consumed ONLY
+    # when it matches that opening ("**Morrigan**:" / "**Morrigan:**"). Without an opening emphasis no
+    # trailing marker is eaten — otherwise the answer's OWN bold ("Morrigan: **Use a set.**") lost its
+    # leading "**" and stranded the closing one ("Use a set.**").
     pat_colon = re.compile(
-        r"^[ \t]*(?:>[ \t]*)?(?:#{1,3}[ \t]*)?(?:[*_]{1,2})?[ \t]*"
-        r"(?P<label>" + core + r")" + deco_after + r"(?:[*_]{1,2})?[ \t]*:[ \t]*(?:[*_]{1,2}[ \t]*)?",
+        r"^[ \t]*(?:>[ \t]*)?(?:#{1,3}[ \t]*)?(?P<em>[*_]{1,2})?[ \t]*"
+        r"(?P<label>" + core + r")" + deco_after +
+        # exactly ONE closing marker, on ONE side of the colon (never both — the other "**" is the
+        # answer's own emphasis): "**Morrigan**:" (before) OR "**Morrigan:**" (after) OR bare ":".
+        r"(?(em)(?:(?P=em)[ \t]*:[ \t]*|[ \t]*:[ \t]*(?P=em)[ \t]*|[ \t]*:[ \t]*)|[ \t]*:[ \t]*)",
         re.IGNORECASE,
     )
     # Case 2 — the label sits alone on the first line (newline-terminated).
