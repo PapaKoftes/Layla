@@ -249,6 +249,60 @@ def test_title_synth_covers_markdown_and_composite_labels():
     assert _clean_title("Layla " + _SIG + " Morrigan: Auth Refactor") == "Auth Refactor"
 
 
+# ── Round 6: decorated chip forms, name-before-sigil, stream parity, custom-name registry ────────
+
+def test_decorated_chip_label_forms_stripped():
+    # The chip anchor "[Active aspect: Morrigan — The Blade]" gets reformatted by the model.
+    for raw, expected in [
+        ("Morrigan (Coding): Here is the answer.", "Here is the answer."),
+        ("Morrigan (The Blade): Here is the answer.", "Here is the answer."),
+        ("Nyx (Research): Here is the answer.", "Here is the answer."),
+        ("Morrigan — The Blade: Here is the answer.", "Here is the answer."),
+        ("Morrigan, The Blade: Here is the answer.", "Here is the answer."),
+        ("Morrigan " + "⚡" + ": Here is the answer.", "Here is the answer."),  # name-before-sigil ⚡
+    ]:
+        assert strip_junk_from_reply(raw) == expected, raw
+    # legit prose with parens / a name must survive
+    for keep in ("Morrigan is the war goddess in Celtic myth.", "The result (see above) is 42.",
+                 "Use map(f, xs) to apply f."):
+        assert strip_junk_from_reply(keep) == keep, keep
+
+
+def test_stream_parity_reasoning_stacked_assistant():
+    def live(tokens):
+        buf, em, out = "", 0, ""
+        for tk in tokens:
+            buf += tk
+            d, em = stream_safe_prefix(buf, em)
+            out += d
+        return out
+    cases = [
+        (["<think>", "reason", "</think>", "The", " answer", "."], "The answer."),   # reasoning held live
+        (["Layla", "\n", "Morrigan", "\n", "The", " answer", "."], "The answer."),   # STACKED labels
+        (["assistant", ":", " the", " answer"], "the answer"),                       # role label
+        (["Morrigan", "\n", "assistant", ":", " done."], "done."),                   # stacked + role
+        (["Assistant", " chefs", " cook."], "Assistant chefs cook."),                # prose survives
+    ]
+    for tokens, expected in cases:
+        got = live(tokens)
+        assert got.strip() == expected, f"{tokens!r} -> {got!r}"
+        assert "<think" not in got and "Morrigan" not in got
+
+
+def test_custom_aspect_name_registry_auto_strips(monkeypatch):
+    # The module registry lets every path (no extra_names threading) strip a custom persona name.
+    import services.agent.response_builder as rb
+    monkeypatch.setattr(rb, "list_custom_aspects", None, raising=False)
+    monkeypatch.setattr("services.personality.custom_aspects.list_custom_aspects",
+                        lambda: [{"name": "Seraphina"}, {"name": "Kaidan"}])
+    rb.reset_custom_aspect_name_cache()
+    try:
+        assert rb.strip_junk_from_reply("Seraphina: the answer is four.") == "the answer is four."
+        assert rb.strip_junk_from_reply("Kaidan (Oracle): hello") == "hello"
+    finally:
+        rb.reset_custom_aspect_name_cache()
+
+
 # ── 4. The reasoning_handler path also strips a leading label (it had none) ─────────────────────
 
 def test_clean_response_text_strips_leading_label():
