@@ -798,10 +798,13 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = ()) -> str:
         t = t[: _mecho.start()].strip()
     # NOTE: a bare "(?:^|\n)\s*##" used to live in this tuple and truncated the reply at the FIRST
     # markdown heading — so ANY legitimate answer opening with "## Overview" / "## Steps" was cut to
-    # EMPTY and replaced by the "Sorry — I couldn't generate a response" fallback. Removed. Scaffold
-    # headers stay covered: the case-sensitive _mecho cut above handles "## SYSTEM"/"## TASK"/…, and
-    # the first pattern below truncates a leaked lowercase scaffold header by its known section name.
-    for _marker in (r"(?:^|\n)\s*#{1,3}\s*(SYSTEM|TASK|CONTEXT|SCRATCHPAD|REPO|OBJECTIVE|INSTRUCTIONS)\b", r"(?:^|\n)\s*Current goal\s*:", r"(?:^|\n)\s*Last user message\s*:", r"(?:^|\n)\s*Repo snapshot\s*:", r"(?:^|\n)\s*Repo structure\s*:", r"(?:^|\s|\[)Echo\s*\(patterns/preferences\)\s*:", r"(?:^|\n)\s*\[ECHO\s*:", r"(?:^|\n)\s*(?-i:ECHO)\s*:"):
+    # EMPTY and replaced by the "Sorry — I couldn't generate a response" fallback. Removed. A second
+    # regression followed: an IGNORECASE "#{1,3}\s*(SYSTEM|TASK|CONTEXT|OBJECTIVE|INSTRUCTIONS)\b" here
+    # matched TITLE-CASE headings ("## Instructions", "## Context") and silently deleted the body of any
+    # structured how-to reply. Removed too — the case-SENSITIVE _mecho cut above already truncates the
+    # real ALL-CAPS scaffold leak ("## SYSTEM"/"## TASK"/…) anywhere in the text, so nothing is lost.
+    # The remaining markers are unambiguous scaffold phrases; ECHO is matched case-sensitively via (?-i:).
+    for _marker in (r"(?:^|\n)\s*Current goal\s*:", r"(?:^|\n)\s*Last user message\s*:", r"(?:^|\n)\s*Repo snapshot\s*:", r"(?:^|\n)\s*Repo structure\s*:", r"(?:^|\s|\[)Echo\s*\(patterns/preferences\)\s*:", r"(?:^|\n)\s*\[ECHO\s*:", r"(?:^|\n)\s*(?-i:ECHO)\s*:"):
         m = re.search(_marker, t, re.IGNORECASE)
         if m:
             t = t[:m.start()].strip()
