@@ -274,6 +274,36 @@ _STREAM_MARKER_RE = re.compile(
 _ASPECT_NAMES_BASE = ("Layla", "Morrigan", "Nyx", "Echo", "Eris", "Cassandra", "Lilith")
 _ASPECT_SIGILS = "⚔✦◎⚡⌖⊛"
 
+# Custom (operator-created) aspect display names, resolved lazily + cached so a leading
+# 'CustomName:' label is stripped on EVERY reply path (fast-path, /v1, Ollama, /voice, deliberation)
+# without threading extra_names through each call site. Invalidated by custom_aspects.save/delete.
+_custom_names_cache: tuple[str, ...] | None = None
+
+
+def reset_custom_aspect_name_cache() -> None:
+    global _custom_names_cache
+    _custom_names_cache = None
+
+
+def _known_custom_aspect_names() -> tuple[str, ...]:
+    global _custom_names_cache
+    if _custom_names_cache is not None:
+        return _custom_names_cache
+    out: list[str] = []
+    try:
+        from services.personality.custom_aspects import list_custom_aspects
+        for a in list_custom_aspects():
+            if not isinstance(a, dict):
+                continue
+            n = str(a.get("name") or "").strip()
+            # Skip built-ins (already covered) and absurd/blank names.
+            if n and n.lower() not in {b.lower() for b in _ASPECT_NAMES_BASE} and 1 <= len(n) <= 40 and n not in out:
+                out.append(n)
+    except Exception:
+        pass
+    _custom_names_cache = tuple(out)
+    return _custom_names_cache
+
 
 def _strip_leading_speaker_label(t: str, extra_names: tuple[str, ...] = ()) -> str:
     """Remove a leading speaker/persona label that mirrors the UI's aspect chip.
@@ -286,22 +316,31 @@ def _strip_leading_speaker_label(t: str, extra_names: tuple[str, ...] = ()) -> s
     follows (never nukes the whole reply — that would trip the empty-reply fallback)."""
     if not t:
         return t
-    names = tuple(n for n in (_ASPECT_NAMES_BASE + tuple(extra_names)) if n)
+    names = tuple(n for n in (_ASPECT_NAMES_BASE + tuple(extra_names) + _known_custom_aspect_names()) if n)
     if not names:
         return t
     name_alt = "|".join(re.escape(n) for n in names)
     sig = "[" + _ASPECT_SIGILS + "]"
-    core = r"(?:Layla\b[ \t]*)?(?:" + sig + r"[ \t]*)?(?:(?:" + name_alt + r")\b[ \t]*)?"
+    # `core` = optional "Layla", a sigil on EITHER side of the name (sigil-then-name "⚔ Morrigan"
+    # AND name-then-sigil "Morrigan ⚡"), and an optional aspect name — requiring ≥1 real token.
+    core = (
+        r"(?:Layla\b[ \t]*)?(?:" + sig + r"[ \t]*)?(?:(?:" + name_alt + r")\b[ \t]*)?(?:" + sig + r"[ \t]*)?"
+    )
+    # Decoration allowed BETWEEN the name and the ':' — the chip anchor "[Active aspect: Morrigan —
+    # The Blade]" gets reformatted by the model as "Morrigan (The Blade):", "Morrigan (Coding):",
+    # "Morrigan — The Blade:", "Morrigan, The Blade:", or a parenthesized sigil "Morrigan (⚔):". The
+    # LABEL group still gates on a real name, so "(Coding): …" alone (no name) is never stripped.
+    deco_after = r"(?:[ \t]*\([^)\n]*\))?(?:[ \t]*[-–—,][ \t]*[^:\n]{1,30})?"
     # Case 1 — colon-terminated, optionally wrapped in markdown emphasis/heading/blockquote.
     pat_colon = re.compile(
         r"^[ \t]*(?:>[ \t]*)?(?:#{1,3}[ \t]*)?(?:[*_]{1,2})?[ \t]*"
-        r"(?P<label>" + core + r")(?:[*_]{1,2})?[ \t]*:[ \t]*(?:[*_]{1,2}[ \t]*)?",
+        r"(?P<label>" + core + r")" + deco_after + r"(?:[*_]{1,2})?[ \t]*:[ \t]*(?:[*_]{1,2}[ \t]*)?",
         re.IGNORECASE,
     )
     # Case 2 — the label sits alone on the first line (newline-terminated).
     pat_line = re.compile(
         r"^[ \t]*(?:>[ \t]*)?(?:#{1,3}[ \t]*)?(?:[*_]{1,2})?[ \t]*"
-        r"(?P<label>" + core + r")(?:[*_]{1,2})?[ \t]*\n+",
+        r"(?P<label>" + core + r")" + deco_after + r"(?:[*_]{1,2})?[ \t]*\n+",
         re.IGNORECASE,
     )
     # Case 3 — DECORATED label (heading/emphasis/blockquote/sigil present) then whitespace+prose.
@@ -354,7 +393,12 @@ def stream_safe_prefix(raw: str, already_emitted: int) -> tuple[str, int]:
     lb = raw.rfind("[")
     if lb != -1 and "]" not in raw[lb:]:
         safe_end = lb  # a bracket is open — hold from it until it closes (or the stream ends)
-    clean = _STREAM_MARKER_RE.sub("", raw[:safe_end])
+    # Hold from an UNCLOSED reasoning-trace tag (<think>/<reasoning>/…) so a CoT model's chain of
+    # thought never flashes live; once the closing tag streams in, _strip_reasoning_traces removes it.
+    _rt = re.search(r"<(?:think|thinking|reasoning|scratchpad|reflection)\b", raw[:safe_end], re.IGNORECASE)
+    if _rt and not re.search(r"</(?:think|thinking|reasoning|scratchpad|reflection)\s*>", raw[_rt.start():safe_end], re.IGNORECASE):
+        safe_end = min(safe_end, _rt.start())
+    clean = _strip_reasoning_traces(_STREAM_MARKER_RE.sub("", raw[:safe_end]))
     # A leading speaker label ("Morrigan:", "⚔ Morrigan", "**Nyx:**", "## Morrigan\n") must never
     # flash live. Strip it on EVERY call so `clean` is the SAME (stripped) string across the whole
     # stream — `already_emitted` is measured against it, so stripping only at emitted==0 mangled the
@@ -366,11 +410,20 @@ def stream_safe_prefix(raw: str, already_emitted: int) -> tuple[str, int]:
         # a bare sigil prefix early — "⚔ Mor" -> "Mor" — but leaves a complete-but-answerless label
         # "⚔ Morrigan:" unchanged), so emitting a partial strip and then flipping desyncs the emitted
         # counter ("Morriganan:"). While the head is still resolving a label, HOLD.
+        # LOOP the strip FIRST (STACKED labels "Layla\nMorrigan\nAnswer" + a leading "assistant:")
+        # so `clean` is the fully de-labelled string, consistent across the whole stream — parity
+        # with the done-frame's multi-pass loop.
+        for _ in range(5):
+            _stripped = _strip_leading_speaker_label(clean)
+            _stripped = re.sub(r"^[ \t]*assistant[ \t]*(?::[ \t]*|\n+)", "", _stripped, flags=re.IGNORECASE)
+            if _stripped == clean:
+                break
+            clean = _stripped
+        # THEN, at stream start, if what REMAINS is still a bare/partial label (the next stacked
+        # label hasn't terminated yet), HOLD until the answer prose arrives — otherwise the bare 2nd
+        # label flashes live and desyncs the emit counter ("Morrigan\nr.").
         if already_emitted == 0 and (_is_bare_leading_label(clean) or _maybe_partial_leading_label(clean)):
             return "", 0
-        _stripped = _strip_leading_speaker_label(clean)
-        if _stripped != clean:
-            clean = _stripped
     if len(clean) <= already_emitted:
         return "", already_emitted
     return clean[already_emitted:], len(clean)
@@ -402,7 +455,7 @@ def _maybe_partial_leading_label(s: str) -> bool:
     if re.match(r"^(?:>|#{1,3}|[*_]{1,2}|[" + _ASPECT_SIGILS + r"])", head):
         return True
     low = head.lower()
-    for _n in _ASPECT_NAMES_BASE:
+    for _n in _ASPECT_NAMES_BASE + ("assistant",):   # aspect names + the "assistant:" role label
         nl = _n.lower()
         if nl.startswith(low) and low != nl:          # still typing the name
             return True
