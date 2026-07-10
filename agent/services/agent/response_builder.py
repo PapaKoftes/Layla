@@ -408,6 +408,19 @@ def _maybe_partial_leading_label(s: str) -> bool:
             return True
         if low.startswith(nl) and len(low) <= len(nl) + 2:  # name done, terminator not yet here
             return True
+    # Composite chip form being typed — "Layla ⚔ Mor…" / "Layla Morrigan…". The UI chip is always
+    # "Layla <sigil> <Name>", so the leaked echo starts with the complete word "Layla" followed by a
+    # sigil or an aspect name; the branches above miss it ('L' is not a decoration char and
+    # 'layla ⚔ mor' is no single-name prefix). This is exactly the form _strip_leading_speaker_label
+    # removes once the ':' arrives (core = Layla + sigil + name), so HOLD it until then instead of
+    # flashing 'Layla ⚔ Morrigan:' live and desyncing the emit counter. Gated to Layla-first so a
+    # non-chip, non-strippable "Morrigan ⚔ foo" is not held-then-leaked.
+    _name_alt = "|".join(_ASPECT_NAMES_BASE)
+    if re.match(
+        r"^Layla\b[ \t]*(?:[" + _ASPECT_SIGILS + r"]|(?:" + _name_alt + r")\b)",
+        head, re.IGNORECASE,
+    ):
+        return True
     return False
 
 
