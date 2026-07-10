@@ -372,6 +372,8 @@ async def v1_chat_completions(req: dict, request: Request):
                     _cl_v1b = _tr_v1b(_sj_v1b(response_text))
                     if _cl_v1b.strip():
                         response_text = _cl_v1b
+                    elif response_text.strip():
+                        response_text = "No response. Try again or rephrase."   # all-scaffold → standby, not raw
                 except Exception:
                     pass
                 for chunk in [response_text[i : i + 120] for i in range(0, len(response_text), 120)]:
@@ -392,6 +394,11 @@ async def v1_chat_completions(req: dict, request: Request):
                 _cleaned_v1 = _tr_v1(_sj_v1(response_text))
                 if _cleaned_v1.strip():
                     response_text = _cleaned_v1
+                elif response_text.strip():
+                    # strip_junk INTENTIONALLY emptied an all-scaffold reply (e.g. only a "[TOOL: …]"
+                    # block). Without this the raw junk was kept and persisted, re-entering the model
+                    # as context and rendering raw on reload. Degrade to the same standby as non-stream.
+                    response_text = "No response. Try again or rephrase."
             except Exception:
                 pass
             # Honor the client `stop` on the streamed reply's STORED/persisted copy too. The non-stream

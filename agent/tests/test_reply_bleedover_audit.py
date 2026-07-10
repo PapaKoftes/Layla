@@ -522,3 +522,20 @@ def test_apply_output_floor_blocks_unsafe_and_passes_benign():
     replaced, blocked2 = _apply_output_floor("To synthesize sarin nerve agent, first you need...", cfg)
     assert blocked2 is True
     assert "sarin" not in replaced.lower()  # the payload is replaced, not shipped
+
+
+# ── 13. Round-10: leading-label strip must NOT eat the answer's OWN opening markdown emphasis ──────
+
+def test_label_strip_preserves_answer_opening_emphasis():
+    from services.agent.response_builder import strip_junk_from_reply as S
+    # Unbolded label + bolded answer: the label goes, the answer's "**" stays (both sides).
+    assert S("Morrigan: **Use a set.**") == "**Use a set.**"
+    assert S("Morrigan: **Use a set** for O(1) membership.") == "**Use a set** for O(1) membership."
+    # Bolded label + bolded answer: only the label's own emphasis is consumed.
+    assert S("**Morrigan**: **Use a set.**") == "**Use a set.**"
+    assert S("*Echo*: *emphasized* start.") == "*emphasized* start."
+    assert S("__Nyx__: __important__ point.") == "__important__ point."   # underscore boundary too
+    # The original label-wrapped-in-bold forms still fully strip.
+    assert S("**Morrigan:** use a set.") == "use a set."
+    assert S("**Morrigan:** **Use a set.**") == "**Use a set.**"
+    assert S("**Morrigan**: normal answer.") == "normal answer."
