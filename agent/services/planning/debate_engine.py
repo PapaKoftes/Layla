@@ -344,16 +344,30 @@ def run_deliberation(
 
 
 def _extract_text(result: dict | str) -> str:
-    """Extract text content from run_completion result."""
+    """Extract text content from run_completion result, then apply the SHARED reply-cleaning floor.
+
+    The /debate engine (and its /debate router + debate.js UI) is a separate surface from /agent and
+    previously returned raw model text — so a leaked leading speaker label ("Layla:"/"Morrigan:") or
+    a hallucinated "User: …" next-turn continuation reached the caller verbatim. Cleaning here covers
+    final_response, every aspect_responses[aid], and every critiques[aid] in one place."""
     if isinstance(result, str):
-        return result.strip()
-    if isinstance(result, dict):
+        text = result
+    elif isinstance(result, dict):
         choices = result.get("choices") or [{}]
         first = choices[0] if choices else {}
         msg = first.get("message") or {}
         text = msg.get("content") or first.get("text") or ""
-        return text.strip()
-    return ""
+    else:
+        return ""
+    text = (text or "").strip()
+    if not text:
+        return ""
+    try:
+        from services.agent.response_builder import strip_junk_from_reply, truncate_at_next_user_turn
+        cleaned = strip_junk_from_reply(truncate_at_next_user_turn(text))
+        return cleaned if cleaned.strip() else text
+    except Exception:
+        return text
 
 
 def _load_aspect_personality(aspect_id: str) -> dict:

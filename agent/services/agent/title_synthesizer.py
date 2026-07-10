@@ -20,7 +20,12 @@ def _clean_title(raw: str) -> str:
     t = (raw or "").strip()
     if not t:
         return ""
-    t = t.splitlines()[0].strip()                      # first line only
+    # Reasoning-model <think>/<reasoning> traces leak into the title call too. Strip paired blocks
+    # BEFORE the first-line cut (which would otherwise keep only "<think>"), plus a dangling opener
+    # (stop=['\n'] cuts the title completion right after "<think>").
+    t = re.sub(r"<(think|thinking|reasoning|scratchpad|reflection)\b[^>]*>.*?</\1\s*>", "", t, flags=re.IGNORECASE | re.DOTALL).strip()
+    t = re.sub(r"<(?:think|thinking|reasoning|scratchpad|reflection)\b[^>]*>.*\Z", "", t, flags=re.IGNORECASE | re.DOTALL).strip()
+    t = t.splitlines()[0].strip() if t else ""         # first line only
     t = re.sub(r"^(title|topic)\s*[:\-]\s*", "", t, flags=re.IGNORECASE).strip()
     t = t.strip("\"'`“”‘’ ")                            # surrounding quotes
     t = re.sub(r"\[[^\]]*\]", "", t).strip()            # any bracketed marker
