@@ -491,8 +491,10 @@ def split_deliberation_output(
         # the conclusion — do NOT promote that scaffold to the reply (the "reply reads as ~6 stitched
         # answers" bug). Surface it ONLY as trace and return an empty reply so the caller substitutes
         # its standby. A plain marker-less answer (0–1 aspect labels) is returned as-is.
+        # >=1 (not >=2): even a SINGLE seeded "[⚔ NAME] (cue): …" POV line with no conclusion is a
+        # leaked scaffold, not an answer (a genuine reply never opens with an aspect bracket).
         _pov_labels = re.findall(r"\[[^\]]*\b(?:MORRIGAN|NYX|ECHO|ERIS|CASSANDRA|LILITH)\b[^\]]*\]", text, re.IGNORECASE)
-        if len(_pov_labels) >= 2:
+        if len(_pov_labels) >= 1:
             return "", _parse_deliberation_trace(text)
         return text, {}
     pov_block = text[: m.start()].strip()
