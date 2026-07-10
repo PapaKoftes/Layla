@@ -231,12 +231,15 @@ def check_gate_injection():
 # Why: Small models echo these internal decorators into user-visible replies.
 # ---------------------------------------------------------------------------
 def check_strip_junk_coverage():
-    target = REPO_ROOT / "agent_loop.py"
+    # strip_junk_from_reply was extracted from agent_loop.py (which now only re-exports it) into
+    # services/agent/response_builder.py — target the real definition or this guard silently no-ops.
+    target = REPO_ROOT / "services" / "agent" / "response_builder.py"
     if not target.exists():
         return
     src = target.read_text(encoding="utf-8", errors="replace")
-    # Find the strip_junk_from_reply function body (up to 40 lines after def)
-    m = re.search(r"def strip_junk_from_reply\(.*?\n((?:.*\n){1,50})", src)
+    # Scan the WHOLE strip_junk_from_reply body (to the next top-level def) — a fixed line window
+    # under-scanned once the function grew (fence-masking etc.) and false-flagged markers as missing.
+    m = re.search(r"def strip_junk_from_reply\(.*?(?=\ndef |\Z)", src, re.DOTALL)
     if not m:
         return
     body = m.group(0)
@@ -286,7 +289,10 @@ def check_logits_mismatch():
 _RE_RETURN_STOP = re.compile(r"return\s*\[")
 
 def check_stop_sequences():
-    target = REPO_ROOT / "services" / "llm_gateway.py"
+    # llm_gateway.py moved to services/llm/. Also: the generic "\n## " stop was INTENTIONALLY removed
+    # (it aborted generation at any legit markdown H2), so this no longer requires it — it now checks
+    # the stops that MUST remain: the aspect-name dialogue-tag stops + endoftext.
+    target = REPO_ROOT / "services" / "llm" / "llm_gateway.py"
     if not target.exists():
         return
     src = target.read_text(encoding="utf-8", errors="replace")
@@ -295,8 +301,8 @@ def check_stop_sequences():
         return
     body = fn_match.group(0)
     missing = []
-    if r"\n## " not in body and "\\n## " not in body:
-        missing.append(r'"\n## "')
+    if r"\nMorrigan:" not in body and "\\nMorrigan:" not in body:
+        missing.append('aspect-name stops ("\\nMorrigan:" etc.)')
     if "endoftext" not in body:
         missing.append('"<|endoftext|>"')
     if missing:
