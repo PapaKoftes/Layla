@@ -747,8 +747,22 @@ async def agent(req: AgentRequest, request: Request):
                 # Re-stamp the CURRENT request's conversation_id — the cached payload carries the
                 # original requester's id, which would misattribute this reply to another conversation.
                 cached["conversation_id"] = conversation_id
+                _cached_reply = cached.get("response", "")
                 _append_history("user", goal)
-                _append_history("assistant", cached.get("response", ""))
+                _append_history("assistant", _cached_reply)
+                # Persist the served turn to the conversation-scoped store + DB, exactly like every
+                # other success path. Without this a cache-served FIRST turn was invisible to
+                # get_conv_history (per-turn context) and the DB, so the follow-up turn got NO history
+                # (and could re-hit the cache forever), and the exchange vanished on reload.
+                append_conv_history(conversation_id, "user", goal)
+                append_conv_history(conversation_id, "assistant", _cached_reply)
+                try:
+                    from layla.memory.db import append_conversation_message, create_conversation
+                    create_conversation(conversation_id, aspect_id=aspect_id or "")
+                    append_conversation_message(conversation_id, "user", goal, aspect_id=aspect_id or "")
+                    append_conversation_message(conversation_id, "assistant", _cached_reply, aspect_id=aspect_id or "")
+                except Exception:
+                    pass
                 return JSONResponse(cached, status_code=200)
         except Exception:
             pass
