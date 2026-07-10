@@ -236,6 +236,33 @@ def test_deliberation_debate_mode(mock_completion, mock_personality):
     assert result.synthesis_notes  # notes were extracted
 
 
+# Round-9: when Phase-3 synthesis raises, the fallback must NOT stitch per-aspect name labels
+# ("Morrigan: …\n\nNyx: …") into final_response — the reply cleaner strips only the LEADING label,
+# so interior "Nyx:"/"Echo:" tags leaked into the visible bubble. It now returns a single primary
+# voice; the other aspects remain available via aspect_responses (the transcript trace).
+@patch("services.planning.debate_engine._synthesize", side_effect=RuntimeError("synthesis timed out"))
+@patch("services.planning.debate_engine._load_aspect_personality", side_effect=lambda aid: _FAKE_PERSONALITIES.get(aid, {"id": aid, "name": aid}))
+@patch("services.llm.llm_gateway.run_completion", side_effect=_mock_run_completion)
+def test_deliberation_synthesis_failure_no_interior_labels(mock_completion, mock_personality, mock_synth):
+    from services.planning.debate_engine import run_deliberation
+
+    result = run_deliberation(
+        goal="Should I refactor or rewrite the auth module?",
+        state={},
+        cfg={},
+        mode="debate",
+        aspects=["morrigan", "nyx"],
+    )
+    assert result.synthesis_notes == "synthesis_failed"
+    # The bubble carries ONE voice, not stitched labelled answers.
+    assert result.final_response == _CANNED_RESPONSES["morrigan"]
+    # No interior "Nyx:"/"Echo:"/… name tags leaked into the reply body.
+    for _name in ("Nyx:", "Echo:", "Eris:", "Cassandra:", "Lilith:", "Morrigan:"):
+        assert _name not in result.final_response
+    # Every aspect's answer is still available as trace for the thinking panel / transcript.
+    assert len(result.aspect_responses) == 2
+
+
 # ---------------------------------------------------------------------------
 # Test: run_deliberation -- COUNCIL mode
 # ---------------------------------------------------------------------------

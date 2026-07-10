@@ -323,11 +323,13 @@ def run_deliberation(
         )
     except Exception as exc:
         logger.warning("debate_engine: synthesis failed: %s", exc)
-        # Fallback: concatenate available aspect responses. Use a clean capitalized display-name
-        # attribution ("Morrigan: …"), NOT the raw internal "[morrigan]" scaffold id — the latter
-        # bypassed the reply-cleaning floor and rendered as literal bracketed ids in the /debate panel.
-        valid = [f"{aid.capitalize()}: {r}" for aid, r in aspect_responses.items() if r and "unable to respond" not in r.lower()]
-        final_response = "\n\n".join(valid) if valid else "All aspects were unable to respond just now — try again."
+        # Fallback: surface the PRIMARY aspect's answer as the single reply voice. The other aspects'
+        # responses are still returned via aspect_responses (the thinking-panel / debate transcript
+        # trace), so nothing is lost. Previously this STITCHED "Morrigan: r1\n\nNyx: r2\n\n…" into the
+        # bubble; the reply cleaner strips only the LEADING label, so the interior "Nyx:"/"Echo:" name
+        # tags leaked verbatim into the visible reply (the "reads as ~N stitched answers" bleed).
+        valid = [r for r in aspect_responses.values() if r and "unable to respond" not in r.lower()]
+        final_response = valid[0] if valid else "All aspects were unable to respond just now — try again."
         synthesis_notes = "synthesis_failed"
 
     return DeliberationResult(
