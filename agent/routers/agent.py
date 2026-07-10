@@ -1420,7 +1420,11 @@ async def agent(req: AgentRequest, request: Request):
     ):
         try:
             from services.retrieval.response_cache import put_cached_response
-            put_cached_response(goal, aspect_id or response_payload.get("aspect") or "morrigan", response_payload, max_entries=cache_max_entries)
+            # Key on the REQUEST's aspect_id (same fallback the read uses: `aspect_id or "morrigan"`).
+            # Keying the WRITE on the resolved response aspect instead made the write/read keys
+            # asymmetric for auto-selected turns, so the cache never hit (goal='hi' + empty aspect
+            # stored under 'nyx' but looked up under 'morrigan').
+            put_cached_response(goal, aspect_id or "morrigan", response_payload, max_entries=cache_max_entries)
         except Exception:
             pass
     return JSONResponse(response_payload)
