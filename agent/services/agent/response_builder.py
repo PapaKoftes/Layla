@@ -292,6 +292,13 @@ _STREAM_MARKER_RE = re.compile(
     r"[^\]]*\b(?:MORRIGAN|NYX|ECHO|ERIS|CASSANDRA|LILITH))\b[^\]]*\]",
     re.IGNORECASE,
 )
+# Generic bracketed ALL-CAPS scaffold catch-all — parity with the done-frame strip (see the
+# "[AFFIRMATIVE: …]/[OBSERVATION: …]" rule below). The enumerated set above can't cover the tags a
+# weak model INVENTS; without this in the streaming filter a closed "[OBSERVATION: …]" flashed live
+# in the bubble for the whole generation and only vanished at the done frame. NOT case-insensitive
+# (must be genuinely ALL-CAPS) so title-case "[Note: …]" prose is untouched; TOOL stays excluded
+# (it is a truncation point handled separately).
+_STREAM_ALLCAPS_MARKER_RE = re.compile(r"\[(?!TOOL\b)[A-Z][A-Z0-9_]{2,}\s*:[^\]]*\]")
 
 # Canonical persona/aspect labels. A weak model routinely opens its reply with a speaker tag that
 # MIRRORS the UI's own aspect chip ("Morrigan:", "⚔ Morrigan:", "**Morrigan:**", "## Morrigan",
@@ -448,7 +455,7 @@ def stream_safe_prefix(raw: str, already_emitted: int) -> tuple[str, int]:
         _frag = raw[_lt:safe_end].lower()
         if any(op.startswith(_frag) for op in _openers):
             safe_end = min(safe_end, _lt)
-    clean = _strip_reasoning_traces(_STREAM_MARKER_RE.sub("", raw[:safe_end]))
+    clean = _strip_reasoning_traces(_STREAM_ALLCAPS_MARKER_RE.sub("", _STREAM_MARKER_RE.sub("", raw[:safe_end])))
     # A leading speaker label ("Morrigan:", "⚔ Morrigan", "**Nyx:**", "## Morrigan\n") must never
     # flash live. Strip it on EVERY call so `clean` is the SAME (stripped) string across the whole
     # stream — `already_emitted` is measured against it, so stripping only at emitted==0 mangled the
