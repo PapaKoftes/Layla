@@ -24,7 +24,11 @@ SETTINGS_PRESETS: dict[str, dict[str, Any]] = {
         # before cheap embeddings existed.)
         "use_chroma": True,
         "embedder_prefer_quality": False,
-        "completion_max_tokens": 192,
+        # 192 hard-cut genuinely long answers mid-sentence (~140 words), contradicting the loosened
+        # "length follows need" output-discipline rule. Raised to the default tier's 256 — this only
+        # costs latency on answers that actually need the length (short replies stop early at natural
+        # completion), so a how-to / explanation can finish instead of truncating on the potato box.
+        "completion_max_tokens": 256,
         "semantic_k": 3,
         "knowledge_chunks_k": 3,
         "learnings_n": 15,
