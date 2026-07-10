@@ -450,3 +450,40 @@ def test_length_rule_permits_longer_when_needed():
     from services.prompts.system_head_builder import _OUTPUT_DISCIPLINE as disc
     assert "Match length" in disc                       # short-by-default clause kept
     assert "length follows need" in disc.lower() or "longer when it earns it" in disc.lower()
+
+
+# ── 9. Round-9: strip-before-truncate ordering — a label exposed by turn-removal is re-stripped ──
+
+def test_role_play_leading_turn_never_leaks_exposed_label():
+    from services.agent.response_builder import strip_junk_from_reply as S
+    from services.agent.response_builder import truncate_at_next_user_turn as T
+
+    def pipe(x):
+        return T(S(x))
+    # The model role-plays the user's turn on line 1, hiding the real aspect label on line 2.
+    assert pipe("User: hi\nMorrigan: The answer.") == "The answer."
+    # Dash-decorated label the frontend fallback misses — must be gone at the backend.
+    assert pipe("User: how do I sort a list?\nMorrigan — The Blade: Use sorted(my_list).") == "Use sorted(my_list)."
+    # Bare role line ("Assistant") exposed behind the fake turn.
+    assert pipe("User: hi\nAssistant\nThe answer.") == "The answer."
+    # Human:/You: are leading-turn openers too, not just User:.
+    assert pipe("Human: yo\nNyx: hello there") == "hello there"
+    assert pipe("You: sup\nNyx: hey") == "hey"
+    # Stacked role + aspect label.
+    assert pipe("User: q\nAssistant\nMorrigan: stacked answer") == "stacked answer"
+    # A normal reply is untouched.
+    assert pipe("Just a normal reply.") == "Just a normal reply."
+
+
+# ── 10. Round-9: the internal ECHO marker must not wipe the Echo *aspect*'s own reply ────────────
+
+def test_echo_aspect_reply_survives_but_marker_truncates():
+    from services.agent.response_builder import strip_junk_from_reply as S
+    # The Echo aspect legitimately opens with its own name — the leading-label strip turns it into
+    # the bare answer; it must NOT be truncated to "" by the internal-marker cut.
+    assert S("Echo: hey there friend") == "hey there friend"
+    assert S("Echo: patterns/preferences aside, hi") == "patterns/preferences aside, hi"
+    # The ALL-CAPS internal marker (bracketed or bare) is still a truncation point.
+    assert S("[ECHO: internal note] leaked") == ""
+    assert S("ECHO: internal note leaked") == ""
+    assert S("[Echo (patterns/preferences): stored thing] tail") == ""

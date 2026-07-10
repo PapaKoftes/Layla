@@ -411,7 +411,9 @@ async def research(req: dict):
         goal_for_stream = result.get("goal_for_stream", goal)
 
         def gen():
+            from services.agent.response_builder import stream_safe_prefix
             full = []
+            _emitted = 0
             try:
                 for token in stream_reason(
                     goal_for_stream,
@@ -421,8 +423,22 @@ async def research(req: dict):
                     show_thinking=show_thinking,
                     skip_self_reflection=(result.get("reasoning_mode") or "light") in ("none", "light"),
                 ):
+                    # Intercept the deliberation trace frame so it renders as a UI frame instead of
+                    # flashing the literal "__DELIB_META__{…}__DELIB_END__" string to the client.
+                    if isinstance(token, str) and token.startswith("__DELIB_META__"):
+                        try:
+                            _dm = token.split("__DELIB_META__")[1].split("__DELIB_END__")[0]
+                            yield f"data: {json.dumps({'deliberation': json.loads(_dm)})}\n\n"
+                        except Exception:
+                            pass
+                        continue
                     full.append(token)
-                    yield f"data: {json.dumps({'token': token})}\n\n"
+                    # Marker-safe incremental stream (mirrors the /agent fast-path): hold an unclosed
+                    # "[" / reasoning-trace tag and strip complete [MARKER …] tags + leading speaker
+                    # labels so control scaffolding never flashes live on /research either.
+                    _delta, _emitted = stream_safe_prefix("".join(full), _emitted)
+                    if _delta:
+                        yield f"data: {json.dumps({'token': _delta})}\n\n"
                 text = truncate_at_next_user_turn(strip_junk_from_reply("".join(full)))
                 report = ""
                 citations = {}
@@ -467,9 +483,11 @@ async def research(req: dict):
                     except Exception as e:
                         logger.debug("save research output failed: %s", e)
                 yield f"data: {json.dumps({'done': True, 'content': text, 'report': report or text, 'citations': citations, 'report_format': report_format, 'reasoning_mode': result.get('reasoning_mode')})}\n\n"
-            except Exception as e:
+            except Exception:
+                # Sanitized client frame (parity with /agent) — the raw exception text can carry
+                # paths/internal detail, so log it server-side and surface a generic message.
                 logger.exception("stream_reason failed")
-                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                yield f"data: {json.dumps({'error': 'Research stream failed. Please try again.'})}\n\n"
 
         return StreamingResponse(
             gen(),

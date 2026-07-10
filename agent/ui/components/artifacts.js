@@ -12,17 +12,43 @@ const _artifacts = [];  // {id, lang, content, ts}
 let _artifactEditId = null;
 
 // ── Extraction ──────────────────────────────────────────────────────────────
+// Line-based fence scanner — mirrors the server's routers/agent.py::_extract_artifacts so the
+// client fallback produces the SAME artifacts as the server. Replaces a greedy
+// /```(\w*)\n([\s\S]*?)```/g regex that silently dropped: (a) blocks whose fence carried an info
+// string like "```python title=x" (\w* stopped at the space), (b) the final block of a reply cut
+// off mid-stream with no closing fence, and (c) ~~~-delimited blocks entirely.
 export function laylaExtractArtifacts(text) {
   if (!text) return [];
   const found = [];
-  const re = /```(\w*)\n([\s\S]*?)```/g;
-  let m;
-  while ((m = re.exec(text)) !== null) {
-    const lang = (m[1] || 'text').trim();
-    const content = m[2];
-    if (!content.trim()) continue;
-    const id = 'art_' + Math.random().toString(36).slice(2, 8);
-    found.push({ id, lang, content, ts: Date.now() });
+  const lines = String(text).split('\n');
+  const n = lines.length;
+  let i = 0;
+  while (i < n && found.length < 20) {
+    const open = lines[i].match(/^\s*(`{3,}|~{3,})(.*)$/);
+    if (!open) { i += 1; continue; }
+    const fenceChar = open[1][0];                 // '`' or '~' — the close must use the same char
+    const closeRe = new RegExp('^\\s*' + (fenceChar === '`' ? '`' : '~') + '{3,}\\s*$');
+    const info = (open[2] || '').trim();
+    const lang = (info ? info.split(/\s+/)[0] : 'text') || 'text';   // first token of the info string
+    const body = [];
+    let j = i + 1;
+    let closed = false;
+    while (j < n) {
+      if (closeRe.test(lines[j])) { closed = true; break; }
+      body.push(lines[j]);
+      j += 1;
+    }
+    let content = body.join('\n');
+    if (closed && body.length) content += '\n';   // the newline that preceded the closing fence
+    if (content.trim()) {
+      const nLines = content.replace(/\n+$/, '').split('\n').length;
+      if (nLines >= 2) {                           // skip trivial one-liners (parity with server)
+        const art = { id: 'art_' + Math.random().toString(36).slice(2, 8), lang, content, ts: Date.now() };
+        if (!closed) art.truncated = true;          // reply cut before the closing fence
+        found.push(art);
+      }
+    }
+    i = closed ? (j + 1) : n;
   }
   return found;
 }
@@ -46,9 +72,12 @@ export function laylaArtifactsScan() {
   if (added) showToast(`${added} artifact${added > 1 ? 's' : ''} extracted`);
 }
 
-export function laylaIngestArtifacts(responseText) {
-  if (!responseText) return;
-  const arts = laylaExtractArtifacts(responseText);
+// Accepts EITHER a pre-extracted artifact array (the server's response_payload['artifacts'] /
+// SSE done-frame 'artifacts', already parsed by the hardened server scanner) OR a raw reply
+// string (falls back to the client scanner above). Prefer passing the server list when present.
+export function laylaIngestArtifacts(source) {
+  if (!source) return;
+  const arts = Array.isArray(source) ? source : laylaExtractArtifacts(source);
   if (!arts.length) return;
   arts.forEach(a => {
     if (!_artifacts.find(x => x.content === a.content)) {

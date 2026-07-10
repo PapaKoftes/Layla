@@ -634,7 +634,9 @@ export async function send() {
             // (and updated ordering) replaces the creation-time placeholder.
             try { if (typeof window.refreshConversationList === 'function') window.refreshConversationList(); } catch (_e) { console.debug('app:', _e); }
             try { laylaStreamStatsChars(full.length); laylaStreamStatsStop(); } catch (_e) { console.debug('app:', _e); }
-            try { if (typeof window.laylaIngestArtifacts === 'function') window.laylaIngestArtifacts(full); } catch (_e) { console.debug('app:', _e); }
+            // Prefer the server's hardened artifact list (obj.artifacts) — it handles info-string
+            // fences, ~~~ blocks and truncated blocks the client scanner would otherwise miss.
+            try { if (typeof window.laylaIngestArtifacts === 'function') window.laylaIngestArtifacts((obj.artifacts && obj.artifacts.length) ? obj.artifacts : full); } catch (_e) { console.debug('app:', _e); }
             // Render full deliberation transcript if available
             var _delibDone = obj.deliberation || div._deliberationMeta;
             if (_delibDone && _delibDone.mode && _delibDone.mode !== 'solo') {
@@ -701,7 +703,8 @@ export async function send() {
       if (window._ttsEnabled && resp && resp !== '(no output)') { try { if (typeof window.speakText === 'function') window.speakText(resp).catch(function () {}); } catch (_e) { console.debug('app:', _e); } }
       try { if (typeof window.refreshMaturityCard === 'function') window.refreshMaturityCard(true); } catch (_e) { console.debug('app:', _e); }
       try { laylaStreamStatsStop(); } catch (_e) { console.debug('app:', _e); }
-      try { if (typeof window.laylaIngestArtifacts === 'function') window.laylaIngestArtifacts(resp); } catch (_e) { console.debug('app:', _e); }
+      // Prefer the server's hardened artifact list (data.artifacts) over re-scanning the reply text.
+      try { if (typeof window.laylaIngestArtifacts === 'function') window.laylaIngestArtifacts((data.artifacts && data.artifacts.length) ? data.artifacts : resp); } catch (_e) { console.debug('app:', _e); }
     }
   } catch (e) {
     try { laylaRemoveTypingIndicator(); } catch (_e) { console.debug('app:', _e); }
