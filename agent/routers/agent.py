@@ -174,20 +174,59 @@ def _extract_artifacts(text: str) -> list[dict]:
     import hashlib
     import re
     artifacts = []
-    pattern = re.compile(r"```(\w*)\n([\s\S]*?)```", re.MULTILINE)
-    for m in pattern.finditer(text or ""):
-        lang = (m.group(1) or "text").strip()
-        content = m.group(2)
-        if not content.strip():
+    # Line-based fence scan (replaces a greedy `\`\`\`(\w*)\n...\`\`\`` regex that: dropped blocks
+    # whose fence carried an info string like "\`\`\`python title=x" because `\w*` stopped at the
+    # space before the required `\n`; dropped the final block when a max_tokens-truncated reply left
+    # an UNCLOSED trailing fence; and paired a stray mid-prose fence with a later block's close by
+    # matching `\`\`\`` anywhere. The close is now required on its OWN line).
+    src_lines = (text or "").split("\n")
+    n = len(src_lines)
+    i = 0
+    while i < n and len(artifacts) < 20:
+        m = re.match(r"^\s*```(.*)$", src_lines[i])
+        if not m:
+            i += 1
             continue
-        lines = content.rstrip("\n").count("\n") + 1
-        if lines < 2:
-            continue  # skip trivial one-liners
-        art_id = "art_" + hashlib.md5(content.encode()).hexdigest()[:8]
-        artifacts.append({"id": art_id, "lang": lang, "content": content, "lines": lines})
-        if len(artifacts) >= 20:
-            break
+        info = (m.group(1) or "").strip()
+        lang = (info.split()[0] if info else "text") or "text"   # first token of the info string
+        body: list[str] = []
+        j = i + 1
+        closed = False
+        while j < n:
+            if re.match(r"^\s*```\s*$", src_lines[j]):   # a bare closing fence on its own line
+                closed = True
+                break
+            body.append(src_lines[j])
+            j += 1
+        content = "\n".join(body)
+        if closed and body:
+            content += "\n"  # the newline that preceded the closing fence (parity with the old capture)
+        if content.strip():
+            n_lines = content.rstrip("\n").count("\n") + 1
+            if n_lines >= 2:  # skip trivial one-liners
+                art = {
+                    "id": "art_" + hashlib.md5(content.encode()).hexdigest()[:8],
+                    "lang": lang,
+                    "content": content,
+                    "lines": n_lines,
+                }
+                if not closed:
+                    art["truncated"] = True   # reply cut at max_tokens before the closing fence
+                artifacts.append(art)
+        i = (j + 1) if closed else n
     return artifacts
+
+
+def _aspect_extra_names(result) -> tuple:
+    """The active aspect's display name (for a CUSTOM aspect this is the operator-chosen name),
+    so strip_junk_from_reply also strips a leading 'CustomName:' speaker label — the built-in name
+    list only covers the six stock aspects. Built-in names are already covered, so passing them is
+    harmless; 'Layla' is always in the base set."""
+    try:
+        n = str((result or {}).get("aspect_name") or "").strip()
+        return (n,) if n and n.lower() != "layla" else ()
+    except Exception:
+        return ()
 
 
 def _model_ready_message() -> str | None:
@@ -1069,7 +1108,7 @@ async def agent(req: AgentRequest, request: Request):
                     except Exception:
                         cfg = {}
                     text = polish_output(
-                        truncate_at_next_user_turn(strip_junk_from_reply("".join(full))),
+                        truncate_at_next_user_turn(strip_junk_from_reply("".join(full), _aspect_extra_names(result))),
                         cfg,
                     )
                     # Empty cleaned reply must NOT ship as empty done-frame content: the client's
@@ -1136,7 +1175,7 @@ async def agent(req: AgentRequest, request: Request):
                     # text when non-empty, so a degenerate reply still falls through to the standby.
                     if response_text:
                         try:
-                            _rc = polish_output(truncate_at_next_user_turn(strip_junk_from_reply(response_text)), _cfg_stream)
+                            _rc = polish_output(truncate_at_next_user_turn(strip_junk_from_reply(response_text, _aspect_extra_names(result))), _cfg_stream)
                             if _rc.strip():
                                 response_text = _rc
                         except Exception:
@@ -1253,10 +1292,11 @@ async def agent(req: AgentRequest, request: Request):
     steps = result.get("steps") or []
     final = steps[-1].get("result", "") if steps else ""
     _raw_final = final if isinstance(final, str) else json.dumps(final) if final else ""
-    response_text = strip_junk_from_reply(_raw_final)
+    _extra_names = _aspect_extra_names(result)
+    response_text = strip_junk_from_reply(_raw_final, _extra_names)
     if not response_text:
         _raw_alt = (result.get("response") or result.get("reply") or "").strip()
-        response_text = strip_junk_from_reply(_raw_alt)
+        response_text = strip_junk_from_reply(_raw_alt, _extra_names)
     # When the model generated only echo (stripped to empty), substitute a graceful standby line
     # rather than the generic error. This happens when a small model starts with ## CONTEXT or
     # similar section headers and the stop sequence / junk stripper removes everything.

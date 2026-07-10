@@ -64,6 +64,17 @@ async def voice_speak(request: Request):
             text = body.decode("utf-8", errors="replace").strip()
         if not text:
             return JSONResponse({"ok": False, "error": "No text provided"}, status_code=400)
+        # Reply-cleaning floor: /voice/speak speaks whatever a caller posts. Strip control tags /
+        # decorated speaker labels so no path (or direct API caller) synthesizes leaked scaffolding
+        # to audio. In-app callers already post server-cleaned text; this makes the contract enforced
+        # rather than assumed.
+        try:
+            from services.agent.response_builder import strip_junk_from_reply as _sj_voice
+            _ct = _sj_voice(text)
+            if _ct.strip():
+                text = _ct
+        except Exception:
+            pass
         # Map aspect → TTS speed (matches TTS_VOICE_STYLES in layla-app.js)
         _ASPECT_SPEEDS = {
             "morrigan": 1.05, "nyx": 0.82, "echo": 0.90,

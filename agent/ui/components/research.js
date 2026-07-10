@@ -375,11 +375,16 @@ export async function sendResearch(customMessage) {
       _resetStalledTimer();
 
       let gotDone = false;
+      let _rbuf = '';  // carry an incomplete SSE line across network reads (parity with app.js _sseBuf)
       while (true) {
         const readResult = await reader.read();
         if (readResult.done) break;
-        const chunk = dec.decode(readResult.value, { stream: true });
-        const lines = chunk.split('\n');
+        // A `data: {...}` frame split across two TCP reads was parsed as a half-line (JSON.parse
+        // throws, silently swallowed) — dropping that token, or losing the done frame so the raw
+        // `full` (with any leaked scaffolding) was never replaced by the cleaned obj.content.
+        _rbuf += dec.decode(readResult.value, { stream: true });
+        const lines = _rbuf.split('\n');
+        _rbuf = lines.pop();  // last element is the possibly-incomplete trailing line
         for (let li = 0; li < lines.length; li++) {
           const line = lines[li];
           if (line.indexOf('data: ') === 0) {
@@ -403,8 +408,13 @@ export async function sendResearch(customMessage) {
                 }
                 _resetStalledTimer();
                 full += obj.token;
+                // Balance an unclosed ``` fence during live render (parity with app.js): a lone
+                // opening fence makes marked render the whole rest of the reply as one code block
+                // (bleeds to monospace) until the close streams in. The done frame re-renders clean.
+                let _mdSrc = full;
+                if (((full.match(/```/g) || []).length % 2)) _mdSrc = full + '\n```';
                 let parsed = full;
-                try { if (typeof marked !== 'undefined') parsed = _sanitizeHtml(marked.parse(full)); } catch (_) {}
+                try { if (typeof marked !== 'undefined') parsed = _sanitizeHtml(marked.parse(_mdSrc)); } catch (_) {}
                 bubble.innerHTML = parsed;
                 bubble.querySelectorAll('pre code').forEach(function (el) { if (window.hljs) window.hljs.highlightElement(el); });
                 chatEl.scrollTop = chatEl.scrollHeight;

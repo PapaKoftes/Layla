@@ -148,6 +148,69 @@ def test_completion_gate_default_is_off():
     assert runtime_safety.load_config().get("completion_gate_enabled") is False
 
 
+# ── Round 3: [TOOL:] body, reasoning traces, bracket-colon, custom names, delib POV, debate ──────
+
+def test_tool_marker_truncates_its_body():
+    # [TOOL: …] is a truncation point; the ALLCAPS-colon strip used to remove just the bracket and
+    # leave the tool body in the reply.
+    assert strip_junk_from_reply("Here is the summary.\n[TOOL: web_search]\nquery: paris\nRAW: leaked") == "Here is the summary."
+    assert strip_junk_from_reply("The answer.\n---\n[TOOL: markdown]\n# Report\nbody") == "The answer."
+
+
+def test_reasoning_traces_stripped():
+    assert strip_junk_from_reply("<think>reasoning</think>\nThe capital of France is Paris.") == "The capital of France is Paris."
+    assert strip_junk_from_reply("<thinking>\nplan\n</thinking>\n\nHere is the code.") == "Here is the code."
+    assert strip_junk_from_reply("<scratchpad>work</scratchpad>Answer here.") == "Answer here."
+    assert strip_junk_from_reply("<think>cut off mid thought at max tokens") == ""   # dangling
+    # legit angle-bracket prose/code must survive
+    assert strip_junk_from_reply("Use a < b and c > d to compare.") == "Use a < b and c > d to compare."
+
+
+def test_reasoning_traces_stripped_in_title():
+    from services.agent.title_synthesizer import _clean_title
+    assert _clean_title("<think>naming this</think> Math Help") == "Math Help"
+    assert _clean_title("<think>") == ""   # dangling opener (stop=['\\n'] cut after <think>)
+
+
+def test_bracketed_name_with_dangling_colon():
+    assert strip_junk_from_reply("[Morrigan]: Here is the answer.") == "Here is the answer."
+    assert strip_junk_from_reply("[Nyx]: something") == "something"
+
+
+def test_custom_aspect_name_stripped_when_threaded():
+    assert strip_junk_from_reply("Seraphina: the answer is four.", ("Seraphina",)) == "the answer is four."
+    # built-in names still covered with the default (no extra names)
+    assert strip_junk_from_reply("Morrigan: hi there") == "hi there"
+
+
+def test_deliberation_no_marker_pov_dump_does_not_leak():
+    import orchestrator
+    pov = (
+        "[" + _SIG + " MORRIGAN] (blunt): Use a timeout.\n"
+        "[✦ NYX] (layered): Cap retries.\n[◎ ECHO] (reflective): seen before."
+    )
+    reply, _meta = orchestrator.split_deliberation_output(pov, "Morrigan")
+    assert not reply.strip(), f"POV dump leaked as reply: {reply!r}"
+    # a plain marker-less answer (0–1 labels) is still returned as-is
+    reply2, _ = orchestrator.split_deliberation_output("just a plain answer, no markers", "Morrigan")
+    assert reply2 == "just a plain answer, no markers"
+
+
+def test_debate_engine_extract_text_applies_cleaning_floor():
+    from services.planning.debate_engine import _extract_text
+    assert _extract_text("Layla: Refactor incrementally.\nUser: what about the tests?") == "Refactor incrementally."
+
+
+def test_extract_artifacts_infostring_and_truncated():
+    from routers.agent import _extract_artifacts
+    # info string after the language token (```python title=x) must not drop the block
+    a = _extract_artifacts("x:\n```python title=hi\nprint(1)\nprint(2)\n```")
+    assert a and a[0]["lang"] == "python" and a[0]["lines"] == 2
+    # a max_tokens-truncated (unclosed) trailing block is still extracted, flagged truncated
+    b = _extract_artifacts("code:\n```python\nprint(1)\nfor i in range(3):\n    print(i)")
+    assert b and b[0].get("truncated") is True
+
+
 # ── 4. The reasoning_handler path also strips a leading label (it had none) ─────────────────────
 
 def test_clean_response_text_strips_leading_label():
