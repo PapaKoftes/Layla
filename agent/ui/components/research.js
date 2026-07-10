@@ -412,7 +412,9 @@ export async function sendResearch(customMessage) {
                 // opening fence makes marked render the whole rest of the reply as one code block
                 // (bleeds to monospace) until the close streams in. The done frame re-renders clean.
                 let _mdSrc = full;
-                if (((full.match(/(?:^|\n)[ \t]*```/g) || []).length % 2)) _mdSrc = full + '\n```';
+                // Count ``` and ~~~ fences independently and close whichever is unclosed.
+                if (((_mdSrc.match(/(?:^|\n)[ \t]*`{3,}/g) || []).length % 2)) _mdSrc += '\n```';
+                if (((_mdSrc.match(/(?:^|\n)[ \t]*~{3,}/g) || []).length % 2)) _mdSrc += '\n~~~';
                 let parsed = full;
                 try { if (typeof marked !== 'undefined') parsed = _sanitizeHtml(marked.parse(_mdSrc)); } catch (_) {}
                 bubble.innerHTML = parsed;
