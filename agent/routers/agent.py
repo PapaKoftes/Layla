@@ -693,9 +693,15 @@ async def agent(req: AgentRequest, request: Request):
     # the cache is restricted to STATELESS turns (no prior history); once a conversation has history
     # it is never read from / written to the shared cache.
     _cache_stateless = not conv_history
+    # The cache key is ONLY (goal, aspect). Any request field that SHAPES the reply — a per-turn
+    # model override, thinking/deliberation mode, persona focus, reasoning effort, research mode —
+    # would make the stored payload (its text AND its tool-trace `steps`/reasoning_tree_summary)
+    # replay to a later same-goal turn that asked for none of it. Only cache plain default-shaped turns.
+    _cache_shaped = bool(model_override) or bool(show_thinking) or bool(persona_focus) or bool(reasoning_effort) or bool(getattr(req, "research_mode", False))
     if (
         cache_enabled
         and _cache_stateless
+        and not _cache_shaped
         and not stream
         and not allow_write
         and not allow_run
@@ -1410,6 +1416,7 @@ async def agent(req: AgentRequest, request: Request):
     if (
         cache_enabled
         and _cache_stateless  # never cache a history-conditioned reply (cross-conversation bleed)
+        and not _cache_shaped  # nor a reply shaped by per-turn model/thinking/persona/research params
         and not stream
         and not allow_write
         and not allow_run

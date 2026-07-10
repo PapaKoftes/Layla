@@ -616,7 +616,13 @@ export async function send() {
             try { full = cleanLaylaText(full); } catch (_cl) { console.debug('app:', _cl); }
             if (bubble) {
               if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
-                try { bubble.innerHTML = sanitize(marked.parse(full)); } catch (_mdErr) { bubble.textContent = full; }
+                // Balance an unclosed fence on the DONE render too (the live render already does): a
+                // reply truncated at a role boundary mid-code-block reaches here with an odd fence
+                // count, and without this the whole tail rendered as one grey monospace block.
+                var _dsrc = full;
+                if (((full.match(/```/g) || []).length % 2)) _dsrc += '\n```';
+                if (((full.match(/~~~/g) || []).length % 2)) _dsrc += '\n~~~';
+                try { bubble.innerHTML = sanitize(marked.parse(_dsrc)); } catch (_mdErr) { bubble.textContent = full; }
                 // ChatGPT-style copyable code blocks (syntax highlight + copy + apply buttons).
                 try { enhanceCodeBlocks(bubble); } catch (_e) { console.debug('app:', _e); }
               } else { bubble.textContent = full; }
