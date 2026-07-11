@@ -61,8 +61,9 @@ _MAX_STEPS = 20  # absolute ceiling regardless of aspect
 
 _LENGTH_INSTRUCTIONS: dict[str, str] = {
     "concise": (
-        "Response length: concise. Lead with the answer. "
-        "One short code block or paragraph maximum. No padding."
+        "Response length: concise. Lead with the answer. Be terse: no preamble, no filler, no padding. "
+        "Concise applies to PROSE, not code — use as many fenced code blocks as the task's files or units "
+        "require, and give the full answer a genuine explanation/steps/comparison needs."
     ),
     "medium": (
         "Response length: balanced. Cover what is needed; "
