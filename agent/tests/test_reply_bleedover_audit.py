@@ -651,3 +651,32 @@ def test_stream_holds_tool_body_matching_done_frame():
     live = _live(toks)
     assert "RAW RESULTS" not in live and "query:" not in live   # tool body never flashes live
     assert S("".join(toks)).strip() == "The weather looks clear."  # done-frame parity
+
+
+# ── 21. Round-13: leading-newline label never flashes live; a User: inside code fence isn't truncated ─
+
+def test_stream_lstrips_leading_newline_before_label():
+    from services.agent.response_builder import stream_safe_prefix as P
+
+    def _live(tokens):
+        buf, em, out = "", 0, ""
+        for tk in tokens:
+            buf += tk
+            d, em = P(buf, em)
+            out += d
+        return out
+
+    # A model-emitted leading newline before the persona name used to defeat the "^[ \t]*"-anchored
+    # strip, streaming the doubled "Morrigan:" tag live for the whole generation window.
+    assert "Morrigan" not in _live(["\n", "Morrigan", ": ", "Sure", ", here it is."])
+    assert _live(["Hello", " there."]).strip() == "Hello there."   # normal text unaffected
+
+
+def test_truncate_preserves_user_label_inside_code_fence():
+    from services.agent.response_builder import truncate_at_next_user_turn as T
+    # A "User:" INSIDE a ``` fence is a transcript example, not a real next turn — keep the whole block.
+    tx = "Here is a sample exchange:\n```\nUser: What is the capital?\nBot: Paris.\n```\nAdapt this."
+    out = T(tx)
+    assert "Bot: Paris." in out and "Adapt this." in out
+    # A real next-turn "User:" OUTSIDE any fence still truncates.
+    assert T("The answer is 42.\nUser: and also the tests?") == "The answer is 42."
