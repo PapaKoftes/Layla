@@ -57,6 +57,16 @@ def _clean_title(raw: str) -> str:
     # the extractive title instead of showing the aspect name in the rail.
     if t and re.fullmatch(r"(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)", t, re.IGNORECASE):
         return ""
+    # …and a bare CUSTOM aspect name too — the label DETECTOR (_strip_leading_speaker_label) already
+    # knows custom names, but this collapse was hardcoded to the built-ins, so "Nova:" leaked as the
+    # title. Mirror the detector's dynamic custom-name set.
+    try:
+        from services.agent.response_builder import _known_custom_aspect_names
+        _customs = _known_custom_aspect_names()
+        if t and _customs and t.lower() in {c.lower() for c in _customs}:
+            return ""
+    except Exception:
+        pass
     if len(t) > _MAX_TITLE_LEN:
         t = t[:_MAX_TITLE_LEN].rsplit(" ", 1)[0].rstrip(" .,:;-—")
     # reject junk (empty, pure punctuation, or an echoed instruction)
