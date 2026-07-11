@@ -558,7 +558,10 @@ export async function send() {
               var modeLabel = {debate:'⚔ Debate',council:'⊛ Council',tribunal:'✦ Tribunal'}[obj.deliberation.mode] || obj.deliberation.mode;
               delibBadge.textContent = '✦ ' + modeLabel + ' — ' + (obj.deliberation.participating_aspects || []).length + ' voices contributing';
               var mb = div.querySelector('.msg-bubble');
-              if (mb) mb.parentNode.insertBefore(delibBadge, mb);
+              // Guard against a DUPLICATE badge: the backend emits obj.deliberation twice per turn
+              // (mid-stream __DELIB_META__ frame + the done frame), so this block runs twice — only
+              // mint the badge if one isn't already present.
+              if (mb && !div.querySelector('.deliberation-label')) mb.parentNode.insertBefore(delibBadge, mb);
             } catch (_e) { console.debug('app:', _e); }
           }
           if (obj.token) {
@@ -644,9 +647,10 @@ export async function send() {
             // Render full deliberation transcript if available
             var _delibDone = obj.deliberation || div._deliberationMeta;
             if (_delibDone && _delibDone.mode && _delibDone.mode !== 'solo') {
-              // Drop the inline LIVE badge first — the transcript's own <summary> carries the same
-              // mode label, so keeping both showed the deliberation indicator twice per turn.
-              try { var _liveBadge = div.querySelector('.deliberation-label'); if (_liveBadge) _liveBadge.remove(); } catch (_e) { console.debug('app:', _e); }
+              // Drop EVERY inline LIVE badge first — the transcript's own <summary> carries the same
+              // mode label, so any surviving badge showed the deliberation indicator twice. querySelectorAll
+              // (not querySelector) because a double-emit could have inserted more than one.
+              try { div.querySelectorAll('.deliberation-label').forEach(function (b) { b.remove(); }); } catch (_e) { console.debug('app:', _e); }
               try { _renderDeliberationTranscript(div, _delibDone); } catch (_e) { console.debug('app:', _e); }
             }
             // "Memory updated" receipt — a small chip when Layla filed a durable fact this turn.
