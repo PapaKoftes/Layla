@@ -402,7 +402,8 @@ def _onnx_ret(d: dict, stream: bool):
     def _gen():
         try:
             yield (d.get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
-        except Exception:
+        except Exception as _e:
+            logger.debug("onnx stream chunk extract failed: %s", _e)
             yield ""
     return _gen()
 
