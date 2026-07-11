@@ -392,6 +392,21 @@ def _onnx_error(msg: str) -> dict:
             "error": msg, "backend": "onnx"}
 
 
+def _onnx_ret(d: dict, stream: bool):
+    """Respect the stream contract. When stream=True the caller (llm_gateway._counting_gen) ITERATES
+    the return value expecting a token generator — returning the raw dict made it iterate the dict and
+    yield its KEYS ('choices', 'backend'/'error') as literal reply tokens ('choicesbackend'). So on the
+    stream path wrap the assistant text in a single-chunk generator; otherwise return the dict as before."""
+    if not stream:
+        return d
+    def _gen():
+        try:
+            yield (d.get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
+        except Exception:
+            yield ""
+    return _gen()
+
+
 def run_completion_onnx(
     cfg: dict, prompt: str, max_tokens: int, temperature: float,
     stop: list[str] | None, stream: bool, timeout: int,
@@ -404,11 +419,11 @@ def run_completion_onnx(
     """
     model_dir = (cfg.get("onnx_model_path") or "").strip()
     if not model_dir or not Path(model_dir).exists():
-        return _onnx_error(f"onnx_model_path not found: {model_dir!r}")
+        return _onnx_ret(_onnx_error(f"onnx_model_path not found: {model_dir!r}"), stream)
     try:
         import onnxruntime_genai as og
     except Exception:
-        return _onnx_error("onnxruntime-genai not installed (pip install onnxruntime-genai)")
+        return _onnx_ret(_onnx_error("onnxruntime-genai not installed (pip install onnxruntime-genai)"), stream)
     try:
         cached = _onnx_cache.get(model_dir)
         if cached is None:
@@ -416,13 +431,17 @@ def run_completion_onnx(
             tokenizer = og.Tokenizer(model)
             cached = _onnx_cache[model_dir] = (model, tokenizer)
         model, tokenizer = cached
+        input_ids = tokenizer.encode(prompt)
         params = og.GeneratorParams(model)
         params.set_search_options(
-            max_length=int(max_tokens) + len(prompt.split()),
+            # max_length is the TOTAL sequence budget — use the real ENCODED prompt-token count, not the
+            # whitespace word count, or a multi-thousand-token system prompt undercounts and max_length
+            # falls below the prompt length → zero generated tokens.
+            max_length=int(max_tokens) + len(input_ids),
             temperature=float(max(0.0, temperature)),
             do_sample=temperature > 0.0,
         )
-        params.input_ids = tokenizer.encode(prompt)
+        params.input_ids = input_ids
         out_tokens = model.generate(params)
         text = tokenizer.decode(out_tokens[0]) if out_tokens else ""
         if text.startswith(prompt):
@@ -431,11 +450,11 @@ def run_completion_onnx(
             i = text.find(s)
             if i != -1:
                 text = text[:i]
-        return {"choices": [{"message": {"role": "assistant", "content": text.strip()},
-                             "finish_reason": "stop"}], "backend": "onnx"}
+        return _onnx_ret({"choices": [{"message": {"role": "assistant", "content": text.strip()},
+                                       "finish_reason": "stop"}], "backend": "onnx"}, stream)
     except Exception as e:  # noqa: BLE001
         logger.warning("onnx completion failed: %s", e)
-        return _onnx_error(f"onnx inference error: {e}")
+        return _onnx_ret(_onnx_error(f"onnx inference error: {e}"), stream)
 
 
 def run_completion(
