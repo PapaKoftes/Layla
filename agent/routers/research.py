@@ -440,6 +440,25 @@ async def research(req: dict):
                     if _delta:
                         yield f"data: {json.dumps({'token': _delta})}\n\n"
                 text = truncate_at_next_user_turn(strip_junk_from_reply("".join(full)))
+                # Content-safety floor + polish — PARITY with the /agent SSE branches. Without it a
+                # Tier-1/Tier-2 synthesis shipped raw to the bubble, was spoken via TTS, saved to
+                # last_research.md, AND re-ingested into the KB (resurfacing as retrieved context).
+                # Must run BEFORE report-build / persistence / KB-ingest below.
+                _research_blocked = False
+                try:
+                    import runtime_safety as _rs_r
+                    from services.infrastructure.output_polish import polish_output as _po_r
+                    from services.safety.content_guard import blocked_response as _blk_r
+                    from services.safety.content_guard import check_output as _cg_r
+                    _rcfg = _rs_r.load_config()
+                    _cgres = _cg_r(text, _rcfg)
+                    if _cgres.blocked:
+                        logger.warning("content_guard: /research output blocked tier=%s cat=%s", _cgres.tier, _cgres.category)
+                        text = _blk_r(_cgres)
+                        _research_blocked = True
+                    text = _po_r(text, _rcfg) or text
+                except Exception:
+                    pass
                 report = ""
                 citations = {}
                 try:
@@ -458,7 +477,7 @@ async def research(req: dict):
                     citations = {}
                 _append_history("user", raw_message or "Research this repo.")
                 _append_history("assistant", report or text)
-                if text:
+                if text and not _research_blocked:
                     try:
                         out_dir = RESEARCH_OUTPUT
                         out_dir.mkdir(parents=True, exist_ok=True)
@@ -482,7 +501,10 @@ async def research(req: dict):
                             logger.debug("research KB ingest skipped: %s", _kb_e)
                     except Exception as e:
                         logger.debug("save research output failed: %s", e)
-                yield f"data: {json.dumps({'done': True, 'content': text, 'report': report or text, 'citations': citations, 'report_format': report_format, 'reasoning_mode': result.get('reasoning_mode')})}\n\n"
+                _rdone = {'done': True, 'content': text, 'report': report or text, 'citations': citations, 'report_format': report_format, 'reasoning_mode': result.get('reasoning_mode')}
+                if _research_blocked:
+                    _rdone["blocked"] = True   # tell research.js to replace the streamed tokens with content
+                yield f"data: {json.dumps(_rdone)}\n\n"
             except Exception:
                 # Sanitized client frame (parity with /agent) — the raw exception text can carry
                 # paths/internal detail, so log it server-side and surface a generic message.
@@ -497,7 +519,29 @@ async def research(req: dict):
 
     steps = result.get("steps") or []
     final = steps[-1].get("result", "") if steps else ""
-    response_text = final if isinstance(final, str) else json.dumps(final) if final else ""
+    # Prefer the synthesized prose; NEVER json.dumps a raw tool-result dict into the reply (parity with
+    # the /agent non-stream fix). Then clean + apply the content-safety floor + polish, matching the
+    # streaming path — the non-stream /research reply previously shipped/persisted/KB-ingested unchecked.
+    response_text = (result.get("response") or result.get("reply") or "").strip() if isinstance(result, dict) else ""
+    if not response_text and isinstance(final, str):
+        response_text = final.strip()
+    _research_blocked = False
+    if response_text:
+        response_text = truncate_at_next_user_turn(strip_junk_from_reply(response_text))
+        try:
+            import runtime_safety as _rs_r2
+            from services.infrastructure.output_polish import polish_output as _po_r2
+            from services.safety.content_guard import blocked_response as _blk_r2
+            from services.safety.content_guard import check_output as _cg_r2
+            _rcfg2 = _rs_r2.load_config()
+            _cg2 = _cg_r2(response_text, _rcfg2)
+            if _cg2.blocked:
+                logger.warning("content_guard: /research non-stream output blocked tier=%s cat=%s", _cg2.tier, _cg2.category)
+                response_text = _blk_r2(_cg2)
+                _research_blocked = True
+            response_text = _po_r2(response_text, _rcfg2) or response_text
+        except Exception:
+            pass
     if not response_text and result.get("status") == "system_busy":
         response_text = "System is under load. Try again in a moment."
     elif not response_text and result.get("status") == "timeout":
@@ -525,7 +569,7 @@ async def research(req: dict):
             report = ""
         _append_history("assistant", report or response_text)
 
-    if response_text and result.get("status") not in ("system_busy", "timeout"):
+    if response_text and not _research_blocked and result.get("status") not in ("system_busy", "timeout"):
         try:
             out_dir = RESEARCH_OUTPUT
             out_dir.mkdir(parents=True, exist_ok=True)
