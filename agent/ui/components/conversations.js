@@ -103,7 +103,10 @@ export async function loadConversationIntoChat(convId, skipConfirm) {
     chat.innerHTML = '';
     d.messages.forEach((m) => {
       if (typeof window.addMsg === 'function') {
-        window.addMsg((m.role || '') === 'user' ? 'you' : 'layla', m.content || '', null, false, null);
+        // Pass the STORED per-message aspect_id (the endpoint returns it) so a reloaded reply keeps the
+        // facet chip of the aspect that PRODUCED it — passing null made addMsg fall back to the current
+        // session aspect and stamp the wrong chip on every historical bubble.
+        window.addMsg((m.role || '') === 'user' ? 'you' : 'layla', m.content || '', m.aspect_id || null, false, null);
       }
     });
     if (typeof window.hideEmpty === 'function') window.hideEmpty();

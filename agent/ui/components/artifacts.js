@@ -116,7 +116,9 @@ function _renderArtifactsList() {
     const _id = escapeHtml(String(a.id || ''));
     const _lang = escapeHtml(String(a.lang || 'text'));
     const preview = escapeHtml((a.content || '').slice(0, 120));
-    const lines = (a.content || '').split('\n').length;
+    // Prefer the scanner's precomputed a.lines; else count on the RSTRIPPED content — both extractors
+    // append a trailing "\n" to a closed block, so a raw split counts one empty line too many.
+    const lines = (typeof a.lines === 'number' && a.lines > 0) ? a.lines : (a.content || '').replace(/\n+$/, '').split('\n').length;
     return `<div class="artifact-card" id="${_id}" style="background:var(--code-bg);border:1px solid var(--border);border-radius:4px;padding:8px;position:relative">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
         <span style="font-size:0.68rem;color:var(--asp);font-family:ui-monospace,monospace">${_lang}</span>

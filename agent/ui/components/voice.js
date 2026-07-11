@@ -20,11 +20,32 @@ export const TTS_VOICE_STYLES = {
   lilith:    { rate: 0.78, pitch: 0.88 },
 };
 
+// Project markdown → plain text for SpeechSynthesis (mirrors the server's _text_for_speech). The
+// reply cleaners deliberately PRESERVE markdown for marked.parse, so without this the browser TTS
+// fallback reads "##", "**", backticks and table pipes aloud as noise.
+function _speechText(t) {
+  if (!t) return '';
+  return String(t)
+    .replace(/```[^\n]*\n[\s\S]*?(?:```|$)/g, ' ')   // fenced code blocks
+    .replace(/`([^`]*)`/g, '$1')                       // inline code
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')           // [label](url) → label
+    .replace(/[*_~]{1,3}/g, '')                        // bold/italic/strike markers
+    .replace(/^\s{0,3}#{1,6}[ \t]*/gm, '')             // heading hashes
+    .replace(/^\s*>[ \t]?/gm, '')                      // blockquote
+    .replace(/^\s*[-*+][ \t]+/gm, '')                  // list bullets
+    .replace(/^\s*\d+[.)][ \t]+/gm, '')                // numbered list
+    .replace(/[⚔✦◎⚡⌖⊛]️?/g, '')                 // inline aspect sigils
+    .replace(/\n{2,}/g, '. ')                          // paragraph break → pause
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
 // ── Browser SpeechSynthesis fallback ────────────────────────────────────────
 export function speakReply(text, aspectId) {
   if (!text || typeof speechSynthesis === 'undefined') return;
   const style = TTS_VOICE_STYLES[aspectId] || { rate: 1, pitch: 1 };
-  const u = new SpeechSynthesisUtterance(text.slice(0, 4000));
+  // Project to plain text so the fallback never reads markdown symbols aloud, regardless of caller.
+  const u = new SpeechSynthesisUtterance(_speechText(text).slice(0, 4000));
   u.rate = style.rate;
   u.pitch = style.pitch;
   speechSynthesis.speak(u);
