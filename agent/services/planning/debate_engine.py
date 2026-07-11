@@ -330,8 +330,14 @@ def run_deliberation(
         # trace), so nothing is lost. Previously this STITCHED "Morrigan: r1\n\nNyx: r2\n\n…" into the
         # bubble; the reply cleaner strips only the LEADING label, so the interior "Nyx:"/"Echo:" name
         # tags leaked verbatim into the visible reply (the "reads as ~N stitched answers" bleed).
-        valid = [r for r in aspect_responses.values() if r and "unable to respond" not in r.lower()]
-        final_response = valid[0] if valid else "All aspects were unable to respond just now — try again."
+        valid_items = [(aid, r) for aid, r in aspect_responses.items() if r and "unable to respond" not in r.lower()]
+        if valid_items:
+            _win_aid, final_response = valid_items[0]
+            # Drop the WINNING aspect from the trace so the debate transcript doesn't re-render the exact
+            # text now shown in the reply bubble (a cosmetic double-render on the synthesis-failure path).
+            aspect_responses = {aid: r for aid, r in aspect_responses.items() if aid != _win_aid}
+        else:
+            final_response = "All aspects were unable to respond just now — try again."
         synthesis_notes = "synthesis_failed"
 
     return DeliberationResult(
@@ -589,12 +595,12 @@ def _synthesize(
     final_response = raw
     synthesis_notes = ""
 
-    # case-SENSITIVE + whitespace-boundary: the marker is always emitted UPPER-case. Case-INSENSITIVE
-    # matching truncated the answer at any in-prose lowercase "synthesis_notes:" (e.g. a reply ABOUT
-    # writing synthesis notes). NOT strictly line-anchored, because the reply cleaner collapses the
-    # marker's preceding newline into a space before this split runs — so require only a preceding
-    # whitespace/start boundary. The empty-answer fallback below covers a notes-first completion.
-    notes_match = re.search(r"(?:^|\s)SYNTHESIS_NOTES\s*:\s*(.+)", raw, re.DOTALL)
+    # Whitespace-boundary + accept the marker's case/spacing DRIFT (a weak model emits "SYNTHESIS_NOTES:",
+    # "Synthesis Notes:", "Synthesis_Notes:", "SYNTHESIS NOTES:") while still rejecting an in-prose
+    # ALL-LOWERCASE "synthesis notes:" (a reply ABOUT writing notes) — so the header word must be UPPER
+    # or Title case, never lowercase. NOT strictly line-anchored: the reply cleaner collapses the marker's
+    # preceding newline into a space before this split runs. The empty-answer fallback covers notes-first.
+    notes_match = re.search(r"(?:^|\s)(?:SYNTHESIS|Synthesis)[ _]?(?:NOTES|Notes)\s*:\s*(.+)", raw, re.DOTALL)
     if notes_match:
         synthesis_notes = notes_match.group(1).strip()
         _fr = raw[:notes_match.start()].strip()

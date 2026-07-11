@@ -259,8 +259,10 @@ def test_deliberation_synthesis_failure_no_interior_labels(mock_completion, mock
     # No interior "Nyx:"/"Echo:"/… name tags leaked into the reply body.
     for _name in ("Nyx:", "Echo:", "Eris:", "Cassandra:", "Lilith:", "Morrigan:"):
         assert _name not in result.final_response
-    # Every aspect's answer is still available as trace for the thinking panel / transcript.
-    assert len(result.aspect_responses) == 2
+    # Round-12: the WINNING aspect (morrigan, now the reply bubble) is dropped from the trace so the
+    # transcript doesn't re-render the identical text; the other aspect (nyx) remains as trace.
+    assert "morrigan" not in result.aspect_responses
+    assert "nyx" in result.aspect_responses
 
 
 # ---------------------------------------------------------------------------
