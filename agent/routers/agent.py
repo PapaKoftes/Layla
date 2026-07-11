@@ -761,6 +761,7 @@ async def agent(req: AgentRequest, request: Request):
                     create_conversation(conversation_id, aspect_id=aspect_id or "")
                     append_conversation_message(conversation_id, "user", goal, aspect_id=aspect_id or "")
                     append_conversation_message(conversation_id, "assistant", _cached_reply, aspect_id=aspect_id or "")
+                    _maybe_synth_title(conversation_id, goal, _cached_reply)  # parity: cache-served first turn gets an LLM title too
                 except Exception:
                     pass
                 return JSONResponse(cached, status_code=200)
@@ -1438,6 +1439,7 @@ async def agent(req: AgentRequest, request: Request):
         create_conversation(conversation_id, aspect_id=result.get("aspect", ""))
         append_conversation_message(conversation_id, "user", goal, aspect_id=result.get("aspect", ""))
         append_conversation_message(conversation_id, "assistant", response_text, aspect_id=result.get("aspect", ""))
+        _maybe_synth_title(conversation_id, goal, response_text)  # parity: stream=false first turn gets an LLM title too
     except Exception:
         pass
     _append_history("user", goal)
