@@ -11,6 +11,40 @@ logger = logging.getLogger("layla")
 router = APIRouter(tags=["voice"])
 
 
+def _text_for_speech(t: str) -> str:
+    """Project a reply/markdown string to PLAIN TEXT for TTS. The visual reply cleaners deliberately
+    PRESERVE markdown (bold/`code`/tables/headings) for marked.parse, so feeding that same string to
+    the synthesizer read code expressions and table separator rows aloud as noise. This strips
+    presentation scaffolding meant only for the eye. Non-destructive of prose (no truncation)."""
+    import re as _re
+    if not t:
+        return ""
+    # Drop fenced code blocks entirely — reading code aloud char-by-char is noise, not speech.
+    t = _re.sub(r"```[^\n]*\n.*?(?:```|\Z)", " ", t, flags=_re.DOTALL)
+    t = _re.sub(r"~~~[^\n]*\n.*?(?:~~~|\Z)", " ", t, flags=_re.DOTALL)
+    _lines = []
+    for _ln in t.split("\n"):
+        # Drop a markdown table SEPARATOR row ("|---|:--:|") — pure pipes/dashes/colons.
+        if "|" in _ln and _re.match(r"^\s*\|?[\s:|-]+\|?\s*$", _ln):
+            continue
+        # Flatten remaining table cells to comma-separated speech.
+        if "|" in _ln:
+            _ln = _re.sub(r"\s*\|\s*", ", ", _ln).strip(", ")
+        _lines.append(_ln)
+    t = "\n".join(_lines)
+    t = _re.sub(r"`([^`]*)`", r"\1", t)                       # inline code → its text
+    t = _re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", t)           # [label](url) → label
+    t = _re.sub(r"[*_~]{1,3}", "", t)                          # bold/italic/strike markers
+    t = _re.sub(r"(?m)^\s{0,3}#{1,6}[ \t]*", "", t)           # heading hashes
+    t = _re.sub(r"(?m)^\s*>[ \t]?", "", t)                     # blockquote
+    t = _re.sub(r"(?m)^\s*[-*+][ \t]+", "", t)                # list bullets
+    t = _re.sub(r"(?m)^\s*\d+[.)][ \t]+", "", t)             # numbered list markers
+    t = _re.sub(r"[⚔✦◎⚡⌖⊛]️?", "", t)                       # inline aspect sigils
+    t = _re.sub(r"\n{2,}", ". ", t)                            # paragraph break → spoken pause
+    t = _re.sub(r"[ \t]{2,}", " ", t).strip()
+    return t
+
+
 @router.post("/voice/transcribe")
 async def voice_transcribe(request: Request):
     """Transcribe audio to text using faster-whisper."""
@@ -64,13 +98,15 @@ async def voice_speak(request: Request):
             text = body.decode("utf-8", errors="replace").strip()
         if not text:
             return JSONResponse({"ok": False, "error": "No text provided"}, status_code=400)
-        # Reply-cleaning floor: /voice/speak speaks whatever a caller posts. Strip control tags /
-        # decorated speaker labels so no path (or direct API caller) synthesizes leaked scaffolding
-        # to audio. In-app callers already post server-cleaned text; this makes the contract enforced
-        # rather than assumed.
+        # Speech-cleaning floor: /voice/speak speaks whatever a caller posts. Strip reasoning traces +
+        # a leading speaker label (NON-destructive), then project markdown → plain text. Deliberately
+        # NOT the full strip_junk_from_reply — its model-reply truncation heuristics (cut at
+        # "Objective:", "[TOOL", "## SYSTEM") silently chopped a direct caller's benign text
+        # ("My main objective: …" → "My main"). In-app callers already post server-cleaned reply text.
         try:
-            from services.agent.response_builder import strip_junk_from_reply as _sj_voice
-            _ct = _sj_voice(text)
+            from services.agent.response_builder import _strip_leading_speaker_label as _sls_voice
+            from services.agent.response_builder import _strip_reasoning_traces as _srt_voice
+            _ct = _text_for_speech(_sls_voice(_srt_voice(text)))
             if _ct.strip():
                 text = _ct
         except Exception:
