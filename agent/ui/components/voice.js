@@ -8,7 +8,7 @@
 
 import { bus } from '../core/bus.js';
 import { appState } from '../core/state.js';
-import { showToast } from '../services/utils.js';
+import { cleanLaylaText, showToast } from '../services/utils.js';
 
 // ── Per-aspect TTS voice styles (browser SpeechSynthesis fallback) ──────────
 export const TTS_VOICE_STYLES = {
@@ -25,6 +25,10 @@ export const TTS_VOICE_STYLES = {
 // fallback reads "##", "**", backticks and table pipes aloud as noise.
 function _speechText(t) {
   if (!t) return '';
+  // Strip a leading persona/speaker label first (name-gated, incl. reasoning traces) so the browser TTS
+  // fallback never speaks "Morrigan:" / "Morrigan [The Blade]:" if handed raw reply text — parity with
+  // the server /voice/speak path. Then project the remaining markdown to plain speech.
+  try { t = cleanLaylaText(String(t)); } catch (_e) { t = String(t); }
   return String(t)
     .replace(/```[^\n]*\n[\s\S]*?(?:```|$)/g, ' ')   // fenced code blocks
     .replace(/`([^`]*)`/g, '$1')                       // inline code
