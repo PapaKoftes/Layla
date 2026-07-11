@@ -104,9 +104,15 @@ async def voice_speak(request: Request):
         # "Objective:", "[TOOL", "## SYSTEM") silently chopped a direct caller's benign text
         # ("My main objective: …" → "My main"). In-app callers already post server-cleaned reply text.
         try:
+            from services.agent.response_builder import _STREAM_ALLCAPS_MARKER_RE as _acm_voice
+            from services.agent.response_builder import _STREAM_MARKER_RE as _sm_voice
             from services.agent.response_builder import _strip_leading_speaker_label as _sls_voice
             from services.agent.response_builder import _strip_reasoning_traces as _srt_voice
-            _ct = _text_for_speech(_sls_voice(_srt_voice(text)))
+            # Also strip bracketed scaffold markers ("[TOOL: …]", "[OBSERVATION: …]", "[⚔ MORRIGAN]") —
+            # NON-destructive of prose, so it avoids the "My main objective:" over-cut that motivated
+            # skipping the full strip_junk. Without this the marker was SPOKEN aloud verbatim.
+            _mk = _acm_voice.sub("", _sm_voice.sub("", text))
+            _ct = _text_for_speech(_sls_voice(_srt_voice(_mk)))
             if _ct.strip():
                 text = _ct
         except Exception:

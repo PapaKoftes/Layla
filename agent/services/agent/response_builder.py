@@ -352,7 +352,7 @@ def _known_custom_aspect_names() -> tuple[str, ...]:
                 continue
             n = str(a.get("name") or "").strip()
             # Skip built-ins (already covered) and absurd/blank names.
-            if n and n.lower() not in {b.lower() for b in _ASPECT_NAMES_BASE} and 1 <= len(n) <= 40 and n not in out:
+            if n and n.lower() not in {b.lower() for b in _ASPECT_NAMES_BASE} and 1 <= len(n) <= 60 and n not in out:
                 out.append(n)
     except Exception:
         pass
@@ -859,6 +859,17 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = ()) -> str:
             if not _cm:
                 break
             t = t[_cm.end():].strip()
+    # A SINGLE leading recitation of the most card-SPECIFIC labels ("Archetype:", "Speech patterns:")
+    # slips below the 2+ gate. These are almost never a natural reply opener (unlike generic "Traits:"),
+    # so strip one leading occurrence + its clause — but never nuke the whole reply.
+    for _ in range(2):
+        _sm = re.match(r"^[ \t]*(?:Speech patterns?|Archetype)[ \t]*:[^.\n]*(?:[.;]|\n|$)[ \t]*", t, re.IGNORECASE)
+        if not _sm:
+            break
+        _srest = t[_sm.end():].strip()
+        if not _srest:
+            break
+        t = _srest
     # A prompt-section header (## SYSTEM / ## TASK / …) can leak MID-LINE when the small model
     # echoes the scaffold after its answer ("… here?  ## SYSTEM\n\n<repeats the prompt>"). The
     # line-anchored markers below only catch it at a line start, so truncate at the uppercase
