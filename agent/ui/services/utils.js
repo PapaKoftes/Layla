@@ -57,8 +57,12 @@ export function sanitizeHtml(html) {
   if (typeof html !== 'string') return '';
   if (typeof DOMPurify !== 'undefined') {
     return DOMPurify.sanitize(html, {
+      // h4/h5/h6/hr/del are inert structural markdown marked emits for "####".."######", "---" and
+      // "~~strike~~"; without them DOMPurify (KEEP_CONTENT default) dropped the tag and flattened the
+      // model's heading hierarchy / divider / strikethrough into plain prose. img/iframe/object stay
+      // excluded on purpose (privacy/SSRF).
       ALLOWED_TAGS: ['p','br','strong','em','code','pre','ul','ol','li','a',
-                     'h1','h2','h3','blockquote','span','div','table','thead',
+                     'h1','h2','h3','h4','h5','h6','hr','del','blockquote','span','div','table','thead',
                      'tbody','tr','th','td'],
       ALLOWED_ATTR: ['href','class'],
     });
@@ -67,7 +71,12 @@ export function sanitizeHtml(html) {
   console.warn('sanitizeHtml: DOMPurify not available — using basic regex fallback');
   return html
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/on\w+\s*=\s*["'][^"']*["']/gi, '')
+    // Strip inline event handlers — QUOTED *and* UNQUOTED. The old regex required quotes, so a legal
+    // HTML unquoted handler (onerror=alert(1)) survived this fallback and executed via innerHTML.
+    .replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    // Neutralize <img>/<svg> entirely on the fallback path — they are the usual unquoted-onerror
+    // XSS vector and are excluded from the allow-list above anyway.
+    .replace(/<\/?(?:img|svg)\b[^>]*>/gi, '')
     .replace(/javascript:/gi, '')
     .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
     .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
