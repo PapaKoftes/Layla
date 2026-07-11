@@ -441,6 +441,13 @@ def stream_safe_prefix(raw: str, already_emitted: int) -> tuple[str, int]:
     lb = raw.rfind("[")
     if lb != -1 and "]" not in raw[lb:]:
         safe_end = lb  # a bracket is open — hold from it until it closes (or the stream ends)
+    # [TOOL is a TRUNCATION point, not a self-contained tag: everything after it is leaked tool
+    # scaffolding ("[TOOL: web_search]\nquery:…\nRAW RESULTS: {…}"). _STREAM_MARKER_RE only removes the
+    # closed "[TOOL: …]" bracket and let the raw body flash live; mirror the done-frame's
+    # truncate-from-TOOL so the tool internals never render during streaming.
+    _tool = re.search(r"\[TOOL\b", raw[:safe_end], re.IGNORECASE)
+    if _tool:
+        safe_end = min(safe_end, _tool.start())
     # Hold from an UNCLOSED reasoning-trace tag (<think>/<reasoning>/…) so a CoT model's chain of
     # thought never flashes live; once the closing tag streams in, _strip_reasoning_traces removes it.
     _rt = re.search(r"<(?:think|thinking|reasoning|scratchpad|reflection)\b", raw[:safe_end], re.IGNORECASE)

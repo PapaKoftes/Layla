@@ -359,19 +359,21 @@ def test_raw_tool_result_dict_is_junk():
     assert not is_junk_reply(json.dumps({"city": "Paris", "population": 2148000}))
 
 
-def test_synthesis_notes_split_is_anchored():
-    # The debate_engine SYNTHESIS_NOTES split must be line-anchored + case-sensitive so an in-prose
-    # "synthesis_notes:" (a reply ABOUT writing notes) never truncates the answer, while a real
-    # line-start "SYNTHESIS_NOTES:" block is still split off.
+def test_synthesis_notes_split_tolerates_case_and_spacing():
+    # Round-12: the debate_engine SYNTHESIS_NOTES split accepts the marker's case/spacing DRIFT
+    # ("SYNTHESIS_NOTES:", "Synthesis Notes:", "Synthesis_Notes:", "SYNTHESIS NOTES:") — a weak model
+    # varies it — while still rejecting an ALL-LOWERCASE in-prose "synthesis notes:" (a reply ABOUT
+    # writing notes) so the answer is never truncated.
     import re as _re
-    pat = r"(?:^|\s)SYNTHESIS_NOTES\s*:\s*(.+)"
-    # lowercase in-prose "synthesis_notes:" must NOT match (case-sensitive)
-    assert _re.search(pat, "Here is guidance on writing synthesis_notes: keep it short.", _re.DOTALL) is None
-    # a real UPPER-case marker (even after the newline was collapsed to a space) still splits
-    assert _re.search(pat, "The plan is sound. SYNTHESIS_NOTES: all agree.", _re.DOTALL) is not None
-    # verify the source actually uses the case-sensitive whitespace-boundary form
+    pat = r"(?:^|\s)(?:SYNTHESIS|Synthesis)[ _]?(?:NOTES|Notes)\s*:\s*(.+)"
+    for variant in ("SYNTHESIS_NOTES", "Synthesis Notes", "Synthesis_Notes", "SYNTHESIS NOTES"):
+        m = _re.search(pat, "The plan is sound. " + variant + ": all agree.", _re.DOTALL)
+        assert m is not None and "The plan is sound." == ("The plan is sound. " + variant + ": all agree.")[:m.start()].strip()
+    # ALL-LOWERCASE in-prose mention must NOT match (would wrongly truncate the answer)
+    assert _re.search(pat, "Here is guidance on writing synthesis notes: keep it short.", _re.DOTALL) is None
+    # verify the source actually uses the case/spacing-tolerant form
     src = (AGENT_DIR / "services" / "planning" / "debate_engine.py").read_text(encoding="utf-8")
-    assert "(?:^|\\s)SYNTHESIS_NOTES" in src
+    assert "(?:SYNTHESIS|Synthesis)[ _]?(?:NOTES|Notes)" in src
 
 
 def test_custom_aspect_name_registry_auto_strips(monkeypatch):
@@ -630,3 +632,22 @@ def test_clean_reply_text_matches_interactive_floor():
     assert C("[TOOL: web_search]\nquery: x\nRAW RESULTS: {}") == ""   # pure scaffold → empty (→ standby)
     # A clean answer passes through unchanged.
     assert C("The answer is 42.") == "The answer is 42."
+
+
+# ── 20. Round-12: stream filter truncates from [TOOL (no raw tool body flashes live) ──────────────
+
+def test_stream_holds_tool_body_matching_done_frame():
+    from services.agent.response_builder import stream_safe_prefix as P, strip_junk_from_reply as S
+
+    def _live(tokens):
+        buf, em, out = "", 0, ""
+        for tk in tokens:
+            buf += tk
+            d, em = P(buf, em)
+            out += d
+        return out
+
+    toks = ["The weather ", "looks clear.", "\n", "[TOOL: ", "web_search]", "\n", "query: ", "Paris", "\n", "RAW RESULTS: ", '{"t":5}']
+    live = _live(toks)
+    assert "RAW RESULTS" not in live and "query:" not in live   # tool body never flashes live
+    assert S("".join(toks)).strip() == "The weather looks clear."  # done-frame parity

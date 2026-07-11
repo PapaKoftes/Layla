@@ -276,13 +276,18 @@ Three reasoning tiers control how much context each section gets:
 
 ### 3.4 Stop sequences
 
-`get_stop_sequences()` returns a configurable list (or a hardcoded
-default) designed to prevent:
+`get_stop_sequences()` returns a maintained built-in anti-echo list, and any
+operator `stop_sequences` from config are UNION-merged into it (never replace
+it — an operator can add stops but cannot drop the built-in guards). It is
+designed to prevent:
 
 - Model echoing system-prompt section headers back into replies
-- Fake multi-speaker roleplay (aspect name tags)
-- Memory-artifact leakage ("Snippet:", "Replied.")
+- Fake multi-speaker roleplay (newline-anchored aspect name tags, e.g. `\nMorrigan:`)
 - Special tokens (`<|endoftext|>`, `<|im_end|>`)
+
+(The old "Snippet:" / "Replied." memory-artifact stops were removed — the
+outcome-summary format they guarded is no longer produced, and the unanchored
+"Snippet:" truncated legitimate replies.)
 
 ### 3.5 Token counting (`token_count.py`)
 
@@ -693,7 +698,7 @@ aggressive compression is enabled).
 | `top_p` | float | `0.95` | Nucleus sampling |
 | `repeat_penalty` | float | `1.1` | Repetition penalty |
 | `top_k` | int | `40` | Top-k sampling |
-| `stop_sequences` | list | (hardcoded) | Custom stop sequences |
+| `stop_sequences` | list | `[]` | Extra stop sequences, UNION-merged into the built-in anti-echo list (added, never replacing it) |
 | `reasoning_budget` | int | `-1` | Token budget for thinking models (-1 = unlimited, 0 = disabled) |
 
 ### Prompt budgets
