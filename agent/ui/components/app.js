@@ -605,6 +605,10 @@ export async function send() {
             clearTimeout(stalledTimer);
             clearTimeout(hardTimer);
             clearInterval(metaTimer);
+            // Remove the live "Status: Streaming response · Ns · N chars" progress line — it was only a
+            // during-stream indicator but was never torn down, so it froze permanently under the finished
+            // bubble (and the non-stream/reload path never shows it).
+            try { if (streamMeta) streamMeta.remove(); } catch (_e) { console.debug('app:', _e); }
             liveStatus = 'done';
             try { laylaNotifyStreamPhase(div, 'done'); } catch (_e) { console.debug('app:', _e); }
             // The server's done frame carries the CLEANED, polished final text (control
@@ -691,6 +695,7 @@ export async function send() {
       // of `full` (leaked scaffolding, temporary fence balance). Run the minimal finalize so it's
       // cleaned + code-enhanced. (The server's obj.content isn't available on this truncated path.)
       if (!_sawDone && bubble) {
+        try { if (streamMeta) streamMeta.remove(); } catch (_e) { console.debug('app:', _e); }
         try { full = cleanLaylaText(full); } catch (_cl) { console.debug('app:', _cl); }
         try {
           if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {

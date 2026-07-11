@@ -1089,11 +1089,17 @@ async def agent(req: AgentRequest, request: Request):
                         yield f"data: {json.dumps({'ux_state': ux})}\n\n"
                 thread.join(timeout=0.5)
                 if error_holder:
-                    err = str(error_holder[0])
-                    if "model" in err.lower() or "path" in err.lower():
-                        err = f"Model error: {err}. Configure runtime_config.json. See MODELS.md."
+                    # Detail logged server-side; NEVER render/persist the raw exception string — it
+                    # discloses internal paths/DB detail in the bubble (parity with the sanitized sibling
+                    # handlers below). Map to a fixed generic message; store a neutral placeholder.
+                    _elow = str(error_holder[0]).lower()
+                    logger.warning("fast agen error_holder: %s", error_holder[0])
+                    if "model" in _elow or "path" in _elow:
+                        err = "Model error: the LLM could not be loaded. Set model_filename in runtime_config.json and ensure the .gguf file exists. See MODELS.md."
+                    else:
+                        err = "The request failed while processing. Check the server logs for details."
                     _append_history("user", goal)
-                    _append_history("assistant", err)
+                    _append_history("assistant", "I couldn't reply — see the message above.")
                     yield f"data: {json.dumps({'done': True, 'content': err, 'ux_states': [], 'memory_influenced': []})}\n\n"
                     return
                 result = result_holder[0] if result_holder else {}
