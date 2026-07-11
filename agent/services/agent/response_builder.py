@@ -269,12 +269,32 @@ def truncate_at_next_user_turn(text: str) -> str:
             t = re.sub(r"^[ \t]*(?:Assistant|Human|User|You)[ \t]*(?::[ \t]*|\n+)", "", t, flags=re.IGNORECASE).strip()
             if t == _before:
                 break
+    # Fenced code regions: a "User:" INSIDE a ``` / ~~~ block is legitimate content (a chat-transcript
+    # example, a YAML/log snippet), NOT the model role-playing the next turn — never cut there, or an
+    # answer showing a sample dialogue was silently chopped mid-code-block (with an unclosed fence).
+    _fence_spans = []
+    _open = None
+    for _fm in re.finditer(r"(?m)^[ \t]*(`{3,}|~{3,})", t):
+        _ch = _fm.group(1)[0]
+        if _open is None:
+            _open = (_fm.start(), _ch)
+        elif _ch == _open[1]:
+            _fence_spans.append((_open[0], _fm.end()))
+            _open = None
+    if _open is not None:
+        _fence_spans.append((_open[0], len(t)))  # unclosed fence runs to the end
+
+    def _in_fence(idx: int) -> bool:
+        return any(a <= idx < b for a, b in _fence_spans)
+
     # Cut where the model starts role-playing the NEXT turn as "User:", "You:" or "Human:".
     # Case-SENSITIVE (capitalized tag) + word boundary so an ordinary "thank you:" is not
     # mistaken for a turn, and only at a real boundary (line start / after newline / after
     # sentence-ending punctuation) — e.g. "…grass is green. You: hey there".
     for mt in re.finditer(r"\b(?:User|You|Human)\s*:", t):
         i = mt.start()
+        if _in_fence(i):
+            continue
         prev = t[:i].rstrip()
         if i == 0 or t[i - 1] == "\n" or (prev and prev[-1] in ".!?"):
             cut = t[:i].strip()
@@ -464,7 +484,12 @@ def stream_safe_prefix(raw: str, already_emitted: int) -> tuple[str, int]:
         _frag = raw[_lt:safe_end].lower()
         if any(op.startswith(_frag) for op in _openers):
             safe_end = min(safe_end, _lt)
-    clean = _strip_reasoning_traces(_STREAM_ALLCAPS_MARKER_RE.sub("", _STREAM_MARKER_RE.sub("", raw[:safe_end])))
+    # lstrip leading whitespace so a model-emitted LEADING NEWLINE before the label ("\nMorrigan: …")
+    # is removed BEFORE the name-gated strip — the strip's patterns anchor "^[ \t]*" (not "\s"), so a
+    # leading "\n" defeated them and the doubled "Morrigan:" tag streamed live for the whole generation.
+    # The done frame already strips first; measuring already_emitted against the same lstripped string
+    # every call keeps the emit counter consistent (leading whitespace is at position 0 and constant).
+    clean = _strip_reasoning_traces(_STREAM_ALLCAPS_MARKER_RE.sub("", _STREAM_MARKER_RE.sub("", raw[:safe_end]))).lstrip()
     # A leading speaker label ("Morrigan:", "⚔ Morrigan", "**Nyx:**", "## Morrigan\n") must never
     # flash live. Strip it on EVERY call so `clean` is the SAME (stripped) string across the whole
     # stream — `already_emitted` is measured against it, so stripping only at emitted==0 mangled the
