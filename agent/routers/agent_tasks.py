@@ -84,6 +84,15 @@ async def resume_persistent_coordinator_task(task_id: str, request: Request):
         show_thinking=body.get("show_thinking") is True,
         resume_task_id=(task_id or "").strip(),
     )
+    # Apply the shared reply-finalization floor (parity with resume_paused): the raw envelope otherwise
+    # served the reply with a hallucinated "User:" next-turn continuation and no content-guard/polish.
+    if isinstance(result, dict):
+        _raw = result.get("response") or result.get("reply") or ((result.get("steps") or [{}])[-1].get("result", "") if result.get("steps") else "")
+        try:
+            from services.agent.response_builder import clean_reply_text as _clean_reply
+            result["response"] = _clean_reply(_raw if isinstance(_raw, str) else "", status=str(result.get("status") or "finished"))
+        except Exception:
+            pass
     return JSONResponse({"ok": True, "result": result})
 
 
