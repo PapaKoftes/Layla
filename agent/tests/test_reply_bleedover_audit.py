@@ -605,3 +605,15 @@ def test_leading_label_anchor_gaps_and_nocolon_bracket():
     assert S("[Thinking] Let me answer: 42.") == "Let me answer: 42."
     assert S("See [1] for details.") == "See [1] for details."      # mid-prose citation untouched
     assert S("[1] first reference here") == "[1] first reference here"  # leading numeric citation kept
+
+
+# ── 18. Round-11: a recited persona STYLE CARD (2+ labels) is stripped; a single legit label is kept ─
+
+def test_recited_style_card_stripped_but_single_label_kept():
+    from services.agent.response_builder import strip_junk_from_reply as S
+    # Recitation (>=2 card labels) → strip the leading card scaffold, keep the real answer.
+    assert S("Traits: blunt, fast. Archetype: the blade. I am Morrigan, here to help.") == "I am Morrigan, here to help."
+    assert S("Traits: blunt\nArchetype: the blade\nTropes: warframe\nI am Morrigan.") == "I am Morrigan."
+    # A single legit "Traits:" answer (1 label) is NOT a recitation and must survive intact.
+    single = "Traits: the key traits of a good API are consistency and clarity."
+    assert S(single) == single
