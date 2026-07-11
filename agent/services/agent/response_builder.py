@@ -814,6 +814,19 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = ()) -> str:
         if t == _prev:
             break
     t = re.sub(r"\[System:\s*Your last response[^\]]*\]\s*", "", t, flags=re.IGNORECASE | re.DOTALL).strip()
+    # Recited persona STYLE CARD: on an identity turn a small model sometimes opens by reciting the
+    # card scaffold ("Traits: blunt, fast. Archetype: the blade. Tropes: … <real answer>") before its
+    # answer. These plain "Label:" lines are in no other strip vocabulary. Gate on 2+ card labels (a
+    # clear recitation signal, so a single legit "Traits: …" answer is untouched), then remove the
+    # LEADING run — both newline-separated card lines and an inline "Label: clause." sequence.
+    _card = r"(?:Traits|Speech patterns?|Tropes?|Archetype|Do not)"
+    if len(re.findall(r"(?:^|\n|\.[ \t])[ \t]*" + _card + r"[ \t]*:", t[:400], re.IGNORECASE)) >= 2:
+        t = re.sub(r"^(?:[ \t]*" + _card + r"[ \t]*:[^\n]*\n+)+", "", t, flags=re.IGNORECASE).strip()
+        for _ in range(6):
+            _cm = re.match(r"^[ \t]*" + _card + r"[ \t]*:[^.\n]*[.;][ \t]*", t, re.IGNORECASE)
+            if not _cm:
+                break
+            t = t[_cm.end():].strip()
     # A prompt-section header (## SYSTEM / ## TASK / …) can leak MID-LINE when the small model
     # echoes the scaffold after its answer ("… here?  ## SYSTEM\n\n<repeats the prompt>"). The
     # line-anchored markers below only catch it at a line start, so truncate at the uppercase
