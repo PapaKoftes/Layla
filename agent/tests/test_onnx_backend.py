@@ -70,3 +70,18 @@ def test_run_completion_routes_to_onnx(tmp_path, monkeypatch):
     monkeypatch.setattr("runtime_safety.load_config", lambda: {"onnx_model_path": str(tmp_path)}, raising=False)
     out = ir.run_completion("hello", cfg_override={"onnx_model_path": str(tmp_path)})
     assert called.get("hit") and out["backend"] == "onnx"
+
+
+def test_onnx_stream_returns_generator_not_dict_keys(tmp_path):
+    # Round-14 HIGH: run_completion_onnx ignored `stream` and always returned a dict, so the streaming
+    # caller iterated the dict and yielded its KEYS ("choices","backend") as literal reply tokens
+    # ("choicesbackend"). On stream=True it must now be a single-chunk GENERATOR of the assistant text.
+    import types
+    r = ir.run_completion_onnx({"onnx_model_path": "C:/definitely/missing/onnx"}, "hi", 16, 0.7, None, True, 60)
+    assert isinstance(r, types.GeneratorType)
+    toks = list(r)
+    for t in toks:
+        assert "choices" not in t and "backend" not in t and "error" not in t
+    # stream=False still returns the OpenAI-shaped dict (unchanged contract).
+    d = ir.run_completion_onnx({"onnx_model_path": "C:/definitely/missing/onnx"}, "hi", 16, 0.7, None, False, 60)
+    assert isinstance(d, dict) and "choices" in d
