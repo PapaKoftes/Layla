@@ -76,3 +76,15 @@ def test_synthesizer_uses_streamed_tokens_not_dict_keys(monkeypatch):
 def test_title_synthesis_flag_default_on():
     import runtime_safety
     assert runtime_safety.load_config().get("conversation_title_synthesis_enabled") is True
+
+
+def test_llm_title_cleaner_rejects_bare_aspect_name():
+    # Round-11: a title completion that degenerated to only an echoed speaker tag ("Morrigan:" /
+    # "⚔ Morrigan:") survived _strip_leading_speaker_label's "never nuke" guard and was rstripped to
+    # "Morrigan" — the aspect name leaking as the conversation title. Must collapse to "" instead.
+    from services.agent.title_synthesizer import _clean_title
+    assert _clean_title("Morrigan:") == ""
+    assert _clean_title("⚔ Morrigan:") == ""
+    assert _clean_title("Nyx") == ""
+    # A real topic that merely starts with the aspect label is still cleaned to the topic.
+    assert _clean_title("Morrigan: Auth Refactor") == "Auth Refactor"

@@ -589,3 +589,19 @@ def test_deliberation_bare_concluder_requires_pov_scaffold():
     reply2, meta2 = orchestrator.split_deliberation_output(raw, "Echo")
     assert reply2 == "the final answer is 42."
     assert len(meta2) >= 1                       # the POV lines went to the trace, not the bubble
+
+
+# ── 17. Round-11: leading-label anchor gaps (H4-6 heading, VS16 sigil) + no-colon bracket scaffold ─
+
+def test_leading_label_anchor_gaps_and_nocolon_bracket():
+    from services.agent.response_builder import _strip_leading_speaker_label as L
+    from services.agent.response_builder import strip_junk_from_reply as S
+    # H4-6 heading label (regex used to cap at ###) and a VS16 (U+FE0F) sigil variation selector.
+    assert L("#### Morrigan\nanswer") == "answer"
+    assert L("###### Nyx: cap retries") == "cap retries"
+    assert L("⚔️ Morrigan: Use a set.") == "Use a set."
+    # A leading invented no-colon bracket scaffold tag is stripped; citations/code are NOT.
+    assert S("[FINAL ANSWER] The result is 42.") == "The result is 42."
+    assert S("[Thinking] Let me answer: 42.") == "Let me answer: 42."
+    assert S("See [1] for details.") == "See [1] for details."      # mid-prose citation untouched
+    assert S("[1] first reference here") == "[1] first reference here"  # leading numeric citation kept

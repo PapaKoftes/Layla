@@ -50,6 +50,13 @@ def _clean_title(raw: str) -> str:
     t = re.sub(r"^\s*(?:assistant|user|human|system)\s*:\s*", "", t, flags=re.IGNORECASE).strip()
     t = re.sub(r"\s+", " ", t)
     t = t.rstrip(" .,:;-—!?")
+    # A completion that is ONLY a bare aspect name — the 16-token title model echoed the speaker tag
+    # ("Morrigan:" / "⚔ Morrigan:") with no topic after it. _strip_leading_speaker_label deliberately
+    # does NOT nuke a label-only string (its "never nuke the whole reply" guard is right for REPLIES,
+    # wrong for TITLES), so it survived to here as "Morrigan". Collapse it to "" so the caller keeps
+    # the extractive title instead of showing the aspect name in the rail.
+    if t and re.fullmatch(r"(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)", t, re.IGNORECASE):
+        return ""
     if len(t) > _MAX_TITLE_LEN:
         t = t[:_MAX_TITLE_LEN].rsplit(" ", 1)[0].rstrip(" .,:;-—")
     # reject junk (empty, pure punctuation, or an echoed instruction)
