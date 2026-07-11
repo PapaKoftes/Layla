@@ -137,8 +137,13 @@ def test_echo_memory_marker_truncates_not_strips_in_place():
 
 
 def test_dash_separated_leading_label_stripped_but_hyphens_safe():
-    assert strip_junk_from_reply("Morrigan - here is the fix.") == "here is the fix."
+    # A dash self-label with a SIGIL, or a TITLE-CASE clause, is stripped (unambiguous self-label).
     assert strip_junk_from_reply(_SIG + " Nyx — cap retries.") == "cap retries."
+    assert strip_junk_from_reply("Morrigan — Here is the fix.") == "Here is the fix."
+    # Round-14 #5: a BARE "Name - lowercase prose" (no sigil, no colon) is AMBIGUOUS — aspect names are
+    # common words, so "Echo - repeat …" is prose, not a label. It is now KEPT (previously over-stripped).
+    assert strip_junk_from_reply("Morrigan - here is the fix.") == "Morrigan - here is the fix."
+    assert strip_junk_from_reply("Echo - repeat the last thing the user said.") == "Echo - repeat the last thing the user said."
     # hyphenated words and em-dash asides in prose must survive
     assert strip_junk_from_reply("Morrigan-based routing is used here.") == "Morrigan-based routing is used here."
     assert strip_junk_from_reply("The build - which is slow - needs a cache.") == "The build - which is slow - needs a cache."
@@ -706,3 +711,18 @@ def test_custom_aspect_name_not_used_as_title(monkeypatch):
         assert _clean_title("Nova: Auth Refactor") == "Auth Refactor"   # real topic still cleaned
     finally:
         rb.reset_custom_aspect_name_cache()
+
+
+# ── 23. Round-14: square-bracket facet stripped (#4); title-case-only facet clause (#5 false-positive) ─
+
+def test_square_bracket_facet_and_titlecase_clause_gate():
+    from services.agent.response_builder import strip_junk_from_reply as S
+    _SIG2 = "⚔"
+    # #4 — the "[The Blade]" square-bracket facet form is now stripped (was leaking as "two tags").
+    assert S("Morrigan [The Blade]: Use a set.") == "Use a set."
+    assert S(_SIG2 + " Morrigan [The Blade]: The answer is 42.") == "The answer is 42."
+    # #5 — a lowercase sentence connective after the name is NO LONGER eaten (title-case gate).
+    assert S("Morrigan, in short: use a set for fast lookups.") == "Morrigan, in short: use a set for fast lookups."
+    assert S("Eris, discovered in 2005, is: a dwarf planet beyond Neptune.") == "Eris, discovered in 2005, is: a dwarf planet beyond Neptune."
+    # …but a genuine TITLE-CASE facet clause still strips.
+    assert S("Morrigan, The Blade: think first.") == "think first."

@@ -388,10 +388,15 @@ def _strip_leading_speaker_label(t: str, extra_names: tuple[str, ...] = ()) -> s
         r"(?:Layla" + _nb + r"[ \t]*)?(?:" + sig + r"[ \t]*)?(?:(?:" + name_alt + r")" + _nb + r"[ \t]*)?(?:" + sig + r"[ \t]*)?"
     )
     # Decoration allowed BETWEEN the name and the ':' — the chip anchor "[Active aspect: Morrigan —
-    # The Blade]" gets reformatted by the model as "Morrigan (The Blade):", "Morrigan (Coding):",
+    # The Blade]" gets reformatted by the model as "Morrigan (The Blade):", "Morrigan [The Blade]:",
     # "Morrigan — The Blade:", "Morrigan, The Blade:", or a parenthesized sigil "Morrigan (⚔):". The
     # LABEL group still gates on a real name, so "(Coding): …" alone (no name) is never stripped.
-    deco_after = r"(?:[ \t]*\([^)\n]*\))?(?:[ \t]*[-–—,][ \t]*[^:\n]{1,30})?"
+    # The dash/comma facet must be TITLE-CASE (start with an uppercase letter) — otherwise a legitimate
+    # reply that opens with an aspect name + a lowercase sentence connective ("Morrigan, in short: …",
+    # "Eris, discovered in 2005, is: …") had its whole leading clause silently deleted as a fake label.
+    # (?-i:[A-Z]) forces case-sensitivity for the facet's first letter despite the patterns' IGNORECASE
+    # flag — with a plain [A-Z] under IGNORECASE a lowercase connective ("in short") still matched.
+    deco_after = r"(?:[ \t]*\([^)\n]*\))?(?:[ \t]*\[[^\]\n]{1,30}\])?(?:[ \t]*[-–—,][ \t]*(?-i:[A-Z])[^:\n]{0,29})?"
     # Case 1 — colon-terminated, optionally wrapped in markdown emphasis/heading/blockquote.
     # The label's OPENING emphasis is captured as `em`; a trailing emphasis marker is consumed ONLY
     # when it matches that opening ("**Morrigan**:" / "**Morrigan:**"). Without an opening emphasis no
@@ -442,6 +447,14 @@ def _strip_leading_speaker_label(t: str, extra_names: tuple[str, ...] = ()) -> s
         deco = m.groupdict().get("deco") or ""
         if not _has_token(label) and not re.search(sig, deco):
             continue
+        # The bare dash form "Name - <prose>" (no sigil, no colon) is ambiguous: aspect names are also
+        # common words/mythic figures, so "Echo - repeat the last thing", "Eris - dwarf planet …" are
+        # legit prose, not self-labels. Only strip it when there IS a self-label signal — a sigil in the
+        # match, OR the post-dash clause is TITLE-CASE (a facet/answer opener like "Here is …").
+        if pat is pat_dash and not re.search(sig, m.group(0)):
+            _after = t[m.end():m.end() + 1]
+            if _after and not _after.isupper():
+                continue
         rest = t[m.end():].lstrip()
         if not rest:
             return t  # never nuke the whole reply
