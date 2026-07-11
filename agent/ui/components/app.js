@@ -487,6 +487,7 @@ export async function send() {
       stalledTimer = setTimeout(_showStalled, STALL_WARN_MS);
       hardTimer = setTimeout(_hardTimeout, HARD_SILENCE_MS);
       var _sseBuf = '';
+      var _sawDone = false;   // set when a done frame arrives; drives post-loop finalization if not
       while (true) {
         var _read = await reader.read();
         var value = _read.value;
@@ -599,6 +600,7 @@ export async function send() {
             try { if (full.length - _lastCharsReported >= 48) { _lastCharsReported = full.length; laylaStreamStatsChars(full.length); } } catch (_e) { console.debug('app:', _e); }
           }
           if (obj.done) {
+            _sawDone = true;
             clearTimeout(firstTokenTimer);
             clearTimeout(stalledTimer);
             clearTimeout(hardTimer);
@@ -683,6 +685,22 @@ export async function send() {
             }
           }
         }
+      }
+      // Stream ended WITHOUT a done frame (reverse-proxy read timeout / server crash after the last
+      // token): the done block's finalization never ran, so the bubble still holds the RAW live render
+      // of `full` (leaked scaffolding, temporary fence balance). Run the minimal finalize so it's
+      // cleaned + code-enhanced. (The server's obj.content isn't available on this truncated path.)
+      if (!_sawDone && bubble) {
+        try { full = cleanLaylaText(full); } catch (_cl) { console.debug('app:', _cl); }
+        try {
+          if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
+            var _fsrc = full;
+            if (((full.match(/(?:^|\n)[ \t]*`{3,}/g) || []).length % 2)) _fsrc += '\n```';
+            if (((full.match(/(?:^|\n)[ \t]*~{3,}/g) || []).length % 2)) _fsrc += '\n~~~';
+            bubble.innerHTML = sanitize(marked.parse(_fsrc));
+            try { enhanceCodeBlocks(bubble); } catch (_e) { console.debug('app:', _e); }
+          } else { bubble.textContent = full; }
+        } catch (_fe) { console.debug('app:', _fe); }
       }
     } else {
       // Non-stream JSON mode
