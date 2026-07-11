@@ -53,9 +53,29 @@ export function cleanLaylaText(s) {
   return t.trim();
 }
 
+let _classHookInstalled = false;
+
 export function sanitizeHtml(html) {
   if (typeof html !== 'string') return '';
   if (typeof DOMPurify !== 'undefined') {
+    // Restrict `class` to CODE-highlighting classes only. `class` is allow-listed so marked's
+    // "<code class='language-python'>" survives, but that also let a model-echoed
+    // "<span class='msg-facet-chip'>" render a spoofed, aspect-styled facet chip INSIDE the bubble
+    // (the "two tags, one broken" symptom via HTML), and let any app utility class be applied. This
+    // hook keeps only language-*/hljs classes; hljs re-adds its own classes to the live DOM after
+    // sanitize (enhanceCodeBlocks), so nothing visual is lost.
+    if (!_classHookInstalled && typeof DOMPurify.addHook === 'function') {
+      DOMPurify.addHook('uponSanitizeAttribute', function (node, data) {
+        if (data.attrName === 'class') {
+          const kept = String(data.attrValue || '').split(/\s+/).filter(function (c) {
+            return /^(?:language-[\w+#.-]+|hljs(?:-[\w-]+)?)$/.test(c);
+          });
+          data.attrValue = kept.join(' ');
+          if (!data.attrValue) data.keepAttr = false;
+        }
+      });
+      _classHookInstalled = true;
+    }
     return DOMPurify.sanitize(html, {
       // h4/h5/h6/hr/del are inert structural markdown marked emits for "####".."######", "---" and
       // "~~strike~~"; without them DOMPurify (KEEP_CONTENT default) dropped the tag and flattened the
