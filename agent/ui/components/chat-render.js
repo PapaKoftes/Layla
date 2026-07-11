@@ -243,27 +243,29 @@ export async function _laylaApprovePendingForCodeBlock(codeText) {
     showToast('No pending approvals — use the Approvals panel');
     return;
   }
-  var id = '';
-  if (todo.length === 1) {
-    id = String(todo[0].id || '');
-  } else {
-    var hint = _guessPathFromCodeBlock(codeText);
-    for (var i = 0; i < todo.length; i++) {
-      var e = todo[i];
-      var args = e.args || {};
-      var paths = [args.path, args.file, args.file_path, args.target_file].filter(function (x) { return x && String(x).trim(); }).map(function (x) { return String(x); });
-      for (var j = 0; j < paths.length; j++) {
-        var p = paths[j];
-        if (hint && (p === hint || p.endsWith(hint) || p.includes(hint))) {
-          id = String(e.id || '');
-          break;
-        }
-      }
-      if (id) break;
-    }
-    if (!id) id = String(todo[0].id || '');
+  // Resolve the pending write that ACTUALLY corresponds to this clicked block — by path hint OR by
+  // content — instead of blind-approving todo[0]. A one-click "apply" that authorizes an unrelated
+  // queued write (user reviewed block A, approved write B) is a consent mismatch; if nothing matches,
+  // route to the Approvals panel so the user reviews the real diff.
+  var hint = _guessPathFromCodeBlock(codeText);
+  var _needle = String(codeText || '').trim();
+  function _matchesBlock(e) {
+    var args = (e && e.args) || {};
+    var paths = [args.path, args.file, args.file_path, args.target_file].filter(function (x) { return x && String(x).trim(); }).map(function (x) { return String(x); });
+    if (hint && paths.some(function (p) { return p === hint || p.endsWith(hint) || p.includes(hint); })) return true;
+    var content = String(args.content || args.text || args.new_str || args.new_string || args.code || '').trim();
+    if (content && _needle && (content.indexOf(_needle) !== -1 || _needle.indexOf(content) !== -1)) return true;
+    return false;
   }
-  if (!id) return;
+  var id = '';
+  for (var i = 0; i < todo.length; i++) {
+    if (_matchesBlock(todo[i])) { id = String(todo[i].id || ''); break; }
+  }
+  if (!id) {
+    showToast('This code block doesn’t match a pending write — review it in the Approvals panel');
+    try { if (typeof window.refreshApprovals === 'function') window.refreshApprovals(); } catch (_) {}
+    return;
+  }
   var r = await fetchFn('/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) }, 15000);
   var body = await r.json().catch(function () { return {}; });
   if (!r.ok || !body.ok) {

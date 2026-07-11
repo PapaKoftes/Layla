@@ -680,3 +680,29 @@ def test_truncate_preserves_user_label_inside_code_fence():
     assert "Bot: Paris." in out and "Adapt this." in out
     # A real next-turn "User:" OUTSIDE any fence still truncates.
     assert T("The answer is 42.\nUser: and also the tests?") == "The answer is 42."
+
+
+# ── 22. Round-13: single card-specific label recitation is stripped; custom name doesn't become title ─
+
+def test_single_cardspecific_label_recitation_stripped():
+    from services.agent.response_builder import strip_junk_from_reply as S
+    # A lone "Archetype:"/"Speech patterns:" recitation (below the 2+ gate) is stripped — but a generic
+    # single "Traits:" answer is still kept.
+    assert S("Archetype: tsundere engineer — harsh outside. I own code and systems.") == "I own code and systems."
+    assert S("Speech patterns: terse, dry. Here is the fix.") == "Here is the fix."
+    single = "Traits: the key traits of a good API are clarity and consistency."
+    assert S(single) == single
+
+
+def test_custom_aspect_name_not_used_as_title(monkeypatch):
+    import services.agent.response_builder as rb
+    monkeypatch.setattr("services.personality.custom_aspects.list_custom_aspects",
+                        lambda: [{"name": "Nova"}])
+    rb.reset_custom_aspect_name_cache()
+    try:
+        from services.agent.title_synthesizer import _clean_title
+        assert _clean_title("Nova:") == ""     # bare custom aspect name collapses (extractive title wins)
+        assert _clean_title("Nova") == ""
+        assert _clean_title("Nova: Auth Refactor") == "Auth Refactor"   # real topic still cleaned
+    finally:
+        rb.reset_custom_aspect_name_cache()
