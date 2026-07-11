@@ -355,7 +355,9 @@ def _strip_leading_speaker_label(t: str, extra_names: tuple[str, ...] = ()) -> s
     if not names:
         return t
     name_alt = "|".join(re.escape(n) for n in names)
-    sig = "[" + _ASPECT_SIGILS + "]"
+    # Tolerate a trailing VS16 (U+FE0F) emoji variation selector on the sigil ("⚔️ Morrigan:") — the
+    # bare codepoint is in _ASPECT_SIGILS but the presentation selector after it broke the ^ anchor.
+    sig = "[" + _ASPECT_SIGILS + "]️?"
     # `core` = optional "Layla", a sigil on EITHER side of the name (sigil-then-name "⚔ Morrigan"
     # AND name-then-sigil "Morrigan ⚡"), and an optional aspect name — requiring ≥1 real token.
     # Name boundary: "(?![A-Za-z0-9])" instead of "\b" so a name wrapped in UNDERSCORE emphasis
@@ -376,7 +378,7 @@ def _strip_leading_speaker_label(t: str, extra_names: tuple[str, ...] = ()) -> s
     # trailing marker is eaten — otherwise the answer's OWN bold ("Morrigan: **Use a set.**") lost its
     # leading "**" and stranded the closing one ("Use a set.**").
     pat_colon = re.compile(
-        r"^[ \t]*(?:>[ \t]*)?(?:#{1,3}[ \t]*)?(?P<em>[*_]{1,2})?[ \t]*"
+        r"^[ \t]*(?:>[ \t]*)?(?:#{1,6}[ \t]*)?(?P<em>[*_]{1,2})?[ \t]*"
         r"(?P<label>" + core + r")" + deco_after +
         # exactly ONE closing marker, on ONE side of the colon (never both — the other "**" is the
         # answer's own emphasis): "**Morrigan**:" (before) OR "**Morrigan:**" (after) OR bare ":".
@@ -385,7 +387,7 @@ def _strip_leading_speaker_label(t: str, extra_names: tuple[str, ...] = ()) -> s
     )
     # Case 2 — the label sits alone on the first line (newline-terminated).
     pat_line = re.compile(
-        r"^[ \t]*(?:>[ \t]*)?(?:#{1,3}[ \t]*)?(?:[*_]{1,2})?[ \t]*"
+        r"^[ \t]*(?:>[ \t]*)?(?:#{1,6}[ \t]*)?(?:[*_]{1,2})?[ \t]*"
         r"(?P<label>" + core + r")" + deco_after + r"(?:[*_]{1,2})?[ \t]*\n+",
         re.IGNORECASE,
     )
@@ -393,8 +395,8 @@ def _strip_leading_speaker_label(t: str, extra_names: tuple[str, ...] = ()) -> s
     # A bare name+space is intentionally NOT matched here (that needs a colon/newline) so prose
     # like "Echo the input back" is untouched.
     pat_dec = re.compile(
-        r"^[ \t]*(?P<deco>(?:>[ \t]*)|(?:#{1,3}[ \t]*)|(?:[*_]{1,2})|(?:" + sig + r"[ \t]*))"
-        r"(?:>[ \t]*|#{1,3}[ \t]*|[*_]{1,2}|[ \t])*"
+        r"^[ \t]*(?P<deco>(?:>[ \t]*)|(?:#{1,6}[ \t]*)|(?:[*_]{1,2})|(?:" + sig + r"[ \t]*))"
+        r"(?:>[ \t]*|#{1,6}[ \t]*|[*_]{1,2}|[ \t])*"
         r"(?P<label>" + core + r")(?:[*_]{1,2})?[ \t]+(?=\S)",
         re.IGNORECASE,
     )
@@ -726,6 +728,12 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = ()) -> str:
     # scaffolding), handled by the dedicated "[TOOL" cut below; stripping just the bracket here left
     # the whole tool body ("[TOOL: web_search]\nquery…RAW RESULTS…") in the reply.
     t = re.sub(r"\s*\[(?!TOOL\b)[A-Z][A-Z0-9_]{2,}\s*:[^\]]*\]\s*", " ", t).strip()
+    # A LEADING invented bracketed scaffold tag with NO colon that the colon-gated catch-all above
+    # misses — "[FINAL ANSWER] …", "[Thinking] …", "[Reasoning] …". Strip ONLY at the very START of the
+    # reply, only a Title/ALL-CAPS bracket (first char upper, no leading digit) whose WHOLE content is
+    # the tag, and only when real prose follows — so a mid-prose "[1]" citation, a lowercase "[note]",
+    # and code "arr[IDX]" are all untouched.
+    t = re.sub(r"^\[(?!\d)[A-Z][A-Za-z0-9 ]{2,20}\]\s+(?=\S)", "", t).strip()
     # Trailing self-name restart: after a finished sentence the model sometimes appends its own
     # name (and echoes the user) as a fake new turn — "…journey begin. Layla. Hello." Strip a
     # dangling "<Name>." (+ optional echoed greeting) that follows sentence-ending punctuation.
