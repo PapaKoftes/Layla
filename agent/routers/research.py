@@ -496,7 +496,11 @@ async def research(req: dict):
                         )
                         try:
                             from services.infrastructure.research_report import save_report_to_kb
-                            save_report_to_kb(report or text, title="Research output")  # sync generator context
+                            # Ingest the CLEAN reply text, NOT the scaffold-wrapped `report`: the report's
+                            # fixed boilerplate ("## Recommendations\n- (Actionable next steps)", the fixed
+                            # comparison criteria) otherwise resurfaced verbatim as "Reference docs" grounding
+                            # on later turns, and its ~143-char padding defeated the <200-char triviality gate.
+                            save_report_to_kb(text, title="Research output")  # sync generator context
                         except Exception as _kb_e:
                             logger.debug("research KB ingest skipped: %s", _kb_e)
                     except Exception as e:
@@ -588,7 +592,8 @@ async def research(req: dict):
             )
             try:
                 from services.infrastructure.research_report import save_report_to_kb
-                await asyncio.to_thread(save_report_to_kb, report or response_text, title="Research output")
+                # Ingest the CLEAN reply (not the scaffold-wrapped report) — see the streaming path above.
+                await asyncio.to_thread(save_report_to_kb, response_text, title="Research output")
             except Exception as _kb_e:
                 logger.debug("research KB ingest skipped: %s", _kb_e)
         except Exception as e:
