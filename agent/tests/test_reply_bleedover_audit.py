@@ -617,3 +617,16 @@ def test_recited_style_card_stripped_but_single_label_kept():
     # A single legit "Traits:" answer (1 label) is NOT a recitation and must survive intact.
     single = "Traits: the key traits of a good API are consistency and clarity."
     assert S(single) == single
+
+
+# ── 19. Round-12: clean_reply_text — the shared floor for async/resume paths matches the router ────
+
+def test_clean_reply_text_matches_interactive_floor():
+    from services.agent.response_builder import clean_reply_text as C
+    # All-scaffold replies (the streaming-tool-branch + async-task leak class) clean to a real answer
+    # or empty — never shipped raw to the DB / API.
+    assert C("Here is the summary.\n[TOOL: web_search]\nquery: x\nRAW RESULTS: {}\nUser: and tests?") == "Here is the summary."
+    assert C("Morrigan: the answer is 42.") == "the answer is 42."
+    assert C("[TOOL: web_search]\nquery: x\nRAW RESULTS: {}") == ""   # pure scaffold → empty (→ standby)
+    # A clean answer passes through unchanged.
+    assert C("The answer is 42.") == "The answer is 42."

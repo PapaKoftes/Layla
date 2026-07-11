@@ -45,10 +45,16 @@ async def resume_paused(req: dict):
         aspect_id=aspect_id or "morrigan",
         conversation_id=str((req or {}).get("conversation_id") or "").strip(),
     )
+    _resume_raw = (result.get("response") or ((result.get("steps") or [{}])[-1].get("result", "") if result.get("steps") else ""))
+    try:
+        from services.agent.response_builder import clean_reply_text as _clean_reply
+        _resume_reply = _clean_reply(_resume_raw if isinstance(_resume_raw, str) else "", status=str(result.get("status") or "finished"))
+    except Exception:
+        _resume_reply = _resume_raw if isinstance(_resume_raw, str) else ""
     return JSONResponse({
         "ok": True,
         "status": result.get("status"),
-        "response": (result.get("steps") or [{}])[-1].get("result", "") if result.get("steps") else "",
+        "response": _resume_reply,   # cleaned (parity with the interactive /agent path)
         "state": result,
     })
 

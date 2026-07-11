@@ -589,7 +589,15 @@ def _run_background_subprocess_task(task_id: str, payload: dict) -> None:
     if not text:
         steps = result.get("steps") or []
         final = steps[-1].get("result", "") if steps else ""
-        text = final if isinstance(final, str) else json.dumps(final) if final else ""
+        text = final if isinstance(final, str) else ""   # never json.dumps a raw tool-result dict
+    # Async tasks bypass the /agent router's reply-cleaning floor; apply it here so the persisted DB
+    # result + every JSON API consumer get the SAME cleaned text the interactive path does (no leaked
+    # "[TOOL:…]" tool bodies, "## SYSTEM" scaffold, hallucinated "User:" next-turn, or speaker labels).
+    try:
+        from services.agent.response_builder import clean_reply_text as _clean_reply
+        text = _clean_reply(text, status=str(result.get("status") or "finished"))
+    except Exception:
+        pass
     finished_at = datetime.now(timezone.utc).isoformat()
     with _TASKS_LOCK:
         t = _TASKS.get(task_id)
@@ -799,7 +807,13 @@ def _run_background_task(task_id: str, payload: dict) -> None:
         if not text:
             steps = result.get("steps") or []
             final = steps[-1].get("result", "") if steps else ""
-            text = final if isinstance(final, str) else json.dumps(final) if final else ""
+            text = final if isinstance(final, str) else ""   # never json.dumps a raw tool-result dict
+        # Apply the reply-cleaning floor (parity with the interactive /agent path) before persisting.
+        try:
+            from services.agent.response_builder import clean_reply_text as _clean_reply
+            text = _clean_reply(text, status=str(result.get("status") or "finished"))
+        except Exception:
+            pass
         with _TASKS_LOCK:
             t = _TASKS.get(task_id)
             if t and t["status"] == "cancelled":
