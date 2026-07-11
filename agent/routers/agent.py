@@ -1245,16 +1245,15 @@ async def agent(req: AgentRequest, request: Request):
                     response_text = (result.get("response") or result.get("reply") or "").strip()
                     if not response_text and isinstance(final, str):
                         response_text = final.strip()
-                    # Clean the synthesized answer the SAME way the token-streaming branch does
-                    # (line ~1071). This tool-using done-frame previously applied only .strip(), so a
-                    # leaked leading speaker label / control tag in a tool-run answer reached the
-                    # client, the DB, and next-turn context uncleaned. Guard: only take the cleaned
-                    # text when non-empty, so a degenerate reply still falls through to the standby.
+                    # Clean the synthesized answer the SAME way the token-streaming branch does. Assign
+                    # the cleaned value UNCONDITIONALLY (parity with the non-stream JSON path ~1388): if
+                    # cleaning zeroes an ALL-SCAFFOLD reply ("[TOOL: …]\n{raw results}" / "## SYSTEM …"),
+                    # response_text must become "" so it reaches the standby below. The previous
+                    # "only take the cleaned text when non-empty" guard KEPT the raw non-empty scaffold
+                    # and shipped it to the bubble + DB (the standbys never fired) — a stream-vs-JSON leak.
                     if response_text:
                         try:
-                            _rc = polish_output(truncate_at_next_user_turn(strip_junk_from_reply(response_text, _aspect_extra_names(result))), _cfg_stream)
-                            if _rc.strip():
-                                response_text = _rc
+                            response_text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply(response_text, _aspect_extra_names(result))), _cfg_stream)
                         except Exception:
                             pass
                     if not response_text and result.get("status") == "tool_limit":

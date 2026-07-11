@@ -919,6 +919,31 @@ def clean_response_text(text: str, aspect_names: tuple[str, ...] = ()) -> str:
     return text
 
 
+def clean_reply_text(raw: str, aspect_names: tuple[str, ...] = (), status: str = "finished", apply_safety: bool = True) -> str:
+    """The full reply-FINALIZATION floor, for reply paths OUTSIDE the interactive /agent router — async
+    background/subprocess tasks, resume, execute_plan — which extract steps[-1]['result'] themselves and
+    previously persisted/served it RAW. Mirrors the router: strip_junk_from_reply → truncate_at_next_user_turn
+    → polish_output (on finished) → content_guard.check_output. Never raises."""
+    try:
+        t = truncate_at_next_user_turn(strip_junk_from_reply(raw or "", tuple(aspect_names)))
+    except Exception:
+        t = (raw or "").strip()
+    try:
+        import runtime_safety
+        cfg = runtime_safety.load_config()
+        if status == "finished" and t:
+            from services.infrastructure.output_polish import polish_output
+            t = polish_output(t, cfg)
+        if apply_safety and t:
+            from services.safety.content_guard import blocked_response, check_output
+            _o = check_output(t, cfg)
+            if _o.blocked:
+                t = blocked_response(_o)
+    except Exception:
+        pass
+    return t
+
+
 def iter_with_response_pacing(tokens, pacing_ms: int):
     """Minimum delay between successive streamed chunks (final reply path only). Caps at 10s per gap."""
     try:
