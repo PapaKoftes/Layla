@@ -984,6 +984,11 @@ def clean_reply_text(raw: str, aspect_names: tuple[str, ...] = (), status: str =
         t = truncate_at_next_user_turn(strip_junk_from_reply(raw or "", tuple(aspect_names)))
     except Exception:
         t = (raw or "").strip()
+    # A RAW tool-result dict is not an answer — suppress it so the caller's standby fires. is_junk_reply
+    # (inside strip_junk) only catches a bare all-tool-key "{…}"; looks_like_raw_tool_dict also unwraps a
+    # ```json fence, a [ {…} ] list, and a mixed prose+tool-key dict ({"ok":true,"summary":…}).
+    if t and looks_like_raw_tool_dict(t):
+        t = ""
     try:
         import runtime_safety
         cfg = runtime_safety.load_config()
