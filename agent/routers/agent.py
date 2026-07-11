@@ -304,14 +304,30 @@ def _maybe_synth_title(conversation_id: str, user_msg: str, assistant_text: str)
         # first exchange only (user + assistant just persisted → count ~2); don't clobber later
         if int(conv.get("message_count") or 0) > 2:
             return
+        _prior_title = str(conv.get("title") or "")  # the instant extractive title, captured pre-synth
+        # Skip synth entirely if the user already set a CUSTOM title (BEFORE the first message) — the
+        # current title is then NOT the auto-extractive one, and overwriting it with an LLM title would
+        # discard the manual rename. (The compare-and-set in _bg covers a rename made DURING the window.)
+        try:
+            from layla.memory.conversations import _auto_name_conversation
+            _expected_auto = _auto_name_conversation(user_msg)
+            if _expected_auto and _prior_title and _prior_title != _expected_auto:
+                return
+        except Exception:
+            pass
 
         def _bg() -> None:
             try:
                 from services.agent.title_synthesizer import synthesize_conversation_title
                 t = synthesize_conversation_title(user_msg, assistant_text)
                 if t:
+                    from layla.memory.db import get_conversation as _gc
                     from layla.memory.db import rename_conversation
-                    rename_conversation(cid, t)
+                    # Compare-and-set: only overwrite if the title is STILL the auto/extractive one we
+                    # captured. The synth LLM call lands ~14s later; a manual rename the user made in
+                    # that window (POST /conversations/{id}/rename) must NOT be silently reverted.
+                    if str((_gc(cid) or {}).get("title") or "") == _prior_title:
+                        rename_conversation(cid, t)
             except Exception as _tx:
                 logger.debug("title synth bg failed: %s", _tx)
 
