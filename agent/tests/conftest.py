@@ -218,7 +218,17 @@ def isolated_db(tmp_path):
         if hasattr(mig, "_MIGRATED"):
             mig._MIGRATED = False  # type: ignore[attr-defined]
         migrate()
-        yield db_path
+        try:
+            yield db_path
+        finally:
+            # Reset the migrate() guards on TEARDOWN too — migrate() set them True against the tmp DB,
+            # so without this the NEXT test that touches the REAL DB finds _MIGRATED=True, skips its
+            # migration, and can hit a half-migrated/empty schema (500 instead of the expected result).
+            # This is the isolated_db teardown leak; resetting here makes the DB re-migrate on next use.
+            if hasattr(db_mod, "_MIGRATED"):
+                db_mod._MIGRATED = False  # type: ignore[attr-defined]
+            if hasattr(mig, "_MIGRATED"):
+                mig._MIGRATED = False  # type: ignore[attr-defined]
 
 
 @pytest.fixture
