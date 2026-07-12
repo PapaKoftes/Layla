@@ -93,11 +93,20 @@ def _template_files(ctx: dict) -> dict[str, str]:
     desc = ctx.get("description", "")
     author = ctx.get("author", "")
     version = ctx.get("version", "0.1.0")
+    # Serialize the user-controlled header scalars via yaml.safe_dump instead of
+    # raw f-string interpolation, so a value containing a newline + YAML cannot
+    # inject arbitrary top-level manifest keys (e.g. a malicious `capabilities:`
+    # block) that load_plugins() would later parse and register. See audit #5.
+    import yaml as _yaml
+
+    header = _yaml.safe_dump(
+        {"name": name, "version": version, "description": desc, "author": author},
+        default_flow_style=False,
+        sort_keys=False,
+        allow_unicode=True,
+    ).rstrip("\n")
     manifest = f"""# Layla plugin manifest — see PLUGINS.md
-name: {name}
-version: {version}
-description: {desc}
-author: {author}
+{header}
 
 # Version pinning: which Layla plugin API this targets.
 requires:
