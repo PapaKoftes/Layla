@@ -798,6 +798,33 @@ def test_inline_dialogue_example_not_truncated():
     assert T("A. User: fake continuation with no reply here") == "A."
 
 
+def test_clean_reply_text_threads_active_aspect_gate():
+    # R18 #13: clean_reply_text (resume / background / continuous finalizers) had no active_names, so it
+    # strip-alled and deleted a bare NON-active 'Echo:' definition that the interactive /agent path keeps.
+    from services.agent.response_builder import clean_reply_text as C, active_name_set as A
+    # Morrigan active → a non-active 'Echo: <definition>' is preserved.
+    assert C("Echo: a sound reflected or repeated.", active_aspect="morrigan") == "Echo: a sound reflected or repeated."
+    # The active aspect's own bare self-label is still stripped.
+    assert C("Morrigan: here is the fix.", active_aspect="morrigan") == "here is the fix."
+    # A result-dict carries the resolved aspect via aspect_name.
+    assert C("Cassandra: a Trojan priestess.", active_aspect={"aspect_name": "Morrigan"}) == "Cassandra: a Trojan priestess."
+    # Legacy default (no active_aspect) keeps the strip-all behavior.
+    assert C("Echo: a sound reflected or repeated.") == "a sound reflected or repeated."
+    # active_name_set: named aspect → {'layla', name}; empty → strip-all (all built-ins present).
+    assert A("morrigan") == {"layla", "morrigan"}
+    assert "echo" in A("")
+
+
+def test_research_active_names_helper_gates_nonactive_definition():
+    # R18 #3: /research threaded active_names so a bare NON-active 'Echo:' definition is preserved
+    # (and not persisted/KB-re-ingested subject-less). The helper delegates to active_name_set.
+    from routers.research import _research_active_names
+    s = _research_active_names("morrigan")
+    assert "morrigan" in s and "layla" in s and "echo" not in s
+    # Empty aspect → strip-all fallback (matches the /agent fast path).
+    assert "echo" in _research_active_names("")
+
+
 def test_name_then_sigil_self_label_is_stripped():
     # R18 #5: a name-then-sigil self-label with only a space before the prose ("Morrigan ⚔ <answer>",
     # no colon/dash/newline) slipped every terminator pattern and leaked. A sigil never appears in

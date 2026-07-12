@@ -595,7 +595,9 @@ def _run_background_subprocess_task(task_id: str, payload: dict) -> None:
     # "[TOOL:…]" tool bodies, "## SYSTEM" scaffold, hallucinated "User:" next-turn, or speaker labels).
     try:
         from services.agent.response_builder import clean_reply_text as _clean_reply
-        text = _clean_reply(text, status=str(result.get("status") or "finished"))
+        # Thread the run's resolved aspect so the active-aspect gate preserves a bare NON-active
+        # 'Echo: <definition>' on background/continuous tasks too (parity with the interactive path).
+        text = _clean_reply(text, status=str(result.get("status") or "finished"), active_aspect=result if isinstance(result, dict) else None)
     except Exception:
         pass
     finished_at = datetime.now(timezone.utc).isoformat()
