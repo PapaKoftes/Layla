@@ -149,10 +149,29 @@ def get_project_context_api():
 def get_file_intent_api(path: str = ""):
     if not path:
         return JSONResponse({"ok": False, "error": "path required"}, status_code=400)
+    # Enforce sandbox containment before reading, matching /file_content and
+    # understand_file_tool. analyze_file() calls path.read_bytes() and returns
+    # content previews, so an unguarded path is a network-reachable arbitrary
+    # file read. See audit finding #4.
+    import runtime_safety as _rs
+
+    try:
+        cfg = _rs.load_config()
+        sandbox = (cfg.get("sandbox_root") or "").strip()
+        if not sandbox:
+            return JSONResponse({"ok": False, "error": "sandbox_root not configured; file_intent disabled"}, status_code=403)
+        p = Path(path).resolve()
+        try:
+            p.relative_to(Path(sandbox).resolve())
+        except ValueError:
+            return JSONResponse({"ok": False, "error": "path outside sandbox"}, status_code=403)
+    except Exception as e:
+        logger.warning("file_intent sandbox check failed: %s", e)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
     try:
         from layla.file_understanding import analyze_file
 
-        return analyze_file(file_path=path)
+        return analyze_file(file_path=str(p))
     except Exception as e:
         logger.warning("file_intent failed: %s", e)
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
