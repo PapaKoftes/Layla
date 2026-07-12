@@ -19,6 +19,39 @@ LEGACY_PATH = MEMORY_DIR / "knowledge_graph.json"
 _graph_lock = threading.RLock()
 
 
+def _quarantine_and_recover_graph(exc) -> "object":
+    """The graphml file EXISTS but is unreadable (corruption / partial write / transient IO). Do NOT let
+    the caller silently os.replace() an empty graph over it — that permanently destroys the whole
+    knowledge graph (audit #1). Move the bad file aside (recoverable) and restore the last-good .bak if
+    one exists, mirroring verify_and_recover_db's quarantine-and-restore for layla.db. Returns a graph
+    (restored, or empty) — never overwrites the quarantined data silently."""
+    import logging
+    import shutil
+
+    import networkx as nx
+    logger = logging.getLogger("layla")
+    try:
+        stamp = utcnow().strftime("%Y%m%d%H%M%S")
+        corrupt = GRAPH_PATH.with_name(GRAPH_PATH.name + f".corrupt.{stamp}")
+        shutil.move(str(GRAPH_PATH), str(corrupt))
+        logger.error(
+            "knowledge_graph.graphml unreadable (%s) — quarantined to %s (NOT overwritten) to prevent "
+            "total knowledge-graph loss", exc, corrupt.name,
+        )
+    except Exception as _mv:
+        logger.error("knowledge_graph.graphml unreadable and quarantine failed: %s / %s", exc, _mv)
+    bak = GRAPH_PATH.with_name(GRAPH_PATH.name + ".bak")
+    if bak.exists():
+        try:
+            shutil.copy2(str(bak), str(GRAPH_PATH))
+            G = nx.read_graphml(GRAPH_PATH)
+            logger.warning("restored knowledge_graph.graphml from last-good backup (%d nodes)", G.number_of_nodes())
+            return G
+        except Exception as _rb:
+            logger.error("knowledge_graph.graphml backup restore failed: %s", _rb)
+    return nx.DiGraph()
+
+
 def _get_graph():
     import networkx as nx
     G = nx.DiGraph()
@@ -29,8 +62,10 @@ def _get_graph():
             for n in G.nodes():
                 if isinstance(n, str) and n.isdigit():
                     pass  # keep as is for iteration
-        except Exception:
-            pass
+        except Exception as _exc:
+            # File exists but won't parse → quarantine + try backup restore. NEVER fall through to an
+            # empty graph that a caller then persists over the (now preserved) corrupt file (audit #1).
+            G = _quarantine_and_recover_graph(_exc)
     if not GRAPH_PATH.exists() and G.number_of_nodes() == 0:
         _save_graph(G)
     if LEGACY_PATH.exists() and G.number_of_nodes() == 0:
@@ -55,7 +90,31 @@ def _save_graph(G) -> None:
     # knowledge_graph.graphml (which would corrupt the whole knowledge graph).
     tmp = GRAPH_PATH.with_name(GRAPH_PATH.name + ".tmp")
     nx.write_graphml(G, tmp)
+    # Durability (audit #3): fsync the temp file's DATA before the rename. os.replace is atomic for the
+    # metadata rename but does NOT flush data blocks, so a power loss can otherwise leave a 0-length /
+    # truncated graphml despite the "atomic" write — which then trips the corrupt-read path above.
+    try:
+        with open(tmp, "rb") as _f:
+            os.fsync(_f.fileno())
+    except Exception:
+        pass
     os.replace(tmp, GRAPH_PATH)
+    try:
+        _dirfd = os.open(str(MEMORY_DIR), os.O_RDONLY)
+        try:
+            os.fsync(_dirfd)  # flush the directory entry (best-effort; not supported on Windows)
+        finally:
+            os.close(_dirfd)
+    except Exception:
+        pass
+    # Keep a rotating last-good backup — ONLY of a non-empty graph, so a post-corruption empty save can
+    # never clobber the backup — giving _quarantine_and_recover_graph something to restore from (audit #1).
+    try:
+        if G.number_of_nodes() > 0:
+            import shutil
+            shutil.copy2(str(GRAPH_PATH), str(GRAPH_PATH.with_name(GRAPH_PATH.name + ".bak")))
+    except Exception:
+        pass
 
 
 def load_graph():
