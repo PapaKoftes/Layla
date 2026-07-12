@@ -1,8 +1,8 @@
 {
   "_doc": "Coverage ledger for the audit-loop. The workflow reads this to pick the next dimension (never-run > stale > weight), and writes back convergence state after each round. Edit weights/cadence/lenses freely.",
   "version": 1,
-  "round_counter": 1,
-  "updated": "2026-07-12T20:12:10Z",
+  "round_counter": 2,
+  "updated": "2026-07-12T23:29:00Z",
   "dimensions": [
     {
       "key": "reality",
@@ -48,11 +48,11 @@
       "family": "data_state",
       "weight": 8,
       "cadence": 1,
-      "last_round": 0,
+      "last_round": 2,
       "dry_rounds": 0,
       "quiescent": false,
-      "open_findings": 0,
-      "max_severity": "none",
+      "open_findings": 11,
+      "max_severity": "high",
       "lenses": [
         "SQLite (layla.db) + knowledge_graph.graphml write atomicity, corruption on crash, partial writes",
         "crash recovery / integrity / reaper: are half-finished tasks and locks recovered correctly?",
