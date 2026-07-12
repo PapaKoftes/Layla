@@ -287,28 +287,46 @@ def truncate_at_next_user_turn(text: str) -> str:
     def _in_fence(idx: int) -> bool:
         return any(a <= idx < b for a, b in _fence_spans)
 
-    # Cut where the model starts role-playing the NEXT turn as "User:", "You:" or "Human:".
-    # Case-SENSITIVE (capitalized tag) + word boundary so an ordinary "thank you:" is not
-    # mistaken for a turn, and only at a real boundary (line start / after newline / after
-    # sentence-ending punctuation) — e.g. "…grass is green. You: hey there".
-    for mt in re.finditer(r"\b(?:User|You|Human)\s*:", t):
+    # Cut where the model starts role-playing the NEXT turn — either the USER side
+    # ("User:"/"You:"/"Human:") OR its OWN side ("Assistant:"/"Bot:"/"AI:", the weak-model
+    # "answer\nAssistant: anything else?" self-continuation). Word boundary + a real boundary
+    # (line start / after newline / after sentence-ending punctuation) so an ordinary
+    # "thank you:" mid-prose is not mistaken for a turn — e.g. "…grass is green. You: hey there".
+    # Aspect NAMES are deliberately NOT cut here (a "Echo:" glossary reply must survive); the
+    # leading aspect self-label is already handled by strip_junk_from_reply upstream.
+    _user_side = ("user", "you", "human")
+    for mt in re.finditer(r"\b(User|You|Human|Assistant|Bot|AI)\s*:", t, re.IGNORECASE):
         i = mt.start()
         if _in_fence(i):
             continue
+        _label = mt.group(1).lower()
         prev = t[:i].rstrip()
         _line_start = (i == 0 or t[i - 1] == "\n")
-        if _line_start or (prev and prev[-1] in ".!?"):
+        # Case rule: a LINE-START label is an unambiguous turn in any case (weak models lowercase
+        # role tags — "Paris.\nuser: thanks"). A MID-SENTENCE ". label:" is only a turn when the
+        # tag is Capitalized; a lowercase mid-line "…thank you:" stays prose.
+        if not _line_start:
+            if not (prev and prev[-1] in ".!?"):
+                continue
+            if not mt.group(1)[0].isupper():
+                continue
+        if _label in _user_side:
             # A MID-LINE ". You:" that PAIRS with a following assistant/aspect turn is a quoted dialogue
             # EXAMPLE the user asked for ("Sure. You: Hi. Assistant: Hello!") — not the model role-playing
-            # the next turn, so don't cut it. A LINE-START "User:" is the common next-turn hallucination
-            # and is always cut.
+            # the next turn, so don't cut it. A LINE-START "User:" is the common next-turn hallucination.
             if not _line_start and re.search(
                 r"\b(?:Assistant|Bot|AI|Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\s*:",
                 t[mt.end():mt.end() + 200], re.IGNORECASE,
             ):
                 continue
-            cut = t[:i].strip()
-            return cut if cut else t
+        else:
+            # Assistant/Bot/AI side: an "Assistant:" that RESPONDS to a shown "User:"/"You:" turn just
+            # before it is the reply half of a quoted dialogue example — keep it. A fabricated own-turn
+            # ("answer.\nAssistant: anything else?") has ordinary prose (not a role turn) before it.
+            if re.search(r"\b(?:User|You|Human)\s*:", t[max(0, i - 120):i], re.IGNORECASE):
+                continue
+        cut = t[:i].strip()
+        return cut if cut else t
     return t
 
 

@@ -796,3 +796,28 @@ def test_inline_dialogue_example_not_truncated():
     assert T("The answer is 42.\nUser: and the tests?") == "The answer is 42."
     # A mid-line UNPAIRED role label (no assistant reply follows) is still a continuation → cut.
     assert T("A. User: fake continuation with no reply here") == "A."
+
+
+def test_fabricated_assistant_own_turn_is_truncated():
+    # R17 #1: the weak model finishes and then role-plays its OWN next turn as "Assistant:".
+    # truncate only cut User/You/Human before, so the fake assistant turn leaked.
+    from services.agent.response_builder import strip_junk_from_reply, truncate_at_next_user_turn as T
+    assert T("The capital is Paris.\nAssistant: Anything else?\nUser: no thanks") == "The capital is Paris."
+    # Trailing-only fabricated assistant turn (no following User:) also cut.
+    assert T("The capital is Paris.\nAssistant: Glad to help!") == "The capital is Paris."
+    assert T("Done.\nBot: want more?") == "Done."
+    # But an "Assistant:" that RESPONDS to a shown "User:"/"You:" turn is a dialogue example → kept.
+    assert T("Sure. You: Hi. Assistant: Hello!") == "Sure. You: Hi. Assistant: Hello!"
+    # A leading aspect-name definition ("Echo: …") is NOT a role turn and must survive.
+    assert strip_junk_from_reply("Echo: a repetition of sound.", active_names={"layla", "morrigan"}) \
+        .startswith("Echo: a repetition of sound")
+
+
+def test_lowercase_line_start_role_turn_is_truncated():
+    # R17 #2: line-start lowercase "user:"/"human:" fabricated turns leaked (cut was case-sensitive).
+    from services.agent.response_builder import truncate_at_next_user_turn as T
+    assert T("Paris.\nuser: thanks") == "Paris."
+    assert T("Paris.\nhuman: and then?") == "Paris."
+    assert T("Paris.\nassistant: anything else?") == "Paris."
+    # Case-sensitivity is still enforced MID-LINE so ordinary prose is untouched.
+    assert T("I really want to thank you: your help was great.") == "I really want to thank you: your help was great."
