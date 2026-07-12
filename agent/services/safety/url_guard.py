@@ -93,3 +93,72 @@ def is_safe_url(url: str, *, resolve: bool = True) -> bool:
     """Boolean convenience wrapper around check_url()."""
     ok, _ = check_url(url, resolve=resolve)
     return ok
+
+
+class SSRFBlocked(PermissionError):
+    """Raised by safe_urlopen when the initial URL or any redirect hop is unsafe."""
+
+
+def _build_guarded_redirect_handler():
+    """A urllib redirect handler that re-runs check_url on EVERY hop and vetoes an unsafe target, so a
+    public URL cannot 302 into an internal/link-local host (redirect / TOCTOU SSRF). Module-level factory
+    so tests can exercise the veto directly."""
+    import urllib.request
+
+    class _GuardedRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, hdrs, newurl):  # noqa: D401
+            ok, reason = check_url(newurl)
+            if not ok:
+                raise SSRFBlocked(f"blocked redirect to {newurl}: {reason}")
+            return super().redirect_request(req, fp, code, msg, hdrs, newurl)
+
+    return _GuardedRedirect
+
+
+def safe_urlopen(url_or_req, *, timeout: float = 30, headers: dict | None = None, data=None):
+    """SSRF-safe replacement for urllib.request.urlopen.
+
+    Validates the initial URL AND re-validates EVERY redirect hop with check_url, so a public URL
+    that passes the guard cannot 302 to an internal/link-local host (redirect / TOCTOU SSRF). Accepts
+    a url string or a pre-built urllib Request. Raises SSRFBlocked on any unsafe hop; urllib errors
+    otherwise. Callers should route ALL outbound fetches of caller/content-supplied URLs through this.
+    """
+    import urllib.request
+
+    _GuardedRedirect = _build_guarded_redirect_handler()
+
+    if isinstance(url_or_req, urllib.request.Request):
+        req = url_or_req
+        if headers:
+            for k, v in headers.items():
+                req.add_header(k, v)
+    else:
+        req = urllib.request.Request(str(url_or_req), data=data, headers=headers or {})
+    ok, reason = check_url(req.full_url)
+    if not ok:
+        raise SSRFBlocked(f"blocked url {req.full_url}: {reason}")
+    opener = urllib.request.build_opener(_GuardedRedirect)
+    return opener.open(req, timeout=timeout)
+
+
+def safe_fetch_text(url: str, *, timeout: float = 15, headers: dict | None = None) -> str:
+    """SSRF-safe drop-in for `trafilatura.fetch_url(url)`: fetches decoded body text with EVERY redirect
+    hop re-validated (closes the redirect/TOCTOU gap that a plain is_safe_url + trafilatura leaves open).
+    Returns '' on a blocked URL or any fetch error, so it is safe to use inside crawl/feed iteration."""
+    import gzip
+    import urllib.error
+
+    h = {"User-Agent": "Mozilla/5.0 (compatible; Layla/1.0)", "Accept-Encoding": "identity"}
+    if headers:
+        h.update(headers)
+    try:
+        with safe_urlopen(url, timeout=timeout, headers=h) as resp:
+            raw = resp.read()
+            if str(resp.headers.get("Content-Encoding", "")).lower() == "gzip":
+                try:
+                    raw = gzip.decompress(raw)
+                except Exception:
+                    pass
+            return raw.decode("utf-8", errors="replace")
+    except (SSRFBlocked, urllib.error.URLError, OSError):
+        return ""
