@@ -360,7 +360,7 @@ def _known_custom_aspect_names() -> tuple[str, ...]:
     return _custom_names_cache
 
 
-def _strip_leading_speaker_label(t: str, extra_names: tuple[str, ...] = ()) -> str:
+def _strip_leading_speaker_label(t: str, extra_names: tuple[str, ...] = (), active_names: set[str] | None = None) -> str:
     """Remove a leading speaker/persona label that mirrors the UI's aspect chip.
 
     NAME-GATED: the label must contain 'Layla', a Layla sigil, or a (built-in or custom) aspect
@@ -368,7 +368,14 @@ def _strip_leading_speaker_label(t: str, extra_names: tuple[str, ...] = ()) -> s
     word is never stripped. Handles: bare 'Morrigan:', 'Layla:', sigil forms '⚔ Morrigan[:]',
     markdown '**Morrigan:**' / '## Morrigan' / '> Morrigan:', name-on-its-own-line 'Morrigan\\n',
     the composite 'Layla ⚔ Morrigan:', and a bare leading sigil. Only strips when real prose
-    follows (never nukes the whole reply — that would trip the empty-reply fallback)."""
+    follows (never nukes the whole reply — that would trip the empty-reply fallback).
+
+    ``active_names`` (lower-cased): when provided, a BARE (undecorated) 'Name:' / 'Name\\n' is stripped
+    ONLY if Name is in this set (the active aspect + 'Layla' + customs). This preserves a definitional
+    reply whose SUBJECT is an aspect-name word ('Echo: a repetition of sound') for a NON-active aspect,
+    while still removing the active aspect's self-label. Decorated forms (sigil/markdown/dash/bracket/
+    paren/composite) are unambiguous self-labels and always strip. When None (streaming / no aspect
+    context) the bare form strips defensively for all names, as before."""
     if not t:
         return t
     names = tuple(n for n in (_ASPECT_NAMES_BASE + tuple(extra_names) + _known_custom_aspect_names()) if n)
@@ -455,6 +462,20 @@ def _strip_leading_speaker_label(t: str, extra_names: tuple[str, ...] = ()) -> s
             _after = t[m.end():m.end() + 1]
             if _after and not _after.isupper():
                 continue
+        # Active-aspect gate for the BARE colon/newline form ("Echo:" / "Echo\n"): when we know the
+        # active aspect, a bare aspect-name label for a NON-active aspect is a definition subject, not a
+        # self-label — keep it ("Echo: a repetition of sound"). Decorated matches (a sigil/markdown/
+        # paren/bracket/dash/comma in the matched span) are unambiguous self-labels and always strip.
+        if active_names is not None and pat in (pat_colon, pat_line):
+            _matched = m.group(0)
+            # Strong self-label signals: sigil, markdown emphasis, paren/bracket/dash/comma facet. A
+            # heading '#'/blockquote '>' is EXCLUDED — '## Morrigan' can be a section heading whose
+            # subject is the name, so it is gated on the active aspect like the bare 'Name:' form.
+            _decorated = bool(re.search(r"[*_()\[\]—–,-]", _matched) or re.search(sig, _matched))
+            if not _decorated:
+                _nm = re.search(r"(?:" + name_alt + r")", label, re.IGNORECASE)
+                if _nm and _nm.group(0).lower() not in active_names:
+                    continue
         rest = t[m.end():].lstrip()
         if not rest:
             return t  # never nuke the whole reply
@@ -686,11 +707,13 @@ def _strip_reasoning_traces(t: str) -> str:
     return t.strip()
 
 
-def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = ()) -> str:
+def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = (), active_names: set[str] | None = None) -> str:
     """Remove repeated 'assistant: I replied.' and other junk from a reply before saving/displaying.
 
     ``aspect_names`` = extra (e.g. custom-aspect) display names to also strip as a leading speaker
-    label, beyond the built-in aspects."""
+    label, beyond the built-in aspects. ``active_names`` (lower-cased) gates the BARE 'Name:' strip to
+    the active aspect (+ Layla + customs) so a definitional 'Echo: …' for a NON-active aspect survives —
+    see _strip_leading_speaker_label. None (default) = strip bare defensively for all names."""
     if not text or not text.strip():
         return (text or "").strip()
     t = _strip_reasoning_traces(text.strip())
@@ -859,7 +882,7 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = ()) -> str:
     _names = tuple(aspect_names)
     for _ in range(5):
         _prev = t
-        t = _strip_leading_speaker_label(t, _names).strip()
+        t = _strip_leading_speaker_label(t, _names, active_names).strip()
         # A leading "assistant:" / "Assistant\n" role label (colon- or newline-terminated so prose
         # like "Assistant chefs prepare…" is untouched).
         t = re.sub(r"^\s*assistant[ \t]*(?::[ \t]*|\n+)", "", t, flags=re.IGNORECASE).strip()
