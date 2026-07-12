@@ -111,6 +111,49 @@ def test_approve_already_executed_idempotent(monkeypatch):
     assert calls["n"] == 1
 
 
+def test_approve_audit_redacts_credentials_in_args(monkeypatch):
+    """Audit #12: the approval-execution audit path must not persist raw
+    credentials. A Bearer/sk- token in the approved tool args must be masked
+    before it reaches the audit sink (args_summary)."""
+    from fastapi.testclient import TestClient
+
+    import layla.tools.registry as registry
+    import routers.approvals as approvals_router
+    from main import app
+
+    secret = "sk-ant-abc123def456ghi789xyz"
+    pending = [{
+        "id": "a3", "status": "pending", "tool": "fake_secret_tool",
+        "args": {"command": f"curl -H 'Authorization: Bearer {secret}' https://api.x"},
+    }]
+    captured = {}
+
+    def _read_pending():
+        return pending
+
+    def _write_pending_list(new_pending):
+        pending[:] = new_pending
+
+    def _audit(tool_name, args_summary, actor, ok):
+        captured["args_summary"] = args_summary
+
+    def _fake_tool(**_kwargs):
+        return {"ok": True}
+
+    monkeypatch.setattr(approvals_router, "get_read_pending", lambda: _read_pending)
+    monkeypatch.setattr(approvals_router, "get_write_pending_list", lambda: _write_pending_list)
+    monkeypatch.setattr(approvals_router, "get_audit", lambda: _audit)
+    monkeypatch.setitem(registry.TOOLS, "fake_secret_tool", {"fn": _fake_tool})
+
+    client = TestClient(app)
+    r = client.post("/approve", json={"id": "a3"})
+    assert r.status_code == 200
+
+    summary = captured.get("args_summary", "")
+    assert secret not in summary
+    assert "Bearer " + secret not in summary
+
+
 def test_approve_invalid_tool_returns_error(monkeypatch):
     """Unknown pending tool should return structured tool error."""
     from fastapi.testclient import TestClient
