@@ -763,3 +763,22 @@ def test_active_aspect_gate_preserves_nonactive_definition():
     assert S("Echo (The Listener): answer", active_names=A) == "answer"
     # WITHOUT active_names (streaming / no aspect context) the bare form strips defensively for all names.
     assert S("Echo: a repetition of sound.") == "a repetition of sound."
+
+
+# ── 26. Round-16: Objective: over-truncation (#1) + markdown link with aspect-name word (#2/#3) ────
+
+def test_objective_conservative_and_markdown_links_preserved():
+    from services.agent.response_builder import strip_junk_from_reply as S, truncate_at_next_user_turn as T
+    _SIG5 = "⚔"
+    P = lambda x: T(S(x))
+    # #1 — a legit OKR/charter/inline "Objective:" is preserved; only a scaffold echo (Objective: +
+    # a sibling marker) is cut.
+    assert P("Here is your OKR.\nObjective: grow revenue.\nKey results: 1) launch 2) retain") == "Here is your OKR.\nObjective: grow revenue.\nKey results: 1) launch 2) retain"
+    assert P("My objective: to help. Let me explain.") == "My objective: to help. Let me explain."
+    assert P("done.\nObjective: x\n## SYSTEM\nYou are Layla") == "done."
+    # #2/#3 — a markdown link whose text contains an aspect-name word is NOT destroyed.
+    assert P("See [echo cancellation](https://en.wikipedia.org/wiki/Echo_cancellation) for how it works.") == "See [echo cancellation](https://en.wikipedia.org/wiki/Echo_cancellation) for how it works."
+    assert P("The [assistant framework](https://example.com/docs) is documented.") == "The [assistant framework](https://example.com/docs) is documented."
+    # …but a genuine bracketed self-label + the deliberation sigil scaffold still strip.
+    assert P("[Layla]: The set() removes duplicates.") == "The set() removes duplicates."
+    assert P("[" + _SIG5 + " MORRIGAN] fast fix") == "fast fix"
