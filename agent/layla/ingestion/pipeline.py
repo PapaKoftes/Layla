@@ -191,6 +191,15 @@ def ingest_url(url: str, *, topic: str = "") -> IngestResult:
     source = url
     text = ""
 
+    # SSRF #8: guard ONCE at the top so no fetch path — including the trafilatura/urllib fallbacks
+    # below — can reach a private/loopback/link-local target. The fetch_url tool guards itself, but
+    # when it returns nothing (incl. because IT blocked the URL) control fell through to unguarded
+    # fallbacks, defeating the guard.
+    from services.safety.url_guard import is_safe_url, safe_fetch_text, safe_urlopen
+    if not is_safe_url(url):
+        logger.warning("ingest_url: blocked unsafe URL %s", url)
+        return IngestResult(source=source, skipped=True)
+
     # Try TOOLS["fetch_url"] from the tool registry
     try:
         from layla.tools.registry_body import TOOLS
@@ -204,7 +213,7 @@ def ingest_url(url: str, *, topic: str = "") -> IngestResult:
     if not text:
         try:
             import trafilatura
-            downloaded = trafilatura.fetch_url(url)
+            downloaded = safe_fetch_text(url)  # redirect-guarded fetch (not raw trafilatura.fetch_url)
             if downloaded:
                 text = trafilatura.extract(downloaded) or ""
         except ImportError:
@@ -215,8 +224,7 @@ def ingest_url(url: str, *, topic: str = "") -> IngestResult:
     # Fallback: urllib
     if not text:
         try:
-            import urllib.request
-            with urllib.request.urlopen(url, timeout=15) as resp:
+            with safe_urlopen(url, timeout=15) as resp:  # redirect-guarded (not raw urlopen)
                 raw = resp.read().decode("utf-8", errors="replace")
             # Strip HTML tags
             import re

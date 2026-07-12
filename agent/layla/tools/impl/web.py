@@ -121,12 +121,12 @@ def fetch_article(url: str) -> dict:
     Extract clean text from a web article using trafilatura.
     Much cleaner than raw fetch — removes nav, ads, footers. Ideal for research.
     """
-    from services.safety.url_guard import is_safe_url
+    from services.safety.url_guard import is_safe_url, safe_fetch_text, safe_urlopen
     if not is_safe_url(url):
         return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     try:
         import trafilatura
-        downloaded = trafilatura.fetch_url(url)
+        downloaded = safe_fetch_text(url)  # SSRF: validates url + every redirect hop
         if not downloaded:
             return {"ok": False, "error": "Could not fetch URL"}
         text = trafilatura.extract(
@@ -258,7 +258,7 @@ def http_request(url: str, method: str = "GET", body: str = "", headers: dict | 
     Returns status, response text (truncated to 8000 chars).
     Use for webhooks, REST APIs, testing endpoints.
     """
-    from services.safety.url_guard import is_safe_url
+    from services.safety.url_guard import is_safe_url, safe_fetch_text, safe_urlopen
     if not is_safe_url(url):
         return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     import urllib.error
@@ -270,7 +270,7 @@ def http_request(url: str, method: str = "GET", body: str = "", headers: dict | 
     try:
         data = body.encode("utf-8") if body else None
         req = urllib.request.Request(url, data=data, headers=hdrs, method=method)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with safe_urlopen(req, timeout=timeout) as resp:  # SSRF #11: guards initial + redirect hops
             content = resp.read(80000).decode("utf-8", errors="replace")
             return {
                 "ok": resp.status < 400,
@@ -304,7 +304,7 @@ def crawl_site(
     store_knowledge: save extracted pages to knowledge/fetched/ for later RAG indexing
     Returns: list of {url, title, text, depth} for all visited pages.
     """
-    from services.safety.url_guard import is_safe_url
+    from services.safety.url_guard import is_safe_url, safe_fetch_text, safe_urlopen
     if not is_safe_url(url):
         return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     import time
@@ -331,7 +331,7 @@ def crawl_site(
         visited.add(current_url)
 
         try:
-            downloaded = trafilatura.fetch_url(current_url)
+            downloaded = safe_fetch_text(current_url)  # SSRF #9: re-validate EACH dequeued link, not just the seed
             if not downloaded:
                 continue
             text = trafilatura.extract(downloaded, include_comments=False, include_tables=True, favor_recall=True)
@@ -389,13 +389,13 @@ def extract_links(url: str, same_domain: bool = False, max_links: int = 100) -> 
     same_domain: only return links from the same domain.
     Returns: links with href, internal/external classification, domain.
     """
-    from services.safety.url_guard import is_safe_url
+    from services.safety.url_guard import is_safe_url, safe_fetch_text, safe_urlopen
     if not is_safe_url(url):
         return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     from urllib.parse import urljoin, urlparse
     try:
         import trafilatura
-        downloaded = trafilatura.fetch_url(url)
+        downloaded = safe_fetch_text(url)  # SSRF: validates url + every redirect hop
         if not downloaded:
             return {"ok": False, "error": "Could not fetch URL"}
         raw_links: list = []
@@ -433,7 +433,7 @@ def check_url(url: str, timeout: int = 10) -> dict:
     Check if a URL is accessible. Returns HTTP status, response time, content type.
     Uses HEAD request for speed. Useful for monitoring, link validation.
     """
-    from services.safety.url_guard import is_safe_url
+    from services.safety.url_guard import is_safe_url, safe_fetch_text, safe_urlopen
     if not is_safe_url(url):
         return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     import time as _time
@@ -442,7 +442,7 @@ def check_url(url: str, timeout: int = 10) -> dict:
     start = _time.time()
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Layla/2.0 health-check"}, method="HEAD")
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with safe_urlopen(req, timeout=timeout) as resp:  # SSRF #11: guards initial + redirect hops
             elapsed = round((_time.time() - start) * 1000, 1)
             return {"ok": True, "url": url, "status": resp.status, "accessible": resp.status < 400, "response_ms": elapsed, "content_type": resp.headers.get("Content-Type", ""), "server": resp.headers.get("Server", "")}
     except urllib.error.HTTPError as e:
@@ -456,7 +456,7 @@ def rss_feed(url: str, max_items: int = 20, include_content: bool = False) -> di
     Returns: feed title, description, and entry list (title, link, published, author, summary, tags).
     include_content: fetch and extract full article text for each entry (slow but thorough).
     """
-    from services.safety.url_guard import is_safe_url
+    from services.safety.url_guard import is_safe_url, safe_fetch_text, safe_urlopen
     if not is_safe_url(url):
         return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     try:
@@ -470,7 +470,7 @@ def rss_feed(url: str, max_items: int = 20, include_content: bool = False) -> di
             if include_content and item["link"]:
                 try:
                     import trafilatura
-                    dl = trafilatura.fetch_url(item["link"])
+                    dl = safe_fetch_text(item["link"])  # SSRF #10: feed-supplied entry link is guarded
                     if dl:
                         item["full_text"] = (trafilatura.extract(dl) or "")[:3000]
                 except Exception:
