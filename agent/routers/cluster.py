@@ -221,7 +221,7 @@ async def cluster_task_submit(body: TaskSubmitRequest, request: Request):
         return {"ok": True, "task_id": task_id, "status": "pending"}
     except Exception as e:
         logger.warning("Task submission failed: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="internal error")
 
 
 @router.get("/task/{task_id}/status", response_model=TaskStatusResponse)
@@ -240,7 +240,7 @@ async def cluster_task_status(task_id: str, request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="internal error")
 
 
 @router.post("/task/{task_id}/cancel")
@@ -254,7 +254,7 @@ async def cluster_task_cancel(task_id: str, request: Request):
         cancelled = queue.cancel(task_id)
         return {"ok": cancelled, "task_id": task_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="internal error")
 
 
 # ── Knowledge sync ───────────────────────────────────────────────────────
@@ -305,7 +305,7 @@ async def cluster_sync_push(body: SyncPushRequest, request: Request):
             db.commit()
     except Exception as e:
         logger.warning("Sync push failed: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="internal error")
 
     logger.info("Sync push: imported %d, skipped %d duplicates", imported, skipped)
     return {"ok": True, "imported": imported, "skipped": skipped}
@@ -343,7 +343,7 @@ async def cluster_sync_pull(body: SyncPullRequest, request: Request):
         return {"ok": True, "learnings": learnings, "count": len(learnings)}
     except Exception as e:
         logger.warning("Sync pull failed: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="internal error")
 
 
 # ── Cluster status ───────────────────────────────────────────────────────
@@ -411,7 +411,7 @@ async def cluster_generate_pairing_token(request: Request):
             "instructions": "Share this token with the drone. It expires in 10 minutes.",
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="internal error")
 
 
 @router.post("/pair")
@@ -444,7 +444,7 @@ async def cluster_pair(body: PairRequest, request: Request):
         raise
     except Exception as e:
         logger.error("Pairing failed: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="internal error")
 
 
 # ── Peers listing ────────────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+import logging
 """
 Memory bundle export and import router.
 
@@ -14,6 +15,7 @@ from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
 router = APIRouter(prefix="/memory", tags=["memory"])
+logger = logging.getLogger("layla")
 
 AGENT_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = AGENT_DIR.parent
@@ -260,7 +262,8 @@ async def import_bundle(file: UploadFile = File(...)):
     except zipfile.BadZipFile:
         raise HTTPException(status_code=400, detail="Invalid ZIP file")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("memory handler error")
+        raise HTTPException(status_code=500, detail="internal error")
 
 
 @router.get("/elasticsearch/search")

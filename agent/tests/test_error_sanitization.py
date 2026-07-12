@@ -56,3 +56,14 @@ def test_global_exception_handler_sanitizes(monkeypatch):
     assert r.status_code == 500
     assert _SECRET not in r.text
     assert "Internal server error" in r.text
+
+
+def test_routers_never_return_raw_exception_text_in_500():
+    # audit #13: cluster/memory/onboarding 500 handlers returned `detail=str(e)`, leaking absolute
+    # Windows paths (C:\Users\<name>\...) — the OS username is PII — and internal file layout. They now
+    # log server-side and return a generic detail. Guard against the exact regression re-appearing.
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    for rel in ("routers/cluster.py", "routers/memory.py", "routers/onboarding.py"):
+        src = (root / rel).read_text(encoding="utf-8")
+        assert "status_code=500, detail=str(" not in src, f"{rel} leaks raw exception text in a 500"
