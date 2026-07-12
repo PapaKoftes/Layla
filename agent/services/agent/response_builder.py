@@ -296,7 +296,17 @@ def truncate_at_next_user_turn(text: str) -> str:
         if _in_fence(i):
             continue
         prev = t[:i].rstrip()
-        if i == 0 or t[i - 1] == "\n" or (prev and prev[-1] in ".!?"):
+        _line_start = (i == 0 or t[i - 1] == "\n")
+        if _line_start or (prev and prev[-1] in ".!?"):
+            # A MID-LINE ". You:" that PAIRS with a following assistant/aspect turn is a quoted dialogue
+            # EXAMPLE the user asked for ("Sure. You: Hi. Assistant: Hello!") — not the model role-playing
+            # the next turn, so don't cut it. A LINE-START "User:" is the common next-turn hallucination
+            # and is always cut.
+            if not _line_start and re.search(
+                r"\b(?:Assistant|Bot|AI|Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\s*:",
+                t[mt.end():mt.end() + 200], re.IGNORECASE,
+            ):
+                continue
             cut = t[:i].strip()
             return cut if cut else t
     return t
