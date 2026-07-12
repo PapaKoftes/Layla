@@ -105,8 +105,11 @@ def ingest_docs(source: str, label: str = "") -> dict[str, Any]:
     try:
         guard = bool(cfg.get("doc_injection_guard_enabled", True))
         if src.lower().startswith(("http://", "https://")):
+            from services.safety.url_guard import safe_urlopen
             req = Request(src, headers={"User-Agent": "LaylaDocIngest/1.0"})
-            with urlopen(req, timeout=45) as resp:
+            # SSRF guard: validate the URL + every redirect hop before fetching (a scheme-prefix check
+            # alone does not stop private/loopback/link-local targets). SSRFBlocked → caught below.
+            with safe_urlopen(req, timeout=45) as resp:
                 body = resp.read().decode("utf-8", errors="replace")
             body = _apply_injection_guard(body[:500_000], guard)
             out = out_dir / "fetched.md"

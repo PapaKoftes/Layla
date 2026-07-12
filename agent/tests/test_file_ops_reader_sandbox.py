@@ -54,3 +54,25 @@ def test_read_pptx_traversal_outside_sandbox(tmp_path):
 
     assert res["ok"] is False
     assert "sandbox" in res["error"].lower()
+
+
+def test_read_notebook_rejects_path_outside_sandbox(tmp_path):
+    # audit #3: read_notebook read any JSON-parseable file via absolute/../ path with no sandbox gate.
+    from layla.tools.impl import file_ops
+
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+    outside = tmp_path / "secrets" / "creds.ipynb"
+    outside.parent.mkdir()
+    # A valid notebook JSON whose "source" would otherwise be returned verbatim.
+    outside.write_text('{"cells":[{"cell_type":"code","source":["SECRET_TOKEN=abc"]}]}', encoding="utf-8")
+
+    core_patch, base_patch = _sandbox_at(sandbox)
+    with core_patch, base_patch:
+        res_abs = file_ops.read_notebook(path=str(outside))
+        res_trav = file_ops.read_notebook(path="../secrets/creds.ipynb")
+
+    assert res_abs["ok"] is False and "sandbox" in res_abs["error"].lower()
+    assert res_trav["ok"] is False and "sandbox" in res_trav["error"].lower()
+    # And the secret content never leaked into either result.
+    assert "SECRET_TOKEN" not in str(res_abs) and "SECRET_TOKEN" not in str(res_trav)
