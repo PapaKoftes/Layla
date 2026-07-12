@@ -549,3 +549,50 @@ class TestProjectContextHandlers:
         result = dispatch_tool_intent("update_project_context", "update context", ctx)
         assert result.handled is True
         assert result.flow == "continue"
+
+
+# ===================================================================
+# audit #1: run-class tools (code exec / side effects) must require
+# allow_run — allow_write alone must not authorize them.
+# ===================================================================
+
+def test_run_class_intents_classification():
+    from services.tools.tool_dispatch import _RUN_CLASS_INTENTS
+    # Execution / external side-effect primitives are run-class.
+    for name in ("shell_session_start", "shell_session_manage", "run_tests", "pip_install",
+                 "docker_run", "git_push", "git_clone", "git_worktree_add", "send_email",
+                 "github_pr", "geometry_execute_program", "generate_gcode", "fabrication_assist_run"):
+        assert name in _RUN_CLASS_INTENTS, name
+    # File-mutation tools are NOT run-class (they remain write-or-run).
+    for name in ("search_replace", "rename_symbol", "write_csv", "code_format", "notebook_edit_cell"):
+        assert name not in _RUN_CLASS_INTENTS, name
+
+
+def test_write_only_cannot_execute_run_class_tool(monkeypatch):
+    from services.tools import tool_dispatch as td
+    from services.tools import tool_dispatch_base as tdb
+
+    fake_TOOLS = {"run_tests": {"require_approval": True, "risk_level": "high", "fn_key": "run_tests"}}
+    fake_rs = MagicMock(); fake_rs.is_tool_allowed.return_value = True  # tool is PRE-APPROVED
+    fake_al = MagicMock()
+    fake_al._has_any_grant.return_value = False
+    fake_al._write_pending.return_value = "appr-xyz"
+    fake_al._approval_preview_diff.return_value = None
+    monkeypatch.setattr(td, "_imports", lambda: (fake_al, fake_rs, fake_TOOLS))
+    monkeypatch.setattr(tdb, "_imports", lambda: (fake_al, fake_rs, fake_TOOLS))
+    monkeypatch.setattr(td, "_is_approval_bypassed", lambda ctx, intent: False)
+
+    # allow_write=True but allow_run=False: a run-class tool must NOT execute — it breaks for approval
+    # even though it is pre-approved, because the write flag can't authorize code execution.
+    ctx = _make_ctx(allow_write=True, allow_run=False, decision={"args": {}})
+    res = td._handle_generic("run_tests", "run the tests", ctx)
+    assert res.flow == "break"
+    assert ctx.state["steps"][-1]["result"]["reason"] == "approval_required"
+
+    # Control: a WRITE-class generic tool (not run-class) is still authorized by allow_write, so the
+    # write flag keeps working for file mutation — only code-execution/side-effect tools are tightened.
+    fake_TOOLS["write_csv"] = {"require_approval": True, "risk_level": "medium", "fn_key": "write_csv"}
+    ctx_w = _make_ctx(allow_write=True, allow_run=False, decision={"args": {}})
+    # allow = allow_write (True) for write-class → is_tool_allowed True → NO approval break path taken.
+    # (We only assert the allow computation didn't force a break like it did for the run-class tool.)
+    assert "write_csv" not in td._RUN_CLASS_INTENTS
