@@ -111,7 +111,9 @@ def apply_retention_policies(cfg: dict | None = None) -> dict[str, Any]:
             ("aspect_memories", int(c.get("retention_aspect_memories_days", 365)), None),
             ("session_prompts", int(c.get("retention_session_prompts_days", 180)), None),
             # M2: previously-unbounded tables. Each guarded by _cols() (skipped if absent/no created_at).
-            ("journal", int(c.get("retention_journal_days", 365)), None),
+            # NB: the created table is 'operator_journal' (migrations.py) — an earlier 'journal'
+            # here silently no-op'd because _cols('journal') is empty, defeating retention entirely.
+            ("operator_journal", int(c.get("retention_journal_days", 365)), None),
             ("scheduler_history", int(c.get("retention_scheduler_history_days", 90)), None),
             ("capability_events", int(c.get("retention_capability_events_days", 180)), None),
             ("wakeup_log", int(c.get("retention_wakeup_log_days", 180)), None),
@@ -148,6 +150,13 @@ def apply_retention_policies(cfg: dict | None = None) -> dict[str, Any]:
             _orphan_vector_ids: list[str] = []  # H1: vectors whose rows we're deleting
             for table, days, _ in policies:
                 if "created_at" not in _cols(table):
+                    # Either the table doesn't exist (name mismatch) or has no created_at
+                    # column — the policy silently no-ops. Log it so a future typo like the
+                    # 'journal' vs 'operator_journal' mismatch surfaces instead of hiding.
+                    logger.debug(
+                        "memory_consolidation: retention policy for %r skipped "
+                        "(table absent or no created_at column)", table,
+                    )
                     continue
                 cutoff = _cutoff(days)
                 try:
