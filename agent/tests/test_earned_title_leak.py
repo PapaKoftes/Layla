@@ -34,7 +34,15 @@ def test_degenerate_fence_loop_collapses_to_empty():
 
 
 def test_objective_echo_cut():
-    assert strip_junk_from_reply("The answer is Paris. Objective: Research capital") == "The answer is Paris."
+    # Round-16 #1: "Objective:" is a common word (OKRs, charters), so the cut must be conservative —
+    # only a LINE-ANCHORED "Objective:" that co-occurs with an UNAMBIGUOUS sibling scaffold marker is a
+    # leaked prompt echo. A lone / inline "Objective:" is legit content and is PRESERVED.
+    assert strip_junk_from_reply(
+        "Here is the answer.\nObjective: research capital\nCurrent goal: research capital"
+    ) == "Here is the answer."
+    # Lone / inline "Objective:" (no sibling scaffold) is kept — no more truncating an OKR/charter.
+    assert strip_junk_from_reply("The answer is Paris. Objective: Research capital") == "The answer is Paris. Objective: Research capital"
+    assert strip_junk_from_reply("Objective: grow revenue.\nKey results: 1) x 2) y") == "Objective: grow revenue.\nKey results: 1) x 2) y"
 
 
 def test_echo_patterns_marker_cut():
