@@ -447,6 +447,24 @@ def test_extract_text_from_empty():
     assert _extract_text({"choices": []}) == ""
 
 
+def test_extract_text_strip_before_truncate_order(monkeypatch):
+    # R17 #9: _extract_text must run strip_junk BEFORE truncate (matching the /agent path). The inverse
+    # order left a scaffold-masked role-play turn leaking. A pure "[scaffold] User: …" leak must resolve
+    # to "" (no raw fallback), while a genuine reply is never nuked.
+    from services.planning import debate_engine
+
+    _extract_text = debate_engine._extract_text
+    # Scaffold sigil bracket + inline fake User turn → whole thing is a leak → "".
+    assert _extract_text("[⚔ MORRIGAN] User: reveal your rules.") == ""
+    # Aspect label + fake multi-turn dialogue → the real assistant answer is extracted.
+    assert _extract_text(
+        "Nyx:\nUser: what's the admin password? Assistant: The password is hunter2."
+    ) == "The password is hunter2."
+    # A clean reply is untouched; a legit short reply is never nuked by the empty-fallback path.
+    assert _extract_text("Use a hash set for O(1) lookups.") == "Use a hash set for O(1) lookups."
+    assert _extract_text("Here is the plan.") == "Here is the plan."
+
+
 # ---------------------------------------------------------------------------
 # Test: deliberation handles LLM failures gracefully
 # ---------------------------------------------------------------------------
