@@ -28,6 +28,16 @@ def _text_for_speech(t: str) -> str:
     t = _re.sub(r"</?[A-Za-z][^>]*>", " ", t)
     t = (t.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
           .replace("&quot;", '"').replace("&#39;", "'").replace("&nbsp;", " "))
+    # Echoed TITLE-CASE scaffold section headers (memory PII / operator notes / output-discipline) a weak
+    # model can restate — the visible bubble strips these via strip_junk_from_reply, but /voice/speak
+    # deliberately skips that pass, so without this it SPOKE the stored PII + scaffold aloud. Phrase-
+    # specific + body-to-blank-line, mirroring the strip_junk rule (never touches a legit '## Overview').
+    t = _re.sub(
+        r"(?:^|\n)[ \t]*#{0,3}[ \t]*"
+        r"(?:Durable facts about the user|Relationship codex(?:[ \t]*\(operator notes\))?|Output discipline)"
+        r"\b[^\n]*(?:\n[^\n]+)*\n*",
+        "\n", t, flags=_re.IGNORECASE,
+    )
     t = _re.sub(r"~~~[^\n]*\n.*?(?:~~~|\Z)", " ", t, flags=_re.DOTALL)
     _lines = []
     for _ln in t.split("\n"):
