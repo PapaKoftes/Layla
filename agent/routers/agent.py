@@ -782,6 +782,26 @@ async def agent(req: AgentRequest, request: Request):
             from services.retrieval.response_cache import get_cached_response
             cached = get_cached_response(goal, aspect_id or "morrigan", cache_ttl)
             if cached:
+                # An EMPTY request aspect auto-selects a resolved aspect but is keyed under "morrigan",
+                # so the "morrigan" bucket can hold any aspect's reply. If THIS request explicitly named
+                # an aspect that differs from the cached payload's RESOLVED aspect, don't replay the wrong
+                # aspect's voice/label/sigil — treat it as a miss and regenerate.
+                _req_aspect = (aspect_id or "").strip().lower()
+                _pay_aspect = str(cached.get("aspect") or "").strip().lower()
+                if _req_aspect and _pay_aspect and _req_aspect != _pay_aspect:
+                    cached = None
+            if cached:
+                # Re-validate the stored reply against the CURRENT content-guard config: an operator can
+                # tighten the guard within the TTL, and the write-time approval is stale. A now-blocked
+                # reply must not replay from cache — fall through to a fresh (re-guarded) run instead.
+                try:
+                    import runtime_safety as _rs_cache
+                    from services.safety.content_guard import check_output as _cg_cache
+                    if _cg_cache(cached.get("response", ""), _rs_cache.load_config()).blocked:
+                        cached = None
+                except Exception:
+                    pass
+            if cached:
                 cached.setdefault("state", {})
                 if isinstance(cached["state"], dict):
                     cached["state"]["status"] = "cache_hit"
