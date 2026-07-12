@@ -52,7 +52,11 @@ export function cleanLaylaText(s, messageAspect) {
   // opening emphasis, \k<em> matches empty (JS backref to a non-participating group), so the answer's OWN
   // leading bold is NOT eaten — parity with the backend guard (response_builder.py pat_colon `(?(em)…)`),
   // which fixes 'Morrigan: **Use a set.**' mangling to 'Use a set.**' (stranded closing '**').
-  var lead = /^[ \t]*(?:>[ \t]*)?(?:#{1,6}[ \t]*)?(?<em>[*_]{1,2})?[ \t]*(?<label>(?:Layla\b[ \t]*)?(?:[⚔✦◎⚡⌖⊛]️?[ \t]*)?(?:(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b[ \t]*)?(?:\([^)\n]*\)[ \t]*|\[[^\]\n]{1,30}\][ \t]*)?(?:[-–—,][ \t]*[^:\n]{1,30}[ \t]*)?)(?:\k<em>)?[ \t]*(?::[ \t]*(?:\k<em>[ \t]*)?|\n+)/i;
+  // The NAME identity lives in `label` (core); the paren/bracket decoration and the dash/comma facet
+  // are SEPARATE groups AFTER it — mirroring the backend (core vs deco_after). Keeping them out of the
+  // name-capture is what stops a leading list bullet "- Echo:" from swallowing the "- " as a facet and
+  // classifying the bullet as a self-label (backend never did — its name-check reads the core only).
+  var lead = /^[ \t]*(?:>[ \t]*)?(?:#{1,6}[ \t]*)?(?<em>[*_]{1,2})?[ \t]*(?<label>(?:Layla\b[ \t]*)?(?:[⚔✦◎⚡⌖⊛]️?[ \t]*)?(?:(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b[ \t]*)?(?:[⚔✦◎⚡⌖⊛]️?[ \t]*)?)(?:\([^)\n]*\)[ \t]*|\[[^\]\n]{1,30}\][ \t]*)?(?<facet>[-–—,][ \t]*[^:\n]{1,30})?[ \t]*(?:\k<em>)?[ \t]*(?::[ \t]*(?:\k<em>[ \t]*)?|\n+)/i;
   // Active-aspect gate (parity with the backend): a BARE 'Name:'/'Name\n'/'## Name' whose aspect is
   // NOT active is a definition subject ('Echo: a repetition of sound'), not a self-label — keep it.
   // Decorated forms (sigil/*_/paren/bracket/dash/comma) are unambiguous, strip. Prefer the MESSAGE's
@@ -62,8 +66,13 @@ export function cleanLaylaText(s, messageAspect) {
   var _active = { layla: 1 }; if (_cur) _active[_cur] = 1;
   for (var _i = 0; _i < 2; _i++) {
     var m = t.match(lead);
-    var _lbl = (m && m.groups && m.groups.label) || '';
-    if (m && _lbl && (/[⚔✦◎⚡⌖⊛]/.test(_lbl) || /\b(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b/i.test(_lbl))) {
+    var _lbl = (m && m.groups && m.groups.label) || '';   // core name identity ONLY (no facet/bullet)
+    var _facet = (m && m.groups && m.groups.facet) || '';
+    // Title-case gate on the dash/comma facet (parity with backend deco_after `(?-i:[A-Z])`): a
+    // lowercase facet ("Eris, discovered in 2005, is:") is a definitional clause the SUBJECT is the name,
+    // not a self-label — keep the whole reply. Tested case-SENSITIVELY (separate literal, no /i flag).
+    var _facetBad = _facet && !/^[-–—,][ \t]*[A-Z]/.test(_facet);
+    if (m && _lbl && !_facetBad && (/[⚔✦◎⚡⌖⊛]/.test(_lbl) || /\b(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b/i.test(_lbl))) {
       var _decorated = /[*_()\[\]—–,]/.test(m[0]) || /[⚔✦◎⚡⌖⊛]/.test(m[0]);
       var _nm = (_lbl.match(/\b(Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b/i) || [])[1];
       if (!_decorated && _nm && !_active[_nm.toLowerCase()]) { break; }   // non-active bare name → keep

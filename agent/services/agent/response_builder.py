@@ -1071,13 +1071,40 @@ def clean_response_text(text: str, aspect_names: tuple[str, ...] = ()) -> str:
     return text
 
 
-def clean_reply_text(raw: str, aspect_names: tuple[str, ...] = (), status: str = "finished", apply_safety: bool = True) -> str:
+def active_name_set(aspect) -> set:
+    """Lower-cased names whose BARE 'Name:' leading label is a SELF-label (not a definition subject):
+    always 'layla', plus the active aspect (id/display-name string OR a result dict), plus every custom
+    aspect name. An EMPTY/absent aspect falls back to STRIP-ALL (every built-in name) — matching the
+    live-stream (active_names=None) behavior. Shared source of truth for the self-label gate so a bare
+    'Echo: <definition>' for a NON-active aspect is preserved on every finalization path."""
+    s = {"layla"}
+    try:
+        if isinstance(aspect, dict):
+            n = str(aspect.get("aspect_name") or aspect.get("aspect") or "").strip()
+        else:
+            n = str(aspect or "").strip()
+        if n:
+            s.add(n.lower())
+        else:
+            s.update(x.lower() for x in _ASPECT_NAMES_BASE)
+        s.update(c.lower() for c in _known_custom_aspect_names())
+    except Exception:
+        pass
+    return s
+
+
+def clean_reply_text(raw: str, aspect_names: tuple[str, ...] = (), status: str = "finished",
+                     apply_safety: bool = True, active_aspect=None) -> str:
     """The full reply-FINALIZATION floor, for reply paths OUTSIDE the interactive /agent router — async
     background/subprocess tasks, resume, execute_plan — which extract steps[-1]['result'] themselves and
     previously persisted/served it RAW. Mirrors the router: strip_junk_from_reply → truncate_at_next_user_turn
-    → polish_output (on finished) → content_guard.check_output. Never raises."""
+    → polish_output (on finished) → content_guard.check_output. Never raises.
+
+    active_aspect (the run's aspect id/name, or its result dict) threads the active-aspect gate so a bare
+    NON-active 'Echo: <definition>' is preserved here too; None keeps the legacy strip-all behavior."""
     try:
-        t = truncate_at_next_user_turn(strip_junk_from_reply(raw or "", tuple(aspect_names)))
+        _an = active_name_set(active_aspect) if active_aspect is not None else None
+        t = truncate_at_next_user_turn(strip_junk_from_reply(raw or "", tuple(aspect_names), active_names=_an))
     except Exception:
         t = (raw or "").strip()
     # A RAW tool-result dict is not an answer — suppress it so the caller's standby fires. is_junk_reply
