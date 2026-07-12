@@ -798,6 +798,34 @@ def test_inline_dialogue_example_not_truncated():
     assert T("A. User: fake continuation with no reply here") == "A."
 
 
+def test_echoed_titlecase_scaffold_headers_are_stripped():
+    # R19 #2: the prompt builder injects TITLE-CASE scaffold section headers ('## Durable facts about the
+    # user …' with stored PII, '## Relationship codex (operator notes)', '## Output discipline'). A weak
+    # model restates the block before its answer; the case-sensitive ALL-CAPS cut missed them, leaking
+    # PII/operator notes into the bubble + persisted history. Phrase-specific removal keeps the answer.
+    from services.agent.response_builder import strip_junk_from_reply as S, truncate_at_next_user_turn as T
+    av = {"layla", "morrigan"}
+
+    def run(x):
+        return T(S(x, active_names=av))
+
+    assert run("## Durable facts about the user (authoritative — treat as ground truth, do not "
+               "second-guess or re-ask)\n- name: Bob\n\nHi Bob.") == "Hi Bob."
+    assert run("## Relationship codex (operator notes)\nHe is blunt.\n\nHello.") == "Hello."
+    assert run("## Output discipline\nReply with ONLY your message.\n\nThe answer is 42.") == "The answer is 42."
+    # A legitimate title-case heading answer is NOT touched (the phrase-specificity + \b protect it).
+    assert run("## Overview\nThis function sorts the list.") == "## Overview\nThis function sorts the list."
+    assert run("## Durability of the design\nIt scales well.") == "## Durability of the design\nIt scales well."
+
+
+def test_voice_strips_echoed_scaffold_headers():
+    # R19 #6: /voice/speak deliberately skips strip_junk, so the echoed scaffold headers (+PII) were
+    # spoken aloud even though the bubble strips them. _text_for_speech now mirrors the phrase strip.
+    from routers.voice import _text_for_speech as V
+    out = V("## Durable facts about the user (authoritative)\n- name: Bob\n\nHi Bob.")
+    assert "Durable facts" not in out and "name: Bob" not in out and "Hi Bob" in out
+
+
 def test_mid_prose_bracketed_aspect_label_is_stripped():
     # R18 #11: the debate (council/tribunal) synthesis seeds "[Nyx]:" / "[Nyx's critique]:" (sigil-less,
     # colon OUTSIDE the bracket); a weak synthesis model can echo it mid-answer. No scrubber caught the

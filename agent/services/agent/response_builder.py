@@ -990,6 +990,19 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = (), active_
     _mecho = re.search(r"#{1,3}[ \t]*(?:SYSTEM|TASK|CONTEXT|SCRATCHPAD|REPO|OBJECTIVE|INSTRUCTIONS)\b", t)
     if _mecho:
         t = t[: _mecho.start()].strip()
+    # Echoed TITLE-CASE scaffold section headers the prompt builder injects into the reply model's system
+    # head — memory blocks ('## Durable facts about the user …', which carries stored PII, and '##
+    # Relationship codex (operator notes)') and '## Output discipline'. A weak model restates the block
+    # before its answer; the case-SENSITIVE _mecho cut above only catches ALL-CAPS scaffold, so these
+    # slipped through and leaked PII/operator notes into the bubble (and the persisted + re-fed history).
+    # PHRASE-SPECIFIC (never a generic '## Heading' cut, which nuked a legit '## Overview' answer): remove
+    # the header line + its scaffold body up to the blank line that separates it from the real answer.
+    t = re.sub(
+        r"(?:^|\n)[ \t]*#{0,3}[ \t]*"
+        r"(?:Durable facts about the user|Relationship codex(?:[ \t]*\(operator notes\))?|Output discipline)"
+        r"\b[^\n]*(?:\n[^\n]+)*\n*",
+        "\n", t, flags=re.IGNORECASE,
+    ).strip()
     # NOTE: a bare "(?:^|\n)\s*##" used to live in this tuple and truncated the reply at the FIRST
     # markdown heading — so ANY legitimate answer opening with "## Overview" / "## Steps" was cut to
     # EMPTY and replaced by the "Sorry — I couldn't generate a response" fallback. Removed. A second
