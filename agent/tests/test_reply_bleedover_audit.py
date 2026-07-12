@@ -743,3 +743,23 @@ def test_bracketed_layla_assistant_label_and_eos_residue():
     assert S("The answer is 42.</s>") == "The answer is 42."
     assert S("42.<|eot_id|>") == "42."
     assert S("done.<|eom_id|>") == "done."
+
+
+# ── 25. Round-15: active-aspect gate — a NON-active aspect-name definition survives (glossary) ─────
+
+def test_active_aspect_gate_preserves_nonactive_definition():
+    from services.agent.response_builder import strip_junk_from_reply as S
+    _SIG4 = "⚔"
+    A = {"layla", "morrigan"}   # Morrigan is the active aspect
+    # A bare aspect-name DEFINITION for a NON-active aspect is preserved (not a self-label).
+    assert S("Echo: a repetition of sound caused by reflection.", active_names=A) == "Echo: a repetition of sound caused by reflection."
+    assert S("Nyx: the primordial goddess of night.", active_names=A) == "Nyx: the primordial goddess of night."
+    assert S("## Cassandra\nA princess of Troy.", active_names=A) == "## Cassandra\nA princess of Troy."
+    # The ACTIVE aspect's self-label (and Layla) still strip.
+    assert S("Morrigan: here is the fix.", active_names=A) == "here is the fix."
+    assert S("Layla: the answer.", active_names=A) == "the answer."
+    # DECORATED forms are unambiguous self-labels and strip regardless of active aspect.
+    assert S(_SIG4 + " Echo: answer", active_names=A) == "answer"
+    assert S("Echo (The Listener): answer", active_names=A) == "answer"
+    # WITHOUT active_names (streaming / no aspect context) the bare form strips defensively for all names.
+    assert S("Echo: a repetition of sound.") == "a repetition of sound."
