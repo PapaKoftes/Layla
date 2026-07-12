@@ -41,6 +41,55 @@ def test_stabilize_deep_to_light_stays_light():
     assert stabilize_reasoning_mode("", "none") == "none"
 
 
+def test_nonstream_deliberation_floors_max_tokens(monkeypatch, tmp_path):
+    # R17 #7: the NON-streaming deliberation path must floor completion_max_tokens to 512 the same way
+    # the streaming path does (stream_handler.py:370). Without the floor, the ~6 seeded POV lines exhaust
+    # a 256/40-token budget before the conclusion, split_deliberation_output returns "", and the caller
+    # shows its "No response" standby instead of the deliberated answer.
+    import agent_loop
+
+    captured = {}
+
+    def _cap_completion(prompt, **kw):
+        captured["max_tokens"] = kw.get("max_tokens")
+        return {"choices": [{"message": {
+            "content": "[CONCLUSION - Morrigan]: Use retries with exponential backoff."}}]}
+
+    monkeypatch.setattr(agent_loop, "system_overloaded", lambda: False)
+    cfg = {
+        "sandbox_root": str(tmp_path), "use_chroma": False, "knowledge_max_bytes": 0,
+        "learnings_n": 0, "semantic_k": 0, "planning_enabled": False, "max_tool_calls": 10,
+        "convo_turns": 0, "max_runtime_seconds": 5, "temperature": 0.0,
+        "completion_max_tokens": 40, "telemetry_enabled": False, "performance_mode": "low",
+        "enable_cognitive_lens": False, "enable_lens_knowledge": False,
+        "enable_behavioral_rhythm": False, "enable_ui_reflection": False,
+        "enable_operational_guidance": False, "enable_personality_expression": False,
+        "uncensored": False, "nsfw_allowed": False, "deliberation_mode": "solo",
+    }
+    monkeypatch.setattr(agent_loop.runtime_safety, "load_config", lambda: cfg)
+    monkeypatch.setattr(agent_loop, "_get_effective_config", lambda bc: dict(bc))
+    monkeypatch.setattr(agent_loop.runtime_safety, "load_identity", lambda: "")
+    monkeypatch.setattr(agent_loop.runtime_safety, "load_personality", lambda: "")
+    monkeypatch.setattr(agent_loop, "_llm_decision", lambda *a, **k: {
+        "action": "reason", "tool": None, "args": {}, "objective_complete": True, "priority_level": "high",
+    })
+    monkeypatch.setattr(agent_loop, "run_completion", _cap_completion)
+    monkeypatch.setattr(agent_loop.orchestrator, "select_aspect",
+                        lambda *a, **k: {"id": "morrigan", "name": "Morrigan"})
+    monkeypatch.setattr(agent_loop.orchestrator, "should_deliberate", lambda *a, **k: True)
+    monkeypatch.setattr(agent_loop, "_save_outcome_memory", lambda *a, **k: None)
+    monkeypatch.setattr(agent_loop, "_semantic_recall", lambda *a, **k: "")
+    monkeypatch.setattr(agent_loop, "_maybe_save_echo_memory", lambda *a, **k: None)
+
+    agent_loop.autonomous_run(
+        goal="What do you think I should do about the retry logic?",
+        context="", workspace_root=str(tmp_path), allow_write=False, allow_run=False,
+        conversation_history=[], aspect_id="", show_thinking=False,
+    )
+    assert captured.get("max_tokens") is not None
+    assert captured["max_tokens"] >= 512, captured
+
+
 def test_low_performance_caps_deep_to_light(monkeypatch, tmp_path):
     import agent_loop
 

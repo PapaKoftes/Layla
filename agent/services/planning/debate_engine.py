@@ -377,8 +377,21 @@ def _extract_text(result: dict | str) -> str:
         return ""
     try:
         from services.agent.response_builder import strip_junk_from_reply, truncate_at_next_user_turn
-        cleaned = strip_junk_from_reply(truncate_at_next_user_turn(text))
-        return cleaned if cleaned.strip() else text
+        # Order is LOAD-BEARING and must match every /agent site (routers/agent.py:1435):
+        # strip_junk FIRST peels the leading scaffold/persona marker so truncate can then SEE and cut the
+        # exposed role-play "User:"/"Assistant:" turn (and re-strip the label the cut exposes). The inverse
+        # order left "[⚔ MORRIGAN] User: …" leaking (truncate can't cut a "User:" masked by the "]" prefix,
+        # then strip peels the bracket and has no role-play-turn rule) — response_builder.py:254-256.
+        _stripped = strip_junk_from_reply(text)
+        cleaned = truncate_at_next_user_turn(_stripped)
+        if cleaned.strip():
+            return cleaned
+        # cleaned is empty. Keep the raw only as a genuine anti-nuke fallback — but when the emptiness came
+        # from removing a leading fake role-play turn ("[scaffold] User: …"), returning raw would re-leak
+        # the exact turn we just cut, so resolve it to "" (no fallback), matching the /agent path.
+        if re.match(r"^\s*(?:User|Human|You|Assistant|Bot|AI)\s*:", _stripped, re.IGNORECASE):
+            return ""
+        return text
     except Exception:
         return text
 
