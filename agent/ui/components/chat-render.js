@@ -706,7 +706,9 @@ export function _renderDeliberationTranscript(msgDiv, meta) {
     synth.innerHTML = '<strong style="color:var(--asp);font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase">Synthesis</strong>';
     var synthBody = document.createElement('div');
     synthBody.style.cssText = 'margin-top:3px;white-space:pre-wrap';
-    synthBody.textContent = String(meta.synthesis_notes || '').trim().slice(0, 600);
+    // Clean synthesis_notes like the sibling per-voice cards (L687/L694) — it's raw synthesis-model
+    // prose, so a leaked label / <think> trace / [EARNED_TITLE:…] marker would otherwise render verbatim.
+    synthBody.textContent = cleanLaylaText(String(meta.synthesis_notes || '')).trim().slice(0, 600);
     synth.appendChild(synthBody);
     container.appendChild(synth);
   }
