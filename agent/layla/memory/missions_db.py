@@ -260,10 +260,11 @@ def update_background_task(
 
 
 def reap_orphaned_tasks() -> int:
-    """On startup, reset background_tasks/missions rows left in a running state by a crash to
-    'interrupted' (audit 7a). Without this a task that died with the server shows 'running
-    forever' in the UI and never self-heals. Marked interrupted — NOT re-queued — so a task with
-    side effects isn't silently re-executed; the user resumes manually. Returns rows updated."""
+    """On startup, reap rows left in a running state by a crash (audit 7a). Without this a task that
+    died with the server shows 'running forever' and never self-heals. Missions -> 'paused' (RESUMABLE
+    from current_step, since missions are step-idempotent); background_tasks -> 'interrupted' (NOT
+    re-queued — a task with side effects isn't silently re-executed; the user acts manually). Also reaps
+    'queued' background tasks whose worker thread died before starting. Returns rows updated."""
     n = 0
     try:
         migrate()
@@ -276,9 +277,20 @@ def reap_orphaned_tasks() -> int:
                         continue
                     set_updated = ", updated_at=?" if "updated_at" in cols else ""
                     params = ((now,) if set_updated else ())
+                    # Missions are step-idempotent (resume re-executes from current_step, not from
+                    # scratch), so a crashed one is safely RESUMABLE — reap it to 'paused', which
+                    # resume_mission_api accepts and the board buckets in its 'paused' column (audit
+                    # #4/#5). 'interrupted' was a dead-end: no resume path accepted it and the board
+                    # mislabeled it as fresh 'backlog'. Background tasks are NOT idempotent (their
+                    # in-memory worker thread is gone and re-running could repeat side effects), so they
+                    # stay 'interrupted' for manual review. Also reap 'queued' background tasks that
+                    # never started — safe, no side effects ran, and their thread can't be recovered
+                    # (audit #6).
+                    reaped = "paused" if table == "missions" else "interrupted"
+                    states = ("('running','started','in_progress')" if table == "missions"
+                              else "('running','started','in_progress','queued')")
                     cur = db.execute(
-                        f"UPDATE {table} SET status='interrupted'{set_updated} "
-                        f"WHERE status IN ('running','started','in_progress')",
+                        f"UPDATE {table} SET status='{reaped}'{set_updated} WHERE status IN {states}",
                         params,
                     )
                     n += int(cur.rowcount or 0)
@@ -286,7 +298,7 @@ def reap_orphaned_tasks() -> int:
                     pass
             db.commit()
         if n:
-            logger.info("reaped %d orphaned running task/mission row(s) -> interrupted", n)
+            logger.info("reaped %d orphaned task/mission row(s) (missions->paused, tasks->interrupted)", n)
     except Exception as e:
         logger.debug("reap_orphaned_tasks: %s", e)
     return n
