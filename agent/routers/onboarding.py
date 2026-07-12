@@ -67,7 +67,8 @@ async def onboarding_stage():
         info = ob.get_current_stage_info()
         return {"ok": True, **info}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("onboarding handler error")
+        raise HTTPException(status_code=500, detail="internal error")
 
 
 @router.post("/start")
@@ -84,7 +85,8 @@ async def onboarding_start():
             "stage_info": stage_info,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("onboarding handler error")
+        raise HTTPException(status_code=500, detail="internal error")
 
 
 @router.post("/response")
@@ -96,7 +98,8 @@ async def onboarding_response(body: StageResponse):
         result = ob.submit_response(body.stage, body.data)
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("onboarding handler error")
+        raise HTTPException(status_code=500, detail="internal error")
 
 
 @router.post("/advance")
@@ -108,7 +111,8 @@ async def onboarding_advance():
         result = ob.advance()
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("onboarding handler error")
+        raise HTTPException(status_code=500, detail="internal error")
 
 
 @router.post("/complete")
@@ -120,7 +124,8 @@ async def onboarding_complete():
         result = ob.complete()
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("onboarding handler error")
+        raise HTTPException(status_code=500, detail="internal error")
 
 
 @router.post("/skip")
@@ -132,4 +137,5 @@ async def onboarding_skip():
         result = ob.skip()
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("onboarding handler error")
+        raise HTTPException(status_code=500, detail="internal error")
