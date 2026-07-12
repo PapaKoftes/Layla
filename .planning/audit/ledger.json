@@ -31,8 +31,9 @@
       "last_round": 1,
       "dry_rounds": 0,
       "quiescent": false,
-      "open_findings": 11,
+      "open_findings": 0,
       "max_severity": "high",
+      "_note": "Round-1 found 15 (4 auto-fixed by the loop; 11 report-only). All 11 report-only were fixed by hand in batches 1010a38/7477578/264a2a9/e72ac91 (SSRF cluster + safe_urlopen/safe_fetch_text redirect guard, read_notebook sandbox, /agent+/v1 input content-guard, allow_write/allow_run run-class split, 500 str(e) PII). Suite green 3041.",
       "lenses": [
         "tool-execution sandbox: can allow_write/allow_run be escaped, or a tool write/run outside sandbox_root?",
         "path traversal in file tools (read_file/list_dir/glob/write): ../ escapes, absolute paths, symlinks",
