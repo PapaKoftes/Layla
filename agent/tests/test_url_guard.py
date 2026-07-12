@@ -68,3 +68,55 @@ def test_reason_is_descriptive():
     assert not ok and "blocked" in reason.lower()
     ok2, reason2 = check_url("ftp://x/y")
     assert not ok2 and "scheme" in reason2.lower()
+
+
+# ── safe_urlopen / safe_fetch_text: redirect-revalidating guarded fetch (audit round-1 SSRF cluster) ──
+
+def test_safe_urlopen_blocks_internal_and_obfuscated():
+    from services.safety.url_guard import safe_urlopen, SSRFBlocked
+    import pytest
+    for u in ("http://169.254.169.254/latest/meta-data/", "http://127.0.0.1:6379/",
+              "http://[::1]/", "http://2130706433/", "http://192.168.0.1/"):
+        with pytest.raises(SSRFBlocked):
+            safe_urlopen(u, timeout=2)
+
+
+def test_safe_urlopen_rejects_non_http_scheme():
+    from services.safety.url_guard import safe_urlopen, SSRFBlocked
+    import pytest
+    with pytest.raises(SSRFBlocked):
+        safe_urlopen("file:///etc/passwd", timeout=2)
+
+
+def test_safe_fetch_text_returns_empty_on_block():
+    # Drop-in for trafilatura.fetch_url in crawl/feed loops: blocked URL yields "" (skip), not a raise.
+    from services.safety.url_guard import safe_fetch_text
+    assert safe_fetch_text("http://169.254.169.254/", timeout=2) == ""
+    assert safe_fetch_text("http://127.0.0.1:8000/admin", timeout=2) == ""
+
+
+def test_safe_urlopen_blocks_ipv4_mapped_loopback():
+    from services.safety.url_guard import safe_urlopen, SSRFBlocked
+    import pytest
+    with pytest.raises(SSRFBlocked):
+        safe_urlopen("http://[::ffff:127.0.0.1]/", timeout=2)
+
+
+def test_guarded_redirect_handler_vetoes_unsafe_location():
+    # The redirect handler safe_urlopen installs re-checks each hop: a 302 whose Location is internal is
+    # vetoed with SSRFBlocked instead of being followed (redirect/TOCTOU SSRF). Exercised directly.
+    import urllib.request
+    import pytest
+    from services.safety.url_guard import _build_guarded_redirect_handler, SSRFBlocked
+
+    handler = _build_guarded_redirect_handler()()
+    req = urllib.request.Request("http://public.example/start")
+    hdrs = urllib.message.Message() if hasattr(urllib, "message") else None
+    import email.message
+    hdrs = email.message.Message()
+    # An unsafe redirect target is vetoed…
+    with pytest.raises(SSRFBlocked):
+        handler.redirect_request(req, None, 302, "Found", hdrs, "http://169.254.169.254/latest/meta-data/")
+    # …a public redirect target is allowed through (returns a Request, does not raise).
+    out = handler.redirect_request(req, None, 302, "Found", hdrs, "http://example.com/next")
+    assert out is None or isinstance(out, urllib.request.Request)

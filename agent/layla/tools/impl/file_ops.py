@@ -867,7 +867,13 @@ def read_pptx(path: str, **_kw) -> dict:
 def read_notebook(path: str, **_kw) -> dict:
     """Extract cells from a Jupyter notebook (.ipynb)."""
     import json as _json
-    p = Path(path)
+    # Sandbox containment: resolve + gate before reading, matching read_pdf/read_docx/read_pptx.
+    # Without this, an absolute or ../ path to any JSON-parseable file (e.g. cloud credentials)
+    # was read and returned verbatim with no approval (audit #3).
+    p = _resolve_sandboxed_path(path)
+    ok, err = _ensure_inside_sandbox(p)
+    if not ok:
+        return err or {"ok": False, "error": "Outside sandbox"}
     if not p.exists():
         return {"ok": False, "error": f"File not found: {path}"}
     try:
