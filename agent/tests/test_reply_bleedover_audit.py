@@ -782,3 +782,17 @@ def test_objective_conservative_and_markdown_links_preserved():
     # …but a genuine bracketed self-label + the deliberation sigil scaffold still strip.
     assert P("[Layla]: The set() removes duplicates.") == "The set() removes duplicates."
     assert P("[" + _SIG5 + " MORRIGAN] fast fix") == "fast fix"
+
+
+# ── 27. Round-16: inline paired dialogue example preserved; line-start next-turn still cut (#4) ────
+
+def test_inline_dialogue_example_not_truncated():
+    from services.agent.response_builder import truncate_at_next_user_turn as T
+    # A MID-LINE "You:"/"User:" paired with a following assistant/aspect turn is a quoted dialogue
+    # example — keep it. (Was truncated at the first role label.)
+    assert T("Here is a sample dialog. You: What is the weather? Assistant: It is sunny.") == "Here is a sample dialog. You: What is the weather? Assistant: It is sunny."
+    assert T("Two roles exist. User: asks. Morrigan: answers.") == "Two roles exist. User: asks. Morrigan: answers."
+    # A LINE-START "User:" (the common next-turn hallucination) is still cut.
+    assert T("The answer is 42.\nUser: and the tests?") == "The answer is 42."
+    # A mid-line UNPAIRED role label (no assistant reply follows) is still a continuation → cut.
+    assert T("A. User: fake continuation with no reply here") == "A."

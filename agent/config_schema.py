@@ -45,7 +45,7 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
     {"key": "models_dir", "type": "string", "category": "core", "hint": "Path to models folder. Default: repo/models/ or ~/.layla/models/"},
     {"key": "sandbox_root", "type": "string", "category": "core", "hint": "Workspace root. Layla can only read/write within this path."},
     {"key": "temperature", "type": "number", "category": "core", "default": 0.2, "min": 0.01, "max": 1.5, "hint": "Lower = deterministic. Higher = creative."},
-    {"key": "completion_max_tokens", "type": "number", "category": "core", "default": 256, "min": 64, "max": 8192, "hint": "Max tokens per response. Higher = longer, slower."},
+    {"key": "completion_max_tokens", "type": "number", "category": "core", "default": 256, "min": 64, "max": 8192, "hint": "Max tokens per response. Higher = longer, slower. NOTE: hardware auto-tune manages this per tier — to make a manual value stick, add 'completion_max_tokens' to auto_tune_locked_keys or turn off auto_tune_enabled."},
     # ── Model (advanced) ──
     {"key": "n_ctx", "type": "number", "category": "model", "default": 4096, "min": 256, "max": 131072, "hint": "Context window size. Larger = more memory."},
     {"key": "n_gpu_layers", "type": "number", "category": "model", "default": -1, "min": -1, "max": 99, "hint": "Layers on GPU. -1 = all. 0 = CPU only."},
@@ -115,7 +115,7 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "type": "boolean",
         "category": "limits",
         "default": True,
-        "hint": "Hardware-adaptive optimization: auto-detect the machine tier and set inference + pipeline weight (context size, prompt budget, extra LLM calls, timeouts) for the best speed/quality on ANY hardware. Turn off for fully manual control. Lock individual keys via auto_tune_locked_keys.",
+        "hint": "Hardware-adaptive optimization: auto-detect the machine tier and set inference + pipeline weight (context size, prompt budget, response length / completion_max_tokens, extra LLM calls, timeouts) for the best speed/quality on ANY hardware. Turn off for fully manual control. Lock individual keys via auto_tune_locked_keys.",
     },
     {"key": "max_tool_calls", "type": "number", "category": "limits", "default": 5, "min": 1, "max": 50, "hint": "Max tool calls per agent turn (non-research)."},
     {"key": "max_runtime_seconds", "type": "number", "category": "limits", "default": 900, "min": 5, "max": 3600, "hint": "Max wall time per agent turn (seconds). Align with ui_agent_stream_timeout_seconds so the server does not stop before the browser."},
