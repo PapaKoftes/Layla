@@ -1,0 +1,116 @@
+{
+  "_doc": "Coverage ledger for the audit-loop. The workflow reads this to pick the next dimension (never-run > stale > weight), and writes back convergence state after each round. Edit weights/cadence/lenses freely.",
+  "version": 1,
+  "round_counter": 0,
+  "updated": null,
+  "dimensions": [
+    {
+      "key": "reality",
+      "family": "reality",
+      "weight": 10,
+      "cadence": 1,
+      "is_anchor": true,
+      "last_round": 0,
+      "dry_rounds": 0,
+      "quiescent": false,
+      "open_findings": 0,
+      "max_severity": "none",
+      "lenses": [
+        "drive a real substantive coding turn end-to-end; capture first-token + warm latency and whether the answer is correct/complete",
+        "drive a general Q&A turn; check it streams, no leaked scaffold, reasonable latency",
+        "drive a tool-use turn (read a file / list dir); check the tool actually runs and the reply integrates the result",
+        "drive an @mention cross-aspect turn; check the right aspect answers and no double-label",
+        "check the app health endpoint, model-load state, and any per-turn errors in logs"
+      ]
+    },
+    {
+      "key": "security",
+      "family": "security",
+      "weight": 9,
+      "cadence": 1,
+      "last_round": 0,
+      "dry_rounds": 0,
+      "quiescent": false,
+      "open_findings": 0,
+      "max_severity": "none",
+      "lenses": [
+        "tool-execution sandbox: can allow_write/allow_run be escaped, or a tool write/run outside sandbox_root?",
+        "path traversal in file tools (read_file/list_dir/glob/write): ../ escapes, absolute paths, symlinks",
+        "plugin system RCE: how are plugins loaded/gated; can untrusted input trigger code exec?",
+        "SSRF / network egress: research/fetch/knowledge ingest reaching attacker-controlled URLs",
+        "secrets & PII handling: keys/tokens/user PII in logs, prompts, persisted rows, or error messages",
+        "content_guard bypass: input/output safety filter gaps on any router (/v1, /api, /research, /voice)"
+      ]
+    },
+    {
+      "key": "data_state",
+      "family": "data_state",
+      "weight": 8,
+      "cadence": 1,
+      "last_round": 0,
+      "dry_rounds": 0,
+      "quiescent": false,
+      "open_findings": 0,
+      "max_severity": "none",
+      "lenses": [
+        "SQLite (layla.db) + knowledge_graph.graphml write atomicity, corruption on crash, partial writes",
+        "crash recovery / integrity / reaper: are half-finished tasks and locks recovered correctly?",
+        "unbounded growth: memory/graph/execution_log/conversation stores without bounds or decay",
+        "migrations + schema drift: _MIGRATED flags, backward-compat, isolated_db fixture resets",
+        "concurrency: the async task runner, background tasks, llm_serialize_lock, races on shared state"
+      ]
+    },
+    {
+      "key": "correctness",
+      "family": "correctness",
+      "weight": 7,
+      "cadence": 1,
+      "last_round": 0,
+      "dry_rounds": 0,
+      "quiescent": false,
+      "open_findings": 0,
+      "max_severity": "none",
+      "lenses": [
+        "prompt assembly / precedence in system_head_builder (the round-19 HIGH seam): blocks dropped, order, budget truncation, list-vs-string drift",
+        "agent-loop tool-calling: wrong-tool selection, loop termination, retry/backoff, max_tool_calls, objective-complete detection",
+        "routing / intent classification: fast-path vs reason vs deliberate gating, misroutes, phatic detection",
+        "streaming / SSE state machine: desync, abort finalize, done-frame, partial-token handling",
+        "config / auto-tune / hardware tiers: clamp logic, potato profile, governor refusals, token budgets"
+      ]
+    },
+    {
+      "key": "output_hygiene",
+      "family": "output_hygiene",
+      "weight": 3,
+      "cadence": 2,
+      "last_round": 18,
+      "dry_rounds": 1,
+      "quiescent": false,
+      "open_findings": 0,
+      "max_severity": "low",
+      "lenses": [
+        "reply leak surfaces: leading/mid-prose aspect labels, control tags, scaffold headers, HTML, on any router",
+        "over-truncation: cleaners eating legit content (OKRs, markdown, dialogue examples, code fences)",
+        "cross-surface parity: a cleaner fix applied on /agent but missing on /v1, /api, /research, /voice, resume",
+        "active-aspect gate edge cases (documented accepted residuals aside)"
+      ]
+    },
+    {
+      "key": "meta",
+      "family": "meta",
+      "weight": 4,
+      "cadence": 2,
+      "last_round": 0,
+      "dry_rounds": 0,
+      "quiescent": false,
+      "open_findings": 0,
+      "max_severity": "none",
+      "lenses": [
+        "test health: isolation/global-state contamination (tests that pass alone but fail in the suite), flaky order deps, missing coverage on changed files",
+        "dead / orphan modules: unreferenced code, fake placeholders, unused config keys",
+        "docs vs reality drift: README/CONFIG_REFERENCE/install docs contradicting the code",
+        "dependency / version pins: unpinned or vulnerable deps, packaging honesty"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "_doc": "Policy for the self-running audit-loop workflow (.claude/workflows/audit-loop.mjs). Edit freely; the workflow reads this fresh each round.",
+  "autonomy": "auto_push_when_green",
+  "severity_auto_fix_max": "medium",
+  "_severity_note": "critical/high + anything the triage flags ambiguous are REPORT-ONLY (never auto-pushed). Only low/medium mechanical fixes are applied, and only if the FULL suite stays green (no NEW failures vs baseline).",
+  "budget_tokens_per_round": 2200000,
+  "finders_per_dimension": { "default": 4, "security": 6, "correctness": 5, "data_state": 5, "output_hygiene": 3, "meta": 3 },
+  "reality_anchor_every_n_rounds": 1,
+  "quiescence_dry_rounds": 2,
+  "protected_paths": [
+    "agent/runtime_config.json",
+    "agent/layla/memory/knowledge_graph.graphml",
+    "benchmarks/scorecard_live.json",
+    "agent/.layla/",
+    "agent/.governance/",
+    ".governance/",
+    "agent/titles.txt",
+    "agent/agent/titles.txt",
+    "layla.db",
+    "agent/layla.db"
+  ],
+  "test_cmd": "cd agent && PYTHONIOENCODING=utf-8 ../.venv-test/Scripts/python.exe -m pytest -q -p no:cacheprovider",
+  "scoped_test_hint": "For a scoped check, run only the test file(s) touched by the fix, e.g. `cd agent && ../.venv-test/Scripts/python.exe -m pytest tests/test_X.py -q`. Run the FULL test_cmd only once, at the end, before pushing.",
+  "known_config_artifact_tests": [
+    "test_defaults_are_safe",
+    "test_disabled_by_default",
+    "test_litellm_config_keys_exist",
+    "test_meilisearch_config_exists",
+    "test_durable_facts_injected_verbatim_into_system_head"
+  ],
+  "known_artifact_note": "These fail only because the operator's live runtime_config.json enables litellm/meilisearch/discord etc. They pass in CI/clean-config and in isolation. The baseline is computed dynamically each round anyway; this list is documentation.",
+  "commit_trailer": "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>",
+  "branch": "master",
+  "app_url": "http://127.0.0.1:8016",
+  "js_check_cmd": "node --check",
+  "notes": "Standing constraints honored by the integrator: work on master directly, never commit protected_paths, keep per-aspect sigils, end commit messages with commit_trailer. Fixers are read-only except the single sequential integrator."
+}
