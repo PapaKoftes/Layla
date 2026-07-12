@@ -675,6 +675,17 @@ _EXTENDED_TOOLS = frozenset({
     "save_note", "search_memories", "git_add",
 })
 
+# Generic dangerous tools whose effect is CODE EXECUTION or an external/network SIDE EFFECT (not file
+# mutation). These require allow_run specifically — allow_write alone must never authorize them (audit
+# #1). Mirrors the dedicated _handle_shell / _handle_run_python gates. (docker_build is intentionally
+# absent — not a registered intent.)
+_RUN_CLASS_INTENTS = frozenset({
+    "fabrication_assist_run", "shell_session_start", "shell_session_manage",
+    "run_tests", "pip_install", "docker_run",
+    "git_push", "git_clone", "git_worktree_add",
+    "geometry_execute_program", "generate_gcode", "github_pr", "send_email",
+})
+
 
 def _handle_extended_tools(intent: str, goal: str, ctx: DispatchContext) -> DispatchResult:
     al, rs, TOOLS = _imports()
@@ -814,7 +825,16 @@ def _handle_generic(intent: str, goal: str, ctx: DispatchContext) -> DispatchRes
 
     meta = TOOLS.get(intent, {})
     needs_approval = meta.get("require_approval", False)
-    allow = ctx.allow_run if intent == "fabrication_assist_run" else (ctx.allow_write or ctx.allow_run)
+    # Permission boundary (audit #1): a generic dangerous tool whose effect is CODE EXECUTION or an
+    # external/network SIDE EFFECT must require allow_run specifically — allow_write alone must never
+    # authorize it. Previously the generic path OR'd the flags (allow_write or allow_run), so e.g.
+    # shell_session_start / run_tests / pip_install / docker_run / git_push / send_email were reachable
+    # with write-only permission, collapsing the distinct gates the dedicated handlers enforce
+    # (_handle_shell / _handle_run_python require allow_run). Gate run-class on allow_run only.
+    if intent in _RUN_CLASS_INTENTS:
+        allow = ctx.allow_run
+    else:
+        allow = ctx.allow_write or ctx.allow_run
     _session_grant_ok = al._has_any_grant(intent, args)
 
     if needs_approval and not _is_approval_bypassed(ctx, intent) and (not allow or not rs.is_tool_allowed(intent)) and not _session_grant_ok:
