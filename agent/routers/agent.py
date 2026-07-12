@@ -234,6 +234,25 @@ def _aspect_extra_names(result) -> tuple:
         return ()
 
 
+def _active_name_set(result_or_aspect) -> set:
+    """Lower-cased names whose BARE 'Name:' leading label is a SELF-label (not a definition subject):
+    always 'layla', plus the active aspect (id or display name), plus every custom-aspect name. Passed
+    to strip_junk_from_reply so a bare 'Echo: <definition>' for a NON-active aspect is preserved."""
+    s = {"layla"}
+    try:
+        if isinstance(result_or_aspect, dict):
+            n = str(result_or_aspect.get("aspect_name") or result_or_aspect.get("aspect") or "").strip()
+        else:
+            n = str(result_or_aspect or "").strip()
+        if n:
+            s.add(n.lower())
+        from services.agent.response_builder import _known_custom_aspect_names
+        s.update(c.lower() for c in _known_custom_aspect_names())
+    except Exception:
+        pass
+    return s
+
+
 def _apply_output_floor(text: str, cfg: dict | None = None) -> tuple[str, bool]:
     """Post-model content-safety floor: replace a Tier-1/Tier-2 payload with a safe message before it
     reaches the done-frame / persistence. The non-stream JSON path already did this inline; the four
@@ -896,7 +915,7 @@ async def agent(req: AgentRequest, request: Request):
                         _delta, _emitted = stream_safe_prefix("".join(full), _emitted)
                         if _delta:
                             yield f"data: {json.dumps({'token': _delta})}\n\n"
-                    text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply("".join(full))), cfg)
+                    text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply("".join(full), active_names=_active_name_set(aspect_id))), cfg)
                     if not text.strip():
                         text = "Sorry — I couldn't generate a response just then. Please try again."
                     text, _fast_blocked = _apply_output_floor(text, cfg)  # safety floor (parity w/ non-stream)
@@ -969,7 +988,7 @@ async def agent(req: AgentRequest, request: Request):
                     except Exception:
                         logger.exception("multi_agent run failed")
                         agg = {"summary": "", "subtask_results": []}
-                    text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply(agg.get("summary") or "")), cfg) \
+                    text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply(agg.get("summary") or "", active_names=_active_name_set(aspect_id))), cfg) \
                         or "I couldn't complete that multi-part request. Try splitting it into separate messages."
                     text, _ma_blocked = _apply_output_floor(text, cfg)  # safety floor (parity w/ non-stream)
                     append_conv_history(conversation_id, "user", goal)
@@ -1201,7 +1220,7 @@ async def agent(req: AgentRequest, request: Request):
                     except Exception:
                         cfg = {}
                     text = polish_output(
-                        truncate_at_next_user_turn(strip_junk_from_reply("".join(full), _aspect_extra_names(result))),
+                        truncate_at_next_user_turn(strip_junk_from_reply("".join(full), _aspect_extra_names(result), active_names=_active_name_set(result))),
                         cfg,
                     )
                     # Empty cleaned reply must NOT ship as empty done-frame content: the client's
@@ -1275,7 +1294,7 @@ async def agent(req: AgentRequest, request: Request):
                     # and shipped it to the bubble + DB (the standbys never fired) — a stream-vs-JSON leak.
                     if response_text:
                         try:
-                            response_text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply(response_text, _aspect_extra_names(result))), _cfg_stream)
+                            response_text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply(response_text, _aspect_extra_names(result), active_names=_active_name_set(result))), _cfg_stream)
                         except Exception:
                             pass
                     if not response_text and result.get("status") == "tool_limit":
@@ -1406,10 +1425,10 @@ async def agent(req: AgentRequest, request: Request):
         _raw_final = final
     # truncate_at_next_user_turn (parity with the streaming paths) — the non-stream JSON path omitted
     # it, so a fabricated "User: …" next-turn the small model hallucinated leaked into the reply.
-    response_text = truncate_at_next_user_turn(strip_junk_from_reply(_raw_final, _extra_names))
+    response_text = truncate_at_next_user_turn(strip_junk_from_reply(_raw_final, _extra_names, active_names=_active_name_set(result)))
     if not response_text and isinstance(final, str):
         _raw_alt = final.strip()
-        response_text = truncate_at_next_user_turn(strip_junk_from_reply(_raw_alt, _extra_names))
+        response_text = truncate_at_next_user_turn(strip_junk_from_reply(_raw_alt, _extra_names, active_names=_active_name_set(result)))
     # When the model generated only echo (stripped to empty), substitute a graceful standby line
     # rather than the generic error. This happens when a small model starts with ## CONTEXT or
     # similar section headers and the stop sequence / junk stripper removes everything.
