@@ -311,6 +311,25 @@ def _no_model_response(message: str) -> JSONResponse:
     )
 
 
+def _blocked_input_response(message: str) -> JSONResponse:
+    """Standard shape for a content-guard-blocked INPUT: render the safe refusal message as an ordinary
+    reply bubble (status 200) rather than an error. Used by the router-entry input guard."""
+    return JSONResponse(
+        {
+            "response": message,
+            "state": {"status": "blocked", "steps": []},
+            "aspect": "",
+            "aspect_name": "Layla",
+            "refused": True,
+            "refusal_reason": "content_policy",
+            "ux_states": [],
+            "memory_influenced": [],
+            "cited_sources": [],
+        },
+        status_code=200,
+    )
+
+
 def _maybe_synth_title(conversation_id: str, user_msg: str, assistant_text: str) -> None:
     """On the FIRST exchange, async-polish the auto title into an LLM-synthesized topic name.
 
@@ -443,6 +462,20 @@ async def agent(req: AgentRequest, request: Request):
         cfg = runtime_safety.load_config()
     except Exception:
         cfg = {}
+
+    # Input content-guard at the ROUTER ENTRY — before the cache, model-ready check, and every
+    # generation branch (fast-path / autonomous / plan). Previously check_input was wired only inside
+    # autonomous_run, so the streaming self-contained-question fast path streamed a Tier-1 harmful prompt
+    # straight from stream_reason with the input guard never invoked (audit #14). Mirrors /v1's entry guard.
+    try:
+        from services.safety.content_guard import blocked_response as _blk_in
+        from services.safety.content_guard import check_input as _cg_in
+        _in = _cg_in(goal or "", cfg)
+        if _in.blocked:
+            logger.warning("content_guard: /agent input blocked tier=%s cat=%s", _in.tier, _in.category)
+            return _blocked_input_response(_blk_in(_in))
+    except Exception as _cg_exc:
+        logger.debug("content_guard /agent input check skipped: %s", _cg_exc)
 
     try:
         if (workspace_root or "").strip():
