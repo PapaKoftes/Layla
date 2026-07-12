@@ -1,252 +1,141 @@
-# Config Reference — runtime_config.json
+# Configuration Reference
 
-For advanced users. Edit `agent/runtime_config.json` directly, or use **Settings ⚙** in the UI for common options.
-
-**Restart the server** after changing model-related keys (`model_filename`, `models_dir`, `n_ctx`, `n_gpu_layers`, `n_batch`).
-
----
+Every operator-editable setting in `agent/runtime_config.json`, grouped by category. This file
+is generated from `agent/config_schema.py` (`EDITABLE_SCHEMA`) — the single source of truth the
+Settings UI and `GET /settings/schema` read. Edit settings in the Settings panel or in
+`runtime_config.json`; some (model/context) require a restart.
 
 ## Core
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `model_filename` | string | — | GGUF filename in `models_dir`. Required. |
-| `models_dir` | string | `~/.layla/models` or `repo/models/` | Path to folder containing .gguf files. |
-| `sandbox_root` | string | `~` (schema fallback) | Workspace root. Layla can only read/write within this path. **Shipped UX:** set this to a **dedicated project folder** (first-run CLI/Web setup); avoid pointing at your entire home directory unless you intend that scope. |
-| `temperature` | number | 0.2 | Sampling temperature. Lower = deterministic, higher = creative. |
-| `completion_max_tokens` | number | 256 | Max tokens per response. |
+| Key | Type | Default | Range | Description |
+|-----|------|---------|-------|-------------|
+| `ui_language` | string | `'en'` |  | Web UI language (en, es, de, fr, it, pt, ja, zh, ar, ru, ko). Falls back to English for missing strings. |
+| `model_filename` | string | — |  | GGUF filename in models/ folder. Restart required. |
+| `models_dir` | string | — |  | Path to models folder. Default: repo/models/ or ~/.layla/models/ |
+| `sandbox_root` | string | — |  | Workspace root. Layla can only read/write within this path. |
+| `temperature` | number | `0.2` | 0.01 … 1.5 | Lower = deterministic. Higher = creative. |
+| `completion_max_tokens` | number | `256` | 64 … 8192 | Max tokens per response. Higher = longer, slower. |
+| `ui_theme_preset` | string | `''` |  | Optional UI theme preset (applied on load). Leave blank for default. |
+| `wizard_complete` | boolean | `False` |  | Web setup wizard completion flag (set by UI). |
 
----
+## Model & sampling
 
-## Model / inference
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `n_ctx` | number | 4096 | Context window size. Larger = more memory. |
-| `n_gpu_layers` | number | -1 | Layers on GPU. -1 = all, 0 = CPU only. |
-| `n_batch` | number | 512 | Batch size for prompt processing. |
-| `n_threads` | number | null | CPU threads. null = auto. |
-| `n_threads_batch` | number | null | Batch threads. null = auto. |
-| `n_keep` | number | 512 | Tokens to keep in context when sliding. |
-| `top_p` | number | 0.95 | Nucleus sampling. |
-| `top_k` | number | 40 | Top-k sampling. |
-| `repeat_penalty` | number | 1.1 | Penalize repetition. |
-| `stop_sequences` | array | `["\nUser:", " User:"]` | Stop generation at these strings. |
-| `use_mmap` | boolean | true | Memory-mapped model loading. |
-| `use_mlock` | boolean | false | Lock model in RAM (reduces swap). |
-| `flash_attn` | boolean | true | Flash attention when available. |
-
----
+| Key | Type | Default | Range | Description |
+|-----|------|---------|-------|-------------|
+| `n_ctx` | number | `4096` | 256 … 131072 | Context window size. Larger = more memory. |
+| `n_gpu_layers` | number | `-1` | -1 … 99 | Layers on GPU. -1 = all. 0 = CPU only. |
+| `n_batch` | number | `512` | 64 … 2048 | Batch size for prompt processing. |
+| `n_threads` | number | — | 1 … 64 | CPU threads. null = auto. |
+| `top_p` | number | `0.95` | 0 … 1 | Nucleus sampling. |
+| `top_k` | number | `40` | 1 … 100 | Top-k sampling. |
+| `repeat_penalty` | number | `1.1` | 1 … 2 | Penalize repetition. |
 
 ## Memory & retrieval
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `use_chroma` | boolean | true | ChromaDB for semantic search and learnings. |
-| `knowledge_chunks_k` | number | 5 | Chunks retrieved from knowledge base. |
-| `learnings_n` | number | 30 | Learnings injected into context. |
-| `semantic_k` | number | 5 | Semantic search results. |
-| `knowledge_max_bytes` | number | 4000 | Max bytes per knowledge chunk. |
-| `retrieval_use_mmr` | boolean | false | Use MMR for retrieval diversity. |
-| `retrieval_cross_encoder_limit` | number | 10 | Cross-encoder rerank limit. |
+| Key | Type | Default | Range | Description |
+|-----|------|---------|-------|-------------|
+| `use_chroma` | boolean | `True` |  | Use ChromaDB for semantic search and learnings. |
+| `embedder_prefer_quality` | boolean | `False` |  | Prefer heavier sentence-transformers embeddings over fast model2vec static embeddings (needs torch; better quality, slower on low-end). |
+| `knowledge_chunks_k` | number | `5` | 1 … 20 | Chunks retrieved from knowledge base. |
+| `learnings_n` | number | `30` | 5 … 100 | Learnings injected into context. |
+| `semantic_k` | number | `5` | 1 … 20 | Semantic search results. |
+| `memory_retrieval_min_adjusted_confidence` | number | `0.0` | 0.0 … 1.0 | Drop memory hits below this adjusted confidence in semantic recall (0 = no filter). |
+| `project_discovery_auto_inject` | boolean | `False` |  | Sparse .layla/project_memory.json: inject deterministic workspace scan into context (filesystem only). |
+| `people_codex_enabled` | boolean | `True` |  | Daily maintenance scans recent conversations for people you mention and saves them to the people codex. |
+| `learning_quality_gate_enabled` | boolean | `True` |  | Reject low-quality distill content before DB insert (see distill.passes_learning_quality_gate). |
+| `learning_quality_min_score` | number | `0.35` | 0.05 … 1.0 | Minimum heuristic score when learning_quality_gate_enabled is true. |
+| `file_checkpoint_enabled` | boolean | `True` |  | Snapshot files before write_file / apply_patch / search_replace / write_files_batch for restore_file_checkpoint. |
+| `file_checkpoint_max_count` | number | `200` | 0 … 50000 | Max checkpoint bundles per workspace; 0 = unlimited. Oldest deleted first. |
+| `file_checkpoint_max_bytes` | number | `209715200` | 0 … 2147483647 | Max total bytes for checkpoints (~200MB default); 0 = unlimited. |
+| `elasticsearch_enabled` | boolean | `False` |  | Mirror new learnings to Elasticsearch; use GET /memory/elasticsearch/search. |
+| `elasticsearch_url` | string | `''` |  | Elasticsearch 8.x base URL, e.g. http://127.0.0.1:9200 |
+| `elasticsearch_index_prefix` | string | `'layla'` |  | Index name prefix; learnings use {prefix}-learnings. |
+| `elasticsearch_api_key` | string | — |  | Optional API key for Elasticsearch (cloud deployments). |
 
----
+## Safety & guardrails
 
-## Safety & behavior
+| Key | Type | Default | Range | Description |
+|-----|------|---------|-------|-------------|
+| `inline_initiative_enabled` | boolean | `False` |  | After 2+ tool steps, append one heuristic next-step line to the final reply. |
+| `safe_mode` | boolean | `True` |  | Require approval for file writes and code execution. |
+| `plugins_enabled` | boolean | `False` |  | Allow skill plugins to EXECUTE Python code (exec_module) and contribute MCP subprocess servers. Off = declarative skills only. Security-sensitive: only enable for plugins you trust. |
+| `skill_venv_enabled` | boolean | `False` |  | On skill-pack install, provision a per-pack venv and pip-install its declared dependencies (heavier install; rolled back atomically on failure). |
+| `skill_deps_require_pinned` | boolean | `True` |  | Reject skill-pack installs whose dependencies aren't version-pinned (name==x.y.z). Prevents supply-chain drift from floating deps. |
+| `agent_hooks_enabled` | boolean | `True` |  | Allow operator-configured agent_hooks (session_start/pre_tool/post_tool) to run subprocess commands. session_start hooks run automatically when this is on. |
+| `hooks_require_allow_run` | boolean | `True` |  | pre_tool/post_tool hooks run only when the turn has allow_run (or this is off). Keep on unless you trust every configured hook. |
+| `uncensored` | boolean | `True` |  | Uncensored model behavior. |
+| `nsfw_allowed` | boolean | `True` |  | Allow adult/NSFW content in system policy when combined with uncensored; use @lilith + register keywords per message for Lilith NSFW mode. |
+| `enable_cot` | boolean | `True` |  | Chain-of-thought reasoning. |
+| `deliberation_enabled` | boolean | `False` |  | Multi-aspect debate prompt: all six aspects weigh in before answering. Off by default — small models render the six scaffold lines as ~6 stitched answers. Leave off for normal single-voice chat. |
+| `deliberation_mode` | string | `'auto'` |  | Multi-aspect deliberation: solo=one voice, auto=detect complexity, debate=2, council=3, tribunal=all 6. |
+| `enable_self_reflection` | boolean | `False` |  | Post-response self-reflection. |
+| `direct_feedback_enabled` | boolean | `False` |  | Opt-in blunt collaboration: honest critique of work (not personal attacks). Non-clinical — no psychiatric labels. See ETHICAL_AI_PRINCIPLES §11. |
+| `pin_psychology_framework_excerpt` | boolean | `True` |  | Echo/Lilith: inject short non-clinical interaction-framework reminder (observation not diagnosis). |
+| `custom_system_prefix` | string | — |  | Custom system addition (e.g. Always respond in bullet points). |
+| `planning_strict_mode` | boolean | `False` |  | Mutating/run-class tools require an approved plan binding (plan_id) or allow_write/run on the request; see RUNBOOKS. |
+| `engineering_pipeline_enabled` | boolean | `False` |  | Structured engineering partner: plan/execute modes with clarifier, critics, refiner, validator. See docs/STRUCTURED_ENGINEERING_PARTNER.md. |
+| `completion_gate_enabled` | boolean | `False` |  | Deterministic quality gate: retry or structured failure when output does not meet minimum standards. |
+| `deterministic_tool_routes_enabled` | boolean | `False` |  | Deterministic tool routing: reduce visible tools and constrain tool choice to task type. |
+| `engineering_pipeline_default_mode` | string | `'chat'` |  | Default when POST /agent omits engineering_pipeline_mode. execute = full pipeline (slow). |
+| `engineering_pipeline_max_clarify_rounds` | number | `3` | 1 … 10 | Reserved: max clarifier rounds per turn (protocol uses clarification_reply on follow-up requests). |
+| `engineering_pipeline_validator_max_retries` | number | `1` | 0 … 2 | When execute-mode validator suggests retry, bounded re-runs of execute_plan. |
+| `in_loop_plan_governance_enabled` | boolean | `True` |  | Long-goal in-loop planner uses execute_plan(step_governance=True) like /execute_plan. Set false for legacy behavior. |
+| `in_loop_plan_default_max_retries` | number | `1` | 0 … 3 | Per-step governance retries for in-loop plans (same cap as /plans execute body). |
+| `plan_governance_require_nonempty_step_tools` | boolean | `False` |  | Approve rejects mutating step types with empty tools[]; in-loop may auto-fill read-only defaults (marks _tools_auto_filled). |
+| `plan_governance_reject_auto_filled_tools` | boolean | `False` |  | Governed steps fail if tools were auto-filled — forces explicit tools in the plan. |
+| `plan_governance_strict_tool_evidence` | boolean | `False` |  | Edit/test steps need tool traces with substantive results (paths for writes; pytest/unittest evidence for tests). Disallows text-only proof. Implied when plan_governance_hard_mode is on. |
+| `plan_governance_hard_mode` | boolean | `False` |  | One switch: same as nonempty tools on mutating steps + reject auto-filled tools + strict tool evidence. |
+| `admin_mode` | boolean | `False` |  | Auto-approve dangerous tools (still audited). The hard shell command blocklist (rm/dd/format/…) always applies regardless. |
+| `admin_auto_checkpoint` | boolean | `True` |  | When admin_mode, best-effort git commit before mutating file/shell tools. |
+| `admin_blocklist_override` | boolean | `False` |  | Relaxes admin-mode APPROVAL gating for otherwise-blocklisted tools. NOTE: the hard shell command blocklist (rm/dd/format/…) still applies regardless — this does not grant those commands. Do not enable on shared machines. |
+| `tool_approval_bypass` | boolean | `False` |  | DANGEROUS: auto-approve ALL tools with no prompt and no checkpoint (the easy 'yes to everything' switch). Off by default; disable when not needed. |
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `safe_mode` | boolean | true | Require approval for file writes and code execution. |
-| `uncensored` | boolean | true | Uncensored model behavior. |
-| `nsfw_allowed` | boolean | true | When true with `uncensored`, system head allows adult/NSFW policy lines. Web UI: left **Options → Content policy** or ⚙ Settings → Safety. |
-| `max_tool_calls` | number | 5 | Max tool calls per agent turn (before effective-config / pressure tuning). |
-| `max_runtime_seconds` | number | 900 | Max wall-clock time for a normal agent turn (research uses `research_max_runtime_seconds`). |
-| `tool_call_timeout_seconds` | number | 60 | Max seconds a single tool call may run before being killed (5–600). |
-| `approval_ttl_seconds` | number | 3600 | Seconds before a pending approval expires and returns 410 (60–86400). Default: 1 hour. |
-| `chat_light_max_runtime_seconds` | number | 90 | Wall-clock cap for short non-tool chat (`_is_lightweight_chat_turn`); bounded by `max_runtime_seconds`, floor 30s. |
-| `context_aggressive_compress_enabled` | boolean | true | Earlier / tighter conversation compaction and smaller tool-step blobs in prompts (good for low `n_ctx`). |
-| `context_sliding_keep_messages` | number | 0 | When >0, keep this many newest chat messages verbatim during compaction; 0 uses an automatic default when aggressive mode is on. |
-| `tool_step_context_max_tokens` | number | 500 | Max estimated tokens per tool result line fed back into the decision loop. |
-| `structured_generation_enabled` | boolean | true | Prefer optional **outlines** JSON for agent decisions on local llama_cpp when installed; falls back to instructor / plain JSON. |
-| `worker_pool_enabled` | boolean | true | Cap parallel **read-only** tool batch threads by hardware tier. |
-| `max_workers` | number | 0 | Override worker cap (0 = auto from hardware). |
-| `admin_mode` | boolean | false | Skip approval prompts for dangerous tools (still audited; sandbox blocklists remain unless `admin_blocklist_override`). |
-| `admin_auto_checkpoint` | boolean | true | Best-effort `git commit` before mutating tools when `admin_mode`. |
-| `admin_blocklist_override` | boolean | false | **Dangerous:** do not enable unless you accept full shell risk. |
-| `remote_cors_origins` | array | `[]` | When non-empty, enables CORS for listed origins (remote / tunnel UIs). |
-| `cloudflared_path` | string | "" | Optional path to `cloudflared` binary for `/remote/tunnel/start`. |
-| `dynamic_tool_generation_enabled` | boolean | false | Reserved for generated tools (not yet implemented end-to-end). |
-| `hyde_enabled` | boolean | false | Enable HyDE retrieval — generates a hypothetical answer before embedding for improved recall. Adds one extra LLM call per retrieval query. Disable on low-resource hardware. |
-| `performance_mode` | string | auto | `low` / `mid` / `high` / `auto` — see `system_optimizer.get_effective_config()`. |
-| `completion_cache_enabled` | boolean | true | Short-lived cache for identical non-stream completion prompts (key includes model + temperature + max_tokens). |
-| `response_cache_enabled` | boolean | true | In-memory cache for repeated short chat turns (see `routers/agent.py`). |
-| `tool_loop_detection_enabled` | boolean | true | Block runaway / ping-pong tool repetition (`services/tool_loop_detection.py`). |
-| `anti_drift_prompt_enabled` | boolean | true | Inject global “minimize change / follow conventions” instructions into the system head. |
-| `operator_protection_policy_pin_enabled` | boolean | true | Inject **operator protection** instructions into `_build_system_head` (`agent_loop.py`): serve the operator honestly, no manipulation, explicit directives win on conflict, surface conflicts transparently. |
-| `enable_cot` | boolean | true | Chain-of-thought reasoning. |
-| `enable_self_reflection` | boolean | false | Post-response self-reflection. |
-| `direct_feedback_enabled` | boolean | false | **Opt-in blunt collaboration:** system head encourages direct, specific critique of work (not personal attacks). Does **not** override non-clinical rules — no psychiatric labeling. See `docs/ETHICAL_AI_PRINCIPLES.md` §11. |
-| `pin_psychology_framework_excerpt` | boolean | true | For **Echo** and **Lilith** aspects only, inject a short pinned reminder: collaboration-oriented psychology framing, observation-not-diagnosis, crisis handoff wording. |
+## Voice
 
----
-
-## Geometry (optional kernels)
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `geometry_frameworks_enabled` | object | ezdxf/cadquery/openscad/trimesh true | Per-kernel toggles for `layla.geometry` backends. |
-| `openscad_executable` | string | openscad | OpenSCAD CLI for `openscad_render` op. |
-| `geometry_subprocess_timeout_seconds` | number | 120 | Timeout for cadquery subprocess and OpenSCAD. |
-| `geometry_external_bridge_url` | string | "" | Base URL for optional CAD program bridge (`cad_bridge_fetch` op). |
-| `geometry_external_bridge_allow_insecure_localhost` | boolean | false | Allow localhost bridge URLs (dev only). |
-
----
-
-## Voice (TTS / STT)
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `tts_voice` | string | af_heart | TTS voice. Options: af_heart, af_sky, am_adam, bf_emma, bm_george. |
-| `whisper_model` | string | base | STT model. tiny, base, small, medium. |
-| `tts_speed` | number | 1.0 | TTS playback speed. |
-| `whisper_device` | string | auto | Device for Whisper (auto, cpu, cuda). |
-
----
+| Key | Type | Default | Range | Description |
+|-----|------|---------|-------|-------------|
+| `tts_voice` | string | — |  | TTS voice (kokoro-onnx catalog). |
+| `whisper_model` | string | — |  | STT model. tiny=fastest, medium=best. |
+| `tts_speed` | number | `1.0` | 0.5 … 2 | TTS playback speed. |
 
 ## Scheduler
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `scheduler_study_enabled` | boolean | true | Enable study plan scheduler. |
-| `scheduler_interval_minutes` | number | 30 | Minutes between scheduler runs. |
-| `scheduler_recent_activity_minutes` | number | 90 | Activity window for scheduler. |
+| Key | Type | Default | Range | Description |
+|-----|------|---------|-------|-------------|
+| `scheduler_study_enabled` | boolean | `True` |  | Enable study plan scheduler. |
+| `scheduler_interval_minutes` | number | `30` | 5 … 120 | Minutes between scheduler runs. |
+| `scheduler_recent_activity_minutes` | number | `90` | 15 … 480 | Activity window for scheduler. |
 
----
+## Limits
 
-## Maintenance & retention (advanced)
+| Key | Type | Default | Range | Description |
+|-----|------|---------|-------|-------------|
+| `performance_mode` | string | `'auto'` |  | CPU/RAM caps: low tightens ctx and tool budgets. auto = hardware tier. |
+| `auto_tune_enabled` | boolean | `True` |  | Hardware-adaptive optimization: auto-detect the machine tier and set inference + pipeline weight (context size, prompt budget, extra LLM calls, timeouts) for the best speed/quality on ANY hardware. Turn off for fully manual control. Lock individual keys via auto_tune_locked_keys. |
+| `max_tool_calls` | number | `5` | 1 … 50 | Max tool calls per agent turn (non-research). |
+| `max_runtime_seconds` | number | `900` | 5 … 3600 | Max wall time per agent turn (seconds). Align with ui_agent_stream_timeout_seconds so the server does not stop before the browser. |
+| `tool_call_timeout_seconds` | number | `60` | 5 … 600 | Max seconds a single tool call may run before being killed. |
+| `approval_ttl_seconds` | number | `3600` | 60 … 86400 | Seconds before a pending approval expires (default: 1 hour). |
+| `models_max_keep` | number | `0` | 0 … 100 | Daily maintenance prunes downloaded GGUFs to the newest N (the active model is always kept). 0 = keep all. |
+| `hyde_enabled` | boolean | `False` |  | Enable HyDE retrieval (generates a hypothetical answer before embedding — extra LLM call per query, improves recall quality). |
+| `research_max_tool_calls` | number | `20` | 1 … 100 | Max tool calls when research_mode is on. |
+| `research_max_runtime_seconds` | number | `1800` | 30 … 14400 | Max wall time for research-style runs (seconds). |
+| `llm_serialize_per_workspace` | boolean | `False` |  | Per-workspace autonomous_run lock; local llama generation stays globally serialized. Enable for multi-repo parallelism. |
 
-These knobs bound long-term disk/memory growth. They are **not** shown in the
-settings UI — hand-edit `runtime_config.json` (they are read as-is by `load_config`).
-The daily `_bg_cleanup` job applies them.
+## Remote
 
-**Forgetting (RAG confidence decay).** Stored learning confidence fades so stale
-facts sink below the recall floor without being deleted outright:
+| Key | Type | Default | Range | Description |
+|-----|------|---------|-------|-------------|
+| `remote_enabled` | boolean | `False` |  | Allow remote API access. |
+| `remote_api_key` | string | `''` |  | Bearer token required for non-localhost clients when remote_enabled (store via UI or edit runtime_config.json). |
+| `allow_legacy_remote_api_key` | boolean | `False` |  | Honor the DEPRECATED plaintext remote_api_key. Off by default — a stale key won't authenticate. Prefer tunnel_token_hash (rotate via /remote/token/rotate). |
+| `remote_rate_limit_per_minute` | number | `100` |  | When remote_enabled, max requests per minute per non-localhost IP (0 = unlimited). |
+| `llama_server_url` | string | — |  | External llama.cpp server URL. Overrides local model. |
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `learnings_confidence_decay_per_day` | number | 0.98 | Daily multiplier applied to stored confidence past the grace window (~91-day fade horizon). `>=1` or `<=0` disables decay. |
-| `learnings_decay_grace_days` | number | 7 | Rows younger than this are never decayed. |
+## Integrations
 
-**Growth caps.** In-memory + on-disk structures are bounded:
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `knowledge_graph_max_nodes` | number | 5000 | Max nodes in the knowledge graph; oldest-by-created_at pruned on insert. |
-| `retrieval_cache_max_entries` | number | 500 | LRU bound on the retrieval cache. |
-| `admission_max_wait_seconds` | number | 300 | Max time a queued request waits for an inference slot before `system_busy`. |
-| `models_max_keep` | number | 0 | Prune downloaded GGUFs to the newest N (active model always kept); `0` = keep all. |
-| `retention_temp_output_days` | number | 7 | Age (days) before `layla_*`/`frames_*` temp tool outputs are removed. |
-| `people_codex_scan_limit` | number | 100 | Conversations scanned per run when populating the people codex. |
-
-**Data retention.** `apply_retention_policies` prunes historical tables. Every key
-follows one of two patterns — override any you want; unset keys use the defaults below:
-
-- `retention_<table>_days` — delete rows older than N days. Applies to (default): `audit` (365), `tool_calls` (90), `tool_outcomes` (90), `route_telemetry` (90), `telemetry_events` (90), `scheduler_history` (90), `conversation_messages` (90), `conversation_summaries` (365), `journal` (365), `timeline_events` (365), `episode_events` (365), `goal_progress` (365), `relationship_memory` (365), `aspect_memories` (365), `model_outcomes` (180), `outcome_evaluations` (180), `capability_events` (180), `session_prompts` (180), `wakeup_log` (180), `completed_study_plans` (90).
-- `retention_<table>_max_rows` — keep only the newest N rows. Applies to (default): `tool_outcomes` (50000), `conversation_messages` (200000), `outcome_evaluations` (5000), `learnings_archive` (20000), `strategy_stats` (10000).
-
-Set any `*_days` key to `0` to disable age-based pruning for that table.
-
----
-
-## Remote / external
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `remote_enabled` | boolean | false | Allow remote API access. |
-| `remote_api_key` | string | "" | Bearer secret for non-localhost clients (set in UI editable settings or JSON). |
-| `remote_rate_limit_per_minute` | number | 100 | When `remote_enabled`, max requests per minute per non-localhost IP (`0` = unlimited). |
-| `remote_cors_origins` | array | `[]` | Non-empty list enables CORS for tunnel / phone browser origins. |
-| `llama_server_url` | string | null | External llama.cpp server. Overrides local model. |
-| `inference_backend` | string | auto | auto, local, remote. |
-
----
-
-## Integrations (Discord, Slack)
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `discord_webhook_url` | string | null | Discord webhook for `discord_send`. Server Settings → Integrations → Webhooks → New. |
-| `discord_bot_token` | string | null | Full Discord bot (voice, TTS, music). Create at Discord Developer Portal. See discord_bot/README.md. |
-| `slack_webhook_url` | string | null | Slack incoming webhook for notifications. |
-
-**Discord setup:** 1) Server Settings → Integrations → Webhooks. 2) New Webhook, pick channel. 3) Copy Webhook URL. 4) Set `discord_webhook_url` in config or `DISCORD_WEBHOOK_URL` env.
-
----
-
-## File location
-
-- **Config file:** `agent/runtime_config.json` (gitignored)
-- **Example:** `agent/runtime_config.example.json`
-- **API:** `GET /settings`, `POST /settings`, `GET /settings/schema`
-- **Export:** `GET /system_export` (full system state as JSON)
-
----
-
-## Hardware Auto-Configuration
-
-Layla probes your machine at startup and fills in optimal values for the keys
-below if they are **not explicitly set** in `runtime_config.json`.
-You never need to touch these unless you want to override the probe.
-
-| Key | Probe logic |
-|-----|-------------|
-| `n_ctx` | Computed from available RAM, model size, and hardware tier |
-| `n_batch` | 512 (potato) -- 2048 (high_end) |
-| `n_threads` | Physical CPU core count |
-| `n_threads_batch` | min(logical cores, physical * 2) |
-| `n_gpu_layers` | 0 (no GPU), partial, or -1 (full offload) based on VRAM vs model size |
-| `flash_attn` | `true` only when GPU tier is performance or high_end |
-| `speculative_decoding_enabled` | Always `false` (llama-cpp <=0.3.16 crash bug) |
-| `context_aggressive_compress_enabled` | `true` on potato/standard tiers |
-| `context_auto_compact_ratio` | 0.65 (potato), 0.70 (standard), 0.75 (performance/high_end) |
-
-To force a re-probe (e.g. after adding a GPU):
-
-```bash
-# Delete the disk cache; the probe runs again on next startup
-rm agent/.layla/hardware_probe_cache.json
-```
-
-To pin a value and prevent the probe from overriding it, just set it explicitly:
-
-```json
-{
-  "n_ctx": 8192,
-  "n_gpu_layers": 20
-}
-```
-
----
-
-## Context Window Budget
-
-When `prompt_budget_enabled: true` (default), Layla enforces per-section token
-budgets so the total prompt never overflows `n_ctx`.
-
-For small models (`n_ctx <= 4096`), heavy sections are **automatically skipped**
-to prevent the 18-section injection from consuming the entire context window
-before the model can respond.
-
-| Section | Normal budget | Small-model budget |
-|---------|--------------|-------------------|
-| `system_instructions` | 800 | 600 |
-| `memory` | 800 | 300 |
-| `conversation` | 800 | 400 |
-| `agent_state` | 400 | 0 (skipped) |
-| `knowledge_graph` | 200 | 0 (skipped) |
-| `knowledge` | 800 | 0 (skipped) |
-| `current_task` | 200 | 60 |
-
-Sections like `repo_cognition`, `relationship_codex`, `timeline_events`, and
-`golden_examples` are **never injected** on small models.
-
+| Key | Type | Default | Range | Description |
+|-----|------|---------|-------|-------------|
+| `mcp_client_enabled` | boolean | `False` |  | Enable MCP stdio client (services/mcp_client.py). When true, the mcp_tools_call tool can reach configured mcp_stdio_servers (requires allow_run + approvals like shell). |
+| `discord_webhook_url` | string | — |  | Discord webhook URL for discord_send. Server Settings → Integrations → Webhooks. |
+| `discord_bot_token` | string | — |  | Discord bot token for full bot (voice, TTS, music). Create at Discord Developer Portal. |
