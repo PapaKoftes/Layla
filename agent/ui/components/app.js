@@ -252,9 +252,13 @@ function laylaShowPipelineClarify(questions) {
   var panel = document.getElementById('pipeline-clarify-panel');
   if (!panel) return;
   var qs = Array.isArray(questions) ? questions : (questions ? [questions] : []);
+  // Clean each question the same way every other reply surface does — the clarify panel was the one
+  // render path that skipped cleanLaylaText, so a leaked leading aspect label / <think> trace embedded
+  // in a question string showed verbatim. textContent still blocks XSS; this strips scaffold bleed.
+  var _clean = function (s) { try { return cleanLaylaText(String(s)); } catch (_e) { return String(s); } };
   var text = qs.map(function (q, i) {
-    if (q && typeof q === 'object') return (i + 1) + '. ' + (q.question || q.text || q.prompt || JSON.stringify(q));
-    return (i + 1) + '. ' + String(q);
+    if (q && typeof q === 'object') return (i + 1) + '. ' + _clean(q.question || q.text || q.prompt || JSON.stringify(q));
+    return (i + 1) + '. ' + _clean(q);
   }).join('\n');
   var pre = panel.querySelector('.pipeline-clarify-questions');
   if (pre) pre.textContent = text || 'The pipeline needs a bit more detail to proceed.';
@@ -537,7 +541,7 @@ export async function send() {
             // bubble so a doubled "⚔ Morrigan:" / "[Layla]:" label, a reasoning trace, or "</s>" residue
             // doesn't render verbatim in the trace.
             var tt = String(obj.text || obj.think || '').trim();
-            try { tt = cleanLaylaText(tt); } catch (_e) { console.debug('app:', _e); }
+            try { tt = cleanLaylaText(tt, msgAspect); } catch (_e) { console.debug('app:', _e); }
             if (tt) appendThinkLine('✦ ' + tt);
           }
           if (obj.type === 'tool_step' || obj.tool_start) {
@@ -629,7 +633,7 @@ export async function send() {
             // Frontend defense-in-depth: the streaming render never called cleanLaylaText (unlike the
             // non-stream/reload path via addMsg), so a decorated persona chip label the backend strip
             // missed rendered as a second broken tag. Clean the done-frame content here too.
-            try { full = cleanLaylaText(full); } catch (_cl) { console.debug('app:', _cl); }
+            try { full = cleanLaylaText(full, msgAspect); } catch (_cl) { console.debug('app:', _cl); }
             if (bubble) {
               if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
                 // Balance an unclosed fence on the DONE render too (the live render already does): a
@@ -753,7 +757,7 @@ export async function send() {
     try { if (typeof streamMeta !== 'undefined' && streamMeta) streamMeta.remove(); } catch (_e) { console.debug('app:', _e); }
     try {
       if (typeof bubble !== 'undefined' && bubble && typeof full !== 'undefined' && full) {
-        var _cf = cleanLaylaText(full);
+        var _cf = cleanLaylaText(full, msgAspect);
         if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
           bubble.innerHTML = sanitize(marked.parse(_cf));
           // Match the two graceful finalizers (done-frame + no-done): wrap/highlight code blocks and

@@ -338,7 +338,10 @@ def run_deliberation(
             aspect_responses = {aid: r for aid, r in aspect_responses.items() if aid != _win_aid}
         else:
             final_response = "All aspects were unable to respond just now — try again."
-        synthesis_notes = "synthesis_failed"
+        # Leave synthesis_notes EMPTY on failure — the UI renders any non-empty synthesis_notes as prose
+        # in the transcript's Synthesis panel, so the old internal "synthesis_failed" sentinel leaked to the
+        # user verbatim. The mode badge + per-aspect cards already convey the state; nothing reads the flag.
+        synthesis_notes = ""
 
     return DeliberationResult(
         mode=mode,
