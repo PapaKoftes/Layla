@@ -325,35 +325,41 @@ def run_completion_llama_cpp(
     import concurrent.futures as _cf
     timeout_s = int(cfg.get("llm_local_timeout_seconds", 180) or 180)
     with _llm_lock:
-        with _cf.ThreadPoolExecutor(max_workers=1) as ex:
-            fut = ex.submit(
-                _call_create_completion,
-                False,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                repeat_penalty=repeat_penalty,
-                top_k=top_k,
-                stop=stop,
-                **extra_kw,
-            )
-            try:
-                out = fut.result(timeout=max(10, timeout_s))
-            except _cf.TimeoutError:
+        # Do NOT use the executor as a `with` block: its __exit__ (like shutdown(wait=True)) JOINS the
+        # worker, so a HUNG completion would block HERE despite the timeout below — while holding
+        # _llm_lock — stalling every other LLM caller (audit #13). Detach a hung worker instead of joining.
+        ex = _cf.ThreadPoolExecutor(max_workers=1)
+        fut = ex.submit(
+            _call_create_completion,
+            False,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            repeat_penalty=repeat_penalty,
+            top_k=top_k,
+            stop=stop,
+            **extra_kw,
+        )
+        try:
+            out = fut.result(timeout=max(10, timeout_s))
+        except _cf.TimeoutError:
+            # Detach without joining so the lock releases immediately. Do NOT invalidate_llm_cache here:
+            # the still-running worker holds a live reference to the llama instance, and swapping it out
+            # underneath it would corrupt state — a subsequent call re-initialises safely on its own.
+            ex.shutdown(wait=False, cancel_futures=True)
+            return {"choices": [{"message": {"content": "Local LLM timed out. Please retry."}}]}
+        except Exception as _fe:
+            # The completion FAILED (worker finished), so it is safe to recover the KV cache here.
+            ex.shutdown(wait=False, cancel_futures=True)
+            if "broadcast" in str(_fe) or "shape" in str(_fe):
                 try:
                     from services.llm.llm_gateway import invalidate_llm_cache
                     invalidate_llm_cache()
                 except Exception:
                     pass
-                return {"choices": [{"message": {"content": "Local LLM timed out. Cache invalidated; retry."}}]}
-            except Exception as _fe:
-                if "broadcast" in str(_fe) or "shape" in str(_fe):
-                    try:
-                        from services.llm.llm_gateway import invalidate_llm_cache
-                        invalidate_llm_cache()
-                    except Exception:
-                        pass
-                raise
+            raise
+        else:
+            ex.shutdown(wait=False)
     if isinstance(out, dict):
         return out
     text = "".join((c.get("choices") or [{}])[0].get("text") or "" for c in out)
