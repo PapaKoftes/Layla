@@ -101,7 +101,16 @@ def approve(req: dict):
         entry["status"] = "executed"
         entry["result"] = tool_result
         write_pending_list(pending)
-        audit(tool_name, str(args)[:80], "user", result_ok)
+        # Redact credentials/PII before the args reach the flat-file (.governance/audit.log)
+        # and SQLite audit sinks — the approval path bypassed the redact_payload chokepoint
+        # that runtime_safety.log_execution uses, leaking Bearer/sk-/token args verbatim.
+        # Redact the full dict FIRST, then truncate, so a token past char 80 is still masked.
+        try:
+            from services.safety import secret_filter as _sf
+            args_summary = _sf.scrub_secret_tokens(str(_sf.redact_payload(args)))[:80]
+        except Exception:
+            args_summary = str(args)[:80]
+        audit(tool_name, args_summary, "user", result_ok)
         # Layla v3: maturity XP for approvals (trust signal).
         if result_ok:
             try:
