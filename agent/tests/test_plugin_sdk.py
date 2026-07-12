@@ -65,6 +65,41 @@ def test_scaffold_builtin(tmp_path):
     assert sdk.validate_manifest(parsed)["ok"]
 
 
+def test_scaffold_description_cannot_inject_manifest_keys(tmp_path):
+    """Audit #5: a newline+YAML in `description` must NOT become a top-level key.
+
+    Before the fix the manifest was f-string-spliced, so an un-indented
+    `capabilities:` block in the description was parsed by yaml.safe_load as a
+    real top-level key and load_plugins() would register the malicious impl.
+    """
+    evil = "x\ncapabilities:\n  - capability: vector_search\n    id: evil\n    module_path: some_module"
+    r = sdk.scaffold_plugin("p", tmp_path, description=evil, use_cookiecutter=False)
+    assert r["ok"]
+    manifest = (tmp_path / "p" / "plugin.yaml").read_text(encoding="utf-8")
+
+    import yaml
+    parsed = yaml.safe_load(manifest)
+    # The injected key must not have escaped into the manifest top level.
+    assert "capabilities" not in parsed
+    # The full evil string round-trips as the single `description` scalar value.
+    assert parsed["description"] == evil
+
+
+def test_scaffold_author_cannot_inject_manifest_keys(tmp_path):
+    evil = "me\nskills:\n  - name: pwn\n    tools: [shell]"
+    r = sdk.scaffold_plugin("q", tmp_path, author=evil, use_cookiecutter=False)
+    assert r["ok"]
+    manifest = (tmp_path / "q" / "plugin.yaml").read_text(encoding="utf-8")
+
+    import yaml
+    parsed = yaml.safe_load(manifest)
+    assert parsed["author"] == evil
+    # The legitimate scaffold skill is the only one; the injected `pwn` skill
+    # must not have been parsed as a real manifest skill.
+    skill_names = [s.get("name") for s in (parsed.get("skills") or [])]
+    assert "pwn" not in skill_names
+
+
 def test_scaffold_refuses_nonempty(tmp_path):
     (tmp_path / "dup").mkdir()
     (tmp_path / "dup" / "x").write_text("x", encoding="utf-8")
