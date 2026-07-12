@@ -783,16 +783,18 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = (), active_
     t = re.sub(r"\s*\[Active aspect[^\]]*\]\s*", " ", t, flags=re.IGNORECASE).strip()
     # Per-aspect deliberation scaffold like '[⚔ MORRIGAN]' / '[✦ NYX]' — strip the bracket so a
     # stray debate line can never render as part of a reply (defense-in-depth; deliberation is
-    # off by default). The [^\]]* before the name absorbs the sigil.
-    # Per-aspect scaffold '[⚔ MORRIGAN]' / '[✦ NYX]', AND a bracketed leading name '[Morrigan]:' —
-    # the trailing ':?' consumes a colon that sits OUTSIDE the bracket, so '[Morrigan]: answer' does
-    # not leave a dangling ': answer' orphan. Name-gated (an aspect name must be inside the bracket).
+    # Deliberation scaffold '[⚔ MORRIGAN]' / '[✦ NYX]' — a bracket CONTAINING A SIGIL. Unambiguous
+    # (a sigil never appears in prose), so strip it anywhere. The trailing ':?' consumes a colon that
+    # sits OUTSIDE the bracket. NOT followed by '(' so a markdown link is never touched.
+    _sigcls = "[" + _ASPECT_SIGILS + "]"
+    t = re.sub(r"\s*\[[^\]]*" + _sigcls + r"[^\]]*\](?!\()\s*:?\s*", " ", t).strip()
+    # A LEADING bracketed self-label '[Morrigan]:' / '[Layla]:' / '[Assistant]:' — ANCHORED at the reply
+    # start, the bracket content is JUST a persona/role name (optionally sigil-wrapped), terminated by a
+    # colon or whitespace. Anchoring + name-ONLY content + the '](?!\(' guard mean a markdown link
+    # "[echo cancellation](url)" and a mid-prose "[echo] technique" are NEVER matched — the old
+    # unanchored, name-as-substring regex destroyed those (link text stripped, raw URL stranded).
     t = re.sub(
-        # Include LAYLA (the base/default display name — the MOST common aspect_name in the router) and
-        # ASSISTANT (instruct-model role tag). The colon-form catch-alls below both structurally miss
-        # "[Layla]:" (title-case, colon OUTSIDE the bracket), so it leaked as the "two tags" bug on the
-        # default aspect. Name-gated (a persona/role name must be inside the bracket).
-        r"\s*\[[^\]]*\b(?:LAYLA|ASSISTANT|MORRIGAN|NYX|ECHO|ERIS|CASSANDRA|LILITH)\b[^\]]*\]\s*:?\s*",
+        r"^\[[ \t]*(?:" + _sigcls + r"[ \t]*)?(?:LAYLA|ASSISTANT|MORRIGAN|NYX|ECHO|ERIS|CASSANDRA|LILITH)[ \t]*(?:" + _sigcls + r")?[ \t]*\](?!\()\s*:?\s*",
         " ", t, flags=re.IGNORECASE,
     ).strip()
     # Generic control-marker catch-all: small models INVENT bracketed ALL-CAPS scaffold tags
@@ -845,10 +847,20 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = (), active_
     if _tool:
         t = t[:_tool.start()].strip()
     t = re.sub(r"(?:\s*-{3,}\s*)+$", "", t).strip()
-    # Cut everything from a leaked internal 'Objective:' echo onward (anywhere but the very
-    # start, so a legitimate answer that opens with the word isn't truncated).
-    _obj = re.search(r"(?:^|\s)Objective\s*:", t, re.IGNORECASE)
-    if _obj and _obj.start() > 0:
+    # Cut everything from a leaked internal scaffold 'Objective:' echo onward. Case-SENSITIVE + LINE-
+    # ANCHORED (the internal marker is always a line-start capital "Objective: {goal}", like the sibling
+    # "Current goal:"/"Last user message:" markers below): an IGNORECASE + whitespace-anchored version
+    # matched the ordinary word "objective:" mid-prose and silently truncated legitimate replies (an OKR,
+    # a project charter, "My objective: to help.") at that word.
+    _obj = re.search(r"(?:^|\n)[ \t]*Objective\s*:", t)
+    if _obj and _obj.start() > 0 and re.search(
+        # A LONE "Objective:" is a legit OKR / project charter — only treat it as a leaked scaffold echo
+        # when an UNAMBIGUOUS sibling scaffold marker ALSO appears (the model is echoing the prompt
+        # scaffold, not writing an objective). This runs before the sibling cuts below, so the whole
+        # scaffold block is removed at the earliest "Objective:" rather than leaving "Objective: <goal>".
+        r"(?:^|\n)[ \t]*(?:Current goal|Last user message|Repo snapshot|Repo structure)\s*:"
+        r"|#{1,3}[ \t]*(?:SYSTEM|TASK|CONTEXT|SCRATCHPAD|REPO|INSTRUCTIONS)\b", t,
+    ):
         t = t[:_obj.start()].strip()
     # Drop a *degenerate* tail: trailing lines that are only code-fences, lone single
     # characters, or blank — the shape a looping model emits after its real answer.
