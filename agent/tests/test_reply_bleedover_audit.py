@@ -726,3 +726,20 @@ def test_square_bracket_facet_and_titlecase_clause_gate():
     assert S("Eris, discovered in 2005, is: a dwarf planet beyond Neptune.") == "Eris, discovered in 2005, is: a dwarf planet beyond Neptune."
     # …but a genuine TITLE-CASE facet clause still strips.
     assert S("Morrigan, The Blade: think first.") == "think first."
+
+
+# ── 24. Round-15: bracketed [Layla]:/[Assistant]: label (#1); trailing EOS residue (#6) ───────────
+
+def test_bracketed_layla_assistant_label_and_eos_residue():
+    from services.agent.response_builder import strip_junk_from_reply as S
+    _SIG3 = "⚔"
+    # #1 — the DEFAULT aspect's bracketed self-label "[Layla]:" (and "[Assistant]:") leaked because the
+    # bracketed-name enumeration only had the 6 focused aspects.
+    assert S("[Layla]: The set() function removes duplicates.") == "The set() function removes duplicates."
+    assert S("[Assistant]: hi there") == "hi there"
+    assert S("[" + _SIG3 + " Layla]: answer") == "answer"   # sigil inside the bracket
+    assert S("[Morrigan]: answer") == "answer"              # control still works
+    # #6 — SentencePiece/Llama-3 EOS rendered as literal trailing residue is stripped.
+    assert S("The answer is 42.</s>") == "The answer is 42."
+    assert S("42.<|eot_id|>") == "42."
+    assert S("done.<|eom_id|>") == "done."
