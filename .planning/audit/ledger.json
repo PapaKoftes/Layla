@@ -1,8 +1,8 @@
 {
   "_doc": "Coverage ledger for the audit-loop. The workflow reads this to pick the next dimension (never-run > stale > weight), and writes back convergence state after each round. Edit weights/cadence/lenses freely.",
   "version": 1,
-  "round_counter": 0,
-  "updated": null,
+  "round_counter": 1,
+  "updated": "2026-07-12T20:12:10Z",
   "dimensions": [
     {
       "key": "reality",
@@ -28,11 +28,11 @@
       "family": "security",
       "weight": 9,
       "cadence": 1,
-      "last_round": 0,
+      "last_round": 1,
       "dry_rounds": 0,
       "quiescent": false,
-      "open_findings": 0,
-      "max_severity": "none",
+      "open_findings": 11,
+      "max_severity": "high",
       "lenses": [
         "tool-execution sandbox: can allow_write/allow_run be escaped, or a tool write/run outside sandbox_root?",
         "path traversal in file tools (read_file/list_dir/glob/write): ../ escapes, absolute paths, symlinks",
