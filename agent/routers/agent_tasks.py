@@ -48,7 +48,9 @@ async def resume_paused(req: dict):
     _resume_raw = (result.get("response") or ((result.get("steps") or [{}])[-1].get("result", "") if result.get("steps") else ""))
     try:
         from services.agent.response_builder import clean_reply_text as _clean_reply
-        _resume_reply = _clean_reply(_resume_raw if isinstance(_resume_raw, str) else "", status=str(result.get("status") or "finished"))
+        # Thread the run's resolved aspect so the active-aspect gate preserves a bare NON-active
+        # 'Echo: <definition>' here too (the interactive /agent path already does this).
+        _resume_reply = _clean_reply(_resume_raw if isinstance(_resume_raw, str) else "", status=str(result.get("status") or "finished"), active_aspect=result if isinstance(result, dict) else (aspect_id or "morrigan"))
     except Exception:
         _resume_reply = _resume_raw if isinstance(_resume_raw, str) else ""
     return JSONResponse({
@@ -90,7 +92,7 @@ async def resume_persistent_coordinator_task(task_id: str, request: Request):
         _raw = result.get("response") or result.get("reply") or ((result.get("steps") or [{}])[-1].get("result", "") if result.get("steps") else "")
         try:
             from services.agent.response_builder import clean_reply_text as _clean_reply
-            result["response"] = _clean_reply(_raw if isinstance(_raw, str) else "", status=str(result.get("status") or "finished"))
+            result["response"] = _clean_reply(_raw if isinstance(_raw, str) else "", status=str(result.get("status") or "finished"), active_aspect=result if isinstance(result, dict) else None)
         except Exception:
             pass
     return JSONResponse({"ok": True, "result": result})
