@@ -979,6 +979,13 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = (), active_
             t = t.replace("\x00F" + str(_i) + "F\x00", _blk)
     t = _collapse_repetition(t)
     t = _collapse_duplicate_blocks(t)  # fence-safe: cut a reprinted trailing code block
+    # Balance an UNCLOSED code fence left by a max_tokens truncation: the model started a
+    # ```lang block with code after it but the budget cut off before the closing ```. The
+    # dangling-opener strips above only handle a fence with NOTHING after it (```python\n$);
+    # a fence WITH truncated content leaves an odd ``` count, which renders every following
+    # surface (raw store, voice plain-text, any non-marked reader) as an open block. Close it.
+    if t.count("```") % 2 == 1:
+        t = t.rstrip() + "\n```"
     if is_junk_reply(t):
         return ""
     return t
