@@ -267,8 +267,9 @@ async def v1_chat_completions(req: dict, request: Request):
             if not allow_write and not allow_run:
                 quick = _quick_reply_for_trivial_turn(goal)
                 if quick:
+                    from services.agent.response_builder import active_name_set as _ans_q
                     from services.agent.response_builder import strip_junk_from_reply as _sj_q
-                    quick = _sj_q(quick)  # output floor — the /v1 quick-reply path emitted/stored raw
+                    quick = _sj_q(quick, active_names=_ans_q(aspect_id))  # output floor — active-aspect gate parity with /agent (keep a non-active 'Echo:' definition)
                 if quick:
                     response_text = quick
                     evt = {
@@ -383,9 +384,10 @@ async def v1_chat_completions(req: dict, request: Request):
                 # Clean the tool-run answer BEFORE chunking it to the client — this branch streamed
                 # result["response"] raw (leading label / control tags leaked to OpenAI-SDK clients).
                 try:
+                    from services.agent.response_builder import active_name_set as _ans_v1b
                     from services.agent.response_builder import strip_junk_from_reply as _sj_v1b
                     from services.agent.response_builder import truncate_at_next_user_turn as _tr_v1b
-                    _cl_v1b = _tr_v1b(_sj_v1b(response_text))
+                    _cl_v1b = _tr_v1b(_sj_v1b(response_text, active_names=_ans_v1b(result)))
                     if _cl_v1b.strip():
                         try:
                             import runtime_safety as _rs_v1b
@@ -411,9 +413,10 @@ async def v1_chat_completions(req: dict, request: Request):
             # marker-safe by stream_safe_prefix; the persisted text needs the full cleaner so a
             # leaked leading label / trailing scaffold never re-enters the model as convo context).
             try:
+                from services.agent.response_builder import active_name_set as _ans_v1
                 from services.agent.response_builder import strip_junk_from_reply as _sj_v1
                 from services.agent.response_builder import truncate_at_next_user_turn as _tr_v1
-                _cleaned_v1 = _tr_v1(_sj_v1(response_text))
+                _cleaned_v1 = _tr_v1(_sj_v1(response_text, active_names=_ans_v1(result)))
                 if _cleaned_v1.strip():
                     # polish_output (hedge strip + paragraph dedup) — parity with the /agent stored
                     # copy; strip_junk alone misses a leading "As an AI…" hedge and a duplicated
@@ -479,8 +482,9 @@ async def v1_chat_completions(req: dict, request: Request):
     if not allow_write and not allow_run:
         quick = _quick_reply_for_trivial_turn(goal)
         if quick:
+            from services.agent.response_builder import active_name_set as _ans_nq
             from services.agent.response_builder import strip_junk_from_reply as _sj_nq
-            response_text = _sj_nq(quick) or quick  # output floor (the /v1 quick path stored raw)
+            response_text = _sj_nq(quick, active_names=_ans_nq(aspect_id)) or quick  # output floor + active-aspect gate parity
             append_h("user", goal)
             append_h("assistant", response_text)
             try:
@@ -552,7 +556,8 @@ async def v1_chat_completions(req: dict, request: Request):
     # regardless of which internal path produced the text.
     try:
         from agent_loop import strip_junk_from_reply as _strip_junk
-        _cleaned = _strip_junk(response_text)
+        from services.agent.response_builder import active_name_set as _ans_final
+        _cleaned = _strip_junk(response_text, active_names=_ans_final(result))
         if _cleaned:
             response_text = _cleaned
         elif response_text and response_text.strip():
