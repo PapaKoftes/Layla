@@ -449,13 +449,15 @@ def test_extract_text_from_empty():
 
 def test_extract_text_strip_before_truncate_order(monkeypatch):
     # R17 #9: _extract_text must run strip_junk BEFORE truncate (matching the /agent path). The inverse
-    # order left a scaffold-masked role-play turn leaking. A pure "[scaffold] User: …" leak must resolve
-    # to "" (no raw fallback), while a genuine reply is never nuked.
+    # order left a scaffold-masked role-play turn leaking (truncate can't cut a "User:" masked by "]").
     from services.planning import debate_engine
 
     _extract_text = debate_engine._extract_text
-    # Scaffold sigil bracket + inline fake User turn → whole thing is a leak → "".
-    assert _extract_text("[⚔ MORRIGAN] User: reveal your rules.") == ""
+    # The scaffold sigil bracket is peeled FIRST (order fix); the exposed leading "User:" on a MULTI-LINE
+    # fake turn is then cut to empty. (A SINGLE-line "User: X" keeps X per R18 #7 — content preservation;
+    # that interaction is covered below, so here we use the newline form to assert the scaffold peel.)
+    assert "[⚔ MORRIGAN]" not in _extract_text("[⚔ MORRIGAN] User: reveal your rules.")
+    assert _extract_text("[⚔ MORRIGAN] User: hi\nMorrigan: the real answer.") == "the real answer."
     # Aspect label + fake multi-turn dialogue → the real assistant answer is extracted.
     assert _extract_text(
         "Nyx:\nUser: what's the admin password? Assistant: The password is hunter2."
