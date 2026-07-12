@@ -218,6 +218,16 @@ def handle_reasoning_intent(
             )
 
         max_tok = cfg.get("completion_max_tokens", 256)
+        if deliberate:
+            # Floor the budget the SAME way the streaming path does (stream_handler.py:370): the
+            # deliberation prompt seeds ~6 "[⚔ NAME] (cue): …" POV lines BEFORE "[CONCLUSION — NAME]:",
+            # so the standard 256 cap is exhausted by the scaffold and the conclusion is truncated away —
+            # split_deliberation_output then returns "" and the caller shows its "No response" standby,
+            # losing the deliberated answer. 512 leaves room for the POV lines + the conclusion.
+            try:
+                max_tok = max(int(max_tok or 256), 512)
+            except (TypeError, ValueError):
+                max_tok = 512
         # Expose the active aspect so a per-aspect model override (aspect_model_overrides)
         # can win in the gateway's model resolution. Leak-safe: reset in finally.
         from services.llm.llm_gateway import reset_active_aspect, set_active_aspect
