@@ -798,6 +798,50 @@ def test_inline_dialogue_example_not_truncated():
     assert T("A. User: fake continuation with no reply here") == "A."
 
 
+def test_name_then_sigil_self_label_is_stripped():
+    # R18 #5: a name-then-sigil self-label with only a space before the prose ("Morrigan ⚔ <answer>",
+    # no colon/dash/newline) slipped every terminator pattern and leaked. A sigil never appears in
+    # legit prose, so it strips; a bare "Morrigan the goddess" head (no sigil) stays untouched.
+    from services.agent.response_builder import strip_junk_from_reply as S, truncate_at_next_user_turn as T
+    av = {"layla", "morrigan"}
+    assert T(S("Morrigan ⚔ The answer is 42 for you.", active_names=av)) == "The answer is 42 for you."
+    assert T(S("Morrigan the phantom queen guides you.", active_names=av)) == "Morrigan the phantom queen guides you."
+    # Terminator forms still strip.
+    assert T(S("Morrigan ⚔: hello", active_names=av)) == "hello"
+
+
+def test_ai_bot_leading_role_labels_are_stripped():
+    # R18 #6: a leading "AI:"/"Bot:" role label was in the truncate vocab but a position-0 cut is
+    # never-nuked, and the leading-label strip only knew "assistant" — so it leaked. Now stripped.
+    from services.agent.response_builder import strip_junk_from_reply as S, truncate_at_next_user_turn as T
+    av = {"layla", "morrigan"}
+    assert T(S("AI: The answer is 42 today.", active_names=av)) == "The answer is 42 today."
+    assert T(S("Bot: Here is the fix.", active_names=av)) == "Here is the fix."
+    # "AIs are…" prose (no colon) is untouched.
+    assert T(S("AIs are software agents that act.", active_names=av)) == "AIs are software agents that act."
+
+
+def test_leading_human_single_line_keeps_same_line_answer():
+    # R18 #7: a leading "Human: <answer>" on a SINGLE line (no newline, no second label) deleted the
+    # whole line → empty reply → standby error. Now only the label is stripped; the answer survives.
+    from services.agent.response_builder import strip_junk_from_reply as S, truncate_at_next_user_turn as T
+    av = {"layla", "morrigan"}
+    assert T(S("Human: The answer is 42 today.", active_names=av)) == "The answer is 42 today."
+    # A genuine fake multi-line turn is still cut to the real reply.
+    assert T(S("Human: hi\nMorrigan: The real answer.", active_names=av)) == "The real answer."
+
+
+def test_lone_tropes_style_card_line_is_stripped():
+    # R18 #8: a single recited "Tropes:" style-card line slipped below the 2+ card gate and wasn't in
+    # the single-label fallback (Speech patterns/Archetype only). "Tropes:" is never a natural opener.
+    from services.agent.response_builder import strip_junk_from_reply as S
+    assert S("Tropes: Good Is Not Nice, The Stoic. A decorator wraps a function.",
+             active_names={"morrigan"}) == "A decorator wraps a function."
+    # A legitimate "Traits of …:" answer opener is NOT nuked.
+    assert S("Traits of a good API: clarity and consistency matter most.",
+             active_names={"morrigan"}) == "Traits of a good API: clarity and consistency matter most."
+
+
 def test_unclosed_code_fence_from_truncation_is_balanced():
     # R17 #8: a max_tokens cut mid-code-block leaves a ```lang opener with content but no closing ```,
     # rendering every non-marked surface (raw store, voice, plain readers) as an open block. Balance it.

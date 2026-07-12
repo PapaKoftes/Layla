@@ -260,13 +260,19 @@ def truncate_at_next_user_turn(text: str) -> str:
             t = t[m.start(1):].strip()
         else:
             first_line_end = t.find("\n")
-            t = t[first_line_end + 1:].strip() if first_line_end != -1 else ""
+            if first_line_end != -1:
+                t = t[first_line_end + 1:].strip()
+            else:
+                # No newline: the real answer is on the SAME line after the fake "Human:" label. Deleting
+                # the whole line discarded it → empty reply → the router's "couldn't generate" standby.
+                # Strip only the leading role label and keep the answer that follows it.
+                t = re.sub(r"^\s*(?:User|Human|You)\s*:\s*", "", t, flags=re.IGNORECASE).strip()
         # Re-strip the exposed head: an aspect label ("Morrigan:") and/or a bare role line
         # ("Assistant\n", "Human:") the model stacked behind the fake turn. Bounded loop for stacks.
         for _ in range(3):
             _before = t
             t = _strip_leading_speaker_label(t).strip()
-            t = re.sub(r"^[ \t]*(?:Assistant|Human|User|You)[ \t]*(?::[ \t]*|\n+)", "", t, flags=re.IGNORECASE).strip()
+            t = re.sub(r"^[ \t]*(?:Assistant|Bot|AI|Human|User|You)[ \t]*(?::[ \t]*|\n+)", "", t, flags=re.IGNORECASE).strip()
             if t == _before:
                 break
     # Fenced code regions: a "User:" INSIDE a ``` / ~~~ block is legitimate content (a chat-transcript
@@ -468,19 +474,32 @@ def _strip_leading_speaker_label(t: str, extra_names: tuple[str, ...] = (), acti
         r"(?P<label>" + core + r")(?:[*_]{1,2})?[ \t]+[-–—][ \t]+(?=\S)",
         re.IGNORECASE,
     )
+    # Case 5 — name-then-sigil with only WHITESPACE before the prose ("Morrigan ⚔ <answer>", no colon/
+    # dash/newline). `core` already allows a trailing sigil; the four patterns above all need a colon/
+    # newline/dash/leading-deco, so this space-only form slipped through. The loop guards this pattern on
+    # an ACTUAL sigil in the match (a sigil never appears in legit prose) so a bare "Morrigan the goddess"
+    # head is NOT stripped — only a sigil-bearing self-label.
+    pat_sig = re.compile(
+        r"^[ \t]*(?P<label>" + core + r")(?=\S)",
+        re.IGNORECASE,
+    )
 
     def _has_token(label: str) -> bool:
         if re.search(sig, label):
             return True
         return bool(re.search(r"\b(?:" + name_alt + r")\b", label, re.IGNORECASE))
 
-    for pat in (pat_colon, pat_line, pat_dash, pat_dec):
+    for pat in (pat_colon, pat_line, pat_dash, pat_dec, pat_sig):
         m = pat.match(t)
         if not m:
             continue
         label = m.group("label") or ""
         deco = m.groupdict().get("deco") or ""
         if not _has_token(label) and not re.search(sig, deco):
+            continue
+        # pat_sig (name-then-sigil, whitespace-only separator) is only a self-label when a SIGIL is
+        # actually present — "Morrigan the goddess" (bare name + prose) must stay untouched.
+        if pat is pat_sig and not re.search(sig, m.group(0)):
             continue
         # The bare dash form "Name - <prose>" (no sigil, no colon) is ambiguous: aspect names are also
         # common words/mythic figures, so "Echo - repeat the last thing", "Eris - dwarf planet …" are
@@ -571,7 +590,7 @@ def stream_safe_prefix(raw: str, already_emitted: int) -> tuple[str, int]:
         # whole stream (parity with the done-frame's multi-pass loop).
         for _ in range(5):
             _stripped = _strip_leading_speaker_label(clean)
-            _stripped = re.sub(r"^[ \t]*assistant[ \t]*(?::[ \t]*|\n+)", "", _stripped, flags=re.IGNORECASE)
+            _stripped = re.sub(r"^[ \t]*(?:assistant|bot|ai)[ \t]*(?::[ \t]*|\n+)", "", _stripped, flags=re.IGNORECASE)
             if _stripped == clean:
                 break
             clean = _stripped
@@ -925,7 +944,7 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = (), active_
         t = _strip_leading_speaker_label(t, _names, active_names).strip()
         # A leading "assistant:" / "Assistant\n" role label (colon- or newline-terminated so prose
         # like "Assistant chefs prepare…" is untouched).
-        t = re.sub(r"^\s*assistant[ \t]*(?::[ \t]*|\n+)", "", t, flags=re.IGNORECASE).strip()
+        t = re.sub(r"^\s*(?:assistant|bot|ai)[ \t]*(?::[ \t]*|\n+)", "", t, flags=re.IGNORECASE).strip()
         if t == _prev:
             break
     t = re.sub(r"\[System:\s*Your last response[^\]]*\]\s*", "", t, flags=re.IGNORECASE | re.DOTALL).strip()
@@ -946,7 +965,7 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = (), active_
     # slips below the 2+ gate. These are almost never a natural reply opener (unlike generic "Traits:"),
     # so strip one leading occurrence + its clause — but never nuke the whole reply.
     for _ in range(2):
-        _sm = re.match(r"^[ \t]*(?:Speech patterns?|Archetype)[ \t]*:[^.\n]*(?:[.;]|\n|$)[ \t]*", t, re.IGNORECASE)
+        _sm = re.match(r"^[ \t]*(?:Speech patterns?|Archetype|Tropes?)[ \t]*:[^.\n]*(?:[.;]|\n|$)[ \t]*", t, re.IGNORECASE)
         if not _sm:
             break
         _srest = t[_sm.end():].strip()
@@ -1017,8 +1036,8 @@ def clean_response_text(text: str, aspect_names: tuple[str, ...] = ()) -> str:
         text = _echo_pat.sub("", text, count=1).strip()
         if text == prev:
             break
-    if re.match(r"^\s*assistant\s*:\s*", text, re.IGNORECASE):
-        text = re.sub(r"^\s*assistant\s*:\s*", "", text, count=1, flags=re.IGNORECASE).strip()
+    if re.match(r"^\s*(?:assistant|bot|ai)\s*:\s*", text, re.IGNORECASE):
+        text = re.sub(r"^\s*(?:assistant|bot|ai)\s*:\s*", "", text, count=1, flags=re.IGNORECASE).strip()
     for _ in range(50):
         prev = text
         text = re.sub(r"^\s*assistant\s*:\s*I\s+replied\.\s*", "", text, count=1, flags=re.IGNORECASE).strip()
