@@ -32,6 +32,28 @@ from shared_state import get_append_history, get_history, get_touch_activity
 logger = logging.getLogger("layla")
 router = APIRouter(tags=["research"])
 
+
+def _research_active_names(aspect) -> set:
+    """Active self-label names for /research — delegates to the canonical response_builder.active_name_set.
+    Threading this into strip_junk_from_reply keeps a bare NON-active 'Echo: <definition>' (or '## Cassandra')
+    intact — /research previously passed active_names=None (strip-all) and over-stripped + KB-re-ingested it."""
+    try:
+        from services.agent.response_builder import active_name_set
+        return active_name_set(aspect)
+    except Exception:
+        return {"layla"}
+
+
+def _research_extra_names(result) -> tuple:
+    """A CUSTOM aspect's display name so strip_junk also matches a leading 'CustomName:' (the built-in
+    regex only knows the six stock aspects). Mirrors routers.agent._aspect_extra_names."""
+    try:
+        n = str((result or {}).get("aspect_name") or "").strip()
+        return (n,) if n and n.lower() != "layla" else ()
+    except Exception:
+        return ()
+
+
 _RESEARCH_PREFIX = (
     "Research mode: only read and analyze. Do not modify any files or run any commands. "
     "Use read_file, list_dir, grep_code, glob_files, git_status, git_log, git_diff as needed. "
@@ -439,7 +461,7 @@ async def research(req: dict):
                     _delta, _emitted = stream_safe_prefix("".join(full), _emitted)
                     if _delta:
                         yield f"data: {json.dumps({'token': _delta})}\n\n"
-                text = truncate_at_next_user_turn(strip_junk_from_reply("".join(full)))
+                text = truncate_at_next_user_turn(strip_junk_from_reply("".join(full), active_names=_research_active_names(aspect_id)))
                 # Content-safety floor + polish — PARITY with the /agent SSE branches. Without it a
                 # Tier-1/Tier-2 synthesis shipped raw to the bubble, was spoken via TTS, saved to
                 # last_research.md, AND re-ingested into the KB (resurfacing as retrieved context).
@@ -531,7 +553,7 @@ async def research(req: dict):
         response_text = final.strip()
     _research_blocked = False
     if response_text:
-        response_text = truncate_at_next_user_turn(strip_junk_from_reply(response_text))
+        response_text = truncate_at_next_user_turn(strip_junk_from_reply(response_text, _research_extra_names(result), active_names=_research_active_names(result)))
         try:
             import runtime_safety as _rs_r2
             from services.infrastructure.output_polish import polish_output as _po_r2
