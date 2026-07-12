@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 import sqlite3
 import time
 from contextlib import contextmanager
@@ -524,9 +525,19 @@ def export_graphml(workspace_root: str | Path, output_path: Path | None = None, 
                 G.add_edge(caller_id, callee_id, edge_type="calls")
 
     try:
-        nx.write_graphml(G, str(output))
+        # Atomic: write a sibling temp file then os.replace() so a crash or
+        # power-loss mid-write can't leave a truncated/unparseable repo_graph.graphml.
+        # Mirrors memory_graph._save_graph's temp-then-replace pattern.
+        tmp = output.with_name(output.name + ".tmp")
+        nx.write_graphml(G, str(tmp))
+        os.replace(str(tmp), str(output))
         logger.info("repo_indexer: GraphML exported to %s (%d nodes, %d edges)", output, G.number_of_nodes(), G.number_of_edges())
         return True
     except Exception as e:
         logger.warning("repo_indexer: GraphML write failed: %s", e)
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except Exception:
+            pass
         return False

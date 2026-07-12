@@ -141,6 +141,41 @@ def test_export_graphml(tmp_path, fresh_db):
     ok = export_graphml(tmp_path, output_path=gml, db_path=fresh_db)
     assert ok is True
     assert gml.exists()
+    # Atomic write leaves no sibling temp file behind on success.
+    assert not (tmp_path / "out.graphml.tmp").exists()
+
+
+def test_export_graphml_atomic_preserves_existing_on_crash(tmp_path, fresh_db, monkeypatch):
+    """A crash mid-write must not truncate/corrupt an already-good graphml."""
+    nx = pytest.importorskip("networkx")
+    from services.workspace.repo_indexer import export_graphml, index_workspace_repo
+    (tmp_path / "g.py").write_text("class Graph:\n    def edges(self): pass\n", encoding="utf-8")
+    index_workspace_repo(tmp_path, db_path=fresh_db)
+    gml = tmp_path / "out.graphml"
+    # First, produce a valid graphml file.
+    assert export_graphml(tmp_path, output_path=gml, db_path=fresh_db) is True
+    good_bytes = gml.read_bytes()
+    assert good_bytes  # non-empty, valid
+
+    # Now simulate a crash partway through the next write.
+    real_write = nx.write_graphml
+
+    def _boom(G, path, *a, **kw):
+        # Write partial garbage into the temp target, then blow up — mimicking
+        # a process kill mid-stream. The destination must stay untouched.
+        with open(path, "wb") as fh:
+            fh.write(b"<graphml>partial")
+        raise RuntimeError("simulated crash mid-write")
+
+    monkeypatch.setattr(nx, "write_graphml", _boom)
+    ok = export_graphml(tmp_path, output_path=gml, db_path=fresh_db)
+    assert ok is False
+    # The previously-good destination file is intact (never truncated).
+    assert gml.read_bytes() == good_bytes
+    # And no orphaned temp file is left lying around.
+    assert not (tmp_path / "out.graphml.tmp").exists()
+
+    monkeypatch.setattr(nx, "write_graphml", real_write)
 
 
 def test_skip_dirs_ignored(tmp_path, fresh_db):
