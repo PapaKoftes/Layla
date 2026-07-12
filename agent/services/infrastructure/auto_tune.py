@@ -115,7 +115,12 @@ _PIPELINE: dict[str, dict] = {
         "enable_self_reflection": False,         # skips an extra LLM call
         "multi_agent_orchestration_enabled": False,
         "output_quality_gate_enabled": False,
-        "completion_max_tokens": 256,
+        # 320 (up from 256): auto-tune is AUTHORITATIVE for this key, so the config_schema potato preset
+        # was being re-clamped and a substantive answer truncated at ~180 words. A modest bump lets a
+        # how-to / explanation finish; it only costs latency on answers that genuinely need the length
+        # (short replies still stop early). Honors the "allow a bit longer replies if needed" ask on the
+        # potato box, where the config knob alone had no effect (see the discoverability hint in config_schema).
+        "completion_max_tokens": 320,
         "context_auto_compact_ratio": 0.6,
         "max_runtime_seconds": 300,
         "chat_light_max_runtime_seconds": 60,

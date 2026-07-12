@@ -746,6 +746,18 @@ export async function send() {
     }
   } catch (e) {
     try { laylaRemoveTypingIndicator(); } catch (_e) { console.debug('app:', _e); }
+    // An ABORTED/errored stream (user cancel, 150s hard-silence, or a dropped connection) throws out of
+    // the read loop, skipping BOTH graceful finalizers — so the partial bubble was left rendered from
+    // RAW un-cleaned tokens (a leaked '⚔ Morrigan:' label / scaffolding persisting permanently) with the
+    // frozen 'Status: Streaming …' line under it. Finalize it here too.
+    try { if (typeof streamMeta !== 'undefined' && streamMeta) streamMeta.remove(); } catch (_e) { console.debug('app:', _e); }
+    try {
+      if (typeof bubble !== 'undefined' && bubble && typeof full !== 'undefined' && full) {
+        var _cf = cleanLaylaText(full);
+        if (typeof marked !== 'undefined' && typeof marked.parse === 'function') { bubble.innerHTML = sanitize(marked.parse(_cf)); }
+        else { bubble.textContent = _cf; }
+      }
+    } catch (_e) { console.debug('app:', _e); }
     var errMsg = (e && e.message ? e.message : String(e));
     // Phase 6B: Enhanced error recovery with retry button
     var isTimeout = /timeout|abort|network/i.test(errMsg);
