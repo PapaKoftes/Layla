@@ -836,13 +836,17 @@ def read_excel(path: str, sheet: str = "", max_rows: int = 100) -> dict:
 
 def read_pptx(path: str, **_kw) -> dict:
     """Extract text from a PowerPoint file."""
+    # Sandbox containment: resolve + gate before opening, matching read_pdf/read_docx/read_excel.
+    p = _resolve_sandboxed_path(path)
+    ok, err = _ensure_inside_sandbox(p)
+    if not ok:
+        return err or {"ok": False, "error": "Outside sandbox"}
+    if not p.exists():
+        return {"ok": False, "error": f"File not found: {path}"}
     try:
         from pptx import Presentation
     except ImportError:
         return {"ok": False, "error": "python-pptx not installed. Run: pip install python-pptx"}
-    p = Path(path)
-    if not p.exists():
-        return {"ok": False, "error": f"File not found: {path}"}
     try:
         prs = Presentation(str(p))
         slides = []
