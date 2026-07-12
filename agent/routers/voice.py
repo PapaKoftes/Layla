@@ -21,6 +21,13 @@ def _text_for_speech(t: str) -> str:
         return ""
     # Drop fenced code blocks entirely — reading code aloud char-by-char is noise, not speech.
     t = _re.sub(r"```[^\n]*\n.*?(?:```|\Z)", " ", t, flags=_re.DOTALL)
+    # Strip model-emitted inline HTML tags so the synthesizer does not read the markup aloud
+    # ("<span class='msg-facet-chip'>Morrigan</span>" → the audio spoke "span class msg-facet-chip
+    # Morrigan slash span"). The visible bubble neutralizes HTML via DOMPurify; the audio channel had no
+    # equivalent. Drop the tags (keep their text) + decode the few entities marked/DOMPurify emit.
+    t = _re.sub(r"</?[A-Za-z][^>]*>", " ", t)
+    t = (t.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+          .replace("&quot;", '"').replace("&#39;", "'").replace("&nbsp;", " "))
     t = _re.sub(r"~~~[^\n]*\n.*?(?:~~~|\Z)", " ", t, flags=_re.DOTALL)
     _lines = []
     for _ln in t.split("\n"):
