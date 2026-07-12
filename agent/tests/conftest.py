@@ -204,7 +204,19 @@ def isolated_db(tmp_path):
     db_path = tmp_path / "test_layla.db"
     with patch("layla.memory.db._DB_PATH", db_path), \
          patch("layla.memory.db_connection._DB_PATH", db_path):
+        import layla.memory.db as db_mod
+        import layla.memory.migrations as mig
         from layla.memory.migrations import migrate
+
+        # migrate() runs at most once per process (guarded by _MIGRATED). Any prior
+        # DB-touching test flips the guard True, so without resetting it here migrate()
+        # short-circuits and this freshly-patched tmp DB is left with ZERO tables.
+        # Reset both guards (barrel + module) so the isolated DB is really migrated,
+        # matching the session-scoped _force_test_db_path fixture.
+        if hasattr(db_mod, "_MIGRATED"):
+            db_mod._MIGRATED = False  # type: ignore[attr-defined]
+        if hasattr(mig, "_MIGRATED"):
+            mig._MIGRATED = False  # type: ignore[attr-defined]
         migrate()
         yield db_path
 
