@@ -253,7 +253,9 @@ def test_deliberation_synthesis_failure_no_interior_labels(mock_completion, mock
         mode="debate",
         aspects=["morrigan", "nyx"],
     )
-    assert result.synthesis_notes == "synthesis_failed"
+    # R19 #4: synthesis_notes must be EMPTY on failure — the UI renders any non-empty value as prose in
+    # the Synthesis panel, so the old internal "synthesis_failed" sentinel leaked to the user verbatim.
+    assert result.synthesis_notes == ""
     # The bubble carries ONE voice, not stitched labelled answers.
     assert result.final_response == _CANNED_RESPONSES["morrigan"]
     # No interior "Nyx:"/"Echo:"/… name tags leaked into the reply body.
@@ -491,8 +493,9 @@ def test_deliberation_handles_llm_failure(mock_completion, mock_personality):
     # Aspect responses should contain failure markers
     for aid, resp in result.aspect_responses.items():
         assert "unable to respond" in resp.lower()
-    # Synthesis should have failed gracefully
-    assert result.synthesis_notes == "synthesis_failed"
+    # Synthesis should have failed gracefully — notes stay EMPTY (the old "synthesis_failed" sentinel
+    # leaked verbatim into the UI Synthesis panel; R19 #4).
+    assert result.synthesis_notes == ""
     assert "unable to respond" in result.final_response.lower()
 
 

@@ -863,6 +863,15 @@ def run_completion(
         # burning a failed attempt + error-log spam on each request.
         _litellm_model_cfg = (model_override or cfg.get("litellm_default_model") or "").strip()
         if cfg.get("litellm_enabled", False) and _litellm_model_cfg:
+            # Apply the builtin anti-echo stop fallback here too: the LiteLLM branch returns BEFORE
+            # inference_router (where `if stop is None: stop = get_stop_sequences()` lives), so a caller
+            # that omits stop (e.g. reasoning_handler's non-stream path) otherwise ran a LiteLLM model
+            # with the next-turn/scaffold stops disabled. Parity with the local llama_cpp path.
+            if stop is None:
+                try:
+                    stop = get_stop_sequences()
+                except Exception:
+                    stop = None
             try:
                 from services.llm.litellm_gateway import complete as _litellm_complete
                 from services.llm.litellm_gateway import complete_stream as _litellm_stream
