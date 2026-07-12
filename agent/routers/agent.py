@@ -246,6 +246,13 @@ def _active_name_set(result_or_aspect) -> set:
             n = str(result_or_aspect or "").strip()
         if n:
             s.add(n.lower())
+        else:
+            # No resolved aspect (e.g. an empty request aspect_id on the fast path, where stream_reason
+            # auto-selects the speaker internally): we can't gate the bare-label strip on the actual
+            # speaker, so fall back to STRIP-ALL by including every built-in name — matching the
+            # live-stream (active_names=None) behavior so the done frame doesn't re-introduce a label
+            # the stream already stripped.
+            s.update({"morrigan", "nyx", "echo", "eris", "cassandra", "lilith"})
         from services.agent.response_builder import _known_custom_aspect_names
         s.update(c.lower() for c in _known_custom_aspect_names())
     except Exception:

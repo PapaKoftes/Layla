@@ -507,7 +507,7 @@ export function addMsg(role, text, aspectName, deliberated, steps, uxStates, mem
   bubble.className = 'msg-bubble';
   bubble.title = 'Click to copy';
   if (role === 'layla') {
-    text = cleanLaylaText(text || '');
+    text = cleanLaylaText(text || '', facet && facet.id);   // gate on THIS message's aspect, not the session's
     if (typeof marked !== 'undefined') {
       var md = document.createElement('div');
       md.className = 'md-content';
@@ -684,14 +684,14 @@ export function _renderDeliberationTranscript(msgDiv, meta) {
       body.style.cssText = 'font-size:0.72rem;color:var(--text);line-height:1.4;white-space:pre-wrap';
       // Clean each per-voice card (reasoning traces / control markers / leading labels leaked into
       // the raw aspect POV text otherwise render verbatim in the transcript sub-cards).
-      body.textContent = cleanLaylaText(String(responses[asp] || '')).trim().slice(0, 800);
+      body.textContent = cleanLaylaText(String(responses[asp] || ''), asp).trim().slice(0, 800);   // gate on the card's OWN aspect
       card.appendChild(body);
 
       // Show critique for this aspect if available
       if (hasCritiques && critiques[asp]) {
         var crit = document.createElement('div');
         crit.style.cssText = 'margin-top:4px;padding:4px 6px;font-size:0.66rem;color:var(--text-dim);border-top:1px solid rgba(255,255,255,0.06);font-style:italic';
-        crit.textContent = '↳ Critique: ' + cleanLaylaText(String(critiques[asp] || '')).trim().slice(0, 400);
+        crit.textContent = '↳ Critique: ' + cleanLaylaText(String(critiques[asp] || ''), asp).trim().slice(0, 400);
         card.appendChild(crit);
       }
       respSection.appendChild(card);
