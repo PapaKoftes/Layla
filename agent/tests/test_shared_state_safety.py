@@ -422,3 +422,39 @@ class TestMostRecentConvId:
         ss.clear_cancel("conv-1")
         # most_recent_conv_id should still be "conv-1"
         assert ss.get_most_recent_conv_id() == "conv-1"
+
+
+def test_autocompact_preserves_turns_appended_during_summarization(monkeypatch):
+    # audit #12: maybe_auto_compact runs the LLM summarizer with the history lock RELEASED. A turn that
+    # arrives during that window must NOT be wiped by the subsequent clear()+repopulate from the stale
+    # pre-summary snapshot. We run the daemon compaction synchronously and simulate the race.
+    import shared_state as ss
+
+    cid = "compact-race-test"
+    ss._conv_histories.pop(cid, None)
+
+    # Run the compaction "thread" synchronously so the test is deterministic.
+    class _SyncThread:
+        def __init__(self, target=None, args=(), **kw):
+            self._t, self._a = target, args
+
+        def start(self):
+            self._t(*self._a)
+
+    monkeypatch.setattr("threading.Thread", _SyncThread)
+
+    # During "summarization", a new turn arrives on the live deque.
+    def _fake_compact(snapshot, **kw):
+        with ss._conv_hist_lock:
+            ss._conv_histories[cid].append({"role": "user", "content": "RACE_TURN"})
+        return list(snapshot)
+
+    monkeypatch.setattr("services.context.context_manager.maybe_auto_compact", _fake_compact)
+
+    ss.append_conv_history(cid, "user", "hello")
+    ss.append_conv_history(cid, "assistant", "hi there")  # assistant turn triggers compaction (sync here)
+
+    contents = [m["content"] for m in list(ss._conv_histories[cid])]
+    # The turn that arrived during summarization survives (was NOT clobbered by the stale-snapshot swap).
+    assert "RACE_TURN" in contents
+    assert "hello" in contents and "hi there" in contents

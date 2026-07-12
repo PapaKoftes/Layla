@@ -131,10 +131,18 @@ def append_conv_history(conversation_id: str, role: str, content: str) -> None:
                 with _conv_hist_lock:
                     h0 = _conv_histories.get(cid)
                     snapshot = list(h0) if h0 else []
+                    snap_len = len(snapshot)
                 compacted = maybe_auto_compact(snapshot, n_ctx=n_ctx, cfg=cfg)
                 with _conv_hist_lock:
                     h1 = _conv_histories.get(cid)
                     if h1 is None:
+                        return
+                    # maybe_auto_compact runs the LLM summarizer (seconds) with the lock RELEASED, so new
+                    # turns may have been appended to the live deque in the meantime. clear()+repopulate
+                    # from the stale pre-summary snapshot would silently DROP them (audit #12). Only swap
+                    # in the compacted history when the deque is unchanged; if it grew, skip this round —
+                    # compaction re-runs on the next assistant turn (idempotent), losing no messages.
+                    if len(h1) != snap_len:
                         return
                     h1.clear()
                     for item in compacted[-int(getattr(h1, "maxlen", 20) or 20):]:
