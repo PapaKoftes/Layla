@@ -1319,13 +1319,19 @@ def build_system_head(
         _hist_ratio = 0.0
 
     if _hist_ratio > 0.4:
-        sys_parts.append(
+        # Append the pressure note to the ASSEMBLED system_instructions STRING — NOT a re-join of the
+        # stale `sys_parts` list. sys_parts was frozen when it was first joined (~line 850); seven later
+        # blocks (aspect_behavior, maturity unlocks, personality evolution, german mode, BL-160
+        # response_language, emotional presence, hardware summary) are concatenated onto the STRING only.
+        # Re-joining sys_parts here silently dropped ALL of them mid-conversation whenever history crossed
+        # 40% of n_ctx (~1640 tok on the default 4096) — e.g. a Spanish user's language directive vanished
+        # and the model reverted to English, and every user lost aspect-behavior/maturity mid-chat.
+        system_instructions = system_instructions + "\n\n" + (
             "Context pressure: conversation is using more than 40% of available context. "
             "Decompose tasks into the smallest possible steps. "
             "Do one thing per response. Prefer `think` actions over long in-context reasoning. "
             "Use `read_file` only for specific sections, not full files."
         )
-        system_instructions = "\n\n".join(sys_parts)
         sections["system_instructions"] = system_instructions
 
     # Budget-enforced assembly
