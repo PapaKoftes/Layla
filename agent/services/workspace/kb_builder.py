@@ -196,8 +196,12 @@ def extract_text_from_url(url: str, timeout: int = 15) -> list[str]:
     try:
         req_headers = {"User-Agent": "Mozilla/5.0 (compatible; LaylaKB/1.0)"}
         from urllib.request import Request
+
+        from services.safety.url_guard import safe_urlopen
         req = Request(url, headers=req_headers)
-        with urlopen(req, timeout=timeout) as resp:
+        # SSRF guard: validates the URL + every redirect hop (blocks private/loopback/link-local,
+        # e.g. the cloud-metadata endpoint 169.254.169.254). Raises SSRFBlocked → caught below → [].
+        with safe_urlopen(req, timeout=timeout) as resp:
             content_type = resp.headers.get("Content-Type", "").lower()
             raw = resp.read()
 
