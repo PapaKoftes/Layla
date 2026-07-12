@@ -111,8 +111,21 @@ async def voice_speak(request: Request):
             # Also strip bracketed scaffold markers ("[TOOL: …]", "[OBSERVATION: …]", "[⚔ MORRIGAN]") —
             # NON-destructive of prose, so it avoids the "My main objective:" over-cut that motivated
             # skipping the full strip_junk. Without this the marker was SPOKEN aloud verbatim.
+            # Active-aspect gate parity with the visible bubble: a bare 'Echo:' for a NON-active aspect
+            # is a definition subject, not a self-label — keep it so the audio matches the bubble. Build
+            # the active set from the request aspect_id (empty → strip-all, matching the fast path).
+            _va = {"layla"}
+            if aspect_id:
+                _va.add(aspect_id.lower())
+            else:
+                _va.update({"morrigan", "nyx", "echo", "eris", "cassandra", "lilith"})
+            try:
+                from services.agent.response_builder import _known_custom_aspect_names
+                _va.update(c.lower() for c in _known_custom_aspect_names())
+            except Exception:
+                pass
             _mk = _acm_voice.sub("", _sm_voice.sub("", text))
-            _ct = _text_for_speech(_sls_voice(_srt_voice(_mk)))
+            _ct = _text_for_speech(_sls_voice(_srt_voice(_mk), active_names=_va))
             if _ct.strip():
                 text = _ct
         except Exception:
