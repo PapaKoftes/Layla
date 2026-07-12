@@ -754,7 +754,12 @@ export async function send() {
     try {
       if (typeof bubble !== 'undefined' && bubble && typeof full !== 'undefined' && full) {
         var _cf = cleanLaylaText(full);
-        if (typeof marked !== 'undefined' && typeof marked.parse === 'function') { bubble.innerHTML = sanitize(marked.parse(_cf)); }
+        if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
+          bubble.innerHTML = sanitize(marked.parse(_cf));
+          // Match the two graceful finalizers (done-frame + no-done): wrap/highlight code blocks and
+          // inject copy/apply buttons, so a code block that streamed before the abort isn't left plain.
+          try { if (typeof enhanceCodeBlocks === 'function') enhanceCodeBlocks(bubble); } catch (_e2) { console.debug('app:', _e2); }
+        }
         else { bubble.textContent = _cf; }
       }
     } catch (_e) { console.debug('app:', _e); }
