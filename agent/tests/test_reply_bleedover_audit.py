@@ -798,6 +798,20 @@ def test_inline_dialogue_example_not_truncated():
     assert T("A. User: fake continuation with no reply here") == "A."
 
 
+def test_unclosed_code_fence_from_truncation_is_balanced():
+    # R17 #8: a max_tokens cut mid-code-block leaves a ```lang opener with content but no closing ```,
+    # rendering every non-marked surface (raw store, voice, plain readers) as an open block. Balance it.
+    from services.agent.response_builder import strip_junk_from_reply as S
+    out = S("Here is the class:\n```python\nclass LRU:\n    def get(self, k):")
+    assert out.count("```") % 2 == 0 and out.rstrip().endswith("```")
+    # A properly closed fence is untouched (still exactly one pair).
+    assert S("Code:\n```python\nx = 1\n```").count("```") == 2
+    # A dangling LABEL-ONLY opener with nothing after it is stripped (not closed) by the existing rule.
+    assert "```" not in S("The answer is 42.\n```python")
+    # No fence → no spurious fence appended.
+    assert "```" not in S("Just prose, no code here at all.")
+
+
 def test_fabricated_assistant_own_turn_is_truncated():
     # R17 #1: the weak model finishes and then role-plays its OWN next turn as "Assistant:".
     # truncate only cut User/You/Human before, so the fake assistant turn leaked.
