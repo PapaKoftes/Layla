@@ -533,7 +533,11 @@ export async function send() {
             try { laylaUpdateCtxBar(obj.ctx_pct); } catch (_e) { console.debug('app:', _e); }
           }
           if (obj.type === 'thinking' || obj.think) {
+            // The live "Thinking" panel is a second raw model-output surface — clean it like the answer
+            // bubble so a doubled "⚔ Morrigan:" / "[Layla]:" label, a reasoning trace, or "</s>" residue
+            // doesn't render verbatim in the trace.
             var tt = String(obj.text || obj.think || '').trim();
+            try { tt = cleanLaylaText(tt); } catch (_e) { console.debug('app:', _e); }
             if (tt) appendThinkLine('✦ ' + tt);
           }
           if (obj.type === 'tool_step' || obj.tool_start) {
