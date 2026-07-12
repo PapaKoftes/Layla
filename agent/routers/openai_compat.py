@@ -239,9 +239,21 @@ async def v1_chat_completions(req: dict, request: Request):
     try:
         import runtime_safety as _rs_cg
         from services.safety.content_guard import check_input as _cg_check
-        _cg = _cg_check(goal, _rs_cg.load_config())
-        if _cg.blocked:
-            logger.warning("content_guard: /v1 input blocked tier=%s cat=%s", _cg.tier, _cg.category)
+        _cfg_cg = _rs_cg.load_config()
+        # #15: guard the AGGREGATE of every user + system message, not just the last user turn. A harmful
+        # request placed in the system message or an earlier turn (with a benign final "continue") is
+        # forwarded to the model verbatim via context/history, so checking only `goal` misses it.
+        _cg_texts = [
+            _normalize_openai_content(m.get("content", ""))
+            for m in messages
+            if isinstance(m, dict) and (m.get("role", "") or "").strip() in ("user", "system")
+        ]
+        _cg_agg = "\n".join(t for t in _cg_texts if t).strip()
+        _cg = _cg_check(goal, _cfg_cg)
+        _cg_a = _cg_check(_cg_agg, _cfg_cg) if _cg_agg and _cg_agg != goal else None
+        _blk = _cg if _cg.blocked else (_cg_a if (_cg_a and _cg_a.blocked) else None)
+        if _blk is not None:
+            logger.warning("content_guard: /v1 input blocked tier=%s cat=%s", _blk.tier, _blk.category)
             return _v1_error(
                 "This request was blocked by the content safety filter.",
                 code="content_blocked", status_code=400,
