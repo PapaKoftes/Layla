@@ -117,6 +117,9 @@ def apply_retention_policies(cfg: dict | None = None) -> dict[str, Any]:
             ("scheduler_history", int(c.get("retention_scheduler_history_days", 90)), None),
             ("capability_events", int(c.get("retention_capability_events_days", 180)), None),
             ("wakeup_log", int(c.get("retention_wakeup_log_days", 180)), None),
+            # audit #8: memory_conflicts was append-only with no cap/cleanup. Age-based on created_at
+            # (the consistency guard writes created_at); a resolved conflict has no long-term value.
+            ("memory_conflicts", int(c.get("retention_memory_conflicts_days", 90)), None),
         ]
 
         # Special-case age-based retention (non-created_at)
