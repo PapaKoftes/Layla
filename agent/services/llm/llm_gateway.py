@@ -691,7 +691,9 @@ def get_stop_sequences():
         # against was deliberately removed (outcome_writer.py) and is no longer produced anywhere. The
         # bare, UNANCHORED "Snippet:" was pure downside — it halted generation mid-reply whenever a
         # legitimate answer used a "Snippet:" section label. Dropped all three dead memory-artifact stops.
-        "<|endoftext|>", "<|im_end|>",
+        # ChatML/harmony + SentencePiece (Mistral/Llama-2 "</s>") + Llama-3 turn tokens — stop generation
+        # on them so a chat-template/quant mismatch can't emit the EOS as literal trailing residue.
+        "<|endoftext|>", "<|im_end|>", "</s>", "<|eot_id|>", "<|eom_id|>", "<|end_of_text|>",
     ]
     import runtime_safety
     cfg = runtime_safety.load_config()
