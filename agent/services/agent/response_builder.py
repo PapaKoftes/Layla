@@ -844,6 +844,16 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = (), active_
         r"^\[[ \t]*(?:" + _sigcls + r"[ \t]*)?(?:LAYLA|ASSISTANT|MORRIGAN|NYX|ECHO|ERIS|CASSANDRA|LILITH)[ \t]*(?:" + _sigcls + r")?[ \t]*\](?!\()\s*:?\s*",
         " ", t, flags=re.IGNORECASE,
     ).strip()
+    # MID-PROSE sigil-less aspect label with the colon OUTSIDE the bracket: "[Nyx]: …" / "[Nyx's
+    # critique]: …". The debate (council/tribunal) synthesis prompt seeds this exact transcript format,
+    # and a weak synthesis model can echo it inside its unified answer. The leading rule above is
+    # ^-anchored and the sigil-bracket rule needs a sigil, so a mid-answer "[Nyx]:" slipped through.
+    # The REQUIRED "]:" (colon immediately after the bracket) is what keeps a markdown link
+    # "[echo cancellation](url)" and a bare "[echo] technique" (no colon) safe.
+    t = re.sub(
+        r"\[[ \t]*(?:MORRIGAN|NYX|ECHO|ERIS|CASSANDRA|LILITH)(?:['’]s[ \t]+critique)?[ \t]*\][ \t]*:[ \t]*",
+        " ", t, flags=re.IGNORECASE,
+    ).strip()
     # Generic control-marker catch-all: small models INVENT bracketed ALL-CAPS scaffold tags
     # ([AFFIRMATIVE: …], [OBSERVATION: …]) we can't enumerate. Strip any "[ALLCAPS: …]" token
     # — the colon form is the scaffold shape. Case-SENSITIVE and colon-REQUIRED so code stays

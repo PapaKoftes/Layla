@@ -798,6 +798,29 @@ def test_inline_dialogue_example_not_truncated():
     assert T("A. User: fake continuation with no reply here") == "A."
 
 
+def test_mid_prose_bracketed_aspect_label_is_stripped():
+    # R18 #11: the debate (council/tribunal) synthesis seeds "[Nyx]:" / "[Nyx's critique]:" (sigil-less,
+    # colon OUTSIDE the bracket); a weak synthesis model can echo it mid-answer. No scrubber caught the
+    # mid-prose sigil-less shape (leading rule is ^-anchored; sigil rule needs a sigil).
+    from services.agent.response_builder import strip_junk_from_reply as S
+    av = {"layla", "morrigan"}
+    out = S("Caching is worth it. [Nyx]: but cap the TTL.", active_names=av)
+    assert "[Nyx]" not in out and "cap the TTL" in out and "Caching is worth it" in out
+    out2 = S("Good plan. [Nyx's critique]: watch the memory.", active_names=av)
+    assert "critique" not in out2 and "watch the memory" in out2
+    # A markdown link with the same bracket shape but "](" (no external colon) is preserved.
+    assert S("See [echo cancellation](http://x) for more.", active_names=av) == "See [echo cancellation](http://x) for more."
+
+
+def test_voice_text_for_speech_strips_inline_html():
+    # R18 #15: model-emitted inline HTML rode into the TTS text verbatim (the bubble neutralizes it via
+    # DOMPurify; the audio channel had no equivalent, so it spoke "span class msg-facet-chip …").
+    from routers.voice import _text_for_speech as V
+    out = V('<span class="msg-facet-chip">Morrigan</span> Use a set to remove duplicates.')
+    assert "<" not in out and "span" not in out and "class" not in out
+    assert out.strip() == "Morrigan Use a set to remove duplicates."
+
+
 def test_clean_reply_text_threads_active_aspect_gate():
     # R18 #13: clean_reply_text (resume / background / continuous finalizers) had no active_names, so it
     # strip-alled and deleted a bare NON-active 'Echo:' definition that the interactive /agent path keeps.

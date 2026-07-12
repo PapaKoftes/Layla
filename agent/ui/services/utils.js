@@ -41,6 +41,13 @@ export function cleanLaylaText(s, messageAspect) {
   t = t.replace(/<(think|thinking|reasoning|scratchpad|reflection)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '');
   t = t.replace(/<(?:think|thinking|reasoning|scratchpad|reflection)\b[^>]*>[\s\S]*$/i, '').trim();
   t = t.replace(/(\d+)/g, function (_m, i) { return _fences[Number(i)] || ''; });
+  // #10: a model-echoed leading HTML-tagged speaker label ("<b>Morrigan:</b> …",
+  // "<span class='msg-facet-chip'>⚔ Nyx</span> …") is not a markdown shape the lead regex below sees, so
+  // its TEXT ("Morrigan:") bled into the bubble beside the real chip. REMOVE a leading inline tag whose
+  // content is JUST a bare aspect label (name + optional sigil + optional colon) — a legit "<b>Note</b>"
+  // (content not an aspect label) is untouched. Removed outright since a tag-wrapped bare label is
+  // unambiguously a self-label chip (no colon terminator to leave for the markdown loop below).
+  t = t.replace(/^[ \t]*<(b|strong|em|i|span|mark)\b[^>]*>[ \t]*(?:[⚔✦◎⚡⌖⊛]️?[ \t]*)?(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)(?:[ \t]*[⚔✦◎⚡⌖⊛]️?)?[ \t]*:?[ \t]*<\/\1>[ \t]*/i, '');
   // Defense-in-depth for the "two tags, one broken" leak: strip a leading persona/speaker label
   // the backend may have missed (older stored replies, non-stream/reload path). Name-GATED —
   // "Layla", a Layla sigil, or an aspect name must be present — so a real markdown heading
@@ -85,6 +92,10 @@ export function cleanLaylaText(s, messageAspect) {
   // (pat_dec Case 3); the name-gated lead regex needs a colon/newline terminator so it misses this,
   // which doubled the sigil inside a deliberation card whose header already prints the same glyph.
   t = t.replace(/^[ \t]*[⚔✦◎⚡⌖⊛]️?[ \t]+(?=\S)/, '');
+  // #11 (mirror of the backend): a MID-PROSE sigil-less debate label "[Nyx]:" / "[Nyx's critique]:"
+  // (colon OUTSIDE the bracket) the council/tribunal synthesis can echo into its unified answer. The
+  // required "]:" keeps a markdown link "[echo cancellation](url)" and a bare "[echo] technique" safe.
+  t = t.replace(/\[[ \t]*(?:Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)(?:['’]s[ \t]+critique)?[ \t]*\][ \t]*:[ \t]*/gi, ' ');
   return t.trim();
 }
 
