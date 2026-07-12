@@ -2,6 +2,33 @@
 import pytest
 
 
+class TestContextPressureBranchKeepsAppendedBlocks:
+    """R19 #1 (HIGH): the context-pressure branch must NOT rebuild system_instructions from the stale
+    sys_parts list — that dropped every block string-appended after the initial join (aspect_behavior,
+    maturity, evolution, german, response_language, emotional presence, hardware) mid-conversation."""
+
+    def test_aspect_behavior_survives_context_pressure(self, monkeypatch):
+        import runtime_safety as rs
+        import services.context.context_manager as cm
+        from services.prompts import system_head_builder as SHB
+
+        # Force _hist_ratio > 0.4 deterministically, and disable the budget assembler so the assertion
+        # isolates the pressure-branch rebuild (not budget truncation).
+        monkeypatch.setattr(cm, "token_estimate_messages", lambda msgs: 999999, raising=False)
+        _orig = rs.load_config
+        monkeypatch.setattr(rs, "load_config", lambda: {**_orig(), "prompt_budget_enabled": False})
+
+        out = SHB.build_system_head(
+            goal="explain python decorators in detail please",
+            aspect={"id": "morrigan", "name": "Morrigan"},
+            conversation_history=[{"role": "user", "content": "hi"}],
+        )
+        # The pressure branch fired…
+        assert "Context pressure" in out
+        # …and the aspect-behavior block (string-appended AFTER the sys_parts join) still survives.
+        assert "Tool bias for this aspect" in out
+
+
 class TestIsLightweightChatTurn:
     def test_phatic_greeting(self):
         from services.prompts.system_head_builder import is_lightweight_chat_turn
