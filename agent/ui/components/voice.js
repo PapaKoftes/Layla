@@ -30,6 +30,7 @@ function _speechText(t) {
   // the server /voice/speak path. Then project the remaining markdown to plain speech.
   try { t = cleanLaylaText(String(t)); } catch (_e) { t = String(t); }
   return String(t)
+    .replace(/<\/?[A-Za-z][^>]*>/g, ' ')              // model-emitted inline HTML tags (parity w/ server _text_for_speech)
     .replace(/```[^\n]*\n[\s\S]*?(?:```|$)/g, ' ')   // fenced code blocks
     .replace(/`([^`]*)`/g, '$1')                       // inline code
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')           // [label](url) → label
