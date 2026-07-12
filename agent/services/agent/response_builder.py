@@ -677,7 +677,10 @@ def _strip_reasoning_traces(t: str) -> str:
     # OpenAI-harmony: drop the analysis channel entirely; unwrap the final message content.
     t = re.sub(r"<\|channel\|>\s*analysis.*?<\|(?:end|return)\|>", "", t, flags=re.IGNORECASE | re.DOTALL)
     t = re.sub(r"<\|start\|>\s*assistant\s*<\|channel\|>\s*final\s*<\|message\|>", "", t, flags=re.IGNORECASE)
-    t = re.sub(r"<\|(?:im_start|im_end|start|end|return|message|channel|assistant|user|system)\|>", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"<\|(?:im_start|im_end|start|end|return|message|channel|assistant|user|system|eot_id|eom_id|end_of_text|endoftext)\|>", "", t, flags=re.IGNORECASE)
+    # SentencePiece EOS/BOS rendered as LITERAL text ("</s>"/"<s>", Mistral/Llama-2 family) when the
+    # native tokenizer fails to consume the stop token — trailing "42.</s>" / "42.<|eot_id|>" residue.
+    t = re.sub(r"</?s>", "", t)
     # A dangling unclosed <think …> (max_tokens cut before the close) — everything after is trace.
     t = re.sub(r"<(?:think|thinking|reasoning|scratchpad|reflection)\b[^>]*>.*\Z", "", t, flags=re.IGNORECASE | re.DOTALL)
     return t.strip()
@@ -762,7 +765,11 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = ()) -> str:
     # the trailing ':?' consumes a colon that sits OUTSIDE the bracket, so '[Morrigan]: answer' does
     # not leave a dangling ': answer' orphan. Name-gated (an aspect name must be inside the bracket).
     t = re.sub(
-        r"\s*\[[^\]]*\b(?:MORRIGAN|NYX|ECHO|ERIS|CASSANDRA|LILITH)\b[^\]]*\]\s*:?\s*",
+        # Include LAYLA (the base/default display name — the MOST common aspect_name in the router) and
+        # ASSISTANT (instruct-model role tag). The colon-form catch-alls below both structurally miss
+        # "[Layla]:" (title-case, colon OUTSIDE the bracket), so it leaked as the "two tags" bug on the
+        # default aspect. Name-gated (a persona/role name must be inside the bracket).
+        r"\s*\[[^\]]*\b(?:LAYLA|ASSISTANT|MORRIGAN|NYX|ECHO|ERIS|CASSANDRA|LILITH)\b[^\]]*\]\s*:?\s*",
         " ", t, flags=re.IGNORECASE,
     ).strip()
     # Generic control-marker catch-all: small models INVENT bracketed ALL-CAPS scaffold tags
