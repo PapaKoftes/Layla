@@ -47,7 +47,12 @@ export function cleanLaylaText(s, messageAspect) {
   // ("## Overview") or ordinary prose is never touched, and only when real prose follows. The
   // optional "(…)" OR "— Title"/"- Title"/", Title" after the name covers the decorated chip forms
   // ("Morrigan (Coding): …", "Morrigan — The Blade: …"). Loops for a stacked label pair.
-  var lead = /^[ \t]*(?:>[ \t]*)?(?:#{1,6}[ \t]*)?(?:[*_]{1,2}[ \t]*)?((?:Layla\b[ \t]*)?(?:[⚔✦◎⚡⌖⊛]️?[ \t]*)?(?:(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b[ \t]*)?(?:\([^)\n]*\)[ \t]*|\[[^\]\n]{1,30}\][ \t]*)?(?:[-–—,][ \t]*[^:\n]{1,30}[ \t]*)?)(?:[*_]{1,2})?[ \t]*(?::[ \t]*(?:[*_]{1,2}[ \t]*)?|\n+)/i;
+  // The label's OPENING emphasis is captured as `em`; a trailing emphasis marker is consumed ONLY when
+  // it matches that opening ("**Morrigan**:" / "**Morrigan:**") via the \k<em> backreference. Without an
+  // opening emphasis, \k<em> matches empty (JS backref to a non-participating group), so the answer's OWN
+  // leading bold is NOT eaten — parity with the backend guard (response_builder.py pat_colon `(?(em)…)`),
+  // which fixes 'Morrigan: **Use a set.**' mangling to 'Use a set.**' (stranded closing '**').
+  var lead = /^[ \t]*(?:>[ \t]*)?(?:#{1,6}[ \t]*)?(?<em>[*_]{1,2})?[ \t]*(?<label>(?:Layla\b[ \t]*)?(?:[⚔✦◎⚡⌖⊛]️?[ \t]*)?(?:(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b[ \t]*)?(?:\([^)\n]*\)[ \t]*|\[[^\]\n]{1,30}\][ \t]*)?(?:[-–—,][ \t]*[^:\n]{1,30}[ \t]*)?)(?:\k<em>)?[ \t]*(?::[ \t]*(?:\k<em>[ \t]*)?|\n+)/i;
   // Active-aspect gate (parity with the backend): a BARE 'Name:'/'Name\n'/'## Name' whose aspect is
   // NOT active is a definition subject ('Echo: a repetition of sound'), not a self-label — keep it.
   // Decorated forms (sigil/*_/paren/bracket/dash/comma) are unambiguous, strip. Prefer the MESSAGE's
@@ -57,15 +62,20 @@ export function cleanLaylaText(s, messageAspect) {
   var _active = { layla: 1 }; if (_cur) _active[_cur] = 1;
   for (var _i = 0; _i < 2; _i++) {
     var m = t.match(lead);
-    if (m && m[1] && (/[⚔✦◎⚡⌖⊛]/.test(m[1]) || /\b(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b/i.test(m[1]))) {
+    var _lbl = (m && m.groups && m.groups.label) || '';
+    if (m && _lbl && (/[⚔✦◎⚡⌖⊛]/.test(_lbl) || /\b(?:Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b/i.test(_lbl))) {
       var _decorated = /[*_()\[\]—–,]/.test(m[0]) || /[⚔✦◎⚡⌖⊛]/.test(m[0]);
-      var _nm = (m[1].match(/\b(Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b/i) || [])[1];
+      var _nm = (_lbl.match(/\b(Layla|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith)\b/i) || [])[1];
       if (!_decorated && _nm && !_active[_nm.toLowerCase()]) { break; }   // non-active bare name → keep
       var rest = t.slice(m[0].length).replace(/^\s+/, '');
       if (rest) { t = rest; continue; }
     }
     break;
   }
+  // A BARE leading sigil with no name/colon ("⚔ Fix it") is a decorated self-label the backend strips
+  // (pat_dec Case 3); the name-gated lead regex needs a colon/newline terminator so it misses this,
+  // which doubled the sigil inside a deliberation card whose header already prints the same glyph.
+  t = t.replace(/^[ \t]*[⚔✦◎⚡⌖⊛]️?[ \t]+(?=\S)/, '');
   return t.trim();
 }
 
