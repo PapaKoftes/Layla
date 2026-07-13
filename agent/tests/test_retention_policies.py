@@ -59,20 +59,18 @@ def test_apply_retention_policies_deletes_old_rows(tmp_path, monkeypatch):
         assert a_new == 1
 
 
-def test_strategy_stats_hard_cap_fires_without_created_at(tmp_path, monkeypatch):
+def test_strategy_stats_hard_cap_fires_without_created_at(isolated_db):
     """Regression (audit #7): strategy_stats has no created_at column (its recency
     column is last_updated_at), so the created_at-only hard-cap guard silently
     no-op'd and the table grew one row per distinct free-text goal. The cap must
-    now fire via the last_updated_at fallback, keeping only the newest N rows."""
-    data_dir = tmp_path / "layla_data"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("LAYLA_DATA_DIR", str(data_dir))
+    now fire via the last_updated_at fallback, keeping only the newest N rows.
 
+    Uses the isolated_db fixture so strategy_stats starts empty regardless of what
+    other suite tests wrote to the shared session DB.
+    """
     from layla.memory.db_connection import _conn
-    from layla.memory.migrations import migrate
     from services.memory.memory_consolidation import apply_retention_policies
 
-    migrate()
     now = datetime.now(timezone.utc)
 
     # Insert 20 distinct (task_type, strategy) rows with increasing last_updated_at.
