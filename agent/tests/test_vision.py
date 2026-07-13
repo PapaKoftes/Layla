@@ -96,3 +96,57 @@ def test_v1_image_part_non_datauri_ignored():
     from routers import openai_compat as oc
     # http URL → no outbound fetch, returns "" (SSRF-safe)
     assert oc._analyze_image_part("https://example.com/x.png") == ""
+
+
+# ── SSRF #13: _get_image_context routes through url_guard, not a hand-rolled blocklist ──
+def test_get_image_context_blocks_decimal_encoded_loopback(tmp_path, monkeypatch):
+    """A decimal-encoded loopback URL (http://2130706433/ == 127.0.0.1) slipped past
+    the old string-prefix blocklist. It must now be rejected by is_safe_url before any
+    fetch, and the guarded safe_urlopen must never be reached."""
+    from routers import agent as agent_router
+    from services.safety import url_guard
+
+    called = {"fetched": False}
+
+    def _boom(*a, **k):
+        called["fetched"] = True
+        raise AssertionError("safe_urlopen must not be called for a blocked host")
+
+    monkeypatch.setattr(url_guard, "safe_urlopen", _boom)
+
+    out = agent_router._get_image_context(
+        image_url="http://2130706433/latest/meta-data/",
+        workspace_root=str(tmp_path),
+    )
+    assert out == ""
+    assert called["fetched"] is False
+
+
+def test_get_image_context_uses_guarded_urlopen(tmp_path, monkeypatch):
+    """A public image URL must be fetched through the guarded safe_urlopen (which
+    re-validates redirect hops), not a raw urllib.request.urlopen."""
+    import contextlib
+
+    from routers import agent as agent_router
+    from services.safety import url_guard
+
+    seen = {"url": None}
+
+    class _FakeResp:
+        def read(self):
+            return b"\x89PNG\r\n\x1a\n fake"
+
+    @contextlib.contextmanager
+    def _fake_safe_urlopen(url, timeout=15, **k):
+        seen["url"] = url
+        yield _FakeResp()
+
+    monkeypatch.setattr(url_guard, "is_safe_url", lambda u, **k: True)
+    monkeypatch.setattr(url_guard, "safe_urlopen", _fake_safe_urlopen)
+
+    # Describe/OCR tools may be absent; we only assert the guarded fetch path was used.
+    agent_router._get_image_context(
+        image_url="http://public.example.test/pic.png",
+        workspace_root=str(tmp_path),
+    )
+    assert seen["url"] == "http://public.example.test/pic.png"
