@@ -343,10 +343,22 @@ def run_completion_llama_cpp(
         try:
             out = fut.result(timeout=max(10, timeout_s))
         except _cf.TimeoutError:
-            # Detach without joining so the lock releases immediately. Do NOT invalidate_llm_cache here:
-            # the still-running worker holds a live reference to the llama instance, and swapping it out
-            # underneath it would corrupt state — a subsequent call re-initialises safely on its own.
+            # Detach the hung worker without joining so the lock releases (an effective timeout). BUT the
+            # detached worker is STILL running llm.create_completion() natively on the shared Llama
+            # instance — so we MUST fence that instance before releasing _llm_lock, or the next caller
+            # would run kv_cache_clear()/reset()/create_completion() on the SAME instance concurrently
+            # (llama-cpp drops the GIL during C inference → native heap-corruption race). Fence by
+            # dropping the module cache so the next caller builds a FRESH instance; the detached worker
+            # keeps its own reference to the old one until it finishes, so no two callers ever touch the
+            # same native context. (Cache-drop is Python-ref-only; it does not free the worker's C object.
+            # already_locked=True: we already hold _llm_lock, and the earlier claim that invalidating here
+            # corrupts state was wrong — this is exactly the fence the single-in-flight invariant needs.)
             ex.shutdown(wait=False, cancel_futures=True)
+            try:
+                from services.llm.llm_gateway import invalidate_llm_cache
+                invalidate_llm_cache(already_locked=True)
+            except Exception:
+                pass
             return {"choices": [{"message": {"content": "Local LLM timed out. Please retry."}}]}
         except Exception as _fe:
             # The completion FAILED (worker finished), so it is safe to recover the KV cache here.

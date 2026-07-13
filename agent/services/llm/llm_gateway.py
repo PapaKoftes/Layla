@@ -613,9 +613,19 @@ def prewarm_llm() -> None:
     t.start()
 
 
-def invalidate_llm_cache() -> None:
-    """Drop cached llama-cpp instances so next call reloads GGUF."""
+def invalidate_llm_cache(*, already_locked: bool = False) -> None:
+    """Drop cached llama-cpp instances so the next call reloads the GGUF (builds a FRESH instance).
+
+    This only clears the module-level Python references — it does NOT free the underlying C object, so a
+    caller that still holds its own reference (e.g. a detached timed-out worker mid-inference) keeps its
+    instance alive; the next caller simply builds a new one. That makes it safe to "fence" a poisoned
+    instance. Pass already_locked=True when the caller already holds _llm_lock (assigning None to a
+    global is GIL-atomic, so skipping the re-acquire is safe and avoids a non-reentrant-lock deadlock)."""
     global _llm, _llm_by_path
+    if already_locked:
+        _llm = None
+        _llm_by_path = {}
+        return
     try:
         with _llm_lock:
             _llm = None
