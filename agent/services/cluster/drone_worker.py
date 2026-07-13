@@ -265,23 +265,29 @@ class DroneWorker:
             return {"error": str(e)}
 
     def _handle_backup(self, payload: dict) -> dict:
-        """Perform a database backup."""
+        """Perform a database backup.
+
+        Delegates to services.infrastructure.db_backup.backup_database so this
+        producer of backups/layla_*.db yields the SAME consistent snapshot that
+        verify_and_recover_db later restores from: a WAL checkpoint(TRUNCATE)
+        followed by SQLite's online .backup() API. A plain shutil.copy2 of the
+        live WAL-mode db file would omit uncheckpointed commits (and could copy
+        pages mid-write), so a drone backup picked as the newest recovery source
+        would silently restore stale-or-torn data.
+        """
         try:
-            import shutil
-            from datetime import datetime, timezone
+            from services.infrastructure.db_backup import backup_database
 
-            from layla.memory.db_connection import _resolve_db_path
+            result = backup_database()
+            if not result.get("ok"):
+                return {"error": result.get("reason") or result.get("error") or "backup_failed"}
 
-            db_path = _resolve_db_path()
-            if not db_path.exists():
-                return {"error": "db_not_found"}
-
-            backup_dir = db_path.parent / "backups"
-            backup_dir.mkdir(exist_ok=True)
-            ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-            backup_path = backup_dir / f"layla_{ts}.db"
-            shutil.copy2(db_path, backup_path)
-            return {"backup_path": str(backup_path), "size_bytes": backup_path.stat().st_size}
+            backup_path = result["backup_path"]
+            from pathlib import Path
+            return {
+                "backup_path": backup_path,
+                "size_bytes": Path(backup_path).stat().st_size,
+            }
         except Exception as e:
             return {"error": str(e)}
 
