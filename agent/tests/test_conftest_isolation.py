@@ -49,43 +49,28 @@ def test_layla_data_dir_env_is_set():
     )
 
 
-def test_config_cache_reset_between_tests_first():
-    """Populate runtime_safety config cache — next test verifies it was cleared."""
+def test_config_cache_reset_is_self_contained():
+    """Set the sentinel, run the SAME reset the autouse fixture runs, verify it cleared — in ONE test,
+    so it detects a broken reset regardless of collection order (audit round-4 #1: the old populate→verify
+    PAIR passed vacuously when the verifier ran without its populator, since _config_cache defaults None)."""
     import runtime_safety as rs
+    from tests.conftest import reset_volatile_module_state
+
     rs._config_cache = {"sentinel_value": "test_conftest_isolation_marker", "max_tool_calls": 99}
-    rs._config_last_check = 1e15  # Far future — would never expire on its own
-    # This fixture ensures the NEXT test sees a cleared cache.
-    # (The autouse _reset_volatile_module_state fixture runs before the next test.)
+    rs._config_last_check = 1e15  # far future — would never expire on its own
+    reset_volatile_module_state()
+    assert rs._config_cache is None, "_reset_volatile_module_state did not clear runtime_safety._config_cache"
 
 
-def test_config_cache_was_cleared_by_autouse_fixture():
-    """Verify _reset_volatile_module_state cleared the cache set by the previous test."""
-    import runtime_safety as rs
-    # If the autouse fixture ran correctly, _config_cache is None and
-    # the sentinel we set previously is gone.
-    assert rs._config_cache is None or rs._config_cache.get("sentinel_value") != "test_conftest_isolation_marker", (
-        "_config_cache was NOT reset between tests — "
-        "_reset_volatile_module_state autouse fixture is broken"
-    )
-
-
-def test_learning_rate_limiter_reset_between_tests_first():
-    """Fill the rate-limiter deque — next test verifies it was cleared."""
-    # Simulate a nearly-full rate limiter (19 of 20 slots used)
+def test_learning_rate_limiter_reset_is_self_contained():
     import time
 
     import layla.memory.learnings as lm
+    from tests.conftest import reset_volatile_module_state
+
     now = time.time()
     for _ in range(19):
         lm._recent_learning_ts.append(now)
     assert len(lm._recent_learning_ts) == 19
-
-
-def test_learning_rate_limiter_was_cleared():
-    """Verify _reset_volatile_module_state cleared the deque set by the previous test."""
-    import layla.memory.learnings as lm
-    assert len(lm._recent_learning_ts) == 0, (
-        f"_recent_learning_ts was NOT cleared between tests "
-        f"(has {len(lm._recent_learning_ts)} entries) — "
-        "_reset_volatile_module_state autouse fixture is broken"
-    )
+    reset_volatile_module_state()
+    assert len(lm._recent_learning_ts) == 0, "_reset_volatile_module_state did not clear _recent_learning_ts"
