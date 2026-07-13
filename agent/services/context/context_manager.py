@@ -390,10 +390,22 @@ def build_system_prompt(
     if len(mem_contents) > 1:
         deduped = deduplicate_content(mem_contents)
         metrics["dedup_removed"] = len(mem_contents) - len(deduped)
-        # Rebuild: non-memory first, then single merged memory block
-        non_mem = [(k, c) for k, c in built if k not in memory_keys]
         merged_mem = "\n".join(deduped) if deduped else ""
-        built = non_mem + ([("memory", merged_mem)] if merged_mem else [])
+        # Rebuild PRESERVING POSITION (audit #2): put the merged block where the FIRST memory section
+        # was — keeping its canonical precedence BEFORE 'knowledge' (Reference docs) — and drop the other
+        # memory slots. Appending merged_mem to the tail moved memory AFTER knowledge whenever a
+        # knowledge_graph block existed, flipping precedence intermittently across turns.
+        rebuilt: list = []
+        placed = False
+        for k, c in built:
+            if k in memory_keys:
+                if not placed and merged_mem:
+                    rebuilt.append(("memory", merged_mem))
+                    placed = True
+                # otherwise drop this (now-merged) memory slot
+            else:
+                rebuilt.append((k, c))
+        built = rebuilt
 
     parts = [c for _, c in built]
     final = "\n\n".join(parts) if parts else ""
