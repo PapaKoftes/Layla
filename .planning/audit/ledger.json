@@ -1,8 +1,8 @@
 {
   "_doc": "Coverage ledger for the audit-loop. The workflow reads this to pick the next dimension (never-run > stale > weight), and writes back convergence state after each round. Edit weights/cadence/lenses freely.",
   "version": 1,
-  "round_counter": 3,
-  "updated": "2026-07-13T00:12:31Z",
+  "round_counter": 4,
+  "updated": "2026-07-13T01:04:40Z",
   "dimensions": [
     {
       "key": "reality",
@@ -103,11 +103,11 @@
       "family": "meta",
       "weight": 4,
       "cadence": 2,
-      "last_round": 0,
+      "last_round": 4,
       "dry_rounds": 0,
       "quiescent": false,
-      "open_findings": 0,
-      "max_severity": "none",
+      "open_findings": 5,
+      "max_severity": "low",
       "lenses": [
         "test health: isolation/global-state contamination (tests that pass alone but fail in the suite), flaky order deps, missing coverage on changed files",
         "dead / orphan modules: unreferenced code, fake placeholders, unused config keys",
