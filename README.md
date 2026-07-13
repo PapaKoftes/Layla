@@ -328,7 +328,7 @@ your language.
 | [docs/SECURITY.md](docs/SECURITY.md) | Security |
 | [docs/RUNBOOKS.md](docs/RUNBOOKS.md) | Operations |
 | [agent/docs/audit/](agent/docs/audit/) | Subsystem audit & migration tracking |
-| [agent/scripts/README.md](agent/scripts/README.md) | Health check scripts (12 checks, 858 tests) |
+| [agent/scripts/README.md](agent/scripts/README.md) | Health check scripts (12 checks, 3,000+ tests) |
 | [LICENSE](LICENSE) | Non-commercial source license |
 
 ---
