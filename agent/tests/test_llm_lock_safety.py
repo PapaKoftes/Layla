@@ -40,3 +40,19 @@ def test_invalidate_llm_cache_supports_already_locked_fence():
     g._llm_by_path = {"x": object()}
     g.invalidate_llm_cache(already_locked=True)
     assert g._llm is None and g._llm_by_path == {}
+
+
+def test_llm_generation_lock_is_reentrant():
+    # audit round-6 #12: in per-workspace mode this lock is held across a NESTED run_completion on the
+    # same thread; a non-reentrant Lock self-deadlocked, wedging all local inference. It must be an RLock.
+    import threading
+    from services.llm.llm_gateway import llm_generation_lock
+
+    assert isinstance(llm_generation_lock, type(threading.RLock()))
+    # Re-acquire on the same thread must NOT block (a plain Lock would deadlock here).
+    assert llm_generation_lock.acquire(timeout=2)
+    try:
+        assert llm_generation_lock.acquire(timeout=2), "llm_generation_lock is not reentrant (would deadlock)"
+        llm_generation_lock.release()
+    finally:
+        llm_generation_lock.release()
