@@ -50,3 +50,33 @@ def test_git_worktree_add_remove_roundtrip(tmp_path, monkeypatch):
     assert Path(r.get("path", "")).is_dir()
     r2 = git_worktree_remove(str(repo), str(wt_path))
     assert r2.get("ok") is True
+
+
+@pytest.mark.parametrize("fn_name", ["git_worktree_add", "git_worktree_remove"])
+def test_worktree_load_config_failure_falls_back_without_typeerror(fn_name, tmp_path, monkeypatch):
+    """When runtime_safety.load_config() raises, the except fallback must derive a
+    concrete sandbox root from the _effective_sandbox thread-local — not call the
+    threading.local() instance (which raised TypeError: '_thread._local' object is
+    not callable). Regression for the git.py fallback bug."""
+    import runtime_safety
+    from layla.tools import sandbox_core
+
+    def _boom():
+        raise RuntimeError("transient config read error")
+
+    monkeypatch.setattr(runtime_safety, "load_config", _boom)
+    # Point the thread-local effective sandbox at tmp_path so the fallback resolves it.
+    sandbox_core.set_effective_sandbox(str(tmp_path))
+    try:
+        from layla.tools import registry
+
+        fn = getattr(registry, fn_name)
+        # Repo lives OUTSIDE the (thread-local-derived) root → must be rejected
+        # cleanly with an error dict, not raise TypeError from calling the local.
+        outside = (tmp_path.parent / "definitely-outside-repo").resolve()
+        result = fn(str(outside), str(outside / "wt"))
+        assert isinstance(result, dict)
+        assert result.get("ok") is False
+        assert "outside sandbox" in (result.get("error") or "").lower()
+    finally:
+        sandbox_core.set_effective_sandbox(None)
