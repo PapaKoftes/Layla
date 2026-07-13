@@ -461,7 +461,13 @@ def rss_feed(url: str, max_items: int = 20, include_content: bool = False) -> di
         return {"ok": False, "error": "URL not allowed (private/loopback/non-http blocked)"}
     try:
         import feedparser
-        feed = feedparser.parse(url)
+        # SSRF #12: fetch the feed body through the guarded path (every redirect hop
+        # re-validated) instead of handing the raw URL to feedparser.parse, whose
+        # own urllib fetch would follow redirects / DNS-rebinds with no per-hop check.
+        body = safe_fetch_text(url)
+        if not body:
+            return {"ok": False, "error": "URL not allowed or feed fetch failed"}
+        feed = feedparser.parse(body)
         if feed.bozo and not feed.entries:
             return {"ok": False, "error": f"Feed parse error: {feed.bozo_exception}"}
         entries = []
