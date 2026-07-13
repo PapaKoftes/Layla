@@ -178,6 +178,44 @@ def test_export_graphml_atomic_preserves_existing_on_crash(tmp_path, fresh_db, m
     monkeypatch.setattr(nx, "write_graphml", real_write)
 
 
+def test_export_graphml_fsyncs_temp_before_replace(tmp_path, fresh_db, monkeypatch):
+    """Durability (audit #3): the temp file's DATA must be fsync'd BEFORE os.replace.
+
+    os.replace atomically swaps the directory entry but does not flush data blocks;
+    without an fsync of the temp data first, a power loss can leave repo_graph.graphml
+    0-length/truncated. Mirror memory_graph._save_graph.
+    """
+    pytest.importorskip("networkx")
+    import os as _os
+
+    from services.workspace import repo_indexer
+    (tmp_path / "g.py").write_text("class Graph:\n    def edges(self): pass\n", encoding="utf-8")
+    repo_indexer.index_workspace_repo(tmp_path, db_path=fresh_db)
+    gml = tmp_path / "out.graphml"
+
+    events: list[str] = []
+    real_fsync = _os.fsync
+    real_replace = _os.replace
+
+    def _spy_fsync(fd):
+        events.append("fsync")
+        return real_fsync(fd)
+
+    def _spy_replace(src, dst):
+        events.append("replace")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(repo_indexer.os, "fsync", _spy_fsync)
+    monkeypatch.setattr(repo_indexer.os, "replace", _spy_replace)
+
+    ok = repo_indexer.export_graphml(tmp_path, output_path=gml, db_path=fresh_db)
+    assert ok is True
+    assert "fsync" in events, "temp file data was never fsync'd (durability gap)"
+    assert "replace" in events
+    # The data fsync must come before the atomic rename.
+    assert events.index("fsync") < events.index("replace"), events
+
+
 def test_skip_dirs_ignored(tmp_path, fresh_db):
     from services.workspace.repo_indexer import get_stats, index_workspace_repo
     cache_dir = tmp_path / "__pycache__"
