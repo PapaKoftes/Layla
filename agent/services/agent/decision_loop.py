@@ -107,9 +107,15 @@ def run_decision_loop(
         #     misfire that tripped "max tool calls" on simple turns — but a runaway rejection
         #     loop must still terminate, so it gets its own separate, generous bound.
         _blocked_cap = max(6, max_tool_calls_effective * 2)
+        # 3. no_op_steps >= cap — 'think'/'none' decisions advance NONE of depth/tool_calls/blocked_calls
+        #    and `continue`, so a model that repeatedly emits {"action":"think"} (or "none") would spin one
+        #    decision-model call per iteration until max_runtime (audit #3). Bound it, ending in the same
+        #    forced wrap-up answer (from whatever reasoning/results were gathered).
+        _no_op_cap = 8
         if (
             state["tool_calls"] >= max_tool_calls_effective
             or int(state.get("blocked_calls", 0) or 0) >= _blocked_cap
+            or int(state.get("no_op_steps", 0) or 0) >= _no_op_cap
         ):
             state["status"] = "tool_limit"
             # Exhausting the tool budget must still END WITH AN ANSWER. Previously this broke
@@ -245,6 +251,8 @@ def run_decision_loop(
                 thought = (decision.get("thought") or "").strip()
                 state["_think_seq"] = int(state.get("_think_seq") or 0) + 1
                 _tn = int(state["_think_seq"])
+                # Count this no-progress iteration toward the spin cap (audit #3).
+                state["no_op_steps"] = int(state.get("no_op_steps", 0) or 0) + 1
                 if thought:
                     state["steps"].append({
                         "action": "think",
@@ -335,6 +343,8 @@ def run_decision_loop(
                 "action": "none",
                 "result": {"ok": True, "message": "No action needed"},
             })
+            # Count this no-progress iteration toward the spin cap (audit #3).
+            state["no_op_steps"] = int(state.get("no_op_steps", 0) or 0) + 1
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _al._format_steps(state["steps"])
             continue
 
