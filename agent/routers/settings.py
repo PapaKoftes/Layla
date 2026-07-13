@@ -46,6 +46,14 @@ _REMOTE_PROTECTED_KEYS = frozenset({
     "onnx_model_path",
     "vision_model_path",
     "vision_mmproj_path",
+    # audit round-5 #9: plugins_enabled is the MASTER plugin-code-execution consent gate — a remote
+    # write could flip it on (its sibling safe_mode is already protected here) and the next plugin
+    # (re)load would exec_module() any tools.py in plugins_dir. Protect the gate itself, plus the hook /
+    # skill-venv code-execution toggles.
+    "plugins_enabled",
+    "agent_hooks_enabled",
+    "hooks_require_allow_run",
+    "skill_venv_enabled",
 })
 
 
