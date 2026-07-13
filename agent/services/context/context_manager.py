@@ -333,6 +333,16 @@ def build_system_prompt(
         max(40, int(budgets.get("current_goal", 60) or 60)),
         token_estimate((sections.get("current_goal") or "").strip()) + 24,
     )
+    # Durable identity facts (name/timezone/tooling) are authoritative ground truth and the
+    # `order` list places them right after SYSTEM precisely so they survive token pressure — but
+    # that only holds if SYSTEM's greedy allocation actually LEAVES room for them. Reserve the
+    # durable-facts content (capped) the same way agent_state/current_goal are reserved, or a large
+    # identity+personality block starves them on small windows and the section is truncated down to a
+    # bare header + "…" (the user's name silently vanishes from the prompt on low tiers).
+    _reserve_durable_facts = min(
+        max(40, int(budgets.get("durable_facts", 200) or 200)),
+        token_estimate((sections.get("durable_facts") or "").strip()) + 24,
+    )
 
     for key in order:
         raw = (sections.get(key) or "").strip()
@@ -358,7 +368,12 @@ def build_system_prompt(
             # Leave room for goal + workspace context if they exist.
             _need_goal = 1 if (sections.get("current_goal") or "").strip() else 0
             _need_state = 1 if (sections.get("agent_state") or "").strip() else 0
-            reserve = (_reserve_current_goal if _need_goal else 0) + (_reserve_agent_state if _need_state else 0)
+            _need_durable = 1 if (sections.get("durable_facts") or "").strip() else 0
+            reserve = (
+                (_reserve_current_goal if _need_goal else 0)
+                + (_reserve_agent_state if _need_state else 0)
+                + (_reserve_durable_facts if _need_durable else 0)
+            )
             if remaining > reserve:
                 max_tok = min(int(max_tok), int(remaining - reserve))
         elif key == "current_goal":
