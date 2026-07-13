@@ -509,6 +509,12 @@ def search_replace(root: str, find: str, replace: str, file_glob: str = "*", dry
     for f in root_path.rglob(file_glob):
         if not f.is_file():
             continue
+        # audit round-5 #5: rglob yields symlinks and f.is_file() FOLLOWS them, so a symlink inside the
+        # sandbox pointing OUTSIDE would be read and (below) written THROUGH — arbitrary out-of-sandbox
+        # read + overwrite. The single root check isn't enough; re-validate each matched file
+        # (inside_sandbox resolves symlinks).
+        if not inside_sandbox(f):
+            continue
         try:
             content = f.read_text(encoding="utf-8", errors="replace")
         except Exception:
