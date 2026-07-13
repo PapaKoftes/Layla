@@ -86,7 +86,13 @@ llm_serialize_lock = _llm_lock
 
 # When llm_serialize_per_workspace is true: agent runs hold per-workspace RLocks; local llama_cpp
 # generation uses this global Lock so two workspaces never call create_completion concurrently.
-llm_generation_lock = threading.Lock()
+# RLock (reentrant), matching llm_serialize_lock (line 80): in llm_serialize_per_workspace mode this is
+# the busy/inference lock, and a caller can legitimately hold it across a NESTED run_completion on the
+# same thread (e.g. auto-compact's _compress_to_summary holds it across run_completion, which re-acquires
+# it via `with infer_lock:`). A plain, non-reentrant Lock self-deadlocked there, wedging ALL local
+# inference process-wide (audit round-6 HIGH #12). Only acquire/release/context-manager are used on it —
+# no .locked() — so RLock is a drop-in, and other threads still serialize against the holder.
+llm_generation_lock = threading.RLock()
 
 _workspace_agent_locks: dict[str, threading.RLock] = {}
 _workspace_agent_locks_guard = threading.Lock()
