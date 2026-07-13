@@ -253,6 +253,17 @@ def _bg_cleanup() -> None:
         except Exception:
             pass
         try:
+            # audit #8: tunnel_access_log (in its own ~/.layla/tunnel_audit.db) grew one row per
+            # remote request forever — purge_old() was implemented + tested but had no production
+            # caller. Wire the existing routine in here so the audit DB stays bounded.
+            _tad_raw = _c.get("tunnel_audit_retention_days", 90)
+            _tad = int(_tad_raw) if _tad_raw is not None else 90
+            if _tad > 0:
+                from services.governance.tunnel_audit import purge_old as _purge_tunnel_audit
+                _purge_tunnel_audit(days=_tad)
+        except Exception:
+            pass
+        try:
             # Research output retention (best-effort): remove old timestamped markdown files.
             days = int(_c.get("retention_research_output_days", 90) or 90)
             if days > 0:
