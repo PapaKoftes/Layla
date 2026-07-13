@@ -14,6 +14,7 @@ MEMORY_SECTION_ORDER: tuple[str, ...] = (
     "skills",
     "aspect_memories",
     "learnings",
+    "working_memory",       # running scratchpad of facts (system_head_builder set it but it was DROPPED)
     "semantic_recall",
     "retrieved_context",
     "conversation_summaries",
@@ -21,7 +22,9 @@ MEMORY_SECTION_ORDER: tuple[str, ...] = (
     "timeline_events",
     "style_and_identity",
     "personal_knowledge_graph",
+    "answer_feedback",      # BL-242: user 👎 + written corrections — MUST reach the model (was DROPPED)
     "rl_feedback",
+    "golden_examples",      # few-shot exemplars (was DROPPED)
     "reasoning_strategies",
 )
 
