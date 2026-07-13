@@ -1,8 +1,8 @@
 {
   "_doc": "Coverage ledger for the audit-loop. The workflow reads this to pick the next dimension (never-run > stale > weight), and writes back convergence state after each round. Edit weights/cadence/lenses freely.",
   "version": 1,
-  "round_counter": 5,
-  "updated": "2026-07-13T01:48:24Z",
+  "round_counter": 6,
+  "updated": "2026-07-13T05:38:12Z",
   "dimensions": [
     {
       "key": "reality",
@@ -48,10 +48,10 @@
       "family": "data_state",
       "weight": 8,
       "cadence": 1,
-      "last_round": 2,
+      "last_round": 6,
       "dry_rounds": 0,
       "quiescent": false,
-      "open_findings": 3,
+      "open_findings": 11,
       "max_severity": "high",
       "_note": "Round-2 found 14 (3 auto-fixed by the loop; 11 report-only). 8 report-only fixed by hand: HIGH #1 graphml corruption-quarantine (e90ef92), #4 mission reaper->paused (71fe98c); MED #5 board bucket (71fe98c), #12 auto-compact turn loss (4a44fa2); LOW #3 fsync (e90ef92), #6 queued-task reap (71fe98c), #8 memory_conflicts retention (0343b45), #13 llm timeout detach (e9852b8). Also fixed the isolated_db teardown leak (meta). 3 documented LOW residuals remain: #9 SQLite-KG decay, #11 repo_indexer schema_version, #14 client-abort stream lock (all rebuildable/bounded).",
       "lenses": [
