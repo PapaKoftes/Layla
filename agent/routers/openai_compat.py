@@ -428,7 +428,12 @@ async def v1_chat_completions(req: dict, request: Request):
                 from services.agent.response_builder import active_name_set as _ans_v1
                 from services.agent.response_builder import strip_junk_from_reply as _sj_v1
                 from services.agent.response_builder import truncate_at_next_user_turn as _tr_v1
-                _cleaned_v1 = _tr_v1(_sj_v1(response_text, active_names=_ans_v1(result)))
+                # Use aspect_id, NOT `result`: this is the streaming TOKEN branch (stream_reason worker),
+                # where `result` is never assigned (it belongs to the autonomous sub-branch), so
+                # active_name_set(result) raised NameError that the outer except swallowed — silently
+                # skipping the stored-copy clean so raw scaffolding was persisted and re-entered as
+                # context on the next turn (audit #8). active_name_set accepts an aspect-id string.
+                _cleaned_v1 = _tr_v1(_sj_v1(response_text, active_names=_ans_v1(aspect_id)))
                 if _cleaned_v1.strip():
                     # polish_output (hedge strip + paragraph dedup) — parity with the /agent stored
                     # copy; strip_junk alone misses a leading "As an AI…" hedge and a duplicated
