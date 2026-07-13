@@ -328,24 +328,22 @@ def should_deliberate(message: str, aspect: dict | None = None) -> bool:
             return False
     except Exception:
         return False
-    deliberation_phrases = [
-        "what do you think",
-        "what should i",
-        "should i",
-        "decide",
-        "your opinion",
-        "think about this",
-        "show me your thinking",
-        "what does layla think",
-        "weigh in",
-        "deliberate",
-        "discuss",
-        "perspectives",
-    ]
+    # Word-boundary matched (audit #7): substring matching fired on "decided"->"decide",
+    # "discussion"->"discuss", etc., routing plain statements into the 6-POV debate.
+    import re as _re
+    _delib_re = _re.compile(
+        r"\b(?:what do you think|what should i|should i|decide|your opinion|think about this|"
+        r"show me your thinking|what does layla think|weigh in|deliberate|discuss|perspectives)\b"
+    )
     msg_lower = message.lower()
-    if any(p in msg_lower for p in deliberation_phrases):
+    if _delib_re.search(msg_lower):
         return True
-    if len(message.split()) > 60:
+    # Length alone is too weak — a long STATEMENT ("I decided to refactor ... because ...") is not a
+    # deliberation request. Require the length to co-occur with an actual decision/ambiguity signal.
+    if len(message.split()) > 60 and (
+        "?" in message
+        or _re.search(r"\b(?:should|whether|versus|vs|either|trade-?offs?|pros and cons|better)\b", msg_lower)
+    ):
         return True
     bias = get_decision_bias(aspect or {})
     if "exploratory" in bias:
