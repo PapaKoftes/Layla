@@ -106,8 +106,9 @@
       "last_round": 4,
       "dry_rounds": 0,
       "quiescent": false,
-      "open_findings": 5,
+      "open_findings": 3,
       "max_severity": "low",
+      "_note": "Round-4 found 7, ALL LOW (2 docs-drift auto-fixed by the loop: ce16a78/8b2b0de). 2 report-only fixed: #1 self-contained isolation guards + #5 removed dead Settings-UI knob (22d6076). 3 documented wire-OR-delete DEAD-CODE decisions left for the operator (architecture calls, not unilateral): #2 vector_qdrant.py is a complete Qdrant memory backend never dispatched (vector_backend/qdrant_* config keys are dead) — wire a dispatch in vector_store OR delete; #3 capabilities/registry.py advertises 5 impls whose capabilities/impl/ modules don't exist — remove the phantom entries OR create the adapters (point qdrant at the real vector_qdrant.py); #4 config_migrator.py's migrate_config is never called — wire it into load_config OR delete (load_config's inline default-merge already covers runtime). All LOW, no active harm.",
       "lenses": [
         "test health: isolation/global-state contamination (tests that pass alone but fail in the suite), flaky order deps, missing coverage on changed files",
         "dead / orphan modules: unreferenced code, fake placeholders, unused config keys",
