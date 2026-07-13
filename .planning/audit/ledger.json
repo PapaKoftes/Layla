@@ -1,8 +1,8 @@
 {
   "_doc": "Coverage ledger for the audit-loop. The workflow reads this to pick the next dimension (never-run > stale > weight), and writes back convergence state after each round. Edit weights/cadence/lenses freely.",
   "version": 1,
-  "round_counter": 2,
-  "updated": "2026-07-12T23:29:00Z",
+  "round_counter": 3,
+  "updated": "2026-07-13T00:12:31Z",
   "dimensions": [
     {
       "key": "reality",
@@ -67,11 +67,11 @@
       "family": "correctness",
       "weight": 7,
       "cadence": 1,
-      "last_round": 0,
+      "last_round": 3,
       "dry_rounds": 0,
       "quiescent": false,
-      "open_findings": 0,
-      "max_severity": "none",
+      "open_findings": 9,
+      "max_severity": "high",
       "lenses": [
         "prompt assembly / precedence in system_head_builder (the round-19 HIGH seam): blocks dropped, order, budget truncation, list-vs-string drift",
         "agent-loop tool-calling: wrong-tool selection, loop termination, retry/backoff, max_tool_calls, objective-complete detection",
