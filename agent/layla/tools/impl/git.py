@@ -204,7 +204,11 @@ def git_worktree_add(repo: str, path: str, branch: str = "", new_branch: str = "
 
         root = Path(str(runtime_safety.load_config().get("sandbox_root") or "~")).expanduser().resolve()
     except Exception:
-        root = _effective_sandbox()
+        # Fallback: _effective_sandbox is a threading.local() instance, not a
+        # callable — read its .path attribute (set for research missions) and
+        # otherwise derive a concrete workspace root rather than calling it.
+        _tl = getattr(_effective_sandbox, "path", None)
+        root = Path(str(_tl) if _tl and str(_tl).strip() else Path.home() / "layla-workspace").expanduser().resolve()
 
     def _in_root(p: Path) -> bool:
         try:
@@ -257,7 +261,11 @@ def git_worktree_remove(repo: str, path: str, force: bool = False) -> dict:
 
         root = Path(str(runtime_safety.load_config().get("sandbox_root") or "~")).expanduser().resolve()
     except Exception:
-        root = _effective_sandbox()
+        # Fallback: _effective_sandbox is a threading.local() instance, not a
+        # callable — read its .path attribute (set for research missions) and
+        # otherwise derive a concrete workspace root rather than calling it.
+        _tl = getattr(_effective_sandbox, "path", None)
+        root = Path(str(_tl) if _tl and str(_tl).strip() else Path.home() / "layla-workspace").expanduser().resolve()
 
     def _in_root(p: Path) -> bool:
         try:
