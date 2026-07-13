@@ -102,34 +102,24 @@ def _get_image_context(image_url: str = "", image_base64: str = "", workspace_ro
             tmp_path = str(tmp_dir / f"img_{uuid.uuid4().hex[:12]}{ext}")
             Path(tmp_path).write_bytes(raw)
         elif image_url and image_url.startswith("http"):
-            import urllib.request
             import uuid
-            # SSRF mitigation: only http/https, block private/localhost
-            try:
-                from urllib.parse import urlparse
-                parsed = urlparse(image_url)
-                if parsed.scheme not in ("http", "https"):
-                    raise ValueError("Invalid scheme")
-                host = (parsed.hostname or "").lower()
-                if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
-                    raise ValueError("Private host blocked")
-                if host.startswith("127.") or host.startswith("10.") or host.startswith("169.254.") or host.startswith("192.168."):
-                    raise ValueError("Private host blocked")
-                if host.startswith("172."):
-                    parts = host.split(".")
-                    if len(parts) >= 2:
-                        try:
-                            b = int(parts[1])
-                        except ValueError:
-                            b = -1
-                        if 16 <= b <= 31:
-                            raise ValueError("Private host blocked")
-            except Exception as e:
-                logger.debug("image_url validation failed: %s", e)
+
+            # SSRF: route through the hardened url_guard instead of a hand-rolled
+            # string-prefix blocklist + raw urlopen. is_safe_url/safe_urlopen cover
+            # DNS-rebinding, obfuscated (decimal/hex/octal) IPv4, IPv6 private/
+            # link-local/mapped forms, and per-hop redirect re-validation — all of
+            # which the old prefix checks missed.
+            from services.safety.url_guard import is_safe_url, safe_urlopen
+            if not is_safe_url(image_url):
+                logger.debug("image_url blocked by SSRF guard: %s", image_url)
             else:
-                tmp_path = str(tmp_dir / f"img_{uuid.uuid4().hex[:12]}.png")
-                with urllib.request.urlopen(image_url, timeout=15) as resp:
-                    Path(tmp_path).write_bytes(resp.read())
+                try:
+                    tmp_path = str(tmp_dir / f"img_{uuid.uuid4().hex[:12]}.png")
+                    with safe_urlopen(image_url, timeout=15) as resp:  # re-validates every redirect hop
+                        Path(tmp_path).write_bytes(resp.read())
+                except Exception as e:
+                    logger.debug("image_url fetch failed: %s", e)
+                    tmp_path = None
         if not tmp_path or not Path(tmp_path).exists():
             return ""
         from layla.tools.registry import TOOLS
