@@ -530,7 +530,24 @@ def export_graphml(workspace_root: str | Path, output_path: Path | None = None, 
         # Mirrors memory_graph._save_graph's temp-then-replace pattern.
         tmp = output.with_name(output.name + ".tmp")
         nx.write_graphml(G, str(tmp))
+        # Durability (audit #3): fsync the temp file's DATA before the rename, exactly like
+        # memory_graph._save_graph. os.replace atomically swaps the directory entry but does NOT
+        # flush data blocks, so a power loss can otherwise leave repo_graph.graphml 0-length /
+        # truncated despite the "atomic" write (a later nx.read_graphml would then raise).
+        try:
+            with open(tmp, "rb") as _f:
+                os.fsync(_f.fileno())
+        except Exception:
+            pass
         os.replace(str(tmp), str(output))
+        try:
+            _dirfd = os.open(str(output.parent), os.O_RDONLY)
+            try:
+                os.fsync(_dirfd)  # flush the directory entry (best-effort; not supported on Windows)
+            finally:
+                os.close(_dirfd)
+        except Exception:
+            pass
         logger.info("repo_indexer: GraphML exported to %s (%d nodes, %d edges)", output, G.number_of_nodes(), G.number_of_edges())
         return True
     except Exception as e:
