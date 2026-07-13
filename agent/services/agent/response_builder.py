@@ -120,6 +120,18 @@ _WORKSPACE_REF_SIGNALS = (
     "the code", "this code", "my code", "the codebase", "workspace", "in the folder",
     "the function ", "this function", "my note", "our conversation",
 )
+# Possessive reference to the user's STORED personal data (regardless of interrogative form): these
+# need memory/tools to answer, so an IMPERATIVE like "summarize my emails" / "check my calendar" is NOT
+# self-contained (audit #4 — the old guard required a '?', so possessive imperatives fell through to
+# self-contained and the model hallucinated an answer with tools suppressed). Gated on a personal-DATA
+# noun so genuinely self-contained possessives ("write a poem about my dog") are unaffected.
+_PERSONAL_DATA_RE = re.compile(
+    r"\b(?:my|our)\b[^?.!\n]{0,30}?\b(?:e-?mails?|calendar|schedule|meeting\s+notes?|meetings?|"
+    r"notes?|files?|documents?|docs?|messages?|inbox|tasks?|to-?dos?|todo\s*list|goals?|plans?|"
+    r"drafts?|history|memories|reminders?|contacts?|conversations?|chats?|projects?|folders?|"
+    r"appointments?|events?)\b",
+    re.IGNORECASE,
+)
 
 
 def is_self_contained_question(goal: str) -> bool:
@@ -154,7 +166,7 @@ def is_self_contained_question(goal: str) -> bool:
         _PATH_RE.search(g) or _FILENAME_RE.search(g)
         or any(s in gl for s in _WORKSPACE_REF_SIGNALS)
     )
-    _hard = any(s in gl for s in _HARD_TOOL_SIGNALS) or bool(re.search(r"\b(my|our)\b", gl) and "?" in gl)
+    _hard = any(s in gl for s in _HARD_TOOL_SIGNALS) or bool(_PERSONAL_DATA_RE.search(gl))
     if not _points_at_workspace and not _hard and any(gl.startswith(p) for p in _GENERAL_QA_PREFIXES):
         return True
     if any(sig in gl for sig in _NEEDS_TOOLS_SIGNALS):
@@ -162,8 +174,9 @@ def is_self_contained_question(goal: str) -> bool:
     # a filesystem path or a filename with a known extension → a tool is needed
     if _PATH_RE.search(g) or _FILENAME_RE.search(g):
         return False
-    # a lone possessive "my"/"our" often implies personal data → let the loop decide
-    if re.search(r"\b(my|our)\b", gl) and "?" in gl:
+    # A possessive reference to the user's stored personal data implies memory/tools — whether phrased
+    # as a question ("what's in my todo list?") OR an imperative ("summarize my emails") (audit #4).
+    if _PERSONAL_DATA_RE.search(gl):
         return False
     return True
 
