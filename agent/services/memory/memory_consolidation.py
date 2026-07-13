@@ -200,13 +200,26 @@ def apply_retention_policies(cfg: dict | None = None) -> dict[str, Any]:
             for table, max_rows in hard_caps:
                 if max_rows <= 0:
                     continue
-                if "created_at" not in _cols(table):
+                tcols = _cols(table)
+                if not tcols:
+                    # Table absent (name mismatch) — nothing to cap.
                     continue
+                # audit #7: pick the table's ACTUAL recency column. strategy_stats has no
+                # created_at (its timestamp is last_updated_at), so a created_at-only guard
+                # silently no-op'd the 10k cap and the table grew one row per distinct goal.
+                # Fall back to last_updated_at, then rowid (monotonic insert order), so the cap
+                # always fires regardless of the table's timestamp column name.
+                if "created_at" in tcols:
+                    order_col = "created_at"
+                elif "last_updated_at" in tcols:
+                    order_col = "last_updated_at"
+                else:
+                    order_col = "rowid"
                 try:
-                    # Keep newest max_rows by created_at; delete the rest.
+                    # Keep newest max_rows by the recency column; delete the rest.
                     cur = db.execute(
                         f"DELETE FROM {table} WHERE rowid IN ("
-                        f"SELECT rowid FROM {table} ORDER BY created_at DESC LIMIT -1 OFFSET ?)",
+                        f"SELECT rowid FROM {table} ORDER BY {order_col} DESC LIMIT -1 OFFSET ?)",
                         (max_rows,),
                     )
                     n = int(cur.rowcount or 0) if cur else 0
