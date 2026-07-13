@@ -66,3 +66,16 @@ def test_reexported_from_agent_loop():
     import agent_loop
     assert agent_loop._is_self_contained_question("What is the capital of France?")
     assert not agent_loop._is_self_contained_question("read the file x.py")
+
+
+def test_possessive_personal_data_imperatives_need_tools():
+    # audit #4 (HIGH): a possessive reference to stored personal data is NOT self-contained even without
+    # a '?', so tools/memory aren't suppressed and the model doesn't hallucinate an answer.
+    from services.agent.response_builder import is_self_contained_question as Q
+    for g in ("summarize my meeting notes", "summarize my emails", "check my calendar",
+              "list my meeting notes", "delete my draft", "what are my tasks?",
+              "what's in my todo list?"):
+        assert Q(g) is False, g
+    # …but a genuinely self-contained possessive (no personal-data referent) stays self-contained.
+    for g in ("write a poem about my dog", "my favorite color is blue, suggest a matching shade"):
+        assert Q(g) is True, g
