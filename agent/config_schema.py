@@ -209,15 +209,10 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "default": False,
         "hint": "Web setup wizard completion flag (set by UI).",
     },
-    {
-        "key": "engineering_pipeline_max_clarify_rounds",
-        "type": "number",
-        "category": "safety",
-        "default": 3,
-        "min": 1,
-        "max": 10,
-        "hint": "Reserved: max clarifier rounds per turn (protocol uses clarification_reply on follow-up requests).",
-    },
+    # engineering_pipeline_max_clarify_rounds removed from EDITABLE_SCHEMA (audit round-4 #5): it was a
+    # numeric Settings-UI control that NO code reads ("Reserved" — the clarify protocol uses
+    # clarification_reply on follow-up requests), so it silently did nothing. The default stays in
+    # runtime_safety for internal use; it just no longer renders as a no-op user knob.
     {
         "key": "engineering_pipeline_validator_max_retries",
         "type": "number",
