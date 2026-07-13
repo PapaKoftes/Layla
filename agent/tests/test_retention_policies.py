@@ -59,6 +59,47 @@ def test_apply_retention_policies_deletes_old_rows(tmp_path, monkeypatch):
         assert a_new == 1
 
 
+def test_strategy_stats_hard_cap_fires_without_created_at(tmp_path, monkeypatch):
+    """Regression (audit #7): strategy_stats has no created_at column (its recency
+    column is last_updated_at), so the created_at-only hard-cap guard silently
+    no-op'd and the table grew one row per distinct free-text goal. The cap must
+    now fire via the last_updated_at fallback, keeping only the newest N rows."""
+    data_dir = tmp_path / "layla_data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("LAYLA_DATA_DIR", str(data_dir))
+
+    from layla.memory.db_connection import _conn
+    from layla.memory.migrations import migrate
+    from services.memory.memory_consolidation import apply_retention_policies
+
+    migrate()
+    now = datetime.now(timezone.utc)
+
+    # Insert 20 distinct (task_type, strategy) rows with increasing last_updated_at.
+    with _conn() as db:
+        for i in range(20):
+            ts = (now - timedelta(minutes=(20 - i))).isoformat()  # oldest first
+            db.execute(
+                "INSERT INTO strategy_stats (task_type, strategy, success_count, fail_count, last_updated_at) "
+                "VALUES (?,?,?,?,?)",
+                (f"goal-{i:03d}", "aspect", 1, 0, ts),
+            )
+        db.commit()
+        assert db.execute("SELECT COUNT(1) FROM strategy_stats").fetchone()[0] == 20
+
+    # Cap at 5 newest rows.
+    out = apply_retention_policies({"retention_strategy_stats_max_rows": 5})
+    assert out.get("ok") is True
+
+    with _conn() as db:
+        remaining = db.execute("SELECT COUNT(1) FROM strategy_stats").fetchone()[0]
+        assert remaining == 5, f"cap should have trimmed to 5 newest, got {remaining}"
+        # The 5 newest (goal-015..goal-019) survive; the oldest are gone.
+        survivors = {r[0] for r in db.execute("SELECT task_type FROM strategy_stats").fetchall()}
+        assert "goal-019" in survivors
+        assert "goal-000" not in survivors
+
+
 def test_apply_retention_policies_prunes_operator_journal(tmp_path, monkeypatch):
     """Regression: the retention policy must target the real 'operator_journal'
     table (not the non-existent 'journal'), so retention_journal_days actually
