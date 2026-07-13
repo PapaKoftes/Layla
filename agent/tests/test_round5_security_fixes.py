@@ -60,3 +60,31 @@ def test_search_replace_does_not_write_through_symlink(tmp_path):
                                 file_glob="evil.txt", dry_run=False)
     # The out-of-sandbox target must be untouched.
     assert outside.read_text(encoding="utf-8") == "ORIGINAL SECRET"
+
+
+def test_executor_clamps_workspace_outside_config_sandbox_root(tmp_path):
+    # #1: a caller-supplied workspace (sandbox_root arg) that resolves OUTSIDE config sandbox_root must be
+    # clamped to config sandbox_root before it becomes the thread-local effective sandbox — else generic
+    # write tools escape. A subdir of sandbox_root is fine.
+    from unittest.mock import patch
+    import core.executor as ex
+    import layla.tools.registry as reg
+
+    cfg_root = tmp_path / "safe"; cfg_root.mkdir()
+    outside = tmp_path / "evil"; outside.mkdir()
+    subdir = cfg_root / "sub"; subdir.mkdir()
+
+    def _run(sbx):
+        # The executor calls set_effective_sandbox twice: the setup call (the effective sandbox) then a
+        # teardown reset to None — capture the SETUP (first non-None) call.
+        calls = []
+        with patch.dict(reg.TOOLS, {"noop": {"fn": lambda **k: {"ok": True}}}, clear=False), \
+             patch.object(reg, "set_effective_sandbox", lambda ws: calls.append(ws)), \
+             patch("runtime_safety.load_config", lambda: {"sandbox_root": str(cfg_root)}):
+            ex.run_tool("noop", {}, sandbox_root=str(sbx))
+        non_none = [c for c in calls if c]
+        return non_none[0] if non_none else None
+
+    assert _run(outside) == str(cfg_root)          # outside → clamped to config root
+    assert _run(subdir) == str(subdir)             # subdir of sandbox_root → preserved
+    assert _run(cfg_root) == str(cfg_root)         # exact root → preserved
