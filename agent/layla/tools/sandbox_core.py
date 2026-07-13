@@ -75,11 +75,20 @@ def _get_sandbox() -> Path:
         import runtime_safety
         cfg = runtime_safety.load_config()
         root = cfg.get("sandbox_root")
-        if not root or str(root).strip() == str(Path.home()):
+        if not root or not str(root).strip():
             raise RuntimeError(
                 "Cannot determine sandbox root — refusing to execute without containment"
             )
         result = Path(root).expanduser().resolve()
+        # Refuse to treat the user's home directory as the sandbox root. Compare
+        # RESOLVED paths (case-insensitively on Windows) so trailing separators,
+        # drive-letter casing, or symlinked/'..' spellings that all resolve to
+        # home can't slip past a raw string-equality check.
+        import os as _os
+        if _os.path.normcase(str(result)) == _os.path.normcase(str(Path.home().resolve())):
+            raise RuntimeError(
+                "Refusing to use the home directory as sandbox root — no containment"
+            )
         _sandbox_cache[tid] = (result, now)
         return result
     except RuntimeError:
