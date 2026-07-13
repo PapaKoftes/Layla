@@ -11,18 +11,15 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-
-def _deliberate_predicate(src: str) -> str:
-    m = re.search(r"deliberate\s*=\s*(.+)", src)
-    assert m, "no `deliberate =` assignment found"
-    return m.group(1)
+_PRED = re.compile(r"deliberate\s*=\s*bool\(show_thinking\)\s*or\s*orchestrator\.should_deliberate")
 
 
 def test_both_reason_paths_gate_deliberation_on_show_thinking():
     from services.agent import reasoning_handler, stream_handler
 
-    rh = _deliberate_predicate(inspect.getsource(reasoning_handler.handle_reasoning_intent))
+    # The real deliberate PREDICATE (not the `deliberate = False/True` set-up lines) must OR-in
+    # show_thinking on BOTH paths.
+    rh = inspect.getsource(reasoning_handler.handle_reasoning_intent)
     sh = inspect.getsource(stream_handler)
-    # Both must include show_thinking in the deliberate predicate.
-    assert "show_thinking" in rh, f"non-stream deliberate predicate omits show_thinking: {rh}"
-    assert re.search(r"deliberate\s*=\s*bool\(show_thinking\)", sh), "stream path lost its show_thinking gate"
+    assert _PRED.search(rh), "non-stream reason path does not gate deliberation on show_thinking"
+    assert _PRED.search(sh), "stream reason path lost its show_thinking deliberation gate"
