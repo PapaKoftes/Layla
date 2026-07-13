@@ -2,7 +2,7 @@
 
 Central index for Layla’s documentation. Links are relative so they work on GitHub and in local clones.
 
-**Last updated:** 2026-05-12 | **Tests:** 858 passing | **Health checks:** 12/12 green
+**Last updated:** 2026-07-13 | **Tests:** 3,000+ passing | **Health checks:** 12/12 green
 
 ---
 
