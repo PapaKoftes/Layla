@@ -70,8 +70,9 @@
       "last_round": 3,
       "dry_rounds": 0,
       "quiescent": false,
-      "open_findings": 9,
+      "open_findings": 1,
       "max_severity": "high",
+      "_note": "Round-3 found 9 (all report-only). 8 fixed: HIGH #1 dropped memory blocks/MEMORY_SECTION_ORDER (42829c5), #4 possessive personal-data imperatives (47b082a); MED #8 /v1 stored-clean NameError (4475a24), #3 think/none spin cap (7c75721); LOW #2 memory-vs-knowledge precedence (42829c5), #6 classify_task prose->coding (1ed5822), #7 should_deliberate over-trigger (1ed5822), #5 show_thinking deliberation parity (884449b/e1b1412). 1 residual: #9 governor CPU-throttle is intentionally bypassed for the foreground turn (full cores for the reply the user waits on) — enabling it would halve interactive latency; documented, not a defect.",
       "lenses": [
         "prompt assembly / precedence in system_head_builder (the round-19 HIGH seam): blocks dropped, order, budget truncation, list-vs-string drift",
         "agent-loop tool-calling: wrong-tool selection, loop termination, retry/backoff, max_tool_calls, objective-complete detection",
