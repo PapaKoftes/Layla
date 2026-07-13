@@ -22,3 +22,41 @@ def test_fetch_url_uses_redirect_guarded_opener():
     src = inspect.getsource(web.fetch_url)
     assert "safe_urlopen(" in src, "fetch_url must fetch via url_guard.safe_urlopen"
     assert "urllib.request.urlopen(" not in src, "fetch_url still uses a raw, redirect-unguarded urlopen"
+
+
+def test_bulk_file_tools_revalidate_each_file_against_sandbox():
+    # #5/#6/#7: search_replace / rename_symbol / grep_code must re-check EACH rglob-matched file with
+    # inside_sandbox (root-only check let an in-sandbox symlink be read/written through to outside).
+    import inspect
+    from layla.tools.impl import code, file_ops
+    for fn in (file_ops.search_replace, code.rename_symbol):
+        src = inspect.getsource(fn)
+        loop = src.split("rglob(", 1)[1]
+        assert "inside_sandbox(f)" in loop, f"{fn.__name__} does not re-validate each matched file"
+    gsrc = inspect.getsource(code.grep_code)
+    assert "inside_sandbox(f)" in gsrc, "grep_code does not re-validate each matched file"
+
+
+def test_search_replace_does_not_write_through_symlink(tmp_path):
+    # Behavioral (Linux / privileged Windows): a symlink inside the sandbox pointing OUTSIDE must not be
+    # written through. Skips where symlink creation isn't permitted.
+    import os
+    import pytest
+    from unittest.mock import patch
+    from layla.tools import sandbox_core
+
+    sandbox = tmp_path / "sandbox"; sandbox.mkdir()
+    outside = tmp_path / "outside_secret.txt"; outside.write_text("ORIGINAL SECRET", encoding="utf-8")
+    link = sandbox / "evil.txt"
+    try:
+        os.symlink(outside, link)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink creation not permitted in this environment")
+
+    from layla.tools.impl import file_ops
+    with patch.multiple(sandbox_core, _get_sandbox=lambda: sandbox.resolve()), \
+         patch.object(file_ops._effective_sandbox, "path", str(sandbox.resolve()), create=True):
+        file_ops.search_replace(root=str(sandbox), find="ORIGINAL", replace="PWNED",
+                                file_glob="evil.txt", dry_run=False)
+    # The out-of-sandbox target must be untouched.
+    assert outside.read_text(encoding="utf-8") == "ORIGINAL SECRET"
