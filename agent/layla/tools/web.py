@@ -143,13 +143,19 @@ def fetch_url(url: str, store: bool = False) -> dict:
     if not _robots_allowed(url):
         return {"ok": False, "reason": "robots_disallowed", "url": url}
 
-    # Fetch the page
+    # Fetch the page. Use the SSRF-safe opener (audit round-5 #10): the pre-check above validates the
+    # initial URL once, but a raw urlopen re-resolves the host (DNS-rebinding) and silently follows 3xx
+    # to internal hosts with no per-hop check. safe_urlopen re-validates the initial URL AND every
+    # redirect hop — matching the already-migrated http_request/check_url. (This is the default fetch
+    # path via fetch_url_tool, so it was the most-reachable SSRF hole.)
     try:
         import urllib.request
+
+        from services.safety.url_guard import safe_urlopen
         req = urllib.request.Request(url, headers={"User-Agent": _UA})
         import socket
         socket.setdefaulttimeout(_TIMEOUT)
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+        with safe_urlopen(req, timeout=_TIMEOUT) as resp:
             raw_headers = {k.lower(): v for k, v in resp.headers.items()}
             html_bytes = resp.read(2_000_000)  # 2 MB cap
     except Exception as exc:
