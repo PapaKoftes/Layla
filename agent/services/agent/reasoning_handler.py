@@ -195,9 +195,12 @@ def handle_reasoning_intent(
     # Deliberation / standard prompt + LLM completion
     # ------------------------------------------------------------------
     if not _delib_routed:
-        # show_thinking is a UI trace toggle, not a request for the 6-aspect debate prompt
-        # (see stream_handler) — gate deliberation on the explicit signal only.
-        deliberate = orchestrator.should_deliberate(goal, active_aspect)
+        # Parity with the STREAMING path (stream_handler.py:250): show_thinking IS the thinking mode —
+        # it runs the single-call multi-POV deliberation whose conclusion is the reply and whose POV
+        # lines go into the collapsible trace (project memory: "deliberation IS the thinking mode").
+        # This branch previously omitted show_thinking, so an identical {show_thinking:true} request
+        # deliberated when streamed but returned a plain single-pass answer when non-streamed (audit #5).
+        deliberate = bool(show_thinking) or orchestrator.should_deliberate(goal, active_aspect)
         if deliberate:
             prompt = orchestrator.build_deliberation_prompt(
                 message=goal,
