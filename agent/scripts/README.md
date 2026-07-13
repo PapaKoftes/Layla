@@ -14,16 +14,28 @@ Exit code: `0` = all green (or warnings only), `1` = hard failures detected.
 
 ## Scripts
 
+The orchestrator (`run_all_checks.py`) runs the 11 checks below plus the pytest
+suite. Rows are listed in execution order; severities match the `CHECKS` list in
+`run_all_checks.py` (the authoritative source).
+
 | Script | Severity | What it checks |
 |---|---|---|
 | `check_patterns.py` | FAIL | Known bug patterns (mutable defaults, bare except, etc.) |
 | `check_config.py` | WARN | Config key validity and type correctness |
 | `check_imports.py` | FAIL | All Python imports resolve (no broken/missing modules) |
 | `check_security.py` | WARN | Security anti-patterns (secrets, injection, path traversal) |
+| `check_memory_coherence.py` | FAIL | Memory store coherence: entities/relationships tables exist, no orphaned relationships (Phase A gate) |
+| `check_repo_index.py` | FAIL | Repo symbol index integrity: `repo_index.db` readable, files/symbols indexed (Phase B gate) |
 | `check_api_contracts.py` | WARN | Every HTTP route has ≥1 test + docstring + is registered |
 | `check_db_schema.py` | WARN | DB schema idempotency, SQL injection via f-strings |
 | `check_ui_symbols.py` | WARN | All onclick/onchange handler targets are defined in JS |
-| `run_all_checks.py` | — | Orchestrator: runs all + pytest, produces confidence score |
+| `check_wiring.py` | WARN | Each 'delivered' service has ≥1 production import (no orphaned modules) |
+| `check_memory_router_enforcement.py` | WARN | `memory_router` is the canonical memory write path (ratchets to FAIL once stable) |
+| `run_all_checks.py` | — | Orchestrator: runs all 11 checks + pytest, produces confidence score |
+
+> `check_architecture.py` also exists as a standalone architecture-enforcement
+> check (run manually or as a pre-commit hook, e.g. `python scripts/check_architecture.py --strict`).
+> It is **not** part of the `run_all_checks.py` orchestrator run.
 
 ## Confidence Score
 
