@@ -149,11 +149,22 @@ def classify_task(text: str, context: str = "") -> str:
     """
     t = (text or "").lower()
     ctx = (context or "").lower()
+    # Strong, unambiguous coding intent.
     coding_kw = (
-        "code", "implement", "fix", "debug", "refactor", "write", "function", "class", "test", "lint",
+        "code", "implement", "debug", "refactor", "function", "lint", "codebase",
+        "traceback", "compile", "pytest", "syntax error",
     )
-    code_ctx_signals = ("def ", "class ", "import ", ".py", "traceback", "error:", "pytest")
-    if any(k in t for k in coding_kw) or any(sig in ctx for sig in code_ctx_signals):
+    # Verbs common in PROSE too ("write me a haiku", "write a cover letter", "test my patience",
+    # "fix the sentence") — only coding when a code-context signal co-occurs, else a prose task was
+    # misrouted to the coding model (audit #6).
+    weak_coding_kw = ("write", "fix", "test", "class", "script", "bug", "method", "api")
+    code_ctx_signals = ("def ", "class ", "import ", ".py", "traceback", "error:", "pytest", "```", "();", "()")
+    _code_signal = any(sig in ctx for sig in code_ctx_signals) or any(sig in t for sig in code_ctx_signals)
+    if (
+        any(k in t for k in coding_kw)
+        or (_code_signal and any(k in t for k in weak_coding_kw))
+        or any(sig in ctx for sig in code_ctx_signals)
+    ):
         return "coding"
     reasoning_kw = ("analyze", "explain", "why", "compare", "evaluate", "reason", "logic", "proof")
     if len(t) > 400 or t.count("\n") > 6:
