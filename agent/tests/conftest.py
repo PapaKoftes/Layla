@@ -141,6 +141,24 @@ def _force_test_db_path(tmp_path_factory):
         pass
 
 
+def reset_volatile_module_state():
+    """The volatile-state reset the autouse fixture performs, exposed as a callable so a single
+    self-contained test can trigger it and verify it (rather than an order-dependent populate→verify
+    test PAIR that passes vacuously when run alone — audit round-4 #1)."""
+    try:
+        import runtime_safety as _rs
+        _rs._config_cache = None
+        _rs._config_last_check = 0.0
+    except Exception:
+        pass
+
+    try:
+        import layla.memory.learnings as _lm
+        _lm._recent_learning_ts.clear()
+    except Exception:
+        pass
+
+
 @pytest.fixture(autouse=True)
 def _reset_volatile_module_state():
     """
@@ -158,19 +176,7 @@ def _reset_volatile_module_state():
       save_learning() silently returns -1, causing tests that check DB
       contents or graph-invalidation to fail.
     """
-    try:
-        import runtime_safety as _rs
-        _rs._config_cache = None
-        _rs._config_last_check = 0.0
-    except Exception:
-        pass
-
-    try:
-        import layla.memory.learnings as _lm
-        _lm._recent_learning_ts.clear()
-    except Exception:
-        pass
-
+    reset_volatile_module_state()
     yield  # test runs here
 
 
