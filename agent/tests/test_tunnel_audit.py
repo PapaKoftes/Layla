@@ -139,6 +139,50 @@ class TestPurgeOld:
         purge_old(days=-1)
 
 
+class TestSchedulerWiring:
+    """Regression (audit #8): purge_old must be invoked by the background cleanup
+    job — previously it was implemented + unit-tested but had no production caller,
+    so tunnel_access_log grew one row per remote request forever."""
+
+    def test_bg_cleanup_invokes_tunnel_audit_purge(self, monkeypatch):
+        import services.governance.tunnel_audit as ta
+        from layla.scheduler import jobs
+
+        calls = {}
+
+        def _spy_purge(days=90):
+            calls["days"] = days
+            return 0
+
+        monkeypatch.setattr(ta, "purge_old", _spy_purge)
+
+        import runtime_safety as _rs
+        monkeypatch.setattr(_rs, "load_config", lambda: {"tunnel_audit_retention_days": 42})
+
+        jobs._bg_cleanup()
+
+        assert calls.get("days") == 42, "tunnel_audit.purge_old was not called by _bg_cleanup"
+
+    def test_bg_cleanup_skips_purge_when_disabled(self, monkeypatch):
+        import services.governance.tunnel_audit as ta
+        from layla.scheduler import jobs
+
+        called = {"n": 0}
+
+        def _spy_purge(days=90):
+            called["n"] += 1
+            return 0
+
+        monkeypatch.setattr(ta, "purge_old", _spy_purge)
+
+        import runtime_safety as _rs
+        monkeypatch.setattr(_rs, "load_config", lambda: {"tunnel_audit_retention_days": 0})
+
+        jobs._bg_cleanup()
+
+        assert called["n"] == 0, "purge_old should be skipped when retention days <= 0"
+
+
 class TestTableCreation:
     def test_auto_creates_table(self):
         from services.governance.tunnel_audit import log_access, query_log
