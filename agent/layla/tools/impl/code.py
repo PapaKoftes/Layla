@@ -61,6 +61,9 @@ def grep_code(pattern: str, path: str, file_glob: str = "*") -> dict:
         for f in root.rglob(file_glob):
             if not f.is_file():
                 continue
+            # audit round-5 #7: don't read THROUGH an in-sandbox symlink to out-of-sandbox content.
+            if not inside_sandbox(f):
+                continue
             try:
                 for i, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                     if rx.search(line):
@@ -733,6 +736,10 @@ def rename_symbol(root: str, old_name: str, new_name: str, symbol_type: str = "a
     changes = []
     for f in root_path.rglob(file_glob):
         if not f.is_file():
+            continue
+        # audit round-5 #6: an in-sandbox symlink pointing outside would be read + written THROUGH here
+        # (f.is_file() follows the link). The root-only check isn't enough — re-validate each file.
+        if not inside_sandbox(f):
             continue
         try:
             content = f.read_text(encoding="utf-8", errors="replace")
