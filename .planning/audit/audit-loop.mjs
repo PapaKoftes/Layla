@@ -33,6 +33,9 @@ const LOAD_SCHEMA = {
     ledger: { type: 'object', additionalProperties: true },
     head: { type: 'string' },
     baselineFailures: { type: 'array', items: { type: 'string' } },
+    // Authoritative CI-config baseline (config.ci_test_cmd). The final green-gate diffs against
+    // THIS, not just the operator-config baseline, so operator config can never mask a CI failure.
+    ciBaselineFailures: { type: 'array', items: { type: 'string' } },
   },
 }
 const REALITY_SCHEMA = {
@@ -102,9 +105,9 @@ const loaded = await agent(
   `Read two JSON files at the repo root and return them verbatim: ${CFG_PATH} as {config} and ${LEDGER_PATH} as {ledger}. ` +
   `Run \`git rev-parse HEAD\` and return it as {head}. ` +
   (MODE === 'round'
-    ? `Then establish the TEST BASELINE: run the config.test_cmd exactly and return {baselineFailures} = the array of currently FAILING pytest node ids (the "FAILED tests/..." lines; may be empty). `
-    : `In validate mode, set {baselineFailures} to []. `) +
-  `Do NOT modify any file.`,
+    ? `Then establish TWO baselines. (1) OPERATOR baseline: run config.test_cmd exactly and return {baselineFailures} = the array of currently FAILING pytest node ids (the "FAILED tests/..." lines; may be empty). (2) AUTHORITATIVE CI baseline: run config.ci_test_cmd exactly (it swaps in CI's clean stub config, runs with CI=true, then restores the operator config itself) and return {ciBaselineFailures} = the array of FAILED node ids from ITS output. This is the set the final green-gate diffs against, so operator config can never mask a CI-only failure. `
+    : `In validate mode, set {baselineFailures} to [] and {ciBaselineFailures} to []. `) +
+  `Do NOT modify any file (ci_test_cmd manages its own config backup/restore).`,
   { label: 'load+baseline', phase: 'Load', schema: LOAD_SCHEMA, agentType: 'general-purpose', effort: 'low' },
 )
 if (!loaded || !loaded.config || !loaded.ledger) {
@@ -114,6 +117,7 @@ if (!loaded || !loaded.config || !loaded.ledger) {
 const config = loaded.config
 const ledger = loaded.ledger
 const baseline = loaded.baselineFailures || []
+const ciBaseline = loaded.ciBaselineFailures || []
 const roundNo = (ledger.round_counter || 0) + 1
 
 // Dimension selection: never-run first, then stalest (smallest last_round), then highest weight.
@@ -130,7 +134,7 @@ pool.sort((a, b) => {
 })
 const chosen = pool[0]
 if (!chosen) { log('No dimensions in ledger — aborting.'); return { ok: false, reason: 'no_dimensions' } }
-log(`Round ${roundNo}: dimension="${chosen.key}" (${chosen.family}). ${active.length}/${dims.length} active${allQuiescent ? ' — ALL QUIESCENT (maintenance sweep)' : ''}. Baseline failing: ${baseline.length}.`)
+log(`Round ${roundNo}: dimension="${chosen.key}" (${chosen.family}). ${active.length}/${dims.length} active${allQuiescent ? ' — ALL QUIESCENT (maintenance sweep)' : ''}. Baseline failing: operator=${baseline.length} ci=${ciBaseline.length} (CI is authoritative).`)
 
 // ── Phase 2 · Reality anchor (best-effort, read-only) ─────────────────────────
 phase('Reality')
@@ -244,7 +248,9 @@ if (MODE === 'round' && autoFindings.length) {
     root_cause_note: (plan.find((p) => p.id === f._id) || {}).root_cause_note || '',
   }))
   fix = (await agent(
-    `You are the FIX INTEGRATOR for the Layla repo. Baseline HEAD is ${loaded.head}. Baseline ALLOWED failing tests (do NOT treat these as regressions): ${JSON.stringify(baseline)}.\n\n` +
+    `You are the FIX INTEGRATOR for the Layla repo. Baseline HEAD is ${loaded.head}.\n` +
+    `ALLOWED failing tests under the OPERATOR config (do NOT treat as regressions): ${JSON.stringify(baseline)}.\n` +
+    `ALLOWED failing tests under the AUTHORITATIVE CI config (this is the set that actually gates a merge): ${JSON.stringify(ciBaseline)}.\n\n` +
     `STANDING RULES (must obey):\n` +
     `• Work on the "${config.branch}" branch directly. NEVER create a branch.\n` +
     `• NEVER stage or commit these protected globs: ${JSON.stringify(config.protected_paths)}. Check \`git status\` before every commit and unstage any protected/operator-state file.\n` +
@@ -253,7 +259,10 @@ if (MODE === 'round' && autoFindings.length) {
     `• Run pytest via the .venv-test interpreter; for JS use \`${config.js_check_cmd} <file>\`.\n\n` +
     `APPLY these verified low/medium fixes ONE AT A TIME (sequentially):\n${JSON.stringify(fixInput)}\n\n` +
     `For EACH finding: (a) edit the SOURCE to fix the ROOT cause (prefer the root_cause_note if present); (b) add or extend a regression test that fails before / passes after; (c) run ONLY the touched test file(s) as a scoped check (${config.scoped_test_hint}); for a UI/JS change also \`${config.js_check_cmd}\` it. If the scoped check passes, \`git add\` ONLY the source+test files (never protected globs) and \`git commit\` with the trailer. If the scoped check fails or you cannot cleanly fix it, run \`git checkout -- .\` to drop that finding's changes and record it in "reverted".\n\n` +
-    `AFTER all findings: run the FULL suite exactly: \`${config.test_cmd}\`. Compute the failing-test set. If it is a SUBSET of the baseline (NO new failures), \`git push origin ${config.branch}\` and set pushed=true. If there are ANY NEW failures, \`git reset --hard ${loaded.head}\` to drop the entire round's commits, set pushed=false, and list them in newFailures. Return {applied,reverted,pushed,newFailures,finalHead=\`git rev-parse HEAD\`,notes}.`,
+    `AFTER all findings, GREEN-GATE in two stages:\n` +
+    `  1. Quick pass — run \`${config.test_cmd}\` (operator config). Its failing set must be a SUBSET of the operator baseline above (no NEW failures).\n` +
+    `  2. AUTHORITATIVE pass — run \`${config.ci_test_cmd}\` (reproduces CI's clean stub config + CI=true; it backs up and restores runtime_config.json itself, so do NOT touch that file). Read its \`CI_GATE_RESULT exit=<code> failed=<n>\` line and its \`FAILED ...\` node ids. Its failing set must be a SUBSET of the CI baseline above (no NEW failures). This stage is decisive — a fix that passes stage 1 but adds a NEW failure under stage 2 is a regression and must NOT be pushed.\n` +
+    `Only if BOTH stages have no new failures: \`git push origin ${config.branch}\` and set pushed=true. If EITHER stage shows any NEW failure, \`git reset --hard ${loaded.head}\` to drop the entire round's commits, set pushed=false, and list the new failures in newFailures. Return {applied,reverted,pushed,newFailures,finalHead=\`git rev-parse HEAD\`,notes}.`,
     { label: 'fix-integrator', phase: 'Fix', schema: FIX_SCHEMA, agentType: 'general-purpose', effort: 'high' },
   )) || fix
   log(`Fix: applied=${fix.applied.length} reverted=${fix.reverted.length} pushed=${fix.pushed}${fix.newFailures && fix.newFailures.length ? ` NEW-FAILURES=${fix.newFailures.length} (round reset)` : ''}`)

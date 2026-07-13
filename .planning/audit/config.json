@@ -20,15 +20,16 @@
     "agent/layla.db"
   ],
   "test_cmd": "cd agent && PYTHONIOENCODING=utf-8 ../.venv-test/Scripts/python.exe -m pytest -q -p no:cacheprovider",
-  "scoped_test_hint": "For a scoped check, run only the test file(s) touched by the fix, e.g. `cd agent && ../.venv-test/Scripts/python.exe -m pytest tests/test_X.py -q`. Run the FULL test_cmd only once, at the end, before pushing.",
+  "ci_test_cmd": "bash .planning/audit/ci-gate.sh",
+  "_ci_gate_note": "AUTHORITATIVE green-gate. `test_cmd` runs against the operator's live runtime_config.json, which both MASKS CI-only failures and INTRODUCES operator-only artifacts — a green run there does NOT mean CI is green. `ci_test_cmd` reproduces CI's exact clean-stub config (CI=true, n_ctx=2048, same marker expression) and always restores the operator config. The FINAL gate before pushing MUST be ci_test_cmd: the CI-config failing set must be a SUBSET of ciBaselineFailures (no NEW failures) — do not push on the operator suite alone. It prints a machine-readable `CI_GATE_RESULT exit=<code> failed=<n>` last line plus each `FAILED ...` node id.",
+  "scoped_test_hint": "For a scoped check, run only the test file(s) touched by the fix, e.g. `cd agent && ../.venv-test/Scripts/python.exe -m pytest tests/test_X.py -q`. Run the FULL test_cmd once for a quick operator-config pass, then run ci_test_cmd once as the authoritative gate before pushing.",
   "known_config_artifact_tests": [
     "test_defaults_are_safe",
     "test_disabled_by_default",
     "test_litellm_config_keys_exist",
-    "test_meilisearch_config_exists",
-    "test_durable_facts_injected_verbatim_into_system_head"
+    "test_meilisearch_config_exists"
   ],
-  "known_artifact_note": "These fail only because the operator's live runtime_config.json enables litellm/meilisearch/discord etc. They pass in CI/clean-config and in isolation. The baseline is computed dynamically each round anyway; this list is documentation.",
+  "known_artifact_note": "These fail ONLY under the operator's live runtime_config.json (litellm/meilisearch/discord enabled) and pass under CI/clean-config. VERIFY before adding to this list: a test that also fails in isolation or under ci_test_cmd is a REAL defect, not an artifact — do not silence it here. (test_durable_facts_injected_verbatim_into_system_head was wrongly listed here; it was a genuine durable-facts eviction bug, now fixed in context_manager.py — removed.)",
   "commit_trailer": "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>",
   "branch": "master",
   "app_url": "http://127.0.0.1:8016",
