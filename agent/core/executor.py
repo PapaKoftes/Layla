@@ -102,6 +102,31 @@ def run_tool(
                 logger.error("sandbox teardown failed: %s", e, exc_info=True)
 
     _ws = sandbox_root or ""
+    # Confinement (audit round-5 #1): the caller-supplied workspace (sandbox_root arg, ultimately
+    # req.workspace_root) is promoted to the thread-local effective sandbox for generic tools, and
+    # _get_sandbox() returns that thread-local in preference to config sandbox_root — so a workspace
+    # OUTSIDE config sandbox_root would let generic write tools (create_svg/write_csv/notebook_edit_cell/
+    # create_archive/…) escape. Clamp a workspace that resolves outside config sandbox_root back to it, so
+    # the effective sandbox can never be WIDER than the configured one (a subdir of it is fine).
+    if _ws:
+        try:
+            from pathlib import Path as _P
+
+            import runtime_safety as _rs
+            _cfg_root = str((_rs.load_config() or {}).get("sandbox_root") or "").strip()
+            if _cfg_root:
+                _cfg_res = _P(_cfg_root).resolve()
+                _ws_res = _P(_ws).resolve()
+                if _ws_res != _cfg_res and _cfg_res not in _ws_res.parents:
+                    logger.warning("executor: workspace %r is outside config sandbox_root %r — clamping to sandbox_root", _ws, _cfg_root)
+                    _ws = _cfg_root
+        except Exception as _conf_e:
+            logger.error("executor: sandbox confinement check failed, defaulting to config root: %s", _conf_e)
+            try:
+                import runtime_safety as _rs2
+                _ws = str((_rs2.load_config() or {}).get("sandbox_root") or "") or _ws
+            except Exception:
+                pass
     try:
         from services.infrastructure.agent_hooks import run_agent_hooks
 
