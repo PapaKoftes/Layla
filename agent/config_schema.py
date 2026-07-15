@@ -126,7 +126,7 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
     {"key": "research_max_tool_calls", "type": "number", "category": "limits", "default": 20, "min": 1, "max": 100, "hint": "Max tool calls when research_mode is on."},
     {"key": "research_max_runtime_seconds", "type": "number", "category": "limits", "default": 1800, "min": 30, "max": 14400, "hint": "Max wall time for research-style runs (seconds)."},
     # ── Safety & behavior ──
-    {"key": "safe_mode", "type": "boolean", "category": "safety", "default": True, "hint": "Require approval for file writes and code execution."},
+    {"key": "safe_mode", "type": "boolean", "category": "safety", "default": True, "hint": "Hard floor for destructive tools: while on (default), file writes and code execution (write_file, shell, run_python, git, …) ALWAYS require approval — even if tool_approval_bypass is set. Turn off only if you deliberately want the bypass to auto-approve destructive tools too."},
     {"key": "plugins_enabled", "type": "boolean", "category": "safety", "default": False, "hint": "Allow skill plugins to EXECUTE Python code (exec_module) and contribute MCP subprocess servers. Off = declarative skills only. Security-sensitive: only enable for plugins you trust."},
     {"key": "skill_venv_enabled", "type": "boolean", "category": "safety", "default": False, "hint": "On skill-pack install, provision a per-pack venv and pip-install its declared dependencies (heavier install; rolled back atomically on failure)."},
     {"key": "skill_deps_require_pinned", "type": "boolean", "category": "safety", "default": True, "hint": "Reject skill-pack installs whose dependencies aren't version-pinned (name==x.y.z). Prevents supply-chain drift from floating deps."},
@@ -324,7 +324,7 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "type": "boolean",
         "category": "safety",
         "default": False,
-        "hint": "DANGEROUS: auto-approve ALL tools with no prompt and no checkpoint (the easy 'yes to everything' switch). Off by default; disable when not needed.",
+        "hint": "DANGEROUS: auto-approve tools with no prompt and no checkpoint. GUARDED: while safe_mode is on (the default), this still does NOT skip approval for destructive tools (writes, shell, run_python, git, …) — to fully auto-approve those you must also turn safe_mode off. Ignored entirely when remote_enabled is on. Off by default; leave off unless you know what you're doing.",
     },
     # ── Integrations (Discord, Slack, etc.) ──
     {
