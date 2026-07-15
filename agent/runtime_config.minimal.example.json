@@ -1,0 +1,14 @@
+{
+  "_doc": "MINIMAL starter config. Copy this to runtime_config.json for a usable daily driver — these are the only keys most people need. Everything else has a safe default (see runtime_config.example.json for the full ~400-key reference). Safety note: writes and shell/code execution are OFF by default and gated by approval; you do NOT set those here.",
+
+  "model_filename": "Qwen2.5-Coder-3B-Instruct-Q4_K_M.gguf",
+  "sandbox_root": "~/layla-workspace",
+
+  "n_ctx": 8192,
+  "n_gpu_layers": 0,
+
+  "max_tool_calls": 8,
+  "max_runtime_seconds": 300,
+
+  "use_chroma": false
+}
