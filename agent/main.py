@@ -797,7 +797,11 @@ def _load_history() -> None:
 
 def _save_history() -> None:
     try:
-        HISTORY_FILE.write_text(json.dumps(list(_history), indent=2), encoding="utf-8")
+        # Atomic temp+replace so a crash mid-write can't truncate the history cache (low impact — SQLite
+        # is the durable store — but cheap correctness).
+        _tmp = HISTORY_FILE.with_name(HISTORY_FILE.name + ".tmp")
+        _tmp.write_text(json.dumps(list(_history), indent=2), encoding="utf-8")
+        os.replace(_tmp, HISTORY_FILE)
     except Exception as e:
         logger.debug("_save_history failed: %s", e)
 
