@@ -54,6 +54,12 @@ _REMOTE_PROTECTED_KEYS = frozenset({
     "agent_hooks_enabled",
     "hooks_require_allow_run",
     "skill_venv_enabled",
+    # Approval-bypassing controls: a remote client must never be able to set these. The bypass is
+    # already ignored while remote_enabled is on, but protecting the keys stops a remote write from
+    # pre-arming them for when the server is later taken off the network.
+    "tool_approval_bypass",
+    "admin_mode",
+    "admin_blocklist_override",
 })
 
 
