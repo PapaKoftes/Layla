@@ -34,3 +34,20 @@ python scripts/benchmark_coding.py --model models/<model>.gguf --out benchmarks/
 python scripts/benchmark_coding.py --hard --model models/<model>.gguf --out benchmarks/scorecard_<model>-hard.json
 python scripts/benchmark_coding.py --self-test   # validate the harness (no model)
 ```
+
+## Kept current (do this when the model or coding path changes)
+
+These numbers must not drift from the code. Two guards keep them honest:
+
+1. **Nightly CI regression** — the `coding-benchmark` job in `.github/workflows/ci.yml`
+   downloads the 3B coder and runs BOTH tiers (`test_benchmark_coding_model.py`) against
+   floors (`LAYLA_BENCH_FLOOR` core, `LAYLA_BENCH_HARD_FLOOR` hard). A quality regression
+   fails the build; it also runs on-demand via **workflow_dispatch**.
+2. **Manual refresh on change** — when you swap the default model, change quant, or touch the
+   generation/prompt path, regenerate the affected scorecard(s) with the commands above and
+   update the table at the top of this file (and the summary table in the repo-root `README.md`).
+   Both are committed artifacts, so the diff shows exactly how quality moved.
+
+When you add a harder/longer problem set (e.g. full HumanEval-164 or repo-level tasks), extend
+`PROBLEMS_HARD` in `scripts/benchmark_coding.py` — the CI guard and both tables pick it up
+automatically.
