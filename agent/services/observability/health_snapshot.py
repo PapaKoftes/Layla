@@ -127,6 +127,11 @@ def build_dependency_status(*, probe_chroma: bool) -> dict[str, str]:
     except Exception:
         out["chroma"] = "missing"
 
+    # Legibility (audit): on the compiler-free [cpu] install chromadb is intentionally absent and memory
+    # falls back to SQLite+NumPy — RAG still works. Surface the EFFECTIVE vector store so a bare
+    # chroma:"missing" doesn't read as "memory is broken" to someone scanning /health.
+    out["vector_store"] = "chroma" if out.get("chroma") == "ok" else "sqlite-fallback (RAG active)"
+
     try:
         import faster_whisper  # noqa: F401
 
