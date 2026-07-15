@@ -739,6 +739,13 @@ def _autonomous_run_impl(
     except Exception as e:
         logger.debug("agent_loop: %s", e)
     set_reasoning_effort(reasoning_effort)
+    # Record the turn's granted permissions so the executor can fail-closed on a destructive tool that
+    # reaches it without approval (audit S4 defense-in-depth). Cleared in the finally below.
+    try:
+        from services.tools.tool_permissions import set_tool_permissions
+        set_tool_permissions(allow_write, allow_run)
+    except Exception:
+        pass
     try:
         return _autonomous_run_impl_core(
             goal, context, workspace_root, allow_write, allow_run,
@@ -762,6 +769,11 @@ def _autonomous_run_impl(
     finally:
         set_model_override(None)
         set_reasoning_effort(None)
+        try:
+            from services.tools.tool_permissions import clear_tool_permissions
+            clear_tool_permissions()
+        except Exception:
+            pass
 
 
 def _run_tool_guards(
