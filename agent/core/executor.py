@@ -77,6 +77,31 @@ def run_tool(
             "timed_out": False,
         }
 
+    # Defense-in-depth (audit S4): even reaching the generic executor, a destructive tool must not run
+    # if the active turn didn't grant the matching permission. The dispatch layer gates this upstream;
+    # this backstops any caller (now or future) that reaches run_tool directly. Permissive when no turn
+    # context is active (internal/confined callers keep working — they have their own gates).
+    try:
+        from services.tools.tool_permissions import check_tool_permission
+        _perm_ok, _perm_reason = check_tool_permission(tool_name)
+    except Exception:
+        _perm_ok, _perm_reason = True, "perm-check-unavailable"
+    if not _perm_ok:
+        logger.warning("executor: refused '%s' — %s", tool_name, _perm_reason)
+        try:
+            from services.observability.security_audit import log_policy_bypass_attempt
+            log_policy_bypass_attempt("tool_permission_context", detail=f"tool={tool_name}: {_perm_reason}", blocked=True)
+        except Exception:
+            pass
+        return {
+            "ok": False,
+            "tool_name": tool_name,
+            "error": f"Blocked: {_perm_reason}. Enable the matching approval (Allow Write / Allow Run) to use it.",
+            "duration_ms": 0,
+            "output_bytes": 0,
+            "timed_out": False,
+        }
+
     fn = TOOLS[tool_name]["fn"]
 
     # Strip 'goal' key — it's loop-internal, not a tool argument
