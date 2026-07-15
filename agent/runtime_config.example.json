@@ -5,7 +5,7 @@
   "model_filename": "your-model.gguf",
   "_comment_models_dir": "Optional key: models_dir (string path to folder of .gguf files). Omit or remove from a copied config to use the default. With LAYLA_DATA_DIR, defaults are under that data directory; first-run GET /setup_status also lists .gguf files in the repo-root models/ folder (beside agent/) so source installs can keep models in-repo without editing config.",
 
-  "sandbox_root": "~",
+  "sandbox_root": "~/layla-workspace",
 
   "uncensored": true,
   "nsfw_allowed": true,

@@ -46,7 +46,7 @@ Read [`PROJECT_BRAIN.md`](../PROJECT_BRAIN.md) first for stable context; use mod
    uvicorn main:app --host 127.0.0.1 --port 8000
    ```
 
-8. **Verify**: Open http://localhost:8000/health — expect `{"ok": true}`. Open http://localhost:8000/ui for the chat UI.
+8. **Verify**: Open http://localhost:8000/health — expect `{"status": "ok"}`. Open http://localhost:8000/ui for the chat UI.
 
 9. **Remote (optional)**: To allow access from another machine, set in `runtime_config.json`: `"remote_enabled": true`, `"remote_api_key": "your-secret"`, and start with `uvicorn main:app --host 0.0.0.0 --port 8000`. See docs/REMOTE_ARCHITECTURE.md.
 
