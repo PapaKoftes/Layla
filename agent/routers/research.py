@@ -406,7 +406,7 @@ async def research(req: dict):
     get_touch_activity()()
     _history = get_history()
     _append_history = get_append_history()
-    raw_message = (req or {}).get("message", "").strip()
+    raw_message = ((req or {}).get("message") or "").strip()
     repo_path = (req or {}).get("repo_path", "") or (req or {}).get("workspace_root", "") or ""
     aspect_id = (req or {}).get("aspect_id", "") or ""
     show_thinking = bool((req or {}).get("show_thinking", False))
