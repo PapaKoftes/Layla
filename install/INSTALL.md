@@ -40,10 +40,12 @@ powershell -ExecutionPolicy Bypass -File install\fresh_install.ps1 -Verify
 ```
 This boots the server and checks `/health`, a real `/agent` turn, and `/ui` end-to-end.
 
-> On a **16 GB CPU** machine the provisioner picks **Qwen2.5-Coder-3B** (the "morrigan"
-> coding aspect) by default — verified to load and complete a turn on exactly that tier.
-> Use `-Prefer quality` for a larger model if you have the RAM, or `-Prefer lite`/`speed` for
-> a smaller, faster one.
+> On a **16 GB CPU** machine the default (`-Prefer balanced`) provisions **Qwen2.5-Coder-7B**
+> (the "morrigan" coding aspect) — verified to load and complete a turn on exactly that tier
+> (~3–4 tok/s). If you want it snappier, `-Prefer lite` provisions **Qwen2.5-Coder-3B**, which
+> scored **identically** on our coding benchmark (100% on both the fundamentals and the hard
+> tier) at **~2× the speed** — the better pick for interactive coding on a CPU-only laptop.
+> `-Prefer quality` forces a larger model if you have the RAM; `-Prefer speed` goes smaller still.
 
 ## 2. Pair two Layla installs (main PC ↔ laptop)
 
