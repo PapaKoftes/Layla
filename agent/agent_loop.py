@@ -379,15 +379,11 @@ def system_overloaded(priority: int = PRIORITY_AGENT) -> bool:
     # Chat should remain reactive even under pressure; background can be throttled.
     if priority <= PRIORITY_CHAT:
         return False
-    # These keys aren't in the coerce/clamp schema, so a hand-edited null/string reaches float() raw and
-    # would crash the governor on a background task. Coerce safely to the default.
-    def _f(v, default: float) -> float:
-        try:
-            return float(v)
-        except (TypeError, ValueError):
-            return default
-    hard_cpu = _f(cfg.get("hard_cpu_percent", cfg.get("max_cpu_percent", 95)), 95.0)
-    hard_ram = _f(cfg.get("max_ram_percent", 90), 90.0)
+    try:  # not in the coerce schema — a hand-edited null/string must not crash the governor
+        hard_cpu = float(cfg.get("hard_cpu_percent", cfg.get("max_cpu_percent", 95)))
+        hard_ram = float(cfg.get("max_ram_percent", 90))
+    except (TypeError, ValueError):
+        hard_cpu, hard_ram = 95.0, 90.0
     return smooth_cpu > hard_cpu or smooth_ram > hard_ram
 
 
@@ -746,8 +742,7 @@ def _autonomous_run_impl(
     except Exception as e:
         logger.debug("agent_loop: %s", e)
     set_reasoning_effort(reasoning_effort)
-    # Record the turn's granted permissions so the executor can fail-closed on a destructive tool that
-    # reaches it without approval (audit S4 defense-in-depth). Cleared in the finally below.
+    # Record the turn's permissions so the executor can fail-closed on an unapproved destructive tool (S4).
     try:
         from services.tools.tool_permissions import set_tool_permissions
         set_tool_permissions(allow_write, allow_run)
