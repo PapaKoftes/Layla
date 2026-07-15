@@ -28,7 +28,14 @@ EventType = Literal[
     "error",
 ]
 
-_VALID_EVENT_TYPES: frozenset[str] = frozenset(EventType.__args__)  # type: ignore[attr-defined]
+# The structured event names the legacy observability layer emits (now mirrored into this ring so
+# /metrics recent_events populates) — recognized so they don't each log an "unknown event_type" warning.
+_LEGACY_EVENT_TYPES: frozenset[str] = frozenset({
+    "agent_response", "run_budget_summary", "tool_call", "learning_saved", "learning_skipped",
+    "study_started", "study_completed", "memory_retrieval", "agent_plan_created",
+})
+
+_VALID_EVENT_TYPES: frozenset[str] = frozenset(EventType.__args__) | _LEGACY_EVENT_TYPES  # type: ignore[attr-defined]
 _BUFFER_MAXLEN = 500
 
 # ---------------------------------------------------------------------------

@@ -38,6 +38,14 @@ def _log_event(event: str, **kwargs: Any) -> None:
     status = kwargs.pop("status", "ok")
     base = {"timestamp": ts, "event_type": event, "duration": duration, "status": status}
     base.update(kwargs)
+    # Feed the structured-event ring the /metrics endpoint reads. Without this, event_logger.log_event
+    # was never called in production, so /metrics observability.recent_events was permanently []. Every
+    # log_* call here now also lands in that ring (best-effort — never breaks the log path).
+    try:
+        from services.observability.event_logger import log_event as _ring_log
+        _ring_log(event, {k: v for k, v in base.items() if k not in ("timestamp", "event_type")}, level=status if status in ("info", "warning", "error") else "info")
+    except Exception:
+        pass
     extra = " | ".join(f"{k}={v}" for k, v in sorted(base.items()) if v is not None)
     msg = f"[{event}] {extra}" if extra else f"[{event}]"
     if _USE_LOGURU:
