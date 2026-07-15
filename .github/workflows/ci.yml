@@ -300,6 +300,15 @@ jobs:
           LAYLA_TEST_REAL_LLM: "1"
         run: python -m pytest tests/test_inference_smoke.py -v --tb=short --timeout=300
 
+      - name: Core decision-loop exercised on PR (real 360M model)
+        working-directory: agent
+        env:
+          LAYLA_TEST_REAL_LLM: "1"   # un-ignores the real-Llama loop tests (conftest gates on this)
+        # The core agent loop (test_completion.py) is collection-ignored in the stubbed unit run, so a PR
+        # could go green with the decision cycle unexercised. Run it here against the model already
+        # downloaded above so a broken loop fails the PR, not just the nightly job.
+        run: python -m pytest tests/test_completion.py -v --tb=short --timeout=600
+
   coding-benchmark:
     name: Coding pass@1 (real model, nightly)
     runs-on: ubuntu-latest
