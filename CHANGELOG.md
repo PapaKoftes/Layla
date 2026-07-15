@@ -5,12 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> **Release state:** the current code is **1.5.0** (`agent/version.py`). The only git tag is `v1.0.0`;
-> `v1.5.0` has not been cut yet, so cloning `master` gives an untagged 1.5.0-dev build. The
-> `[Unreleased]` section below collects work landed on top of 1.5.0 and is ordered after the released
-> versions rather than at the top — it will fold into the next tagged release. (The earlier
-> `[2.0.0] — 2026-02-22` entry was a mis-number for the first release and is corrected to `[1.0.0]`,
-> matching the `v1.0.0` tag.)
+> **Release state:** the current code is **1.5.0** (`agent/version.py`), tagged **`v1.5.0`** at the
+> green HEAD verified in `docs/RELEASE_CHECKLIST.md` (full suite green, coding benchmark 22/22, clean
+> install + live coding turn). The `[Unreleased]` section below collects post-1.5.0 work and folds into
+> the next tag. (The earlier `[2.0.0] — 2026-02-22` entry was a mis-number for the first release and is
+> corrected to `[1.0.0]`, matching the `v1.0.0` tag.)
 
 ---
 
