@@ -2,6 +2,10 @@
 
 Run before tagging or publishing binaries/docs as “ready.” See also **`docs/PRODUCTION_CONTRACT.md`**.
 
+> **Not yet run for the current version.** The sign-off below is stamped **1.2.0 (2026-04-14)**; the
+> code is now **1.5.0** (untagged). This checklist must be re-run and re-stamped before cutting a
+> `v1.5.0` tag — treat the 1.2.0 sign-off as historical, not current.
+
 ## Release verification (1.2.0 — 2026-04-14)
 
 | Step | Verified |
