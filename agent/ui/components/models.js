@@ -136,10 +136,14 @@ function _renderHardware(status, models) {
     lines.push('CPU inference (no GPU detected)');
   }
   const rec = (models && models.recommended_key) ? models.recommended_key : '';
+  const recCoding = (models && models.recommended_coding_key) ? models.recommended_coding_key : '';
   const suggestion = (models && models.suggestion) || hw.suggestion || '';
   let html = '<span class="models-hw-chips">' +
     lines.map(l => '<span class="models-chip">' + escapeHtml(l) + '</span>').join('') + '</span>';
   if (rec) html += '<div class="hint" style="margin-top:6px">Recommended for your hardware: <strong>' + escapeHtml(rec) + '</strong></div>';
+  // The companion recommendation deliberately excludes coder models; surface the best coder separately so
+  // someone who wants a coding assistant isn't steered to the general pick (matches recommended_coding_key).
+  if (recCoding && recCoding !== rec) html += '<div class="hint">Recommended for <strong>coding</strong>: <strong>' + escapeHtml(recCoding) + '</strong></div>';
   if (suggestion) html += '<div class="hint">' + escapeHtml(suggestion) + '</div>';
   el.innerHTML = html;
 }
@@ -179,6 +183,7 @@ function _renderCatalog(models) {
     const flags = [];
     if (m.uncensored) flags.push('<span class="models-badge models-badge-unc" title="No restrictions — answers everything">🔓 uncensored</span>');
     if (m.recommended) flags.push('<span class="models-badge">recommended</span>');
+    if (m.recommended_coding) flags.push('<span class="models-badge" title="Best coder model that fits this box">recommended for coding</span>');
     if (m.category) flags.push('<span class="models-badge models-badge-cat">' + escapeHtml(m.category) + '</span>');
     if (!viable) flags.push('<span class="models-badge models-badge-warn">heavy</span>');
     const meta = [];

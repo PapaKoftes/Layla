@@ -362,7 +362,11 @@ async def cluster_status(request: Request):
         from services.cluster.cluster_network import get_cluster_status
         result.update(get_cluster_status())
     except Exception:
-        result["cluster_enabled"] = False
+        # Match the success-path field names (get_cluster_status returns `enabled` + `peer_count`); the
+        # old fallback used `cluster_enabled`, so the two paths disagreed and the UI's field read broke
+        # depending on which path ran. Keep them identical.
+        result["enabled"] = False
+        result["peer_count"] = 0
 
     try:
         from services.infrastructure.resource_governor import get_mode
