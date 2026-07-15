@@ -142,16 +142,6 @@ def record_macro(
         return {"ok": True, "id": cur.lastrowid, "name": name, "steps": len(clean), "params": params}
 
 
-def record_from_run(name: str, state: dict, *, description: str = "") -> dict[str, Any]:
-    """Convenience: extract replayable steps from a finished run and save them."""
-    steps = extract_steps_from_run(state)
-    if not steps:
-        return {"ok": False, "error": "no replayable tool steps in this run"}
-    return record_macro(
-        name, steps, description=description, source_run=str((state or {}).get("run_id") or ""),
-    )
-
-
 # ── query ────────────────────────────────────────────────────────────────────
 def _row(r: sqlite3.Row) -> dict:
     return {
