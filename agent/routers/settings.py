@@ -660,7 +660,12 @@ async def operator_quiz_submit(req: Request):
 def operator_profile():
     """Return the current operator profile (stats, maturity seed, prefs) from user_identity."""
     try:
-        from services.personality.maturity_engine import get_milestones_status, get_state, xp_needed_for_next
+        from services.personality.maturity_engine import (
+            check_unlocks,
+            get_milestones_status,
+            get_state,
+            xp_needed_for_next,
+        )
         from services.personality.operator_quiz import load_profile
 
         prof = load_profile() or {}
@@ -672,6 +677,13 @@ def operator_profile():
             maturity["milestones"] = get_milestones_status(ms.phase)
             # Ensure phase reflects engine mapping even if older user_identity stored legacy labels.
             maturity["phase"] = str(ms.phase)
+            # Unlocked abilities for the growth dashboard — the frontend (growth.js) reads
+            # maturity.unlocks[{name,rank_required}] but the endpoint never populated it, so the
+            # "Unlocked Abilities" panel was permanently empty. check_unlocks() already returns that shape.
+            try:
+                maturity["unlocks"] = check_unlocks({"rank": ms.rank})
+            except Exception:
+                maturity["unlocks"] = []
             prof["maturity"] = maturity
         except Exception:
             pass
