@@ -88,3 +88,23 @@ def test_llm_title_cleaner_rejects_bare_aspect_name():
     assert _clean_title("Nyx") == ""
     # A real topic that merely starts with the aspect label is still cleaned to the topic.
     assert _clean_title("Morrigan: Auth Refactor") == "Auth Refactor"
+
+
+def test_clean_title_strips_midstring_title_prefix():
+    # The 3B echoes "…Title: X" mid-line; the real title is after the LAST Title:/Topic: marker.
+    from services.agent.title_synthesizer import _clean_title
+    assert _clean_title("Hi there Mina How are you Title: Hi there, how are you") == "Hi there, how are you"
+    assert _clean_title("Paris is capital France Title: Paris France Capital") == "Paris France Capital"
+
+
+def test_clean_title_strips_reference_and_bleed():
+    from services.agent.title_synthesizer import _clean_title
+    assert "REFERENCE" not in _clean_title("Morrigan greets. ### REFERENCE")
+    out = _clean_title("Hi there. This is a written TEXT chat: you are typing")
+    assert "written TEXT chat" not in out and out.strip()
+
+
+def test_clean_title_caps_words_and_length():
+    from services.agent.title_synthesizer import _clean_title, _MAX_TITLE_WORDS, _MAX_TITLE_LEN
+    out = _clean_title("The Best Way to Reverse a String in Python Using Slicing and Loops for Beginners")
+    assert len(out.split()) <= _MAX_TITLE_WORDS and len(out) <= _MAX_TITLE_LEN

@@ -12,7 +12,8 @@ import re
 
 logger = logging.getLogger("layla")
 
-_MAX_TITLE_LEN = 60
+_MAX_TITLE_LEN = 48   # ChatGPT/Claude-style: short. Also word-capped below.
+_MAX_TITLE_WORDS = 8
 
 
 def _clean_title(raw: str) -> str:
@@ -26,7 +27,21 @@ def _clean_title(raw: str) -> str:
     t = re.sub(r"<(think|thinking|reasoning|scratchpad|reflection)\b[^>]*>.*?</\1\s*>", "", t, flags=re.IGNORECASE | re.DOTALL).strip()
     t = re.sub(r"<(?:think|thinking|reasoning|scratchpad|reflection)\b[^>]*>.*\Z", "", t, flags=re.IGNORECASE | re.DOTALL).strip()
     t = t.splitlines()[0].strip() if t else ""         # first line only
+    # The 3B model, prompted with a "…\nTitle:" frame, frequently ECHOES the frame and emits its real
+    # title AFTER a second "Title:"/"Topic:" mid-line ("Hi there Mina How are you Title: Hi there…").
+    # A leading-only strip left the echo in the rail. Take the text after the LAST such marker.
+    _m = list(re.finditer(r"(?i)\b(?:title|topic)\s*[:\-]\s*", t))
+    if _m:
+        t = t[_m[-1].end():].strip()
     t = re.sub(r"^(title|topic)\s*[:\-]\s*", "", t, flags=re.IGNORECASE).strip()
+    # Strip a regurgitated system-prompt tail (### REFERENCE / "This is a written TEXT chat" / stage
+    # directions) that the title model bleeds just like the reply model — it must never become a title.
+    try:
+        from services.agent.response_builder import _strip_system_prompt_bleed
+        t = _strip_system_prompt_bleed(t).strip()
+    except Exception:
+        pass
+    t = re.sub(r"#{1,6}\s*[A-Z][A-Z ]{2,}", "", t).strip()   # stray ALLCAPS markdown heading (### REFERENCE)
     t = t.strip("\"'`“”‘’ ")                            # surrounding quotes
     t = re.sub(r"\[[^\]]*\]", "", t).strip()            # any bracketed marker
     # A leaked leading aspect/persona label ("⚔ Morrigan: …", "Morrigan: …", "Layla: …") — the
@@ -67,8 +82,18 @@ def _clean_title(raw: str) -> str:
             return ""
     except Exception:
         pass
+    # Word cap first (concise, ChatGPT/Claude-style), then char cap.
+    _words = t.split()
+    if len(_words) > _MAX_TITLE_WORDS:
+        t = " ".join(_words[:_MAX_TITLE_WORDS]).rstrip(" .,:;-—")
     if len(t) > _MAX_TITLE_LEN:
         t = t[:_MAX_TITLE_LEN].rsplit(" ", 1)[0].rstrip(" .,:;-—")
+    # Don't end a title on a dangling article/preposition left by the cap ("… sort a list by a" → "… by").
+    _STOP = {"a", "an", "the", "of", "to", "by", "in", "on", "for", "and", "or", "with", "is", "are", "at", "as", "from"}
+    _w = t.split()
+    while len(_w) > 2 and _w[-1].lower() in _STOP:
+        _w.pop()
+    t = " ".join(_w)
     # reject junk (empty, pure punctuation, or an echoed instruction)
     if not t or not re.search(r"[A-Za-z0-9]", t):
         return ""
