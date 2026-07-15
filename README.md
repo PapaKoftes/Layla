@@ -270,7 +270,7 @@ Deeper dive: [docs/LAYLA_SYSTEM_OVERVIEW.md](docs/LAYLA_SYSTEM_OVERVIEW.md), [AR
 
 ## Configure her
 
-Primary config: **`agent/runtime_config.json`** (or `%LAYLA_DATA_DIR%/runtime_config.json` when set). Generate via `agent/first_run.py` or copy from `agent/runtime_config.example.json`.
+Primary config: **`agent/runtime_config.json`** (or `%LAYLA_DATA_DIR%/runtime_config.json` when set). The installer writes this for you. To hand-edit, start from **`agent/runtime_config.minimal.example.json`** — the ~8 keys most people ever touch (model, sandbox, context size, limits). The full **`agent/runtime_config.example.json`** is the ~400-key reference for everything else; you don't need most of it, and writes/exec stay off-by-default regardless.
 
 ```json
 {
@@ -299,6 +299,11 @@ Add `.md`, `.txt`, or `.pdf` under **`knowledge/`** (see `.gitignore` for curate
 ---
 
 ## CLI commands
+
+> **Two different `layla` entry points:** `layla.cmd` / `./layla` **start the server** (they wrap
+> `serve.py`). The **command CLI** is `python layla.py <command>` — that's what runs the commands below.
+> `layla.cmd doctor` will *not* run diagnostics (it passes `doctor` to the server launcher); use
+> `python layla.py doctor` instead.
 
 ```text
 python layla.py wakeup           Session greeting + study summary
