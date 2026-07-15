@@ -19,6 +19,16 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT/agent" || { echo "CI_GATE_RESULT exit=97 failed=-1 (cannot cd agent)"; exit 97; }
 
 RC="runtime_config.json"
+
+# SINGLE-INSTANCE LOCK. Two gates running at once each back up runtime_config.json, but the second backs
+# up the FIRST's already-swapped stub — so "restore" restores the stub and the operator config is
+# permanently clobbered. Refuse to run if another gate holds the lock (mkdir is atomic).
+LOCKDIR="$ROOT/.planning/audit/.ci-gate.lock"
+if ! mkdir "$LOCKDIR" 2>/dev/null; then
+  echo "CI_GATE_RESULT exit=96 failed=-1 (another ci-gate is already running — refusing to avoid config clobber)"
+  exit 96
+fi
+
 BAK="$(mktemp -t layla-rc.XXXXXX)"
 HAD_RC=0
 if [ -f "$RC" ]; then cp "$RC" "$BAK"; HAD_RC=1; fi
@@ -26,6 +36,7 @@ if [ -f "$RC" ]; then cp "$RC" "$BAK"; HAD_RC=1; fi
 restore() {
   if [ "$HAD_RC" -eq 1 ]; then cp "$BAK" "$RC"; else rm -f "$RC"; fi
   rm -f "$BAK"
+  rmdir "$LOCKDIR" 2>/dev/null || true
 }
 trap restore EXIT INT TERM
 
