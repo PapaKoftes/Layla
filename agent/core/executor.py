@@ -19,23 +19,10 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("layla")
-
-
-@contextmanager
-def db_session():
-    """Get a DB connection for explicit lifecycle management."""
-    from layla.memory.db_connection import _conn, close_thread_connection
-    conn = _conn()
-    try:
-        yield conn
-    finally:
-        # Don't close thread-local connections on every use — they're pooled
-        pass
 
 
 # Maximum bytes allowed in tool result before truncation
