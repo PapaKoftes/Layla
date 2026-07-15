@@ -138,15 +138,18 @@ Options: `--prefer quality|balanced|lite|speed`, `--skip-model`, `--verify` (Pow
 
 ## Getting a model
 
-Layla needs a **`.gguf`** file. See [MODELS.md](MODELS.md) for tiers and Hugging Face links.
+Layla needs a **`.gguf`** file. **The installer picks one for you** — it detects your hardware and
+downloads a good fit, and the first-run wizard (Settings → Models) lets you change it, so most people
+never do this by hand. The picks below are for advanced users choosing manually.
 
-**Quick picks:**
+**Quick picks** (match to your use — the in-app picker surfaces both a companion default *and* a
+`recommended_coding` pick so you're not steered to the wrong one):
 
-- ~8 GB VRAM → [Qwen2.5-7B-Instruct-Q5_K_M](https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF)
-- ~16 GB VRAM → [Qwen2.5-14B-Instruct-Q5_K_M](https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF)
-- CPU-first → smaller quantized instruct models in [MODELS.md](MODELS.md)
+- **Coding, CPU / ≤16 GB** → [Qwen2.5-Coder-7B-Instruct-Q4_K_M](https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF) (or the **3B Coder** for ~2× the speed at equal benchmark quality — see [benchmarks](benchmarks/README.md))
+- **Coding, ~8 GB+ GPU** → [Qwen2.5-Coder-7B/14B-Instruct](https://huggingface.co/bartowski/Qwen2.5-Coder-14B-Instruct-GGUF)
+- **General chat / companion** → [Qwen2.5-7B-Instruct](https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF) or an uncensored option in [MODELS.md](MODELS.md)
 
-Place files under `models/` or `~/.layla/models/` and set `model_filename` in `agent/runtime_config.json`.
+Place files under `models/` or `~/.layla/models/` and set `model_filename` in `agent/runtime_config.json` (or just use the in-app picker).
 
 ---
 

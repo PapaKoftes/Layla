@@ -208,6 +208,7 @@ def setup_models(uncensored_first: bool = True):
                 "uncensored": e["uncensored"],
                 "viable": e["viable"],
                 "recommended": e["recommended"],
+                "recommended_coding": e.get("recommended_coding", False),
             })
         return {
             "ok": True,
@@ -215,6 +216,7 @@ def setup_models(uncensored_first: bool = True):
             "ram_gb": ram,
             "vram_gb": vram or 0,
             "recommended_key": picker["recommended"],
+            "recommended_coding_key": picker.get("recommended_coding"),
             "categories": picker["categories"],
             "uncensored_first": bool(uncensored_first),
             "hardware_note": picker.get("hardware_note", ""),

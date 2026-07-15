@@ -98,6 +98,20 @@ def models_for_picker(
     for e in out:
         e["recommended"] = e["filename"] == recommended
 
+    # Coding pick (audit): the companion `recommended` above deliberately EXCLUDES coder models, so a
+    # user who actually wants a coding assistant was being steered to a general/companion model. Surface
+    # the best CODER that fits this box separately, so the picker / first-run can offer "Best for coding"
+    # distinctly from the companion default and nobody is misled about which model to pick for code.
+    _coding_cands = [
+        e for e in out
+        if e["viable"] and e["category"] == "coding"
+        and (e["size_b"] <= _cpu_cap_b or e["size_b"] == 0)
+    ]
+    _coding_cands.sort(key=lambda e: -e["size_b"])  # biggest coder that fits = best quality
+    recommended_coding = _coding_cands[0]["filename"] if _coding_cands else None
+    for e in out:
+        e["recommended_coding"] = e["filename"] == recommended_coding
+
     categories = sorted({e["category"] for e in out})
 
     # Hardware note (#24): warn honestly when the box is tight for the recommended pick,
@@ -121,6 +135,7 @@ def models_for_picker(
     return {
         "models": out,
         "recommended": recommended,
+        "recommended_coding": recommended_coding,
         "categories": categories,
         "uncensored_first": uncensored_first,
         "ram_gb": ram_gb,
