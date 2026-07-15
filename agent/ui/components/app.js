@@ -32,7 +32,7 @@ import {
   laylaShowTypingIndicator, laylaRemoveTypingIndicator,
   toggleSendButton, UX_STATE_LABELS,
   laylaAgentStreamTimeoutMs, laylaStalledSilenceMs,
-  _renderDeliberationTranscript, enhanceCodeBlocks,
+  _renderDeliberationTranscript, _renderReasoningTreeSummary, enhanceCodeBlocks,
 } from './chat-render.js';
 import { formatLaylaLabelHtml } from './aspect.js';
 
@@ -667,6 +667,10 @@ export async function send() {
               try { div.querySelectorAll('.deliberation-label').forEach(function (b) { b.remove(); }); } catch (_e) { console.debug('app:', _e); }
               try { _renderDeliberationTranscript(div, _delibDone); } catch (_e) { console.debug('app:', _e); }
             }
+            // Reasoning-tree summary — the backend computes reasoning_tree_summary on every turn; render the
+            // collapsible on the streaming done-frame (the non-stream path passes it to addMsg directly). Without
+            // this the whole "Reasoning summary" element the backend ships was silently dropped.
+            try { if (obj.reasoning_tree_summary) _renderReasoningTreeSummary(div, obj.reasoning_tree_summary); } catch (_e) { console.debug('app:', _e); }
             // "Memory updated" receipt — a small chip when Layla filed a durable fact this turn.
             if (obj.memory_updated && typeof obj.memory_updated === 'string' && obj.memory_updated.trim()) {
               try {
@@ -738,7 +742,7 @@ export async function send() {
       var _delib = _steps && _steps.some(function (s) { return s.deliberated; });
       var _uxStates = data && data.state && data.state.ux_states;
       var _memInf = data && data.state && data.state.memory_influenced;
-      addMsg('layla', resp, replyAspect, _delib, _steps, _uxStates, _memInf);
+      addMsg('layla', resp, replyAspect, _delib, _steps, _uxStates, _memInf, data && data.reasoning_tree_summary);
       if (data.status === 'pipeline_needs_input') {
         try { laylaShowPipelineClarify(data.questions); } catch (_e) { console.debug('app:', _e); }
       }
@@ -902,21 +906,26 @@ export async function refreshRuntimeOptions() {
   if (!box) return;
   box.innerHTML = '<span style="color:var(--text-dim);font-size:0.7rem">Loading…</span>';
   try {
-    var r = await fetch('/health?deep=true');
-    var d = await r.json().catch(function () { return {}; });
+    // Policy flags live in /settings (they are NOT on /health — reading them there rendered every pill
+    // 'false'). Limits come from /health's effective_limits block.
+    var sr = await fetch('/settings');
+    var s = await sr.json().catch(function () { return {}; });
+    var hr = await fetch('/health?deep=true');
+    var d = await hr.json().catch(function () { return {}; });
+    var limits = (d && (d.effective_limits || d.limits)) || {};
     var html = [];
     html.push('<div style="display:flex;flex-wrap:wrap;gap:6px">');
-    html.push('<span class="option-pill">safe_mode: ' + escapeHtml(String(!!(d && d.safe_mode))) + '</span>');
-    html.push('<span class="option-pill">uncensored: ' + escapeHtml(String(!!(d && d.uncensored))) + '</span>');
-    html.push('<span class="option-pill">nsfw_allowed: ' + escapeHtml(String(!!(d && d.nsfw_allowed))) + '</span>');
-    html.push('<span class="option-pill">use_chroma: ' + escapeHtml(String(!!(d && d.use_chroma))) + '</span>');
+    html.push('<span class="option-pill">safe_mode: ' + escapeHtml(String(!!(s && s.safe_mode))) + '</span>');
+    html.push('<span class="option-pill">uncensored: ' + escapeHtml(String(!!(s && s.uncensored))) + '</span>');
+    html.push('<span class="option-pill">nsfw_allowed: ' + escapeHtml(String(!!(s && s.nsfw_allowed))) + '</span>');
+    html.push('<span class="option-pill">use_chroma: ' + escapeHtml(String(!!(s && s.use_chroma))) + '</span>');
     html.push('</div>');
-    if (d && d.limits) {
+    if (limits && Object.keys(limits).length) {
       html.push('<div style="margin-top:8px"><strong>Limits</strong></div>');
       html.push('<div style="color:var(--text-dim);font-size:0.7rem;line-height:1.5">');
-      html.push('max_active_runs: ' + escapeHtml(String(d.limits.max_active_runs != null ? d.limits.max_active_runs : '—')) + '<br>');
-      html.push('max_cpu_percent: ' + escapeHtml(String(d.limits.max_cpu_percent != null ? d.limits.max_cpu_percent : '—')) + '<br>');
-      html.push('max_ram_percent: ' + escapeHtml(String(d.limits.max_ram_percent != null ? d.limits.max_ram_percent : '—')) + '<br>');
+      html.push('max_active_runs: ' + escapeHtml(String(limits.max_active_runs != null ? limits.max_active_runs : '—')) + '<br>');
+      html.push('max_cpu_percent: ' + escapeHtml(String(limits.max_cpu_percent != null ? limits.max_cpu_percent : '—')) + '<br>');
+      html.push('max_ram_percent: ' + escapeHtml(String(limits.max_ram_percent != null ? limits.max_ram_percent : '—')) + '<br>');
       html.push('</div>');
     }
     box.innerHTML = html.join('');
