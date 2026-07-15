@@ -85,4 +85,4 @@ Ensure all tools exist in `layla/tools/registry.TOOLS`. Skills are injected when
 
 ## Skill chains
 
-`resolve_skill_chain(skill_name)` returns ordered list: sub_skills first, then the skill. Used by planner to expand dependencies.
+`resolve_skill_chain(skill_name)` returns an ordered list: sub_skills first, then the skill. **Note:** this helper is available but is *not* currently invoked by the planner — `sub_skills` are surfaced to the model as a `[calls: …]` hint in the skill prompt block (`get_skills_prompt_hint`), not auto-expanded/executed. Treat `sub_skills` as documentation for the model, not an execution guarantee.

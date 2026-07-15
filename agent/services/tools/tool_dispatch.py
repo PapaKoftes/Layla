@@ -90,6 +90,12 @@ def _handle_write_file(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
 
     target = Path(path)
     if rs.is_protected(target):
+        # Audit trail (logger was defined but never wired): record the protected-file write attempt.
+        try:
+            from services.observability.security_audit import log_protected_file_attempt
+            log_protected_file_attempt(str(target), tool="write_file", conversation_id=str(ctx.state.get("conversation_id") or ""), blocked=False)
+        except Exception:
+            pass
         if not rs.backup_file(target):
             state["steps"].append({"action": "write_file", "result": {"ok": False, "reason": "backup_failed"}})
             state["status"] = "finished"

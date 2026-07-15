@@ -539,7 +539,7 @@ export async function refreshAgentsPanel() {
   try {
     const r = await fetch('/health?deep=true');
     const d = await r.json().catch(() => ({}));
-    const lim = d && d.limits ? d.limits : {};
+    const lim = (d && (d.effective_limits || d.limits)) || {};
     box.innerHTML =
       '<div><strong>max_active_runs</strong>: ' + escapeHtml(String(lim.max_active_runs != null ? lim.max_active_runs : '—')) + '</div>' +
       '<div><strong>performance_mode</strong>: ' + escapeHtml(String(lim.performance_mode != null ? lim.performance_mode : (d.performance_mode != null ? d.performance_mode : '—'))) + '</div>' +
