@@ -210,31 +210,6 @@ def record_practice(
     return event_id
 
 
-def get_urgency_scores(domain_ids: list[str] | None = None) -> list[tuple[str, float]]:
-    """
-    Returns list of (domain_id, urgency) sorted by urgency descending.
-    If domain_ids is None, use all capabilities.
-    """
-    caps = _db.get_capabilities()
-    if domain_ids is not None:
-        domain_set = set(domain_ids)
-        caps = [c for c in caps if c.get("domain_id") in domain_set]
-    out = []
-    for c in caps:
-        did = c.get("domain_id")
-        if not did:
-            continue
-        rp = c.get("reinforcement_priority") or 0.5
-        decay = c.get("decay_risk") or 0.5
-        last = c.get("last_practiced_at")
-        days = _days_ago(last)
-        time_factor = min(1.0, days / 14.0)
-        urgency = 0.5 * rp + 0.3 * decay + 0.2 * time_factor
-        out.append((did, urgency))
-    out.sort(key=lambda x: -x[1])
-    return out
-
-
 def get_next_plan_for_study(
     active_plans: list[dict],
     use_capabilities: bool = True,
