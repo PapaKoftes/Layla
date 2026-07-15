@@ -104,6 +104,25 @@ def _is_approval_bypassed(ctx: DispatchContext, tool_name: str) -> bool:
     """
     if not ctx.cfg.get("tool_approval_bypass", False):
         return False
+    # safe_mode (default True) is a HARD FLOOR over the bypass for destructive tools. It was
+    # advertised as "require approval for file writes and code execution" but was never actually read
+    # on this path (a decorative control). Now it means: the "yes to everything" tool_approval_bypass
+    # can NEVER skip approval for a write/exec/dangerous tool while safe_mode is on — so a single
+    # casual UI toggle of the bypass can't hand the model unsupervised destructive power; the operator
+    # must ALSO deliberately turn safe_mode off. Non-dangerous tools (reads, search) still bypass.
+    if ctx.cfg.get("safe_mode", True):
+        try:
+            from runtime_safety import DANGEROUS_TOOLS as _DANGEROUS
+        except Exception:
+            _DANGEROUS = ()
+        if tool_name in _DANGEROUS:
+            if "__safe_mode_floor" not in _bypass_warned:
+                _bypass_warned.add("__safe_mode_floor")
+                logger.warning(
+                    "tool_approval_bypass does NOT skip approval for destructive tools while safe_mode "
+                    "is on (safe_mode is a hard floor). Set safe_mode=false to fully auto-approve."
+                )
+            return False
     # A2b: never honor the approval bypass while the server is remotely exposed. Otherwise an
     # authenticated remote caller's writes/exec would run unsupervised (the remote allow_write
     # strip is overridden by this flag). Unsupervised local exec OR remote exposure — not both.
