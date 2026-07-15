@@ -55,6 +55,20 @@ def _extract_sampling(body: dict) -> dict:
     }
 
 
+def _usage_block(prompt_text: str, completion_text: str) -> dict:
+    """Real OpenAI `usage` token counts. Previously ``len(text.split())`` word-splits — a fabrication
+    that broke any cost/token accounting a client did. Uses the canonical cached tiktoken counter;
+    falls back to a char/4 estimate (still far closer than a word split) if it's unavailable."""
+    try:
+        from services.llm.token_count import count_tokens
+        p = int(count_tokens(prompt_text or ""))
+        c = int(count_tokens(completion_text or ""))
+    except Exception:
+        p = max(0, len(prompt_text or "") // 4)
+        c = max(0, len(completion_text or "") // 4)
+    return {"prompt_tokens": p, "completion_tokens": c, "total_tokens": p + c}
+
+
 def _apply_stop(text: str, stop: list[str]) -> str:
     """Truncate `text` at the earliest stop sequence (OpenAI `stop` semantics)."""
     if not text or not stop:
@@ -518,11 +532,7 @@ async def v1_chat_completions(req: dict, request: Request):
                 "created": int(time.time()),
                 "model": f"layla-{aspect_id or 'morrigan'}",
                 "choices": [{"index": 0, "message": {"role": "assistant", "content": response_text}, "finish_reason": "stop"}],
-                "usage": {
-                    "prompt_tokens": len((goal or "").split()),
-                    "completion_tokens": len((response_text or "").split()),
-                    "total_tokens": len((goal or "").split()) + len((response_text or "").split()),
-                },
+                "usage": _usage_block(goal, response_text),
                 "aspect": aspect_id or "morrigan",
                 "conversation_id": conversation_id,
             })
@@ -628,11 +638,7 @@ async def v1_chat_completions(req: dict, request: Request):
         "created": int(time.time()),
         "model": f"layla-{result.get('aspect', aspect_id or 'morrigan')}",
         "choices": [{"index": 0, "message": {"role": "assistant", "content": response_text}, "finish_reason": "stop"}],
-        "usage": {
-            "prompt_tokens": len((goal or "").split()),
-            "completion_tokens": len((response_text or "").split()),
-            "total_tokens": len((goal or "").split()) + len((response_text or "").split()),
-        },
+        "usage": _usage_block(goal, response_text),
         "aspect": result.get("aspect", ""),
         "conversation_id": conversation_id,
     })
