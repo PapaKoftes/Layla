@@ -28,6 +28,8 @@ Layla is a **local-first AI companion and engineering agent**. She runs on your 
 
 **Positioning:** Layla is an open, self-hosted **agent platform** (HTTP API + Web UI + optional MCP), not a drop-in clone of a single vendor product — quality depends on your model, hardware, and config.
 
+> **License note:** Layla is **source-available under a non-commercial license** — free for personal, educational, and non-commercial use; commercial/revenue-generating use needs permission. It is not an OSI open-source license. See [LICENSE](LICENSE).
+
 **Why Layla exists:** A sovereign alternative to corporate AI — privacy-focused, local-first, anti-surveillance. See [VALUES.md](VALUES.md).
 
 ---
