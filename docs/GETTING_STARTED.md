@@ -4,10 +4,15 @@
 
 ## Quick Start (Windows — recommended)
 
-1. Install **Python 3.11+** from [python.org](https://www.python.org/downloads/) and enable **Add Python to PATH**.
-2. Clone this repository and double-click **`INSTALL.bat`** in the repo root (or run it from a terminal in that folder).
-3. Follow the prompts: setup installs dependencies, offers **model selection** (auto, by category, or multiple GGUFs from the bundled catalog), validates **semantic memory (Chroma)**, then installs **Playwright Chromium** for browser tools.
-4. The installer runs **`python scripts/run_layla.py`**, which starts the server and opens **http://127.0.0.1:8000/ui** (port may differ if set in `agent/runtime_config.json`).
+You do **not** need to install Python first — `INSTALL.bat` is powered by [uv](https://docs.astral.sh/uv/),
+which fetches a standalone Python 3.12 and all prebuilt CPU wheels (no compiler, no admin).
+
+1. Get the code: **Download ZIP** from the GitHub **Code** button and unzip it (or `git clone` if you have Git).
+2. Double-click **`INSTALL.bat`** in the repo root (or run `.\INSTALL.bat` in a terminal there).
+3. It creates `.venv`, installs dependencies from prebuilt wheels, **detects your hardware and downloads a fitting model**, writes `runtime_config.json`, and runs a **deep self-test** (a real inference turn — so a bad CPU wheel or too-large model is caught here, not on first chat).
+4. When it finishes, start the app with **`.\layla.cmd`** — it opens **http://127.0.0.1:8000/ui** (port may differ if set in `agent/runtime_config.json`).
+
+> Browser tools (Playwright Chromium) and heavier extras are **optional** and not part of the default install — add them only if you need them.
 
 If anything fails, read the `[setup]` lines in the terminal — they report **model** status and **Semantic memory: ENABLED / DISABLED** (this line follows the in-process `LAYLA_CHROMA_DISABLED` flag and your `use_chroma` setting in `runtime_config.json`).
 

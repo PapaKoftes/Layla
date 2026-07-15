@@ -23,22 +23,13 @@ If you use **Python 3.14 or newer**, you may see a **Chroma / Pydantic v1** comp
 
 ## Minutes 0–5: Install environment
 
-1. Open a terminal in the **repo root** (folder that contains `INSTALL.bat` and `agent/`).
-2. Run **`INSTALL.bat`** (double-click or `.\INSTALL.bat`).
-3. Wait for **“Starting Layla setup…”** then **[1/3]**, **[2/3]**, **[3/3]**:
-   - Creates **`.venv`**, installs **`agent/requirements.txt`**, runs **`scripts/setup_layla.py`** (model selection / validation), installs **Playwright Chromium**, then starts **`scripts/run_layla.py`**.
+1. Get the repo folder (Download ZIP + unzip, or `git clone`) — the folder that contains `INSTALL.bat` and `agent/`.
+2. **Double-click `INSTALL.bat`** (or `.\INSTALL.bat` in a terminal there). It's powered by uv — no need to install Python first.
+3. It creates **`.venv`**, installs prebuilt CPU wheels (no compiler), **detects your hardware and downloads a fitting model**, writes `runtime_config.json`, and runs a **deep self-test** (a real inference turn). Then start with **`.\layla.cmd`** → **http://127.0.0.1:8000/ui**.
 
-**Advanced (no full installer):**
+**Advanced (own Python + winget, no uv):** `powershell -ExecutionPolicy Bypass -File install\fresh_install.ps1` (installs Python 3.12 via winget, same compiler-free wheels). Browser tools (Playwright) are optional and not installed by default.
 
-```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-pip install -r agent/requirements.txt
-python scripts/setup_layla.py
-python scripts/run_layla.py
-```
-
-**CI / unattended:** `LAYLA_SETUP_NONINTERACTIVE=1` and `python scripts/setup_layla.py --yes` (see [GETTING_STARTED.md](GETTING_STARTED.md)).
+**CI / unattended:** the uv bootstrap accepts `--prefer lite|balanced|quality|speed` and `--skip-model`; see [GETTING_STARTED.md](GETTING_STARTED.md).
 
 ---
 
