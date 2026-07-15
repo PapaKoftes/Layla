@@ -104,6 +104,17 @@ def run_tool(
 
     fn = TOOLS[tool_name]["fn"]
 
+    # Audit trail: record every dangerous/high-privilege tool that actually executes (it passed the
+    # permission gate above). This logger was defined but never wired — the security audit ring had no
+    # dangerous-tool events.
+    try:
+        import runtime_safety as _rs_dt
+        if tool_name in getattr(_rs_dt, "DANGEROUS_TOOLS", ()):
+            from services.observability.security_audit import log_dangerous_tool_usage
+            log_dangerous_tool_usage(tool_name, args_preview=str(args)[:200], conversation_id=conversation_id, allowed=True)
+    except Exception:
+        pass
+
     # Strip 'goal' key — it's loop-internal, not a tool argument
     clean_args = {k: v for k, v in (args or {}).items() if k != "goal"}
 
@@ -144,6 +155,11 @@ def run_tool(
                 _ws_res = _P(_ws).resolve()
                 if _ws_res != _cfg_res and _cfg_res not in _ws_res.parents:
                     logger.warning("executor: workspace %r is outside config sandbox_root %r — clamping to sandbox_root", _ws, _cfg_root)
+                    try:
+                        from services.observability.security_audit import log_sandbox_violation
+                        log_sandbox_violation(tool_name, path=str(_ws), detail="workspace outside config sandbox_root — clamped", conversation_id=conversation_id)
+                    except Exception:
+                        pass
                     _ws = _cfg_root
         except Exception as _conf_e:
             logger.error("executor: sandbox confinement check failed, defaulting to config root: %s", _conf_e)

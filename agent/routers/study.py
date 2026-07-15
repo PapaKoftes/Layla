@@ -222,7 +222,7 @@ def get_capabilities():
 def add_study_plan(req: dict):
     get_touch_activity()()
     from layla.memory.db import get_plan_by_topic, save_study_plan
-    topic = (req or {}).get("topic", "").strip()[:500]
+    topic = ((req or {}).get("topic") or "").strip()[:500]
     domain_id = (req or {}).get("domain_id") or None
     if isinstance(domain_id, str):
         domain_id = domain_id.strip() or None
@@ -240,8 +240,8 @@ def add_study_plan(req: dict):
 def record_study_progress(req: dict):
     get_touch_activity()()
     from layla.memory.db import get_plan_by_topic, save_study_plan, update_study_progress
-    topic = (req or {}).get("topic", "").strip()
-    note = (req or {}).get("note", "").strip()
+    topic = ((req or {}).get("topic") or "").strip()
+    note = ((req or {}).get("note") or "").strip()
     if not topic:
         return JSONResponse({"ok": False, "error": "No topic"})
     if not note:
@@ -521,7 +521,7 @@ def get_aspect_title(aspect_id: str):
 @router.post("/aspects/{aspect_id}/title")
 def set_aspect_title(aspect_id: str, req: dict):
     from layla.memory.db import save_earned_title
-    title = (req or {}).get("title", "").strip()[:200]
+    title = ((req or {}).get("title") or "").strip()[:200]
     if not title:
         return JSONResponse({"ok": False, "error": "No title"})
     save_earned_title(aspect_id, title)
