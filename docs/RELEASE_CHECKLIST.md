@@ -2,11 +2,24 @@
 
 Run before tagging or publishing binaries/docs as “ready.” See also **`docs/PRODUCTION_CONTRACT.md`**.
 
-> **Not yet run for the current version.** The sign-off below is stamped **1.2.0 (2026-04-14)**; the
-> code is now **1.5.0** (untagged). This checklist must be re-run and re-stamped before cutting a
-> `v1.5.0` tag — treat the 1.2.0 sign-off as historical, not current.
+## Release verification (1.5.0 — 2026-07-15)
 
-## Release verification (1.2.0 — 2026-04-14)
+Verified for the `v1.5.0` tag on this session's green HEAD:
+
+| Check | Result |
+|---|---|
+| Full test suite under the clean CI config (`ci-gate.sh`) | **PASS — 3044+ passed, 0 failed** |
+| Coding benchmark (deterministic pass@1), reference CPU tier | **core 100% (10/10) + hard 100% (12/12)** on Qwen2.5-Coder-3B and -7B |
+| Clean-venv install from prebuilt CPU wheels + `selftest.py` (real inference turn) | **PASS** |
+| Live coding turn through `/v1` (generated function executed against a test) | **PASS — correct + clean output** |
+| System-prompt/marker leak (`/agent` + `/v1`) | **0/9 live post-fix** (was ~4/9) |
+| Security: `safe_mode` approval floor, tool-layer defense-in-depth, SSRF, remote-protected keys | **PASS + regression-tested** |
+| Minimum-RAM guard (refuse-with-message vs silent OOM) | **PASS + tested** |
+
+Known scope for 1.5.0: packaged macOS/Linux installers are not built (script installer is the supported path);
+license is non-commercial source-available. See README.
+
+## Release verification (1.2.0 — 2026-04-14, historical)
 
 | Step | Verified |
 |------|----------|
