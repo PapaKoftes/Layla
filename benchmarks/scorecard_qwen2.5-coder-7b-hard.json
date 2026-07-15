@@ -1,0 +1,84 @@
+{
+  "n": 12,
+  "passed": 12,
+  "pass_at_1": 1.0,
+  "tokens": 1685,
+  "elapsed_s": 404.9,
+  "tok_per_s": 4.16,
+  "results": [
+    {
+      "task_id": "longest_common_subsequence",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 152
+    },
+    {
+      "task_id": "valid_parentheses",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 88
+    },
+    {
+      "task_id": "decode_string",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 125
+    },
+    {
+      "task_id": "edit_distance",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 232
+    },
+    {
+      "task_id": "merge_intervals",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 146
+    },
+    {
+      "task_id": "int_to_roman",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 205
+    },
+    {
+      "task_id": "spiral_order",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 94
+    },
+    {
+      "task_id": "max_subarray",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 83
+    },
+    {
+      "task_id": "word_break",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 99
+    },
+    {
+      "task_id": "three_sum",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 196
+    },
+    {
+      "task_id": "next_permutation",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 190
+    },
+    {
+      "task_id": "simplify_path",
+      "passed": true,
+      "detail": "pass",
+      "tokens": 75
+    }
+  ],
+  "tier": "hard",
+  "model": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf"
+}

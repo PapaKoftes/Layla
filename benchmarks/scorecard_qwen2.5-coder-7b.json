@@ -3,8 +3,8 @@
   "passed": 10,
   "pass_at_1": 1.0,
   "tokens": 656,
-  "elapsed_s": 207.1,
-  "tok_per_s": 3.17,
+  "elapsed_s": 191.5,
+  "tok_per_s": 3.43,
   "results": [
     {
       "task_id": "below_zero",

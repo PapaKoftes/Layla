@@ -144,6 +144,161 @@ PROBLEMS: list[dict[str, str]] = [
     },
 ]
 
+# --- Harder, DISCRIMINATING tier (REQ-74 "next": separating score) -------------
+# The curated set above is easy-to-medium fundamentals — a strong coder should ace
+# them, so 100% there means "no regression," not "quality proven." These 12 are
+# canonical medium/hard algorithmics (DP, stacks, matrix walk, string parsing) with
+# precise, unambiguous specs + deterministic tests, so a miss reflects capability,
+# not prompt ambiguity. Run with `--hard`.
+PROBLEMS_HARD: list[dict[str, str]] = [
+    {
+        "task_id": "longest_common_subsequence",
+        "prompt": 'def longest_common_subsequence(a: str, b: str) -> int:\n    """Return the LENGTH of the longest common subsequence of strings a and b\n    (characters need not be contiguous but must keep order)."""\n',
+        "entry_point": "longest_common_subsequence",
+        "test": (
+            "def check(c):\n"
+            "    assert c('abcde', 'ace') == 3\n"
+            "    assert c('abc', 'abc') == 3\n"
+            "    assert c('abc', 'def') == 0\n"
+            "    assert c('bl', 'yby') == 1\n"
+            "    assert c('', 'abc') == 0\n"
+        ),
+    },
+    {
+        "task_id": "valid_parentheses",
+        "prompt": 'def valid_parentheses(s: str) -> bool:\n    """s contains only the characters ()[]{}. Return True iff every bracket is\n    closed by the same type in the correct nesting order."""\n',
+        "entry_point": "valid_parentheses",
+        "test": (
+            "def check(c):\n"
+            "    assert c('()[]{}') is True\n"
+            "    assert c('(]') is False\n"
+            "    assert c('([{}])') is True\n"
+            "    assert c('((') is False\n"
+            "    assert c('') is True\n"
+            "    assert c('([)]') is False\n"
+        ),
+    },
+    {
+        "task_id": "decode_string",
+        "prompt": 'def decode_string(s: str) -> str:\n    """Decode a string encoded as k[encoded] meaning `encoded` repeated k times.\n    Encodings may be nested, e.g. \'3[a2[c]]\' -> \'accaccacc\'. k is a positive int."""\n',
+        "entry_point": "decode_string",
+        "test": (
+            "def check(c):\n"
+            "    assert c('3[a]2[bc]') == 'aaabcbc'\n"
+            "    assert c('3[a2[c]]') == 'accaccacc'\n"
+            "    assert c('2[abc]3[cd]ef') == 'abcabccdcdcdef'\n"
+            "    assert c('abc') == 'abc'\n"
+        ),
+    },
+    {
+        "task_id": "edit_distance",
+        "prompt": 'def edit_distance(a: str, b: str) -> int:\n    """Return the Levenshtein edit distance: the minimum number of single-character\n    insertions, deletions, or substitutions to turn a into b."""\n',
+        "entry_point": "edit_distance",
+        "test": (
+            "def check(c):\n"
+            "    assert c('horse', 'ros') == 3\n"
+            "    assert c('intention', 'execution') == 5\n"
+            "    assert c('', 'abc') == 3\n"
+            "    assert c('abc', 'abc') == 0\n"
+        ),
+    },
+    {
+        "task_id": "merge_intervals",
+        "prompt": 'def merge_intervals(intervals: list[list[int]]) -> list[list[int]]:\n    """Merge all overlapping (and touching) intervals. Return the merged intervals\n    as a list sorted by start. E.g. [[1,3],[2,6]] -> [[1,6]]."""\n',
+        "entry_point": "merge_intervals",
+        "test": (
+            "def check(c):\n"
+            "    assert c([[1,3],[2,6],[8,10],[15,18]]) == [[1,6],[8,10],[15,18]]\n"
+            "    assert c([[1,4],[4,5]]) == [[1,5]]\n"
+            "    assert c([[1,4],[2,3]]) == [[1,4]]\n"
+            "    assert c([]) == []\n"
+        ),
+    },
+    {
+        "task_id": "int_to_roman",
+        "prompt": 'def int_to_roman(num: int) -> str:\n    """Convert an integer (1 <= num <= 3999) to its Roman numeral string."""\n',
+        "entry_point": "int_to_roman",
+        "test": (
+            "def check(c):\n"
+            "    assert c(3) == 'III'\n"
+            "    assert c(4) == 'IV'\n"
+            "    assert c(9) == 'IX'\n"
+            "    assert c(58) == 'LVIII'\n"
+            "    assert c(1994) == 'MCMXCIV'\n"
+        ),
+    },
+    {
+        "task_id": "spiral_order",
+        "prompt": 'def spiral_order(matrix: list[list[int]]) -> list[int]:\n    """Return all elements of the 2D matrix in clockwise spiral order starting\n    from the top-left corner."""\n',
+        "entry_point": "spiral_order",
+        "test": (
+            "def check(c):\n"
+            "    assert c([[1,2,3],[4,5,6],[7,8,9]]) == [1,2,3,6,9,8,7,4,5]\n"
+            "    assert c([[1,2,3,4],[5,6,7,8],[9,10,11,12]]) == [1,2,3,4,8,12,11,10,9,5,6,7]\n"
+            "    assert c([[1]]) == [1]\n"
+        ),
+    },
+    {
+        "task_id": "max_subarray",
+        "prompt": 'def max_subarray(nums: list[int]) -> int:\n    """Return the largest sum of any contiguous non-empty subarray of nums."""\n',
+        "entry_point": "max_subarray",
+        "test": (
+            "def check(c):\n"
+            "    assert c([-2,1,-3,4,-1,2,1,-5,4]) == 6\n"
+            "    assert c([1]) == 1\n"
+            "    assert c([-1,-2,-3]) == -1\n"
+            "    assert c([5,4,-1,7,8]) == 23\n"
+        ),
+    },
+    {
+        "task_id": "word_break",
+        "prompt": 'def word_break(s: str, words: list[str]) -> bool:\n    """Return True iff s can be segmented into a space-separated sequence of one or\n    more words from the list `words` (each word reusable any number of times)."""\n',
+        "entry_point": "word_break",
+        "test": (
+            "def check(c):\n"
+            "    assert c('leetcode', ['leet','code']) is True\n"
+            "    assert c('applepenapple', ['apple','pen']) is True\n"
+            "    assert c('catsandog', ['cats','dog','sand','and','cat']) is False\n"
+            "    assert c('', ['a']) is True\n"
+        ),
+    },
+    {
+        "task_id": "three_sum",
+        "prompt": 'def three_sum(nums: list[int]) -> list[list[int]]:\n    """Return all UNIQUE triplets [x,y,z] from nums with x+y+z == 0. Each triplet\n    must be sorted ascending, and the returned list must be sorted ascending."""\n',
+        "entry_point": "three_sum",
+        "test": (
+            "def check(c):\n"
+            "    assert c([-1,0,1,2,-1,-4]) == [[-1,-1,2],[-1,0,1]]\n"
+            "    assert c([0,0,0]) == [[0,0,0]]\n"
+            "    assert c([1,2,-2,-1]) == []\n"
+        ),
+    },
+    {
+        "task_id": "next_permutation",
+        "prompt": 'def next_permutation(nums: list[int]) -> list[int]:\n    """Return a NEW list that is the next lexicographically greater permutation of\n    nums. If nums is the highest permutation, return the lowest (sorted ascending)."""\n',
+        "entry_point": "next_permutation",
+        "test": (
+            "def check(c):\n"
+            "    assert c([1,2,3]) == [1,3,2]\n"
+            "    assert c([3,2,1]) == [1,2,3]\n"
+            "    assert c([1,1,5]) == [1,5,1]\n"
+            "    assert c([2,3,1]) == [3,1,2]\n"
+        ),
+    },
+    {
+        "task_id": "simplify_path",
+        "prompt": 'def simplify_path(path: str) -> str:\n    """Given an absolute Unix path, return its canonical form: collapse //, resolve\n    . and .., and drop any trailing slash (the root stays \'/\')."""\n',
+        "entry_point": "simplify_path",
+        "test": (
+            "def check(c):\n"
+            "    assert c('/home/') == '/home'\n"
+            "    assert c('/../') == '/'\n"
+            "    assert c('/home//foo/') == '/home/foo'\n"
+            "    assert c('/a/./b/../../c/') == '/c'\n"
+        ),
+    },
+]
+
 _FENCE = re.compile(r"```(?:python)?\s*(.*?)```", re.DOTALL)
 
 
@@ -186,11 +341,12 @@ def run_one(candidate_code: str, problem: dict, scratch: Path, timeout: float = 
     return False, (r.stderr or r.stdout or "fail").strip().splitlines()[-1][:120] if (r.stderr or r.stdout) else "fail"
 
 
-def _llama_generator(model_path: str) -> tuple[Callable[[str], tuple[str, int]], Callable[[], None]]:
+def _llama_generator(model_path: str, max_tokens: int = 384) -> tuple[Callable[[str], tuple[str, int]], Callable[[], None]]:
     """Build a generate(prompt)->(text, n_tokens) backed by a directly-loaded GGUF.
 
     (The same path the friend's box runs. Swap for services.llm_gateway.run_completion
-    to benchmark the full app path.)
+    to benchmark the full app path.) *max_tokens* is raised for the harder tier, whose
+    correct solutions (DP tables, parsers) run longer than the fundamentals need.
     """
     from llama_cpp import Llama
 
@@ -204,7 +360,7 @@ def _llama_generator(model_path: str) -> tuple[Callable[[str], tuple[str, int]],
                  "Respond with ONLY the complete function implementation in a single ```python code block."},
                 {"role": "user", "content": prompt},
             ],
-            max_tokens=384, temperature=0.0, top_k=1, seed=42,
+            max_tokens=max_tokens, temperature=0.0, top_k=1, seed=42,
         )
         msg = out["choices"][0]["message"]["content"]
         n = int(out.get("usage", {}).get("completion_tokens", 0))
@@ -261,12 +417,21 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", help="path to a .gguf model")
     ap.add_argument("--self-test", action="store_true", help="score the known-good solver (no model)")
+    ap.add_argument("--hard", action="store_true", help="run the harder, discriminating problem tier")
     ap.add_argument("--out", default="", help="write the JSON scorecard here")
     args = ap.parse_args(argv)
+
+    problems = PROBLEMS_HARD if args.hard else PROBLEMS
+    tier = "hard" if args.hard else "core"
+    # Harder solutions (DP tables, parsers) need more room than the fundamentals.
+    gen_max_tokens = 640 if args.hard else 384
 
     with tempfile.TemporaryDirectory(prefix="layla_bench_") as td:
         scratch = Path(td)
         if args.self_test:
+            if args.hard:
+                print("error: --self-test covers the core set only (its solver knows those)", file=sys.stderr)
+                return 2
             label = "self-test (known-good solver)"
             card = benchmark(_self_test_solver, PROBLEMS, scratch)
         else:
@@ -274,11 +439,12 @@ def main(argv: list[str]) -> int:
                 print("error: --model PATH or --self-test required", file=sys.stderr)
                 return 2
             label = Path(args.model).name
-            generate, _close = _llama_generator(args.model)
-            card = benchmark(generate, PROBLEMS, scratch)
+            generate, _close = _llama_generator(args.model, max_tokens=gen_max_tokens)
+            card = benchmark(generate, problems, scratch)
+    card["tier"] = tier
 
     card["model"] = label
-    print(f"\n=== Coding benchmark | {label} ===")
+    print(f"\n=== Coding benchmark [{tier}] | {label} ===")
     print(f"pass@1: {card['pass_at_1']*100:.1f}%  ({card['passed']}/{card['n']})  "
           f"| {card['tok_per_s']} tok/s | {card['elapsed_s']}s")
     for r in card["results"]:
