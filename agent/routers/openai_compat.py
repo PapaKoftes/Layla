@@ -216,7 +216,7 @@ async def v1_chat_completions(req: dict, request: Request):
         allow_run = False
     aspect_id = (req or {}).get("aspect_id", "") or parsed_aspect
     show_thinking = bool((req or {}).get("show_thinking", False))
-    conversation_id = ((req or {}).get("conversation_id") or "").strip() or str(uuid.uuid4())
+    conversation_id = str((req or {}).get("conversation_id") or "").strip() or str(uuid.uuid4())
     completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
 
     goal = ""

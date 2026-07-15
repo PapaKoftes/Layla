@@ -92,7 +92,7 @@ async def flashcards_add(lang: str, request: Request):
 async def flashcards_review(lang: str, card_id: int, request: Request):
     from services.infrastructure.language_tutor import review_card
     body = await _json(request)
-    return review_card(card_id, int(body.get("quality", 3)))
+    return review_card(card_id, _safe_int(body.get("quality"), 3))
 
 
 @router.get("/language/{lang}/calibrate/{level}")
@@ -110,6 +110,15 @@ async def calibrate_ep(lang: str, request: Request):
 
 async def _json(request: Request) -> dict:
     try:
-        return await request.json()
+        d = await request.json()
+        return d if isinstance(d, dict) else {}   # a top-level JSON array/number must not reach body.get()
     except Exception:
         return {}
+
+
+def _safe_int(v, default: int) -> int:
+    """int() that survives null/string/garbage from a JSON body instead of 500ing."""
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
