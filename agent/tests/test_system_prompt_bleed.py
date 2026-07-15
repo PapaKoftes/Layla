@@ -108,3 +108,16 @@ def test_bleed_regex_is_shared_by_both_paths():
     from services.agent import response_builder as rb
     assert hasattr(rb, "_strip_system_prompt_bleed")
     assert rb._strip_system_prompt_bleed("ok. This is a written TEXT chat: x") == "ok."
+
+
+def test_reasoning_tree_summary_does_not_leak_system_prompt():
+    # Wiring the reasoning-tree into the UI exposed final_summary/outcome, which are built from RAW step
+    # results and can carry the model's bleed. They must run through the same cleaner as the visible reply.
+    from services.infrastructure.agent_task_runner import _build_reasoning_tree_summary
+    leaked = "Hi there, Mina. How are you today? \n\n---\n\nThis is a written TEXT chat: you are typing. Reply as Morrigan only."
+    state = {"steps": [{"action": "reason", "result": leaked}], "status": "finished", "original_goal": "say hi"}
+    out = _build_reasoning_tree_summary(state)
+    blob = (out["final_summary"] + " " + " ".join(n["outcome_summary"] for n in out["nodes"])).lower()
+    for phrase in ("written text chat", "reply as morrigan", "stage direction"):
+        assert phrase not in blob, f"reasoning tree leaked: {phrase!r} in {out['final_summary']!r}"
+    assert "hi there" in out["final_summary"].lower(), "the real answer must survive"

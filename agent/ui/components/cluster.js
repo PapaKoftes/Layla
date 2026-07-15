@@ -54,8 +54,8 @@ export function refreshClusterStatus() {
 
 // ── DOM population ──────────────────────────────────────────────────────────
 function _populateCluster(status, peers, queue) {
-  // Enabled badge + role
-  const enabled = status && status.cluster_enabled;
+  // Enabled badge + role — /cluster/status returns `enabled` (not `cluster_enabled`).
+  const enabled = status && (status.enabled != null ? status.enabled : status.cluster_enabled);
   const badge = document.getElementById('cluster-enabled-badge');
   if (badge) {
     badge.textContent = enabled ? 'Enabled' : 'Disabled';
@@ -259,7 +259,7 @@ export function initCluster() {
     .then(r => r.json())
     .then(d => {
       const toggle = document.getElementById('cluster-enable-toggle');
-      if (toggle && d && d.cluster_enabled) {
+      if (toggle && d && (d.enabled != null ? d.enabled : d.cluster_enabled)) {
         toggle.classList.add('active');
         const droneSection = document.getElementById('cluster-pair-as-drone');
         if (droneSection) droneSection.style.display = 'block';

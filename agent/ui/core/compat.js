@@ -322,11 +322,15 @@ bus.on('cluster:status-update', (d) => {
     const card = document.getElementById('dash-governor');
     if (card) card.setAttribute('data-mode', gm);
   }
-  const peers = d.peers || d.connected_peers || 0;
-  const peerCount = typeof peers === 'number' ? peers :
-    (Array.isArray(peers) ? peers.length : Object.keys(peers || {}).length);
+  // /cluster/status returns `enabled` + `peer_count` (+ a `peers` array). Read those — the old
+  // `cluster_enabled` / `peers`-count / `node_role` names don't exist on the endpoint, so the card
+  // always fell back to "Standalone"/"queen" even with a live cluster. Keep legacy fallbacks defensively.
+  const _peersRaw = (d.peer_count != null ? d.peer_count : (d.peers != null ? d.peers : (d.connected_peers || 0)));
+  const peerCount = typeof _peersRaw === 'number' ? _peersRaw :
+    (Array.isArray(_peersRaw) ? _peersRaw.length : Object.keys(_peersRaw || {}).length);
   const role = (d.node_role || d.role || 'queen').toUpperCase();
-  if (d.cluster_enabled) {
+  const clusterOn = (d.enabled != null ? d.enabled : d.cluster_enabled);
+  if (clusterOn) {
     _dashSetVal('dash-cluster-val', role + ' · ' + peerCount + ' peer' + (peerCount !== 1 ? 's' : ''));
   } else {
     _dashSetVal('dash-cluster-val', 'Standalone');

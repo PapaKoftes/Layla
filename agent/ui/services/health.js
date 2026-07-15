@@ -102,11 +102,13 @@ async function _pollNormal() {
   try {
     const cluster = await api.get('/cluster/status', { timeout: 5000 });
     if (cluster) {
-      const peers = cluster.peers || cluster.connected_peers || 0;
+      // /cluster/status returns `peer_count` + `enabled` (+ a `peers` array); the old cluster_enabled /
+      // peers-count / node_role names don't exist there.
+      const peers = (cluster.peer_count != null ? cluster.peer_count : (cluster.peers != null ? cluster.peers : (cluster.connected_peers || 0)));
       const peerCount = typeof peers === 'number' ? peers :
                         (Array.isArray(peers) ? peers.length : Object.keys(peers || {}).length);
       appState.batch({
-        'cluster.enabled':  !!cluster.cluster_enabled,
+        'cluster.enabled':  !!(cluster.enabled != null ? cluster.enabled : cluster.cluster_enabled),
         'cluster.role':     cluster.node_role || cluster.role || 'queen',
         'cluster.peers':    peerCount,
       });
