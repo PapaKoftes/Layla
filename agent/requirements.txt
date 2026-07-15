@@ -209,7 +209,7 @@ pystray>=0.19                   # System tray icon (Windows Shell_NotifyIcon)
 watchdog>=4.0                   # File system monitoring for knowledge watcher
 
 # ─── Observability (optional — graceful fallback when not installed) ──────────
-# prometheus_client>=0.20
+prometheus_client>=0.20
 # structlog>=24.0
 
 # ─── Dev/CI (not required at runtime) ─────────────────────────────────────────
