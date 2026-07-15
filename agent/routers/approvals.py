@@ -18,7 +18,7 @@ def get_pending():
 
 @router.post("/approve")
 def approve(req: dict):
-    approval_id = (req or {}).get("id", "").strip()
+    approval_id = ((req or {}).get("id") or "").strip()
     if not approval_id:
         return JSONResponse({"ok": False, "error": "No id provided"})
 
@@ -63,7 +63,7 @@ def approve(req: dict):
 
         tool_name = entry.get("tool", "")
         args = entry.get("args", {})
-        grant_pattern = (req or {}).get("grant_pattern", "").strip()
+        grant_pattern = ((req or {}).get("grant_pattern") or "").strip()
         save_for_session = bool((req or {}).get("save_for_session", False))
         if grant_pattern and tool_name:
             try:
@@ -126,7 +126,7 @@ def approve(req: dict):
 @router.post("/deny")
 def deny_approval(req: dict):
     """Explicitly reject a pending approval — marks it denied so the agent knows."""
-    approval_id = (req or {}).get("id", "").strip()
+    approval_id = ((req or {}).get("id") or "").strip()
     if not approval_id:
         return JSONResponse({"ok": False, "error": "No id provided"})
     read_pending = get_read_pending()

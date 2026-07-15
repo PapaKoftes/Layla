@@ -84,7 +84,7 @@ def load_plugins(cfg: dict | None = None) -> dict:
             if isinstance(s, dict) and s.get("name") and s.get("tools"):
                 try:
                     from layla.skills.registry import SKILLS
-                    skill_name = s.get("name", "").strip()
+                    skill_name = (s.get("name") or "").strip()
                     if skill_name and skill_name not in SKILLS:
                         SKILLS[skill_name] = {
                             "description": s.get("description", ""),

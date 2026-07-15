@@ -201,6 +201,14 @@ def _write_pending(tool: str, args: dict, ttl_seconds: int = 3600) -> str:
     import uuid as _uuid
     from datetime import timedelta
 
+    # Audit trail (logger was defined but never wired): a tool required human approval — record the
+    # escalation so the security ring shows what was gated.
+    try:
+        from services.observability.security_audit import log_approval_escalation
+        log_approval_escalation(tool, reason="pending approval queued", granted=False)
+    except Exception:
+        pass
+
     from layla.time_utils import utcnow
     gov_path = Path(__file__).resolve().parent.parent.parent / ".governance"
     gov_path.mkdir(parents=True, exist_ok=True)

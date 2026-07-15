@@ -131,7 +131,7 @@ def _get_image_context(image_url: str = "", image_base64: str = "", workspace_ro
                 r = desc(path=tmp_path, detail="brief")
                 if isinstance(r, dict) and r.get("ok"):
                     caption = (r.get("caption") or "").strip()
-                    if r.get("ocr_text", "").strip():
+                    if (r.get("ocr_text") or "").strip():
                         caption += f" [OCR text: {r['ocr_text'][:300]}]"
             except Exception as e:
                 logger.debug("describe_image failed: %s", e)
