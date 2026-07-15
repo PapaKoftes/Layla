@@ -68,7 +68,14 @@ uv venv --python 3.12 .venv
 echo "  [4/6] Installing dependencies (prebuilt CPU wheels - no compiler) ..."
 uv pip install --python "$VPY" "$LLAMA_SPEC" \
   --extra-index-url "$LLAMA_INDEX" --index-strategy unsafe-best-match
-uv pip install --python "$VPY" torch --index-url https://download.pytorch.org/whl/cpu
+# torch: Linux uses the CPU-only wheel index (no CUDA, smaller). macOS wheels are NOT on that index
+# (download.pytorch.org/whl/cpu has no macOS build) — pinning it there made the install fail on Macs,
+# so on Darwin install torch from the default PyPI index instead.
+if [ "$(uname -s)" = "Darwin" ]; then
+  uv pip install --python "$VPY" torch
+else
+  uv pip install --python "$VPY" torch --index-url https://download.pytorch.org/whl/cpu
+fi
 uv pip install --python "$VPY" -e ".[cpu,llm]"
 
 # 5) detect hardware -> provision the best coding kit + write config
