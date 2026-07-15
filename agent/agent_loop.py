@@ -379,8 +379,15 @@ def system_overloaded(priority: int = PRIORITY_AGENT) -> bool:
     # Chat should remain reactive even under pressure; background can be throttled.
     if priority <= PRIORITY_CHAT:
         return False
-    hard_cpu = float(cfg.get("hard_cpu_percent", cfg.get("max_cpu_percent", 95)))
-    hard_ram = float(cfg.get("max_ram_percent", 90))
+    # These keys aren't in the coerce/clamp schema, so a hand-edited null/string reaches float() raw and
+    # would crash the governor on a background task. Coerce safely to the default.
+    def _f(v, default: float) -> float:
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return default
+    hard_cpu = _f(cfg.get("hard_cpu_percent", cfg.get("max_cpu_percent", 95)), 95.0)
+    hard_ram = _f(cfg.get("max_ram_percent", 90), 90.0)
     return smooth_cpu > hard_cpu or smooth_ram > hard_ram
 
 
