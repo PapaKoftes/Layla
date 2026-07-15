@@ -767,6 +767,44 @@ def _strip_reasoning_traces(t: str) -> str:
     return t.strip()
 
 
+# System-prompt / stage-direction BLEED. A weak local model regurgitates the tail of its own system
+# head — the "## Output discipline" block ("Reply with ONLY your message…", "This is a written TEXT
+# chat…", "private stage direction…", "Match length to the message…"), the per-aspect anchor ("Reply
+# as her only", "Do not output labels or repeat instructions"), or the injected "### REFERENCE"
+# capability list — AFTER its real answer (measured ~33% of /v1 and ~66% of /agent trivial turns).
+# These phrases are verbatim system-prompt text that never occurs in a genuine reply, and the answer
+# ALWAYS precedes the bleed, so the fix is a truncate-from-earliest-anchor-to-end (the same shape the
+# REFUSED / 'Current goal:' cuts already use). Run BEFORE fence-masking so a bleed the model wrapped in
+# a ```plaintext fence is still removed. REFERENCE is matched case-SENSITIVE via (?-i:) — an all-caps
+# '### REFERENCE' is unambiguous scaffold, while a legit title-case '## References' section survives.
+# Keep these anchors in sync with services/prompts/system_head_builder.py (Output-discipline block +
+# per-aspect 'Reply as … only' anchor).
+_SYSTEM_PROMPT_BLEED_RE = re.compile(
+    r"Reply with ONLY your message to the user"
+    r"|This is a written TEXT chat"
+    r"|never mention audio, voice"
+    r"|No theatrical or roleplay opening"
+    r"|(?:persona and style notes are )?private stage direction"
+    r"|Match length to the message"
+    r"|Do not output labels or repeat instructions"
+    r"|Reply as (?:her|him|them|only|Morrigan|Nyx|Echo|Eris|Cassandra|Lilith|Layla)\b[^.\n]*\bonly\b"
+    r"|#{1,4}[ \t]*(?-i:REFERENCE)\b"
+    r"|(?:^|\n)?[ \t]*\[(?:END|End of message|Question)\]",
+    re.IGNORECASE,
+)
+
+
+def _strip_system_prompt_bleed(t: str) -> str:
+    """Cut a regurgitated system-prompt tail (see ``_SYSTEM_PROMPT_BLEED_RE``) from the earliest
+    anchor to the end, preserving the real answer that precedes it."""
+    if not t:
+        return t
+    m = _SYSTEM_PROMPT_BLEED_RE.search(t)
+    if m:
+        return t[: m.start()].rstrip(" \t\n-–—*`#>").rstrip()
+    return t
+
+
 def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = (), active_names: set[str] | None = None) -> str:
     """Remove repeated 'assistant: I replied.' and other junk from a reply before saving/displaying.
 
@@ -777,6 +815,12 @@ def strip_junk_from_reply(text: str, aspect_names: tuple[str, ...] = (), active_
     if not text or not text.strip():
         return (text or "").strip()
     t = _strip_reasoning_traces(text.strip())
+    if not t:
+        return ""
+    # Cut a regurgitated system-prompt / stage-direction tail (Output-discipline block, per-aspect
+    # 'Reply as … only', '### REFERENCE' capability list) BEFORE fence-masking, so a bleed the model
+    # wrapped in a ```fence is still removed. The answer always precedes the bleed.
+    t = _strip_system_prompt_bleed(t)
     if not t:
         return ""
     # Protect fenced code blocks from the prose scrubbers below: unguarded, the ALLCAPS-bracket
