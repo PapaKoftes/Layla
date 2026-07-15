@@ -207,6 +207,23 @@ Layla includes **deterministic** checks (tool outputs, plan pre-validation, comp
 
 See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md#quality-enforcement-recommended) and `agent/runtime_config.example.json`. Architecture summary: [ARCHITECTURE.md](ARCHITECTURE.md).
 
+### Coding benchmarks — measured, not asserted
+
+`scripts/benchmark_coding.py` scores deterministic **pass@1** (temperature 0, seed 42) on two tiers: **core** (10 canonical fundamentals) and **hard** (12 discriminating LeetCode medium/hard — LCS, edit distance, nested `decode_string`, `three_sum`, spiral order, `next_permutation`, …). Latest, on the reference CPU laptop (4-core / ~16 GB / no-GPU):
+
+| Model | core pass@1 | hard pass@1 | tok/s (core / hard) |
+|---|---|---|---|
+| Qwen2.5-Coder-7B-Q4 *(default)* | **100 % (10/10)** | **100 % (12/12)** | 3.4 / 4.2 |
+| Qwen2.5-Coder-3B-Q4 *(`-Prefer lite`)* | **100 % (10/10)** | **100 % (12/12)** | 6.6 / 9.6 |
+
+Both models pass **22/22**; the 3B matches the 7B at ~2× the speed on a CPU-only laptop. Per-problem scorecards and honest caveats: **[benchmarks/README.md](benchmarks/README.md)**. A **nightly CI job** re-runs both tiers against a real model with a regression floor, so these numbers stay current as the project evolves. Regenerate locally:
+
+```bash
+python scripts/benchmark_coding.py --model models/<model>.gguf                 # core
+python scripts/benchmark_coding.py --hard --model models/<model>.gguf          # hard tier
+python scripts/benchmark_coding.py --self-test                                 # validate the harness (no model)
+```
+
 ---
 
 ## Architecture
