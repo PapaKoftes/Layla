@@ -339,6 +339,7 @@ your language.
 |---|---|
 | [VALUES.md](VALUES.md) | Principles |
 | [MODELS.md](MODELS.md) | Models & config |
+| [docs/OPENAI_COMPAT.md](docs/OPENAI_COMPAT.md) | `/v1` OpenAI-compatible API — supported vs not |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribute |
 | [docs/ONBOARDING_15_MIN.md](docs/ONBOARDING_15_MIN.md) | **15-minute** first-run checklist |
 | [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) | First run (detailed) |
