@@ -46,3 +46,28 @@ def test_coding_pass_at_1_meets_floor():
         f"for {Path(_MODEL).name}: "
         + ", ".join(f"{r['task_id']}={'ok' if r['passed'] else r['detail']}" for r in card["results"])
     )
+
+
+@pytest.mark.skipif(
+    not _HAVE_MODEL,
+    reason="set LAYLA_BENCH_MODEL=/path/to/model.gguf to run the live pass@1 regression",
+)
+def test_coding_hard_pass_at_1_meets_floor():
+    """The discriminating HARD tier (DP/stacks/matrix/parsing) also guarded so quality
+    can't silently regress on non-trivial problems. Tune with LAYLA_BENCH_HARD_FLOOR
+    (default 0.5). The longer solutions need a larger token budget than the core set."""
+    floor = float(os.environ.get("LAYLA_BENCH_HARD_FLOOR", "0.5"))
+    generate, close = bench._llama_generator(_MODEL, max_tokens=640)
+    try:
+        with tempfile.TemporaryDirectory(prefix="layla_bench_ci_hard_") as td:
+            card = bench.benchmark(generate, bench.PROBLEMS_HARD, Path(td))
+    finally:
+        try:
+            close()
+        except Exception:
+            pass
+    assert card["pass_at_1"] >= floor, (
+        f"coding HARD pass@1 {card['pass_at_1']:.2%} below floor {floor:.2%} "
+        f"for {Path(_MODEL).name}: "
+        + ", ".join(f"{r['task_id']}={'ok' if r['passed'] else r['detail']}" for r in card["results"])
+    )
