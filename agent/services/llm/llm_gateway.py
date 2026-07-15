@@ -240,6 +240,45 @@ _token_usage = {
 }
 
 
+def _ram_fit_error(model_path, cfg: dict) -> str | None:
+    """Return a clear, user-facing message if the configured model is too large for this machine's
+    RAM to load *safely*, else None.
+
+    Without this, ``Llama()`` on an under-provisioned box (e.g. a 4.4 GB 7B on an 8 GB laptop) doesn't
+    error — it thrashes swap and eventually gets OOM-killed with no explanation, which is exactly the
+    failure a non-technical user hits. We refuse up front with a "pick a smaller model" message instead.
+
+    Scope: CPU-only loads (``n_gpu_layers == 0`` — what the provisioner writes for a no-GPU box) and
+    local inference only; a GPU offload puts weights in VRAM, and a remote ``llama_server_url`` uses no
+    local RAM. We compare the GGUF file size against TOTAL system RAM (stable, unlike ``available``,
+    which mmap makes noisy): a CPU model larger than ~half of total RAM leaves too little for the OS +
+    KV cache + app. Override with ``skip_ram_fit_check: true``."""
+    try:
+        if cfg.get("skip_ram_fit_check", False):
+            return None
+        if (cfg.get("llama_server_url") or "").strip():
+            return None  # remote inference — not bound by local RAM
+        if _safe_int(cfg.get("n_gpu_layers", -1), -1) != 0:
+            return None  # GPU offload → weights in VRAM, not system RAM
+        import psutil
+        size_gb = os.path.getsize(str(model_path)) / (1024 ** 3)
+        total_gb = psutil.virtual_memory().total / (1024 ** 3)
+        if total_gb <= 0 or size_gb <= 0:
+            return None
+        if size_gb > total_gb * 0.5:
+            avail_gb = psutil.virtual_memory().available / (1024 ** 3)
+            return (
+                f"Not enough RAM to load this model safely. The model file is {size_gb:.1f} GB and this "
+                f"machine has {total_gb:.1f} GB RAM total ({avail_gb:.1f} GB free) — loading it would "
+                f"thrash or crash. Choose a smaller model in Settings → Models (or reinstall with "
+                f"-Prefer lite for the 3B coder). To override, set \"skip_ram_fit_check\": true in "
+                f"runtime_config.json."
+            )
+    except Exception:
+        return None
+    return None
+
+
 def model_loaded_status() -> dict:
     """Return model status for /health. If path invalid, includes error message."""
     try:
@@ -272,7 +311,10 @@ def model_loaded_status() -> dict:
                 "recovery": rec,
             }
         if _llm is not None or _llm_by_path:
-            return {"error": None}
+            return {"error": None}  # already loaded fine — don't second-guess a working model
+        _ram_err = _ram_fit_error(model_path, cfg)
+        if _ram_err:
+            return {"error": _ram_err, "recovery": {"action": "pick_smaller_model"}}
         return {"error": None}
     except Exception as e:
         return {"error": str(e)}
@@ -544,6 +586,14 @@ def _get_llm():
             kwargs["rope_freq_base"] = float(cfg["rope_freq_base"])
         if cfg.get("rope_freq_scale"):
             kwargs["rope_freq_scale"] = float(cfg["rope_freq_scale"])
+
+        # Minimum-RAM guard (defense-in-depth): refuse a too-large model before Llama() thrashes/OOM-kills
+        # the process. model_loaded_status() surfaces the same message as a clean pre-check upstream; this
+        # backstops any caller that reaches _get_llm() directly.
+        _ram_err = _ram_fit_error(model_path, cfg)
+        if _ram_err:
+            logger.error("llm_gateway: %s", _ram_err)
+            raise RuntimeError(_ram_err)
 
         try:
             inst = Llama(**kwargs)
