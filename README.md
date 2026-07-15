@@ -90,6 +90,16 @@ Layla is a **local-first AI companion and engineering agent**. She runs on your 
 
 ## Install
 
+### Not a programmer? Start here (no Git, no terminal)
+
+1. On the [GitHub page](https://github.com/PapaKoftes/Layla), click the green **Code** button → **Download ZIP**, then unzip it (you do **not** need Git).
+2. Open the unzipped folder and **double-click `INSTALL.bat`** (Windows) or **`install/Install Layla.command`** (macOS). It installs everything and picks a model for you — no build tools, no admin.
+3. When it finishes it opens **http://127.0.0.1:8000/ui** in your browser. That's it — start chatting.
+
+What to expect the first time: it **downloads a model (~2–5 GB)**, which can take **10–40 minutes** on a normal connection — the progress bar is normal, don't close the window. Windows **SmartScreen/antivirus** may warn about a new unsigned app or quarantine the model download; choose *More info → Run anyway* / allow it, or add the folder to your AV exclusions. If a step fails, the installer prints the exact cause and a fix.
+
+> Developers / power users: the one-command CLI install and alternatives are below.
+
 **First-time guide:** [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)
 
 **10-minute green path** (health, `/ui`, first chat, optional approval): [docs/GOLDEN_FLOW.md](docs/GOLDEN_FLOW.md) — section *Ten-minute operator acceptance*.
@@ -128,7 +138,8 @@ Options: `--prefer quality|balanced|lite|speed`, `--skip-model`, `--verify` (Pow
 
 - The repo-root **`install.sh`** (Linux/macOS) and **`install.ps1`** / **`INSTALL.bat`** (Windows) now run the same uv installer — use whichever entry point you prefer.
 - **Prefer your own system Python + winget** (no uv): `powershell -ExecutionPolicy Bypass -File install\fresh_install.ps1` on Windows, which installs Python 3.12 via winget and uses the same compiler-free wheels.
-- **Packaged Windows installer** (double-click `.exe`, embedded CPython): see [`installer/README.md`](installer/README.md). Runtime data may live under `%LOCALAPPDATA%\\Layla` via `LAYLA_DATA_DIR`.
+- **Packaged Windows installer** (double-click `.exe`, embedded CPython): see [`installer/README.md`](installer/README.md). Runtime data may live under `%LOCALAPPDATA%\\Layla` via `LAYLA_DATA_DIR`. **A packaged `.app`/AppImage for macOS/Linux is not built yet** — on those platforms use the script installer above (`./install/bootstrap.sh`), which is the fully supported path.
+- **Supply-chain / trust:** the bootstrap fetches [uv](https://docs.astral.sh/uv/) from `astral.sh` and downloads model GGUFs from Hugging Face. Downloads are verified by size + GGUF magic bytes, and by SHA-256 when the catalog entry carries one. In a locked-down environment, pre-install `uv` yourself and point the installer at a vetted model file instead of the curl-based bootstrap.
 
 ### Uninstall
 
