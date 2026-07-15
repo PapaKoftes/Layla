@@ -163,7 +163,14 @@ def atomic_write_config(cfg: dict) -> None:
     with _config_lock:
         CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = CONFIG_FILE.with_name(CONFIG_FILE.name + ".tmp")
-        tmp.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+        # fsync the temp file BEFORE the rename: os.replace makes the metadata rename atomic but does NOT
+        # flush the data blocks, so a power-loss right after the rename could land a 0-length/truncated
+        # config — silently reverting every setting (incl. security toggles) to defaults. (Same reason
+        # memory_graph._save_graph fsyncs.) The docstring promised this crash-safety; now the code delivers.
+        with open(tmp, "w", encoding="utf-8") as _f:
+            _f.write(json.dumps(cfg, indent=2))
+            _f.flush()
+            os.fsync(_f.fileno())
         # A1: runtime_config.json can hold provider secrets/tokens in plaintext (on keyring-less
         # boxes). Restrict it to owner-only BEFORE it lands, so it isn't group/world-readable.
         try:
@@ -208,7 +215,11 @@ def save_config_keys(updates: dict, *, editable_only: bool = True, clamp: bool =
             saved.append(k)
         CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = CONFIG_FILE.with_name(CONFIG_FILE.name + ".tmp")
-        tmp.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+        # fsync before rename (see atomic_write_config) so a power-loss can't truncate the config to 0-length.
+        with open(tmp, "w", encoding="utf-8") as _f:
+            _f.write(json.dumps(cfg, indent=2))
+            _f.flush()
+            os.fsync(_f.fileno())
         os.replace(tmp, CONFIG_FILE)
         _reset_config_cache_locked()
     return saved
