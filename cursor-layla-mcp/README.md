@@ -25,7 +25,7 @@ File lives at: `C:\Users\<you>\.cursor\mcp.json`
 {
   "mcpServers": {
     "layla": {
-      "command": "C:\\Users\\<you>\\<path-to-repo>\\agent\\venv\\Scripts\\python.exe",
+      "command": "C:\\Users\\<you>\\<path-to-repo>\\.venv\\Scripts\\python.exe",
       "args": ["C:\\Users\\<you>\\<path-to-repo>\\cursor-layla-mcp\\server.py"],
       "env": {
         "LAYLA_BASE_URL": "http://127.0.0.1:8000"
@@ -35,7 +35,7 @@ File lives at: `C:\Users\<you>\.cursor\mcp.json`
 }
 ```
 
-> **Note**: Use the venv python so all MCP dependencies (`mcp`, `anyio`) are available.
+> **Note**: Use the `.venv` python at the **repo root** (created by the installer as `.venv`, not `agent/venv`) so all MCP dependencies (`mcp`, `anyio`) are available.
 
 ## Make Layla show in Cursor model dropdown
 
