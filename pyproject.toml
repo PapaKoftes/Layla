@@ -57,6 +57,9 @@ core = [
     "PyYAML>=6.0",
     "unidiff>=0.7",
     "Pillow>=10.0",
+    # /metrics is a spec-compliant Prometheus scrape target only when this is present; without it the
+    # endpoint falls back to JSON, which a real Prometheus scraper can't parse. Tiny, pure-Python.
+    "prometheus_client>=0.20",
 ]
 # Compiler-free core: the same as [core] but WITHOUT chromadb (whose chroma-hnswlib is a
 # C++ extension that won't build on a box with no toolchain). Memory/RAG falls back to the
@@ -88,6 +91,9 @@ cpu = [
     "PyYAML>=6.0",
     "unidiff>=0.7",
     "Pillow>=10.0",
+    # /metrics is a spec-compliant Prometheus scrape target only when this is present; without it the
+    # endpoint falls back to JSON, which a real Prometheus scraper can't parse. Tiny, pure-Python.
+    "prometheus_client>=0.20",
 ]
 llm = [
     "llama-cpp-python>=0.3.1,<0.4",

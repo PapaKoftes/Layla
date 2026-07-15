@@ -174,7 +174,11 @@ def _get_aspect_embeddings(aspects: list[dict]) -> dict[str, Any]:
             _ASPECT_EMBEDDINGS = embs
             _ASPECT_EMBEDDINGS_TS = now
             return embs
-        except Exception:
+        except Exception as _e:
+            # Degrade to keyword routing, but don't do it silently — log so a broken embedder
+            # (the cause of quietly-worse aspect routing) is visible instead of invisible.
+            import logging
+            logging.getLogger("layla").debug("aspect embeddings unavailable, falling back to keyword routing: %s", _e)
             return {}
 
 
@@ -326,7 +330,9 @@ def should_deliberate(message: str, aspect: dict | None = None) -> bool:
         import runtime_safety
         if not (runtime_safety.load_config() or {}).get("deliberation_enabled", False):
             return False
-    except Exception:
+    except Exception as _e:
+        import logging
+        logging.getLogger("layla").debug("deliberation gate config read failed, defaulting off: %s", _e)
         return False
     # Word-boundary matched (audit #7): substring matching fired on "decided"->"decide",
     # "discussion"->"discuss", etc., routing plain statements into the 6-POV debate.
