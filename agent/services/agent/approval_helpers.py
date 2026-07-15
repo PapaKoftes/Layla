@@ -209,52 +209,63 @@ def _write_pending(tool: str, args: dict, ttl_seconds: int = 3600) -> str:
     except Exception:
         pass
 
+    import os as _os
+
     from layla.time_utils import utcnow
     gov_path = Path(__file__).resolve().parent.parent.parent / ".governance"
     gov_path.mkdir(parents=True, exist_ok=True)
     pending_file = gov_path / "pending.json"
-    try:
-        data = json.loads(pending_file.read_text(encoding="utf-8")) if pending_file.exists() else []
-    except Exception as e:
-        logger.warning("pending.json load failed: %s", e)
-        data = []
-    # Prune old/non-pending approvals to keep file bounded.
-    try:
-        from datetime import datetime, timedelta
-
-        keep_days = 7
-        cutoff = (utcnow() - timedelta(days=keep_days)).isoformat()
-        pruned = []
-        for r in data if isinstance(data, list) else []:
-            if not isinstance(r, dict):
-                continue
-            st = str(r.get("status") or "pending")
-            if st != "pending":
-                continue
-            req = str(r.get("requested_at") or "")
-            if req and req < cutoff:
-                continue
-            pruned.append(r)
-        data = pruned[-500:]
-    except Exception as e:
-        logger.warning("pending approval prune failed: %s", e, exc_info=True)
     entry_id = str(_uuid.uuid4())
-    risk = (TOOLS.get(tool) or {}).get("risk_level") or "medium"
-    now = utcnow()
-    # TTL from config if available, else use caller-supplied default (3600s = 1h)
-    try:
-        _pcfg = runtime_safety.load_config()
-        ttl_seconds = int(_pcfg.get("approval_ttl_seconds", ttl_seconds) or ttl_seconds)
-    except Exception as _exc:
-        logger.warning("agent_loop:L795: %s", _exc, exc_info=True)
-    data.append({
-        "id": entry_id,
-        "tool": tool,
-        "args": args,
-        "requested_at": now.isoformat(),
-        "expires_at": (now + timedelta(seconds=max(60, ttl_seconds))).isoformat(),
-        "status": "pending",
-        "risk_level": risk,
-    })
-    pending_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    # DATA-INTEGRITY (audit): this read-modify-write MUST hold the shared pending_file_lock and write
+    # atomically. Every other writer (main._read_pending/_write_pending_list, routers/approvals) already
+    # serializes under this lock; _write_pending previously bypassed it, so a concurrent approve/deny and
+    # a loop-queued approval formed a lost-update race, and a torn read (write_text truncates) could reset
+    # data=[] and wipe every other pending approval. Lock + temp-file + os.replace closes both.
+    from shared_state import pending_file_lock as _pending_file_lock
+    with _pending_file_lock:
+        try:
+            data = json.loads(pending_file.read_text(encoding="utf-8")) if pending_file.exists() else []
+        except Exception as e:
+            logger.warning("pending.json load failed: %s", e)
+            data = []
+        # Prune old/non-pending approvals to keep file bounded.
+        try:
+            from datetime import timedelta
+
+            keep_days = 7
+            cutoff = (utcnow() - timedelta(days=keep_days)).isoformat()
+            pruned = []
+            for r in data if isinstance(data, list) else []:
+                if not isinstance(r, dict):
+                    continue
+                st = str(r.get("status") or "pending")
+                if st != "pending":
+                    continue
+                req = str(r.get("requested_at") or "")
+                if req and req < cutoff:
+                    continue
+                pruned.append(r)
+            data = pruned[-500:]
+        except Exception as e:
+            logger.warning("pending approval prune failed: %s", e, exc_info=True)
+        risk = (TOOLS.get(tool) or {}).get("risk_level") or "medium"
+        now = utcnow()
+        # TTL from config if available, else use caller-supplied default (3600s = 1h)
+        try:
+            _pcfg = runtime_safety.load_config()
+            ttl_seconds = int(_pcfg.get("approval_ttl_seconds", ttl_seconds) or ttl_seconds)
+        except Exception as _exc:
+            logger.warning("agent_loop:L795: %s", _exc, exc_info=True)
+        data.append({
+            "id": entry_id,
+            "tool": tool,
+            "args": args,
+            "requested_at": now.isoformat(),
+            "expires_at": (now + timedelta(seconds=max(60, ttl_seconds))).isoformat(),
+            "status": "pending",
+            "risk_level": risk,
+        })
+        _tmp = pending_file.with_name(pending_file.name + ".tmp")
+        _tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        _os.replace(_tmp, pending_file)
     return entry_id
