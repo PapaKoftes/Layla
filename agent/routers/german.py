@@ -182,7 +182,10 @@ async def review_card(card_id: int, body: dict):
     Body: {quality: 4, user_id: "default"}
     quality 0–5: 0-2=fail/again, 3=hard, 4=good, 5=easy.
     """
-    quality = int(body.get("quality", 3))
+    try:
+        quality = int(body.get("quality", 3))
+    except (TypeError, ValueError):
+        quality = 3   # null/string quality from the JSON body must not 500 the review
     user_id = str(body.get("user_id", "default"))
     try:
         from services.infrastructure.german_mode import review_card as _review
