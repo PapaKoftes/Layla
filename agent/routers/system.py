@@ -557,7 +557,7 @@ def local_access_info():
             lan_ip = "127.0.0.1"
     url = f"http://{lan_ip}:{port}"
     remote_enabled = bool(cfg.get("remote_enabled", False))
-    api_key_set = bool(cfg.get("remote_api_key", "").strip())
+    api_key_set = bool((cfg.get("remote_api_key") or "").strip())
     return {
         "ok": True,
         "url": url,
