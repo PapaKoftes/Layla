@@ -59,7 +59,19 @@ def cancel_all_workers() -> int:
 
 
 def _build_reasoning_tree_summary(state: dict) -> dict:
-    """Summary-only reasoning tree; no chain-of-thought text."""
+    """Summary-only reasoning tree; no chain-of-thought text.
+
+    Text fields (node outcomes + final_summary) are derived from RAW step results, which — for a
+    'reason'/reply step — can be the model's un-cleaned output including a regurgitated system-prompt
+    tail. This block is surfaced in the UI, so it MUST run through the same reply cleaner as the visible
+    answer, or the leak we fixed on the response re-appears here."""
+    def _clean(t: str) -> str:
+        try:
+            from services.agent.response_builder import strip_junk_from_reply
+            return strip_junk_from_reply(t or "")
+        except Exception:
+            return t or ""
+
     st = state or {}
     steps = st.get("steps") or []
     nodes: list[dict] = []
@@ -70,6 +82,9 @@ def _build_reasoning_tree_summary(state: dict) -> dict:
             outcome = str(raw.get("message") or raw.get("error") or raw.get("ok") or "completed")
         else:
             outcome = str(raw or "")
+        # Only reasoning/reply outcomes carry model prose that can bleed; tool-result dicts are structured.
+        if not isinstance(raw, dict):
+            outcome = _clean(outcome)
         nodes.append(
             {
                 "id": f"step_{idx + 1}",
@@ -78,6 +93,7 @@ def _build_reasoning_tree_summary(state: dict) -> dict:
                 "outcome_summary": outcome[:200],
             }
         )
+    _final = _clean(str(steps[-1].get("result"))) if steps else ""
     return {
         "mode": "summary_only",
         "goal": str(st.get("original_goal") or st.get("goal") or "")[:300],
@@ -85,7 +101,7 @@ def _build_reasoning_tree_summary(state: dict) -> dict:
         "reasoning_mode": str(st.get("reasoning_mode") or ""),
         "ux_states": [str(x) for x in (st.get("ux_states") or [])[:20]],
         "nodes": nodes[:30],
-        "final_summary": (str(steps[-1].get("result"))[:280] if steps else ""),
+        "final_summary": _final[:280],
     }
 
 
