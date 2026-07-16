@@ -5,6 +5,7 @@ Sandbox helpers live in sandbox_core.py; tool implementations in registry_body.p
 """
 from __future__ import annotations
 
+import functools
 import logging
 from typing import Any
 
@@ -101,8 +102,21 @@ for _impl_name in (
 
 
 def _wrap_tool_with_metrics(name: str, fn: Any) -> Any:
-    """Wrap tool fn to record execution latency to performance_monitor."""
+    """Wrap tool fn to record execution latency to performance_monitor.
 
+    @functools.wraps is LOAD-BEARING, not cosmetic. Without it this wrapper replaced every tool's real
+    signature with (*args, **kwargs) and its docstring with None — for all 198 tools. Consequences, all
+    verified:
+      • `inspect.signature` returned (*args, **kwargs), so there was no static contract to validate args
+        against, and `len(TOOLS) == 198` passed while `math_eval` raised on every input.
+      • `list_tools` (general.py:379 reads fn.__doc__) returned 198 tools with 100% EMPTY descriptions —
+        and that is the tool Layla answers "what can you do?" with.
+    196/198 tools are already fully type-annotated, so the contract was never missing; it was being thrown
+    away here. Restoring it lets pydantic derive a JSON Schema for all 198 (~250ms) to drive arg validation,
+    the GBNF tool grammar, and one real registry smoke test.
+    """
+
+    @functools.wraps(fn)
     def wrapped(*args: Any, **kwargs: Any) -> Any:
         import time
 
