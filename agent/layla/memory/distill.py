@@ -45,7 +45,30 @@ _LEARNING_REJECT_RE = re.compile(
     r"^\s*Objective:\s"                                        # stored run objective echo
     r"|Provide:\s*a concise overview,\s*key concepts"          # research answer template
     r"|Cite sources where possible"
-    r"|\[(?:EARNED_TITLE|Active aspect|REFUSED|TOOL|SYSTEM)\b",  # leaked control markers
+    r"|\[(?:EARNED_TITLE|Active aspect|REFUSED|TOOL|SYSTEM)\b"  # leaked control markers
+    # ── Prompt-context block headers ──
+    # The assembled prompt injects these blocks; a weak local model regurgitates them into its reply,
+    # and the extractor stored them as knowledge. That CLOSES A FEEDBACK LOOP: the block becomes a
+    # learning, the learning is re-injected into the next prompt as "Things I remember", the model
+    # echoes it again, and its tokens spawn new knowledge-graph nodes. Observed live — graph nodes
+    # 'ValueError' / 'Hello.' / 'TEXT' / 'talking' were harvested from bleed rows. Anchored: a real
+    # learning never OPENS with a block header, so this cannot eat legitimate knowledge.
+    r"|^\s*Knowledge graph associations:"
+    r"|^\s*Things I remember:"
+    r"|^\s*Relevant memories:"
+    r"|^\s*(?:Recent learnings|Conversation summaries):"
+    # ── Verbatim system-prompt / persona-contract prose ──
+    # Mirrors _SYSTEM_PROMPT_BLEED_RE in services/agent/response_builder.py. Duplicated deliberately:
+    # this is the memory layer's own floor and must not import an agent service to enforce it. The
+    # real fix is upstream (run_finalizer sanitizes before extracting); this is the backstop for the
+    # ~10 other writers (distill, tools, jobs, ingestion) that never touch the router.
+    r"|This is a written TEXT chat"
+    r"|never mention audio, voice"
+    r"|Reply with ONLY your message to the user"
+    r"|private stage direction"
+    r"|No theatrical or roleplay opening"
+    r"|Do not output labels or repeat instructions"
+    r"|^\s*\*\*(?:Core|Voice Contract|Boundaries|Style|Prime Directive)\*\*:",
     re.IGNORECASE,
 )
 

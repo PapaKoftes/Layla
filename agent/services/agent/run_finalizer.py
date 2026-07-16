@@ -102,11 +102,29 @@ def finalize_run_state(
                 r = s.get("result", "")
                 final_text = r if isinstance(r, str) else ""
                 break
-        if final_text and not state.get("refused") and len(final_text.strip()) >= 80:
+        # Sanitize before extracting. `final_text` above is the RAW `reason` step; the /agent router
+        # only applies the bleed strip when building the text it SHOWS. That asymmetry meant the user
+        # read a clean reply while the extractor ate whatever the model had regurgitated of its own
+        # system prompt — and stored it as a "learning". Rows like "This is a written TEXT chat: you
+        # are typing, not speaking…" (a byte-exact system_head_builder line) and "**Voice Contract**:
+        # Blunt and surgical…" got in this way, then fed back through the KG block into later prompts.
+        # This is not symptom-filtering: the extractor was reading the wrong variable. The real source
+        # (a 3B model failing _OUTPUT_DISCIPLINE) is not fixable here.
+        # A wrongly-emptied learning is just a skipped learning, so the strip is safe to apply here even
+        # where it would be too aggressive for a user-facing reply.
+        try:
+            from services.agent.response_builder import clean_reply_text
+            learn_text = clean_reply_text(
+                final_text, status=state.get("status", "finished"), active_aspect=active_aspect
+            )
+        except Exception as _clean_exc:  # never let sanitation break the run
+            logger.debug("learning sanitation failed, skipping extraction: %s", _clean_exc)
+            learn_text = ""
+        if learn_text and not state.get("refused") and len(learn_text.strip()) >= 80:
             import threading as _t
             _t.Thread(
                 target=auto_extract_learnings_fn,
-                args=(state.get("original_goal", ""), final_text, active_aspect.get("id", "")),
+                args=(state.get("original_goal", ""), learn_text, active_aspect.get("id", "")),
                 daemon=True,
                 name="auto-learn",
             ).start()
