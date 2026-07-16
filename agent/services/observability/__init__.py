@@ -49,19 +49,10 @@ from services.observability.security_audit import (
     log_protected_file_attempt,
     log_sandbox_violation,
 )
-from services.observability.tracing import (
-    CorrelationContext,
-    generate_correlation_id,
-    get_current_correlation_id,
-    trace_request,
-)
 
 __all__ = [
     # New
-    "CorrelationContext",
     "MetricsCollector",
-    "generate_correlation_id",
-    "get_current_correlation_id",
     "get_recent_events",
     "get_recent_security_events",
     "get_security_summary",
@@ -73,7 +64,6 @@ __all__ = [
     "log_protected_file_attempt",
     "log_sandbox_violation",
     "metrics",
-    "trace_request",
     # Legacy
     "log_agent_decision",
     "log_agent_plan_completed",
