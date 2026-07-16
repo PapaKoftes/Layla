@@ -1252,3 +1252,147 @@ un-failable is.
   `test_known_broken_tools_are_still_actually_broken` which **executes** `math_eval` and fails loudly if it
   ever starts working (telling you to update the manifest). Fix a tool, drop it from the set, the count rises,
   and the manifest must follow. The guard now rewards repair instead of punishing it.
+
+#### W14q — Unwired-function sweep (2026-07-16): the class, mapped
+
+*Method: inverted identifier index — 1,706 public defs in `services/`+`layla/`+`core/` cross-referenced against
+every .py/.js/.json/.md/.html, categorized test/init/doc/ui/prod → 168 zero-prod-reference candidates, each
+verified by hand for dynamic dispatch. The index reproduced the known instances unprompted, which validated it.*
+
+**THREE CORRECTIONS TO MY OWN BRIEF (verified — record so they are not repeated):**
+1. `layla/memory/repo_indexer.py` **does not exist**; it is `services/workspace/repo_indexer.py`. The shape was
+   right, the path wrong — and it is worse than I described (BL-355).
+2. **Only 2 of the 5 "dead config keys" I listed are bugs.** `self_consistency_samples`, `mcp_stdio_servers` and
+   `inference_backend` are read by prod, shipped in `runtime_config.json`, and never POSTed by the UI — they are
+   deliberate file-only advanced keys and the schema docstring says so. **No UI lies about them.** Only
+   `ui_font_size`/`ui_animation_level` (BL-335) are real.
+3. **Three suspects CLEARED:** `prompt_builder.build_static`/`tool_injection` (self-declared test façade; tool
+   descriptions DO reach the model), `filter_batch_tools` (a *stricter* inline filter is live at
+   `decision_loop.py:399-410`), `get_tool_preferences` (accessor orphaned but `build_behavior_block` reads the
+   dict directly — aspect tool bias works; `docs/audit/subsystem_audit.md:61` is stale).
+
+##### TIER 1 — dead subsystems the UI advertises
+
+- 🔴 **BL-349** **LAN clustering: a user can enable it, pair two machines, see both peers online, and never move
+  one unit of work.** `ClusterNetwork.submit_task` (`cluster_network.py:420`), `get_task_status:435`,
+  `cancel_remote_task:445` — **zero callers**. `TaskQueue.submit` (`work_unit.py:166`) is the only enqueue path
+  and its sole prod caller is the *receiving* endpoint (`routers/cluster.py:207`) — **the loop is closed with no
+  entry point**. `DroneWorker._work_loop` (started for real, `main.py:536`) polls a permanently empty queue every
+  5s **forever**. Shipped UI: Enable-Clustering toggle, pairing flow, peer list, live queue-stats — **translated
+  into all 11 locales**. Also makes the `inference_offload` pairing permission grantable but inert. Supersedes
+  BL-328's narrower finding.
+- 🔴 **BL-350** **Spaced repetition is advertised IN CHAT and is entirely dead.**
+  `ui/components/chat-render.js:385` lists **"Spaced repetition study sessions"** in Layla's own capability
+  list. Zero prod importers for ANY public symbol in `services/memory/spaced_repetition.py` (`sm2`,
+  `run_study_session:224`, `review_item`, `get_due_items`) — ~60 green assertions across two files, fully
+  unreachable. Three rivals are wired instead: the flat-24h tool, a research "study" scheduler that never
+  touches SRS, and **a copy-pasted SM-2 clone at `german_mode.py:379`** that is live and serves the only real
+  flashcard UI. Supersedes BL-327.
+- ⬜ **BL-351** **Skill packs install successfully and can never run.** `run_entry_point`
+  (`skill_sandbox.py:82`) — venv resolution, path-escape guard, env allowlist, timeout, 10 tests incl. a real
+  subprocess — **zero non-test callers**. The whole install lifecycle IS live, and `validate_manifest`
+  *requires* a non-empty `entry_point`. `docs/SKILL_PACKS.md:29,125` promises "a Python entry point that Layla
+  executes in a sandboxed venv". Author per the docs → installs → silently never runs.
+- ⬜ **BL-352** **`GET`/`POST /settings/appearance` exists, purpose-built for BL-335 (`editable_only=False`,
+  accepts non-schema UI keys) — and has ZERO callers.** The right door exists; nobody knocks. Fold into BL-335.
+
+##### TIER 2 — safety/correctness verdicts computed then discarded
+
+- 🔴 **BL-353** **Fabrication verify-before-mutate is structurally unreachable — the highest-impact discard
+  found.** `decision_policy.py:220` gates on `if th.forbidden_tools:`, but `policy_hint_from_toolchain`
+  (`toolchain_awareness.py:37-45`) has three return paths and **none ever sets `forbidden_tools`** — the only
+  verdict it carries is `require_verify_before_mutate=True`. The guard is never true; `merge_policy_caps` at
+  :221 is dead code. "generate gcode from this dxf" is *meant* to force verify-before-mutate on
+  `gcode_post`/`machine_run` (the module's own DAG marks them `risk=high`). **It never does.** Compounding: the
+  block converting that flag into a real ban sits at :206-214, ABOVE the merge — so even fixing the condition
+  arrives a tick late. **Zero tests.** Callee sets one field, caller inspects another.
+- ⬜ **BL-354** More discarded verdicts: **research promotion gate** — `get_promotable_research_learnings`
+  (`research_intelligence.py:400`) zero callers; `study_service.py:70,76` saves research output at
+  **confidence=0.9 with no filter**, its docstring's "do NOT store speculative output" unenforced ·
+  **grounding/abstention** — `should_abstain` (`grounding.py:148`) zero prod callers,
+  `answer_assessment.py:41` re-derives it inline, result lands in the unread `answer_quality`; off at THREE
+  layers (`grounding_enabled:false`, `mode:"flag"`, and flag mode can never set abstain) ·
+  **validation matrix** — `evaluate_validation_matrix` (125 lines, 5 dimensions, **on by default, runs every
+  turn**); `critical_pass` appears only at its definition, its packing, and one test assertion — policy caps
+  still run on the fuzzy heuristic it was built to complement · **`pkg_policy_strict_enabled`** — inert;
+  nothing writes the `pkg_policy` key it reads · **dignity level-3 aspect override** — `dignity_engine.py:280`
+  sets `suggest_aspect_override="lilith"`, caller returns only `boundary_prompt` (:311); the prompt *says* "You
+  are Lilith now" so intent ships as an instruction, not a switch.
+
+##### TIER 3 — write-only state / wasted compute (this box is CPU-bound)
+
+- 🔴 **BL-355** **`repo_indexer` is a write-only index.** A full SQLite structural index of the user's repo is
+  built **at every startup** (`main.py:339`) **and on a schedule** (`jobs.py:291`) — and **all 6 query APIs**
+  (`search_symbols:399`, `get_symbol_context:457`, `get_callers_of:425`…) have **zero readers**. `search_codebase`
+  routes to a different module (`code_intelligence.py`, ChromaDB) — the broken one (BL-302). This is the
+  duplicate triangle, corrected: the working index is built at cost and never queried; the queried one is dead.
+  **`scripts/check_wiring.py:17` passes** because the three *writers* satisfy it.
+- ⬜ **BL-356** Per-turn waste: **`routing_telemetry`** — `migrate()` + a 12-column INSERT (goal string up to
+  2000 chars) + `commit()` **every turn**, retained 90 days; `get_recent_route_telemetry:55` has zero callers,
+  **not even a test** · **`person_dossier`** — `update_person_mention` writes on **every exchange**; the entire
+  read chain (`get_dossier_for_prompt:183` → `build_dossier` → `summary_for_prompt`) is a closed dead loop ·
+  **`impact_estimate`/`effort_estimate`** — the prompt *instructs the model to emit them* and GBNF parses them;
+  **nothing reads them** (wasted prompt AND generation tokens per decision iteration) · **`tool_calls`** —
+  SHA-256 (`args_hash`) computed per tool call for dedup nobody performs; 4 write-only columns ·
+  **`steps_taken`** — a full list copy of `steps` every turn, doubling the serialized payload.
+- ⬜ **BL-357** **Silent work loss under load.** `decision_loop.py:526,533` builds a full resume `checkpoint` and
+  sets `paused_high_load`; **nothing reads either**, and `routers/agent.py:1489` has no branch for that status —
+  it falls through to the generic **"Ready. What do you need?"**. The user gets a nonsense reply while the data
+  that would have saved the turn is discarded. Realistic on this box.
+- ⬜ **BL-358** Diagnostics that cannot work: **`token_throughput` is READ** (`system_optimizer.py:51,210` →
+  `routers/system.py:299` + system_doctor) **and NEVER WRITTEN** — guarded by `if count > 0`, so it is silently
+  always absent. **Layla can never report her token throughput — the one number that matters most on this box.**
+  · **`MetricsCollector`** (`services/observability/metrics.py`) — `record_timing`/`increment_counter`/
+  `record_gauge` have **zero callers repo-wide including tests**, yet `routers/metrics.py:52` reads it:
+  `GET /metrics/observability` returns empty counters **permanently, by construction**. Contained by luck — the
+  UI polls `/metrics/summary`, backed by the genuinely-fed `prom_metrics`.
+
+##### TIER 4 — duplicates where the worse implementation is wired
+
+- ⬜ **BL-359** **`services/retrieval/reranker.py` has NO production importers at all** — the entire
+  FlashRank→CrossEncoder→BM25 ladder (BL-103's "potato-path default") is dead; the live path is
+  `layla/memory/vector_store_rerank.py`. **`capabilities/registry.py:72-84` still advertises `reranker`
+  capabilities pointing at the dead module.**
+- ⬜ **BL-360** **`clear_blocker` (`working_memory.py:139`) has no caller** while its pair `add_blocker` is live
+  from chat extraction and `format_for_prompt` is live at `system_head_builder.py:1005`. Blockers can only be
+  cleared wholesale → **stale blockers keep entering the prompt forever.**
+- ⬜ **BL-361** Wired-worse rivals: **`build_retrieved_context_with_ids`** orphaned while the live
+  `build_retrieved_context` **throws the learning IDs away** — then `reasoning_handler.py:331` passes a single
+  opaque blob to `attribute_response`, which **lexically re-matches sentences to guess provenance it already
+  had exactly** (and the docstring's "used for learning reinforcement" is false — nothing reinforces) ·
+  **`crawl_urls`** — the wired `crawl_site` is a hand-rolled **serial** trafilatura BFS that never touches
+  `web_crawler`, silently forgoing Firecrawl/crawl4ai (users who install Firecrawl get it for single URLs and
+  not for site crawls) · **`get_aspect_routing_params`** zero callers → **`temperature_boost` and
+  `reasoning_mode` in `aspect_model_overrides` are dead config keys** (`preferred_model` works, but via
+  `llm_gateway.py:369` reaching past the accessor into private `_resolve_aspect_model()`) ·
+  **`retrieve_high_confidence_memory`** — docstring says the planner seeds plan-steps with it; **the 0.75
+  confidence filter does not exist in production** · **`model_manager.select_best_model`** bypassed —
+  `main.py:162` calls `recommend_from_hardware` directly · **`coordinator.py`** — `run_parallel_subtasks`,
+  `spawn_subtasks`, `merge_outputs`, `resume_from_task` are **REAL implementations** (correcting the old
+  "fake placeholders" note), shadowed by `multi_agent` + `GraphExecutor`.
+- ⬜ **BL-362** Inert knobs/features: `long_horizon_planner` (well-tested, **no producer** — nothing calls
+  `save_checkpoint`, so `GET /missions/horizon` returns `{"plans": []}` forever) · `kb_use_graphrag` (sole
+  reader orphaned → flag has no effect) · `suggest_optimization` (the one fn that would switch models on
+  latency; never consulted) · `get_reliable_tools` + `tool_health_snapshot` (docstrings claim "used by
+  planner/routing" — not) · `run_experience_replay` **is scheduled** but its result is discarded into a log
+  line (the source admits it) · `auto_session_recap` (no trigger) · `mission_chains` table (entirely dead) ·
+  **`verification_queue.user_answer` discards the user's actual correction text — the most valuable signal in
+  that loop.**
+
+##### Why this class survives here — three mechanisms (the real lesson)
+
+1. **`scripts/check_wiring.py` checks module IMPORTS, not data-flow reachability.** It passes on `repo_indexer`
+   (satisfied by the writers), on `metrics.py` (satisfied by the reader), and on every duplicate pair. **The
+   guard built to catch exactly this class is structurally blind to it.**
+2. **The test became the production caller.** `tests/test_cluster_e2e.py` POSTs to `/cluster/task/submit` over
+   HTTP — exercising the receive path perfectly while masking that **no shipping code ever makes that request**.
+   Any heuristic trusting "has e2e coverage" as a liveness signal misses the whole class.
+3. **Tests are frequently the ONLY reader** (`answer_quality`, `update_health`, `user_answer`, `critical_pass`).
+   **A green suite actively masks these.** Inversely, the single highest-cost item — `routing_telemetry`, one
+   INSERT+commit per turn — has **no test at all**; nothing would notice if it were deleted.
+
+**Verified NOT bugs (do not action):** `_legacy_observability` (18/27 live) · `provider_health` (real circuit
+breaker) · `session_context` (pruner is scheduled) · `request_tracer` · watchdog `on_created`/`on_modified` and
+zeroconf `add_service`/`update_service`/`remove_service` (**genuine framework callbacks — index false
+positives**) · `retrieve_learnings`/`retrieve_graph_context` (reached via intra-file `ThreadPoolExecutor.submit`)
+· `cached_retrieve` · all `reset_*`/`clear_*` test fixtures.
