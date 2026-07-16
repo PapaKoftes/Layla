@@ -787,3 +787,236 @@ the operator), so "tests pass" is NOT verification. Every W14 item is marked don
 it in the browser. Claude's report must state: what changed · what was PROVED · what was ASSUMED · what is still
 unverified. No check-marks, no confidence scores. This rule exists because the same class of bug was declared fixed
 three times while the operator was looking at it still broken.
+
+### W14k — Capability-table verification (2026-07-16) — **every mark was too generous**
+
+*The operator supplied a 40-feature capability table with confidence marks and asked for it to be verified and
+seeded into Layla's knowledge. Three parallel adversarial audits re-checked every row. **Result: not one row
+survived unchanged in the categories audited — 11/11 in coding/companion downgraded or contradicted, plus 14
+interface/safety rows.** Root cause, in the auditor's words: **tests validate storage and API shape, never
+end-to-end effect.** Every dead feature below has passing tests.*
+
+**DO NOT seed the operator's table into Layla's knowledge.** Seeding it would convert hallucination into
+confident lying — she would tell the friend her Python sandbox has no network access (it has), that she has
+tree-sitter symbol search (never installed), and that she can speak (every TTS engine missing). The manifest
+(BL-306) must be built from verified data only.
+
+#### The structural finding — read this before fixing anything in W14k
+
+- ⬜ **BL-294** **The fast-path bypasses `finalize_run_state`.** CONFIRMED: `grep finalize_run_state
+  routers/agent.py` → **zero hits**; the finalizer lives in `services/agent/run_finalizer.py` and only the
+  orchestrated path calls it. Every subsystem hanging off that finalizer — **personality recording, maturity XP,
+  entity extraction, routing telemetry, learning extraction** — is *live in the pipeline and dead on the common
+  turn*. The fast-path handles trivial/self-contained turns, i.e. most real ones. This is the single highest-
+  leverage defect in W14: it explains BL-267 (frozen capabilities) and the "live loop that never runs" pattern
+  across the companion tier. **Audit every subsystem marked "live" for whether it is live on the FAST path.**
+
+#### Security — three HIGH, all "defence-in-depth failing quietly while advertising success"
+
+- ⬜ **BL-295** **HIGH — the Python network jail is decorative.** CONTRADICTS the table's "jail confirmed; a test
+  asserts getaddrinfo is blocked". `python_runner.py:51-65` patches the `socket` **wrapper module**, not the
+  `_socket` C extension. **6 live bypasses proven, including a real HTTP 200**: `import _socket`,
+  `importlib.reload(socket)`, `python -S`, `python -E`, `os.system('curl')`. The cited test only asserts the one
+  shadowed name is shadowed — it never tries to undo the patch. **On by default.** Remove "network-jailed" from
+  every user-facing description until fixed. Realistic threat: a prompt-injected model (URL ingestion is a real
+  injection path) emitting exfiltration code.
+- ⬜ **BL-296** **HIGH — `.exe` defeats the shell blocklist on Windows, the shipping OS.** Reproduced directly:
+  `powershell` blocked / `powershell.exe` **ALLOWED**; same for `cmd.exe`, `reg.exe`, `curl.exe`, `rm.exe`,
+  `pwsh`, `bash`. `shell_runner.py:56-70` does basename equality and the comment shows the reasoning is POSIX
+  ("/usr/bin/rm is blocked, but 'charm' is not") — correct on Linux, defeated by four characters on Windows.
+  Compounding: **`shell_restrict_to_allowlist` defaults to False** (`runtime_safety.py:504`), so the allowlist is
+  **dead code** and a 16-item blocklist is the only control → **allow-by-default**, not the advertised
+  "deny-by-default". The approval gate IS real and is the actual mitigation. Fix: normalize `.exe`/`.cmd`/`.bat`
+  before matching; consider defaulting the allowlist on.
+- ⬜ **BL-297** **HIGH — the post-model safety floor does not protect streaming, which is the default.**
+  `check_output` runs *after* the token loop (`openai_compat.py:373-379`); tokens are already emitted. The code's
+  own comment concedes it. Every guard site is `except: pass` **fail-open**. Same done-frame-vs-stream shape as
+  the known glossary flash — but here the "flash" is the entire unguarded output. Corrects a prior claim: the
+  guard is **not** unwired (8 sites, 50 passing tests); it is wired and ineffective on the common path.
+- ⬜ **BL-298** MEDIUM-HIGH — browser tool SSRF via redirect (`browser.py:126,149,167`): Playwright follows 302s
+  to internal hosts unrevalidated.
+- ⬜ **BL-299** MEDIUM — **the SSRF docstring claims a TOCTOU/DNS-rebinding guard that the code does not
+  implement** (`url_guard.py:119-124`). The false assurance is worse than the gap. Either implement or delete the
+  claim. (Good news, prior mark corrected: there is **no** second weaker SSRF implementation — all four download
+  paths delegate to the single hardened `url_guard`.)
+- ⬜ **BL-300** MEDIUM — Windows Job Object "isolation" is **default-off, fail-open, silent, untested**, and is a
+  resource cap, not isolation. `has_keyring()` tests importability, not viability.
+- ✅ **GOOD NEWS (no action)** — the **filesystem jail is genuine**. It survived every escape attempt tried:
+  NTFS junctions, `\\?\` prefixes, `\\localhost\C$`, `..` traversal, case tricks
+  (`layla/tools/sandbox_core.py:161-172`). Only gap: tests are 4 trivial cases and the symlink test skips on
+  Windows.
+
+#### Features that are dead, inert, or lying (all CONFIRMED)
+
+- ⬜ **BL-301** **Custom aspects are INERT and the API lies about it.** `select_aspect`
+  (`orchestrator.py:216-229`) iterates the JSON built-ins only, so a custom aspect id **can never match**.
+  `set_main_aspect` returns `ok:True` and every subsequent turn **silently falls back to Morrigan**. Creatable and
+  deletable from the UI; **never selectable**. The merge logic itself is real and tested — it is simply never
+  reachable.
+- ⬜ **BL-302** **Symbol search returns `ok:True` with 0 matches.** Proved live: `search_codebase('select_aspect')`
+  → **0**, while `grep_code` → 218 and `code_symbols` → 9. `impl/code.py:85` is wired to the **tree-sitter**
+  `code_intelligence.search_symbols`; tree-sitter is **commented out of `requirements.txt:127`**, absent from both
+  venvs, and `/health/deps` reports it missing. The working, well-tested `ast`-based `repo_indexer.search_symbols`
+  (24 passing tests) is **wired to nothing**. Worse than an error: Layla concludes the symbol does not exist.
+  Two tests hide it — `test_code_intelligence.py` auto-skips via `importorskip`; `test_workspace_index.py:17`
+  **passes while codifying the breakage** (asserts only that the dict has keys, so all-empty satisfies it).
+  Fix needs a small adapter — the signatures differ.
+- ⬜ **BL-303** `grep_code` **branches on environment**: `rg` is on PATH in Git Bash but NOT for the app's
+  interpreter (`shutil.which('rg')` → None under `.venv`), so production silently runs a Python `re` fallback with
+  different match semantics and a different result cap. Neither branch has a behavioral test. CI cannot see the
+  difference between "works on my machine" and "works in the app".
+- ⬜ **BL-304** **Self-improvement is 3 hardcoded strings and effectively unreachable.** `self_improvement.py:145,
+  154,164`. The UI posts `{}` (`improvements.js:90`) so only the unconditional one ever fires; the
+  `capability_levels` param is **never read**. The real LLM path (`initiative_engine.py:161`) is hard-forced off
+  below **rank 10** (`runtime_safety.py:925` → `initiative_project_proposals_enabled = False`) ≈ **111,500 XP ≈
+  37,000 turns**; live rank is **2**. Decide: lower the gate, or stop shipping it as a feature.
+- ⬜ **BL-305** Discord autostart is **dead code** — `main.py:378` uses absolute imports while `bot.py:63` uses
+  relative → ImportError, swallowed at `:403`. The 801-line bot is real; its 103 tests are not in CI's collection.
+  One-line fix, nothing would catch the regression.
+
+#### Marks downgraded to PARTIAL (real code, absent or non-behavioral tests)
+
+- ⬜ **BL-307** "6 aspects, JSON single-source" → **13 duplicate rosters**, already diverged (cassandra's title
+  differs between JSON and `ASPECT_DEFAULTS`). The test diffs **ids only**, so drift is unpinned.
+- ⬜ **BL-308** Character Lab: the dead surface is **~4x larger** than the prior mark said — voice (4 sliders),
+  colour, titles and lore are all **write-only**. Only the 6 personality sliders are live
+  (`prompt_builder.py:229-233`) — and that is **the one path with no test**. Voice sliders are dead *by design*:
+  `voice.py:151` has its own hardcoded table.
+- ⬜ **BL-309** Personality evolution: liveness **CONFIRMED by live probe** (morrigan: 119 real interactions,
+  drift `humor 0.169`, injected at `system_head_builder.py:880`) — but **zero tests**, and the fast-paths
+  (`routers/agent.py:726,872`) **skip the recorder while still reading the drift** (→ BL-294).
+- ⬜ **BL-310** Missions "restart-recoverable" → APScheduler has **no jobstore configured** → MemoryJobStore.
+  Recovery is a DB poll, not APScheduler. Crashed missions become `paused` and are excluded from
+  `get_active_missions` → **manual resume required**. `schedule_task` jobs are lost silently.
+  `execute_next_step` has **zero** coverage.
+- ⬜ **BL-311** `/v1` is **not a drop-in model**: `temperature`, `max_tokens`, `top_p`, `seed` are parsed and
+  **deliberately discarded** (`openai_compat.py:36-55`, comment at `:39`). Only `stop` is honoured.
+- ⬜ **BL-312** Ollama `/api/*`: `stream:False` is **hardcoded** (`ollama_compat.py:81,111`) while Ollama clients
+  default to `stream:true`; all `options` except `stop` are dropped.
+- ⬜ **BL-313** MCP: protocol is genuinely real (18 tests against a real subprocess) but **no UI path** —
+  `mcp_stdio_servers` is not a schema field, so the schema-driven settings UI cannot render it. Only route:
+  hand-edit `runtime_config.json`. Schema default `False`, live config `True` (disagreement).
+- ⬜ **BL-314** Obsidian "bidirectional + conflict resolution" → vault→Layla is real+tested; Layla→vault is
+  **learnings-export only** (edited notes can never return); "conflict resolution" = skip-or-clobber; the export
+  happy path is **untested with no UI caller**.
+- ⬜ **BL-315** Syncthing: REST code is real and correct but **0% executes in any test** — `_request`
+  short-circuits before `urlopen` (`syncthing_sync.py:67`). Not bundled. **No UI to set the API key.**
+- ⬜ **BL-316** Intent-driven setup: **16 features, not 15** (the test asserts `>= 13`, so drift is unpinned), and
+  **`/setup/apply` writes config keys only**. Reproducible live: `/setup/state` lists `voice` while
+  `/health/deps` reports `voice_stt: missing`. **The wizard prints "✓ configured" for things it never installed**
+  — this is the direct cause of the dead TTS in BL-270.
+- ⬜ **BL-317** German tutor: SM-2 is genuinely implemented and well-tested; the placement quiz is **self-rated**
+  ("how much did you understand?"), not graded; A1 users auto-promote regardless of accuracy.
+  *(NOTE: the auditor also claimed a "dead gate" hardcoding German off at `system_head_builder.py:886`. **That
+  claim is FALSE — verified.** Line 886 is the initializer; :889 reads `german_mode_enabled` from config
+  immediately after. Normal default-then-override; German mode is simply off by default, which is correct. Left
+  here as a reminder that subagent findings get verified, not repeated.)*
+- ⬜ **BL-318** Ctrl+K palette: an e2e test **does** exist (`tests/e2e_ui/test_ui_smoke.py:66`, CI job
+  `ci.yml:147`) but is **deselected from the main job**, and it only asserts open+focus — **no test executes a
+  command**. 38 commands, 0 stubs.
+
+#### Backend-real-but-no-UI-path (found while verifying)
+
+- ⬜ **BL-319** `repo_indexer.search_symbols` (working, 24 tests) — wired to no tool; `/missions/board` Kanban
+  endpoint — no UI caller; `learn_communication_preference` — zero production callers, 3 of 4 hint branches
+  unreachable; custom aspects — creatable, never selectable (BL-301); `/health/deps` — **zero UI consumers**, its
+  only reader is a test (and it is exactly what would have exposed the dead TTS).
+
+#### The seed (the operator's actual ask)
+
+- ⬜ **BL-306** **Seed Layla with verified self-knowledge.** She currently **cannot know what she can do** — three
+  self-knowledge surfaces exist and not one carries a capability list:
+  (1) `.identity/self_model.md` — 51 lines of pure philosophy, **Lilith-only** (`prompt_builder.py:88`), and
+  explicitly *not* RAG-indexed; (2) `docs/CAPABILITIES.md` — about the implementation *registry*
+  (chromadb/faiss/qdrant), **docs-only, no runtime reader**; (3) `operating_manual.manual_for_prompt()` — literally
+  named "for_prompt" and **called only by an API endpoint, never wired into a prompt**.
+  That is why the "report your capabilities in a table" turn produced invented entries ("User management",
+  "Encryption support", "Security auditing") — from the **lilith** aspect, i.e. the file *was* injected and told
+  her who she is, not what she can do.
+  **Design constraints (all load-bearing):**
+  - **NOT via `ingest_text()`** — it chunks → embeds → **saves as `learnings`**, which would dump ~50 capability
+    chunks into the learnings table, surface them in "Recent learnings"/"Things I remember", and make BL-264
+    dramatically worse.
+  - Git-tracked repo file → genuinely preloaded on clone, no ingestion step.
+  - Read at prompt-build time, **gated to capability questions** (a 3B cannot afford it every turn; and
+    `system_instructions` truncates from the TAIL on low tiers).
+  - Available to **all six aspects**, not Lilith-only.
+  - **Honest per-feature status** — including "not available on this machine" for TTS/STT/tree-sitter. A manifest
+    that overstates is worse than no manifest: it turns hallucination into authoritative lying.
+  - A **drift test** pinning the manifest to reality (tool count, endpoint existence, dep availability) so it
+    cannot rot into the next generation of lies.
+  - Should also serve BL-257 (no user tutorials) — one honest source, two consumers.
+
+#### W14l — Reasoning/memory verification (2026-07-16): 9 of 15 downgraded
+
+*Dominant failure mode of the prior table, in the auditor's words: **crediting stages and backends from their
+docstrings and config keys rather than their call sites.** Four subsystems are real, tested, and unreachable.*
+
+- ⬜ **BL-320** **The Knowledge-manager Ingest button is DEAD — reproduced directly.** `runKnowledgeIngest`
+  (`settings-full.js:366`) reads `#ingest-path` and `#ingest-msg`; **neither element exists in index.html** —
+  the panel has `#km-source` / `#km-label` (`:840-842`). So it reads null, bails at the empty-path guard, and
+  writes its own error message to a null element: **nothing happens at all, not even the error.** It also POSTs
+  to `/intelligence/kb/build/directory` (directory-only, live 400) — so the `"URL or folder path"` placeholder
+  is wrong regardless: a URL could never work. **Knowledge cannot be added through the UI at all.** Supersedes
+  the "no UI for ingest" note: the UI exists and is disconnected. (Related: BL-291's `#km-ingest-list` is also
+  written by nothing.)
+- ⬜ **BL-321** **`math_eval` is dead on arrival — every input raises.** Reproduced:
+  `AttributeError: module 'ast' has no attribute 'Mul'` (it is `ast.Mult`). `layla/tools/impl/analysis.py:62,90`.
+  Line 62 builds the tuple *before* parsing, so no input can succeed. **Real tool count: 197 working + 1 dead.**
+  Root cause of it surviving: the 198-tool tests are purely structural and **never execute a tool**.
+- ⬜ **BL-322** **The mission reaper moves crashed missions into exactly the state the worker ignores.** The
+  reaper sets them to `'paused'`; `get_active_missions` (`missions_db.py:154`) selects
+  `status IN ('running','pending')`. Its docstring promises "RESUMABLE from current_step" — half-delivered.
+  **Auto-resume-on-boot does not exist for `layla_plans` at all** — no worker, a durable graveyard.
+- ⬜ **BL-323** **`core/` pipeline is partly a facade.** *Validate* runs but `core/validator.py`'s `passed`
+  verdict is **discarded** (`verification_engine.py:53-63`) — it can never fail a step, and no test imports it.
+  *Observe* (`core/observer.py:20`) runs FTS + vector search **on every turn** into `state["_snapshot"]`, **which
+  nothing ever reads** — pure waste on a CPU-bound box. *Plan* is not a stage (strings interpolated into a
+  prompt). *Reflect* appends one canned sentence (`reasoning_handler.py:280-282`).
+- ⬜ **BL-324** **Deliberation auto-detection is dead on the chat path.** Default is `"auto"`, not solo
+  (`config_schema.py:145`), but `reasoning_handler.py:166` / `stream_handler.py:196` gate on
+  `not in ("solo","auto")` — so `select_deliberation_mode()` never runs on chat. Also `/debate/modes` tells
+  users council is a **"weighted vote"**; grep for `weight` finds only the comment. **No weighting exists** —
+  user-facing false claim. (The 3-phase debate itself IS real: tribunal = 13 LLM calls.)
+- ⬜ **BL-325** **Self-consistency is unreachable, not merely off.** `self_consistency_samples` is **absent from
+  `config_schema.py`**, so `POST /settings` silently drops it (`runtime_safety.py:212`). Hand-edit + restart
+  only, and triple-gated behind two other non-schema keys.
+- ⬜ **BL-326** **Encryption-at-rest is real crypto on an unreachable path.** Fernet + keyring is sound, but it
+  fires only when `privacy_level == "sensitive"`; the column defaults to `'public'` and **nothing in production
+  ever passes "sensitive"** — it is in no router or request schema. Absent from `config_schema.py` yet
+  `runtime_config.json:459` sets it **true** (on, and moot). **`ui/components/welcome.js:25` markets it to the
+  user with no control anywhere.** No migration. Either wire it or stop advertising it.
+- ⬜ **BL-327** **SM-2 is canonical math nobody calls.** `services/memory/spaced_repetition.py` has **zero
+  production importers**; no scheduler drives it despite `background_intelligence.py:7` claiming otherwise. The
+  `spaced_repetition_review` tool uses a **flat 24h interval**, bypassing `sm2()`. The only live SM-2 is a
+  private duplicate inside German mode. (Journal is genuinely real, tested, UI-reachable.)
+- ⬜ **BL-328** **LAN peer offload is dead code.** `run_completion_with_fallback`
+  (`services/llm/inference_router.py:659`) is the only consumer of `cluster_offload_enabled` — **zero callers**
+  repo-wide. Setting the flag changes nothing. **`litellm_enabled` is a decoy**: `inference_router.py:526`
+  branches only on `inference_backend`, which is **absent from `EDITABLE_SCHEMA`**; this box runs
+  `litellm_enabled: true` with litellm fully bypassed, and `docs/design/03-llm-and-reasoning.md:59` documents a
+  gate that does not exist. Honest count: **3 live backends, 2 unwired**, plus an undeclared 6th (`onnx`).
+- ⬜ **BL-329** **HyDE's checkbox is a lie on every CPU tier.** `hyde_enabled` IS a schema field and renders a
+  control, but it is in `auto_tune.PROFILE_KEYS` and `apply_auto_tune` is authoritative — **ticking it is
+  silently reverted on every CPU tier**. The only escape (`auto_tune_locked_keys`) has no UI control. (Corrects
+  the prior mark twice over: `test_hyde_retrieval.py` DOES exist and passes.)
+- ⬜ **BL-330** **NetworkX is not used at all** in the codex. `get_entity_graph` (`codex_db.py:166`) is
+  hand-rolled BFS; the only `networkx` string in `layla/codex/` is a **stopword in a list**
+  (`enricher.py:121`). Worse: `routers/codex.py` + `ui/components/codex.js` serve a **different, JSON-file
+  codex** — the SQLite entity DB has **no router**. (The auto-linker genuinely is automatic.)
+- ⬜ **BL-331** **GBNF bypasses the llama.cpp concurrency/KV hardening** — no lock, no `kv_cache_clear()`, on the
+  **default-on** decision path. `inference_router.py:346` explicitly warns this is a native heap-corruption
+  race. Highest-risk item in this section: a crash, not a wrong answer.
+- ⬜ **BL-332** `vector_store.py:1019` — `light_k = min(cross_encoder_limit, 10)` then `results[:light_k]`;
+  `limit=0` is meant to mean "skip rerank" but **slices all candidates to zero**. Latent only because
+  `system_optimizer` is not wired into `load_config` — but `test_capability_routing.py:169` asserts `== 0` and
+  `/health` advertises it.
+- ⬜ **BL-333** **Two vacuous tests that would pass if the feature were deleted** (a whole class worth hunting):
+  `test_completion.py:131` **copy-pastes the production `if` into the test body** — it tests Python's `if`
+  statement. `test_workspace_index.py:17` asserts only that a dict has keys, so all-empty output passes (this is
+  what hid BL-302). Also `test_agent_loop.py::test_tool_preflight_redirects_missing_args_to_reason` **fails**
+  under `CI=true` — the fast path shadows preflight (→ BL-294).
+- ⬜ **BL-334** **Silent degradation the UI reports as healthy.** chroma→sqlite fallback works but `/health`
+  mislabels it **`"disabled"`**; flashrank→torch CrossEncoder; trafilatura/bs4→regex tag-strip;
+  tree-sitter→nothing; HyDE force-off. `knowledge_index_ready` is decoration — written once at `main.py:85-86`,
+  never again, and `test_health_endpoint.py:26` locks in the vacuum with `is None or isinstance(...)`.
