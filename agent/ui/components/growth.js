@@ -225,8 +225,10 @@ function _renderCapabilities(caps) {
     return;
   }
 
+  // Show them all. The old `i < 12` cap produced "+ 11 more" with no way to see them — and the hidden 11
+  // were as real as the visible 12. The list is scrollable; truncating it only hid information.
   let html = '<div style="display:flex;flex-direction:column;gap:4px">';
-  for (let i = 0; i < caps.length && i < 12; i++) {
+  for (let i = 0; i < caps.length; i++) {
     const c = caps[i];
     const name = _esc(c.name || 'Unknown');
     const level = (c.level || 0).toFixed(1);
@@ -246,9 +248,6 @@ function _renderCapabilities(caps) {
     html += '</div>';
   }
   html += '</div>';
-  if (caps.length > 12) {
-    html += '<div style="font-size:0.6rem;color:var(--text-dim);margin-top:4px">+ ' + (caps.length - 12) + ' more</div>';
-  }
   el.innerHTML = html;
 }
 
