@@ -1704,3 +1704,132 @@ point** with dedup + rate limiting is exactly where a subject-gate belongs. `cor
 
 > **The tier's problem isn't that it was built badly. It's that it was built well and then not plugged in — and a
 > 2,700-test suite asserting *which fields a function reads* could never tell the difference.**
+
+### Verdicts — agent/tools/sandbox tier (the highest-leverage finding in the whole review)
+
+- 🔴 **BL-381 ONE LINE: `@functools.wraps(fn)` at `registry.py:106`. BL-346's central premise is FALSE — and
+  that is GOOD news.** BL-346 said *"there is no static contract to check."* **There is.** Verified directly in
+  the APP venv:
+
+      registry wrapper sees : (*args, **kwargs) -> Any      <- the contract, DISCARDED
+      underlying fn sees    : (expression: str) -> dict     <- the contract, right there
+      registry __doc__      : None                          <- the description, NULLED
+      pydantic 2.13.4       : already installed, MIT, FastAPI REQUIRES it (cannot become a dead dep)
+      generated schema      : {'properties':{'expression':{'type':'string'}},'required':['expression']}
+
+  **196/198 tools (98%) are fully type-annotated**, and pydantic built a JSON Schema for **198/198 in 247 ms**.
+  This reframes BL-346 from "design a schema system" (weeks) to **"stop discarding the one you have" (a day)**.
+  **It also explains BL-306:** `list_tools` returns **198 tools with 100% EMPTY descriptions**
+  (`general.py:379` reads `fn.__doc__`, which the un-wraps'd wrapper nulls) — **that is the tool Layla uses to
+  answer "what can you do?"**. The capability manifest was working around a one-line bug.
+
+  **CORRECTS W15's cleared-suspect note:** the 198 hand-written `description` strings **reach the model
+  NOWHERE** — `llm_decision.py:425` sends `tool_names_for_decision()`, a **bare comma-separated list of names**.
+  All 20 `TOOLS` iteration sites were grepped; not one reads `description` into a prompt. **So a 3B is asked to
+  invent argument names from nothing:** it sees `glob_files` and a GBNF where `args` is a free-form `object`; it
+  cannot know `root` exists. Demonstrated: `glob_files` -> `TypeError: missing 1 required positional argument`.
+  **Fair to Layla:** `core/executor.py:183` catches it, so the cost is **a burned 15-70s iteration and a raw
+  TypeError fed back to a 3B**, not a crash — a weaker argument than BL-346 implied, and it should be made
+  honestly.
+
+  **The seam already exists:** `services/tools/tool_preflight.py` is a hand-written required-arg checker
+  covering **6 of 198 tools** that ends in `return PreflightResult(ok=True)` — **allow-by-default for the other
+  192**. It is a partial manual re-implementation of what the schema generates for free. The choke point is
+  `core/executor.py:run_tool` between `clean_args` and `fn(**clean_args)` — **170/198 tools reach it** (the
+  other 29 are `_HARDCODED_INTENTS` whose args are built in Python, type-correct by construction). One seam,
+  ~15 lines, 170 tools. `llama_cpp.llama_grammar.json_schema_to_gbnf` **is present in the pinned 0.3.32
+  (verified, emits valid GBNF)** — schema->grammar is free, replacing the free-form `object` rule.
+
+  **VERDICT: FIX-IN-PLACE with pydantic (~250 lines):** `@wraps` (1) + `tool_schema.py` (~40) + validation at
+  `run_tool` (~15) + grammar wiring (~30) + descriptions into the prompt (~20) + one parametrized test (~60),
+  minus `tool_preflight`'s table (~100 removed). **Closes BL-346 + BL-321 + BL-348 + the list_tools bug + the
+  MCP schema drift.**
+
+  **HONEST CONSTRAINT BL-346 MISSED:** the proposed "invoke every tool with schema-valid minimal input" smoke
+  test **HANGS** (timed out at 120s) — blind invocation reaches tools that call the LLM, the network, or block.
+  It needs **per-tool declared `smoke_args` in the meta + a per-call timeout**, not blind synthesis. The bounded
+  version caught `math_eval` on the first run. Plan for ~198 curated arg samples, not zero.
+
+  **REJECTED:** langchain-core `convert_to_openai_tool` (works, but high-churn and only transitively present —
+  buys ~30 lines for a framework coupling) · `mcp`/FastMCP as a dep (**but note: MCP `inputSchema` IS JSON
+  Schema 2020-12 IS `model_json_schema()` — so `cursor-layla-mcp/tool_definitions.py`'s 507 hand-written lines
+  for 22 tools generate for free once this lands**) · pydantic-ai (**no llama.cpp backend** — issue #1801 closed
+  with "run an Ollama server and use the OpenAI interface": a network hop + a second process on a 16.9GB box, to
+  get what pydantic already gives). **`outlines` is DEAD OPTIONAL DEP #11** — in `requirements.txt:43`, missing
+  from BOTH venvs, while `gbnf_grammar.py`'s docstring advertises an "outlines -> instructor -> plain-parse
+  chain" whose first link is absent.
+
+  **FAIR TO LAYLA:** the registry's taxonomy (`dangerous`/`require_approval`/`risk_level`/`category`/
+  `concurrency_safe`/`feature`) is **genuinely better than langchain's `StructuredTool` or MCP's `Tool`** — a
+  real policy model neither has. The 198 descriptions are well written. **The only missing field is `args`** —
+  and pydantic derives it from code that already exists.
+
+- 🔴 **BL-382 SANDBOX: the honest answer is the one anticipated — "you cannot sandbox Python on Windows without
+  a real OS boundary; the approval gate IS the boundary; stop advertising a jail."** Both HIGHs reproduced.
+  The `.exe` bypass is **worse than four characters**: `pwsh` and `bash` **are not on the 16-item blocklist at
+  all**; `PowerShell.EXE` (case) passes; `certutil.exe`, `wget.exe`, `curl.exe` all allowed. Network jail:
+  **3/3 bypasses reproduced** (`import _socket`, `importlib.reload(socket)`, raw `_socket.socket`) — plus
+  `subprocess` is not blocked, so `os.system('curl.exe')` is a fourth.
+
+  **The state of the art AGREES:** RestrictedPython's own docs say *"not a sandbox system or a secured
+  environment"* (+ CVE-2023-37271, stack-frame escape); **smolagents' own docs** say local execution *"must not
+  be used as a security boundary"* and that the only robust isolation is E2B/Docker/Modal — **all cloud or
+  Docker, i.e. all disallowed here**. Firejail/nsjail/bubblewrap are Linux-only. wasmtime-py **installs and
+  runs (verified)** but gives neither pip deps nor subprocesses — wrong shape for `run_python`. The genuine
+  answer (OpenAI Codex's Windows restricted tokens + synthetic SIDs + ACLs + an elevated setup helper) is **an
+  installer-privilege redesign, not a sprint**, and not drop-in MIT code.
+
+  **THE INSTRUCTIVE CONTRAST:** the **filesystem jail survived every escape** because it **normalizes THEN
+  compares**; the shell blocklist fails because it **compares WITHOUT normalizing**. *Same team, same file
+  family, one `os.path.splitext` apart.*
+
+  **VERDICT: FIX the two mechanisms + REBUILD the claims (~1 day):** (1) normalize before matching — strip
+  `.exe/.cmd/.bat/.com/.ps1`, casefold, resolve; add `pwsh`, `bash`, `wget`, `certutil`, `bitsadmin`, `mshta`,
+  `rundll32`, `wmic`; (2) **default `shell_restrict_to_allowlist` to True** — the allowlist already exists with
+  the right names, so this flips allow-by-default to deny-by-default via a config change; (3) **delete the
+  network jail or rename it** — if kept as a speed bump, its docstring must say *"best-effort; trivially
+  bypassable; not a boundary"*; (4) **remove "network-jailed"/"sandboxed" from every user-facing string**
+  (feeds BL-306: a manifest claiming a jail is worse than no manifest); (5) **`test_shell_approval_gate.py`
+  (BL-344) is now THE priority test fix in the repo** — the approval gate is the only real control, and its
+  guard would pass if you deleted the gate entirely.
+
+- ⬜ **BL-383 Agent loop: KEEP the loop, DELETE the facade (~1 day, mostly deletions).** `core/observer.py` ->
+  `state["_snapshot"]` is write-only (zero readers, ungated at `run_setup.py:517`) — **but BL-323's magnitude
+  claim is WRONG**: measured **14,448 ms on call 1, then 66 ms / 58 ms**. It is ~60ms/turn steady-state, NOT
+  "pure waste". The honest indictment: it **forces the 14.4s Chroma cold-start onto the first orchestrated turn
+  even when nothing needs vector recall.** Delete for correctness + first-turn latency, not throughput.
+  `core/validator.py`'s `passed` is confirmed discarded (`verification_engine.py:53-63` reads
+  `flagged_injection`/`warnings`, never `passed`) — **fix in 3 lines: consume it as an annotation, or delete it
+  and stop claiming a verdict exists. Do NOT make it abort the loop** — the docstring is right that a hard fail
+  on a 3B's noisy output would be worse. "Reflect" is confirmed as one canned string
+  (`reasoning_handler.py:280`); `pipeline_stage="REFLECT"` is set inside the block BL-338 proves never runs.
+  **Plan/Reflect -> RENAME**: they are prompt interpolation and a canned sentence; *calling them stages is what
+  let BL-323 sit unnoticed — the same disease as BL-343: the artifact named after the intent, not the
+  behaviour.* **REJECT LangGraph** (Layla already has `GraphExecutor` + `plan_steps_to_task_graph`, live via
+  `planner.py:904`, default ON, plus task persistence — LangGraph's headline features are things already built
+  and wired) · **REJECT smolagents** (code-as-action demands MORE instruction-following than JSON tool calls —
+  backwards on a 3B; the research is blunt that sub-7B models *"do not reliably parse tool schemas"*) ·
+  **REJECT pydantic-ai** (no llama.cpp backend). **Layla's real differentiators — GBNF pinning tool names so a
+  3B physically CANNOT hallucinate a tool, the risk/approval taxonomy, auto-tune tiers — have no equivalent in
+  any of them. Adopting one is a downgrade.**
+
+- ⬜ **BL-384 Multi-agent: KEEP one, DELETE two. CORRECTS BL-361 — `coordinator.py` is NOT shadowed; it is the
+  live front door** (`routers/agent.py:39` + `routers/agent_tasks.py:74` both import `coordinator.run`; it does
+  classification, trace, task persistence, worktree isolation, bounded retry, strategy feedback). What is
+  orphaned is **four helper functions inside it**, not the module: `run_parallel_subtasks`, `spawn_subtasks`,
+  `merge_outputs`, `resume_from_task` (~110 lines). **There are not three overlapping systems** — there is one
+  live dispatcher, one live graph executor reached through it, and one gated-off decomposer.
+  **`multi_agent`'s CPU-tier gate is CORRECT ENGINEERING, not an oversight** — the only subsystem in this entire
+  audit that is dead **on purpose and for a good reason**: each subtask runs the full agent loop **holding the
+  LLM lock**, so 3 subtasks = ~3.5 min of serialized inference for one question. **Parallelism across subtasks
+  is arithmetically impossible on single-model CPU inference — one llama.cpp model, one lock.** **Do not adopt
+  CrewAI/AutoGen** — they exist to parallelize across API calls; there is no fan-out to buy here. Decide
+  `multi_agent` explicitly (delete, or keep and never let it appear in a capability manifest).
+
+- ⬜ **BL-385 BL-341 RUNS IN THE OTHER DIRECTION TOO, and nobody looked.** `instructor` 1.15.4 and
+  `docstring_parser` 0.18.0 are **present in `.venv` and MISSING from `.venv-test`** — so **production runs an
+  instructor-backed decision path that CI cannot exercise**. BL-365's fix ("assert the two venvs agree") **must
+  be BIDIRECTIONAL**; the stated framing only catches one direction. **THREE schema sources, none agree:**
+  `domains/*.py` (198 tools, no args) · `tool_preflight.py` (6 tools, hand-written) ·
+  `cursor-layla-mcp/tool_definitions.py` (**507 lines, 22 hand-written `inputSchema` blocks**). One pydantic
+  generator collapses all three.
