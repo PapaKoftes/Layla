@@ -51,6 +51,125 @@ def test_opening_right_panel_refreshes_the_active_tab():
     assert "showMainPanel(main)" in body, "toggleRightPanel must refresh the active tab via showMainPanel on open"
 
 
+def test_memory_hook_loads_the_pane_the_user_can_actually_see():
+    # REGRESSION: workspaceSubtabRefresh.memory hardcoded refreshFileCheckpointsPanel() — the Checkpoints
+    # pane, which is display:none by default. The default-VISIBLE pane ("About you") was never loaded, so
+    # it sat on "Loading what Layla knows about you…" forever: it's already selected on arrival, so nothing
+    # prompts the user to click it, and that click was its only loader. The hook must route to the ACTIVE
+    # mem-subtab (showMemorySubTab owns per-subtab loading), defaulting to the visible 'about' pane.
+    js = _read("components/workspace.js")
+    m = re.search(r"memory:\s*function\s*\([\s\S]*?\n    \},", js)
+    assert m, "workspaceSubtabRefresh.memory refresher not found"
+    body = m.group(0)
+    assert "showMemorySubTab" in body, "memory hook must route through showMemorySubTab, not hardcode one pane"
+    assert "'about'" in body, "memory hook must default to the default-visible 'about' pane"
+    assert "data-mem-sub" in body, "memory hook must read the ACTIVE mem-subtab"
+
+
+def test_workspace_subtab_selectors_are_scoped_to_rcp_subs():
+    # The memory sub-buttons reuse class .rcp-subtab but key off data-mem-sub, and they live INSIDE the
+    # workspace page. An unscoped '.rcp-subtab' sweep matched them, read a null data-rcp-sub, and stripped
+    # 'active' off "About you"; the same collision can make app.js resolve the workspace subtab to null and
+    # route a refresh to nothing. Both selectors must be scoped with [data-rcp-sub].
+    boot = _read("components/bootstrap.js")
+    assert "querySelectorAll('.rcp-subtab[data-rcp-sub]')" in boot, \
+        "_applyRcpWs must scope its subtab sweep to [data-rcp-sub] (memory sub-buttons collide otherwise)"
+    app = _read("components/app.js")
+    assert ".rcp-subtab[data-rcp-sub].active" in app, \
+        "app.js workspace-subtab lookup must be scoped to [data-rcp-sub]"
+
+
+# ── Structural guard for the "dead placeholder" bug class ───────────────────────────────────────────
+# This class has now bitten three times (Status panel, Runtime & options, "About you"). The shape is
+# always the same: a pane in the right control panel is VISIBLE by tab/subtab state, shows a spinner
+# placeholder, and its loader is only reachable from a trigger that never fires for that pane. Tests
+# that checked WHICH FIELDS a render fn reads all passed while the pane sat dead, because nothing
+# checked that the loader is CALLED.
+#
+# Modals are excluded on principle, not convenience: a modal cannot become visible without its opener
+# running, and the opener is its loader — so the failure mode is unreachable by construction.
+#
+# Every spinner pane in the right panel MUST be registered here with the loader that fills it and the
+# route that fires it. Adding a new spinner pane without registering it FAILS this test — which is the
+# point: the registration is where you're forced to answer "what actually loads this?"
+_RIGHT_PANEL_SPINNER_PANES = {
+    "platform-health":         ("refreshPlatformHealth",   "app.js panelRefreshRouting('status')"),
+    "runtime-options-panel":   ("refreshRuntimeOptions",   "app.js panelRefreshRouting('status')"),
+    "growth-capabilities-list": ("refreshGrowthDashboard", "app.js panelRefreshRouting('growth')"),
+    "growth-types-list":       ("refreshGrowthDashboard",  "app.js panelRefreshRouting('growth')"),
+    "growth-watcher-status":   ("refreshGrowthDashboard",  "app.js panelRefreshRouting('growth')"),
+    "platform-models":         ("refreshPlatformModels",   "workspace.js workspaceSubtabRefresh.models"),
+    "platform-knowledge":      ("refreshPlatformKnowledge", "workspace.js workspaceSubtabRefresh.knowledge"),
+    "platform-plugins":        ("refreshPlatformPlugins",  "workspace.js workspaceSubtabRefresh.plugins"),
+    "mem-about":               ("renderMemoryAbout",       "workspace.js workspaceSubtabRefresh.memory -> showMemorySubTab"),
+    # The conversation rail is not tab-routed — it is always visible, so it must load at BOOT.
+    "chat-rail-list":          ("_renderSessionList",      "conversations.js initConversations() at boot"),
+}
+# Loaders fired from a boot/init function rather than a tab route (always-visible panes).
+_BOOT_LOADED = {"chat-rail-list"}
+# Panes whose placeholder is deliberate instructional copy ("click to load"), NOT a promise that data
+# is on its way. A user reading these knows to act; a spinner that never resolves lies to them.
+_LAZY_BY_DESIGN = {"mem-browse-list", "file-checkpoints-list"}
+
+
+def test_every_right_panel_spinner_pane_has_a_registered_loader():
+    html = _read("index.html")
+    # Any element in the right panel carrying a spinner-ish placeholder must be registered above.
+    found = set()
+    for m in re.finditer(r'id="([a-z0-9\-]+)"[^>]*>(?:\s*<span[^>]*>)?\s*Loading', html, re.IGNORECASE):
+        found.add(m.group(1))
+    # mem-about's placeholder lives on a child span with bespoke wording ("Loading what Layla knows
+    # about you…") — exactly why the id-adjacent regex above missed it and the pane stayed dead.
+    if 'id="mem-about"' in html:
+        found.add("mem-about")
+    unregistered = found - set(_RIGHT_PANEL_SPINNER_PANES) - _LAZY_BY_DESIGN - {
+        # modals: visible only via their opener, which loads them (see rationale above)
+        "settings-loading", "models-loading", "verify-review-body", "plan-viz-title",
+    }
+    assert not unregistered, (
+        f"Spinner pane(s) {sorted(unregistered)} have no registered loader. A pane that shows "
+        f"'Loading…' but is never loaded hangs forever. Register it in _RIGHT_PANEL_SPINNER_PANES "
+        f"with the fn that fills it and the route that fires it, or mark it lazy-by-design."
+    )
+
+
+def test_registered_loaders_exist_and_are_reachable_from_a_route():
+    # Each registered loader must (a) exist in the UI source, and (b) be referenced from the routing
+    # table named in its registration — so the pane loads without the user having to guess a click.
+    app = _read("components/app.js")
+    ws = _read("components/workspace.js")
+    routing = re.search(r"export function panelRefreshRouting[\s\S]*?\n}", app)
+    assert routing, "panelRefreshRouting not found"
+    subtab = re.search(r"export function workspaceSubtabRefresh[\s\S]*?\n}", ws)
+    assert subtab, "workspaceSubtabRefresh not found"
+    tables = routing.group(0) + subtab.group(0)
+    all_js = "".join(_read(f"components/{n}") for n in
+                     ("app.js", "workspace.js", "memory.js", "growth.js"))
+    # Always-visible panes load at boot, not from a tab route. Pin that their init actually renders
+    # them: initConversations() used to only bind search listeners, leaving the rail on "Loading…"
+    # forever on a fresh page load, and tryLoadActiveConversationOnBoot() had zero callers so the
+    # last conversation was never restored.
+    conv = _read("components/conversations.js")
+    init = re.search(r"export function initConversations\(\)[\s\S]*?\n}", conv)
+    assert init, "initConversations not found"
+    init_body = init.group(0)
+    assert "_renderSessionList()" in init_body, \
+        "initConversations must render the rail at boot, not only bind search listeners"
+    assert "tryLoadActiveConversationOnBoot()" in init_body, \
+        "initConversations must restore the active conversation at boot"
+    assert "conversations.initConversations()" in _read("main.js"), "initConversations must run at boot"
+
+    for pane, (loader, route) in _RIGHT_PANEL_SPINNER_PANES.items():
+        assert loader in all_js + conv, f"{pane}: loader {loader}() does not exist"
+        if pane in _BOOT_LOADED:
+            continue  # asserted above against its init fn rather than a routing table
+        if loader == "renderMemoryAbout":
+            # routed indirectly: the memory hook calls showMemorySubTab, which owns per-subtab loading
+            assert "showMemorySubTab" in tables, f"{pane}: memory route must reach {loader} ({route})"
+        else:
+            assert loader in tables, f"{pane}: {loader}() is not referenced from a routing table ({route})"
+
+
 def test_reasoning_tree_summary_is_wired_into_addmsg():
     # The backend ships reasoning_tree_summary on every turn; addMsg's 8th param renders it. Both the
     # non-stream call and the streaming done-frame must pass it, or the collapsible silently never appears.

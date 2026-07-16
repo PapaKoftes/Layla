@@ -579,8 +579,19 @@ export async function createProjectQuick() {
 
 // ── Init: debounced chat-rail search ────────────────────────────────────────
 export function initConversations() {
+  // Populate the rail on boot. This function used to ONLY bind the search listeners, so nothing
+  // rendered the list at startup: the rail sat on its "Loading…" placeholder until something
+  // incidental happened to call _renderSessionList (a search keystroke, a new chat, a finished turn).
+  // On a fresh page load that reads as "conversation history is broken" — the rows were in the DB
+  // the whole time, nothing ever drew them.
+  try { _renderSessionList(); } catch (_e) { console.debug('conversations: rail boot render', _e); }
+  // Restore the conversation the user was last in. tryLoadActiveConversationOnBoot() had ZERO callers,
+  // so a reload always dropped you into a blank chat even though the messages were persisted.
+  try { tryLoadActiveConversationOnBoot(); } catch (_e) { console.debug('conversations: boot restore', _e); }
   try {
     const searchEl = document.getElementById('chat-rail-search');
+    // NOTE: both loads above must stay ABOVE this early return — the rail must populate even if the
+    // search box is absent.
     if (!searchEl) return;
     searchEl.addEventListener('input', function () {
       clearTimeout(_railSearchTimer);
