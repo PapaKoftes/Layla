@@ -1020,3 +1020,235 @@ docstrings and config keys rather than their call sites.** Four subsystems are r
   mislabels it **`"disabled"`**; flashrank→torch CrossEncoder; trafilatura/bs4→regex tag-strip;
   tree-sitter→nothing; HyDE force-off. `knowledge_index_ready` is decoration — written once at `main.py:85-86`,
   never again, and `test_health_endpoint.py:26` locks in the vacuum with `is None or isinstance(...)`.
+
+#### W14m — Class sweeps (2026-07-16): generalizing each confirmed defect
+
+*Every prior finding was a single INSTANCE. These sweeps ask "where else?" for each class. Method: mechanical
+(script every JS `getElementById` / `fetch` against the real DOM + the live OpenAPI route table), then verify
+each hit by hand — a pattern match is not proof.*
+
+**SWEEP RESULT — dead element references: 10 hits / 5 distinct broken features.**
+**SWEEP RESULT — UI→endpoint: CLEAN.** All 340 live routes; the 3 apparent misses were my own regex capturing
+the literal prefix before a string concat (`/operator/quiz/stage/0` -> 200, `/learn/` -> 422,
+`/pairing/{instance_id}/permissions` -> PATCH exists). The UI→API layer is sound — recorded so nobody re-audits it.
+
+- ⬜ **BL-335** **`saveAppearanceLite` is dead at FOUR independent layers and lies to the user.** The most
+  complete specimen of this codebase's disease:
+  1. the button is REAL and correctly registered — "Save appearance & lite" (`index.html:1237`,
+     `main.js:389`);
+  2. it reads `#app-font-size` / `#app-anim-level` (`settings-full.js:352-353`) — **neither element exists
+     anywhere**;
+  3. it POSTs `ui_font_size` / `ui_animation_level` — **neither key is in `config_schema.py`**, so
+     `POST /settings` **silently drops them** (`runtime_safety.py:212`);
+  4. **nothing reads either key** — zero consumers in any .py/.js/.css.
+  It then toasts **"Appearance saved"** regardless. **This is the TEXT SIZE accessibility feature.** Corrects
+  BL-274: the a11y audit called text size "ZERO implementation" because it grepped
+  `font-scale|text-size|textScale` and missed `ui_font_size`. It is not zero — it is a save path with no
+  control, no schema, and no consumer.
+- ⬜ **BL-336** **The "server unreachable" banner has never once appeared.** `app.js:837` appends the health
+  banner to `#chat-messages`; the real container is **`#chat`** (`index.html:379`). `if (chatEl)` swallows it.
+  Worse: the 5-second `/health` poll (`app.js:842-864`) still runs for 2 minutes and writes its result to
+  `getElementById('layla-health-banner')` — a banner that was never inserted — so it is **pure wasted work on a
+  CPU-bound box** AND the user gets no warning when the server dies.
+- ⬜ **BL-337** **Phone access is entirely dead.** `loadPhoneAccess` (`settings-full.js:441`) has **zero
+  callers**, and `#phone-access-url` / `#phone-access-status` exist nowhere. A whole feature, unreachable.
+- *(Already tracked: `#ingest-path`/`#ingest-msg` -> BL-320; `#onboarding-text`/`-next`/`-done` -> BL-249, the
+  dead 3-step tour.)*
+
+**The pattern across all five:** every one is guarded by `if (el)` or `(getElementById(x) || {})`, so a missing
+element produces **silence, not an error**. Defensive null-guarding is exactly what let five features die
+invisibly. Any fix here should consider failing loudly in dev instead.
+
+#### W14n — THE HEADLINE (2026-07-16): the learning pipeline does not run for normal use
+
+- 🔴 **BL-338** **With default settings, the full finalizer runs on approximately ZERO UI turns.** This
+  supersedes and enlarges BL-294. Independently verified:
+  - `finalize_run_state` gates ALL of its work on `if state.get("status") == "finished"` (`run_finalizer.py:34`).
+  - `reasoning_handler.py:58-65` sets `status = "stream_pending"` and **returns before the answer exists**
+    whenever `stream_final=True`.
+  - The UI ships **streaming ON by default** (`index.html:610` `<input id="stream-toggle" checked>`).
+  So the split is NOT "orchestrated vs fast-path" — it is **`stream=false` vs everything else**. The finalizer
+  is called at `agent_loop.py:921` with a state that has no answer in it, so L34-157 is skipped on the
+  orchestrated STREAMING path too. **Unchecking "Stream responses" is currently the only way the UI runs the
+  learning pipeline at all.**
+
+  **Blast radius (measured, 24 realistic messages through the live gate):** 17/24 take the stream fast-path
+  (path A, zero side effects) — including `write a python script...`, `fix the bug in the auth module`,
+  `what is a monad`, `make a plan for the release`. The remaining 7 hit ORCH-ST, which runs 5 of 20 effects.
+  `is_self_contained_question` ends in a bare `return True` (`response_builder.py:181`) — it is a **denylist,
+  not an allowlist**, so anything without a path/filename or a hard tool signal is "self-contained".
+
+  **Effectively dead for normal use** (no live write path from conversation):
+  1. **Learning extraction** — the learnings table can only grow from non-stream callers and the scheduler.
+     *This explains the operator's 32 junk learnings: they are ALL residue from non-stream benchmark runs.
+     Real chat has never written one.*
+  2. **Learning reinforcement / decay** (+ chroma `success_score`) — recall ranking never gets feedback, so
+     retrieval quality is frozen.
+  3. **Outcome evaluation -> `record_strategy_stat`** — the "mandatory outcome recording for feedback loop" is
+     chat-blind.
+  4. **Fact distillation** (`run_distill_after_outcome`) — never triggers from conversation.
+  5. **Emotional presence / mood** — **BL-190 claimed to fix "mood stayed permanently neutral"; the fix landed
+     INSIDE the block that does not run. Mood is still permanently neutral.**
+  6. **Conversation entity extraction** — the codex/wiki graph gets nothing from chat.
+  7. **Skill acquisition** — **BL-238's `learned_skills` still cannot fill**; a >=3-tool streamed run mints
+     nothing.
+  8. **Routing telemetry** — blind to exactly the turns whose routing is in question.
+  9. **Model-outcome telemetry** — `log_model_outcome` always receives `score=None` on any streamed turn, so
+     model-quality routing trains on the non-stream minority only.
+  10. **Explainability (BL-237)** and **answer quality (BL-100/102)** — never populate on streamed turns.
+  11. **Golden examples / reflection engine** — chat-unreachable.
+  12. **Maturity XP / relationship "active days"** — undercount by the path-A fraction (~70% of turns).
+
+  **Irony worth keeping:** `/api/chat` + `/api/generate` force `"stream": False` (`ollama_compat.py:81,110`) and
+  `/v1` non-stream reaches `autonomous_run(stream_final=False)` -> **full finalizer**. Ollama clients get more
+  learning than Layla's own UI. `/v1` STREAMING (`openai_compat.py:293-382`) never calls `autonomous_run` at
+  all, so everything above is dead for OpenAI-SDK streaming clients too.
+
+  **Root cause is one line + a missing callback:** `reasoning_handler.py:58` returns `stream_pending` before the
+  answer exists, and nothing ever calls back into the finalizer once the router has finished streaming tokens.
+  A fix must either (a) finalize AFTER the stream completes, router-side, with the assembled text and a
+  synthetic `reason` step, or (b) move the `finished`-gated block behind an "the answer now exists" callback
+  instead of a status check. **Do not "fix" this by disabling streaming.**
+
+  **What the fast paths DO run inline** (they are not no-ops — do not double-implement): path A does output
+  polish + junk strip + conversation persist + title synth + **`_mem_receipt`/`capture_identity_from_turn`**
+  (`agent.py:984`) + artifact extraction. Path B does conv history + persist + title synth (no `_mem_receipt`).
+  Path C re-runs `check_output` + persist + title synth. Multi-agent subtasks DO finalize, but attributed to the
+  subtask goal, not the user's turn.
+
+  **Corrections to the earlier brief (BL-294), both verified:** `record_practice` is NOT finalizer collateral —
+  `finalize_run_state` never calls it; its only callers are `scheduler/jobs.py:342` and `routers/study.py:419`.
+  It was never wired to conversation turns at all — a separate, wider gap (BL-267). And personality
+  `record_interaction` sits OUTSIDE the `finished` block, so drift DOES record on ORCH-ST; it is dead only on
+  paths A/B/C.
+
+- ⬜ **BL-339** Path B (trivial quick reply) is checked **before** the `if stream:` branch, so an
+  SSE-expecting client gets a JSON body. Verified live: `POST /agent {"message":"ok","stream":true}` returns
+  `content-type: application/json`, `"status":"fast_path"`. Content-type contract violation.
+
+#### W14o — Why 2,900 green tests caught none of this
+
+*The diagnosis, in the auditor's words: **"strong behavioral coverage of pure functions, text-matching at every
+wiring seam."** Every shipped dead feature — TTS, symbol search, ingest button, study preset, capability scores
+— died at a SEAM, which is precisely where the assertions turn into grep. **The 2,900 green tests are measuring
+the parts that were never at risk.***
+
+*Empirical, not inferred: the tests guarding the known-dead features were RUN — **30 passed, 2 skipped** —
+while the same venv proved `search_symbols` returns `{'ok':True,'matches':[],'count':0}`, `math_eval` raises
+`AttributeError`, and `check_dignity('hello')` returns `''`. A second cluster: **89 passed** for features whose
+deps are not installed at all.*
+
+- 🔴 **BL-340** **119 AST-confirmed fully-vacuous test functions** (conservative lower bound: every assertion in
+  the function is incapable of failing, after excluding `pytest.raises`/`assert_called*`/Playwright `expect()`
+  as genuine). ~114 further key-presence-only candidates need manual triage. Scanner kept at
+  `scratchpad/vac.py`.
+- 🔴 **BL-341** **THE TEST VENV IS NOT THE APP VENV — tests certify features that cannot run in production.**
+  Verified directly: `cryptography` and `nbformat` are **present in `.venv-test` and MISSING from `.venv`**
+  (the venv that runs the app). The encryption tests are `skipif(not enc.available())` — which is TRUE in the
+  test venv — so they **run and pass, certifying encryption-at-rest**, while production silently never
+  encrypts. **The skip is keyed to the wrong environment. No test can ever catch this.** Independently
+  corroborates BL-326 from a second direction: encryption is dead for two unrelated reasons.
+  Fix: gate optional-dep skips on the RUNTIME venv, or make CI assert the two environments agree on every
+  optional dep.
+- 🔴 **BL-342** **The UI contract layer is not vacuous — it is ABSENT.** `tests/e2e_ui` is *well written* (real
+  Playwright `expect()` assertions) but **collects 0 tests** — playwright is not installed — and CI deselects
+  the marker anyway (46 deselected). **This is why the dead ingest button and dead study preset shipped.**
+  Same shape for voice: `voice_smoke` is deselected in PR CI and line 32 `pytest.skip`s when TTS is
+  unavailable — **the dead TTS skipped itself into production.** A skip that fires because the feature is
+  broken is not a skip, it is a silent pass.
+- ⬜ **BL-343** **My own guards are in the top 10 worst — verified by executing the reverted bug against them:**
+  - `test_learning_bleed_guard.py:86-89` (written 2026-07-16 to prevent the bleed regression): a reverted
+    `learn_text = final_text` — sanitizer removed, exact bug reintroduced — **PASSES all four asserts**. It
+    checks the variable NAME, not that sanitization happens. **A grep wearing a guard's clothing.**
+  - `test_data_integrity_writes.py:12,19,27`: source-match, so moving `os.fsync` to AFTER `os.replace` passes
+    — **and that inversion IS the bug fsync-before-replace exists to prevent** (config/chat truncation on
+    power loss).
+  - `test_round1_loop_fixes.py:50`: claims "each now has a production caller"; the bare `import` line satisfies
+    all four security loggers. **Delete every call site → still green → audit trail silently empty.**
+  - `test_ui_backend_contract.py:44`: self-titled "WATERTIGHT"; greps the whole module, so it passes if
+    `reasoning_tree_summary` appears **in a comment**. Field computed-but-never-sent → green.
+  Same disease at the meta level: I verified the artifact, not the behavior, then named the file "watertight".
+- ⬜ **BL-344** The worst pre-existing offenders:
+  - `test_shell_approval_gate.py` (whole file) — **deleting the shell approval block entirely would still
+    pass.** `"not ctx.allow_run" in SRC` is satisfied by 3 OTHER gates (lines 339/379/637); shell's is 582.
+    Line 46 re-implements the predicate in the test body. Its own docstring admits: *"They never invoke
+    `_handle_shell`."* This guards the control that BL-296 identified as the ONLY real protection on the
+    sandbox.
+  - `test_smoke_comprehensive.py:344` — **permanently skips on a stale path**
+    (`services/inference_router.py` moved to `services/llm/`). Zero coverage, reads as green.
+  - `test_smoke_comprehensive.py:359` — FTS5 escape guard passes on an unrelated `errors="replace"` elsewhere
+    in the file. Delete the real escape → green → FTS5 injection.
+  - `test_capability_evolution.py:19-33` — **the frozen-scores root cause**: sets `cfg={"vector_search":
+    "chromadb"}` then asserts the registry echoes `"chromadb"` back. Asserts a value the test just set.
+  - `test_graph_reasoning.py` — NEW, same shape as the symbol-search hider: `spacy` missing →
+    `extract_entities` returns `[]` → test asserts `isinstance(list)` → green.
+  - `test_edge_cases.py:64-84` — 14 parametrized tests of Python's own `str()` and `html.escape`; line 61
+    `except Exception: pass` swallows any `save_learning` crash.
+  - `test_llm_lock_safety.py` — guards NATIVE HEAP CORRUPTION (BL-331) via a string match on a lock-ordering
+    property.
+- ⬜ **BL-345** **A live bug the tests are hiding right now:** `get_expanded_context("nonexistent query")`
+  returns polluted graph nodes straight into prompt context — `Knowledge graph associations: NOT; s the
+  problem?\nLayla: You; CASSANDRA; ERIS; CORRECTED; ONLY; EARNED; TITLE; REFUSED; ...` — including leaked test
+  data (`"REPAIR TEST: prefer tea over coffee"`) in the operator's real graph DB. The guarding test asserts
+  only `isinstance(result, str)`. Related to the BL-338 bleed cluster; the graph purge of 2026-07-16 removed 6
+  bleed nodes but this shows more junk remains.
+
+**The rule this implies for every W14 fix:** a source-grep is NOT a regression guard. If a test cannot fail when
+the wiring is removed, it is documentation. Guards must EXECUTE the seam — call the function and assert the
+observable effect (as `test_capability_manifest.py` does: it asserts manifest CONTENT and real prompt-injection
+behaviour including index position, which is why the auditor explicitly excluded it). Simple is not vacuous;
+un-failable is.
+
+#### W14p — The tool registry proves nothing (2026-07-16)
+
+- 🔴 **BL-346** **153 of 198 tools (77%) are invoked by NO test; 110 are never even mentioned.** Only ~45 are
+  genuinely exercised, and that is generous (name-collision false positives — `shell` looked covered until the
+  auditor checked by hand and found every hit was a string literal passed to a *gate/parser*, not the tool).
+  **Routes have the same hole: 223/367 (61%) are never called**, including all of `/goals`, `/decisions`,
+  `/feedback`, `/automation/rules`, and 14 `/intelligence/*`.
+  Worst-covered domains: search 6/7 uninvoked (`search_codebase`, `grep_code`, `ddg_search`), math/data 6/7
+  (**`math_eval`**, `sympy_solve`, `sql_query`), memory 7/9, file ops 11/18, shell/exec 5/7 (**`shell`**), git
+  5/8.
+
+  **The mechanism — why invocation is the ONLY possible detection.** Two structural facts, both verified:
+  1. every tool is wrapped by `_wrap_tool_with_metrics` into `(*args, **kwargs)` (`registry.py:103`), so
+     `inspect.signature` is useless on all 198;
+  2. the registry meta carries **no parameter schema** — keys are only
+     `fn, dangerous, require_approval, risk_level, category, description`.
+  There is no static contract to check. **Registration proves only that a name maps to a callable.**
+  `test_registered_tools_count.py:23` asserts `len(TOOLS)==198` and passes while `math_eval` raises
+  `AttributeError` on every input (BL-321). `search_codebase` (BL-302, returns `ok:true` with 0 matches) is the
+  same pattern — also never invoked.
+
+  **Honest calibration (the auditor's, kept):** the safe read-only subset of never-invoked tools was
+  smoke-invoked and **`math_eval` was the only hard crash** — the "Outside sandbox"/`TypeError` results were
+  sandbox guards working correctly plus arg-guessing. So **153 is EXPOSURE, not 153 broken tools.** But nothing
+  distinguishes working from broken except running them.
+
+  **Highest-leverage fix in the whole backlog:** add a parameter schema to the tool meta, then one parametrized
+  smoke test over `registry.TOOLS` invoking each tool with a schema-valid minimal input and asserting it does
+  not raise. **That single test would have caught `math_eval` on day one and closes all 153 at once.**
+
+- ⬜ **BL-347** More structural-only guards (registered != working): `test_phase6_autonomy_engine.py:376-396`
+  (5x `'/mission/{id}/cancel' in paths` — cancel registered but the worker keeps running; a handler that
+  `return None`s still passes); `test_observability.py:168` (`/metrics` registered but **500s** when
+  `PROMETHEUS_AVAILABLE=False`; nothing HTTP-calls it); `test_vision.py:69` (asserts the registered fn is
+  callable — but it is a *different wrapper* than the one other tests exercise, so its `inside_sandbox()`
+  guard could invert into an arbitrary-path image read and this still passes); `test_tool_dispatch.py:228-250`
+  (fake registry means **zero signature conformance**: rename the real param `repo` to `path` and it stays
+  green while production raises TypeError).
+
+- ✅ **GOOD NEWS, recorded so it is not re-audited:** the **mocked-to-death cluster came back CLEAN.**
+  `test_ws_manager`, `test_cancellation`, `test_shared_state_safety`, `test_architecture_boundaries`,
+  `test_phase7_knowledge_loading` — every mock sits on a WebSocket/DB/LLM/clock boundary while real logic runs.
+  `test_shared_state_safety.py:427` was called the strongest test in the suite. **Mocking discipline is
+  genuinely good; the hole is structural, not mock abuse.** `test_startup_imports.py` and
+  `test_smoke_comprehensive.py:47-88` are legitimate import smokes — catching `ModuleNotFoundError` at startup
+  IS the point.
+
+- ✅ **BL-348 (FIXED 2026-07-16)** — my own manifest guard asserted `"197" in core`, i.e. **fixing `math_eval`
+  would have FAILED the test**: the bug was encoded as expected behaviour by the guard meant to protect
+  against it. Now derived: `expected = len(TOOLS) - len(KNOWN_BROKEN_TOOLS)`, computed at test time, plus
+  `test_known_broken_tools_are_still_actually_broken` which **executes** `math_eval` and fails loudly if it
+  ever starts working (telling you to update the manifest). Fix a tool, drop it from the set, the count rises,
+  and the manifest must follow. The guard now rewards repair instead of punishing it.

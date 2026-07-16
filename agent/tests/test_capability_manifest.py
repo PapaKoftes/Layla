@@ -109,10 +109,57 @@ def test_manifest_is_honest_about_what_is_broken():
         assert needle in core, f"manifest must disclose: {why}"
 
 
-def test_manifest_does_not_overstate_the_tool_count():
-    # math_eval raises on every input (ast.Mul does not exist), so 198 registered != 198 working.
+# ── tool count ─────────────────────────────────────────────────────────────────────────────────────
+# Tools proven BROKEN by execution, not by reading. Remove an entry when it is actually fixed; the expected
+# count then rises and the manifest must be updated to match. That is the point.
+KNOWN_BROKEN_TOOLS = {
+    # layla/tools/impl/analysis.py:62 uses `_ast.Mul`, which does not exist (it is `ast.Mult`), and builds the
+    # tuple BEFORE parsing — so every input raises AttributeError. Verified by execution.
+    "math_eval",
+}
+
+
+def test_manifest_tool_count_tracks_reality():
+    """The manifest's tool count must be DERIVED from the registry, never a frozen literal.
+
+    The first version of this test asserted `"197" in core`. That meant FIXING math_eval would make the working
+    count 198, the manifest would have to say 198, and this test would FAIL — it punished repairing the defect
+    and encoded the bug as expected behaviour. That is the same disease this file exists to fight, committed by
+    the guard itself.
+
+    Now: expected = registered - known-broken, computed at test time.
+    """
+    from layla.tools.registry import TOOLS
+
+    expected = len(TOOLS) - len(KNOWN_BROKEN_TOOLS)
     core = _capability_manifest_core(ROOT)
-    assert "197" in core, "tool count must be the WORKING count (197), not the registered count (198)"
+    assert str(expected) in core, (
+        f"manifest must state the WORKING tool count ({expected} = {len(TOOLS)} registered - "
+        f"{len(KNOWN_BROKEN_TOOLS)} known-broken {sorted(KNOWN_BROKEN_TOOLS)}). If you fixed one, remove it "
+        f"from KNOWN_BROKEN_TOOLS and update the manifest."
+    )
+
+
+def test_known_broken_tools_are_still_actually_broken():
+    """Executes each known-broken tool. If one starts working, this FAILS and tells you to update the manifest.
+
+    A registry entry proves only that a name maps to a callable: every tool is wrapped into (*args, **kwargs)
+    by _wrap_tool_with_metrics (registry.py:103) and the registry carries NO parameter schema — so
+    `len(TOOLS) == 198` passes while a tool raises on every input. 153 of 198 tools are invoked by no test at
+    all. This executes the one we know about instead of trusting a count.
+    """
+    from layla.tools.registry import TOOLS
+
+    for name in sorted(KNOWN_BROKEN_TOOLS):
+        assert name in TOOLS, f"{name} is no longer registered — update KNOWN_BROKEN_TOOLS"
+        try:
+            TOOLS[name]["fn"]("2+2")
+        except Exception:
+            continue  # still broken, as documented
+        pytest.fail(
+            f"{name} now WORKS — remove it from KNOWN_BROKEN_TOOLS, bump the manifest's tool count, and drop "
+            f"its 'never call it' line from the manifest."
+        )
 
 
 @pytest.mark.parametrize("goal", CAPABILITY_QUESTIONS)
