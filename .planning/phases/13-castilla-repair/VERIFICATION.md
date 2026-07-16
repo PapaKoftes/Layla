@@ -41,3 +41,78 @@
   its asserts. **Fix the guard before trusting the fix.**
 - The reverse id-sweep's 99 "dead" ids **include the aspect switcher** (`'btn-' + id`, computed). Triage by
   hand. Never bulk-delete.
+
+## S1 attempt 1 — REJECTED by adversarial verification (2026-07-16)
+
+**Gate was GREEN (`exit=0 failed=0`, 3187 passed) and the slice was still rejected.** That is the phase rule
+working: green is necessary, not sufficient. Work stashed (`git stash list`), fully recoverable.
+
+### 🔴 BL-365 IS FALSE — correcting my own backlog
+
+I wrote: *"cryptography is declared in NO extra at all... encryption-at-rest is UNSHIPPABLE BY CONSTRUCTION in
+every supported install path."* **Both halves are wrong.** Verified directly:
+
+    install/setup_profiles.py:55   "deps": ["cryptography"], "flags": {"encryption_at_rest_enabled": True}
+    routers/setup_profiles.py:99   subprocess.run([sys.executable,"-m","pip","install","--quiet",dep])
+
+cryptography IS installable — via the **optional-feature installer**, which is the designed path (and
+`kit_catalog.py:27` sells it as the "Privacy Vault"). My conclusion came from grepping `pyproject.toml` only
+and never checking the feature manifest. A spec agent inherited the false premise; an implementer acted on it;
+**the adversarial verifier caught it.**
+
+**Worse — the fix was aimed at the wrong layer entirely.** The verifier proved that adding cryptography
+**changes nothing**: `memory_router.py:245` and `learnings.py:117` call `maybe_encrypt()` with a
+`privacy_level` that is **never `sensitive`**, so it returns plaintext with or without the dep. **BL-326 was
+always the real defect.** Encryption is not a packaging problem.
+
+**Lesson, and it is the session's lesson again:** I diagnosed from one file and stated it as verified fact.
+The premise was load-bearing for four agents' work.
+
+### Other verified findings against the attempt
+
+- **F1 (teeth) HIGH — `keyring` is the `model2vec` bug VERBATIM, sitting in the new gate's own blind spot.**
+  The parity gate only inspects a hand-maintained `PATH_FLIPPING` dict, so it cannot see what it was built to
+  catch: `keyring` is in `[core]`+`[cpu]` (every user has it), absent from `requirements.txt` (CI never
+  installs it), and flips a path in `secret_store`. **A guard with a hand-maintained inclusion list is a guard
+  that misses the next instance** — the exact failure mode this phase exists to kill.
+- **F2 (teeth) HIGH** — the second `docs[:k]` is unguarded and **the test self-certifies teeth it does not
+  have**.
+- **F1 (honesty) HIGH** — `/health/deps` would report `encryption:` in a way that misleads, given the path
+  never fires.
+- **F3 (honesty) MED-HIGH** — the skip→fail inversion's teeth are **self-manufactured**.
+
+### What the implementer got RIGHT (worth keeping when this is redone)
+
+Its **rejections** were the best work in the slice — it refused four specs on correct grounds:
+- Refused a venv-sibling parity test because `pyproject.toml:166-170` **documents `[dev]` as deliberately
+  lighter than shipped** — the test would assert an invariant the project explicitly rejects, be permanently
+  red, and get deselected: *"becoming the thing this phase kills."*
+- Refused the chromadb/nbformat removal — **false premise, both ARE installable**.
+- Refused the prometheus_client removal: *"blind-fixing the one path CI exercises is how this repo got here."*
+- Refused ~120MB of model bundling on **unverified licensing** — kokoro-GPL already broke CI once.
+- Refused to land a UI panel it could not see.
+
+### More corrections to my backlog, from this run
+
+- 🔴 **BL-375 HAD IT BACKWARDS.** `.venv-test` **HAS** model2vec + sqlite-vec; `.venv` does **not**. I stated
+  the reverse. The divergence is real; my direction was wrong.
+- 🔴 **BL-367's "latent bug" is FALSE.** `system-diagnostics.js`'s `_flatten` is **shape-agnostic** and does
+  not break on the prometheus summary shape. Disproved by execution.
+- **tree-sitter is commented out of `requirements.txt`** — absent from CI *and* both venvs, so
+  `test_code_intelligence.py` runs **nowhere**, while `search_codebase` stays registered, allow-listed,
+  UI-exposed and planner-recommended, returning `ok:True, count:0`. Declare the dep or delete the feature —
+  a product call, not an engineering one.
+- **CI has been red on all 8 recent runs** — 8 unique prometheus tests × 3 jobs. Pre-existing; unexamined.
+- **Ruff is installed in neither venv**, so nothing in this session was linted.
+
+### How to redo S1
+
+1. **Delete BL-365 as written.** Rewrite it as: *"the optional-feature installer is the shipped path for
+   `cryptography`; the defect is that nothing ever sets `privacy_level='sensitive'` (BL-326), so encryption
+   never fires regardless."*
+2. **The parity gate is worth keeping — but derive `PATH_FLIPPING` by AST, not by hand.** Scan for
+   `try: import X / except ImportError:` and compare THAT against the extras. A hand-maintained list
+   reproduces the bug it is meant to prevent (F1 proves it: it already misses `keyring`).
+3. **Keep the BM25 backstop** (the live reranker silently returning unranked results is real, BL-378) — but
+   guard BOTH `docs[:k]` paths and prove the teeth on each.
+4. Land nothing on `/health/deps` until the encryption field can be honest.
