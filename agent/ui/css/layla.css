@@ -239,7 +239,15 @@ body.overlay-scroll-lock {
 
   /* ── Header (minimal topbar inside main content) ── */
   header {
-    display: none; /* replaced by .topbar inside .main-area */
+    /* Hidden because .topbar inside .main-area replaced it — the IDs stay in the DOM for JS compat.
+       WARNING: .topbar must re-implement every control that lives here, or that control silently ceases
+       to exist. It did not, and four shipped features died here unnoticed: Global search and the aspect
+       lock (no other entry point ANYWHERE, both advertised in the wizard's "What's new" card), plus the
+       command palette button, Intel, and the 95-key settings modal — orphaned to Ctrl+K-only, whose
+       button also lived here. Nothing errored; they just stopped existing.
+       Those five are now ported into .topbar (index.html). Before hiding anything else here, port it
+       first. */
+    display: none;
   }
   .topbar {
     display: flex;

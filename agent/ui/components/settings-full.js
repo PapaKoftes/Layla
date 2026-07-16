@@ -364,11 +364,14 @@ export async function saveAppearanceLite() {
 }
 
 export async function runKnowledgeIngest() {
-  const inp = document.getElementById('ingest-path');
-  const msg = document.getElementById('ingest-msg');
+  // #km-source / #km-ingest-list — NOT #ingest-path / #ingest-msg, which exist nowhere. This read null,
+  // bailed at the empty-path guard, and wrote its own error message to a null element: nothing happened at
+  // all, not even the error. Knowledge could not be added through the UI by any route.
+  const inp = document.getElementById('km-source');
+  const msg = document.getElementById('km-ingest-list');
   const path = inp ? (inp.value || '').trim() : '';
   if (!path) {
-    if (msg) msg.textContent = 'Enter a file or directory path';
+    if (msg) msg.textContent = 'Enter a folder path inside your workspace';
     return;
   }
   if (msg) msg.textContent = 'Ingesting…';
