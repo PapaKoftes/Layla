@@ -1396,3 +1396,311 @@ breaker) · `session_context` (pruner is scheduled) · `request_tracer` · watch
 zeroconf `add_service`/`update_service`/`remove_service` (**genuine framework callbacks — index false
 positives**) · `retrieve_learnings`/`retrieve_graph_context` (reached via intra-file `ThreadPoolExecutor.submit`)
 · `cached_retrieve` · all `reset_*`/`clear_*` test fixtures.
+
+---
+
+## W15 — Architecture review: build-vs-adopt (2026-07-16)
+
+*Four parallel reviews (infra · UI+testing · memory/learning · agent/tools), each required to design the correct
+thing, price a REAL named OSS option (license, weight, CPU cost, offline viability on Py3.12 Windows), and
+compare fairly. Constraints given: local-first/offline, CPU-only ~16.9GB no GPU, license matters (kokoro-GPL
+already broke CI), and "adding a library is NOT free — 10 optional deps are already installed-nowhere and
+silently dead."*
+
+**THE THROUGH-LINE (the infra reviewer's synthesis, and the best sentence written about this codebase):**
+> *"This codebase's defect isn't under-building, it's **callee sets one field, caller inspects another** —
+> repeated at every scale, from `submit_task`/`queue.submit` (a 4,600-LOC courier with no depot) down to
+> `record_token_throughput`/`get_token_usage` (5 lines apart, never introduced). The fix is rarely a library."*
+
+**Headline: of 9 verdicts so far, ZERO are "adopt a framework."** Three are CUT, five are FIX-IN-PLACE, one is
+a ~15-line wire. The two genuine wires in the infra tier total **about fifteen lines**.
+
+### Corrections to MY OWN backlog (verified — 4 in Layla's favour)
+
+- ❌ **BL-342 is WRONG.** I claimed CI deselects `e2e_ui`. **It does not.** `.github/workflows/ci.yml:147`
+  defines a separate **ungated** `e2e-ui` job that installs playwright + chromium and runs 9 tests on every
+  push/PR. The `-m "not e2e_ui"` deselect applies only to the *unit* job — which is correct, it has no browser.
+  "Collects zero tests" is a **local** artifact of `.venv-test` lacking playwright. The Playwright layer is
+  present, ungated, and good. **It is under-covered, not absent.**
+- ❌ **BL-347 is WRONG.** Verified by execution: with `PROMETHEUS_AVAILABLE=False`, `/metrics` returns JSON and
+  does not 500. `prom_metrics.py` ships a complete `_FallbackCounter`/`_FallbackHistogram`/`_FallbackGauge`.
+  **The fallback IS the production path and always has been** — `prometheus_client` is in neither venv.
+- ⚠️ **BL-310 misdiagnosed.** Interval jobs are re-registered from config on every boot, so **MemoryJobStore is
+  CORRECT**; a persistent jobstore would resurrect stale jobs and drag in SQLAlchemy (~8MB, uninstalled). And
+  the reaper→`paused` is a **deliberate, defensible choice** (auto-resuming a mission that crashed the app is
+  how you build a crash loop) — the real defect is that the docs say "restart-recoverable" and the UI never
+  tells the operator that N missions sit paused awaiting a click.
+- ⚠️ **BL-341 UNDERSTATED, and worse than reported.** `cryptography` is declared in **NO extra in
+  pyproject.toml** — not core, not dev, not `[all]` — with zero reverse-deps in `.venv-test`. **It was
+  hand-installed to turn `skipif(not enc.available())` green.** So `pip install layla[all]` does not give you
+  encryption: **encryption-at-rest is unshippable by construction, in every supported install path.** Verified.
+  Also `prometheus_client` is declared in `[core]` and **missing from BOTH venvs** — so neither venv was built
+  from `[core]`, and nobody knows which extra any environment came from.
+
+### The deepest artifact found this session
+
+- ⬜ **BL-363** **The test suite saw `header{display:none}`, documented it, and routed around it.**
+  `tests/e2e_ui/test_ui_smoke.py:33-36`: *"the live UI is the `.topbar` inside `.main-area`; the legacy
+  `<header>` is display:none ("Preserved IDs for JS compatibility"), so tests must target the visible shell."*
+  Playwright's `to_be_visible` **would have caught BL-246** — the one line that kills Global search and Aspect
+  lock and orphans the palette button. Instead the test author looked directly at it, described it accurately,
+  called it "legacy", and adapted. **RULE: when a test comment explains why it avoids the live UI, that comment
+  is a defect report.** Grep the suite for the rest of them.
+
+### Verdicts — infra tier
+
+- ⬜ **BL-364 CUT LAN clustering** (−4,600 LOC: `services/cluster/` 3,822 + `routers/cluster.py` 487 +
+  `cluster.js` 269 + `pairing.js`, the 11 locale key-sets, `test_cluster_*`, 2 scheduler jobs, the
+  `inference_offload` permission). **The physics is decisive, not the wiring:** only the hidden state crosses
+  the wire (~few kB), so distributed inference is never bandwidth-bound — it is **RTT × sync-count** bound, and
+  your gigabit is irrelevant. **Distributed inference is how you run a 70B *at all*, accepting ~2× worse decode
+  as the price of possibility. It has never been a speedup for a model that fits** — and your 3B-Q4 (~2GB) fits
+  in 16.9GB with vast headroom. Evidence: llama.cpp RPC's own README says *"fragile and insecure, never run on
+  an open network"*, carries a known unauth RCE, benchmarks **91.8 → 52.7 tok/s** on a fitting model, and its
+  Windows `rpc-server.exe` has crashed on warmup since b8233. exo = **macOS/Metal-only, no Windows**. petals =
+  last release Sept 2023, built for 176B internet swarms. ray = orchestration, not a decode kernel.
+  distributed-llama is the honest counterexample (2× Pi 4B: 1.37 → 2.04 tok/s, +49%) — **but that works only
+  because a Pi token takes 729ms against ~25ms network (3% overhead); on a desktop CPU (~50-100ms/token) the
+  same sync is 25-50% overhead and the win inverts. The Pi speedup exists because the Pi is slow enough to hide
+  the network.**
+  **Fairness:** Layla's design was *smarter* than llama.cpp RPC — `task_dispatcher.py` dispatches whole
+  `WorkUnit`s (job offload, latency-tolerant) rather than layer splits. That is the one architecture with real
+  upside. It was **never merged** (lives only in a stale worktree + `build/lib/`). **Delete the UI, do not
+  disable it — a "coming soon" toggle is the same lie with a longer fuse.** `node_sync.py` (701 LOC) is
+  *knowledge sync*, genuinely different and coherent: keep it and rename the UI "Sync with another machine", or
+  cut it too. If job offload is ever wanted back it is a NEW, smaller feature (batch embeddings, ingestion) —
+  and **do not reach for Celery/RQ/Redis**; Redis on Windows is a WSL/Memurai mess and SQLite + the existing
+  queue schema is better.
+- ⬜ **BL-365 FIX optional deps (~1 day) — DO THIS FIRST.** Until the venvs agree, **every other test may be
+  lying.** (a) declare `cryptography` in `[core]` (Apache-2.0/BSD, pure wheel on Win/py3.12); (b) a **~20-line
+  CI gate asserting `.venv` and `.venv-test` agree on every optional dep** — the single highest-value test in
+  the repo, because it is the one that makes every *other* test honest; (c) **invert the skips** — gate on what
+  the SHIPPED config can do, not on what the test venv imported (a skip that fires because the feature is broken
+  is a silent pass — this is BL-342's disease, and how the dead TTS shipped); (d) **wire `/health/deps` to the
+  UI** — it exists, works, has zero consumers, and is exactly what would have exposed the dead TTS; (e) delete
+  `auto_pip_install_optional` — it defaults False and is **not in EDITABLE_SCHEMA**, so the UI cannot turn it
+  on: a dead flag guarding a dead installer. **No OSS needed** — pip-tools/uv/pip-audit solve resolution, not
+  "assert my two venvs agree."
+- ⬜ **BL-366 FIX config (~1 day). REJECT pydantic-settings.** Measured: **437 live keys, 89 editable, 363
+  (83%) silently unsettable**, 15 schema keys with no live value (latent KeyErrors). **But `save_config_keys`
+  ALREADY RETURNS `saved`** (`runtime_safety.py:225` — verified) — the information needed to stop lying is
+  already computed and thrown away by the router. **This is a ~10-line honesty fix, not an architecture
+  problem:** return `{saved, rejected}` and have the UI toast what was ACTUALLY saved. That kills BL-335's lie
+  class permanently — every future non-schema key included. pydantic-settings is MIT/mature/offline-fine but
+  **installed in neither venv**, models env→dotenv→secrets (not Layla's defaults→auto-tune→migrator→user-edit
+  with a hardware governor that must *clamp*), and 437 keys → 437 typed fields is a multi-week port with a large
+  regression surface to fix a `continue` statement. Layla already has the good parts: `coerce_and_clamp`,
+  atomic-write-with-fsync, `_config_lock`.
+- ⬜ **BL-367 CUT ~60% of observability (−800 LOC) + wire tok/s (+5 lines).** **Drop `prometheus_client` from
+  `[core]`** — Layla already re-implemented the ~5% she needs in ~150 lines with no dep, which was the right
+  call (nobody scrapes a desktop app; OpenTelemetry is absurd here; structlog solves logging, not metrics).
+  **NEW BUG:** `_build_fallback_summary()` and `_build_prometheus_summary()` **return different shapes**
+  (nested vs flat) — so a `[core]` install (which gets prometheus_client) **breaks
+  `system-diagnostics.js:18`** while a `[cpu]` install works. Two supported install paths, two different UIs.
+  Dropping the dep fixes it by construction. **CUT:** `services/observability/metrics.py` (129 LOC, zero
+  writers, `/metrics/observability` empty **by construction**) · **`routing_telemetry`** — the perf argument is
+  weak (~2ms on a 70s turn, be honest) but **the privacy argument is decisive: a 90-day plaintext log of every
+  user prompt (2,000 chars), unencrypted because encryption is dead, that NOTHING reads, in a product whose
+  entire pitch is local-and-private. That is not waste, it is a liability.** **FIX:**
+  `record_token_throughput` has zero callers while `llm_gateway.py:829` **already computes
+  `tokens_per_second`** — producer and consumer exist 800 lines apart and were never introduced. **~5 lines
+  gives Layla the ability to report her own throughput** — the one number that matters most on this box.
+  What should be measured on a single-user CPU box: **tok/s, first-token latency, turn duration, RAM headroom,
+  governor mode.** That is the whole list; the rest is a distributed-systems reflex applied to a desktop app.
+- ⬜ **BL-368 FIX scheduler (~2 hrs). REJECT SQLAlchemyJobStore.** **NEW BUG:** `automation.py:_get_scheduler()`
+  creates a **SECOND independent BackgroundScheduler** with its own `_SCHEDULED_JOBS` dict, undiscoverable from
+  `get_scheduler()` — two schedulers, two thread pools. *That* is the defect, not the jobstore. Fix: one
+  scheduler; persist `schedule_task`'s user-created jobs to a SQLite table mirroring `missions` (~40 lines, no
+  SQLAlchemy); surface paused missions in the UI ("3 missions paused by a restart — Resume") and fix the docs;
+  **do not auto-resume**. Test `execute_next_step` (zero coverage — it is the crash-recovery path).
+
+### Verdicts — UI tier
+
+- ⬜ **BL-369 KEEP vanilla ES modules. REJECT every framework, including the no-build ones.** The adversarial
+  test — *does the rewrite eliminate the seam class?* — is **failed by all of them**. Alpine (MIT, ~7-15KB gz),
+  petite-vue (~6-7KB gz), htmx (0BSD), Lit (BSD-3) are all **architecturally free to ADD** (precedent:
+  `vendor/js/` already ships 180KB of marked+highlight+purify, offline, inside PyInstaller) — but **not free to
+  ADOPT**: a 67-file + 1,345-line-HTML rewrite, re-integrating hand-tuned Warframe CSS and the sigils, and
+  re-verifying an a11y baseline that already works — **to fix ZERO of the six dead features.** Alpine would turn
+  `#app-font-size` missing from "silent no-op" into "silent no-op **plus a console warning**" — which `$req`
+  gives for **15 lines and no rewrite**. React/Vue/Svelte additionally means Node on the build machine,
+  `setup-node`+`npm ci` in `release.yml`, vendored `node_modules` or a committed `dist/` for offline
+  reproducibility, and it kills the `:8777` preview loop. **"Rewrite in React" is wrong.**
+  **Why the case dies before it starts:** the declarative binding registry **already exists and is healthy** —
+  `core/actions.js` resolves **141/141 distinct action names**, zero fall back to `window[name]`; index.html is
+  **156 `data-action` vs 9 `onclick`**. **Not one of the dead features is a state-management or binding
+  failure.**
+- 🔴 **BL-370 THE MECHANISM (the answer to "make the seam impossible to break silently"): three cheap guards,
+  ~2 days, 0 dependencies.** The rot is in **exactly one layer**: `getElementById` — **430 calls, 235 distinct
+  ids, 10 unresolvable, 7 duplicated.** Everything else (data-action routing, bus, i18n runtime, a11y) is sound.
+  1. **`test_ui_element_contract.py`** — a static sweep in the EXISTING pytest suite: **~80 lines, 0 deps, <1
+     second, no Node, no browser, no marker.** Forward (hard fail): every `getElementById('x')` must resolve to
+     a static id in index.html or a JS-constructed literal — **10 violations today = 6 dead features**. Reverse
+     (allowlist, burn down): 54 ids declared and read by nothing — including `#km-source`, `#km-label`,
+     `#km-ingest-list`, `#appearance-save-msg`, **the other half of the same rename drifts. BL-320 appears in
+     BOTH directions — that pair is the signature of a rename that updated one side.** Duplicates (hard fail):
+     7 today.
+     **Why this over everything else: it already found a defect the 119-item audit missed, in one second, with
+     no toolchain.** Honest limit: it cannot see computed ids (`'cfg_' + key` for the 95 schema fields) — which
+     is why you also need (2).
+  2. **`$req(id)` / `$opt(id)`** in `services/utils.js` (~15 lines + a mechanical sed across 66 files): `$req`
+     **throws in dev**, `console.error`s in prod (so the friend's install degrades rather than white-screens);
+     every remaining `$opt` must carry a `// optional: <why>` comment, and the sweep asserts it — **which turns
+     "I null-guarded it defensively" into a decision someone had to write down.** This inverts the default:
+     absent element → **loud**, not silence. Catches the computed-id class the sweep is blind to.
+  3. **Ban `onclick=` inside JS `innerHTML`** (one grep test, allowlist the 41 sites, burn down). Kills the
+     study-preset SyntaxError class **permanently** — and the `data-action`/`data-arg` system that makes it
+     impossible is **already used 10 lines above the bug** (`workspace.js:168`).
+  **Rejected:** a second binding registry (you have one, it's healthy — building another is motion, not
+  progress) · typed data-action registration (141/141 already resolve — solving a problem you don't have) ·
+  component co-location (correct in principle, requires the 67-file rewrite to obtain; mechanisms 1-3 get ~95%
+  of the benefit this week).
+- ⬜ **BL-371 KEEP Playwright — grow 9 → ~25 tests. REJECT jsdom/happy-dom/web-test-runner.** The expensive part
+  (server boot ~90s + chromium install) is **already paid in CI and ungated**; marginal cost per test is
+  seconds. Add **one "click it and assert an outcome" test per top feature** (~8 lines each): Ingest posts to
+  the KB endpoint, a Study preset click adds a plan, Appearance save posts a **non-empty** body, the health
+  banner appears when /health fails. **jsdom is rejected on evidence, not taste: it has no layout, so
+  `header{display:none}` — the single line that killed 4 features — is INVISIBLE to it**, and it would add a
+  Node toolchain to a Python repo to cover a layer the static sweep covers faster. **The asymmetry that settles
+  it: a jsdom/Playwright test only finds `#ingest-path` if someone wrote a test that clicks Ingest — nobody did,
+  for years. The sweep finds it whether or not anyone thought of it.** Also: install `requirements-e2e.txt` into
+  `.venv-test` so it stops silently collecting zero locally.
+- ⬜ **BL-372 KEEP `i18n.js` — the runtime is not the bug.** ~120 lines, correct: flattened catalogs,
+  `dict→_fallback→key` chain, `{param}` interpolation, plurals, RTL, `<html lang/dir>`, Intl, re-applies on
+  `layla:languagechange`. i18next (~40KB+) would fix **nothing** — you'd port 11 catalogs to solve a coverage
+  problem it also doesn't solve. **Measured: 35/162 static buttons have `data-i18n` (78% bare); `data-i18n`
+  appears in exactly ONE JS file — `i18n.js` itself — so ZERO of the ~168 dynamic buttons emit it; `en.json`
+  has 126 leaf keys for ~330 button labels (the catalog is a third the size of the surface).** Fix: (a) a static
+  sweep asserting every button/label/placeholder carries `data-i18n*` or is allowlisted, and every key exists in
+  `en.json`; (b) a **`qps` pseudolocale** (`⟦{en value}⟧`) — switch to it and every untranslated string is
+  instantly visible, catching the dynamic renders the sweep can't reach, for one generated file and one array
+  entry; (c) emit `data-i18n` during the BL-370 mechanism-3 migration and call `applyTranslations(box)` after
+  every dynamic render (~40 sites need it), then sweep-assert it.
+- ⬜ **BL-373 Settings: ONE surface, three depths. REBUILD the modal renderer (~1 file).** `config_schema.py`
+  carries `"category"` on **every** key (9 categories); `settings-full.js:74-89` iterates flat and **never reads
+  `f.category`** — **the backend already ships the IA and the frontend throws it away.** Two gears with the same
+  icon and tooltip is not a discoverability bug to patch with a cross-link; **it is one surface that got built
+  twice.** Depth 1 "Common" (the ~25 curated toggles, promoted to `category:"common"` so the backend stays the
+  single source; the 6 overlapping keys exist ONCE; delete `#tts-toggle2`) · Depth 2 grouped by the 9 backend
+  categories (one `.reduce()`) · Depth 3 "Advanced" + a filter box (an engineer wants Ctrl+F, not curation —
+  which is what the flat list accidentally already is). One gear, one route, **not Ctrl+K-only** — which is
+  BL-246, whose fix is **deleting one CSS line** and which partially resolves BL-247/251/252 at once.
+
+### Order (UI tier): 1) element-contract sweep · 2) `$req`/`$opt` · 3) **delete `layla.css:242`** (1 line, 4
+### features back) · 4) ban `onclick=` in JS · 5) grow e2e 9→25 · 6) i18n sweep + pseudolocale · 7) settings IA.
+### Items 1-4 are ~2 days and close the class that produced most of W14.
+
+### Verdicts — memory/learning tier (the most valuable review; it corrected TWO of my own constraints)
+
+- 🔴 **BL-374 LOCAL-FIRST BREACH — the worst constraint violation found all session.** VERIFIED: **no
+  `local_files_only`, no `HF_HUB_OFFLINE`, no pre-fetch anywhere in the repo.** `install/model_downloader.py`
+  provisions **only GGUFs** — the embedder (nomic/all-MiniLM), the cross-encoder and potion-base-8M are fetched
+  **lazily from HuggingFace on first use**. A genuinely offline first-run **silently degrades**:
+  `_cross_encoder_failed=True` -> `return docs[:k]`, unranked, no error. **For a product whose entire reason to
+  exist is offline privacy, the memory tier phones home on first use and fails quietly.** Fix: bundle the models
+  in the installer, or set `local_files_only` and **fail loudly**.
+- 🔴 **BL-375 The operator's venv is a THIRD configuration nobody ships.** The installer ships `[cpu,llm]`
+  (model2vec + sqlite-vec + sentence-transformers + torch). The operator's `.venv` is a partial `[core]`: torch
+  present, **model2vec, sqlite-vec AND chromadb all missing** — "the worst of both: torch's 2.5GB weight with the
+  fallback store's performance." **Every conclusion drawn from driving this box about retrieval speed is
+  suspect.** Measured: model2vec is **65x faster per embed** (0.004s vs 0.259s per 100) and ~11s less startup.
+  **TWO OF MY OWN CONSTRAINTS WERE WRONG:** (a) "a dep needing 4GB is a non-starter" — **torch already ships to
+  every user** via sentence-transformers in `[cpu]`, so the CrossEncoder is already paid for; (b) "adding deps
+  isn't free — 10 are already missing" — the deps that matter are **already declared in the shipped extra** and
+  missing only from MY venv. **That is config drift between the box we test and the box we ship. The fix is
+  parity, not restraint.** (Also `vector_store.py:100`'s claim that model2vec "drops the torch weight" is false
+  as shipped — keep model2vec for SPEED, the honest reason.)
+- 🔴 **BL-376 BL-338 UNDERSTATED, and BL-264/265 MISDIAGNOSED (mine).**
+  - **Two holes, one symptom:** fixing the `finished` gate fixes only ORCH-ST (7/24 turns). The other **17/24
+    take the fast path at `routers/agent.py:894`, which never calls `agent_loop` AT ALL** — no state, no
+    finalizer, nothing to gate.
+  - **The fix names itself:** all three done-frames (`:968` fast, `:1285` stream, `:1360` non-stream)
+    independently repeat the **same six lines** of persist+title logic. **That triplication IS the missing
+    abstraction.** Introduce `commit_turn(conversation_id, goal, text, *, aspect_id, state=None)` — the ONLY
+    place a completed turn is durably recorded: persist, then dispatch post-turn learning. `state` is optional;
+    the fast path has none, and post-turn learning legitimately needs only `(goal, text, aspect_id)`. The
+    `status` gate then becomes what it always should have been: a **safety** filter
+    (`refused/blocked/timeout/abort`), not a **liveness** one. Mature frameworks all fire on the *turn boundary*
+    (LangGraph `on_chain_end`, Letta's post-step commit, Agents-SDK `RunResult`). **Layla independently arrived
+    at the right structure — a finalizer — and attached it to the wrong signal.** CAUTION:
+    `run_distill_after_outcome(n=50)` is O(n^2) Jaccard and runs synchronously per finished turn — **debounce it
+    BEFORE wiring it to every turn.**
+  - **LEARNING QUALITY IS NOT A THRESHOLD PROBLEM — I was wrong.** All 28 rows *would pass any gate you could
+    write*: grammatical, confident, >40 chars, unhedged. The defect is `run_finalizer.py:126` — `learn_text` is
+    **the ASSISTANT'S REPLY** — and `outcome_writer.py:271` iterates `resp_clean.split("\n")`. **The system
+    faithfully extracts what Layla said about Python, not what is true about the operator.** Ask her to write a
+    Fibonacci function and she dutifully memorises the docstring. **100% of the table is this. It is working
+    exactly as written.** My BL-265 was also imprecise: the `always|never|should|must` regex is the **fallback**;
+    the primary path is an LLM extraction call. **Fixing the regex fixes nothing.**
+  - **Right fix:** source from the **user turn**; **closed-schema** extraction a 3B can actually do
+    (`{"subject":"user"|"world"|"none","fact":...,"durable":bool}`, hard-reject `subject != "user"`) instead of
+    open-ended "find insights"; type the memory (preference/correction/identity/episodic) and gate per type at
+    the **existing choke point** (`learnings.py:80` already runs filter + dedup + content_hash + rate-limit for
+    every writer — the right architecture). **`outcome_writer.py:302-335` ALREADY has correction and
+    implicit-preference detection reading `user_msg` — right instinct, right source, wrong file. Make that island
+    the mainland.** **#1 and #2 are ONE change: the seam without the fix floods the DB with docstrings 8x
+    faster.** (5-6 days together, ship behind a flag, watch what lands for a day.)
+- ⬜ **BL-377 No OSS memory library fits — build it (~60 lines).** All disqualified on the hard constraints:
+  **mem0** — posthog is a **hard core dep** and `MEM0_TELEMETRY=false` **does not fully work** (issues #3729,
+  #3762: blocking I/O + threads persist): *a telemetry client that hangs on an offline box, in a privacy
+  product* · **zep** — Community Edition **discontinued, cloud-only**; graphiti needs Neo4j/FalkorDB/Kuzu **and
+  an LLM call per write** (tens of seconds at a 14s first-token) · **letta** — a server, not a library;
+  migrations are **Postgres-only**, so shipping it on SQLite signs users up for unmigratable data · **langmem** —
+  pre-0.1, ~20mo stale, drags LangGraph + two cloud SDKs · **cognee** — ~50 core deps incl. a web server.
+  **ECOSYSTEM FLAG: Kuzu is DEAD** (Apple acquihire Oct 2025; repo archived read-only) — **contaminates cognee
+  and a graphiti backend. Do not adopt anything depending on it.** Only **txtai_minimal** (Apache-2.0, zero-dep
+  escape hatch, runs against llama.cpp which we already ship) is worth a spike. **And mem0 would not even fix it:
+  point it at the assistant's response and it stores the docstring too.**
+- ⬜ **BL-378 The DEAD reranker is BETTER than the live one on the failure path that matters.** The live
+  `vector_store_rerank.py` has **NO fallback**: if sentence-transformers is unavailable *or the model is not
+  cached* (i.e. offline first-run — BL-374), `_get_cross_encoder()` returns None and `rerank()` **silently
+  returns the first k docs unranked**. The dead `services/retrieval/reranker.py` has exactly the **zero-dep BM25
+  backstop** that would save it. **Port `_bm25_rerank` INTO the live module, THEN delete the dead one** — do not
+  just delete. Fix `capabilities/registry.py:72-84`, which advertises reranker capabilities pointing at the dead
+  module (a self-knowledge lie — cf. BL-306). **flashrank: SKIP** — its whole pitch is "no torch" and torch
+  already ships; adding onnxruntime (~50MB) to avoid a dep we already have is a net loss. **chromadb: DROP from
+  `[core]`** — still drags onnxruntime, grpcio and **a Kubernetes client** onto a desktop. **`rank_bm25` is
+  ABANDONED** (last release Feb 2022) — migrate to **bm25s** (MIT, torch-free) opportunistically. **sqlite-vec**
+  (MIT, ~2MB, zero py deps; verified v0.1.9 KNN works) is already coded for in `fallback_store.py`, already in
+  `[cpu]`, just missing here — brute-force is **correct at 28-10k rows**; do not pay for an ANN index.
+  **BL-361 is nearly free:** `_retrieve_and_build` already threads `track_ids`; `context_builder.py:113` simply
+  calls the wrong function — they diverged only because the `_with_ids` path skips the 60s cache. **Cache the
+  tuple instead of the string. ~2 hours.**
+- ⬜ **BL-379 THERE IS NO GRAPH — 71 entities, 0 relationships (verified directly).** *"A graph with no edges
+  isn't a graph — it's a list."* Nodes come from the entity extractor (which sits OUTSIDE the `finished` gate,
+  which is why any exist at all); **edges come from `auto_link_learning`, whose only production caller is the
+  ingestion pipeline — reachable solely via the Ingest button, which BL-320 proves is DEAD.** Nodes from one
+  writer; edges from a writer no user can reach. And the nodes are junk anyway (`'research what'`, `'the world'`,
+  `'earned_title'` — leaked control text; **`'trusts nyx'` is a RELATIONSHIP mis-parsed as a node** — the
+  extractor found the one real edge in the corpus and stored it as a vertex). **MY networkx framing was WRONG:**
+  `get_entity_graph`'s SQL-scoped BFS touches only the k-hop neighbourhood; **networkx would load the ENTIRE
+  graph into memory to answer the same query. The hand-rolled BFS is the better engineering — do not replace
+  it.** networkx (BSD-3, already installed) earns its keep ONLY for pagerank/Louvain/centrality, *if edges ever
+  materialise*. Do not add rustworkx (a compiled dep to optimise milliseconds) or kuzu (dead). Also: two codexes
+  — `routers/codex.py` serves a **JSON file** while the SQLite entity DB (with the schema, encryption and
+  confidence scoring) **has no router**. Pick the SQLite one. **BLOCKED: do not start here.** Fix BL-376 +
+  BL-320 and re-measure — the graph may largely fix itself.
+- ⬜ **BL-380 Spaced repetition: the LIVE clone is BUGGIER than the dead original.** DB: `next_review_at` **0
+  rows**; `review_reps > 0` **0 rows** — the SM-2 schema has **never held a single item**. The live
+  `german_mode.py:388` clone uses the **stale ease factor** (`interval * ease_factor` instead of `new_ef`) and
+  **never clamps ease to the 1.3 floor on failure**, so a repeatedly-failed card's ease drifts unbounded. **The
+  wired implementation is worse than the dead one it duplicates — and it drives the only real flashcard UI.**
+  **`fsrs`** (MIT, 6.3.1 Mar 2026, **one dep: typing-extensions**, ~50KB, verified running CPU-only on py3.12 —
+  PyPI name is `fsrs`, NOT `py-fsrs`; torch appears only in the `[optimizer]` extra) is what Anki uses and is
+  strictly better than SM-2. **But the algorithm was never the bottleneck — nothing has ever ADDED an item to the
+  queue.** So: **(a) CUT — delete the dead module, drop the "Spaced repetition study sessions" claim from
+  `chat-render.js:385` (an untrue claim in Layla's own voice — that IS the bug), fix german_mode's ease bug (2
+  lines). ~1 hour, honest immediately.** Or (b) adopt `fsrs` + build a queue producer + a review UI (~3 days).
+  **Do not hand-roll SM-2 a third time.**
+
+### What is genuinely good (recorded because the audit format selects for defects)
+
+The hybrid **RRF + MMR + model2vec + sqlite-vec-fallback** design is **the right answer for a CPU box** — better
+than most cloud-first OSS would give you. **sanitize-before-extract** and its comment are real forensic work.
+**`is_memory_junk`'s** documented feedback-loop reasoning is something most codebases never write down. The
+**SQL-scoped BFS** is better engineering than the networkx it was criticised for not using. The **write choke
+point** with dedup + rate limiting is exactly where a subject-gate belongs. `core/actions.js` resolves
+**141/141**. The **filesystem jail** survived every escape attempted. **Mocking discipline** is genuinely good.
+
+> **The tier's problem isn't that it was built badly. It's that it was built well and then not plugged in — and a
+> 2,700-test suite asserting *which fields a function reads* could never tell the difference.**
