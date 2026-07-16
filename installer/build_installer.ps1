@@ -64,9 +64,30 @@ Emergency escape hatch (not recommended):
   }
 }
 
-Write-Host "==> Sync agent + launcher assets into payload"
-Copy-Item -Path (Join-Path $Root "agent") -Destination $Payload -Recurse -Force
-Copy-Item -Path (Join-Path $Root "personalities") -Destination $Payload -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host "==> Sync agent + launcher assets into payload (from git HEAD, not the working tree)"
+# The payload is exported from the COMMITTED tree, never copied from disk. A plain
+# `Copy-Item -Recurse` of the working tree does not read .gitignore, so it baked operator state into
+# the shipped .exe: agent/.layla/memory_encryption.key (the Fernet key protecting encrypted
+# learnings), chroma_db/*.sqlite (thousands of personal embedding vectors), agent/.governance/ logs,
+# runtime_config.json with local paths, knowledge_graph.graphml, titles.txt.
+#
+# git archive has allowlist semantics — it emits exactly what a fresh clone gets. That is the property
+# we want: any NEW untracked operator file is excluded automatically, with no denylist to maintain.
+Push-Location $Root
+try {
+  $dirty = (& git status --porcelain -- agent personalities | Where-Object { $_ -notmatch '^\?\?' })
+  if ($dirty) {
+    Write-Warning "Working tree has UNCOMMITTED changes under agent/ or personalities/."
+    Write-Warning "The installer ships committed code only — those changes will NOT be included:"
+    $dirty | ForEach-Object { Write-Warning "    $_" }
+  }
+  $archive = Join-Path ([System.IO.Path]::GetTempPath()) "layla-payload-$PID.tar"
+  & git archive --format=tar -o $archive HEAD agent personalities
+  if ($LASTEXITCODE -ne 0) { throw "git archive failed - the installer payload must be built from a committed tree." }
+  & tar -xf $archive -C $Payload
+  if ($LASTEXITCODE -ne 0) { throw "failed to extract the payload archive into $Payload" }
+  Remove-Item $archive -Force -ErrorAction SilentlyContinue
+} finally { Pop-Location }
 foreach ($f in @("MODELS.md", "VALUES.md", "README.md")) {
   $src = Join-Path $Root $f
   if (Test-Path $src) { Copy-Item $src $Payload -Force }
@@ -103,6 +124,41 @@ Per-user data lives under %LOCALAPPDATA%\Layla (set via LAYLA_DATA_DIR):
 
 On first launch, copy runtime_config.example.json to that folder as runtime_config.json if missing.
 "@ | Set-Content -Path $dataHint -Encoding UTF8
+
+# ── Leak gate: refuse to compile an installer containing operator state ──────────────────────────
+# Defense in depth behind the git-archive export. If anyone ever reverts the payload step to a
+# working-tree copy, the build FAILS here instead of silently shipping a private key to a friend.
+Write-Host "==> Verify payload contains no operator state"
+$forbidden = @(
+  @{ Pattern = "memory_encryption.key"; Why = "Fernet key protecting encrypted learnings" },
+  @{ Pattern = "*.db";                  Why = "operator database (learnings/conversations)" },
+  @{ Pattern = "*.sqlite";              Why = "chroma vectors derived from operator data" },
+  @{ Pattern = "*.graphml";             Why = "operator knowledge graph" },
+  @{ Pattern = "*.graphml.bak";         Why = "operator knowledge graph backup" },
+  @{ Pattern = "runtime_config.json";   Why = "operator config with local machine paths" },
+  @{ Pattern = "titles.txt";            Why = "operator conversation titles" },
+  @{ Pattern = "project_memory.json";   Why = "operator project memory with local paths" },
+  @{ Pattern = "instance_id";           Why = "operator instance identifier" },
+  @{ Pattern = "conversation_history.json"; Why = "operator chat history" }
+)
+$forbiddenDirs = @(".layla", ".governance", "chroma_db", ".research_lab", ".research_brain")
+$leaks = @()
+foreach ($f in $forbidden) {
+  $hits = Get-ChildItem -Path $Payload -Recurse -File -Filter $f.Pattern -Force -ErrorAction SilentlyContinue
+  foreach ($h in $hits) { $leaks += ("{0}  <- {1}" -f $h.FullName.Substring($Payload.Length), $f.Why) }
+}
+foreach ($d in $forbiddenDirs) {
+  $hits = Get-ChildItem -Path $Payload -Recurse -Directory -Force -ErrorAction SilentlyContinue |
+          Where-Object { $_.Name -eq $d }
+  foreach ($h in $hits) { $leaks += ("{0}\  <- operator state directory" -f $h.FullName.Substring($Payload.Length)) }
+}
+if ($leaks.Count -gt 0) {
+  $msg = "REFUSING TO BUILD: the payload contains operator state that would ship to end users:`n"
+  $msg += ($leaks | ForEach-Object { "  $_" }) -join "`n"
+  $msg += "`n`nThe payload must be exported from git HEAD (allowlist), not copied from the working tree."
+  throw $msg
+}
+Write-Host "    payload clean - no operator state found"
 
 $iscc = Get-Command iscc -ErrorAction SilentlyContinue
 if (-not $iscc) {

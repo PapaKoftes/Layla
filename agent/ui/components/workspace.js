@@ -11,6 +11,7 @@
  */
 
 import { escapeHtml, showToast } from '../services/utils.js';
+import { showMemorySubTab } from './memory.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function _el(id) { return document.getElementById(id); }
@@ -557,7 +558,20 @@ export function workspaceSubtabRefresh(sub) {
     models: refreshPlatformModels,
     knowledge: refreshPlatformKnowledge,
     study: function () { refreshStudyPlans(); loadStudyPresetsAndSuggestions(); try { refreshLaylaPlansPanel(); } catch (_) {} },
-    memory: function () { try { refreshFileCheckpointsPanel(); } catch (_) {} },
+    // Route to whichever mem-subtab is actually SHOWING. This used to hardcode
+    // refreshFileCheckpointsPanel(), which loads the Checkpoints pane — hidden by default. The
+    // default-visible "About you" pane was never loaded, so it sat on "Loading what Layla knows
+    // about you…" forever: it is selected on arrival, so nothing ever prompts the user to click it,
+    // and that click was its only loader. showMemorySubTab() owns the per-subtab load routing.
+    memory: function () {
+      var sub = 'about';  // the default-visible pane (index.html: data-mem-sub="about" is active)
+      try {
+        var activeBtn = document.querySelector('[data-mem-sub].active');
+        if (activeBtn) sub = activeBtn.getAttribute('data-mem-sub') || 'about';
+      } catch (_) {}
+      try { showMemorySubTab(sub); } catch (_) {}
+      try { refreshFileCheckpointsPanel(); } catch (_) {}
+    },
     plugins: function () {
       refreshPlatformPlugins();
       try { if (typeof window.refreshRelationshipCodex === 'function') window.refreshRelationshipCodex(); } catch (_) {}
