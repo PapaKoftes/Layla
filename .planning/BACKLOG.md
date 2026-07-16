@@ -516,3 +516,274 @@ adaptive-tool-learning=`strategy_stats`/`experience_replay`, context-compression
 
 **Honest sizing:** this is **weeks-to-months**. W0 is hours; W1 + W2 (German UI especially) are the
 highest-leverage; W8/W11 are V2/V3 horizon.
+
+---
+
+## W14 — Castilla release repair (operator UI/UX audit, 2026-07-16) — the friend-ready gate
+
+*Trigger: the operator drove the actual UI and found it broken in ways the 2,700-test suite could not see. Five
+parallel adversarial audits followed (conversation persistence · UI bug repro · per-feature discoverability ·
+setup/TTS/accessibility · content-policy & model tiers). **41 defects confirmed, 1 disproven.** Every item cites
+file:line and is marked CONFIRMED (traced to code / reproduced live) or REPORTED (operator-observed, not yet
+root-caused).*
+
+**Why the suite missed all of this:** every prior test asserted *which fields a render function reads*, never that
+anything *calls* it. Green suite, dead feature. The class guard landed in `test_ui_js_contract.py` (every spinner
+pane must register its loader + route) — read it before writing any W14 test.
+
+### W14a — Conversation history (the operator's #1; "fixed" 3x and still broken)
+
+- ⬜ **BL-243** Rail never re-renders after the async title lands. CONFIRMED: `routers/agent.py:356` synthesizes
+  the title on a **background thread**; the rail has **no polling and no re-render**. Live proof:
+  `System Capabilities Table` created `10:13:35`, **updated `10:17:30`** — the good title arrived ~4 min later and
+  the UI never showed it. This is the operator's "it never reloads the UI once it's actually done loading".
+  Fix: push (SSE/bus event) or a bounded poll after turn completion. NOT a rail-load bug — the rail renders.
+- ⬜ **BL-244** Title wraps badly; timestamp stranded mid-title. CONFIRMED `conversations.js:325-336` +
+  `layla.css:2563-2567`: the title is a **bare text node** sharing one inline `-webkit-box` with `.conv-meta`
+  (`display:inline-flex`), so the dot/pin/project/tag chips consume line 1 and push the title to wrap;
+  `.sess-date` is a flex sibling pinned by `align-items:flex-start`, so "2h" sits level with line 1 of a
+  multi-line title. Fix: give the title its own element, stack meta/title vertically, `overflow-wrap:anywhere`
+  (not `word-break:break-word`), clamp 2. (CSS comment says 2 lines; the rule clamps 3 — stale.)
+- ⬜ **BL-245** 7 error/abort paths never persist the turn — the user's message vanishes. CONFIRMED
+  `routers/agent.py:1172` (error), `:1178` (under load), `:1183` (timeout), `:1189` (client abort), `:1195`
+  (pipeline_needs_input), `:1403`, `:995` all yield `done:true` with no persist block. Realistic on a CPU-only
+  box where timeouts are common. Likely contributor to "history is broken".
+
+### W14b — Discoverability (the headline: shipped features that cannot be reached)
+
+- ⬜ **BL-246** `header { display: none }` — **one CSS line kills 4 features.** CONFIRMED `layla.css:242`,
+  unconditional, no JS override; runtime-confirmed every child computes HIDDEN. `.topbar` re-implements only 5 of
+  the buttons. Dead with **no other entry point anywhere**: **Global search** (`index.html:208-215`) and **Aspect
+  lock** (`:178`) — both advertised in the wizard's "What's new" card. Orphaned to Ctrl+K-only: `Commands`
+  (`:184`), `Intel` (`:185`), and the `/settings/schema` modal gear (`:188`). **Cheapest high-value fix in the
+  backlog** — partially resolves BL-247 and BL-252 too.
+- ⬜ **BL-247** **21 features are Ctrl+K-only** and the button that opens Ctrl+K is invisible (BL-246). CONFIRMED,
+  each grepped for another entry point (zero): german, missions, journal, improvements, tools-history, sync,
+  debate, codex, verify, agent-tasks, kb, plans, intake-quiz, custom-aspect, welcome, marketplace, tutor, macros,
+  self-test, setup-wizard, system-diagnostics, plus intelligence. The palette is mentioned in exactly ONE place a
+  user might read (the input hint, `:433`). No browsable list exists. Two vanish silently when feature-gated
+  (sync, debate).
+- ⬜ **BL-248** **The entire Growth panel is unreachable.** CONFIRMED `index.html:1052` `style="display:none"` +
+  `bootstrap.js:183` `_rcpAliases = { growth: 'status' }`. Lost: XP bar, **Unlocked Abilities**, velocity
+  sparkline, verification breakdown, "Review pending facts". The maturity card says *"Growth is real. Click to
+  open Growth panel"* (`:266`) and routes to Dashboard instead. **Plus 7 duplicate IDs** (growth-total-facts,
+  growth-verified-pct, growth-week-count, growth-pending-verify, growth-capabilities-list, growth-types-list,
+  growth-watcher-status) — `getElementById` silently binds the Dashboard copy.
+- ⬜ **BL-249** First-run **introduces zero features**, and the only tour that would is **dead code**. CONFIRMED
+  `setup.js:315-337` is the sole place explaining workspace scoping / aspect selection / aspect lock; it targets
+  `#onboarding-overlay`, `#onboarding-text`, `#onboarding-next`, `#onboarding-done` — **none exist in
+  index.html**. `maybeStartOnboarding()` (`setup.js:339`) early-returns forever.
+- ⬜ **BL-250** **The wizard is SKIPPED when the install goes well.** CONFIRMED `wizard.js:236` early-returns on
+  `wizard_complete || ready`; an installer/CLI that provisions a model sets `ready=true`. **The better the
+  install, the less the friend is told** — they lose the workspace picker, character quiz, voice picker, and the
+  entire "What's new" feature list. Worst single item for the actual handoff.
+- ⬜ **BL-251** The 95-key schema modal is flat AND Ctrl+K-only. CONFIRMED `config_schema.py` has 95 keys across 9
+  categories; `get_schema_for_api()` returns `categories` and **`settings-full.js` never reads it** (grep
+  `category` -> 0 hits) — rendered as one ungrouped stream (`settings-full.js:74-89`). It is the ONLY home for:
+  potato preset, admin mode + git undo, the **optional-feature installer** (the thing that would fix TTS),
+  WhatsApp import, appearance/lite mode.
+- ⬜ **BL-252** **Two gear buttons, same icon, same tooltip, different destinations** — one invisible. Topbar gear
+  (`:367`) -> friendly prefs (~25 toggles); header gear (`:188`) -> 95 raw keys, unreachable. They overlap on
+  uncensored, nsfw_allowed, tool_approval_bypass, deliberation_mode, tts_*, admin_mode; both POST `/settings`;
+  neither cross-links. Also "Speak replies" appears **twice in the same prefs panel** (`#tts-toggle` `:616`,
+  `#tts-toggle2` `:716`).
+- ⬜ **BL-253** Raw paths/IDs/JSON with **not one browse button in the app**: `#km-source` "URL or folder path
+  (inside sandbox)" (`:840`), `#workspace-path` (`:698`), `#obsidian-vault-path` (`:758`), `#cluster-queen-addr`
+  "192.168.1.10:8000" + token (`:537`), `#models-hf-repo`/`-file` (`:1266`), `#relationship-codex-json` raw
+  `{"entities":{}}` (`:967`), `#admin-undo-workspace` (`:1215`).
+- ⬜ **BL-254** Research tab **leads with an API console**: `POST /autonomous/run`, `confirm_autonomous`,
+  `research_mode`, `max_steps`, `timeout_s` (`:1009-1017`). The friendly "Start mission" buttons live in a
+  *different* surface (prefs -> Research Mission `:743`), cross-linked one way only.
+- ⬜ **BL-255** `#cluster-enable-toggle` is a bare `<div>` (`:532`) — runtime-confirmed `role=null, tabindex=null`.
+  Invisible to keyboard + screen readers, in a section that otherwise uses real buttons.
+- ⬜ **BL-256** Undefined jargon in primary labels: "Governor" (`:309`), "sandbox" (`:840`), "Compact" (`:365`),
+  "Tribunal (6)" (`:640`), "Ctx:" (`:430`), and `GET /memory/elasticsearch/search` shown as an empty state
+  (`:946`).
+- ⬜ **BL-257** No user tutorials. `docs/` is ~40 internal/architecture files; exactly ONE user guide exists
+  (`RESEARCH_MISSION_UI_GUIDE.md`). Nothing explains ingestion, memory, growth, study, or aspects.
+
+### W14c — Dead/broken UI (all CONFIRMED with exact root cause)
+
+- ⬜ **BL-258** **Study quick presets are 100% dead, silently.** CONFIRMED `workspace.js:191` (+`:197`):
+  `JSON.stringify` emits **double** quotes into a **double**-quoted `onclick` attribute, so the parser ends the
+  attribute at the inner quote -> SyntaxError, handler never runs. The label is a separate text node, so the
+  button **looks perfect and does nothing**. CSP and the `window.addStudyPlan` export were both ruled out. Fix:
+  use the delegated `data-action`/`data-arg` system already used at `:168`.
+- ⬜ **BL-259** Model manager renders `Available: [object Object], ...`. CONFIRMED `workspace.js:33` joins model
+  **objects**; `/platform/models` returns `{filename, path, size_mb}`. (`active` is a plain string — which is why
+  only that line renders correctly.) Fix: map `.filename`.
+- ⬜ **BL-260** Recent learnings render as word salad. CONFIRMED `workspace.js:46` (+`:48`) flattens 5 records
+  into **one text node** joined by `' · '`; the API already returns `id` and `type` and both are discarded.
+  Because the stored fragments are themselves sentence fragments, joining reads as one run-on sentence. Fix: one
+  row per learning + type chip (mirror `refreshSkillsList` at `:262`).
+- ⬜ **BL-261** i18n: panel buttons never translate. CONFIRMED the applier is **fine** (`i18n.js:72-84` re-runs on
+  `layla:languagechange`). Coverage is the bug: **127 of 162 static buttons (78%) have no `data-i18n`**, and
+  ~**168 buttons built dynamically across 40 JS files** are injected as hardcoded English via `innerHTML` (11
+  `data-i18n` occurrences in ALL JS combined). Even translated ones revert when a `refreshX()` re-injects. Fix:
+  (a) markup pass; (b) `applyTranslations(box)` after every dynamic render. **Own pass — not a quick fix.**
+- ⬜ **BL-262** DOMPurify strips table column alignment. CONFIRMED `services/utils.js:133`
+  `ALLOWED_ATTR:['href','class']` drops the `align` attr marked emits for `|:---:|`. Fix: add `'align'`.
+- 🟡 **BL-263** REPORTED: a markdown table broke into raw text when the MR2 rank-up popup fired.
+  **NOT REPRODUCIBLE — do not guess.** Disproved: `#rankup-overlay` only writes `#rankup-detail`
+  (`aspect.js:193-208`); `bus.emit('growth:rank-up')` has **zero subscribers**; both renderers are identical
+  `sanitize(marked.parse())`; marked has no config so GFM tables are on; backend cleaners executed against a real
+  table leave it unchanged; `enhanceCodeBlocks` touches only `<pre>`. Two promising theories (fence-mask digit
+  collision, missing `.md-content` wrapper) were executed and disproven. Leading hypothesis: the **model** emitted
+  a malformed table (inconsistent column counts / no blank line before it) and the popup is a correlated symptom —
+  it fires in the same millisecond as the done-frame render. **BLOCKED: needs raw `obj.content` from a recurrence.**
+
+### W14d — Learnings quality (the "still facts loaded in" complaint)
+
+- ⬜ **BL-264** 28 junk rows remain in the operator DB: test residue (Paris/Tokyo/8x7), **docstring parameter
+  lines** ("n (int): The number to check for primality."), citations ('[1] "Python Sets". Real Python.'), aspect
+  name leaks ("Nyx: For best practices..."). NOTE: 4 system-prompt-bleed rows were purged 2026-07-16 and the
+  feedback loop cut (source fix in `run_finalizer.py` + floor in `distill.is_memory_junk`); these 28 are the
+  remainder. **Deleting a memory store is the operator's call — ASK, do not wipe.**
+- ⬜ **BL-265** No real quality gate. CONFIRMED `outcome_writer.py:277-293` accepts **any 25-200 char line
+  containing always|never|should|must|note:** — system-prompt and docstring text is *dense* with these, so the
+  heuristic is structurally biased toward capturing instructions over user knowledge. `learning_filter.py` only
+  enforces MIN_LENGTH=40 + opening-clause hedges; `score_learning_content` returns 0.45 against a 0.35 floor, so
+  junk sails through. Needs a real gate (is this a durable fact ABOUT THE USER or their work?), not a length check.
+- ⬜ **BL-266** `distill._summarize_group` (`:132-149`) splits on "." — on
+  `raise ValueError("n must be a non-negative integer.")` it cuts **mid string-literal**, yielding unbalanced
+  quotes, then joins them -> the "[merged from 2 similar]" garbage. Jaccard matching is fine (>=0.55 genuinely
+  matched near-identical fragments); naive sentence-splitting on code is the defect. Starved at the input by
+  BL-265 but still wrong.
+
+### W14e — Capabilities (displays a frozen constant)
+
+- ⬜ **BL-267** **Capability scores can never move from normal use.** CONFIRMED: `record_practice()` has exactly
+  two callers — `layla/scheduler/jobs.py:342` and `routers/study.py:419`, **both the study subsystem**. It is
+  never called from `routers/agent.py` or any chat/agent turn path. DB proof: all 23 domains `level 0.49`,
+  `practice_count 0`, `last_practiced_at NULL`; `capability_events` holds **23 rows, all decay_tick, all stamped
+  2026-07-05T20:04:24** — nothing since, despite 228 prompts including coding questions. Decide: wire practice
+  into the turn path (classify domain -> record on success), or **stop displaying a fake number**.
+- ⬜ **BL-268** "+ 11 more" — hardcoded cap of 12 at `growth.js:250`. Operator wants all shown. Trivial.
+- ⬜ **BL-269** **Operator domain picks do not exist.** CONFIRMED all 23 domains are hardcoded seeds
+  (`data_migrations.py:185,219`) — including a full fabrication set (cad_modeling, cnc_machining, feeds_and_speeds,
+  furniture_design, woodworking, wood_assembly, structural_building). There is no interests/focus_domains setting
+  anywhere. Every user gets CNC Machining. NEW FEATURE: pick domains at first-run (-> BL-276), then filter.
+  Compounds BL-267: 23 frozen 0.5s, most irrelevant to whoever is using it.
+
+### W14f — Voice / TTS / accessibility
+
+- ⬜ **BL-270** **Server TTS is 100% dead.** CONFIRMED missing from `.venv`: kokoro_onnx, pyttsx3, soundfile,
+  onnxruntime — and faster_whisper, so **STT is dead too**. Live: `POST /voice/speak` -> **503 "TTS not
+  available"**. What the operator hears is an undocumented browser `speechSynthesis` fallback (`voice.js:206`) —
+  generic OS voice, **truncated to 500 chars** (`:208`), and the speed/volume sliders (`:180,197`) apply **only to
+  the dead server path**. Root cause: the default `companion` profile excludes the `voice` feature
+  (`setup_profiles.py:17-20` installs kokoro+whisper; only language/power include it) and
+  `auto_pip_install_optional=false`.
+- ⬜ **BL-271** **The Speak-replies toggle silently no-ops until a page reload.** CONFIRMED `voice.js:174` gates on
+  a **module-local** `_ttsEnabled` written once at load (`:63,67`); the toggle only sets the window mirror
+  (`main.js:519`). No exported setter exists (grep setTtsEnabled -> 0), and `initVoiceControls` sets `.checked`
+  with **no change listener** (the adjacent stream toggle has one, `:79`). **This is the bug behind the operator's
+  distrust.**
+- ⬜ **BL-272** The checkbox **lies about its own state**. CONFIRMED `voice.js:67` treats unset as OFF;
+  `obsidian.js:121` treats unset as **ON**. On a fresh profile the box renders **CHECKED while the engine is OFF**.
+  (Operator asked for "speak replies off by default" — it already IS off authoritatively; the fix is deleting the
+  contradiction, not changing the default.)
+- ⬜ **BL-273** **No TTS availability flag** on `/health` or `/settings` (only `tts_voice:null`, `tts_speed:1.0`).
+  The UI cannot know TTS is dead, so it offers a toggle for a feature that cannot work. `/doctor` omits it too.
+  Root of the trust problem. **BL-270 + BL-271 + BL-273 must ship together** — fixing the toggle alone just makes
+  a robot voice appear and reads as another failure.
+- ⬜ **BL-274** **No Accessibility section exists anywhere.** The invisible baseline is genuinely good (96
+  aria-label, focus traps WCAG 2.4.3, contrast tuned to AA with the failures documented in comments,
+  prefers-reduced-motion honored, 11 locales + RTL) — but every a11y affordance is either a CSS media query or
+  filed under an unrelated heading.
+  - **Text size: ZERO implementation** (grep font-scale|text-size|textScale -> no hits). Biggest a11y gap.
+  - **Reduced motion: OS-only.** `toggleLowFx` (`main.js:537`, sets `--fx-strength`) is a de-facto control
+    **mislabelled as a graphics/perf option**. A user on a non-signalling OS has no path.
+  - **High contrast:** OS-only, one CSS block, no toggle.
+  - `index.html:202-204` `tabindex="-1"` **removes Character Lab / Compact / Terminal from keyboard reach**.
+  - `index.html:169` — Escape will not dismiss the wizard (WCAG 2.1.2 concern).
+
+### W14g — First-run setup (4 chained flows, ~17 steps)
+
+*Today: Wizard (6 steps) -> Setup overlay -> Profile wizard -> Onboarding interview (6 stages). Workspace asked
+**twice** (wizard 1 & 2); personality asked **three times** (wizard 3, wizard 4, interview personality).*
+
+- ⬜ **BL-275** **No accessibility step.** TTS + text size + reduced motion + high contrast. Must trigger the
+  `voice` feature install (BL-270).
+- ⬜ **BL-276** **No content-policy disclosure.** `uncensored:true` and `nsfw_allowed:true` are ON by default and
+  **never mentioned in any of the four flows**. UX and liability gap. Fold in the domain picks (BL-269).
+- ⬜ **BL-277** **No language picker.** 11 locales + RTL ship; first-run never offers them — **RTL users start in
+  LTR English**.
+- ⬜ **BL-278** No data-dir disclosure. `/doctor` reports `database.exists:false`, `config.exists:false`; the user
+  is never told where state lives.
+- ⬜ **BL-279** Dedupe workspace (x2) and personality (x3); ~17 steps is heavy abandonment surface.
+- ⬜ **BL-280** Rename wizard step 4 — **"Choose a voice" is the ASPECT picker, not TTS.** Actively cruel while TTS
+  is silently dead.
+
+### W14h — Content policy & model tiers
+
+*KEY CORRECTION: **uncensored/NSFW is ALREADY the fresh-install default** — verified by executing the config chain
+against an empty data dir (uncensored=True, nsfw_allowed=True; all five default sites agree). And `safe_mode:true`
+alongside them is **NOT a contradiction**: safe_mode is not a content flag — its only reader is a destructive-tool
+approval floor (`tool_dispatch_base.py:113`). The operator's ask is therefore NOT a settings change — it is a
+**model-selection and guard-precision problem**.*
+
+- ⬜ **BL-281** **The shipped model is the dominant gap.** `Qwen2.5-3B-Instruct` is Alibaba **safety-tuned**;
+  `uncensored:true` adds one prompt paragraph its RLHF overrides. Config says yes, the model says no.
+- ⬜ **BL-282** `recommend_kit` — **the path that actually ships** (`provision_model.py:65`, Castilla default,
+  `prefer="lite"`) — has **no uncensored term at all** (`model_selector.py:403-413`) -> picks qwen2.5-3b-instruct.
+  `recommend_model` (`:250`) has a jinx term but it is a **tiebreak behind mem_req**, so smallest-fits-first always
+  wins -> qwen2.5-coder-0.5b. Only `models_for_picker` (`:36-79`, the picker UI) ranks uncensored-first — and it
+  correctly picks dolphin-2.9.4-llama3.1-8b.
+- ⬜ **BL-283** **Catalog data bug — must ship WITH BL-282, not after.** `model_catalog.json` labels stock
+  bartowski Qwen2.5-Instruct `uncensored:true` at 7B/14B/32B/72B while the *same family* is false at 0.5B/1.5B/3B.
+  All are safety-tuned; none abliterated. Fixing the ranking first would make the recommender confidently rank a
+  **censored** model top.
+- ⬜ **BL-284** **content_guard Tier 1 blocks ordinary adult content, non-overridably.** CONFIRMED
+  `content_guard.py:49-53`: order-independent lookaheads pairing
+  (child|minor|underage|preteen|toddler|infant|kid|boy|girl) with (naked|nude|sexual|porn|erotic|molest|abuse)
+  over a **20,000-char window** (`:131`). Any adult scene using girl/boy within 20k chars of erotic hits a
+  hardcoded refusal. The guard reads only content_guard_* — `uncensored` does **not** disable it. **The CSAM
+  intent is legitimate and MUST stay**; the *pattern* is over-broad. Fix: restrict age terms to
+  child|minor|underage|preteen|toddler|infant (drop kid|boy|girl — not age indicators in adult prose) and scope
+  the compound match to a sentence/paragraph window instead of 20k chars. Precision fix, not a weakening.
+- ⬜ **BL-285** **The prompt fights itself.** `prompt_builder.py:134` (honesty_and_boundaries_enabled, default
+  True) injects "Refuse or redirect requests that would cause harm" into the **same prompt** as the uncensored
+  paragraph at `:173`. A 3B resolves the conflict toward refusal. Also `:184` — the strongest anti-refusal
+  paragraph only fires when the **goal text literally contains** nsfw|intimate|explicit|adult|18+|uncensored;
+  ordinary phrasing misses it. Fix: drop the keyword gate; soften/skip the refuse clause when uncensored is on.
+- ⬜ **BL-286** Dead flags with disagreeing writers: `knowledge_unrestricted` + `anonymous_access` are written by
+  `first_run.py:84`, `setup_engine.py:118`, `runtime_config.example.json:12-13` and **immediately deleted** by
+  `config_migrator.py:31-32` ("was dead config flag"). Zero readers.
+- ⬜ **BL-287** Consider renaming `safe_mode` -> `destructive_tool_approval_floor`, or document it in the UI. It
+  reads as a content flag and is not one — that misreading is what prompted this audit.
+
+### W14i — Operator feature requests (new work, not defects)
+
+- ⬜ **BL-288** Runtime & options: **sliders** for max_cpu_percent / max_ram_percent / max_active_runs (currently a
+  read-only text dump). Must respect the auto-tune tier + governor clamps.
+- ⬜ **BL-289** **Run diagnostics: human-readable FIRST**, JSON dump behind a disclosure for technical users.
+  Applies to the same raw-JSON dumps at `index.html:478`, `:486`, `:829`.
+- ⬜ **BL-290** Light theme is a **flashbang** — retune to lilac (light purple), not white. `layla.css:84`
+  `body.theme-light`; accent already tuned for AA at `:99` — keep the contrast ratios when changing.
+- ⬜ **BL-291** Ingestion shortcut. **Blocked on a design decision:** there is **no ingestion folder** —
+  `#km-source` takes a URL or a hand-typed sandbox path; `ingest_directory()` takes an arbitrary path; there is no
+  watched drop-folder. And **a browser cannot open Explorer** — it needs a backend endpoint shelling out to
+  explorer.exe, a local-only action with real security weight on an app that also accepts remote connections.
+  Options: (a) invent a real watched `LAYLA_DATA_DIR/ingest/` with auto-ingest + a reveal endpoint, (b) a plain
+  "reveal sandbox folder" button, (c) neither — instead fix **`#km-ingest-list`** (`index.html:844`), which is
+  **declared and written by nothing**, so you cannot see what you already ingested.
+- ⬜ **BL-292** **Build the GSD operating method into Layla's normal behaviour** (plan -> execute -> verify, phase
+  artifacts, explicit gates). **MILESTONE-SIZED, NOT A TASK.** Interacts with study/capabilities (W14e), the
+  reasoning trace, and the run loop. Needs its own discovery + spec before any estimate. Do not start it inside W14.
+
+### W14j — Release / operator actions
+
+- 🟡 **BL-293** **ROTATE `agent/.layla/memory_encryption.key`** if any installer was built and shared before
+  2026-07-16. The pre-fix `build_installer.ps1` recursively copied the working tree into the payload, shipping the
+  Fernet key, 2,070 operator embedding vectors, .governance/ logs, and local paths. Export is now
+  `git archive HEAD` + a build-time leak gate (landed; `test_release_hygiene.py`). **OPERATOR ACTION — Claude
+  cannot know whether a build was shared.**
+
+### The rule for W14 (non-negotiable)
+
+**Nothing here is marked done on Claude's say-so.** Claude cannot see the rendered UI (preview tooling is banned by
+the operator), so "tests pass" is NOT verification. Every W14 item is marked done only after the OPERATOR confirms
+it in the browser. Claude's report must state: what changed · what was PROVED · what was ASSUMED · what is still
+unverified. No check-marks, no confidence scores. This rule exists because the same class of bug was declared fixed
+three times while the operator was looking at it still broken.
