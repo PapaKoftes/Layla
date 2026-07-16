@@ -1833,3 +1833,80 @@ point** with dedup + rate limiting is exactly where a subject-gate belongs. `cor
   `domains/*.py` (198 tools, no args) · `tool_preflight.py` (6 tools, hand-written) ·
   `cursor-layla-mcp/tool_definitions.py` (**507 lines, 22 hand-written `inputSchema` blocks**). One pydantic
   generator collapses all three.
+
+---
+
+## W16 — Instance enumeration (2026-07-16): the classes are mapped, here are the counts
+
+*The class map (W14) and the architecture (W15) are done. This is the mechanical instance count for each
+remaining class — cheap, finite, re-runnable. Scripts are one-off and in the session scratchpad; the durable
+one is `agent/tests/test_ui_element_contract.py`.*
+
+**Method note that matters: every count below is an UPPER BOUND with known noise, not a defect list.** Sweep C
+proves why — see its false positives. Do not action a number from here without triaging the entries.
+
+### C1 — `onclick=` in JS templates: **40 sites across 10 files**
+
+    11  components/chat-render.js       6  components/memory.js
+     6  components/workspace.js         5  components/pairing.js
+     4  components/search.js            3  components/artifacts.js
+
+This is the class that killed the study presets (BL-258): `JSON.stringify` emits DOUBLE quotes into a
+DOUBLE-quoted `onclick`, the parser ends the attribute early, the handler never runs, and the button renders
+perfectly. **The `data-action`/`data-arg` system that makes it impossible already resolves 141/141 actions** and
+is used feet away from the bug. Fix: migrate the 40, then a grep test banning `onclick=` in `ui/**/*.js`.
+Ratchet, burn down. (BL-370 mechanism 3.)
+
+### C2 — i18n coverage: measured, and worse than BL-261 stated
+
+    static <button> without data-i18n : 127 / 162  (78%)
+    buttons built dynamically in JS   : 155
+    data-i18n emitted anywhere in JS  : 11
+    applyTranslations call sites      : 7
+
+So **both halves fail**: 127 static buttons never translate, and ~155 dynamically-rendered buttons are injected
+as hardcoded English (11 `data-i18n` occurrences in ALL JS combined). Even a translated button reverts the
+moment a `refreshX()` re-injects it — only 7 render paths call `applyTranslations`. **The applier itself is
+fine** (BL-372); this is pure markup coverage. 11 locales + RTL ship and RTL users start in LTR English.
+Fix: static sweep + `qps` pseudolocale (`⟦{en}⟧` makes every untranslated string visible instantly) + emit
+`data-i18n` during the C1 migration.
+
+### C3 — ids declared but referenced by nothing: **99 candidates — AND THE SWEEP'S NOISE IS THE LESSON**
+
+    declared ids            : 343
+      read by JS            : 208
+      styled in CSS         :  49
+      legit non-JS (for/aria/href) : 14
+      data-action driven    :  32
+      TRULY unreferenced    :  99  <- upper bound, NOT a defect count
+
+**Verified false positives inside that 99:** `#btn-cassandra`, `#btn-echo`, `#aspect-opt-*` and friends are
+built at `aspect.js:74` as `getElementById('btn-' + id)` and `aspect.js:215` as `el.id === ('aspect-opt-' + id)`
+— **computed ids, the exact blind spot documented in `test_ui_element_contract.py`, firing exactly where it was
+predicted to.** The forward sweep is precise because a lookup either resolves or does not; the reverse sweep is
+inherently noisy because an id can be reached by construction, by CSS, by ARIA, or by an anchor.
+**This is why the reverse sweep is a burn-down allowlist and NOT a hard gate** — and why C3 must be triaged by
+hand, never bulk-deleted. Real hits confirmed in the list: `#appearance-save-msg` (BL-335's other half — the
+element `saveAppearanceLite` should be writing to), `#km-ingest-list` (BL-291), `#batch-diff-*`.
+
+### C4 — carried from W14, already counted, still open
+
+- **153/198 tools invoked by no test** (110 never mentioned); **223/367 routes never called** (BL-346).
+  *Calibrated: EXPOSURE, not 153 broken tools — `math_eval` was the only hard crash found, and it is now fixed.*
+  **BL-381 unblocks the real fix:** `@functools.wraps` landed, so pydantic now schemas 198/198 — a parametrized
+  registry smoke test is finally possible. It needs **per-tool `smoke_args` + a per-call timeout**; blind
+  invocation HANGS (verified, 120s timeout) because some tools call the LLM or the network.
+- **119 AST-confirmed vacuous tests** + ~114 key-presence candidates needing manual triage (BL-340).
+- **7 dead lookups** on the `_KNOWN_DEAD` ratchet in `test_ui_element_contract.py` (BL-335/249/337).
+- **7 duplicate `growth-*` ids** (BL-248) — pinned by `test_no_duplicate_static_ids`, can only shrink.
+
+### The loop's terminal condition, stated honestly
+
+**New CLASSES stopped appearing** — that is what convergence looks like, and it is why the investigation is
+complete. **New INSTANCES have not stopped**, and on a ~400-module codebase they will not: every sweep above is
+an upper bound that needs human triage, and C3 demonstrates why an automated count is not a defect list.
+
+The durable answer is not "find every instance once." It is the guard that makes the class unrepeatable:
+`test_ui_element_contract.py` is hard-fail for the forward direction, so **new drift dies immediately**, and the
+known-dead ratchet can only shrink. Instances found *later* by that guard cost seconds. Instances found by
+hand-auditing 343 ids cost a session and go stale the next commit.
