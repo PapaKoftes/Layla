@@ -519,6 +519,9 @@ highest-leverage; W8/W11 are V2/V3 horizon.
 
 ---
 
+> **EXECUTION:** W14/W15/W16 are sequenced for execution in [`phases/13-castilla-repair/CONTEXT.md`](phases/13-castilla-repair/CONTEXT.md) (slices S0-S10, S0 done).
+> Evidence + honest caveats: [`phases/13-castilla-repair/VERIFICATION.md`](phases/13-castilla-repair/VERIFICATION.md).
+
 ## W14 — Castilla release repair (operator UI/UX audit, 2026-07-16) — the friend-ready gate
 
 *Trigger: the operator drove the actual UI and found it broken in ways the 2,700-test suite could not see. Five
