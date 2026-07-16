@@ -59,8 +59,15 @@ agent/.governance/
 
 # Personal identity model (curated self-knowledge, not for public repo)
 # The base self_model.md is part of the project; user-added identity files stay local
-.identity/
+# NOTE: `.identity/*`, NOT `.identity/`. Git cannot re-include a file whose PARENT DIRECTORY is excluded, so
+# with `.identity/` the negations below are silently inert — self_model.md only survived because it was added
+# before this rule existed. Ignoring the CONTENTS instead lets the negations actually work.
+.identity/*
 !.identity/self_model.md
+# capabilities.md is project content too, not operator state: it is the VERIFIED manifest of what Layla can
+# actually do, and it must ship on clone or "preloaded self-knowledge" silently becomes "no self-knowledge"
+# and she goes back to inventing capabilities. User-added identity files still stay local.
+!.identity/capabilities.md
 
 # Model files (large; each dev supplies their own)
 models/*
