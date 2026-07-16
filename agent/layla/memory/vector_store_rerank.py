@@ -7,6 +7,9 @@ and vector_store re-exports these names without a cycle.
 from __future__ import annotations
 
 import logging
+import math
+import re
+from collections import Counter
 from typing import Any
 
 logger = logging.getLogger("layla")
@@ -49,6 +52,62 @@ def _get_cross_encoder():
     except Exception:
         _cross_encoder_failed = True
     return _cross_encoder
+
+
+def _doc_text(d: dict) -> str:
+    return (d.get("content") or d.get("text") or "")
+
+
+def _tokenize(text: str) -> list[str]:
+    """Whitespace + punctuation tokenizer, lowercased."""
+    return re.findall(r"\w+", text.lower())
+
+
+def _bm25_rerank(query: str, docs: list[dict], k: int) -> list[dict]:
+    """Zero-dependency BM25 keyword backstop (k1=1.5, b=0.75 — standard parameters).
+
+    Ported from services/retrieval/reranker.py, adapted to this module's contract: it takes and
+    returns the caller's doc dicts (reordered), rather than the {content,score,original_index}
+    records the service version builds.
+
+    This exists so that a missing/uncached cross-encoder degrades to *keyword* ranking instead
+    of to no ranking at all. Returning the retriever's arbitrary first k docs, as this module
+    previously did, is indistinguishable from success at the call site.
+    """
+    q_tokens = _tokenize(query)
+    doc_tokens = [_tokenize(_doc_text(d)[:512]) for d in docs]
+    # Nothing to score against: an empty query, or docs with no extractable text. Order is
+    # genuinely undefined here, so preserve the retriever's own ranking.
+    if not q_tokens or not any(doc_tokens):
+        return docs[:k]
+
+    n_docs = len(docs)
+    avg_dl = sum(len(dt) for dt in doc_tokens) / max(n_docs, 1)
+
+    df: Counter = Counter()
+    for dt in doc_tokens:
+        dt_set = set(dt)
+        for qt in q_tokens:
+            if qt in dt_set:
+                df[qt] += 1
+
+    k1, b = 1.5, 0.75
+    scored: list[tuple[float, int]] = []
+    for i, dt in enumerate(doc_tokens):
+        score = 0.0
+        tf_counter = Counter(dt)
+        dl = len(dt)
+        for qt in q_tokens:
+            tf = tf_counter.get(qt, 0)
+            if tf == 0:
+                continue
+            idf = math.log((n_docs - df[qt] + 0.5) / (df[qt] + 0.5) + 1.0)
+            tf_norm = (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * dl / max(avg_dl, 1)))
+            score += idf * tf_norm
+        scored.append((score, i))
+
+    scored.sort(key=lambda x: (-x[0], x[1]))  # stable: ties keep retriever order
+    return [docs[i] for _, i in scored[:k]]
 
 
 def mmr_rerank(query: str, docs: list[dict], k: int = 5, lambda_: float = 0.7) -> list[dict]:
@@ -115,11 +174,27 @@ def rerank(query: str, docs: list[dict], k: int = 5) -> list[dict]:
         logger.debug("vector_store:L396: %s", _exc, exc_info=False)
     ce = _get_cross_encoder()
     if ce is None:
-        return docs[:k]
+        # Degraded path A: sentence-transformers absent, or the model was never cached and this
+        # machine is offline (there is no local_files_only anywhere, so a first run with no
+        # network lands here). Previously returned docs[:k] — the retriever's arbitrary order,
+        # silently, with nothing distinguishing it from a real ranking.
+        logger.warning(
+            "rerank: cross-encoder unavailable (sentence-transformers missing, or model "
+            "'cross-encoder/ms-marco-MiniLM-L-6-v2' not cached and no network); "
+            "falling back to BM25 keyword reranking for %d docs",
+            len(docs),
+        )
+        return _bm25_rerank(query, docs, k)
     try:
-        pairs = [(query, (d.get("content") or d.get("text") or "")[:512]) for d in docs]
+        pairs = [(query, _doc_text(d)[:512]) for d in docs]
         scores = ce.predict(pairs, show_progress_bar=False)
         ranked = sorted(zip(scores, docs), key=lambda x: x[0], reverse=True)
         return [d for _, d in ranked[:k]]
-    except Exception:
-        return docs[:k]
+    except Exception as exc:
+        # Degraded path B: the model loaded but scoring blew up (OOM, bad input, torch fault).
+        # This except logged NOTHING at all before.
+        logger.warning(
+            "rerank: cross-encoder scoring failed (%s); falling back to BM25 keyword "
+            "reranking for %d docs", exc, len(docs),
+        )
+        return _bm25_rerank(query, docs, k)
