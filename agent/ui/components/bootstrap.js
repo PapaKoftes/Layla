@@ -208,7 +208,10 @@ function _applyRcpWs(sub) {
   const root = document.getElementById('layla-right-panel');
   const ws = root && root.querySelector('.rcp-page[data-rcp="workspace"]');
   if (!ws || !sub) return;
-  const subs = ws.querySelectorAll('.rcp-subtab');
+  // Scope to [data-rcp-sub]: the memory sub-buttons reuse .rcp-subtab but key off data-mem-sub, and
+  // they live inside the workspace page. An unscoped sweep matched them, read a null data-rcp-sub,
+  // and stripped 'active' off "About you" — leaving the memory pane with no subtab highlighted.
+  const subs = ws.querySelectorAll('.rcp-subtab[data-rcp-sub]');
   for (let a = 0; a < subs.length; a++) {
     const sb = subs[a];
     sb.classList.toggle('active', sb.getAttribute('data-rcp-sub') === sub);
