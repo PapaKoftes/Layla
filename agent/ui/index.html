@@ -175,14 +175,18 @@
   <div class="title">∴ LAYLA</div>
   <div class="header-core">
     <div id="aspect-badge" class="aspect-badge">∴ MORRIGAN</div>
-    <button id="aspect-lock-btn" data-action="toggleAspectLock" title="Lock this aspect">🔓</button>
+    <!-- #aspect-lock-btn MOVED to .topbar: this header is display:none, so the lock had no reachable
+         entry point anywhere. The id must exist exactly ONCE (aspect.js:132 swaps its 🔓/🔒 icon) —
+         duplicating it here would make getElementById bind this hidden copy and re-break it. -->
     <span id="model-status-badge" class="header-pill" title="LLM status"></span>
     <span id="header-system-status" class="header-pill" title="Server status">…</span>
     <span id="session-time" class="header-pill" title="Session duration">0:00</span>
   </div>
   <div class="header-actions">
-    <button type="button" id="cmd-palette-btn" data-action="openCommandPalette" title="Command palette — every panel &amp; command (Ctrl+K)" aria-label="Open command palette" class="header-action-btn">❯ Commands</button>
-    <button type="button" id="intel-btn" data-action="openIntelligence" title="Intelligence — mood, goals, world model, timeline, decisions, learned skills" aria-label="Open intelligence dashboard" class="header-action-btn">✦ Intel</button>
+    <!-- #cmd-palette-btn and #intel-btn MOVED to .topbar (this header is display:none). Both had no other
+         entry point: the palette degraded to Ctrl+K-only — mentioned in exactly one place a user might read
+         — and Intel was reachable only THROUGH that palette. Neither id is referenced by JS (both are pure
+         data-action), so moving them is safe; copying them would create duplicate ids. -->
     <button type="button" id="compact-chat-btn" data-action="compactConversation" title="Compact context" class="header-action-btn">⊙ Compact</button>
     <button data-action="toggleTheme" id="theme-btn" title="Toggle dark/light" aria-label="Toggle theme" data-i18n-title="nav.toggle_theme" class="header-action-btn">◐</button>
     <button data-action="openSettings" title="Settings" aria-label="Settings" data-i18n-title="nav.settings" data-i18n-aria-label="nav.settings" class="header-action-btn">⚙</button>
@@ -357,11 +361,17 @@
     <div class="topbar">
       <button type="button" id="topbar-hamburger" class="topbar-btn topbar-hamburger" data-action="toggleMobileSidebar" title="Menu" aria-label="Toggle sidebar" data-i18n-aria-label="nav.toggle_sidebar">☰</button>
       <div id="topbar-aspect-badge" class="aspect-badge" style="font-size:0.68rem;padding:3px 8px">∴ MORRIGAN</div>
+      <!-- Ported from the display:none <header>, where they were unreachable. Keep the ids unique. -->
+      <button type="button" id="aspect-lock-btn" class="topbar-btn" data-action="toggleAspectLock" title="Lock this aspect — keeps Layla from switching facet mid-conversation" aria-label="Lock aspect">🔓</button>
       <span id="topbar-model-status" class="topbar-pill" title="LLM status"></span>
       <span id="topbar-system-status" class="topbar-pill" title="Server status">…</span>
       <span id="topbar-session-time" class="topbar-pill" title="Session duration">0:00</span>
       <div class="topbar-spacer"></div>
       <button type="button" id="topbar-approvals" class="topbar-approvals" data-action="openApprovals" title="Pending approvals — click to review" aria-label="Pending approvals" style="display:none"></button>
+      <!-- Ported from the display:none <header>. The palette is the ONLY route to 21 features and its
+           button was invisible; Intel was reachable only through that palette. -->
+      <button type="button" id="cmd-palette-btn" class="topbar-btn" data-action="openCommandPalette" title="Command palette — every panel &amp; command (Ctrl+K)" aria-label="Open command palette">❯ Commands</button>
+      <button type="button" id="intel-btn" class="topbar-btn" data-action="openIntelligence" title="Intelligence — mood, goals, world model, timeline, decisions, learned skills" aria-label="Open intelligence dashboard">✦ Intel</button>
       <button type="button" class="topbar-btn" data-action="compactConversation" title="Compact context">⊙ Compact</button>
       <button type="button" class="topbar-btn" data-action="toggleTheme" title="Toggle dark/light" aria-label="Toggle theme" data-i18n-title="nav.toggle_theme">◐</button>
       <button type="button" class="topbar-btn" data-action="openOverlayPanel" data-arg="prefs" title="Settings" aria-label="Settings" data-i18n-title="nav.settings" data-i18n-aria-label="nav.settings">⚙</button>
@@ -837,7 +847,10 @@
         <div class="rcp-subpage" data-rcp-sub="knowledge">
           <div class="panel-title">Knowledge manager</div>
           <div style="font-size:0.68rem;margin-bottom:8px">
-            <input type="text" id="km-source" placeholder="URL or folder path (inside sandbox)" style="width:100%;box-sizing:border-box;margin-bottom:4px;padding:4px">
+            <!-- "folder path", not "URL or folder path": runKnowledgeIngest POSTs to
+                 /intelligence/kb/build/directory, which takes a DIRECTORY only. A URL could never have
+                 worked, so the placeholder was promising something the endpoint cannot do. -->
+            <input type="text" id="km-source" placeholder="Folder path inside your workspace" style="width:100%;box-sizing:border-box;margin-bottom:4px;padding:4px">
             <input type="text" id="km-label" placeholder="Label (optional)" style="width:100%;box-sizing:border-box;margin-bottom:4px;padding:4px">
             <button type="button" data-action="runKnowledgeIngest">Ingest</button>
           </div>

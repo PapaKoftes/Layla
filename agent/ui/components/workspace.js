@@ -30,7 +30,12 @@ export async function refreshPlatformModels() {
     const active = (d && d.active) ? String(d.active) : '';
     const models = Array.isArray(d && d.models) ? d.models : [];
     box.innerHTML = '<div><strong>Active</strong>: ' + escapeHtml(active || '—') + '</div>' +
-      '<div style="margin-top:6px"><strong>Available</strong>: ' + escapeHtml(models.slice(0, 10).join(', ') || '—') + '</div>';
+      // /platform/models returns objects ({filename, path, size_mb}), not strings — joining them stringified
+      // each to "[object Object]". `active` above renders fine because it IS a plain string, which is exactly
+      // why only this line looked broken.
+      '<div style="margin-top:6px"><strong>Available</strong>: ' +
+      escapeHtml(models.slice(0, 10).map(function (m) { return (m && m.filename) || String(m); }).join(', ') || '—') +
+      '</div>';
   } catch (_) { box.innerHTML = '<span style="color:var(--text-dim)">Could not load models</span>'; }
 }
 
@@ -188,13 +193,19 @@ export async function loadStudyPresetsAndSuggestions() {
     const r1 = await fetch('/study_plans/presets');
     const d1 = await r1.json().catch(() => ({}));
     const topics = Array.isArray(d1 && d1.topics) ? d1.topics : [];
-    if (presets) presets.innerHTML = topics.slice(0, 16).map(t => '<button type="button" class="approve-btn" style="font-size:0.62rem" onclick="addStudyPlan(' + JSON.stringify(String(t)) + ')">' + escapeHtml(String(t)) + '</button>').join('');
+    // data-action/data-arg, NOT onclick. The old form was:
+    //     onclick="addStudyPlan(' + JSON.stringify(String(t)) + ')"
+    // JSON.stringify emits DOUBLE quotes into a DOUBLE-quoted attribute, so the parser terminated onclick at
+    // the first inner quote -> SyntaxError -> the handler never ran. The label is a separate text node, so
+    // every preset rendered perfectly and did nothing. The delegated system used at :174 makes this
+    // impossible, and escapeHtml handles the quoting correctly.
+    if (presets) presets.innerHTML = topics.slice(0, 16).map(t => '<button type="button" class="approve-btn" style="font-size:0.62rem" data-action="addStudyPlan" data-arg="' + escapeHtml(String(t)) + '">' + escapeHtml(String(t)) + '</button>').join('');
   } catch (_) {}
   try {
     const r2 = await fetch('/study_plans/suggestions');
     const d2 = await r2.json().catch(() => ({}));
     const suggestions = Array.isArray(d2 && d2.suggestions) ? d2.suggestions : [];
-    if (sug) sug.innerHTML = suggestions.slice(0, 16).map(t => '<button type="button" class="approve-btn" style="font-size:0.62rem" onclick="addStudyPlan(' + JSON.stringify(String(t)) + ')">' + escapeHtml(String(t)) + '</button>').join('');
+    if (sug) sug.innerHTML = suggestions.slice(0, 16).map(t => '<button type="button" class="approve-btn" style="font-size:0.62rem" data-action="addStudyPlan" data-arg="' + escapeHtml(String(t)) + '">' + escapeHtml(String(t)) + '</button>').join('');
   } catch (_) {}
 }
 
