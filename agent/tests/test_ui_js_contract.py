@@ -36,6 +36,21 @@ def test_conversation_rail_reads_the_contract_fields():
         "create must read d.conversation.id"
 
 
+def test_opening_right_panel_refreshes_the_active_tab():
+    # REGRESSION: the Dashboard/Status tab is `active` by default in index.html, but its data-load hook
+    # (refreshVersionInfo/refreshPlatformHealth/refreshRuntimeOptions via panelRefreshRouting) only fires
+    # through showMainPanel(). toggleRightPanel() opened the panel WITHOUT calling showMainPanel, so the
+    # default-active tab sat on "Version: loading..." / "Loading…" forever until the user clicked another
+    # tab and back. The open branch must route the currently-active tab through showMainPanel.
+    js = _read("components/input.js")
+    m = re.search(r"function toggleRightPanel\(\)[\s\S]*?\n}", js)
+    assert m, "toggleRightPanel not found"
+    body = m.group(0)
+    # the else/open branch must find the active page and route it through showMainPanel
+    assert ".rcp-page.active" in body, "toggleRightPanel open branch must locate the active panel"
+    assert "showMainPanel(main)" in body, "toggleRightPanel must refresh the active tab via showMainPanel on open"
+
+
 def test_reasoning_tree_summary_is_wired_into_addmsg():
     # The backend ships reasoning_tree_summary on every turn; addMsg's 8th param renders it. Both the
     # non-stream call and the streaming done-frame must pass it, or the collapsible silently never appears.
