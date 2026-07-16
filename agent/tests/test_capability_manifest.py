@@ -64,6 +64,23 @@ ORDINARY_TURNS = [
 ]
 
 
+def test_manifest_is_actually_tracked_in_git():
+    """`.identity/` is blanket-gitignored — the manifest was silently EXCLUDED from its first commit and would
+    never have reached a fresh clone. "Preloaded self-knowledge" then degrades to "no self-knowledge" and she
+    goes back to inventing capabilities, with nothing failing to warn anyone. A negation
+    (`!.identity/capabilities.md`) fixes it; this test makes sure the negation is never lost."""
+    import subprocess
+
+    out = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", ".identity/capabilities.md"],
+        cwd=str(ROOT), capture_output=True, text=True, timeout=30,
+    )
+    assert out.returncode == 0, (
+        "the capability manifest is NOT tracked in git, so it will not ship on clone. "
+        "`.identity/` is ignored — .gitignore needs `!.identity/capabilities.md`."
+    )
+
+
 def test_manifest_file_ships_and_has_a_prompt_core():
     p = ROOT / ".identity" / "capabilities.md"
     assert p.exists(), "the capability manifest must exist"
