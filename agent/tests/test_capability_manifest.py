@@ -98,7 +98,8 @@ def test_manifest_is_honest_about_what_is_broken():
     required = [
         ("CANNOT speak", "TTS/STT are dead — every engine is missing from the venv"),
         ("search_codebase", "returns ok:true with 0 matches; a zero result must not be trusted"),
-        ("math_eval", "raises AttributeError on every input"),
+        # math_eval was here until 2026-07-16 — fixed (ast.Mul -> ast.Mult), so claiming it is broken would
+        # now be its own kind of lie. The manifest must track reality in BOTH directions.
         ("Ingest button", "reads a non-existent element; knowledge cannot be added via the UI"),
         ("Custom aspects", "creatable but never selectable — silently falls back to Morrigan"),
         ("frozen", "capability scores never move from use"),
@@ -112,11 +113,12 @@ def test_manifest_is_honest_about_what_is_broken():
 # ── tool count ─────────────────────────────────────────────────────────────────────────────────────
 # Tools proven BROKEN by execution, not by reading. Remove an entry when it is actually fixed; the expected
 # count then rises and the manifest must be updated to match. That is the point.
-KNOWN_BROKEN_TOOLS = {
-    # layla/tools/impl/analysis.py:62 uses `_ast.Mul`, which does not exist (it is `ast.Mult`), and builds the
-    # tuple BEFORE parsing — so every input raises AttributeError. Verified by execution.
-    "math_eval",
-}
+KNOWN_BROKEN_TOOLS: set[str] = set()
+# (was {"math_eval"} — `_ast.Mul` does not exist; it is `ast.Mult`, and the tuple was built BEFORE parsing so
+#  every input raised AttributeError. Fixed 2026-07-16 along with the missing @functools.wraps that hid it:
+#  the wrapper replaced all 198 signatures with (*args, **kwargs) and nulled every __doc__, so the 198-tool
+#  test counted registrations and never invoked one. This guard caught the repair and demanded the manifest be
+#  updated — which is what a guard is for.)
 
 
 def test_manifest_tool_count_tracks_reality():
