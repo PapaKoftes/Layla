@@ -30,6 +30,18 @@ llama-cpp-python>=0.3.1,<0.4
 sentence-transformers>=3.0,<4
 numpy>=1.24,<3
 psutil>=5.9
+keyring>=24                    # OS keyring for secret storage. In [core] AND [cpu], so EVERY user has it,
+                               # while CI installed it nowhere — secret_store.py:27 catches the absence and
+                               # silently uses the env/plaintext path, so CI could not even IMPORT what every
+                               # user runs. This closes that divergence.
+                               # HONEST LIMIT: it does not make CI test the real keyring path. On headless
+                               # ubuntu-latest `import keyring` succeeds but there is no Secret Service
+                               # backend, so get_password raises into the same `except Exception` fallback
+                               # (secret_store.py:45). The branch is chosen by BACKEND availability, not by
+                               # import. Claiming otherwise would be the exact overstatement this phase exists
+                               # to remove — an earlier draft of this comment did claim it.
+                               # Guarded by tests/test_dependency_parity.py (AST-derived; proven to catch this
+                               # dist by removing it and watching the gate fail).
 trafilatura>=1.6               # Web article extraction (clean text, no nav/ads)
 textual>=0.40
 beautifulsoup4>=4.12
