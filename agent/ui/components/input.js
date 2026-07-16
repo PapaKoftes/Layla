@@ -288,6 +288,15 @@ export function toggleRightPanel() {
     rp.classList.add('rp-open');
     if (bd) { bd.classList.add('visible'); bd.setAttribute('aria-hidden', 'false'); }
     closeMobileSidebar();
+    // Refresh whatever tab is already active. Opening the panel via the toggle (rather than a
+    // tab click or openOverlayPanel) never fired the per-panel data-load hook, so the default-active
+    // tab — Dashboard/Status — sat on its "Loading…" placeholders forever. Route through
+    // showMainPanel so the active tab always loads its data when the panel becomes visible.
+    try {
+      const activePage = rp.querySelector('.rcp-page.active');
+      const main = activePage && activePage.getAttribute('data-rcp');
+      if (main && typeof window.showMainPanel === 'function') window.showMainPanel(main);
+    } catch (_e) { /* non-fatal */ }
   }
 }
 
