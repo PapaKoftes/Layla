@@ -6,6 +6,8 @@ Static layers (identity, policy, personality voice) can be cached per aspect whe
 from __future__ import annotations
 
 import logging
+import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +60,52 @@ def _personality_file_mtime(aspect_id: str) -> float:
         return p.stat().st_mtime_ns / 1e9
     except Exception:
         return 0.0
+
+
+_CAP_CORE_RE = re.compile(
+    r"<!--\s*PROMPT-CORE-START\s*-->(.*?)<!--\s*PROMPT-CORE-END\s*-->", re.DOTALL
+)
+# Questions about what Layla is/can do. Deliberately narrow: this costs ~700 tok, so it fires on the question,
+# never on every turn. Matches "what can you do", "list your capabilities", "what tools do you have",
+# "can you speak", "how do I use ...", etc.
+_CAP_Q_RE = re.compile(
+    # Both word orders, but the leading "what" is load-bearing: it separates the QUESTION
+    # ("what can you do", "tell me what you can do") from a REQUEST ("can you do this refactor"),
+    # which must NOT pay the ~600 tok.
+    r"\bwhat\s+(can|could)\s+you\s+do\b"
+    r"|\bwhat\s+you\s+(can|could)\s+do\b"
+    r"|\b(your|you have)\b[^?]{0,20}\b(capabilit|abilit|feature|function|tool)"
+    # noun-first order: "what FEATURES DO YOU HAVE"
+    r"|\b(feature|tool|capabilit|abilit|function)\w*\s+do\s+you\s+have\b"
+    r"|\bcapabilit(y|ies)\b"
+    r"|\bwhat\s+(are|is)\s+you\s+(capable|able)\b"
+    r"|\bwhat\s+tools\b"
+    r"|\bcan\s+you\s+(speak|talk|hear|listen|see|browse|search\s+the\s+web)\b"
+    r"|\bhow\s+do\s+i\s+(use|find|enable|turn\s+on)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_capability_question(goal_lower: str) -> bool:
+    return bool(goal_lower) and bool(_CAP_Q_RE.search(goal_lower))
+
+
+@lru_cache(maxsize=2)
+def _capability_manifest_core(root: Path) -> str:
+    """The PROMPT-CORE block of .identity/capabilities.md — the verified capability manifest.
+
+    Only the delimited block is injected; the rest of the file is for humans and the API. Returns "" if the
+    file or the block is missing, so a missing manifest degrades to today's behavior rather than breaking a run.
+    """
+    try:
+        p = root / ".identity" / "capabilities.md"
+        if not p.exists():
+            return ""
+        m = _CAP_CORE_RE.search(p.read_text(encoding="utf-8"))
+        return m.group(1).strip() if m else ""
+    except Exception as _exc:  # never let self-knowledge break a turn
+        logger.debug("prompt_builder:capability_manifest: %s", _exc, exc_info=False)
+        return ""
 
 
 def build_core_sys_parts(
@@ -181,6 +229,20 @@ def build_core_sys_parts(
             _STATIC_SYS_CACHE[cache_key] = list(sys_parts)
 
     gl = (goal or "").lower()
+    # Capability self-knowledge (BL-306). Layla had NO ground truth about her own functionality: self_model.md
+    # is philosophy and lilith-only, docs/CAPABILITIES.md is about the implementation registry with no runtime
+    # reader, and operating_manual.manual_for_prompt() was never wired to a prompt. Asked to list her
+    # capabilities she invented plausible ones ("User management", "Encryption support"). This injects the
+    # verified manifest instead.
+    # Gated on the question, not always-on: a 3B cannot afford ~700 tok every turn.
+    # INSERTED near the front, not appended: system_instructions is truncated from the TAIL on low tiers, so an
+    # appended block is exactly the thing that gets cut (same lesson as the persona insert above).
+    # NOTE: this must stay OUT of _STATIC_SYS_CACHE — that cache is keyed on (aspect, cfg) and NOT the goal, so
+    # caching a goal-dependent block would leak it into unrelated turns.
+    if _is_capability_question(gl):
+        _cap = _capability_manifest_core(root)
+        if _cap:
+            sys_parts.insert(2 if personality else 1, _cap)
     if (cfg.get("uncensored") or cfg.get("nsfw_allowed")) and (
         "nsfw" in gl
         or "intimate" in gl
