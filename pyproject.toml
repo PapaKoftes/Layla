@@ -99,6 +99,12 @@ llm = [
     "llama-cpp-python>=0.3.1,<0.4",
     "litellm>=1.40.0",
     "instructor>=1.0,<2",
+    # Structured JSON for agent decisions (services/llm/structured_gen.py falls back to plain
+    # parsing without it). Sibling of `instructor`. It was in agent/requirements.txt — so CI
+    # installed and exercised it — but in NO extra, meaning no `pip install layla[...]` could
+    # reproduce that path. Marker mirrors requirements.txt. Guarded by
+    # agent/tests/test_dependency_parity.py.
+    "outlines>=1.0.0,<2.0.0; python_version < '3.13'",
 ]
 voice = [
     "faster-whisper>=1.0",   # STT (MIT)
