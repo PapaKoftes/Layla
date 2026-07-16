@@ -137,6 +137,9 @@ def delete_conversation(conversation_id: str) -> bool:
         return False
     with _conn() as db:
         db.execute("DELETE FROM conversation_messages WHERE conversation_id=?", (cid,))
+        # Clear the parent link on any child fork so it doesn't dangle at a now-missing parent (the
+        # fork-tree UI would otherwise show a broken parent reference). The child + its messages stay intact.
+        db.execute("UPDATE conversations SET parent_id='' WHERE parent_id=?", (cid,))
         cur = db.execute("DELETE FROM conversations WHERE id=?", (cid,))
         db.commit()
         return cur.rowcount > 0
