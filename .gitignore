@@ -178,7 +178,14 @@ agent/all_routes.txt
 agent/cluster_config.json
 
 # Operator runtime state (per-machine, mutated at runtime — must never be committed)
-agent/layla/memory/knowledge_graph.graphml
+# Trailing * covers the .bak sibling too: the rule used to name the .graphml exactly, so
+# knowledge_graph.graphml.bak (a byte-identical copy of the ignored graph) was left untracked but
+# NOT ignored — one `git add -A` from being committed.
+agent/layla/memory/knowledge_graph.graphml*
+*.graphml.bak
+# Operator state: local conversation titles + the live benchmark scorecard written on every run.
+agent/titles.txt
+benchmarks/scorecard_live.json
 agent/layla/memory/vector_meta.json
 agent/runtime_config.json.audit-aside
 agent/runtime_config.json.audit-*

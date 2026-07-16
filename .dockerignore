@@ -1,0 +1,55 @@
+# Keep operator state out of the image. The Dockerfile does `COPY agent/ ./agent/`, which does NOT
+# read .gitignore — without this file the image ships the builder's private data: the Fernet key that
+# protects encrypted learnings, chroma vectors derived from real conversations, governance logs, and
+# runtime_config.json full of local machine paths.
+#
+# This only matters when someone builds and SHARES an image or tarball; a friend building from their
+# own clean clone was never affected. It is still the same class of leak as the installer, so it gets
+# the same treatment.
+
+# ── Operator state directories ──
+**/.layla/
+**/.governance/
+.governance/
+**/chroma_db/
+**/.research_lab/
+**/.research_brain/
+**/.identity/
+
+# ── Operator data files ──
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.graphml
+*.graphml.bak
+**/knowledge_graph.graphml*
+agent/runtime_config.json
+runtime_config.json
+agent/titles.txt
+conversation_history.json
+**/project_memory.json
+**/memory_encryption.key
+**/repo_index.db
+benchmarks/scorecard_live.json
+learnings.json
+
+# ── Build/dev noise ──
+.git/
+.venv/
+.venv-test/
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+node_modules/
+dist/
+build/
+*.egg-info/
+installer/payload/
+installer/output/
+logs/
+models/
+*.gguf
+.planning/

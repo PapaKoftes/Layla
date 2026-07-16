@@ -135,7 +135,10 @@ export function panelRefreshRouting(main) {
   }
   if (main === 'workspace') {
     var wsRoot = document.querySelector('#layla-right-panel .rcp-page[data-rcp="workspace"]');
-    var subEl = wsRoot && wsRoot.querySelector('.rcp-subtab.active');
+    // [data-rcp-sub] guard: the memory sub-buttons also carry .rcp-subtab (keyed on data-mem-sub) and
+    // sit inside this page, so an unscoped '.rcp-subtab.active' can match one of them and resolve sub
+    // to null — routing the refresh to nothing. Today only DOM order keeps that from firing.
+    var subEl = wsRoot && wsRoot.querySelector('.rcp-subtab[data-rcp-sub].active');
     var sub = (subEl && subEl.getAttribute('data-rcp-sub')) || 'models';
     if (typeof window.__laylaRefreshAfterWorkspaceSubtab === 'function') {
       window.__laylaRefreshAfterWorkspaceSubtab(sub);
