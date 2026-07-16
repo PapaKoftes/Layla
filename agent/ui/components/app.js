@@ -834,7 +834,10 @@ function _checkServerHealth() {
   banner.className = 'layla-model-loading';
   banner.id = 'layla-health-banner';
   banner.innerHTML = '<div class="spinner"></div><span>Checking server health...</span>';
-  var chatEl = document.getElementById('chat-messages');
+  // '#chat' — NOT '#chat-messages', which exists nowhere. The banner was appended to null, so the
+  // "Server unreachable — retrying" warning has never once appeared, while the 5s /health poll below kept
+  // running for 2 minutes writing into a banner that was never in the DOM.
+  var chatEl = document.getElementById('chat');
   if (chatEl) chatEl.appendChild(banner);
 
   var _healthPoll = setInterval(function () {
