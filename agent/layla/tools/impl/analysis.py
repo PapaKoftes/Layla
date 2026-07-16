@@ -59,7 +59,10 @@ def math_eval(expression: str) -> dict:
 
     _SAFE_NODES = (
         _ast.Expression, _ast.BinOp, _ast.UnaryOp, _ast.Call, _ast.Constant,
-        _ast.Add, _ast.Sub, _ast.Mul, _ast.Div, _ast.Pow, _ast.Mod, _ast.FloorDiv,
+        # ast.Mult, NOT ast.Mul — the latter does not exist. This tuple was built BEFORE parsing, so the
+        # AttributeError fired on EVERY input: math_eval was dead for every caller, and the 198-tool test
+        # passed anyway because it only counted registrations and never invoked one.
+        _ast.Add, _ast.Sub, _ast.Mult, _ast.Div, _ast.Pow, _ast.Mod, _ast.FloorDiv,
         _ast.UAdd, _ast.USub, _ast.Compare, _ast.Lt, _ast.Gt, _ast.LtE, _ast.GtE,
         _ast.Eq, _ast.NotEq, _ast.BoolOp, _ast.And, _ast.Or, _ast.Name, _ast.List,
         _ast.Tuple,
@@ -87,7 +90,7 @@ def math_eval(expression: str) -> dict:
                 return _SAFE_FUNCS[node.id]
             raise ValueError(f"Unknown name: {node.id}")
         if isinstance(node, _ast.BinOp):
-            ops = {_ast.Add: _op.add, _ast.Sub: _op.sub, _ast.Mul: _op.mul,
+            ops = {_ast.Add: _op.add, _ast.Sub: _op.sub, _ast.Mult: _op.mul,
                    _ast.Div: _op.truediv, _ast.Pow: _op.pow, _ast.Mod: _op.mod,
                    _ast.FloorDiv: _op.floordiv}
             return ops[type(node.op)](_safe_eval(node.left), _safe_eval(node.right))
