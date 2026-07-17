@@ -142,6 +142,19 @@ function _skipAndClose() {
     .catch(function () { _closeOverlay(); });
 }
 
+/**
+ * Close the interview (BL-249). This is what window.dismissOnboarding now points at.
+ *
+ * It used to point at setup.js's tour dismiss, because the tour and this interview shared
+ * #onboarding-overlay — so Escape here fired the TOUR's close, which stripped a `visible` class this
+ * overlay's CSS never used and marked the tour as seen while leaving the interview on screen. The tour has
+ * its own #tour-overlay now; #onboarding-overlay belongs to this module, and Escape / the overlay manager
+ * close it correctly by skipping the interview.
+ */
+export function dismissOnboarding() {
+  _skipAndClose();
+}
+
 // ── Soft prompt before starting ───────────────────────────────────────────
 function _showOnboardingPrompt() {
   const overlay = _createOverlay();
@@ -346,11 +359,48 @@ function _showCompletion() {
   if (doneBtn) doneBtn.onclick = function () { _closeOverlay(); };
 }
 
+/** True while an earlier first-run surface (the wizard, or its tour handoff) still owns the screen.
+ *
+ * This interview is the LAST first-run surface. It used to fire unconditionally 2s after load; while the
+ * wizard was skipped on any machine with a model (BL-250) it never visibly collided, so nothing revealed
+ * the conflict. The moment the wizard came back (BL-250 fix), this overlay would stack ON TOP of it — two
+ * "Meet Layla" modals fighting for a first-time user's attention. window._laylaFirstRunClaim is the shared
+ * signal wizard.js sets; a visibility check of the wizard/tour overlays is the belt-and-braces for the
+ * window where the wizard is deciding but not yet painted.
+ */
+function _firstRunSurfaceAhead() {
+  try {
+    if (window._laylaFirstRunClaim && window._laylaFirstRunClaim !== 'released') return true;
+    for (var i = 0, ids = ['wizard-overlay', 'tour-overlay']; i < ids.length; i++) {
+      var el = document.getElementById(ids[i]);
+      if (el && el.classList.contains('visible')) return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
+/** Poll until every earlier surface is gone, then re-check. Bounded: an introduction nobody finishes must
+ *  not leave a timer running for the life of the tab. */
+let _obDeferring = false;
+function _deferOnboarding() {
+  if (_obDeferring) return;
+  _obDeferring = true;
+  let waited = 0;
+  const iv = setInterval(function () {
+    waited += 1000;
+    if (!_firstRunSurfaceAhead()) { clearInterval(iv); _obDeferring = false; checkOnboarding(); return; }
+    if (waited >= 15 * 60 * 1000) { clearInterval(iv); _obDeferring = false; }
+  }, 1000);
+}
+
 // ── Bootstrap: check if onboarding needed ─────────────────────────────────
 export function checkOnboarding() {
+  if (_firstRunSurfaceAhead()) { _deferOnboarding(); return; }
   fetch('/onboarding/status')
     .then(function (r) { return r.json(); })
     .then(function (d) {
+      // Re-check: /onboarding/status is a round-trip, and the wizard can open while it is in flight.
+      if (_firstRunSurfaceAhead()) { _deferOnboarding(); return; }
       if (d.needs_onboarding && !d.in_progress) {
         _showOnboardingPrompt();
       } else if (d.in_progress && d.state) {

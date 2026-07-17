@@ -107,7 +107,22 @@ def retrieve_relevant_memory(
             results = [r for r in results if r.get("confidence", 0.0) >= _eff_min]
         return results
     except Exception as e:
-        logger.debug("retrieve_relevant_memory failed: %s", e)
+        # BL-374: this was logger.debug — below the default level — so an offline box returned [] here with
+        # NOTHING in the log. "No relevant memories" and "the embedder could not be downloaded" produced a
+        # byte-identical result at the call site. Retrieval failing is a WARNING; an unavailable embedder
+        # says so by name, once, and points at the loud error vector_store already emitted.
+        try:
+            from layla.memory.vector_store import embedder_status
+
+            if embedder_status().get("status") == "unavailable":
+                logger.warning(
+                    "retrieve_relevant_memory: returning NO memories — the embedder is unavailable (see the "
+                    "EMBEDDER UNAVAILABLE error above and GET /health/deps): %s", e,
+                )
+                return []
+        except Exception:
+            pass
+        logger.warning("retrieve_relevant_memory failed, returning no memories: %s", e)
     return []
 
 
