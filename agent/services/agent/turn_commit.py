@@ -75,6 +75,74 @@ _NO_LEARN_STATUSES = frozenset(
 )
 
 
+# ── BL-267: a completed turn is capability PRACTICE (record_practice was study-only) ──
+#
+# record_practice() had exactly two callers before this — scheduler/jobs.py and routers/study.py,
+# both the STUDY subsystem — so every chat/agent turn left the capability levels frozen (DB proof:
+# 23 domains all at level 0.49, practice_count 0, only decay_tick events). The Growth panel showed a
+# constant. commit_turn is the ONE seam every completed turn crosses (BL-338), so practice belongs
+# here — but on a CPU box it must be CHEAP and must NEVER call the LLM inline. It is not:
+#   • the classification is a dict lookup on the route decision already computed this turn, or a pure
+#     keyword pass (classify_task) on the fast paths that carry no run state — no DB, no model;
+#   • record_practice itself (a dozen indexed SQLite writes + a DB-only award_xp) runs off the reply
+#     path in a daemon thread, and ONLY for a turn that classifies to a real domain (not "hi").
+#
+# The gate is deliberately STRICTER than _should_learn: practice = Layla cleanly delivered a reply,
+# i.e. status ∈ {finished, fast_path} AND not refused. A timed-out/errored/aborted turn still LEARNS
+# the operator's stated fact (see the long note above) but is NOT successful practice, so it is
+# excluded here. It also sits INSIDE the learn block below, inheriting the learn=False replay skip so
+# a cached-reply replay never double-counts.
+_PRACTICE_OK_STATUSES = frozenset({"finished", "fast_path"})
+
+# task_type (route_intent / classify_task vocab) → capability domain. Only the handful of domains a
+# chat turn can CREDIBLY signal; everything else (chat/default, or no keyword) records NOTHING rather
+# than inflating one bar. record_practice's own cross-domain propagation then nudges dependents.
+_TASKTYPE_TO_DOMAIN = {"coding": "coding", "research": "research", "reasoning": "problem_solving"}
+_KEYWORD_TO_DOMAIN = (
+    ("architecture", "system_design"), ("design decision", "system_design"),
+    ("roadmap", "planning"), ("break down", "planning"), ("plan the", "planning"),
+    ("document", "writing"), ("write up", "writing"), ("draft the", "writing"),
+)
+
+
+def _practice_domain_for_turn(goal: str, status: str, refused: bool, state: dict | None) -> str | None:
+    """Cheap (no DB, no LLM) classification of a turn into a capability domain to PRACTICE, or None
+    to skip. None on: a non-successful status, a refusal, a trivial/phatic turn, or any turn that
+    does not map to a domain a chat turn can honestly claim to have exercised."""
+    if (status or "") not in _PRACTICE_OK_STATUSES or refused:
+        return None
+    g = (goal or "").strip()
+    if len(g.split()) < 3:  # trivial-turn floor: "hi", "thanks", "why?", bare "explain"
+        return None
+    tt = ""
+    rd = state.get("route_decision") if isinstance(state, dict) else None
+    if isinstance(rd, dict):  # reuse the route already computed this turn (free)
+        tt = str(rd.get("task_type") or "").strip().lower()
+    if not tt:  # fast paths carry no run state → a pure keyword classify (no DB, no model)
+        try:
+            from services.llm.model_router import classify_task
+            tt = str(classify_task(g) or "").strip().lower()
+        except Exception:
+            tt = ""
+    dom = _TASKTYPE_TO_DOMAIN.get(tt)
+    if dom:
+        return dom
+    low = g.lower()
+    for kw, d in _KEYWORD_TO_DOMAIN:
+        if kw in low:
+            return d
+    return None
+
+
+def _record_practice_domain(domain: str) -> None:
+    """Off the hot path (daemon thread): record one practice event for a resolved domain."""
+    try:
+        from layla.memory import capabilities as _cap
+        _cap.record_practice(domain, notes="chat_turn", usefulness_score=0.5, propagate_cross_domain=True)
+    except Exception as e:
+        logger.debug("commit_turn: record_practice(%s) failed: %s", domain, e)
+
+
 # ── BL-243: the rail needs to know a title is still in flight ──
 #
 # The title is synthesized by an LLM on a BACKGROUND thread (see _maybe_synth_title). On this
@@ -289,5 +357,20 @@ def commit_turn(
         extract_in_background(goal, text, conversation_id=cid, aspect_id=asp)
     except Exception as e:
         logger.debug("commit_turn: entity extraction failed: %s", e)
+
+    # ── 4. Capability practice (BL-267): a successful, substantive, domain-named turn is practice ──
+    # Classify cheaply on THIS thread (dict lookup / keyword pass — no DB, no LLM); only spawn the
+    # DB-writing thread when the turn actually maps to a domain, so "hi"/"thanks" spawn nothing.
+    try:
+        _dom = _practice_domain_for_turn(goal, status, refused, state)
+        if _dom:
+            threading.Thread(
+                target=_record_practice_domain,
+                args=(_dom,),
+                daemon=True,
+                name="cap-practice",
+            ).start()
+    except Exception as e:
+        logger.debug("commit_turn: capability practice failed: %s", e)
 
     return receipt
