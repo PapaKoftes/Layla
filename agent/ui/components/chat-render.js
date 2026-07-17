@@ -384,7 +384,11 @@ export function renderPromptTilesAndEmptyState() {
           '<div>Persistent memory across sessions</div>' +
           '<div>Knowledge base with semantic search</div>' +
           '<div>Plan and execute multi-step tasks</div>' +
-          '<div>Voice input/output (STT + TTS)</div>' +
+          // "Voice input/output (STT + TTS)" was here — a lie on a default install: faster-whisper /
+          // kokoro-onnx / pyttsx3 are not present, /voice/speak returns 503, and the Speak toggle is
+          // already disabled-and-labelled for exactly this reason. /health/deps reports voice_stt:missing,
+          // voice_tts:missing. It is a static string with no availability check, so it cannot be made
+          // honest by gating — the honest version simply does not promise it.
           '<div>Export chats, memory, and system state</div>' +
           '<div>Discord bot integration</div>' +
         '</div>' +

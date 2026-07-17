@@ -57,11 +57,13 @@ _KNOWN_DEAD = {
     # (BL-352 — the purpose-built endpoint that had zero callers), route_helpers.APPEARANCE_KEYS accepts
     # the two keys, and settings-full.js::applyAppearance scales the root font-size on boot so the value
     # actually reaches the user. See test_appearance_panel.py.
-    "onboarding-text": "BL-249 the 3-step tour is the ONLY thing that explains workspace scoping, aspects and "
-                       "the aspect lock. It targets DOM that does not exist, so maybeStartOnboarding() "
-                       "early-returns forever.",
-    "onboarding-next": "BL-249 — same dead tour.",
-    "onboarding-done": "BL-249 — same dead tour.",
+    # onboarding-text / -next / -done were here (BL-249). FIXED 2026-07-17 — the ratchet demanded this
+    # deletion the moment the lookups stopped resolving to nothing, exactly as designed. The tour now lives
+    # under #tour-text / #tour-next / #tour-done with real markup in index.html, its handlers are registered
+    # in main.js (they had been exported to nobody), and the wizard hands off to it on completion. It moved
+    # OFF the #onboarding-* namespace because onboarding.js builds its own #onboarding-overlay for a
+    # different feature — one id, two systems, which is why Escape during the interview used to fire the
+    # tour's dismiss. See test_first_run_tour.py.
     "phone-access-url": "BL-337 phone access: loadPhoneAccess() has zero callers AND its elements do not "
                         "exist. Decide: build the panel, or delete the function.",
     "phone-access-status": "BL-337 — same dead feature.",

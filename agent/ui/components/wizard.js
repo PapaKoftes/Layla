@@ -12,6 +12,20 @@ import { ASPECTS } from './aspect.js';
 const WIZ_KEY = 'layla_wizard_v2_done';
 const WIZ_KEY_COMPAT = 'layla_wizard_done';
 
+// ── First-run ownership (BL-249/BL-250) ─────────────────────────────────────
+// The 6-step wizard is the introduction. It runs on window `load`, but the welcome/profile cascade
+// (setup.js maybeStartSetupProfiles, reached from app.js init at DOMContentLoaded) and the onboarding
+// interview (onboarding.js, 2s after load) race it and could stack a second "Meet Layla" modal on top.
+// A single shared string on window — set SYNCHRONOUSLY in initWizard() before app.js init runs — lets
+// those later surfaces yield until the wizard has decided and finished. No module import (that is what
+// killed the previous attempt); the value is the coordination.
+//   'deciding' — the wizard has not yet consulted the server; it MIGHT show. Later surfaces wait.
+//   'showing'  — the wizard is on screen. Later surfaces wait.
+//   'released' — the wizard is done (completed, or it decided not to show). Later surfaces may proceed.
+function _setClaim(state) {
+  try { window._laylaFirstRunClaim = state; } catch (_) {}
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function $(id) { return document.getElementById(id); }
 function _esc(s) { return escapeHtml(String(s)); }
@@ -162,6 +176,10 @@ async function onNext() {
   if (step === 5) {
     try { localStorage.setItem(WIZ_KEY, '1'); } catch (_) {}
     try { localStorage.setItem(WIZ_KEY_COMPAT, '1'); } catch (_) {}
+    // SERVER-side truth is what makes "introduced once" stick across a cleared localStorage or a second
+    // browser — it is the whole reason the `ready` shortcut could be removed safely (BL-250). If this POST
+    // is silently dropped the wizard would return on every new browser, so test_wizard_first_run_gate.py
+    // asserts the round-trip against a live server rather than trusting it.
     try {
       await fetch('/settings', {
         method: 'POST',
@@ -170,6 +188,14 @@ async function onNext() {
       });
     } catch (_) {}
     setVisible(false);
+    _setClaim('released');  // our turn is over — later surfaces may run
+    // Hand off to the tour (BL-249): the wizard introduces the app; the tour explains the things that are
+    // not self-evident — workspace scoping, aspect selection, the lock, and Ctrl+K. This is what actually
+    // starts the tour; the welcome/profile cascade stays yielded (it never ran while the wizard owned
+    // first-run), so there is no double-introduction.
+    try {
+      if (typeof window.maybeStartTour === 'function') window.maybeStartTour();
+    } catch (_) {}
     return;
   }
   step += 1;
@@ -219,13 +245,26 @@ function bind() {
 // ── Start wizard ────────────────────────────────────────────────────────────
 export async function laylaWizardStart() {
   try {
-    if (localStorage.getItem(WIZ_KEY) === '1' || localStorage.getItem(WIZ_KEY_COMPAT) === '1') return;
+    if (localStorage.getItem(WIZ_KEY) === '1' || localStorage.getItem(WIZ_KEY_COMPAT) === '1') {
+      _setClaim('released');  // introduced already in this browser — later surfaces may proceed
+      return;
+    }
   } catch (_) {}
-  // Consult SERVER truth before nagging. localStorage is per-browser + fragile,
-  // and the CLI installer provisions a model without ever running this wizard —
-  // so on a set-up machine the wizard was firing on every single launch. Skip it
-  // when the server says the wizard is complete OR the system is already ready
-  // (a valid model is configured). Only genuine first-run (no model) shows it.
+  // Consult SERVER truth before nagging: localStorage is per-browser + fragile, so a returning user on a
+  // second browser would otherwise be re-introduced forever.
+  //
+  // BL-250 — `ready` and `wizard_complete` are two DIFFERENT propositions and this gate used to conflate
+  // them:
+  //   ready           = "a valid GGUF is provisioned"      (routers/settings.py: "ready": model_found)
+  //   wizard_complete = "a human was actually introduced"  (set below, only after they finish the wizard)
+  // An installer or CLI that provisions a model sets ready=true without ever showing this wizard — so the
+  // BETTER the install went, the LESS the friend was told: she lost the workspace picker, the character
+  // quiz, the aspect picker and the feature list precisely BECAUSE setup succeeded. Worse, the old code
+  // then wrote the "wizard done" marker for someone who had never seen it, making the skip permanent and
+  // self-concealing. So: only a human finishing the wizard may skip it. A provisioned model no longer
+  // implies an introduced user. This does NOT re-open the "wizard on every launch" bug the `ready` clause
+  // was papering over — that is fixed properly by persisting wizard_complete SERVER-side on completion
+  // (onNext, step 5), which survives a cleared localStorage and a browser switch.
   try {
     const _f = window.fetchWithTimeout
       ? window.fetchWithTimeout('/setup_status', {}, 8000)
@@ -233,16 +272,19 @@ export async function laylaWizardStart() {
     const res = await _f;
     if (res && res.ok) {
       const s = await res.json();
-      if (s && (s.wizard_complete === true || s.ready === true)) {
+      if (s && s.wizard_complete === true) {
+        // A human finished it. Cache locally so we stop asking the server every launch.
         try {
           localStorage.setItem(WIZ_KEY, '1');
           localStorage.setItem(WIZ_KEY_COMPAT, '1');
         } catch (_) {}
+        _setClaim('released');
         return;
       }
     }
   } catch (_) { /* server unreachable — fall through to first-run wizard */ }
   bind();
+  _setClaim('showing');  // set BEFORE paint: the claim is what holds back later surfaces, not the class
   setVisible(true);
   step = 0;
   applyStep();
@@ -262,6 +304,15 @@ export async function laylaWizardStart() {
 
 // ── Init — called from main.js ──────────────────────────────────────────────
 export function initWizard() {
+  // Set the first-run claim SYNCHRONOUSLY, here in init, so it is already in place before app.js's init
+  // (same pass) fires checkSetupStatus() → the welcome/profile cascade. localStorage is synchronous, so we
+  // can decide the cheap half now: if this browser already finished the wizard, later surfaces are free
+  // immediately; otherwise the wizard might still show, so hold them at 'deciding' until laylaWizardStart
+  // resolves the server check on window `load`.
+  try {
+    const done = localStorage.getItem(WIZ_KEY) === '1' || localStorage.getItem(WIZ_KEY_COMPAT) === '1';
+    _setClaim(done ? 'released' : 'deciding');
+  } catch (_) { _setClaim('deciding'); }
   // Boot after load so layla-app.js globals exist
   window.addEventListener('load', () => { laylaWizardStart().catch(() => {}); });
 }

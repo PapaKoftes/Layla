@@ -292,12 +292,23 @@ export function dismissSetupOverlay(isSkip) {
  * Falls through to the tour if already configured or the wizard isn't available.
  */
 function maybeStartSetupProfiles() {
+  // BL-249/BL-250: the 6-step wizard is the introduction and owns first-run. It runs on window `load`,
+  // while THIS cascade is reached from app.js init (DOMContentLoaded, earlier) and from the wizard's own
+  // checkSetupStatus() calls. On a machine where a model is already provisioned we land here, and without
+  // this guard the welcome card / profile wizard would stack over (or under) the wizard that is about to
+  // appear. window._laylaFirstRunClaim is set SYNCHRONOUSLY in wizard.initWizard() before app.js init runs,
+  // so it is reliably in place by the time we reach here. Only proceed once the wizard has released
+  // first-run (completed, or decided not to show); the wizard starts the tour itself on completion.
+  if (window._laylaFirstRunClaim && window._laylaFirstRunClaim !== 'released') return;
+  // Nothing to add if the tour is already showing — it is the tail of this same cascade.
+  const _t = document.getElementById('tour-overlay');
+  if (_t && _t.classList.contains('visible')) return;
   let done = false;
   try { done = localStorage.getItem('layla_setup_profiles_v1_done') === '1'; } catch (_) {}
-  if (done || typeof window.openSetupProfiles !== 'function') { maybeStartOnboarding(); return; }
+  if (done || typeof window.openSetupProfiles !== 'function') { maybeStartTour(); return; }
   const onClosed = () => {
     window.removeEventListener('layla:setup-closed', onClosed);
-    maybeStartOnboarding();
+    maybeStartTour();
   };
   window.addEventListener('layla:setup-closed', onClosed);
   // BL-091: on the very first run, show the welcome + honesty card first — it hands off to the
@@ -306,55 +317,84 @@ function maybeStartSetupProfiles() {
   try {
     if (typeof window.maybeShowWelcome === 'function' && window.maybeShowWelcome()) return;
   } catch (_) {}
-  try { window.openSetupProfiles(); } catch (_) { window.removeEventListener('layla:setup-closed', onClosed); maybeStartOnboarding(); }
+  try { window.openSetupProfiles(); } catch (_) { window.removeEventListener('layla:setup-closed', onClosed); maybeStartTour(); }
 }
 
-// ── Onboarding ──────────────────────────────────────────────────────────────
-let _onboardingStep = 0;
+// ── The first-run tour (BL-249) ─────────────────────────────────────────────
+// The ONLY place in the app that explains workspace scoping, aspect selection and the aspect lock — and
+// it was dead for months. It targeted #onboarding-text / -next / -done, none of which existed, so
+// maybeStartTour()'s `if (!ov) return;` bailed silently on every run and nothing ever errored.
+//
+// WHY #tour-* AND NOT #onboarding-*: onboarding.js builds its OWN #onboarding-overlay at runtime for a
+// different feature (a chat-style interview backed by /onboarding/* endpoints), with entirely different
+// children. Two features, one id: onboarding.js keeps it (it creates the element and its endpoints are
+// live), and the tour takes a namespace of its own. That collision was not theoretical — because both
+// answered to #onboarding-overlay, Escape during the interview fired the tour's dismiss, which strips a
+// `visible` class the interview's CSS does not use, leaving the interview on screen while marking the tour
+// as seen. Separate ids end that whole class of bug.
+//
+// WHY A SEPARATE BOTTOM-ANCHORED CARD AND NOT A WIZARD STEP: step 2 calls highlightAspectSidebar(true) to
+// light up the REAL sidebar. The wizard is a centred modal that covers it, so folding the tour in would
+// destroy the one thing it does that a paragraph cannot.
+let _tourStep = 0;
+const TOUR_LAST_STEP = 3;
 
-function renderOnboardingStep() {
-  const text = document.getElementById('onboarding-text');
-  const nextBtn = document.getElementById('onboarding-next');
-  const doneBtn = document.getElementById('onboarding-done');
+function renderTourStep() {
+  const text = document.getElementById('tour-text');
+  const nextBtn = document.getElementById('tour-next');
+  const doneBtn = document.getElementById('tour-done');
   if (!text) return;
   highlightAspectSidebar(false);
-  if (_onboardingStep <= 0) {
+  if (_tourStep <= 0) {
     text.textContent = 'Layla only reads and writes inside your workspace folder (set in First Setup or Prefs). File changes and shell commands stay behind approval gates.';
     if (doneBtn) doneBtn.style.display = 'none';
     if (nextBtn) nextBtn.style.display = '';
     return;
   }
-  if (_onboardingStep === 1) {
+  if (_tourStep === 1) {
     text.textContent = 'Pick a voice (facet) in the sidebar — Morrigan for engineering, Nyx for research, Echo for continuity, and more.';
     highlightAspectSidebar(true);
     if (doneBtn) doneBtn.style.display = 'none';
     if (nextBtn) nextBtn.style.display = '';
     return;
   }
-  text.textContent = 'Use the padlock next to the aspect badge to lock routing. You can revisit VALUES.md and ethics from Help anytime.';
+  if (_tourStep === 2) {
+    text.textContent = 'Use the padlock next to the aspect badge to lock routing. You can revisit VALUES.md and ethics from Help anytime.';
+    if (doneBtn) doneBtn.style.display = 'none';
+    if (nextBtn) nextBtn.style.display = '';
+    return;
+  }
+  // BL-249: Ctrl+K is the ONLY entry point to 21 features, and its button lived in a display:none <header>
+  // until an earlier slice ported it into the top bar. A first-run tour that never mentions it leaves most
+  // of the app undiscoverable to the friend it was written for.
+  text.textContent = 'Press Ctrl+K (⌘K on Mac) for the command palette — the fastest way to reach every panel, and the only route to some. The ⌘ button in the top bar opens it too.';
   if (nextBtn) nextBtn.style.display = 'none';
   if (doneBtn) doneBtn.style.display = '';
 }
 
-function maybeStartOnboarding() {
+export function maybeStartTour() {
   try {
     if (localStorage.getItem('layla_onboarding_v1_done') === '1') return;
-    const ov = document.getElementById('onboarding-overlay');
+    // Never stack the tour on an earlier first-run surface. The wizard hands off the moment it closes, but
+    // the welcome card / profile wizard can still be closing behind it. If one is up, bail — the wizard's
+    // handoff (or the welcome→profiles cascade tail) will call back here once it releases.
+    if (window._laylaFirstRunClaim && window._laylaFirstRunClaim !== 'released') return;
+    const ov = document.getElementById('tour-overlay');
     if (!ov) return;
-    _onboardingStep = 0;
-    renderOnboardingStep();
+    _tourStep = 0;
+    renderTourStep();
     ov.classList.add('visible');
   } catch (_) {}
 }
 
-export function onboardingNext() {
-  _onboardingStep++;
-  if (_onboardingStep > 2) _onboardingStep = 2;
-  renderOnboardingStep();
+export function tourNext() {
+  _tourStep++;
+  if (_tourStep > TOUR_LAST_STEP) _tourStep = TOUR_LAST_STEP;
+  renderTourStep();
 }
 
-export function dismissOnboarding() {
-  const ov = document.getElementById('onboarding-overlay');
+export function dismissTour() {
+  const ov = document.getElementById('tour-overlay');
   if (ov) ov.classList.remove('visible');
   try { localStorage.setItem('layla_onboarding_v1_done', '1'); } catch (_) {}
   highlightAspectSidebar(false);

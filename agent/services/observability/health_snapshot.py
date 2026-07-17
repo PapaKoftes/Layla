@@ -127,10 +127,38 @@ def build_dependency_status(*, probe_chroma: bool) -> dict[str, str]:
     except Exception:
         out["chroma"] = "missing"
 
+    # BL-374 — the embedder is the dependency that actually decides whether semantic memory works, and it
+    # was the one dependency this matrix did not report. It is fetched lazily from HuggingFace on first use
+    # (nothing is bundled), so on an offline first run it cannot load and retrieval silently degrades to
+    # keyword-only. Reported here so the failure is knowable from outside the process; vector_store.py logs
+    # it loudly on the inside. Cheap: reads recorded state, never loads a model, never touches the network.
+    try:
+        from layla.memory.vector_store import embedder_status
+
+        _emb = embedder_status()
+        out["embedder"] = _emb["status"]
+        if _emb["status"] == "ok" and _emb.get("model"):
+            out["embedder_model"] = _emb["model"]
+        elif _emb.get("detail"):
+            out["embedder_detail"] = _emb["detail"][:300]
+    except Exception as e:
+        logger.debug("health embedder probe: %s", e)
+        out["embedder"] = "unknown"
+
     # Legibility (audit): on the compiler-free [cpu] install chromadb is intentionally absent and memory
     # falls back to SQLite+NumPy — RAG still works. Surface the EFFECTIVE vector store so a bare
     # chroma:"missing" doesn't read as "memory is broken" to someone scanning /health.
-    out["vector_store"] = "chroma" if out.get("chroma") == "ok" else "sqlite-fallback (RAG active)"
+    #
+    # BL-374: but "RAG active" was asserted from the CHROMA probe alone, so it kept claiming RAG was active
+    # on an offline box where the embedder could not load and semantic retrieval was completely dead — the
+    # health endpoint reassuring you about the exact thing that was broken. RAG is only active if something
+    # can turn text into a vector, so the embedder now gets a vote.
+    if out.get("embedder") == "unavailable":
+        out["vector_store"] = "keyword-only (embedder unavailable — semantic search DEGRADED)"
+    elif out.get("chroma") == "ok":
+        out["vector_store"] = "chroma"
+    else:
+        out["vector_store"] = "sqlite-fallback (RAG active)"
 
     try:
         import faster_whisper  # noqa: F401

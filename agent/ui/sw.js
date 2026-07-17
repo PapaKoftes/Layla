@@ -16,7 +16,14 @@
 // the OLD modules from v15: the TTS toggle would still no-op, "Save appearance" would still lie, and the
 // new appearance controls would render against JS that has never heard of them — i.e. every fix would
 // look broken for reasons unrelated to the fix. A stale SW already produced two false results here.
-const CACHE = "layla-ui-v16";
+//
+// v17 (BL-250/BL-249/BL-374): wizard.js, setup.js, onboarding.js, chat-render.js, app.js, main.js,
+// core/compat.js, index.html and layla.css all changed together — the wizard-gate fix, the first-run tour,
+// and the honesty-copy fixes. compat.js now imports dismissOnboarding from onboarding.js and dismissTour
+// from setup.js; a stale v16 setup.js exports neither, so serving the old graph against the new imports
+// would fail to LINK and boot to a dead page. That was the previous attempt's exact failure — bump so the
+// whole graph updates atomically on first load.
+const CACHE = "layla-ui-v17";
 const PRECACHE = [
   "/ui/",
   "/manifest.json",
