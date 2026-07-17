@@ -51,11 +51,12 @@ _COMPUTED_ID_PREFIXES = {
 # rename, and a guard nobody can land is a guard nobody gets. The forward sweep above is already hard-fail for
 # everything NOT on this list — which is the property that matters: new drift dies immediately.
 _KNOWN_DEAD = {
-    "app-font-size": "BL-335 'Save appearance & lite' — the TEXT-SIZE a11y feature. Dead at FOUR layers: no "
-                     "control, keys not in EDITABLE_SCHEMA, POST /settings drops them, nothing reads them — "
-                     "and it toasts 'Appearance saved' anyway. Fix: point it at /settings/appearance "
-                     "(BL-352: that endpoint exists, purpose-built, with zero callers) + add the controls.",
-    "app-anim-level": "BL-335 — same function, same four layers.",
+    # app-font-size / app-anim-level were here (BL-335). FIXED 2026-07-17 — the ratchet demanded their
+    # removal the moment the controls resolved, which is exactly what it is for. All four layers were
+    # repaired: the <select>s exist in index.html, saveAppearanceLite posts to /settings/appearance
+    # (BL-352 — the purpose-built endpoint that had zero callers), route_helpers.APPEARANCE_KEYS accepts
+    # the two keys, and settings-full.js::applyAppearance scales the root font-size on boot so the value
+    # actually reaches the user. See test_appearance_panel.py.
     "onboarding-text": "BL-249 the 3-step tour is the ONLY thing that explains workspace scoping, aspects and "
                        "the aspect lock. It targets DOM that does not exist, so maybeStartOnboarding() "
                        "early-returns forever.",
