@@ -106,7 +106,14 @@ def test_manifest_is_honest_about_what_is_broken():
         # an empty index can no longer masquerade as "absent"). Keeping the disclosure would make the
         # manifest lie in the OTHER direction — telling her a working tool is broken, so she would refuse
         # to use it and reach for grep_code forever.
-        ("Ingest button", "reads a non-existent element; knowledge cannot be added via the UI"),
+        #
+        # The "Ingest button" disclosure was here until 2026-07-17 — REMOVED for the same reason. It was
+        # written when the button read #ingest-path (a non-existent element); an earlier slice rewired it to
+        # #km-source + POST /intelligence/kb/build/directory, and this phase DROVE it against a real
+        # two-file folder on a live instance: {"ok":true,"articles":2}, both articles retrievable via
+        # /intelligence/kb/articles. It works. Keeping "it does nothing" would be the manifest lying that a
+        # working feature is broken — so she would never offer it. (See test_first_run_tour.py's sibling
+        # note on proving-by-execution rather than by reading.)
         ("Custom aspects", "creatable but never selectable — silently falls back to Morrigan"),
         ("frozen", "capability scores never move from use"),
         ("Encryption-at-rest never fires", "nothing marks a memory sensitive"),

@@ -187,12 +187,24 @@ function _registerOverlays() {
     escapable: true,
   });
 
+  // #onboarding-overlay is the chat interview (onboarding.js builds it). Its close skips the interview.
   overlayManager.register('onboarding', {
     tier: 'wizard',
     elementId: 'onboarding-overlay',
     escapable: true,
     onClose: () => {
       try { if (typeof window.dismissOnboarding === 'function') window.dismissOnboarding(); } catch (_) {}
+    },
+  });
+
+  // BL-249: the first-run tour has its own id now — it used to share #onboarding-overlay with the
+  // interview, so Escape during the interview fired the tour's dismiss. Separate ids, separate closes.
+  overlayManager.register('tour', {
+    tier: 'wizard',
+    elementId: 'tour-overlay',
+    escapable: true,
+    onClose: () => {
+      try { if (typeof window.dismissTour === 'function') window.dismissTour(); } catch (_) {}
     },
   });
 
@@ -410,6 +422,10 @@ function init() {
     startModelDownload: setup.startModelDownload,
     retryModelDownload: setup.retryModelDownload,
     dismissSetupOverlay: setup.dismissSetupOverlay,
+    // BL-249: the first-run tour. Its handlers were exported to nobody and its markup did not exist, so
+    // the only copy that explains workspace scoping / aspects / the lock / Ctrl+K could never run.
+    tourNext: setup.tourNext,
+    dismissTour: setup.dismissTour,
     // character-creator.js
     openCharacterLab: characterCreator.openCharacterLab,
     closeCharacterLab: characterCreator.closeCharacterLab,

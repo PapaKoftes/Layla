@@ -151,13 +151,20 @@
       <div class="wizard-step" data-wstep="5">
         <h2 style="margin:0 0 8px;color:var(--asp);font-family:'Cinzel',serif">Ready</h2>
         <p style="margin:0 0 10px;color:var(--text-dim);line-height:1.6">Setup complete. Enter the app.</p>
+        <!-- BL-250/BL-374 · This card was unreachable for as long as `ready` skipped the wizard, so its
+             claims were never checked against the app. Two were false the moment a real user could read
+             them: "Voice + TTS" (the engines are not installed — /voice/speak returns 503 and the Speak
+             toggle is disabled and says so) and "Global search ... from the header" (that <header> is
+             display:none; search lives in the top bar / Ctrl+K). Advertising a dead feature in the FIRST
+             thing a new user reads is the class of lie this phase exists to kill. Every line below is a
+             feature verified reachable on this box. -->
         <div style="font-size:0.72rem;color:var(--text-dim);line-height:1.7;border-left:2px solid var(--asp);padding-left:10px">
-          <strong style="color:var(--text)">What's new in v0.3</strong><br>
+          <strong style="color:var(--text)">What you get</strong><br>
+          ⬡ <strong>Ctrl+K</strong> — the command palette. The fastest route to every panel, and the only route to some<br>
           ⬡ <strong>Artifacts panel</strong> — code blocks extracted to right panel, copy/edit/send<br>
           ⬡ <strong>Memory browser</strong> — browse, search, edit learnings in Library tab<br>
           ⬡ <strong>Plan visualiser</strong> — Gantt chart of any plan (⬡ Gantt button)<br>
-          ⬡ <strong>Global search</strong> — search conversations, memory, code from the header<br>
-          ⬡ <strong>Voice + TTS</strong> — per-aspect speed/pitch, preview button in Options<br>
+          ⬡ <strong>Global search</strong> — search conversations, memory and code (Ctrl+K, or ⌕ in the top bar)<br>
           ⬡ <strong>Obsidian vault sync</strong> — connect your vault in Options → Obsidian Vault<br>
         </div>
       </div>
@@ -167,6 +174,22 @@
       <button type="button" class="tab-btn" id="wizard-next-btn" style="background:var(--asp-mid);border-color:var(--asp)" data-i18n="action.next">Next</button>
     </div>
     <div class="wizard-hint">Tip: Escape won’t dismiss until the end.</div>
+  </div>
+</div>
+<!-- BL-249 · First-run tour. setup.js has carried this copy — the only explanation of workspace scoping,
+     aspect selection and the aspect lock — pointed at #onboarding-text/-next/-done, which existed nowhere,
+     so maybeStartTour() hit `if (!ov) return;` and bailed silently on every run. Deliberately a
+     bottom-anchored card, NOT a modal: step 2 highlights the real aspect sidebar, so a full-screen scrim
+     would cover the exact thing the words point at. #onboarding-overlay is a DIFFERENT feature
+     (onboarding.js's chat interview); the tour has its own id to end that collision. -->
+<div id="tour-overlay" class="tour-overlay" aria-hidden="true">
+  <div class="tour-card" role="dialog" aria-modal="false" aria-label="Getting started tour" aria-live="polite">
+    <div class="tour-head">∴ Getting started</div>
+    <div class="tour-text" id="tour-text"></div>
+    <div class="tour-actions">
+      <button type="button" class="tab-btn" id="tour-next" data-action="tourNext" data-i18n="action.next">Next</button>
+      <button type="button" class="tab-btn tour-done-btn" id="tour-done" data-action="dismissTour" style="display:none">Got it</button>
+    </div>
   </div>
 </div>
 <a href="#chat" class="skip-to-content">Skip to chat</a>

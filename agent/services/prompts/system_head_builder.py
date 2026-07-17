@@ -225,7 +225,22 @@ def semantic_recall(query: str, k: int = 5, domain_boost_terms: list[str] | None
             return ""
         return "\n".join(lines)
     except Exception as e:
-        logger.warning("ChromaDB failed, falling back to FTS: %s", e)
+        # BL-374: this said "ChromaDB failed" for EVERY failure, including the common one — the embedder
+        # could not be downloaded because the machine is offline. ChromaDB was fine; the message sent anyone
+        # reading the log to debug the wrong component, which is worse than saying nothing. Name the
+        # component that actually failed.
+        try:
+            from layla.memory.vector_store import embedder_status
+            _emb_unavail = embedder_status().get("status") == "unavailable"
+        except Exception:
+            _emb_unavail = False
+        if _emb_unavail:
+            logger.warning(
+                "semantic recall unavailable (embedder could not load — see the EMBEDDER UNAVAILABLE error "
+                "above and GET /health/deps); falling back to keyword search (FTS): %s", e,
+            )
+        else:
+            logger.warning("ChromaDB failed, falling back to FTS: %s", e)
         try:
             from layla.memory.db import search_learnings_fts
             results = search_learnings_fts(query, n=k)
