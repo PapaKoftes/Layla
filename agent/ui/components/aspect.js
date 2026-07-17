@@ -74,8 +74,10 @@ export function setAspect(id, force) {
   const btn = document.getElementById('btn-' + id);
   if (btn) btn.classList.add('active');
 
-  // Reflect the active aspect in the collapsed sidebar summary (name · function)
-  const _meta = ASPECTS.find(a => a.id === id) || ASPECTS[0];
+  // Reflect the active aspect in the collapsed sidebar summary (name · function).
+  // BL-301: a custom aspect id is not in the built-in ASPECTS registry — fall back to the id
+  // itself, NOT ASPECTS[0] (which would mislabel the active custom aspect as "Morrigan").
+  const _meta = ASPECTS.find(a => a.id === id) || { name: id, fn: '' };
   const sva = document.getElementById('sidebar-voices-active');
   if (sva) sva.textContent = _meta.name + (_meta.fn ? ' · ' + _meta.fn : '');
 

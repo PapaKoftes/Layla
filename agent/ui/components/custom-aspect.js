@@ -6,6 +6,8 @@
  * /character/custom-aspects backend. Overlay shell + G1 tokens. ⌘K → "Create custom aspect".
  */
 
+import { setAspect } from "./aspect.js";
+
 let _root = null;
 let _open = false;
 
@@ -70,8 +72,13 @@ async function _load() {
       '<div class="ca-item"><span class="ca-sigil">' + _esc(c.symbol || "✦") + "</span>" +
       '<span class="ca-itemmain"><span class="ca-itemname">' + _esc(c.name || c.id) + "</span>" +
       '<span class="ca-itemsub">' + _esc(c.id) + " · inherits " + _esc(c.base_aspect || "") + (c.tagline ? " · " + _esc(c.tagline) : "") + "</span></span>" +
+      '<button type="button" class="ca-use setup-btn" data-id="' + _esc(c.id) + '" data-name="' + _esc(c.name || c.id) + '">talk as this</button>' +
       '<button type="button" class="ca-del" data-id="' + _esc(c.id) + '">delete</button></div>'
     ).join("");
+    // BL-301: "talk as this" is the missing switch — it makes the custom aspect the ACTIVE one, so
+    // the next turn's request carries aspect_id=<custom> and select_aspect resolves it (the backend
+    // fix). Without this the create/delete UI offered a persona you could never actually select.
+    list.querySelectorAll(".ca-use").forEach((b) => b.addEventListener("click", () => _use(b.getAttribute("data-id"), b.getAttribute("data-name"))));
     list.querySelectorAll(".ca-del").forEach((b) => b.addEventListener("click", () => _del(b.getAttribute("data-id"))));
   } catch (e) {
     list.innerHTML = '<div class="sysdiag-err">error — ' + _esc(e.message || e) + "</div>";
@@ -102,6 +109,13 @@ async function _create() {
   } catch (e) {
     note.textContent = "error — " + (e && e.message ? e.message : e);
   }
+}
+
+function _use(id, name) {
+  if (!id) return;
+  try { setAspect(id, true); } catch (_) {}
+  try { if (window.showToast) window.showToast("Now talking to " + (name || id)); } catch (_) {}
+  closeCustomAspect();
 }
 
 async function _del(id) {

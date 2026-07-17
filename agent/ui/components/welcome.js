@@ -22,7 +22,7 @@ const _CARDS = [
     icon: "♥",
     title: "the promise",
     body: "Honesty over flattery — she tells you when she's unsure. Your data stays yours: memory lives in a " +
-      "local database you own, sensitive notes can be encrypted at rest, and file changes + commands stay " +
+      "local database you own, and file changes + commands stay " +
       "behind approval gates. Revisit VALUES.md from Help any time.",
   },
 ];

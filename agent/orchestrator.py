@@ -147,6 +147,41 @@ def _fallback_aspect() -> dict:
     }
 
 
+def _resolve_custom_aspect(aspect_id: str, aspects: list[dict]) -> dict | None:
+    """BL-301: build an orchestrator aspect dict for a user-created CUSTOM aspect.
+
+    Custom aspects are stored as `custom_aspect_<id>` user_identity rows (not personalities/*.json),
+    so `_load_aspects()` never sees them and the forced-aspect loop below could never match a custom
+    id — every turn silently fell back to Morrigan. A custom aspect carries a `base_aspect` (one of
+    the 6 built-ins) plus identity overrides. We inherit the base's FULL persona (role / voice /
+    systemPromptAddition / triggers / expertise) and overlay name/title/symbol/tagline/color, then
+    APPEND the custom prompt hint so the model is actually addressed as the custom aspect.
+    Returns None when `aspect_id` is not a custom aspect (so the caller falls through to the miss path).
+    """
+    try:
+        from services.personality.custom_aspects import get_custom_aspect
+        cust = get_custom_aspect(aspect_id)
+    except Exception:
+        cust = None
+    if not cust:
+        return None
+    base_id = str(cust.get("base_aspect") or "morrigan")
+    base = next((a for a in aspects if a.get("id") == base_id), None) or _default_aspect()
+    a = dict(base)
+    a["id"] = str(cust.get("id") or aspect_id)
+    a["custom"] = True
+    a["base_aspect"] = base_id
+    for src, dst in (("name", "name"), ("title", "title"), ("symbol", "symbol"),
+                     ("tagline", "tagline"), ("color_primary", "color")):
+        if cust.get(src):
+            a[dst] = cust[src]
+    hint = str(cust.get("prompt_hint") or "").strip()
+    if hint:
+        base_add = (a.get("systemPromptAddition") or "").rstrip()
+        a["systemPromptAddition"] = (base_add + "\n\n— Custom aspect note —\n" + hint) if base_add else hint
+    return a
+
+
 def _get_aspect_embeddings(aspects: list[dict]) -> dict[str, Any]:
     """Embed each aspect's role/voice description; cached per load cycle."""
     global _ASPECT_EMBEDDINGS, _ASPECT_EMBEDDINGS_TS
@@ -217,6 +252,11 @@ def select_aspect(message: str, force_aspect: str = "") -> dict:
         for a in aspects:
             if a.get("id") == force_aspect:
                 return _maybe_add_nsfw_mode(a, msg_lower)
+        # BL-301: custom aspects live in user_identity, not personalities/*.json, so they are absent
+        # from `aspects` above. Overlay the custom overrides onto the base persona before giving up.
+        custom = _resolve_custom_aspect(force_aspect, aspects)
+        if custom is not None:
+            return _maybe_add_nsfw_mode(custom, msg_lower)
         try:
             import logging
 

@@ -57,6 +57,51 @@ def test_validation():
     assert load_aspect_profile("does_not_exist")["ok"] is False
 
 
+def test_select_aspect_resolves_custom_not_morrigan():
+    """BL-301: forcing a custom aspect id must resolve to the CUSTOM persona.
+
+    Before the fix, select_aspect's forced branch iterated only the built-in personalities/*.json,
+    so a custom id never matched and every turn silently fell back to Morrigan (_force_aspect_miss).
+
+    Teeth: revert the `_resolve_custom_aspect` call in orchestrator.select_aspect and this test fails
+    — got.id becomes 'morrigan' and _force_aspect_miss becomes True.
+    """
+    from orchestrator import select_aspect
+
+    r = ca.save_custom_aspect({
+        "id": "sable", "name": "Sable", "title": "The Night Ledger",
+        "base_aspect": "nyx", "symbol": "☾",
+        "prompt_hint": "SABLE_MARKER_UNIQUE_9174",
+    })
+    assert r["ok"] is True
+    try:
+        got = select_aspect("hello there, help me think", force_aspect="sable")
+        # resolved to the custom aspect, NOT the Morrigan fallback
+        assert got.get("id") == "sable"
+        assert got.get("name") == "Sable"
+        assert got.get("custom") is True
+        assert got.get("base_aspect") == "nyx"
+        assert not got.get("_force_aspect_miss")
+        # the custom prompt hint is appended so the model is actually addressed as Sable
+        assert "SABLE_MARKER_UNIQUE_9174" in (got.get("systemPromptAddition") or "")
+        # inherits the base nyx persona (its triggers survive the overlay)
+        base_nyx = next((a for a in __import__("orchestrator")._load_aspects() if a.get("id") == "nyx"), {})
+        if base_nyx.get("triggers"):
+            assert got.get("triggers") == base_nyx.get("triggers")
+    finally:
+        ca.delete_custom_aspect("sable")
+
+
+def test_select_aspect_unknown_id_still_misses():
+    """A genuinely unknown (non-custom, non-builtin) id must still fall back with _force_aspect_miss,
+    so the custom-resolution path does not swallow real misses."""
+    from orchestrator import select_aspect
+
+    got = select_aspect("hi", force_aspect="totally_not_an_aspect_zzz")
+    assert got.get("_force_aspect_miss") is True
+    assert got.get("id") == "morrigan"
+
+
 def test_router_endpoints():
     """The /character/custom-aspects endpoints round-trip (create -> list -> delete)."""
     from fastapi import FastAPI

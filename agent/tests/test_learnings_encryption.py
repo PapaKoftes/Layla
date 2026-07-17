@@ -72,6 +72,34 @@ def test_flag_off_stores_plaintext_even_if_marked_sensitive(monkeypatch):
     assert not enc.is_encrypted(raw_content)
 
 
+def test_production_write_path_stays_plaintext_with_flag_on(monkeypatch):
+    """BL-326: the marketing was made honest — prove the claim TRUE.
+
+    The surfaces (welcome.js / kit_catalog / setup_profiles) used to promise "encrypt sensitive
+    memories at rest." But NO production path ever passes privacy_level="sensitive": the canonical
+    write path (services.memory.memory_router.save_learning — used by the 'remember this' command,
+    the most personal write there is) omits it entirely. So even with encryption ENABLED (the
+    operator's real config), the content lands in the DB as PLAINTEXT — the vault never engages.
+    That is exactly what the honest wording now says.
+
+    Teeth: were any production path to mark this write 'sensitive' (add privacy_level="sensitive"
+    below), is_encrypted() would flip to True and this assertion would FAIL.
+    """
+    _enable(monkeypatch, True)  # flag ON — the operator's actual state
+    from services.memory.memory_router import save_learning  # THE canonical production write path
+
+    # NOTE: content_hash dedup is on PLAINTEXT, so this string must be unique to this test — reusing
+    # _SECRET would dedup onto the encrypted row written by test_sensitive_learning_is_encrypted_at_rest
+    # (same session DB) and read back its ciphertext, a test artifact, not production behaviour.
+    content = "the operator's home address is 42 plaintext lane and the gate code is 8827"
+    lid = save_learning(content=content, kind="user_fact", confidence=0.9, source="user_command")
+    assert lid and lid > 0
+    raw_content, _, pl = _raw_row(lid)
+    assert not enc.is_encrypted(raw_content), "production write must be plaintext — nothing marks it sensitive"
+    assert content in (raw_content or "")
+    assert (pl or "public") != "sensitive"
+
+
 def test_legacy_plaintext_still_readable_after_enabling(monkeypatch):
     # A row written as plaintext (flag off) must still read fine once encryption is enabled
     # (decrypt is a no-op on plaintext — mixed rows coexist).
