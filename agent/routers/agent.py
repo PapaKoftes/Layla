@@ -818,6 +818,15 @@ async def agent(req: AgentRequest, request: Request):
 
             async def agen_fast():
                 watch_task = asyncio.create_task(_watch_client_disconnect(request, _client_abort_fast))
+                # BL-245: commit_turn is explicitly NOT self-deduplicating (append-only, no upsert),
+                # and the except-block below wraps the commit site — an exception raised AFTER the
+                # commit (artifact extraction, json.dumps, the yield itself) would otherwise persist
+                # the same exchange twice. This flag is the once-per-turn contract, enforced.
+                _committed = {"done": False}
+                # Hoisted out of the try so the `finally` can still reach the partial answer when the
+                # client aborts: uvicorn tears a disconnected generator down with GeneratorExit, which
+                # is a BaseException — `except Exception` never sees it, only `finally` runs.
+                full: list = []
                 try:
                     yield f"data: {json.dumps({'ux_state': 'thinking'})}\n\n"
                     try:
@@ -828,7 +837,6 @@ async def agent(req: AgentRequest, request: Request):
                         pass
                     from services.agent.response_builder import stream_safe_prefix
                     tok_q: queue.Queue = queue.Queue()
-                    full: list = []
                     _emitted = 0
                     _fast_delib_meta = None
 
@@ -895,6 +903,7 @@ async def agent(req: AgentRequest, request: Request):
                         aspect_id=aspect_id or "",
                         status="blocked" if _fast_blocked else "finished",
                     )
+                    _committed["done"] = True
                     append_conv_history(conversation_id, "user", goal)
                     append_conv_history(conversation_id, "assistant", text)
                     _append_history("user", goal)
@@ -910,8 +919,32 @@ async def agent(req: AgentRequest, request: Request):
                     yield f"data: {json.dumps(_fast_done)}\n\n"
                 except Exception:
                     logger.exception("fast agen failed")
-                    yield f"data: {json.dumps({'done': True, 'content': 'Sorry — something went wrong generating a reply. Please try again.', 'ux_states': [], 'memory_influenced': []})}\n\n"
+                    _fail = "Sorry — something went wrong generating a reply. Please try again."
+                    # BL-245: the operator's message must survive a crash. Only commit if the turn
+                    # was not already committed — the raise may well have come from AFTER the commit.
+                    if not _committed["done"]:
+                        _committed["done"] = True
+                        commit_turn(conversation_id, goal, _fail, aspect_id=aspect_id or "", status="error")
+                    yield f"data: {json.dumps({'done': True, 'content': _fail, 'ux_states': [], 'memory_influenced': []})}\n\n"
                 finally:
+                    # BL-245 — THE CLIENT-ABORT CASE, and the reason this lives in `finally` rather
+                    # than in an `except`. When the operator closes the tab or hits stop, uvicorn
+                    # throws GeneratorExit into this generator at its next yield. GeneratorExit
+                    # inherits from BaseException, so the `except Exception` above NEVER sees it and
+                    # the turn used to vanish silently — on a box where a warm turn is ~70s, that is
+                    # the operator's most common way to lose what they typed.
+                    # No yield is possible here (the stream is gone); we persist and stay quiet.
+                    if not _committed["done"]:
+                        _committed["done"] = True
+                        try:
+                            _partial = "".join(full).strip()
+                            commit_turn(
+                                conversation_id, goal,
+                                _partial or "(interrupted before a reply was generated)",
+                                aspect_id=aspect_id or "", status="client_abort",
+                            )
+                        except Exception:
+                            logger.exception("fast agen: abort persist failed")
                     watch_task.cancel()
                     try:
                         await watch_task
@@ -1029,6 +1062,12 @@ async def agent(req: AgentRequest, request: Request):
 
         async def agen():
             watch_task = asyncio.create_task(_watch_client_disconnect(request, client_abort))
+            # BL-245: see agen_fast — the outer except wraps BOTH commit sites below, so the
+            # once-per-turn contract needs an explicit flag, not optimism.
+            _committed = {"done": False}
+            # Hoisted for the same reason as in agen_fast: `finally` is the ONLY handler that runs
+            # when a disconnected client's generator is torn down with GeneratorExit.
+            full: list = []
             try:
                 yield f"data: {json.dumps({'ux_state': 'thinking'})}\n\n"
                 # If no model is resident yet, tell the client it's LOADING (not just
@@ -1079,36 +1118,61 @@ async def agent(req: AgentRequest, request: Request):
                         err = "Model error: the LLM could not be loaded. Set model_filename in runtime_config.json and ensure the .gguf file exists. See MODELS.md."
                     else:
                         err = "The request failed while processing. Check the server logs for details."
+                    # BL-245: a failed turn is still a real exchange the operator lived through. The
+                    # durable record gets what they SAW (`err`); the in-memory LLM context cache keeps
+                    # its neutral placeholder, because the error text is not useful conversational
+                    # context. Different stores, different content — deliberately.
+                    _committed["done"] = True
+                    commit_turn(conversation_id, goal, err, aspect_id=aspect_id or "", status="error")
                     _append_history("user", goal)
                     _append_history("assistant", "I couldn't reply — see the message above.")
                     yield f"data: {json.dumps({'done': True, 'content': err, 'ux_states': [], 'memory_influenced': []})}\n\n"
                     return
                 result = result_holder[0] if result_holder else {}
                 if result.get("status") == "system_busy":
+                    _busy = "System is under load (CPU or RAM). Try again in a moment."
+                    _committed["done"] = True
+                    commit_turn(conversation_id, goal, _busy, aspect_id=result.get("aspect", "") or aspect_id or "", status="system_busy")
                     _append_history("user", goal)
                     _append_history("assistant", "I couldn't reply just then.")
-                    yield f"data: {json.dumps({'done': True, 'content': 'System is under load (CPU or RAM). Try again in a moment.', 'ux_states': [], 'memory_influenced': []})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'content': _busy, 'ux_states': [], 'memory_influenced': []})}\n\n"
                     return
                 if result.get("status") == "timeout":
+                    _to = "Request took too long and was stopped. Try a shorter message or try again."
+                    # A ~70s warm turn on this box means timeouts are ROUTINE, not exotic. Losing the
+                    # operator's message every time one fires is the single loudest form of this bug.
+                    _committed["done"] = True
+                    commit_turn(conversation_id, goal, _to, aspect_id=result.get("aspect", "") or aspect_id or "", status="timeout")
                     _append_history("user", goal)
                     _append_history("assistant", "I couldn't reply just then.")
-                    yield f"data: {json.dumps({'done': True, 'content': 'Request took too long and was stopped. Try a shorter message or try again.', 'ux_states': [], 'memory_influenced': []})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'content': _to, 'ux_states': [], 'memory_influenced': []})}\n\n"
                     return
                 if result.get("status") == "client_abort":
                     msg = result.get("response") or "Request cancelled (client disconnected)."
+                    # The partial answer is whatever streamed before the disconnect. Persisting it with
+                    # the operator's message is the whole point: they typed it, so it must survive.
+                    _committed["done"] = True
+                    commit_turn(conversation_id, goal, msg, aspect_id=result.get("aspect", "") or aspect_id or "", status="client_abort", state=result)
                     _append_history("user", goal)
                     _append_history("assistant", msg)
                     yield f"data: {json.dumps({'done': True, 'content': msg, 'ux_states': result.get('ux_states', []), 'memory_influenced': result.get('memory_influenced', []), 'status': 'client_abort'})}\n\n"
                     return
                 if result.get("status") == "pipeline_needs_input":
                     msg = result.get("response") or "More information needed."
+                    # Layla asking a clarifying question IS a completed exchange — the operator sees her
+                    # question in the transcript, and their answer arrives as the NEXT turn. Dropping it
+                    # left the rail showing a conversation whose question had no question in it.
+                    _committed["done"] = True
+                    commit_turn(conversation_id, goal, msg, aspect_id=result.get("aspect", "") or aspect_id or "", status="pipeline_needs_input", state=result)
                     _append_history("user", goal)
                     _append_history("assistant", msg)
                     yield f"data: {json.dumps({'done': True, 'content': msg, 'questions': result.get('questions') or [], 'ux_states': result.get('ux_states', []), 'memory_influenced': result.get('memory_influenced', []), 'status': 'pipeline_needs_input', 'reasoning_mode': result.get('reasoning_mode'), 'conversation_id': conversation_id})}\n\n"
                     return
                 if result.get("status") == "stream_pending":
                     goal_for_stream = result.get("goal_for_stream", goal)
-                    full = []
+                    # NB: mutate in place, don't rebind — `finally` reads this same list to recover
+                    # the partial answer on a client abort (see the hoist above).
+                    del full[:]
                     _emitted = 0  # chars already streamed marker-safe (see stream_safe_prefix)
                     from services.agent.response_builder import stream_safe_prefix as _ssp
                     tok_q: queue.Queue = queue.Queue()
@@ -1204,6 +1268,7 @@ async def agent(req: AgentRequest, request: Request):
                         refused=bool(result.get("refused")),
                         state=result,
                     )
+                    _committed["done"] = True
                     append_conv_history(conversation_id, "user", goal)
                     append_conv_history(conversation_id, "assistant", text)
                     _append_history("user", goal)
@@ -1276,6 +1341,7 @@ async def agent(req: AgentRequest, request: Request):
                         refused=bool(result.get("refused")),
                         state=result,
                     )
+                    _committed["done"] = True
                     append_conv_history(conversation_id, "user", goal)
                     append_conv_history(conversation_id, "assistant", response_text)
                     _append_history("user", goal)
@@ -1312,8 +1378,27 @@ async def agent(req: AgentRequest, request: Request):
                     err = "Model error: the LLM could not be loaded. Set model_filename in runtime_config.json and ensure the .gguf file exists. See MODELS.md."
                 else:
                     err = "The request failed while processing. Check the server logs for details."
+                # BL-245: last-resort persist. Guarded — this handler wraps both commit sites above,
+                # so an exception thrown after a successful commit must NOT duplicate the exchange.
+                if not _committed["done"]:
+                    _committed["done"] = True
+                    commit_turn(conversation_id, goal, err, aspect_id=aspect_id or "", status="error")
                 yield f"data: {json.dumps({'done': True, 'content': err, 'ux_states': [], 'memory_influenced': []})}\n\n"
             finally:
+                # BL-245 — client abort. See the twin block in agen_fast: GeneratorExit is a
+                # BaseException, so this `finally` is the only handler that runs when the operator
+                # stops a turn or closes the tab. Persist what they typed plus whatever streamed.
+                if not _committed["done"]:
+                    _committed["done"] = True
+                    try:
+                        _partial = "".join(full).strip()
+                        commit_turn(
+                            conversation_id, goal,
+                            _partial or "(interrupted before a reply was generated)",
+                            aspect_id=aspect_id or "", status="client_abort",
+                        )
+                    except Exception:
+                        logger.exception("agen: abort persist failed")
                 watch_task.cancel()
                 try:
                     await watch_task

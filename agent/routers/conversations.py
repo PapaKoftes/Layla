@@ -84,6 +84,38 @@ def get_conversation_api(conversation_id: str):
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
+@router.get("/conversations/{conversation_id}/title")
+def get_conversation_title_api(conversation_id: str):
+    """Cheap poll target for the chat rail: has the async LLM title landed yet? (BL-243)
+
+    The conversation title is synthesized on a background thread that finishes ~14s+ after the
+    turn's done-frame has closed the SSE stream — so it cannot ride that stream, and the rail's
+    only re-render fires ON the done-frame, racing the synth and always losing. The rail polls
+    this endpoint after a turn and stops the moment `synth_pending` goes false.
+
+    Deliberately narrower than GET /conversations/{id}: one indexed row read and a set lookup, so
+    a poll costs ~nothing on a CPU-bound box. `synth_pending` is what BOUNDS the poll — the client
+    stops asking as soon as it is false, so this must stay honest about in-flight work.
+    """
+    try:
+        from layla.memory.db import get_conversation
+        from services.agent.turn_commit import title_synth_pending
+
+        row = get_conversation(conversation_id)
+        if not row:
+            return JSONResponse({"ok": False, "error": "Not found"}, status_code=404)
+        return JSONResponse(
+            {
+                "ok": True,
+                "title": row.get("title") or "",
+                "updated_at": row.get("updated_at") or "",
+                "synth_pending": title_synth_pending(conversation_id),
+            }
+        )
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
 @router.get("/conversations/{conversation_id}/messages")
 def get_conversation_messages_api(conversation_id: str, limit: int = 300):
     try:

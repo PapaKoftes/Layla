@@ -23,6 +23,85 @@ let _railOffset = 0;
 let _railHasMore = false;
 let _railSearchTimer = null;
 
+// ── Title poll (BL-243) ─────────────────────────────────────────────────────
+// The conversation title is synthesized by an LLM on a BACKGROUND thread that finishes ~14s+
+// after the done-frame. refreshConversationList() fires ON the done-frame, so it always rendered
+// BEFORE the real title existed and nothing ever re-rendered: the rail showed the instant
+// extractive title forever ("it never reloads the ui once it's actually done loading").
+//
+// This is a BOUNDED poll, not a heartbeat. It obeys three limits:
+//   • it only continues while the SERVER says a synth is in flight (synth_pending);
+//   • it can never exceed _TITLE_POLL_MAX attempts, whatever the server says;
+//   • it stops dead on any fetch/shape error rather than spinning.
+// BL-336 is the cautionary tale: a 5s poll that ran forever into an element that never existed.
+// Hence the ceiling is unconditional and the DOM read below is null-safe.
+const _TITLE_POLL_INTERVAL_MS = 2000;
+const _TITLE_POLL_MAX = 20;            // hard ceiling ≈ 40s, then give up for good
+let _titlePollTimer = null;
+
+/** The title the rail is ACTUALLY displaying for this conversation, or null if not rendered. */
+function _railTitleFor(convId) {
+  try {
+    const esc = (window.CSS && typeof window.CSS.escape === 'function')
+      ? window.CSS.escape(String(convId))
+      : String(convId).replace(/["\\]/g, '\\$&');
+    const el = document.querySelector('.session-item[data-conv-id="' + esc + '"] .sess-title');
+    return el ? el.textContent : null;
+  } catch (_e) { return null; }
+}
+
+/**
+ * After a turn, watch for the async title and re-render the rail when it lands. (BL-243)
+ * Resolves true if the rail was re-rendered, false if there was nothing to wait for.
+ */
+export function pollConversationTitle(convId, opts) {
+  const id = String(convId || '').trim();
+  if (!id) return Promise.resolve(false);
+  const o = opts || {};
+  const intervalMs = o.intervalMs || _TITLE_POLL_INTERVAL_MS;
+  const maxAttempts = o.maxAttempts || _TITLE_POLL_MAX;
+  // One poll at a time: a second turn supersedes the first, it doesn't race it.
+  if (_titlePollTimer) { clearTimeout(_titlePollTimer); _titlePollTimer = null; }
+
+  let attempts = 0;
+  let sawPending = false;
+  return new Promise(function (resolve) {
+    async function _tick() {
+      attempts++;
+      let d = null;
+      try {
+        const r = await fetch('/conversations/' + encodeURIComponent(id) + '/title');
+        d = await r.json();
+      } catch (_e) { resolve(false); return; }        // server gone — stop, don't spin
+      if (!d || d.ok !== true) { resolve(false); return; }
+
+      // Compare server truth against what the rail is REALLY showing. This closes the race where
+      // the synth lands between the done-frame render and the first tick: sawPending would be
+      // false, but the rail is demonstrably stale, so it must still re-render.
+      const shown = _railTitleFor(id);
+      const stale = shown !== null && !!d.title && d.title.slice(0, 110) !== shown;
+
+      if (d.synth_pending === true) {
+        sawPending = true;
+        if (attempts >= maxAttempts) { resolve(false); return; }   // ceiling wins over the server
+        _titlePollTimer = setTimeout(_tick, intervalMs);
+        return;
+      }
+      // Settled. Re-render if we watched a synth run, or if the rail is visibly behind.
+      if (sawPending || stale) {
+        try { _renderSessionList(); } catch (_e) { console.debug('conversations: title poll render', _e); }
+        resolve(true);
+        return;
+      }
+      resolve(false);   // no synth was ever in flight — the done-frame render was enough
+    }
+    _tick();
+  });
+}
+
+// app.js drives this from the streamed done-frame (same seam as refreshConversationList).
+try { window.laylaPollConversationTitle = pollConversationTitle; } catch (_e) { /* no-op */ }
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function _hasChatContent() {
   const chat = document.getElementById('chat');
@@ -330,7 +409,12 @@ export async function _renderSessionList(isAppendArg) {
           (proj ? '<span class="conv-proj">' + escapeHtml(proj.slice(0, 16)) + '</span>' : '') +
           (tags.length ? ('<span class="conv-proj" title="Tags">' + escapeHtml(tags.join(' · ').slice(0, 28)) + '</span>') : '') +
           '</span>' +
-          escapeHtml((s.title || 'New chat').slice(0, 110)) +
+          // BL-244: the title used to be a BARE TEXT NODE sharing one -webkit-box with .conv-meta,
+          // so the aspect dot / pin / project / tag chips ate line 1 and shoved the title onto a
+          // wrapped line while "2h" stayed pinned level with line 1. Its own element lets the CSS
+          // stack meta above title and clamp the title alone.
+          // It is also the ground truth the title poll compares against (see _railTitleFor).
+          '<span class="sess-title">' + escapeHtml((s.title || 'New chat').slice(0, 110)) + '</span>' +
           '</span><span class="sess-date" title="' + escapeHtml(String((s.updated_at || '').replace('T', ' ').slice(0, 16))) + '">' +
           escapeHtml(_relTimeShort(s.updated_at || s.created_at)) +
           '</span>';
