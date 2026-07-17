@@ -516,12 +516,16 @@ function init() {
     },
     laylaMemBrowseReset: () => { memory.laylaMemBrowse(0); },
     toggleTts: (checked) => {
-      window._ttsEnabled = checked;
-      localStorage.setItem('layla_tts', checked);
+      // BL-270: must go through voice.setTtsEnabled. This used to set only `window._ttsEnabled` +
+      // localStorage, while speakText() gated on voice.js's MODULE-LOCAL `_ttsEnabled` — written once at
+      // import, with no setter exported. So ticking "Speak replies" updated the mirror, the checkbox and
+      // storage, and then speakText read the stale local and returned early: the toggle silently did
+      // nothing until a page reload. setTtsEnabled writes the local, the mirror and storage together.
+      const on = voice.setTtsEnabled(checked);
       var t1 = document.getElementById('tts-toggle');
       var t2 = document.getElementById('tts-toggle2');
-      if (t1) t1.checked = checked;
-      if (t2) t2.checked = checked;
+      if (t1) t1.checked = on;
+      if (t2) t2.checked = on;
     },
     savePipelineMode: (val) => {
       try { localStorage.setItem('layla_engineering_pipeline_mode', val); } catch (_) {}
