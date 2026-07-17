@@ -35,7 +35,9 @@ def _run_finalize(cfg, monkeypatch, answer="Layla runs fully local on CPU with l
         False,
         noop,
         inject_cancel_message_fn=noop,
-        auto_extract_learnings_fn=noop,
+        # `auto_extract_learnings_fn` is gone (BL-338): learning extraction moved out of the
+        # finalizer to services/agent/turn_commit.commit_turn, which fires on the turn boundary
+        # instead of on `status == "finished"`.
         save_outcome_memory_fn=noop,
         set_effective_sandbox_fn=noop,
         runtime_safety_module=_RS,

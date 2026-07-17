@@ -49,6 +49,7 @@ def save_learning(
     tags: str = "",
     aspect_id: str = "",
     privacy_level: str = "",
+    min_length: int | None = None,
 ) -> int:
     """Save a learning. Uses content_hash for dedup. confidence: 0.9 study, 0.7 LLM, 0.4 heuristic.
     Hook: learning quality filter rejects short/uncertain entries; long content summarized before storing.
@@ -78,7 +79,7 @@ def save_learning(
         pass
     try:
         from services.memory.learning_filter import filter_learning
-        pass_filter, filtered, reason = filter_learning(content)
+        pass_filter, filtered, reason = filter_learning(content, min_length=min_length)
         if not pass_filter:
             try:
                 from services.observability import log_learning_skipped
@@ -103,7 +104,12 @@ def save_learning(
             return -1
     except Exception:
         pass
-    learning_type = kind if kind in ("fact", "preference", "strategy", "identity") else "fact"
+    # BL-376: `correction` and `episodic` are first-class operator-memory types. Without them
+    # in this tuple a typed write is SILENTLY coerced to "fact" and the per-type confidence/TTL
+    # gate becomes unenforceable downstream (no error, no log — the type just disappears).
+    learning_type = (
+        kind if kind in ("fact", "preference", "strategy", "identity", "correction", "episodic") else "fact"
+    )
     content_hash = hashlib.sha1(content.encode("utf-8", errors="replace")).hexdigest()  # PLAINTEXT hash (dedup)
     score = max(0.0, min(1.0, float(score)))
     tags_s = (tags or "").strip()[:500]

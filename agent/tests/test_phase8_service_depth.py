@@ -188,14 +188,14 @@ class TestAutoExtractLearnings:
         from services.infrastructure.outcome_writer import _auto_extract_learnings
         ow._recent_learning_fingerprints = collections.OrderedDict()
 
-        # The response needs extractable bullet points so the function doesn't
-        # early-return at "if not extracted: return" before the preference code
-        response = (
-            "Sure, I'll use tabs from now on.\n"
-            "- Always use tabs instead of spaces for indentation in this project\n"
-            "- Configure the editor to insert tabs by default for consistency\n"
-            "Let me know if you want anything else."
-        )
+        # BL-376: this fixture used to carry bullet-point scaffolding with the comment "The
+        # response needs extractable bullet points so the function doesn't early-return at
+        # 'if not extracted: return' before the preference code" — i.e. the test documented the
+        # bug and was built to dodge it. The operator's preference was only ever recorded when
+        # the ASSISTANT's reply happened to yield an extraction first, which is why the live DB
+        # held 16 'fact' + 12 'strategy' rows and ZERO 'preference' rows. The detectors are now
+        # the primary path, so the scaffolding is gone: a terse reply must still teach.
+        response = "Got it."
         _auto_extract_learnings("I prefer tabs over spaces", response, "echo")
         # Should have saved at least one preference
         assert mock_save.call_count >= 1

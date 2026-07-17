@@ -76,8 +76,8 @@ from services.agent.step_formatting import (
 )
 from services.context.context_manager import DEFAULT_BUDGETS, build_system_prompt  # noqa: E402
 from services.context.context_window_ux import emit_context_window_ux
+# BL-338: `_auto_extract_learnings` is NOT imported — its one caller is turn_commit.commit_turn.
 from services.infrastructure.outcome_writer import (  # noqa: E402
-    _auto_extract_learnings,
     _extract_patch_text,
     _maybe_save_echo_memory,
     _save_outcome_memory,
@@ -805,11 +805,13 @@ def _finalize_run_state(
     research_mode: bool,
     emit_run_telemetry_fn: Callable,
 ) -> None:
-    """Post-loop finalization: outcome evaluation, learning extraction, telemetry, response envelope."""
+    """Post-loop finalization: outcome evaluation, telemetry, response envelope.
+
+    Learning moved to services/agent/turn_commit.commit_turn (BL-338) — the turn boundary.
+    """
     return _finalize_run_state_impl(
         state, active_aspect, goal, conversation_history, research_mode, emit_run_telemetry_fn,
         inject_cancel_message_fn=_inject_cancel_message,
-        auto_extract_learnings_fn=_auto_extract_learnings,
         save_outcome_memory_fn=_save_outcome_memory,
         set_effective_sandbox_fn=set_effective_sandbox,
         runtime_safety_module=runtime_safety,
