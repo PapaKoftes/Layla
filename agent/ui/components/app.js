@@ -1101,6 +1101,14 @@ export function initApp() {
         ev.preventDefault();
         return;
       }
+      // BL-249: the first-run tour has its own id now. Close it on Escape via its own dismiss.
+      var tour = document.getElementById('tour-overlay');
+      if (tour && tour.classList.contains('visible')) {
+        if (typeof window.dismissTour === 'function') window.dismissTour();
+        ev.preventDefault();
+        return;
+      }
+      // #onboarding-overlay is the interview (onboarding.js). Its dismiss skips the interview.
       var ob = document.getElementById('onboarding-overlay');
       if (ob && ob.classList.contains('visible')) {
         if (typeof window.dismissOnboarding === 'function') window.dismissOnboarding();
