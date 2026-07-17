@@ -627,6 +627,23 @@ button { font-family: var(--font-ui); }   /* U1: controls use the UI sans (was m
   }
 }
 
+/* BL-335 · the in-app Animations control (Settings → Appearance).
+   The OS-level `prefers-reduced-motion` above only helps someone who has already set that system-wide.
+   This is the same rule keyed off `data-anim`, which settings-full.js::applyAppearance stamps on <html>
+   — so the dropdown does something. Without this block the control would store a value that changed
+   nothing, which is the exact defect (BL-335) this panel is being repaired for. */
+:root[data-anim="reduced"] *, :root[data-anim="reduced"] *::before, :root[data-anim="reduced"] *::after,
+:root[data-anim="none"] *, :root[data-anim="none"] *::before, :root[data-anim="none"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+:root[data-anim="none"] *, :root[data-anim="none"] *::before, :root[data-anim="none"] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
 /* ── G3 · one form + card system ─────────────────────────────────────────────
    Sweep the settings/panel primitives into the token layer so every control
    reads as one family. Excludes the composer textarea (intentionally borderless

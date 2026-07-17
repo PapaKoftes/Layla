@@ -10,7 +10,13 @@
 // the first load after this update, so the rail fix would look broken until a second reload — on a
 // bug the operator has already been told was fixed three times. Bumping forces the activate handler
 // to purge v14 immediately, so the fix is live on the first load.
-const CACHE = "layla-ui-v15";
+//
+// v16 (BL-270/271/272, BL-335): voice.js, obsidian.js, main.js, settings-full.js, chat-render.js,
+// index.html and layla-rebuild.css all changed. Without a bump, the first load after this update serves
+// the OLD modules from v15: the TTS toggle would still no-op, "Save appearance" would still lie, and the
+// new appearance controls would render against JS that has never heard of them — i.e. every fix would
+// look broken for reasons unrelated to the fix. A stale SW already produced two false results here.
+const CACHE = "layla-ui-v16";
 const PRECACHE = [
   "/ui/",
   "/manifest.json",

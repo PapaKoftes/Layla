@@ -92,15 +92,45 @@ def sync_create_and_run_mission(body: dict) -> dict:
     return {"ok": True, "mission": mission}
 
 
+#: UI-only appearance keys. Not in EDITABLE_SCHEMA (POST /settings would silently drop them), so this
+#: endpoint exists to accept them: editable_only=False, clamp=False.
+#:
+#: This IS a hand-maintained allowlist, which is normally how a guard misses the very thing it was built
+#: to catch — a key absent from here is dropped in silence. That is survivable ONLY because
+#: sync_save_appearance now reports `rejected` instead of swallowing it: forget to add a key here and the
+#: caller is TOLD, rather than being handed "ok" over a no-op. The list stays because it is a genuine
+#: security boundary (an open passthrough would let any caller write arbitrary config keys); the
+#: reporting is what makes forgetting it loud.
+APPEARANCE_KEYS = (
+    "ui_avatar_seed",
+    "ui_avatar_style",
+    "ui_tts_rate",
+    "chat_lite_mode",
+    "ui_decision_trace_enabled",
+    "ui_appearance_json",
+    "ui_font_size",        # BL-335: the text-size accessibility control
+    "ui_animation_level",  # BL-335
+)
+
+
 def sync_save_appearance(body: dict) -> dict:
+    """Save UI appearance keys and report EXACTLY what was and was not saved.
+
+    BL-366. `save_config_keys` has always returned the list of keys it actually saved — the information
+    needed to stop lying was already computed, and the router threw it away and returned a flat
+    `{"ok": True}`. So "Appearance saved" was printed with equal confidence whether the write landed or
+    the key was dropped on the floor.
+
+    Now `rejected` comes back too, and `ok` is True only when NOTHING was dropped. That closes the lie
+    for every future key, not just this one: a caller that posts an unknown key gets told, instead of a
+    success toast over a no-op.
+    """
     import runtime_safety as _rs
 
-    _allowed = ("ui_avatar_seed", "ui_avatar_style", "ui_tts_rate", "chat_lite_mode", "ui_decision_trace_enabled", "ui_appearance_json")
-    # These are UI-only keys (not in EDITABLE_SCHEMA) → editable_only=False, clamp=False.
-    # Still race-safe + atomic via save_config_keys.
-    updates = {k: body[k] for k in _allowed if k in body}
+    updates = {k: body[k] for k in APPEARANCE_KEYS if k in body}
+    rejected = sorted(k for k in body if k not in APPEARANCE_KEYS)
     saved = _rs.save_config_keys(updates, editable_only=False, clamp=False)
-    return {"ok": True, "saved": saved}
+    return {"ok": not rejected, "saved": saved, "rejected": rejected}
 
 
 def sync_compact_history() -> dict:

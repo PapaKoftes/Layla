@@ -97,9 +97,15 @@ def test_manifest_is_honest_about_what_is_broken():
     core = " ".join(_capability_manifest_core(ROOT).split())
     required = [
         ("CANNOT speak", "TTS/STT are dead — every engine is missing from the venv"),
-        ("search_codebase", "returns ok:true with 0 matches; a zero result must not be trusted"),
         # math_eval was here until 2026-07-16 — fixed (ast.Mul -> ast.Mult), so claiming it is broken would
         # now be its own kind of lie. The manifest must track reality in BOTH directions.
+        #
+        # search_codebase was here until 2026-07-17 — same story. It was wired to the uninstalled
+        # tree-sitter backend and returned ok:true with 0 matches for symbols that existed; it now runs on
+        # the ast-based repo_indexer (tests/test_search_codebase_wiring.py proves it finds them, and that
+        # an empty index can no longer masquerade as "absent"). Keeping the disclosure would make the
+        # manifest lie in the OTHER direction — telling her a working tool is broken, so she would refuse
+        # to use it and reach for grep_code forever.
         ("Ingest button", "reads a non-existent element; knowledge cannot be added via the UI"),
         ("Custom aspects", "creatable but never selectable — silently falls back to Morrigan"),
         ("frozen", "capability scores never move from use"),

@@ -382,7 +382,6 @@ export function renderPromptTilesAndEmptyState() {
           '<div>Execute shell commands (with approval)</div>' +
           '<div>Multi-aspect deliberation on decisions</div>' +
           '<div>Persistent memory across sessions</div>' +
-          '<div>Spaced repetition study sessions</div>' +
           '<div>Knowledge base with semantic search</div>' +
           '<div>Plan and execute multi-step tasks</div>' +
           '<div>Voice input/output (STT + TTS)</div>' +

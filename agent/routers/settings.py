@@ -454,9 +454,16 @@ async def apply_feature_theme_route(req: Request):
 
 @router.get("/settings/appearance")
 def get_settings_appearance():
+    """Read back the UI-only appearance keys.
+
+    Derived from the same APPEARANCE_KEYS tuple the POST writes — a second hand-copied list here is how
+    a key becomes writable but not readable, so a control saves correctly and then renders blank on
+    reload, which reads to the user as "it didn't save".
+    """
+    from services.infrastructure.route_helpers import APPEARANCE_KEYS
+
     c = _rs.load_config()
-    keys = ("ui_avatar_seed", "ui_avatar_style", "ui_tts_rate", "chat_lite_mode", "ui_decision_trace_enabled")
-    return {k: c.get(k) for k in keys}
+    return {k: c.get(k) for k in APPEARANCE_KEYS}
 
 
 @router.post("/settings/appearance")

@@ -381,9 +381,21 @@ def _sm2(ease_factor: float, interval: int, reps: int, quality: int) -> tuple[fl
     SM-2 spaced repetition algorithm.
     quality: 0-5 (0-2 = fail, 3-5 = pass)
     Returns (new_ease_factor, new_interval, new_reps).
+
+    Two bugs lived here. Both silently corrupted the schedule rather than erroring, which is why the
+    flashcard deck could drift for months with nothing to show for it:
+
+      1. The failure branch returned `ease_factor` UNCLAMPED. SM-2's ease factor has a hard floor of 1.3
+         — below it the interval multiplier collapses and a card that is failed repeatedly gets driven
+         toward a degenerate schedule it can never climb out of. Clamped now, as SM-2 specifies.
+      2. The `reps >= 2` branch multiplied by the STALE `ease_factor` instead of the `new_ef` just
+         computed one line above. Every interval after the second review was scheduled off the previous
+         review's ease — so the algorithm always lagged one step behind the user's actual performance.
+         Also floors the interval at 1 day: a low ease could round a 1-day interval to 0 and make the
+         card due in the past, forever.
     """
     if quality < 3:
-        return ease_factor, 1, 0  # reset
+        return max(1.3, ease_factor), 1, 0  # reset interval; ease keeps its 1.3 floor
 
     new_ef = max(1.3, ease_factor + 0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
     if reps == 0:
@@ -391,7 +403,7 @@ def _sm2(ease_factor: float, interval: int, reps: int, quality: int) -> tuple[fl
     elif reps == 1:
         new_interval = 6
     else:
-        new_interval = round(interval * ease_factor)
+        new_interval = max(1, round(interval * new_ef))
     return new_ef, new_interval, reps + 1
 
 

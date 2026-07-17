@@ -59,6 +59,9 @@ export async function openSettings() {
   const ov = document.getElementById('settings-overlay');
   if (!ov) return;
   ov.classList.add('visible');
+  // Populate the appearance controls from the server. Without this the panel renders its defaults over
+  // whatever is actually stored, so a saved text size looks unsaved and re-saving silently reverts it.
+  loadAppearance();
   const loadEl = document.getElementById('settings-loading');
   const formEl = document.getElementById('settings-form');
   if (loadEl) { loadEl.style.display = 'block'; loadEl.textContent = 'Loading…'; }
@@ -348,17 +351,108 @@ export async function applySettingsPreset(name) {
   }
 }
 
-export async function saveAppearanceLite() {
-  const fontSize = (document.getElementById('app-font-size') || {}).value;
-  const animLevel = (document.getElementById('app-anim-level') || {}).value;
-  const body = {};
-  if (fontSize) body.ui_font_size = fontSize;
-  if (animLevel) body.ui_animation_level = animLevel;
+// ── Appearance panel (BL-335 / BL-352 / BL-366) ──────────────────────────────────────────────────────
+//
+// This panel toasted "Appearance saved" and saved NOTHING, at four layers:
+//   1. it read #app-font-size / #app-anim-level, which existed in no markup   -> undefined
+//   2. `if (fontSize)` swallowed the undefined                                -> body = {}
+//   3. it POSTed ui_font_size / ui_animation_level to /settings, and neither key is in
+//      config_schema, so runtime_safety dropped them and still answered ok:true
+//   4. nothing anywhere read either key back
+// ...and it toasted success off `d.ok` regardless. Every layer looked careful. Together they were a lie,
+// and the casualty was the TEXT-SIZE ACCESSIBILITY CONTROL.
+//
+// A fifth layer went unreported: the four controls that DID exist in the markup (avatar seed, avatar
+// style, chat lite mode, decision trace) were read by NO javascript at all — the button never saved
+// them either, and nothing populated them when the panel opened. Six controls, none wired.
+//
+// Now: /settings/appearance (BL-352 — purpose-built for non-schema UI keys, and had zero callers until
+// now), all six controls, and the toast reports what the SERVER says it saved rather than assuming.
+
+/** Apply appearance to the live document. Font size scales the ~259 rem-based sizes in layla.css off
+ *  the root font-size, which is what makes this a real accessibility control and not a stored no-op. */
+export function applyAppearance(fontSize, animLevel) {
   try {
-    const r = await fetch('/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const px = parseInt(fontSize, 10);
+    if (isFinite(px) && px >= 10 && px <= 32) document.documentElement.style.fontSize = px + 'px';
+    if (animLevel) document.documentElement.setAttribute('data-anim', String(animLevel));
+  } catch (_e) { console.debug('applyAppearance:', _e); }
+}
+
+/** Populate the panel from the server and apply the saved appearance. */
+export async function loadAppearance() {
+  try {
+    const r = await fetch('/settings/appearance');
     const d = await r.json().catch(function () { return {}; });
-    showToast(d.ok ? 'Appearance saved' : 'Save failed');
-  } catch (_) {
+    const set = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = String(val); };
+    const check = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
+    set('app-font-size', d.ui_font_size || 16);
+    set('app-anim-level', d.ui_animation_level || 'full');
+    set('ui_avatar_seed', d.ui_avatar_seed);
+    set('ui_avatar_style', d.ui_avatar_style);
+    check('chat_lite_mode', d.chat_lite_mode);
+    check('ui_decision_trace_enabled', d.ui_decision_trace_enabled);
+    applyAppearance(d.ui_font_size || 16, d.ui_animation_level || 'full');
+    return d;
+  } catch (_e) {
+    console.debug('loadAppearance:', _e);
+    return {};
+  }
+}
+
+export async function saveAppearanceLite() {
+  const msg = document.getElementById('appearance-save-msg');
+  const val = (id) => { const el = document.getElementById(id); return el ? el.value : undefined; };
+  const chk = (id) => { const el = document.getElementById(id); return el ? !!el.checked : undefined; };
+
+  const body = {};
+  const fontSize = val('app-font-size');
+  const animLevel = val('app-anim-level');
+  const seed = val('ui_avatar_seed');
+  const style = val('ui_avatar_style');
+  const lite = chk('chat_lite_mode');
+  const trace = chk('ui_decision_trace_enabled');
+  if (fontSize !== undefined) body.ui_font_size = parseInt(fontSize, 10);
+  if (animLevel !== undefined) body.ui_animation_level = animLevel;
+  if (seed !== undefined) body.ui_avatar_seed = seed;
+  if (style !== undefined) body.ui_avatar_style = style;
+  if (lite !== undefined) body.chat_lite_mode = lite;
+  if (trace !== undefined) body.ui_decision_trace_enabled = trace;
+
+  if (!Object.keys(body).length) {
+    // The old code's silent failure mode, made loud. If the controls vanish again, SAY so.
+    if (msg) msg.textContent = 'Nothing to save — appearance controls are missing.';
+    showToast('Appearance controls are missing — nothing was saved');
+    return;
+  }
+
+  try {
+    const r = await fetch('/settings/appearance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json().catch(function () { return {}; });
+    const saved = d.saved || [];
+    const rejected = d.rejected || [];
+
+    // Report what the SERVER saved. Never "saved" over a no-op again.
+    if (rejected.length) {
+      const t = 'Saved ' + saved.length + ', REJECTED: ' + rejected.join(', ');
+      if (msg) msg.textContent = t;
+      showToast(t);
+    } else if (saved.length) {
+      applyAppearance(body.ui_font_size, body.ui_animation_level);
+      const t = 'Appearance saved (' + saved.length + ' setting' + (saved.length === 1 ? '' : 's') + ')';
+      if (msg) msg.textContent = t;
+      showToast(t);
+    } else {
+      const t = d.error ? ('Save failed: ' + d.error) : 'Save failed — nothing was written';
+      if (msg) msg.textContent = t;
+      showToast(t);
+    }
+  } catch (e) {
+    if (msg) msg.textContent = 'Save failed: ' + e;
     showToast('Save failed');
   }
 }
@@ -493,4 +587,8 @@ export function initSettings() {
       if (sel) sel.value = mode;
     }).catch(function () {});
   } catch (_) {}
+  // Apply the saved text size at BOOT, not just when the settings panel is opened. Someone who needs
+  // large text needs it on the chat they are reading now — a setting that only takes effect after you
+  // go and open Settings is not an accessibility feature.
+  loadAppearance();
 }
