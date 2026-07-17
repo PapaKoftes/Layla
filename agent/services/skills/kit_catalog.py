@@ -24,7 +24,8 @@ KIT_CATALOG: list[dict[str, Any]] = [
      "desc": "Speak and listen — Whisper STT + Kokoro TTS.",
      "features": ["voice"], "icon": "♪"},
     {"id": "privacy", "name": "Privacy Vault", "category": "security",
-     "desc": "Encrypt sensitive memories at rest (AES via the OS keyring).",
+     "desc": "Installs AES-at-rest crypto (OS keyring). Note: no memory is marked 'sensitive' yet, "
+             "so nothing is encrypted until that policy exists (BL-326).",
      "features": ["encryption"], "icon": "⊘"},
     {"id": "quality-ml", "name": "Quality ML Stack", "category": "quality",
      "desc": "Best retrieval quality — rerankers + higher-quality embeddings (heavier).",
