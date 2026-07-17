@@ -20,6 +20,7 @@ from agent_loop import (
     truncate_at_next_user_turn,
 )
 from schemas.requests import AgentRequest, SteerRequest
+from services.agent.turn_commit import commit_turn
 from services.infrastructure.output_polish import polish_output
 from services.infrastructure.resource_manager import PRIORITY_CHAT, classify_load
 from shared_state import (
@@ -318,74 +319,6 @@ def _blocked_input_response(message: str) -> JSONResponse:
         },
         status_code=200,
     )
-
-
-def _maybe_synth_title(conversation_id: str, user_msg: str, assistant_text: str) -> None:
-    """On the FIRST exchange, async-polish the auto title into an LLM-synthesized topic name.
-
-    Non-blocking (background thread) so it never adds latency to the reply — the instant
-    extractive title from _auto_name_conversation already shows in the rail; this replaces it
-    with a crisper name that lands on the next rail refresh. Flag-gated; safe no-op on failure.
-    """
-    cid = (conversation_id or "").strip()
-    if not cid or not (user_msg or "").strip():
-        return
-    try:
-        import runtime_safety
-        if not runtime_safety.load_config().get("conversation_title_synthesis_enabled", True):
-            return
-        from layla.memory.db import get_conversation
-        conv = get_conversation(cid) or {}
-        # first exchange only (user + assistant just persisted → count ~2); don't clobber later
-        if int(conv.get("message_count") or 0) > 2:
-            return
-        _prior_title = str(conv.get("title") or "")  # the instant extractive title, captured pre-synth
-        # Skip synth entirely if the user already set a CUSTOM title (BEFORE the first message) — the
-        # current title is then NOT the auto-extractive one, and overwriting it with an LLM title would
-        # discard the manual rename. (The compare-and-set in _bg covers a rename made DURING the window.)
-        try:
-            from layla.memory.conversations import _auto_name_conversation
-            _expected_auto = _auto_name_conversation(user_msg)
-            if _expected_auto and _prior_title and _prior_title != _expected_auto:
-                return
-        except Exception:
-            pass
-
-        def _bg() -> None:
-            try:
-                from services.agent.title_synthesizer import synthesize_conversation_title
-                t = synthesize_conversation_title(user_msg, assistant_text)
-                if t:
-                    from layla.memory.db import get_conversation as _gc
-                    from layla.memory.db import rename_conversation
-                    # Compare-and-set: only overwrite if the title is STILL the auto/extractive one we
-                    # captured. The synth LLM call lands ~14s later; a manual rename the user made in
-                    # that window (POST /conversations/{id}/rename) must NOT be silently reverted.
-                    if str((_gc(cid) or {}).get("title") or "") == _prior_title:
-                        rename_conversation(cid, t)
-            except Exception as _tx:
-                logger.debug("title synth bg failed: %s", _tx)
-
-        threading.Thread(target=_bg, daemon=True, name="title-synth").start()
-    except Exception as _te:
-        logger.debug("title synth gate failed: %s", _te)
-
-
-def _mem_receipt(user_msg: str) -> str:
-    """Persist any durable fact the user stated this turn; return a receipt for the done-frame.
-
-    Fast (regex only) so it's fine synchronously in the done-path. Powers the 'memory updated'
-    chip and makes the durable fact show up in the About-you panel. Flag-gated; '' on nothing.
-    """
-    try:
-        import runtime_safety
-        if not runtime_safety.load_config().get("identity_capture_enabled", True):
-            return ""
-        from services.memory.identity_extractor import capture_identity_from_turn
-        return capture_identity_from_turn(user_msg or "")
-    except Exception as _me:
-        logger.debug("identity capture failed: %s", _me)
-        return ""
 
 
 @router.get("/agent/decision_trace")
@@ -741,17 +674,9 @@ async def agent(req: AgentRequest, request: Request):
             "nodes": [{"id": "step_1", "phase": "reasoning", "action": "reason", "outcome_summary": (fast_reply or "")[:200]}],
             "final_summary": (fast_reply or "")[:280],
         }
+        commit_turn(conversation_id, goal, fast_reply, aspect_id=aspect_id or "morrigan", status="fast_path")
         append_conv_history(conversation_id, "user", goal)
         append_conv_history(conversation_id, "assistant", fast_reply)
-        try:
-            from layla.memory.db import append_conversation_message, create_conversation
-
-            create_conversation(conversation_id, aspect_id=aspect_id or "morrigan")
-            append_conversation_message(conversation_id, "user", goal, aspect_id=aspect_id or "morrigan")
-            append_conversation_message(conversation_id, "assistant", fast_reply, aspect_id=aspect_id or "morrigan")
-            _maybe_synth_title(conversation_id, goal, fast_reply)
-        except Exception:
-            pass
         _append_history("user", goal)
         _append_history("assistant", fast_reply)
         return JSONResponse({
@@ -839,16 +764,12 @@ async def agent(req: AgentRequest, request: Request):
                 # other success path. Without this a cache-served FIRST turn was invisible to
                 # get_conv_history (per-turn context) and the DB, so the follow-up turn got NO history
                 # (and could re-hit the cache forever), and the exchange vanished on reload.
+                # learn=False: a replayed reply is not a new exchange. The operator did re-state
+                # the goal, but the original turn already learned from it; extracting again would
+                # only be caught by the dedup fingerprint, so skip the work outright.
+                commit_turn(conversation_id, goal, _cached_reply, aspect_id=aspect_id or "", learn=False)
                 append_conv_history(conversation_id, "user", goal)
                 append_conv_history(conversation_id, "assistant", _cached_reply)
-                try:
-                    from layla.memory.db import append_conversation_message, create_conversation
-                    create_conversation(conversation_id, aspect_id=aspect_id or "")
-                    append_conversation_message(conversation_id, "user", goal, aspect_id=aspect_id or "")
-                    append_conversation_message(conversation_id, "assistant", _cached_reply, aspect_id=aspect_id or "")
-                    _maybe_synth_title(conversation_id, goal, _cached_reply)  # parity: cache-served first turn gets an LLM title too
-                except Exception:
-                    pass
                 return JSONResponse(cached, status_code=200)
         except Exception:
             pass
@@ -969,19 +890,16 @@ async def agent(req: AgentRequest, request: Request):
                     if not text.strip():
                         text = "Sorry — I couldn't generate a response just then. Please try again."
                     text, _fast_blocked = _apply_output_floor(text, cfg)  # safety floor (parity w/ non-stream)
+                    _receipt = commit_turn(
+                        conversation_id, goal, text,
+                        aspect_id=aspect_id or "",
+                        status="blocked" if _fast_blocked else "finished",
+                    )
                     append_conv_history(conversation_id, "user", goal)
                     append_conv_history(conversation_id, "assistant", text)
                     _append_history("user", goal)
                     _append_history("assistant", text)
-                    try:
-                        from layla.memory.db import append_conversation_message, create_conversation
-                        create_conversation(conversation_id, aspect_id=aspect_id or "")
-                        append_conversation_message(conversation_id, "user", goal, aspect_id=aspect_id or "")
-                        append_conversation_message(conversation_id, "assistant", text, aspect_id=aspect_id or "")
-                        _maybe_synth_title(conversation_id, goal, text)
-                    except Exception:
-                        pass
-                    _fast_done = {'done': True, 'content': text, 'ux_states': [], 'memory_influenced': [], 'reasoning_mode': 'light', 'conversation_id': conversation_id, 'memory_updated': _mem_receipt(goal)}
+                    _fast_done = {'done': True, 'content': text, 'ux_states': [], 'memory_influenced': [], 'reasoning_mode': 'light', 'conversation_id': conversation_id, 'memory_updated': _receipt}
                     if _fast_blocked:
                         _fast_done["blocked"] = True   # tell the UI to replace the streamed tokens with content
                     _fast_arts = _extract_artifacts(text)
@@ -1041,21 +959,15 @@ async def agent(req: AgentRequest, request: Request):
                     text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply(agg.get("summary") or "", active_names=_active_name_set(aspect_id))), cfg) \
                         or "I couldn't complete that multi-part request. Try splitting it into separate messages."
                     text, _ma_blocked = _apply_output_floor(text, cfg)  # safety floor (parity w/ non-stream)
+                    commit_turn(
+                        conversation_id, goal, text,
+                        aspect_id=aspect_id or "",
+                        status="blocked" if _ma_blocked else "finished",
+                    )
                     append_conv_history(conversation_id, "user", goal)
                     append_conv_history(conversation_id, "assistant", text)
                     _append_history("user", goal)
                     _append_history("assistant", text)
-                    # Durable persistence + title synth — mirrors every other reply branch (agen_fast
-                    # 852-859, stream_pending, non-stream). Without it a multi-agent turn lived only in
-                    # the in-memory deque (lost on restart) and the conversation kept its placeholder title.
-                    try:
-                        from layla.memory.db import append_conversation_message, create_conversation
-                        create_conversation(conversation_id, aspect_id=aspect_id or "")
-                        append_conversation_message(conversation_id, "user", goal, aspect_id=aspect_id or "")
-                        append_conversation_message(conversation_id, "assistant", text, aspect_id=aspect_id or "")
-                        _maybe_synth_title(conversation_id, goal, text)
-                    except Exception:
-                        pass
                     _subs = [{"description": r.get("description"), "ok": bool(r.get("ok"))}
                              for r in agg.get("subtask_results", [])]
                     _ma_done = {'done': True, 'content': text, 'ux_states': [], 'memory_influenced': [], 'reasoning_mode': 'multi_agent', 'conversation_id': conversation_id, 'subtasks': _subs}
@@ -1281,17 +1193,19 @@ async def agent(req: AgentRequest, request: Request):
                         text = "Sorry — I couldn't generate a response just then. Please try again."
                     text, _st_blocked = _apply_output_floor(text, cfg)  # safety floor (parity w/ non-stream)
                     result["reasoning_tree_summary"] = _build_reasoning_tree_summary(result)
+                    # THE streamed done-frame. `result["status"]` is "stream_pending" here — the
+                    # orchestrator returned before the answer existed and the tokens came from the
+                    # stream. That is exactly why run_finalizer's `status == "finished"` gate meant
+                    # a streamed turn never learned, and streaming is ON by default in the UI.
+                    _receipt = commit_turn(
+                        conversation_id, goal, text,
+                        aspect_id=result.get("aspect", ""),
+                        status="blocked" if _st_blocked else "finished",
+                        refused=bool(result.get("refused")),
+                        state=result,
+                    )
                     append_conv_history(conversation_id, "user", goal)
                     append_conv_history(conversation_id, "assistant", text)
-                    try:
-                        from layla.memory.db import append_conversation_message, create_conversation
-
-                        create_conversation(conversation_id, aspect_id=result.get("aspect", ""))
-                        append_conversation_message(conversation_id, "user", goal, aspect_id=result.get("aspect", ""))
-                        append_conversation_message(conversation_id, "assistant", text, aspect_id=result.get("aspect", ""))
-                        _maybe_synth_title(conversation_id, goal, text)
-                    except Exception:
-                        pass
                     _append_history("user", goal)
                     _append_history("assistant", text)
                     _steps_safe = []
@@ -1313,7 +1227,7 @@ async def agent(req: AgentRequest, request: Request):
                         "steps": _steps_safe,
                         "run_budget_summary": result.get("run_budget_summary") or {},
                         "confidence": result.get("confidence") or {},
-                        "memory_updated": _mem_receipt(goal),
+                        "memory_updated": _receipt,
                     }
                     if _st_blocked:
                         _done_stream["blocked"] = True
@@ -1355,17 +1269,15 @@ async def agent(req: AgentRequest, request: Request):
                         response_text = "No response. Try again or rephrase."
                     response_text, _ns_blocked = _apply_output_floor(response_text, _cfg_stream)  # safety floor
                     result["reasoning_tree_summary"] = _build_reasoning_tree_summary(result)
+                    commit_turn(
+                        conversation_id, goal, response_text,
+                        aspect_id=result.get("aspect", ""),
+                        status="blocked" if _ns_blocked else "finished",
+                        refused=bool(result.get("refused")),
+                        state=result,
+                    )
                     append_conv_history(conversation_id, "user", goal)
                     append_conv_history(conversation_id, "assistant", response_text)
-                    try:
-                        from layla.memory.db import append_conversation_message, create_conversation
-
-                        create_conversation(conversation_id, aspect_id=result.get("aspect", ""))
-                        append_conversation_message(conversation_id, "user", goal, aspect_id=result.get("aspect", ""))
-                        append_conversation_message(conversation_id, "assistant", response_text, aspect_id=result.get("aspect", ""))
-                        _maybe_synth_title(conversation_id, goal, response_text)
-                    except Exception:
-                        pass
                     _append_history("user", goal)
                     _append_history("assistant", response_text)
                     _done_ns = {
@@ -1510,6 +1422,7 @@ async def agent(req: AgentRequest, request: Request):
 
     # Post-model safety floor (symmetric with check_input): a Tier-1/Tier-2 payload the
     # model produced is replaced with a safe message before it is persisted or returned.
+    _json_blocked = False
     try:
         import runtime_safety as _rs_out
         from services.safety.content_guard import blocked_response as _blk_out
@@ -1518,20 +1431,19 @@ async def agent(req: AgentRequest, request: Request):
         if _out.blocked:
             logger.warning("content_guard: /agent output blocked tier=%s cat=%s", _out.tier, _out.category)
             response_text = _blk_out(_out)
+            _json_blocked = True
     except Exception:
         pass
 
+    commit_turn(
+        conversation_id, goal, response_text,
+        aspect_id=result.get("aspect", ""),
+        status="blocked" if _json_blocked else "finished",
+        refused=bool(result.get("refused")),
+        state=result,
+    )
     append_conv_history(conversation_id, "user", goal)
     append_conv_history(conversation_id, "assistant", response_text)
-    try:
-        from layla.memory.db import append_conversation_message, create_conversation
-
-        create_conversation(conversation_id, aspect_id=result.get("aspect", ""))
-        append_conversation_message(conversation_id, "user", goal, aspect_id=result.get("aspect", ""))
-        append_conversation_message(conversation_id, "assistant", response_text, aspect_id=result.get("aspect", ""))
-        _maybe_synth_title(conversation_id, goal, response_text)  # parity: stream=false first turn gets an LLM title too
-    except Exception:
-        pass
     _append_history("user", goal)
     if result.get("status") in ("system_busy", "timeout") and response_text:
         _append_history("assistant", "I couldn't reply just then.")

@@ -13,6 +13,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from agent_loop import _quick_reply_for_trivial_turn, autonomous_run, stream_reason
+from services.agent.turn_commit import commit_turn
 from shared_state import get_append_history
 
 logger = logging.getLogger("layla")
@@ -495,16 +496,9 @@ async def v1_chat_completions(req: dict, request: Request):
                 "model": model_name,
                 "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
             }
+            commit_turn(conversation_id, goal, response_text, aspect_id=aspect_id)
             append_h("user", goal)
             append_h("assistant", response_text)
-            try:
-                from layla.memory.db import append_conversation_message, create_conversation
-
-                create_conversation(conversation_id, aspect_id=aspect_id)
-                append_conversation_message(conversation_id, "user", goal, aspect_id=aspect_id)
-                append_conversation_message(conversation_id, "assistant", response_text, aspect_id=aspect_id)
-            except Exception:
-                pass
             yield f"data: {json.dumps(done_evt)}\n\n"
             yield "data: [DONE]\n\n"
 
@@ -516,16 +510,9 @@ async def v1_chat_completions(req: dict, request: Request):
             from services.agent.response_builder import active_name_set as _ans_nq
             from services.agent.response_builder import strip_junk_from_reply as _sj_nq
             response_text = _sj_nq(quick, active_names=_ans_nq(aspect_id)) or quick  # output floor + active-aspect gate parity
+            commit_turn(conversation_id, goal, response_text, aspect_id=aspect_id, status="fast_path")
             append_h("user", goal)
             append_h("assistant", response_text)
-            try:
-                from layla.memory.db import append_conversation_message, create_conversation
-
-                create_conversation(conversation_id, aspect_id=aspect_id)
-                append_conversation_message(conversation_id, "user", goal, aspect_id=aspect_id)
-                append_conversation_message(conversation_id, "assistant", response_text, aspect_id=aspect_id)
-            except Exception:
-                pass
             return JSONResponse({
                 "id": completion_id,
                 "object": "chat.completion",
@@ -621,16 +608,14 @@ async def v1_chat_completions(req: dict, request: Request):
     except Exception:
         pass
 
+    commit_turn(
+        conversation_id, goal, response_text,
+        aspect_id=result.get("aspect", ""),
+        refused=bool(result.get("refused")),
+        state=result,
+    )
     append_h("user", goal)
     append_h("assistant", response_text)
-    try:
-        from layla.memory.db import append_conversation_message, create_conversation
-
-        create_conversation(conversation_id, aspect_id=result.get("aspect", ""))
-        append_conversation_message(conversation_id, "user", goal, aspect_id=result.get("aspect", ""))
-        append_conversation_message(conversation_id, "assistant", response_text, aspect_id=result.get("aspect", ""))
-    except Exception:
-        pass
 
     return JSONResponse({
         "id": completion_id,

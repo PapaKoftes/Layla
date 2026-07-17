@@ -21,7 +21,6 @@ def finalize_run_state(
     emit_run_telemetry_fn: Callable,
     *,
     inject_cancel_message_fn: Callable,
-    auto_extract_learnings_fn: Callable,
     save_outcome_memory_fn: Callable[[dict], None],
     set_effective_sandbox_fn: Callable,
     runtime_safety_module: Any,
@@ -61,22 +60,22 @@ def finalize_run_state(
         except Exception as _ev_exc:
             logger.warning("outcome evaluation failed (feedback loop at risk): %s", _ev_exc)
         save_outcome_memory_fn(state)
-        # Emotional presence (BL-190): nudge mood from this turn — the user's sentiment (praise /
-        # correction / frustration) and a failed task outcome. Previously mood only ever moved from
-        # the (unsurfaced) 👍/👎 UI, so it stayed permanently neutral and mood_hint injected nothing.
-        try:
-            if runtime_safety_module.load_config().get("emotional_presence_enabled", True):
-                from services.personality.emotional_presence import register_from_turn
-                _ev = state.get("outcome_evaluation") or {}
-                _succ = _ev.get("success") if isinstance(_ev, dict) else None
-                register_from_turn(str(goal or ""), outcome_success=_succ)
-        except Exception as _mood_exc:
-            logger.debug("emotional_presence turn nudge failed: %s", _mood_exc)
-        try:
-            from layla.memory.distill import run_distill_after_outcome
-            run_distill_after_outcome(n=50)
-        except Exception as e:
-            logger.debug("distill after outcome failed: %s", e)
+        # BL-190 mood nudge MOVED to services/agent/turn_commit.commit_turn. It reads only the
+        # user's message + a success boolean, and this gate never fires on a streamed turn
+        # (status=="stream_pending"), which is why mood stayed permanently neutral for the ~17/24
+        # of real turns that stream. It now runs on the turn boundary for every path. Do NOT
+        # restore it here: an orchestrated streamed turn calls BOTH this finalizer and
+        # commit_turn, so a copy here would double-nudge.
+        #
+        # BL-338: the synchronous `run_distill_after_outcome(n=50)` that used to sit here is
+        # DELETED, not debounced. A scheduler already owns distillation —
+        # layla/scheduler/registry.py registers `_bg_memory` (-> memory_consolidation
+        # .consolidate_periodic -> run_distill_after_outcome(n=30)) on an IntervalTrigger of
+        # `background_memory_consolidation_interval_minutes` (default 30, floor 5). Running it
+        # again per-turn was redundant with a correctly-placed periodic job, and its real cost is
+        # not the O(n^2) Jaccard grouping but `_merge_groups`' embed() forward pass + vector/DB
+        # writes on a CPU-only box. Wiring learning to EVERY turn (as BL-338 does) would have
+        # turned that redundancy into a per-turn tax. The knob to raise freshness already exists.
         # Skill acquisition (BL-238): a finished multi-step run is a reusable procedure. Turn its
         # successful tool sequence into a named learned skill so `learned_skills` actually fills
         # from what Layla DID (previously acquire_from_run had no caller and the store stayed empty).
@@ -95,39 +94,30 @@ def finalize_run_state(
                 _t.Thread(target=_acquire_skill, daemon=True, name="skill-acquire").start()
         except Exception as _sk_gate_exc:
             logger.debug("skill acquisition gate failed: %s", _sk_gate_exc)
-        # Auto-learning: extract and persist 1-2 insights from every substantive exchange
         final_text = ""
         for s in reversed(state.get("steps", [])):
             if s.get("action") == "reason":
                 r = s.get("result", "")
                 final_text = r if isinstance(r, str) else ""
                 break
-        # Sanitize before extracting. `final_text` above is the RAW `reason` step; the /agent router
-        # only applies the bleed strip when building the text it SHOWS. That asymmetry meant the user
-        # read a clean reply while the extractor ate whatever the model had regurgitated of its own
-        # system prompt — and stored it as a "learning". Rows like "This is a written TEXT chat: you
-        # are typing, not speaking…" (a byte-exact system_head_builder line) and "**Voice Contract**:
-        # Blunt and surgical…" got in this way, then fed back through the KG block into later prompts.
-        # This is not symptom-filtering: the extractor was reading the wrong variable. The real source
-        # (a 3B model failing _OUTPUT_DISCIPLINE) is not fixable here.
-        # A wrongly-emptied learning is just a skipped learning, so the strip is safe to apply here even
-        # where it would be too aggressive for a user-facing reply.
-        try:
-            from services.agent.response_builder import clean_reply_text
-            learn_text = clean_reply_text(
-                final_text, status=state.get("status", "finished"), active_aspect=active_aspect
-            )
-        except Exception as _clean_exc:  # never let sanitation break the run
-            logger.debug("learning sanitation failed, skipping extraction: %s", _clean_exc)
-            learn_text = ""
-        if learn_text and not state.get("refused") and len(learn_text.strip()) >= 80:
-            import threading as _t
-            _t.Thread(
-                target=auto_extract_learnings_fn,
-                args=(state.get("original_goal", ""), learn_text, active_aspect.get("id", "")),
-                daemon=True,
-                name="auto-learn",
-            ).start()
+        # BL-338/BL-376: learning extraction MOVED to services/agent/turn_commit.commit_turn.
+        #
+        # Two reasons it could never live here. (1) Liveness: this whole block sits under
+        # `status == "finished"`, but reasoning_handler returns with status="stream_pending"
+        # BEFORE the answer exists whenever stream_final=True — and the UI ships streaming ON by
+        # default. So the learning pipeline only ever ran when the operator manually unchecked
+        # "Stream responses". (2) Reach: the router's fast paths never call agent_loop at all, so
+        # there is no state here to gate on for ~17/24 real turns. Learning belongs on the TURN
+        # BOUNDARY, which is commit_turn, not on the run's completion status.
+        #
+        # The `clean_reply_text` sanitation that used to guard this call is also gone, and its
+        # absence is not a regression: post-BL-376 the extractor does not read the assistant's
+        # reply at all (it reads the OPERATOR's turn), so system-prompt bleed in `final_text` can
+        # no longer reach the learnings table by this route. The structural floor
+        # (is_memory_junk / _LEARNING_REJECT_RE) still guards every writer at the choke point.
+        #
+        # Do NOT restore an extraction call here: an orchestrated stream=false turn calls BOTH
+        # this finalizer and commit_turn, so a copy would extract the same exchange twice.
         # A1 (BL-100/BL-102): run the groundedness + escalation assessment on the final answer
         # and attach it as `answer_quality` when the feature is enabled. `assess_answer` is a
         # cheap no-op while both flags are off, so this is inert by default and never mutates the
@@ -155,28 +145,11 @@ def finalize_run_state(
                 state["explanation"] = explain_state(state, answer=final_text)
         except Exception as _ex_exc:
             logger.debug("explanation build failed: %s", _ex_exc)
-    # Conversation entity extraction: extract entities from every exchange for codex/wiki
-    _conv_final_text = ""
-    try:
-        for _cs in reversed(state.get("steps", [])):
-            if _cs.get("action") == "reason":
-                _csr = _cs.get("result", "")
-                _conv_final_text = _csr if isinstance(_csr, str) else ""
-                break
-    except Exception as e:
-        logger.debug("agent_loop: %s", e)
-    if _conv_final_text and not state.get("refused"):
-        try:
-            from services.memory.conversation_entity_extractor import extract_in_background as _conv_ent_bg
-            _conv_ent_bg(
-                state.get("original_goal", ""),
-                _conv_final_text,
-                conversation_id=str(state.get("conversation_id", "")),
-                aspect_id=active_aspect.get("id", ""),
-            )
-        except Exception as _cee_err:
-            logger.debug("conversation_entity_extractor hook failed: %s", _cee_err)
-
+    # BL-338: conversation entity extraction MOVED to services/agent/turn_commit.commit_turn.
+    # It was NOT status-gated, so it looked live — but it read the `reason` step's text, which is
+    # empty on a stream_pending run because the answer had not been generated yet. It was dead by
+    # STARVATION, not by gate: fixing the status gate alone would never have revived it. commit_turn
+    # is handed the finished, cleaned reply, so it has text to work with on every path.
     if research_mode:
         set_effective_sandbox_fn(None)
 
