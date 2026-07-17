@@ -1913,3 +1913,27 @@ The durable answer is not "find every instance once." It is the guard that makes
 `test_ui_element_contract.py` is hard-fail for the forward direction, so **new drift dies immediately**, and the
 known-dead ratchet can only shrink. Instances found *later* by that guard cost seconds. Instances found by
 hand-auditing 343 ids cost a session and go stale the next commit.
+
+---
+
+## W17 — Operator-observed during P13 execution (2026-07-17)
+
+- 🔴 **BL-386 — the setup-profiles popup is an UNWINNABLE, INESCAPABLE modal.** Operator screenshot: "set up
+  layla / what do you want to do? / pick at least one / continue" with **zero options rendered**. Two defects,
+  both in committed (pre-S5) code (`ui/components/setup-profiles.js`), both this codebase's signature classes:
+  1. **Empty render → dead-end.** Step 0 does `((_data && _data.profiles) || []).forEach(...)` (`:72`). The
+     data comes from `GET /setup/profiles` (`:151`), and `:155` falls back to `{profiles: [], features: []}`
+     on any non-array/failed response. Empty profiles -> no cards -> "what do you want to do?" with nothing to
+     choose -> `_onNext` (`:114`) blocks on `if (!_selProfiles.size) ... 'pick at least one'; return;` FOREVER.
+     Root-cause the endpoint: does `/setup/profiles` actually return PROFILES on a fresh/this install, or is
+     the frontend swallowing an error into the empty fallback? (install/setup_profiles.py::PROFILES.)
+  2. **Escape is wired to the wrong element.** `_root.addEventListener('keydown', ...Escape... closeSetupProfiles())`
+     (`:54`) — a listener on `_root` only receives keydowns that target it or a descendant. If focus is on
+     body (the default), Escape never reaches it. The decorative `<kbd>esc</kbd>` chip (`:44`) ADVERTISES an
+     exit the wiring does not deliver. Fix: listen on `document` (as other overlays do), and make the modal
+     dismissable (the esc chip should be clickable too).
+  **RELEVANCE TO S5:** this is the first-run/setup surface S5 is actively touching. S5's verification MUST
+  confirm the profile picker renders options AND Escape closes it — if S5 makes the wizard reachable without
+  fixing this, it makes a dead-end modal MORE reachable, not less. Fold into S5's follow-up or a first-run
+  polish slice; guard with a test that boots the flow and asserts (a) options render for a normal profile set,
+  (b) Escape dismisses. A source-grep does not count — attempt 1 shipped a dead UI past 17 text-greps.

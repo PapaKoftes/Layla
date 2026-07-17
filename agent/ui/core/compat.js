@@ -63,8 +63,12 @@ import {
 
 import {
   checkSetupStatus, loadSetupCatalog,
-  dismissSetupOverlay, dismissOnboarding,
+  dismissSetupOverlay, dismissTour, maybeStartTour,
 } from '../components/setup.js';
+
+// BL-249: #onboarding-overlay (the chat interview) belongs to onboarding.js — so its close (Escape / the
+// overlay manager) goes through its OWN dismiss, not the tour's. The tour lives at #tour-overlay.
+import { dismissOnboarding } from '../components/onboarding.js';
 
 import {
   triggerSend, hideKeyboardShortcutsSheet,
@@ -425,7 +429,11 @@ window.checkPeerHealth = checkPeerHealth;
 window.checkSetupStatus = checkSetupStatus;
 window.loadSetupCatalog = loadSetupCatalog;
 window.dismissSetupOverlay = dismissSetupOverlay;
+// #onboarding-overlay (interview) closes via onboarding.js; #tour-overlay (first-run tour) via setup.js.
 window.dismissOnboarding = dismissOnboarding;
+window.dismissTour = dismissTour;
+// BL-249: the wizard hands off to the tour when it finishes (wizard.js onNext, step 5).
+window.maybeStartTour = maybeStartTour;
 
 // ── bootstrap.js ── (A: bootstrap.js self-ref, input.js, search.js)
 window.triggerSend = triggerSend;
