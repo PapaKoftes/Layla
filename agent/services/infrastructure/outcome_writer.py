@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import collections
 import logging
+import re
 import threading
 
 from services.memory.memory_router import save_aspect_memory as _db_save_aspect_memory  # canonical write path
@@ -228,113 +229,231 @@ def _extract_patch_text(goal: str) -> str:
     return g
 
 
+# ── operator-fact extraction (BL-376) ────────────────────────────────────────
+# Durable facts about the operator can only come from the OPERATOR. This function used to
+# read the ASSISTANT's reply and "extract insights" from it, so it faithfully memorised
+# docstrings ('n (int): The position in the Fibonacci sequence to return.'), citations
+# ('[1] "Python Sets". Real Python.') and Paris trivia. 28/28 rows in the operator's DB were
+# this — it was working exactly as written. The fix is not a threshold: all 28 rows pass
+# every gate in the store. The fix is the SOURCE.
+
+_SUBJECTS = ("user", "world", "none")
+_MEM_TYPES = ("preference", "correction", "identity", "episodic")
+
+# Type -> stored confidence. Confidence IS the TTL: the daily job in layla/scheduler/jobs.py
+# runs decay_stored_confidence (x0.98/day after a 7-day grace) then
+# prune_low_confidence_learnings (archives, reversibly, at <0.08). No new expiry machinery.
+#   0.80 -> archived at ~1.1 years   (identity/correction)
+#   0.70 -> archived at ~5.5 months  (preference)
+#   0.12 -> archived at ~27 days     (episodic)
+# reinforce_learning is +0.04/use, which outweighs ~17 days of decay at the episodic level,
+# so an episodic memory that keeps being retrieved graduates to durable on its own.
+_TYPE_CONFIDENCE = {
+    "identity": 0.80,
+    "correction": 0.80,
+    "preference": 0.70,
+    "episodic": 0.12,
+}
+
+_TYPE_PREFIX = {
+    "preference": "Operator preference: ",
+    "correction": "Operator correction: ",
+    "identity": "Operator identity: ",
+    "episodic": "Operator context: ",
+}
+
+_CORRECTION_TRIGGERS = (
+    "actually", "that's wrong", "that is wrong", "no,", "not true", "correction",
+)
+_PREFERENCE_TRIGGERS = (
+    "i prefer ", "i like ", "i dislike ", "always use ", "never use ",
+    "don't use ", "do not use ",
+)
+
+# Cheap pre-filter for the LLM path ONLY. A message with no first-person reference cannot
+# state a fact about the user, so there is nothing for the model to find. This is what keeps
+# the per-turn tax off a CPU-bound box: on the operator's real corpus ("what is the capital
+# of france", "write me a fibonacci function", "python sets") this matches ZERO times, so
+# ZERO extra inference runs. Deliberate recall trade: a first-person-free identity claim
+# ("name's Mina") is missed. The deterministic detectors below do NOT depend on this gate —
+# "actually no, use tabs" has no first-person pronoun and is still caught.
+_FIRST_PERSON_RE = re.compile(r"\b(i|i'm|im|i've|my|mine|me|myself|we|our|us)\b", re.IGNORECASE)
+
+
+def detect_operator_facts(user_msg: str) -> list[tuple[str, str]]:
+    """Deterministic, high-precision operator-fact detectors. PRIMARY path — ALWAYS runs.
+
+    Promoted from the old lines 302-335, which had the right instinct (read `user_msg`) in
+    the wrong place: they sat AFTER `if not extracted: return`, so a preference was only
+    ever recorded when the extractor had ALSO scraped something out of the assistant's
+    reply. The repo's own test documented the workaround ("The response needs extractable
+    bullet points so the function doesn't early-return"). That coupling is why the
+    operator's DB holds 16 'fact' + 12 'strategy' rows and ZERO 'preference' rows. The
+    island is now the mainland: these run first, unconditionally, never behind the LLM.
+    """
+    um = (user_msg or "").strip()
+    if not um or len(um) > 300:
+        return []
+    ul = um.lower()
+    flat = um.replace("\n", " ").strip()
+    out: list[tuple[str, str]] = []
+    # elif, NOT a second if. "Actually I prefer the recursive version" trips BOTH trigger sets, and these
+    # were two independent ifs — so ONE message wrote TWO rows carrying the SAME text. Dedup could not
+    # collapse them either: the type prefixes differ ("Operator correction: …" vs "Operator preference: …"),
+    # so content_hash differs. Correction wins because it is the stronger, more specific signal (the operator
+    # is telling us we got something wrong) and it already carries the higher confidence, 0.8 vs 0.7.
+    if any(k in ul for k in _CORRECTION_TRIGGERS):
+        out.append(("correction", flat[:180]))
+    elif any(t in ul for t in _PREFERENCE_TRIGGERS):
+        out.append(("preference", flat[:180]))
+    return out
+
+
+_EXTRACT_PROMPT = """Read one message the user sent to an assistant. Decide whether it states a durable fact ABOUT THE USER.
+
+subject:
+  "user"  - the message states a preference, correction, or identity fact about the user.
+  "world" - the message is about code, math, or facts about the outside world.
+  "none"  - a question, a greeting, or a request to do work.
+
+Rules:
+- A question is never a fact about the user. "how do I write fibonacci?" -> none
+- A request is never a fact about the user. "write a python script" -> none
+- Code, docstrings and citations are never facts about the user -> world
+- If unsure, answer none.
+
+type (only meaningful when subject is "user"):
+  "preference" - what the user likes or always wants. "I prefer tea"
+  "correction" - the user correcting the assistant. "actually no, use tabs"
+  "identity"   - a stable fact about who the user is. "I'm a backend dev"
+  "episodic"   - what the user is doing right now. "I'm debugging auth today"
+
+fact: one short third-person sentence starting with "The operator". Empty string unless subject is "user".
+durable: true if it will still be true next month.
+
+Message: what is the capital of france
+{"subject":"world","type":"episodic","fact":"","durable":false}
+Message: write me a fibonacci function
+{"subject":"none","type":"episodic","fact":"","durable":false}
+Message: I prefer tea
+{"subject":"user","type":"preference","fact":"The operator prefers tea.","durable":true}
+Message: I'm debugging the auth module today
+{"subject":"user","type":"episodic","fact":"The operator is debugging the auth module.","durable":false}
+
+Message: __MSG__
+"""
+
+
+def _llm_extract_operator_fact(user_msg: str) -> tuple[str, str] | None:
+    """Closed-schema, grammar-pinned extraction. Returns (type, fact) or None.
+
+    EVERY failure mode returns None ("extract nothing"). There is deliberately NO path that
+    stores unvalidated model output: "store it anyway" is how the DB filled with docstrings.
+    """
+    if not _FIRST_PERSON_RE.search(user_msg or ""):
+        return None
+    try:
+        import runtime_safety
+        cfg = runtime_safety.load_config()
+    except Exception:
+        return None
+    if not cfg.get("operator_memory_llm_enabled", True):
+        return None
+    # Grammar sampling is a local-llama_cpp capability; a remote server cannot take a
+    # LlamaGrammar object. Same gate as the gbnf branch in llm_decision.py.
+    if (cfg.get("llama_server_url") or "").strip():
+        return None
+    try:
+        from services.llm.gbnf_grammar import run_gbnf_memory_extraction
+        from services.llm.llm_gateway import _get_llm, llm_generation_lock, llm_serialize_lock
+
+        llm = _get_llm()
+        if llm is None:
+            return None
+
+        # llama_cpp is NOT thread-safe: two threads decoding on one Llama handle corrupt the
+        # shared scratch buffer and abort the PROCESS via
+        #   GGML_ASSERT(src1_ptr + src1_col_stride*nrows <= params->wdata + params->wsize)
+        # This is not theoretical — an un-serialized version of this call killed the server on the
+        # first real streamed turn, because extraction runs on a background thread while the turn's
+        # own generation is still decoding. Every other local completion serializes on this lock
+        # (llm_gateway picks it as `infer_lock`; inference_router applies it as `with _llm_lock:`),
+        # and the pre-existing GBNF caller in services/agent/llm_decision.py is safe only because it
+        # runs ON the already-serialized run thread. A background writer must take the lock itself.
+        # Mirror the gateway's selection exactly so we contend on the SAME object it uses.
+        infer_lock = llm_generation_lock if cfg.get("llm_serialize_per_workspace") else llm_serialize_lock
+        # Bounded wait, then give up: this is a daemon thread doing optional work behind a reply the
+        # user already has. Skipping the LLM path costs recall, never correctness — the deterministic
+        # detectors have already run and are unaffected.
+        if not infer_lock.acquire(timeout=120):
+            logger.debug("operator-fact: inference lock busy, skipping LLM extraction for this turn")
+            return None
+        try:
+            obj = run_gbnf_memory_extraction(llm, _EXTRACT_PROMPT.replace("__MSG__", (user_msg or "")[:250]))
+        finally:
+            infer_lock.release()
+    except Exception as e:
+        logger.debug("operator-fact extraction skipped: %s", e)
+        return None
+    if not isinstance(obj, dict):
+        return None
+
+    # ── the hard reject ──────────────────────────────────────────────────────
+    # This single line is the whole of BL-376. Every one of the 28 junk rows is
+    # subject="world"; a docstring param and a Real Python citation cannot survive it.
+    if str(obj.get("subject") or "").strip().lower() != "user":
+        return None
+
+    mem_type = str(obj.get("type") or "").strip().lower()
+    if mem_type not in _MEM_TYPES:
+        return None
+    fact = str(obj.get("fact") or "").strip()
+    if len(fact) < 8:
+        return None
+    # `durable` is a DEMOTION signal only, never a promotion: the enum keys are grammar-pinned
+    # and trustworthy, a 3B's free boolean is not. durable=false downgrades to episodic TTL;
+    # durable=true can never upgrade an episodic memory into a permanent one.
+    if not bool(obj.get("durable")) and mem_type != "correction":
+        mem_type = "episodic"
+    return (mem_type, fact[:180])
+
+
 def _auto_extract_learnings(user_msg: str, response: str, aspect_id: str) -> None:
-    """Background thread: extract 1-2 concise learnings from a completed exchange and persist them."""
+    """Extract durable facts about the OPERATOR from the operator's own turn, and persist.
+
+    Its one caller is services/agent/turn_commit.commit_turn (BL-338), which fires on the turn
+    boundary for every reply path. `response` is accepted to keep the (user_msg, response,
+    aspect_id) signature stable for that caller and is DELIBERATELY UNUSED: reading it IS the
+    BL-376 defect. Do not reintroduce it — the guard at
+    tests/test_operator_fact_extractor.py::test_assistant_reply_junk_yields_no_learning
+    will go red.
+    """
     global _recent_learning_fingerprints
     try:
-        resp_clean = response.strip()
-        words = resp_clean.split()
-        if len(words) < 20:
+        um = (user_msg or "").strip()
+        if not um or len(um) > 2000:
+            return
+        words = um.split()
+        if len(words) < 3:
             return
         first_words = set(w.lower().strip(".,!?") for w in words[:6])
         if first_words.issubset(_GREETING_WORDS):
             return
 
-        learning_type = _ASPECT_LEARNING_TYPE.get(aspect_id, "fact")
-        extracted = []
-
-        try:
-            from services.llm.llm_gateway import run_completion
-
-            prompt = (
-                "Extract 1-2 concise, standalone, reusable insights from this exchange. "
-                "Output only a valid JSON array of strings. Max 100 chars each. No explanation.\n\n"
-                f"User: {user_msg[:250]}\n"
-                f"Response: {resp_clean[:500]}"
-            )
-            raw = (run_completion(prompt=prompt, max_tokens=140, temperature=0.1) or "").strip()
-            import json as _json
-            import re as _re_al
-
-            m = _re_al.search(r"\[.*?\]", raw, _re_al.DOTALL)
-            if m:
-                items = _json.loads(m.group(0))
-                for item in items[:2]:
-                    if isinstance(item, str) and len(item.strip()) >= 12:
-                        extracted.append(item.strip()[:200])
-        except Exception:
-            pass
-
-        if not extracted:
-            import re as _re_al
-
-            for line in resp_clean.split("\n"):
-                line = line.strip()
-                if _re_al.match(r"^[\d\-\*\•\–]\s+.{25,150}$", line):
-                    clean = _re_al.sub(r"^[\d\-\*\•\–]\s+", "", line).strip()
-                    if clean:
-                        extracted.append(clean)
-                elif any(
-                    kw in line.lower()
-                    for kw in [
-                        "always ",
-                        "never ",
-                        "should ",
-                        "must ",
-                        "key insight",
-                        "important:",
-                        "note:",
-                        "tip:",
-                        "best practice",
-                        "remember:",
-                        "the solution",
-                    ]
-                ) and 25 < len(line) < 200:
-                    extracted.append(line)
-                if len(extracted) >= 2:
-                    break
-
-        if not extracted:
+        # Deterministic first (free), LLM second (additive, never a fallback for the other).
+        candidates: list[tuple[str, str]] = list(detect_operator_facts(um))
+        hit = _llm_extract_operator_fact(um)
+        if hit and not any(c[0] == hit[0] for c in candidates):
+            candidates.append(hit)
+        if not candidates:
             return
+
         from services.memory.memory_router import save_learning  # canonical write path
 
         saved = 0
-        # Operator correction detection (high precision heuristic)
-        try:
-            um = (user_msg or "").strip()
-            if um and any(k in um.lower() for k in ("actually", "that's wrong", "that is wrong", "no,", "not true", "correction")):
-                corr = um.replace("\n", " ").strip()[:180]
-                save_learning(content=f"Operator correction: {corr}", kind="preference")
-        except Exception:
-            pass
-
-        # Implicit preference detection (high precision, exact phrase triggers).
-        try:
-            um = (user_msg or "").strip()
-            ul = um.lower()
-            triggers = (
-                "i prefer ",
-                "i like ",
-                "i dislike ",
-                "always use ",
-                "never use ",
-                "don't use ",
-                "do not use ",
-            )
-            if um and any(t in ul for t in triggers) and len(um) <= 300:
-                pref = um.replace("\n", " ").strip()
-                fp = ("pref|" + pref[:80].lower()).strip()
-                with _fingerprint_lock:
-                    if fp not in _recent_learning_fingerprints:
-                        _recent_learning_fingerprints[fp] = None
-                        if len(_recent_learning_fingerprints) > 200:
-                            while len(_recent_learning_fingerprints) > 100:
-                                _recent_learning_fingerprints.popitem(last=False)
-                        save_learning(content=f"Operator preference: {pref}"[:240], kind="preference")
-        except Exception:
-            pass
-        for item in extracted[:2]:
-            fp = item[:60].lower()
+        for mem_type, fact in candidates[:2]:
+            content = (_TYPE_PREFIX.get(mem_type, "Operator context: ") + fact)[:240]
+            fp = (mem_type + "|" + fact[:60]).lower()
             with _fingerprint_lock:
                 if fp in _recent_learning_fingerprints:
                     continue
@@ -343,11 +462,22 @@ def _auto_extract_learnings(user_msg: str, response: str, aspect_id: str) -> Non
                     while len(_recent_learning_fingerprints) > 100:
                         _recent_learning_fingerprints.popitem(last=False)
             try:
-                save_learning(content=item, kind=learning_type)
-                saved += 1
+                # min_length=12: an operator fact is high-information at any length. The
+                # 40-char floor is a verbosity proxy that rejects 'Operator preference: I
+                # prefer tea' (33 chars) — see learning_filter.filter_learning.
+                rid = save_learning(
+                    content=content,
+                    kind=mem_type,
+                    confidence=_TYPE_CONFIDENCE.get(mem_type, 0.12),
+                    source="operator_turn",
+                    aspect_id=aspect_id or "",
+                    min_length=12,
+                )
+                if rid and int(rid) > 0:
+                    saved += 1
             except Exception:
                 pass
         if saved:
-            logger.debug("auto-learn: saved %d %s learnings (aspect=%s)", saved, learning_type, aspect_id)
+            logger.debug("operator-fact: saved %d rows (aspect=%s)", saved, aspect_id)
     except Exception as e:
-        logger.debug("auto-learn failed: %s", e)
+        logger.debug("operator-fact extraction failed: %s", e)

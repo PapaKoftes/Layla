@@ -184,3 +184,72 @@ def run_gbnf_agent_decision(
     except Exception as e:
         logger.debug("gbnf: parse_decision failed: %s", e)
         return None
+
+
+# ── operator-fact extraction grammar (BL-376) ───────────────────────────────
+_SUBJECTS = ("user", "world", "none")
+_MEM_TYPES = ("preference", "correction", "identity", "episodic")
+
+
+def build_memory_grammar() -> str:
+    """Build a GBNF grammar constraining output to one operator-fact JSON object.
+
+    Mirrors build_decision_grammar: enum-pinned keys in a fixed canonical order. A 3B
+    physically cannot emit a `subject` outside {user, world, none} nor invent a type —
+    which is what makes the `subject != "user"` hard-reject *enforceable* rather than
+    hopeful. All four keys are required: a partial object is a parse failure, not a
+    default, because a defaulted `subject` would be a guess and guessing is the bug.
+    """
+    root = (
+        'root ::= "{" ws '
+        '"\\"subject\\"" ws ":" ws subject ws "," ws '
+        '"\\"type\\"" ws ":" ws memtype ws "," ws '
+        '"\\"fact\\"" ws ":" ws string ws "," ws '
+        '"\\"durable\\"" ws ":" ws boolean '
+        'ws "}"'
+    )
+    return "\n".join(
+        [
+            root,
+            f"subject ::= {_alternation(_SUBJECTS)}",
+            f"memtype ::= {_alternation(_MEM_TYPES)}",
+            _JSON_SCAFFOLD,
+        ]
+    ) + "\n"
+
+
+def run_gbnf_memory_extraction(
+    llm: Any, prompt: str, *, max_tokens: int = 96, temperature: float = 0.0
+) -> dict | None:
+    """One grammar-constrained operator-fact extraction. ``None`` on ANY miss.
+
+    There is deliberately no degraded path that returns unvalidated text: the caller
+    MUST treat None as "extract nothing", never as "store the raw output". Storing
+    unvalidated model output is precisely how the learnings table filled with docstrings.
+    """
+    try:
+        from llama_cpp import LlamaGrammar
+    except Exception:
+        return None
+    try:
+        grammar = LlamaGrammar.from_string(build_memory_grammar(), verbose=False)
+    except Exception as e:
+        logger.debug("gbnf: memory grammar build/compile failed: %s", e)
+        return None
+    try:
+        out = llm.create_completion(
+            prompt, max_tokens=max_tokens, temperature=temperature, grammar=grammar, stream=False
+        )
+        text = (out.get("choices") or [{}])[0].get("text") or ""
+    except Exception as e:
+        logger.debug("gbnf: memory extraction failed: %s", e)
+        return None
+    if not text.strip():
+        return None
+    try:
+        import json as _json
+
+        v = _json.loads(text)
+    except Exception:
+        return None
+    return v if isinstance(v, dict) else None
