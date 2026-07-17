@@ -30,31 +30,78 @@ import threading
 
 logger = logging.getLogger("layla")
 
-# SAFETY filter, not a liveness one. Persistence is deliberately NOT gated on this — a refused
-# or blocked turn still belongs in the transcript; only LEARNING is withheld.
+# Persistence is deliberately NOT gated on this — a refused, blocked, timed-out or aborted turn
+# still belongs in the transcript; only LEARNING is withheld.
 #
-# This list is deliberately SHORT, and the short list is the considered answer rather than an
-# unfinished one. An earlier draft also carried timeout / client_abort / system_busy / error /
-# parse_failed / pipeline_needs_input. Two things were wrong with that:
+# HISTORY, because the reasoning here has been wrong once already. This list used to carry a
+# reachability argument: "the done-frames only ever pass finished/blocked/fast_path, so entries
+# like timeout/client_abort/pipeline_needs_input could not fire anyway." BL-245 DELETED that
+# premise — those done-frames now all call commit_turn (they used to persist nothing at all, so
+# the operator's message vanished on reload).
 #
-#  1. Reachability. The done-frames only ever pass "finished", "blocked" or "fast_path"
-#     (pipeline_needs_input and plan_ready return early and never reach commit_turn at all), so
-#     those entries could not fire. A list that looks like a guard but cannot execute is
-#     documentation — exactly the failure mode this seam exists to remove.
-#  2. Semantics. Those entries were reasoned from the OLD extractor, which read the assistant's
-#     reply: if the run timed out, the reply was junk, so learning from it was junk. Post-BL-376
-#     the extractor reads the OPERATOR's turn. "I prefer tea" is still true even if the run
-#     timed out, the parse failed, or the user closed the tab. Run mechanics do not invalidate
-#     what the operator said; blocking on them would silently DROP valid preferences.
+# Do NOT re-derive this list from "what can't happen" — derive it from what SHOULD not be learned.
+# That is the whole point, and it is why the honest statement of reachability is: MOST of these are
+# now demonstrably reachable, and `timeout` specifically was NOT reproducible when tried. Reaching it
+# required defeating two layers (config_schema.py:121 clamps max_runtime_seconds to min 5, and
+# auto_tune.py:125 authoritatively forces 300 unless the key is in auto_tune_locked_keys) — and even
+# then a 63.7s multi-tool turn returned status=None, not the timeout branch. The frame exists and
+# commits; whether the status label ever lands is unproven.
 #
-# What genuinely invalidates the operator's turn is that we should not be acting on it: the
-# request was refused, or its output tripped the content guard. Both are reachable and both are
-# proved by tests (test_refused_turn_writes_no_learning / test_blocked_turn_writes_no_learning).
+# An earlier version of this comment claimed "every status below is reachable today." That replaced a
+# false reachability premise with the opposite claim, equally undemonstrated. Both are the same
+# mistake: asserting reachability instead of measuring it. If you need to know, measure it.
+#
+# The semantic argument, which survives and is the real one: post-BL-376 the extractor reads the
+# OPERATOR's turn, not the assistant's reply. "I prefer tea" is still true even if the run timed
+# out, the parse failed, or the user closed the tab. Run mechanics do not invalidate what the
+# operator said, so timeout / client_abort / error / pipeline_needs_input DO learn — blocking
+# them would silently drop valid preferences the operator stated.
+#
+# Two things genuinely warrant withholding, for two DIFFERENT reasons:
+#
+#  1. SAFETY — we should not act on this exchange at all:
+#     "blocked" (content guard replaced the text). Refusals are handled by the `refused` flag.
+#     Proved by test_refused_turn_writes_no_learning / test_blocked_turn_writes_no_learning.
+#  2. RESOURCE COHERENCE — "system_busy" is the governor REFUSING to run the LLM because CPU/RAM
+#     is exhausted (agent_loop.py raises it). Learning is not free: _auto_extract_learnings makes
+#     its own LLM call. Answering "the box is out of resources" by immediately starting more LLM
+#     work is incoherent, and on this CPU-only box it is how you turn a busy moment into a stuck
+#     one. The operator's message is still persisted; only the extraction is skipped.
 _NO_LEARN_STATUSES = frozenset(
     {
-        "blocked",  # content-guard replaced the text; treat the exchange as off-limits
+        "blocked",      # content-guard replaced the text; treat the exchange as off-limits
+        "system_busy",  # governor declined LLM work — do not spawn an LLM extraction in reply
     }
 )
+
+
+# ── BL-243: the rail needs to know a title is still in flight ──
+#
+# The title is synthesized by an LLM on a BACKGROUND thread (see _maybe_synth_title). On this
+# CPU-bound box that call lands ~14s+ AFTER the done-frame has already closed the SSE stream —
+# so the title cannot be pushed down the turn's own stream, and the rail's single re-render
+# (app.js, on the done-frame) always raced the synth and always lost. The operator saw the
+# instant extractive title forever: "it never reloads the ui once it's actually done loading."
+#
+# This registry is the seam that makes a BOUNDED poll possible instead of a heartbeat: the UI
+# asks GET /conversations/{id}/title, and only keeps asking while synth_pending is true. Without
+# it the UI would have to poll blind on every turn — including the ~all turns that synthesize no
+# title at all — which is exactly the kind of idle burn this box cannot afford.
+#
+# Registration happens SYNCHRONOUSLY inside commit_turn, before the done-frame is yielded, so
+# there is no window in which the client can poll and be told "not pending" for a synth that is
+# about to start.
+_TITLE_SYNTH_LOCK = threading.Lock()
+_TITLE_SYNTH_PENDING: set[str] = set()
+
+
+def title_synth_pending(conversation_id: str) -> bool:
+    """True while a background title synthesis is in flight for this conversation."""
+    cid = (conversation_id or "").strip()
+    if not cid:
+        return False
+    with _TITLE_SYNTH_LOCK:
+        return cid in _TITLE_SYNTH_PENDING
 
 
 def _cfg() -> dict:
@@ -123,8 +170,24 @@ def _maybe_synth_title(conversation_id: str, user_msg: str, assistant_text: str)
                         rename_conversation(cid, t)
             except Exception as _tx:
                 logger.debug("title synth bg failed: %s", _tx)
+            finally:
+                # BL-243: clear the flag on EVERY exit path (success, no-title, exception, or a
+                # compare-and-set that declined to write). A leaked flag would make the rail poll
+                # to its ceiling on a synth that already finished — bounded, but pure waste.
+                with _TITLE_SYNTH_LOCK:
+                    _TITLE_SYNTH_PENDING.discard(cid)
 
-        threading.Thread(target=_bg, daemon=True, name="title-synth").start()
+        # Mark BEFORE start(): once the thread is running the done-frame may already be on the
+        # wire, and a client that polls before this line would be told "nothing pending".
+        with _TITLE_SYNTH_LOCK:
+            _TITLE_SYNTH_PENDING.add(cid)
+        try:
+            threading.Thread(target=_bg, daemon=True, name="title-synth").start()
+        except Exception:
+            # Thread never started, so _bg's finally will never run — don't strand the flag.
+            with _TITLE_SYNTH_LOCK:
+                _TITLE_SYNTH_PENDING.discard(cid)
+            raise
     except Exception as _te:
         logger.debug("title synth gate failed: %s", _te)
 
