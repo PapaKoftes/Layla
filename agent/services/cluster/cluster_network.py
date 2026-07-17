@@ -416,9 +416,25 @@ class ClusterNetwork:
         return status
 
     # ── Task submission (to remote nodes) ────────────────────────────
+    #
+    # NO ENTRY POINT — VERIFIED 2026-07-17 (BL-350). Nothing in the live tree calls submit_task,
+    # get_task_status or cancel_remote_task. A `task_dispatcher` that would call them was written but
+    # never merged: it exists only in a stale worktree and in build/lib. The inference-side offload
+    # route is closed too — `run_completion_with_fallback` (inference_router.py:659), the only wrapper
+    # that would offload a completion to a peer, also has zero callers.
+    #
+    # So LAN clustering moves ZERO work in either direction. What remains real: the RECEIVING endpoint
+    # (a peer can push a task to us), the heartbeat, and node_sync.py — incremental knowledge
+    # replication, which is a genuinely different feature and is NOT dead.
+    #
+    # Do not assume "no callers" means "safe to delete and re-add later": the architecture review's
+    # verdict on this ~4,600 LOC subsystem is CUT. Distributed inference is how you run a model that
+    # does NOT fit in local RAM, at roughly 2x worse decode — it is never a speedup for a model that
+    # fits, and the 3B fits here with room to spare. If you are about to wire these up, read that review
+    # first.
 
     def submit_task(self, peer: Peer, task_dict: dict[str, Any]) -> dict[str, Any] | None:
-        """Submit a task to a remote peer node.
+        """Submit a task to a remote peer node. HAS NO CALLERS — see the note above.
 
         Returns the response dict (with task ID) or None on failure.
         """

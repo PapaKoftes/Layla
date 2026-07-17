@@ -622,8 +622,9 @@
             <label class="option-row" title="Let her think with her inner voices before answering">
               <input type="checkbox" id="show-thinking"> Show thoughts
             </label>
-            <label class="option-row" title="Speak final reply (Kokoro server TTS with browser fallback)">
+            <label class="option-row" id="tts-toggle-row" title="Speak final reply (Kokoro server TTS)">
               <input type="checkbox" id="tts-toggle" data-on-change="toggleTts"> Speak replies
+              <span id="tts-note" class="hint" hidden></span>
             </label>
             <label class="option-row" title="Generate a plan first — review steps before execution">
               <input type="checkbox" id="plan-mode-toggle"> Plan first
@@ -722,9 +723,10 @@
         <details class="settings-accordion">
           <summary class="settings-accordion-title">Voice &amp; Audio</summary>
           <div class="settings-accordion-body">
-            <label class="option-row" title="Speak final reply">
+            <label class="option-row" id="tts-toggle2-row" title="Speak final reply">
               <input type="checkbox" id="tts-toggle2" data-on-change="toggleTts"> Speak replies
             </label>
+            <div id="tts-note2" class="hint" hidden></div>
             <div class="settings-slider-group">
               <label class="settings-slider-label">Speed <span id="voice-speed-display">1.0×</span></label>
               <input type="range" id="voice-speed-range" min="0.5" max="2.0" step="0.05" value="1.0" class="settings-slider" data-on-input="laylaVoiceSpeedChange" aria-label="Voice speed">
@@ -1245,6 +1247,22 @@
       <div class="hint" style="margin-bottom:6px">Appearance / lite mode (writes <code>runtime_config.json</code>)</div>
       <label style="display:block;margin:4px 0;font-size:0.75rem">Avatar seed <input id="ui_avatar_seed" type="text" style="width:100%;max-width:280px" placeholder="e.g. dicebear seed" /></label>
       <label style="display:block;margin:4px 0;font-size:0.75rem">Avatar style <input id="ui_avatar_style" type="text" style="width:100%;max-width:200px" placeholder="rings" /></label>
+      <label style="display:block;margin:4px 0;font-size:0.75rem">Text size
+        <select id="app-font-size" style="width:100%;max-width:200px">
+          <option value="14">Small</option>
+          <option value="16">Normal</option>
+          <option value="18">Large</option>
+          <option value="20">Larger</option>
+          <option value="22">Largest</option>
+        </select>
+      </label>
+      <label style="display:block;margin:4px 0;font-size:0.75rem">Animations
+        <select id="app-anim-level" style="width:100%;max-width:200px">
+          <option value="full">Full</option>
+          <option value="reduced">Reduced</option>
+          <option value="none">None</option>
+        </select>
+      </label>
       <label style="display:block;margin:6px 0;font-size:0.75rem"><input id="chat_lite_mode" type="checkbox" /> Chat lite mode (shorter agent path)</label>
       <label style="display:block;margin:6px 0;font-size:0.75rem"><input id="ui_decision_trace_enabled" type="checkbox" /> Include decision policy trace in API/SSE when enabled</label>
       <button type="button" class="settings-save" style="margin-top:6px" data-action="saveAppearanceLite">Save appearance &amp; lite</button>

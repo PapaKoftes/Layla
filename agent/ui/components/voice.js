@@ -63,13 +63,106 @@ let _audioChunks = [];
 let _ttsEnabled = false;
 let _streamEnabled = false;
 
+//: THE single source of truth for the "speak replies" preference.
+//:
+//: BL-271: voice.js read `localStorage.getItem('layla_tts') === 'true'` (unset -> OFF) while
+//: obsidian.js:121 read `!== 'false'` (unset -> ON). On a fresh profile the second toggle therefore
+//: rendered CHECKED while the engine was OFF — the box said one thing and the code did the other, and
+//: neither file was wrong on its own. Fixing one line would have left the next copy free to drift, so
+//: both now call this. OFF-by-default is the correct default: unexpected speech is a nasty surprise.
+export const TTS_STORAGE_KEY = 'layla_tts';
+
+export function readTtsPref() {
+  try { return localStorage.getItem(TTS_STORAGE_KEY) === 'true'; } catch (_) { return false; }
+}
+
 try {
-  _ttsEnabled = localStorage.getItem('layla_tts') === 'true';  // opt-in: speaking replies OFF by default
+  _ttsEnabled = readTtsPref();  // opt-in: speaking replies OFF by default
   _streamEnabled = localStorage.getItem('layla_stream') !== 'false';
 } catch (_) {}
 
 export function isTtsEnabled() { return _ttsEnabled; }
 export function isStreamEnabled() { return _streamEnabled; }
+
+/**
+ * BL-270: the missing setter.
+ *
+ * `speakText` gates on the MODULE-LOCAL `_ttsEnabled`, which was written exactly once at import and
+ * never again — no setter was exported. The toggle handler (main.js::toggleTts) could only reach the
+ * window mirror, so ticking "Speak replies" updated `window._ttsEnabled`, the checkbox, and
+ * localStorage... and then `speakText` consulted the stale module-local and returned early. The toggle
+ * SILENTLY DID NOTHING until the page was reloaded.
+ *
+ * It was invisible because the callers (app.js:655, research.js) check `window._ttsEnabled` — the fresh
+ * mirror — and so happily called speakText, which then bailed on the stale copy. Both sides looked
+ * correct in isolation. Everything that flips TTS must come through here.
+ */
+export function setTtsEnabled(on) {
+  _ttsEnabled = !!on;
+  window._ttsEnabled = _ttsEnabled;  // keep the legacy mirror the callers read
+  try { localStorage.setItem(TTS_STORAGE_KEY, _ttsEnabled ? 'true' : 'false'); } catch (_) {}
+  return _ttsEnabled;
+}
+
+// ── Real availability (BL-272) ──────────────────────────────────────────────
+//
+// Server TTS is dead unless the optional voice deps are installed: /voice/speak answers 503 and
+// /health/deps reports voice_tts:"missing" (verified live on this box). The toggle claimed a capability
+// the machine did not have, and what a user actually heard was an undocumented browser speechSynthesis
+// fallback: a generic OS voice, truncated at 500 chars, with the speed/volume sliders applying ONLY to
+// the dead server path. Three separate lies behind one checkbox.
+//
+// /health/deps already existed, already worked, and had ZERO UI consumers. So the toggle is now gated on
+// it rather than deleted: the operator's own runtime_config.json lists "voice" in setup_features, so
+// voice was explicitly asked for — it is one install away, not a fiction. `null` = not yet probed.
+let _ttsAvailable = null;
+
+export function isTtsAvailable() { return _ttsAvailable === true; }
+
+function _applyTtsAvailability() {
+  const available = _ttsAvailable === true;
+  const note = available
+    ? ''
+    : "Voice isn't installed — Settings → Setup → install the Voice feature (~500 MB) to enable spoken replies.";
+
+  ['tts-toggle', 'tts-toggle2'].forEach(function (id) {
+    const cb = document.getElementById(id);
+    if (!cb) return;
+    cb.disabled = !available;
+    if (!available) cb.checked = false;  // never render CHECKED over a dead engine (BL-271)
+    const row = document.getElementById(id + '-row');
+    if (row) row.title = available ? 'Speak final reply (Kokoro server TTS)' : note;
+  });
+
+  // The sliders drive the SERVER path only. With no server TTS they are decoration.
+  ['voice-speed-range', 'voice-volume-range'].forEach(function (id) {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !available;
+  });
+
+  ['tts-note', 'tts-note2'].forEach(function (id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = note;
+    el.hidden = available;
+  });
+}
+
+/** Probe /health/deps and reflect real TTS availability into the controls. */
+export async function refreshVoiceAvailability() {
+  let ok = false;
+  try {
+    const r = await fetch('/health/deps');
+    const d = await r.json();
+    ok = ((d && d.dependencies) || {}).voice_tts === 'ok';
+  } catch (_e) {
+    ok = false;  // can't confirm the engine exists -> don't claim it does
+  }
+  _ttsAvailable = ok;
+  if (!ok) setTtsEnabled(false);  // a stored `true` from before must not resurrect the robot voice
+  _applyTtsAvailability();
+  return ok;
+}
 
 // ── DOMContentLoaded init ───────────────────────────────────────────────────
 export function initVoiceControls() {
@@ -88,6 +181,8 @@ export function initVoiceControls() {
   // Expose onto window for legacy compat reads
   window._ttsEnabled = _ttsEnabled;
   window._streamEnabled = _streamEnabled;
+
+  refreshVoiceAvailability();
 }
 
 // ── Microphone toggle ───────────────────────────────────────────────────────
@@ -172,6 +267,11 @@ async function transcribeAndSend(blob) {
 // ── Server-side TTS with browser fallback ───────────────────────────────────
 export async function speakText(text) {
   if (!_ttsEnabled || !text) return;
+  // BL-272: with no server TTS installed, do NOT quietly substitute the browser's generic OS voice.
+  // That fallback is what made the dead toggle look alive: it spoke, so nothing seemed broken, while the
+  // speed/volume sliders (server-only) did nothing and the text was silently cut at 500 chars. The
+  // fallback below is kept for its real job — a network/decode failure when the engine IS installed.
+  if (_ttsAvailable === false) return;
   try {
     const asp = appState.get('aspect.current') || 'morrigan';
     // Speed slider now reaches the server (was ignored). The server treats an

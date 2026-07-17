@@ -2,8 +2,9 @@
  * components/obsidian.js — Obsidian vault integration UI helpers.
  *
  * Converted from inline <script> block in index.html.
- * Self-contained — no module imports needed.
  */
+
+import { readTtsPref } from './voice.js';
 
 function _obsStatus(msg, isErr) {
   var el = document.getElementById('obsidian-status');
@@ -116,9 +117,12 @@ export function restorePersistedSettings() {
       var cb3 = document.getElementById('artifacts-autoscan-toggle');
       if (cb3) cb3.checked = false;
     }
-    // Sync tts-toggle2 with tts-toggle state
+    // Sync tts-toggle2 with tts-toggle state.
+    // BL-271: this read `!== 'false'` (unset -> ON) while voice.js read `=== 'true'` (unset -> OFF), so
+    // on a fresh profile this box rendered CHECKED while the engine was OFF. Both files were reasonable
+    // alone; the disagreement was the bug. readTtsPref() is now the one place that decides.
     var tts2 = document.getElementById('tts-toggle2');
-    if (tts2) tts2.checked = localStorage.getItem('layla_tts') !== 'false';
+    if (tts2) tts2.checked = readTtsPref();
     // Restore Obsidian vault path
     var obsPath = localStorage.getItem('layla_obsidian_vault_path');
     if (obsPath) {
