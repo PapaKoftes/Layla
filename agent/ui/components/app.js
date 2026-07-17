@@ -657,6 +657,15 @@ export async function send() {
             // Refresh the chat sidebar so a brand-new conversation's server-generated title
             // (and updated ordering) replaces the creation-time placeholder.
             try { if (typeof window.refreshConversationList === 'function') window.refreshConversationList(); } catch (_e) { console.debug('app:', _e); }
+            // BL-243: that refresh renders the title as it exists RIGHT NOW — but on the first
+            // exchange the real title is still being synthesized on a background thread and lands
+            // ~14s+ later. Without this the rail kept the instant extractive title until a manual
+            // page reload. Bounded poll; it stops as soon as the server reports no synth in flight.
+            try {
+              if (typeof window.laylaPollConversationTitle === 'function') {
+                window.laylaPollConversationTitle(obj.conversation_id || window.currentConversationId);
+              }
+            } catch (_e) { console.debug('app:', _e); }
             try { laylaStreamStatsChars(full.length); laylaStreamStatsStop(); } catch (_e) { console.debug('app:', _e); }
             // Prefer the server's hardened artifact list (obj.artifacts) — it handles info-string
             // fences, ~~~ blocks and truncated blocks the client scanner would otherwise miss.
