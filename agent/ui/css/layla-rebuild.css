@@ -751,6 +751,11 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .setupwiz-note { flex: 1; font-size: var(--text-xs); color: var(--text-dim); }
 .setupwiz-note[data-ok="true"] { color: var(--success); }
 .setupwiz-back { margin-right: auto; }
+/* BL-386: visible-failure path + a genuinely clickable "esc" chip. */
+.setupwiz-loaderr { font-size: var(--text-sm); color: var(--text-dim); line-height: 1.5; margin-bottom: var(--sp-3); }
+.setupwiz-erractions { display: flex; gap: var(--sp-2); }
+.setupwiz-panel .cmdp-esc { cursor: pointer; }
+.setupwiz-panel .cmdp-esc:hover { color: var(--text); border-color: var(--border-2); }
 
 /* ── W2 · German learning panel (headline wedge) ─────────────────────────────── */
 .german-panel { max-width: 560px; max-height: 82vh; }
