@@ -531,19 +531,33 @@ async def lifespan(app: FastAPI):
     except Exception as _cluster_err:
         logger.debug("cluster network skipped: %s", _cluster_err)
 
-    # Phase 3: Start drone worker (processes queued tasks locally)
+    # Phase 3: Start the cluster task workers — ONLY when clustering is actually on.
+    #
+    # BL-350. These were started UNCONDITIONALLY, unlike the cluster network above (gated) and node sync
+    # below (gated). Neither start_drone_worker() nor DroneWorker.start() checks anything, so on every
+    # single boot — cluster_enabled=false, no peers, no cluster at all — two threads spawned and polled
+    # the task queue forever: drone every 5s, queen every 8s.
+    #
+    # They can never find work. The queue's only writer is the RECEIVING endpoint (a paired peer pushing
+    # a task in), and nothing in the live tree ever submits: submit_task / get_task_status /
+    # cancel_remote_task have zero callers, and so does run_completion_with_fallback, the inference-side
+    # offload wrapper. Both entry points are closed, so the loop is shut with nothing able to enter it.
+    # Verified live on the operator's box: GET /cluster/queue/stats -> {"stats":{},"pending":[],"running":[]}.
+    #
+    # Gating on cluster_enabled keeps the receive path intact for anyone who genuinely runs a cluster
+    # (a peer's task still gets processed) while a standalone install — which is every install today —
+    # stops paying two polling threads for a subsystem it is not using. On the `potato` tier this box
+    # auto-tunes to, that is not free.
     try:
-        from services.cluster.drone_worker import start_drone_worker
-        start_drone_worker()
+        import runtime_safety as _rs_workers
+        if _rs_workers.load_config().get("cluster_enabled", False):
+            from services.cluster.drone_worker import start_drone_worker, start_queen_worker
+            start_drone_worker()
+            start_queen_worker()
+        else:
+            logger.debug("cluster task workers not started: cluster_enabled=false")
     except Exception as _dw_err:
-        logger.debug("drone worker skipped: %s", _dw_err)
-
-    # Start queen worker (processes queued tasks on QUEEN node)
-    try:
-        from services.cluster.drone_worker import start_queen_worker
-        start_queen_worker()
-    except Exception as _qw_err:
-        logger.debug("queen worker skipped: %s", _qw_err)
+        logger.debug("cluster workers skipped: %s", _dw_err)
 
     # Phase 5A: Start knowledge watcher (auto-ingest from watched folders)
     try:
