@@ -162,8 +162,10 @@ def run_python(code: str, cwd: str) -> dict:
     try:
         from services.sandbox.python_runner import run_python_file
 
-        # BL-025: enforce the (previously declared-but-unwired) network policy. Sandboxed exec
-        # is network-jailed unless `autonomous_allow_network` is explicitly enabled.
+        # BL-025 / BL-295: apply the network policy. When `autonomous_allow_network` is off
+        # (default), sandboxed exec gets a BEST-EFFORT network speed-bump — NOT a jail. It stops
+        # accidental egress but is trivially bypassable (_socket / importlib.reload(socket) /
+        # subprocess); the approval gate + url_guard are the real controls. Not isolation.
         allow_net = False
         try:
             import runtime_safety

@@ -835,10 +835,13 @@ async def agent(req: AgentRequest, request: Request):
                             yield f"data: {json.dumps({'ux_state': 'loading_model'})}\n\n"
                     except Exception:
                         pass
-                    from services.agent.response_builder import stream_safe_prefix
+                    from services.agent.response_builder import stream_safe_prefix, StreamOutputGuard
                     tok_q: queue.Queue = queue.Queue()
                     _emitted = 0
                     _fast_delib_meta = None
+                    # BL-297: LIVE content-safety gate — suppress a Tier-1/2 payload's continuation
+                    # before it reaches the wire (the done-frame floor still fixes the stored copy).
+                    _out_guard = StreamOutputGuard(cfg)
 
                     def _worker() -> None:
                         try:
@@ -893,7 +896,11 @@ async def agent(req: AgentRequest, request: Request):
                         # complete [MARKER …] so control tags never flash mid-stream.
                         _delta, _emitted = stream_safe_prefix("".join(full), _emitted)
                         if _delta:
-                            yield f"data: {json.dumps({'token': _delta})}\n\n"
+                            _safe = _out_guard.feed(_delta)  # BL-297: live safety gate
+                            if _safe:
+                                yield f"data: {json.dumps({'token': _safe})}\n\n"
+                            if _out_guard.blocked:
+                                break  # stop streaming; done-frame floor replaces with safe message
                     text = polish_output(truncate_at_next_user_turn(strip_junk_from_reply("".join(full), active_names=_active_name_set(aspect_id))), cfg)
                     if not text.strip():
                         text = "Sorry — I couldn't generate a response just then. Please try again."
@@ -1175,6 +1182,9 @@ async def agent(req: AgentRequest, request: Request):
                     del full[:]
                     _emitted = 0  # chars already streamed marker-safe (see stream_safe_prefix)
                     from services.agent.response_builder import stream_safe_prefix as _ssp
+                    from services.agent.response_builder import StreamOutputGuard
+                    # BL-297: LIVE content-safety gate on the default streaming path (cfg lazy-loaded).
+                    _out_guard = StreamOutputGuard()
                     tok_q: queue.Queue = queue.Queue()
 
                     def _stream_worker() -> None:
@@ -1238,7 +1248,11 @@ async def agent(req: AgentRequest, request: Request):
                         # flashes live while the header already shows "Layla ⚔ Morrigan".
                         _delta, _emitted = _ssp("".join(full), _emitted)
                         if _delta:
-                            yield f"data: {json.dumps({'token': _delta})}\n\n"
+                            _safe = _out_guard.feed(_delta)  # BL-297: live safety gate
+                            if _safe:
+                                yield f"data: {json.dumps({'token': _safe})}\n\n"
+                            if _out_guard.blocked:
+                                break  # stop streaming; done-frame floor replaces with safe message
                     try:
                         import runtime_safety
 
