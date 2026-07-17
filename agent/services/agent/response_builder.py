@@ -616,6 +616,86 @@ def stream_safe_prefix(raw: str, already_emitted: int) -> tuple[str, int]:
     return clean[already_emitted:], len(clean)
 
 
+# BL-297: chars of growth between best-effort re-scans. Bounds the O(n^2) cost of re-scanning a
+# growing buffer on the CPU tier; leakage is capped at ~one stride of a payload's CONTINUATION
+# (the compound patterns need both indicators present, so the trigger phrase — not the harmful
+# body — is what may stream before the cut).
+_STREAM_GUARD_SCAN_STRIDE = 24
+
+
+class StreamOutputGuard:
+    """Best-effort LIVE content-safety gate for the SSE token stream (BL-297).
+
+    Streaming emits tokens BEFORE the done-frame content_guard runs, so a Tier-1/Tier-2 payload
+    used to stream in full and was only replaced retroactively (the UI honours ``blocked``) or not
+    at all (a raw /v1 SDK client is never sent a retraction). This gate re-scans the accumulated
+    emitted text with ``content_guard.check_output`` before each delta reaches the wire; once a
+    payload matches it SUPPRESSES that delta and every later one, so the harmful CONTINUATION never
+    streams. Callers should stop the loop when ``blocked`` flips; the done-frame floor
+    (``_apply_output_floor`` / the /v1 stored-copy check) remains authoritative for the persisted
+    and returned copy.
+
+    Honesty (this is NOT a boundary):
+      * A match needs both compound indicators present, so the trigger phrase and up to ~stride
+        chars can stream before the body is cut. It reduces harm; it does not guarantee zero leak.
+      * It is only as good as ``check_output``'s deterministic patterns.
+      * A mid-stream match is always a SUBSET of the final text, and the patterns are existence
+        lookaheads, so a live block implies the authoritative done-frame check also blocks — this
+        never introduces a false positive the final check wouldn't have raised. On benign content
+        it is a pure pass-through (identical stream to before).
+      * The live scan FAILS OPEN on an unexpected exception (availability of the default UI path);
+        the done-frame check, which sees the full text, is the real guarantee.
+    """
+
+    def __init__(self, cfg: dict | None = None, *, stride: int = _STREAM_GUARD_SCAN_STRIDE) -> None:
+        self._cfg = cfg
+        self.stride = max(1, int(stride))
+        self.shown = ""
+        self.blocked = False
+        self.result = None
+        self._last_scan_len = 0
+
+    def _cfg_resolved(self) -> dict:
+        if self._cfg is None:
+            try:
+                import runtime_safety
+                self._cfg = runtime_safety.load_config()
+            except Exception:
+                self._cfg = {}
+        return self._cfg
+
+    def feed(self, delta: str) -> str:
+        """Return the portion of ``delta`` that is safe to emit ("" once blocked)."""
+        if self.blocked:
+            return ""
+        if not delta:
+            return delta
+        candidate = self.shown + delta
+        if self._last_scan_len == 0 or (len(candidate) - self._last_scan_len) >= self.stride:
+            self._last_scan_len = len(candidate)
+            try:
+                from services.safety.content_guard import check_output
+                res = check_output(candidate, self._cfg_resolved())
+            except Exception:
+                res = None  # fail-open on the live scan; done-frame check is authoritative
+            if res is not None and getattr(res, "blocked", False):
+                self.blocked = True
+                self.result = res
+                return ""  # cut this delta AND everything after it
+        self.shown = candidate
+        return delta
+
+    def safe_message(self) -> str:
+        """The user-facing replacement for blocked content (empty-safe)."""
+        try:
+            from services.safety.content_guard import blocked_response
+            if self.result is not None:
+                return blocked_response(self.result)
+        except Exception:
+            pass
+        return "Content blocked by safety policy."
+
+
 def _is_bare_leading_label(s: str) -> bool:
     """True if the WHOLE buffer is a leading speaker label with no answer prose yet (the label
     completed — colon/newline/decoration/dash — before the answer streamed in). Detected by
