@@ -677,6 +677,15 @@ def run_completion_with_fallback(
       3. Return error if all fail
 
     Same signature as run_completion() — drop-in replacement.
+
+    NO ENTRY POINT — VERIFIED 2026-07-17 (BL-350). Despite being a "drop-in replacement", nothing in the
+    live tree calls this: every caller uses run_completion() directly, so the cluster fallback below is
+    unreachable and `cluster_offload_enabled` has no UI and no effect on inference. Together with
+    submit_task's zero callers (cluster_network.py) this is why LAN clustering moves zero work.
+
+    Before wiring this in, note the architecture review's verdict (CUT): distributed inference is how you
+    run a model that does not FIT locally, at ~2x worse decode — it is not a speedup for a model that
+    does fit, and the 3B fits here with room.
     """
     import runtime_safety
     cfg = cfg_override if isinstance(cfg_override, dict) else runtime_safety.load_config()
