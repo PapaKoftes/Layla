@@ -80,15 +80,83 @@ def grep_code(pattern: str, path: str, file_glob: str = "*") -> dict:
         return {"ok": False, "error": str(e)}
 
 def search_codebase(symbol: str, root: str = "") -> dict:
-    """Find functions/classes and semantic chunks matching symbol (read-only). root defaults to sandbox."""
+    """Find functions/classes matching symbol (read-only). root defaults to sandbox.
+
+    BL-302. This was wired to services.workspace.code_intelligence.search_symbols — the TREE-SITTER
+    backend. tree-sitter is commented out of requirements.txt and is installed in neither venv, so the
+    backend found nothing and this returned `{"ok": True, "matches": []}` for symbols that plainly
+    exist: search_codebase('select_aspect') -> 0 while grep_code -> 218 and code_symbols -> 9.
+
+    That is worse than an error. `ok: True` with an empty list is a POSITIVE claim of absence, so Layla
+    concluded the symbol did not exist and reasoned on from a false negative about the operator's own
+    code. An exception would at least have been visible.
+
+    Now routed to services.workspace.repo_indexer — the ast-based implementation that was already here,
+    already tested, and wired to nothing. It needs no tree-sitter (index_file tries tree-sitter and
+    falls back to `_extract_symbols_ast`), and the index is kept warm by main.py at startup plus the
+    scheduler's reindex job.
+
+    The signatures differ — code_intelligence took (workspace_root, symbol, *, k) and scanned the tree;
+    repo_indexer takes (query, limit, db_path) and queries the index — hence this adapter.
+
+    A COLD INDEX WOULD REINTRODUCE THE EXACT BUG: an unpopulated index answers every query with zero
+    rows, which is indistinguishable from "absent" to the caller. So a cold index is built on demand,
+    and if it is *still* empty afterwards this returns `ok: False` rather than a confident empty list.
+    A zero-match `ok: True` from this function now means one thing only: the index is populated and the
+    symbol genuinely is not in it.
+    """
     try:
-        from services.workspace.code_intelligence import search_symbols
+        from services.workspace.repo_indexer import (
+            get_stats,
+            index_workspace_repo,
+            search_symbols,
+        )
     except Exception as e:
         return {"ok": False, "error": str(e), "matches": []}
+
     root_path = Path(root).expanduser().resolve() if (root or "").strip() else _get_sandbox()
     if not inside_sandbox(root_path):
         return {"ok": False, "error": "Workspace outside sandbox", "matches": []}
-    return search_symbols(root_path, symbol, k=25)
+
+    sym = (symbol or "").strip()
+    if not sym:
+        return {"ok": False, "error": "symbol required", "matches": []}
+
+    try:
+        # Cold index -> build it. index_file skips unchanged files on mtime, so this is a no-op walk
+        # once warm; the cost is only paid on a genuinely empty index (fresh install, or a search that
+        # races startup indexing).
+        if get_stats().get("symbols", 0) == 0:
+            try:
+                index_workspace_repo(root_path)
+            except Exception as e:
+                logger.debug("search_codebase: on-demand index failed: %s", e)
+
+        rows = search_symbols(sym, limit=25)
+    except Exception as e:
+        return {"ok": False, "error": str(e), "matches": []}
+
+    if not rows and get_stats().get("symbols", 0) == 0:
+        # Never answer "not found" out of an empty index — that is the false negative this fix exists
+        # to kill. Say the index is unavailable and name the tools that do not depend on it.
+        return {
+            "ok": False,
+            "error": "repo index is empty — cannot distinguish 'absent' from 'not indexed'. "
+                     "Use grep_code or code_symbols instead.",
+            "matches": [],
+        }
+
+    matches = [
+        {
+            "name": r.get("name"),
+            "kind": r.get("kind"),
+            "file": r.get("file_path"),
+            "line": r.get("line"),
+            "signature": r.get("signature") or "",
+        }
+        for r in rows
+    ]
+    return {"ok": True, "count": len(matches), "matches": matches}
 
 def run_python(code: str, cwd: str) -> dict:
     try:
