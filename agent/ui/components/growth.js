@@ -233,9 +233,14 @@ function _renderCapabilities(caps) {
     const name = _esc(c.name || 'Unknown');
     const level = (c.level || 0).toFixed(1);
     const conf = Math.round((c.confidence || 0) * 100);
+    // record_practice writes improving|weakening|stagnant|stable (capabilities.py:55) — NOT rising/falling.
+    // The old check compared against enum values the backend never emits, so the arrow was frozen at → even
+    // once BL-267 made the bar move. Accept both vocabularies so the visible half of the fix actually shows.
     const trend = c.trend || 'stable';
-    const trendIcon = trend === 'rising' ? '↑' : trend === 'falling' ? '↓' : '→';
-    const trendColor = trend === 'rising' ? '#4caf50' : trend === 'falling' ? '#f44336' : 'var(--text-dim)';
+    const up = trend === 'improving' || trend === 'rising';
+    const down = trend === 'weakening' || trend === 'stagnant' || trend === 'falling';
+    const trendIcon = up ? '↑' : down ? '↓' : '→';
+    const trendColor = up ? '#4caf50' : down ? '#f44336' : 'var(--text-dim)';
     const pct = Math.min(100, Math.round((c.level || 0) * 20));
 
     html += '<div style="display:flex;align-items:center;gap:6px">';
