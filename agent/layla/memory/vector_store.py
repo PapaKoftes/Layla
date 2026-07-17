@@ -60,6 +60,18 @@ CHROMA_PATH = MEMORY_DIR / "chroma_db"
 _embedder = None
 _embedder_dim: int = 768  # set when embedder loads
 _current_model_name: str = ""  # P1-4: embedding model provenance
+
+# BL-374 — the local-first breach. Every embedder this module can load (model2vec potion-base-8M,
+# nomic-embed-text-v1.5, all-MiniLM-L6-v2) is fetched LAZILY FROM HUGGINGFACE on first use. There is no
+# pre-fetch in the installer — it provisions the GGUF and nothing else — so on a genuinely offline first
+# run _get_embedder() raises OSError("We couldn't connect to huggingface.co...") and every caller swallows
+# it: services/retrieval.retrieve_relevant_memory returned [] at DEBUG (invisible), and
+# system_head_builder.semantic_recall returned '' logged as "ChromaDB failed" (ChromaDB was fine).
+# Semantic memory silently became keyword-only, on the one product whose entire reason to exist is working
+# offline. Recording the failure here — once, at ERROR, with the fix — makes it loud; embedder_status()
+# makes it knowable at /health/deps.
+_embedder_error: str | None = None  # human-readable reason the last load attempt failed
+_embedder_error_logged = False  # log the ERROR once, not on every turn
 _chroma_collection = None
 _embedder_lock = None
 _chroma_lock = None
@@ -92,6 +104,54 @@ class _Model2VecAdapter:
         if normalize_embeddings:
             arr = arr / (_np.linalg.norm(arr, axis=1, keepdims=True) + 1e-12)
         return arr
+
+
+def _record_embedder_failure(err: Exception) -> None:
+    """Make an embedder load failure LOUD and actionable, exactly once.
+
+    Loud because the alternative is what shipped: retrieval degrading to keyword-only with no error anyone
+    would ever see. Once because this is reached from the per-turn prompt builder — an ERROR per turn would
+    train the operator to ignore it.
+
+    The message names the offline case explicitly. It is by far the most likely cause on this product (an
+    offline first run is a SUPPORTED, advertised configuration, not an edge case) and the raw HuggingFace
+    OSError does not mention that Layla can run without an embedder at all.
+    """
+    global _embedder_error, _embedder_error_logged
+    _embedder_error = f"{type(err).__name__}: {err}".strip()
+    if _embedder_error_logged:
+        return
+    _embedder_error_logged = True
+    logger.error(
+        "EMBEDDER UNAVAILABLE — semantic memory is DEGRADED, not off. Retrieval falls back to keyword "
+        "search (BM25/FTS); it will still answer, but it can no longer match on meaning, so recall will "
+        "quietly get worse rather than fail. Cause: %s\n"
+        "  If this machine is OFFLINE: the embedding model is downloaded from HuggingFace on first use and "
+        "is NOT bundled with the installer, so a first run with no network cannot fetch it. Fix: connect "
+        "once (any single turn that touches memory caches it permanently), or `pip install model2vec` and "
+        "run once online to cache minishlab/potion-base-8M (~30 MB, the smallest option).\n"
+        "  If this machine is ONLINE: the HuggingFace cache may be corrupt — clear ~/.cache/huggingface "
+        "and retry.\n"
+        "  Status is reported at GET /health/deps as embedder=unavailable.",
+        _embedder_error,
+    )
+
+
+def embedder_status() -> dict[str, Any]:
+    """Observed embedder state, for /health/deps. Never loads anything and never touches the network.
+
+    Deliberately reports only what has actually been OBSERVED. It does not probe, because the only honest
+    probe is a real load, and a load attempt from a health check would either block for a 30-second network
+    timeout or silently start a download — a health endpoint must do neither. So:
+      loaded          -> ok       (proven: it embedded something)
+      failed          -> unavailable + the reason
+      never attempted -> unknown  (says "unknown", never "ok" — an unproven claim is what got us here)
+    """
+    if _embedder is not None:
+        return {"status": "ok", "model": _current_model_name or "unknown", "detail": ""}
+    if _embedder_error:
+        return {"status": "unavailable", "model": "", "detail": _embedder_error}
+    return {"status": "unknown", "model": "", "detail": "not loaded yet — no memory operation has run"}
 
 
 def _get_embedder():
@@ -139,14 +199,27 @@ def _get_embedder():
             except Exception as _m2v_err:
                 log.info("model2vec unavailable (%s); falling back to sentence-transformers", _m2v_err)
 
-        from sentence_transformers import SentenceTransformer
+        try:
+            from sentence_transformers import SentenceTransformer
+        except Exception as _st_err:
+            # Neither model2vec nor sentence-transformers: there is no embedder at all.
+            _record_embedder_failure(_st_err)
+            raise
         try:
             model = SentenceTransformer("nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True)
             _embedder_dim = 768
             _current_model_name = "nomic-ai/nomic-embed-text-v1.5"
             log.info("Embedding model: nomic-embed-text-v1.5 (768d)")
         except Exception:
-            model = SentenceTransformer("all-MiniLM-L6-v2")
+            # BL-374: this last resort was unguarded, so an offline box raised straight out of
+            # _get_embedder() into callers that all swallow — the failure vanished. It still raises (the
+            # callers' keyword fallbacks are genuinely the right degradation), but no longer silently: the
+            # reason is recorded and logged loudly before it leaves.
+            try:
+                model = SentenceTransformer("all-MiniLM-L6-v2")
+            except Exception as _mini_err:
+                _record_embedder_failure(_mini_err)
+                raise
             _embedder_dim = 384
             _current_model_name = "all-MiniLM-L6-v2"
             log.info("Embedding model: all-MiniLM-L6-v2 (384d) [nomic unavailable]")
