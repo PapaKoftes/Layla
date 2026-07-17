@@ -19,7 +19,6 @@ Two layers, tested here:
   2. FLOOR (distill.is_memory_junk): the shared chokepoint for the ~10 other writers (distill, tools,
      scheduler jobs, ingestion) that never touch the router.
 """
-import re
 import sys
 from pathlib import Path
 
@@ -74,16 +73,34 @@ def test_legitimate_learnings_are_not_eaten():
         assert not is_memory_junk(content), f"FALSE POSITIVE — real learning rejected: {content!r}"
 
 
-def test_run_finalizer_sanitizes_before_extracting():
-    # The extractor must receive the CLEANED reply, never the raw `reason` step. If this wiring is
-    # removed, the bleed silently returns and nothing else fails.
-    src = (AGENT / "services" / "agent" / "run_finalizer.py").read_text(encoding="utf-8")
-    assert "clean_reply_text" in src, "run_finalizer must sanitize the reply before learning extraction"
-    # Grab the whole args=... line at the extractor's call site (nested parens make a [^)]* capture wrong).
-    m = re.search(r"target=auto_extract_learnings_fn,\s*\n\s*(args=.*)\n", src)
-    assert m, "auto_extract_learnings_fn call site not found"
-    args = m.group(1)
-    assert "learn_text" in args, (
-        f"the extractor must be passed the SANITIZED text (learn_text), not the raw step. Got: {args}"
-    )
-    assert "final_text" not in args, f"raw final_text must not be handed to the extractor. Got: {args}"
+def test_system_prompt_bleed_in_a_reply_cannot_reach_the_learnings_table(isolated_db, monkeypatch):
+    """BEHAVIOURAL replacement for the old source-grep (BL-338/BL-376).
+
+    The previous version of this test regex-grepped run_finalizer.py for
+    `target=auto_extract_learnings_fn, args=(..., learn_text, ...)`. That could only fail when the
+    source STRING changed — never when the wiring broke — which is exactly the vacuity it was
+    supposed to prevent. It also asserted a call site that no longer exists: extraction moved to
+    services/agent/turn_commit.commit_turn.
+
+    The layer-1 defence is now STRUCTURAL rather than sanitizing: post-BL-376 the extractor reads the
+    OPERATOR's turn and never the assistant's reply, so bleed in the reply has no route into the
+    table at all. This test proves that by observation — it feeds the real extractor the real
+    recovered poison as the assistant's reply and reads the real DB.
+    """
+    import collections
+
+    import runtime_safety
+    import services.infrastructure.outcome_writer as ow
+    from layla.memory.db import get_recent_learnings
+
+    base = dict(runtime_safety.load_config() or {})
+    base.update({"operator_memory_llm_enabled": False, "identity_capture_enabled": False})
+    monkeypatch.setattr(runtime_safety, "load_config", lambda *a, **k: base)
+
+    for poison in REAL_POISON:
+        ow._recent_learning_fingerprints = collections.OrderedDict()
+        # A perfectly ordinary request; the model bleeds its own system prompt into the reply.
+        ow._auto_extract_learnings("how do i add two numbers in python", poison, "morrigan")
+
+    rows = [str(r.get("content") or "") for r in (get_recent_learnings(n=50) or [])]
+    assert rows == [], f"system-prompt bleed reached the learnings table via the reply: {rows!r}"
