@@ -6,7 +6,11 @@
  * bump required for changes to reach existing installs. Bump CACHE only to force
  * an immediate purge. The activate handler deletes superseded caches.
  */
-const CACHE = "layla-ui-v14";
+// v15 (BL-243/244): stale-while-revalidate would serve the OLD conversations.js/app.js/layla.css on
+// the first load after this update, so the rail fix would look broken until a second reload — on a
+// bug the operator has already been told was fixed three times. Bumping forces the activate handler
+// to purge v14 immediately, so the fix is live on the first load.
+const CACHE = "layla-ui-v15";
 const PRECACHE = [
   "/ui/",
   "/manifest.json",
