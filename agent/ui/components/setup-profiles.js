@@ -10,9 +10,20 @@
 let _root = null;
 let _open = false;
 let _data = null; // { profiles, features }
+let _loadErr = ''; // non-empty when the last /setup/profiles load failed (drives the visible-error path)
 let _step = 0;
 const _selProfiles = new Set();
 const _selFeatures = new Set();
+
+// BL-386: Escape must work regardless of where focus sits. A listener on _root only fires
+// when the keydown target is _root or a descendant; on first-run focus is usually on <body>,
+// so a _root listener never receives it and the "esc" chip advertised an exit that never fired.
+// Listen on document (capture, like wizard.js / the overlay manager), added on open and removed
+// on close so it can never accumulate across opens.
+function _onDocKeydown(e) {
+  if (!_open) return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSetupProfiles(); }
+}
 
 function _esc(s) {
   const d = document.createElement('div');
@@ -51,7 +62,18 @@ function _build() {
     '</div>';
   document.body.appendChild(_root);
   _root.addEventListener('mousedown', (e) => { if (e.target === _root) closeSetupProfiles(); });
+  // Kept as a belt-and-suspenders in-panel handler; the authoritative Escape wiring is the
+  // document listener added in openSetupProfiles (see _onDocKeydown).
   _root.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeSetupProfiles(); } });
+  // BL-386: the "esc" chip advertised an exit — make it actually dismiss (click + keyboard).
+  const escChip = _root.querySelector('.cmdp-esc');
+  if (escChip) {
+    escChip.setAttribute('role', 'button');
+    escChip.setAttribute('tabindex', '0');
+    escChip.setAttribute('aria-label', 'Close setup');
+    escChip.addEventListener('click', () => closeSetupProfiles());
+    escChip.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); closeSetupProfiles(); } });
+  }
   _root.querySelector('.setupwiz-back').addEventListener('click', () => { _step = 0; _render(); });
   _root.querySelector('.setupwiz-next').addEventListener('click', _onNext);
 }
@@ -66,10 +88,32 @@ function _render() {
 
   if (_step === 0) {
     back.hidden = true;
+    const profiles = (_data && _data.profiles) || [];
+    // BL-386: an empty/failed load must FAIL VISIBLY — never a silent empty forEach that
+    // leaves a dead-end modal (zero cards + "pick at least one" forever). Offer retry + a
+    // clear escape; the app still works, so skipping is safe.
+    if (!profiles.length) {
+      next.hidden = true;
+      body.innerHTML =
+        '<div class="setupwiz-q">setup couldn’t load</div>' +
+        '<div class="sysdiag-muted setupwiz-loaderr"></div>' +
+        '<div class="setupwiz-erractions">' +
+          '<button type="button" class="setup-btn primary setupwiz-retry">retry</button>' +
+          '<button type="button" class="setup-btn setupwiz-skip">skip for now</button>' +
+        '</div>';
+      body.querySelector('.setupwiz-loaderr').textContent =
+        'Couldn’t load the setup options' + (_loadErr ? ' (' + _loadErr + ')' : '') +
+        '. Layla still works — retry, or skip and reconfigure any time from ⌘K → “Set up / reconfigure”. ' +
+        'Press Esc or the esc chip to close.';
+      body.querySelector('.setupwiz-retry').addEventListener('click', () => { _load(); });
+      body.querySelector('.setupwiz-skip').addEventListener('click', () => closeSetupProfiles());
+      return;
+    }
+    next.hidden = false;
     next.textContent = 'continue';
     body.innerHTML = '<div class="setupwiz-q">what do you want to do?</div><div class="setupwiz-profiles"></div>';
     const wrap = body.querySelector('.setupwiz-profiles');
-    ((_data && _data.profiles) || []).forEach((p) => {
+    profiles.forEach((p) => {
       const card = document.createElement('button');
       card.type = 'button';
       card.className = 'setupwiz-card' + (_selProfiles.has(p.id) ? ' is-sel' : '');
@@ -84,6 +128,7 @@ function _render() {
     });
   } else {
     back.hidden = false;
+    next.hidden = false;
     next.textContent = 'apply';
     // pre-seed features from chosen profiles the first time we land here
     _profileImpliedFeatures().forEach((f) => _selFeatures.add(f));
@@ -140,28 +185,43 @@ async function _onNext() {
   }
 }
 
+async function _load() {
+  _data = null;      // → _render shows "loading…"
+  _loadErr = '';
+  _step = 0;
+  if (_open) _render();
+  try {
+    const r = await fetch('/setup/profiles', { headers: { Accept: 'application/json' } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    // Guard against an error/404 payload (e.g. {"detail":"Not Found"} before the setup router
+    // is live) that would otherwise crash _render on .forEach — and treat it as a visible failure.
+    if (!j || !Array.isArray(j.profiles)) throw new Error('bad response');
+    _data = { profiles: j.profiles, features: Array.isArray(j.features) ? j.features : [] };
+    _loadErr = '';
+  } catch (e) {
+    _data = { profiles: [], features: [] };
+    _loadErr = (e && e.message) ? e.message : String(e);
+  }
+  if (_open) _render();
+}
+
 export async function openSetupProfiles() {
   _build();
   if (_open) return;
   _open = true;
+  // Authoritative Escape wiring (BL-386): document-level, removed again in closeSetupProfiles.
+  document.addEventListener('keydown', _onDocKeydown, true);
   _root.hidden = false;
   _step = 0;
   _render();
-  try {
-    const r = await fetch('/setup/profiles', { headers: { Accept: 'application/json' } });
-    const j = await r.json();
-    // Guard against an error/404 payload (e.g. {"detail":"Not Found"} before the
-    // setup router is live) that would otherwise crash _render on .forEach.
-    _data = (j && Array.isArray(j.profiles)) ? { profiles: j.profiles, features: Array.isArray(j.features) ? j.features : [] } : { profiles: [], features: [] };
-  } catch (e) {
-    _data = { profiles: [], features: [] };
-  }
-  if (_open) _render();
+  await _load();
 }
 
 export function closeSetupProfiles() {
   if (!_root || !_open) return;
   _open = false;
+  document.removeEventListener('keydown', _onDocKeydown, true);
   _root.hidden = true;
   // Mark first-run setup as seen (shown once) and notify the boot sequence so it can
   // continue to the mini onboarding tour. Reconfigure later via ⌘K.
