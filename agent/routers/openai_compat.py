@@ -342,10 +342,14 @@ async def v1_chat_completions(req: dict, request: Request):
                     # label so control scaffolding never streams raw to an OpenAI-SDK client. The
                     # old /v1 stream emitted every token verbatim (no cleaning at all).
                     from services.agent.response_builder import stream_safe_prefix as _ssp_v1
+                    from services.agent.response_builder import StreamOutputGuard
                     _v1_emitted = 0
                     _v1_shown = ""                      # accumulated LIVE-emitted (clean) text
                     _v1_stop = sampling.get("stop") or []   # client stop list (OpenAI contract)
                     _v1_stopped = False
+                    # BL-297: LIVE content-safety gate. A raw SDK client is never sent a retraction,
+                    # so suppressing a Tier-1/2 payload's continuation on the wire matters most here.
+                    _v1_out_guard = StreamOutputGuard()
                     while True:
                         token = await asyncio.to_thread(tok_q.get)
                         if token is None:
@@ -371,6 +375,8 @@ async def v1_chat_completions(req: dict, request: Request):
                                 _v1_stopped = True
                             _v1_shown = _truncated
                         if _v1_delta:
+                            _v1_delta = _v1_out_guard.feed(_v1_delta)  # BL-297: live safety gate
+                        if _v1_delta:
                             evt = {
                                 "id": completion_id,
                                 "object": "chat.completion.chunk",
@@ -379,7 +385,7 @@ async def v1_chat_completions(req: dict, request: Request):
                                 "choices": [{"index": 0, "delta": {"content": _v1_delta}, "finish_reason": None}],
                             }
                             yield f"data: {json.dumps(evt)}\n\n"
-                        if _v1_stopped:
+                        if _v1_stopped or _v1_out_guard.blocked:
                             break
             else:
                 result = await asyncio.to_thread(
@@ -489,6 +495,18 @@ async def v1_chat_completions(req: dict, request: Request):
                 pass
             if not response_text:
                 response_text = "No response."
+            # BL-297: if the LIVE gate cut the stream mid-payload, a raw SDK client has only the
+            # pre-cut prefix and gets no retraction from the empty done delta. Send the safe refusal
+            # as one final content chunk so the client actually receives the block, not a truncation.
+            if locals().get("_v1_out_guard") is not None and _v1_out_guard.blocked:
+                _blk_evt = {
+                    "id": completion_id,
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model_name,
+                    "choices": [{"index": 0, "delta": {"content": "\n\n" + _v1_out_guard.safe_message()}, "finish_reason": None}],
+                }
+                yield f"data: {json.dumps(_blk_evt)}\n\n"
             done_evt = {
                 "id": completion_id,
                 "object": "chat.completion.chunk",
