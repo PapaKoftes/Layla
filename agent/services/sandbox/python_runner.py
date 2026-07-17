@@ -43,13 +43,20 @@ def _apply_resource_limits() -> None:
         pass
 
 
-# BL-025: an app-level network jail for sandboxed exec. Loaded via a sitecustomize.py at
-# interpreter startup (so it runs before the user script AND doesn't shift its line numbers).
-# Blocks the paths every Python HTTP client goes through (socket + DNS), so requests/urllib/
-# httpx all fail closed. Not a kernel-level jail (a raw syscall could bypass), but it stops the
-# realistic cases and composes with url_guard (egress allowlist) + the OS rlimits/cgroups tier.
-_NET_JAIL = (
-    "# Layla sandbox network jail (BL-025)\n"
+# BL-025 / BL-295: a BEST-EFFORT network speed-bump for sandboxed exec — NOT a security
+# boundary. It monkey-patches the `socket` WRAPPER module via a sitecustomize.py so the naive
+# path (requests/urllib/httpx -> socket.socket / getaddrinfo) fails closed, which stops
+# ACCIDENTAL network use cheaply. It is TRIVIALLY BYPASSABLE and must never be relied on:
+#   * `import _socket; _socket.socket(...)`      — the C extension is untouched
+#   * `import importlib, socket; importlib.reload(socket)` — re-imports over the patch
+#   * `subprocess`/`os.system` running any non-Python process (e.g. curl.exe) — outside Python
+# Each of these was reproduced. Python cannot be sandboxed in-process on Windows without a real
+# OS boundary (cf. RestrictedPython "not a sandbox"; smolagents "must not be used as a security
+# boundary"). The REAL protections are the approval gate and url_guard (egress allowlist); this
+# only reduces accidental egress. Do not add "isolated"/"jailed"/"sandboxed-network" claims on
+# the strength of this. See .identity/capabilities.md.
+_NET_SPEEDBUMP = (
+    "# Layla sandbox network speed-bump (best-effort, trivially bypassable — NOT a boundary)\n"
     "try:\n"
     "    import socket as _sk\n"
     "    def _blocked(*a, **k):\n"
@@ -66,6 +73,9 @@ _NET_JAIL = (
 
 
 def run_python_file(code: str, cwd: Path, *, inside_sandbox_check: Any = None, allow_network: bool = True) -> dict[str, Any]:
+    # NOTE: allow_network=False installs a BEST-EFFORT speed-bump (see _NET_SPEEDBUMP), not a
+    # network jail. It blocks accidental egress only and is trivially bypassable; the approval
+    # gate + url_guard are the real controls. Do not advertise this as isolation.
     if inside_sandbox_check is not None and not inside_sandbox_check(cwd):
         return {"ok": False, "error": "cwd outside sandbox"}
     timeout = _python_timeout_seconds(30.0)
@@ -80,7 +90,7 @@ def run_python_file(code: str, cwd: Path, *, inside_sandbox_check: Any = None, a
         env: dict[str, str] | None = None
         if not allow_network:
             # sitecustomize is auto-imported at startup when its dir is on PYTHONPATH.
-            (tmpdir / "sitecustomize.py").write_text(_NET_JAIL, encoding="utf-8")
+            (tmpdir / "sitecustomize.py").write_text(_NET_SPEEDBUMP, encoding="utf-8")
             env = dict(os.environ)
             env["PYTHONPATH"] = str(tmpdir) + os.pathsep + env.get("PYTHONPATH", "")
         run_kw: dict[str, Any] = {
