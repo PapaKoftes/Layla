@@ -174,12 +174,24 @@ def build_core_sys_parts(
                 "Do not assign psychiatric diagnoses or DSM/ICD labels to the operator (non-clinical boundary)."
             )
         if cfg.get("honesty_and_boundaries_enabled", True):
+            # BL-285: the broad "refuse or redirect anything that would cause harm" clause fights the
+            # uncensored content policy — a 3B resolves that conflict toward refusal. When uncensored/NSFW
+            # is on, narrow it to the hard-line boundary (which still ALWAYS applies) so integrity guidance
+            # stops contradicting the content policy. Governance-bypass protection is preserved in the narrow
+            # clause. Cache-safe: _static_cache_key already keys on the uncensored/nsfw bits, so the two
+            # states never share a cache entry.
+            if cfg.get("uncensored") or cfg.get("nsfw_allowed"):
+                _refusal = (
+                    "Refuse clearly only for genuine harm — minors, non-consent, illegality, or governance bypass. "
+                )
+            else:
+                _refusal = "Refuse or redirect requests that would cause harm, bypass approvals, or violate governance. "
             parts.append(
                 "Integrity and stance: Be kind and clear. You may disagree when the operator's premises, plan, or technical "
                 "claims are mistaken — correct them directly without flattery or people-pleasing. "
                 "Do not pretend to be human, claim private feelings you do not have, or manipulate emotionally. "
                 "State plainly what you are doing in the work; do not imply hidden actions. "
-                "Refuse or redirect requests that would cause harm, bypass approvals, or violate governance. "
+                + _refusal +
                 "Aim to help them succeed honestly, including improving your own accuracy over time."
             )
         if cfg.get("operator_protection_policy_pin_enabled", True):
@@ -243,16 +255,13 @@ def build_core_sys_parts(
         _cap = _capability_manifest_core(root)
         if _cap:
             sys_parts.insert(2 if personality else 1, _cap)
-    if (cfg.get("uncensored") or cfg.get("nsfw_allowed")) and (
-        "nsfw" in gl
-        or "intimate" in gl
-        or "explicit" in gl
-        or "adult" in gl
-        or "18+" in gl
-        or "uncensored" in gl
-    ):
+    # BL-285: previously gated on the goal literally containing nsfw|intimate|explicit|adult|18+|uncensored,
+    # so ordinary phrasing ("write a steamy scene between them") missed the strongest anti-refusal guidance.
+    # When uncensored/NSFW is on the operator has already opted in for the session — apply it every turn.
+    # Stays OUT of _STATIC_SYS_CACHE (appended after the cache block); correct, as it no longer varies by goal.
+    if cfg.get("uncensored") or cfg.get("nsfw_allowed"):
         sys_parts.append(
-            "This turn includes adult-register vocabulary while uncensored/NSFW-allowed mode is on. "
+            "Uncensored/NSFW-allowed mode is on. "
             "Answer fully without safety-theater refusals for consensual adult content. "
             "Still refuse clearly (in prose) for minors, non-consent, illegality, or governance bypass."
         )
