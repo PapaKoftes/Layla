@@ -45,11 +45,34 @@ logger = logging.getLogger("layla")
 # Each pattern requires BOTH a target indicator AND an action indicator.
 
 _TIER1_COMPOUND_PATTERNS: list[tuple[re.Pattern, str]] = [
-    # CSAM-adjacent: requires age indicator + sexual context
+    # CSAM-adjacent: an AGE indicator and a SEXUAL indicator CO-OCCURRING within a
+    # sentence/short-paragraph window (<=250 chars, either order). Narrowed vs. the legacy
+    # rule (which paired ANY age token with ANY sexual token anywhere in a 20k-char window)
+    # to stop blocking ordinary adult-between-adults content while KEEPING CSAM coverage:
+    #   (a) age terms are REAL age indicators only -- bare boy/girl removed (adults use them for
+    #       each other); "little girl"/"young boy" kept as age-qualified compounds so dropping bare
+    #       "girl" does NOT open a CSAM hole. BUT bare `kid` is KEPT (adversarial verify caught the
+    #       first pass dropping it -- "kid" is an unambiguous child word, unlike boy/girl, so
+    #       "abuse of a kid" must still block), and `teenager|adolescent|schoolgirl|schoolboy` are
+    #       ADDED (unambiguous minors that adult prose does not use as endearments). Deliberately NOT
+    #       added: bare `teen` and numeric ages -- an "18-year-old" is an adult, and forcing those
+    #       would re-block the consensual adult content this whole change exists to allow.
+    #       `one` dropped from the compound target so "young one"/"baby, ..." adult endearments pass.
+    #   (b) proximity-scoped (<=250 chars) instead of the whole 20k blob, so an unrelated
+    #       "girl" and "erotic" thousands of chars apart can no longer co-trigger.
+    # re.DOTALL is dropped (no '.' used; spanning is the explicit [\s\S]); the lazy {0,250}?
+    # bound is required. Only this tuple changed -- WMD/malware Tier-1 and all Tier-2 untouched.
     (re.compile(
-        r"(?=.*\b(child|minor|underage|preteen|toddler|infant|kid|boy|girl)\b)"
-        r"(?=.*\b(naked|nude|sexual|porn|erotic|molest|abuse)\b)",
-        re.IGNORECASE | re.DOTALL,
+        r"(?:"
+        r"(?:\b(?:child|minor|underage|preteen|toddler|infant|kid|teenager|adolescent|schoolgirl|schoolboy)\b"
+        r"|(?:little|young|small|tiny|prepubescent|baby)\s+(?:boy|girl|kid|child))"
+        r"[\s\S]{0,250}?\b(?:naked|nude|sexual|porn|erotic|molest|abuse)\b"
+        r")|(?:"
+        r"\b(?:naked|nude|sexual|porn|erotic|molest|abuse)\b[\s\S]{0,250}?"
+        r"(?:\b(?:child|minor|underage|preteen|toddler|infant|kid|teenager|adolescent|schoolgirl|schoolboy)\b"
+        r"|(?:little|young|small|tiny|prepubescent|baby)\s+(?:boy|girl|kid|child))"
+        r")",
+        re.IGNORECASE,
     ), "csam_adjacent"),
     # Weapons of mass destruction: requires weapon type + synthesis/creation
     (re.compile(
