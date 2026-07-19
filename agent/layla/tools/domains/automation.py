@@ -16,8 +16,10 @@ TOOLS = {
         "category": "planning",
         "description": "Cancel a previously scheduled task by its ID.",
     },
+    # Model-supplied url + model-supplied body = an outbound exfiltration path, the same
+    # class as send_email. Approval-gated and SSRF-guarded (see impl/automation.py).
     "send_webhook": {
-        "dangerous": False, "require_approval": False, "risk_level": "low",
+        "dangerous": True, "require_approval": True, "risk_level": "medium",
         "category": "web",
         "description": "Send a webhook POST request with a JSON payload to a specified URL.",
     },
@@ -36,8 +38,12 @@ TOOLS = {
         "category": "git",
         "description": "Create or manage GitHub pull requests: open, comment, merge, or close.",
     },
+    # Gated with send_webhook, not merely alongside it: discord_send takes an optional
+    # caller-supplied webhook_url and forwards to send_webhook, so leaving it open would
+    # have left an unapproved outbound POST with a model-chosen URL and body — an exact
+    # bypass of the gate above.
     "discord_send": {
-        "dangerous": False, "require_approval": False, "risk_level": "low",
+        "dangerous": True, "require_approval": True, "risk_level": "medium",
         "category": "system",
         "description": "Send a message to a Discord channel via webhook.",
     },

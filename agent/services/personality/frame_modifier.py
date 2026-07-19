@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,8 +34,21 @@ from typing import Any
 
 logger = logging.getLogger("layla")
 
-_AGENT_DIR = Path(__file__).resolve().parent.parent
-_PROFILE_PATH = _AGENT_DIR / ".layla" / "layla_profile.json"
+def _profile_path() -> Path:
+    """`<LAYLA_DATA_DIR or agent/>/.layla/layla_profile.json`.
+
+    Was `Path(__file__).resolve().parent.parent / ".layla" / ...`. This file sits TWO levels below the
+    agent directory (agent/services/personality/), so that chain resolved to agent/services/ and the
+    snapshot was written to a shadow `agent/services/.layla/` beside the real `agent/.layla/` — leaving
+    two divergent layla_profile.json files on disk. Same off-by-one-parent defect as prompt_builder,
+    system_head_builder and working_memory. It also ignored LAYLA_DATA_DIR, so an installed run wrote
+    inside the program directory rather than the per-user data dir.
+
+    Resolved per call, not at import, so LAYLA_DATA_DIR is honoured regardless of import order.
+    """
+    raw = (os.environ.get("LAYLA_DATA_DIR") or "").strip()
+    root = Path(raw).expanduser().resolve() if raw else Path(__file__).resolve().parents[2]
+    return root / ".layla" / "layla_profile.json"
 _profile_lock = threading.Lock()
 
 # Stat thresholds
@@ -383,8 +397,9 @@ def write_profile_snapshot(uid: dict[str, Any]) -> None:
             },
         }
         with _profile_lock:
-            _PROFILE_PATH.parent.mkdir(parents=True, exist_ok=True)
-            _PROFILE_PATH.write_text(
+            _p = _profile_path()
+            _p.parent.mkdir(parents=True, exist_ok=True)
+            _p.write_text(
                 json.dumps(snapshot, indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
@@ -395,8 +410,9 @@ def write_profile_snapshot(uid: dict[str, Any]) -> None:
 def load_profile_snapshot() -> dict:
     """Load the last written profile snapshot. Returns empty dict if missing."""
     try:
-        if _PROFILE_PATH.exists():
-            return json.loads(_PROFILE_PATH.read_text(encoding="utf-8"))
+        _p = _profile_path()
+        if _p.exists():
+            return json.loads(_p.read_text(encoding="utf-8"))
     except Exception as e:
         logger.debug("frame_modifier: load_profile_snapshot failed: %s", e)
     return {}

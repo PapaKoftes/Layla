@@ -181,15 +181,29 @@ def type_text(text: str, interval: float = 0.03) -> dict:
         return {"ok": False, "error": str(e)}
 
 def send_webhook(url: str, payload: dict, method: str = "POST") -> dict:
-    """Send JSON payload to webhook URL (Slack, Discord, custom)."""
+    """Send JSON payload to webhook URL (Slack, Discord, custom).
+
+    Both the URL and the body are model-supplied, which makes this an outbound
+    exfiltration path: it is approval-gated (domains/automation.py + DANGEROUS_TOOLS)
+    and routed through the hardened SSRF guard, which validates the initial URL AND
+    every redirect hop — a raw urllib.urlopen here would happily POST private data to
+    127.0.0.1 or the 169.254.169.254 cloud-metadata endpoint. discord_send() funnels
+    through this function, so its caller-supplied webhook_url is covered too.
+    """
     try:
         import json as _json
         import urllib.request
+
+        from services.safety.url_guard import SSRFBlocked, safe_urlopen
+
         data = _json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(url, data=data, method=method, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            body = resp.read().decode("utf-8", errors="replace")[:2000]
-        return {"ok": True, "status": resp.status, "response": body}
+        try:
+            with safe_urlopen(req, timeout=15) as resp:  # guards initial + redirect hops
+                body = resp.read().decode("utf-8", errors="replace")[:2000]
+                return {"ok": True, "status": resp.status, "response": body}
+        except SSRFBlocked as e:
+            return {"ok": False, "error": f"blocked by SSRF guard: {e}"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

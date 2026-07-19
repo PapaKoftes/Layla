@@ -86,7 +86,7 @@ DANGEROUS_TOOLS = [
     "write_file", "write_files_batch", "shell", "shell_session_start", "run_python", "apply_patch", "replace_in_file", "git_commit", "mcp_tools_call",
     "git_push", "git_revert", "git_clone", "git_worktree_add", "git_worktree_remove", "run_tests", "pip_install",
     "search_replace", "rename_symbol", "generate_gcode", "geometry_execute_program", "docker_run",
-    "github_pr", "send_email", "clipboard_write", "browser_click", "browser_fill",
+    "github_pr", "send_email", "send_webhook", "discord_send", "clipboard_write", "browser_click", "browser_fill",
     "code_format", "write_csv", "calendar_add_event", "create_svg", "create_mermaid",
     "notebook_edit_cell", "run_skill_pack",
 ]
@@ -854,7 +854,10 @@ def load_config() -> dict:
         if (os.environ.get("LAYLA_CHROMA_DISABLED") or "").strip().lower() in ("1", "true", "yes"):
             defaults["use_chroma"] = False
         try:
-            Path(defaults["sandbox_root"]).mkdir(parents=True, exist_ok=True)
+            # expanduser(): sandbox_root is stored as "~/layla-workspace". Without this the
+            # mkdir takes "~" literally and creates a junk `agent/~/layla-workspace/` tree in
+            # the source checkout instead of the operator's real workspace.
+            Path(defaults["sandbox_root"]).expanduser().mkdir(parents=True, exist_ok=True)
         except Exception as e:
             logger.debug("sandbox_root mkdir failed: %s", e)
         # Phase 1B: Apply maturity rank gates — overlay config based on earned rank

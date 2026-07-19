@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -32,13 +33,31 @@ from typing import Any
 
 logger = logging.getLogger("layla")
 
-_AGENT_DIR = Path(__file__).resolve().parent.parent
-_WM_PATH = _AGENT_DIR / ".layla" / "working_memory.json"
+
+def _wm_path() -> Path:
+    """`<LAYLA_DATA_DIR or agent/>/.layla/working_memory.json`.
+
+    Was `Path(__file__).resolve().parent.parent / ".layla" / ...`. This file sits TWO levels below the
+    agent directory (agent/services/memory/), so that chain resolved to agent/services/ and every write
+    landed in a shadow `agent/services/.layla/` beside the real `agent/.layla/` — the same off-by-one-
+    parent defect already fixed in prompt_builder and system_head_builder. It also ignored LAYLA_DATA_DIR
+    entirely, so an installed (per-user data dir) run still wrote inside the program directory.
+
+    Resolved per call, not at import, so setting LAYLA_DATA_DIR is honoured by anything that imports this
+    module early — a module-level constant freezes whatever the environment was at import time.
+    """
+    raw = (os.environ.get("LAYLA_DATA_DIR") or "").strip()
+    root = Path(raw).expanduser().resolve() if raw else Path(__file__).resolve().parents[2]
+    return root / ".layla" / "working_memory.json"
+
+
 _MAX_FACTS = 20
 _MAX_BLOCKERS = 10
 
 _wm_lock = threading.Lock()
-_cache: dict | None = None
+# Keyed by RESOLVED path, not a bare singleton — see _load(). A process-global cache behind a
+# per-call path resolver returns data-dir A's content after LAYLA_DATA_DIR has moved to B.
+_cache: dict[str, dict] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -46,26 +65,41 @@ _cache: dict | None = None
 # ---------------------------------------------------------------------------
 
 def _load() -> dict:
-    global _cache
-    if _cache is not None:
-        return _cache
+    """Read the working-memory file for the CURRENTLY configured data dir.
+
+    The cache is keyed by resolved path. It used to be a single process-global `_cache` while
+    `_wm_path()` is resolved per call — so the content was global and the path was not:
+
+        LAYLA_DATA_DIR=A; remember_fact("x")     # writes A, caches it
+        LAYLA_DATA_DIR=B; get_working_memory()   # reads the cache -> returns A's fact
+
+    which contradicts the per-call resolution `_wm_path` exists for, and would let a test pass on
+    another test's state after switching data dirs.
+    """
+    p = _wm_path()
+    key = str(p)
+    hit = _cache.get(key)
+    if hit is not None:
+        return hit
     try:
-        if _WM_PATH.exists():
-            _cache = json.loads(_WM_PATH.read_text(encoding="utf-8"))
-            return _cache
+        if p.exists():
+            loaded = json.loads(p.read_text(encoding="utf-8"))
+            _cache[key] = loaded
+            return loaded
     except Exception as e:
         logger.debug("working_memory load failed: %s", e)
-    _cache = _empty()
-    return _cache
+    empty = _empty()
+    _cache[key] = empty
+    return empty
 
 
 def _save(wm: dict) -> None:
-    global _cache
     try:
-        _WM_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _p = _wm_path()
+        _p.parent.mkdir(parents=True, exist_ok=True)
         wm["last_updated"] = datetime.now(timezone.utc).isoformat()
-        _WM_PATH.write_text(json.dumps(wm, indent=2, ensure_ascii=False), encoding="utf-8")
-        _cache = wm
+        _p.write_text(json.dumps(wm, indent=2, ensure_ascii=False), encoding="utf-8")
+        _cache[str(_p)] = wm
     except Exception as e:
         logger.debug("working_memory save failed: %s", e)
 
@@ -151,11 +185,15 @@ def clear_blocker(text: str) -> int:
 
 
 def reset() -> None:
-    """Clear all working memory (fresh session)."""
-    global _cache
+    """Clear all working memory (fresh session).
+
+    Drops every cached data dir, not just the current one: `reset()` means "forget", and leaving
+    another data dir's entry behind is the same stale-read this cache was re-keyed to prevent.
+    `_save` re-populates the entry for the current path with the empty document.
+    """
     with _wm_lock:
         _save(_empty())
-        _cache = None
+        _cache.clear()
 
 
 def format_for_prompt() -> str:

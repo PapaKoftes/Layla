@@ -13,6 +13,7 @@ Extracted from agent_loop.py -- Phase 2 decomposition.
 """
 from __future__ import annotations
 
+import functools
 import logging
 from typing import Any
 
@@ -113,6 +114,10 @@ def get_tools_for_goal(
         # sees (or wastes prompt tokens on, or picks) a tool that would only refuse at
         # call-time. Fail-open — any resolution error leaves the set untouched.
         names = _drop_disabled_feature_tools(names, tools_registry, cfg)
+        # Same reasoning one step further out: a tool whose optional library is not installed
+        # cannot work either, and offering it is worse than wasting tokens — it is what makes
+        # her answer "yes, I can search the web" when every search backend is absent.
+        names = _drop_missing_dependency_tools(names, tools_registry)
         return frozenset(names)
     except Exception as e:
         logger.warning("_get_tools_for_goal failed, returning all tools: %s", e)
@@ -134,6 +139,40 @@ def _drop_disabled_feature_tools(names: set, tools_registry: dict, cfg: dict) ->
             continue
         kept.add(n)
     # never let the filter strip the core reasoning tools
+    return kept | ({"reason"} & set(names))
+
+
+@functools.lru_cache(maxsize=256)
+def _module_installed(mod: str) -> bool:
+    """Is an optional dependency importable? Cached — find_spec walks the path on every call."""
+    try:
+        import importlib.util
+
+        return importlib.util.find_spec(mod) is not None
+    except Exception:
+        # A namespace/partial package can raise here. Treat as present: fail-open, so a probe
+        # error degrades to today's behaviour (tool offered, refuses at call time) rather than
+        # silently amputating a working tool.
+        return True
+
+
+def _drop_missing_dependency_tools(names: set, tools_registry: dict) -> set:
+    """Remove tools whose registry `requires` module is not importable.
+
+    These tools are still REGISTERED (registry.TOOLS is unchanged, so skill packs and the tool
+    count stay stable) — they are only withheld from the set the model is shown, exactly like
+    the `feature` filter above. Without this, every web/search tool is declared unconditionally
+    on a box where none of the backing libraries are installed, so the model is told it can
+    search the web and only discovers otherwise by calling a tool that returns
+    "duckduckgo-search not installed".
+    """
+    kept = set()
+    for n in names:
+        meta = tools_registry.get(n) or {}
+        req = meta.get("requires") if isinstance(meta, dict) else None
+        if req and not _module_installed(str(req)):
+            continue
+        kept.add(n)
     return kept | ({"reason"} & set(names))
 
 

@@ -15,7 +15,12 @@ import runtime_safety
 
 logger = logging.getLogger("layla")
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+# The TRUE repo root, reused from runtime_safety rather than hand-rolled from __file__ — a parent chain here
+# has to be counted by hand and was wrong by one level (it resolved to agent/), so `.identity/capabilities.md`
+# and `personalities/*.json` — both of which live at the repo root — were never found. The manifest silently
+# returned "" on every production call, and _personality_file_mtime returned 0.0 forever, which also froze the
+# static prompt cache: editing a persona file no longer invalidated it.
+REPO_ROOT = runtime_safety.REPO_ROOT
 
 # Pinned for Echo/Lilith when pin_psychology_framework_excerpt is true — keep in sync with agent_loop.
 _INTERACTION_FRAMEWORK_PIN = (
@@ -65,6 +70,14 @@ def _personality_file_mtime(aspect_id: str) -> float:
 _CAP_CORE_RE = re.compile(
     r"<!--\s*PROMPT-CORE-START\s*-->(.*?)<!--\s*PROMPT-CORE-END\s*-->", re.DOTALL
 )
+# Her own features, enumerated once and shared by the alternations that need "is the object HERS?".
+# Enumerated rather than left open so "do you have a minute" and "how do i use argparse" stay ordinary
+# turns: an open object is what turned both of these into ~705-token false positives.
+_HER_FEATURES = (
+    r"(voice|speech|tts|stt|vision|eyes|ears|hearing|internet|web\s+access|browser|"
+    r"memory|memories|encryption|knowledge\s+base|aspects?|personalit(y|ies))"
+)
+
 # Questions about what Layla is/can do. Deliberately narrow: this costs ~700 tok, so it fires on the question,
 # never on every turn. Matches "what can you do", "list your capabilities", "what tools do you have",
 # "can you speak", "how do I use ...", etc.
@@ -72,22 +85,154 @@ _CAP_Q_RE = re.compile(
     # Both word orders, but the leading "what" is load-bearing: it separates the QUESTION
     # ("what can you do", "tell me what you can do") from a REQUEST ("can you do this refactor"),
     # which must NOT pay the ~600 tok.
-    r"\bwhat\s+(can|could)\s+you\s+do\b"
-    r"|\bwhat\s+you\s+(can|could)\s+do\b"
+    # The negative lookahead separates the QUESTION from a work request that opens with the same five
+    # words. Unanchored, "what can you do about the memory leak in worker.py" billed an ordinary
+    # debugging turn 1559 tokens instead of 848. "for"/"here" are deliberately NOT in the list —
+    # "what can you do for me" IS the question.
+    r"\bwhat\s+(can|could)\s+(you|u)\s+do\b(?!\s+(about|with|to|regarding|concerning)\b)"
+    r"|\bwhat\s+(you|u)\s+(can|could)\s+do\b"
     r"|\b(your|you have)\b[^?]{0,20}\b(capabilit|abilit|feature|function|tool)"
     # noun-first order: "what FEATURES DO YOU HAVE"
     r"|\b(feature|tool|capabilit|abilit|function)\w*\s+do\s+you\s+have\b"
     r"|\bcapabilit(y|ies)\b"
     r"|\bwhat\s+(are|is)\s+you\s+(capable|able)\b"
-    r"|\bwhat\s+tools\b"
-    r"|\bcan\s+you\s+(speak|talk|hear|listen|see|browse|search\s+the\s+web)\b"
-    r"|\bhow\s+do\s+i\s+(use|find|enable|turn\s+on)\b",
+    # SUBJECT-GATED. Bare `\bwhat\s+tools\b` fired on "what tools did the previous run use" — a question
+    # about the TRANSCRIPT, not about her, billed 1555 tokens against an 848-token baseline. Requiring
+    # the subject to be her (or the phrase to be the whole question) keeps "what tools do you have" and
+    # "what tools can you use" while dropping every question about some other actor's tools.
+    r"|\bwhat\s+tools\s+(do|can|are|will)\s+(you|u)\b"
+    r"|\bwhat\s+tools\b[\s?!.]*+$"
+    # OBJECT-GATED, same defect as the two below and as `what tools`. Bare
+    # `\bcan\s+you\s+(speak|talk|hear|listen|see|browse|...)\b` gates the VERB and not the OBJECT, so
+    # every ordinary request phrased with one of these verbs was billed as a capability turn. Measured
+    # against an 848-token baseline: "can you see the error in line 4" +730 tok, "can you browse to the
+    # file and fix it" +721 — indistinguishable from the true positive "can you speak" (+715).
+    # "can you listen to this audio file" and "can you talk to the API" matched too.
+    #
+    # The question is only about her capability when the verb stands alone, takes HER as the object
+    # ("can you hear me"), or names the faculty itself ("can you access the internet"). A concrete
+    # object makes it a work request.
+    r"|\bcan\s+(you|u)\s+(speak|talk|hear|listen|see|browse)[\s?!.]*+$"
+    r"|\bcan\s+(you|u)\s+(hear|see|understand)\s+me[\s?!.]*+$"
+    r"|\bcan\s+(you|u)\s+(speak|talk)\s+(out\s+loud|aloud|to\s+me)[\s?!.]*+$"
+    r"|\bcan\s+(you|u)\s+(browse|search|access|get\s+on)\s+(the\s+)?(web|internet|online)\b"
+    # OBJECT-GATED, same defect: bare `\bhow\s+do\s+i\s+(use|find|enable|turn\s+on)\b` fired on
+    # "how do i use argparse" (1553 tok vs 848). The manifest is only the right answer when the thing
+    # being enabled is HERS, so the object has to be a possessive or one of her own features.
+    r"|\bhow\s+do\s+i\s+(use|find|enable|turn\s+on)\s+(your|ur)\b"
+    r"|\bhow\s+do\s+i\s+(use|find|enable|turn\s+on)\s+(the\s+|a\s+|an\s+)?" + _HER_FEATURES + r"\b"
+    # --- phrasings measured as MISSED (2026-07-19) -------------------------------------------------
+    # Each of these got the language directive and no manifest, i.e. she answered a question about
+    # herself from invention while holding a verified answer she was never shown.
+    # END-ANCHORED. Unanchored, each of these matches the PREFIX of an ordinary request and bills it
+    # ~828 tokens: "what can you help me with this regex for". The anchor is what separates the
+    # question about her from a question that merely starts the same way.
+    r"|\bwhat\s+can\s+(you|u)\s+help\s+(me\s+)?with[\s?!.]*+$"
+    # "do you have voice/vision/memory/internet" — an ownership question about a feature, which is
+    # exactly what the BROKEN disclosures exist to answer honestly. Enumerated rather than left open
+    # ("do you have a minute") so it stays a capability probe.
+    r"|\bdo\s+(you|u)\s+have\s+(a\s+|an\s+)?" + _HER_FEATURES + r"\b",
     re.IGNORECASE,
+)
+
+# ---------------------------------------------------------------------------------------------------
+# IDENTITY questions are NOT capability questions. This is a deliberate split, not an oversight.
+#
+# R5 added "who are you" and "tell me about yourself" to _CAP_Q_RE. Measured consequence on the real
+# Morrigan aspect at n_ctx 2048:
+#
+#     "who are you?"   ->  1551 tok (vs 848 ordinary), and the "## Core" block —
+#                          "You are Morrigan — Layla's blade..." — was DROPPED.
+#
+# The capability path trims the persona to anchor+voice on purpose, so it can spend the window on
+# verified facts (system_head_builder). Routing identity questions down it therefore produces the one
+# outcome nobody wants: the turn most about who she is is the turn that loses her self-description,
+# and it pays +703 tokens for the privilege.
+#
+# The manifest earns its cost on questions that invite a capability CLAIM ("can you speak", "do you
+# have internet") — that is what the BROKEN disclosures are for. "Who are you" invites a self-
+# description, and the persona already IS the verified answer to it.
+#
+# Kept as a live predicate rather than deleted alternations so the exclusion is explicit, reviewable,
+# and load-bearing at the trim site in system_head_builder.
+# ---------------------------------------------------------------------------------------------------
+_IDENTITY_Q_RE = re.compile(
+    r"\bwho\s+are\s+(you|u)[\s?!.]*+$"
+    r"|\bwhat\s+are\s+(you|u)[\s?!.]*+$"
+    r"|\btell\s+me\s+about\s+(yourself|urself)[\s?!.]*+$"
+    r"|\bintroduce\s+yourself[\s?!.]*+$",
+    re.IGNORECASE,
+)
+
+# The same question in the languages this product ships a response_language for (plus Korean and Russian,
+# which have UI locales). R5: `_CAP_Q_RE` was ASCII/English-only, so an operator who set Spanish and asked
+# "¿qué puedes hacer?" received the language directive and NO manifest — the two halves of this slice did
+# not compose, and the failure mode was the worst one available: she answers about herself, fluently, in
+# the operator's own language, entirely from invention.
+#
+# Kept as a separate pattern rather than more alternations in _CAP_Q_RE because these need `re.UNICODE`
+# semantics and because \b does not behave usefully against CJK or Arabic script — these are matched as
+# substrings, which is safe here since the phrases are long and specific.
+# The verb phrases are END-ANCHORED for the same reason as their English counterparts: "cosa puoi fare"
+# is a capability question, "cosa puoi fare per questo bug" is a work request. The NOUN phrases
+# ("tus capacidades", "deine Fähigkeiten") are specific enough to stand unanchored.
+# `[\s?!.]*+` — ONE character class, and possessive (Python 3.11+). Written as `\s*[?!.]*\s*$` it was
+# three adjacent quantifiers over classes that a regex engine must try splitting every possible way:
+# measured 67 ms on "who are you" + 3000 spaces + "x", because every split backtracks to a failing `$`.
+# The goal string is whatever the user typed and this runs on every turn, so it is bounded here rather
+# than left quadratic. Possessive means: take the whole run, never give it back, fail immediately.
+_CAP_TAIL = r"[\s?!.]*+$"
+_CAP_Q_I18N_RE = re.compile(
+    # Spanish / Portuguese
+    r"qu[eé]\s+puedes\s+hacer" + _CAP_TAIL
+    + r"|qu[eé]\s+sabes\s+hacer" + _CAP_TAIL
+    + r"|cu[aá]les\s+son\s+tus\s+(capacidades|funciones)"
+    + r"|tus\s+capacidades\b"
+    + r"|o\s+que\s+(voc[eê]|tu)\s+pode\s+fazer" + _CAP_TAIL
+    + r"|suas\s+(capacidades|funcionalidades)\b"
+    # French
+    + r"|que\s+peux[-\s]tu\s+faire" + _CAP_TAIL
+    + r"|qu[e']est[-\s]ce\s+que\s+tu\s+peux\s+faire" + _CAP_TAIL
+    + r"|quelles\s+sont\s+tes\s+(capacit[eé]s|fonctions)"
+    + r"|tes\s+capacit[eé]s\b"
+    # German
+    + r"|was\s+kannst\s+du(\s+(tun|machen))?" + _CAP_TAIL
+    + r"|deine\s+(f[aä]higkeiten|funktionen)\b"
+    # Italian
+    + r"|(cosa|che\s+cosa)\s+(puoi|sai)\s+fare" + _CAP_TAIL
+    + r"|le\s+tue\s+(capacit[aà]|funzioni)\b"
+    # Dutch
+    + r"|wat\s+(kun|kan)\s+(je|u)\s+doen" + _CAP_TAIL
+    + r"|jouw\s+mogelijkheden\b"
+    # Russian
+    + r"|что\s+ты\s+(умеешь|можешь)" + _CAP_TAIL
+    + r"|твои\s+возможности"
+    # Japanese / Mandarin / Korean — substring, no word boundaries. These scripts do not space-separate,
+    # so \b is meaningless against them; the phrases are long and specific enough to match as substrings.
+    + r"|何ができ|できること|機能は"
+    + r"|你能做什么|你會做什麼|你会做什么|你的功能"
+    + r"|무엇을\s*할\s*수\s*있"
+    # Arabic
+    + r"|ماذا\s+يمكنك|ما\s+هي\s+قدراتك|قدراتك\b",
+    re.IGNORECASE | re.UNICODE,
 )
 
 
 def _is_capability_question(goal_lower: str) -> bool:
-    return bool(goal_lower) and bool(_CAP_Q_RE.search(goal_lower))
+    if not goal_lower:
+        return False
+    return bool(_CAP_Q_RE.search(goal_lower)) or bool(_CAP_Q_I18N_RE.search(goal_lower))
+
+
+def _is_identity_question(goal_lower: str) -> bool:
+    """"Who are you", "tell me about yourself" — answered FROM the persona, not from the manifest.
+
+    See the comment on `_IDENTITY_Q_RE`. Used at the persona-trim site in system_head_builder to keep
+    her self-description on the one turn that is entirely about it.
+    """
+    if not goal_lower:
+        return False
+    return bool(_IDENTITY_Q_RE.search(goal_lower))
 
 
 @lru_cache(maxsize=2)
@@ -254,7 +399,14 @@ def build_core_sys_parts(
     if _is_capability_question(gl):
         _cap = _capability_manifest_core(root)
         if _cap:
-            sys_parts.insert(2 if personality else 1, _cap)
+            # Index 1, BEFORE the persona insert below — which pushes this to index 2, i.e. immediately
+            # after "who is speaking" and immediately BEFORE the 751-token identity manifesto.
+            # It used to insert at index 2 pre-persona (= index 3 post-persona), landing it BEHIND the
+            # manifesto at a measured offset of ~1030 tokens inside a section capped at 800 (417 effective
+            # on a 2048-ctx box): it was found and then truncated away every single time.
+            # Truncation is from the TAIL, so this ordering makes the manifesto's tail the victim instead of
+            # the capability facts — the right trade on a turn whose whole subject IS the capabilities.
+            sys_parts.insert(1, _cap)
     # BL-285: previously gated on the goal literally containing nsfw|intimate|explicit|adult|18+|uncensored,
     # so ordinary phrasing ("write a steamy scene between them") missed the strongest anti-refusal guidance.
     # When uncensored/NSFW is on the operator has already opted in for the session — apply it every turn.

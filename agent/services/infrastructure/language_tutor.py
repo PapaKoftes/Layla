@@ -53,7 +53,8 @@ def _db_path() -> Path:
         from layla.memory.db_connection import _resolve_db_path
         return _resolve_db_path().parent / "language_tutor.db"
     except Exception:
-        return Path.home() / ".layla" / "language_tutor.db"
+        from services.infrastructure.data_paths import layla_data_file
+        return layla_data_file("language_tutor.db")
 
 
 @contextmanager

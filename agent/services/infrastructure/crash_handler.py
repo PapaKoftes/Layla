@@ -16,12 +16,28 @@ from pathlib import Path
 
 logger = logging.getLogger("layla")
 
-CRASH_DIR = Path.home() / ".layla" / "crashes"
+# `None` means "resolve per call" (see `_crash_dir`). Tests assign a concrete tmp Path here to
+# pin it; production leaves it None so LAYLA_DATA_DIR is honoured.
+CRASH_DIR: Path | None = None
+
+
+def _crash_dir() -> Path:
+    """`<LAYLA_DATA_DIR or ~>/.layla/crashes`.
+
+    Was `Path.home() / ".layla" / "crashes"` evaluated at import, which ignored LAYLA_DATA_DIR
+    and made `install_crash_handler()` (called from main.py's lifespan) mkdir into the operator's
+    real home during the test suite. Resolved per call so import order cannot defeat it.
+    """
+    if CRASH_DIR is not None:
+        return Path(CRASH_DIR)
+    raw = (os.environ.get("LAYLA_DATA_DIR") or "").strip()
+    root = Path(raw).expanduser().resolve() if raw else Path.home()
+    return root / ".layla" / "crashes"
 
 
 def _write_crash_dump(exc_type, exc_value, exc_tb, *, thread_name: str | None = None) -> None:
     try:
-        CRASH_DIR.mkdir(parents=True, exist_ok=True)
+        _crash_dir().mkdir(parents=True, exist_ok=True)
         dump = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "exception": str(exc_value),
@@ -30,7 +46,7 @@ def _write_crash_dump(exc_type, exc_value, exc_tb, *, thread_name: str | None = 
             "traceback": traceback.format_exception(exc_type, exc_value, exc_tb),
             "pid": os.getpid(),
         }
-        path = CRASH_DIR / f"crash_{int(time.time() * 1000)}.json"
+        path = _crash_dir() / f"crash_{int(time.time() * 1000)}.json"
         path.write_text(json.dumps(dump, indent=2), encoding="utf-8")
         logger.critical("Crash dump written: %s (thread=%s)", path, dump["thread"])
     except Exception:
@@ -73,15 +89,15 @@ def install_crash_handler() -> None:
             faulthandler.enable()
     except Exception:
         pass
-    CRASH_DIR.mkdir(parents=True, exist_ok=True)
-    logger.info("Crash handler installed (main + threads + faulthandler) → %s", CRASH_DIR)
+    _crash_dir().mkdir(parents=True, exist_ok=True)
+    logger.info("Crash handler installed (main + threads + faulthandler) → %s", _crash_dir())
 
 
 def get_recent_crashes(limit: int = 10) -> list[dict]:
     """Return the N most recent crash dumps."""
-    if not CRASH_DIR.exists():
+    if not _crash_dir().exists():
         return []
-    files = sorted(CRASH_DIR.glob("crash_*.json"), reverse=True)[:limit]
+    files = sorted(_crash_dir().glob("crash_*.json"), reverse=True)[:limit]
     results = []
     for f in files:
         try:
@@ -93,10 +109,10 @@ def get_recent_crashes(limit: int = 10) -> list[dict]:
 
 def clear_crashes() -> int:
     """Delete all crash dumps. Returns count deleted."""
-    if not CRASH_DIR.exists():
+    if not _crash_dir().exists():
         return 0
     count = 0
-    for f in CRASH_DIR.glob("crash_*.json"):
+    for f in _crash_dir().glob("crash_*.json"):
         try:
             f.unlink()
             count += 1

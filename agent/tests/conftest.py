@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import socket
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -15,6 +16,46 @@ import pytest
 # mounts the routes but skips the blocking subsystems. Must be set before the app
 # module is imported by any test.
 os.environ.setdefault("LAYLA_MINIMAL_STARTUP", "1")
+
+# ---------------------------------------------------------------------------------------------
+# OPERATOR-STATE ISOLATION. Set at conftest IMPORT time, not in a fixture body.
+#
+# `_force_test_db_path` (below) also sets LAYLA_DATA_DIR, but a session-scoped fixture body does not
+# run until the first test is SET UP — i.e. after every test module has been imported. Anything a test
+# module does at import/collection time therefore ran against the operator's real data dir.
+#
+# That window is not hypothetical. Traced with `tests/_write_tracer.py` over a full `--collect-only`
+# with this block removed, collection reaches the operator's real repo-root `layla.db`:
+#
+#     sqlite3.connect  C:\Work\Programming\Layla\layla.db
+#         via layla/memory/db_connection.py:44 in _make_connection
+#
+# and `_make_connection` immediately runs `PRAGMA journal_mode=WAL` — a write that materialises
+# -wal/-shm beside the operator's 3.6 MB database. A census that does not wrap `sqlite3.connect`
+# reports this window as empty, because SQLite opens its file through its own C layer and never
+# touches `io.open`/`os.open`.
+#
+# ORDERING IS LOAD-BEARING. `runtime_safety.CONFIG_FILE` is resolved at *its* import (runtime_safety
+# .py:60) and honours LAYLA_DATA_DIR, so setting the variable before that import silently moves the
+# whole suite off `agent/runtime_config.json` and onto a non-existent file — load_config() then
+# returns DEFAULTS (max_tool_calls 20 instead of 8, use_chroma True instead of False), quietly
+# changing what every gate MEANS. So: import runtime_safety FIRST, binding CONFIG_FILE to the real
+# config while LAYLA_DATA_DIR is still unset, and only then redirect the data dir.
+import runtime_safety as _runtime_safety  # noqa: E402  (imported for its import-time binding)
+
+_REAL_CONFIG_FILE = _runtime_safety.CONFIG_FILE
+
+# `setdefault`, not assignment — an outer harness (the release CI job, a bisect script) that has
+# already pointed LAYLA_DATA_DIR somewhere deliberate keeps its choice.
+_ISOLATED_DATA_DIR = Path(tempfile.mkdtemp(prefix="layla-test-data-"))
+os.environ.setdefault("LAYLA_DATA_DIR", str(_ISOLATED_DATA_DIR))
+os.environ.pop("LAYLA_DB_PATH", None)
+
+# Fail loudly rather than silently running the entire suite against default config.
+assert _runtime_safety.CONFIG_FILE == _REAL_CONFIG_FILE, (
+    "LAYLA_DATA_DIR redirection moved runtime_safety.CONFIG_FILE "
+    f"({_REAL_CONFIG_FILE} -> {_runtime_safety.CONFIG_FILE}); the suite would read default config."
+)
 
 # ---------------------------------------------------------------------------
 # TestClient-based tests that require a working app lifespan (kept for reference;
@@ -124,7 +165,11 @@ def _force_test_db_path(tmp_path_factory):
     - `LAYLA_DATA_DIR` (preferred)
     - or the patched barrel module `layla.memory.db._DB_PATH`
     """
-    data_dir = tmp_path_factory.mktemp("layla_data")
+    # Reuse the dir claimed at import time rather than minting a second one. Switching
+    # LAYLA_DATA_DIR here would mean the data dir in force during collection differs from the one
+    # in force during the run, so anything that cached a resolved path at import would read from a
+    # directory nothing else writes to — a silent, order-dependent split-brain.
+    data_dir = Path(os.environ.get("LAYLA_DATA_DIR") or tmp_path_factory.mktemp("layla_data"))
     os.environ["LAYLA_DATA_DIR"] = str(data_dir)
     os.environ.pop("LAYLA_DB_PATH", None)
     try:

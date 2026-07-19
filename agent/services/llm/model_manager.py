@@ -37,7 +37,8 @@ def _get_models_dir() -> Path:
             return Path(raw).expanduser().resolve()
     except Exception:
         pass
-    return Path.home() / ".layla" / "models"
+    from services.infrastructure.data_paths import layla_data_file
+    return layla_data_file("models")
 
 
 def list_models() -> list[dict[str, Any]]:

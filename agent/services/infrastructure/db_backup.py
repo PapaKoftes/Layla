@@ -62,8 +62,10 @@ def backup_database(keep: int = _DEFAULT_KEEP) -> dict:
         # so embeddings stay consistent with layla.db on restore — no orphaned vectors.
         vectors_backed_up = False
         try:
-            from layla.memory.vector_store import CHROMA_PATH
-            vsrc = Path(CHROMA_PATH)
+            # Resolver, not the raw constant: CHROMA_PATH is now None unless pinned, so the
+            # location has to be asked for rather than read.
+            from layla.memory.vector_store import _chroma_path
+            vsrc = Path(_chroma_path())
             if vsrc.exists() and any(vsrc.iterdir()):
                 shutil.copytree(str(vsrc), str(backup_dir / f"vectors_{ts}"), dirs_exist_ok=True)
                 vectors_backed_up = True

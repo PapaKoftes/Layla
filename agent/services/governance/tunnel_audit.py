@@ -24,8 +24,30 @@ logger = logging.getLogger("layla")
 # ---------------------------------------------------------------------------
 # Database location
 # ---------------------------------------------------------------------------
-_DB_DIR = Path.home() / ".layla"
-_DB_PATH = _DB_DIR / "tunnel_audit.db"
+def _db_path() -> Path:
+    """`<LAYLA_DATA_DIR or ~>/.layla/tunnel_audit.db`.
+
+    Was two module-level constants rooted at `Path.home()`. Two defects, one of which leaked into the
+    test suite:
+
+      1. It ignored LAYLA_DATA_DIR, so an installed/multi-profile run wrote its audit log to the invoking
+         user's home rather than the configured data dir.
+      2. `_get_connection` mkdir'd `_DB_DIR` — a SEPARATE constant from `_DB_PATH`. Every test isolates
+         this module by patching `_DB_PATH` only, so the mkdir kept firing against the operator's real
+         `~/.layla`. Deriving the directory from the resolved path is what makes patching the path
+         actually isolate the module.
+
+    Resolved per call, not at import, so LAYLA_DATA_DIR is honoured regardless of import order.
+    """
+    raw = (os.environ.get("LAYLA_DATA_DIR") or "").strip()
+    root = Path(raw).expanduser().resolve() if raw else Path.home()
+    return root / ".layla" / "tunnel_audit.db"
+
+
+# Module-level override. `None` means "resolve from the environment per call"; tests patch this to
+# redirect the DB, and the mkdir in _get_connection follows it because the directory is derived from
+# whatever path is in force rather than from an independent constant.
+_DB_PATH: Path | None = None
 
 # ---------------------------------------------------------------------------
 # Thread-safety: one lock guards all write operations
@@ -36,8 +58,9 @@ _table_ready = False
 
 def _get_connection() -> sqlite3.Connection:
     """Return a new SQLite connection with row-factory set to dict rows."""
-    _DB_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(_DB_PATH), timeout=10)
+    path = _DB_PATH or _db_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(path), timeout=10)
     conn.row_factory = sqlite3.Row
     return conn
 

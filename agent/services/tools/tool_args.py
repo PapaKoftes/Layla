@@ -128,6 +128,16 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
         "types": {"to": str, "subject": str, "body": str,
                   "smtp_host": str, "smtp_port": int, "username": str, "password": str},
     },
+    # Outbound webhooks: both carry a model-chosen destination URL, so the schema is the first
+    # thing that rejects a malformed/hallucinated call before the SSRF guard and approval gate.
+    "send_webhook": {
+        "required": ["url", "payload"],
+        "types": {"url": str, "payload": dict, "method": str},
+    },
+    "discord_send": {
+        "required": [],  # content OR embed; the impl rejects the empty case with a clear error
+        "types": {"content": str, "embed": dict, "webhook_url": str},
+    },
     "github_pr": {
         "required": ["repo_slug", "title", "head"],
         "types": {"repo_slug": str, "title": str, "head": str,
