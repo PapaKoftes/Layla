@@ -198,7 +198,17 @@ def _compress_to_summary(messages: list) -> str:
 
 
 def truncate_to_tokens(text: str, max_tokens: int, suffix: str = "...") -> str:
-    """Truncate text to fit within max_tokens. Preserves word boundaries when possible."""
+    """Truncate text to fit within max_tokens. Prefers LINE boundaries, then word boundaries.
+
+    Line boundary first, because the blocks this cuts are line-structured (markdown bullets, the
+    capability manifest, memory lists) and a word-boundary cut lands mid-clause. Measured on the
+    capability manifest, a word-boundary cut ended the prompt with "...no search tool in it means I" —
+    a dangling half-sentence that inverts the disclosure it was in the middle of making. A half-line is
+    worse than no line: the model completes it, and what it completes is not what the line said.
+
+    Falls back to the word boundary when the nearest newline is further back than 25% of the budget, so
+    a block with very long lines does not lose a quarter of its content to boundary alignment.
+    """
     if not text or max_tokens <= 0:
         return ""
     est = token_estimate(text)
@@ -207,10 +217,57 @@ def truncate_to_tokens(text: str, max_tokens: int, suffix: str = "...") -> str:
     # Binary-search-ish: reduce by ratio
     target_chars = int(len(text) * max_tokens / max(est, 1))
     truncated = text[: max(1, target_chars - len(suffix))]
-    last_space = truncated.rfind(" ")
-    if last_space > target_chars // 2:
-        truncated = truncated[: last_space]
+    last_newline = truncated.rfind("\n")
+    if last_newline > int(len(truncated) * 0.75):
+        truncated = truncated[:last_newline]
+    else:
+        last_space = truncated.rfind(" ")
+        if last_space > target_chars // 2:
+            truncated = truncated[: last_space]
+    truncated = _drop_dangling_headers(truncated) or truncated
     return (truncated or text[:50]).strip() + suffix
+
+
+def _drop_dangling_headers(text: str) -> str:
+    """Drop trailing markdown headers that the cut left with no body.
+
+    Preferring the LINE boundary above means the cut lands cleanly between lines — which is right for
+    prose, and produces a specific defect on markdown: when the boundary falls just after a heading, the
+    section ends on a bare `## Chat style` and the suffix turns it into `## Chat style...`.
+
+    Measured on an ordinary turn with the real Morrigan persona: every head ended with a literal
+    `## Chat style...` and nothing under it. A heading with no content is not merely wasted tokens — it
+    is a malformed instruction the model reads and imitates, and "here is a section about how to talk,
+    now say nothing about it" is a strange thing to hand a 3B.
+
+    Empty lines before the header go too, otherwise the section ends on trailing whitespace. Returns ""
+    if everything was a header, and the caller keeps the un-dropped text in that case rather than
+    emitting an empty section.
+
+    KNOWN LIMITATION — `startswith("#")` is also true of the comment marker in Python, shell, YAML,
+    TOML and Dockerfile, so a truncated code snippet can have trailing comments eaten as if they were
+    headings (measured: 3 `# NOTE:` lines off a Python snippet, 8 of 10 lines off a mostly-comment
+    shell excerpt, because each comment the loop eats exposes the one above it).
+
+    Narrowing to `^#{2,6}\s` to spare them was tried and REVERTED: the head genuinely contains
+    LEVEL-1 headings from knowledge and workspace sections, and under the CI stub config an ordinary
+    turn then ended on a bare `# API design patterns...` — the exact production defect this function
+    exists to prevent, caught by `test_ordinary_turn_head_has_no_empty_persona_section`. Level is not
+    the signal that separates a heading from a comment, and no cheap proxy for it was found.
+
+    Left as-is deliberately: eating a few trailing comment lines from an already-truncated snippet is
+    the smaller harm, and it is bounded (only the tail). Fixing it properly needs fence-awareness
+    (content inside ``` is code, not markdown), which is a real change to the truncation contract
+    rather than a one-line predicate swap.
+    """
+    lines = text.split("\n")
+    while lines:
+        last = lines[-1].strip()
+        if not last or last.startswith("#"):
+            lines.pop()
+            continue
+        break
+    return "\n".join(lines)
 
 
 def deduplicate_content(items: list[str], key_len: int = 80) -> list[str]:
@@ -228,6 +285,38 @@ def deduplicate_content(items: list[str], key_len: int = 80) -> list[str]:
     return out
 
 
+def default_budgets_for(n_ctx: int) -> dict[str, int]:
+    """The per-section budgets build_system_prompt falls back to when the caller passes none.
+
+    Extracted so a caller that needs to RAISE one section (system_head_builder widens
+    `system_instructions` to fit the capability manifest) can start from the same dict this function
+    would have chosen, instead of assuming DEFAULT_BUDGETS and quietly inflating every other section
+    on a small model.
+
+    Small-model guard: when the context window is ≤ 4096 tokens, the full 18-section injection
+    overflows the window by ~2000+ tokens before the model can respond. Cap aggressively so
+    identity + task + 1-2 memories fit with room to reply.
+    """
+    if n_ctx <= 4096:
+        return {
+            "system_instructions": 600,   # identity + aspect only, no tool list
+            "current_goal": 80,
+            "agent_state": 0,             # skip scratchpad entirely
+            "pinned_context": 0,          # skip
+            "memory": 300,                # 1-2 relevant memories max
+            "knowledge_graph": 0,
+            "knowledge": 0,
+            "tools": 0,
+            "conversation": 400,          # last 3-4 turns
+            "current_task": 60,
+        }
+    try:
+        from services.context.context_budget import get_budgets
+        return dict(get_budgets(n_ctx))
+    except Exception:
+        return DEFAULT_BUDGETS.copy()
+
+
 def build_system_prompt(
     sections: dict[str, str],
     n_ctx: int = 4096,
@@ -243,30 +332,8 @@ def build_system_prompt(
 
     Returns (assembled_prompt, metrics_dict).
     """
-    # Small-model guard: when context window is ≤ 4096 tokens, the full 18-section
-    # injection overflows the window by ~2000+ tokens before the model can respond.
-    # Cap budgets aggressively so identity+task+1-2 memories fit with room to reply.
-    _small_model = n_ctx <= 4096
     if budgets is None:
-        if _small_model:
-            budgets = {
-                "system_instructions": 600,   # identity + aspect only, no tool list
-                "current_goal": 80,
-                "agent_state": 0,             # skip scratchpad entirely
-                "pinned_context": 0,          # skip
-                "memory": 300,                # 1-2 relevant memories max
-                "knowledge_graph": 0,
-                "knowledge": 0,
-                "tools": 0,
-                "conversation": 400,          # last 3-4 turns
-                "current_task": 60,
-            }
-        else:
-            try:
-                from services.context.context_budget import get_budgets
-                budgets = get_budgets(n_ctx)
-            except Exception:
-                budgets = DEFAULT_BUDGETS.copy()
+        budgets = default_budgets_for(n_ctx)
     total_budget = max(512, n_ctx - reserve_for_response)
 
     # Phase 5: Dynamic budget reallocation based on last-known section pressure
@@ -387,10 +454,26 @@ def build_system_prompt(
             break
         truncated = truncate_to_tokens(raw, max_tok)
         tok = token_estimate(truncated)
-        if tok > max_tok:
-            # Floor the retry: for small max_tok, `max_tok - 20` went ≤ 0 and the section became
-            # an empty string that was silently skipped — not even recorded as dropped.
-            truncated = truncate_to_tokens(raw, max(24, max_tok - 20))
+        # Converge instead of giving up after one retry. truncate_to_tokens sizes its cut by a
+        # chars-per-token RATIO, so on markdown/non-ASCII prose it routinely lands over the ask — and a
+        # single `max_tok - 20` retry only closes a fixed 20 tokens of a proportional error. At the old
+        # ~400-token section sizes the leftover overshoot was small enough to ignore; once a section is
+        # budgeted ~900 (the capability manifest), the same 20% error is ~200 tokens, and it was being
+        # stolen from `remaining` — which is exactly the room the NEXT sections were reserved. Measured:
+        # system_instructions budgeted 895 came back 1092, leaving current_goal 7 tokens and chopping
+        # "Current goal: refactor this module for me" mid-phrase.
+        # Each pass scales the request by the overshoot ratio, so it converges in 2-3 rather than crawling.
+        # Each pass scales the ASK by the overshoot it just produced, and is forced to strictly decrease.
+        # Both halves matter: rescaling from the original max_tok instead of the current ask oscillates
+        # rather than converges — measured 1321 -> 1415, then 1229 -> 1325, then 1309 -> 1405, ending
+        # WORSE than it started and 76 tokens over budget, which is what stole the room reserved for
+        # "Current goal: <the user's question>" and truncated it to "Current...".
+        _ask = max_tok
+        _attempts = 0
+        while tok > max_tok and _attempts < 5:
+            _attempts += 1
+            _ask = max(24, min(_ask - 1, int(_ask * max_tok / max(tok, 1)) - 8))
+            truncated = truncate_to_tokens(raw, _ask)
             tok = token_estimate(truncated)
         metrics["section_tokens"][key] = tok
         if tok < token_estimate(raw):

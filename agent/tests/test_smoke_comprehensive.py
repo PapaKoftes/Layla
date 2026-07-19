@@ -288,21 +288,25 @@ def test_config_endpoint_readable(client):
 # 6. DB schema
 # ---------------------------------------------------------------------------
 
-def test_db_tables_exist():
-    db_candidates = [
-        AGENT_DIR.parent / "layla.db",
-        AGENT_DIR / "layla.db",
-    ]
-    db_path = next((p for p in db_candidates if p.exists()), None)
-    if db_path is None:
-        pytest.skip("layla.db not found")
-    con = sqlite3.connect(str(db_path))
+def test_db_tables_exist(isolated_db):
+    """The MIGRATION creates the core tables — asserted against a freshly migrated fixture DB.
+
+    This used to connect to whatever `layla.db` it found (the operator's real 3.6 MB database at the
+    repo root) and assert against ITS schema. Two problems: the result depended on the state of one
+    developer's machine rather than on the code under test, and a fresh clone or a CI runner with no
+    database silently SKIPPED instead of testing anything. It also meant a read-only test opening the
+    operator's live DB, which is the class of contact `test_operator_state_isolation.py` exists to end.
+
+    Driving `migrate()` against a tmp DB (the `isolated_db` fixture) tests the thing that was actually
+    meant: that the schema the app creates has the tables the app needs.
+    """
+    con = sqlite3.connect(str(isolated_db))
     tables = {r[0] for r in con.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
     ).fetchall()}
     con.close()
     missing = {"learnings", "timeline_events", "relationship_memory"} - tables
-    assert not missing, f"layla.db missing tables: {missing}"
+    assert not missing, f"migrated schema is missing tables: {missing}"
 
 
 # ---------------------------------------------------------------------------

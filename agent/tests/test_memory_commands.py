@@ -28,6 +28,28 @@ if str(AGENT_DIR) not in sys.path:
 from services.memory.memory_commands import MemoryCommandResult, detect_and_handle
 
 
+@pytest.fixture(autouse=True)
+def _restore_working_memory_module_state():
+    """Undo this file's direct rebinding of `wm._wm_path`.
+
+    The working-memory tests below redirect the module by assigning `wm._wm_path = lambda: ...`.
+    Two of them restore it in a `finally`; the rest only clear the cache — so `_wm_path` stayed bound
+    to a dead `tmp_path` for every test that ran afterwards IN THE SAME PROCESS. Caught by
+    test_operator_state_isolation, which asserts every data-path resolver lands inside LAYLA_DATA_DIR
+    and failed only when it ran after this file.
+
+    A leaked resolver is worse than a noisy one: it points later tests at a directory that no longer
+    exists, so their reads come back empty and their assertions pass for the wrong reason.
+    """
+    import services.memory.working_memory as wm
+
+    orig = wm._wm_path
+    wm._cache.clear()
+    yield
+    wm._wm_path = orig
+    wm._cache.clear()
+
+
 def test_non_command_passthrough():
     r = detect_and_handle("what is the meaning of life")
     assert r.is_command is False
@@ -190,37 +212,37 @@ def test_remember_rate_limited():
 def test_wm_add_and_get(tmp_path):
     import services.memory.working_memory as wm
     # Redirect to temp path
-    _orig = wm._WM_PATH
-    wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
-    wm._cache = None
+    _orig = wm._wm_path
+    wm._wm_path = lambda: tmp_path / ".layla" / "working_memory.json"
+    wm._cache.clear()
     try:
         wm.add_to_working_memory("user prefers dark mode")
         data = wm.get_working_memory()
         assert "user prefers dark mode" in data["recent_facts"]
     finally:
-        wm._WM_PATH = _orig
-        wm._cache = None
+        wm._wm_path = _orig
+        wm._cache.clear()
 
 
 def test_wm_dedup(tmp_path):
     import services.memory.working_memory as wm
-    _orig = wm._WM_PATH
-    wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
-    wm._cache = None
+    _orig = wm._wm_path
+    wm._wm_path = lambda: tmp_path / ".layla" / "working_memory.json"
+    wm._cache.clear()
     try:
         wm.add_to_working_memory("user likes Python")
         wm.add_to_working_memory("user likes Python")
         data = wm.get_working_memory()
         assert data["recent_facts"].count("user likes Python") == 1
     finally:
-        wm._WM_PATH = _orig
-        wm._cache = None
+        wm._wm_path = _orig
+        wm._cache.clear()
 
 
 def test_wm_fifo_cap(tmp_path):
     import services.memory.working_memory as wm
-    wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
-    wm._cache = None
+    wm._wm_path = lambda: tmp_path / ".layla" / "working_memory.json"
+    wm._cache.clear()
     try:
         for i in range(25):
             wm.add_to_working_memory(f"fact number {i:04d} about something long enough")
@@ -229,13 +251,13 @@ def test_wm_fifo_cap(tmp_path):
         # Most recent facts should be present
         assert any("0024" in f for f in data["recent_facts"])
     finally:
-        wm._cache = None
+        wm._cache.clear()
 
 
 def test_wm_set_project_and_action(tmp_path):
     import services.memory.working_memory as wm
-    wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
-    wm._cache = None
+    wm._wm_path = lambda: tmp_path / ".layla" / "working_memory.json"
+    wm._cache.clear()
     try:
         wm.set_active_project("local-jinx-agent memory system")
         wm.set_next_action("wire memory commands into agent loop")
@@ -243,13 +265,13 @@ def test_wm_set_project_and_action(tmp_path):
         assert data["active_project"] == "local-jinx-agent memory system"
         assert data["next_action"] == "wire memory commands into agent loop"
     finally:
-        wm._cache = None
+        wm._cache.clear()
 
 
 def test_wm_blockers(tmp_path):
     import services.memory.working_memory as wm
-    wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
-    wm._cache = None
+    wm._wm_path = lambda: tmp_path / ".layla" / "working_memory.json"
+    wm._cache.clear()
     try:
         wm.add_blocker("chroma not installed")
         wm.add_blocker("missing DB migration")
@@ -262,13 +284,13 @@ def test_wm_blockers(tmp_path):
         assert "chroma not installed" not in data2["blockers"]
         assert "missing DB migration" in data2["blockers"]
     finally:
-        wm._cache = None
+        wm._cache.clear()
 
 
 def test_wm_reset(tmp_path):
     import services.memory.working_memory as wm
-    wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
-    wm._cache = None
+    wm._wm_path = lambda: tmp_path / ".layla" / "working_memory.json"
+    wm._cache.clear()
     try:
         wm.set_active_project("test project")
         wm.reset()
@@ -276,25 +298,25 @@ def test_wm_reset(tmp_path):
         assert data["active_project"] == ""
         assert data["recent_facts"] == []
     finally:
-        wm._cache = None
+        wm._cache.clear()
 
 
 def test_wm_format_for_prompt_empty(tmp_path):
     import services.memory.working_memory as wm
-    wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
-    wm._cache = None
+    wm._wm_path = lambda: tmp_path / ".layla" / "working_memory.json"
+    wm._cache.clear()
     try:
         wm.reset()
         result = wm.format_for_prompt()
         assert result == ""
     finally:
-        wm._cache = None
+        wm._cache.clear()
 
 
 def test_wm_format_for_prompt_populated(tmp_path):
     import services.memory.working_memory as wm
-    wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
-    wm._cache = None
+    wm._wm_path = lambda: tmp_path / ".layla" / "working_memory.json"
+    wm._cache.clear()
     try:
         wm.reset()
         wm.set_active_project("memory system refactor")
@@ -308,13 +330,13 @@ def test_wm_format_for_prompt_populated(tmp_path):
         assert "local AI agent" in result
         assert "[Working memory" in result
     finally:
-        wm._cache = None
+        wm._cache.clear()
 
 
 def test_wm_auto_extract_project(tmp_path):
     import services.memory.working_memory as wm
-    wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
-    wm._cache = None
+    wm._wm_path = lambda: tmp_path / ".layla" / "working_memory.json"
+    wm._cache.clear()
     try:
         wm.reset()
         wm.auto_extract_from_message("I am working on the memory system for the agent")
@@ -322,30 +344,30 @@ def test_wm_auto_extract_project(tmp_path):
         # Pattern match should set active_project
         assert data["active_project"] != ""
     finally:
-        wm._cache = None
+        wm._cache.clear()
 
 
 def test_wm_auto_extract_blocker(tmp_path):
     import services.memory.working_memory as wm
-    wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
-    wm._cache = None
+    wm._wm_path = lambda: tmp_path / ".layla" / "working_memory.json"
+    wm._cache.clear()
     try:
         wm.reset()
         wm.auto_extract_from_message("I am stuck on the DB migration issue right now")
         data = wm.get_working_memory()
         assert len(data["blockers"]) > 0
     finally:
-        wm._cache = None
+        wm._cache.clear()
 
 
 def test_wm_short_message_ignored(tmp_path):
     import services.memory.working_memory as wm
-    wm._WM_PATH = tmp_path / ".layla" / "working_memory.json"
-    wm._cache = None
+    wm._wm_path = lambda: tmp_path / ".layla" / "working_memory.json"
+    wm._cache.clear()
     try:
         wm.reset()
         wm.auto_extract_from_message("hi")
         data = wm.get_working_memory()
         assert data["active_project"] == ""
     finally:
-        wm._cache = None
+        wm._cache.clear()

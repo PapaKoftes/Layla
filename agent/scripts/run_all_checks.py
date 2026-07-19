@@ -193,7 +193,15 @@ def run(fail_fast: bool = False, json_output: bool = False) -> int:
         # If no sandbox_root / workspace_root is configured, treat as N/A (pass)
         # — there is nothing to index, so an empty DB is expected.
         import sqlite3 as _sql
-        _idx_db = AGENT_DIR / ".layla" / "repo_index.db"
+        # Ask the indexer where its DB actually is instead of re-deriving the path here. The
+        # hardcoded guess below checked `agent/.layla/repo_index.db` while the indexer was
+        # writing `agent/services/.layla/repo_index.db`, so this health check never once
+        # inspected the real file — it silently reported on a database that did not exist.
+        try:
+            from services.workspace import repo_indexer as _ri
+            _idx_db = Path(_ri._DB_PATH or _ri._default_db_path())
+        except Exception:
+            _idx_db = AGENT_DIR / ".layla" / "repo_index.db"
         if not _idx_db.exists():
             _idx_db = AGENT_DIR / "repo_index.db"
 

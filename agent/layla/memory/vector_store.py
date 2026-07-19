@@ -55,7 +55,31 @@ warnings.filterwarnings(
 )
 
 MEMORY_DIR = Path(__file__).resolve().parent
-CHROMA_PATH = MEMORY_DIR / "chroma_db"
+
+# `None` means "resolve per call" (see `_chroma_path`). Tests monkeypatch this to a tmp dir to pin
+# it; production leaves it None so LAYLA_DATA_DIR is honoured.
+CHROMA_PATH: Path | None = None
+
+
+def _chroma_path() -> Path:
+    """`<LAYLA_DATA_DIR>/chroma_db`, else `agent/layla/memory/chroma_db`.
+
+    Was `MEMORY_DIR / "chroma_db"` evaluated at import — the vector store lived INSIDE the source
+    tree and ignored LAYLA_DATA_DIR entirely. Two consequences: an installed or multi-profile
+    deployment wrote its embeddings into the package directory (read-only in many installs), and
+    the test suite created `agent/layla/memory/chroma_db/fallback_*.sqlite` in the checkout on
+    every run. Caught by the write tracer in `tests/test_operator_state_isolation.py`.
+
+    The fallback keeps the historical location when LAYLA_DATA_DIR is unset, so an existing repo
+    deployment does not silently lose sight of its vector store.
+    """
+    if CHROMA_PATH is not None:
+        return Path(CHROMA_PATH)
+    raw = (os.environ.get("LAYLA_DATA_DIR") or "").strip()
+    if raw:
+        return Path(raw).expanduser().resolve() / "chroma_db"
+    return MEMORY_DIR / "chroma_db"
+
 
 _embedder = None
 _embedder_dim: int = 768  # set when embedder loads
@@ -285,11 +309,11 @@ def _get_chroma_collection():
             # Compiler-free fallback (REQ-72): SQLite+NumPy stand-in so memory works
             # without chromadb/chroma-hnswlib on a box with no C++ toolchain.
             from .fallback_store import get_fallback_collection
-            _chroma_collection = get_fallback_collection("learnings", CHROMA_PATH)
+            _chroma_collection = get_fallback_collection("learnings", _chroma_path())
             logger.info("vector_store: chromadb absent — using compiler-free fallback store (learnings)")
             return _chroma_collection
         import chromadb
-        client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+        client = chromadb.PersistentClient(path=str(_chroma_path()))
         _chroma_collection = client.get_or_create_collection(
             name="learnings",
             metadata={"hnsw:space": "cosine"},
@@ -334,7 +358,7 @@ def rebuild_collection() -> dict:
     try:
         import chromadb
 
-        client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+        client = chromadb.PersistentClient(path=str(_chroma_path()))
         try:
             client.delete_collection("learnings")
             logger.info("ChromaDB: deleted old 'learnings' collection for rebuild")
@@ -517,11 +541,11 @@ def _get_knowledge_collection():
             return _knowledge_collection
         if not _real_chroma():
             from .fallback_store import get_fallback_collection
-            _knowledge_collection = get_fallback_collection("knowledge", CHROMA_PATH)
+            _knowledge_collection = get_fallback_collection("knowledge", _chroma_path())
             logger.info("vector_store: chromadb absent — using compiler-free fallback store (knowledge)")
             return _knowledge_collection
         import chromadb
-        client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+        client = chromadb.PersistentClient(path=str(_chroma_path()))
         _knowledge_collection = client.get_or_create_collection(name="knowledge", metadata={"hnsw:space": "cosine"})
         return _knowledge_collection
 

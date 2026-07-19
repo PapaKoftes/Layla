@@ -672,6 +672,7 @@ def operator_profile():
     """Return the current operator profile (stats, maturity seed, prefs) from user_identity."""
     try:
         from services.personality.maturity_engine import (
+            all_unlocks,
             check_unlocks,
             get_milestones_status,
             get_state,
@@ -691,10 +692,14 @@ def operator_profile():
             # Unlocked abilities for the growth dashboard — the frontend (growth.js) reads
             # maturity.unlocks[{name,rank_required}] but the endpoint never populated it, so the
             # "Unlocked Abilities" panel was permanently empty. check_unlocks() already returns that shape.
+            # unlocks_all carries the whole ladder so the frontend renders the locked preview
+            # from the real table instead of a hardcoded duplicate that drifts out of sync.
             try:
                 maturity["unlocks"] = check_unlocks({"rank": ms.rank})
+                maturity["unlocks_all"] = all_unlocks(ms.rank)
             except Exception:
                 maturity["unlocks"] = []
+                maturity["unlocks_all"] = []
             prof["maturity"] = maturity
         except Exception:
             pass

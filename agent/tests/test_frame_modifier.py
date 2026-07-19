@@ -243,7 +243,7 @@ def test_load_from_identity_clamps():
 
 def test_write_and_load_snapshot(tmp_path, monkeypatch):
     import services.personality.frame_modifier as fm
-    monkeypatch.setattr(fm, "_PROFILE_PATH", tmp_path / ".layla" / "layla_profile.json")
+    monkeypatch.setattr(fm, "_profile_path", lambda: tmp_path / ".layla" / "layla_profile.json")
 
     uid = {
         "stat_technical": "9",
@@ -270,7 +270,7 @@ def test_write_and_load_snapshot(tmp_path, monkeypatch):
 
 def test_snapshot_active_modifiers_match_build(tmp_path, monkeypatch):
     import services.personality.frame_modifier as fm
-    monkeypatch.setattr(fm, "_PROFILE_PATH", tmp_path / "profile.json")
+    monkeypatch.setattr(fm, "_profile_path", lambda: tmp_path / "profile.json")
 
     uid = {"stat_technical": "8", "stat_patience": "2"}
     write_profile_snapshot(uid)
@@ -283,12 +283,30 @@ def test_snapshot_active_modifiers_match_build(tmp_path, monkeypatch):
 
 def test_load_snapshot_missing_returns_empty(tmp_path, monkeypatch):
     import services.personality.frame_modifier as fm
-    monkeypatch.setattr(fm, "_PROFILE_PATH", tmp_path / "nonexistent.json")
+    monkeypatch.setattr(fm, "_profile_path", lambda: tmp_path / "nonexistent.json")
     assert load_profile_snapshot() == {}
 
 
-def test_write_snapshot_bad_path_does_not_raise(monkeypatch):
+def test_write_snapshot_bad_path_does_not_raise(tmp_path, monkeypatch):
+    """An unwritable target must be swallowed, not raised.
+
+    The path used to be `/impossible/path/x/y/z/profile.json`. On Windows a leading `/` is
+    relative to the current DRIVE, so that resolved to `C:\\impossible\\...`, `mkdir(parents=True)`
+    happily created it, and the write SUCCEEDED — the test asserted nothing about the failure path
+    it was named for, while leaving a real directory tree at the root of C:. Found by the write
+    tracer in `test_operator_state_isolation.py`.
+
+    Nesting under a regular FILE is unwritable on every platform: the mkdir raises
+    NotADirectoryError, so the swallow is actually exercised.
+    """
     import services.personality.frame_modifier as fm
-    monkeypatch.setattr(fm, "_PROFILE_PATH", Path("/impossible/path/x/y/z/profile.json"))
+
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("", encoding="utf-8")
+    target = blocker / "x" / "profile.json"
+
+    monkeypatch.setattr(fm, "_profile_path", lambda: target)
     # Should not raise -- errors are swallowed
     write_profile_snapshot({"stat_technical": "8"})
+
+    assert not target.exists(), "the target was writable, so the swallow path was never exercised"

@@ -40,7 +40,18 @@ from typing import Any
 
 logger = logging.getLogger("layla")
 
-ENVS_DIR = Path.home() / ".layla" / "skill_envs"
+# `None` means "resolve per call" (tests pin it by assigning a tmp dir). Was `Path.home() /
+# ".layla" / "skill_envs"` at import: ignored LAYLA_DATA_DIR and was frozen before any fixture
+# could redirect it.
+ENVS_DIR: Path | None = None
+
+
+def _envs_dir() -> Path:
+    """`<LAYLA_DATA_DIR or ~>/.layla/skill_envs`, resolved per call."""
+    if ENVS_DIR is not None:
+        return Path(ENVS_DIR)
+    from services.infrastructure.data_paths import layla_data_file
+    return layla_data_file("skill_envs")
 
 # Environment allowlist. Anything not named here is withheld from third-party code —
 # pack entry points AND dependency build backends alike. Deny-by-default: a new secret
@@ -76,7 +87,7 @@ def _filtered_env(extra_keys: frozenset[str] = frozenset()) -> dict[str, str]:
 
 def _venv_dir(pack_name: str) -> Path:
     """Path to a pack's venv directory."""
-    return ENVS_DIR / pack_name.strip()
+    return _envs_dir() / pack_name.strip()
 
 
 def _venv_python(pack_name: str) -> Path:
@@ -93,7 +104,7 @@ def create_venv(pack_name: str) -> tuple[bool, str]:
     if vdir.exists():
         return True, f"venv already exists: {vdir}"
     try:
-        ENVS_DIR.mkdir(parents=True, exist_ok=True)
+        _envs_dir().mkdir(parents=True, exist_ok=True)
         venv.create(str(vdir), with_pip=True, clear=False)
         python = _venv_python(pack_name)
         if not python.exists():
@@ -252,6 +263,6 @@ def venv_exists(pack_name: str) -> bool:
 
 def list_venvs() -> list[str]:
     """List all pack names with venvs."""
-    if not ENVS_DIR.exists():
+    if not _envs_dir().exists():
         return []
-    return [d.name for d in ENVS_DIR.iterdir() if d.is_dir()]
+    return [d.name for d in _envs_dir().iterdir() if d.is_dir()]

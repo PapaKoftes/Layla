@@ -85,7 +85,8 @@ def _get_db_path() -> Path:
         from layla.memory.db_connection import _resolve_db_path
         return _resolve_db_path().parent / "german_mode.db"
     except Exception:
-        return Path.home() / ".layla" / "german_mode.db"
+        from services.infrastructure.data_paths import layla_data_file
+        return layla_data_file("german_mode.db")
 
 
 def _open_db() -> sqlite3.Connection:

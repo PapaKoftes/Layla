@@ -4,6 +4,7 @@ Tests for the first-run install system.
 from __future__ import annotations
 
 # Ensure agent is on path
+import os
 import sys
 from pathlib import Path
 
@@ -139,9 +140,17 @@ def test_resolve_model_path_finds_basename_in_repo_models(tmp_path, monkeypatch)
 
 def test_model_benchmark_stores_and_retrieves():
     """Benchmarks stored in ~/.layla/benchmarks.json can be retrieved."""
-    from services.llm.model_benchmark import BENCHMARKS_PATH, get_all_benchmarks, get_benchmark
+    from services.llm.model_benchmark import (
+        BENCHMARKS_PATH,
+        _benchmarks_path,
+        get_all_benchmarks,
+        get_benchmark,
+    )
 
-    assert BENCHMARKS_PATH == Path.home() / ".layla" / "benchmarks.json"
+    # Was `assert BENCHMARKS_PATH == Path.home() / ".layla" / "benchmarks.json"`, which PINNED the
+    # defect: it required the path to ignore LAYLA_DATA_DIR. Assert the property that matters instead.
+    assert BENCHMARKS_PATH is None, "BENCHMARKS_PATH must default to None so it resolves per call"
+    assert _benchmarks_path() == Path(os.environ["LAYLA_DATA_DIR"]).resolve() / ".layla" / "benchmarks.json"
     all_b = get_all_benchmarks()
     assert isinstance(all_b, dict)
     # If we have benchmarks, get_benchmark should work

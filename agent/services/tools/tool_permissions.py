@@ -28,7 +28,7 @@ _WRITE_TOOLS = frozenset({
 _EXEC_TOOLS = frozenset({
     "shell", "shell_session_start", "run_python", "run_tests", "pip_install", "docker_run",
     "git_commit", "git_push", "git_revert", "git_clone", "git_worktree_add", "git_worktree_remove",
-    "github_pr", "send_email", "mcp_tools_call", "browser_click", "browser_fill",
+    "github_pr", "send_email", "send_webhook", "discord_send", "mcp_tools_call", "browser_click", "browser_fill",
     "run_skill_pack",
 })
 
