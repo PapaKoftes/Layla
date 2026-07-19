@@ -95,20 +95,17 @@ function _populateMaturity(p) {
         html += '<span class="growth-unlock-rank">Rank ' + (u.rank_required || 0) + '</span>';
         html += '</div>';
       }
-      // Show next unlock if not all earned
-      if (unlocks.length < 6) {
-        const nextRanks = [1, 3, 5, 7, 10, 12];
-        const nextNames = ['Proactive suggestions', 'Research autonomy', 'Multi-step planning',
-                           'Cross-aspect synthesis', 'Full autonomy mode', 'Teacher mode'];
-        for (let j = 0; j < nextRanks.length; j++) {
-          if (rank < nextRanks[j]) {
-            html += '<div class="growth-unlock-item growth-unlock-locked">';
-            html += '<span class="growth-unlock-icon">🔒</span>';
-            html += '<span class="growth-unlock-name">' + nextNames[j] + '</span>';
-            html += '<span class="growth-unlock-rank">Rank ' + nextRanks[j] + '</span>';
-            html += '</div>';
-            break;
-          }
+      // Show the next unlock, read from the server's ladder (maturity.unlocks_all) rather
+      // than a hardcoded copy — the old duplicate listed abilities that no longer exist.
+      const ladder = maturity.unlocks_all || [];
+      for (let j = 0; j < ladder.length; j++) {
+        if (!ladder[j].earned) {
+          html += '<div class="growth-unlock-item growth-unlock-locked">';
+          html += '<span class="growth-unlock-icon">🔒</span>';
+          html += '<span class="growth-unlock-name">' + _esc(ladder[j].name || '') + '</span>';
+          html += '<span class="growth-unlock-rank">Rank ' + (ladder[j].rank_required || 0) + '</span>';
+          html += '</div>';
+          break;
         }
       }
       ulEl.innerHTML = html;

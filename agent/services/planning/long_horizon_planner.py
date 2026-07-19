@@ -217,13 +217,23 @@ def _heuristic_decompose(goal: str, max_days: int, hours_per_day: float) -> list
 
 # ── Checkpoint management ────────────────────────────────────────────────────
 
-_CHECKPOINT_DIR = Path.home() / ".layla" / "checkpoints"
+# `None` means "resolve per call" (tests pin it by assigning a tmp dir). Was rooted at
+# `Path.home()` and evaluated at import: ignored LAYLA_DATA_DIR.
+_CHECKPOINT_DIR: Path | None = None
+
+
+def _checkpoint_dir() -> Path:
+    """`<LAYLA_DATA_DIR or ~>/.layla/checkpoints`, resolved per call."""
+    if _CHECKPOINT_DIR is not None:
+        return Path(_CHECKPOINT_DIR)
+    from services.infrastructure.data_paths import layla_data_file
+    return layla_data_file("checkpoints")
 
 
 def save_checkpoint(plan: LongHorizonPlan) -> str:
     """Save plan state to disk for resume-after-shutdown. Returns checkpoint path."""
-    _CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    path = _CHECKPOINT_DIR / f"horizon_{plan.id}.json"
+    _checkpoint_dir().mkdir(parents=True, exist_ok=True)
+    path = _checkpoint_dir() / f"horizon_{plan.id}.json"
     plan.updated_at = time.time()
     path.write_text(json.dumps(plan.to_dict(), indent=2), encoding="utf-8")
     logger.info("long_horizon: checkpoint saved → %s", path)
@@ -232,7 +242,7 @@ def save_checkpoint(plan: LongHorizonPlan) -> str:
 
 def load_checkpoint(plan_id: str) -> LongHorizonPlan | None:
     """Load plan from checkpoint."""
-    path = _CHECKPOINT_DIR / f"horizon_{plan_id}.json"
+    path = _checkpoint_dir() / f"horizon_{plan_id}.json"
     if not path.is_file():
         return None
     try:
@@ -245,10 +255,10 @@ def load_checkpoint(plan_id: str) -> LongHorizonPlan | None:
 
 def list_checkpoints() -> list[dict]:
     """List all saved horizon plan checkpoints."""
-    if not _CHECKPOINT_DIR.is_dir():
+    if not _checkpoint_dir().is_dir():
         return []
     results = []
-    for path in sorted(_CHECKPOINT_DIR.glob("horizon_*.json")):
+    for path in sorted(_checkpoint_dir().glob("horizon_*.json")):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             results.append({

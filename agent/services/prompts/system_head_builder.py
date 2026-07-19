@@ -19,12 +19,52 @@ import orchestrator
 import runtime_safety
 from layla.memory.db import get_aspect_memories as _db_get_aspect_memories
 from layla.memory.db import get_recent_learnings as _db_get_learnings
-from services.context.context_manager import DEFAULT_BUDGETS, build_system_prompt
+from services.context.context_manager import DEFAULT_BUDGETS, build_system_prompt, token_estimate
+from services.context.context_manager import default_budgets_for as _resolve_default_budgets
 from services.llm.llm_gateway import run_completion
 
 logger = logging.getLogger("layla")
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+# Reused from runtime_safety, not hand-rolled: this file sits two levels deeper than it assumed, so the
+# parent chain resolved to agent/services/ and the repo_root handed to build_core_sys_parts pointed at a
+# directory with no .identity/ in it. Every capability question got an empty manifest.
+REPO_ROOT = runtime_safety.REPO_ROOT
+
+
+def _reply_reserve_tokens(cfg: dict[str, Any]) -> int:
+    """Tokens the model will be allowed to generate — space the head must not occupy."""
+    try:
+        return max(128, int(cfg.get("completion_max_tokens", 256) or 256))
+    except (TypeError, ValueError):
+        return 256
+
+
+def _convo_block_tokens(cfg: dict[str, Any], conversation_history: list | None) -> int:
+    """Size of the conversation block the CALLER appends after this head.
+
+    An estimate, deliberately: build_system_head does not own that block — stream_handler and
+    reasoning_handler each build it from `convo_turns` with a 600-char cap on the last two turns and 220 on
+    the rest. This mirrors those caps so the head can be bounded against the space it will actually have
+    left. It is only ever used to SHRINK the head, so drifting to an over-estimate is the safe failure and
+    drifting to an under-estimate costs at most the manifest's tail — never a context overflow, because the
+    result is verified against the assembled head rather than trusted.
+    """
+    try:
+        turns_n = max(0, int(cfg.get("convo_turns", 0) or 0))
+    except (TypeError, ValueError):
+        return 0
+    if turns_n <= 0 or not conversation_history:
+        return 0
+    turns = conversation_history[-turns_n:]
+    n = len(turns)
+    chars = 0
+    for i, t in enumerate(turns):
+        cap = 600 if (n - i) <= 2 else 220
+        chars += min(len((t or {}).get("content") or ""), cap) + 8  # + "User: " / "Layla: " and a newline
+    # 3.5 chars/token, not the estimator's 4.0 and NOT token_estimate() on filler text: a run of one
+    # repeated character tokenizes about twice as densely as prose, so measuring a placeholder string would
+    # halve this reserve and hand the head space it does not have.
+    return -(-chars // 7) * 2 if chars else 0
 
 
 def _row_content(r: Any) -> str:
@@ -562,6 +602,7 @@ def build_system_head(
         ).strip()
 
     # Build aspect identity
+    from services.prompts.prompt_builder import _is_capability_question, _is_identity_question
     if aspect:
         name = aspect.get("name", "Layla")
         title = (aspect.get("title") or "").strip()
@@ -571,7 +612,23 @@ def build_system_head(
             anchor += f" — {role}"
         anchor += ". Reply as her only. Do not output labels or repeat instructions."
         full_addition = (aspect.get("systemPromptAddition") or "").strip()
-        if _skip_expensive:
+        # A capability question is answered FROM the manifest, so the manifest is the one thing that must
+        # arrive whole — and on a 2048-token window it cannot if a 590-token voice contract is sitting in
+        # front of it. Measured with the real Morrigan persona: the manifest was cut at "200 working tools"
+        # and EVERY line of its BROKEN section was lost, which is the one failure worse than not injecting
+        # it at all — she would list capabilities with total confidence and none of the caveats.
+        # So spend those tokens on the facts and keep the anchor (who is speaking) plus the one-line voice
+        # register, exactly as the phatic branch below already does and for the same reason.
+        # `and not _is_identity_question(...)`: an identity turn keeps the FULL persona. The manifest
+        # path trims to anchor+voice to buy room for verified facts, which is right for "can you speak"
+        # and exactly wrong for "who are you" — measured, that turn lost the "## Core" block that IS the
+        # answer, and cost +703 tokens to lose it. The two intents are separated in prompt_builder; this
+        # is the second lock, so re-broadening the capability regex cannot silently take the persona
+        # away again.
+        _goal_lower = (goal or "").lower()
+        if _skip_expensive or (
+            _is_capability_question(_goal_lower) and not _is_identity_question(_goal_lower)
+        ):
             # Phatic turn ("hi", "thanks"): the full persona prose (tropes, archetype, poetic
             # voice contract) dominates a tiny prompt and a small model RECITES it back —
             # "I am but a voice in the wind…" as a greeting. Keep who she is + the one-line
@@ -637,14 +694,22 @@ def build_system_head(
                 + "\". Frame it conversationally (e.g. 'By the way, I picked up that... is that right?')."
             )
 
-    # Phase 1B: Inject maturity rank gating into personality
+    # Phase 1B: maturity rank gating. Held as a per-turn DIRECTIVE rather than appended to `personality`.
+    # Appending it to the persona put a 29-token behavioural instruction on the tail of a 590-token voice
+    # contract, and the persona is truncated from the tail — so "do not proactively suggest" was the very
+    # first thing cut on every ordinary turn on a 2048-ctx box. It survived only while the head budget was
+    # over-wide. Collected into `_directives` below, it sits in the protected prefix and costs 29 tokens.
     # (Full unlocks text is injected into system_instructions later to avoid duplication)
+    _early_growth_directive = ""
     try:
         from services.personality.maturity_engine import get_state as _get_maturity_state
         _ms = _get_maturity_state()
         # Gate proactive suggestions behind rank 1+
         if _ms.rank < 1:
-            personality += "\n\nYou are in your early growth phase. Focus on responding helpfully. Do not proactively suggest topics or actions the user hasn't asked about."
+            _early_growth_directive = (
+                "You are in your early growth phase. Focus on responding helpfully. Do not proactively "
+                "suggest topics or actions the user hasn't asked about."
+            )
     except Exception as _mu_exc:
         logger.debug("context[maturity_unlocks] failed: %s", _mu_exc)
 
@@ -857,21 +922,34 @@ def build_system_head(
                 logger.debug("system_head_builder[skills]: %s", _exc, exc_info=False)
 
     # Core system instructions
-    from services.prompts.prompt_builder import build_core_sys_parts
+    from services.prompts.prompt_builder import _capability_manifest_core, build_core_sys_parts
     sys_parts = build_core_sys_parts(
         cfg=cfg, aspect=aspect, identity=identity, personality=personality,
         goal=goal, reasoning_mode=reasoning_mode, repo_root=REPO_ROOT,
     )
-    system_instructions = "\n\n".join(sys_parts)
+
+    # Per-turn directives (aspect behaviour, rank unlocks, personality evolution, German mode, the BL-160
+    # response-language directive, mood, hardware). Every one of these used to be `system_instructions +=`
+    # AFTER the sys_parts join — i.e. concatenated onto the very TAIL of a ~3100-token string that is
+    # budget-truncated from the tail at 800 tokens (417 effective on a 2048-ctx box). They were built, paid
+    # for, and thrown away on every single turn. The most visible casualty was the language directive: the
+    # operator could set Spanish and still be answered in English, because the instruction never arrived.
+    # They are collected here and INSERTED near the front instead (see _directive_insert_at below), which is
+    # the same lesson already learned for the persona and now for the capability manifest.
+    _directives: list[str] = []
 
     # Aspect behavioral instructions
     try:
         from services.personality.aspect_behavior import build_behavior_block as _ab_block
         _behavior_block = _ab_block(aspect)
         if _behavior_block:
-            system_instructions = system_instructions + "\n\n" + _behavior_block
+            _directives.append(_behavior_block)
     except Exception as _ab_e:
         logger.debug("aspect_behavior block inject failed: %s", _ab_e)
+
+    # Rank gating (captured above, where the maturity state is read) — a directive, not persona prose.
+    if _early_growth_directive:
+        _directives.append(_early_growth_directive)
 
     # Maturity unlocks: inject current rank capabilities
     try:
@@ -880,7 +958,7 @@ def build_system_head(
         _me_state = _me_get_state()
         _unlocks_str = _me_unlocks_text({"rank": _me_state.rank})
         if _unlocks_str:
-            system_instructions = system_instructions + "\n\n" + _unlocks_str
+            _directives.append(_unlocks_str)
     except Exception as _unlock_e:
         logger.debug("maturity unlocks inject failed: %s", _unlock_e)
 
@@ -892,7 +970,7 @@ def build_system_head(
             _evo = get_personality_evolution()
             _evolved_hints = _evo.get_evolved_hints(_evo_aspect_id)
             if _evolved_hints:
-                system_instructions = system_instructions + "\n\n" + _evolved_hints
+                _directives.append(_evolved_hints)
     except Exception as _evo_e:
         logger.debug("personality evolution hints inject failed: %s", _evo_e)
 
@@ -918,7 +996,7 @@ def build_system_head(
             from services.infrastructure.german_mode import get_profile as _gprof
             _glevel = _gprof().get("level", "B1")
             _german_block = build_german_system_block(_glevel)
-            system_instructions = system_instructions + "\n\n" + _german_block
+            _directives.append(_german_block)
     except Exception as _ge:
         logger.debug("german_mode inject failed: %s", _ge)
 
@@ -927,7 +1005,7 @@ def build_system_head(
         from services.prompts.response_language import build_language_block, response_language_from_config
         _lang_block = build_language_block(response_language_from_config(cfg if isinstance(cfg, dict) else {}))
         if _lang_block:
-            system_instructions = system_instructions + "\n\n" + _lang_block
+            _directives.append(_lang_block)
     except Exception as _le:
         logger.debug("response_language inject failed: %s", _le)
 
@@ -937,10 +1015,68 @@ def build_system_head(
             from services.personality.emotional_presence import mood_hint
             _mh = mood_hint()
             if _mh:
-                system_instructions = system_instructions + "\n\n" + _mh
+                _directives.append(_mh)
     except Exception as _me:
         logger.debug("emotional_presence inject failed: %s", _me)
 
+    # Hardware capability injection. Moved up from after the budget calculation for the same reason as the
+    # six above — it was the seventh tail-append and shared their fate. Nothing between here and there read
+    # `system_instructions`, so the move is behaviour-preserving apart from no longer being discarded.
+    try:
+        from services.infrastructure.hardware_detect import get_capability_summary as _hw_cap_summary
+        _hw_summary = _hw_cap_summary()
+        if _hw_summary:
+            _directives.append(_hw_summary)
+    except Exception as _hw_e:
+        logger.debug("hardware_probe capability_summary inject skipped: %s", _hw_e)
+
+    # Order the front of the prompt by what a truncation must never reach, NOT by what reads nicely.
+    # `sys_parts` is joined and then TAIL-truncated, so a block's survival is decided entirely by how much
+    # sits in FRONT of it. The persona/voice contract is 590 tokens on the real Morrigan aspect, so leaving
+    # it ahead of the per-turn directives meant protecting a 73-token language block cost ~663 tokens of
+    # budget — which is what forced the head widening to fire on ordinary turns and inflated every prompt
+    # by ~80%. Style yields to operative instruction. The order is therefore:
+    #
+    #   core line -> per-turn directives -> capability manifest (only when asked) -> persona -> identity
+    #
+    # The core line ("You are Layla...") still comes first. What moved behind the directives is the voice
+    # contract, and on a capability turn also behind the manifest — measured: with the persona in front,
+    # the manifest lost its final line ("Do not recite this list.") on the real aspect, which is the one
+    # instruction stopping a 3B from reciting the manifest verbatim at the user.
+    # `and not _is_identity_question(...)`: THIS is the site that decides. The matching guard on the
+    # persona trim (~line 630) calls itself "the second lock", but it was not load-bearing — measured by
+    # simulating the regression it defends against (capability regex re-broadened to swallow identity
+    # questions) and diffing the result: lock-present and lock-removed produced BYTE-IDENTICAL heads for
+    # "who are you?", "what are you" and "tell me about yourself", with "## Core" absent from both. The
+    # persona was lost either way, because injecting the ~700-token manifest here is what pushes it out
+    # of the budget — trimming the persona upstream only changed which tokens were already doomed.
+    #
+    # Under today's patterns this changes nothing: the identity/capability split in prompt_builder means
+    # `_is_capability_question` is already False for these questions. It exists so that re-broadening
+    # that regex cannot silently take the persona away again — which is what the other lock claimed to
+    # do and did not.
+    _cap_manifest = ""
+    _cap_goal_lower = (goal or "").lower()
+    if _is_capability_question(_cap_goal_lower) and not _is_identity_question(_cap_goal_lower):
+        _cap_manifest = _capability_manifest_core(REPO_ROOT)
+    _front: list[str] = list(_directives)
+    if _cap_manifest and _cap_manifest in sys_parts:
+        sys_parts.remove(_cap_manifest)
+        _front.append(_cap_manifest)
+    if _front:
+        sys_parts[1:1] = _front
+
+    # Tokens of everything that MUST survive truncation: the core line, the per-turn directives and — on a
+    # capability question — the manifest. Deliberately NOT the persona: it is the largest block in the
+    # prefix and the least operative, and including it is what made the widening unaffordable. Measured,
+    # not assumed, so a manifest that grows cannot silently start getting cut again.
+    _protected_prefix_tokens = 0
+    try:
+        _protected_prefix_tokens = token_estimate("\n\n".join(sys_parts[: 1 + len(_front)]))
+    except Exception as _pp_e:
+        logger.debug("protected prefix measure failed: %s", _pp_e)
+
+    system_instructions = "\n\n".join(sys_parts)
 
     # Memory sections (canonical order)
     from services.context.context_merge_layers import MEMORY_SECTION_ORDER
@@ -1272,14 +1408,7 @@ def build_system_head(
         except Exception as _tb_e:
             logger.debug("tiered prompt budget skipped: %s", _tb_e)
 
-    # Hardware capability injection
-    try:
-        from services.infrastructure.hardware_detect import get_capability_summary as _hw_cap_summary
-        _hw_summary = _hw_cap_summary()
-        if _hw_summary:
-            system_instructions = (system_instructions or "") + "\n\n" + _hw_summary
-    except Exception as _hw_e:
-        logger.debug("hardware_probe capability_summary inject skipped: %s", _hw_e)
+    # (Hardware capability injection moved up into the _directives list — it was the seventh tail-append.)
 
     # Section dict assembly
     # Durable facts (name, timezone, tooling, project roots) are HARD ground truth.
@@ -1354,7 +1483,112 @@ def build_system_head(
         _head_ratio = float(cfg.get("system_head_budget_ratio", 0.35) or 0.35)
         _head_ratio = max(0.15, min(0.55, _head_ratio))
         n_ctx = max(1024, int(_n_ctx * _head_ratio))
-        assembled, _ctx_metrics = build_system_prompt(sections, n_ctx=n_ctx, budgets=budgets, reserve_for_response=512)
+        # Two clamps stand between the protected prefix and the model, and BOTH have to give.
+        #  (a) the head window: build_system_prompt clamps every section to `remaining`, which starts at
+        #      (n_ctx - 512) = 512 on a 2048-ctx box — less than the 757-token manifest on its own.
+        #  (b) the section budget: `system_instructions` is nominally capped at 800, also less than the
+        #      manifest plus the persona in front of it.
+        # Fixing the ordering alone would therefore only have changed *where* the manifest got cut. Widen
+        # both to the MEASURED prefix, for this turn only.
+        #
+        # The bound is what the window can actually SPARE — n_ctx minus the reply and minus the conversation
+        # block the caller appends after us — not a fixed fraction. A fraction was the first attempt and it
+        # was wrong in both directions: 0.75 of a 2048 window is 1536, which is simultaneously too little
+        # (the CI config carries two more directive blocks than this box, and those ~40 extra tokens pushed
+        # the manifest's last line out) and too much (with a long conversation, 1536 of head overruns the
+        # context). One measured ceiling replaces both guesses.
+        _max_head_tokens = 0
+        _reserve_for_response = 512
+        # What the sections AFTER system_instructions need. The user's own question lives in
+        # `current_goal` and is ~11 tokens; it is the single most important thing in the prompt and it
+        # must never be the thing that yields. Measured, not guessed, and subtracted from the window so
+        # the manifest gives up its tail before the goal gives up a word.
+        _downstream = 24 + sum(
+            token_estimate(_s) for _s in (current_goal, durable_facts_block, workspace_context) if _s
+        )
+        # How many tokens `system_instructions` gets on an ORDINARY turn — no widening at all. This is
+        # the comparison the widening was missing. `_protected_prefix_tokens` is truthy on EVERY turn
+        # (it is core line + persona + per-turn directives, and those always exist), so gating on its
+        # truthiness fired the widening always: `reserve_for_response` went 512 -> 0 on every ordinary
+        # turn, which doubles build_system_prompt's `total_budget` from (n_ctx - 512) to n_ctx. Measured
+        # cost on the live config: an ordinary coding head went 752 -> 1339 tokens (+78%) to deliver
+        # nothing extra — the manifest was not even on those turns — and pushed head+conversation past
+        # n_ctx at convo_turns=12. So: widen only when the protected content genuinely does NOT fit.
+        _baseline_budgets = budgets if budgets is not None else _resolve_default_budgets(n_ctx)
+        _baseline_si_cap = min(
+            int(_baseline_budgets.get("system_instructions", 800) or 0),
+            max(0, max(512, n_ctx - _reserve_for_response) - _downstream),
+        )
+        # The ordinary case: the core line plus the per-turn directives (aspect behaviour, the rank gate,
+        # the BL-160 language block, hardware) total ~207 tokens and fit the ordinary budget several times
+        # over, so no widening happens and an ordinary turn costs exactly what it cost before this slice
+        # existed — measured identical, 829 tokens, section for section.
+        #
+        # This only works because the prefix was REORDERED above so the persona sits behind the
+        # directives. While the 590-token voice contract was in front of them, protecting a 73-token
+        # language directive cost 663 tokens of protected prefix, this comparison came out true on every
+        # turn, and the widening fired always. Sizing the gate correctly and ordering the prefix
+        # correctly are the same fix; neither works alone.
+        #
+        # A capability turn adds the ~889-token manifest to that prefix, which genuinely does not fit,
+        # and only then is the widening the right trade.
+        if _protected_prefix_tokens > _baseline_si_cap:
+            # Everything here is in the SAME unit — tokens of final head — so the arithmetic composes.
+            # The first version did not: it bounded the window by (n_ctx - reply - conversation) and then
+            # let build_system_prompt subtract ANOTHER 512 for the response on top, reserving the reply
+            # twice and leaving ~500 tokens of the window unspent. Measured cost of that double-reserve:
+            # `system_instructions` was clamped to 1127 when it needed 1247, and the manifest lost its last
+            # three BROKEN disclosures — she would have claimed LAN offload and a network-blocking sandbox.
+            # So: compute the ceiling once, subtract the output-discipline footer (appended after assembly
+            # and therefore invisible to the assembler), and pass reserve_for_response=0 because the reply
+            # is already accounted for in the ceiling.
+            _footer_tokens = token_estimate(_append_output_discipline("", cfg))
+            # No extra safety margin here: the reply reserve is subtracted in full and the conversation
+            # estimate is deliberately conservative (3.5 chars/token against a measured ~5), so the slack
+            # is already inside those two terms. An arbitrary extra margin on top cost exactly the last
+            # 35 tokens of the manifest — the "approval gate is the real protection" line.
+            _max_head_tokens = max(
+                512, _n_ctx - _reply_reserve_tokens(cfg) - _convo_block_tokens(cfg, conversation_history)
+            )
+            _needed_head = int(_protected_prefix_tokens) + _downstream + 64
+            _window_ceiling = max(256, _max_head_tokens - _footer_tokens)
+            n_ctx = max(n_ctx, min(_window_ceiling, _needed_head))
+            _reserve_for_response = 0
+            if budgets is None:
+                # Resolve the same defaults build_system_prompt would have picked for this window rather
+                # than assuming DEFAULT_BUDGETS — on a small model it chooses a much tighter dict, and
+                # substituting the roomy one here would quietly inflate every other section too.
+                budgets = _resolve_default_budgets(n_ctx)
+            # Raise the section budget to hold the protected prefix — but never past what leaves the
+            # downstream sections whole. Without the second clamp the window ceiling binds first and
+            # `system_instructions` takes everything up to it, chopping "Current goal: <the user's actual
+            # question>" mid-phrase. The manifest losing its closing line is a cost; the model not knowing
+            # what was asked is a broken turn.
+            budgets["system_instructions"] = max(
+                int(budgets.get("system_instructions", 800) or 0),
+                min(int(_protected_prefix_tokens) + 32, max(256, n_ctx - _downstream)),
+            )
+
+        def _assemble(window: int) -> tuple[str, dict]:
+            _asm, _m = build_system_prompt(
+                sections, n_ctx=window, budgets=budgets, reserve_for_response=_reserve_for_response,
+            )
+            _h = _asm if _asm.strip() else "You are Layla, a bounded AI companion and engineering agent."
+            if cfg.get("custom_system_prefix"):
+                _h = _h + "\n\n" + cfg["custom_system_prefix"].strip()
+            return _append_output_discipline(_h, cfg), _m
+
+        head, _ctx_metrics = _assemble(n_ctx)
+        if _max_head_tokens and token_estimate(head) > _max_head_tokens:
+            # Not correctable from here, so say so rather than pretending. The head has a structural floor
+            # (the window never goes below 1024, and the output-discipline footer adds ~320 tokens after
+            # assembly), so once the conversation is long enough the head cannot shrink to fit no matter
+            # what this function does — that floor predates the widening and is the same on an ordinary
+            # turn. Logged because the alternative is a silent context overflow with no breadcrumb.
+            logger.debug(
+                "system head %d tok exceeds the %d tok this window can spare — conversation block may overflow n_ctx",
+                token_estimate(head), _max_head_tokens,
+            )
         if _ctx_metrics.get("truncated_sections") or _ctx_metrics.get("dropped_sections"):
             logger.debug(
                 "context budget: truncated=%s dropped=%s total_tok=%d",
@@ -1362,10 +1596,7 @@ def build_system_head(
                 _ctx_metrics.get("dropped_sections"),
                 _ctx_metrics.get("total_tokens", 0),
             )
-        head = assembled if assembled.strip() else "You are Layla, a bounded AI companion and engineering agent."
-        if cfg.get("custom_system_prefix"):
-            head = head + "\n\n" + cfg["custom_system_prefix"].strip()
-        return _append_output_discipline(head, cfg)
+        return head
 
     # Legacy path: no budget enforcement
     parts = [system_instructions]

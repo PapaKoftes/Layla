@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import sqlite3
 import threading
 from pathlib import Path
@@ -16,21 +17,56 @@ from typing import Any
 
 logger = logging.getLogger("layla")
 
-_DB_PATH = Path.home() / ".layla" / "skill_registry.db"
+def _db_path() -> Path:
+    """`<LAYLA_DATA_DIR or ~>/.layla/skill_registry.db`.
+
+    Was `Path.home() / ".layla" / "skill_registry.db"` evaluated at import. Two defects:
+
+      1. It ignored LAYLA_DATA_DIR, so an installed / multi-profile run wrote to the invoking
+         user's home rather than the configured data dir.
+      2. It made the test suite run `PRAGMA journal_mode=WAL`, `CREATE TABLE IF NOT EXISTS` and a
+         COMMITTED `UPDATE` against the operator's live registry (materialising -shm/-wal beside
+         it). That UPDATE matched zero rows only by luck — the operator's `installed_skills` table
+         happens to be empty. Install a pack named `temp-converter` and the suite would rewrite
+         its `last_run`.
+
+    Resolved per call, not at import, so LAYLA_DATA_DIR is honoured regardless of import order.
+    """
+    raw = (os.environ.get("LAYLA_DATA_DIR") or "").strip()
+    root = Path(raw).expanduser().resolve() if raw else Path.home()
+    return root / ".layla" / "skill_registry.db"
+
+
+# `None` means "resolve per call"; tests may pin it to a concrete tmp path.
+_DB_PATH: Path | None = None
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
+# Which path `_conn` was opened against, so a changed LAYLA_DATA_DIR (or a test that pins
+# `_DB_PATH`) is not silently served the previously cached connection to the old file.
+_conn_path: str | None = None
 
 
 def _get_conn() -> sqlite3.Connection:
     """Get or create the registry database connection."""
-    global _conn
-    if _conn is not None:
+    global _conn, _conn_path
+    path = Path(_DB_PATH or _db_path())
+    target = str(path)
+    if _conn is not None and _conn_path == target:
         return _conn
     with _lock:
-        if _conn is not None:
+        if _conn is not None and _conn_path == target:
             return _conn
-        _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _conn = sqlite3.connect(str(_DB_PATH), check_same_thread=False)
+        if _conn is not None:
+            try:
+                _conn.close()
+            except Exception:
+                pass
+            _conn = None
+        # Directory derived from the RESOLVED path, never a separate constant — that is what
+        # makes pinning `_DB_PATH` actually isolate the module (tunnel_audit's lesson).
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _conn_path = target
+        _conn = sqlite3.connect(target, check_same_thread=False)
         _conn.execute("PRAGMA journal_mode=WAL")
         _conn.execute("""
             CREATE TABLE IF NOT EXISTS installed_skills (
@@ -149,8 +185,9 @@ def update_last_run(name: str) -> None:
 
 def close_db() -> None:
     """Close the database connection."""
-    global _conn
+    global _conn, _conn_path
     with _lock:
         if _conn:
             _conn.close()
             _conn = None
+        _conn_path = None
