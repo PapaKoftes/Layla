@@ -17,11 +17,15 @@
     "agent/titles.txt",
     "agent/agent/titles.txt",
     "layla.db",
-    "agent/layla.db"
+    "agent/layla.db",
+    ".planning/audit/.ci-gate-rc.bak",
+    ".planning/audit/.ci-gate-rc.sha",
+    ".planning/audit/.ci-gate.lock"
   ],
+  "_protected_note": "The .ci-gate-rc.bak entry is NOT bookkeeping: while a gate runs it is a byte-identical copy of agent/runtime_config.json (secret-shaped fields included). It is gitignored too, but it is listed here because the loop is told '.planning/audit/* is safe to commit' — belt and braces on the one file in that directory that is operator state.",
   "test_cmd": "cd agent && PYTHONIOENCODING=utf-8 ../.venv-test/Scripts/python.exe -m pytest -q -p no:cacheprovider",
   "ci_test_cmd": "bash .planning/audit/ci-gate.sh",
-  "_ci_gate_note": "AUTHORITATIVE green-gate. `test_cmd` runs against the operator's live runtime_config.json, which both MASKS CI-only failures and INTRODUCES operator-only artifacts — a green run there does NOT mean CI is green. `ci_test_cmd` reproduces CI's exact clean-stub config (CI=true, n_ctx=2048, same marker expression) and always restores the operator config. The FINAL gate before pushing MUST be ci_test_cmd: the CI-config failing set must be a SUBSET of ciBaselineFailures (no NEW failures) — do not push on the operator suite alone. It prints a machine-readable `CI_GATE_RESULT exit=<code> failed=<n>` last line plus each `FAILED ...` node id.",
+  "_ci_gate_note": "AUTHORITATIVE green-gate. `test_cmd` runs against the operator's live runtime_config.json, which both MASKS CI-only failures and INTRODUCES operator-only artifacts — a green run there does NOT mean CI is green. `ci_test_cmd` reproduces CI's exact clean-stub config (CI=true, n_ctx=2048, same marker expression) and always restores the operator config. The FINAL gate before pushing MUST be ci_test_cmd: the CI-config failing set must be a SUBSET of ciBaselineFailures (no NEW failures) — do not push on the operator suite alone. It prints a machine-readable `CI_GATE_RESULT status=<STATUS> exit=<code> passed=<n> failed=<n> errors=<n>` line plus each `FAILED ...` node id. READ `status=` AND READ THE **LAST** SUCH LINE — `failed=0` alone is NOT green: a session-killing timeout, a collapsed collection, or a failed config restore can all print failed=0, and the restore line is emitted AFTER the normal one from the EXIT trap. Only `status=GREEN` on the last line (with exit 0) is a pass.",
   "scoped_test_hint": "For a scoped check, run only the test file(s) touched by the fix, e.g. `cd agent && ../.venv-test/Scripts/python.exe -m pytest tests/test_X.py -q`. Run the FULL test_cmd once for a quick operator-config pass, then run ci_test_cmd once as the authoritative gate before pushing.",
   "known_config_artifact_tests": [
     "test_defaults_are_safe",
