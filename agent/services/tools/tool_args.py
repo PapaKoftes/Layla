@@ -164,6 +164,12 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
         "required": [],
         "types": {"mcp_server": str, "tool_name": str, "arguments": dict},
     },
+    "run_skill_pack": {
+        "required": ["pack"],
+        # payload/args are deliberately tolerant of both shapes here because the impl is too
+        # (a JSON string or an object; an argv list or a bare string) — the two layers must agree.
+        "types": {"pack": str, "payload": (str, dict), "args": (str, list), "timeout_seconds": int},
+    },
     "notebook_edit_cell": {
         "required": ["path"],
         "types": {"path": str, "cell_index": int, "source": str},

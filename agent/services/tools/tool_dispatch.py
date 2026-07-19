@@ -690,6 +690,12 @@ _RUN_CLASS_INTENTS = frozenset({
     "run_tests", "pip_install", "docker_run",
     "git_push", "git_clone", "git_worktree_add",
     "geometry_execute_program", "generate_gcode", "github_pr", "send_email",
+    # run_skill_pack executes a third-party pack's Python entry point at the
+    # operator's full privilege — the most literally run-class tool there is. It
+    # was omitted, so a write-only grant sailed through this gate and the turn
+    # continued; only the executor's own flag check stopped it. That is one layer
+    # of defence where the comment above promises two.
+    "run_skill_pack",
 })
 
 
