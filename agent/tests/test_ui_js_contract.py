@@ -221,3 +221,40 @@ def test_message_render_uses_stored_aspect_on_reload():
     # current session aspect — a past regression.
     js = _read("components/conversations.js")
     assert "m.aspect_id" in js, "reloaded messages must pass the stored m.aspect_id to addMsg"
+
+
+def test_setup_wizard_renders_the_read_back_not_its_own_inference():
+    """The wizard must display the SERVER's per-feature verdict, not "what I asked for minus
+    failed packages". A feature auto-tune reverted has no package to blame, so an inferred
+    summary counted it as enabled while the palette hid it and nothing explained why."""
+    js = _read("components/setup-profiles.js")
+    # /setup/apply's read-back fields, and the per-feature reason actually reaching the DOM.
+    assert "d.not_enabled" in js, "wizard must read the server's not_enabled[] verdict"
+    assert "b.reason" in js, "each blocked feature must render its owner's reason"
+    assert "b.owner" in js, "the owner must be shown, not just the reason text"
+    # It must NOT go back to counting the deferral list as the whole story.
+    assert "_blocked" in js and "setupwiz-blocked" in js, "the 'not switched on' section must exist"
+
+
+def test_setup_wizard_treats_a_lost_response_as_unknown_not_as_failure():
+    """F2: `catch (e)` fired for anything that stopped the reply arriving, and rendered ✕ plus
+    "the features whose packages failed were NOT switched on". Proved false live — the server
+    completed the install while the client had received nothing."""
+    js = _read("components/setup-profiles.js")
+    # The whole transport-failure handler: from the catch to the end-of-loop read-back.
+    catch = js[js.index("} catch (e) {", js.index("_runInstalls")):]
+    catch = catch[:catch.index("FINAL READ-BACK")]
+    assert "state: 'unknown'" in catch, "a transport failure must not be reported as a definite failure"
+    assert "state: 'fail'" not in catch, "a lost response is not evidence the install failed"
+    # And only a POSITIVE re-read is conclusive: a single immediate check races the server,
+    # which keeps installing after the connection drops.
+    assert "_confirmFromServer" in catch, "the outcome must be re-read from the server"
+    assert "setTimeout" in catch, "the re-read must be polled, not a single racing check"
+
+
+def test_setup_state_unavailable_features_binding():
+    """The re-read reads /setup/state's explanation payload — the field routers/setup_profiles.py
+    returns. Both sides must move together."""
+    js = _read("components/setup-profiles.js")
+    assert "unavailable_features" in js
+    assert "enabled_features" in js

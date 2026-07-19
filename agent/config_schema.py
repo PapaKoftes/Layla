@@ -117,6 +117,17 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "default": True,
         "hint": "Hardware-adaptive optimization: auto-detect the machine tier and set inference + pipeline weight (context size, prompt budget, response length / completion_max_tokens, extra LLM calls, timeouts) for the best speed/quality on ANY hardware. Turn off for fully manual control. Lock individual keys via auto_tune_locked_keys.",
     },
+    {
+        # The documented escape hatch from auto-tune was NOT a schema key, so it was
+        # unreachable from both the UI and POST /settings: every hint that said "add it to
+        # auto_tune_locked_keys" described an action no user could perform, and there was no
+        # way at all to opt a single key out of auto-tune short of disabling the whole suite.
+        "key": "auto_tune_locked_keys",
+        "type": "list",
+        "category": "limits",
+        "default": [],
+        "hint": "Comma-separated list of settings auto-tune must NOT overwrite — the per-key escape hatch. Only auto-tune-managed keys can be locked; anything else is reported back as rejected.",
+    },
     {"key": "max_tool_calls", "type": "number", "category": "limits", "default": 5, "min": 1, "max": 50, "hint": "Max tool calls per agent turn (non-research)."},
     {"key": "max_runtime_seconds", "type": "number", "category": "limits", "default": 900, "min": 5, "max": 3600, "hint": "Max wall time per agent turn (seconds). Align with ui_agent_stream_timeout_seconds so the server does not stop before the browser."},
     {"key": "tool_call_timeout_seconds", "type": "number", "category": "limits", "default": 60, "min": 5, "max": 600, "hint": "Max seconds a single tool call may run before being killed."},
@@ -391,7 +402,88 @@ def coerce_and_clamp(key: str, value: Any) -> Any:
         if isinstance(value, bool):
             return value
         return str(value).strip().lower() in ("true", "1", "yes", "on")
+    if t == "list":
+        return normalize_list_value(value)
     return value
+
+
+def describe_adjustment(key: str, requested: Any, stored: Any) -> str | None:
+    """How `stored` differs from what the caller asked for — or None when it honoured it.
+
+    `coerce_and_clamp` silently rewrites out-of-range and malformed input, and the save path
+    then appended the key to `saved` unconditionally. So typing 500 into "Max tool calls"
+    (max 50) produced a green "Settings saved" with 50 on disk, and {"max_tool_calls":
+    "not-a-number"} produced {"ok": true, "saved": [...]} with the value silently replaced by
+    the schema default. The write happened, so it is not a rejection; the value is not the
+    user's, so it is not a clean save. It needs its own name:
+
+      'clamped'    — a number outside [min, max], pinned to the bound
+      'coerced'    — unparseable for its type, replaced by the schema default
+      'normalized' — same value, tidier form (" a , b " → ["a","b"]); NOT reported
+
+    Type-equivalent input (5 vs 5.0, "true" vs True) is a clean save, not an adjustment —
+    reporting it would bury the two cases that matter in noise.
+    """
+    entry = _SCHEMA_BY_KEY.get(key)
+    if entry is None or requested is stored:
+        return None
+    t = entry.get("type")
+    if t == "number":
+        if isinstance(requested, bool):
+            return "coerced"
+        try:
+            num = float(requested)
+        except (ValueError, TypeError):
+            # Unparseable → coerce_and_clamp substituted the schema default.
+            return "coerced"
+        if float(stored) == num:
+            return None
+        lo, hi = entry.get("min"), entry.get("max")
+        if (lo is not None and num < float(lo)) or (hi is not None and num > float(hi)):
+            return "clamped"
+        return "coerced"  # e.g. 2.7 → 2 on an int field
+    if t == "boolean":
+        return None if coerce_and_clamp(key, requested) == stored else "coerced"
+    if t == "list":
+        return None if normalize_list_value(requested) == stored else "coerced"
+    return None if requested == stored else "coerced"
+
+
+def normalize_list_value(value: Any) -> list[str]:
+    """Coerce a `list`-typed setting to a de-duplicated list of non-empty strings.
+
+    Accepts a real list or the comma/whitespace-separated string a text input produces,
+    so the same key is writable from the UI, the API and a hand-edited config file.
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        parts = [p.strip() for p in value.replace("\n", ",").replace(" ", ",").split(",")]
+    elif isinstance(value, (list, tuple, set)):
+        parts = [str(p).strip() for p in value]
+    else:
+        return []
+    out: list[str] = []
+    for p in parts:
+        if p and p not in out:
+            out.append(p)
+    return out
+
+
+def auto_tune_managed_keys() -> set[str]:
+    """Editable settings that hardware auto-tune OVERWRITES on every config load.
+
+    These are the keys where a UI edit is silently reverted unless the key is locked —
+    the reason POST /settings must report them rather than answering a blanket ok:true.
+    Imported lazily: auto_tune pulls in hardware detection, and config_schema must stay
+    importable by everything (including that module) without a cycle.
+    """
+    try:
+        from services.infrastructure.auto_tune import PROFILE_KEYS
+
+        return set(PROFILE_KEYS) & get_editable_keys()
+    except Exception:
+        return set()
 
 
 def get_schema_by_category() -> dict[str, list[dict]]:
@@ -462,14 +554,42 @@ def humanize_key(key: str) -> str:
 
 
 def get_schema_for_api() -> dict[str, Any]:
-    """Schema formatted for GET /settings/schema. Attaches a human-readable label per field."""
-    fields = [{**f, "label": f.get("label") or humanize_key(f["key"])} for f in EDITABLE_SCHEMA]
+    """Schema formatted for GET /settings/schema. Attaches a human-readable label per field,
+    plus WHO OWNS the field.
+
+    Ten editable settings (n_ctx, n_batch, n_gpu_layers, n_threads, hyde_enabled,
+    performance_mode, enable_self_reflection, completion_max_tokens, max_runtime_seconds,
+    tool_call_timeout_seconds) are overwritten by hardware auto-tune on every config load.
+    Editing one used to return ok:true and then silently revert; only ONE of the ten carried
+    any warning at all. `auto_tune_owned` lets the UI mark them and offer the lock, so the
+    control tells the truth about who is in charge of it before the user spends a change on it.
+    """
+    managed = auto_tune_managed_keys()
+    try:
+        import runtime_safety
+
+        locked = set(normalize_list_value(runtime_safety.load_config().get("auto_tune_locked_keys")))
+        tune_on = bool(runtime_safety.load_config().get("auto_tune_enabled", True))
+    except Exception:
+        locked, tune_on = set(), True
+
+    fields = []
+    for f in EDITABLE_SCHEMA:
+        e = {**f, "label": f.get("label") or humanize_key(f["key"])}
+        if f["key"] in managed:
+            e["auto_tune_owned"] = True
+            e["auto_tune_locked"] = f["key"] in locked
+            e["auto_tune_active"] = tune_on and f["key"] not in locked
+        fields.append(e)
     return {
         "categories": list(get_schema_by_category().keys()),
         "fields": fields,
         "config_file": "agent/runtime_config.json",
         "docs": "docs/CONFIG_REFERENCE.md",
         "presets": list(SETTINGS_PRESETS.keys()),
+        "auto_tune_owned_keys": sorted(managed),
+        "auto_tune_enabled": tune_on,
+        "auto_tune_locked_keys": sorted(locked),
     }
 
 
@@ -522,27 +642,112 @@ FEATURE_THEMES: list[dict[str, Any]] = [
 _THEME_FLAG_WHITELIST: set[str] = {k for t in FEATURE_THEMES for k in t["flags"]}
 
 
-def get_feature_themes(cfg: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return the themes with a computed on/off state from the current config."""
+def get_feature_themes(cfg: dict[str, Any],
+                       requested: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Return the themes with an on/off state read back from the EFFECTIVE config.
+
+    C2 — three defects lived in the two lines this replaced.
+
+    (1) `enabled = all(bool(cfg.get(k)) == bool(v) ...)` is the truthiness comparison
+        `flag_satisfied` exists to kill: a flag downgraded to a truthy-but-wrong value (1,
+        "true", "auto") read as ON. The manifest declares a VALUE; ask whether it holds.
+    (2) `managed_flags` was `auto_tune_managed_keys() & flags` — a HARDCODED single-owner
+        list, byte-for-byte the shape route_helpers had just deleted, and structurally blind
+        to MATURITY_GATED_KEYS, security_policy, and every future owner. It now asks
+        `key_owner`, so a theme held off by the maturity gate says so instead of appearing
+        unowned. `managed_flags` is kept (it means what it always meant: the auto-tune-owned
+        subset, which is the subset the lock remedy applies to) but is DERIVED from the
+        registry rather than from a parallel intersection.
+    (3) Packages were never consulted, so "Advanced retrieval & search" reported enabled:true
+        with elasticsearch not installed — a capability advertised over an absent engine.
+
+    A theme is `enabled` only when every flag holds its declared value in the effective config
+    AND every package those flags need is installed.
+    """
+    from install.feature_status import key_missing_packages, key_owner
+    from install.setup_profiles import flag_satisfied
+
     cfg = cfg or {}
+    # Ownership is asked against a config with the lock list neutralised, i.e. "who would hold
+    # this key if you were not already pinning it?" — the question both the ON path (do I need
+    # to take a lock?) and the OFF path (is this lock mine to release?) actually pose. Asking
+    # with the locks in place makes an already-locked key answer "nobody owns me", which is
+    # true only for as long as the lock exists.
+    probe_cfg = {**cfg, "auto_tune_locked_keys": []}
     out = []
     for t in FEATURE_THEMES:
-        enabled = all(bool(cfg.get(k)) == bool(v) for k, v in t["flags"].items())
+        off_flags = [k for k, v in t["flags"].items() if not flag_satisfied(cfg.get(k), v)]
+        missing: list[str] = []
+        for k in t["flags"]:
+            for d in key_missing_packages(k):
+                if d not in missing:
+                    missing.append(d)
+        # `blocked_by` is EVIDENCE, not prediction: a flag is reported as held only when the
+        # config FILE asks for the declared value and the effective config disagrees — the
+        # same write-then-read gap the save path measures, asked without a write.
+        #
+        # The alternative (ask key_owner about every flag that is merely off) reads as "you
+        # cannot turn this on", and that message is wrong wherever an owner blocks a DIFFERENT
+        # path than this one. Driven: `remote_access` is off with no credential, so the
+        # security_policy probe claims it — but that probe describes apply_setup's refusal,
+        # and this surface writes remote_enabled anyway (see residuals). Reporting a
+        # confident, actionable, wrong reason is the failure mode this slice exists to remove,
+        # so an owner has to have actually held the key to be named.
+        owners: list[dict[str, str]] = []
+        if requested:
+            for k in off_flags:
+                if not flag_satisfied(requested.get(k), t["flags"][k]):
+                    continue  # never asked for — it is off because nobody turned it on
+                hit = key_owner(k, cfg)
+                if hit:
+                    owners.append({"key": k, "owner": hit[0], "reason": hit[1]})
+        managed = [k for k in sorted(t["flags"])
+                   if (key_owner(k, probe_cfg) or ("", ""))[0] == "auto_tune"]
         out.append({"key": t["key"], "label": t["label"], "desc": t["desc"],
-                    "flags": list(t["flags"].keys()), "enabled": enabled})
+                    "flags": list(t["flags"].keys()),
+                    "enabled": (not off_flags) and (not missing),
+                    "off_flags": off_flags,
+                    "missing_packages": missing,
+                    "blocked_by": owners,
+                    "managed_flags": managed})
     return out
 
 
-def feature_theme_updates(theme_key: str, enabled: bool) -> dict[str, Any] | None:
+def feature_theme_updates(theme_key: str, enabled: bool,
+                          cfg: dict[str, Any] | None = None) -> dict[str, Any] | None:
     """Return the {flag: value} updates to switch a theme on/off, or None if unknown.
 
     Enabling sets each flag to its theme value; disabling sets it to the opposite. Only
-    flags in the theme's own declared set are returned (whitelist).
+    flags in the theme's own declared set are returned (whitelist) — plus, when the theme
+    owns any auto-tune-managed flag, an updated `auto_tune_locked_keys` so the setting the
+    user just asked for survives the next config load instead of being reverted under them.
     """
     t = next((t for t in FEATURE_THEMES if t["key"] == theme_key), None)
     if not t:
         return None
-    return {k: (bool(v) if enabled else (not bool(v))) for k, v in t["flags"].items()}
+    updates: dict[str, Any] = {k: (bool(v) if enabled else (not bool(v))) for k, v in t["flags"].items()}
+
+    # C2: was `auto_tune_managed_keys() & set(t["flags"])` — the last parallel owner list on
+    # these surfaces. It is now the registry's answer, asked with the lock list neutralised so
+    # the OFF path can still recognise (and release) a lock the ON path took. Only auto-tune's
+    # keys appear here because the lock is auto-tune's OWN remedy — auto_tune_locked_keys
+    # cannot unlock a maturity-gated key, and pretending otherwise would send the operator to
+    # a control that does nothing. The other owners are not silenced: they are reported by the
+    # read-back in the POST handler, which is where an unfixable block belongs.
+    from install.feature_status import key_owner
+
+    probe_cfg = {**(cfg or {}), "auto_tune_locked_keys": []}
+    managed = {k for k in t["flags"]
+               if (key_owner(k, probe_cfg) or ("", ""))[0] == "auto_tune"}
+    if managed:
+        current = normalize_list_value((cfg or {}).get("auto_tune_locked_keys"))
+        if enabled:
+            updates["auto_tune_locked_keys"] = current + [k for k in sorted(managed) if k not in current]
+        else:
+            # Turning the theme off hands the key back to auto-tune — leaving it locked would
+            # pin a hand value the user never chose.
+            updates["auto_tune_locked_keys"] = [k for k in current if k not in managed]
+    return updates
 
 
 def apply_settings_preset(existing_cfg: dict[str, Any], preset_name: str) -> tuple[dict[str, Any] | None, list[str]]:

@@ -79,6 +79,7 @@
 | 67 | POST | `/setup/auto` | settings | -- | remote | Idempotent auto-setup |
 | 68 | GET | `/settings` | settings | -- | remote | Get all editable settings |
 | 69 | GET | `/settings/schema` | settings | -- | remote | Config schema for UI |
+| 69a | GET | `/settings/not_in_force` | settings | -- | remote | Saved settings the app is not honouring, with owner + reason |
 | 70 | GET | `/settings/appearance` | settings | -- | remote | Get appearance settings |
 | 71 | POST | `/settings/appearance` | settings | raw dict | remote | Save appearance settings |
 | 72 | POST | `/settings` | settings | raw dict | remote | Update runtime_config.json |

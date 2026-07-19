@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import queue
@@ -417,6 +418,20 @@ def get_settings():
     return out
 
 
+@router.get("/settings/not_in_force")
+async def get_settings_not_in_force():
+    """Which saved settings the running app is NOT honouring, and who holds each one.
+
+    C3. The read-back existed only as an answer to a write, so the panel could show the amber
+    warning only in the response to the save that touched that key — and lost it on the next
+    save of anything else. This makes "not in force" a state the panel can LOAD, so a key
+    held by auto-tune stays marked until it is actually in force, whatever else gets saved.
+    """
+    from services.infrastructure.route_helpers import not_in_force_report
+
+    return await asyncio.to_thread(not_in_force_report)
+
+
 @router.get("/settings/schema")
 def get_settings_schema():
     """Return config schema for UI."""
@@ -427,31 +442,84 @@ def get_settings_schema():
 
 @router.get("/settings/themes")
 def get_feature_themes_route():
-    """Feature areas (grouped capabilities) with their current on/off state."""
-    from config_schema import get_feature_themes
+    """Feature areas (grouped capabilities) with their current on/off state.
 
-    return {"ok": True, "themes": get_feature_themes(_rs.load_config())}
+    Both configs, deliberately: load_config() is what is IN FORCE (which decides the
+    checkbox), the file is what was REQUESTED (which is what makes "you asked for this and
+    an owner is holding it" provable rather than guessed).
+    """
+    from config_schema import get_feature_themes
+    from services.infrastructure.route_helpers import raw_config_file
+
+    return {"ok": True, "themes": get_feature_themes(_rs.load_config(), raw_config_file())}
 
 
 @router.post("/settings/themes")
 async def apply_feature_theme_route(req: Request):
     """Switch a feature area on/off. Body: {key: str, enabled: bool}. Only the theme's own
-    flags are written (whitelist), so this can never set an arbitrary config key."""
+    flags are written (whitelist), so this can never set an arbitrary config key.
+
+    C2. This returned {"ok":true,"key":...,"enabled":<what you asked for>} the moment the
+    write landed — the same intent-as-outcome lie POST /settings had one function away. The
+    checkbox renders from the EFFECTIVE config, so a flag an owner reverts snapped back the
+    next time the panel opened, with a green success toast still fresh over it. `enabled` is
+    now the theme's state read back OUT of the effective config, and the per-flag read-back
+    rides along so the operator learns WHO holds it and what to do.
+    """
     try:
         body = await req.json()
     except Exception:
         return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
     key = str((body or {}).get("key") or "").strip()
     enabled = bool((body or {}).get("enabled"))
-    from config_schema import feature_theme_updates
-    updates = feature_theme_updates(key, enabled)
+    from config_schema import feature_theme_updates, get_feature_themes
+    from services.infrastructure.route_helpers import raw_config_file, readback
+
+    cfg = _rs.load_config()
+    updates = feature_theme_updates(key, enabled, cfg)
     if updates is None:
         return JSONResponse({"ok": False, "error": "unknown theme"}, status_code=400)
     try:
         # editable_only=False: some theme flags (cluster_enabled, scheduler_study_enabled) are
         # not individually in EDITABLE_SCHEMA. Safe because `updates` is the theme whitelist.
         saved = _rs.save_config_keys(updates, editable_only=False, clamp=False)
-        return JSONResponse({"ok": True, "key": key, "enabled": enabled, "saved": saved})
+        # The flags only — auto_tune_locked_keys is the remedy this write took, not a
+        # capability the operator toggled, and reporting it as a not-in-force setting would
+        # be noise on a key that did exactly what it was asked.
+        flags = [k for k in saved if k != "auto_tune_locked_keys"]
+        rb = readback({k: updates[k] for k in flags}, order=flags)
+        # The theme's state as the running app now sees it — flags AND package presence.
+        row = next((t for t in get_feature_themes(rb["cfg"], raw_config_file())
+                    if t["key"] == key), None)
+        # Report the auto-tune lock the theme had to take, so the effect is visible rather
+        # than a hidden side effect of a checkbox.
+        locked = updates.get("auto_tune_locked_keys")
+        out = {
+            "ok": True,
+            "key": key,
+            # EFFECTIVE, not requested. `requested` is kept beside it so the UI can say
+            # "you asked for on, it is off" rather than silently rendering the difference.
+            "enabled": bool(row["enabled"]) if row else False,
+            "requested": enabled,
+            "in_force": bool(row and row["enabled"] == enabled) and rb["in_force"],
+            "saved": saved,
+            "report": rb["report"],
+            "not_in_force": [r["key"] for r in rb["not_in_force"]],
+            "missing_packages": (row or {}).get("missing_packages") or [],
+            "auto_tune_locked_keys": locked if locked is not None else None,
+        }
+        if rb["not_in_force"]:
+            out["not_in_force_note"] = rb["note"]
+        elif enabled and row and not row["enabled"] and out["missing_packages"]:
+            # Every flag holds, and the capability still is not there: the engine is missing.
+            # Silence here is how the theme advertised elasticsearch search on a box without
+            # the elasticsearch package.
+            out["not_in_force_note"] = (
+                f"the flags were saved and are in force, but this area needs Python "
+                f"package(s) that are not installed: {', '.join(out['missing_packages'])} — "
+                f"until they are, the capability is not available."
+            )
+        return JSONResponse(out)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
@@ -489,6 +557,7 @@ async def save_settings(req: Request):
         body = await req.json()
     except Exception:
         return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+    blocked_remote: list[str] = []
     # Drop redaction-mask placeholders so re-saving the form (which receives a
     # masked secret from GET /settings) never overwrites the real stored secret.
     if isinstance(body, dict):
@@ -509,18 +578,30 @@ async def save_settings(req: Request):
                     "settings: blocked remote write to protected keys from %s: %s",
                     socket_host, sorted(blocked),
                 )
+                # Tell the caller. Popping them here and letting sync_save_settings compute
+                # `rejected` from the (now clean) body reported a refused write as a success.
+                blocked_remote = sorted(blocked)
     # REQ-12: route secret-typed keys into the OS keyring instead of writing them
     # plaintext to runtime_config.json (no-op when no keyring backend exists).
+    #
+    # C5: `_stored` used to be dropped here. persist_secret_keys REMOVES the keys it stored
+    # from the body, so a successful keyring write left `saved` empty and the UI said
+    # "Nothing was saved" over it. Carry the list through and let the save report them.
+    keyring_saved: list[str] = []
     if isinstance(body, dict):
         try:
             from services.safety.secret_store import persist_secret_keys
             body, _stored = persist_secret_keys(body)
+            keyring_saved = list(_stored or [])
             if _stored:
                 logger.info("settings: stored %d secret(s) in the OS keyring (not plaintext)", len(_stored))
         except Exception as e:
             logger.debug("keyring secret persist skipped: %s", e)
     try:
-        return await asyncio.to_thread(sync_save_settings, body)
+        return await asyncio.to_thread(
+            functools.partial(sync_save_settings, body, blocked_keys=blocked_remote,
+                              keyring_keys=keyring_saved)
+        )
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 

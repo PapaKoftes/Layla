@@ -207,7 +207,21 @@ def test_config_schema_and_settings_api():
 
 
 def test_settings_preset_potato_writes_merged_config(tmp_path, monkeypatch):
-    """POST /settings/preset merges potato keys without dropping unrelated config."""
+    """POST /settings/preset merges potato keys without dropping unrelated config.
+
+    C1b — WHY THIS TEST WAS REWRITTEN. It used to read
+
+        assert body.get("ok") is True
+        cfg = json.loads(fake.read_text(...))          # the FILE
+        assert cfg["performance_mode"] == "low"
+
+    …which is why 3736 tests were green while the endpoint reported the potato preset applied
+    with three of its keys reverted. Both halves inspected the wrong thing: `ok` was returned
+    unconditionally from the request's own intent, and reading runtime_config.json asks what
+    was REQUESTED, not what is in force — exactly the inference this slice deletes. The file
+    assertions stay (a preset really must not drop unrelated config), but the OUTCOME is now
+    asserted against the effective config, which is the only place the answer lives.
+    """
     import json
 
     import runtime_safety
@@ -215,6 +229,7 @@ def test_settings_preset_potato_writes_merged_config(tmp_path, monkeypatch):
     fake = tmp_path / "runtime_config.json"
     fake.write_text(json.dumps({"model_filename": "keep.gguf", "temperature": 0.5}), encoding="utf-8")
     monkeypatch.setattr(runtime_safety, "CONFIG_FILE", fake)
+    runtime_safety.invalidate_config_cache()
 
     from fastapi.testclient import TestClient
 
@@ -226,8 +241,8 @@ def test_settings_preset_potato_writes_merged_config(tmp_path, monkeypatch):
     body = r.json()
     assert body.get("ok") is True
     assert body.get("preset") == "potato"
-    assert "performance_mode" in (body.get("applied") or [])
 
+    # The write landed, and unrelated config survived it.
     cfg = json.loads(fake.read_text(encoding="utf-8"))
     assert cfg["model_filename"] == "keep.gguf"
     assert cfg["temperature"] == 0.5
@@ -236,6 +251,82 @@ def test_settings_preset_potato_writes_merged_config(tmp_path, monkeypatch):
     # (no torch); embedder_prefer_quality stays off so it uses the fast static embedder.
     assert cfg["use_chroma"] is True
     assert cfg["embedder_prefer_quality"] is False
+
+    # THE OUTCOME, read back from what the running app sees.
+    runtime_safety.invalidate_config_cache()
+    effective = runtime_safety.load_config()
+    report = body.get("report") or []
+    assert report, "the preset must report per-key what happened, not just that it wrote"
+
+    applied = body.get("applied") or []
+    not_in_force = body.get("not_in_force") or []
+    # `applied` means IN FORCE. Every key it names must actually hold in the effective config.
+    for k in applied:
+        row = next(r for r in report if r["key"] == k)
+        assert effective.get(k) == row["requested"], (
+            f"{k} is reported applied but the effective config says {effective.get(k)!r}"
+        )
+    # …and every key it does NOT name must be one the read-back caught, with a named owner.
+    for k in not_in_force:
+        row = next(r for r in report if r["key"] == k)
+        assert effective.get(k) != row["requested"]
+        assert row["owner"], f"{k} is not in force with no owner named"
+        assert row["reason"]
+    assert set(applied) & set(not_in_force) == set()
+    assert body.get("in_force") is (not not_in_force)
+    # Whatever the hardware tier does to the numeric keys, performance_mode itself has no
+    # owner and must genuinely be in force — otherwise the preset did nothing at all.
+    assert effective.get("performance_mode") == "low"
+    assert "performance_mode" in applied
+
+
+def test_settings_preset_reports_a_key_an_owner_reverts(tmp_path, monkeypatch):
+    """C1, the regression that matters: a preset key an owner overwrites at load time must be
+    reported as NOT in force — never counted as applied.
+
+    Driven live before the fix, POST /settings/preset {"preset":"potato"} answered
+    ok:true with applied=[16 keys] including n_batch (asked 256, in force 512),
+    max_runtime_seconds (asked 20, in force 300) and completion_max_tokens (asked 256, in
+    force 320). This installs an owner for one preset key and asserts the endpoint says so.
+    """
+    import json
+
+    import runtime_safety
+    from config_schema import SETTINGS_PRESETS
+
+    fake = tmp_path / "runtime_config.json"
+    fake.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(runtime_safety, "CONFIG_FILE", fake)
+    runtime_safety.invalidate_config_cache()
+
+    victim = "max_tool_calls"
+    assert victim in SETTINGS_PRESETS["potato"], "pick a key the potato preset actually sets"
+    asked = SETTINGS_PRESETS["potato"][victim]
+
+    real_load = runtime_safety.load_config
+
+    def owned_load():
+        cfg = dict(real_load())
+        cfg[victim] = asked + 5  # an owner overwrites it on every load
+        return cfg
+
+    monkeypatch.setattr(runtime_safety, "load_config", owned_load)
+
+    from fastapi.testclient import TestClient
+
+    from main import app
+
+    body = TestClient(app).post("/settings/preset", json={"preset": "potato"}).json()
+    assert body["ok"] is True, "the write DID happen — ok reports the write"
+    assert body["in_force"] is False
+    assert victim in body["not_in_force"]
+    assert victim not in body["applied"], "a key an owner reverted was counted as applied"
+    row = next(r for r in body["report"] if r["key"] == victim)
+    assert row["outcome"] == "overridden"
+    assert row["effective"] == asked + 5
+    # No probe claims this synthetic owner — the backstop must still refuse to report success.
+    assert row["owner"] and row["reason"]
+    assert "did NOT take effect" in row["reason"] or row["owner"] != "unknown"
 
 
 def test_settings_preset_unknown_returns_400():

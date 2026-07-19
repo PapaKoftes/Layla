@@ -36,11 +36,18 @@ def test_install_unknown_feature():
 def test_apply_persists_selection(monkeypatch):
     # Avoid touching the real config file: stub apply_setup.
     import install.setup_profiles as spm
+    import runtime_safety
 
+    # **kw: /setup/apply now passes exclude_features (the features whose packages are missing
+    # are deferred rather than switched on) — see test_setup_wizard_sequence.py.
     monkeypatch.setattr(
         spm, "apply_setup",
-        lambda p, f, save=True: {"setup_profiles": list(p), "setup_features": ["mcp"] if "coding" in p else []},
+        lambda p, f, save=True, **kw: {"setup_profiles": list(p), "setup_features": ["mcp"] if "coding" in p else []},
     )
+    # `features` is now READ BACK from the effective config rather than echoed out of
+    # apply_setup's return value, so this must stub load_config too — otherwise the assertion
+    # is really about the developer's own runtime_config.json.
+    monkeypatch.setattr(runtime_safety, "load_config", lambda: {"mcp_client_enabled": True})
     r = client.post("/setup/apply", json={"profiles": ["coding"]})
     assert r.status_code == 200
     d = r.json()
