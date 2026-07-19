@@ -20,6 +20,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 AGENT_DIR = Path(__file__).resolve().parent.parent
 
 # Pip package names allowed for automatic install (security: no arbitrary packages).
+#
+# Every dep in install.setup_profiles.FEATURE_MANIFEST must appear here, or the wizard's
+# "installs: X" promise cannot be kept: try_pip_install refuses anything not listed, so a
+# missing entry turns a one-click install into a silent refusal. test_feature_install.py
+# asserts that containment so the two lists can never drift apart again.
 _PIP_ALLOWLIST: frozenset[str] = frozenset(
     {
         "faster-whisper",
@@ -42,8 +47,47 @@ _PIP_ALLOWLIST: frozenset[str] = frozenset(
         "python-docx",
         "trimesh",
         "sounddevice",
+        # FEATURE_MANIFEST deps (the optional features the setup wizard / kit marketplace offer).
+        "elasticsearch",
+        "meilisearch",
+        "discord.py",
+        "cadquery",
+        "ezdxf",
+        "torch",
+        "sentence-transformers",
+        "flashrank",
+        "cryptography",
+        "litellm",
     }
 )
+
+
+def _normalize_pkg(name: str) -> str:
+    """PEP 503 normalized distribution name (lowercase, runs of -_. collapsed to -).
+
+    The allowlist check used to be an exact string match, so `pillow` (as the feature
+    manifest spells it) did not match `Pillow` (as the allowlist spells it) and the
+    install was refused for a capitalization difference. Compare normalized forms.
+    """
+    out = []
+    prev_sep = False
+    for ch in str(name or "").strip().lower():
+        if ch in "-_.":
+            if not prev_sep:
+                out.append("-")
+            prev_sep = True
+        else:
+            out.append(ch)
+            prev_sep = False
+    return "".join(out).strip("-")
+
+
+_PIP_ALLOWLIST_NORM: frozenset[str] = frozenset(_normalize_pkg(p) for p in _PIP_ALLOWLIST)
+
+
+def is_pip_allowlisted(package: str) -> bool:
+    """True when `package` may be installed automatically (normalized allowlist match)."""
+    return _normalize_pkg(package) in _PIP_ALLOWLIST_NORM
 
 _pip_lock = threading.Lock()
 
@@ -127,7 +171,7 @@ def try_pip_install(packages: list[str], timeout_sec: int = 180) -> dict[str, An
         "stdout": "",
         "command": pip_install_command(packages),
     }
-    bad = [p for p in packages if p not in _PIP_ALLOWLIST]
+    bad = [p for p in packages if not is_pip_allowlisted(p)]
     if bad:
         out["error"] = f"Refused non-allowlisted packages (safety): {bad}"
         return out

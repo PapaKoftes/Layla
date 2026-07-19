@@ -1858,6 +1858,52 @@ body.overlay-scroll-lock {
   .settings-save { padding: 9px 24px; background: var(--asp); border: none; color: #fff; border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; }
   .settings-close { padding: 9px 16px; background: transparent; border: 1px solid var(--border); color: var(--text-dim); border-radius: 4px; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; }
   .settings-save-msg { font-size: 0.75rem; color: #4dff88; margin-left: 8px; display: none; }
+  /* A save that was rejected or will be overwritten must not be green (A2). */
+  .settings-save-msg[data-kind="warn"] { color: #ffb454; line-height: 1.45; }
+
+  /* S3 — "written to disk, and not in force". A THIRD outcome, so a third colour: amber, not
+     the green that claims it worked and not the red that means the request was refused. The
+     bytes really did land; what failed is the assumption that landing means applying. */
+  .settings-not-in-force {
+    margin-top: 14px; padding: 10px 12px; border-radius: 4px;
+    border: 1px solid rgba(255, 180, 84, 0.45);
+    border-left: 3px solid #ffb454;
+    background: rgba(255, 180, 84, 0.07);
+  }
+  .settings-not-in-force .nif-head {
+    font-size: 0.74rem; letter-spacing: 0.04em; color: #ffb454; font-weight: 600; margin-bottom: 8px;
+  }
+  .settings-not-in-force .nif-item { margin-bottom: 9px; }
+  .settings-not-in-force .nif-item:last-child { margin-bottom: 0; }
+  .settings-not-in-force code {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--text);
+  }
+  .settings-not-in-force .nif-owner,
+  .settings-not-in-force .nif-eff {
+    display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.6rem;
+    background: rgba(255, 180, 84, 0.16); color: #ffb454;
+  }
+  .settings-not-in-force .nif-reason {
+    font-size: 0.71rem; line-height: 1.5; color: var(--text-dim); margin-top: 3px;
+  }
+  /* Mark the control itself. The field is rendered from the EFFECTIVE config, so on the next
+     open it silently snaps back to the old value — without this the only feedback the operator
+     gets is a control that appears to have forgotten the edit. */
+  .settings-row.is-not-in-force { border-left: 2px solid #ffb454; padding-left: 8px; }
+
+  /* Who owns a setting: auto-tune re-derives 10 of the 90 editable keys on every config
+     load, so the control has to say so before an edit is spent on it. */
+  .settings-row.is-auto-tuned { border-left: 2px solid rgba(255, 180, 84, 0.45); padding-left: 8px; }
+  .cfg-owner {
+    display: inline-block; margin-left: 8px; padding: 1px 6px; border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; letter-spacing: 0.04em;
+    text-transform: none; vertical-align: middle;
+    color: #ffb454; background: rgba(255, 180, 84, 0.12); border: 1px solid rgba(255, 180, 84, 0.35);
+  }
+  .cfg-owner.is-locked { color: #4dff88; background: rgba(77, 255, 136, 0.12); border-color: rgba(77, 255, 136, 0.35); }
+  .cfg-owner-hint { color: #ffb454 !important; opacity: 0.92; }
+  .cfg-owner-hint code { font-size: 0.66rem; background: rgba(255, 255, 255, 0.07); padding: 0 3px; border-radius: 2px; }
 
   /* Message entrance */
   @keyframes msg-rise {

@@ -24,7 +24,7 @@
 
 ---
 
-Layla is a **local-first AI companion and engineering agent**. She runs on your hardware with any GGUF model you choose — no API keys or subscriptions required for core use. She remembers, studies, exposes a large native tool surface, can browse the web, and supports voice I/O.
+Layla is a **local-first AI companion and engineering agent**. She runs on your hardware with any GGUF model you choose — no API keys or subscriptions required for core use. She remembers, studies, exposes a large native tool surface, and can browse the web. Voice I/O is supported but **not installed by default** — see [Voice](#what-she-can-do) below for the extra install step.
 
 **Positioning:** Layla is an open, self-hosted **agent platform** (HTTP API + Web UI + optional MCP), not a drop-in clone of a single vendor product — quality depends on your model, hardware, and config.
 
@@ -82,8 +82,8 @@ Layla is a **local-first AI companion and engineering agent**. She runs on your 
 | Uncensored (operator-controlled) | Yes | No |
 | Persistent memory (SQLite + vectors) | Yes | Rare |
 | Open source / source-available | Yes | No |
-| Voice I/O | Optional | Varies |
-| Browser automation | Yes | Rare |
+| Voice I/O | Optional (extra install) | Varies |
+| Browser automation | Yes (extra install) | Rare |
 | Cursor / IDE via MCP | Yes | Limited |
 
 ---
@@ -192,7 +192,8 @@ Switch in the sidebar or invoke by name:
 **Tools (agent-invoked, gated)**
 
 - File read/write/edit, patches, shell, Python  
-- Web search, Playwright browser automation, screenshots  
+- Web search and article extraction (installed by the installer)  
+- Playwright browser automation + screenshots — the Python package is installed, but the browser itself is not: run `playwright install chromium` once, or these tools return "playwright not installed"  
 - Repo search (grep/glob), Git operations  
 - 200 registered tools — see [AGENTS.md](AGENTS.md) and [docs/TECH_STACK_AND_CAPABILITIES.md](docs/TECH_STACK_AND_CAPABILITIES.md)  
 
@@ -200,9 +201,16 @@ Switch in the sidebar or invoke by name:
 
 - SQLite + optional Chroma, hybrid retrieval, learnings, knowledge folder indexing  
 
-**Voice (optional deps)**
+**Voice (optional — NOT installed by the standard installer)**
 
-- faster-whisper (STT), pyttsx3 (TTS — shipped default); optional kokoro-onnx (higher quality, GPLv3, opt-in via `layla[voice-kokoro]`)  
+- The installer does not install the speech engines. Until you add them, the voice controls
+  are visible but inert: `POST /voice/speak` returns **503** and the "Speak replies" toggle is
+  disabled and labelled "Voice isn't installed".
+- To enable it: **Settings → Setup / reconfigure → Voice** (~500 MB, installs the packages and
+  reports what failed), or `pip install "layla[voice]"` by hand.
+- Engines: faster-whisper (STT) and pyttsx3 (TTS) via `layla[voice]`; optional kokoro-onnx for
+  higher-quality TTS (GPLv3 — deliberately kept out of `[voice]` and `[all]`, opt in with
+  `layla[voice-kokoro]`).  
 
 **Missions**
 
@@ -376,7 +384,8 @@ your language.
 
 - **Model not loading** — Path, VRAM, `n_gpu_layers`. See [MODELS.md](MODELS.md).  
 - **Approvals** — Enable Allow Write / Allow Run in the UI when you intend tool use.  
-- **Voice** — Optional deps; browser mic permissions for UI.  
+- **Voice** — If `/voice/speak` returns 503, the engines are not installed: Settings → Setup / reconfigure → Voice, or `pip install "layla[voice]"`. Also needs browser mic permission for UI input.  
+- **Browser tools say "playwright not installed"** — Run `playwright install chromium` once; the Python package alone does not include a browser.  
 - **Tests** — `cd agent && pytest tests/ -m "not slow and not e2e_ui and not browser_smoke and not voice_smoke and not gpu_smoke"` (see [docs/VERIFICATION.md](docs/VERIFICATION.md) for deep jobs).  
 
 ---
