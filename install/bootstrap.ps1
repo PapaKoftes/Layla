@@ -67,7 +67,12 @@ uv venv --python 3.12 .venv
 Write-Host "[4/6] Installing dependencies (prebuilt CPU wheels - no compiler) ..."
 uv pip install --python $VPy $LlamaSpec --extra-index-url $LlamaIndex --index-strategy unsafe-best-match
 uv pip install --python $VPy torch --index-url https://download.pytorch.org/whl/cpu
-uv pip install --python $VPy -e ".[cpu,llm]"
+# research + crawl: web search, article extraction, PDF/arXiv/Wikipedia reading. These were
+# omitted, so a bootstrap install came up with the web-facing tools permanently degraded —
+# the README advertises "can browse the web" and the tool then reported a missing library.
+# Pure-Python/small wheels, no compiler. (playwright still needs `playwright install chromium`
+# for real browser automation — see README.)
+uv pip install --python $VPy -e ".[cpu,llm,research,crawl]"
 
 # 5) detect hardware -> provision the best coding kit + write config
 if ($SkipModel) {

@@ -187,15 +187,32 @@ def atomic_write_config(cfg: dict) -> None:
 
 
 def save_config_keys(updates: dict, *, editable_only: bool = True, clamp: bool = True) -> list[str]:
-    """Race-safe read-modify-write of specific config keys.
+    """Race-safe read-modify-write of specific config keys. Returns the keys actually saved.
+
+    Thin wrapper over `save_config_keys_detailed` for callers that only need the key list.
+    """
+    return save_config_keys_detailed(updates, editable_only=editable_only, clamp=clamp)["saved"]
+
+
+def save_config_keys_detailed(updates: dict, *, editable_only: bool = True,
+                              clamp: bool = True) -> dict:
+    """Race-safe read-modify-write of specific config keys, reporting what was ADJUSTED.
 
     Reads the current runtime_config.json, applies (clamped) updates for the given
     keys, and atomically writes the result — the whole read+write happens under
     _config_lock, so two concurrent /settings writes can't lose each other's
-    changes (the classic read-modify-write lost-update race). Returns the keys
-    actually saved.
+    changes (the classic read-modify-write lost-update race).
+
+    Returns {"saved": [key], "adjusted": [{key, requested, stored, reason}],
+             "changed": [key]}.
+
+    `adjusted` is the point. This loop did `cfg[k] = coerce_and_clamp(k, v)` and then
+    `saved.append(k)` without ever comparing the two, so the caller could not tell a value
+    that was honoured from one that was silently rewritten — 28 of the 91 editable keys carry
+    a min/max. `changed` is the keys whose stored value actually moved, which lets the caller
+    warn about auto-tune only for settings the user really touched.
     """
-    from config_schema import coerce_and_clamp, get_editable_keys
+    from config_schema import coerce_and_clamp, describe_adjustment, get_editable_keys
 
     editable = get_editable_keys() if editable_only else None
     with _config_lock:
@@ -208,11 +225,23 @@ def save_config_keys(updates: dict, *, editable_only: bool = True, clamp: bool =
             except Exception as e:
                 logger.debug("save_config_keys read failed: %s", e)
         saved: list[str] = []
+        adjusted: list[dict] = []
+        changed: list[str] = []
         for k, v in updates.items():
             if editable is not None and k not in editable:
                 continue
-            cfg[k] = coerce_and_clamp(k, v) if clamp else v
+            _missing = object()
+            before = cfg.get(k, _missing)
+            stored = coerce_and_clamp(k, v) if clamp else v
+            cfg[k] = stored
             saved.append(k)
+            if before is _missing or before != stored:
+                changed.append(k)
+            if clamp:
+                reason = describe_adjustment(k, v, stored)
+                if reason:
+                    adjusted.append({"key": k, "requested": v, "stored": stored,
+                                     "reason": reason})
         CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = CONFIG_FILE.with_name(CONFIG_FILE.name + ".tmp")
         # fsync before rename (see atomic_write_config) so a power-loss can't truncate the config to 0-length.
@@ -222,7 +251,7 @@ def save_config_keys(updates: dict, *, editable_only: bool = True, clamp: bool =
             os.fsync(_f.fileno())
         os.replace(tmp, CONFIG_FILE)
         _reset_config_cache_locked()
-    return saved
+    return {"saved": saved, "adjusted": adjusted, "changed": changed}
 
 
 def _probe_hardware() -> dict:
@@ -892,41 +921,58 @@ def load_config() -> dict:
         return _config_cache
 
 
+# Config keys this module OWNS on behalf of the XP/maturity system: key -> the minimum
+# maturity rank at which the key is allowed to be true. Below that rank the key is forced
+# False at config-load, whatever the file says.
+#
+# DECLARATIVE ON PURPOSE. This used to be a run of `if rank < N: cfg[...] = False` blocks,
+# which meant the ownership was knowable only by running load_config() and diffing. Anything
+# that wants to EXPLAIN why a feature is off (see install/feature_status.py) needs to ask
+# "who owns this key, and what do they require?" without re-implementing the gate — an
+# explanation derived from a copy of the rule is the next thing to drift out of sync with it.
+# _apply_maturity_gates below is the only consumer that enforces; everyone else reads.
+MATURITY_GATED_KEYS: dict[str, int] = {
+    # Rank < 1: no proactive behaviour
+    "inline_initiative_enabled": 1,
+    "initiative_engine_enabled": 1,
+    # Rank < 3: no autonomous research mode
+    "autonomous_research_mode": 3,
+    # Rank < 5: no multi-step planning autonomy
+    # (planning_enabled stays True for user-driven plans at all ranks)
+    "autonomous_mode": 5,
+    # Rank < 10: no full initiative/autonomy
+    "initiative_project_proposals_enabled": 10,
+    "autonomy_optimizer_enabled": 10,
+}
+
+
+def current_maturity_rank() -> int | None:
+    """The live maturity rank, or None when the maturity engine is unavailable.
+
+    None is meaningfully different from 0: it means the gate is NOT being applied (see
+    _apply_maturity_gates' early return), so a caller must not report "requires rank N".
+    """
+    try:
+        from services.personality.maturity_engine import get_state
+
+        return int(get_state().rank)
+    except Exception:
+        return None
+
+
 def _apply_maturity_gates(cfg: dict) -> None:
     """Overlay config keys based on maturity rank thresholds.
 
     This ensures that powerful capabilities are locked until the user has
     interacted enough for Layla to earn them through the XP system.
     """
-    try:
-        from services.personality.maturity_engine import get_state
-        ms = get_state()
-        rank = ms.rank
-    except Exception:
+    rank = current_maturity_rank()
+    if rank is None:
         return  # If maturity engine isn't available, don't gate anything
 
-    # Rank < 1: No proactive behavior, no autonomous research
-    if rank < 1:
-        cfg.setdefault("inline_initiative_enabled", False)
-        cfg["inline_initiative_enabled"] = False
-        cfg.setdefault("initiative_engine_enabled", False)
-        cfg["initiative_engine_enabled"] = False
-
-    # Rank < 3: No autonomous research mode
-    if rank < 3:
-        cfg["autonomous_research_mode"] = False
-
-    # Rank < 5: No multi-step planning autonomy
-    if rank < 5:
-        cfg["autonomous_mode"] = False
-
-    # Rank 5+: Enable planning with full autonomy
-    # (planning_enabled stays True for user-driven plans at all ranks)
-
-    # Rank < 10: No full initiative/autonomy
-    if rank < 10:
-        cfg["initiative_project_proposals_enabled"] = False
-        cfg["autonomy_optimizer_enabled"] = False
+    for key, min_rank in MATURITY_GATED_KEYS.items():
+        if rank < min_rank:
+            cfg[key] = False
 
 
 def model_search_roots(cfg: dict | None = None) -> list[Path]:

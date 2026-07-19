@@ -754,6 +754,30 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 /* BL-386: visible-failure path + a genuinely clickable "esc" chip. */
 .setupwiz-loaderr { font-size: var(--text-sm); color: var(--text-dim); line-height: 1.5; margin-bottom: var(--sp-3); }
 .setupwiz-erractions { display: flex; gap: var(--sp-2); }
+/* Install step — the operator must SEE pip run and SEE it fail (A1). */
+.setupwiz-installs { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--sp-3); }
+.setupwiz-irow { display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--sp-2); border-radius: var(--radius-sm); }
+.setupwiz-irow[data-state="running"] { background: var(--surface-2); }
+.setupwiz-imark { flex: none; width: 1.1em; text-align: center; font-family: 'JetBrains Mono', monospace; color: var(--text-faint); }
+.setupwiz-irow[data-state="ok"] .setupwiz-imark { color: var(--success); }
+.setupwiz-irow[data-state="fail"] .setupwiz-imark { color: var(--danger, #e5484d); }
+.setupwiz-irow[data-state="running"] .setupwiz-imark { color: var(--accent-text); }
+.setupwiz-imain { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.setupwiz-ilabel { font-size: var(--text-sm); color: var(--text); }
+.setupwiz-ideps { font-size: var(--text-xs); color: var(--text-faint); font-family: 'JetBrains Mono', monospace; }
+.setupwiz-idetail { font-size: var(--text-xs); color: var(--text-dim); line-height: 1.45; margin-top: 2px; overflow-wrap: anywhere; }
+.setupwiz-irow[data-state="fail"] .setupwiz-idetail { color: var(--danger, #e5484d); }
+/* UNKNOWN is not FAILED. A lost response tells us nothing about the outcome, so it must not
+   borrow the red that means "we know this did not happen" — warning-toned, and never in the
+   same visual bucket as a confirmed failure. */
+.setupwiz-irow[data-state="unknown"] .setupwiz-imark { color: var(--warning, #f5a524); }
+.setupwiz-irow[data-state="unknown"] .setupwiz-idetail { color: var(--warning, #f5a524); }
+/* "Asked for, not in force" — informational, with the owner's reason. Neutral by design:
+   auto-tune holding HyDE off on a CPU box is correct behaviour, not an error. */
+.setupwiz-subq { margin-top: var(--sp-3); }
+.setupwiz-blocked .setupwiz-irow { background: var(--surface-2); margin-bottom: 2px; }
+.setupwiz-blocked .setupwiz-imark { color: var(--text-faint); }
+.setupwiz-ifoot { font-size: var(--text-xs); line-height: 1.5; margin-bottom: var(--sp-3); }
 .setupwiz-panel .cmdp-esc { cursor: pointer; }
 .setupwiz-panel .cmdp-esc:hover { color: var(--text); border-color: var(--border-2); }
 
@@ -1107,6 +1131,10 @@ input:not(.cmdp-input)::placeholder, textarea:not(#msg-input)::placeholder { col
 .mkt-feats { font-size: 0.62rem; color: var(--text-faint); font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
 .mkt-install { flex: none; }
 .mkt-installed { flex: none; font-size: var(--text-xs); color: var(--success); font-family: 'JetBrains Mono', monospace; }
+/* Per-kit install status — the real pip reason, on the row, not just a toast (A1). */
+.mkt-kit { flex-wrap: wrap; }
+.mkt-status { flex: 1 0 100%; font-size: var(--text-xs); line-height: 1.45; color: var(--text-dim); overflow-wrap: anywhere; }
+.mkt-status[data-kind="err"] { color: var(--danger, #e5484d); }
 
 /* W8 — Hugging Face model download (BL-159) */
 .models-hf-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 6px 0; }

@@ -14,6 +14,16 @@ let _loadErr = ''; // non-empty when the last /setup/profiles load failed (drive
 let _step = 0;
 const _selProfiles = new Set();
 const _selFeatures = new Set();
+// Step 2 (install) state. `_toInstall` is the server's own plan from /setup/apply — the
+// field the wizard used to throw away while telling the user "installs: faster-whisper".
+let _toInstall = [];      // [{id,label,deps,models,size_mb}]
+let _installRes = {};     // feature id -> {state:'pending'|'running'|'ok'|'fail'|'unknown', detail, failed:[]}
+let _installing = false;
+// Features that were asked for and are NOT in force for a reason that is NOT missing packages
+// — auto-tune owns the key on this hardware tier, the maturity rank is too low, a security
+// policy refused it, or nobody owns it and we say so. The server reads these back out of the
+// effective config (/setup/apply → not_enabled); the wizard has no business inferring them.
+let _blocked = [];        // [{id,label,owner,reason}]
 
 // BL-386: Escape must work regardless of where focus sits. A listener on _root only fires
 // when the keydown target is _root or a descendant; on first-run focus is usually on <body>,
@@ -86,6 +96,8 @@ function _render() {
   note.textContent = '';
   if (!_data) { body.innerHTML = '<div class="sysdiag-muted">loading…</div>'; back.hidden = true; return; }
 
+  if (_step === 2) { _renderInstallStep(body, back, next); return; }
+
   if (_step === 0) {
     back.hidden = true;
     const profiles = (_data && _data.profiles) || [];
@@ -154,6 +166,290 @@ function _render() {
   }
 }
 
+function _sizeLabel(mb) {
+  if (!mb) return '';
+  return mb >= 1000 ? (mb / 1000).toFixed(1) + ' GB' : mb + ' MB';
+}
+
+/**
+ * The last MEANINGFUL line of an error blob. pip stderr ends with a trailing newline, so the
+ * obvious `.split('\n').slice(-1)[0]` yields "" and the failure row renders as an empty
+ * string in red — styled like an explanation, containing none. (Same fix in marketplace.js.)
+ */
+function _lastLine(err) {
+  const lines = String(err == null ? '' : err).split('\n').map((s) => s.trim()).filter(Boolean);
+  return lines.length ? lines[lines.length - 1] : 'install failed (no error text)';
+}
+
+/**
+ * Step 2 — the install step the wizard never had.
+ *
+ * /setup/apply has ALWAYS returned `to_install`; the wizard discarded it, flipped flags,
+ * and said "✓ configured". So the checkbox that read "installs: faster-whisper, kokoro-onnx"
+ * installed nothing and still reported success. This step makes the promise real: it shows
+ * exactly which packages are about to be fetched and how big they are, asks before spending
+ * the bandwidth, then reports per-feature what actually landed — including the pip error
+ * text when it did not.
+ */
+/**
+ * The "asked for, not in force, and here is who decided that" section.
+ *
+ * This is the part the wizard could not draw at all, because it never had the information:
+ * it computed its outcome as "requested minus failed packages", so a feature switched off by
+ * auto-tune (every CPU tier holds hyde/multi-agent off) or by the maturity gate (initiative
+ * below rank 1) had no package to blame and simply vanished — reported as enabled, hidden by
+ * the palette, unexplained anywhere. The reasons below come from the server re-reading its
+ * effective config, one owner per feature, including a plain "reason unknown" when nothing
+ * claims it.
+ */
+function _blockedRows() {
+  if (!_blocked.length) return '';
+  const rows = _blocked.map((b) => (
+    '<div class="setupwiz-irow" data-state="blocked" data-fid="' + _esc(b.id) + '">' +
+      '<span class="setupwiz-imark">◦</span>' +
+      '<span class="setupwiz-imain"><span class="setupwiz-ilabel">' + _esc(b.label || b.id) + '</span>' +
+      '<span class="setupwiz-ideps">' + _esc(_ownerLabel(b.owner)) + '</span>' +
+      '<span class="setupwiz-idetail">' + _esc(b.reason || 'not switched on — reason unknown.') + '</span>' +
+      '</span></div>'
+  )).join('');
+  return '<div class="setupwiz-q setupwiz-subq">not switched on</div>' +
+    '<div class="setupwiz-installs setupwiz-blocked">' + rows + '</div>';
+}
+
+function _ownerLabel(owner) {
+  switch (owner) {
+    case 'auto_tune': return 'held off by auto-tune (hardware tier)';
+    case 'maturity': return 'locked until Layla levels up';
+    case 'security_policy': return 'refused by a security policy';
+    case 'packages': return 'needs packages';
+    case 'unreadable': return 'could not be confirmed';
+    default: return 'reason unknown';
+  }
+}
+
+function _renderInstallStep(body, back, next) {
+  back.hidden = _installing;
+  next.hidden = true;
+  const totalMb = _toInstall.reduce((a, f) => a + (f.size_mb || 0), 0);
+  const rows = _toInstall.map((f) => {
+    const st = _installRes[f.id] || { state: 'pending' };
+    const mark = st.state === 'ok' ? '✓' : st.state === 'fail' ? '✕'
+      : st.state === 'unknown' ? '?' : st.state === 'running' ? '⋯' : '·';
+    return '<div class="setupwiz-irow" data-state="' + st.state + '" data-fid="' + _esc(f.id) + '">' +
+      '<span class="setupwiz-imark">' + mark + '</span>' +
+      '<span class="setupwiz-imain"><span class="setupwiz-ilabel">' + _esc(f.label) + '</span>' +
+      '<span class="setupwiz-ideps">' + _esc((f.deps || []).join(', ')) +
+      (f.size_mb ? ' · ' + _sizeLabel(f.size_mb) : '') + '</span>' +
+      (st.detail ? '<span class="setupwiz-idetail">' + _esc(st.detail) + '</span>' : '') +
+      '</span></div>';
+  }).join('');
+
+  const done = _toInstall.length && _toInstall.every((f) => {
+    const s = (_installRes[f.id] || {}).state;
+    return s === 'ok' || s === 'fail' || s === 'unknown';
+  });
+  const anyFail = _toInstall.some((f) => (_installRes[f.id] || {}).state === 'fail');
+  // UNKNOWN is its own outcome. Collapsing it into "failed" is how a lost HTTP response got
+  // rendered as "not switched on" while the server had completed the install and the flag was
+  // already true on disk.
+  const anyUnknown = _toInstall.some((f) => (_installRes[f.id] || {}).state === 'unknown');
+
+  let head;
+  let actions = '';
+  let foot = '';
+  if (_installing) {
+    head = 'installing — this downloads from the internet and can take a few minutes';
+  } else if (!_toInstall.length) {
+    // Nothing to install; we are here only to explain what did not switch on.
+    head = _blocked.length ? 'applied — but not everything you picked is on' : 'applied';
+    foot = 'Everything else you picked is switched on.';
+    actions = '<div class="setupwiz-erractions">' +
+      '<button type="button" class="setup-btn primary setupwiz-idone">done</button></div>';
+  } else if (done) {
+    head = anyUnknown ? 'some results could not be confirmed'
+      : anyFail ? 'some packages did not install' : 'installed and switched on';
+    if (anyUnknown) {
+      // Do NOT assert an outcome here. We asked the server and could not get an answer; the
+      // install may well have completed. Say exactly that, and how to find out.
+      foot = 'One or more results could not be confirmed — the request did not complete and the ' +
+        'server could not be re-read. The install may or may not have finished. ' +
+        'Reopen this wizard, or check Settings, to see the current state.';
+    } else if (anyFail) {
+      // Verified, not assumed: every row below was re-read from the server after installing.
+      foot = 'The features whose packages failed were NOT switched on (confirmed with the server). ' +
+        'Fix the error above (usually no internet or a missing compiler) and retry, or install the ' +
+        'packages yourself with pip in Layla’s Python environment.';
+    } else {
+      foot = 'Packages installed and the features switched on (confirmed with the server).';
+    }
+    actions = '<div class="setupwiz-erractions">' +
+      ((anyFail || anyUnknown) ? '<button type="button" class="setup-btn primary setupwiz-retry-inst">retry</button>' : '') +
+      '<button type="button" class="setup-btn' + ((anyFail || anyUnknown) ? '' : ' primary') + ' setupwiz-idone">done</button></div>';
+  } else {
+    head = 'these features need extra packages' + (totalMb ? ' (~' + _sizeLabel(totalMb) + ' to download)' : '');
+    // Say the state plainly BEFORE the install, so "skip" is an informed choice.
+    foot = 'These are not switched on yet — each one turns on only when its packages install.';
+    actions = '<div class="setupwiz-erractions">' +
+      '<button type="button" class="setup-btn primary setupwiz-run-inst">install now</button>' +
+      '<button type="button" class="setup-btn setupwiz-skip-inst">skip for now</button></div>';
+  }
+
+  body.innerHTML = '<div class="setupwiz-q">' + _esc(head) + '</div>' +
+    (_toInstall.length ? '<div class="setupwiz-installs">' + rows + '</div>' : '') +
+    (foot ? '<div class="sysdiag-muted setupwiz-ifoot">' + _esc(foot) + '</div>' : '') +
+    _blockedRows() +
+    actions;
+
+  const on = (sel, fn) => { const el = body.querySelector(sel); if (el) el.addEventListener('click', fn); };
+  on('.setupwiz-run-inst', () => _runInstalls());
+  on('.setupwiz-retry-inst', () => _runInstalls(true));
+  on('.setupwiz-idone', () => closeSetupProfiles());
+  on('.setupwiz-skip-inst', () => {
+    // Honest exit. These features were never switched on (their packages are absent), so the
+    // old "Enabled, but not installed" was backwards — it named the one state that is now
+    // impossible. Say what is true and how to finish.
+    const names = _toInstall.map((f) => (f.deps || []).join(' ')).join(' ').trim();
+    if (typeof window.showToast === 'function') {
+      window.showToast('Not enabled — install the packages to turn these on: pip install ' + names);
+    }
+    closeSetupProfiles();
+  });
+}
+
+/**
+ * Ask the SERVER what is true, for the given feature ids.
+ *
+ * Returns id -> {on, reason} or null when the server itself could not be reached — null is a
+ * third answer and callers must treat it as "unknown", never as "off".
+ */
+async function _confirmFromServer(ids) {
+  try {
+    const r = await fetch('/setup/state', { headers: { Accept: 'application/json' } });
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d || !Array.isArray(d.enabled_features)) return null;
+    const on = new Set(d.enabled_features);
+    const why = {};
+    (d.unavailable_features || []).forEach((u) => { if (u && u.id) why[u.id] = u; });
+    const out = {};
+    ids.forEach((id) => { out[id] = { on: on.has(id), reason: (why[id] || {}).reason || '' }; });
+    return out;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function _runInstalls(onlyFailed) {
+  if (_installing) return;
+  _installing = true;
+  const targets = _toInstall.filter((f) => {
+    if (!onlyFailed) return true;
+    const s = (_installRes[f.id] || {}).state;
+    return s === 'fail' || s === 'unknown';
+  });
+  targets.forEach((f) => { _installRes[f.id] = { state: 'pending' }; });
+  _render();
+  for (const f of targets) {
+    _installRes[f.id] = { state: 'running', detail: 'installing ' + (f.deps || []).join(', ') + '…' };
+    _render();
+    try {
+      const r = await fetch('/setup/feature/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feature_id: f.id, confirm: true }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (d && d.ok) {
+        _installRes[f.id] = { state: 'ok', detail: d.models_note || 'installed' };
+      } else {
+        // Surface the REAL reason (pip stderr tail), not a generic failure.
+        const why = (d && d.failed && d.failed.length)
+          ? d.failed.map((x) => x.dep + ': ' + _lastLine(x.error)).join(' | ')
+          : ((d && d.error) || ('HTTP ' + r.status));
+        _installRes[f.id] = { state: 'fail', detail: why, failed: (d && d.failed) || [] };
+      }
+    } catch (e) {
+      // A LOST RESPONSE IS NOT A FAILED INSTALL. This catch fires for anything that stops the
+      // reply reaching us — an aborted request, a dropped connection, a reload mid-flight —
+      // and the server carries on regardless. Proved: aborting the client at 0.4s still left
+      // litellm_enabled flipped true and `cloud_models` listed by /setup/state, while this
+      // branch had drawn ✕ "not switched on". So: report UNKNOWN, then go and find out.
+      const msg = (e && e.message) ? e.message : String(e);
+      _installRes[f.id] = {
+        state: 'unknown',
+        detail: 'the request did not complete (' + msg + ') — the server may have finished anyway; checking…',
+      };
+      _render();
+      // ONLY A POSITIVE CONFIRMATION IS CONCLUSIVE HERE, and it has to be polled for.
+      // Losing the response does not stop the server: a pip install keeps running for minutes
+      // after the client gives up. A single immediate re-read therefore races the work it is
+      // trying to observe — driven live, it saw `vision` off, printed "not switched on —
+      // confirmed with the server", and the very next request showed the feature enabled. That
+      // is the same false-definite this whole change exists to delete, so: poll for a bounded
+      // window, and if it never comes on, say UNKNOWN rather than inventing a negative.
+      let on = false;
+      for (let i = 0; i < 10 && !on; i++) {
+        if (i) await new Promise((r) => setTimeout(r, 1000));
+        const truth = await _confirmFromServer([f.id]);
+        on = !!(truth && truth[f.id] && truth[f.id].on);
+      }
+      if (on) {
+        _installRes[f.id] = { state: 'ok', detail: 'switched on — confirmed with the server after the reply was lost in transit.' };
+      } else {
+        _installRes[f.id] = {
+          state: 'unknown',
+          detail: 'could not confirm (' + msg + '). It is still not switched on, but the server may '
+            + 'be working on it — installs continue after the connection drops. Reopen this wizard '
+            + 'in a minute, or check Settings, to see the current state.',
+        };
+      }
+    }
+    _render();
+  }
+  // FINAL READ-BACK. Even the happy path is a claim about the server's state made from a
+  // response body; ask the server itself before saying "switched on". This is also the only
+  // thing that can catch a feature whose packages installed but whose flag another owner
+  // (auto-tune, maturity) holds off — the installer cannot see those and would report success.
+  const truth = await _confirmFromServer(targets.map((f) => f.id));
+  if (truth) {
+    targets.forEach((f) => {
+      const t = truth[f.id];
+      const cur = _installRes[f.id] || {};
+      if (!t) return;
+      if (t.on && cur.state !== 'ok') {
+        _installRes[f.id] = { state: 'ok', detail: 'switched on — confirmed with the server.' };
+      } else if (!t.on && cur.state === 'ok') {
+        _installRes[f.id] = { state: 'fail', detail: t.reason || 'the packages installed but the feature is not in force.' };
+      }
+    });
+  }
+  _installing = false;
+  _render();
+  const failed = _toInstall.filter((f) => (_installRes[f.id] || {}).state === 'fail');
+  const unconfirmed = _toInstall.filter((f) => (_installRes[f.id] || {}).state === 'unknown');
+  const ok = targets.filter((f) => (_installRes[f.id] || {}).state === 'ok');
+  // The feature flags are written by /setup/feature/install, i.e. HERE — not at apply time
+  // any more. Anything gating on them (palette, marketplace badges) has to re-read now, or it
+  // shows the pre-install state until a reload.
+  if (ok.length) {
+    try {
+      window.dispatchEvent(new CustomEvent('layla:profiles-applied', { detail: { features: ok.map((f) => f.id) } }));
+    } catch (_) {}
+  }
+  if (typeof window.showToast === 'function') {
+    let msg;
+    if (unconfirmed.length) {
+      msg = unconfirmed.length + ' feature' + (unconfirmed.length === 1 ? '' : 's')
+        + ' could not be confirmed — reopen setup to see the current state';
+    } else if (failed.length) {
+      msg = failed.length + ' feature' + (failed.length === 1 ? '' : 's') + ' not switched on — see the reason above';
+    } else {
+      msg = 'Installed and enabled — ' + targets.map((f) => f.label).join(', ');
+    }
+    window.showToast(msg);
+  }
+}
+
 async function _onNext() {
   if (_step === 0) {
     if (!_selProfiles.size) { _root.querySelector('.setupwiz-note').textContent = 'pick at least one'; return; }
@@ -172,13 +468,36 @@ async function _onNext() {
     });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || 'apply failed');
+    // `features` is now what the server RE-READ out of its effective config — not the
+    // selection, and not the selection minus missing packages. `not_enabled` carries the rest
+    // with a reason each, which is the only way an auto-tune-reverted or maturity-locked
+    // feature can be reported at all: it has no package to blame, so the old summary counted
+    // it as enabled while the palette hid it.
     const n = (d.features || []).length;
-    note.textContent = '✓ configured — ' + n + ' feature' + (n === 1 ? '' : 's') + ' enabled';
+    const notOn = Array.isArray(d.not_enabled) ? d.not_enabled : [];
+    note.textContent = '✓ configured — ' + n + ' feature' + (n === 1 ? '' : 's') + ' on' +
+      (notOn.length ? ' · ' + notOn.length + ' not switched on' : '');
     note.setAttribute('data-ok', 'true');
     try { localStorage.setItem('layla_setup_profiles_v1_done', '1'); } catch (_) {}
     // Let listeners (feature-gated palette, etc.) refresh against the new flags.
     try { window.dispatchEvent(new CustomEvent('layla:profiles-applied', { detail: { features: d.features || [], profiles: d.profiles || [] } })); } catch (_) {}
     if (typeof window.showToast === 'function') window.showToast('Layla configured for you — ' + (d.profiles || []).join(', '));
+
+    // Anything that needs packages goes to the install step instead of closing on a
+    // success message. Only a selection that needs NOTHING may claim to be done here.
+    _toInstall = Array.isArray(d.to_install) ? d.to_install.filter((f) => (f.deps || []).length) : [];
+    const pkgIds = new Set(_toInstall.map((f) => f.id));
+    // Off for a reason that installing cannot fix — shown with its owner's explanation rather
+    // than silently dropped. (Package-blocked ones are already an install row; not both.)
+    _blocked = notOn.filter((b) => !pkgIds.has(b.id))
+      .map((b) => ({ id: b.id, label: b.label, owner: b.owner, reason: b.reason }));
+    if (_toInstall.length || _blocked.length) {
+      _installRes = {};
+      note.textContent = '';
+      _step = 2;
+      _render();
+      return;
+    }
     setTimeout(closeSetupProfiles, 1200);
   } catch (e) {
     note.textContent = 'error — ' + (e && e.message ? e.message : e);
@@ -189,6 +508,11 @@ async function _load() {
   _data = null;      // → _render shows "loading…"
   _loadErr = '';
   _step = 0;
+  // A reopened wizard must not show the LAST run's outcome — the whole point is that the
+  // outcome is re-read, and stale rows are the inferred-outcome bug in miniature.
+  _toInstall = [];
+  _blocked = [];
+  _installRes = {};
   if (_open) _render();
   try {
     const r = await fetch('/setup/profiles', { headers: { Accept: 'application/json' } });
