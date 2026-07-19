@@ -1,12 +1,30 @@
 """
-Skill pack sandboxing via per-pack virtual environments.
+Skill pack DEPENDENCY ISOLATION via per-pack virtual environments.
 
 Each skill pack runs in its own venv under ~/.layla/skill_envs/<pack_name>/.
 This prevents dependency conflicts between packs and with Layla's core environment.
 
+This module is named "sandbox" for historical reasons and the name oversells it.
+It is NOT a security sandbox. There is no filesystem jail and no network
+namespace: a pack's entry point is an ordinary subprocess running at the
+operator's full user privilege, and it can read or write anything that account
+can. What is actually enforced here is narrow and worth knowing exactly:
+
+  - dependency isolation (a venv per pack)
+  - an environment allowlist, applied to BOTH the run path and the pip path, so
+    operator secrets are not handed to third-party code
+  - entry-point path confinement (the resolved entry point must be inside the
+    pack directory)
+  - a wall-clock timeout and output truncation
+
+The consent gates (skill_venv_enabled, skill_packs_execute_enabled) are the real
+protection. See docs/SKILL_PACKS.md, "Execution: dependency isolation, NOT a
+security sandbox".
+
 Execution model:
   1. Create venv on install
-  2. Install pack's declared dependencies into the venv
+  2. Install pack's declared dependencies into the venv (this executes the
+     dependencies' build backends — installing is a form of executing)
   3. Run entry_point via subprocess with the venv's Python
   4. Capture stdout/stderr, enforce timeout
 """
@@ -23,6 +41,37 @@ from typing import Any
 logger = logging.getLogger("layla")
 
 ENVS_DIR = Path.home() / ".layla" / "skill_envs"
+
+# Environment allowlist. Anything not named here is withheld from third-party code —
+# pack entry points AND dependency build backends alike. Deny-by-default: a new secret
+# added to Layla's environment is withheld automatically rather than leaking until
+# someone remembers to blocklist it.
+_SAFE_KEYS = frozenset({
+    "PATH", "HOME", "USERPROFILE", "TEMP", "TMP", "LANG",
+    "SYSTEMROOT", "COMSPEC", "PATHEXT", "VIRTUAL_ENV",
+})
+
+# pip needs a little more than an entry point does: a cache location and, on
+# networks that require one, a proxy and a CA bundle — otherwise installs fail on
+# perfectly ordinary corporate setups. These carry no credentials.
+#
+# Deliberately NOT included: PIP_INDEX_URL / PIP_EXTRA_INDEX_URL and friends. A
+# private-index URL routinely embeds a token, and handing that to an untrusted build
+# backend is the exact leak this allowlist exists to stop. Operators who need a
+# private index should configure it in pip.conf/pip.ini, which pip reads from disk.
+_PIP_EXTRA_KEYS = frozenset({
+    "APPDATA", "LOCALAPPDATA", "XDG_CACHE_HOME",
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+    "http_proxy", "https_proxy", "no_proxy",
+    "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE",
+})
+
+
+def _filtered_env(extra_keys: frozenset[str] = frozenset()) -> dict[str, str]:
+    """Layla's environment reduced to the allowlist. Never returns operator secrets."""
+    import os
+    allowed = _SAFE_KEYS | extra_keys
+    return {k: v for k, v in os.environ.items() if k in allowed}
 
 
 def _venv_dir(pack_name: str) -> Path:
@@ -68,6 +117,13 @@ def install_dependencies(pack_name: str, dependencies: list[str]) -> tuple[bool,
             [str(python), "-m", "pip", "install", "--quiet"] + dependencies,
             capture_output=True, text=True, timeout=300,
             encoding="utf-8", errors="replace",
+            # Installing is executing. A dependency's PEP 517 build backend is
+            # third-party code that runs during `pip install`, and with no env= it
+            # inherited Layla's whole environment — proven with canaries: a spec of
+            # the form "pkg @ file:///..." saw GITHUB_TOKEN and OPENAI_API_KEY. That
+            # made the install path leakier than the run path, which has always
+            # filtered. Same allowlist both sides now.
+            env=_filtered_env(_PIP_EXTRA_KEYS),
         )
         if result.returncode != 0:
             stderr = result.stderr.strip()[:500]
@@ -90,7 +146,11 @@ def run_entry_point(
     env_extra: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """
-    Run a pack's entry point in its sandboxed venv.
+    Run a pack's entry point using its dedicated venv's interpreter.
+
+    NOT a security boundary: this is a subprocess at the operator's full
+    privilege with a filtered environment, a timeout and a path-confinement
+    check — no filesystem jail, no network namespace. See the module docstring.
 
     Returns:
         {"ok": bool, "stdout": str, "stderr": str, "exit_code": int, "timed_out": bool}
@@ -99,9 +159,23 @@ def run_entry_point(
     if not python.exists():
         return {"ok": False, "stdout": "", "stderr": f"venv Python not found: {python}", "exit_code": -1, "timed_out": False}
 
-    entry = (pack_dir / entry_point).resolve()
-    # Security: ensure entry point resolves to within the pack directory
-    if not str(entry).startswith(str(pack_dir.resolve())):
+    # Confinement: the resolved entry point must fall INSIDE the pack directory.
+    # This was a string prefix test (``str(entry).startswith(str(pack_dir.resolve()))``),
+    # which a sibling directory whose NAME EXTENDS the pack dir satisfies: pack "weather"
+    # with entry_point "../weather-extra/payload.py" resolves to <base>/weather-extra/...,
+    # which startswith("<base>/weather") — so it EXECUTED. Real shape: pack A runs pack B's
+    # code, installed but never meant to run. ``is_relative_to`` compares path COMPONENTS
+    # (the idiom already used correctly in layla/tools/impl/general.py) and has no such hole.
+    # .resolve() must be INSIDE the try: it is the call that actually raises. An entry_point
+    # containing a NUL byte raises ValueError ("embedded null character"), which is not an OSError
+    # — so with resolve() on the line above, it escaped this handler and crashed the tool call
+    # instead of returning the standard error dict.
+    try:
+        entry = (pack_dir / entry_point).resolve()
+        _confined = entry.is_relative_to(pack_dir.resolve())
+    except (OSError, ValueError) as e:
+        return {"ok": False, "stdout": "", "stderr": f"invalid entry point path: {e}", "exit_code": -1, "timed_out": False}
+    if not _confined:
         return {"ok": False, "stdout": "", "stderr": f"Entry point escapes pack directory: {entry_point}", "exit_code": -1, "timed_out": False}
     if not entry.exists():
         return {"ok": False, "stdout": "", "stderr": f"Entry point not found: {entry}", "exit_code": -1, "timed_out": False}
@@ -110,11 +184,8 @@ def run_entry_point(
     if args:
         cmd.extend(args)
 
-    import os
-    # Minimal environment — don't leak parent secrets into sandboxed packs
-    _SAFE_KEYS = {"PATH", "HOME", "USERPROFILE", "TEMP", "TMP", "LANG",
-                  "SYSTEMROOT", "COMSPEC", "PATHEXT", "VIRTUAL_ENV"}
-    env = {k: v for k, v in os.environ.items() if k in _SAFE_KEYS}
+    # Minimal environment — don't leak operator secrets into pack code.
+    env = _filtered_env()
     env["LAYLA_SKILL_PACK"] = pack_name
     env["LAYLA_PACK_DIR"] = str(pack_dir)
     if env_extra:
@@ -125,6 +196,11 @@ def run_entry_point(
             cmd,
             capture_output=True,
             text=True,
+            # `stdin_data` was accepted as a parameter but never forwarded, so the
+            # documented "your entry point can read JSON from stdin" contract
+            # (docs/SKILL_PACKS.md) silently delivered nothing — every pack that
+            # did `json.load(sys.stdin)` blocked or got EOF. Forward it.
+            input=stdin_data,
             timeout=timeout_seconds,
             cwd=str(pack_dir),
             env=env,
