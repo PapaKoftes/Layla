@@ -122,7 +122,10 @@ SKIP: dict[str, SkipReason] = {
     "stock_data": SkipReason.NETWORK, "crypto_prices": SkipReason.NETWORK,
     "economic_indicators": SkipReason.NETWORK, "github_issues": SkipReason.NETWORK,
     "check_ci": SkipReason.NETWORK, "check_port": SkipReason.NETWORK,
-    "send_webhook": SkipReason.NETWORK, "discord_send": SkipReason.NETWORK,
+    # send_webhook / discord_send used to be listed here as NETWORK. They are now
+    # dangerous + require_approval (a model-supplied url and body is an exfil path), so
+    # GUARDED covers them and an explicit skip would be redundant — see
+    # test_skip_is_not_redundant_with_meta_guard, which is what caught this.
     "translate_text": SkipReason.NETWORK, "pip_list": SkipReason.NETWORK,
     # SUBPROCESS — impl calls subprocess.run (git/pip/docker/ruff/bandit/rg/shell session)
     "git_status": SkipReason.SUBPROCESS, "git_diff": SkipReason.SUBPROCESS,
@@ -163,7 +166,7 @@ SKIP: dict[str, SkipReason] = {
 
 # Pinned so any addition/removal forces a deliberate review (anti-accretion; the skip list is where
 # rot hides). Bump only with a matching SKIP change and a written reason above.
-EXPECTED_SKIP_COUNT = 72
+EXPECTED_SKIP_COUNT = 70  # -2: send_webhook/discord_send moved to GUARDED (approval-gated)
 
 
 def _is_guarded(meta: dict) -> bool:

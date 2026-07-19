@@ -9,6 +9,8 @@ import logging
 import time
 from pathlib import Path
 
+from services.infrastructure.data_paths import layla_data_file as _layla_data_file
+
 from layla.scheduler.activity import get_last_activity_ts, is_game_running
 
 logger = logging.getLogger("layla")
@@ -195,10 +197,10 @@ def _bg_cleanup() -> None:
             _tail_trim_file(_AUTONOMOUS_AUDIT, int(_c.get("autonomous_audit_max_bytes", 5_000_000) or 5_000_000))
             # LOW: the other append-only logs + crash dumps also had no rotation.
             _tail_trim_file(_GOV_PATH / "layla-events.log", int(_c.get("events_log_max_bytes", 2_000_000) or 2_000_000))
-            _tail_trim_file(Path.home() / ".layla" / "investigation_reuse.jsonl",
+            _tail_trim_file(_layla_data_file("investigation_reuse.jsonl"),
                             int(_c.get("investigation_reuse_max_bytes", 5_000_000) or 5_000_000))
             try:
-                _cd = Path.home() / ".layla" / "crashes"
+                _cd = _layla_data_file("crashes")
                 if _cd.is_dir():
                     _keep = int(_c.get("crash_dumps_keep", 50) or 50)
                     _dumps = sorted(_cd.glob("crash_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)

@@ -27,11 +27,29 @@ from typing import Any
 
 logger = logging.getLogger("layla")
 
-_AGENT_DIR = Path(__file__).resolve().parent.parent
-_DEFAULT_DB = _AGENT_DIR / ".layla" / "repo_index.db"
+# `parent.parent.parent`, not `parent.parent`. This file is `agent/services/workspace/`, so two
+# levels up is `agent/services/` — not the agent dir. The old root silently created a shadow
+# `agent/services/.layla/repo_index.db` and mkdir'd + connected to it ~50x per test run (41
+# distinct tests, via world_state snapshot -> _repo_index -> get_stats -> migrate -> _conn),
+# while `agent/.layla/` was believed to be the only one. Fifth instance of this defect class.
+_AGENT_DIR = Path(__file__).resolve().parent.parent.parent
+
+
+def _default_db_path() -> Path:
+    """`<LAYLA_DATA_DIR>/.layla/repo_index.db`, else `agent/.layla/repo_index.db`.
+
+    Resolved per call, not at import, so LAYLA_DATA_DIR is honoured regardless of the order in
+    which this module happens to be imported (the whole point of the W1 ordering bug).
+    """
+    raw = (os.environ.get("LAYLA_DATA_DIR") or "").strip()
+    root = Path(raw).expanduser().resolve() if raw else _AGENT_DIR
+    return root / ".layla" / "repo_index.db"
+
 
 _MIGRATED: bool = False
-_DB_PATH: Path = _DEFAULT_DB
+# `None` means "resolve per call". Tests monkeypatch this to a concrete tmp path to pin it;
+# production leaves it None so LAYLA_DATA_DIR is re-read on every connection.
+_DB_PATH: Path | None = None
 
 
 # ── DB bootstrap ──────────────────────────────────────────────────────────────
@@ -39,7 +57,9 @@ _DB_PATH: Path = _DEFAULT_DB
 @contextmanager
 def _conn(db_path: Path | None = None):
     """Context manager yielding a SQLite row-factory connection."""
-    path = db_path or _DB_PATH
+    # Derive the directory from the RESOLVED path (tunnel_audit's lesson): a separate directory
+    # constant means a test that patches only the path still mkdirs the real location.
+    path = Path(db_path or _DB_PATH or _default_db_path())
     path.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(str(path), timeout=10)
     con.row_factory = sqlite3.Row

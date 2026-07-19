@@ -13,15 +13,26 @@ logger = logging.getLogger("layla")
 
 BENCHMARK_PROMPT = "The quick brown fox jumps over the lazy dog. Repeat: "
 BENCHMARK_TOKENS = 32
-BENCHMARKS_PATH = Path.home() / ".layla" / "benchmarks.json"
-_BENCHMARKS_PATH = BENCHMARKS_PATH
+# `None` means "resolve per call"; tests may pin it. Was TWO module-level constants
+# (`BENCHMARKS_PATH` and a `_BENCHMARKS_PATH` copy of it) rooted at `Path.home()` and evaluated at
+# import: it ignored LAYLA_DATA_DIR, and a test that pinned one of the two names left the other
+# pointing at the operator's real file.
+BENCHMARKS_PATH: Path | None = None
+
+
+def _benchmarks_path() -> Path:
+    """`<LAYLA_DATA_DIR or ~>/.layla/benchmarks.json`, resolved per call."""
+    if BENCHMARKS_PATH is not None:
+        return Path(BENCHMARKS_PATH)
+    from services.infrastructure.data_paths import layla_data_file
+    return layla_data_file("benchmarks.json")
 
 
 def _load_benchmarks() -> dict:
     """Load stored benchmarks."""
     try:
-        if _BENCHMARKS_PATH.exists():
-            return json.loads(_BENCHMARKS_PATH.read_text(encoding="utf-8"))
+        if _benchmarks_path().exists():
+            return json.loads(_benchmarks_path().read_text(encoding="utf-8"))
     except Exception:
         pass
     return {}
@@ -30,8 +41,8 @@ def _load_benchmarks() -> dict:
 def _save_benchmarks(data: dict) -> None:
     """Save benchmarks to disk."""
     try:
-        _BENCHMARKS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _BENCHMARKS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        _benchmarks_path().parent.mkdir(parents=True, exist_ok=True)
+        _benchmarks_path().write_text(json.dumps(data, indent=2), encoding="utf-8")
     except Exception as e:
         logger.warning("benchmark save failed: %s", e)
 
