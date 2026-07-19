@@ -196,3 +196,10 @@ benchmarks/scorecard_live.json
 agent/layla/memory/vector_meta.json
 agent/runtime_config.json.audit-aside
 agent/runtime_config.json.audit-*
+# ci-gate scratch. .ci-gate-rc.bak is a BYTE-IDENTICAL copy of the ignored runtime_config.json
+# above — secret-shaped fields (discord/slack/telegram tokens, tailscale key, remote_api_key)
+# included. The gate uses a DETERMINISTIC path because a random mktemp name cannot be found again
+# after a crash (that is what made orphan-repair possible), but audit-loop.mjs tells its agent
+# ".planning/audit/* is safe to commit" and auto-pushes when green — so without this rule the
+# operator's config is one `git add` from the repo. Exactly the .graphml.bak lesson above.
+.planning/audit/.ci-gate*
