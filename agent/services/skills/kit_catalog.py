@@ -21,7 +21,8 @@ KIT_CATALOG: list[dict[str, Any]] = [
      "desc": "Deeper recall for research: Elasticsearch memory search + HyDE retrieval.",
      "features": ["search_elastic", "hyde"], "icon": "❋"},
     {"id": "voice-companion", "name": "Voice Companion", "category": "companion",
-     "desc": "Speak and listen — Whisper STT + Kokoro TTS.",
+     "desc": "Speak and listen — Whisper STT + system-voice TTS. (Higher-quality Kokoro TTS is "
+             "GPLv3 and stays a separate opt-in: pip install layla[voice-kokoro].)",
      "features": ["voice"], "icon": "♪"},
     {"id": "privacy", "name": "Privacy Vault", "category": "security",
      "desc": "Installs AES-at-rest crypto (OS keyring). Note: no memory is marked 'sensitive' yet, "
@@ -49,16 +50,31 @@ def kit_by_id(kit_id: str) -> dict[str, Any] | None:
 
 
 def installed_status(cfg: dict | None = None) -> dict[str, bool]:
-    """Which catalog kits are currently active (all their feature flags enabled)."""
+    """Which catalog kits are genuinely installed: every feature flag on AND every package
+    the features need actually present.
+
+    This read the flags alone. Immediately after a failed Voice install the marketplace
+    rendered "Voice Companion ✓ installed" while the chat toolbar on the same page said
+    "Voice isn't installed" — two surfaces, one config, opposite claims. The flag says what
+    was *asked for*; only the packages say what is *there*, so a badge that means "installed"
+    has to consult both.
+    """
     try:
         from install.setup_profiles import enabled_feature_ids
         enabled = set(enabled_feature_ids(cfg or {}))
     except Exception:
         enabled = set()
+    try:
+        from install.feature_installer import feature_packages_present
+    except Exception:
+        def feature_packages_present(_fid):  # noqa: ANN001 — fail closed, never claim installed
+            return False
     out: dict[str, bool] = {}
     for k in KIT_CATALOG:
         feats = k.get("features") or []
-        out[k["id"]] = bool(feats) and all(f in enabled for f in feats)
+        out[k["id"]] = bool(feats) and all(
+            f in enabled and feature_packages_present(f) for f in feats
+        )
     return out
 
 
@@ -84,9 +100,34 @@ def install_kit(kit_id: str, *, confirm: bool = False) -> dict[str, Any]:
     plan = features_to_install(feats)
     if not confirm:
         return {"ok": True, "kit": kit["id"], "features": feats, "to_install": plan, "confirmed": False}
+
+    # The confirm branch used to DISCARD `plan` and only call apply_setup — so "Install"
+    # flipped flags, installed nothing, and the UI toasted "Installed <kit>". Every
+    # dep-bearing kit (Voice Companion, Quality ML, Privacy Vault, Researcher) was affected.
+    # Now the plan is executed, and the kit counts as installed only if it actually is.
+    from install.feature_installer import install_feature_deps
+
+    per_feature: list[dict[str, Any]] = []
+    all_ok = True
+    for fid in feats:
+        try:
+            # apply_flags=False: flags for the whole kit are applied once, below, so a kit
+            # is never left half-on with one feature enabled and another dead.
+            res = install_feature_deps(fid, apply_flags=False)
+        except Exception as e:
+            res = {"ok": False, "feature": fid, "error": str(e)}
+        per_feature.append(res)
+        all_ok = all_ok and bool(res.get("ok"))
+
+    if not all_ok:
+        failed = [f for r in per_feature for f in (r.get("failed") or [])]
+        return {"ok": False, "kit": kit["id"], "features": feats, "confirmed": True,
+                "installed": False, "per_feature": per_feature, "failed": failed,
+                "error": "some dependencies failed to install — the kit was not enabled"}
     try:
         from install.setup_profiles import apply_setup
         merged = apply_setup([], feats, save=True)
-        return {"ok": True, "kit": kit["id"], "features": merged.get("setup_features", feats), "confirmed": True}
+        return {"ok": True, "kit": kit["id"], "features": merged.get("setup_features", feats),
+                "confirmed": True, "installed": True, "per_feature": per_feature}
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        return {"ok": False, "error": str(e), "installed": False, "per_feature": per_feature}

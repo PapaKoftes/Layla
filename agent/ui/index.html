@@ -1296,6 +1296,10 @@
       <button class="settings-close" data-action="closeSettings" data-i18n="action.close">Close</button>
       <span class="settings-save-msg" id="settings-save-msg">✓ Saved</span>
     </div>
+    <!-- S3: the per-key read-back for settings that were written to disk and then reverted by
+         another owner. A toast cannot carry an owner and a remedy, and it fades; this does
+         not. Populated by _renderNotInForce in settings-full.js. -->
+    <div class="settings-not-in-force" id="settings-not-in-force" role="status" aria-live="polite" style="display:none"></div>
   </div>
 </div>
 

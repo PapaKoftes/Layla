@@ -76,7 +76,12 @@ if [ "$(uname -s)" = "Darwin" ]; then
 else
   uv pip install --python "$VPY" torch --index-url https://download.pytorch.org/whl/cpu
 fi
-uv pip install --python "$VPY" -e ".[cpu,llm]"
+# research + crawl: web search, article extraction, PDF/arXiv/Wikipedia reading. These were
+# omitted, so a bootstrap install came up with the web-facing tools permanently degraded —
+# the README advertises "can browse the web" and the tool then reported a missing library.
+# Pure-Python/small wheels, no compiler. (playwright still needs `playwright install chromium`
+# for real browser automation — see README.)
+uv pip install --python "$VPY" -e ".[cpu,llm,research,crawl]"
 
 # 5) detect hardware -> provision the best coding kit + write config
 if [ "$SKIP_MODEL" = "1" ]; then

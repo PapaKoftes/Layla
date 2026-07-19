@@ -6,6 +6,8 @@
  * badge. Overlay shell + G1 tokens. ⌘K → "Kit marketplace".
  */
 
+import { laylaConfirm } from "../services/utils.js";
+
 let _root = null;
 let _open = false;
 
@@ -65,6 +67,7 @@ async function _load() {
           (on
             ? '<span class="mkt-installed">✓ installed</span>'
             : '<button type="button" class="mkt-install setup-btn" data-id="' + _esc(k.id) + '">install</button>') +
+          '<span class="mkt-status" data-status-for="' + _esc(k.id) + '" hidden></span>' +
           "</div>";
       }).join("")
     ).join("");
@@ -74,18 +77,84 @@ async function _load() {
   }
 }
 
+function _setStatus(kitId, text, kind) {
+  const el = _root.querySelector('[data-status-for="' + CSS.escape(kitId) + '"]');
+  if (!el) return;
+  el.hidden = !text;
+  el.textContent = text || "";
+  el.setAttribute("data-kind", kind || "");
+}
+
+function _sizeLabel(mb) {
+  if (!mb) return "";
+  return mb >= 1000 ? (mb / 1000).toFixed(1) + " GB" : mb + " MB";
+}
+
+/**
+ * The last MEANINGFUL line of an error blob.
+ *
+ * `String(err).split("\n").slice(-1)[0]` looks right and is wrong for the exact input this
+ * always receives: pip stderr ends with a trailing newline, so the last element is "" and the
+ * row rendered "✕ Voice (speak & listen)  faster-whisper:  | kokoro-onnx:" — red styling, no
+ * reason. Walk back past the blank lines and keep a fallback, so a failure is never silent.
+ */
+function _lastLine(err) {
+  const lines = String(err == null ? "" : err).split("\n").map((s) => s.trim()).filter(Boolean);
+  return lines.length ? lines[lines.length - 1] : "install failed (no error text)";
+}
+
+/**
+ * Install a kit — for real, and with the truth on screen.
+ *
+ * This used to POST confirm:true and toast "Installed <kit>" on any non-false `ok`, while the
+ * backend's confirm branch discarded the install plan and only flipped config flags. So every
+ * dep-bearing kit (Voice Companion, Quality ML Stack, Privacy Vault, Researcher) reported a
+ * successful install that had not happened. Now: the plan (with download size) is shown and
+ * consented to first, progress is visible while pip runs, and a failure prints the package
+ * that failed and why — the kit is not marked installed unless it is.
+ */
 async function _install(btn, kitId) {
   if (!kitId) return;
+  const restore = () => { btn.disabled = false; btn.textContent = "retry"; };
   btn.disabled = true;
-  btn.textContent = "installing…";
   try {
+    // 1. Plan first (no confirm) so the operator sees what is about to be downloaded.
+    btn.textContent = "checking…";
+    _setStatus(kitId, "", "");
+    const plan = await _post("/kits/install", { kit_id: kitId });
+    if (plan.ok === false) {
+      restore();
+      _setStatus(kitId, plan.error || "could not read the install plan", "err");
+      return;
+    }
+    const toInstall = plan.to_install || [];
+    const pkgs = toInstall.reduce((a, f) => a.concat(f.deps || []), []);
+    const mb = toInstall.reduce((a, f) => a + (f.size_mb || 0), 0);
+    if (pkgs.length) {
+      const ask = "Install " + pkgs.join(", ") + (mb ? " (~" + _sizeLabel(mb) + " download)" : "") + "?";
+      if (!(await laylaConfirm(ask))) { btn.disabled = false; btn.textContent = "install"; return; }
+    }
+
+    // 2. Run it. pip is slow and network-bound — keep the row talking.
+    btn.textContent = "installing…";
+    _setStatus(kitId, pkgs.length ? "downloading " + pkgs.join(", ") + " — this can take a few minutes…" : "enabling…", "busy");
     const d = await _post("/kits/install", { kit_id: kitId, confirm: true });
-    if (d.ok === false) { btn.disabled = false; btn.textContent = "retry"; if (window.showToast) window.showToast("Install failed: " + (d.error || "")); return; }
+
+    if (d.ok === false) {
+      restore();
+      const why = (d.failed && d.failed.length)
+        ? d.failed.map((x) => x.dep + ": " + _lastLine(x.error)).join(" | ")
+        : (d.error || "install failed");
+      _setStatus(kitId, "not installed — " + why, "err");
+      if (window.showToast) window.showToast("Install failed: " + why);
+      return;
+    }
+    _setStatus(kitId, "", "");
     if (window.showToast) window.showToast("Installed " + kitId);
     _load();
   } catch (e) {
-    btn.disabled = false;
-    btn.textContent = "retry";
+    restore();
+    _setStatus(kitId, "install failed — " + (e && e.message ? e.message : e), "err");
   }
 }
 
