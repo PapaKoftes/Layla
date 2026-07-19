@@ -105,15 +105,19 @@ def _wrap_tool_with_metrics(name: str, fn: Any) -> Any:
     """Wrap tool fn to record execution latency to performance_monitor.
 
     @functools.wraps is LOAD-BEARING, not cosmetic. Without it this wrapper replaced every tool's real
-    signature with (*args, **kwargs) and its docstring with None — for all 198 tools. Consequences, all
-    verified:
+    signature with (*args, **kwargs) and its docstring with None — for every registered tool (198 at the
+    time this was found). Consequences, all verified then:
       • `inspect.signature` returned (*args, **kwargs), so there was no static contract to validate args
-        against, and `len(TOOLS) == 198` passed while `math_eval` raised on every input.
-      • `list_tools` (general.py:379 reads fn.__doc__) returned 198 tools with 100% EMPTY descriptions —
+        against, and the `len(TOOLS)` count test passed while `math_eval` raised on every input.
+      • `list_tools` (general.py:379 reads fn.__doc__) returned every tool with a 100% EMPTY description —
         and that is the tool Layla answers "what can you do?" with.
-    196/198 tools are already fully type-annotated, so the contract was never missing; it was being thrown
-    away here. Restoring it lets pydantic derive a JSON Schema for all 198 (~250ms) to drive arg validation,
-    the GBNF tool grammar, and one real registry smoke test.
+    198 of the 200 currently registered tools are fully type-annotated (read_notebook and read_pptx each
+    still have an unannotated parameter), so the contract was never missing; it was being thrown away here.
+    Restoring it lets pydantic derive a JSON Schema for the annotated tools (~250ms) to drive arg
+    validation, the GBNF tool grammar, and one real registry smoke test.
+
+    Counts here are descriptive, not a contract — the enforced count lives in
+    tests/test_capability_manifest.py, which DERIVES it from the registry.
     """
 
     @functools.wraps(fn)

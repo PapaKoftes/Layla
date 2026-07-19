@@ -94,8 +94,19 @@ def validate_manifest(manifest: dict[str, Any]) -> list[str]:
         errors.append("'entry_point' is required and must be a non-empty string")
     else:
         ep = manifest["entry_point"].strip()
-        if ".." in ep or ep.startswith("/") or ep.startswith("\\"):
-            errors.append(f"'entry_point' must be a relative path without '..'; got '{ep}'")
+        # Two shapes slipped through a leading-slash test and made the documented contract
+        # ("no `..` or absolute paths") false:
+        #   - DRIVE-ABSOLUTE "C:\\Windows\\x.py" is absolute but starts with neither / nor \.
+        #   - A NUL byte survives JSON and this validator, then raises ValueError (not OSError)
+        #     inside Path.resolve() at run time.
+        # The run-time confinement check blocks both, but a manifest validator that accepts what
+        # the runtime rejects is a defense-in-depth gap, and the doc claim was simply untrue.
+        _drive_abs = len(ep) >= 2 and ep[1] == ":" and ep[0].isalpha()
+        if ".." in ep or ep.startswith("/") or ep.startswith("\\") or _drive_abs or "\x00" in ep:
+            errors.append(
+                f"'entry_point' must be a relative path inside the pack: no '..', no absolute "
+                f"path (including drive-absolute like 'C:\\\\...'), no NUL byte; got '{ep}'"
+            )
 
     # Optional fields with type validation
     deps = manifest.get("dependencies", [])

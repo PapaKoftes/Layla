@@ -194,7 +194,7 @@ Switch in the sidebar or invoke by name:
 - File read/write/edit, patches, shell, Python  
 - Web search, Playwright browser automation, screenshots  
 - Repo search (grep/glob), Git operations  
-- 198 registered tools — see [AGENTS.md](AGENTS.md) and [docs/TECH_STACK_AND_CAPABILITIES.md](docs/TECH_STACK_AND_CAPABILITIES.md)  
+- 200 registered tools — see [AGENTS.md](AGENTS.md) and [docs/TECH_STACK_AND_CAPABILITIES.md](docs/TECH_STACK_AND_CAPABILITIES.md)  
 
 **Memory**
 

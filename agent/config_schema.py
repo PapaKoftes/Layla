@@ -130,6 +130,7 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
     {"key": "plugins_enabled", "type": "boolean", "category": "safety", "default": False, "hint": "Allow skill plugins to EXECUTE Python code (exec_module) and contribute MCP subprocess servers. Off = declarative skills only. Security-sensitive: only enable for plugins you trust."},
     {"key": "skill_venv_enabled", "type": "boolean", "category": "safety", "default": False, "hint": "On skill-pack install, provision a per-pack venv and pip-install its declared dependencies (heavier install; rolled back atomically on failure)."},
     {"key": "skill_deps_require_pinned", "type": "boolean", "category": "safety", "default": True, "hint": "Reject skill-pack installs whose dependencies aren't version-pinned (name==x.y.z). Prevents supply-chain drift from floating deps."},
+    {"key": "skill_packs_execute_enabled", "type": "boolean", "category": "safety", "default": False, "hint": "Allow the run_skill_pack tool to EXECUTE an installed pack's Python entry point. Off = installing a pack never runs its code. The per-pack venv is dependency isolation, not a security jail: the pack runs as a subprocess at your full privilege. Only enable for packs you trust."},
     {"key": "agent_hooks_enabled", "type": "boolean", "category": "safety", "default": True, "hint": "Allow operator-configured agent_hooks (session_start/pre_tool/post_tool) to run subprocess commands. session_start hooks run automatically when this is on."},
     {"key": "hooks_require_allow_run", "type": "boolean", "category": "safety", "default": True, "hint": "pre_tool/post_tool hooks run only when the turn has allow_run (or this is off). Keep on unless you trust every configured hook."},
     {"key": "uncensored", "type": "boolean", "category": "safety", "default": True, "hint": "Uncensored model behavior."},
@@ -431,6 +432,7 @@ _LABEL_OVERRIDES: dict[str, str] = {
     "learnings_n": "Recent learnings injected",
     "people_codex_enabled": "Remember people you mention",
     "skill_deps_require_pinned": "Require pinned skill dependencies",
+    "skill_packs_execute_enabled": "Allow skill packs to run code",
     "agent_hooks_enabled": "Allow agent hooks (subprocess)",
     "confirm_autonomous": "Confirm autonomous actions",
 }

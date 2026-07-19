@@ -566,6 +566,44 @@ def test_run_class_intents_classification():
     # File-mutation tools are NOT run-class (they remain write-or-run).
     for name in ("search_replace", "rename_symbol", "write_csv", "code_format", "notebook_edit_cell"):
         assert name not in _RUN_CLASS_INTENTS, name
+    # run_skill_pack executes a third-party pack's Python entry point at the operator's full
+    # privilege. It was omitted from this set, so at the dispatch layer a write-only grant did
+    # NOT trigger an approval break — proven by driving _handle_generic with
+    # allow_write=True/allow_run=False: flow was "continue" and control reached the execution
+    # path. Only the executor's own flag check stopped it, leaving one layer of defence where
+    # the comment above the frozenset promises two.
+    assert "run_skill_pack" in _RUN_CLASS_INTENTS
+
+
+def test_write_only_cannot_execute_a_skill_pack(monkeypatch):
+    """B3 teeth: remove "run_skill_pack" from _RUN_CLASS_INTENTS and this goes red — verified
+    by doing exactly that (flow="continue", the execution path reached, no approval break)."""
+    from services.tools import tool_dispatch as td
+    from services.tools import tool_dispatch_base as tdb
+
+    fake_TOOLS = {"run_skill_pack": {"require_approval": True, "risk_level": "high",
+                                     "fn_key": "run_skill_pack"}}
+    fake_rs = MagicMock(); fake_rs.is_tool_allowed.return_value = True  # PRE-APPROVED
+    fake_al = MagicMock()
+    fake_al._has_any_grant.return_value = False
+    fake_al._write_pending.return_value = "appr-pack"
+    fake_al._approval_preview_diff.return_value = None
+    monkeypatch.setattr(td, "_imports", lambda: (fake_al, fake_rs, fake_TOOLS))
+    monkeypatch.setattr(tdb, "_imports", lambda: (fake_al, fake_rs, fake_TOOLS))
+    monkeypatch.setattr(td, "_is_approval_bypassed", lambda ctx, intent: False)
+
+    # Sentinel: reaching this means the approval gate did not stop the turn.
+    reached = []
+    monkeypatch.setattr(td, "_deterministic_verify_retry",
+                        lambda *a, **k: (reached.append(True), ({"ok": True}, True, ""))[1])
+
+    ctx = _make_ctx(allow_write=True, allow_run=False,
+                    decision={"args": {"pack": "weather"}})
+    res = td._handle_generic("run_skill_pack", "run the weather pack", ctx)
+
+    assert res.flow == "break", "a write-only grant executed a skill pack"
+    assert ctx.state["steps"][-1]["result"]["reason"] == "approval_required"
+    assert not reached, "control reached the execution path despite the missing run grant"
 
 
 def test_write_only_cannot_execute_run_class_tool(monkeypatch):

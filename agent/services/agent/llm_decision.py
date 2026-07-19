@@ -362,6 +362,20 @@ def llm_decision(
     if mcp_tool_hint:
         prompt_context = prompt_context + mcp_tool_hint + "\n\n"
 
+    # Skill packs: without this line the model never learns an installed pack exists and
+    # will never pick run_skill_pack. Gated on the same execution flag as the tool, so a
+    # disabled install is not advertised as a capability.
+    if cfg_pre.get("skill_packs_execute_enabled"):
+        try:
+            from services.skills.skill_packs import installed_summary_for_prompt
+
+            skill_pack_hint = installed_summary_for_prompt(cfg_pre)
+        except Exception as e:
+            logger.debug("skill pack prompt summary failed: %s", e, exc_info=True)
+            skill_pack_hint = ""
+        if skill_pack_hint:
+            prompt_context = prompt_context + skill_pack_hint + "\n\n"
+
     valid_tools = get_tools_for_goal(
         goal,
         context=context,

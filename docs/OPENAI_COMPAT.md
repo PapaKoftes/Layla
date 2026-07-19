@@ -21,7 +21,7 @@ Base URL: `http://127.0.0.1:8000/v1` · API key: any non-empty string (local, un
 ## Not supported (by design) — and what to do instead
 
 - **OpenAI function/tool calling** (`tools`, `tool_choice`, `functions`). These are accepted but
-  **ignored** — the response never contains `tool_calls`. Layla's 198 tools are not driven by the
+  **ignored** — the response never contains `tool_calls`. Layla's 200 tools are not driven by the
   OpenAI tool protocol; they run inside Layla's own agent loop. To let a `/v1` turn use them, add the
   non-standard body fields `allow_write`, `allow_run`, and `workspace_root` (Layla extension), or use
   the native `POST /agent` endpoint. If your client *requires* server-side `tool_calls`, `/v1` is not
