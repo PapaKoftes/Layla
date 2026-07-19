@@ -75,14 +75,28 @@ _TIER1_COMPOUND_PATTERNS: list[tuple[re.Pattern, str]] = [
         re.IGNORECASE,
     ), "csam_adjacent"),
     # Weapons of mass destruction: requires weapon type + synthesis/creation
+    #
+    # PERF (ReDoS fix): the `\A` anchor is load-bearing, not cosmetic. These "contains X AND
+    # contains Y" rules are built entirely from zero-width lookaheads, so an UNANCHORED
+    # re.search retried them at every one of the ~20k start positions, and each retry rescanned
+    # the rest of the string (`.*` + backtrack) -- O(n^2). Measured on a 20k input that matches
+    # nothing (ordinary long prose): ~9s PER PATTERN, ~47s for one check_input call. check_input
+    # runs on every user message and check_output re-scans the GROWING buffer every stride during
+    # streaming, so that was a live hang on the turn path, not just a slow test.
+    #
+    # Anchoring is semantically identical here, not a narrowing: `(?=.*X)` at position i asserts
+    # "X occurs at or after i". Position 0 is the most permissive case -- if it fails there, X is
+    # absent from the whole string, so every i>0 (a subset of the tail) must fail too. Only
+    # position 0 can ever succeed, so trying only position 0 loses no match. Coverage is
+    # unchanged; only the 20k wasted retries are gone.
     (re.compile(
-        r"(?=.*\b(synthesize|manufacture|create|build|make|produce|assemble)\b)"
+        r"\A(?=.*\b(synthesize|manufacture|create|build|make|produce|assemble)\b)"
         r"(?=.*\b(nerve\s*agent|sarin|vx\s*gas|anthrax|ricin|biological\s*weapon|chemical\s*weapon|dirty\s*bomb|nuclear\s*device)\b)",
         re.IGNORECASE | re.DOTALL,
     ), "wmd_synthesis"),
-    # Malware/exploit: requires creation verb + malware type
+    # Malware/exploit: requires creation verb + malware type. `\A`: see the ReDoS note above.
     (re.compile(
-        r"(?=.*\b(write|create|build|code|develop|generate)\b)"
+        r"\A(?=.*\b(write|create|build|code|develop|generate)\b)"
         r"(?=.*\b(ransomware|keylogger|rootkit|trojan|worm|zero.day\s*exploit|botnet|cryptolocker)\b)",
         re.IGNORECASE | re.DOTALL,
     ), "malware_generation"),
@@ -93,9 +107,10 @@ _TIER1_COMPOUND_PATTERNS: list[tuple[re.Pattern, str]] = [
 # ---------------------------------------------------------------------------
 
 _TIER2_COMPOUND_PATTERNS: list[tuple[re.Pattern, str]] = [
-    # Self-harm instructions: requires method + instruction context
+    # Self-harm instructions: requires method + instruction context.
+    # `\A`: same ReDoS fix as the Tier-1 lookahead rules -- see the note there.
     (re.compile(
-        r"(?=.*\b(how\s+to|steps\s+to|guide\s+to|instructions?\s+for|method\s+for|painless(?:ly)?|best\s+way)\b)"
+        r"\A(?=.*\b(how\s+to|steps\s+to|guide\s+to|instructions?\s+for|method\s+for|painless(?:ly)?|best\s+way)\b)"
         r"(?=.*\b(kill\s+yourself|commit\s+suicide|self.harm|cut\s+yourself|overdose|"
         r"end\s+(?:my|your|it)\s+(?:life|all)|take\s+my\s+own\s+life)\b)",
         re.IGNORECASE | re.DOTALL,
