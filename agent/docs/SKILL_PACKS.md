@@ -1,9 +1,10 @@
 # Layla Skill Packs
 
 Skill packs are self-contained extensions that add new tools and capabilities to
-Layla. Each pack lives in its own directory, declares a manifest, runs in an
-isolated virtual environment, and is tracked in a SQLite registry with version
-and health metadata.
+Layla. Each pack lives in its own directory, declares a manifest, runs in a
+dedicated virtual environment (dependency isolation — **not** a security
+sandbox; see [Security Model](#security-model)), and is tracked in a SQLite
+registry with version and health metadata.
 
 ---
 
@@ -26,8 +27,8 @@ A skill pack is a Git repository (or local directory) that contains:
 
 - A **manifest file** (`layla-skill.json` or `manifest.json`) describing the
   pack, its entry point, dependencies, and permissions.
-- A **Python entry point** (e.g. `main.py`) that Layla executes in a sandboxed
-  virtual environment.
+- A **Python entry point** (e.g. `main.py`) that Layla executes in a dedicated
+  virtual environment, as a subprocess at your full user privilege.
 - Optional pip dependencies declared in the manifest.
 
 When you install a pack, Layla:
@@ -38,9 +39,24 @@ When you install a pack, Layla:
 3. Registers the pack in the SQLite skill registry (`~/.layla/skill_registry.db`)
    with version, manifest hash, install timestamp, and health status.
 4. Creates an isolated venv under `~/.layla/skill_envs/<name>/` and installs the
-   pack's declared pip dependencies into it.
+   pack's declared pip dependencies into it — **only when `skill_venv_enabled` is
+   on** (it is off by default; declarative packs need no venv).
 
-The pack is then available as a tool in Layla's agent loop.
+Installing a pack does **not** run its entry point. To execute that, enable
+`skill_packs_execute_enabled` (off by default) and Layla can then call the
+`run_skill_pack` tool, which requires approval like any dangerous tool.
+
+> **Caveat — installing is not entirely inert.** If `skill_venv_enabled` is on
+> *and* the pack declares pip dependencies, step 4 runs a real `pip install`, and
+> a dependency's PEP 517 build backend is third-party code that executes during
+> that install. The entry point does not run, but *someone's* code does. That
+> build code gets the same restricted environment allowlist as a pack entry
+> point, so it is not handed your secrets — but it runs at your user privilege.
+> Both switches off means nothing third-party executes at all.
+
+Use `list_skill_packs` to see what is installed. When execution is enabled, the
+installed packs are summarised into the agent's decision prompt so Layla knows
+they exist.
 
 ---
 
@@ -90,7 +106,7 @@ repository root:
 | `name`        | string | Alphanumeric, hyphens, underscores only. Must be non-empty.|
 | `version`     | string | Semver-like: `1.0.0`, `0.1`, `2.0.0-beta.1`.              |
 | `description` | string | Non-empty human-readable summary.                          |
-| `entry_point` | string | Relative path to the Python script. No `..` or absolute paths allowed. |
+| `entry_point` | string | Relative path to the Python script, inside the pack. No `..`, no absolute path (including drive-absolute like `C:\...`), no NUL byte. Enforced twice: rejected at install by `validate_manifest`, and re-checked against the resolved pack directory before every run. |
 
 #### Optional Fields
 
@@ -122,8 +138,8 @@ Unknown permission strings will cause manifest validation to fail.
 
 ### Entry Point
 
-The entry point is a Python script that Layla executes via the pack's isolated
-venv. The sandbox provides two environment variables:
+The entry point is a Python script that Layla executes via the pack's dedicated
+venv. The runner provides two environment variables:
 
 - `LAYLA_SKILL_PACK` -- the pack name
 - `LAYLA_PACK_DIR` -- absolute path to the pack's installed directory
@@ -200,7 +216,7 @@ If a pack with the same name is already installed, the request fails with
 ### Via Python
 
 ```python
-from services.skill_packs import install_from_git
+from services.skills.skill_packs import install_from_git
 
 result = install_from_git(
     url="https://github.com/you/my-weather-pack.git",
@@ -245,7 +261,7 @@ This reads manifest data directly from each directory under
 The skill registry provides richer metadata (install time, health, last run):
 
 ```python
-from services.skill_registry import list_packs, get_pack
+from services.skills.skill_registry import list_packs, get_pack
 
 all_packs = list_packs()
 # [{"name": "my-weather-pack", "version": "1.0.0", "health_status": "installed",
@@ -277,7 +293,7 @@ For a complete cleanup that also removes the venv and registry entry, use the
 rollback module:
 
 ```python
-from services.skill_rollback import rollback_install
+from services.skills.skill_rollback import rollback_install
 from pathlib import Path
 
 result = rollback_install(
@@ -294,13 +310,13 @@ result = rollback_install(
 `rollback_install` performs three cleanup steps:
 
 1. Removes the pack directory (`.layla/skill_packs_installed/<name>/`).
-2. Removes the sandboxed venv (`~/.layla/skill_envs/<name>/`).
+2. Removes the per-pack venv (`~/.layla/skill_envs/<name>/`).
 3. Deletes the registry row from SQLite.
 
 You can check whether a rollback is possible with:
 
 ```python
-from services.skill_rollback import can_rollback
+from services.skills.skill_rollback import can_rollback
 
 if can_rollback("my-weather-pack"):
     rollback_install("my-weather-pack")
@@ -325,24 +341,51 @@ Before a pack is accepted, `skill_manifest.validate_manifest()` enforces:
 - **Permission allow-list** -- only the eight defined permissions are accepted.
   Unknown permissions cause validation failure.
 
-### Sandboxed Execution
+### Execution: dependency isolation, NOT a security sandbox
 
-Each pack gets its own Python virtual environment under
-`~/.layla/skill_envs/<pack_name>/`. The sandbox (`skill_sandbox.py`) provides:
+Read this before enabling `skill_packs_execute_enabled`.
 
-- **Process isolation** -- entry points run as subprocesses, not in Layla's
-  process. A non-zero exit code is captured, not propagated.
-- **Minimal environment** -- only safe environment variables are passed through
-  (`PATH`, `HOME`, `TEMP`, etc.). Layla's API keys, tokens, and config are not
-  exposed.
-- **Path confinement** -- before execution, the resolved entry point path is
-  checked to ensure it falls within the pack directory. Attempts to escape via
-  symlinks or `..` are blocked.
-- **Timeout enforcement** -- default 60-second execution limit. Configurable per
-  invocation. Processes that exceed the limit are killed.
-- **Output limits** -- stdout is truncated to 10 KB, stderr to 5 KB.
-- **Dependency isolation** -- each pack's pip dependencies are installed into its
-  own venv, preventing version conflicts between packs or with Layla itself.
+**A skill pack runs arbitrary third-party Python at your full user privilege.**
+The per-pack venv separates *dependencies*, not *authority*. There is **no
+filesystem jail** and **no network namespace**: a pack can read and write any
+file your account can, and open any connection your machine can. Treat
+installing and enabling a pack exactly as you would treat running a script you
+downloaded — because that is what it is.
+
+What the execution layer (`skill_sandbox.py`) actually does provide:
+
+- **Separate process** -- entry points run as subprocesses, not inside Layla's
+  process, so a crash or non-zero exit is captured rather than propagated.
+- **Environment allowlist** -- only `PATH`, `HOME`, `TEMP`, and similar are
+  passed through, so Layla's API keys, tokens, and config are not handed to the
+  pack. This covers **both** the run path and the `pip install` path, so a
+  dependency's build backend is filtered too. (The install path additionally
+  allows proxy/CA-bundle and cache-location variables, which pip needs to work at
+  all; `PIP_INDEX_URL` and friends are deliberately withheld because a private
+  index URL routinely embeds a token. Configure a private index in `pip.conf`
+  instead.) A pack that goes looking on disk can still find your secrets — the
+  allowlist governs the environment, not the filesystem.
+- **Entry-point path check** -- the resolved entry point must fall inside the
+  pack directory, so the manifest cannot point at an arbitrary script.
+- **Timeout enforcement** -- default 60-second limit, configurable per
+  invocation. Processes that exceed it are killed.
+- **Output limits** -- stdout truncated to 10 KB, stderr to 5 KB.
+- **Dependency isolation** -- each pack's pip dependencies go into its own venv,
+  preventing version conflicts between packs or with Layla itself.
+
+### Consent gates
+
+Two independent switches, both off by default:
+
+| Config key | Effect when off (default) |
+|------------|---------------------------|
+| `skill_venv_enabled` | No venv is provisioned at install, so no pack has an interpreter to run with. |
+| `skill_packs_execute_enabled` | `run_skill_pack` refuses before spawning anything. |
+
+`run_skill_pack` is registered as a dangerous, approval-required, high-risk tool:
+it flows through the tool-permission check (needs **Allow Run** for the turn),
+the approval gate, and dangerous-tool audit logging. Both keys are also protected
+from remote `/settings` writes, so a remote client cannot turn execution on.
 
 ### Registry Integrity
 
@@ -448,7 +491,7 @@ Response:
 You can also scaffold a manifest programmatically:
 
 ```python
-from services.skill_manifest import generate_template
+from services.skills.skill_manifest import generate_template
 
 template = generate_template("my-new-pack")
 # Returns a valid manifest dict with sensible defaults
@@ -465,16 +508,25 @@ template = generate_template("my-new-pack")
 | POST   | `/skill_packs/remove`    | Remove an installed pack by ID    |
 | GET    | `/skills`                | List markdown skills (separate system) |
 
+### Agent Tools
+
+| Tool | Risk | Description |
+|------|------|-------------|
+| `list_skill_packs` | low | Read-only: installed packs with version, description, entry point, and whether execution is enabled. |
+| `run_skill_pack` | **high, approval required** | Runs a pack's entry point in its venv and returns stdout. Gated on `skill_packs_execute_enabled`. Arguments: `pack` (installed pack id), `payload` (JSON string or object, delivered on stdin), `args` (argv list), `timeout_seconds`. |
+
+A successful or failed run updates the pack's `last_run` and `health_status` in
+the registry.
+
 ### Key Modules
 
 | Module                          | Responsibility                                   |
 |---------------------------------|--------------------------------------------------|
-| `services/skill_packs.py`       | Install, list, remove pack directories           |
-| `services/skill_manifest.py`    | Load, validate, and template manifest files      |
-| `services/skill_sandbox.py`     | Venv creation, dependency install, sandboxed exec|
-| `services/skill_registry.py`    | SQLite CRUD for installed pack metadata          |
-| `services/skill_rollback.py`    | Full cleanup: directory + venv + registry entry  |
-| `services/skill_discovery.py`   | Suggest packs based on task context (heuristic)  |
+| `services/skills/skill_packs.py`       | Install, list, remove pack directories           |
+| `services/skills/skill_manifest.py`    | Load, validate, and template manifest files      |
+| `services/skills/skill_sandbox.py`     | Venv creation, dependency install, subprocess exec|
+| `services/skills/skill_registry.py`    | SQLite CRUD for installed pack metadata          |
+| `services/skills/skill_rollback.py`    | Full cleanup: directory + venv + registry entry  |
 
 ### Storage Locations
 

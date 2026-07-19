@@ -174,6 +174,21 @@ TOOLS = {
         "category": "code",
         "description": "Run a structured LLM task with a JSON schema for the output format.",
     },
+    # ONE static tool, not a key per installed pack: VALID_TOOLS is frozenset(TOOLS.keys())
+    # captured at import (services/agent/step_formatting.py), so a dynamically-added per-pack
+    # key would be rejected by the decision loop as an unknown tool. The pack id is an argument.
+    "run_skill_pack": {
+        "fn_key": "run_skill_pack",
+        "dangerous": True, "require_approval": True, "risk_level": "high",
+        "category": "system",
+        "description": "Run an installed skill pack's entry point in its own venv and return its output. Executes third-party Python at operator privilege; the venv is dependency isolation, not a security jail.",
+    },
+    "list_skill_packs": {
+        "fn_key": "list_skill_packs",
+        "dangerous": False, "require_approval": False, "risk_level": "low",
+        "category": "system",
+        "description": "List installed skill packs with their version, description, and entry point.",
+    },
     "mcp_tools_call": {
         "fn_key": "mcp_tools_call",
         "dangerous": True, "require_approval": True, "risk_level": "high",

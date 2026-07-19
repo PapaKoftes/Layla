@@ -164,6 +164,144 @@ def structured_llm_task(
     except Exception:
         return {"ok": True, "json": None, "raw": text[:4000], "parse_error": True}
 
+_SKILL_PACK_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+def list_skill_packs() -> dict:
+    """List installed skill packs (id, version, description, entry point). Read-only discovery."""
+    from services.skills import skill_packs
+
+    try:
+        packs = skill_packs.list_installed_readonly()
+    except Exception as e:
+        return {"ok": False, "error": str(e), "packs": [], "count": 0}
+    execution_enabled = False
+    try:
+        import runtime_safety
+        execution_enabled = bool(runtime_safety.load_config().get("skill_packs_execute_enabled", False))
+    except Exception as e:
+        logger.debug("list_skill_packs: config read failed: %s", e)
+    return {
+        "ok": True,
+        "packs": packs,
+        "count": len(packs),
+        "execution_enabled": execution_enabled,
+        "note": (
+            "" if execution_enabled
+            else "Packs are installed but cannot run: skill_packs_execute_enabled is false."
+        ),
+    }
+
+
+def run_skill_pack(
+    pack: str = "",
+    payload: str | dict | None = None,
+    args: list | None = None,
+    timeout_seconds: int = 60,
+) -> dict:
+    """Run an installed skill pack's entry point in its own venv and return its stdout.
+
+    The venv gives DEPENDENCY isolation, not a security jail: the pack's Python runs
+    as a subprocess with the operator's full privileges (no filesystem jail, no network
+    namespace). Third-party code — gated behind skill_packs_execute_enabled.
+    """
+    import json as _json
+
+    import runtime_safety
+    from services.skills import skill_packs, skill_sandbox
+    from services.skills.skill_manifest import load_manifest
+
+    cfg = runtime_safety.load_config()
+    if not cfg.get("skill_packs_execute_enabled", False):
+        return {
+            "ok": False,
+            "error": (
+                "skill_packs_execute_enabled is false; installing a skill pack does not grant it "
+                "permission to run. A pack executes third-party Python at operator privilege — "
+                "enable skill_packs_execute_enabled in runtime_config.json only for packs you trust."
+            ),
+        }
+
+    name = (pack or "").strip()
+    if not name:
+        return {"ok": False, "error": "pack is required (an installed pack id; see list_skill_packs)"}
+    if not _SKILL_PACK_ID_RE.match(name):
+        return {"ok": False, "error": f"invalid pack id: {name!r} (only [a-zA-Z0-9_-] allowed)"}
+
+    base = skill_packs.INSTALLED_DIR
+    pack_dir = base / name
+    try:
+        if not pack_dir.resolve().is_relative_to(base.resolve()):
+            return {"ok": False, "error": "path traversal detected"}
+    except OSError as e:
+        return {"ok": False, "error": f"cannot resolve pack directory: {e}"}
+    if not pack_dir.is_dir():
+        return {"ok": False, "error": f"skill pack not installed: {name}"}
+
+    manifest = load_manifest(pack_dir)
+    if not manifest:
+        return {"ok": False, "error": f"{name}: manifest missing or unparseable"}
+    entry_point = str(manifest.get("entry_point") or "").strip()
+    if not entry_point:
+        return {"ok": False, "error": f"{name}: manifest declares no entry_point"}
+
+    stdin_data: str | None = None
+    if payload is not None and payload != "":
+        if isinstance(payload, str):
+            stdin_data = payload
+        else:
+            try:
+                stdin_data = _json.dumps(payload)
+            except (TypeError, ValueError) as e:
+                return {"ok": False, "error": f"payload is not JSON-serializable: {e}"}
+
+    try:
+        timeout = max(1, min(600, int(timeout_seconds)))
+    except (TypeError, ValueError):
+        timeout = 60
+
+    # Guard the argv list: a bare string here would iterate into one argv entry PER
+    # CHARACTER, which a model passing args="--verbose" would hit immediately.
+    if args is None or args == "":
+        argv: list[str] = []
+    elif isinstance(args, (list, tuple)):
+        argv = [str(a) for a in args]
+    else:
+        argv = [str(args)]
+
+    result = skill_sandbox.run_entry_point(
+        name,
+        pack_dir,
+        entry_point,
+        args=argv,
+        stdin_data=stdin_data,
+        timeout_seconds=timeout,
+    )
+
+    # The registry's last_run / health_status columns existed but no run path ever
+    # wrote them, so they were frozen at their defaults forever. This is that path.
+    try:
+        from services.skills import skill_registry
+        skill_registry.update_last_run(name)
+        skill_registry.update_health(
+            name,
+            "healthy" if result.get("ok") else "error",
+            error="" if result.get("ok") else str(result.get("stderr") or "")[:500],
+        )
+    except Exception as e:
+        logger.debug("run_skill_pack: registry bookkeeping skipped for %s: %s", name, e)
+
+    return {
+        "ok": bool(result.get("ok")),
+        "pack": name,
+        "entry_point": entry_point,
+        "stdout": result.get("stdout", ""),
+        "stderr": result.get("stderr", ""),
+        "exit_code": result.get("exit_code", -1),
+        "timed_out": bool(result.get("timed_out")),
+    }
+
+
 def mcp_tools_call(
     mcp_server: str = "",
     tool_name: str = "",

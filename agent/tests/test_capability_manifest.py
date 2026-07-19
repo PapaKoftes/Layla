@@ -129,9 +129,10 @@ def test_manifest_is_honest_about_what_is_broken():
 KNOWN_BROKEN_TOOLS: set[str] = set()
 # (was {"math_eval"} — `_ast.Mul` does not exist; it is `ast.Mult`, and the tuple was built BEFORE parsing so
 #  every input raised AttributeError. Fixed 2026-07-16 along with the missing @functools.wraps that hid it:
-#  the wrapper replaced all 198 signatures with (*args, **kwargs) and nulled every __doc__, so the 198-tool
+#  the wrapper replaced every signature with (*args, **kwargs) and nulled every __doc__, so the tool-count
 #  test counted registrations and never invoked one. This guard caught the repair and demanded the manifest be
-#  updated — which is what a guard is for.)
+#  updated — which is what a guard is for. The registry held 198 tools then and holds 200 now; that is why
+#  the count below is derived, never written down.)
 
 
 def test_manifest_tool_count_tracks_reality():
@@ -158,10 +159,10 @@ def test_manifest_tool_count_tracks_reality():
 def test_known_broken_tools_are_still_actually_broken():
     """Executes each known-broken tool. If one starts working, this FAILS and tells you to update the manifest.
 
-    A registry entry proves only that a name maps to a callable: every tool is wrapped into (*args, **kwargs)
-    by _wrap_tool_with_metrics (registry.py:103) and the registry carries NO parameter schema — so
-    `len(TOOLS) == 198` passes while a tool raises on every input. 153 of 198 tools are invoked by no test at
-    all. This executes the one we know about instead of trusting a count.
+    A registry entry proves only that a name maps to a callable: before the @functools.wraps repair every
+    tool was wrapped into (*args, **kwargs) by _wrap_tool_with_metrics and the registry carried NO parameter
+    schema — so a `len(TOOLS)` assertion passed while a tool raised on every input. Most registered tools are
+    still invoked by no test at all. This executes the ones we know about instead of trusting a count.
     """
     from layla.tools.registry import TOOLS
 

@@ -88,7 +88,7 @@ DANGEROUS_TOOLS = [
     "search_replace", "rename_symbol", "generate_gcode", "geometry_execute_program", "docker_run",
     "github_pr", "send_email", "clipboard_write", "browser_click", "browser_fill",
     "code_format", "write_csv", "calendar_add_event", "create_svg", "create_mermaid",
-    "notebook_edit_cell",
+    "notebook_edit_cell", "run_skill_pack",
 ]
 
 PROTECTED_FILES = [
