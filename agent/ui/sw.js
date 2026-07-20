@@ -23,7 +23,18 @@
 // from setup.js; a stale v16 setup.js exports neither, so serving the old graph against the new imports
 // would fail to LINK and boot to a dead page. That was the previous attempt's exact failure — bump so the
 // whole graph updates atomically on first load.
-const CACHE = "layla-ui-v28";
+// v29 (BL-390): index.html, main.js, layla-rebuild.css and a NEW module (components/nav-groups.js)
+// change together — the grouped feature navigation. main.js now imports nav-groups.js; a stale v28
+// main.js does not, so the sidebar groups would render with no gate copy at all and the two gated
+// entries would look available. Stale-while-revalidate would serve exactly that on the first load.
+// v30 (BL-390 gate-truth fix): index.html, layla-rebuild.css, main.js and components/nav-groups.js
+// change together — the gated nav entries are re-tagged against the flags their panels actually
+// read (Deliberate is now UNGATED; Sync gates on syncthing_api_key, not remote), and the sidebar
+// layout is fixed so all four group headings fit at 1366x768. A stale v29 index.html would keep asking /setup/gate-status about
+// `multi_agent` and `remote` — the server still answers both, so the operator would go on being told
+// a working panel is locked, and told to rotate a tunnel token that does not enable sync. A wrong
+// answer that renders perfectly is exactly what stale-while-revalidate would serve here.
+const CACHE = "layla-ui-v31";
 const PRECACHE = [
   "/ui/",
   "/manifest.json",

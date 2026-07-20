@@ -74,6 +74,74 @@ def get_setup_state():
     }
 
 
+@router.get("/setup/gate-status")
+def get_gate_status(features: str = "", keys: str = ""):
+    """Why a NAMED feature or config key is off — for any id, not just the ones this config asked for.
+
+    `/setup/state` can only explain features in `intended_feature_ids`: a feature the operator
+    never picked is simply absent from that payload. The navigation needs the opposite guarantee
+    — it renders a fixed set of entries and must state the gate on the gated ones whether or not
+    anybody ever asked for them — so it needs to ask by name.
+
+    Reuses `feature_status` (features) and `key_owner` + `key_missing_packages` (raw config keys).
+    Deliberately NOT a second owner registry: every reason string here is produced by
+    install.feature_status, which is the single source the wizard and settings already use.
+    """
+    fids = [f.strip() for f in (features or "").split(",") if f.strip()]
+    kids = [k.strip() for k in (keys or "").split(",") if k.strip()]
+    out: dict = {"ok": True, "features": [], "keys": []}
+    try:
+        import runtime_safety
+
+        cfg = runtime_safety.load_config()
+    except Exception as e:
+        logger.warning("setup/gate-status: config unreadable: %s", e)
+        cfg = {}
+    if fids:
+        try:
+            from install.feature_status import feature_status
+
+            out["features"] = feature_status(fids, cfg=cfg)
+        except Exception as e:
+            logger.warning("setup/gate-status: feature_status failed: %s", e)
+            out["ok"] = False
+    for key in kids:
+        try:
+            from install.feature_status import KNOWN_OWNERS, key_missing_packages, key_owner
+
+            owned = key_owner(key, cfg)
+            missing = key_missing_packages(key)
+            on = bool(cfg.get(key)) and not missing
+            if on:
+                owner, reason = "", ""
+            elif owned:
+                owner, reason = owned
+            elif missing:
+                owner = "packages"
+                reason = f"the engine behind '{key}' is not installed (missing: {', '.join(missing)})."
+            else:
+                # THE BACKSTOP, and it is not optional — see feature_status._owner_unknown.
+                # An empty reason here reaches the user as "off, and the server gave no reason",
+                # which reads as a UI bug rather than as the honest "this module has a gap".
+                owner = "unknown"
+                reason = (
+                    f"'{key}' is off in the effective config and no known owner "
+                    f"({KNOWN_OWNERS}) accounts for it. Reason unknown — check Settings for "
+                    "this key."
+                )
+            out["keys"].append({
+                "key": key,
+                "on": on,
+                "owner": owner,
+                "reason": reason,
+                "missing_packages": missing,
+            })
+        except Exception as e:
+            logger.warning("setup/gate-status: key_owner(%s) failed: %s", key, e)
+            out["ok"] = False
+    return out
+
+
 @router.post("/setup/apply")
 def apply_setup_profiles(body: dict):
     """Apply chosen profile(s) + feature(s) → merge onto config + persist as the startup

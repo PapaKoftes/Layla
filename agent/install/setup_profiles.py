@@ -66,7 +66,13 @@ FEATURE_MANIFEST = [
      "unlocks": "route to OpenAI/etc. via LiteLLM"},
     {"id": "multi_agent", "label": "Multi-agent deliberation",
      "flags": {"multi_agent_orchestration_enabled": True}, "deps": [], "models": [], "size_mb": 0,
-     "unlocks": "aspect council / debate depth on deep-reasoning turns (the Deliberate panel)"},
+     # NOT "(the Deliberate panel)". That parenthetical was false and it was load-bearing: the
+     # sidebar inherited it as a gate identity and told operators a working panel was locked.
+     # This flag is read in exactly two places — multi_agent.py::should_use_multi_agent, which
+     # decides whether a CHAT turn is auto-routed to several aspects, and prompt_builder.py,
+     # which deepens the prompt on deep-reasoning turns. The Deliberate panel POSTs /debate and
+     # runs whether this is on or off. Describe the two paths that actually read it.
+     "unlocks": "auto-routes complex CHAT turns to several aspects + deeper deep-reasoning prompts"},
     {"id": "observability", "label": "Detailed tracing & telemetry",
      "flags": {"trace_id_enabled": True, "telemetry_log_trivial": True}, "deps": [], "models": [], "size_mb": 0,
      "unlocks": "per-request trace ids + verbose telemetry (diagnostics; a little overhead)"},

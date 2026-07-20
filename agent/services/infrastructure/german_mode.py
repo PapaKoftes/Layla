@@ -274,10 +274,25 @@ def score_complexity(text: str) -> dict:
     }
 
 
+def active_rule_count(level: str = "B1") -> int:
+    """How many of `_ERROR_PATTERNS` can fire at `level`.
+
+    Exists because "no errors found" is only meaningful if something was actually checked, and
+    this rule set is thin and level-filtered: A1 activates ZERO rules, A2 two, B1 four, B2+ five.
+    A beginner — the person most likely to make mistakes — is therefore checked by nothing, and
+    without this count the engine reported that silence as a clean bill of health.
+    """
+    user_idx = _LEVEL_IDX.get(level.upper(), 2)
+    return sum(1 for p in _ERROR_PATTERNS if _LEVEL_IDX.get(p["level"], 1) <= user_idx)
+
+
 def detect_errors(text: str, level: str = "B1") -> list[dict]:
     """
     Heuristic error detection. Returns list of {name, hint, match, level}.
     Only flags patterns at or below the user's current level (no noise from advanced rules).
+
+    NOTE the asymmetry this creates, which callers must respect: an empty return means "none of
+    the rules active at this level matched", NOT "this German is correct". See active_rule_count.
     """
     user_idx = _LEVEL_IDX.get(level.upper(), 2)
     errors = []
@@ -306,8 +321,13 @@ def correct_text(text: str, user_id: str = "default") -> dict:
     errors = detect_errors(text, level)
     complexity = score_complexity(text)
 
+    # Only ADAPT on evidence. With zero rules active (every level below A2) a clean result is not
+    # a success — nothing was checked — yet this used to feed `streak_ok`, so a learner writing
+    # broken German got promoted up the CEFR ladder for it. No rules active => no evidence => no
+    # level change in either direction.
+    rules_active = active_rule_count(level)
     correct = len(errors) == 0
-    level_changed = _adapt_level(profile, correct, user_id)
+    level_changed = _adapt_level(profile, correct, user_id) if rules_active else None
 
     # Build corrected text (apply hints, mark problem words)
     corrected = text
@@ -324,6 +344,9 @@ def correct_text(text: str, user_id: str = "default") -> dict:
         "level": level,
         "marks": marks,
         "level_changed": level_changed,
+        # How thin the check actually was, so a caller can say so instead of implying a full pass.
+        "rules_active": rules_active,
+        "rules_total": len(_ERROR_PATTERNS),
         "suggestion": _build_suggestion(text, errors, level),
     }
 
@@ -344,7 +367,21 @@ def correct_text(text: str, user_id: str = "default") -> dict:
 
 def _build_suggestion(text: str, errors: list[dict], level: str) -> str:
     if not errors:
-        return "Gut gemacht! Keine offensichtlichen Fehler gefunden."
+        # "Gut gemacht! Keine offensichtlichen Fehler gefunden." was a claim this engine cannot
+        # support. Driven at the default B1 on six sentences with real errors, it found 0/6 — and
+        # at A1 no rule is even active, so the sentence was returned after checking nothing at all.
+        # Congratulating a learner for German you never examined teaches the error.
+        n = active_rule_count(level)
+        if n == 0:
+            return (
+                f"Auf Stufe {level} prüft die Regelprüfung noch nichts — es wurden keine Regeln "
+                "angewendet. Das ist KEINE Bestätigung, dass der Text korrekt ist."
+            )
+        return (
+            f"Keine der {n} Regeln für Stufe {level} hat angeschlagen. Diese Prüfung ist eine "
+            "kleine Stichprobe, kein vollständiger Korrekturlauf — Fehler außerhalb dieser Regeln "
+            "bleiben unentdeckt."
+        )
     parts = ["Mögliche Probleme:"]
     for e in errors[:3]:
         parts.append(f"• {e['hint']}")
