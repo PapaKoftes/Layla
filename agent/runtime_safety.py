@@ -152,15 +152,131 @@ def _warn_plaintext_secrets(cfg: dict) -> None:
         pass
 
 
-def atomic_write_config(cfg: dict) -> None:
+# ── CONFIG INVARIANTS — enforced on the WRITE PATH, not per surface ─────────────
+#
+# WHY THIS IS HERE AND NOT IN A HANDLER.
+# install/setup_profiles.apply_setup refused to persist `remote_enabled` with no credential
+# and explained exactly why in a comment. POST /settings/themes and POST /settings did not,
+# because the refusal was written as a line inside ONE surface instead of as a property of the
+# configuration. Driven live against a temp instance:
+#
+#     POST /settings/themes {"key":"remote_access","enabled":true}
+#       -> 200 {"ok":true,"enabled":true,"in_force":true}   (a clean green success)
+#       -> runtime_config.json: remote_enabled true, no tunnel_token_hash, no remote_api_key
+#       -> the VERY NEXT GET /settings on the same instance: 403 "no auth configured"
+#
+# The operator locked themselves out of their own localhost with a checkbox, and was told it
+# worked. POST /settings {"remote_enabled": true} did the identical thing — so patching the
+# themes handler would have fixed one of two surfaces and left the next one to be written
+# unprotected. An invariant that any surface can bypass is not an invariant; it is a habit.
+#
+# So it lives where every surface funnels: the two functions that serialise a config dict to
+# runtime_config.json. A future endpoint, CLI, migration or plugin that writes config gets the
+# guarantee without knowing this rule exists — which is the only version of the rule that holds.
+
+
+def remote_credential_present(cfg: dict) -> bool:
+    """Can ANY caller actually authenticate against this config?
+
+    This is deliberately the same test tunnel_auth.validate_token applies (`stored_hash` or
+    `legacy_usable`), not the looser "is either key non-empty". A `remote_api_key` with
+    `allow_legacy_remote_api_key` off is refused BY THE AUTHENTICATOR — so a config holding
+    only that key has no working credential at all, and enabling remote on it produces the
+    same total lockout as having no key. Asking the looser question here would have let
+    exactly that state through while reporting it as safe.
+
+    Secrets may live in the OS keyring rather than runtime_config.json, so each candidate is
+    resolved through the secret store before being judged absent. Reading the raw dict alone
+    would refuse a legitimately-credentialled operator whose token is in the keyring — a
+    security check that blocks the safe configuration teaches people to disable it.
+    """
+    def _resolved(key: str) -> str:
+        raw = cfg.get(key)
+        try:
+            from services.safety.secret_store import get_secret
+
+            raw = get_secret(key, raw)
+        except Exception as e:  # keyring absent/broken -> fall back to the plaintext value
+            logger.debug("remote_credential_present: secret lookup for %s failed: %s", key, e)
+        return str(raw or "").strip()
+
+    if _resolved("tunnel_token_hash"):
+        return True
+    return bool(_resolved("remote_api_key") and cfg.get("allow_legacy_remote_api_key", False))
+
+
+def _invariant_remote_needs_credential(cfg: dict) -> dict | None:
+    """remote_enabled with no usable credential is a self-lockout, not a configuration.
+
+    `remote_require_auth_always` defaults to auto, i.e. ON whenever remote_enabled (see
+    services/safety/auth.require_auth_always). With no credential to check against, EVERY
+    request — the operator's own localhost included — answers 403 "no auth configured". The
+    machine's owner is locked out of the machine, and the only way back is hand-editing JSON.
+    """
+    if not cfg.get("remote_enabled"):
+        return None
+    if remote_credential_present(cfg):
+        return None
+    return {
+        "key": "remote_enabled",
+        "requested": True,
+        "forced": False,
+        "owner": "security_policy",
+        "reason": (
+            "remote access cannot be switched on without an auth credential: with none, "
+            "every request — including your own localhost — answers 403 'no auth configured', "
+            "which locks you out of this machine. Rotate a tunnel token (POST "
+            "/remote/token/rotate) or set remote_api_key with allow_legacy_remote_api_key, "
+            "then enable remote access."
+        ),
+    }
+
+
+#: Ordered list of invariant probes. Each takes the config ABOUT TO BE PERSISTED and returns
+#: None (nothing to do) or a refusal dict describing the key it is forcing and why. Add an
+#: invariant here and every writer inherits it.
+CONFIG_INVARIANTS: list = [_invariant_remote_needs_credential]
+
+
+def enforce_config_invariants(cfg: dict) -> list[dict]:
+    """Coerce *cfg* IN PLACE to a state that is safe to persist; return the refusals.
+
+    Returns ``[{key, requested, forced, owner, reason}]`` — empty when nothing was refused.
+    The return value is the whole point: a refusal the caller cannot see is a silent snap-back,
+    which is the same lie as a false success. Every caller is expected to report it.
+    """
+    refusals: list[dict] = []
+    for probe in CONFIG_INVARIANTS:
+        try:
+            hit = probe(cfg)
+        except Exception as e:
+            # A broken probe must FAIL LOUD rather than silently permit the state it exists to
+            # prevent — but it must also not make the config unwritable. Log at warning and
+            # carry on; the surrounding refusal reporting still says nothing was refused, which
+            # is honest about what this function knows.
+            logger.warning("config invariant %s failed: %s", getattr(probe, "__name__", probe), e)
+            continue
+        if hit:
+            cfg[hit["key"]] = hit["forced"]
+            refusals.append(hit)
+            logger.warning("config invariant refused %s=%r: %s",
+                           hit["key"], hit["requested"], hit["reason"])
+    return refusals
+
+
+def atomic_write_config(cfg: dict) -> list[dict]:
     """Atomically persist a full config dict and invalidate the cache.
 
     Writes to a sibling temp file then os.replace()s it into place, so a crash or
     power-loss mid-write can never leave a truncated/empty runtime_config.json
     (which would silently revert every setting — including security ones — to
     defaults). Serialised on _config_lock so concurrent writers don't interleave.
+
+    Returns the invariant refusals (see `enforce_config_invariants`) so a caller can report
+    them; the write itself always proceeds, with the offending key coerced to a safe value.
     """
     with _config_lock:
+        refusals = enforce_config_invariants(cfg)
         CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = CONFIG_FILE.with_name(CONFIG_FILE.name + ".tmp")
         # fsync the temp file BEFORE the rename: os.replace makes the metadata rename atomic but does NOT
@@ -184,6 +300,7 @@ def atomic_write_config(cfg: dict) -> None:
             pass
         _reset_config_cache_locked()
         _warn_plaintext_secrets(cfg)
+    return refusals
 
 
 def save_config_keys(updates: dict, *, editable_only: bool = True, clamp: bool = True) -> list[str]:
@@ -204,7 +321,13 @@ def save_config_keys_detailed(updates: dict, *, editable_only: bool = True,
     changes (the classic read-modify-write lost-update race).
 
     Returns {"saved": [key], "adjusted": [{key, requested, stored, reason}],
-             "changed": [key]}.
+             "changed": [key], "refused": [{key, requested, forced, owner, reason}]}.
+
+    `refused` is `enforce_config_invariants` applied to the MERGED result — the config as it
+    would actually land, which is the only dict that can answer "is this state safe". Judging
+    the update dict alone would miss `remote_enabled` arriving on a config that already has no
+    credential (the exact shape POST /settings/themes sent), and judging the file alone would
+    miss the credential arriving in the same request as the flag.
 
     `adjusted` is the point. This loop did `cfg[k] = coerce_and_clamp(k, v)` and then
     `saved.append(k)` without ever comparing the two, so the caller could not tell a value
@@ -242,6 +365,12 @@ def save_config_keys_detailed(updates: dict, *, editable_only: bool = True,
                 if reason:
                     adjusted.append({"key": k, "requested": v, "stored": stored,
                                      "reason": reason})
+        # THE INVARIANT, on the merged config, before it is serialised. `saved` deliberately
+        # still lists the refused key: it WAS processed by this write, and the caller's
+        # read-back is what reports the value that actually landed. Dropping it from `saved`
+        # would hide the key from the read-back entirely and turn a loud refusal back into a
+        # silent no-op.
+        refused = enforce_config_invariants(cfg)
         CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = CONFIG_FILE.with_name(CONFIG_FILE.name + ".tmp")
         # fsync before rename (see atomic_write_config) so a power-loss can't truncate the config to 0-length.
@@ -251,7 +380,7 @@ def save_config_keys_detailed(updates: dict, *, editable_only: bool = True,
             os.fsync(_f.fileno())
         os.replace(tmp, CONFIG_FILE)
         _reset_config_cache_locked()
-    return {"saved": saved, "adjusted": adjusted, "changed": changed}
+    return {"saved": saved, "adjusted": adjusted, "changed": changed, "refused": refused}
 
 
 def _probe_hardware() -> dict:

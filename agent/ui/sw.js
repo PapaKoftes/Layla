@@ -23,7 +23,7 @@
 // from setup.js; a stale v16 setup.js exports neither, so serving the old graph against the new imports
 // would fail to LINK and boot to a dead page. That was the previous attempt's exact failure — bump so the
 // whole graph updates atomically on first load.
-const CACHE = "layla-ui-v24";
+const CACHE = "layla-ui-v28";
 const PRECACHE = [
   "/ui/",
   "/manifest.json",

@@ -47,7 +47,7 @@ def _values_agree(a: Any, b: Any) -> bool:
 
 
 def readback(stored: dict[str, Any], *, adjust_reason: dict | None = None,
-             raw: dict | None = None, order=None) -> dict:
+             raw: dict | None = None, order=None, refused: dict | None = None) -> dict:
     """THE READ-BACK, as one function every config-writing surface calls.
 
     Give it {key: the value that was actually WRITTEN}; it re-reads the effective config —
@@ -72,11 +72,21 @@ def readback(stored: dict[str, Any], *, adjust_reason: dict | None = None,
 
     `raw` is the pre-clamp request, used only to quote what the operator typed in a clamp
     message. `order` fixes the report order (default: the order of `stored`).
+
+    `refused` is {key: refusal_dict} from runtime_safety.enforce_config_invariants — the writes a
+    CONFIG INVARIANT coerced on the way to disk. Without it these keys still report honestly
+    (they disagree with the effective config, and key_owner names the owner), but they report
+    as "overridden", which is the wrong word: nothing overrode the value afterwards, the write
+    was declined. The distinction matters to the operator, because "an owner holds this" invites
+    hunting for the owner while "this was refused, here is the precondition" is actionable. It
+    also means the refusal survives a future gap in the owner registry, which is where the
+    honest-but-vague fallback would otherwise land.
     """
     from install.feature_status import KNOWN_OWNERS, effective_config, key_owner
     from services.safety.secret_filter import REDACTED, is_secret_key
 
     adjust_reason = adjust_reason or {}
+    refused = refused or {}
     raw = raw if isinstance(raw, dict) else {}
     keys = list(order) if order is not None else list(stored)
 
@@ -106,6 +116,18 @@ def readback(stored: dict[str, Any], *, adjust_reason: dict | None = None,
             report.append(row)
             continue
         effective = cfg.get(k)
+        # A refusal is checked BEFORE the agreement test on purpose. `stored` is what the
+        # caller asked to write, and for a refused key the coerced value is what reached the
+        # disk — so a caller that passes the post-coercion value would otherwise see the two
+        # agree and report a clean "took_effect" over a write that was declined.
+        if k in refused:
+            _r = refused[k]
+            row.update({"effective": _shown(k, effective), "outcome": "refused",
+                        "owner": _r.get("owner") or "invariant",
+                        "reason": _r.get("reason") or "this write was refused."})
+            overridden.append(k)
+            report.append(row)
+            continue
         if _values_agree(want, effective):
             if k in adjust_reason:
                 row.update({"outcome": "clamped", "owner": "schema",
@@ -131,7 +153,7 @@ def readback(stored: dict[str, Any], *, adjust_reason: dict | None = None,
         overridden.append(k)
         report.append(row)
 
-    not_in_force = [r for r in report if r["outcome"] in ("overridden", "unknown")]
+    not_in_force = [r for r in report if r["outcome"] in ("overridden", "unknown", "refused")]
     note = ""
     if not_in_force:
         # One note per OWNER's own words. The old note hardcoded auto-tune's remedy
@@ -300,9 +322,16 @@ def sync_save_settings(body: dict, *, blocked_keys=None, keyring_keys=None) -> d
         except Exception:
             return body.get(key)
 
+    # A CONFIG INVARIANT declined part of this write (runtime_safety.CONFIG_INVARIANTS). The
+    # write path coerces the value and hands back the reason; this is the surface that has to
+    # say so out loud, because the alternative — a green "saved" over a security refusal — is
+    # exactly the false confirmation this endpoint was rebuilt to stop telling.
+    refused_invariant = {r["key"]: r for r in (res.get("refused") or [])}
+
     # THE READ-BACK, shared with every other surface that writes config (see `readback`).
     rb = readback({k: _stored_value(k) for k in saved},
-                  adjust_reason=adjust_reason, raw=body, order=saved)
+                  adjust_reason=adjust_reason, raw=body, order=saved,
+                  refused=refused_invariant)
     report = rb["report"]
     overridden = rb["overridden"]
     not_in_force = rb["not_in_force"]
@@ -327,7 +356,10 @@ def sync_save_settings(body: dict, *, blocked_keys=None, keyring_keys=None) -> d
     saved = saved + [k for k in secret_saved if k not in saved]
 
     out: dict = {
-        "ok": not rejected and not bad_locks,
+        # A refusal makes `ok` false for the same reason a rejection does: the operator asked
+        # for something and did not get it. Reporting ok:true because "the file was written"
+        # is the intent-as-outcome lie with one extra step.
+        "ok": not rejected and not bad_locks and not refused_invariant,
         "saved": saved,
         "secrets_saved": secret_saved,
         "changed": res["changed"],
@@ -346,6 +378,9 @@ def sync_save_settings(body: dict, *, blocked_keys=None, keyring_keys=None) -> d
     # Both refusals can happen in one request; appending rather than assigning keeps the
     # second from silently erasing the first (which would drop a security refusal on the floor).
     errors: list[str] = []
+    if refused_invariant:
+        out["refused"] = sorted(refused_invariant)
+        errors.append("; ".join(r["reason"] for r in refused_invariant.values()))
     if refused_remote:
         out["refused_remote"] = refused_remote
         errors.append(

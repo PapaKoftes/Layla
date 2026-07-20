@@ -146,6 +146,16 @@ def main(argv: list[str]) -> int:
             print(f"[aspect] {asp} -> {ap_primary.get('name')}")
         if provisioned:
             cfg["aspect_models"] = {**(cfg.get("aspect_models") or {}), **provisioned}
+    # Every writer inherits the credential invariant — see installer_cli for why a bare
+    # remote_enabled is a lockout, not just a loose end.
+    try:
+        import runtime_safety as _rs
+
+        _rs.enforce_config_invariants(cfg)
+    except ImportError:  # provisioning can run before agent/ is importable
+        if cfg.get("remote_enabled") and not (cfg.get("tunnel_token_hash") or cfg.get("remote_api_key")):
+            cfg["remote_enabled"] = False
+
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     cfg_path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     print(f"[config] wrote {cfg_path}  (model={fn}, n_ctx={cfg['n_ctx']}, n_gpu_layers={cfg['n_gpu_layers']})")

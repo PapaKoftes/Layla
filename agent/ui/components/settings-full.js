@@ -60,9 +60,19 @@ export async function laylaToggleFeatureTheme(key, enabled) {
     });
     const d = await r.json();
     if (!r.ok || !d || !d.ok) {
-      showToast('Could not update feature area — ' + ((d && d.error) || ('HTTP ' + r.status)));
-      // The write did not happen, so the control must not keep showing that it did.
-      if (box) box.checked = !enabled;
+      // A REFUSAL is not a failure — the server understood, declined, and said why. Printing
+      // "Could not update" over a security precondition sends the operator looking for a bug
+      // instead of reading the one sentence that tells them what to do first (remote access
+      // with no credential: rotate a token, then enable it).
+      const refused = (d && d.refused) || [];
+      showToast(refused.length
+        ? 'Refused: ' + key.replace(/_/g, ' ') + ' — ' + (d.error || 'a security policy declined this change')
+        : 'Could not update feature area — ' + ((d && d.error) || ('HTTP ' + r.status)));
+      // The write did not happen, so the control must not keep showing that it did. The
+      // server's effective state is authoritative when it sent one.
+      if (box) box.checked = (d && typeof d.enabled === 'boolean') ? d.enabled : !enabled;
+      // A refusal changes the not-in-force panel too — re-read it rather than assume.
+      if (refused.length) { try { await _loadNotInForce(); } catch (_e2) { /* no-op */ } }
       return;
     }
     // The server's effective answer wins over the click. Silently leaving the box ticked for
@@ -226,6 +236,16 @@ export function closeSettings() {
 // /settings/not_in_force), independent of any one save. See _loadNotInForce.
 let _notInForce = [];
 
+// Rows from the LAST SAVE that GET /settings/not_in_force structurally cannot report, because
+// its whole evidence is "the file asks for X and the effective config disagrees" — and a
+// REFUSED write never reached the file at all. Without holding them here, the async
+// _loadNotInForce() that follows every save re-rendered the panel from the config alone and
+// erased the refusal a few hundred milliseconds after drawing it. That is the same retraction
+// bug the persistent set was introduced to fix, arriving from the other direction: not "an old
+// warning was dropped", but "the new one was". Replaced (not appended) on each save, so it
+// tracks the latest outcome instead of accumulating into wallpaper.
+let _saveOnlyRows = [];
+
 /**
  * Load "which saved settings is the app not honouring?" from the server.
  *
@@ -261,12 +281,18 @@ function _renderNotInForce(report) {
     el.classList.remove('is-not-in-force');
   });
   if (!box) return;
+  // A save just answered: its refusals become the save-only set, replacing the previous one.
+  // Called with no report (the async config reload), the existing set is kept — otherwise the
+  // reload silently retracts the refusal this save just reported.
+  if (report) {
+    _saveOnlyRows = report.filter(function (r) { return r && r.outcome === 'refused'; });
+  }
   // The persistent per-config set, PLUS anything this particular save reported that the
-  // config cannot show (a rejected key never reaches the file, so GET cannot see it).
+  // config cannot show (a rejected or refused key never reaches the file, so GET cannot see it).
   const bad = _notInForce.slice();
   const seen = {};
   bad.forEach(function (r) { seen[r.key] = 1; });
-  (report || []).forEach(function (r) {
+  _saveOnlyRows.concat(report || []).forEach(function (r) {
     if (!r || r.outcome === 'took_effect' || r.outcome === 'clamped') return;
     if (seen[r.key]) return;
     seen[r.key] = 1;
@@ -274,8 +300,16 @@ function _renderNotInForce(report) {
   });
   if (!bad.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
   box.style.display = 'block';
+  // "Saved to disk, but NOT in force" is the wrong sentence for a REFUSED write — that value
+  // never reached the disk at all, and telling an operator it did sends them looking for it in
+  // runtime_config.json. Both kinds share this panel, so the heading has to cover whichever
+  // kinds are actually present rather than assert the common one.
+  const anyRefused = bad.some(function (r) { return r && r.outcome === 'refused'; });
+  const anyOther = bad.some(function (r) { return r && r.outcome !== 'refused'; });
+  const head = anyRefused && anyOther ? 'Refused, or saved but NOT in force'
+    : (anyRefused ? 'Refused — not saved' : 'Saved to disk, but NOT in force');
   box.innerHTML =
-    '<div class="nif-head">⚠ Saved to disk, but NOT in force — ' + bad.length +
+    '<div class="nif-head">⚠ ' + head + ' — ' + bad.length +
     (bad.length === 1 ? ' setting' : ' settings') + '</div>' +
     bad.map(function (r) {
       const el = document.getElementById('cfg_' + String(r.key).replace(/[^a-zA-Z0-9_]/g, '_'));
@@ -284,8 +318,9 @@ function _renderNotInForce(report) {
       const owner = r.owner ? String(r.owner) : 'unknown';
       const eff = Object.prototype.hasOwnProperty.call(r, 'effective')
         ? ' <span class="nif-eff">in force: ' + escapeHtml(JSON.stringify(r.effective)) + '</span>' : '';
+      const label = r.outcome === 'refused' ? 'refused by ' : 'owned by ';
       return '<div class="nif-item"><code>' + escapeHtml(String(r.key)) + '</code>' +
-        ' <span class="nif-owner">owned by ' + escapeHtml(owner) + '</span>' + eff +
+        ' <span class="nif-owner">' + label + escapeHtml(owner) + '</span>' + eff +
         '<div class="nif-reason">' + escapeHtml(String(r.reason || '')) + '</div></div>';
     }).join('');
 }
@@ -355,7 +390,26 @@ export async function saveSettings() {
       if (Object.prototype.hasOwnProperty.call(body, k)) _formSnapshot[k] = body[k];
     });
 
-    if (badLocks.length) {
+    // A CONFIG INVARIANT declined the write (A1: remote access with no credential). Two things
+    // have to happen and only one of them is the message: the control must stop showing the
+    // value that did NOT land. Without this the checkbox stays ticked over a config that reads
+    // false — the same "ticked box for a setting that is not in force" the amber panel exists
+    // to end, reintroduced by the one branch that never resets a field.
+    const refusedRows = report.filter(function (r) { return r && r.outcome === 'refused'; });
+    refusedRows.forEach(function (r) {
+      const el = document.getElementById('cfg_' + String(r.key).replace(/[^a-zA-Z0-9_]/g, '_'));
+      if (!el) return;
+      if (el.type === 'checkbox') el.checked = !!r.effective;
+      else el.value = Array.isArray(r.effective) ? r.effective.join(', ') : String(r.effective == null ? '' : r.effective);
+      _formSnapshot[r.key] = r.effective;
+    });
+
+    if (refusedRows.length) {
+      // The reason is the product here — it names the precondition the operator has to meet.
+      // "Refused", not "failed": nothing broke, the request was understood and declined.
+      say('Refused: ' + refusedRows.map(function (r) { return r.key; }).join(', ') + ' — ' +
+          refusedRows.map(function (r) { return r.reason; }).join(' · '), true);
+    } else if (badLocks.length) {
       say('Cannot lock (not auto-tune settings): ' + badLocks.join(', '), true);
     } else if (rejected.length) {
       say('Saved ' + saved.length + ', REJECTED: ' + rejected.join(', '), true);

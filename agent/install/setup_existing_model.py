@@ -67,6 +67,17 @@ def run() -> int:
 
     cfg["model_filename"] = chosen.name
     cfg["models_dir"] = str(canonical_dir.resolve())
+    # This writes CONFIG_FILE directly (it runs before/outside the app), so it is one of the
+    # writers that would otherwise bypass the invariants. It never SETS remote_enabled, but it
+    # copies a whole config forward — including, from runtime_config.example.json or a
+    # hand-edited file, an unsafe remote_enabled. Covered here so "every writer enforces it" is
+    # true rather than nearly true.
+    try:
+        import runtime_safety as _rs_inv
+
+        _rs_inv.enforce_config_invariants(cfg)
+    except Exception as e:
+        print(f"  (config invariant check skipped: {e})")
     try:
         CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     except OSError as e:

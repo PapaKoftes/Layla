@@ -146,3 +146,80 @@ def test_remote_mode_interactive_allows_agent(monkeypatch):
         client = TestClient(main.app)
         r = client.post("/agent", json={"message": "hi", "allow_write": False, "allow_run": False}, headers={"Authorization": "Bearer k"})
     assert r.status_code == 200
+
+
+class TestEnablingRemoteIsNotAOneWayDoor:
+    """The endpoint allowlist restricts REMOTE callers, not the operator at the keyboard.
+
+    require_auth_always is auto-on whenever remote_enabled, which skipped the direct-loopback
+    exemption and dropped the LOCAL operator through to the allowlist built for internet
+    clients. Following the product's own remedy — rotate a tunnel token, then enable remote —
+    produced: GET /ui/ with a valid Bearer -> 403, POST /settings with a valid Bearer -> 403.
+    The operator could not load the app and could not turn the flag back off; recovery meant
+    hand-editing runtime_config.json. Only /health still answered.
+
+    The middleware was conflating two questions: "must this caller present a token?" (yes,
+    even on loopback, once require_auth_always is on — that is the deliberate hardening
+    against a header-stripping forwarder such as `ssh -R`/socat arriving on 127.0.0.1) and
+    "is this caller remote, and therefore restricted to the allowlist?" — which a DIRECT
+    loopback connection answers no to.
+
+    All three assertions below must hold together. Dropping the token requirement, or
+    exempting a tunnelled caller, would each "fix" the lockout by opening a hole.
+
+    remote_mode is `observe` deliberately: /settings is genuinely allowlisted under
+    `interactive` (47 paths), so the allowlist only bites in observe (3 paths) and a test
+    written against interactive would pass without proving anything.
+    """
+
+    TOKEN = "operator-test-token"
+
+    def _cfg(self):
+        import hashlib
+
+        return {
+            "remote_enabled": True,
+            "tunnel_token_hash": hashlib.sha256(self.TOKEN.encode()).hexdigest(),
+            "remote_mode": "observe",
+            "remote_allow_endpoints": [],
+        }
+
+    def _client(self, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        import main
+        import runtime_safety
+
+        cfg = self._cfg()
+        monkeypatch.setattr(runtime_safety, "load_config", lambda: dict(cfg))
+        return TestClient(main.app)
+
+    def test_the_local_operator_keeps_their_machine(self, monkeypatch):
+        """THE LOCKOUT. Direct loopback + a valid token must reach a non-allowlisted path."""
+        client = self._client(monkeypatch)
+        r = client.get("/settings", headers={"Authorization": "Bearer " + self.TOKEN})
+        assert r.status_code == 200, (
+            "the operator authenticated from the machine itself and still got %s — enabling "
+            "remote access has locked them out of their own UI" % r.status_code
+        )
+
+    def test_a_tunnelled_caller_is_still_restricted(self, monkeypatch):
+        """THE SECURITY HALF. A forwarded request is remote however loopback-shaped it looks."""
+        client = self._client(monkeypatch)
+        r = client.get(
+            "/settings",
+            headers={"Authorization": "Bearer " + self.TOKEN, "X-Forwarded-For": "203.0.113.9"},
+        )
+        assert r.status_code == 403, (
+            "a tunnelled caller reached a non-allowlisted endpoint (%s) — the allowlist is "
+            "the surface limit for remote access and must still apply" % r.status_code
+        )
+
+    def test_a_token_is_still_required_on_loopback(self, monkeypatch):
+        """The `ssh -R`/socat hardening: require_auth_always still means what it says."""
+        client = self._client(monkeypatch)
+        r = client.get("/settings")
+        assert r.status_code in (401, 403), (
+            "loopback skipped authentication while require_auth_always was on (%s) — a "
+            "header-stripping forwarder would walk straight in" % r.status_code
+        )

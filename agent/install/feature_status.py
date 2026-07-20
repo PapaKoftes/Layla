@@ -140,17 +140,33 @@ def _key_owner_maturity(key: str, cfg: dict) -> tuple[str, str] | None:
 
 
 def _key_owner_security_policy(key: str, cfg: dict) -> tuple[str, str] | None:
-    """apply_setup refuses to persist remote_enabled with no credential — enabling it would
-    make every request, localhost included, 403 and lock the operator out."""
+    """The config WRITE PATH refuses to persist remote_enabled with no credential — enabling it
+    would make every request, localhost included, 403 and lock the operator out.
+
+    This probe used to describe a refusal only `apply_setup` performed, which is why
+    get_feature_themes had to document that naming it on the settings path would be "a
+    confident, actionable, wrong reason": the settings surfaces wrote remote_enabled anyway.
+    The refusal now lives in runtime_safety.CONFIG_INVARIANTS, so it applies to every writer
+    and this probe is true on every path that can reach it.
+
+    The credential test is `runtime_safety.remote_credential_present`, NOT a second copy of the
+    comparison — it also resolves keyring-stored secrets and knows that a `remote_api_key`
+    without `allow_legacy_remote_api_key` cannot authenticate anyone. The looser inline test
+    that used to be here would report "you have a credential" for a config that in fact locks
+    every request out.
+    """
     if key != "remote_enabled":
         return None
-    if cfg.get("tunnel_token_hash") or cfg.get("remote_api_key"):
+    from runtime_safety import remote_credential_present
+
+    if remote_credential_present(cfg):
         return None
     return (
         "security_policy",
         "remote access refuses to switch on without an auth credential (it would 403 every "
-        "request, including localhost). Set a tunnel token or remote API key first, then "
-        "enable it.",
+        "request, including localhost, and lock you out of this machine). Rotate a tunnel "
+        "token via /remote/token/rotate — or set remote_api_key together with "
+        "allow_legacy_remote_api_key — and then enable it.",
     )
 
 

@@ -1266,10 +1266,30 @@ async def remote_auth_middleware(request: Request, call_next):
             status_code=_status,
         )
 
-    # Endpoint allowlist
+    # Endpoint allowlist — REMOTE callers only.
+    #
+    # This list exists to shrink the surface exposed through a TUNNEL; its own denial says
+    # "not allowed for remote mode". A DIRECT loopback caller is not remote, and applying it
+    # to them turned "enable remote access" into a ONE-WAY DOOR: following the refusal
+    # message's own remedy (rotate a tunnel token, then enable) left the operator with
+    # GET /ui/ + valid Bearer -> 403, POST /settings + valid Bearer -> 403 — unable to load
+    # the app OR to turn the flag back off. Only /health answered. Recovery meant hand-editing
+    # runtime_config.json. The middleware was conflating two different questions: "must this
+    # caller present a token?" (require_auth_always — still enforced above, deliberately, so a
+    # header-stripping forwarder like `ssh -R`/socat arriving on loopback cannot walk in
+    # unauthenticated) and "is this caller remote, and therefore restricted?" — which is what
+    # this allowlist answers, and which a direct local connection answers NO to.
+    #
+    # The trade, stated plainly: a loopback forwarder that ALREADY holds a valid token now
+    # reaches non-allowlisted endpoints. It had to defeat authentication first, so the
+    # allowlist was a thin second layer in that scenario — and its cost was locking the real
+    # operator out of their own machine, which is the failure this whole slice exists to stop.
+    _direct_local = bool(_is_localhost(client_host)) and not _via_proxy
     allowed = _remote_allowed_paths(cfg)
     path = req_path
-    ok = any(path == p or path.startswith(p.rstrip("/") + "/") or path == p.rstrip("/") for p in allowed)
+    ok = _direct_local or any(
+        path == p or path.startswith(p.rstrip("/") + "/") or path == p.rstrip("/") for p in allowed
+    )
     if not ok:
         if _audit_enabled:
             try:
