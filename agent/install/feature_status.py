@@ -13,10 +13,11 @@ CPU box, ticking "Power user" produced:
     /setup/state        : all three absent — and absent from the "missing packages" list too
 
 …because services/infrastructure/auto_tune.py owns hyde_enabled and
-multi_agent_orchestration_enabled on every CPU tier, and runtime_safety's maturity gate owns
-the initiative flags below rank 1. None of those three features HAS packages, so a
-package-shaped gate can never see them. The user was told three features were on, the palette
-hid them, and nothing explained why.
+multi_agent_orchestration_enabled on every CPU tier, and (at the time) runtime_safety's maturity
+gate owned the initiative flags below rank 1. None of those three features HAS packages, so a
+package-shaped gate can never see them. The maturity gate has since been deleted — rank never
+gated features — but the auto-tune half is live and the shape is what matters. The user was
+told three features were on, the palette hid them, and nothing explained why.
 
 THE PRINCIPLE THIS MODULE IMPLEMENTS
     NEVER REPORT AN OUTCOME YOU INFERRED. RE-READ THE EFFECTIVE STATE AND REPORT THAT.
@@ -53,8 +54,8 @@ def effective_config() -> dict:
     """The config the RUNNING APP sees — not the file.
 
     The distinction is the entire defect: runtime_config.json is an input to load_config(),
-    which then overlays auto-tune and the maturity gates on top. Reading the file tells you
-    what was requested; only this tells you what is in force.
+    which then overlays auto-tune (and, historically, the maturity gates) on top. Reading the
+    file tells you what was requested; only this tells you what is in force.
     """
     import runtime_safety
 
@@ -83,7 +84,8 @@ def _off_flags(feat: dict, cfg: dict) -> list[str]:
 # key: auto-tune overwrites `n_ctx` for the settings panel and `hyde_enabled` for the wizard by
 # the identical mechanism. The wizard grew this registry first; POST /settings then enumerated
 # ONE owner of its own (auto-tune, hardcoded) and missed the maturity gate entirely — the
-# second, divergent owner list this shape exists to prevent. Both surfaces now call `key_owner`.
+# second, divergent owner list this shape exists to prevent. (That gate is gone now; the
+# divergence it caused is the lesson.) Both surfaces call `key_owner`.
 #
 # Order matters: the most specific/actionable owner wins. There is no "unknown" probe in this
 # list on purpose — `key_owner` returning None means "no probe claims it", and each CALLER
@@ -123,11 +125,13 @@ def writable_config_keys() -> set[str]:
 
     The union of the three registries that write config: the settings schema, the setup
     wizard's feature flags, and the feature-theme toggles. A key outside this union cannot be
-    turned on by any sequence of user actions — hand-editing runtime_config.json does not
-    count either, because the gates below re-apply on every load_config().
+    turned on by any sequence of user actions.
 
-    Exists so a gate explanation can tell "locked, but there is a path" apart from "locked,
-    and there is no path" instead of promising the first for both.
+    Exists so an explanation can tell "off, but there is a switch" apart from "off, and there
+    is no switch anywhere" instead of promising the first for both — see `key_off_reason`,
+    which uses exactly this distinction to choose between offering Settings and reporting a
+    defect. Hand-editing runtime_config.json is deliberately not counted as a path: it is not
+    an in-app surface, and for an auto-tune-owned key it is still overwritten on every load.
     """
     keys: set[str] = set()
     try:
@@ -147,50 +151,16 @@ def writable_config_keys() -> set[str]:
     return keys
 
 
-def _key_owner_maturity(key: str, cfg: dict) -> tuple[str, str] | None:
-    """runtime_safety.MATURITY_GATED_KEYS are forced False below their rank, at config load.
-
-    HONESTY: clearing the rank gate is necessary, not sufficient. `_apply_maturity_gates` only
-    ever writes False below the rank — it never writes True above it — so a key with no writer
-    in `writable_config_keys()` stays off at EVERY rank. Telling that user "it switches itself
-    on as she levels up" is a promise the code does not keep, so the tail below is chosen from
-    whether a writer actually exists.
-
-    The membership is COMPUTED, never listed here. A previous version of this docstring counted
-    the no-writer keys by hand, said "three of the six", and named three — it was four, and the
-    one it dropped (autonomous_research_mode, rank 3) was the lowest-ranked of them, i.e. the
-    one a real user hits first. The behaviour was right the whole time; only the prose was
-    wrong. `MATURITY_GATED_KEYS - writable_config_keys()` is the live answer, so ask for it
-    rather than trusting a comment. test_feature_status_readback.py::F7 pins the derivation —
-    that the set is non-empty, that every member gets the no-writer tail, and that every key
-    which DOES have a writer gets the optimistic one — so the next drift is a red test rather
-    than another stale sentence.
-    """
-    try:
-        from runtime_safety import MATURITY_GATED_KEYS, current_maturity_rank
-    except Exception:
-        return None
-    need = MATURITY_GATED_KEYS.get(key)
-    if need is None:
-        return None
-    rank = current_maturity_rank()
-    if rank is None:
-        return None  # the gate is not being applied at all — not our doing
-    if rank >= need:
-        return None
-    if key in writable_config_keys():
-        tail = "It switches itself on as she levels up — nothing to install."
-    else:
-        tail = (
-            "Reaching rank {need} removes this block but does NOT switch the feature on: no "
-            "setting, wizard or theme in the app can set '{key}', so it stays off at every "
-            "rank. That is a defect, not a setting you have missed."
-        ).format(need=need, key=key)
-    return (
-        "maturity",
-        f"'{key}' unlocks at maturity rank {need}; Layla is at rank {rank}, so it is forced "
-        f"off on every config load. {tail}",
-    )
+# `_key_owner_maturity` was here. It reported "'{key}' unlocks at maturity rank N; Layla is at
+# rank R, so it is forced off on every config load". It is DELETED, not softened, because
+# `runtime_safety._apply_maturity_gates` is gone: rank no longer holds any key away from its
+# written value, so the probe could never fire again, and a dead branch that reads like live
+# policy is worse than no branch. `runtime_safety.MATURITY_GATED_KEYS` and
+# `current_maturity_rank` went with it.
+#
+# The answer that replaces it for those keys is not an OWNER at all — see `key_off_reason`.
+# key_owner answers "who is holding this key away from the value that was written", and for a
+# setting sitting at its default the honest answer to that question is "nobody".
 
 
 def _key_owner_security_policy(key: str, cfg: dict) -> tuple[str, str] | None:
@@ -256,11 +226,44 @@ def _key_owner_external_credential(key: str, cfg: dict) -> tuple[str, str] | Non
     return ("credential", creds[key])
 
 
+def _key_owner_trust_tier(key: str, cfg: dict) -> tuple[str, str] | None:
+    """The operator's autonomy ceiling (`trust_tier_override`) holding a key below its own switch.
+
+    THIS EXISTS SO STEP 3 OF `key_off_reason` STAYS TRUE. That step tells the operator "nothing
+    is holding it and no rank or level is required: turn it on in Settings and it stays on".
+    A ceiling of 1 makes that false for `initiative_project_proposals_enabled` — the switch goes
+    on and the capability still returns before doing anything. Without a probe here, the ceiling
+    would be the rank gate all over again: a lock the explanation does not know about.
+
+    The difference from the rank gate, and the reason this is allowed to exist at all, is that
+    the operator SET this and can unset it. Both keys are in EDITABLE_SCHEMA, so the reason can
+    name a control the reader can actually reach. Silent unless a ceiling is really in force:
+    with none set `get_trust_tier` returns MAX_TRUST_TIER and this returns None.
+    """
+    needs = {"initiative_project_proposals_enabled": 2, "coordinator_dispatch_max_attempts": 3}
+    if key not in needs:
+        return None
+    if not bool(cfg.get("autonomy_trust_tiers_enabled", False)):
+        return None
+    from services.personality.maturity_engine import get_trust_tier
+
+    tier = int(get_trust_tier(cfg))
+    if tier >= needs[key]:
+        return None
+    return (
+        "trust_tier",
+        f"'{key}' needs autonomy tier {needs[key]}, and your ceiling is set to {tier}. This is "
+        f"your own setting, not a rank or an XP threshold: raise 'trust_tier_override' to "
+        f"{needs[key]} or above in Settings (Safety), or clear it to remove the ceiling "
+        f"entirely. Turning the switch on without doing that will not take effect.",
+    )
+
+
 _KEY_OWNERS: list[Callable[[str, dict], "tuple[str, str] | None"]] = [
     _key_owner_auto_tune,
-    _key_owner_maturity,
     _key_owner_security_policy,
     _key_owner_external_credential,
+    _key_owner_trust_tier,
 ]
 
 
@@ -283,7 +286,58 @@ def key_owner(key: str, cfg: dict) -> tuple[str, str] | None:
     return None
 
 
-KNOWN_OWNERS = "packages, auto-tune, maturity, security policy, external credential"
+KNOWN_OWNERS = "packages, auto-tune, security policy, external credential, autonomy ceiling"
+
+
+def key_off_reason(key: str, cfg: dict) -> tuple[bool, str, str, list[str]]:
+    """(on, owner, reason, missing_packages) — why a NAMED config key is not in force.
+
+    A DIFFERENT QUESTION FROM `key_owner`, and the distinction is why this exists. `key_owner`
+    asks "who is holding this key away from the value that was WRITTEN" — it is only meaningful
+    for a key the caller has already established was written and did not take (route_helpers
+    calls it exactly that way, right after a save). The nav gate notes ask the broader question
+    "why is this off?", for keys nobody has ever written. Feeding that question to `key_owner`
+    alone sent every plain off-by-default setting to the `unknown` backstop — "no known owner
+    accounts for it. Reason unknown" — which reads as a defect report for a checkbox that is
+    simply unchecked. After the maturity gate was removed that became the answer for
+    `autonomous_mode`, whose panel is the main consumer.
+
+    THE ORDER IS THE POINT:
+      1. a real owner (auto-tune / security policy / credential) — a subsystem actively
+         overriding the operator beats every softer explanation;
+      2. missing packages — the engine is absent, so the switch would not help;
+      3. it is a plain setting with a writer — off is its default, nothing is holding it;
+      4. off with NO writer — the honest defect report, kept verbatim from the backstop.
+
+    Step 3's membership is COMPUTED from `writable_config_keys()`, never listed, so a key that
+    loses its writer degrades to the step-4 defect report instead of promising a switch that
+    does not exist. Lives in this module, not in the router, because this module is the one
+    owner registry: the router used to hand-roll steps 2 and 4 as its own copy.
+    """
+    missing = key_missing_packages(key)
+    if bool(cfg.get(key)) and not missing:
+        return True, "", "", missing
+    owned = key_owner(key, cfg)
+    if owned:
+        return False, owned[0], owned[1], missing
+    if missing:
+        return False, "packages", (
+            f"the engine behind '{key}' is not installed (missing: {', '.join(missing)})."
+        ), missing
+    if key in writable_config_keys():
+        return False, "setting", (
+            f"'{key}' is off — that is its default, not a lock. Nothing is holding it and no "
+            f"rank or level is required: turn it on in Settings (Safety) and it stays on. It "
+            f"ships off because it lets Layla act without being prompted each time."
+        ), missing
+    # THE BACKSTOP, and it is not optional — see `_owner_unknown`. An empty reason here reaches
+    # the user as "off, and the server gave no reason", which reads as a UI bug rather than as
+    # the honest "this module has a gap".
+    return False, "unknown", (
+        f"'{key}' is off in the effective config, no known owner ({KNOWN_OWNERS}) accounts for "
+        f"it, and no setting, wizard or theme in the app can set it — so it stays off however "
+        f"you use the product. That is a defect, not a setting you have missed."
+    ), missing
 
 
 def key_missing_packages(key: str) -> list[str]:

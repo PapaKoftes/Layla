@@ -74,14 +74,6 @@ def cpu_tier(monkeypatch):
     )
 
 
-@pytest.fixture()
-def rank_zero(monkeypatch):
-    """A fresh install: maturity rank 0, so the initiative flags are gated off at load."""
-    import runtime_safety as rs
-
-    monkeypatch.setattr(rs, "current_maturity_rank", lambda: 0)
-
-
 def _effective() -> dict:
     import runtime_safety as rs
 
@@ -128,31 +120,41 @@ def test_setup_state_explains_the_auto_tune_veto(cfg_file, all_packages, cpu_tie
     assert row["owner"] == "auto_tune" and "auto-tune" in row["reason"]
 
 
-def test_maturity_gated_feature_is_reported_off_with_the_rank(cfg_file, all_packages, rank_zero):
-    """The second owner with no packages: initiative is locked below maturity rank 1."""
+def test_wizard_asking_for_initiative_now_actually_gets_it(cfg_file, all_packages):
+    """INVERTED. This used to assert the wizard installed `initiative` and the rank gate ate it.
+
+    The wizard LISTED initiative, wrote its flags, and reported it not-enabled with "locked below
+    maturity rank 1" — on a fresh install, i.e. always. Rank no longer gates anything, so asking
+    for the feature is now enough to have it, which is what the wizard always claimed.
+    """
     d = client.post("/setup/apply", json={"profiles": ["minimal"], "features": ["initiative"]}).json()
 
-    assert _effective().get("initiative_engine_enabled") is False
-    assert "initiative" not in d["features"]
-    row = next(r for r in d["not_enabled"] if r["id"] == "initiative")
-    assert row["owner"] == "maturity"
-    assert "rank 1" in row["reason"] and "rank 0" in row["reason"]
-    # Nothing to install — the message must not send the user hunting for a package.
-    assert "pip install" not in row["reason"].lower()
-    assert row["missing_packages"] == []
+    assert _effective().get("initiative_engine_enabled") is True, (
+        "the wizard wrote initiative_engine_enabled and load_config() still reads False — "
+        "something reverted it (the maturity gate used to)"
+    )
+    assert "initiative" in d["features"], f"asked for, written, still not reported on: {d['not_enabled']}"
 
 
-def test_profile_implied_features_are_read_back_too(cfg_file, all_packages, cpu_tier, rank_zero):
-    """The live repro: 'Power user' implies both, and the user ticked neither."""
+def test_profile_implied_features_are_read_back_too(cfg_file, all_packages, cpu_tier):
+    """The live repro: 'Power user' implies features the user ticked neither of.
+
+    `initiative` was in this list, held off by the maturity gate. It is not any more — the gate
+    is deleted, so a profile that implies initiative now DELIVERS it, and asserting it lands in
+    `not_enabled` would be pinning the defect. It is asserted enabled below instead, so this
+    test still covers the implied-feature path in both directions.
+    """
     d = client.post("/setup/apply", json={"profiles": ["power"], "features": []}).json()
 
     off = {r["id"]: r for r in d["not_enabled"]}
-    for fid in ("hyde", "initiative", "multi_agent"):
+    for fid in ("hyde", "multi_agent"):
         assert fid not in d["features"], f"{fid} reported on while load_config() holds it off"
         assert fid in off and off[fid]["reason"], f"{fid} vanished with no explanation"
     assert off["hyde"]["owner"] == "auto_tune"
     assert off["multi_agent"]["owner"] == "auto_tune"
-    assert off["initiative"]["owner"] == "maturity"
+    assert "initiative" in d["features"], (
+        f"'power' implies initiative and nothing gates it any more, yet it is not on: {off}"
+    )
 
 
 # ── the backstop: an owner nobody has taught this module about ───────────────────
@@ -243,90 +245,86 @@ def test_install_readback_refuses_to_claim_success_another_owner_vetoed(cfg_file
     assert r["status"]["owner"] == "auto_tune"
 
 
-# ── F7: the maturity tail is DERIVED, and the derivation is pinned ───────────────
+# ── F7: `key_off_reason` — why a key is off, when nobody is overriding it ─────────
 #
-# WHY. `_key_owner_maturity` picks one of two tails depending on whether a writer for the key
-# exists, because clearing the rank gate is necessary but not sufficient: `_apply_maturity_gates`
-# only ever writes False below the rank, never True above it, so a key that no in-app surface can
-# SET stays off at every rank. Telling that user "it switches itself on as she levels up" is a
-# promise the code does not keep.
+# WHY THIS REPLACED THE MATURITY TAIL TESTS. The old F7 pinned `_key_owner_maturity`'s choice
+# between two tails ("it switches itself on as she levels up" vs "reaching rank N does NOT switch
+# it on"). Both sentences are now unsayable: the rank overlay is deleted, so no rank holds any key
+# away from its written value and the probe with it.
 #
-# The behaviour was always right. The DOCUMENTATION drifted: a hand-written comment counted the
-# no-writer keys, said "three of the six", and named three. It is four — and the one it dropped,
-# autonomous_research_mode (rank 3), is the lowest-ranked of them, i.e. the one a real user reaches
-# first. Nothing failed, because nothing checked. These tests make the count answerable by running
-# code instead of by trusting prose, so the next drift is a red test rather than a stale sentence.
+# What replaced it is a DIFFERENT QUESTION, and keeping the two apart is the point. `key_owner`
+# answers "who is overriding the value that was written" — route_helpers asks it right after a
+# save, where "you have not switched it on" would be an absurd answer to give someone who just
+# did. `key_off_reason` answers the nav's broader "why is this off?", for keys nobody ever wrote.
+# Feeding the second question to the first sent every plain unchecked box to the `unknown`
+# backstop — "no known owner accounts for it. Reason unknown" — which reads as a defect report.
 
 
-def _no_writer_keys() -> set[str]:
-    from install.feature_status import writable_config_keys
-    from runtime_safety import MATURITY_GATED_KEYS
+def test_a_plain_off_setting_is_explained_as_a_setting_not_a_defect():
+    """autonomous_mode is the panel that drove this: off, settable, and nothing is holding it."""
+    from install.feature_status import key_off_reason
 
-    return set(MATURITY_GATED_KEYS) - writable_config_keys()
-
-
-def test_some_maturity_gated_keys_genuinely_have_no_writer():
-    """If this ever goes empty the two-tail branch is dead code — delete it or fix the writers."""
-    assert _no_writer_keys(), (
-        "every maturity-gated key now has an in-app writer. Either a writer was genuinely added "
-        "(good — then _key_owner_maturity's no-writer branch is unreachable and should go), or "
-        "writable_config_keys() has started over-reporting and the honest 'there is no path' "
-        "message will never be shown again."
+    on, owner, reason, missing = key_off_reason("autonomous_mode", {"autonomous_mode": False})
+    assert on is False
+    assert owner == "setting", f"expected the setting owner, got {owner!r}: {reason}"
+    assert missing == []
+    assert "Settings" in reason, f"the reason must name where the switch is:\n  {reason}"
+    # The whole defect being corrected: it must not send anyone chasing a rank.
+    assert "rank" not in reason.lower().replace("no rank", ""), (
+        f"the copy still points at a maturity rank:\n  {reason}"
     )
+    assert "Reason unknown" not in reason, "an unchecked box reported as an unexplained defect"
 
 
-def test_keys_with_no_writer_are_told_there_is_no_path(monkeypatch):
-    """A key nothing can set must NOT be described as self-unlocking. Checked for EVERY such key,
-    so a newly-added no-writer key is covered without editing this test."""
-    import runtime_safety as rs
-    from install.feature_status import _key_owner_maturity
+def test_an_on_setting_reports_on():
+    from install.feature_status import key_off_reason
 
-    monkeypatch.setattr(rs, "current_maturity_rank", lambda: 0)
-    for key in sorted(_no_writer_keys()):
-        hit = _key_owner_maturity(key, {})
-        assert hit, f"{key} is maturity-gated at rank 0 but no maturity owner claimed it"
-        owner, reason = hit
-        assert owner == "maturity"
-        assert "does NOT switch the feature on" in reason, (
-            f"'{key}' has no writer anywhere in the app, but the gate explanation does not say so:\n"
-            f"  {reason}\n"
-            "That is the promise the code does not keep — reaching the rank removes the block and "
-            "the feature still stays off."
-        )
-        assert "switches itself on as she levels up" not in reason, (
-            f"'{key}' cannot be set by any surface, yet the copy promises it turns itself on."
-        )
+    on, owner, reason, _ = key_off_reason("autonomous_mode", {"autonomous_mode": True})
+    assert (on, owner, reason) == (True, "", "")
 
 
-def test_keys_with_a_writer_are_told_they_self_unlock(monkeypatch):
-    """The other branch, so a bug that hands every key the pessimistic tail is caught too."""
-    import runtime_safety as rs
-    from install.feature_status import _key_owner_maturity, writable_config_keys
-    from runtime_safety import MATURITY_GATED_KEYS
+def test_a_key_with_no_writer_still_gets_the_honest_defect_report():
+    """The `setting` branch must be EARNED by a writer existing, never assumed.
 
-    monkeypatch.setattr(rs, "current_maturity_rank", lambda: 0)
-    writable = set(MATURITY_GATED_KEYS) & writable_config_keys()
-    assert writable, "no maturity-gated key has a writer — the optimistic branch is now dead code"
-    for key in sorted(writable):
-        owner, reason = _key_owner_maturity(key, {})
-        assert owner == "maturity"
-        assert "switches itself on as she levels up" in reason, (
-            f"'{key}' CAN be set in-app, but the copy does not say it self-unlocks:\n  {reason}"
-        )
+    Teeth: a key that no surface can set must not be told "turn it on in Settings", because that
+    is the exact promise the old no-writer tail existed to avoid making. Membership is computed
+    from writable_config_keys(), so this covers a key that LOSES its writer later too.
+    """
+    from install.feature_status import key_off_reason, writable_config_keys
+
+    key = "definitely_not_a_real_config_key"
+    assert key not in writable_config_keys()
+    on, owner, reason, _ = key_off_reason(key, {})
+    assert on is False
+    assert owner == "unknown", f"a key with no writer was claimed by {owner!r}: {reason}"
+    assert "turn it on in Settings" not in reason
+    assert "defect" in reason.lower(), f"the honest report must name it a defect:\n  {reason}"
 
 
-def test_no_maturity_key_is_gated_above_the_rank_it_can_be_reached_at(monkeypatch):
-    """Above its rank a key is not the maturity gate's business — it must hand off, not claim."""
-    import runtime_safety as rs
-    from install.feature_status import _key_owner_maturity
-    from runtime_safety import MATURITY_GATED_KEYS
+def test_a_real_owner_still_beats_the_setting_explanation(cfg_file, all_packages, cpu_tier):
+    """Ordering teeth: auto-tune actively overrides the operator, and that outranks 'unchecked'.
 
-    monkeypatch.setattr(rs, "current_maturity_rank", lambda: max(MATURITY_GATED_KEYS.values()))
-    for key in sorted(MATURITY_GATED_KEYS):
-        assert _key_owner_maturity(key, {}) is None, (
-            f"'{key}' is still blamed on maturity at a rank that clears its gate — the real owner "
-            "(auto-tune, packages, a missing credential) would never get a chance to explain."
-        )
+    hyde_enabled is writable AND auto-tune reverts it on this tier. If `key_off_reason` checked
+    writability first it would cheerfully tell the operator to flip a switch that auto-tune
+    overwrites on the next load — advice that cannot work.
+    """
+    from install.feature_status import key_off_reason
+
+    on, owner, reason, _ = key_off_reason("hyde_enabled", {"hyde_enabled": False})
+    assert on is False
+    assert owner == "auto_tune", f"auto-tune's override was masked by {owner!r}: {reason}"
+    assert "auto_tune_locked_keys" in reason
+
+
+def test_the_maturity_owner_is_gone_from_the_registry():
+    """Deleted, not softened — a probe that can never fire reads like live policy."""
+    import install.feature_status as fs
+
+    assert not hasattr(fs, "_key_owner_maturity")
+    assert "maturity" not in fs.KNOWN_OWNERS, (
+        "KNOWN_OWNERS still advertises a maturity owner, so the backstop message names an owner "
+        "no probe can return."
+    )
 
 
 # ── F8: /setup/gate-status — the endpoint the navigation asks ────────────────────

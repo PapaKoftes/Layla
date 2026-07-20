@@ -107,28 +107,14 @@ def get_gate_status(features: str = "", keys: str = ""):
             out["ok"] = False
     for key in kids:
         try:
-            from install.feature_status import KNOWN_OWNERS, key_missing_packages, key_owner
+            # The owner/packages/setting/backstop chain used to be spelled out HERE, which made
+            # this router a second copy of the registry it claims to reuse — and the copy went
+            # stale the moment the maturity gate was removed, because its backstop still told
+            # the operator to "check Settings for this key" for keys no setting could reach.
+            # `key_off_reason` is that chain, living in the one module that owns reason strings.
+            from install.feature_status import key_off_reason
 
-            owned = key_owner(key, cfg)
-            missing = key_missing_packages(key)
-            on = bool(cfg.get(key)) and not missing
-            if on:
-                owner, reason = "", ""
-            elif owned:
-                owner, reason = owned
-            elif missing:
-                owner = "packages"
-                reason = f"the engine behind '{key}' is not installed (missing: {', '.join(missing)})."
-            else:
-                # THE BACKSTOP, and it is not optional — see feature_status._owner_unknown.
-                # An empty reason here reaches the user as "off, and the server gave no reason",
-                # which reads as a UI bug rather than as the honest "this module has a gap".
-                owner = "unknown"
-                reason = (
-                    f"'{key}' is off in the effective config and no known owner "
-                    f"({KNOWN_OWNERS}) accounts for it. Reason unknown — check Settings for "
-                    "this key."
-                )
+            on, owner, reason, missing = key_off_reason(key, cfg)
             out["keys"].append({
                 "key": key,
                 "on": on,
@@ -159,9 +145,9 @@ def apply_setup_profiles(body: dict):
 
     AND THE OUTCOME IS READ BACK, NOT INFERRED. Reporting "everything you asked for, minus the
     packages that are missing" assumes the installer is the only thing that can veto a feature.
-    It is not: auto_tune owns hyde_enabled/multi_agent_orchestration_enabled on every CPU tier
-    and the maturity gate owns the initiative flags below rank 1 — all three have NO packages,
-    so a package-shaped gate is structurally blind to them. This route therefore re-reads
+    It is not: auto_tune owns hyde_enabled/multi_agent_orchestration_enabled on every CPU tier,
+    and neither has any packages, so a package-shaped gate is structurally blind to them. (A
+    maturity gate used to own the initiative flags here too, until rank stopped gating anything.) This route therefore re-reads
     load_config() (what the app actually runs on, not the file it just wrote) and derives
     `features`/`not_enabled` from that, with the reason attributed to whoever owns the key.
     See install/feature_status.py.

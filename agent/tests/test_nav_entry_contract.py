@@ -503,8 +503,9 @@ def test_gate_copy_is_not_hardcoded_in_the_ui():
     assert "/setup/gate-status" in nav_js, "nav-groups.js must source its gate copy from /setup/gate-status"
     assert "Requires autonomous_mode" not in _rendered_html(), (
         "the Autonomous panel is back to naming a config variable instead of stating the gate. "
-        "That key is maturity-gated at rank 5 AND has no writer anywhere in the app, so 'requires "
-        "autonomous_mode' is not a path a user can act on."
+        "The key is a real setting now (it used to be rank-gated with no writer at all), so the "
+        "server-rendered note can name the switch and where to find it — 'requires "
+        "autonomous_mode' still tells the operator nothing they can act on."
     )
     note = re.search(r'data-gate-note="autonomous_mode"', _rendered_html())
     assert note, (

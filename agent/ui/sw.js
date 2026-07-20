@@ -34,7 +34,7 @@
 // `multi_agent` and `remote` — the server still answers both, so the operator would go on being told
 // a working panel is locked, and told to rotate a tunnel token that does not enable sync. A wrong
 // answer that renders perfectly is exactly what stale-while-revalidate would serve here.
-const CACHE = "layla-ui-v31";
+const CACHE = "layla-ui-v34";
 const PRECACHE = [
   "/ui/",
   "/manifest.json",

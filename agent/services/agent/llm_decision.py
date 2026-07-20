@@ -286,13 +286,16 @@ def llm_decision(
     try:
         cfg_obs = runtime_safety.load_config()
         if cfg_obs.get("observation_mode_enabled", True):
-            from services.personality.maturity_engine import get_state as _get_maturity_state
-            from services.personality.maturity_engine import is_early_phase
+            from services.personality.familiarity import knows_operator
 
-            ms = _get_maturity_state()
-            # Was gated on == "nascent", which is NOT a valid PhaseId, so a brand-new install
-            # never got the intended early-phase restraint. Real early phases: awakening/attunement.
-            if is_early_phase(ms.phase):
+            # Keyed on KNOWLEDGE, not rank. This asked is_early_phase(ms.phase), and phase is
+            # phase_for_rank(rank), so the restraint lifted at rank 6 — caution you wore off by
+            # accumulating XP from tool calls and study sessions, none of which taught her
+            # anything about the operator. Observation mode means "I don't know this person yet",
+            # so it now reads the familiarity roster directly (the same substitution
+            # familiarity_line made for the rank<1 directive in system_head_builder).
+            # A blank profile reads False -> restraint stays on, which is the safe direction.
+            if not knows_operator():
                 _goal_l = (goal or "").lower()
                 explicit_action = any(
                     kw in _goal_l

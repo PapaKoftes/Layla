@@ -161,14 +161,18 @@ def _bg_initiative() -> None:
     try:
         import runtime_safety as _rs
         from services.infrastructure.initiative_engine import generate_project_proposals
-        from services.personality.maturity_engine import get_trust_tier
 
         _c = _rs.load_config()
         if not bool(_c.get("initiative_project_proposals_enabled", False)):
             return
-        if int(get_trust_tier(_c)) < 2:
-            return
-        _ = generate_project_proposals()
+        # PASS THE CONFIG. This called generate_project_proposals() with no arguments, and the
+        # callee treats a missing cfg as `{}` — so its own `initiative_project_proposals_enabled`
+        # check read False and it returned [] before touching anything, every time. The
+        # scheduled path was inert no matter what the operator set, which is exactly what this
+        # setting's hint promises ("let scheduled maintenance draft unprompted proposals").
+        # The trust-tier check that used to sit here is gone as a duplicate, not as a relaxation:
+        # generate_project_proposals applies the same ceiling itself, on the config it is given.
+        _ = generate_project_proposals(cfg=_c)
     except Exception as _e:
         logger.warning("background_initiative: %s", _e)
 

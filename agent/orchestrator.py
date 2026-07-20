@@ -41,6 +41,37 @@ _PHASE_TO_VOICE: dict[str, str] = {
     "transcendence": "transcendent",
 }
 
+# The voice tiers, least to most assertive — the keys every personalities/*.json voice_evolution
+# block already uses.
+_VOICE_TIERS: tuple[str, ...] = ("nascent", "apprentice", "adept", "veteran", "transcendent")
+
+
+def _voice_key_for_familiarity() -> str:
+    """Which voice tier to speak in, from how much she actually knows about the operator.
+
+    Replaces a rank/phase lookup. Rank is an activity odometer — 14 award sites, all counting
+    actions, with conversation under 2% of lifetime XP — so keying her assertiveness to it meant
+    background tool work made her more confident with a person she had learned nothing new about.
+    The familiarity roster counts named things the operator actually supplied, so this grows with
+    the relationship instead of with throughput.
+
+    Fails to the most cautious tier: if familiarity cannot be read, she speaks carefully rather
+    than confidently. An error must not promote her.
+    """
+    try:
+        from services.personality.familiarity import get_familiarity
+
+        fam = get_familiarity() or {}
+        known = int(fam.get("known") or 0)
+        total = int(fam.get("total") or 0)
+    except Exception:
+        return _VOICE_TIERS[0]
+    if total <= 0 or known <= 0:
+        return _VOICE_TIERS[0]
+    # known/total -> tier index, so a full roster reaches the last tier and nothing else does.
+    idx = min(len(_VOICE_TIERS) - 1, (known * len(_VOICE_TIERS)) // total)
+    return _VOICE_TIERS[idx]
+
 
 def reload_aspects() -> list[dict]:
     """Force-reload all aspect JSON files from personalities/ immediately."""
@@ -86,15 +117,10 @@ def _load_aspects() -> list[dict]:
             from layla.memory.db import get_earned_title
         except Exception:
             def get_earned_title(_): return None  # noqa: E731
-        # Layla v3: maturity phase can influence aspect voice evolution (best-effort).
-        maturity_phase = ""
-        try:
-            from layla.memory.db import get_all_user_identity
-
-            uid = get_all_user_identity() or {}
-            maturity_phase = str(uid.get("maturity_phase") or "").strip().lower()
-        except Exception:
-            maturity_phase = ""
+        # The maturity_phase read that used to live here is gone: it was a full
+        # get_all_user_identity() on every aspect load whose only consumer was the voice-evolution
+        # lookup, and that now keys on familiarity instead. A DB read feeding nothing is the thing
+        # this phase keeps finding, so it goes rather than sitting here looking load-bearing.
         if PERSONALITIES_DIR.exists():
             for f in sorted(PERSONALITIES_DIR.glob("*.json")):
                 try:
@@ -109,15 +135,31 @@ def _load_aspects() -> list[dict]:
                     if card:
                         base = (a.get("systemPromptAddition") or "").rstrip()
                         a["systemPromptAddition"] = base + "\n\n— Style card —\n" + card
-                    # Optional voice evolution line (light novel growth): keep short, phase-aware.
+                    # Optional voice evolution line: keep short, FAMILIARITY-aware.
+                    #
+                    # This used to key on maturity_phase, i.e. phase_for_rank(rank) — so how
+                    # decisively she spoke was bought with XP. That is the same construct as the
+                    # observation-mode restraint, which was re-keyed onto familiarity for exactly
+                    # this reason (llm_decision.py), and rank is an INDICATOR of how much she has
+                    # learned about the operator, not a lever on behaviour. Grinding background
+                    # tool work should not make her more assertive with a person she barely knows.
+                    #
+                    # It is currently truncated away before it reaches the model (the persona
+                    # budget cuts the tail, and this line is appended last), which is precisely
+                    # why it survived the rank sweep unnoticed — dead code one constant away from
+                    # being live. Keyed correctly it is right whenever that constant changes.
                     try:
                         ve = a.get("voice_evolution")
-                        if maturity_phase and isinstance(ve, dict):
-                            voice_key = _PHASE_TO_VOICE.get(maturity_phase, maturity_phase)
-                            vline = str(ve.get(voice_key) or "").strip()
+                        if isinstance(ve, dict) and ve:
+                            _vkey = _voice_key_for_familiarity()
+                            vline = str(ve.get(_vkey) or "").strip()
                             if vline:
                                 base2 = (a.get("systemPromptAddition") or "").rstrip()
-                                a["systemPromptAddition"] = base2 + f"\n\nVoice evolution ({maturity_phase}): {vline}"
+                                # Label the tier that was actually used. It said `maturity_phase`
+                                # while the line is now chosen by familiarity — a label naming a
+                                # different input than the one that picked the content is the
+                                # small version of every defect this phase has been unpicking.
+                                a["systemPromptAddition"] = base2 + f"\n\nVoice evolution ({_vkey}): {vline}"
                     except Exception:
                         pass
                     aspects.append(a)
