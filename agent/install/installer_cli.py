@@ -282,6 +282,19 @@ def run() -> int:
                        "model_filename", "models_dir", "sandbox_root"):
             cfg.setdefault(key, val)
 
+    # The credential invariant belongs to every writer, not just the serialisers. This one
+    # copies each unlisted key forward from the existing config (above), so it can carry a
+    # remote_enabled that has lost its credential into a freshly written file — the same bare
+    # remote state that makes require_auth_always answer 403 to every request, including
+    # localhost, and locks the operator out of their own machine.
+    try:
+        import runtime_safety as _rs
+
+        _rs.enforce_config_invariants(cfg)
+    except ImportError:  # standalone installer run with agent/ off sys.path
+        if cfg.get("remote_enabled") and not (cfg.get("tunnel_token_hash") or cfg.get("remote_api_key")):
+            cfg["remote_enabled"] = False
+
     try:
         CONFIG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     except OSError as e:

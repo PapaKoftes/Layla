@@ -688,11 +688,17 @@ def get_feature_themes(cfg: dict[str, Any],
         #
         # The alternative (ask key_owner about every flag that is merely off) reads as "you
         # cannot turn this on", and that message is wrong wherever an owner blocks a DIFFERENT
-        # path than this one. Driven: `remote_access` is off with no credential, so the
-        # security_policy probe claims it — but that probe describes apply_setup's refusal,
-        # and this surface writes remote_enabled anyway (see residuals). Reporting a
-        # confident, actionable, wrong reason is the failure mode this slice exists to remove,
-        # so an owner has to have actually held the key to be named.
+        # path than this one.
+        #
+        # That caveat used to be illustrated by `remote_access`: the security_policy probe
+        # described a refusal only apply_setup performed, while THIS surface wrote
+        # remote_enabled regardless — so naming it here would have been confident, actionable
+        # and wrong. The refusal is now a config-write invariant
+        # (runtime_safety.CONFIG_INVARIANTS), enforced for every writer, so that particular
+        # message would be true today. The evidence rule stays anyway: it is what keeps the
+        # NEXT owner — one that really does block only one path — from producing the same
+        # confident wrong reason. An operator who toggles remote access without a credential
+        # learns why from the POST read-back, which names the same owner off real evidence.
         owners: list[dict[str, str]] = []
         if requested:
             for k in off_flags:

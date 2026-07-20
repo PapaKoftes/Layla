@@ -215,8 +215,12 @@ export async function refreshPairedDevices() {
       const permHtml = Object.keys(perms).map(k => {
         const label = k.replace(/_/g, ' ');
         const on = !!perms[k];
+        // data-device/data-perm let toggleDevicePermission find this box again to CORRECT it
+        // when the server refuses — without them the checkbox keeps showing a grant that was
+        // never made, which is the visual half of the same false confirmation.
         return '<label class="perm-toggle' + (on ? ' on' : '') + '">' +
           '<input type="checkbox"' + (on ? ' checked' : '') +
+          ' data-device="' + _esc(d.instance_id) + '" data-perm="' + _esc(k) + '"' +
           ' onchange="toggleDevicePermission(\'' + _esc(d.instance_id) + '\',\'' + k + '\',this.checked)">' +
           ' ' + _esc(label) +
         '</label>';
@@ -242,18 +246,52 @@ export async function refreshPairedDevices() {
 }
 
 // ── Permission toggle ───────────────────────────────────────────────────────
+/**
+ * Grant or revoke one permission on a paired device — and report the SERVER's answer.
+ *
+ * A2. This awaited the fetch and then toasted success unconditionally: it read neither
+ * `r.ok` nor the body, so any outcome short of a thrown network error printed
+ * "<permission>: enabled". Driven against a live instance, the toast said
+ * "remote tools: enabled" while the server answered HTTP 404 {"detail":"Device not paired"} —
+ * a user told they had granted REMOTE TOOL EXECUTION to a device that is not even paired.
+ *
+ * `await fetch(...)` without reading the response is the whole bug in one line: fetch only
+ * rejects on a transport failure, so a 404, a 422 or a refusal all land in the success path.
+ */
 export async function toggleDevicePermission(instanceId, key, value) {
+  const box = document.querySelector(
+    '.paired-device-card input[type="checkbox"][data-perm="' + key + '"][data-device="' + instanceId + '"]');
+  const label = key.replace(/_/g, ' ');
   try {
     const body = {};
     body[key] = value;
-    await fetch('/pairing/' + encodeURIComponent(instanceId) + '/permissions', {
+    const r = await fetch('/pairing/' + encodeURIComponent(instanceId) + '/permissions', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    showToast(key.replace(/_/g, ' ') + ': ' + (value ? 'enabled' : 'disabled'));
-  } catch (_) {
-    showToast('Permission update failed');
+    const d = await r.json().catch(function () { return null; });
+    if (!r.ok || !d || !d.ok) {
+      // `detail` is FastAPI's error shape (404/422), `error` is ours. Name the permission, so
+      // "it didn't work" is never mistaken for a different permission's success.
+      const why = (d && (d.error || d.detail)) || ('HTTP ' + r.status);
+      showToast('NOT changed: ' + label + ' — ' + why);
+      if (box) box.checked = !value;  // the grant did not happen; stop showing that it did
+      return;
+    }
+    // The stored permissions, read back out of the device record — not the value we sent.
+    const perms = d.permissions || {};
+    const effective = !!perms[key];
+    if (box) box.checked = effective;
+    if (effective !== !!value) {
+      showToast('NOT changed: ' + label + ' — the server reports it is still ' +
+                (effective ? 'enabled' : 'disabled'));
+      return;
+    }
+    showToast(label + ': ' + (effective ? 'enabled' : 'disabled'));
+  } catch (e) {
+    showToast('Permission update failed: ' + ((e && e.message) || e));
+    if (box) box.checked = !value;
   }
 }
 

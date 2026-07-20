@@ -271,13 +271,23 @@ def apply_setup(profile_ids, feature_ids=None, *, current_cfg=None, save=True,
                     out.append(x)
             resolved[key] = out
     merged = {**cur, **resolved}
-    # Never persist remote_enabled without an auth credential. That state makes EVERY request —
-    # including plain localhost — 403 "no auth configured" (require_auth_always auto-on when
-    # remote_enabled), locking the operator out of their own local instance; and remote access
-    # with no token is useless anyway. Enabling remote is a deliberate, token-first step (rotate a
-    # tunnel token, then flip the flag), not something a setup checkbox should silently do.
-    if merged.get("remote_enabled") and not merged.get("tunnel_token_hash") and not merged.get("remote_api_key"):
-        merged["remote_enabled"] = False
+    # Never persist remote_enabled without an auth credential — see
+    # runtime_safety._invariant_remote_needs_credential for the reasoning that used to live
+    # here as a comment.
+    #
+    # THIS IS NO LONGER A CHECK THIS FUNCTION OWNS. It was, and being the only owner is what
+    # let POST /settings/themes and POST /settings persist the state this refuses: the rule was
+    # a line in one surface rather than a property of the config. It now lives on the write
+    # path, and this call is here only so the returned `merged` — which is also the wizard's
+    # PREVIEW of what would land, computed on the `save=False` path that never reaches a
+    # writer — shows the same coerced value the disk would get. Do not reintroduce the
+    # comparison inline; a second copy is how this defect returns.
+    # The refusal is reported to the operator by the wizard's existing read-back
+    # (install/feature_status), which reads the effective config and names the security_policy
+    # owner — so it is surfaced there rather than re-explained here.
+    import runtime_safety as _rs_inv
+
+    _rs_inv.enforce_config_invariants(merged)
     if save:
         import json
 

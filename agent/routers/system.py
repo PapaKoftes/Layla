@@ -667,29 +667,52 @@ def remote_tunnel_health():
 
 @router.post("/remote/token/rotate")
 def remote_token_rotate():
-    """Generate a new auth token and return it (shown once)."""
+    """Generate a new auth token, persist its hash, and return the token (shown once).
+
+    THIS IS THE REMEDY THE REMOTE-ACCESS REFUSAL SENDS PEOPLE TO, so it has to work.
+    (runtime_safety._invariant_remote_needs_credential declines remote_enabled with no
+    credential and names this endpoint as the way to get one.)
+
+    It wrote to a HARDCODED ``AGENT_DIR / "runtime_config.json"`` while every reader goes
+    through ``runtime_safety.CONFIG_FILE``, which honours ``LAYLA_DATA_DIR``. On any installed
+    or multi-profile instance those are different files, so the hash landed somewhere nothing
+    reads: the operator was shown a token, told to save it, and remote access still had no
+    credential. Caught by driving it — the rotate reported ok:true while the instance's own
+    config file gained no ``tunnel_token_hash``.
+
+    ``save_config_keys`` is the shared writer: correct path, read-modify-write under the config
+    lock (a concurrent /settings save can no longer lose the hash, or be lost by it), atomic +
+    fsynced, and subject to the config invariants like every other write.
+    """
     try:
         import datetime
-        import json
-        from pathlib import Path
 
         import runtime_safety
         from services.governance.tunnel_auth import rotate_token
 
         cfg = runtime_safety.load_config()
         new_token, new_hash = rotate_token(cfg)
-        # Save hash + timestamp to runtime config
-        config_path = Path(runtime_safety.AGENT_DIR) / "runtime_config.json"
-        try:
-            existing = json.loads(config_path.read_text(encoding="utf-8")) if config_path.exists() else {}
-        except Exception:
-            existing = {}
-        existing["tunnel_token_hash"] = new_hash
-        existing["tunnel_token_created_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        config_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+        saved = runtime_safety.save_config_keys(
+            {
+                "tunnel_token_hash": new_hash,
+                "tunnel_token_created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            },
+            editable_only=False,  # neither key is individually operator-editable
+            clamp=False,
+        )
+        # Read back rather than assume: a token the operator saves but that was never stored is
+        # the same false confirmation as a toast over a 404.
+        stored = bool(runtime_safety.load_config().get("tunnel_token_hash"))
+        if not stored:
+            return JSONResponse({
+                "ok": False,
+                "error": "the new token's hash could not be saved, so it will not authenticate "
+                         "anything — remote access still has no credential.",
+            }, status_code=500)
         return {
             "ok": True,
             "token": new_token,
+            "saved": saved,
             "message": "Save this token — it will not be shown again.",
         }
     except Exception as e:
