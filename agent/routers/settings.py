@@ -770,8 +770,6 @@ def operator_profile():
     """Return the current operator profile (stats, maturity seed, prefs) from user_identity."""
     try:
         from services.personality.maturity_engine import (
-            all_unlocks,
-            check_unlocks,
             get_milestones_status,
             get_state,
             xp_needed_for_next,
@@ -787,20 +785,21 @@ def operator_profile():
             maturity["milestones"] = get_milestones_status(ms.phase)
             # Ensure phase reflects engine mapping even if older user_identity stored legacy labels.
             maturity["phase"] = str(ms.phase)
-            # Unlocked abilities for the growth dashboard — the frontend (growth.js) reads
-            # maturity.unlocks[{name,rank_required}] but the endpoint never populated it, so the
-            # "Unlocked Abilities" panel was permanently empty. check_unlocks() already returns that shape.
-            # unlocks_all carries the whole ladder so the frontend renders the locked preview
-            # from the real table instead of a hardcoded duplicate that drifts out of sync.
-            try:
-                maturity["unlocks"] = check_unlocks({"rank": ms.rank})
-                maturity["unlocks_all"] = all_unlocks(ms.rank)
-            except Exception:
-                maturity["unlocks"] = []
-                maturity["unlocks_all"] = []
+            # What XP is, in the payload, so the panel does not have to assert it from memory.
+            # There is no `unlocks`/`unlocks_all` any more: rank unlocks nothing, so the ladder and
+            # the "Unlocked Abilities" list it fed are gone (see maturity_engine).
+            maturity["measures"] = "activity"
             prof["maturity"] = maturity
         except Exception:
             pass
+        # Familiarity — the honest "how much she has learned about you" indicator. Separate from
+        # maturity on purpose: it is computed from what is on file about the operator, not from XP.
+        try:
+            from services.personality.familiarity import get_familiarity
+
+            prof["familiarity"] = get_familiarity()
+        except Exception:
+            prof["familiarity"] = {"ok": False}
         return JSONResponse(prof)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)

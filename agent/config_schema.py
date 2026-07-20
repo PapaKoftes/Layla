@@ -69,12 +69,72 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "max": 1.0,
         "hint": "Drop memory hits below this adjusted confidence in semantic recall (0 = no filter).",
     },
+    # ── Proactive & autonomous behaviour ──
+    # These five were MATURITY_GATED_KEYS in runtime_safety: forced False below a maturity rank
+    # by an overlay that ran inside load_config, so no operator action — settings, wizard, or
+    # hand-editing runtime_config.json — could switch them on. Four had no writer at all. Rank
+    # was never meant to gate features (it is a familiarity display), so the overlay is gone and
+    # these are ordinary settings. They are OFF by default and stay off until asked for here.
+    #
+    # NOT LISTED, DELIBERATELY: `autonomous_research_mode`. It has a default and had a rank-3
+    # gate, but nothing in the repo READS it (maturity_engine:389 already recorded this when it
+    # dropped the matching unlock row). A switch for an inert key is a fake control, which is the
+    # same defect as a fake gate. Wire a reader first, then add it here.
     {
         "key": "inline_initiative_enabled",
         "type": "boolean",
         "category": "safety",
         "default": False,
         "hint": "After 2+ tool steps, append one heuristic next-step line to the final reply.",
+    },
+    {
+        "key": "initiative_engine_enabled",
+        "type": "boolean",
+        "category": "safety",
+        "default": False,
+        "hint": "Rule-based initiative hints derived from the last run's steps, plus optional wakeup lines. Suggestions only — text, no tool execution.",
+    },
+    {
+        "key": "initiative_project_proposals_enabled",
+        "type": "boolean",
+        "category": "safety",
+        "default": False,
+        "hint": "Let scheduled maintenance draft unprompted project proposals from your recent work. Text-only; no tools run. Off = she only proposes when asked.",
+    },
+    # The autonomy ceiling. In EDITABLE_SCHEMA because it is the ONLY thing left that can hold
+    # an initiative or coordinator capability below the setting that switches it on — and until
+    # this entry existed it was in neither the settings schema, the wizard nor the themes, so
+    # `writable_config_keys()` did not contain it and no sequence of in-app actions could change
+    # it. A restriction the operator cannot reach is the same defect as the rank gate it replaced.
+    {
+        "key": "autonomy_trust_tiers_enabled",
+        "type": "boolean",
+        "category": "safety",
+        "default": True,
+        "hint": "Apply the autonomy ceiling below. On with no ceiling set means no restriction — the ceiling only ever lowers what your other settings already allow. Nothing here depends on rank, XP or level.",
+    },
+    {
+        "key": "trust_tier_override",
+        "type": "number",
+        "category": "safety",
+        "default": None,
+        "min": 0,
+        "max": 3,
+        "hint": "Autonomy ceiling, 0-3 (blank = no ceiling). 0 suggestions only · 1 inline initiative · 2 unprompted project proposals · 3 coordinator retries. Lowering this can switch a capability off even though its own setting is on; it never switches one on.",
+    },
+    {
+        "key": "autonomous_mode",
+        "type": "boolean",
+        "category": "safety",
+        "default": False,
+        "hint": "POWERFUL: enables POST /autonomous/run, a multi-step goal loop that decides its own next action. Each request must still pass confirm_autonomous, and tool approval still applies — safe_mode keeps file writes and shell behind approval, so leave safe_mode on unless you mean otherwise. Off = /autonomous/run returns 403.",
+    },
+    {
+        "key": "autonomy_optimizer_enabled",
+        "type": "boolean",
+        "category": "safety",
+        "default": False,
+        "hint": "POWERFUL: after a governed plan step fails validation, let Layla propose one alternate tool and retry rationale instead of stopping. Suggestions are drawn only from the step's existing tool allowlist and never widen allow_write/allow_run, but it does mean a failed step can continue without you.",
     },
     {
         "key": "project_discovery_auto_inject",
@@ -653,9 +713,9 @@ def get_feature_themes(cfg: dict[str, Any],
         "true", "auto") read as ON. The manifest declares a VALUE; ask whether it holds.
     (2) `managed_flags` was `auto_tune_managed_keys() & flags` — a HARDCODED single-owner
         list, byte-for-byte the shape route_helpers had just deleted, and structurally blind
-        to MATURITY_GATED_KEYS, security_policy, and every future owner. It now asks
-        `key_owner`, so a theme held off by the maturity gate says so instead of appearing
-        unowned. `managed_flags` is kept (it means what it always meant: the auto-tune-owned
+        to the then-live MATURITY_GATED_KEYS, security_policy, and every future owner. It now
+        asks `key_owner`, so a theme held off by ANY registered owner says so instead of
+        appearing unowned — which is why deleting the maturity owner needed no change here. `managed_flags` is kept (it means what it always meant: the auto-tune-owned
         subset, which is the subset the lock remedy applies to) but is DERIVED from the
         registry rather than from a parallel intersection.
     (3) Packages were never consulted, so "Advanced retrieval & search" reported enabled:true
@@ -737,8 +797,8 @@ def feature_theme_updates(theme_key: str, enabled: bool,
     # these surfaces. It is now the registry's answer, asked with the lock list neutralised so
     # the OFF path can still recognise (and release) a lock the ON path took. Only auto-tune's
     # keys appear here because the lock is auto-tune's OWN remedy — auto_tune_locked_keys
-    # cannot unlock a maturity-gated key, and pretending otherwise would send the operator to
-    # a control that does nothing. The other owners are not silenced: they are reported by the
+    # could not unlock the maturity-gated keys that used to exist, and pretending otherwise
+    # would send the operator to a control that does nothing. The other owners are not silenced: they are reported by the
     # read-back in the POST handler, which is where an unfixable block belongs.
     from install.feature_status import key_owner
 

@@ -44,20 +44,104 @@ export function refreshGrowthDashboard() {
   ]).then(([stats, profile]) => {
     _refreshing = false;
     if (stats && stats.ok) _populateStats(stats);
-    if (profile) _populateMaturity(profile);
+    if (profile) {
+      _populateMaturity(profile);
+      _renderFamiliarity(profile.familiarity);
+    }
   }).catch(e => {
     _refreshing = false;
     console.warn('[Layla Growth] fetch failed:', e);
   });
 }
 
-// ── Maturity (XP bar, rank badge, unlocks) ──────────────────────────────────
+// ── Familiarity — the honest "how much she's learned about you" indicator ────
+// Rank/XP is an activity odometer (see _populateMaturity), so it cannot answer that question.
+// This one can: it is a fraction over a FIXED roster of specific things she can know about the
+// operator, and every row is rendered with its stored value so the headline can be recounted by
+// hand. The unbounded counts (exchanges, days, adapted aspects) are shown separately, BELOW the
+// fraction and outside it — folding a number with no maximum into a percentage is how a counter
+// gets dressed up as intimacy.
+function _renderFamiliarity(f) {
+  const el = document.getElementById('growth-familiarity');
+  if (!el) return;
+
+  if (!f || !f.ok || !f.total) {
+    el.innerHTML = '<div style="font-size:0.6rem;color:var(--text-dim)">Nothing on file yet — '
+      + 'finish onboarding or the operator quiz and this fills in.</div>';
+    return;
+  }
+
+  const known = f.known || 0;
+  const total = f.total || 0;
+  const pct = f.pct || 0;
+  const answers = f.answers || [];
+  const context = f.context || [];
+
+  let html = '';
+  html += '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">';
+  html += '<span style="font-size:0.72rem;color:var(--text)"><strong>' + known + '</strong> of ' + total + ' things about you</span>';
+  html += '<span style="font-size:0.6rem;color:var(--accent)">' + pct + '%</span>';
+  html += '</div>';
+  html += '<div class="growth-xp-bar"><div class="growth-xp-bar-fill" style="width:' + pct + '%"></div></div>';
+
+  // Context counts — real, but with no denominator, so they sit outside the fraction.
+  if (context.length) {
+    html += '<div style="margin-top:8px;display:flex;flex-direction:column;gap:3px">';
+    for (let i = 0; i < context.length; i++) {
+      const c = context[i];
+      html += '<div style="display:flex;justify-content:space-between;gap:8px;font-size:0.6rem">';
+      html += '<span style="color:var(--text-dim)" title="' + _esc(c.basis || '') + '">' + _esc(c.label || '') + '</span>';
+      html += '<span style="color:var(--text);text-align:right">' + _esc(c.value != null ? c.value : '') + '</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  // The audit trail: every roster row with the value actually stored for it.
+  html += '<details style="margin-top:8px">';
+  html += '<summary style="font-size:0.6rem;color:var(--text-dim);cursor:pointer">What she has on file (' + known + '/' + total + ')</summary>';
+  html += '<div style="margin-top:6px;display:flex;flex-direction:column;gap:2px">';
+  for (let i = 0; i < answers.length; i++) {
+    const a = answers[i];
+    const mark = a.known ? '&#10003;' : '&#8212;';
+    const markColor = a.known ? 'var(--success,#3fae6b)' : 'var(--text-dim)';
+    html += '<div style="display:flex;gap:6px;font-size:0.58rem;align-items:baseline">';
+    html += '<span style="flex:0 0 10px;color:' + markColor + '">' + mark + '</span>';
+    html += '<span style="flex:0 0 40%;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'
+      + _esc(a.key || '') + '">' + _esc(a.label || '') + '</span>';
+    html += '<span style="flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+      + (a.known ? _esc(a.value || '') : '<em style="color:var(--text-dim)">not set</em>') + '</span>';
+    html += '</div>';
+  }
+  html += '</div>';
+  if (f.basis) {
+    html += '<p style="font-size:0.55rem;color:var(--text-dim);line-height:1.4;margin:8px 0 0">' + _esc(f.basis) + '</p>';
+  }
+  const src = f.sources || {};
+  if (src.profile || src.traits) {
+    html += '<p style="font-size:0.53rem;color:var(--text-dim);line-height:1.4;margin:4px 0 0">Read from: '
+      + _esc([src.profile, src.traits].filter(Boolean).join(' · ')) + '</p>';
+  }
+  html += '</details>';
+
+  el.innerHTML = html;
+}
+
+// ── Maturity (XP bar, rank badge) ───────────────────────────────────────────
+// XP measures ACTIVITY — award_xp() is called from 14 sites and every one counts an action
+// (turns, tool successes, plans, study, research, days active). The rank ladder and the
+// "Unlocked Abilities" list it fed are gone, because naming abilities off a counter is what made
+// her claim capabilities she did not have.
+// "rank never gated a feature" used to be written here, and it was NOT true when written: three
+// capabilities sat behind maturity_engine.get_trust_tier's `rank >= 6` branch and two more behind
+// the phase predicates (phase = phase_for_rank(rank)). Those are removed, so the panel's copy now
+// says the precise thing instead of the flattering one: rank unlocks no CAPABILITY, and the only
+// thing it still affects is which cosmetic aspect titles the Character lab offers.
 function _populateMaturity(p) {
   const maturity = p.maturity || {};
   const rank = maturity.rank || 0;
   const xp = maturity.xp || 0;
   const phase = maturity.phase || 'awakening';
-  const unlocks = maturity.unlocks || [];
 
   // XP Progress bar — server's xp_to_next is authoritative; 100000 only if absent/max-rank.
   const _srvNext = Number(maturity.xp_to_next);
@@ -79,38 +163,6 @@ function _populateMaturity(p) {
     badgeEl.className = 'growth-rank-badge phase-' + phase;
   }
   _setText('growth-phase-name', _phaseDisplayName(phase));
-
-  // Unlocks list
-  const ulEl = document.getElementById('growth-unlocks-list');
-  if (ulEl) {
-    if (unlocks.length === 0) {
-      ulEl.innerHTML = '<div class="growth-unlock-empty">Earn XP to unlock abilities</div>';
-    } else {
-      let html = '';
-      for (let i = 0; i < unlocks.length; i++) {
-        const u = unlocks[i];
-        html += '<div class="growth-unlock-item">';
-        html += '<span class="growth-unlock-icon">✦</span>';
-        html += '<span class="growth-unlock-name">' + _esc(u.name || '') + '</span>';
-        html += '<span class="growth-unlock-rank">Rank ' + (u.rank_required || 0) + '</span>';
-        html += '</div>';
-      }
-      // Show the next unlock, read from the server's ladder (maturity.unlocks_all) rather
-      // than a hardcoded copy — the old duplicate listed abilities that no longer exist.
-      const ladder = maturity.unlocks_all || [];
-      for (let j = 0; j < ladder.length; j++) {
-        if (!ladder[j].earned) {
-          html += '<div class="growth-unlock-item growth-unlock-locked">';
-          html += '<span class="growth-unlock-icon">🔒</span>';
-          html += '<span class="growth-unlock-name">' + _esc(ladder[j].name || '') + '</span>';
-          html += '<span class="growth-unlock-rank">Rank ' + (ladder[j].rank_required || 0) + '</span>';
-          html += '</div>';
-          break;
-        }
-      }
-      ulEl.innerHTML = html;
-    }
-  }
 }
 
 function _phaseDisplayName(phase) {
