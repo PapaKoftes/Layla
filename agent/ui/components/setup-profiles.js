@@ -20,7 +20,7 @@ let _toInstall = [];      // [{id,label,deps,models,size_mb}]
 let _installRes = {};     // feature id -> {state:'pending'|'running'|'ok'|'fail'|'unknown', detail, failed:[]}
 let _installing = false;
 // Features that were asked for and are NOT in force for a reason that is NOT missing packages
-// — auto-tune owns the key on this hardware tier, the maturity rank is too low, a security
+// — auto-tune owns the key on this hardware tier, it is a setting nobody switched on, a security
 // policy refused it, or nobody owns it and we say so. The server reads these back out of the
 // effective config (/setup/apply → not_enabled); the wizard has no business inferring them.
 let _blocked = [];        // [{id,label,owner,reason}]
@@ -196,8 +196,8 @@ function _lastLine(err) {
  *
  * This is the part the wizard could not draw at all, because it never had the information:
  * it computed its outcome as "requested minus failed packages", so a feature switched off by
- * auto-tune (every CPU tier holds hyde/multi-agent off) or by the maturity gate (initiative
- * below rank 1) had no package to blame and simply vanished — reported as enabled, hidden by
+ * auto-tune (every CPU tier holds hyde/multi-agent off) or, at the time, by the maturity gate
+ * (initiative below rank 1) had no package to blame and simply vanished — reported as enabled, hidden by
  * the palette, unexplained anywhere. The reasons below come from the server re-reading its
  * effective config, one owner per feature, including a plain "reason unknown" when nothing
  * claims it.
@@ -216,11 +216,17 @@ function _blockedRows() {
     '<div class="setupwiz-installs setupwiz-blocked">' + rows + '</div>';
 }
 
+// Mirrors the owner ids install/feature_status.py can return. `maturity` was removed with the
+// rank gate itself — leaving it would have been harmless (it can never arrive) but the missing
+// half was not: the `setting` owner that replaced it had no case here, so a plainly-unchecked
+// setting fell through to `default` and rendered as "reason unknown" — a defect report over a
+// switch that works. Keep this in step with _KEY_OWNERS and key_off_reason.
 function _ownerLabel(owner) {
   switch (owner) {
     case 'auto_tune': return 'held off by auto-tune (hardware tier)';
-    case 'maturity': return 'locked until Layla levels up';
+    case 'setting': return 'off — turn it on in Settings';
     case 'security_policy': return 'refused by a security policy';
+    case 'credential': return 'needs a credential from another program';
     case 'packages': return 'needs packages';
     case 'unreadable': return 'could not be confirmed';
     default: return 'reason unknown';
@@ -409,7 +415,7 @@ async function _runInstalls(onlyFailed) {
   // FINAL READ-BACK. Even the happy path is a claim about the server's state made from a
   // response body; ask the server itself before saying "switched on". This is also the only
   // thing that can catch a feature whose packages installed but whose flag another owner
-  // (auto-tune, maturity) holds off — the installer cannot see those and would report success.
+  // (auto-tune, a security policy) holds off — the installer cannot see those and would report success.
   const truth = await _confirmFromServer(targets.map((f) => f.id));
   if (truth) {
     targets.forEach((f) => {
@@ -470,7 +476,7 @@ async function _onNext() {
     if (!d.ok) throw new Error(d.error || 'apply failed');
     // `features` is now what the server RE-READ out of its effective config — not the
     // selection, and not the selection minus missing packages. `not_enabled` carries the rest
-    // with a reason each, which is the only way an auto-tune-reverted or maturity-locked
+    // with a reason each, which is the only way an auto-tune-reverted or otherwise-owned
     // feature can be reported at all: it has no package to blame, so the old summary counted
     // it as enabled while the palette hid it.
     const n = (d.features || []).length;

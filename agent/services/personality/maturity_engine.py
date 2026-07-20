@@ -257,13 +257,34 @@ def _maturity_enabled(cfg: dict | None = None) -> bool:
     return bool(cfg.get("maturity_enabled", True))
 
 
+MAX_TRUST_TIER = 3
+
+
 def get_trust_tier(cfg: dict | None = None) -> int:
-    """
-    Lightweight autonomy trust tier (0-3). Default is conservative:
-    - 0: suggestions only
-    - 1: inline initiative allowed
-    - 2: background task proposals / project proposals allowed
-    - 3: operator-granted override only (never automatic)
+    """The operator's autonomy CEILING (0-3). Nothing here reads rank, XP or phase.
+
+    THE CEILING IS SET BY THE OPERATOR OR IT DOES NOT EXIST. This function used to end in
+    `if rank >= 6: return 2 / if rank >= 2: return 1 / return 0`, which made three live
+    consumers — initiative_engine.generate_project_proposals, scheduler.jobs._bg_initiative
+    (both need >= 2) and planning.coordinator (needs >= 3) — unreachable until the operator had
+    ground out enough XP. That is a rank gate on a capability, one file over from the
+    `_apply_maturity_gates` overlay that was deleted for being exactly that. Worse, neither
+    escape hatch was in `writable_config_keys()`, so no sequence of in-app actions could clear
+    it: `initiative_project_proposals_enabled` was a switch the operator could flip that changed
+    nothing until rank 6.
+
+    Rank is a display of activity (see `familiarity.py` for the honest knowledge indicator). It
+    is not permission, so a tier is now either something the operator explicitly asked for or
+    absent — and absent means MAX_TRUST_TIER, because a ceiling nobody set is not a ceiling.
+    Turning `autonomy_trust_tiers_enabled` off likewise removes the ceiling rather than pinning
+    it to 0, which is what the old code did: disabling the restriction system used to be the
+    most restrictive setting available.
+
+    REMOVING THIS GATE GRANTS NOTHING BY ITSELF. Every consumer sits behind its own operator
+    setting that ships off (`initiative_project_proposals_enabled` False,
+    `coordinator_dispatch_max_attempts` 1), so a config that never asked for a capability still
+    does not get one — the tier simply stops overriding a config that did ask.
+    tests/test_maturity_not_a_gate.py drives that property rather than asserting it.
     """
     if cfg is None:
         try:
@@ -273,29 +294,24 @@ def get_trust_tier(cfg: dict | None = None) -> int:
         except Exception:
             cfg = {}
     if not bool(cfg.get("autonomy_trust_tiers_enabled", False)):
-        return 0
+        return MAX_TRUST_TIER
 
-    # Explicit operator override (config or user_identity).
+    # The explicit operator ceiling, from config or user_identity. A BLANK value is "unset", not
+    # "tier 0": user_profile.set_user_identity stores "" for a cleared row, and the old code fed
+    # that straight to _clamp_int, which floored it to 0 and silently pinned every consumer shut.
     try:
         ov = cfg.get("trust_tier_override")
-        if ov is None:
+        if ov is None or str(ov).strip() == "":
             from layla.memory.db import get_user_identity
 
             row = get_user_identity("trust_tier_override") or {}
             ov = row.get("snapshot") if isinstance(row, dict) else None
-        if ov is not None:
-            v = _clamp_int(ov, 0, 3, 0)
-            return v
+        if ov is not None and str(ov).strip() != "":
+            return _clamp_int(ov, 0, MAX_TRUST_TIER, MAX_TRUST_TIER)
     except Exception:
         pass
 
-    st = get_state()
-    r = int(st.rank)
-    if r >= 6:
-        return 2
-    if r >= 2:
-        return 1
-    return 0
+    return MAX_TRUST_TIER
 
 
 def _persist_state(state: MaturityState, *, last_event: str = "") -> None:
@@ -372,111 +388,28 @@ def seed_if_missing() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Unlock system: abilities/features gated by rank
+# THE UNLOCK LADDER IS GONE — rank does not unlock anything
 # ---------------------------------------------------------------------------
-
-# Unlocks by rank threshold. Each entry: (min_rank, type, name, description, config_keys).
 #
-# HONESTY CONTRACT: every name here is concatenated into the system prompt by
-# get_unlocks_text() and asserted aloud by get_growth_narrative() ("I recently unlocked X").
-# That makes this table a capability source competing with .identity/capabilities.md, so it
-# may only name things that actually exist. Each entry MUST carry at least one config key
-# that some code path outside runtime_safety/config_schema actually READS.
+# `_RANK_UNLOCKS`, `check_unlocks()`, `all_unlocks()` and `get_unlocks_text()` used to live here.
+# The ladder mapped rank thresholds to named "abilities", get_unlocks_text() concatenated those
+# names into the system prompt as "Your current capabilities: A, B, C", and get_growth_narrative()
+# said "I recently unlocked X at Rank N" out loud. That was the source of the capability
+# hallucination reported after a rank-up: a second capability source, derived from an activity
+# counter, contradicting .identity/capabilities.md — the exact defect 1335528 fixed by getting the
+# real manifest in front of the model.
 #
-# Removed (named a capability with no implementation anywhere in the repo):
-#   rank 7  "Cross-aspect synthesis" — no config key, no code path.
-#   rank 12 "Teacher mode"           — no config key, no code path.
-#   rank 3  "Research autonomy"      — mapped to autonomous_research_mode, which is written
-#                                      (runtime_safety.py:471/:914, runtime_config.example.json)
-#                                      and read NOWHERE. An inert key is not a capability.
-# Do not re-add a row here without wiring the behaviour first.
-_RANK_UNLOCKS: list[tuple[int, str, str, str, tuple[str, ...]]] = [
-    (1,  "ability", "Proactive suggestions",     "Layla can initiate topics and suggest next steps.",
-     ("inline_initiative_enabled", "initiative_engine_enabled")),
-    (5,  "ability", "Multi-step planning",        "Can execute complex multi-step plans autonomously.",
-     ("autonomous_mode",)),
-    (10, "feature", "Full autonomy mode",         "Minimal supervision needed for routine tasks.",
-     ("initiative_project_proposals_enabled", "autonomy_optimizer_enabled")),
-]
-
-
-def check_unlocks(state: dict | None = None) -> list[dict[str, Any]]:
-    """Check which abilities/features are unlocked based on current rank.
-
-    Args:
-        state: Optional dict with 'rank' key. If None, reads from DB.
-
-    Returns:
-        List of {type, name, description, rank_required, enabled} for every rank-earned
-        capability. `enabled` reports whether it is ALSO switched on in config — the growth
-        dashboard shows everything earned, while the prompt path (get_unlocks_text) names only
-        the enabled ones.
-    """
-    try:
-        if state and isinstance(state, dict) and "rank" in state:
-            rank = _clamp_int(state["rank"], 0, 100_000, 0)
-        else:
-            ms = get_state()
-            rank = ms.rank
-
-        cfg: dict = {}
-        try:
-            import runtime_safety
-            cfg = runtime_safety.load_config() or {}
-        except Exception as e:
-            logger.debug("check_unlocks config load failed: %s", e)
-
-        unlocked = []
-        for min_rank, utype, name, desc, keys in _RANK_UNLOCKS:
-            if rank >= min_rank:
-                # Rank is only half the story. The maturity gate DISABLES a capability below
-                # its rank but never re-enables it above, so past the threshold the feature is
-                # whatever setup_profiles/settings left it as. "Earned" therefore does not mean
-                # "active", and the prompt path must not conflate them.
-                unlocked.append({
-                    "type": utype,
-                    "name": name,
-                    "description": desc,
-                    "rank_required": min_rank,
-                    "enabled": (not keys) or any(bool(cfg.get(k)) for k in keys),
-                })
-        return unlocked
-    except Exception as e:
-        logger.debug("check_unlocks failed: %s", e)
-        return []
-
-
-def all_unlocks(rank: int = 0) -> list[dict[str, Any]]:
-    """The FULL unlock ladder (earned and not-yet-earned), for the growth dashboard.
-
-    Exists so the UI stops carrying its own hardcoded copy of the ladder: growth.js used to
-    duplicate the names and ranks, which meant trimming a fake capability from the table left
-    the user still staring at "Teacher mode — Rank 12" in the locked-preview list.
-    """
-    out: list[dict[str, Any]] = []
-    for min_rank, utype, name, desc, _keys in _RANK_UNLOCKS:
-        out.append({
-            "type": utype,
-            "name": name,
-            "description": desc,
-            "rank_required": min_rank,
-            "earned": int(rank) >= min_rank,
-        })
-    return out
-
-
-def get_unlocks_text(state: dict | None = None) -> str:
-    """Return a formatted string of currently ACTIVE unlocks for prompt injection.
-
-    Only capabilities that are both rank-earned and switched on are named. Telling the model
-    it has an ability the operator has turned off in setup_profiles produces exactly the kind
-    of confident false claim .identity/capabilities.md exists to prevent — and unlike that
-    manifest, this string reaches the prompt on every turn.
-    """
-    active = [u["name"] for u in check_unlocks(state) if u.get("enabled")]
-    if not active:
-        return ""
-    return "Your current capabilities: " + ", ".join(active)
+# Under the corrected design nothing is unlocked by rank. The config keys the ladder pointed at
+# (inline_initiative_enabled, initiative_engine_enabled, autonomous_mode,
+# initiative_project_proposals_enabled, autonomy_optimizer_enabled) are ordinary settings the
+# operator switches on in Settings; see config_schema.EDITABLE_SCHEMA and
+# install/feature_status.key_off_reason.
+#
+# What the prompt gets instead is services.personality.familiarity.familiarity_line(), which
+# states what she knows ABOUT THE OPERATOR and names no capability at all.
+#
+# Do not reintroduce a rank→capability table here. test_rank_unlocks_no_capability_claims.py
+# fails if any of the four names comes back.
 
 
 # ---------------------------------------------------------------------------
@@ -591,18 +524,16 @@ def record_relationship_event(event_type: str, detail: str = "") -> None:
 # ---------------------------------------------------------------------------
 
 def get_growth_narrative(state: dict | None = None) -> str:
-    """Generate a natural language summary of Layla's growth journey.
+    """Generate a natural language summary of Layla's history with the operator.
 
-    Returns a human-readable paragraph describing the relationship history,
-    maturity progress, and unlocked capabilities.
+    Describes relationship history and familiarity. It must never claim a capability: the
+    "I recently unlocked X at Rank N" sentence that used to end this paragraph was a capability
+    assertion derived from an activity counter, and it is gone along with the ladder.
     """
     try:
         ms = get_state()
         rel = get_relationship_state()
         metrics = get_progress_metrics()
-        # Spoken aloud ("I recently unlocked X"), so it obeys the same rule as the prompt
-        # string: never announce a capability the operator has switched off.
-        unlocks = [u for u in check_unlocks({"rank": ms.rank}) if u.get("enabled")]
 
         parts: list[str] = []
 
@@ -622,9 +553,15 @@ def get_growth_narrative(state: dict | None = None) -> str:
             msg += "."
             parts.append(msg)
         if learnings > 0:
-            parts.append(f"I've learned {learnings} verified fact{'s' if learnings != 1 else ''} about your work.")
+            # NOT "verified facts about your work". `count_learnings()` applies no verification
+            # filter, and the rows are not about the operator: on a real DB they are world facts and
+            # docstring fragments re-ingested from Layla's own replies ("Paris serves as the
+            # political ... center of France", "n (int): The number to check for primality"). The
+            # familiarity sentence below is the one that speaks to knowing them; this one is volume.
+            parts.append(f"I've stored {learnings} note{'s' if learnings != 1 else ''} from our sessions.")
 
-        # Strongest area (based on interaction history from personality evolution)
+        # Most-used aspect. Was "My strongest area is X" — X is a voice, not an area of competence,
+        # and the number behind it is how often it was picked, not how good it is.
         try:
             from services.personality.evolution import get_personality_evolution
             evo = get_personality_evolution()
@@ -640,13 +577,26 @@ def get_growth_narrative(state: dict | None = None) -> str:
                     best_aspect = aid
             if best_aspect and best_count > 5:
                 name = ASPECT_DEFAULTS.get(best_aspect, {}).get("name", best_aspect)
-                parts.append(f"My strongest area is {name}.")
+                parts.append(f"The voice you reach for most is {name} ({best_count} exchanges).")
         except Exception:
             pass
 
-        # Rank and phase
+        # Familiarity — what she actually knows about them. Says nothing about capability.
+        try:
+            from services.personality.familiarity import get_familiarity
+
+            fam = get_familiarity()
+            if fam.get("ok") and int(fam.get("total") or 0):
+                parts.append(
+                    f"I have {int(fam['known'])} of {int(fam['total'])} of your stated preferences on file."
+                )
+        except Exception as _fam_e:
+            logger.debug("growth narrative familiarity failed: %s", _fam_e)
+
+        # Rank and phase — an activity total, and labelled as one so it is not mistaken for the
+        # familiarity figure above.
         parts.append(
-            f"I'm at Rank {ms.rank} ({ms.phase} phase)."
+            f"Rank {ms.rank} ({ms.phase} phase) — that counts the work we've done, not what I know about you."
         )
 
         # Streaks
@@ -656,13 +606,6 @@ def get_growth_narrative(state: dict | None = None) -> str:
             parts.append(f"Current streak: {streak} days.")
         if longest > streak and longest > 1:
             parts.append(f"Longest streak: {longest} days.")
-
-        # Recent unlocks
-        if unlocks:
-            latest = unlocks[-1]
-            parts.append(
-                f"I recently unlocked {latest['name']} at Rank {latest['rank_required']}."
-            )
 
         # Trust
         trust = int(rel.get("trust_events", 0))

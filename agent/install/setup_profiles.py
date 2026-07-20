@@ -251,8 +251,7 @@ def apply_setup(profile_ids, feature_ids=None, *, current_cfg=None, save=True,
         cur = dict(current_cfg)
     elif save:
         # THE MERGE BASE MUST BE THE REQUEST, NOT THE ANSWER.
-        # load_config() returns the EFFECTIVE config — auto-tune and the maturity gates have already
-        # overlaid it — so using it as the base and then writing `merged` back to disk PERSISTS every
+        # load_config() returns the EFFECTIVE config — auto-tune has already overlaid it — so using it as the base and then writing `merged` back to disk PERSISTS every
         # owner-imposed value as though the operator had chosen it. Driven: a bare POST /setup/apply
         # took the file from 13 keys to 434, rewriting max_runtime_seconds 30 -> 300 and hyde_enabled
         # True -> False; the not-in-force report then read all-clear, because its entire evidence is

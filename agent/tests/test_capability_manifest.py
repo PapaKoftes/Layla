@@ -640,23 +640,34 @@ def test_every_per_turn_directive_survives_an_ordinary_turn(monkeypatch):
         )
 
 
-def test_rank_gate_directive_is_not_persona_prose(monkeypatch):
-    """The rank<1 'do not proactively suggest' gate was appended to `personality` — i.e. onto the tail of a
-    590-token voice contract that is itself truncated from the tail. It was therefore the first thing cut on
-    every ordinary turn, and only appeared to work while the head budget was over-wide.
+def test_familiarity_directive_is_not_persona_prose(monkeypatch):
+    """Same budget guard, new occupant. This used to pin the rank<1 "early growth phase" directive,
+    which had been appended to `personality` — the tail of a 590-token voice contract that is itself
+    truncated from the tail, so it was the first thing cut on every ordinary turn.
 
-    Skipped rather than asserted when the operator's maturity rank is >= 1, because then the directive is
-    correctly absent and there is nothing to measure.
+    That directive is gone: it was keyed on maturity rank, which is an activity counter, so it
+    arrived and left for reasons unrelated to whether she actually knew the operator. What sits in
+    that slot now is familiarity_line(), which measures the same thing directly and also replaced
+    the "Your current capabilities: ..." string. Both branches are driven, because on a fresh box
+    the roster is empty and only the knows-nothing branch would ever be seen.
+
+    It must reach the prompt intact — i.e. live in `_directives`, not on the persona tail.
     """
-    from services.personality.maturity_engine import get_state as _get_state
-
-    if _get_state().rank >= 1:
-        pytest.skip("maturity rank >= 1 — the early-growth gate does not apply")
+    from services.personality.familiarity import familiarity_line
 
     head = _drive_head("fix this bug in my python code", monkeypatch, _aspect=_real_morrigan())
-    assert "early growth phase" in head, (
-        "the rank gate is being truncated away — it is a directive, so it belongs in `_directives`, not "
-        "appended to the persona string"
+    line = familiarity_line()
+    assert line, "familiarity_line() produced nothing"
+    # Match on a distinctive fragment: the head is assembled, so the sentence may be adjacent to others.
+    needle = "preferences on file" if "preferences on file" in line else "do not know this operator"
+    assert needle in head, (
+        f"the familiarity directive ({needle!r}) is being truncated away — it is a directive, so it "
+        "belongs in `_directives`, not appended to the persona string"
+    )
+
+    # And the capability claim it replaced must not have come back with it.
+    assert "Your current capabilities" not in head, (
+        "the rank-derived capability string is back in the assembled head, contradicting the manifest"
     )
 
 

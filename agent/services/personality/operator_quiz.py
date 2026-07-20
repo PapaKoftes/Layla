@@ -386,6 +386,12 @@ def score_answers(
     """Return (profile_preview, identity_kv_updates). Does not persist."""
     stats = _initial_stats(seed_identity)
     prefs: dict[str, str] = {}
+    # Did the operator actually answer anything that moved a stat? `stats` starts at the neutral
+    # seed 5 across the board, and every stat_* used to be persisted regardless — so a quiz
+    # submitted with zero valid answers wrote six rows, and familiarity.PROFILE_ROSTER counted
+    # all six as things she "knows" about the operator. Presence is what that fraction reads, so
+    # the seed must not be stored as though it were an answer.
+    scored = False
 
     q_by_id = {q.id: q for q in QUESTIONS}
     for a in answers or []:
@@ -399,6 +405,7 @@ def score_answers(
         opt = next((o for o in q.options if o.id == oid), None)
         if not opt:
             continue
+        scored = True
         for sid, dv in (opt.deltas or {}).items():
             try:
                 stats[sid] = _clamp_int(stats[sid] + int(dv), 1, 10, stats[sid])
@@ -407,10 +414,16 @@ def score_answers(
         if opt.prefs:
             prefs.update({str(k): str(v) for k, v in opt.prefs.items() if k})
 
-    # Identity KV updates to store
+    # Identity KV updates to store. `preview` still carries the full seeded stat block so the UI
+    # can render all six sliders — the seed is a fine DISPLAY baseline, it is just not an answer,
+    # so it does not get persisted as one. A stat already present in seed_identity is a real
+    # stored answer from an earlier run and is preserved either way.
     kv: dict[str, str] = {}
-    for sid, v in stats.items():
-        kv[f"stat_{sid}"] = str(_clamp_int(v, 1, 10, 5))
+    if scored or seed_identity:
+        for sid, v in stats.items():
+            if not scored and f"stat_{sid}" not in (seed_identity or {}):
+                continue
+            kv[f"stat_{sid}"] = str(_clamp_int(v, 1, 10, 5))
     for k, v in prefs.items():
         # allow small JSON payloads as strings
         kv[str(k)] = str(v)[:4000]

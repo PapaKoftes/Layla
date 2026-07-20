@@ -390,8 +390,14 @@ class OnboardingInterview:
         personality = responses.get("personality", {})
         communication = responses.get("communication", {})
 
-        # Map verbosity preference to response_length
-        verbosity = communication.get("verbosity", "balanced")
+        # ONLY STORE WHAT THE OPERATOR ACTUALLY SAID.
+        # These four used to be written unconditionally with hardcoded fallbacks
+        # ("balanced"/"casual"/"light"/"moderate"), so simply *running* onboarding — answering
+        # nothing — planted four values. Every one of them is a row in
+        # familiarity.PROFILE_ROSTER, which counts a row as known when it holds a non-empty
+        # value, so the "how well she knows you" fraction was partly counting its own defaults.
+        # An unanswered question must leave no trace: readers of these keys already supply their
+        # own defaults, so absence is both honest and harmless.
         verbosity_map = {
             "brief": "short",
             "concise": "short",
@@ -399,20 +405,15 @@ class OnboardingInterview:
             "detailed": "long",
             "thorough": "long",
         }
-        if verbosity in verbosity_map:
-            self._store_identity("preferred_response_length", verbosity_map[verbosity])
-
-        # Store formality level
-        formality = personality.get("formality_level", "casual")
-        self._store_identity("formality_level", formality)
-
-        # Store humour preference
-        humour = personality.get("humour_preference", "light")
-        self._store_identity("humour_preference", humour)
-
-        # Store proactivity preference
-        proactivity = communication.get("proactivity", "moderate")
-        self._store_identity("proactivity_level", proactivity)
+        answered = {
+            "preferred_response_length": verbosity_map.get(str(communication.get("verbosity") or "").strip()),
+            "formality_level": str(personality.get("formality_level") or "").strip(),
+            "humour_preference": str(personality.get("humour_preference") or "").strip(),
+            "proactivity_level": str(communication.get("proactivity") or "").strip(),
+        }
+        for key, value in answered.items():
+            if value:
+                self._store_identity(key, value)
 
         # Phase 4B: Set default aspect based on stated purpose
         purpose = responses.get("purpose", {})
@@ -426,14 +427,17 @@ class OnboardingInterview:
         elif any(kw in purpose_text for kw in ("software", "coding", "programming", "engineering")):
             self._store_identity("default_aspect", "cassandra")
 
-        # Phase 3D: Set default watch directories based on purpose
+        # Phase 3D: Set default watch directories based on purpose.
+        # The `else` branch here wrote ["~/Documents"] for EVERY operator, including one who
+        # stated no purpose at all — and familiarity labels this row "Folders you asked her to
+        # watch". Nobody asked. The two purpose-derived branches stay, because they follow from
+        # something the operator did say; the catch-all default is gone rather than counted as
+        # a preference. No purpose stated means no folder claim.
         import json as _json
         if any(kw in purpose_text for kw in ("software", "coding", "programming")):
             self._store_identity("watch_folders", _json.dumps(["~/Documents", "~/Projects"]))
         elif any(kw in purpose_text for kw in ("research", "academic")):
             self._store_identity("watch_folders", _json.dumps(["~/Documents", "~/Downloads"]))
-        else:
-            self._store_identity("watch_folders", _json.dumps(["~/Documents"]))
 
         # Store work domains for system prompt injection (Phase 4A)
         if purpose_text.strip():

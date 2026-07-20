@@ -25,12 +25,17 @@ def test_local_access_info_survives_null_remote_api_key():
     assert resp is not None
 
 
-def test_operator_profile_includes_unlocks_for_growth_panel():
-    # growth.js reads maturity.unlocks[]; the endpoint must populate it (was always missing → empty panel).
+def test_operator_profile_serves_familiarity_not_unlocks():
+    # INVERTED. This used to assert operator_profile populated maturity.unlocks via check_unlocks,
+    # so growth.js could render an "Unlocked Abilities" list. Rank unlocks nothing — the ladder was
+    # a capability claim derived from an activity counter — so the panel now renders familiarity
+    # instead, and the endpoint must not resurrect the old shape.
     import routers.settings as settings_router
     src = inspect.getsource(settings_router.operator_profile)
-    assert 'maturity["unlocks"]' in src and "check_unlocks" in src, \
-        "operator_profile must populate maturity.unlocks via check_unlocks"
+    assert "get_familiarity" in src and 'prof["familiarity"]' in src, \
+        "operator_profile must populate familiarity for the growth panel"
+    for gone in ("check_unlocks", "all_unlocks", 'maturity["unlocks"]'):
+        assert gone not in src, f"operator_profile still serves the removed unlock shape {gone!r}"
 
 
 def test_null_post_body_hardening_no_attributeerror():

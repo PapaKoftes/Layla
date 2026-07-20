@@ -778,7 +778,12 @@ def load_config() -> dict:
             # "my timezone is Y") into user_identity, with a "memory updated" receipt.
             "identity_capture_enabled": True,
             "autonomy_optimizer_enabled": False,
-            "autonomy_trust_tiers_enabled": True,  # gates capabilities behind XP thresholds (more cautious)
+            # Applies the operator's autonomy ceiling (trust_tier_override) when one is set. It
+            # does NOT gate anything behind XP thresholds — that comment described the rank
+            # branch in maturity_engine.get_trust_tier, which is deleted. With no ceiling set
+            # these two are inert, which is why True stays the default: it changes nothing until
+            # the operator picks a ceiling.
+            "autonomy_trust_tiers_enabled": True,
             "trust_tier_override": None,
             "voice_adjustment_inject_enabled": False,
             "planning_outcome_bias_enabled": True,
@@ -1018,11 +1023,13 @@ def load_config() -> dict:
             Path(defaults["sandbox_root"]).expanduser().mkdir(parents=True, exist_ok=True)
         except Exception as e:
             logger.debug("sandbox_root mkdir failed: %s", e)
-        # Phase 1B: Apply maturity rank gates — overlay config based on earned rank
-        try:
-            _apply_maturity_gates(defaults)
-        except Exception as _mg_err:
-            logger.debug("maturity gates overlay failed: %s", _mg_err)
+        # (Maturity rank USED to overlay config here, forcing six capability flags False below
+        # a rank. It is gone by design correction, not by accident: rank was never meant to gate
+        # features — it is a display of how well Layla knows the operator. Because the overlay
+        # ran INSIDE load_config on the merged dict, an operator could not switch these on by any
+        # means, hand-editing runtime_config.json included, and four of the six had no writer at
+        # all. Those keys are now ordinary settings in config_schema.EDITABLE_SCHEMA. Do not
+        # reintroduce a rank overlay here; see tests/test_maturity_not_a_gate.py.)
 
         # REQ-12: overlay secret-typed keys from the OS keyring / env (no-op when
         # no keyring backend exists, so the plaintext path is unchanged). Done
@@ -1050,58 +1057,20 @@ def load_config() -> dict:
         return _config_cache
 
 
-# Config keys this module OWNS on behalf of the XP/maturity system: key -> the minimum
-# maturity rank at which the key is allowed to be true. Below that rank the key is forced
-# False at config-load, whatever the file says.
+# The keys that used to live here as MATURITY_GATED_KEYS — inline_initiative_enabled,
+# initiative_engine_enabled, autonomous_research_mode, autonomous_mode,
+# initiative_project_proposals_enabled, autonomy_optimizer_enabled — are now plain settings
+# owned by config_schema.EDITABLE_SCHEMA. Nothing in this module overrides them; whatever the
+# operator's config says is what load_config returns.
 #
-# DECLARATIVE ON PURPOSE. This used to be a run of `if rank < N: cfg[...] = False` blocks,
-# which meant the ownership was knowable only by running load_config() and diffing. Anything
-# that wants to EXPLAIN why a feature is off (see install/feature_status.py) needs to ask
-# "who owns this key, and what do they require?" without re-implementing the gate — an
-# explanation derived from a copy of the rule is the next thing to drift out of sync with it.
-# _apply_maturity_gates below is the only consumer that enforces; everyone else reads.
-MATURITY_GATED_KEYS: dict[str, int] = {
-    # Rank < 1: no proactive behaviour
-    "inline_initiative_enabled": 1,
-    "initiative_engine_enabled": 1,
-    # Rank < 3: no autonomous research mode
-    "autonomous_research_mode": 3,
-    # Rank < 5: no multi-step planning autonomy
-    # (planning_enabled stays True for user-driven plans at all ranks)
-    "autonomous_mode": 5,
-    # Rank < 10: no full initiative/autonomy
-    "initiative_project_proposals_enabled": 10,
-    "autonomy_optimizer_enabled": 10,
-}
-
-
-def current_maturity_rank() -> int | None:
-    """The live maturity rank, or None when the maturity engine is unavailable.
-
-    None is meaningfully different from 0: it means the gate is NOT being applied (see
-    _apply_maturity_gates' early return), so a caller must not report "requires rank N".
-    """
-    try:
-        from services.personality.maturity_engine import get_state
-
-        return int(get_state().rank)
-    except Exception:
-        return None
-
-
-def _apply_maturity_gates(cfg: dict) -> None:
-    """Overlay config keys based on maturity rank thresholds.
-
-    This ensures that powerful capabilities are locked until the user has
-    interacted enough for Layla to earn them through the XP system.
-    """
-    rank = current_maturity_rank()
-    if rank is None:
-        return  # If maturity engine isn't available, don't gate anything
-
-    for key, min_rank in MATURITY_GATED_KEYS.items():
-        if rank < min_rank:
-            cfg[key] = False
+# REMOVING THE GATE GRANTED NOTHING. All six default to False in `defaults` above, and the
+# overlay only ever WROTE False (never True), so deleting it cannot turn a capability on for a
+# config that did not ask for one — it only stops overriding a config that did.
+# tests/test_maturity_not_a_gate.py pins both halves of that property.
+#
+# `current_maturity_rank()` went with them. It existed to answer "may this key be true?", a
+# question nothing asks any more; rank is a display of familiarity, read straight from
+# services.personality.maturity_engine.get_state() by the surfaces that show it.
 
 
 def model_search_roots(cfg: dict | None = None) -> list[Path]:
