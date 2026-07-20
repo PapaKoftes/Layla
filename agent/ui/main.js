@@ -147,6 +147,9 @@ import * as obsidian from './components/obsidian.js';
 // Models & Kits manager (persistent model control surface)
 import * as models from './components/models.js';
 
+// Grouped sidebar navigation — gate copy for the entries that are gated (BL-390)
+import * as navGroups from './components/nav-groups.js';
+
 // ── Compat bridge (exposes everything to window.* for legacy scripts) ────────
 import './core/compat.js';
 
@@ -601,14 +604,32 @@ function init() {
     { id: 'sys-diagnostics', group: 'Go to', label: 'System diagnostics', keywords: ['metrics', 'cot', 'audit', 'capabilities', 'health', 'cost'], run: () => systemDiagnostics.openSystemDiagnostics() },
     { id: 'self-test', group: 'Go to', label: 'Run self-test', keywords: ['proof', 'health', 'verify', 'diagnose', 'works', 'model'], run: () => selfTest.openSelfTest() },
     { id: 'setup-wizard', group: 'Go to', label: 'Set up / reconfigure Layla', keywords: ['setup', 'onboarding', 'profile', 'features', 'install', 'enable', 'reconfigure'], run: () => setupProfiles.openSetupProfiles() },
-    { id: 'german', group: 'Go to', label: 'German (learn / check / flashcards)', keywords: ['deutsch', 'language', 'learning', 'correct', 'flashcards', 'cefr'], run: () => german.openGerman() },
+    // German (legacy rules panel) — ENTRY KEPT, KEYWORDS NARROWED. It shared 'language',
+    // 'flashcards' and 'cefr' with the Language tutor below and, being declared first, won every
+    // one of those searches — sending users to the panel whose flashcard section has no writer
+    // (no product code ever POSTs /german/flashcards) and whose offline corrector found 0 of 6
+    // real errors when driven. The two panels also write DISJOINT databases (german_mode.db vs
+    // language_tutor.db), so a learner who used both kept two decks that cannot see each other.
+    // The shared keywords now resolve to the tutor, which works; 'deutsch'/'german' still reach
+    // this one, so no destination was taken away. Not promoted to the sidebar — see BL-390.
+    { id: 'german', group: 'Go to', label: 'German (legacy rules panel)', keywords: ['deutsch', 'german-rules', 'correct', 'grammar'], run: () => german.openGerman() },
     { id: 'missions', group: 'Go to', label: 'Missions board', keywords: ['mission', 'board', 'tasks', 'long', 'autonomous', 'kanban'], run: () => missions.openMissions() },
     { id: 'journal', group: 'Go to', label: 'Journal', keywords: ['journal', 'diary', 'reflection', 'notes', 'entries'], run: () => journal.openJournal() },
     { id: 'approvals', group: 'Go to', label: 'Approvals & grants', keywords: ['approval', 'pending', 'grant', 'permission', 'security', 'approve', 'deny'], run: () => approvals.openApprovals() },
     { id: 'improvements', group: 'Go to', label: 'Improvements (self)', keywords: ['improve', 'proposal', 'self', 'growth', 'suggestion', 'approve'], run: () => improvements.openImprovements() },
     { id: 'tools-history', group: 'Go to', label: 'Tool history & health', keywords: ['tools', 'history', 'analysis', 'health', 'success', 'latency', 'debug'], run: () => toolsHistory.openToolsHistory() },
-    { id: 'sync', group: 'Go to', label: 'Sync (devices)', keywords: ['sync', 'syncthing', 'devices', 'multi', 'phone', 'pair'], feature: 'remote', run: () => sync.openSync() },
-    { id: 'debate', group: 'Go to', label: 'Deliberate (aspects)', keywords: ['debate', 'deliberate', 'council', 'tribunal', 'aspects', 'decide'], feature: 'multi_agent', run: () => debate.openDebate() },
+    // NO `feature:` TAG ON EITHER OF THESE — both were tagged with a flag their panel does not read,
+    // and _featureOn() HIDES a tagged command whose feature is off, so each was a false lock on a
+    // working door. Driven: POST /debate returned ok:true with participating_aspects
+    // [cassandra, morrigan] while multi_agent_orchestration_enabled was false — debate_engine.py
+    // reads none of that flag's keys; and /sync/* reads syncthing_api_key, never remote_enabled.
+    // Worse than hiding: with enabled_features empty on a stock instance, querying "deliberate"
+    // returned ZERO rows, so the panel was unreachable by any means.
+    // Sync stays untagged deliberately: its real prerequisite is a CONFIG KEY for a separate
+    // program, not a feature id, and hiding it would deny the user the setup guide the panel
+    // itself serves. The panel states its own truth ("not configured" + an 8-step guide).
+    { id: 'sync', group: 'Go to', label: 'Sync (devices)', keywords: ['sync', 'syncthing', 'devices', 'multi', 'phone', 'pair'], run: () => sync.openSync() },
+    { id: 'debate', group: 'Go to', label: 'Deliberate (aspects)', keywords: ['debate', 'deliberate', 'council', 'tribunal', 'aspects', 'decide'], run: () => debate.openDebate() },
     { id: 'codex', group: 'Go to', label: 'Relationship codex', keywords: ['codex', 'relationship', 'entities', 'people', 'who', 'knows'], run: () => codex.openCodex() },
     { id: 'intelligence', group: 'Go to', label: 'Intelligence — mood, goals, world, timeline', keywords: ['intelligence', 'mood', 'goals', 'world', 'timeline', 'decisions', 'skills', 'growth', 'status'], run: () => intelligence.openIntelligence() },
     { id: 'verify', group: 'Go to', label: 'Verify learnings', keywords: ['verify', 'learn', 'confirm', 'correct', 'facts', 'memory'], run: () => verify.openVerify() },
@@ -638,6 +659,8 @@ function init() {
   };
   _refreshEnabledFeatures();
   window.addEventListener('layla:profiles-applied', _refreshEnabledFeatures);
+  // The grouped nav's gated entries render their real reason from /setup/gate-status.
+  navGroups.initNavGroups();
   registerActions({
     openCommandPalette: commandPalette.openCommandPalette,
     closeCommandPalette: commandPalette.closeCommandPalette,

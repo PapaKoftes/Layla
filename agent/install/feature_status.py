@@ -118,8 +118,54 @@ def _key_owner_auto_tune(key: str, cfg: dict) -> tuple[str, str] | None:
     )
 
 
+def writable_config_keys() -> set[str]:
+    """Every config key some in-app surface can actually SET.
+
+    The union of the three registries that write config: the settings schema, the setup
+    wizard's feature flags, and the feature-theme toggles. A key outside this union cannot be
+    turned on by any sequence of user actions — hand-editing runtime_config.json does not
+    count either, because the gates below re-apply on every load_config().
+
+    Exists so a gate explanation can tell "locked, but there is a path" apart from "locked,
+    and there is no path" instead of promising the first for both.
+    """
+    keys: set[str] = set()
+    try:
+        from config_schema import EDITABLE_SCHEMA, _THEME_FLAG_WHITELIST
+
+        keys |= {e["key"] for e in EDITABLE_SCHEMA if e.get("key")}
+        keys |= set(_THEME_FLAG_WHITELIST)
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning("writable_config_keys: settings schema unreadable: %s", e)
+    try:
+        from install.setup_profiles import FEATURE_MANIFEST
+
+        for feat in FEATURE_MANIFEST:
+            keys |= set((feat.get("flags") or {}).keys())
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning("writable_config_keys: feature manifest unreadable: %s", e)
+    return keys
+
+
 def _key_owner_maturity(key: str, cfg: dict) -> tuple[str, str] | None:
-    """runtime_safety.MATURITY_GATED_KEYS are forced False below their rank, at config load."""
+    """runtime_safety.MATURITY_GATED_KEYS are forced False below their rank, at config load.
+
+    HONESTY: clearing the rank gate is necessary, not sufficient. `_apply_maturity_gates` only
+    ever writes False below the rank — it never writes True above it — so a key with no writer
+    in `writable_config_keys()` stays off at EVERY rank. Telling that user "it switches itself
+    on as she levels up" is a promise the code does not keep, so the tail below is chosen from
+    whether a writer actually exists.
+
+    The membership is COMPUTED, never listed here. A previous version of this docstring counted
+    the no-writer keys by hand, said "three of the six", and named three — it was four, and the
+    one it dropped (autonomous_research_mode, rank 3) was the lowest-ranked of them, i.e. the
+    one a real user hits first. The behaviour was right the whole time; only the prose was
+    wrong. `MATURITY_GATED_KEYS - writable_config_keys()` is the live answer, so ask for it
+    rather than trusting a comment. test_feature_status_readback.py::F7 pins the derivation —
+    that the set is non-empty, that every member gets the no-writer tail, and that every key
+    which DOES have a writer gets the optimistic one — so the next drift is a red test rather
+    than another stale sentence.
+    """
     try:
         from runtime_safety import MATURITY_GATED_KEYS, current_maturity_rank
     except Exception:
@@ -132,10 +178,18 @@ def _key_owner_maturity(key: str, cfg: dict) -> tuple[str, str] | None:
         return None  # the gate is not being applied at all — not our doing
     if rank >= need:
         return None
+    if key in writable_config_keys():
+        tail = "It switches itself on as she levels up — nothing to install."
+    else:
+        tail = (
+            "Reaching rank {need} removes this block but does NOT switch the feature on: no "
+            "setting, wizard or theme in the app can set '{key}', so it stays off at every "
+            "rank. That is a defect, not a setting you have missed."
+        ).format(need=need, key=key)
     return (
         "maturity",
         f"'{key}' unlocks at maturity rank {need}; Layla is at rank {rank}, so it is forced "
-        "off on every config load. It switches itself on as she levels up — nothing to install.",
+        f"off on every config load. {tail}",
     )
 
 
@@ -170,10 +224,43 @@ def _key_owner_security_policy(key: str, cfg: dict) -> tuple[str, str] | None:
     )
 
 
+def _key_owner_external_credential(key: str, cfg: dict) -> tuple[str, str] | None:
+    """Keys that hold a credential for a SEPARATE program Layla talks to over the network.
+
+    A fourth shape of owner, and the one the navigation needed. The three probes above all
+    explain a key whose written value was OVERWRITTEN by something inside Layla. This explains
+    a key that was never written at all because the thing it authenticates against is a
+    different application the user installs and runs themselves. Nothing in Layla can generate
+    the value, so no amount of clicking in-app will ever produce it — `writable_config_keys()`
+    does not contain these keys and never will.
+
+    Without this probe the Sync entry asked /setup/gate-status about `syncthing_api_key`, got
+    no owner and no missing packages, and rendered "this feature is currently off, and the
+    server gave no reason" — which is honest but useless, and is exactly the vacuum that the
+    wrong-but-confident `remote_enabled` copy was filling.
+    """
+    creds = {
+        "syncthing_api_key": (
+            "multi-device sync talks to Syncthing, a separate program that Layla does not "
+            "install, start or generate a key for. Install Syncthing and start it, then copy "
+            "its API key (Syncthing's web GUI at http://127.0.0.1:8384 -> Actions -> Settings "
+            "-> API Key) into 'syncthing_api_key' in runtime_config.json and restart Layla. "
+            "The Sync panel's 'setup guide' button walks through the same steps. There is no "
+            "in-app setting for this key — the value belongs to the other program."
+        ),
+    }
+    if key not in creds:
+        return None
+    if str(cfg.get(key) or "").strip():
+        return None  # the credential is present — whatever is wrong, it is not this
+    return ("credential", creds[key])
+
+
 _KEY_OWNERS: list[Callable[[str, dict], "tuple[str, str] | None"]] = [
     _key_owner_auto_tune,
     _key_owner_maturity,
     _key_owner_security_policy,
+    _key_owner_external_credential,
 ]
 
 
@@ -196,7 +283,7 @@ def key_owner(key: str, cfg: dict) -> tuple[str, str] | None:
     return None
 
 
-KNOWN_OWNERS = "packages, auto-tune, maturity, security policy"
+KNOWN_OWNERS = "packages, auto-tune, maturity, security policy, external credential"
 
 
 def key_missing_packages(key: str) -> list[str]:
