@@ -6,7 +6,7 @@
  * and populates the Cluster tab DOM elements.
  */
 
-import { escapeHtml } from '../services/utils.js';
+import { escapeHtml, showToast } from '../services/utils.js';
 
 // ── State ───────────────────────────────────────────────────────────────────
 let _refreshing = false;
@@ -196,27 +196,95 @@ export function generatePairingToken() {
 }
 
 // ── Enable/Disable toggle ───────────────────────────────────────────────────
+/**
+ * Turn clustering on or off — through the surface that actually owns the flag.
+ *
+ * A3, and it was a DEAD CONTROL. This posted {cluster_enabled} to POST /settings.
+ * `cluster_enabled` is not in EDITABLE_SCHEMA, so that endpoint drops it and answers
+ * HTTP 200 {"ok": false, "rejected": ["cluster_enabled"]} — driven live, exactly that. The
+ * handler then read `if (d.ok || d.status === 'ok')` with NO else, so a refusal did nothing
+ * at all: no state change, no message, no console line. `.catch` only covers a network
+ * failure, so the one path that was actually taken was the one path with no code in it. The
+ * user clicked, the switch did not move, and nothing said why.
+ *
+ * ONE OWNER. The same flag DOES work through POST /settings/themes (the "clustering" feature
+ * area, which writes with editable_only=False precisely because cluster_enabled is not
+ * individually editable). So the flag had two surfaces and one of them could never work.
+ * The themes endpoint is the owner — it already reads the flag back out of the effective
+ * config, reports refusals and package gaps, and is what the Settings panel drives. This
+ * panel now calls it instead of maintaining a second, broken path to the same flag.
+ * POST /settings still refuses `cluster_enabled` and now says so; nothing sends it there.
+ *
+ * Clustering itself is an unfinished pillar, deliberately kept — this fixes the toggle's
+ * HONESTY, not the feature behind it.
+ */
 export function toggleClusterEnabled() {
   const toggle = document.getElementById('cluster-enable-toggle');
   if (!toggle) return;
   const isActive = toggle.classList.contains('active');
   const newState = !isActive;
 
-  fetch('/settings', {
+  const apply = (on) => {
+    toggle.classList.toggle('active', on);
+    const droneSection = document.getElementById('cluster-pair-as-drone');
+    if (droneSection) droneSection.style.display = on ? 'block' : 'none';
+  };
+
+  fetch('/settings/themes', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cluster_enabled: newState })
+    body: JSON.stringify({ key: 'clustering', enabled: newState })
   })
-    .then(r => r.json())
-    .then(d => {
-      if (d.ok || d.status === 'ok') {
-        toggle.classList.toggle('active', newState);
-        const droneSection = document.getElementById('cluster-pair-as-drone');
-        if (droneSection) droneSection.style.display = newState ? 'block' : 'none';
+    .then(r => r.json().catch(() => null).then(d => ({ r, d })))
+    .then(({ r, d }) => {
+      if (!r.ok || !d || !d.ok) {
+        // Refused or failed. The switch must stay where the SERVER says it is.
+        apply(d && typeof d.enabled === 'boolean' ? d.enabled : isActive);
+        showToast('Clustering NOT changed — ' +
+          ((d && (d.error || d.detail)) || ('HTTP ' + r.status)));
         refreshClusterStatus();
+        return;
       }
+      // `d.enabled` is the EFFECTIVE state read back from the running config, not what we
+      // asked for. Rendering the request would put the switch in a position the config does
+      // not hold — the same lie in a different widget.
+      const effective = !!d.enabled;
+      apply(effective);
+      if (effective !== newState) {
+        showToast('Clustering NOT ' + (newState ? 'enabled' : 'disabled') + ' — ' +
+          (d.not_in_force_note || 'the running configuration did not take the change'));
+        refreshClusterStatus();
+        return;
+      }
+      // THE SETTING IS NOT THE SERVICE. `cluster_enabled` is now true in the running config,
+      // and /cluster/status still reports the cluster network as down — it is built at startup
+      // and needs a cluster to join. That is not a bug to hide: the badge beside this switch
+      // reads "Disabled", and a toast that flatly says "Clustering enabled" next to it just
+      // moves the confusion into the operator. Say which of the two actually changed.
+      if (effective) {
+        fetch('/cluster/status')
+          .then(r => r.json())
+          .then(st => {
+            showToast(st && st.enabled
+              ? 'Clustering enabled'
+              : 'Clustering enabled in settings — the cluster service is not running yet ' +
+                '(no cluster joined; pair with a queen or restart to start it)');
+            refreshClusterStatus();
+          })
+          .catch(() => {
+            // Could not confirm the service state, so do not assert either way.
+            showToast('Clustering enabled in settings — could not read the cluster service state');
+            refreshClusterStatus();
+          });
+        return;
+      }
+      showToast('Clustering disabled');
+      refreshClusterStatus();
     })
-    .catch(e => { console.warn('Toggle cluster failed:', e); });
+    .catch(e => {
+      apply(isActive);
+      showToast('Clustering NOT changed — ' + ((e && e.message) || e));
+    });
 }
 
 // ── Pair as Drone ───────────────────────────────────────────────────────────

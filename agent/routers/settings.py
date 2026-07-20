@@ -482,12 +482,20 @@ async def apply_feature_theme_route(req: Request):
     try:
         # editable_only=False: some theme flags (cluster_enabled, scheduler_study_enabled) are
         # not individually in EDITABLE_SCHEMA. Safe because `updates` is the theme whitelist.
-        saved = _rs.save_config_keys(updates, editable_only=False, clamp=False)
+        #
+        # _detailed, not save_config_keys: the thin wrapper returns only the saved-key list and
+        # drops `refused`, so a theme whose flag a CONFIG INVARIANT declined (remote_access with
+        # no credential — the lockout this endpoint used to cause) would lose the reason on the
+        # way out. The read-back would still catch it, but as "an owner holds this" rather than
+        # "this was refused, here is the precondition".
+        res = _rs.save_config_keys_detailed(updates, editable_only=False, clamp=False)
+        saved = res["saved"]
+        refused = {r["key"]: r for r in (res.get("refused") or [])}
         # The flags only — auto_tune_locked_keys is the remedy this write took, not a
         # capability the operator toggled, and reporting it as a not-in-force setting would
         # be noise on a key that did exactly what it was asked.
         flags = [k for k in saved if k != "auto_tune_locked_keys"]
-        rb = readback({k: updates[k] for k in flags}, order=flags)
+        rb = readback({k: updates[k] for k in flags}, order=flags, refused=refused)
         # The theme's state as the running app now sees it — flags AND package presence.
         row = next((t for t in get_feature_themes(rb["cfg"], raw_config_file())
                     if t["key"] == key), None)
@@ -495,7 +503,11 @@ async def apply_feature_theme_route(req: Request):
         # than a hidden side effect of a checkbox.
         locked = updates.get("auto_tune_locked_keys")
         out = {
-            "ok": True,
+            # `ok` means WHAT THE OPERATOR ASKED FOR HAPPENED — the same meaning POST /settings
+            # and PATCH /pairing/{id}/permissions give it. A security invariant declining the
+            # write is not a success with a footnote; a caller that checks only `d.ok` (which is
+            # every caller that ever caused this bug class) must not read it as one.
+            "ok": not refused,
             "key": key,
             # EFFECTIVE, not requested. `requested` is kept beside it so the UI can say
             # "you asked for on, it is off" rather than silently rendering the difference.
@@ -508,6 +520,11 @@ async def apply_feature_theme_route(req: Request):
             "missing_packages": (row or {}).get("missing_packages") or [],
             "auto_tune_locked_keys": locked if locked is not None else None,
         }
+        if refused:
+            out["refused"] = sorted(refused)
+            # `error` so the UI's existing failure branch has something true to print, rather
+            # than the bare "HTTP 200" it would otherwise fall back to.
+            out["error"] = "; ".join(r["reason"] for r in refused.values())
         if rb["not_in_force"]:
             out["not_in_force_note"] = rb["note"]
         elif enabled and row and not row["enabled"] and out["missing_packages"]:
