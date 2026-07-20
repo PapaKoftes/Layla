@@ -226,18 +226,38 @@ def test_the_phase_predicates_gate_nothing():
     llm_decision keyed observation mode on the early phases. Both are gone; the predicates
     survive only for display/narrative. Scans the tree so a third site cannot appear quietly.
     """
-    hits = subprocess.run(
-        ["git", "grep", "-n", "-E", r"is_high_trust_phase|is_early_phase", "--", "*.py"],
-        cwd=str(AGENT_DIR.parent), capture_output=True, text=True,
-    ).stdout.splitlines()
+    # PARSE, DO NOT GREP. Two independent reasons, both of which bit this test in its first form:
+    #
+    # 1. It used `git grep`, which searches TRACKED files only. familiarity.py was untracked when
+    #    the gate ran before its own commit, so the scan could not see it, the gate went green,
+    #    and the slice shipped. The failure appeared on the next run for reasons unrelated to that
+    #    run's diff. A guard whose coverage depends on staging state is not a guard.
+    # 2. It filtered prose by `startswith("#")`, which misses DOCSTRINGS. `knows_operator`'s
+    #    docstring explains that observation mode used to ask `is_early_phase(maturity.phase)` —
+    #    a sentence describing the removed gate was read as the gate. That is the same mistake as
+    #    forbidding a guard from naming the defect it prevents: it pushes the reasoning out of the
+    #    file.
+    #
+    # An AST walk answers the real question — is either predicate CALLED? — and prose cannot fake
+    # a Call node.
+    import ast
+
     offenders = []
-    for h in hits:
-        if "/tests/" not in h and "maturity_engine.py" not in h:  # the latter defines them
-            # `path:lineno:source` — a comment ABOUT the removed gate is not a gate. Explaining
-            # why the call is gone is exactly what keeps it from being re-added by hand.
-            code = h.split(":", 2)[-1].lstrip()
-            if not code.startswith("#"):
-                offenders.append(h)
+    for path in sorted((AGENT_DIR).rglob("*.py")):
+        rel = path.relative_to(AGENT_DIR).as_posix()
+        if rel.startswith("tests/") or "maturity_engine.py" in rel:  # the latter defines them
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            name = getattr(fn, "id", None) or getattr(fn, "attr", None)
+            if name in ("is_high_trust_phase", "is_early_phase"):
+                offenders.append(f"{rel}:{node.lineno}: calls {name}()")
     assert not offenders, (
         "a capability decision is being derived from maturity phase again:\n  "
         + "\n  ".join(offenders)
