@@ -268,22 +268,50 @@ def run_completion_llama_cpp(
 ) -> dict | Generator[str, None, None]:
     """Run completion via local llama-cpp-python. reasoning_budget for thinking models."""
     llm = _get_llm()
+    # Off by default: see the measurement in _call_create_completion below. Turning this on
+    # costs ~22s of first-token latency on every turn after the first.
+    _reset_kv_each_call = bool(cfg.get("llm_reset_kv_each_call", False))
     extra_kw = {}
     if reasoning_budget is not None:
         extra_kw["reasoning_budget"] = reasoning_budget
     # If llama-cpp-python doesn't support reasoning_budget, drop it (TypeError)
     def _call_create_completion(stream_mode: bool = False, **kwargs):
-        # Full KV cache reset: clear C-level cache + reset Python n_tokens counter.
-        # Both are required — reset() alone leaves C cache stale; kv_cache_clear()
-        # alone leaves n_tokens > 0, causing mismatched scoring on the next eval.
-        try:
-            llm._ctx.kv_cache_clear()
-        except Exception:
-            pass
-        try:
-            llm.reset()  # sets n_tokens = 0
-        except Exception:
-            pass
+        # NO per-call KV reset. This used to unconditionally call kv_cache_clear() + reset()
+        # before EVERY completion, which threw away llama.cpp's prefix reuse: it compares the
+        # incoming tokens against what is already in context and evaluates only the divergent
+        # suffix. reset() sets n_tokens = 0, so there was never anything to match against and
+        # every turn re-prefilled the whole system head from scratch on 4 CPU threads.
+        #
+        # MEASURED on this box (Qwen2.5-3B-Q4_K_M, n_ctx 2048, 827-token head), four turns with
+        # a stable head and a DIFFERENT goal and memory line each turn — i.e. the real shape of
+        # a conversation, not an artificial identical prompt:
+        #     with the reset:  22.64s  22.59s  22.84s  23.15s   (every turn pays full prefill)
+        #     without:         22.40s   0.68s   0.66s   0.52s
+        # Cold-turn cost is unchanged (3-sample means 23.44s with vs 22.61s without — the reset
+        # was, if anything, slightly worse and much noisier). Output is BYTE-IDENTICAL at
+        # temperature 0, fresh instance vs reused context, over five different prompts.
+        #
+        # WHY IT WAS SAFE TO REMOVE. The reset arrived in ae43ac0 as part of timeout fencing,
+        # not as a fix for ordinary turns, and its own comment only argues that doing ONE of the
+        # two calls is worse than doing both — not that doing NEITHER is unsafe. Doing neither is
+        # the path llama-cpp maintains itself: create_completion owns n_tokens and the KV cache.
+        # The abnormal case the fencing existed for is already handled a level up —
+        # llm_gateway.invalidate_llm_cache() rebuilds the Llama instance after a timeout, so a
+        # half-evaluated context is discarded rather than reused. _llm_lock serialises callers,
+        # so there is no concurrent-eval race for this to guard either.
+        #
+        # If a future llama-cpp regression makes stale context bite, set llm_reset_kv_each_call
+        # to restore the old behaviour rather than re-adding the lines — the cost is ~22s of
+        # first-token latency on every turn after the first, so it should be a deliberate choice.
+        if _reset_kv_each_call:
+            try:
+                llm._ctx.kv_cache_clear()
+            except Exception:
+                pass
+            try:
+                llm.reset()  # sets n_tokens = 0
+            except Exception:
+                pass
         kwargs.pop("reasoning_budget", None)  # not supported in 0.3.16
         return llm.create_completion(prompt, stream=stream_mode, **kwargs)
     if stream:
