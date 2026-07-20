@@ -435,7 +435,7 @@ export async function saveSettings() {
       if (notInForce.length) {
         // Saved to disk, and reverted before anything reads it — the exact case that used to
         // read as an unqualified success. Name the OWNER here rather than assuming auto-tune:
-        // the maturity gate reverts keys too, and sending that operator to the auto-tune lock
+        // other owners revert keys too, and sending that operator to the auto-tune lock
         // list would be a confident, actionable, wrong instruction.
         const owners = [];
         notInForce.forEach(function (r) {

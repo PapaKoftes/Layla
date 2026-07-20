@@ -351,17 +351,16 @@ def handle_reasoning_intent(
     try:
         cfg_inline = runtime_safety.load_config()
         if cfg_inline.get("inline_initiative_enabled", False):
-            from services.personality.maturity_engine import get_state as _get_maturity_state
-            from services.personality.maturity_engine import is_high_trust_phase
+            # NO PHASE TEST. This used to require is_high_trust_phase(ms.phase), and phase comes
+            # from phase_for_rank(), so ranks 0-5 were "awakening"/"attunement" and the feature
+            # was suppressed until rank 6 — i.e. until the operator had ground out ~19,500 XP of
+            # unrelated activity. Driven on this operator's live state (rank 2,
+            # inline_initiative_enabled=True in their config): the switch was on and the
+            # suggestion never appended. A setting the operator has turned on must do the thing.
+            # Rank/XP is an activity odometer; it is not permission and no longer decides this.
+            from services.infrastructure.initiative_inline import maybe_append_inline_suggestion
 
-            ms = _get_maturity_state()
-            # Proactive initiative unlocks in the later (high-trust) phases. Was gated on
-            # ("adept","veteran","transcendent") — none of which are valid PhaseId values —
-            # so this was silently dead regardless of the flag.
-            if is_high_trust_phase(ms.phase):
-                from services.infrastructure.initiative_inline import maybe_append_inline_suggestion
-
-                text = maybe_append_inline_suggestion(text, state=state, cfg=cfg_inline)
+            text = maybe_append_inline_suggestion(text, state=state, cfg=cfg_inline)
     except Exception as _exc:
         logger.debug("agent_loop:inline_initiative failed: %s", _exc, exc_info=False)
 

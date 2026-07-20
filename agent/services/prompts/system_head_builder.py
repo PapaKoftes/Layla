@@ -694,24 +694,25 @@ def build_system_head(
                 + "\". Frame it conversationally (e.g. 'By the way, I picked up that... is that right?')."
             )
 
-    # Phase 1B: maturity rank gating. Held as a per-turn DIRECTIVE rather than appended to `personality`.
+    # Familiarity directive (was "Phase 1B: maturity rank gating" — nothing here gates on rank any
+    # more, and a heading that says it does is the kind of stale claim this slice exists to remove).
+    # Held as a per-turn DIRECTIVE rather than appended to `personality`.
     # Appending it to the persona put a 29-token behavioural instruction on the tail of a 590-token voice
     # contract, and the persona is truncated from the tail — so "do not proactively suggest" was the very
     # first thing cut on every ordinary turn on a 2048-ctx box. It survived only while the head budget was
     # over-wide. Collected into `_directives` below, it sits in the protected prefix and costs 29 tokens.
     # (Full unlocks text is injected into system_instructions later to avoid duplication)
-    _early_growth_directive = ""
+    # Was keyed on maturity rank (`rank < 1` -> "you are in your early growth phase"). Rank is an
+    # activity counter, so that restraint arrived and left for reasons unrelated to the operator —
+    # a busy first day switched it off while she still knew nothing about them. familiarity_line()
+    # measures the thing rank was standing in for directly, and also replaces the "Your current
+    # capabilities: ..." string that used to be injected separately below. One DB read, one line.
+    _familiarity_directive = ""
     try:
-        from services.personality.maturity_engine import get_state as _get_maturity_state
-        _ms = _get_maturity_state()
-        # Gate proactive suggestions behind rank 1+
-        if _ms.rank < 1:
-            _early_growth_directive = (
-                "You are in your early growth phase. Focus on responding helpfully. Do not proactively "
-                "suggest topics or actions the user hasn't asked about."
-            )
+        from services.personality.familiarity import familiarity_line as _fam_line
+        _familiarity_directive = _fam_line()
     except Exception as _mu_exc:
-        logger.debug("context[maturity_unlocks] failed: %s", _mu_exc)
+        logger.debug("context[familiarity] failed: %s", _mu_exc)
 
     # Aspect memories — relevance-gated against the goal and skipped on phatic/lightweight
     # turns, exactly like learnings/semantic_recall. Otherwise a wall of prior per-aspect
@@ -947,20 +948,11 @@ def build_system_head(
     except Exception as _ab_e:
         logger.debug("aspect_behavior block inject failed: %s", _ab_e)
 
-    # Rank gating (captured above, where the maturity state is read) — a directive, not persona prose.
-    if _early_growth_directive:
-        _directives.append(_early_growth_directive)
-
-    # Maturity unlocks: inject current rank capabilities
-    try:
-        from services.personality.maturity_engine import get_state as _me_get_state
-        from services.personality.maturity_engine import get_unlocks_text as _me_unlocks_text
-        _me_state = _me_get_state()
-        _unlocks_str = _me_unlocks_text({"rank": _me_state.rank})
-        if _unlocks_str:
-            _directives.append(_unlocks_str)
-    except Exception as _unlock_e:
-        logger.debug("maturity unlocks inject failed: %s", _unlock_e)
+    # Familiarity (captured above) — how well she knows the operator. NOT a capability claim:
+    # her capability ground truth is .identity/capabilities.md, and the rank-derived
+    # "Your current capabilities: ..." string that used to sit here contradicted it.
+    if _familiarity_directive:
+        _directives.append(_familiarity_directive)
 
     # Personality evolution: inject evolved personality hints
     try:

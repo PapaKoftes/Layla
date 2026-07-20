@@ -24,87 +24,105 @@ if str(AGENT_DIR) not in sys.path:
 
 
 # ============================ C1: the rank-unlock table ============================
+#
+# INVERTED. These four tests used to POLICE the rank→capability ladder: every named unlock must
+# map to a config key, every key must be read somewhere, a rank-earned-but-disabled feature must
+# not be claimed. They were the right guards for the wrong object. Rank never gated a feature, so
+# the ladder should not have existed at all — the honest fix is not a better-policed capability
+# table derived from an activity counter, it is no such table. What remains is a guard that it
+# stays gone, and that what replaced it in the prompt is not a capability claim either.
 
-def test_every_named_unlock_maps_to_a_config_key():
-    """The table is concatenated into system_instructions by name. A name with no key behind it is
-    a capability claim with no implementation — which is exactly what "Cross-aspect synthesis" and
-    "Teacher mode" were."""
-    from services.personality.maturity_engine import _RANK_UNLOCKS
 
-    for row in _RANK_UNLOCKS:
-        assert len(row) == 5, f"unlock row is missing its config-key tuple: {row}"
-        min_rank, utype, name, desc, keys = row
-        assert keys, (
-            f"unlock {name!r} (rank {min_rank}) names a capability with no config key behind it. "
-            "Wire it or drop it — do not let the prompt assert it."
+def test_the_rank_unlock_ladder_is_gone():
+    """No rank→capability table anywhere in the engine, under any name."""
+    from services.personality import maturity_engine
+
+    for gone in ("_RANK_UNLOCKS", "check_unlocks", "all_unlocks", "get_unlocks_text"):
+        assert not hasattr(maturity_engine, gone), (
+            f"maturity_engine.{gone} is back. Rank unlocks nothing; a table mapping ranks to named "
+            "abilities is a capability source competing with .identity/capabilities.md."
+        )
+
+    # Source scan too, so the same table rebuilt under a new name is still caught. Comment lines are
+    # stripped: the removal note in maturity_engine.py names all four symbols on purpose.
+    src = (AGENT_DIR / "services" / "personality" / "maturity_engine.py").read_text(encoding="utf-8")
+    body = "\n".join(ln for ln in src.splitlines() if not ln.lstrip().startswith("#"))
+    assert "Your current capabilities" not in body, (
+        "the rank-derived capability string is back in maturity_engine"
+    )
+
+
+def test_nothing_injects_a_rank_derived_capability_string():
+    """The old string reached the model on EVERY turn, which is why it beat the manifest."""
+    src = (AGENT_DIR / "services" / "prompts" / "system_head_builder.py").read_text(encoding="utf-8")
+    body = "\n".join(ln for ln in src.splitlines() if not ln.lstrip().startswith("#"))
+    for gone in ("get_unlocks_text", "Your current capabilities"):
+        assert gone not in body, (
+            f"system_head_builder still injects {gone!r} — a second capability source contradicting "
+            ".identity/capabilities.md, which is the defect 1335528 fixed."
         )
 
 
-def test_named_unlock_keys_are_actually_read_somewhere():
-    """A key that is only ever WRITTEN is not a capability either. autonomous_research_mode was
-    written in two places, listed in the example config, and read nowhere in the repo."""
-    import re
+def test_what_replaced_it_is_a_familiarity_line_not_a_capability_claim(isolated_db):
+    """R4: if a line is injected instead, it must be about familiarity and must not read as a
+    capability claim. Driven, on BOTH branches — an empty identity and a populated one.
 
-    from services.personality.maturity_engine import _RANK_UNLOCKS
+    Both matter: on a fresh box the roster is empty, so a test that only ever saw the empty branch
+    would never inspect the sentence the operator actually gets, and a capability claim could be
+    reintroduced in the populated branch unseen.
+    """
+    from layla.memory.db import set_user_identity
+    from services.personality import familiarity
 
-    # Files that only plumb config (define defaults / schema) do not count as readers — and neither
-    # does maturity_engine.py itself, which holds the table literal: without that exclusion the
-    # declaration IS its own evidence and this test can never fail.
-    plumbing = {"runtime_safety.py", "config_schema.py", "maturity_engine.py"}
-    sources = [
-        p for p in AGENT_DIR.rglob("*.py")
-        if "tests" not in p.parts and p.name not in plumbing
-    ]
-    blobs = []
-    for p in sources:
-        try:
-            blobs.append((p.name, p.read_text(encoding="utf-8", errors="ignore")))
-        except OSError:
-            continue
+    banned = ("capabilit", "unlock", "you can now", "ability", "abilities", "rank")
 
-    for _rank, _t, name, _d, keys in _RANK_UNLOCKS:
-        for key in keys:
-            readers = [fn for fn, txt in blobs if re.search(rf'["\']{re.escape(key)}["\']', txt)]
-            assert readers, (
-                f"unlock {name!r} is gated on config key {key!r}, which nothing outside config "
-                f"plumbing reads. The prompt would assert a capability with no code path."
-            )
+    empty_line = familiarity.familiarity_line()
+    assert empty_line, "familiarity_line() produced nothing on an empty identity"
+    for word in banned:
+        assert word not in empty_line.lower(), (
+            f"the knows-nothing line reads as a capability claim ({word!r}): {empty_line!r}"
+        )
 
-
-def test_earned_but_disabled_capability_is_not_claimed(monkeypatch):
-    """The maturity gate DISABLES below rank but never re-enables above it, so past the threshold
-    the feature is whatever setup_profiles left it. Rank alone must not make her claim it."""
-    import runtime_safety
-    from services.personality import maturity_engine
-
-    keys = [k for row in maturity_engine._RANK_UNLOCKS for k in row[4]]
-    base = dict(runtime_safety.load_config())
-
-    monkeypatch.setattr(runtime_safety, "load_config", lambda: {**base, **{k: False for k in keys}})
-    assert maturity_engine.get_unlocks_text({"rank": 99}) == "", (
-        "every gated feature is switched off, yet the prompt still told her she has them"
-    )
-
-    monkeypatch.setattr(runtime_safety, "load_config", lambda: {**base, **{k: True for k in keys}})
-    text = maturity_engine.get_unlocks_text({"rank": 99})
-    assert "Your current capabilities:" in text and "Proactive suggestions" in text, (
-        f"with the features on, the earned unlocks must be named; got {text!r}"
+    set_user_identity("name", "Mina")
+    set_user_identity("communication_style", "direct")
+    line = familiarity.familiarity_line()
+    assert line != empty_line, "the line did not change once she knew something"
+    for word in banned:
+        assert word not in line.lower(), (
+            f"the injected familiarity line reads as a capability claim ({word!r}): {line!r}"
+        )
+    # And it must be TRUE of the data: the numbers it states are the roster counts.
+    fam = familiarity.get_familiarity()
+    assert fam["known"] == 2
+    assert f"{fam['known']} of {fam['total']}" in line, (
+        f"line does not state the real roster counts {fam['known']}/{fam['total']}: {line!r}"
     )
 
 
-def test_growth_narrative_does_not_announce_a_disabled_unlock(monkeypatch):
-    """get_growth_narrative says "I recently unlocked X" out loud — same rule as the prompt."""
-    import runtime_safety
+def test_growth_narrative_makes_no_capability_claim():
+    """get_growth_narrative is spoken aloud. It used to end "I recently unlocked X at Rank N"."""
     from services.personality import maturity_engine
-
-    keys = [k for row in maturity_engine._RANK_UNLOCKS for k in row[4]]
-    base = dict(runtime_safety.load_config())
-    monkeypatch.setattr(runtime_safety, "load_config", lambda: {**base, **{k: False for k in keys}})
 
     narrative = maturity_engine.get_growth_narrative()
-    assert "recently unlocked" not in narrative, (
-        f"announced an unlock while every gated feature is off: {narrative!r}"
+    lowered = narrative.lower()
+    for banned in ("unlocked", "capabilities:", "i can now"):
+        assert banned not in lowered, (
+            f"the growth narrative announces a capability: {narrative!r}"
+        )
+    # Nor may it claim the `learnings` rows are knowledge about the operator. They are neither
+    # verified nor about them — the sentence used to read "N verified facts about your work".
+    assert "verified fact" not in lowered and "about your work" not in lowered, (
+        f"the narrative presents generic learnings as verified facts about the operator: {narrative!r}"
     )
+    assert "strongest area" not in lowered, (
+        f"the narrative calls an aspect's usage count a strength: {narrative!r}"
+    )
+    # Rank still appears — but labelled as the activity total it is, so it is not mistaken for the
+    # familiarity figure alongside it.
+    if "rank" in lowered:
+        assert "not what i know about you" in lowered, (
+            f"the narrative states a rank without saying what it measures: {narrative!r}"
+        )
 
 
 def _strip_js_comments(src: str) -> str:
@@ -151,29 +169,68 @@ def _strip_js_comments(src: str) -> str:
     return "".join(out)
 
 
-def test_all_unlocks_ladder_is_the_single_source_for_the_ui():
-    """growth.js used to hardcode its own copy of the ladder, so trimming a fake capability from the
-    table left the user still reading "Teacher mode — Rank 12" in the locked preview."""
-    from services.personality.maturity_engine import _RANK_UNLOCKS, all_unlocks
+def test_growth_panel_advertises_no_unlock_ladder():
+    """INVERTED. This used to require growth.js render the ladder from `maturity.unlocks_all` so the
+    UI held no hardcoded copy. There is no ladder now, so the requirement is the opposite: the panel
+    must not render one from anywhere, and must not tell the user XP buys abilities.
 
-    ladder = all_unlocks(rank=5)
-    assert [u["name"] for u in ladder] == [r[2] for r in _RANK_UNLOCKS]
-    assert [u["earned"] for u in ladder] == [5 >= r[0] for r in _RANK_UNLOCKS]
-
+    Checked against COMMENT-STRIPPED source — `assert "unlocks_all" in js` was once green with the
+    live line renamed, satisfied by a comment that merely described it. The removal note in growth.js
+    names the old symbols on purpose, so a raw substring check would fail on prose.
+    """
     js = (AGENT_DIR / "ui" / "components" / "growth.js").read_text(encoding="utf-8")
     code = _strip_js_comments(js)
 
-    # Asserted against COMMENT-STRIPPED source. `assert "unlocks_all" in js` was green even with the
-    # live line renamed, because the comment two lines above the real access reads "...read from the
-    # server's ladder (maturity.unlocks_all) rather than a hardcoded copy". The guard was satisfied by
-    # the prose describing the thing it was supposed to be checking — the same defect F6 was rewritten
-    # to remove. A guard that a comment can satisfy is documentation, not a test.
-    assert "maturity.unlocks_all" in code, (
-        "growth.js must render the ladder from the server (`maturity.unlocks_all`), not a local copy. "
-        "Checked against comment-stripped source, so a mention in prose will not satisfy it."
-    )
-    for dead in ("Teacher mode", "Cross-aspect synthesis", "Research autonomy"):
+    for gone in ("maturity.unlocks_all", "maturity.unlocks", "growth-unlocks-list",
+                 "Earn XP to unlock abilities"):
+        assert gone not in code, f"growth.js still renders the removed unlock ladder ({gone!r})"
+    for dead in ("Teacher mode", "Cross-aspect synthesis", "Research autonomy",
+                 "Proactive suggestions", "Multi-step planning", "Full autonomy mode"):
         assert dead not in code, f"growth.js still advertises the removed unlock {dead!r}"
+
+    # And the replacement must actually be wired, or the panel is simply emptier than before.
+    assert "_renderFamiliarity" in code and "growth-familiarity" in code, (
+        "growth.js must render the familiarity indicator that replaced the ladder"
+    )
+
+    html = (AGENT_DIR / "ui" / "index.html").read_text(encoding="utf-8")
+    assert 'id="growth-familiarity"' in html, "index.html has no mount point for familiarity"
+    assert "growth-unlocks-list" not in html, "index.html still has the Unlocked Abilities list"
+
+
+def test_familiarity_is_mounted_where_the_operator_can_actually_see_it():
+    """The last mile. `<section data-rcp="growth">` is a HIDDEN ALIAS — index.html keeps it "for JS
+    compatibility" and no nav button opens it, which is why the rank/XP badge it held was invisible.
+    The mirror has to live in the reachable Dashboard panel (#growth-dashboard-panel) instead, and
+    its id must not be duplicated: growth.js uses getElementById, which fills only the first copy.
+    """
+    import re
+
+    html = (AGENT_DIR / "ui" / "index.html").read_text(encoding="utf-8")
+
+    for mount in ('id="growth-familiarity"', 'id="growth-rank-badge"', 'id="growth-xp-basis"'):
+        assert html.count(mount) == 1, (
+            f"{mount} appears {html.count(mount)} times — getElementById fills only the first, so a "
+            "duplicate silently leaves one copy blank"
+        )
+
+    dash_start = html.index('id="growth-dashboard-panel"')
+    # Anchor on the section tag, not a bare `data-rcp="growth"` — the comment explaining why the
+    # blocks moved names the alias panel, and matching that truncates the slice to nothing.
+    alias_start = html.index('<section class="rcp-page" data-rcp="growth"')
+    assert dash_start < alias_start, "unexpected document order; the checks below assume it"
+    dashboard_block = html[dash_start:alias_start]
+    for mount in ("growth-familiarity", "growth-rank-badge", "growth-xp-basis"):
+        assert mount in dashboard_block, (
+            f"{mount!r} is not inside #growth-dashboard-panel. It would render only in the hidden "
+            "alias panel, where the operator cannot open it."
+        )
+
+    # The alias panel must not have a nav button that would make this moot — if one ever appears,
+    # this test should be revisited rather than silently weakened.
+    assert not re.search(r'role="tab"[^>]*data-rcp="growth"', html), (
+        "the growth alias panel now has a nav tab; revisit where the mirror belongs"
+    )
 
 
 # ==================== C2: tool declarations vs installed dependencies ====================
