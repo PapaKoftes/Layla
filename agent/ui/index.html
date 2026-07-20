@@ -290,7 +290,11 @@
         <summary>Milestones</summary>
         <div id="maturity-milestones-list" class="maturity-milestones-list"><span style="color:var(--text-dim);font-size:0.7rem">Open to load</span></div>
       </details>
-      <div class="maturity-hint">Growth is real. Click to open Growth panel.</div>
+      <!-- Said "Click to open Growth panel". It does not: bootstrap.js maps rcp 'growth' onto
+           'status' (_rcpAliases), so this click lands on the Dashboard — which is where the growth
+           readout actually lives and renders. The panel named in the old copy exists in the markup
+           but is display:none and can never be activated. Copy now names the real destination. -->
+      <div class="maturity-hint">Growth is real. Click to open the Dashboard.</div>
     </div>
     <details class="sidebar-voices" id="sidebar-voices" open>
       <summary class="sidebar-voices-title">Aspect<span class="sidebar-voices-active" id="sidebar-voices-active">Morrigan · Coding</span></summary>
@@ -328,6 +332,73 @@
       <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="research"><span class="sidebar-nav-icon">⌕</span> Research</button>
       <button type="button" class="sidebar-nav-btn" data-action="openOverlayPanel" data-arg="artifacts"><span class="sidebar-nav-icon">⬡</span> Artifacts</button>
     </nav>
+    <!-- ── Feature groups (BL-390) ────────────────────────────────────────────────────────────
+         Until now these 21 panels were reachable ONLY from the command palette. The palette is a
+         good POWER feature and is unchanged — but it answers "take me to the thing I can already
+         name", and a new user cannot name what they have never seen. These groups answer the other
+         question: "what is in here?" That is why they are labelled and browsable rather than one
+         more generic button — the group headings are themselves the answer, readable without a
+         click, which is the property a single "All features" button would not have had.
+
+         MEMBERSHIP RULE: an entry appears here only if it was DRIVEN and works. Missions
+         (POST /mission 500s: the planner cannot fit a plan in n_ctx=2048) and the German panel
+         (its corrector finds 0 of 6 real errors and its flashcard section has no writer) are
+         deliberately ABSENT — both remain in the palette, where they were. Surfacing a dead panel
+         would convert a hidden defect into an advertised one.
+         Gated entries carry data-gate-* and render the real reason from /setup/gate-status. -->
+    <nav class="sidebar-groups" id="sidebar-groups" aria-label="All features">
+      <details class="sidebar-group" id="sidebar-group-work">
+        <summary class="sidebar-nav-title">Work</summary>
+        <button type="button" class="sidebar-nav-btn" data-action="openPlans"><span class="sidebar-nav-icon">◇</span> Plans &amp; projects</button>
+        <button type="button" class="sidebar-nav-btn" data-action="openMacros"><span class="sidebar-nav-icon">▷</span> Macros / workflows</button>
+        <button type="button" class="sidebar-nav-btn" data-action="openAgentTasks"><span class="sidebar-nav-icon">⧗</span> Background tasks</button>
+        <button type="button" class="sidebar-nav-btn" data-action="openKb"><span class="sidebar-nav-icon">▦</span> Knowledge base</button>
+      </details>
+      <details class="sidebar-group" id="sidebar-group-memory">
+        <summary class="sidebar-nav-title">Memory &amp; learning</summary>
+        <button type="button" class="sidebar-nav-btn" data-action="openJournal"><span class="sidebar-nav-icon">✎</span> Journal</button>
+        <button type="button" class="sidebar-nav-btn" data-action="openCodex"><span class="sidebar-nav-icon">❖</span> Relationship codex</button>
+        <button type="button" class="sidebar-nav-btn" data-action="openVerify"><span class="sidebar-nav-icon">✓</span> Verify learnings</button>
+        <button type="button" class="sidebar-nav-btn" data-action="openTutor"><span class="sidebar-nav-icon">◑</span> Language tutor</button>
+      </details>
+      <details class="sidebar-group" id="sidebar-group-layla">
+        <summary class="sidebar-nav-title">Layla herself</summary>
+        <button type="button" class="sidebar-nav-btn" data-action="openIntelligence"><span class="sidebar-nav-icon">✦</span> Intelligence</button>
+        <button type="button" class="sidebar-nav-btn" data-action="openImprovements"><span class="sidebar-nav-icon">↑</span> Improvements</button>
+        <button type="button" class="sidebar-nav-btn" data-action="openCharacterLab"><span class="sidebar-nav-icon">⌬</span> Character Lab</button>
+        <button type="button" class="sidebar-nav-btn" data-action="openCustomAspect"><span class="sidebar-nav-icon">✧</span> Create custom aspect</button>
+        <button type="button" class="sidebar-nav-btn" data-action="openIntakeQuiz"><span class="sidebar-nav-icon">?</span> Intake quiz</button>
+        <!-- UNGATED, deliberately. The panel POSTs /debate -> routers/debate.py ->
+             services/planning/debate_engine.py, which reads debate_max_workers, debate_max_tokens,
+             debate_temperature, council_aspect_models and debate_synthesis_max_tokens — and NOT
+             multi_agent_orchestration_enabled. That flag is read in exactly two places, neither on
+             this path: multi_agent.py (auto-routing a CHAT turn) and prompt_builder.py (deep-reasoning
+             prompt depth). This entry used to carry data-gate-feature="multi_agent"; driven on a live
+             instance, /setup/gate-status said multi_agent was off while POST /debate returned ok:true
+             with two participating aspects. The panel ran with the flag off, so the lock was false and
+             its remedy (add the key to auto_tune_locked_keys / disable auto_tune) was harmful on a CPU
+             tier for no effect here. A panel with no gate gets no badge. -->
+        <button type="button" class="sidebar-nav-btn" data-action="openDebate"><span class="sidebar-nav-icon">⚖</span> Deliberate (aspects)</button>
+      </details>
+      <details class="sidebar-group" id="sidebar-group-system">
+        <summary class="sidebar-nav-title">System &amp; trust</summary>
+        <button type="button" class="sidebar-nav-btn" data-action="openSystemDiagnostics"><span class="sidebar-nav-icon">◍</span> System diagnostics</button>
+        <button type="button" class="sidebar-nav-btn" data-action="openSelfTest"><span class="sidebar-nav-icon">◉</span> Run self-test</button>
+        <button type="button" class="sidebar-nav-btn" data-action="openToolsHistory"><span class="sidebar-nav-icon">⟲</span> Tool history &amp; health</button>
+        <button type="button" class="sidebar-nav-btn" data-action="openApprovals"><span class="sidebar-nav-icon">⚑</span> Approvals &amp; grants</button>
+        <button type="button" class="sidebar-nav-btn" data-action="openMarketplace"><span class="sidebar-nav-icon">⊞</span> Kit marketplace</button>
+        <button type="button" class="sidebar-nav-btn" data-action="openSetupProfiles"><span class="sidebar-nav-icon">⚒</span> Set up / reconfigure</button>
+        <!-- GATED ON syncthing_api_key, the key this panel's own path actually reads. sync.js calls
+             /sync/status, /sync/device-id, /sync/rescan and /sync/setup-guide; routers/sync.py and
+             services/infrastructure/syncthing_sync.py contain ZERO references to remote_enabled — the
+             flag this entry used to name. Driven: /sync/status returned {"enabled": false, "error":
+             "syncthing_api_key not set in runtime_config.json"} while the badge told the operator to
+             rotate a tunnel token, which has a real security side effect and does not enable sync. The
+             panel behind the door stated the truth and the door contradicted it. -->
+        <button type="button" class="sidebar-nav-btn nav-gated" data-action="openSync" data-gate-key="syncthing_api_key"><span class="sidebar-nav-icon">⇄</span> Sync (devices)<span class="nav-gate-badge" hidden></span></button>
+        <button type="button" class="sidebar-nav-btn" data-action="openWelcome"><span class="sidebar-nav-icon">∴</span> About Layla</button>
+      </details>
+    </nav>
     <!-- Live dashboard cards -->
     <div class="sidebar-dashboard" id="sidebar-dashboard">
       <div class="dash-card dash-card-clickable" id="dash-governor" title="Resource governor mode — click to open Dashboard" role="button" tabindex="0" data-action="showMainPanel" data-arg="status">
@@ -337,7 +408,7 @@
           <span class="dash-card-value" id="dash-governor-val">—</span>
         </div>
       </div>
-      <div class="dash-card dash-card-clickable" id="dash-maturity" title="Maturity rank &amp; phase — click to open Growth" role="button" tabindex="0" data-action="showMainPanel" data-arg="growth">
+      <div class="dash-card dash-card-clickable" id="dash-maturity" title="Maturity rank &amp; phase — click to open the Dashboard" role="button" tabindex="0" data-action="showMainPanel" data-arg="growth">
         <span class="dash-card-icon">✦</span>
         <div class="dash-card-body">
           <span class="dash-card-label">Maturity</span>
@@ -351,7 +422,7 @@
           <span class="dash-card-value" id="dash-facts-val">—</span>
         </div>
       </div>
-      <div class="dash-card dash-card-clickable" id="dash-cluster" title="Cluster node status — click to open Cluster" role="button" tabindex="0" data-action="showMainPanel" data-arg="cluster">
+      <div class="dash-card dash-card-clickable" id="dash-cluster" title="Cluster node status — click to open the Dashboard" role="button" tabindex="0" data-action="showMainPanel" data-arg="cluster">
         <span class="dash-card-icon">⬡</span>
         <div class="dash-card-body">
           <span class="dash-card-label" data-i18n="nav.cluster">Cluster</span>
@@ -1044,7 +1115,16 @@
         <div id="research-mission-panel" data-panel="research">
           <div class="option-card" style="margin-bottom:12px;padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(0,0,0,0.08)">
             <div class="panel-title" style="margin-bottom:6px">Autonomous investigation (tier-0, read-only)</div>
-            <p class="rta-muted" style="margin:0 0 8px;font-size:0.65rem">POST <code>/autonomous/run</code> — investigate/analyze only (no writes, no shell). Requires <code>autonomous_mode</code>. Progress streams to <code>/agent/tasks/&lt;id&gt;</code> when a task id is generated.</p>
+            <p class="rta-muted" style="margin:0 0 8px;font-size:0.65rem">POST <code>/autonomous/run</code> — investigate/analyze only (no writes, no shell). Progress streams to <code>/agent/tasks/&lt;id&gt;</code> when a task id is generated.</p>
+            <!-- The copy here used to read "Requires autonomous_mode" — the name of a config
+                 variable, which tells the user neither what is wrong nor what to do about it. All
+                 five buttons below 403 with `autonomous_mode_disabled`, and the truth is worse than
+                 a missing switch: the key is gated at maturity rank 5, AND no setting, wizard or
+                 theme in the app can write it, so clearing rank 5 would not switch it on either.
+                 That sentence is generated by install.feature_status (not written here) so it stays
+                 true if the gate ever moves — the day the key gets a writer, this note changes by
+                 itself. Rendered from /setup/gate-status by components/nav-groups.js. -->
+            <div class="nav-gate-reason" data-gate-note="autonomous_mode" style="margin:0 0 8px">Checking whether autonomous execution is available…</div>
             <input type="text" id="autonomous-goal" placeholder="Goal (required)" style="width:100%;box-sizing:border-box;padding:6px;margin-bottom:8px">
             <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;font-size:0.68rem;align-items:center">
               <label><input type="checkbox" id="autonomous-confirm"> confirm_autonomous</label>

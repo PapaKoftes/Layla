@@ -297,6 +297,117 @@ header .title { color: var(--text); font-weight: 700; }
 .sidebar-nav-btn:hover { background: var(--surface-2); color: var(--text); }
 .sidebar-nav-icon { color: var(--text-faint); }
 
+/* ── Grouped feature nav (BL-390) ─────────────────────────────────────────────
+   Labelled, collapsible homes for the panels that used to be palette-only. The
+   group summary is the point: the category names are readable without opening
+   anything, which is what a single generic "All features" button would not give.
+   Layout matches .sidebar-nav so the two navs read as one column. */
+.sidebar-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px 8px;
+}
+/* ── The four headings must survive a 1366x768 laptop ────────────────────────
+   MEASURED, on this page, at innerHeight 768: sidebar scrollHeight 872 vs
+   clientHeight 768 — 104px of overflow, with only "Work" above the fold and the
+   other three headings (18 of the 22 entries, Set up / reconfigure and Sync
+   among them) below it. Removing #sidebar-groups took 872 -> 768 exactly, so
+   this nav is what introduced the overflow and this nav owns the fix.
+
+   Nothing was ever LOST — the sidebar is overflow-y:auto — but "browsable
+   without a click" is the entire claim of this surface, and a heading you have
+   to scroll to find is not browsable. At 1280x900 all four already fit.
+
+   THE FIX IS WHICH SECTION YIELDS, not shaving pixels off the type. The sidebar
+   is a flex column whose sections could not shrink (min-height defaults to auto,
+   i.e. content height), so the last one in source order simply overflowed the
+   parent — and the last one is this nav. The aspect list is a variable-length
+   LIST that scrolls happily; the primary nav and these groups are fixed
+   WAYFINDING. So the list absorbs the shortfall and the wayfinding keeps its
+   natural height. Above ~870px there is no shortfall and this changes nothing.
+   Shrinking the group rows instead would have bought ~24px of the 104 needed and
+   cost every row its touch target.
+
+   ONLY the aspect list is named here. #chat-rail looks like the other obvious
+   candidate and was in an earlier draft, but layla.css gives it `flex: 1 0 auto`
+   — flex-shrink 0 — so it never yields and `overflow-y:auto` on it could never
+   fire. Measured inert at 600px height, and removed rather than left in looking
+   load-bearing. (`.chat-rail-list` already carries min-height:0 in layla.css.)
+   Changing chat-rail's shrink is a pre-existing layout decision, not this fix's
+   business. */
+/* .sidebar-nav is a CLASS; #sidebar-groups is an ID. Written as `#sidebar-nav` this
+   rule silently matched nothing — the measurement still passed, because a flex item
+   with min-height:auto cannot shrink below its content anyway, which is exactly how
+   a dead selector survives a green check. Pin both explicitly. */
+.sidebar > .sidebar-nav,
+.sidebar > #sidebar-groups { flex: 0 0 auto; }
+/* min-height is a FLOOR, not 0: allowed to collapse entirely this measured h=0 at a
+   600px-tall viewport — a zero-height scroll container, which is worse than an honest
+   overflow. The floor is a deliberate trade, and it is not free: measured at 1366x600,
+   two of the four headings go back below the fold (85px of overflow) where a collapsing
+   list would have kept all four. 600px is far below the target and the sidebar scrolls
+   there, so the aspect list keeps a usable size instead. Both required resolutions were
+   measured with this floor in place: 1366x768 -> 0px overflow, all four headings visible
+   (the list yields 267px -> 163px); 1280x900 -> 0px overflow, list back at its natural
+   267px, i.e. no effect where there is no shortfall. */
+.sidebar > #sidebar-voices { min-height: 5rem; overflow-y: auto; }
+
+.sidebar-group > summary {
+  cursor: pointer;
+  padding: 6px 4px;
+  list-style: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sidebar-group > summary::-webkit-details-marker { display: none; }
+.sidebar-group > summary::before {
+  content: '▸';
+  color: var(--text-faint);
+  font-size: 0.6rem;
+  transition: transform var(--dur-fast);
+}
+.sidebar-group[open] > summary::before { transform: rotate(90deg); }
+.sidebar-group > summary:hover { color: var(--text-dim); }
+.sidebar-group .sidebar-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px 6px 16px;
+  cursor: pointer;
+}
+/* A locked entry stays legible and clickable — dimming it to unreadable would hide
+   the very explanation this slice exists to show. */
+.sidebar-nav-btn[data-gate-state='locked'] .sidebar-nav-icon,
+.sidebar-nav-btn[data-gate-state='unknown'] .sidebar-nav-icon { opacity: 0.55; }
+/* Legibility: these two ARE the message this whole surface exists to deliver, so they are the
+   last things that should be shrunk to fit. The badge was 0.58rem (9.28px) and the reason line
+   0.62rem (9.92px) — both under 10px, i.e. smaller than anything else a user is expected to
+   READ rather than glance at. Raised to 10.4px / 12.8px. */
+.nav-gate-badge {
+  margin-left: auto;
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+.nav-gate-reason {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-dim);
+  padding: 4px 8px 8px 16px;
+  border-left: 2px solid var(--border-2, var(--border));
+  margin: 0 0 4px 8px;
+}
+
 /* Maturity card — present but quiet (growth is a sidebar card, not a headline) */
 .maturity-card {
   background: var(--surface-2);
