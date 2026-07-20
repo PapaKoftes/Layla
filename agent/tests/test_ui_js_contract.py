@@ -258,3 +258,63 @@ def test_setup_state_unavailable_features_binding():
     js = _read("components/setup-profiles.js")
     assert "unavailable_features" in js
     assert "enabled_features" in js
+
+
+# ── A2/A3: controls that were wired to nothing ──────────────────────────────────
+
+def test_every_inline_handler_pairing_renders_is_exported_to_window():
+    """A DEAD CONTROL CLASS, pinned generically.
+
+    pairing.js renders `onchange="toggleDevicePermission(...)"` into the paired-device card.
+    That name is resolved off `window` at click time, and core/compat.js — which exports the two
+    BUTTONS on the same card (unpairDevice, checkPeerHealth) — never exported this one. So the
+    permission checkbox threw ReferenceError and did nothing at all, including for
+    `remote_tools`, which grants remote tool execution. Driven in a real browser: the box
+    ticked, no request left the page, the stored permissions never changed.
+
+    This scans the generated markup for the handlers it names rather than asserting on the one
+    that broke, so the next control added to that card is covered the day it is written.
+    """
+    js = _read("components/pairing.js")
+    compat = _read("core/compat.js")
+
+    named = set(re.findall(r'\bon(?:change|click)="([a-zA-Z_$][\w$]*)\(', js))
+    assert "toggleDevicePermission" in named, \
+        "the permission checkbox no longer names its handler inline — update this guard"
+    for fn in sorted(named):
+        assert f"window.{fn} = {fn}" in compat, (
+            f"pairing.js renders onclick/onchange=\"{fn}(...)\" but core/compat.js never assigns "
+            f"window.{fn} — that control is dead: clicking it throws ReferenceError silently"
+        )
+
+
+def test_the_permission_toggle_reads_the_response_it_gets():
+    """A2's client half. `await fetch(...)` followed by an unconditional success toast is the
+    whole bug: fetch only rejects on a transport failure, so a 404 ("Device not paired") landed
+    in the success path and the user was told they had granted remote tool execution."""
+    js = _read("components/pairing.js")
+    fn = js[js.index("export async function toggleDevicePermission"):]
+    fn = fn[:fn.index("// ── Unpair")]
+
+    assert "r.ok" in fn, "the permission toggle must check the HTTP status"
+    assert "d.ok" in fn, "the permission toggle must check the body's ok field"
+    assert "d.detail" in fn, "FastAPI errors arrive as `detail` — a 404's reason must be shown"
+    assert "d.permissions" in fn, "the toast must reflect the STORED permissions, not the request"
+    assert not re.search(r"await fetch\([^)]*\);\s*\n\s*showToast", fn), \
+        "success is being toasted without reading the response"
+
+
+def test_the_cluster_toggle_posts_to_the_surface_that_owns_the_flag():
+    """A3. cluster_enabled is not in EDITABLE_SCHEMA, so POST /settings drops it and answers
+    {"ok": false, "rejected": ["cluster_enabled"]} — and the panel's `if (d.ok)` had no else,
+    making the switch a silent no-op. /settings/themes is the owner; this pins the choice so the
+    dead path cannot quietly come back."""
+    js = _read("components/cluster.js")
+    fn = js[js.index("export function toggleClusterEnabled"):]
+
+    assert "'/settings/themes'" in fn, "the cluster toggle must go through the owning surface"
+    assert "cluster_enabled: newState" not in fn, \
+        "cluster_enabled posted to POST /settings is rejected — that path was the dead toggle"
+    assert "key: 'clustering'" in fn
+    assert "showToast" in fn, "a refused or failed toggle must say so"
+    assert "d.enabled" in fn, "the switch must render the EFFECTIVE state, not the request"

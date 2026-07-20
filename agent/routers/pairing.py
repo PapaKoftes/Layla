@@ -411,27 +411,65 @@ def refresh_peers():
         return {"ok": False, "peer_count": 0, "peers": [], "error": str(e)}
 
 
+#: The permissions a paired device can be granted. Anything else is refused BY NAME — see
+#: update_permissions for why silently dropping them was a security-shaped lie.
+VALID_PERMISSION_KEYS: frozenset[str] = frozenset({
+    "read_learnings",     # Can read this device's learnings
+    "write_learnings",    # Can write learnings to this device
+    "inference_offload",  # Can send inference requests to this device
+    "sync_knowledge",     # Can sync knowledge base entries
+    "remote_tools",       # Can execute tools remotely on this device
+})
+
+
 @router.patch("/{instance_id}/permissions")
 def update_permissions(instance_id: str, permissions: dict[str, bool]):
-    """
-    Update permissions for a paired device.
+    """Update permissions for a paired device, and REPORT WHAT WAS REFUSED.
 
-    Available permission keys:
-      read_learnings    — Can read this device's learnings
-      write_learnings   — Can write learnings to this device
-      inference_offload — Can send inference requests to this device
-      sync_knowledge    — Can sync knowledge base entries
-      remote_tools      — Can execute tools remotely on this device
+    A2. This loop dropped every key outside `valid_keys` on the floor and then answered
+    ``{"ok": True, "permissions": {...}}`` regardless. Driven against a live instance:
+
+        PATCH /pairing/dev1/permissions {"remote_toolz": true, "execute_anything": true}
+          -> 200 {"ok": true, "permissions": {"read_learnings": true}}
+
+    Neither key was written and neither was mentioned. `remote_tools` is documented right here
+    as "can execute tools remotely on this device", so the failure mode is not cosmetic: a
+    typo, an older client, or a renamed key produces a confident success for a REMOTE EXECUTION
+    grant that does not exist — and the operator has no way to tell that from one that does.
+
+    `applied` and `rejected` are the answer; `ok` is true only when everything asked for was
+    granted, so a caller that checks a single field cannot be misled by a partial write.
     """
     devices = _load_paired_devices()
     if instance_id not in devices:
         raise HTTPException(status_code=404, detail="Device not paired")
 
-    valid_keys = {"read_learnings", "write_learnings", "inference_offload",
-                  "sync_knowledge", "remote_tools"}
+    applied: list[str] = []
+    rejected: list[str] = []
     for k, v in permissions.items():
-        if k in valid_keys:
+        if k in VALID_PERMISSION_KEYS:
             devices[instance_id].setdefault("permissions", {})[k] = bool(v)
+            applied.append(k)
+        else:
+            rejected.append(k)
 
     _save_paired_devices(devices)
-    return {"ok": True, "permissions": devices[instance_id].get("permissions", {})}
+    # Read the stored permissions back out of the device record rather than echoing the
+    # request — the same read-back principle the settings surfaces use, and the reason a
+    # rejected key cannot appear in this map.
+    stored = devices[instance_id].get("permissions", {})
+    out: dict[str, Any] = {
+        "ok": not rejected,
+        "instance_id": instance_id,
+        "applied": sorted(applied),
+        "rejected": sorted(rejected),
+        "permissions": stored,
+    }
+    if rejected:
+        out["error"] = (
+            "not valid permissions and were NOT granted: " + ", ".join(sorted(rejected))
+            + ". Valid permissions are: " + ", ".join(sorted(VALID_PERMISSION_KEYS)) + "."
+        )
+        logger.warning("pairing: refused unknown permission key(s) %s for %s",
+                       sorted(rejected), instance_id)
+    return out

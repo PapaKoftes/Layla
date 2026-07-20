@@ -58,7 +58,7 @@ import { refreshClusterStatus } from '../components/cluster.js';
 import { refreshGrowthDashboard } from '../components/growth.js';
 
 import {
-  initiatePairing, closePinDialog, unpairDevice, checkPeerHealth,
+  initiatePairing, closePinDialog, unpairDevice, checkPeerHealth, toggleDevicePermission,
 } from '../components/pairing.js';
 
 import {
@@ -424,6 +424,13 @@ window.initiatePairing = initiatePairing;
 window.closePinDialog = closePinDialog;
 window.unpairDevice = unpairDevice;
 window.checkPeerHealth = checkPeerHealth;
+// A2. The paired-device card renders onchange="toggleDevicePermission(...)" and this export was
+// missing, so every permission checkbox on that card threw ReferenceError and did NOTHING —
+// including `remote_tools`, which grants remote tool execution. Driven in a real browser: the
+// box ticked, no request was sent, and the server's stored permissions never changed. The two
+// buttons on the same card (Unpair, Ping) were exported and worked, which is what kept the gap
+// invisible. Any function this module names in generated markup has to be listed here.
+window.toggleDevicePermission = toggleDevicePermission;
 
 // ── setup.js ── (A: app.js, wizard.js + B: dynamic onclick)
 window.checkSetupStatus = checkSetupStatus;
