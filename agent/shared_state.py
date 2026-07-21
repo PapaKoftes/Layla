@@ -132,7 +132,20 @@ def append_conv_history(conversation_id: str, role: str, content: str) -> None:
                     h0 = _conv_histories.get(cid)
                     snapshot = list(h0) if h0 else []
                     snap_len = len(snapshot)
-                compacted = maybe_auto_compact(snapshot, n_ctx=n_ctx, cfg=cfg)
+                    _maxlen = int(getattr(h0, "maxlen", 20) or 20) if h0 is not None else 20
+                # COMPACT ON OCCUPANCY, NOT TOKEN PRESSURE — this deque is a fixed-length ring, and a
+                # ring cannot build pressure: at maxlen it discards from the left. Measuring it against
+                # a share of the model window (8192 * 0.6 = 4915 tokens) was a category error. Live
+                # message sizes plateau the ring at ~1428 tokens, 29% of that threshold, and crossing
+                # it would need all 20 messages to average 246 tokens while assistant replies are
+                # capped at completion_max_tokens=320 and user messages average 15. So the gate was
+                # unreachable by construction, conversation_summaries sat at 0 rows for the life of the
+                # database, and every turn older than 20 was DELETED by rolloff rather than summarized.
+                #
+                # Firing a few slots early is what makes it a save rather than a wake: once the ring is
+                # full, the next append destroys the oldest message before anything can read it.
+                _force = snap_len >= max(4, _maxlen - 4)
+                compacted = maybe_auto_compact(snapshot, n_ctx=n_ctx, cfg=cfg, force=_force)
                 with _conv_hist_lock:
                     h1 = _conv_histories.get(cid)
                     if h1 is None:
