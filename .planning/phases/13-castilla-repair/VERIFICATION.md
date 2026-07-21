@@ -2,6 +2,50 @@
 
 **Status:** ~ 1 of 6 criteria done (S0) · **Date:** 2026-07-16 · **Backlog:** W14/W15/W16
 
+> ## S-P13 update — 2026-07-21 (performance + memory + safety session)
+>
+> A 14-commit session landed against this phase without knowing it was the active phase; the work was
+> rediscovered independently and lands on criteria 4, 2 and 6. Gate **GREEN 3944 passed / 0 failed**.
+>
+> **CRITERION 5 IS REWRITTEN BY OPERATOR DECISION.** It read "dead subsystems deleted, not disabled"
+> and named clustering and SRS. The operator has since ruled BOTH are to be **wired, not deleted** —
+> clustering because it is the potato→gaming-PC compute-offload pillar ("why should we delete this
+> instead of making it work?"), SRS by explicit answer on 2026-07-21. Criterion 5 now reads: *no
+> subsystem is advertised-but-dead — the advertised ones are wired.* The old wording is superseded,
+> not merely unmet, and must not be actioned as written.
+>
+> **Landed against criterion 4 (security):** `powershell` blocked / `powershell.exe` ALLOWED is FIXED
+> — the stale duplicate blocklist in `layla/tools/impl/system.py` was deleted rather than patched (the
+> correct normaliser already existed in `services/sandbox/shell_runner.py`; two copies of one security
+> rule was the actual defect) and the fallback now fails closed. Measured 5 bypasses + 4 false blocks
+> before. `clipboard_read`/`screenshot_desktop` also gated. **Still open on 4:** the 3 network-jail
+> bypasses and `check_output` running after the token loop (streaming unguarded).
+>
+> **Landed against criterion 2 (nothing Layla claims is false):** the memory graph was feeding planted
+> test data into the prompt — measured, `"what should I do about the failing test"` produced
+> `Knowledge graph associations: Adversarial verifier test fact: the sky is teal on Tuesdays.` A
+> recency fallback injected the 5 newest nodes whenever nothing matched the goal. Fixed. **Still open
+> on 2:** the capability manifest reaches the model for "list your capabilities" and "what tools do you
+> have" but NOT for "what can you actually do" — a trigger gap, not a wiring break (REPO_ROOT is now
+> correct). And the graph DATA is unpurged: ~6 of 31 nodes are real.
+>
+> **Operator config corrected (2026-07-21, with explicit permission).** Three stored values were
+> disabling working features, none of them auto_tune-owned:
+> `convo_turns 0 → 6` · `use_chroma false → true` · `sandbox_root ~/layla-workspace → C:/Work/Programming/Layla`.
+> The sandbox root had been an EMPTY directory, which is why `read_file` was 0/13, `file_info` 0/7 and
+> `list_dir` 2/26 while every non-disk tool was ~100%. Verified after the change: `read_file` 8000
+> chars, `list_dir` 95 entries, `file_info` ok. **The engineering-agent half of the product had never
+> had anything to work on.** Backup at `agent/runtime_config.json.bak-p13`.
+>
+> **Regressions introduced and closed in-session:** making compaction actually fire (P13-B2) turned two
+> dormant audit findings live — round-6 #14 (swap guard compared LENGTH, blind at deque maxlen, drops
+> the newest turn) and #12 HIGH (summariser held a non-reentrant lock across a call that re-enters it,
+> freezing all local inference under `llm_serialize_per_workspace`). Both fixed in P13-B2b.
+>
+> **Scope decision:** the operator has set "finished" = these 6 criteria only. The 9 outstanding audit
+> HIGHs and the remote pillar are explicitly OUT of this phase (and at least one round-3 HIGH is
+> already stale — `MEMORY_SECTION_ORDER` now contains all three blocks it was reported as missing).
+
 ## Success criteria → evidence
 
 | # | Criterion | Result | Evidence |
