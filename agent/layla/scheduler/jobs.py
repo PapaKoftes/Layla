@@ -9,9 +9,8 @@ import logging
 import time
 from pathlib import Path
 
-from services.infrastructure.data_paths import layla_data_file as _layla_data_file
-
 from layla.scheduler.activity import get_last_activity_ts, is_game_running
+from services.infrastructure.data_paths import layla_data_file as _layla_data_file
 
 logger = logging.getLogger("layla")
 

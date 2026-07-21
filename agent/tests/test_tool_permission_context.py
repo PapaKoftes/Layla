@@ -46,9 +46,10 @@ def test_granted_permissions_allow_destructive_tools():
 
 def test_executor_fails_closed_on_denied_destructive_tool():
     # Register a fake write tool; with allow_write off, run_tool must refuse before executing it.
+    from unittest.mock import patch
+
     import core.executor as ex
     import layla.tools.registry as reg
-    from unittest.mock import patch
     called = {"n": 0}
 
     def _fake_write(**kw):
@@ -66,9 +67,10 @@ def test_executor_fails_closed_on_denied_destructive_tool():
 
 
 def test_executor_allows_when_granted():
+    from unittest.mock import patch
+
     import core.executor as ex
     import layla.tools.registry as reg
-    from unittest.mock import patch
     called = {"n": 0}
 
     def _fake_write(**kw):

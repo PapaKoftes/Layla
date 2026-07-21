@@ -146,8 +146,8 @@ class TestItem3StreamingIsGuarded:
 
     def test_the_guard_fails_open_rather_than_dropping_the_reply(self):
         """Availability: a throwing scanner must not silently blank the default UI path."""
-        from services.agent.response_builder import StreamOutputGuard
         import services.safety.content_guard as cg
+        from services.agent.response_builder import StreamOutputGuard
         orig = cg.check_output
         cg.check_output = lambda text, cfg: (_ for _ in ()).throw(RuntimeError("scanner down"))
         try:

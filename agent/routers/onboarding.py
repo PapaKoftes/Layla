@@ -66,7 +66,7 @@ async def onboarding_stage():
         ob = get_onboarding()
         info = ob.get_current_stage_info()
         return {"ok": True, **info}
-    except Exception as e:
+    except Exception:
         logger.exception("onboarding handler error")
         raise HTTPException(status_code=500, detail="internal error")
 
@@ -84,7 +84,7 @@ async def onboarding_start():
             "state": state.to_dict(),
             "stage_info": stage_info,
         }
-    except Exception as e:
+    except Exception:
         logger.exception("onboarding handler error")
         raise HTTPException(status_code=500, detail="internal error")
 
@@ -97,7 +97,7 @@ async def onboarding_response(body: StageResponse):
         ob = get_onboarding()
         result = ob.submit_response(body.stage, body.data)
         return result
-    except Exception as e:
+    except Exception:
         logger.exception("onboarding handler error")
         raise HTTPException(status_code=500, detail="internal error")
 
@@ -110,7 +110,7 @@ async def onboarding_advance():
         ob = get_onboarding()
         result = ob.advance()
         return result
-    except Exception as e:
+    except Exception:
         logger.exception("onboarding handler error")
         raise HTTPException(status_code=500, detail="internal error")
 
@@ -123,7 +123,7 @@ async def onboarding_complete():
         ob = get_onboarding()
         result = ob.complete()
         return result
-    except Exception as e:
+    except Exception:
         logger.exception("onboarding handler error")
         raise HTTPException(status_code=500, detail="internal error")
 
@@ -136,6 +136,6 @@ async def onboarding_skip():
         ob = get_onboarding()
         result = ob.skip()
         return result
-    except Exception as e:
+    except Exception:
         logger.exception("onboarding handler error")
         raise HTTPException(status_code=500, detail="internal error")

@@ -835,7 +835,7 @@ async def agent(req: AgentRequest, request: Request):
                             yield f"data: {json.dumps({'ux_state': 'loading_model'})}\n\n"
                     except Exception:
                         pass
-                    from services.agent.response_builder import stream_safe_prefix, StreamOutputGuard
+                    from services.agent.response_builder import StreamOutputGuard, stream_safe_prefix
                     tok_q: queue.Queue = queue.Queue()
                     _emitted = 0
                     _fast_delib_meta = None
@@ -1181,8 +1181,8 @@ async def agent(req: AgentRequest, request: Request):
                     # the partial answer on a client abort (see the hoist above).
                     del full[:]
                     _emitted = 0  # chars already streamed marker-safe (see stream_safe_prefix)
-                    from services.agent.response_builder import stream_safe_prefix as _ssp
                     from services.agent.response_builder import StreamOutputGuard
+                    from services.agent.response_builder import stream_safe_prefix as _ssp
                     # BL-297: LIVE content-safety gate on the default streaming path (cfg lazy-loaded).
                     _out_guard = StreamOutputGuard()
                     tok_q: queue.Queue = queue.Queue()

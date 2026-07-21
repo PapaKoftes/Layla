@@ -46,6 +46,7 @@ def test_llm_generation_lock_is_reentrant():
     # audit round-6 #12: in per-workspace mode this lock is held across a NESTED run_completion on the
     # same thread; a non-reentrant Lock self-deadlocked, wedging all local inference. It must be an RLock.
     import threading
+
     from services.llm.llm_gateway import llm_generation_lock
 
     assert isinstance(llm_generation_lock, type(threading.RLock()))

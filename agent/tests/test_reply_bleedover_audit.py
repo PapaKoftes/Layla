@@ -551,7 +551,8 @@ def test_label_strip_preserves_answer_opening_emphasis():
 # ── 14. Round-10: streaming filter strips invented ALLCAPS scaffold tags (parity w/ done-frame) ────
 
 def test_stream_strips_invented_allcaps_marker():
-    from services.agent.response_builder import stream_safe_prefix as P, strip_junk_from_reply as S
+    from services.agent.response_builder import stream_safe_prefix as P
+    from services.agent.response_builder import strip_junk_from_reply as S
 
     def _live(tokens):
         buf, em, out = "", 0, ""
@@ -642,7 +643,8 @@ def test_clean_reply_text_matches_interactive_floor():
 # ── 20. Round-12: stream filter truncates from [TOOL (no raw tool body flashes live) ──────────────
 
 def test_stream_holds_tool_body_matching_done_frame():
-    from services.agent.response_builder import stream_safe_prefix as P, strip_junk_from_reply as S
+    from services.agent.response_builder import stream_safe_prefix as P
+    from services.agent.response_builder import strip_junk_from_reply as S
 
     def _live(tokens):
         buf, em, out = "", 0, ""
@@ -768,9 +770,11 @@ def test_active_aspect_gate_preserves_nonactive_definition():
 # ── 26. Round-16: Objective: over-truncation (#1) + markdown link with aspect-name word (#2/#3) ────
 
 def test_objective_conservative_and_markdown_links_preserved():
-    from services.agent.response_builder import strip_junk_from_reply as S, truncate_at_next_user_turn as T
+    from services.agent.response_builder import strip_junk_from_reply as S
+    from services.agent.response_builder import truncate_at_next_user_turn as T
     _SIG5 = "⚔"
-    P = lambda x: T(S(x))
+    def P(x):
+        return T(S(x))
     # #1 — a legit OKR/charter/inline "Objective:" is preserved; only a scaffold echo (Objective: +
     # a sibling marker) is cut.
     assert P("Here is your OKR.\nObjective: grow revenue.\nKey results: 1) launch 2) retain") == "Here is your OKR.\nObjective: grow revenue.\nKey results: 1) launch 2) retain"
@@ -803,7 +807,8 @@ def test_echoed_titlecase_scaffold_headers_are_stripped():
     # user …' with stored PII, '## Relationship codex (operator notes)', '## Output discipline'). A weak
     # model restates the block before its answer; the case-sensitive ALL-CAPS cut missed them, leaking
     # PII/operator notes into the bubble + persisted history. Phrase-specific removal keeps the answer.
-    from services.agent.response_builder import strip_junk_from_reply as S, truncate_at_next_user_turn as T
+    from services.agent.response_builder import strip_junk_from_reply as S
+    from services.agent.response_builder import truncate_at_next_user_turn as T
     av = {"layla", "morrigan"}
 
     def run(x):
@@ -852,7 +857,8 @@ def test_voice_text_for_speech_strips_inline_html():
 def test_clean_reply_text_threads_active_aspect_gate():
     # R18 #13: clean_reply_text (resume / background / continuous finalizers) had no active_names, so it
     # strip-alled and deleted a bare NON-active 'Echo:' definition that the interactive /agent path keeps.
-    from services.agent.response_builder import clean_reply_text as C, active_name_set as A
+    from services.agent.response_builder import active_name_set as A
+    from services.agent.response_builder import clean_reply_text as C
     # Morrigan active → a non-active 'Echo: <definition>' is preserved.
     assert C("Echo: a sound reflected or repeated.", active_aspect="morrigan") == "Echo: a sound reflected or repeated."
     # The active aspect's own bare self-label is still stripped.
@@ -880,7 +886,8 @@ def test_name_then_sigil_self_label_is_stripped():
     # R18 #5: a name-then-sigil self-label with only a space before the prose ("Morrigan ⚔ <answer>",
     # no colon/dash/newline) slipped every terminator pattern and leaked. A sigil never appears in
     # legit prose, so it strips; a bare "Morrigan the goddess" head (no sigil) stays untouched.
-    from services.agent.response_builder import strip_junk_from_reply as S, truncate_at_next_user_turn as T
+    from services.agent.response_builder import strip_junk_from_reply as S
+    from services.agent.response_builder import truncate_at_next_user_turn as T
     av = {"layla", "morrigan"}
     assert T(S("Morrigan ⚔ The answer is 42 for you.", active_names=av)) == "The answer is 42 for you."
     assert T(S("Morrigan the phantom queen guides you.", active_names=av)) == "Morrigan the phantom queen guides you."
@@ -891,7 +898,8 @@ def test_name_then_sigil_self_label_is_stripped():
 def test_ai_bot_leading_role_labels_are_stripped():
     # R18 #6: a leading "AI:"/"Bot:" role label was in the truncate vocab but a position-0 cut is
     # never-nuked, and the leading-label strip only knew "assistant" — so it leaked. Now stripped.
-    from services.agent.response_builder import strip_junk_from_reply as S, truncate_at_next_user_turn as T
+    from services.agent.response_builder import strip_junk_from_reply as S
+    from services.agent.response_builder import truncate_at_next_user_turn as T
     av = {"layla", "morrigan"}
     assert T(S("AI: The answer is 42 today.", active_names=av)) == "The answer is 42 today."
     assert T(S("Bot: Here is the fix.", active_names=av)) == "Here is the fix."
@@ -902,7 +910,8 @@ def test_ai_bot_leading_role_labels_are_stripped():
 def test_leading_human_single_line_keeps_same_line_answer():
     # R18 #7: a leading "Human: <answer>" on a SINGLE line (no newline, no second label) deleted the
     # whole line → empty reply → standby error. Now only the label is stripped; the answer survives.
-    from services.agent.response_builder import strip_junk_from_reply as S, truncate_at_next_user_turn as T
+    from services.agent.response_builder import strip_junk_from_reply as S
+    from services.agent.response_builder import truncate_at_next_user_turn as T
     av = {"layla", "morrigan"}
     assert T(S("Human: The answer is 42 today.", active_names=av)) == "The answer is 42 today."
     # A genuine fake multi-line turn is still cut to the real reply.
@@ -937,7 +946,8 @@ def test_unclosed_code_fence_from_truncation_is_balanced():
 def test_fabricated_assistant_own_turn_is_truncated():
     # R17 #1: the weak model finishes and then role-plays its OWN next turn as "Assistant:".
     # truncate only cut User/You/Human before, so the fake assistant turn leaked.
-    from services.agent.response_builder import strip_junk_from_reply, truncate_at_next_user_turn as T
+    from services.agent.response_builder import strip_junk_from_reply
+    from services.agent.response_builder import truncate_at_next_user_turn as T
     assert T("The capital is Paris.\nAssistant: Anything else?\nUser: no thanks") == "The capital is Paris."
     # Trailing-only fabricated assistant turn (no following User:) also cut.
     assert T("The capital is Paris.\nAssistant: Glad to help!") == "The capital is Paris."
