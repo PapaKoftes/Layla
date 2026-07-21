@@ -194,6 +194,33 @@ def extract_aspect_domain_keywords(aspect: dict | None) -> list[str]:
     return keywords[:12]
 
 
+def _usable_association(label: str | None) -> bool:
+    """Is this graph node a CLAIM worth showing the model, or scaffolding harvested as an entity?
+
+    The extractor that populates the memory graph mistakes prompt structure for knowledge. The
+    operator's live graph holds 31 nodes, of which roughly six are real; the rest are section markers
+    ("TITLE", "REPLY", "EARNED", "CONCLUSION", "REFUSED", "ONLY", "NOT", "CORRECTED"), error shrapnel
+    ("ValueError"), security-test residue ("SSN", "PIN"), and transcript fragments.
+
+    Emitting those under a heading that says "Knowledge graph associations:" tells the model they are
+    established facts about the user. "Knowledge graph associations: CORRECTED" is not a fact, it is
+    a fragment of Layla's own prompt fed back to her.
+
+    The bar is deliberately crude and structural: an association must be a PHRASE (contains a space)
+    of reasonable length. A bare token carries no claim even when the token is a genuine entity —
+    "Knowledge graph associations: AI" informs nothing.
+
+    THIS DOES NOT AND CANNOT DETECT FALSE FACTS. "The user prefers dark mode and lives in Berlin" and
+    "Adversarial verifier test fact: the sky is teal on Tuesdays." are well-formed phrases and pass
+    this gate. Removing planted or stale claims is a data question, not a formatting one, and it
+    belongs to whoever owns the data.
+    """
+    s = (label or "").strip()
+    if len(s) < 8 or " " not in s:
+        return False
+    return True
+
+
 def build_expertise_domain_block(aspect: dict | None) -> str:
     """Build a concise expertise domain block for system head injection."""
     if not aspect:
@@ -754,10 +781,23 @@ def build_system_head(
                 goal_words = set(w.lower() for w in goal.split() if len(w) > 3)
                 relevant = [
                     n["label"] for n in recent_nodes
-                    if any(w in (n.get("label") or "").lower() for w in goal_words)
+                    if _usable_association(n.get("label"))
+                    and any(w in (n.get("label") or "").lower() for w in goal_words)
                 ]
-                if not relevant:
-                    relevant = [n["label"] for n in recent_nodes[-5:] if n.get("label")]
+                # NO "RECENT" FALLBACK. This used to read:
+                #     if not relevant:
+                #         relevant = [n["label"] for n in recent_nodes[-5:] if n.get("label")]
+                # i.e. when nothing matched the goal it injected the five most RECENT nodes anyway,
+                # under a heading that asserts they are associations with the current request. They
+                # are not — nothing matched, that is what "not relevant" means.
+                #
+                # Measured on the operator's graph, that fallback fired on ordinary goals like
+                # "Refactor the auth module and explain the tradeoffs" and put this in the prompt:
+                #   Knowledge graph associations: CORRECTED; ValueError; n must be a non-negative
+                #   integer.; Adversarial verifier test fact: the sky is teal on Tuesdays.; The user
+                #   prefers dark mode and lives in Berlin
+                # An empty section costs nothing. A confidently-labelled irrelevant one costs
+                # accuracy, and in a memory product that is the whole value proposition.
                 if relevant:
                     graph_associations = "Knowledge graph associations: " + "; ".join(relevant[:8])
         except Exception as _e:
