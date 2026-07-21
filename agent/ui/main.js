@@ -402,6 +402,7 @@ function init() {
     saveSettings: settingsFull.saveSettings,
     applySettingsPreset: settingsFull.applySettingsPreset,
     saveAppearanceLite: settingsFull.saveAppearanceLite,
+    copyPhoneUrl: settingsFull.copyPhoneUrl,
     checkForUpdates: settingsFull.checkForUpdates,
     saveContentPolicySettings: settingsFull.saveContentPolicySettings,
     setDeliberationMode: settingsFull.setDeliberationMode,
