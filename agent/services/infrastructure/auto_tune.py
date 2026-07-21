@@ -219,11 +219,42 @@ def compute_optimization_profile(hw: dict | None = None, gpu_offload: bool | Non
         profile["n_gpu_layers"] = 0
         profile["flash_attn"] = False
 
-    # n_ctx/n_batch by the FINER tier: get_recommended_settings sizes context off RAM, but on a
-    # CPU box prefill speed is bound by cores — a 4-core box wants a SMALL context (fast prefill)
-    # even with 16GB RAM, while a GPU box wants a big one. system_head_budget_ratio × n_ctx is the
-    # system-prompt size, so this is the single biggest speed/quality lever.
-    _CTX = {"potato": 2048, "cpu": 2048, "cpu_plus": 4096, "gpu_low": 8192, "gpu_mid": 8192, "gpu_high": 16384}
+    # n_ctx/n_batch by the FINER tier. system_head_budget_ratio × n_ctx is the system-prompt size,
+    # so this is the single biggest speed/quality lever.
+    #
+    # potato/cpu WERE 2048, on the reasoning that a 4-core box wants a small context because
+    # prefill is bound by cores. That was correct WHILE every turn re-prefilled the whole prompt.
+    # P13-A1 removed the per-call KV reset, so the stable head is now prefilled once and reused,
+    # and the trade changed. MEASURED on a 4-core/15.7GB CPU-only box, same prompt, 3 samples per
+    # value in ALTERNATING order (a first pass ran 2048->4096->8192 in sequence and reported 8192
+    # as +136%; that was run-order drift landing entirely on the last cell — the same artifact that
+    # nearly cost the A1 decision):
+    #     n_ctx 2048  cold 10.78 / 14.69 / 13.22  mean 12.90s
+    #     n_ctx 8192  cold 14.67 / 14.94 / 13.99  mean 14.53s   -> +12.7%, ~1.6s, ONCE per session
+    # Warm turns are unaffected (0.37s -> 0.47s, inside noise). RSS +223 MB (KV 72MB -> 288MB).
+    #
+    # What the 1.6s buys, and why 4096 does not:
+    #   head window = max(1024, ratio × n_ctx). At 4096 that is max(1024, 901) = 1024 — the FLOOR
+    #   still wins, so 4096 delivers not one extra token of system prompt. Only >4096 moves it:
+    #   at 8192 the window is 1802 and the system_instructions budget goes ~512 -> ~1290.
+    #   _small_model is gated on `n_ctx <= 4096` (system_head_builder), and 4096 sits on the wrong
+    #   side of it — 8192 lifts it and restores 11 of the 20 memory sections, including the
+    #   "Matched skills" block the skill-pack engine needs.
+    # Also unblocks the Missions planner, which fails on this box needing 2299 tokens.
+    #
+    # ALL THREE CPU TIERS PLATEAU AT 8192, and that is the point rather than an oversight.
+    # The first attempt raised only potato and left cpu_plus at 4096, which made a STRONGER tier
+    # get a SMALLER window than a weaker one. test_pipeline_weight_scales_up_monotonically caught
+    # it (assert 8192 < 4096) — a real design incoherence, not a stale test.
+    # The measurement was taken on the WEAKEST CPU tier (4 physical cores), so if 8192 is
+    # affordable there it is affordable on 16 cores; and CPU-only inference is memory-bandwidth
+    # bound, so extra cores raise prefill throughput without changing the KV-cache cost. A plateau
+    # across CPU-class hardware is the physically honest shape. The ladder keeps climbing where the
+    # hardware actually changes class: gpu_high stays 16384.
+    # This also closes, as a direct consequence rather than a speculative extra, the defect where
+    # cpu_plus sat one token under the `n_ctx <= 4096` _small_model cutoff — the strongest non-GPU
+    # tier was getting the same stripped prompt as a 4-core laptop.
+    _CTX = {"potato": 8192, "cpu": 8192, "cpu_plus": 8192, "gpu_low": 8192, "gpu_mid": 8192, "gpu_high": 16384}
     _BATCH = {"potato": 512, "cpu": 512, "cpu_plus": 512, "gpu_low": 512, "gpu_mid": 1024, "gpu_high": 1024}
     profile["n_ctx"] = _CTX[tier]
     profile["n_batch"] = _BATCH[tier]
