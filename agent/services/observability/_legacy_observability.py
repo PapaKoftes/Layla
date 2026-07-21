@@ -9,7 +9,9 @@ NOTE (BL-010): "_legacy" here means the pre-split module layout, NOT dead code. 
 in active use (~7 call sites: planner, missions, learnings, run-setup). Do not delete —
 retained deliberately, not superseded.
 """
+import contextlib
 import logging
+import threading
 from typing import Any
 
 logger = logging.getLogger("layla")
@@ -120,6 +122,38 @@ def log_prompt_assembled(total_tokens: int = 0, sections: int = 0, truncated: in
     _log_event("prompt_assembled", total_tokens=total_tokens, sections=sections, truncated=truncated, **kw)
 
 
+_tool_source = threading.local()
+TOOL_SOURCE_AGENT = "agent_loop"
+
+
+@contextlib.contextmanager
+def tool_invocation_source(source: str):
+    """Mark who is invoking tools on this thread, so reliability stats know their own provenance.
+
+    tool_outcomes is written by a wrapper installed over EVERY entry in TOOLS
+    (layla/tools/registry.py), so it fires for any invoker: the agent loop, direct TOOLS[...] calls,
+    approvals, the ingestion pipeline, skill packs, and capability self-test sweeps. It recorded no
+    provenance at all — every row landed with context='' — so those populations were indistinguishable.
+
+    That was not harmless bookkeeping. rl_feedback.compute_tool_preferences builds the planner's
+    "prefer"/"avoid" hints from get_tool_reliability(), which aggregated the lot. On the operator's box
+    a single minute (2026-07-16T16:29) contributed 132 rows in which ~150 DISTINCT tools each ran
+    exactly once — a registry enumeration, not conversation — and the disk-touching tools all failed
+    against an empty sandbox_root. The planner therefore learned to AVOID read_file, file_info and
+    list_dir from a self-test artifact rather than from experience.
+    """
+    prev = getattr(_tool_source, "value", "")
+    _tool_source.value = source
+    try:
+        yield
+    finally:
+        _tool_source.value = prev
+
+
+def current_tool_source() -> str:
+    return getattr(_tool_source, "value", "") or ""
+
+
 def log_tool_result(tool: str, ok: bool, duration_ms: float = 0, **kw: Any) -> None:
     _log_event("tool_result", tool=tool, ok=ok, duration_ms=round(duration_ms, 2), **kw)
     if duration_ms > 0:
@@ -127,7 +161,10 @@ def log_tool_result(tool: str, ok: bool, duration_ms: float = 0, **kw: Any) -> N
     # Tool outcome learning: record for reliability
     try:
         from layla.memory.db import record_tool_outcome
-        context = (kw.get("context") or kw.get("goal_preview") or "")[:500]
+        # Explicit context wins; otherwise stamp the thread's invocation source so a row can be
+        # attributed later. Rows written outside any marked source stay unattributed by design —
+        # get_tool_reliability excludes them rather than guessing.
+        context = (kw.get("context") or kw.get("goal_preview") or current_tool_source() or "")[:500]
         quality = 1.0 if ok else 0.0
         record_tool_outcome(tool, ok, context=context, latency_ms=duration_ms, quality_score=quality)
     except Exception:

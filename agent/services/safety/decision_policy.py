@@ -155,7 +155,7 @@ def caps_from_tool_reliability(cfg: dict) -> PolicyCaps:
     try:
         from layla.memory.db import get_tool_reliability
 
-        stats = get_tool_reliability()
+        stats = get_tool_reliability(attributed_only=True)  # attributed: never learn from registry sweeps / self-tests
         bad = [
             n
             for n, s in stats.items()
