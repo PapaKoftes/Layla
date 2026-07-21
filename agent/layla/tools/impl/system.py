@@ -9,7 +9,13 @@ import tempfile
 from pathlib import Path
 
 from layla.tools.sandbox_core import (
-    _SHELL_BLOCKLIST,
+    # _SHELL_BLOCKLIST intentionally NOT imported: this module no longer enforces a blocklist of its
+    # own. P13-D deleted the weaker duplicate that lived here (it allowed cmd.exe and falsely blocked
+    # innocent names ending in a blocked token) in favour of failing closed, because two copies of one
+    # security rule drift and the weaker copy silently wins. shell_runner._cmd_blocked is the single
+    # owner. Re-adding this import is the first step back toward the bug.
+    # (Seven further names below are imported-but-unused and predate that change; left alone rather
+    # than swept, since they may serve as re-exports and that is not this criterion's scope.)
     _SHELL_INJECTION_WARN,
     _SHELL_NETWORK_DENYLIST,
     _agent_registry_dir,
