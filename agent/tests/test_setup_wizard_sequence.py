@@ -321,7 +321,6 @@ def test_apply_setup_does_not_overwrite_the_operators_request_with_the_effective
     pins the invariant rather than one owner's behaviour.
     """
     import runtime_safety as rs
-
     from install.setup_profiles import apply_setup
 
     request = {

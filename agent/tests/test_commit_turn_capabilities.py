@@ -86,6 +86,7 @@ def test_commit_turn_SEAM_actually_records_practice(monkeypatch, tmp_path):
     NOT for a phatic one. It spies on _record_practice_domain (the seam's target) rather than the DB, so it is
     fast and deterministic, and joins the daemon thread commit_turn spawns."""
     import threading
+
     import runtime_safety
     import services.agent.turn_commit as tc
 

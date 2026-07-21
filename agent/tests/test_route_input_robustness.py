@@ -1,7 +1,9 @@
 """Robustness: client-supplied JSON bodies with wrong-typed fields (a number where a string is expected,
 null where an int is expected, a top-level array) must NOT 500 the endpoint. These were confirmed 500s."""
-import inspect, sys
+import inspect
+import sys
 from pathlib import Path
+
 AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))

@@ -1,4 +1,5 @@
 import logging
+
 """
 Memory bundle export and import router.
 
@@ -261,7 +262,7 @@ async def import_bundle(file: UploadFile = File(...)):
 
     except zipfile.BadZipFile:
         raise HTTPException(status_code=400, detail="Invalid ZIP file")
-    except Exception as e:
+    except Exception:
         logger.exception("memory handler error")
         raise HTTPException(status_code=500, detail="internal error")
 

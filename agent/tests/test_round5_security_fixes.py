@@ -28,6 +28,7 @@ def test_bulk_file_tools_revalidate_each_file_against_sandbox():
     # #5/#6/#7: search_replace / rename_symbol / grep_code must re-check EACH rglob-matched file with
     # inside_sandbox (root-only check let an in-sandbox symlink be read/written through to outside).
     import inspect
+
     from layla.tools.impl import code, file_ops
     for fn in (file_ops.search_replace, code.rename_symbol):
         src = inspect.getsource(fn)
@@ -41,8 +42,10 @@ def test_search_replace_does_not_write_through_symlink(tmp_path):
     # Behavioral (Linux / privileged Windows): a symlink inside the sandbox pointing OUTSIDE must not be
     # written through. Skips where symlink creation isn't permitted.
     import os
-    import pytest
     from unittest.mock import patch
+
+    import pytest
+
     from layla.tools import sandbox_core
 
     sandbox = tmp_path / "sandbox"; sandbox.mkdir()
@@ -67,6 +70,7 @@ def test_executor_clamps_workspace_outside_config_sandbox_root(tmp_path):
     # clamped to config sandbox_root before it becomes the thread-local effective sandbox — else generic
     # write tools escape. A subdir of sandbox_root is fine.
     from unittest.mock import patch
+
     import core.executor as ex
     import layla.tools.registry as reg
 

@@ -105,6 +105,6 @@ def test_clean_title_strips_reference_and_bleed():
 
 
 def test_clean_title_caps_words_and_length():
-    from services.agent.title_synthesizer import _clean_title, _MAX_TITLE_WORDS, _MAX_TITLE_LEN
+    from services.agent.title_synthesizer import _MAX_TITLE_LEN, _MAX_TITLE_WORDS, _clean_title
     out = _clean_title("The Best Way to Reverse a String in Python Using Slicing and Loops for Beginners")
     assert len(out.split()) <= _MAX_TITLE_WORDS and len(out) <= _MAX_TITLE_LEN

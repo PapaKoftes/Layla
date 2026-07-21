@@ -239,7 +239,7 @@ async def cluster_task_status(task_id: str, request: Request):
         return TaskStatusResponse(**{k: v for k, v in d.items() if k in TaskStatusResponse.model_fields})
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="internal error")
 
 
@@ -253,7 +253,7 @@ async def cluster_task_cancel(task_id: str, request: Request):
         queue = get_task_queue()
         cancelled = queue.cancel(task_id)
         return {"ok": cancelled, "task_id": task_id}
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="internal error")
 
 
@@ -414,7 +414,7 @@ async def cluster_generate_pairing_token(request: Request):
             "expires_in_seconds": int(pt.expires_at - pt.created_at),
             "instructions": "Share this token with the drone. It expires in 10 minutes.",
         }
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="internal error")
 
 
