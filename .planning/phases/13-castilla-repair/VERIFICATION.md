@@ -57,12 +57,47 @@
 > | 5 | ~~Dead subsystems deleted~~ → **wired** | ⬜ | **Redefined by operator decision** (see above). Both clustering and SRS are to be WIRED. Neither started — these are two feature builds, not repairs, and are the bulk of the remaining phase. |
 > | 6 | Green gate + operator confirmation | 🟡 | Gate **GREEN 3995 / 0**. Operator confirmation still **PENDING** — unchanged; Claude cannot see the UI render. |
 >
-> **Handoff note for criterion 5.** This is the only criterion needing substantial new build, and it
-> should start fresh rather than be squeezed into a long session — half-wiring a subsystem is the
-> exact defect this phase exists to repair. Clustering: `DroneWorker` polls a permanently empty queue
-> every 5s while the UI ships an Enable toggle translated into 11 locales; the intent is
-> potato→gaming-PC inference offload. SRS: advertised in chat (`chat-render.js:385`), 0 rows ever, and
-> the live `german_mode` clone is buggier than the dead original.
+> ### FINAL — end of S-P13 (gate GREEN 4032 passed / 0 failed)
+>
+> | # | Criterion | State |
+> |---|---|---|
+> | 1 | Learning pipeline runs on a normal turn | ✅ |
+> | 2 | Nothing Layla claims is false | 🟡 **operator-blocked** |
+> | 3 | Every `getElementById` resolves | ✅ |
+> | 4 | Three HIGH security items | ✅ |
+> | 5 | Advertised subsystems are wired | ✅ |
+> | 6 | Green gate + operator confirmation | 🟡 **operator-blocked** |
+>
+> **1 — done.** All four learners now run at the turn boundary: outcome evaluation (P13-C1), then
+> strategy stats, skill acquisition and answer_quality (P13-C1b). All four had shared one
+> `status == "finished"` gate that a streamed turn never satisfies. answer_quality was doubly dead —
+> even past the gate it assessed a text reconstructed from `state["steps"]`, which is empty on a
+> streamed run.
+>
+> **3 — done.** `_KNOWN_DEAD` is EMPTY and a test asserts it stays empty. The last two entries were
+> BL-337 phone access; the ratchet forced the choice and the operator chose build. Verified in the
+> browser, not just by unit test: opening Settings populates the LAN URL and tip, no console errors.
+>
+> **4 — done and now machine-checked.** Writing the criterion as assertions found a live bypass three
+> security reports had missed (`sh`/`zsh`/`wsl` unblocked while `bash`/`pwsh` were), plus a bare
+> `sandbox/` in .gitignore silently claiming `agent/services/sandbox/`.
+>
+> **5 — done, both wired rather than deleted.** Clustering: every piece existed and nothing called
+> them; wiring the shipped `run_completion_with_cluster` as-is would ALSO have changed nothing, since
+> it only reaches for a peer when local *raises* and local here succeeds slowly. `try_cluster_offload_first`
+> prefers a peer that outranks this box. SRS: the tool's description promised SM-2 grading and the
+> implementation graded nothing, so every learning stayed `next_review_at = NULL` and therefore
+> permanently due — repetition with the spacing removed.
+>
+> **2 and 6 are blocked on the operator, not on engineering.**
+> * 2 — the memory graph DATA is unpurged: ~6 of 31 nodes are real, the rest prompt scaffolding and
+>   two planted false facts about the operator. Code cannot distinguish a well-formed false claim
+>   from a true one; deleting someone's memory is their call.
+> * 6 — the gate is green; confirmation requires a human to look at the UI.
+>
+> **Deliberately NOT claimed:** the 9 outstanding audit-round HIGHs (out of scope by operator
+> decision, and at least one is already stale) and the rest of the remote pillar (Discord, Syncthing,
+> multi-device). Phone access landed only because criterion 3 forced the choice.
 
 ## Success criteria → evidence
 
