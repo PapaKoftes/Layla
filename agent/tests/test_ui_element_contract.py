@@ -64,9 +64,14 @@ _KNOWN_DEAD = {
     # OFF the #onboarding-* namespace because onboarding.js builds its own #onboarding-overlay for a
     # different feature — one id, two systems, which is why Escape during the interview used to fire the
     # tour's dismiss. See test_first_run_tour.py.
-    "phone-access-url": "BL-337 phone access: loadPhoneAccess() has zero callers AND its elements do not "
-                        "exist. Decide: build the panel, or delete the function.",
-    "phone-access-status": "BL-337 — same dead feature.",
+    # phone-access-url / -status were here (BL-337). FIXED 2026-07-21 — the ratchet posed the choice
+    # ("build the panel, or delete the function") and the operator's answer was build: phone access is
+    # part of the remote pillar (continue work away from the desk), alongside LAN clustering and
+    # multi-device. loadPhoneAccess()/copyPhoneUrl() were already complete in settings-full.js and
+    # exported to nobody; the whole feature was two elements and a caller short of working. Markup now
+    # lives in index.html (.settings-phone), openSettings() calls loadPhoneAccess(), and copyPhoneUrl
+    # is bound in main.js's action table. See test_phone_access_panel.py.
+    # THE RATCHET IS NOW EMPTY — criterion 3 requires it stays that way.
 }
 
 

@@ -1390,6 +1390,17 @@
       <button type="button" class="settings-save" style="margin-top:6px" data-action="saveAppearanceLite">Save appearance &amp; lite</button>
       <span id="appearance-save-msg" class="hint" style="margin-left:8px"></span>
     </div>
+    <!-- BL-337 phone access. loadPhoneAccess()/copyPhoneUrl() shipped complete in settings-full.js
+         and were exported to nobody, reaching for #phone-access-url / #phone-access-status which
+         existed nowhere — the whole feature was two elements and a caller short of working. -->
+    <div class="settings-phone" style="margin:8px 0;padding:8px;border:1px solid rgba(255,255,255,0.12);border-radius:8px">
+      <div class="hint" style="margin-bottom:6px">Use Layla from your phone (same WiFi)</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <code id="phone-access-url" style="font-size:0.8rem;word-break:break-all">—</code>
+        <button type="button" class="settings-save" data-action="copyPhoneUrl">Copy link</button>
+      </div>
+      <div id="phone-access-status" class="hint" style="margin-top:6px"></div>
+    </div>
     <div class="settings-btns">
       <button class="settings-save" data-action="saveSettings">Save Settings</button>
       <button class="settings-close" data-action="closeSettings" data-i18n="action.close">Close</button>

@@ -139,6 +139,10 @@ export async function openSettings() {
   // Populate the appearance controls from the server. Without this the panel renders its defaults over
   // whatever is actually stored, so a saved text size looks unsaved and re-saving silently reverts it.
   loadAppearance();
+  // BL-337: populate the phone-access panel. loadPhoneAccess() was complete and exported to nobody,
+  // so the feature was a caller and two elements short of working. It is pure local computation
+  // (location.* → a LAN URL), no fetch, so it cannot slow the panel down.
+  loadPhoneAccess();
   const loadEl = document.getElementById('settings-loading');
   const formEl = document.getElementById('settings-form');
   if (loadEl) { loadEl.style.display = 'block'; loadEl.textContent = 'Loading…'; }
