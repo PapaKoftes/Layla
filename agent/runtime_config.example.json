@@ -36,7 +36,7 @@
   "top_k": 40,
   "repeat_penalty": 1.1,
   "completion_max_tokens": 256,
-  "convo_turns": 0,
+  "convo_turns": 6,
 
   "stop_sequences": ["\nUser:", " User:"],
 
