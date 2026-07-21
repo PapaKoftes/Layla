@@ -777,6 +777,76 @@ def run_completion_with_fallback(
         f"All inference targets failed. Local: {_saved_local_err!s}. Last cluster: {last_err!s}"}}]}
 
 
+def try_cluster_offload_first(
+    prompt: str,
+    max_tokens: int,
+    temperature: float,
+    stop: list | None,
+    timeout_seconds: int | None,
+    cfg: dict,
+    model_override: str | None = None,
+) -> dict | None:
+    """Offload this completion to a BEEFIER paired peer. Returns None to fall back to local.
+
+    WHY THIS EXISTS SEPARATELY FROM run_completion_with_cluster. That function treats the cluster as
+    a FAILURE fallback: it runs local first and only reaches for a peer when local raises. On the
+    machine this was built for, local never raises — it succeeds slowly — so the peer would never be
+    used and the feature would be decorative. The operator's stated intent is the opposite:
+    "anchor a potato to a bigger dedicated gaming PC ... to work with a compute cluster". That means
+    PREFER the better machine while it is there, not limp to it after a crash.
+
+    ON THE ARCHITECTURE REVIEW'S "CUT" VERDICT, which this deliberately does not follow. That verdict
+    reads: "distributed inference is how you run a model that does not FIT locally, at ~2x worse
+    decode — it is not a speedup for a model that does fit." It is correct, and it is about a
+    DIFFERENT technique: sharding one model across nodes. This does not shard anything. It sends a
+    prompt to a peer that runs its own model on its own GPU and returns the text. A 4-core CPU box
+    handing work to a GPU box is a genuine speedup, not a 2x decode penalty.
+
+    ONLY offloads to a peer that OUTRANKS this machine (get_best_peer_for_inference(min_tier=...)); a same-tier or
+    weaker peer would be pure latency. Returns None on absolutely any problem — no peer, bad reply,
+    timeout, exception — so the caller proceeds locally and an unreachable gaming PC degrades to
+    "slightly slower than not trying", never to a failed turn.
+    """
+    if not cfg.get("cluster_offload_enabled", False):
+        return None
+    try:
+        from services.cluster.mdns_discovery import detect_hardware_tier, get_best_peer_for_inference
+
+        _rank = {"cpu": 0, "gpu_low": 1, "gpu_mid": 2, "gpu_high": 3}
+        local_tier = (cfg.get("hardware_tier") or "").strip() or detect_hardware_tier()
+        peer = get_best_peer_for_inference()
+        if not peer:
+            return None
+        if _rank.get(peer.get("hardware_tier", "cpu"), 0) <= _rank.get(local_tier, 0):
+            logger.debug("cluster_offload: best peer does not outrank local (%s); staying local", local_tier)
+            return None
+
+        effective_model = None
+        if cfg.get("model_override_enabled", True):
+            effective_model = _resolve_model_override(model_override, cfg)
+
+        result = run_completion_cluster(
+            peer, prompt, max_tokens, temperature, False, stop,
+            timeout_seconds if timeout_seconds is not None else 120,
+            model_name=effective_model,
+        )
+        # Only accept a reply that actually carries text; a malformed peer response must not be
+        # mistaken for a successful offload and returned to the user as an empty answer.
+        text = ""
+        try:
+            text = result["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            text = ""
+        if not (text or "").strip():
+            logger.warning("cluster_offload: peer %s returned no text; falling back to local", peer.get("name"))
+            return None
+        logger.info("cluster_offload: completion served by peer %s (%s)", peer.get("name"), peer.get("hardware_tier"))
+        return result
+    except Exception as e:
+        logger.warning("cluster_offload failed (%s); falling back to local", e)
+        return None
+
+
 def get_cluster_status() -> dict:
     """Return cluster inference status for UI display."""
     import runtime_safety

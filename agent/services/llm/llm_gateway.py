@@ -1041,7 +1041,25 @@ def run_completion(
         _llm_start_t = time.monotonic()
         from services.observability.trace_export import maybe_span
 
+        # CLUSTER OFFLOAD (BL-350 / P13-C5). Default OFF, so when disabled this is one dict lookup on
+        # the hot path. When on, a paired peer that OUTRANKS this machine serves the completion —
+        # the potato-anchored-to-a-gaming-PC case. Returns None for every failure mode, so an absent
+        # or broken peer costs one attempt and then proceeds locally; it can never fail a turn.
+        # This is the entry point run_completion_with_cluster never had: that function only reached
+        # for the cluster AFTER local raised, and local does not raise here — it succeeds slowly.
+        try:
+            from services.llm.inference_router import try_cluster_offload_first
+
+            out = try_cluster_offload_first(
+                prompt, max_tokens, temperature, stop, effective_timeout, cfg, model_override,
+            )
+        except Exception as _co_e:
+            logger.debug("cluster offload hook failed: %s", _co_e)
+            out = None
+
         for attempt in range(_MAX_RETRIES + 1):
+            if out is not None:
+                break  # already served by a peer
             try:
                 with maybe_span(cfg, "llm_completion", stream="false"):
                     out = _run(
