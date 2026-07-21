@@ -48,6 +48,40 @@ def _ensure_inside_sandbox(target: Path) -> tuple[bool, dict | None]:
     return True, None
 
 
+def _not_found(kind: str, requested: str, target: Path) -> dict:
+    """A not-found error that names WHERE we looked, and says so loudly if the sandbox is empty.
+
+    "File not found" is true and useless. On the operator's box read_file failed 13 times out of 13,
+    file_info 7/7 and list_dir 24/26 — every filesystem tool at or near a 0% success rate — while
+    non-filesystem tools were fine (search_memories 22/22, list_tools 6/6). The single cause was that
+    sandbox_root pointed at ~/layla-workspace, which EXISTS AND IS EMPTY. Every path resolved under a
+    directory containing nothing, so nothing was ever found.
+
+    Nothing surfaced that. The model got "File not found", reported it, and the operator had no way to
+    learn that the assistant's entire reachable filesystem was an empty folder while their real code
+    sat elsewhere. An error that cannot be acted on is a silent failure with extra steps.
+    """
+    out: dict = {"ok": False, "error": f"{kind} not found", "looked_for": str(target)}
+    try:
+        root = Path(_get_sandbox()).resolve()
+        out["sandbox_root"] = str(root)
+        if root.is_dir() and not any(root.iterdir()):
+            out["error"] = (
+                f"{kind} not found — and the sandbox is EMPTY. Everything is resolved under "
+                f"{root}, which contains no files at all, so no path can be found there."
+            )
+            out["remedy"] = (
+                "Point sandbox_root at the folder you actually want worked on (Settings -> "
+                "sandbox_root), or put the project inside the current one. sandbox_root is a "
+                "security boundary: paths outside it are refused by design, so this is a "
+                "configuration choice rather than a bug."
+            )
+            out["sandbox_is_empty"] = True
+    except Exception as e:  # never let diagnostics turn a clean failure into an exception
+        logger.debug("sandbox diagnostics failed: %s", e)
+    return out
+
+
 def write_file(path: str, content: str) -> dict:
     target = _resolve_sandboxed_path(path)
     ok, err = _ensure_inside_sandbox(target)
@@ -169,7 +203,7 @@ def read_file(path: str) -> dict:
     if not ok:
         return err or {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
-        return {"ok": False, "error": "File not found"}
+        return _not_found("File", path, target)
     if not target.is_file():
         return {"ok": False, "error": "Not a file"}
     try:
@@ -191,7 +225,7 @@ def list_dir(path: str) -> dict:
     if not ok:
         return err or {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
-        return {"ok": False, "error": "Path not found"}
+        return _not_found("Path", path, target)
     try:
         entries = []
         for item in sorted(target.iterdir()):
@@ -306,7 +340,7 @@ def parse_gcode(path: str) -> dict:
     if not ok:
         return err or {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
-        return {"ok": False, "error": "File not found"}
+        return _not_found("File", path, target)
     try:
         import runtime_safety
 
@@ -366,7 +400,7 @@ def stl_mesh_info(path: str) -> dict:
     if not ok:
         return err or {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
-        return {"ok": False, "error": "File not found"}
+        return _not_found("File", path, target)
     try:
         import trimesh
         mesh = trimesh.load(str(target))
@@ -408,7 +442,7 @@ def tail_file(path: str, n: int = 50) -> dict:
     if not ok:
         return err or {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
-        return {"ok": False, "error": "File not found"}
+        return _not_found("File", path, target)
     try:
         import runtime_safety
 
@@ -584,7 +618,7 @@ def apply_patch(original_path: str, patch_text: str) -> dict:
     if not ok:
         return err or {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
-        return {"ok": False, "error": "File not found"}
+        return _not_found("File", path, target)
     stale = _check_read_freshness(target)
     if stale:
         return {"ok": False, "error": stale, "hint": "use read_file first"}
@@ -632,7 +666,7 @@ def file_info(path: str) -> dict:
     if not ok:
         return err or {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
-        return {"ok": False, "error": "Path not found"}
+        return _not_found("Path", path, target)
     if not target.is_file():
         return {"ok": False, "error": "Not a file"}
     try:
@@ -682,7 +716,7 @@ def json_query(path: str, query: str = "") -> dict:
     if not inside_sandbox(target):
         return {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
-        return {"ok": False, "error": "File not found"}
+        return _not_found("File", path, target)
     try:
         import json as _json
         data = _json.loads(target.read_text(encoding="utf-8"))
@@ -729,7 +763,7 @@ def read_pdf(path: str, max_pages: int = 30) -> dict:
     if not inside_sandbox(target):
         return {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
-        return {"ok": False, "error": "File not found"}
+        return _not_found("File", path, target)
     # Try PyMuPDF (fitz) first
     try:
         import fitz  # PyMuPDF
@@ -770,7 +804,7 @@ def read_docx(path: str) -> dict:
     if not inside_sandbox(target):
         return {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
-        return {"ok": False, "error": "File not found"}
+        return _not_found("File", path, target)
     try:
         from docx import Document
         doc = Document(str(target))
@@ -801,7 +835,7 @@ def read_excel(path: str, sheet: str = "", max_rows: int = 100) -> dict:
     if not inside_sandbox(target):
         return {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
-        return {"ok": False, "error": "File not found"}
+        return _not_found("File", path, target)
     try:
         import pandas as _pd
         xl = _pd.ExcelFile(str(target))
@@ -1009,7 +1043,7 @@ def yaml_read(path: str) -> dict:
     if not inside_sandbox(target):
         return {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
-        return {"ok": False, "error": "File not found"}
+        return _not_found("File", path, target)
     try:
         import yaml as _yaml
         with open(str(target), encoding="utf-8") as f:
@@ -1060,7 +1094,7 @@ def hash_file(path: str, algorithm: str = "sha256") -> dict:
     if not inside_sandbox(target):
         return {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
-        return {"ok": False, "error": "File not found"}
+        return _not_found("File", path, target)
     import hashlib as _hl
     algo = algorithm.lower().replace("-", "")
     if algo not in ("md5", "sha1", "sha256", "sha512"):
@@ -1200,7 +1234,7 @@ def read_toml(path: str) -> dict:
     if not inside_sandbox(target):
         return {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
-        return {"ok": False, "error": "File not found"}
+        return _not_found("File", path, target)
     try:
         import tomllib
         return {"ok": True, "path": str(target), "data": tomllib.loads(target.read_text(encoding="utf-8"))}
