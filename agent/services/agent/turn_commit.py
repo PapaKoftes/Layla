@@ -13,8 +13,17 @@ in the persist block for why that is a boundary and not an oversight.
 
 `state` is optional: post-turn learning needs only (goal, text, aspect_id), and the fast
 paths have no run state at all — they never call agent_loop, so there was never anything
-for run_finalizer to gate on. What genuinely needs the run (outcome evaluation, strategy
-stats, skill acquisition, answer_quality) stays in run_finalizer.
+for run_finalizer to gate on.
+
+OUTCOME EVALUATION NOW HAPPENS HERE TOO, and that revises the earlier split. It used to read
+"what genuinely needs the run (outcome evaluation, strategy stats, skill acquisition,
+answer_quality) stays in run_finalizer" — correct in principle, wrong in effect, because the
+finalizer cannot SEE a streamed run. It gates on `status == "finished"` and a streamed turn is
+"stream_pending" at that point, so on the default UI path the evaluation was simply never
+produced. Evidence: outcome_evaluations stopped 2026-07-16 while tool executions continued to
+2026-07-19. Evaluation is computed here only when absent, so the non-streamed path (already
+evaluated by run_finalizer) is untouched. Strategy stats, skill acquisition and answer_quality
+still live in run_finalizer and remain streamed-blind — that is the remainder of this criterion.
 
 Why the finalizer could not be the seam: reasoning_handler sets status="stream_pending"
 and returns BEFORE the answer exists whenever stream_final=True, and the UI ships
@@ -326,6 +335,49 @@ def commit_turn(
     # ── 3. Learn (safety-gated) ──
     if not learn or not _should_learn(status, refused):
         return receipt
+
+    # ── 3a. Outcome evaluation, if the run produced state and nobody has evaluated it yet ──
+    #
+    # THIS IS WHERE THE LEARNING PIPELINE WAS SEVERED. run_finalizer evaluates the run, but gates on
+    # `state["status"] == "finished"` — and reasoning_handler sets "stream_pending" and returns BEFORE
+    # the answer exists whenever stream_final is on, which the UI ships ON by default. So on a normal
+    # streamed turn the finalizer saw "stream_pending", skipped, and no evaluation was ever produced.
+    # Measured on the operator's DB: outcome_evaluations stopped at 2026-07-16 while tool executions
+    # continued to 2026-07-19, and all 101 stored rows are reply-only finishes.
+    #
+    # commit_turn is the correct seam because it is the TURN BOUNDARY: it runs on both the streamed
+    # and non-streamed paths, and the streamed done-frame hands it the full run state together with
+    # the finished answer (routers/agent.py) — the first moment both exist at once.
+    #
+    # Idempotent by construction: run_finalizer already populates this on the non-streamed path, and
+    # a present evaluation is never recomputed. So this ADDS the streamed case rather than doubling
+    # the other one.
+    if state is not None and not (state.get("outcome_evaluation") or {}):
+        try:
+            # The run state still says "stream_pending" here — the orchestrator returned before the
+            # answer existed. evaluate_outcome scores `finished = status == "finished"`, so evaluating
+            # against the stale placeholder would score every streamed turn 0.35 (unfinished) and
+            # teach the feedback loop that ordinary successful use is failure.
+            #
+            # Resolve it ON A COPY, and ONLY for the placeholder. The first attempt assigned
+            # `state["status"] = status` directly and the suite caught it: a run that genuinely
+            # ended in "timeout" / "tool_limit" / "system_busy" had its terminal status overwritten
+            # with "finished", so the router stopped telling the user why their turn stopped. The
+            # run's own status is a fact about the run and is not this function's to rewrite; only
+            # the stream_pending placeholder is a stand-in awaiting resolution.
+            _eval_state = state
+            if state.get("status") == "stream_pending":
+                _eval_state = {**state, "status": status}
+
+            from services.infrastructure.outcome_evaluation import evaluate_outcome_structured
+            from services.infrastructure.session_context import get_or_create_session
+
+            _ev_struct = evaluate_outcome_structured(_eval_state)
+            state["outcome_evaluation"] = _ev_struct
+            if cid:
+                get_or_create_session(cid).set_outcome_evaluation(_ev_struct)
+        except Exception as e:
+            logger.debug("commit_turn: outcome evaluation failed: %s", e)
 
     try:
         if _cfg().get("emotional_presence_enabled", True):
