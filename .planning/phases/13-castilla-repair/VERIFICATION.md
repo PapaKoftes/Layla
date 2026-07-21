@@ -45,6 +45,24 @@
 > **Scope decision:** the operator has set "finished" = these 6 criteria only. The 9 outstanding audit
 > HIGHs and the remote pillar are explicitly OUT of this phase (and at least one round-3 HIGH is
 > already stale — `MEMORY_SECTION_ORDER` now contains all three blocks it was reported as missing).
+>
+> ### Criterion status after S-P13 (gate GREEN 3995 passed / 0 failed)
+>
+> | # | Criterion | State | What moved |
+> |---|---|---|---|
+> | 1 | Learning pipeline runs on a normal turn | 🟡 | **Outcome evaluation now runs on streamed turns** (P13-C1). It was gated on `status == "finished"` while `reasoning_handler` returns `stream_pending`, and the UI ships streaming ON — so on the default path nothing was ever evaluated. Moved to `commit_turn`, the real turn boundary. **Open:** strategy stats, skill acquisition and answer_quality still live in `run_finalizer` and remain streamed-blind. |
+> | 2 | Nothing Layla claims is false | 🟡 | **Manifest trigger fixed** (P13-C2): `_CAP_Q_RE` required "you"/"do" adjacent, so "what can you actually do" got no capability ground truth — she invented on the exact turn the user pushed for accuracy. **Graph fabrications fixed** (P13-B5). **Open:** the graph DATA is unpurged (~6 of 31 nodes real; two planted false facts about the operator). Code cannot distinguish a well-formed false claim — that is an operator decision. |
+> | 3 | Every `getElementById` resolves | 🟡 | **Untouched this session.** 7 lookups remain on the `_KNOWN_DEAD` ratchet (BL-335/249/337); criterion needs it empty. |
+> | 4 | Three HIGH security items | ✅ | All three resolved and now **pinned as executable assertions** rather than prose (P13-C4). powershell.exe bypass fixed by deleting the duplicate blocklist; network-jail resolved via the criterion's "claims deleted" branch (in-process Python sandboxing is impossible — disclaimers verified and scanned for regression); streaming guarded by `StreamOutputGuard`, verified **wired** in all 3 paths. Writing the test found a **live bypass nobody had reported: `sh`, `zsh` and `wsl` were not blocked** while `bash`/`pwsh` were. Also fixed a bare `sandbox/` in .gitignore that silently claimed `agent/services/sandbox/`. |
+> | 5 | ~~Dead subsystems deleted~~ → **wired** | ⬜ | **Redefined by operator decision** (see above). Both clustering and SRS are to be WIRED. Neither started — these are two feature builds, not repairs, and are the bulk of the remaining phase. |
+> | 6 | Green gate + operator confirmation | 🟡 | Gate **GREEN 3995 / 0**. Operator confirmation still **PENDING** — unchanged; Claude cannot see the UI render. |
+>
+> **Handoff note for criterion 5.** This is the only criterion needing substantial new build, and it
+> should start fresh rather than be squeezed into a long session — half-wiring a subsystem is the
+> exact defect this phase exists to repair. Clustering: `DroneWorker` polls a permanently empty queue
+> every 5s while the UI ships an Enable toggle translated into 11 locales; the intent is
+> potato→gaming-PC inference offload. SRS: advertised in chat (`chat-render.js:385`), 0 rows ever, and
+> the live `german_mode` clone is buggier than the dead original.
 
 ## Success criteria → evidence
 
