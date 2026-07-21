@@ -194,6 +194,7 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
     {"key": "approval_ttl_seconds", "type": "number", "category": "limits", "default": 3600, "min": 60, "max": 86400, "hint": "Seconds before a pending approval expires (default: 1 hour)."},
     {"key": "models_max_keep", "type": "number", "category": "limits", "default": 0, "min": 0, "max": 100, "hint": "Daily maintenance prunes downloaded GGUFs to the newest N (the active model is always kept). 0 = keep all."},
     {"key": "hyde_enabled", "type": "boolean", "category": "limits", "default": False, "hint": "Enable HyDE retrieval (generates a hypothetical answer before embedding — extra LLM call per query, improves recall quality)."},
+    {"key": "convo_turns", "type": "number", "category": "limits", "default": 6, "min": 0, "max": 10, "hint": "How many recent messages Layla can see of your conversation. 0 means she cannot see her own previous replies at all — which is how this shipped. Each message is re-read every turn: ~1.9s at 2, ~3.3s at 6, ~4.1s at 8 on this machine. Above 10 the prompt no longer fits the context window."},
     {"key": "research_max_tool_calls", "type": "number", "category": "limits", "default": 20, "min": 1, "max": 100, "hint": "Max tool calls when research_mode is on."},
     {"key": "research_max_runtime_seconds", "type": "number", "category": "limits", "default": 1800, "min": 30, "max": 14400, "hint": "Max wall time for research-style runs (seconds)."},
     # ── Safety & behavior ──
