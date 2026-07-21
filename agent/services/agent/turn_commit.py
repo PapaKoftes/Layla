@@ -22,8 +22,17 @@ finalizer cannot SEE a streamed run. It gates on `status == "finished"` and a st
 "stream_pending" at that point, so on the default UI path the evaluation was simply never
 produced. Evidence: outcome_evaluations stopped 2026-07-16 while tool executions continued to
 2026-07-19. Evaluation is computed here only when absent, so the non-streamed path (already
-evaluated by run_finalizer) is untouched. Strategy stats, skill acquisition and answer_quality
-still live in run_finalizer and remain streamed-blind — that is the remainder of this criterion.
+evaluated by run_finalizer) is untouched.
+
+The same is now true of STRATEGY STATS, SKILL ACQUISITION and ANSWER_QUALITY: all three sat inside
+that identical `status == "finished"` block, so all three were blind to the default path for one
+shared reason. Each is claimed by a flag (`strategy_stats_recorded`, `skill_acquisition_started`,
+the presence of `answer_quality`) so whichever path runs first wins and nothing double-counts.
+
+answer_quality was doubly unreachable and is worth calling out: even when the gate opened,
+run_finalizer reconstructs the answer by scanning `state["steps"]` for a reason step — which is
+EMPTY on a streamed run, because the answer came from the token stream and was never written back
+into steps. So it assessed "" and attached nothing. Here, `text` is the actual cleaned reply.
 
 Why the finalizer could not be the seam: reasoning_handler sets status="stream_pending"
 and returns BEFORE the answer exists whenever stream_final=True, and the UI ships
@@ -378,6 +387,69 @@ def commit_turn(
                 get_or_create_session(cid).set_outcome_evaluation(_ev_struct)
         except Exception as e:
             logger.debug("commit_turn: outcome evaluation failed: %s", e)
+
+    # ── 3b. The rest of the learners run_finalizer cannot reach on a streamed turn ──
+    #
+    # strategy stats, skill acquisition and answer_quality all sit inside the SAME
+    # `status == "finished"` block as outcome evaluation, so all three were blind to the default
+    # path for the same reason. Each is claimed by a flag so the non-streamed path — where
+    # run_finalizer already did the work — never double-counts.
+    if state is not None:
+        _ev = state.get("outcome_evaluation") or {}
+
+        # Strategy stats: which aspect succeeds at which kind of task. Skipped on the streamed
+        # path means the feedback loop only ever learned from manually-unstreamed turns.
+        if _ev and not state.get("strategy_stats_recorded"):
+            try:
+                from layla.memory import strategy_stats as _ss
+
+                _g = (state.get("original_goal") or goal or "").strip()
+                _ss.record_strategy_stat(
+                    (_g.replace("\n", " ")[:120] or "general"),
+                    (asp or "morrigan")[:120],
+                    success=bool(_ev.get("success")),
+                )
+                state["strategy_stats_recorded"] = True
+            except Exception as e:
+                logger.debug("commit_turn: strategy stats failed: %s", e)
+
+        # Skill acquisition: only mints from runs with real tool work (min_steps=3), so ordinary
+        # chat cannot manufacture skills. Threaded — never on the response path.
+        if not state.get("skill_acquisition_started") and _cfg().get("skill_acquisition_enabled", True):
+            try:
+                def _acquire() -> None:
+                    try:
+                        from services.skills.skill_acquisition import acquire_from_run
+
+                        acquire_from_run(state, min_steps=3)
+                    except Exception as e:
+                        logger.debug("commit_turn: skill acquisition failed: %s", e)
+
+                threading.Thread(target=_acquire, daemon=True, name="skill-acquire").start()
+                state["skill_acquisition_started"] = True
+            except Exception as e:
+                logger.debug("commit_turn: skill acquisition gate failed: %s", e)
+
+        # answer_quality needs the ANSWER, and this is the only place that reliably has it.
+        # run_finalizer reconstructs it by scanning state["steps"] for a reason step — which on a
+        # streamed run is empty, because the answer was produced by the token stream and never
+        # written back into steps. So this was doubly unreachable: gated out by status, and
+        # working from a text that did not exist. `text` here is the cleaned, floored reply.
+        if text and not refused and not state.get("answer_quality"):
+            try:
+                from services.llm.answer_assessment import assess_answer
+
+                _aq_cfg = _cfg()
+                _q = assess_answer(
+                    text,
+                    state.get("original_goal") or goal or "",
+                    _aq_cfg,
+                    current_model=str(_aq_cfg.get("model_filename") or ""),
+                )
+                if _q and (_q.get("grounding", {}).get("enabled") or _q.get("escalate")):
+                    state["answer_quality"] = _q
+            except Exception as e:
+                logger.debug("commit_turn: answer_quality failed: %s", e)
 
     try:
         if _cfg().get("emotional_presence_enabled", True):
