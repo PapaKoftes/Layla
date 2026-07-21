@@ -98,6 +98,44 @@
 > **Deliberately NOT claimed:** the 9 outstanding audit-round HIGHs (out of scope by operator
 > decision, and at least one is already stale) and the rest of the remote pillar (Discord, Syncthing,
 > multi-device). Phone access landed only because criterion 3 forced the choice.
+>
+> ---
+>
+> ## 🔴 RELEASE BLOCKER found by driving the app (2026-07-21)
+>
+> **The agent has never completed a tool-using run, and fabricates instead of admitting it.**
+>
+> ```
+> outcome_evaluations: 104 runs, 2026-07-05 .. 2026-07-21
+>   with ANY tool step : 0
+>   reply-only         : 104
+> ```
+>
+> Two live probes against `README.md` (real first line: `# Layla`):
+>
+> | prompt | steps | answer |
+> |---|---|---|
+> | "Read the file README.md and tell me the first heading" | `['reason']` | "What this project is" — **invented** |
+> | "Use the read_file tool on README.md. Quote its first line exactly. **Do not guess.**" | `['reason']` | "This project is a self-hosted AI companion…" — **invented**, plus a fake ```` ```bash read_file README.md ``` ```` block narrating a call it never made |
+>
+> **Diagnosed, not guessed:**
+> * NOT the fast path — `is_self_contained_question()` correctly returns `False` for both prompts.
+> * NOT an approval gate — `read_file` is in `SAFE_TOOLS`.
+> * NOT the empty sandbox — fixed the same day; `read_file` returns 8000 chars when called directly.
+> * The agent loop ran; the MODEL chose `reason` over a tool call, then invented the content.
+>
+> **Why 4032 green tests missed it:** they mock the model. Only driving the real product finds this,
+> which is precisely what criterion 6's operator-confirmation step exists for.
+>
+> It also explains `golden_examples` being empty from a third independent direction: golden examples
+> harvest tool patterns, and there have never been any to harvest.
+>
+> **Impact on the release claim.** The COMPANION half is genuinely good — verified live: coherent
+> answers, correct persona, memory, 200 tools registered, learning pipeline now firing (a fresh
+> outcome_evaluation row was written by the test turn). The ENGINEERING-AGENT half must not be
+> advertised as working. This is prompt/model work (3B tool-selection weakness, likely GBNF/prompt
+> shaping) and needs a live eval loop, not unit tests. It is NOT a regression from this session —
+> the zero-tool-run record predates it by 16 days.
 
 ## Success criteria → evidence
 
