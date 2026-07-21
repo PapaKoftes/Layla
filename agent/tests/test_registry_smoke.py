@@ -362,7 +362,8 @@ def test_safe_tool_does_not_raise_on_minimal_args(name: str):
 def test_pure_tools_produce_correct_results():
     """Value-level teeth for the deterministic pure-compute tools. Reintroducing a real bug in any
     of these (e.g. math_eval's ast.Mul) turns this RED — not just 'raised', but 'wrong answer'."""
-    call = lambda n, **kw: _call_with_timeout(TOOLS[n]["fn"], kw, PER_CALL_TIMEOUT_S)
+    def call(n, **kw):
+        return _call_with_timeout(TOOLS[n]["fn"], kw, PER_CALL_TIMEOUT_S)
 
     r = call("math_eval", expression="2 + 2 * 3")
     assert r.get("ok") is True and r.get("result") == 8, f"math_eval precedence broken: {r}"

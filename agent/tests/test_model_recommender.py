@@ -3,6 +3,7 @@ sees at setup and the input to model selection. Was UNTESTED; locks the tier bou
 scale with RAM/VRAM."""
 import sys
 from pathlib import Path
+
 AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))

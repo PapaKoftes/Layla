@@ -73,8 +73,9 @@ def test_reason_is_descriptive():
 # ── safe_urlopen / safe_fetch_text: redirect-revalidating guarded fetch (audit round-1 SSRF cluster) ──
 
 def test_safe_urlopen_blocks_internal_and_obfuscated():
-    from services.safety.url_guard import safe_urlopen, SSRFBlocked
     import pytest
+
+    from services.safety.url_guard import SSRFBlocked, safe_urlopen
     for u in ("http://169.254.169.254/latest/meta-data/", "http://127.0.0.1:6379/",
               "http://[::1]/", "http://2130706433/", "http://192.168.0.1/"):
         with pytest.raises(SSRFBlocked):
@@ -82,8 +83,9 @@ def test_safe_urlopen_blocks_internal_and_obfuscated():
 
 
 def test_safe_urlopen_rejects_non_http_scheme():
-    from services.safety.url_guard import safe_urlopen, SSRFBlocked
     import pytest
+
+    from services.safety.url_guard import SSRFBlocked, safe_urlopen
     with pytest.raises(SSRFBlocked):
         safe_urlopen("file:///etc/passwd", timeout=2)
 
@@ -96,8 +98,9 @@ def test_safe_fetch_text_returns_empty_on_block():
 
 
 def test_safe_urlopen_blocks_ipv4_mapped_loopback():
-    from services.safety.url_guard import safe_urlopen, SSRFBlocked
     import pytest
+
+    from services.safety.url_guard import SSRFBlocked, safe_urlopen
     with pytest.raises(SSRFBlocked):
         safe_urlopen("http://[::ffff:127.0.0.1]/", timeout=2)
 
@@ -106,8 +109,10 @@ def test_guarded_redirect_handler_vetoes_unsafe_location():
     # The redirect handler safe_urlopen installs re-checks each hop: a 302 whose Location is internal is
     # vetoed with SSRFBlocked instead of being followed (redirect/TOCTOU SSRF). Exercised directly.
     import urllib.request
+
     import pytest
-    from services.safety.url_guard import _build_guarded_redirect_handler, SSRFBlocked
+
+    from services.safety.url_guard import SSRFBlocked, _build_guarded_redirect_handler
 
     handler = _build_guarded_redirect_handler()()
     req = urllib.request.Request("http://public.example/start")

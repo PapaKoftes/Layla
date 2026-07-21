@@ -630,7 +630,7 @@ def test_write_only_cannot_execute_run_class_tool(monkeypatch):
     # Control: a WRITE-class generic tool (not run-class) is still authorized by allow_write, so the
     # write flag keeps working for file mutation — only code-execution/side-effect tools are tightened.
     fake_TOOLS["write_csv"] = {"require_approval": True, "risk_level": "medium", "fn_key": "write_csv"}
-    ctx_w = _make_ctx(allow_write=True, allow_run=False, decision={"args": {}})
+    _make_ctx(allow_write=True, allow_run=False, decision={"args": {}})
     # allow = allow_write (True) for write-class → is_tool_allowed True → NO approval break path taken.
     # (We only assert the allow computation didn't force a break like it did for the run-class tool.)
     assert "write_csv" not in td._RUN_CLASS_INTENTS

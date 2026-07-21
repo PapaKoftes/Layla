@@ -341,8 +341,8 @@ async def v1_chat_completions(req: dict, request: Request):
                     # unclosed "[", strip complete [MARKER …] tags, and strip a leading persona
                     # label so control scaffolding never streams raw to an OpenAI-SDK client. The
                     # old /v1 stream emitted every token verbatim (no cleaning at all).
-                    from services.agent.response_builder import stream_safe_prefix as _ssp_v1
                     from services.agent.response_builder import StreamOutputGuard
+                    from services.agent.response_builder import stream_safe_prefix as _ssp_v1
                     _v1_emitted = 0
                     _v1_shown = ""                      # accumulated LIVE-emitted (clean) text
                     _v1_stop = sampling.get("stop") or []   # client stop list (OpenAI contract)

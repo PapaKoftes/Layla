@@ -16,10 +16,9 @@ effective config of a never-asked config against an explicit all-False baseline.
 """
 from __future__ import annotations
 
-import re
-
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -181,9 +180,8 @@ def test_the_trust_tier_does_not_read_rank():
 @pytest.mark.parametrize("rank", [0, 2, 5, 6, 99])
 def test_rank_does_not_change_the_trust_tier(rank, monkeypatch):
     """Driven across the whole ladder, including the rank 2/6 boundary the old branch turned on."""
-    from services.personality import maturity_engine as me
-
     import layla.memory.db as db
+    from services.personality import maturity_engine as me
 
     monkeypatch.setattr(me, "get_state", lambda: me.MaturityState(xp=0, rank=rank, phase="awakening"))
     # Patched at its source: get_trust_tier imports it inside the function body.

@@ -231,7 +231,7 @@ class TestEdgeCases:
 
 
 class TestGuardIsNotADoS:
-    """The guard runs on the TURN PATH -- check_input on every user message, and
+    r"""The guard runs on the TURN PATH -- check_input on every user message, and
     check_output re-scanned over the GROWING buffer every stride while streaming. So its
     cost is a live availability property, not a test-suite nicety.
 
