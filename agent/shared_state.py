@@ -46,6 +46,10 @@ def pop_one_agent_steer_hint(conversation_id: str) -> str:
 # Set by main after defining _history, touch_activity, etc.
 _history: deque | None = None
 _conv_histories: dict[str, deque] = {}
+# Monotonic append counter per conversation. Exists because len() cannot detect change in a
+# saturated deque: at maxlen an append evicts from the left, so the length is identical before and
+# after. See _compact_bg's staleness guard.
+_conv_revisions: dict[str, int] = {}
 _conv_hist_lock = threading.Lock()
 
 # Last Layla auto-commit: for /undo
@@ -112,10 +116,20 @@ def get_conv_history(conversation_id: str, maxlen: int = 20) -> deque:
     return hist
 
 
+def conv_revision(conversation_id: str) -> int:
+    """Monotonic count of appends to this conversation. Caller must hold _conv_hist_lock."""
+    cid = (conversation_id or "").strip() or "default"
+    return _conv_revisions.get(cid, 0)
+
+
 def append_conv_history(conversation_id: str, role: str, content: str) -> None:
     hist = get_conv_history(conversation_id)
+    cid = (conversation_id or "").strip() or "default"
     with _conv_hist_lock:
         hist.append({"role": role, "content": content})
+        # Bump BEFORE any reader can observe the new contents. A length comparison cannot detect
+        # this append once the deque is saturated — see _compact_bg.
+        _conv_revisions[cid] = _conv_revisions.get(cid, 0) + 1
     if role == "assistant":
         # Run compaction in a daemon thread — LLM summarization must never block
         # the response path (llm_serialize_lock contention otherwise stalls streaming).
@@ -132,6 +146,7 @@ def append_conv_history(conversation_id: str, role: str, content: str) -> None:
                     h0 = _conv_histories.get(cid)
                     snapshot = list(h0) if h0 else []
                     snap_len = len(snapshot)
+                    snap_rev = _conv_revisions.get(cid, 0)
                     _maxlen = int(getattr(h0, "maxlen", 20) or 20) if h0 is not None else 20
                 # COMPACT ON OCCUPANCY, NOT TOKEN PRESSURE — this deque is a fixed-length ring, and a
                 # ring cannot build pressure: at maxlen it discards from the left. Measuring it against
@@ -152,10 +167,21 @@ def append_conv_history(conversation_id: str, role: str, content: str) -> None:
                         return
                     # maybe_auto_compact runs the LLM summarizer (seconds) with the lock RELEASED, so new
                     # turns may have been appended to the live deque in the meantime. clear()+repopulate
-                    # from the stale pre-summary snapshot would silently DROP them (audit #12). Only swap
-                    # in the compacted history when the deque is unchanged; if it grew, skip this round —
+                    # from the stale pre-summary snapshot would silently DROP them. Only swap in the
+                    # compacted history when the deque is unchanged; if it moved, skip this round —
                     # compaction re-runs on the next assistant turn (idempotent), losing no messages.
-                    if len(h1) != snap_len:
+                    #
+                    # THE GUARD IS ON A REVISION COUNTER, NOT LENGTH, and that distinction is the point.
+                    # The previous `len(h1) != snap_len` check is blind exactly when it matters: this
+                    # deque has maxlen=20, so once saturated an append EVICTS from the left and the
+                    # length is identical before and after. Turns arriving mid-summary would read as
+                    # "unchanged", the swap would proceed from the stale snapshot, and the newest
+                    # exchange would be discarded while evicted messages returned from the dead.
+                    #
+                    # Latent while compaction never fired. P13-B2 made it fire — at >= maxlen-4
+                    # occupancy, i.e. usually at exactly maxlen — so this closes a data-loss path that
+                    # change opened, not speculative hardening. (audit round-6 #14)
+                    if _conv_revisions.get(cid, 0) != snap_rev or len(h1) != snap_len:
                         return
                     h1.clear()
                     for item in compacted[-int(getattr(h1, "maxlen", 20) or 20):]:

@@ -193,18 +193,32 @@ def _compress_to_summary(messages: list) -> str:
 
         cfg = runtime_safety.load_config()
         busy_lock = llm_generation_lock if cfg.get("llm_serialize_per_workspace") else llm_serialize_lock
+        # ADMISSION TEST ONLY — acquire, then RELEASE BEFORE calling run_completion.
+        #
+        # This lock answers one question: "is the LLM busy right now?" If it is, this background
+        # summariser gives up rather than queueing behind a user-facing turn. That behaviour is
+        # correct and is preserved.
+        #
+        # Holding it ACROSS run_completion() was not. Under `llm_serialize_per_workspace: true`,
+        # busy_lock IS llm_generation_lock — a plain, NON-REENTRANT threading.Lock. run_completion
+        # re-derives that same lock and enters it via `with _llm_lock:` in inference_router, on THIS
+        # thread. A non-reentrant Lock re-acquired by its own holder blocks forever: the auto-compact
+        # daemon wedges while holding the lock every local completion needs, freezing all inference
+        # process-wide. The default path uses the reentrant llm_serialize_lock, which masked it.
+        #
+        # Latent while compaction never ran; P13-B2 made it run. Releasing first is safe because
+        # run_completion serialises internally — this lock was never what made the call exclusive.
+        # (audit round-6 #12, HIGH)
         acquired = busy_lock.acquire(blocking=False)
         if not acquired:
             raise RuntimeError("llm busy")
-        try:
-            prompt = (
-                "Summarize this conversation excerpt into 3-5 bullet points. "
-                "Preserve: key facts, decisions made, tool results, user preferences. "
-                "Be concise. Output only the bullets.\n\n" + raw
-            )
-            out = run_completion(prompt, max_tokens=300, temperature=0.1, stream=False)
-        finally:
-            busy_lock.release()
+        busy_lock.release()
+        prompt = (
+            "Summarize this conversation excerpt into 3-5 bullet points. "
+            "Preserve: key facts, decisions made, tool results, user preferences. "
+            "Be concise. Output only the bullets.\n\n" + raw
+        )
+        out = run_completion(prompt, max_tokens=300, temperature=0.1, stream=False)
         if isinstance(out, dict):
             text = ((out.get("choices") or [{}])[0].get("message") or {}).get("content", "")
         else:
