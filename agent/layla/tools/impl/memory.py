@@ -119,15 +119,68 @@ def vector_store(text: str, metadata: dict | None = None, collection: str = "mem
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-def spaced_repetition_review(limit: int = 10, interval_hours: float = 24.0) -> dict:
+def _sm2(quality: int, ease: float, interval_days: int, reps: int) -> tuple[float, int, int]:
+    """SM-2 step. Returns (ease, interval_days, reps).
+
+    Standard SuperMemo-2: quality < 3 resets the repetition count and puts the item back tomorrow;
+    otherwise the interval grows 1 → 6 → interval*ease. Ease is nudged by how hard the recall was and
+    floored at 1.3, below which intervals collapse and the item is shown forever.
     """
-    Get learnings due for spaced repetition review. Optionally schedule next review.
-    Returns items due (next_review_at <= now or NULL). Call schedule_next_review per item to reinforce.
+    q = max(0, min(5, int(quality)))
+    if q < 3:
+        return max(1.3, ease - 0.20), 1, 0
+    reps = int(reps) + 1
+    if reps == 1:
+        nxt = 1
+    elif reps == 2:
+        nxt = 6
+    else:
+        nxt = max(1, int(round(max(1, int(interval_days)) * ease)))
+    ease = max(1.3, ease + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02)))
+    return ease, nxt, reps
+
+
+def spaced_repetition_review(limit: int = 10, learning_id: int | None = None, quality: int | None = None) -> dict:
+    """Review a learning with a quality score (0-5) and schedule the next review via SM-2.
+
+    Without `learning_id`, lists what is due. With `learning_id` and `quality`, GRADES that item and
+    schedules its next review.
+
+    THE GRADING HALF DID NOT EXIST. This tool's registered description has always promised "review a
+    learning with a quality score (0-5) and schedule the next review via SM-2" — and the
+    implementation took no quality score and scheduled nothing. It only listed due items. So the model
+    was told the tool did SM-2, called it, and nothing was ever written back.
+
+    The consequence is worse than a missing feature, because of how "due" is defined:
+    get_learnings_due_for_review returns rows where `next_review_at <= now OR next_review_at IS NULL`.
+    With nothing ever scheduled, every learning is NULL, so EVERYTHING is permanently due and the same
+    items resurface forever. It was repetition with the spacing removed — measured on the live DB, all
+    28 learnings had next_review_at NULL and review_reps 0.
+
+    set_review_state (which persists ease/interval/reps and computes the next date) already existed
+    and had zero callers. This connects it.
     """
     try:
         agent_dir = Path(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(agent_dir))
         from layla.memory.db import get_learnings_due_for_review
+
+        if learning_id is not None and quality is not None:
+            from layla.memory.db import get_review_state, set_review_state
+
+            st = get_review_state(int(learning_id)) or {}
+            ease, interval_days, reps = _sm2(
+                int(quality),
+                float(st.get("review_ease") or 2.5),
+                int(st.get("review_interval_days") or 0),
+                int(st.get("review_reps") or 0),
+            )
+            set_review_state(int(learning_id), ease=ease, interval_days=interval_days, reps=reps)
+            return {
+                "ok": True, "graded": int(learning_id), "quality": int(quality),
+                "ease": round(ease, 3), "interval_days": interval_days, "reps": reps,
+            }
+
         due = get_learnings_due_for_review(limit=limit)
         items = [{"id": r["id"], "content": (r.get("content") or "")[:200], "importance": r.get("importance_score")} for r in due]
         return {"ok": True, "due_count": len(items), "items": items}
