@@ -291,6 +291,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance & memory (P13 Phase A)
+- **Replies start ~35× faster after the first one.** Every call was clearing the KV cache before
+  running, throwing away the prompt prefix the previous turn had just paid to compute. The stable
+  part of the prompt is now prefilled once and reused: first token drops from **~22.6s to ~0.6s**
+  from turn 2 onward. Cold start is unchanged. (`llm_reset_kv_each_call` restores the old behaviour
+  if a backend ever needs it.)
+- **She can see the conversation.** `convo_turns` shipped as `0`, meaning she could not read her own
+  previous replies — every message arrived with no history at all, which is why she repeated herself
+  and lost the thread. The default is now `6` and it is editable in Settings. **Existing installs
+  keep whatever their config already stores**, so if yours says `0` you need to change it; the
+  setting now explains its own cost (~1.9s at 2 turns, ~3.3s at 6 on a 4-core CPU box).
+- **She knows who you are.** The context window on CPU machines went from 2048 to 8192, which
+  roughly doubles the system prompt that survives truncation (~833 → ~1601 tokens). The practical
+  effect: the details onboarding collected — your name, goals, communication style, humour
+  preference, risk tolerance — were being written to disk, formatted correctly, and then cut off
+  before reaching the model. They now arrive. More of her persona lands too, and the Missions
+  planner no longer fails for want of context. Costs ~1.6s once per session and ~223 MB of RAM.
+- **Fixed: the "lean prompt on weak hardware" setting never did anything.** `system_head_budget_ratio`
+  is meant to give weaker machines a smaller prompt, but a `max(1024, …)` floor swallowed it — the
+  two weakest tiers computed 450 and 573 tokens and both got clamped to an identical 1024. Every
+  tier now gets a genuinely different prompt budget, and a test fails if the floor ever binds again.
+
 ### Added
 - **Task-aware model routing**: when `tool_routing_enabled` and task models are configured, `autonomous_run` sets `model_override` from `model_router.classify_task(goal, context)`; `llm_gateway._get_llm()` loads per-GGUF path (primary + `coding_model` / `reasoning_model` / `chat_model`). `model_router.select_model()` ties `llm_model_coding` capability (Magicoder id) to benchmarks and `coding_model`.
 - **`performance_mode`** (`low` | `mid` | `high` | `auto`) in `system_optimizer.get_effective_config()`: missing config defaults to `mid` (backward compatible); explicit `auto` maps from `hardware_detect` tiers. Adjusts `n_ctx`, tool limits, cross-encoder, planning depth, cognitive workspace (runtime only, never persisted).
