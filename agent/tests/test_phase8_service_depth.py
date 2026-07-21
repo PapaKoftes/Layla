@@ -3,7 +3,7 @@
 Tests for Phase 8: Service Depth Improvement.
 
 Covers:
-  - outcome_writer (_maybe_save_echo_memory, _save_outcome_memory,
+  - outcome_writer (_maybe_save_session_pattern_memory, _save_outcome_memory,
                      _extract_patch_text, _auto_extract_learnings)
   - initiative_engine (collect_initiative_hints, wakeup_engine_hints,
                         generate_project_proposals)
@@ -61,53 +61,86 @@ class TestExtractPatchText:
         assert result.startswith("diff --git")
 
 
-class TestMaybeSaveEchoMemory:
+class TestMaybeSaveSessionPatternMemory:
+    """These tests covered this function five ways and still missed a total memory-loss bug.
+
+    Every one asserted only THAT a save happened, never WHICH aspect it was filed under — while
+    the body passed a hardcoded "echo" and ignored the aspect_id parameter. test_pattern_save_every_5_turns
+    even passed "morrigan" and asserted `call_count >= 1`, which the buggy code satisfied perfectly.
+    Five green tests, and the operator's main aspect could not read a single one of her own memories.
+
+    The lesson generalises past this file: assert the MAPPING, not the shape. A mock that records
+    the call but not its arguments proves the code ran, which is rarely the interesting claim.
+    """
+
+    @staticmethod
+    def _saved_aspects(mock_save):
+        """Every aspect_id this function actually wrote to."""
+        return [c.args[0] for c in mock_save.call_args_list]
+
     @patch("services.infrastructure.outcome_writer._db_save_aspect_memory")
-    def test_echo_no_longer_saves_raw_exchange(self, mock_save):
+    def test_no_history_saves_nothing(self, mock_save):
         # The raw "User: … Echo replied: …" exchange echo was removed (run-log noise that
         # could carry leaked markers into prompt injection). With no history, nothing saves.
-        from services.infrastructure.outcome_writer import _maybe_save_echo_memory
-        _maybe_save_echo_memory("echo", "Hello", "Hi there", [])
+        from services.infrastructure.outcome_writer import _maybe_save_session_pattern_memory
+        _maybe_save_session_pattern_memory("echo", "Hello", "Hi there", [])
         mock_save.assert_not_called()
 
     @patch("services.infrastructure.outcome_writer._db_save_aspect_memory")
-    def test_echo_saves_distilled_session_pattern(self, mock_save):
-        # With real history (>=2 user topics) Echo still stores its distilled session-pattern note.
-        from services.infrastructure.outcome_writer import _maybe_save_echo_memory
+    def test_echo_saves_under_echo(self, mock_save):
+        from services.infrastructure.outcome_writer import _maybe_save_session_pattern_memory
         history = [
             {"role": "user", "content": "how do I center a div"},
             {"role": "assistant", "content": "use flexbox"},
             {"role": "user", "content": "what about vertical centering"},
         ]
-        _maybe_save_echo_memory("echo", "what about vertical centering", "align-items: center", history)
-        mock_save.assert_called()
+        _maybe_save_session_pattern_memory("echo", "what about vertical centering", "align-items: center", history)
+        assert self._saved_aspects(mock_save) == ["echo"]
 
     @patch("services.infrastructure.outcome_writer._db_save_aspect_memory")
     def test_non_echo_no_immediate_save(self, mock_save):
-        from services.infrastructure.outcome_writer import _maybe_save_echo_memory
+        from services.infrastructure.outcome_writer import _maybe_save_session_pattern_memory
         # 0 turns, not echo — should not fire
-        _maybe_save_echo_memory("morrigan", "Hello", "Hi", [])
+        _maybe_save_session_pattern_memory("morrigan", "Hello", "Hi", [])
         mock_save.assert_not_called()
 
     @patch("services.infrastructure.outcome_writer._db_save_aspect_memory")
-    def test_pattern_save_every_5_turns(self, mock_save):
-        from services.infrastructure.outcome_writer import _maybe_save_echo_memory
-        history = [
-            {"role": "user", "content": f"msg {i}"}
-            for i in range(10)
-        ]
-        _maybe_save_echo_memory("morrigan", "test", "reply", history)
-        # 10 turns, 10 % 5 == 0 → pattern save should fire
-        assert mock_save.call_count >= 1
+    def test_pattern_is_filed_under_the_active_aspect_not_echo(self, mock_save):
+        """THE regression test. This is the assertion whose absence cost every non-Echo aspect
+        its entire episodic memory."""
+        from services.infrastructure.outcome_writer import _maybe_save_session_pattern_memory
+        history = [{"role": "user", "content": f"msg {i}"} for i in range(10)]
+        _maybe_save_session_pattern_memory("morrigan", "test", "reply", history)
+        saved = self._saved_aspects(mock_save)
+        assert saved, "10 turns is a multiple of 5, so a pattern note must be saved"
+        assert saved == ["morrigan"], (
+            f"session pattern filed under {saved!r} while Morrigan was the active aspect. "
+            "get_aspect_memories filters WHERE aspect_id=?, so anything not filed under the "
+            "active aspect is unreadable by the aspect that generated it."
+        )
+        assert "echo" not in saved, "the hardcoded 'echo' destination is back"
+
+    @patch("services.infrastructure.outcome_writer._db_save_aspect_memory")
+    def test_every_aspect_gets_its_own_memories(self, mock_save):
+        """Six aspects exist; all of them must be able to accumulate memory, not just Echo."""
+        from services.infrastructure.outcome_writer import _maybe_save_session_pattern_memory
+        history = [{"role": "user", "content": f"msg {i}"} for i in range(10)]
+        for aspect in ("morrigan", "echo", "nyx", "cassandra", "eris", "lilith"):
+            mock_save.reset_mock()
+            _maybe_save_session_pattern_memory(aspect, "test", "reply", history)
+            assert self._saved_aspects(mock_save) == [aspect], (
+                f"{aspect} could not save its own memory"
+            )
 
     @patch("services.infrastructure.outcome_writer._db_save_aspect_memory")
     def test_pattern_save_needs_two_topics(self, mock_save):
-        from services.infrastructure.outcome_writer import _maybe_save_echo_memory
+        # This test previously had NO assertion at all — only a comment where the check belonged,
+        # so it passed unconditionally and proved nothing.
+        from services.infrastructure.outcome_writer import _maybe_save_session_pattern_memory
         # 5 turns but only 1 user message
         history = [{"role": "assistant", "content": "ok"}] * 4 + [{"role": "user", "content": "hello"}]
-        _maybe_save_echo_memory("nyx", "test", "reply", history)
-        # Not enough topics (need >= 2 user messages)
-        # Should not save a pattern note (but won't error)
+        _maybe_save_session_pattern_memory("nyx", "test", "reply", history)
+        mock_save.assert_not_called()
 
 
 class TestSaveOutcomeMemory:

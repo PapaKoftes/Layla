@@ -79,7 +79,7 @@ def test_nonstream_deliberation_floors_max_tokens(monkeypatch, tmp_path):
     monkeypatch.setattr(agent_loop.orchestrator, "should_deliberate", lambda *a, **k: True)
     monkeypatch.setattr(agent_loop, "_save_outcome_memory", lambda *a, **k: None)
     monkeypatch.setattr(agent_loop, "_semantic_recall", lambda *a, **k: "")
-    monkeypatch.setattr(agent_loop, "_maybe_save_echo_memory", lambda *a, **k: None)
+    monkeypatch.setattr(agent_loop, "_maybe_save_session_pattern_memory", lambda *a, **k: None)
 
     agent_loop.autonomous_run(
         goal="What do you think I should do about the retry logic?",
@@ -130,7 +130,7 @@ def test_low_performance_caps_deep_to_light(monkeypatch, tmp_path):
     monkeypatch.setattr(agent_loop.orchestrator, "should_deliberate", lambda *a, **k: False)
     monkeypatch.setattr(agent_loop, "_save_outcome_memory", lambda *a, **k: None)
     monkeypatch.setattr(agent_loop, "_semantic_recall", lambda *a, **k: "")
-    monkeypatch.setattr(agent_loop, "_maybe_save_echo_memory", lambda *a, **k: None)
+    monkeypatch.setattr(agent_loop, "_maybe_save_session_pattern_memory", lambda *a, **k: None)
 
     result = agent_loop.autonomous_run(
         goal="fix the bug in login.py",
@@ -184,7 +184,7 @@ def test_autonomous_run_includes_reasoning_mode(monkeypatch, tmp_path):
     monkeypatch.setattr(agent_loop.orchestrator, "should_deliberate", lambda *a, **k: False)
     monkeypatch.setattr(agent_loop, "_save_outcome_memory", lambda *a, **k: None)
     monkeypatch.setattr(agent_loop, "_semantic_recall", lambda *a, **k: "")
-    monkeypatch.setattr(agent_loop, "_maybe_save_echo_memory", lambda *a, **k: None)
+    monkeypatch.setattr(agent_loop, "_maybe_save_session_pattern_memory", lambda *a, **k: None)
 
     result = agent_loop.autonomous_run(
         goal="hello there",

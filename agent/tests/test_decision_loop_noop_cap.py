@@ -42,7 +42,7 @@ def test_think_only_run_is_capped_not_spun(monkeypatch, tmp_path):
     monkeypatch.setattr(agent_loop.orchestrator, "should_deliberate", lambda *a, **k: False)
     monkeypatch.setattr(agent_loop, "_save_outcome_memory", lambda *a, **k: None)
     monkeypatch.setattr(agent_loop, "_semantic_recall", lambda *a, **k: "")
-    monkeypatch.setattr(agent_loop, "_maybe_save_echo_memory", lambda *a, **k: None)
+    monkeypatch.setattr(agent_loop, "_maybe_save_session_pattern_memory", lambda *a, **k: None)
 
     # allow_write=True disables the self-contained fast-path, so the decision loop actually runs.
     result = agent_loop.autonomous_run(
