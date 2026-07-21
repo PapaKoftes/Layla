@@ -142,3 +142,92 @@ class TestIdempotenceAndSafety:
         turn_commit.commit_turn(
             "c1", "goal", "text", aspect_id="morrigan", status="finished", state=state,
         )  # must not raise
+
+
+class TestTheOtherStreamedBlindLearners:
+    """strategy stats, skill acquisition and answer_quality shared outcome evaluation's gate.
+
+    All three sat inside the same `status == "finished"` block in run_finalizer, so all three were
+    blind to the default streamed path for the same reason. answer_quality was doubly unreachable:
+    even when the gate opened, run_finalizer reconstructs the answer by scanning state["steps"] for
+    a reason step — empty on a streamed run, because the answer came from the token stream and was
+    never written back. commit_turn has the real reply.
+    """
+
+    def test_strategy_stats_are_recorded_for_a_streamed_turn(self, captured, monkeypatch):
+        rec = {}
+        monkeypatch.setattr(
+            "layla.memory.strategy_stats.record_strategy_stat",
+            lambda task, strat, success: rec.update(task=task, strat=strat, success=success),
+        )
+        state = _streamed_state()
+        turn_commit.commit_turn(
+            "c1", "refactor auth", "done", aspect_id="morrigan", status="finished", state=state,
+        )
+        assert rec, "no strategy stat recorded — the feedback loop learns nothing from normal use"
+        assert rec["strat"] == "morrigan"
+        assert state.get("strategy_stats_recorded") is True
+
+    def test_strategy_stats_are_not_double_counted(self, captured, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            "layla.memory.strategy_stats.record_strategy_stat",
+            lambda task, strat, success: calls.append(strat),
+        )
+        # run_finalizer already did it on the non-streamed path.
+        state = _streamed_state(
+            outcome_evaluation={"success": True, "score": 0.85},
+            strategy_stats_recorded=True,
+        )
+        turn_commit.commit_turn(
+            "c1", "goal", "text", aspect_id="morrigan", status="finished", state=state,
+        )
+        assert calls == [], "the non-streamed path was already counted; this double-counts it"
+
+    def test_answer_quality_uses_the_real_reply_not_the_empty_step_scan(self, captured, monkeypatch):
+        seen = {}
+
+        def _assess(text, goal, cfg, current_model=""):
+            seen["text"] = text
+            return {"grounding": {"enabled": True}, "escalate": False}
+
+        monkeypatch.setattr("services.llm.answer_assessment.assess_answer", _assess)
+        state = _streamed_state()
+        turn_commit.commit_turn(
+            "c1", "explain the tradeoffs", "Here is the real streamed answer.",
+            aspect_id="morrigan", status="finished", state=state,
+        )
+        assert seen.get("text") == "Here is the real streamed answer.", (
+            "answer_quality was assessed against something other than the actual reply — "
+            "run_finalizer's step-scan yields '' on a streamed turn"
+        )
+        assert state.get("answer_quality")
+
+    def test_a_refused_turn_is_not_quality_assessed(self, captured, monkeypatch):
+        monkeypatch.setattr(
+            "services.llm.answer_assessment.assess_answer",
+            lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not assess a refusal")),
+        )
+        state = _streamed_state()
+        turn_commit.commit_turn(
+            "c1", "goal", "I can't help with that.", aspect_id="morrigan",
+            status="finished", refused=True, state=state,
+        )
+
+    def test_skill_acquisition_is_claimed_once(self, captured, monkeypatch):
+        started = []
+        monkeypatch.setattr(
+            turn_commit.threading, "Thread",
+            lambda *a, **k: type("T", (), {"start": lambda s: started.append(k.get("name"))})(),
+        )
+        state = _streamed_state()
+        turn_commit.commit_turn(
+            "c1", "goal", "text", aspect_id="morrigan", status="finished", state=state,
+        )
+        assert state.get("skill_acquisition_started") is True
+
+        started.clear()
+        turn_commit.commit_turn(
+            "c1", "goal", "text", aspect_id="morrigan", status="finished", state=state,
+        )
+        assert "skill-acquire" not in started, "skill acquisition ran twice for one turn"
