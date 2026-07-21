@@ -108,8 +108,9 @@ class TestGradingIsActuallyPersisted:
 
 def test_the_tool_description_matches_what_it_does():
     """The defect was a contract mismatch: the description promised SM-2 grading, the code listed rows."""
-    from layla.tools.domains.memory import TOOLS as MEM_TOOLS
     import inspect
+
+    from layla.tools.domains.memory import TOOLS as MEM_TOOLS
 
     desc = MEM_TOOLS["spaced_repetition_review"]["description"].lower()
     assert "quality" in desc and "sm-2" in desc, "description drifted from the promised contract"

@@ -1,7 +1,9 @@
 """delete_conversation must clear the parent link on any child fork so it doesn't dangle at a now-missing
 parent (the only real residual the final audit sweep found — a graceful fork-tree cosmetic nit)."""
-import sys, uuid
+import sys
+import uuid
 from pathlib import Path
+
 AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))

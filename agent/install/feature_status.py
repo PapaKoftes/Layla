@@ -135,7 +135,7 @@ def writable_config_keys() -> set[str]:
     """
     keys: set[str] = set()
     try:
-        from config_schema import EDITABLE_SCHEMA, _THEME_FLAG_WHITELIST
+        from config_schema import _THEME_FLAG_WHITELIST, EDITABLE_SCHEMA
 
         keys |= {e["key"] for e in EDITABLE_SCHEMA if e.get("key")}
         keys |= set(_THEME_FLAG_WHITELIST)

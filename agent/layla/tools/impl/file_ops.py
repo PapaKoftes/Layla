@@ -618,7 +618,7 @@ def apply_patch(original_path: str, patch_text: str) -> dict:
     if not ok:
         return err or {"ok": False, "error": "Outside sandbox"}
     if not target.exists():
-        return _not_found("File", path, target)
+        return _not_found("File", original_path, target)
     stale = _check_read_freshness(target)
     if stale:
         return {"ok": False, "error": stale, "hint": "use read_file first"}

@@ -24,7 +24,6 @@ if str(AGENT) not in sys.path:
 
 from services.infrastructure.german_mode import _sm2  # noqa: E402
 
-
 # ── Ported from the deleted services/memory/spaced_repetition.py tests ────────────────────────────────
 
 def test_sm2_grows_and_resets():

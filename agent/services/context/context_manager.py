@@ -265,7 +265,7 @@ def truncate_to_tokens(text: str, max_tokens: int, suffix: str = "...") -> str:
 
 
 def _drop_dangling_headers(text: str) -> str:
-    """Drop trailing markdown headers that the cut left with no body.
+    r"""Drop trailing markdown headers that the cut left with no body.
 
     Preferring the LINE boundary above means the cut lands cleanly between lines — which is right for
     prose, and produces a specific defect on markdown: when the boundary falls just after a heading, the
