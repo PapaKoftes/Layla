@@ -56,10 +56,49 @@ def test_pipeline_weight_scales_up_monotonically():
     strong = compute_optimization_profile(CPU_STRONG, gpu_offload=False)
     gpu = compute_optimization_profile(GPU_24GB, gpu_offload=True)
 
-    assert potato["n_ctx"] < strong["n_ctx"] <= gpu["n_ctx"]
+    # n_ctx is NON-DECREASING, not strictly increasing, and the map always meant that: potato and
+    # cpu were both 2048 before P13-A3, gpu_low and gpu_mid are both 8192. Plateaus were already
+    # the design; this assertion just happened to compare the one pair that straddled a step, so it
+    # read as a strictness rule it never enforced anywhere else. P13-A3 plateaus all three CPU tiers
+    # at 8192 on measured evidence (CPU inference is memory-bandwidth bound — more cores buy prefill
+    # throughput, not a bigger affordable window). A stronger tier must never get LESS; it need not
+    # get more when the binding constraint is identical.
+    assert potato["n_ctx"] <= strong["n_ctx"] <= gpu["n_ctx"]
+    assert strong["n_ctx"] < gpu["n_ctx"], "the ladder must still climb where hardware changes class"
     assert potato["system_head_budget_ratio"] < gpu["system_head_budget_ratio"]
     assert potato["completion_max_tokens"] < gpu["completion_max_tokens"]
     assert potato["max_runtime_seconds"] < gpu["max_runtime_seconds"]
+
+
+def test_head_window_climbs_across_every_tier_and_the_floor_never_binds():
+    """The promise n_ctx was a proxy for, asserted on the quantity that actually delivers it.
+
+    What reaches the model is not n_ctx, it is the system-head window:
+    ``max(1024, int(n_ctx * clamp(system_head_budget_ratio, 0.15, 0.55)))``
+    (system_head_builder.py:1475-1477 — mirrored here deliberately, see the floor check below).
+
+    Before P13-A3 that floor BOUND on the two tiers the ratio was written for: potato was
+    2048 * 0.22 = 450 -> clamped to 1024, cpu was 2048 * 0.28 = 573 -> clamped to 1024. Identical
+    windows, so the flagship "small system prompt => fast CPU prefill" lever did nothing, and no
+    test noticed because every assertion was on the ratio rather than on its effect. Checking three
+    fixtures is also what let a potato/cpu_plus inversion through; this walks the whole ladder.
+    """
+    ladder = [
+        ("potato", POTATO, False), ("cpu", CPU_MID, False), ("cpu_plus", CPU_STRONG, False),
+        ("gpu_low", GPU_6GB, True), ("gpu_mid", GPU_12GB, True), ("gpu_high", GPU_24GB, True),
+    ]
+    windows = []
+    for name, hw, offload in ladder:
+        assert optimization_tier(hw, gpu_offload=offload) == name, "fixture no longer maps to its tier"
+        p = compute_optimization_profile(hw, gpu_offload=offload)
+        ratio = max(0.15, min(0.55, p["system_head_budget_ratio"]))
+        raw = int(p["n_ctx"] * ratio)
+        # If the floor ever binds again, the tier's ratio is decorative and this test is the alarm.
+        assert raw > 1024, f"{name}: head window {raw} is under the 1024 floor — its ratio is inert"
+        windows.append((name, raw))
+
+    for (lo_name, lo), (hi_name, hi) in zip(windows, windows[1:]):
+        assert lo < hi, f"{lo_name} ({lo}) must get a smaller head window than {hi_name} ({hi})"
 
 
 def test_potato_pipeline_is_lean():
