@@ -791,7 +791,25 @@ def load_config() -> dict:
             "relationship_codex_inject_max_chars": 1000,
             "project_discovery_auto_inject": False,
             "aspect_memories_n": 10,
-            "convo_turns": 0,
+            # SHE COULD NOT SEE HER OWN PREVIOUS REPLIES. This shipped at 0, and both prompt
+            # builders gate on `if convo_turns > 0`, so the "Recent conversation" block was never
+            # appended — on any turn, ever. conversation_summaries has 0 rows, so the summary path
+            # was empty too. The entire visible past was one "Last user message:" line capped at
+            # 500 chars; continuity was an illusion produced by semantic recall.
+            #
+            # 0 was defensible while every turn re-prefilled the whole prompt (P13-A1): history was
+            # pure added latency. With prefix reuse working it is cheap, and MEASURED on this box —
+            # marginal prefill on the non-reused tail is 155 tok/s, so at the real char caps
+            # (stream_handler gives the last 2 messages 600 chars and older ones 220):
+            #     convo_turns  2 -> ~300 tok -> 1.9s     6 -> ~520 tok -> 3.3s
+            #                  8 -> ~630 tok -> 4.1s    12 -> ~850 tok -> 5.5s AND OVERFLOWS
+            # 6 (three exchanges) costs ~3.3s on top of a ~0.6s first token — still ~5.8x faster
+            # than the 22.6s every no-history turn cost before A1. The two changes compound.
+            #
+            # The ceiling is the window, not the clock: head ~860 + reply reserve 320 + history
+            # must fit 2048. 12 messages lands at ~2050 and overflows; 10 is the safe maximum,
+            # which is why config_schema caps it there.
+            "convo_turns": 6,
             "stop_sequences": ["\nUser:", " User:"],
             "completion_max_tokens": 256,
             "remote_model_name": "llama3.1",
