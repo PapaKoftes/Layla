@@ -89,8 +89,19 @@ _CAP_Q_RE = re.compile(
     # words. Unanchored, "what can you do about the memory leak in worker.py" billed an ordinary
     # debugging turn 1559 tokens instead of 848. "for"/"here" are deliberately NOT in the list —
     # "what can you do for me" IS the question.
-    r"\bwhat\s+(can|could)\s+(you|u)\s+do\b(?!\s+(about|with|to|regarding|concerning)\b)"
-    r"|\bwhat\s+(you|u)\s+(can|could)\s+do\b"
+    # ADVERBS ARE OPTIONAL AND MUST NOT BREAK THE MATCH. This required "you" and "do" to be
+    # adjacent, so the manifest reached her for "list your capabilities" and "what tools do you
+    # have" but NOT for "what can you actually do" — measured, along with "what can you really do",
+    # "what exactly can you do" and "what else can you do". Four ordinary phrasings of the same
+    # question, and the most natural one of the set was among them: an intensifier is exactly what a
+    # person adds when they suspect the first answer was padded. The manifest is the ONLY ground
+    # truth about her real capabilities, so missing it means she answers from invention on precisely
+    # the turn where the user is pushing for accuracy.
+    # `\w+ly` covers actually/really/genuinely/honestly/exactly; "else" and "even" are the non-ly
+    # cases that occur in practice. The negative lookahead is untouched and still load-bearing.
+    r"\bwhat\s+(?:(?:\w+ly|else|even)\s+)?(can|could)\s+(you|u)\s+(?:(?:\w+ly|else|even)\s+)?do\b"
+    r"(?!\s+(about|with|to|regarding|concerning)\b)"
+    r"|\bwhat\s+(you|u)\s+(can|could)\s+(?:(?:\w+ly|else|even)\s+)?do\b"
     r"|\b(your|you have)\b[^?]{0,20}\b(capabilit|abilit|feature|function|tool)"
     # noun-first order: "what FEATURES DO YOU HAVE"
     r"|\b(feature|tool|capabilit|abilit|function)\w*\s+do\s+you\s+have\b"
