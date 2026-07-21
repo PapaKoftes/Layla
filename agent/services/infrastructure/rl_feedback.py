@@ -37,7 +37,7 @@ def compute_tool_preferences(db_path: str | None = None) -> dict[str, ToolPrefer
     """
     try:
         from layla.memory.db import get_tool_reliability
-        reliability = get_tool_reliability()
+        reliability = get_tool_reliability(attributed_only=True)  # attributed: never learn from registry sweeps / self-tests
     except Exception as e:
         logger.debug("compute_tool_preferences: get_tool_reliability failed: %s", e)
         reliability = {}

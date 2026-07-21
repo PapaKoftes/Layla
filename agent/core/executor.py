@@ -54,6 +54,34 @@ def run_tool(
 
     start = time.monotonic()
 
+    # PROVENANCE. tool_outcomes is written by a wrapper over every TOOLS entry, so it fires for any
+    # invoker — and recorded none of them, leaving all 306 rows with context=''. run_tool is the
+    # agent-loop entry point (its ungated _trace_tool_call wrote only 13 tool_calls rows against
+    # those 306, i.e. ~293 executions never came through here), so marking the thread here is what
+    # lets reliability stats tell real usage apart from registry sweeps and self-tests.
+    try:
+        from services.observability._legacy_observability import (
+            TOOL_SOURCE_AGENT,
+            tool_invocation_source,
+        )
+        _source_cm = tool_invocation_source(TOOL_SOURCE_AGENT)
+    except Exception:
+        import contextlib as _cl
+        _source_cm = _cl.nullcontext()
+    with _source_cm:
+        return _run_tool_inner(tool_name, args, timeout_s, sandbox_root, allow_run, conversation_id, TOOLS, start)
+
+
+def _run_tool_inner(
+    tool_name: str,
+    args: dict,
+    timeout_s: float,
+    sandbox_root: str | None,
+    allow_run: bool,
+    conversation_id: str,
+    TOOLS: dict,
+    start: float,
+) -> dict[str, Any]:
     if tool_name not in TOOLS:
         return {
             "ok": False,

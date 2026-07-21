@@ -271,15 +271,50 @@ def record_tool_outcome(tool_name: str, success: bool, context: str = "", latenc
             pass
 
 
-def get_tool_reliability(tool_name: str | None = None, n: int = 100) -> dict[str, dict]:
-    """Return reliability stats per tool: {tool_name: {success_rate, avg_latency, avg_quality, count}}."""
+def get_tool_reliability(tool_name: str | None = None, n: int = 100, attributed_only: bool = False) -> dict[str, dict]:
+    """Return reliability stats per tool: {tool_name: {success_rate, avg_latency, avg_quality, count}}.
+
+    `attributed_only=True` restricts to rows a marked invoker produced. LEARNING consumers must pass
+    it; diagnostics deliberately should not, which is why it is opt-in rather than the default —
+    flipping the default would silently change all six call sites at once, and the whole class of bug
+    this addresses is a value quietly meaning something different than its readers assume.
+
+    Why it matters: rl_feedback.compute_tool_preferences turns this into the planner's prefer/avoid
+    hints, so what it counts becomes what the agent believes about its own tools. tool_outcomes is
+    written by a wrapper over every TOOLS entry that fires for ANY invoker, and recorded no provenance
+    at all.
+
+    On the operator's box that meant a capability self-test sweep taught the planner its lessons: one
+    minute contributed 132 rows in which ~150 distinct tools each ran exactly once, and every
+    disk-touching tool failed because sandbox_root was an empty folder. The resulting "avoid
+    read_file / file_info / list_dir" was an artifact of a sweep against an empty directory, not
+    experience.
+
+    Rows written before provenance existed carry context='' and are therefore excluded. That empties
+    the preference table until real usage repopulates it, which is the correct direction: no belief
+    is better than a confidently wrong one. Pass attributed_only=False for diagnostics/health views
+    that legitimately want the raw totals.
+    """
     migrate()
+    _src = "agent_loop"
     with _conn() as db:
-        if tool_name:
+        if tool_name and attributed_only:
+            rows = db.execute(
+                """SELECT tool_name, AVG(success) as success_rate, AVG(latency_ms) as avg_latency, AVG(quality_score) as avg_quality, COUNT(*) as count
+                   FROM tool_outcomes WHERE tool_name=? AND context=? GROUP BY tool_name""",
+                (tool_name, _src),
+            ).fetchall()
+        elif tool_name:
             rows = db.execute(
                 """SELECT tool_name, AVG(success) as success_rate, AVG(latency_ms) as avg_latency, AVG(quality_score) as avg_quality, COUNT(*) as count
                    FROM tool_outcomes WHERE tool_name=? GROUP BY tool_name""",
                 (tool_name,),
+            ).fetchall()
+        elif attributed_only:
+            rows = db.execute(
+                """SELECT tool_name, AVG(success) as success_rate, AVG(latency_ms) as avg_latency, AVG(quality_score) as avg_quality, COUNT(*) as count
+                   FROM tool_outcomes WHERE context=? GROUP BY tool_name""",
+                (_src,),
             ).fetchall()
         else:
             rows = db.execute(
