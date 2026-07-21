@@ -77,16 +77,24 @@ def summarize_history(
     n_ctx: int = 4096,
     threshold_ratio: float = 0.75,
     keep_recent_messages: int = 0,
+    force: bool = False,
 ) -> list:
     """
     If token_count > threshold, compress oldest messages into a compact system summary.
 
     When keep_recent_messages > 0, the last N messages are never merged into the
     summary (sliding window): only the prefix is compressed.
+
+    `force` compacts regardless of token count. It exists because the caller on the live turn path
+    watches a FIXED-LENGTH ring buffer (shared_state._conv_histories, deque(maxlen=20)), and token
+    pressure is the wrong proxy for one: a ring never builds pressure, it discards from the left.
+    Measured, the deque plateaus around 1428 tokens against a 4915-token threshold — 29% — so this
+    branch had never once been taken and conversation_summaries had 0 rows for the life of the DB.
+    Occupancy is the signal that matters there; see shared_state._compact_bg.
     """
     threshold = int(n_ctx * threshold_ratio)
     total = token_estimate_messages(messages)
-    if total <= threshold:
+    if not force and total <= threshold:
         return messages
     if keep_recent_messages > 0 and len(messages) > keep_recent_messages:
         suffix = messages[-keep_recent_messages:]
@@ -100,9 +108,22 @@ def summarize_history(
         to_compress = messages[:half]
         rest = messages[half:]
     summary = _compress_to_summary(to_compress)
+    _persisted_kind = bool(summary) and summary.startswith("[Earlier conversation summary]")
+    if force and not _persisted_kind:
+        # PROACTIVE compaction must never destroy what it cannot save. _compress_to_summary takes
+        # the LLM lock with blocking=False and degrades to "[Earlier conversation (truncated)]" under
+        # contention — a marker that is deliberately NOT written to long-term memory. Replacing real
+        # messages with it would delete the very turns this call exists to preserve. Bail and retry on
+        # the next assistant turn; the ring still holds everything, and compaction is idempotent.
+        #
+        # The non-forced path deliberately still truncates: there the context is genuinely
+        # overflowing, so shedding tokens beats failing to fit at all. Only the proactive caller,
+        # which has slack by construction, can afford to wait.
+        _logger.debug("forced compaction skipped: summarizer unavailable, retrying next turn")
+        return messages
     if summary:
         # Persist to long-term memory to prevent context overflow across sessions
-        if summary.startswith("[Earlier conversation summary]"):
+        if _persisted_kind:
             try:
                 from layla.memory.db import (
                     add_conversation_summary,
@@ -128,7 +149,7 @@ def summarize_history(
     return rest
 
 
-def maybe_auto_compact(messages: list, n_ctx: int = 4096, cfg: dict | None = None) -> list:
+def maybe_auto_compact(messages: list, n_ctx: int = 4096, cfg: dict | None = None, force: bool = False) -> list:
     """Wrapper: summarize_history using effective threshold + optional keep-recent window."""
     ratio = effective_compact_threshold_ratio(cfg, n_ctx)
     keep = int((cfg or {}).get("context_sliding_keep_messages", 0) or 0)
@@ -140,6 +161,7 @@ def maybe_auto_compact(messages: list, n_ctx: int = 4096, cfg: dict | None = Non
         n_ctx=n_ctx,
         threshold_ratio=ratio,
         keep_recent_messages=keep,
+        force=force,
     )
     after = token_estimate_messages(out)
     if after < before:
