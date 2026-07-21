@@ -425,9 +425,9 @@ def handle_reasoning_intent(
     # Save Echo aspect memory
     if text and not refused:
         try:
-            from services.infrastructure.outcome_writer import _maybe_save_echo_memory
+            from services.infrastructure.outcome_writer import _maybe_save_session_pattern_memory
 
-            _maybe_save_echo_memory(
+            _maybe_save_session_pattern_memory(
                 aspect_id=active_aspect.get("id", ""),
                 user_msg=state["original_goal"],
                 reply=text,

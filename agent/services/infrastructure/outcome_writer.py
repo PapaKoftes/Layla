@@ -29,17 +29,32 @@ _recent_learning_fingerprints: collections.OrderedDict = collections.OrderedDict
 _recent_tool_pattern_fingerprints: collections.OrderedDict = collections.OrderedDict()
 
 
-def _maybe_save_echo_memory(
+def _maybe_save_session_pattern_memory(
     aspect_id: str,
     user_msg: str,
     reply: str,
     conversation_history: list,
 ) -> None:
-    """
-    Echo tracks patterns across all turns, not just when Echo is the active aspect.
-    - Every 5 turns: saves a brief session pattern summary to Echo's aspect memories.
-    - When Echo is active: saves the full exchange immediately.
-    - Extracts recurring topics / avoidance signals from recent history.
+    """Save a distilled session-pattern note to the ACTIVE aspect's memories.
+
+    - Every 5 turns, and every turn while Echo is active: store recurring user topics.
+    - Written under `aspect_id`, because that is the key the reader queries by.
+
+    THIS WROTE TO A HARDCODED "echo" FOR THE LIFE OF THE DATABASE. The old docstring said
+    "Echo tracks patterns across all turns, not just when Echo is the active aspect", and the
+    body honoured that by passing the literal `"echo"` to _db_save_aspect_memory while the true
+    active aspect sat unused in `aspect_id` — interpolated into the note's TEXT one line above,
+    but discarded for the column. The intent was a cross-aspect observer.
+
+    The reader makes that intent unachievable: user_profile.get_aspect_memories filters
+    `WHERE aspect_id=?`, and system_head_builder passes the CURRENT aspect's id. So notes filed
+    under Echo are readable only by Echo. On the operator's box that meant Morrigan — the main
+    aspect, 120 interactions, 3.5x any other — read zero of her own memories while Echo silently
+    accumulated all 18 rows. Five aspects had no episodic memory at all.
+
+    Writing to `aspect_id` is what makes the write agree with the read. A genuine cross-aspect
+    tracker is still possible later, but it needs a reader that queries across aspects; it cannot
+    be built by writing to the wrong key and hoping.
     """
     turn_count = len(conversation_history) if conversation_history else 0
     is_echo = aspect_id == "echo"
@@ -64,7 +79,8 @@ def _maybe_save_echo_memory(
                     + "; ".join(topics[:3])
                     + f". Last reply aspect: {aspect_id}."
                 )
-                _db_save_aspect_memory("echo", pattern_note[:400])
+                # aspect_id, NOT "echo" — the reader filters by this exact column.
+                _db_save_aspect_memory(aspect_id, pattern_note[:400])
         except Exception:
             pass
 

@@ -79,7 +79,7 @@ from services.context.context_window_ux import emit_context_window_ux
 # BL-338: `_auto_extract_learnings` is NOT imported — its one caller is turn_commit.commit_turn.
 from services.infrastructure.outcome_writer import (  # noqa: E402
     _extract_patch_text,
-    _maybe_save_echo_memory,
+    _maybe_save_session_pattern_memory,
     _save_outcome_memory,
 )
 from services.infrastructure.output_polish import polish_output as _polish_output  # noqa: E402

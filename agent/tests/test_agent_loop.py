@@ -150,7 +150,7 @@ def test_pre_read_probe_inserts_file_info_before_read(monkeypatch, tmp_path):
     monkeypatch.setattr(agent_loop.orchestrator, "should_deliberate", lambda *a, **k: False)
     monkeypatch.setattr(agent_loop, "_save_outcome_memory", lambda *a, **k: None)
     monkeypatch.setattr(agent_loop, "_semantic_recall", lambda *a, **k: "")
-    monkeypatch.setattr(agent_loop, "_maybe_save_echo_memory", lambda *a, **k: None)
+    monkeypatch.setattr(agent_loop, "_maybe_save_session_pattern_memory", lambda *a, **k: None)
 
     result = agent_loop.autonomous_run(
         goal=f"read file {str(f)}",
@@ -193,7 +193,7 @@ def test_pre_read_probe_avoids_binary_reads(monkeypatch, tmp_path):
     monkeypatch.setattr(agent_loop.orchestrator, "should_deliberate", lambda *a, **k: False)
     monkeypatch.setattr(agent_loop, "_save_outcome_memory", lambda *a, **k: None)
     monkeypatch.setattr(agent_loop, "_semantic_recall", lambda *a, **k: "")
-    monkeypatch.setattr(agent_loop, "_maybe_save_echo_memory", lambda *a, **k: None)
+    monkeypatch.setattr(agent_loop, "_maybe_save_session_pattern_memory", lambda *a, **k: None)
 
     # If the actual read_file tool is called, fail (binary should be avoided).
     called = {"read": 0}
@@ -245,7 +245,7 @@ def test_tool_preflight_redirects_missing_args_to_reason(monkeypatch, tmp_path):
     monkeypatch.setattr(agent_loop.orchestrator, "should_deliberate", lambda *a, **k: False)
     monkeypatch.setattr(agent_loop, "_save_outcome_memory", lambda *a, **k: None)
     monkeypatch.setattr(agent_loop, "_semantic_recall", lambda *a, **k: "")
-    monkeypatch.setattr(agent_loop, "_maybe_save_echo_memory", lambda *a, **k: None)
+    monkeypatch.setattr(agent_loop, "_maybe_save_session_pattern_memory", lambda *a, **k: None)
 
     # If the actual read_file tool is called, fail.
     def _boom(*_a, **_k):
@@ -286,7 +286,7 @@ def test_pre_read_probe_runs_only_once_per_path(monkeypatch, tmp_path):
     monkeypatch.setattr(agent_loop.orchestrator, "should_deliberate", lambda *a, **k: False)
     monkeypatch.setattr(agent_loop, "_save_outcome_memory", lambda *a, **k: None)
     monkeypatch.setattr(agent_loop, "_semantic_recall", lambda *a, **k: "")
-    monkeypatch.setattr(agent_loop, "_maybe_save_echo_memory", lambda *a, **k: None)
+    monkeypatch.setattr(agent_loop, "_maybe_save_session_pattern_memory", lambda *a, **k: None)
 
     decisions = iter([
         {"action": "tool", "tool": "read_file", "args": {}, "objective_complete": False, "priority_level": "high"},
