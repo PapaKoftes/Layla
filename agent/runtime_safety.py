@@ -89,6 +89,15 @@ DANGEROUS_TOOLS = [
     "github_pr", "send_email", "send_webhook", "discord_send", "clipboard_write", "browser_click", "browser_fill",
     "code_format", "write_csv", "calendar_add_event", "create_svg", "create_mermaid",
     "notebook_edit_cell", "run_skill_pack",
+    "clipboard_read", "screenshot_desktop",
+    # CAPTURE TOOLS — approval-gated for privacy, not because they destroy anything.
+    # clipboard_WRITE was gated while clipboard_READ was not, which is backwards: writing text you
+    # already chose is harmless next to reading whatever you last copied, which is routinely a
+    # password, an API token, or private text you never intended to hand to a model. Likewise
+    # screenshot_desktop captures the whole screen — other applications, notifications, credentials
+    # on display — not just anything Layla is working on.
+    # Both feed straight into model context, and from there into memory rows and logs. For a
+    # product whose entire premise is local-first privacy, silent capture is the wrong default.
 ]
 
 PROTECTED_FILES = [

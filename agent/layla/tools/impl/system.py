@@ -53,38 +53,34 @@ def shell(argv: list, cwd: str) -> dict:
             out = {**out, "warning": inj_warn, "risk_level": "high"}
         return out
     except Exception as e:
-        logger.debug("shell runner failed, fallback: %s", e)
-    cmd = argv[0].lower().lstrip("./\\")
-    for blocked in _SHELL_BLOCKLIST:
-        if cmd == blocked or cmd.endswith(blocked):
-            return {"ok": False, "error": f"Command blocked: {argv[0]}"}
-    cwd_path = Path(cwd)
-    if not inside_sandbox(cwd_path):
-        return {"ok": False, "error": "cwd outside sandbox"}
-    try:
-        proc = subprocess.run(
-            argv,
-            cwd=str(cwd_path),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=60,
-        )
-        out = {
-            "ok": proc.returncode == 0,
-            "stdout": (proc.stdout or "")[:4000],
-            "stderr": (proc.stderr or "")[:2000],
-            "returncode": proc.returncode,
+        # FAIL CLOSED. This used to fall back to running the command directly behind a second,
+        # weaker blocklist — a stale copy of a rule that services/sandbox/shell_runner.py already
+        # implements correctly. The copy was broken in BOTH directions, verified by measurement:
+        #
+        #   cmd.exe / powershell.exe / reg.exe / taskkill.exe / C:\Windows\System32\cmd.exe
+        #       -> ALLOWED. It matched `cmd == blocked or cmd.endswith(blocked)` against a blocklist
+        #          written in bare names ("cmd", "powershell"), and "cmd.exe".endswith("cmd") is
+        #          False. On Windows — the platform where these matter — every blocked interpreter
+        #          walked straight through.
+        #   mydd / myreg / addsc / procdd
+        #       -> BLOCKED. `endswith` also caught innocent names that merely end in a blocked token.
+        #
+        # 5 bypasses and 4 false blocks out of 14 probe cases. It was additionally weaker than the
+        # real runner in ways no amount of fixing this line would close: no network denylist, no
+        # allowlist enforcement, no trailing-dot/space normalisation (`rm.exe.` resolves to rm.exe on
+        # Windows), no handling of stacked suffixes.
+        #
+        # Rewriting it correctly would recreate the actual defect — two implementations of one
+        # security rule, drifting apart, where the weaker one silently wins whenever the stronger
+        # one is unavailable. If the sandboxed runner cannot execute, that is not a reason to run
+        # the command with less checking; it is a reason not to run it.
+        logger.error("shell runner unavailable, refusing to execute unsandboxed: %s", e)
+        return {
+            "ok": False,
+            "error": "Shell unavailable: the sandboxed runner failed to execute, and running "
+                     "commands outside it is refused by design.",
+            "detail": str(e)[:200],
         }
-        if inj_warn and out.get("ok"):
-            out["warning"] = inj_warn
-            out["risk_level"] = "high"
-        return out
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "error": "Command timed out (60s)"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
 
 def shell_session_start(argv: list | None = None, cwd: str = "") -> dict:
     """Start a background shell process; returns session_id. Requires approval."""
