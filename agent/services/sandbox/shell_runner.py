@@ -32,6 +32,15 @@ _DEFAULT_BLOCKLIST = (
     "cmd",
     "pwsh",
     "bash",
+    # P13-C4: `sh`, `zsh` and `wsl` were still missing, which left the previous round half-done —
+    # blocking `bash` while allowing `sh -c "..."` blocks a name, not a capability. Git for Windows
+    # ships sh.exe on the vast majority of dev machines, so this was reachable here specifically.
+    # `wsl` matters most: on Windows `wsl <cmd>` runs the command in a full Linux environment, i.e.
+    # entirely outside every guard in this file. Basename EQUALITY means "ssh" and "sha256sum" are
+    # unaffected — only a command literally named `sh` matches.
+    "sh",
+    "zsh",
+    "wsl",
     # LOLBins: download / remote-exec primitives (the URL-ingestion injection path the
     # threat frame names). curl.exe is intentionally NOT here — it ships with Windows,
     # is commonly legitimate, and app network egress is governed by url_guard, not this
