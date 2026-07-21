@@ -13,7 +13,7 @@ def get_recent_tool_patterns(n: int = 50) -> list[dict[str, Any]]:
     """Extract patterns from recent tool outcomes: which tools succeed/fail in what contexts."""
     try:
         from layla.memory.db import get_tool_reliability
-        stats = get_tool_reliability()
+        stats = get_tool_reliability(attributed_only=True)  # attributed: never learn from registry sweeps / self-tests
         patterns = []
         for tool, s in stats.items():
             if s.get("count", 0) >= 3:

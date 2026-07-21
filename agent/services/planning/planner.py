@@ -108,7 +108,7 @@ def get_tool_reliability_hint() -> str:
     """Return hint string for tools with higher success rate (tool outcome learning)."""
     try:
         from layla.memory.db import get_tool_reliability
-        stats = get_tool_reliability()
+        stats = get_tool_reliability(attributed_only=True)  # attributed: never learn from registry sweeps / self-tests
         if not stats:
             return ""
         # Top 3 by success_rate * avg_quality, min 5 outcomes
@@ -141,7 +141,7 @@ def get_tool_low_reliability_warning() -> str:
     try:
         from layla.memory.db import get_tool_reliability
 
-        stats = get_tool_reliability()
+        stats = get_tool_reliability(attributed_only=True)  # attributed: never learn from registry sweeps / self-tests
         bad = [
             n
             for n, s in stats.items()
