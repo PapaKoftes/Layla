@@ -92,6 +92,9 @@ def finalize_run_state(
                         logger.debug("skill acquisition failed: %s", _sk_exc)
 
                 _t.Thread(target=_acquire_skill, daemon=True, name="skill-acquire").start()
+                # Claim it, so the turn-boundary copy in commit_turn (which handles the streamed
+                # path this block cannot see) does not mint the same skill twice.
+                state["skill_acquisition_started"] = True
         except Exception as _sk_gate_exc:
             logger.debug("skill acquisition gate failed: %s", _sk_gate_exc)
         final_text = ""
