@@ -313,6 +313,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   two weakest tiers computed 450 and 573 tokens and both got clamped to an identical 1024. Every
   tier now gets a genuinely different prompt budget, and a test fails if the floor ever binds again.
 
+### Memory that actually persists (P13 Phase B)
+- **Every aspect can remember you now, not just Echo.** Session memories were filed under a
+  hardcoded `"echo"` regardless of which aspect you were talking to, and the reader looks memories up
+  *by aspect* — so Morrigan, with 120 recorded interactions, could read exactly zero of her own.
+  Five of six aspects had no episodic memory at all. Existing rows stay filed under Echo; new ones
+  go to the right aspect.
+- **Conversations no longer fall off a cliff at 20 messages.** Older turns were supposed to be
+  distilled into a running summary. That summariser was gated on the conversation growing past ~4900
+  tokens — but it watched a fixed 20-slot buffer that discards the oldest message when full, so it
+  could never grow past ~1400 tokens and the gate never opened once. Anything older than 20 messages
+  was silently deleted rather than summarised. Compaction now triggers on the buffer filling up,
+  a few slots before anything is lost. **This also restores relationship memory, the timeline, and
+  episode history**, which all sat behind the same gate. Cost: a background summary roughly every 16
+  turns (a few seconds of CPU, off the reply path).
+- **"File not found" now tells you where she looked.** If her workspace folder is empty, she says so
+  and names the setting to change, instead of reporting a bare not-found. Worth checking if her file
+  tools have never worked for you — on the developer's own machine `read_file` had failed 13 times
+  out of 13 because `sandbox_root` pointed at an empty folder, and nothing ever said so.
+- **Fixed: new installs shipped with conversation history switched off.** The example config that
+  seeds a fresh install explicitly set `convo_turns: 0`, which overrode the corrected default — so
+  the Phase A fix reached nobody. A test now fails if the example config contradicts a shipped
+  default without a written justification.
+
 ### Added
 - **Task-aware model routing**: when `tool_routing_enabled` and task models are configured, `autonomous_run` sets `model_override` from `model_router.classify_task(goal, context)`; `llm_gateway._get_llm()` loads per-GGUF path (primary + `coding_model` / `reasoning_model` / `chat_model`). `model_router.select_model()` ties `llm_model_coding` capability (Magicoder id) to benchmarks and `coding_model`.
 - **`performance_mode`** (`low` | `mid` | `high` | `auto`) in `system_optimizer.get_effective_config()`: missing config defaults to `mid` (backward compatible); explicit `auto` maps from `hardware_detect` tiers. Adjusts `n_ctx`, tool limits, cross-encoder, planning depth, cognitive workspace (runtime only, never persisted).
