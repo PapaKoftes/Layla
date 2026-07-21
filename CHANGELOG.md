@@ -336,6 +336,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the Phase A fix reached nobody. A test now fails if the example config contradicts a shipped
   default without a written justification.
 
+### Accuracy & safety (P13 Phase B/D)
+- **She no longer claims things are related to your question when they aren't.** The prompt included
+  a "Knowledge graph associations" block, and when nothing in memory actually matched your request it
+  fell back to listing the five most *recent* notes anyway — under a heading telling the model they
+  were relevant. On a real machine that meant an ordinary coding question arrived alongside leftover
+  test data and prompt fragments. The block is now empty when nothing matches, and single-word
+  fragments no longer qualify as "knowledge". **This does not remove incorrect notes already stored
+  in your memory graph** — if you have test data or wrong facts in there, they can still surface on a
+  genuinely matching question.
+- **The planner stopped learning from its own self-test.** Tool success/failure was recorded without
+  any record of *who* ran the tool, so a capability sweep — 150 tools each fired once, all the
+  file-related ones failing against an empty workspace — was indistinguishable from real use. It had
+  taught the planner to avoid `read_file`, `file_info` and `list_dir`. Tool outcomes now carry their
+  origin, and only real usage informs those preferences.
+- **Reading your clipboard and capturing your screen now require approval.** `clipboard_write` was
+  gated while `clipboard_read` was not, and `screenshot_desktop` wasn't gated at all — backwards,
+  since reading whatever you last copied (often a password) and capturing your whole screen are the
+  sensitive ones. Both feed into model context, memory, and logs.
+- **Fixed a shell blocklist bypass on Windows.** A secondary code path let `cmd.exe`, `powershell.exe`
+  and full paths through (it compared against bare names like `cmd`), while wrongly blocking innocent
+  commands that merely ended in a blocked word. That path was a stale duplicate of a check that was
+  already correct elsewhere; it has been removed rather than patched, and the shell now refuses to run
+  at all if the sandboxed runner is unavailable.
+
 ### Added
 - **Task-aware model routing**: when `tool_routing_enabled` and task models are configured, `autonomous_run` sets `model_override` from `model_router.classify_task(goal, context)`; `llm_gateway._get_llm()` loads per-GGUF path (primary + `coding_model` / `reasoning_model` / `chat_model`). `model_router.select_model()` ties `llm_model_coding` capability (Magicoder id) to benchmarks and `coding_model`.
 - **`performance_mode`** (`low` | `mid` | `high` | `auto`) in `system_optimizer.get_effective_config()`: missing config defaults to `mid` (backward compatible); explicit `auto` maps from `hardware_detect` tiers. Adjusts `n_ctx`, tool limits, cross-encoder, planning depth, cognitive workspace (runtime only, never persisted).
