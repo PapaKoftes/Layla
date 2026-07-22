@@ -21,6 +21,15 @@ async function _send(url, method, body) {
   return (await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined })).json();
 }
 
+// BL-386: Escape must work regardless of where focus sits. A listener on _root only fires when the
+// keydown target is _root or a descendant; on first-run / just-opened, focus is on <body>, so a _root
+// listener never receives it and the "esc" chip advertised an exit that never fired. Listen on
+// document (capture), added on open and removed on close so it can never accumulate across opens.
+function _onDocKeydown(e) {
+  if (!_open) return;
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeCustomAspect(); }
+}
+
 function _build() {
   if (_root) return;
   _root = document.createElement("div");
@@ -52,6 +61,15 @@ function _build() {
   document.body.appendChild(_root);
   _root.addEventListener("mousedown", (e) => { if (e.target === _root) closeCustomAspect(); });
   _root.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); closeCustomAspect(); } });
+  // BL-386: the "esc" chip advertised an exit — make it actually dismiss (click + keyboard).
+  const _escChip = _root.querySelector(".cmdp-esc");
+  if (_escChip) {
+    _escChip.setAttribute("role", "button");
+    _escChip.setAttribute("tabindex", "0");
+    _escChip.setAttribute("aria-label", "Close");
+    _escChip.addEventListener("click", () => closeCustomAspect());
+    _escChip.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); closeCustomAspect(); } });
+  }
   _root.querySelector(".ca-refresh").addEventListener("click", _load);
   _root.querySelector(".ca-create").addEventListener("click", _create);
 }
@@ -128,6 +146,7 @@ export function openCustomAspect() {
   _build();
   if (_open) return;
   _open = true;
+  document.addEventListener("keydown", _onDocKeydown, true); // BL-386: authoritative Escape (document-level)
   _root.hidden = false;
   _load();
 }
@@ -135,5 +154,6 @@ export function openCustomAspect() {
 export function closeCustomAspect() {
   if (!_root || !_open) return;
   _open = false;
+  document.removeEventListener("keydown", _onDocKeydown, true); // BL-386: no listener leak across opens
   _root.hidden = true;
 }
