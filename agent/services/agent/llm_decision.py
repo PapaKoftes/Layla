@@ -481,9 +481,15 @@ def llm_decision(
         f"Available actions/tools: {tools_list}. "
         "Output exactly one JSON line, no other text. "
         'Format: {"action":"tool","tool":"read_file","priority_level":"high"} or {"action":"think","thought":"..."} or {"action":"reason","objective_complete":true}. '
-        'Examples: {"action":"reason","priority_level":"medium","objective_complete":true} '
-        '{"action":"tool","tool":"read_file","args":{"path":"agent/main.py"},"priority_level":"high","objective_complete":false} '
-        '{"action":"think","thought":"Suspect the failure is in router mounting; inspect main.py includes.","priority_level":"medium"}. '
+        # TOOL EXAMPLE FIRST (example order biases a small model; `reason` used to lead).
+        # The `think` example's THOUGHT TEXT was removed, not abstracted: the model was caught
+        # reproducing "Suspect the failure is in router mounting; inspect main.py includes." almost
+        # verbatim on an unrelated goal. Deleting the sentence removes the parrot target while
+        # leaving the JSON shape intact — abstracting the OTHER examples into <slots> was tried and
+        # measurably destroyed tool selection (see the few-shot block below).
+        'Examples: {"action":"tool","tool":"read_file","args":{"path":"agent/main.py"},"priority_level":"high","objective_complete":false} '
+        '{"action":"reason","priority_level":"medium","objective_complete":true} '
+        '{"action":"think","thought":"...","priority_level":"medium"}. '
         "Include priority_level: \"low\" or \"medium\" or \"high\" for the chosen action. "
         "Optionally impact_estimate, effort_estimate, risk_estimate (brief). "
         "Use objective_complete true only when you have enough to answer.\n"
@@ -492,11 +498,26 @@ def llm_decision(
         cfg_tmp = runtime_safety.load_config()
         if cfg_tmp.get("decision_few_shot_enabled", True):
             prompt += (
-                "Few-shot examples (copy the shape, adapt tool/args):\n"
-                '{"action":"reason","thought":"I have enough context to answer.","priority_level":"medium","objective_complete":true}\n'
+                # CONCRETE EXAMPLES ARE LOAD-BEARING FOR A 3B — measured, and the opposite of what
+                # I first assumed. The model was caught copying example TEXT verbatim (it emitted
+                # "Router mounting issue seems to be in the main.py file" on a goal about
+                # CONTRIBUTING.md), so I replaced every value with an angle-bracket slot. That made
+                # it WORSE: tool selection collapsed from "4 think steps then a tool" to "8 think
+                # steps and no tool at all". A weak model imitates; strip the thing to imitate and
+                # it stops acting. The parroting and the capability are the same mechanism.
+                #
+                # So the examples stay concrete. Only the two cheap, non-destructive changes remain:
+                # TOOL CASES LEAD (example order biases a small model, and `reason` used to be
+                # first on what is meant to be an engineering agent), and an explicit standing
+                # instruction below — an instruction is not an example and cannot be parroted as
+                # an answer.
+                "Few-shot examples (copy the shape, adapt tool/args to THIS goal):\n"
                 '{"action":"tool","tool":"read_file","args":{"path":"agent/main.py"},"priority_level":"high","objective_complete":false}\n'
                 '{"action":"tool","tool":"grep_code","args":{"pattern":"def _llm_decision","path":"agent"},"priority_level":"medium","objective_complete":false}\n'
+                '{"action":"reason","thought":"I have enough context to answer.","priority_level":"medium","objective_complete":true}\n'
                 '{"action":"reason","thought":"Operator asked about Layla (capabilities/identity). Reply directly without tools.","priority_level":"medium","objective_complete":true}\n'
+                "If the goal names a specific file, read THAT file with read_file before answering; "
+                "do not answer about a named file from memory.\n"
             )
     except Exception as e:
         logger.debug("decision few_shot config load failed: %s", e, exc_info=True)
