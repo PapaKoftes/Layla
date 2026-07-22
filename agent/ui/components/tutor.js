@@ -17,6 +17,15 @@ async function _get(u) { return (await fetch(u, { headers: { Accept: "applicatio
 async function _post(u, b) { return (await fetch(u, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b || {}) })).json(); }
 const _api = (path) => "/language/" + encodeURIComponent(_lang) + path;
 
+// BL-386: Escape must work regardless of where focus sits. A listener on _root only fires when the
+// keydown target is _root or a descendant; on first-run / just-opened, focus is on <body>, so a _root
+// listener never receives it and the "esc" chip advertised an exit that never fired. Listen on
+// document (capture), added on open and removed on close so it can never accumulate across opens.
+function _onDocKeydown(e) {
+  if (!_open) return;
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeTutor(); }
+}
+
 function _build() {
   if (_root) return;
   _root = document.createElement("div");
@@ -53,6 +62,15 @@ function _build() {
   document.body.appendChild(_root);
   _root.addEventListener("mousedown", (e) => { if (e.target === _root) closeTutor(); });
   _root.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); closeTutor(); } });
+  // BL-386: the "esc" chip advertised an exit — make it actually dismiss (click + keyboard).
+  const _escChip = _root.querySelector(".cmdp-esc");
+  if (_escChip) {
+    _escChip.setAttribute("role", "button");
+    _escChip.setAttribute("tabindex", "0");
+    _escChip.setAttribute("aria-label", "Close");
+    _escChip.addEventListener("click", () => closeTutor());
+    _escChip.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); closeTutor(); } });
+  }
   _root.querySelector(".german-check").addEventListener("click", _check);
   _root.querySelector(".german-fc-start").addEventListener("click", _startReview);
   _root.querySelector(".german-cal-start").addEventListener("click", _startCalibration);
@@ -188,6 +206,7 @@ export function openTutor() {
   _build();
   if (_open) return;
   _open = true;
+  document.addEventListener("keydown", _onDocKeydown, true); // BL-386: authoritative Escape (document-level)
   _root.hidden = false;
   _loadLanguages().then(() => { _onLangChange(); });
 }
@@ -195,5 +214,6 @@ export function openTutor() {
 export function closeTutor() {
   if (!_root || !_open) return;
   _open = false;
+  document.removeEventListener("keydown", _onDocKeydown, true); // BL-386: no listener leak across opens
   _root.hidden = true;
 }
