@@ -699,3 +699,29 @@ def order_tools_for_aspect(names: list[str], aspect_id: str, cfg: dict | None) -
         return (-float(wmap.get(t, 1.0)), t)
 
     return sorted(names, key=sort_key)
+
+
+# ── Anti-fabrication directive for the parse_failed / tool-unavailable fallback ──
+#
+# TELL THE MODEL IT FAILED. agent_loop's parse_failed fallback used to build an ORDINARY
+# conversational prompt — nothing in it said a tool had just failed to run — so the model answered as
+# though it had the data. Asked for README.md's first heading it confidently produced "What this
+# project is", then "Introduction", then invented a whole markdown block. The file was never opened.
+# Every one of those reached the user as a normal answer, and steps[] recorded only a reason step, so
+# from the outside it was indistinguishable from a considered reply.
+#
+# This is the LAST line of defence and it has to hold when everything upstream fails: a tool crashing,
+# a path not resolving, a permission refused. Being unable to answer is a fine outcome for a local
+# assistant. Inventing the contents of the operator's own files is not — it is corrosive in a product
+# whose entire proposition is that it runs on YOUR machine against YOUR data.
+#
+# Lives HERE, beside build_standard_prompt which consumes it, because that is where prompt
+# assembly belongs — and because agent_loop.py is capped at 1000 lines by
+# test_architecture_boundaries, which correctly refuses to let it grow another import.
+NO_FILE_ACCESS_DIRECTIVE = (
+    "\n\nIMPORTANT — you could NOT access the file, path or resource this request names. "
+    "You have not seen its contents. Do NOT state, quote, summarise or describe what is in it, and "
+    "do NOT invent headings, line numbers or structure. Say plainly that you could not read it, name "
+    "what you tried, and ask for the exact path — or answer only the part of the request that needs "
+    "no file access."
+)
