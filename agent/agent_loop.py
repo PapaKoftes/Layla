@@ -952,7 +952,7 @@ def _autonomous_run_impl_core(
             _fb_prompt = orchestrator.build_standard_prompt(
                 message=state.get("original_goal") or goal,
                 aspect=active_aspect,
-                context=context,
+                context=(context or "") + orchestrator.NO_FILE_ACCESS_DIRECTIVE,  # anti-fabrication
                 head=_fb_head,
                 convo_block="",
             )
