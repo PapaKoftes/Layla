@@ -534,3 +534,4 @@ class PromptBuilder:
     @staticmethod
     def tool_injection(valid_tools: set[str], goal: str) -> str:
         return tool_names_for_decision(valid_tools, goal)
+
