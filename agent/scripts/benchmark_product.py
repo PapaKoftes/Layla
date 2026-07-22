@@ -97,13 +97,29 @@ def score_grounding(case: dict, steps: list, reply: str) -> bool | None:
 
     A reply that SOUNDS right about a file it never opened is the most dangerous output this product
     can produce, and it is invisible to every text-based check. Only the step trace shows it.
+
+    THE DIMENSION IS TWO-SIDED ON PURPOSE. `requires_tool` catches fabrication; `forbids_tool`
+    catches the opposite regression. Over-tool-calling was a REAL past bug here — the reason-first
+    path exists because trivial chat used to thrash tools to the max-tool-calls limit — so a metric
+    that only rewards tool use would push straight back into it. A one-directional quality gate does
+    not measure quality, it picks a side.
     """
     need = case.get("requires_tool")
+    forbid = case.get("forbids_tool")
+    ran = executed_tools(steps)
+    if forbid:
+        return not ran
     if not need:
         return None
-    ran = executed_tools(steps)
     if isinstance(need, str):
         return need in ran
+    if isinstance(need, (list, tuple, set)):
+        # A SET of acceptable tools, not "any tool at all". The first version of tool_search_symbol
+        # used `requires_tool: True` and PASSED by running read_file — then answered that
+        # `autonomous_run` "is not defined in the codebase", which is false. A search case satisfied
+        # by a read is not measuring search; it just measures that something moved. Naming the
+        # acceptable tools is what makes the case about the capability instead of about activity.
+        return any(t in ran for t in need)
     return bool(ran)
 
 
@@ -121,6 +137,39 @@ BATTERY: list[dict[str, Any]] = [
         "id": "tool_list_workspace", "category": "grounding",
         "prompt": "List the files in the current directory.",
         "requires_tool": True,
+        "check": None,
+    },
+    {
+        # NAMES the acceptable tools. With `requires_tool: True` this passed by running read_file
+        # and then reporting that autonomous_run "is not defined in the codebase" — false; it is in
+        # agent_loop.py. A search case a read can satisfy is not measuring search.
+        "id": "tool_search_symbol", "category": "grounding",
+        "prompt": "Search this codebase for where the function autonomous_run is defined.",
+        "requires_tool": ("grep_code", "search_codebase", "glob_files", "search_replace"),
+        "check": lambda r: "agent_loop" in (r or "").lower(),
+    },
+    {
+        # Grounding AND correctness together: she must open the file and get a checkable fact out
+        # of it. A pass here means the whole chain worked — decision, dispatch, args, execution,
+        # and the answer actually reflecting what was read.
+        "id": "tool_read_then_answer", "category": "grounding",
+        "prompt": "Read CHANGELOG.md and tell me the single word that the very first line begins with.",
+        "requires_tool": "read_file",
+        "check": lambda r: "changelog" in (r or "").lower(),
+    },
+    # -- restraint: the OTHER half of grounding --
+    # These must run NO tool. The reason-first path exists because trivial chat once thrashed tools
+    # to the max-tool-calls limit; a battery that only rewards tool use would drive that back.
+    {
+        "id": "no_tool_trivial_math", "category": "grounding",
+        "prompt": "What is 17 times 3?",
+        "forbids_tool": True,
+        "check": lambda r: "51" in (r or ""),
+    },
+    {
+        "id": "no_tool_general_knowledge", "category": "grounding",
+        "prompt": "In one sentence, what is a hash map?",
+        "forbids_tool": True,
         "check": None,
     },
     # -- coding (correctness = code runs) --
