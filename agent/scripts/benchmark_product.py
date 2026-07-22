@@ -73,7 +73,56 @@ def _extract_code(reply: str) -> str:
     return m.group(1) if m else ""
 
 
+_NON_TOOL_ACTIONS = {"reason", "think", "none", "client_abort", "pre_read_probe"}
+
+
+def executed_tools(steps: list) -> list[str]:
+    """Tool actions that actually RAN this turn (probes and reasoning excluded)."""
+    out = []
+    for st in steps or []:
+        a = (st or {}).get("action") or ""
+        if a and a not in _NON_TOOL_ACTIONS:
+            out.append(a)
+    return out
+
+
+def score_grounding(case: dict, steps: list, reply: str) -> bool | None:
+    """For a case that REQUIRES a tool, did one actually execute?
+
+    THE DIMENSION THIS HARNESS WAS MISSING, and the reason a total failure survived it. The suite
+    scored correctness, hygiene, routing and latency — all from the REPLY TEXT — and never asked
+    whether a tool ran. So an agent that answered every file question by inventing the contents
+    scored perfectly clean: fluent prose, no marker leaks, fast, no tool thrash. It looked healthy
+    while `outcome_evaluations` held 104 completed runs with zero tool steps.
+
+    A reply that SOUNDS right about a file it never opened is the most dangerous output this product
+    can produce, and it is invisible to every text-based check. Only the step trace shows it.
+    """
+    need = case.get("requires_tool")
+    if not need:
+        return None
+    ran = executed_tools(steps)
+    if isinstance(need, str):
+        return need in ran
+    return bool(ran)
+
+
 BATTERY: list[dict[str, Any]] = [
+    # -- grounding (correctness = a tool actually RAN, not that the prose sounds right) --
+    # These exist because a dispatch bug let the agent answer every one of them fluently and
+    # confidently WITHOUT opening the file, for 16 days, while every other dimension scored clean.
+    {
+        "id": "tool_read_named_file", "category": "grounding",
+        "prompt": "Read the file README.md and tell me what the very first line of it is.",
+        "requires_tool": "read_file",
+        "check": None,
+    },
+    {
+        "id": "tool_list_workspace", "category": "grounding",
+        "prompt": "List the files in the current directory.",
+        "requires_tool": True,
+        "check": None,
+    },
     # -- coding (correctness = code runs) --
     {
         "id": "code_reverse_string", "category": "coding",
@@ -149,6 +198,7 @@ def run_case(url: str, prompt: str, timeout: float = 180.0) -> dict[str, Any]:
                                  headers={"Content-Type": "application/json"})
     t0 = time.time()
     first_token: float | None = None
+    done_steps: list = []
     n_tokens = 0
     done_content: str | None = None
     try:
@@ -167,9 +217,10 @@ def run_case(url: str, prompt: str, timeout: float = 180.0) -> dict[str, Any]:
                         first_token = time.time() - t0
                 if obj.get("done"):
                     done_content = obj.get("content")
+                    done_steps = obj.get("steps") or []
     except Exception as e:
         return {"ok": False, "error": str(e)[:120], "reply": "", "first_token_s": None,
-                "total_s": round(time.time() - t0, 1), "n_tokens": n_tokens, "tok_s": 0.0}
+                "total_s": round(time.time() - t0, 1), "n_tokens": n_tokens, "tok_s": 0.0, "steps": []}
     total = time.time() - t0
     gen_window = max(0.001, total - (first_token or 0))
     return {
@@ -179,6 +230,7 @@ def run_case(url: str, prompt: str, timeout: float = 180.0) -> dict[str, Any]:
         "total_s": round(total, 1),
         "n_tokens": n_tokens,
         "tok_s": round(n_tokens / gen_window, 1) if n_tokens else 0.0,
+        "steps": done_steps,
     }
 
 
@@ -206,10 +258,12 @@ def run_suite(url: str, warmup: bool = True, limit: int = 0) -> dict[str, Any]:
             except Exception:
                 correct = False
         clean = r["ok"] and not any(hy.values())
+        grounded = score_grounding(case, r.get("steps") or [], r["reply"]) if r["ok"] else None
         results.append({
             "id": case["id"], "category": case["category"],
             "ok": r["ok"], "error": r["error"],
             "correct": correct, "clean": clean, "hygiene": hy,
+            "grounded": grounded, "tools_ran": executed_tools(r.get("steps") or []),
             "first_token_s": r["first_token_s"], "total_s": r["total_s"],
             "tok_s": r["tok_s"], "n_tokens": r["n_tokens"],
             "reply_preview": (r["reply"] or "")[:160],
@@ -217,7 +271,8 @@ def run_suite(url: str, warmup: bool = True, limit: int = 0) -> dict[str, Any]:
         mark = "OK " if r["ok"] else "ERR"
         cflag = {True: "+", False: "x", None: "."}[correct]
         hflag = "clean" if clean else "LEAK:" + ",".join(k for k, v in hy.items() if v)
-        print(f"  [{mark}] {case['id']:24s} correct={cflag} {hflag:24s} "
+        gflag = {True: "grounded", False: "NO-TOOL!", None: ""}[grounded]
+        print(f"  [{mark}] {case['id']:24s} correct={cflag} {hflag:24s} {gflag:9s}"
               f"ft={r['first_token_s']}s tok/s={r['tok_s']} total={r['total_s']}s")
 
     checkable = [r for r in results if r["correct"] is not None]
@@ -235,6 +290,13 @@ def run_suite(url: str, warmup: bool = True, limit: int = 0) -> dict[str, Any]:
             "quality_pass_rate": round(quality, 3),
             "quality_n": len(checkable),
             "hygiene_clean_rate": round(hygiene, 3),
+            # GROUNDING: of the cases that REQUIRE a tool, how many actually ran one. Every other
+            # dimension here reads the reply TEXT, so an agent inventing file contents scored a
+            # clean 100% on all of them while never executing a single tool for 16 days.
+            "grounding_rate": round(
+                (sum(1 for r in results if r.get("grounded") is True)
+                 / max(1, sum(1 for r in results if r.get("grounded") is not None))), 3),
+            "grounding_n": sum(1 for r in results if r.get("grounded") is not None),
             "routing_stream_rate": round(routing_score, 3),
             "median_first_token_s": round(_median(fts), 1),
             "median_tok_s": round(_median([r["tok_s"] for r in results if r["tok_s"]]), 1),
@@ -275,6 +337,7 @@ def main() -> int:
     print(f"  quality pass rate   : {s['quality_pass_rate']*100:.0f}%  (n={s['quality_n']} checkable)")
     print(f"  hygiene clean rate  : {s['hygiene_clean_rate']*100:.0f}%  (no marker/json/turn/loop/thrash leaks)")
     print(f"  routing stream rate : {s['routing_stream_rate']*100:.0f}%  (self-contained Qs streamed, not thrashed)")
+    print(f"  grounding rate      : {s['grounding_rate']*100:.0f}%  (n={s['grounding_n']} tool-required cases ACTUALLY ran a tool)")
     print(f"  median first-token  : {s['median_first_token_s']}s")
     print(f"  median throughput   : {s['median_tok_s']} tok/s")
     print(f"  median total turn   : {s['median_total_s']}s")
