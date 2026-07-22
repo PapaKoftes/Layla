@@ -202,11 +202,42 @@ def _handle_write_files_batch(intent: str, goal: str, ctx: DispatchContext) -> D
 # READ FILE
 # ===================================================================
 
+def _arg_or_goal_path(ctx, goal: str, key: str = "path") -> str:
+    """The model's structured argument FIRST; the goal-text heuristic only as a fallback.
+
+    THE MODEL'S ARGUMENTS WERE BEING THROWN AWAY. These handlers ignored `decision["args"]` entirely
+    and re-derived the path from the raw goal STRING via `_extract_path`, which only accepts a token
+    containing ":", "/" or "\\". A bare filename like "README.md" contains none of those, so it
+    returned "" — and the handler set status="parse_failed" and broke out WITHOUT appending a step.
+
+    agent_loop's parse_failed fallback then ran a plain completion with no file content in context and
+    appended THAT prose as {"action": "reason"}. So the user got a confident, fabricated answer about
+    a file that was never opened, while steps[] recorded only a reason step. That is the entire
+    "104 completed runs, zero tool steps, invents file contents" symptom — and why read_file measured
+    0/13 while list_dir managed 2/26 (its heuristic has `or ctx.workspace` to land on).
+
+    Meanwhile the model was doing everything right. Measured against the real 3B it emitted
+    {"action":"tool","tool":"read_file","args":{"path":"README.md"}} — correct tool, correct argument.
+    `_handle_understand_file` already read args first; these handlers never got that fix.
+
+    Classic callee/caller disagreement: tool_preflight validates `args.get("path")` and therefore
+    PASSES, guaranteeing the intent is never downgraded before dispatch — while the dispatcher three
+    lines later reads only the goal text. The two halves disagreed about where a tool's arguments
+    live, so preflight could never catch what dispatch was about to discard.
+    """
+    decision = getattr(ctx, "decision", None)
+    if decision:
+        v = (decision.get("args") or {}).get(key)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return ""
+
+
 def _handle_read_file(intent: str, goal: str, ctx: DispatchContext) -> DispatchResult:
     al, _, TOOLS = _imports()
     state = ctx.state
 
-    path = al._extract_path(goal)
+    path = _arg_or_goal_path(ctx, goal) or al._extract_path(goal)
     if not path:
         state["status"] = "parse_failed"
         return DispatchResult(handled=True, flow="break", goal=goal)
@@ -230,7 +261,7 @@ def _handle_read_file(intent: str, goal: str, ctx: DispatchContext) -> DispatchR
 def _handle_list_dir(intent: str, goal: str, ctx: DispatchContext) -> DispatchResult:
     al, _, TOOLS = _imports()
 
-    path = al._extract_path(goal) or ctx.workspace
+    path = _arg_or_goal_path(ctx, goal) or al._extract_path(goal) or ctx.workspace
     return _base_tool_handler(
         ctx, "list_dir", TOOLS["list_dir"]["fn"],
         args={"path": path},
@@ -251,7 +282,7 @@ def _handle_simple_git(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
     git_args = {"repo": workspace}
     if intent == "git_log":
         git_args["n"] = 10
-    result = TOOLS[intent]["fn"](**git_args)
+    result = invoke_tool(intent, TOOLS[intent]["fn"], git_args)
     al._register_exact_tool_call(state, intent, decision)
     rs.log_execution(intent, {"repo": workspace})
     state["steps"].append({"action": intent, "result": al._maybe_validate_tool_output(intent, result)})
@@ -271,7 +302,7 @@ def _handle_grep_code(intent: str, goal: str, ctx: DispatchContext) -> DispatchR
     parts = goal.split()
     pattern = parts[-1] if parts else ""
     grep_path = ctx.workspace
-    maybe_path = al._extract_path(goal)
+    maybe_path = _arg_or_goal_path(ctx, goal) or al._extract_path(goal)
     if maybe_path and Path(maybe_path).suffix:
         probe = al._maybe_preprobe_file(ctx.state, maybe_path)
         al._apply_probe_guidance(ctx.state, "grep_code", maybe_path, probe)
@@ -417,7 +448,7 @@ def _handle_apply_patch(intent: str, goal: str, ctx: DispatchContext) -> Dispatc
     if state.get("research_lab_root"):
         return _lab_blocked("apply_patch", state)
 
-    path = al._extract_path(goal)
+    path = _arg_or_goal_path(ctx, goal) or al._extract_path(goal)
     patch_body = _extract_patch_text(goal)
 
     if path:
@@ -699,13 +730,76 @@ _RUN_CLASS_INTENTS = frozenset({
 })
 
 
+def invoke_tool(intent: str, fn, args: dict) -> dict:
+    """Call a registry tool with MODEL-SUPPLIED args. Never raises on a bad argument name.
+
+    THIS IS WHY THE AGENT HAD NEVER COMPLETED A TOOL-USING RUN. The call site was
+    `TOOLS[intent]["fn"](**args)` — the model's arguments splatted straight into the function with no
+    validation. A 3B invents plausible-but-wrong parameter names constantly, and every one of them
+    raised TypeError:
+
+        search_memories() got an unexpected keyword argument 'max_results'   (the real param is `n`)
+
+    Because `state["steps"].append(...)` runs AFTER the call, the exception meant the step was never
+    recorded at all. Measured on the live DB: 104 completed runs over 16 days, ZERO with any tool
+    step — not because tools were never chosen, but because choosing one with a single wrong argument
+    name destroyed the turn before it could be logged. The caught exception then surfaced upstream as
+    a plain reply, so the failure looked like "the model prefers to reason" instead of a crash.
+
+    Model output is untrusted input. It is bound to the real signature here:
+      * unknown kwargs are DROPPED (a near-miss like `max_results` should not lose the whole turn);
+      * genuinely missing REQUIRED args return a structured error naming the accepted parameters, so
+        the model can retry correctly rather than being told only that something failed;
+      * a tool taking **kwargs is passed through untouched.
+
+    Introspection is only possible because BL-381 restored `functools.wraps` on the registry
+    decorator — before that every signature was erased and this fix could not have been written.
+    """
+    import inspect
+
+    try:
+        sig = inspect.signature(fn)
+    except (TypeError, ValueError):
+        return fn(**args) if args else fn()
+
+    params = sig.parameters
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return fn(**args) if args else fn()
+
+    accepted = [n for n, p in params.items()
+                if p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)]
+    known = {k: v for k, v in (args or {}).items() if k in params}
+    dropped = sorted(set(args or {}) - set(known))
+
+    missing = [n for n, p in params.items()
+               if p.default is inspect.Parameter.empty
+               and p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+               and n not in known]
+    if missing:
+        return {
+            "ok": False,
+            "error": f"missing required argument(s) for {intent}: {', '.join(missing)}",
+            "accepted_args": accepted,
+            "ignored_args": dropped,
+        }
+
+    try:
+        out = fn(**known) if known else fn()
+    except TypeError as e:
+        # Signature-shaped failure that binding did not catch — report, do not crash the run.
+        return {"ok": False, "error": f"{intent} rejected its arguments: {e}", "accepted_args": accepted}
+    if dropped and isinstance(out, dict):
+        out.setdefault("ignored_args", dropped)
+    return out
+
+
 def _handle_extended_tools(intent: str, goal: str, ctx: DispatchContext) -> DispatchResult:
     al, rs, TOOLS = _imports()
     state, decision = ctx.state, ctx.decision
 
     args = (decision.get("args") or {}) if decision else {}
     state["tool_calls"] += 1
-    result = TOOLS[intent]["fn"](**args) if args else TOOLS[intent]["fn"]()
+    result = invoke_tool(intent, TOOLS[intent]["fn"], args)
     al._register_exact_tool_call(state, intent, decision)
     rs.log_execution(intent, args)
     _val = al._maybe_validate_tool_output(intent, result)
@@ -729,7 +823,7 @@ def _handle_git_commit(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
         return _approval_break("git_commit", args, ctx)
 
     state["tool_calls"] += 1
-    result = TOOLS["git_commit"]["fn"](**args)
+    result = invoke_tool("git_commit", TOOLS["git_commit"]["fn"], args)
     al._register_exact_tool_call(state, "git_commit", decision)
     rs.log_execution("git_commit", args)
     _val = al._maybe_validate_tool_output("git_commit", result)
