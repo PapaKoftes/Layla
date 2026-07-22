@@ -23,7 +23,14 @@
 // from setup.js; a stale v16 setup.js exports neither, so serving the old graph against the new imports
 // would fail to LINK and boot to a dead page. That was the previous attempt's exact failure — bump so the
 // whole graph updates atomically on first load.
-const CACHE = "layla-ui-v19";
+//
+// v20 (BL-386 follow-up): 21 overlay components (approvals, agent-tasks, custom-aspect, missions, kb, codex,
+// journal, improvements, marketplace, plans, intake-quiz, macros, intelligence, self-test, german, sync,
+// system-diagnostics, tools-history, tutor, verify, debate) each gained the document-level Escape handler +
+// clickable "esc" chip that setup-profiles.js already had. A stale bundle would keep serving the old
+// _root-only handlers, so every one of these overlays would still trap the operator with a dead esc chip —
+// the exact bug we just fixed, looking unfixed on first load. Bump to purge and update the graph atomically.
+const CACHE = "layla-ui-v20";
 const PRECACHE = [
   "/ui/",
   "/manifest.json",
