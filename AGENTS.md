@@ -7,7 +7,11 @@ Read this before touching any file. It tells you what this project is, where thi
 
 ## What this project is
 
-Layla is a **self-hosted AI companion and engineering agent** that runs on the user's own hardware via a local GGUF model (llama-cpp-python). No cloud. No API keys required. She has six personality aspects, persistent memory (SQLite + ChromaDB), **200 registered tools** (authoritative count: `agent/tests/test_registered_tools_count.py` → `EXPECTED_TOOL_COUNT`), voice I/O, and browser automation. The FastAPI server lives at `localhost:8000`. The web UI is at `/ui`.
+> **Start with [.planning/PROJECT.md](.planning/PROJECT.md)** — the living project spine: core value,
+> active requirements, explicit out-of-scope, constraints, and the key decisions that constrain
+> future work. This file tells you HOW to work in the repo; PROJECT.md tells you WHAT and WHY.
+
+Layla is a **self-hosted AI companion and engineering agent** that runs on the user's own hardware via a local GGUF model (llama-cpp-python). No cloud. No API keys required. She has six personality aspects, persistent memory (SQLite; optional ChromaDB — **usually absent, and RAG then silently falls back to SQLite FTS**, so do not assume vector search is live), **200 registered tools** (authoritative count: `agent/tests/test_registered_tools_count.py` → `EXPECTED_TOOL_COUNT`), voice I/O, and browser automation. The FastAPI server lives at `localhost:8000`. The web UI is at `/ui`.
 
 **The operator chooses their model.** Layla is uncensored by default. Everything is configurable via `agent/runtime_config.json`.
 
@@ -51,7 +55,7 @@ See [docs/LAYLA_PREBUILT_PLATFORM.md](docs/LAYLA_PREBUILT_PLATFORM.md) for the f
 5. **Never break the approval gate.** File writes (`write_file`, `apply_patch`) and code execution (`shell`, `run_python`) must remain gated by `allow_write`/`allow_run` + the approval flow.
 6. **Personalities are loaded dynamically** from `personalities/*.json`. Never hardcode an aspect list — always use `_load_aspects()` from `orchestrator.py`. The `systemPromptAddition` field is the character voice — it IS injected into every system head when that aspect is active. Do not truncate it. The `role` field is just a short label for routing and display.
 7. **The DB schema must migrate forward.** Add columns via `db.execute("ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...")` inside `_migrate_impl()` in `agent/layla/memory/migrations.py` (loaded by `migrate()`). `db.py` is a barrel that re-exports `migrate` / `_conn`. Never drop columns.
-8. **Keep `ARCHITECTURE.md` and `docs/IMPLEMENTATION_STATUS.md` updated** when you change the request flow, add routes, or implement a section from `LAYLA_NORTH_STAR.md`.
+8. **Keep `ARCHITECTURE.md` and `docs/IMPLEMENTATION_STATUS.md` updated** when you change the request flow, add routes, or implement a section from `docs/PRODUCT_VISION.md` *(note: `LAYLA_NORTH_STAR.md` is referenced in places but does not exist)*.
 9. **Ethical AI** — All behavior must align with `docs/ETHICAL_AI_PRINCIPLES.md`. Never bypass approval, sandbox, or refusal.
 
 ---
@@ -275,7 +279,104 @@ Client → POST /agent → routers/agent.py
 
 **Values:** [VALUES.md](VALUES.md) — sovereignty, privacy, anti-surveillance, solidarity. All development aligns with these.
 
-**Do NOT update** `LAYLA_NORTH_STAR.md` unless the user explicitly asks. It is the canonical vision document, not a status tracker.
+**Do NOT update** `docs/PRODUCT_VISION.md` *(note: `LAYLA_NORTH_STAR.md` is referenced in places but does not exist)* unless the user explicitly asks. It is the canonical vision document, not a status tracker.
+
+---
+
+## Engineering discipline — every rule below was earned by a specific failure
+
+Read this before you write code or believe a measurement. These are not style preferences; each one
+cost real debugging time, and several cost *weeks of a broken product that looked healthy*.
+
+### 1. THE SIGNATURE DEFECT: "built well and never plugged in"
+
+This codebase's characteristic failure is a **complete, correct component with no caller**, or a
+callee that sets one field while the caller inspects another. Confirmed instances:
+
+| What looked fine | What was true |
+|---|---|
+| Tool dispatch, fully implemented | The agent executed **zero tools for 16 days** — dispatch discarded the model's args |
+| Conversation summariser, correct | **0 rows ever** — gated on a threshold a ring buffer cannot reach |
+| Aspect memories, working | All filed under a hardcoded `"echo"`; 5 of 6 aspects had no memory |
+| LAN clustering, every piece present | Nothing called it; moved zero work |
+| SM-2 spaced repetition | Algorithm added, **still zero callers** |
+
+**Therefore: existence is not evidence.** Before claiming a feature works, prove there is a CALLER on
+a path a real user reaches — by AST, not by reading the file. `_handle_understand_file` read
+`decision["args"]` correctly while `_handle_read_file`, three functions away, did not.
+
+### 2. TESTS DO NOT PROVE THE PRODUCT WORKS HERE
+
+4047 tests pass and **every one mocks the model.** A total product failure — zero tool executions,
+confident fabrication of file contents — survived the entire suite *and* the product benchmark,
+because every benchmark dimension scored the reply TEXT and none asked whether a tool ran.
+
+- Green suite ≠ working product. **Live measurement or it did not happen.**
+- Reproduction harness that bypasses HTTP and the response cache:
+  `agent_loop.autonomous_run(goal)` directly.
+- `response_cache_enabled` is **true** — an A/B test whose second sample is a cached replay is not
+  an A/B test. This invalidated a real experiment mid-session.
+
+### 3. VERIFY THE PROBE BEFORE THE RESULT
+
+Every measurement error in the P13 work was a **broken probe, not broken code** — roughly ten of
+them. The dangerous ones fail *open* and return a plausible lie:
+
+- A mutation test whose anchor string wasn't in the file: the mutation never applied, the test
+  "passed", and appeared to prove teeth it did not have.
+- A probe that set `LAYLA_DATA_DIR` then called `load_config()` — silently got defaults.
+- A head-content probe passing `aspect=None`, so persona markers read "MISSING" because nothing was
+  loaded, not because they were truncated.
+- A file-path comparison that could never match because ruff emits `\` and git emits `/`.
+
+**Rules:** every probe asserts its own preconditions and fails loudly
+(`assert n == 1, "PROBE BROKEN: ..."`). Print the path/config the probe actually **resolved**, never
+the one you assume. Prove a test fails in the direction it claims to guard (mutate → red → restore).
+
+### 4. NEVER `git grep` FOR AN INVARIANT SCAN, NEVER TEXT-SCAN FOR BEHAVIOUR
+
+`git grep` only searches **tracked** files — a gate once passed green because the offending file was
+untracked, and a slice shipped on it. And a text scan for `cmd.endswith(blocked)` matched the
+*comment documenting the removed bug*. Use **ripgrep** for files, **AST** for what code does.
+
+### 5. ONE OWNER PER RULE — never two copies
+
+Two shell blocklists existed; the weaker one silently won whenever the stronger path was
+unavailable, allowing `cmd.exe` while falsely blocking `mydd`. **Delete the duplicate; do not fix
+it.** Config defaults currently have **four** sources (`runtime_safety` defaults,
+`runtime_config.example.json`, `first_run.py`, `install/setup_profiles.py`) — when changing a
+default, check which one actually wins for a fresh install.
+
+### 6. ASSERT THE MAPPING, NOT THE SHAPE
+
+Five tests covered the aspect-memory function and all five passed while it wrote every memory to the
+wrong aspect — because each asserted only *that* a save happened, never *which key*. A mock that
+records a call but never inspects its arguments proves the code ran, which is rarely the claim worth
+testing. One of those tests had no assertion at all, only a comment where the check belonged.
+
+### 7. MEASURE PERFORMANCE WITH ALTERNATING RUN ORDER
+
+On this thermally variable laptop, a sequential sweep loads drift onto the last cell. A sequential
+benchmark reported **+136%** where the truth was **+12.7%** — nearly killing a correct change. Use
+3+ samples per condition, **interleaved**, and report the spread alongside the mean. Run-to-run noise
+here is larger than most effects being measured.
+
+### 8. SHIP IN VERTICAL SLICES — TRUTH BEFORE EXPOSURE
+
+Every slice leaves a **working product** and adds or exposes something a user can see. Never surface
+a feature in the UI before its data/behaviour is real — a visible-but-dead control is worse than an
+absent one, because `if (el)` turns the failure into silence.
+
+### 9. DO NOT `git checkout --` TO UNDO A MUTATION
+
+If the fix underneath is uncommitted, that destroys it too. This happened; four tests then failed for
+entirely the wrong reason. Restore mutations with the inverse edit, anchor-checked.
+
+### 10. WHEN A GUARD BLOCKS YOU, IT IS USUALLY RIGHT
+
+`agent_loop.py` is capped at 1000 lines by `test_architecture_boundaries`. It refused three attempts
+to grow it, and forced a constant into `orchestrator.py` beside the function that consumes it — a
+better home than the one first chosen. Do not raise a cap or delete a comment to buy a line.
 
 ---
 
@@ -283,6 +384,10 @@ Client → POST /agent → routers/agent.py
 
 | Mistake | Correct |
 |---|---|
+| Believing a feature works because the module exists | Prove a caller by AST, on a user-reachable path |
+| Believing a green suite means the product works | Drive the real app; the suite mocks the model |
+| `git grep` for a repo-wide invariant scan | `rg` (grep misses untracked files) or an AST walk |
+| Text-scanning source to decide what code *does* | AST — comments about removed bugs will match |
 | `Path("~").resolve()` | `Path("~").expanduser().resolve()` |
 | Hardcoding aspect list | `_load_aspects()` from `orchestrator.py` |
 | Reading config directly | `runtime_safety.load_config()` |
@@ -332,4 +437,4 @@ Tests live in `agent/tests/`. Key test files: `test_agent_loop.py`, `test_north_
 3. Read `ARCHITECTURE.md` for the request flow
 4. Read `docs/IMPLEMENTATION_STATUS.md` to know what's implemented vs planned
 5. Read the specific file you're about to change
-6. Never change `LAYLA_NORTH_STAR.md` unless told to
+6. Never change `docs/PRODUCT_VISION.md` *(note: `LAYLA_NORTH_STAR.md` is referenced in places but does not exist)* unless told to
