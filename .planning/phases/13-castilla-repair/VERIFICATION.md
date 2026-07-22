@@ -101,7 +101,42 @@
 >
 > ---
 >
-> ## 🔴 RELEASE BLOCKER found by driving the app (2026-07-21)
+> ## ✅ RESOLVED 2026-07-22 (P13-E1/E2/E3) — was a RELEASE BLOCKER
+>
+> **It was never a model limitation.** Probed directly against the real 3B, `llm_decision` returned
+> `{"action":"tool","tool":"read_file","args":{"path":"README.md"}}` — correct tool, correct argument
+> — under every condition tried. TWO dispatch defects destroyed it:
+>
+> 1. **`_handle_read_file` discarded `decision["args"]`** and re-derived the path from the goal STRING
+>    via `_extract_path`, which only accepts a token containing `:`, `/` or `\`. A bare `README.md`
+>    → `""` → `status="parse_failed"` → break **without appending a step**. The parse_failed fallback
+>    then ran a plain completion with no file content and appended that prose as `{"action":"reason"}`
+>    — the fabrication site. Same defect in `list_dir`, `grep_code`, `apply_patch`;
+>    `understand_file` had always been correct. Explains read_file 0/13 vs list_dir 2/26 exactly.
+> 2. **Model args were splatted unvalidated:** `TOOLS[intent]["fn"](**args)` raised `TypeError`
+>    whenever the 3B invented a parameter name (`max_results` vs the real `n`), and since
+>    `steps.append` runs AFTER the call the step was never recorded — a crash was indistinguishable
+>    from "the model chose to reason".
+>
+> Both are the callee/caller shape: `tool_preflight` validates `args.get("path")` and PASSES, while
+> the dispatcher three lines later reads only goal text.
+>
+> **Measured end-to-end:**
+> ```
+> before   steps=['reason']                             invented "What this project is"
+> after    steps=['pre_read_probe','read_file','reason'] read '# Layla' from the real file
+> ```
+> Remaining and honestly stated: the 3B sometimes still picks a weaker tool, and its comprehension of
+> a long README is imperfect (it reported "## Quick Start" where the first heading is "# Layla").
+> That is a wrong answer **grounded in real file content**, not a fabrication about a file never
+> opened — a different and far smaller problem.
+>
+> A failed experiment is recorded at the call site: abstracting the few-shot examples into
+> `<placeholders>` to stop verbatim parroting **destroyed tool selection** (8 think steps, no tool).
+> Concrete examples are load-bearing for a weak model; the parroting and the capability are the same
+> mechanism.
+>
+> ### Original finding (2026-07-21), kept for the record
 >
 > **The agent has never completed a tool-using run, and fabricates instead of admitting it.**
 >

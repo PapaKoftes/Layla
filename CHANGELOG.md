@@ -313,6 +313,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   two weakest tiers computed 450 and 573 tokens and both got clamped to an identical 1024. Every
   tier now gets a genuinely different prompt budget, and a test fails if the floor ever binds again.
 
+### The engineering agent actually uses its tools now (P13 Phase E)
+- **She reads your files instead of guessing about them.** Asked to read a file and report what's in
+  it, she would answer confidently *without ever opening it* — inventing headings and contents. Two
+  bugs caused it, and neither was the model: the dispatcher **threw away the file path the model had
+  correctly chosen** and tried to re-extract it from the raw sentence (which only worked if the path
+  contained a `/` or `\`, so a plain `README.md` always failed), and separately, any slightly-wrong
+  argument name from the model **crashed the whole turn** before the tool could be recorded. Fixed
+  both. Before: 104 completed runs over 16 days with **zero** tool executions. After: she opens the
+  file and answers from its real contents.
+- **If a tool can't run, she says so.** The fallback that handled "the tool didn't work" was writing
+  an ordinary reply with no indication anything had failed — which is exactly how a file that was
+  never opened produced a confident description of its contents. She now states that she couldn't
+  read it, says what she tried, and asks for the exact path.
+- **Better tool choices.** The decision prompt's examples led with "just answer" and included a
+  worked example she sometimes copied word-for-word into unrelated answers. Tool examples now lead,
+  and she's told plainly: if the request names a file, read *that* file rather than answering from
+  memory.
+- **Fixed: CI's lint gate had been failing.** 63 errors, one of which was a real crash-on-error-path
+  bug. Now zero.
+
 ### Memory that actually persists (P13 Phase B)
 - **Every aspect can remember you now, not just Echo.** Session memories were filed under a
   hardcoded `"echo"` regardless of which aspect you were talking to, and the reader looks memories up
