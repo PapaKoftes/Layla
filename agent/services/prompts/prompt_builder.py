@@ -246,19 +246,51 @@ def _is_identity_question(goal_lower: str) -> bool:
     return bool(_IDENTITY_Q_RE.search(goal_lower))
 
 
+def _substitute_live_tool_counts(block: str) -> str:
+    """Rewrite the manifest's registered/offered tool counts from the LIVE registry, by role.
+
+    A hand-maintained "188 offered" is only true on the one machine it was typed on: a bare install
+    withholds every tool whose optional library is missing, a full install (the blessed bootstrap
+    installs research+crawl) offers all 200. Trusting the markdown literal is this codebase's signature
+    defect — a static number drifting from computed reality — so the count gets ONE owner, the registry,
+    and the model always reads what is true for THIS machine.
+
+    Best-effort: if the registry cannot be imported (e.g. a docs-only checkout), the block is returned
+    unchanged rather than blanked, so the manifest still reaches the model. If substitution silently
+    fails and leaves a stale literal, the honesty test catches it — the literal will not equal the live
+    count on a full-deps CI runner.
+    """
+    try:
+        from layla.tools.registry import TOOLS
+        from services.agent.llm_decision import _drop_missing_dependency_tools
+
+        registered = len(TOOLS)
+        offered = len(_drop_missing_dependency_tools(set(TOOLS), TOOLS))
+    except Exception as _exc:
+        logger.debug("prompt_builder:tool_counts: %s", _exc, exc_info=False)
+        return block
+
+    block = re.sub(r"\d+(?=\s+tools?\s+(?:are\s+)?registered)", str(registered), block)
+    block = re.sub(r"\d+(?=\s+(?:actually\s+)?offered)", str(offered), block)
+    block = re.sub(r"(never quote\s+)\d+", rf"\g<1>{registered}", block)
+    return block
+
+
 @lru_cache(maxsize=2)
 def _capability_manifest_core(root: Path) -> str:
     """The PROMPT-CORE block of .identity/capabilities.md — the verified capability manifest.
 
     Only the delimited block is injected; the rest of the file is for humans and the API. Returns "" if the
     file or the block is missing, so a missing manifest degrades to today's behavior rather than breaking a run.
+    The registered/offered tool counts are substituted from the live registry (see
+    `_substitute_live_tool_counts`) so the model never reads a count that was only true on a dev venv.
     """
     try:
         p = root / ".identity" / "capabilities.md"
         if not p.exists():
             return ""
         m = _CAP_CORE_RE.search(p.read_text(encoding="utf-8"))
-        return m.group(1).strip() if m else ""
+        return _substitute_live_tool_counts(m.group(1).strip()) if m else ""
     except Exception as _exc:  # never let self-knowledge break a turn
         logger.debug("prompt_builder:capability_manifest: %s", _exc, exc_info=False)
         return ""
