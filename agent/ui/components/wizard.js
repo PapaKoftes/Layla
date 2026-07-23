@@ -157,12 +157,21 @@ function renderAspects() {
 }
 
 // ── Navigation ──────────────────────────────────────────────────────────────
-function syncWorkspaceToSettings() {
+async function syncWorkspaceToSettings() {
   const wizPath = $('wizard-workspace-path');
   const v = String(wizPath?.value || '').trim();
   if (!v) return;
   try { const el = $('workspace-path'); if (el) el.value = v; } catch (_) {}
   try { const el = $('setup-workspace-path'); if (el) el.value = v; } catch (_) {}
+  // ACTUALLY PERSIST IT. This used to only copy the value into two hidden inputs and stop, so a
+  // fresh user typed their project path, clicked Next, and it was discarded — sandbox_root stayed
+  // the empty ~/layla-workspace and every file tool silently returned nothing on day one. The
+  // POST owner (saveSetupWorkspaceIfNeeded, reads #setup-workspace-path which we just set) was only
+  // reachable from the setup overlay, which is HIDDEN precisely when the install went smoothly.
+  try {
+    const { saveSetupWorkspaceIfNeeded } = await import('./setup.js');
+    await saveSetupWorkspaceIfNeeded();
+  } catch (_) {}
 }
 
 async function onNext() {
@@ -171,7 +180,7 @@ async function onNext() {
       if (typeof window.checkSetupStatus === 'function') await window.checkSetupStatus();
     } catch (_) {}
   }
-  if (step === 2) syncWorkspaceToSettings();
+  if (step === 2) await syncWorkspaceToSettings();
   if (step === 3) return; // quiz advances itself
   if (step === 5) {
     try { localStorage.setItem(WIZ_KEY, '1'); } catch (_) {}
