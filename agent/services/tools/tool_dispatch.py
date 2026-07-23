@@ -40,10 +40,25 @@ def _handle_write_file(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
     al, rs, TOOLS = _imports()
     state, cfg, workspace, decision = ctx.state, ctx.cfg, ctx.workspace, ctx.decision
 
-    path, content = al._extract_file_and_content(goal)
+    # Model's structured args FIRST, goal-text heuristic only as fallback (QW-1 / same class as
+    # P13-E1). `_extract_file_and_content` needs the literal "with content" AND a path token
+    # containing : / \ in the goal STRING, so a correct emission
+    # {"tool":"write_file","args":{"path":"README.md","content":"..."}} was returning (None, None) ->
+    # parse_failed -> the prose fallback FABRICATED. That is the fabrication defect, still live in the
+    # destructive tools after P13-E1 fixed only the read-side handlers.
+    _d = (decision.get("args") or {}) if decision else {}
+    path = str(_d.get("path") or "").strip()
+    content = _d.get("content")
+    if not path or content is None:
+        gp, gc = al._extract_file_and_content(goal)
+        path = path or gp
+        if content is None:
+            content = gc
     if not path:
         state["status"] = "parse_failed"
         return DispatchResult(handled=True, flow="break", goal=goal)
+    if content is None:
+        content = ""
 
     lab_root = state.get("research_lab_root") or ""
     if lab_root and workspace and not Path(path).is_absolute():
@@ -580,8 +595,13 @@ def _handle_replace_in_file(intent: str, goal: str, ctx: DispatchContext) -> Dis
 def _handle_fetch_url(intent: str, goal: str, ctx: DispatchContext) -> DispatchResult:
     al, _, TOOLS = _imports()
 
-    words = goal.split()
-    url = next((w for w in words if w.startswith("http")), "")
+    # Model's args first (QW-1); the bare-word http scan is the fallback. A correct
+    # {"tool":"fetch_url","args":{"url":"https://..."}} used to be ignored, and a URL that appears
+    # only in prior context rather than verbatim in the goal string was unreachable.
+    _d = (ctx.decision.get("args") or {}) if ctx.decision else {}
+    url = str(_d.get("url") or _d.get("uri") or "").strip()
+    if not url:
+        url = next((w for w in goal.split() if w.startswith("http")), "")
     if not url:
         ctx.state["status"] = "parse_failed"
         return DispatchResult(handled=True, flow="break", goal=goal)
@@ -605,7 +625,23 @@ def _handle_shell(intent: str, goal: str, ctx: DispatchContext) -> DispatchResul
     if state.get("research_lab_root"):
         return _lab_blocked("shell", state)
 
-    argv = al._extract_shell_argv(goal)
+    # Model's args first (QW-1). shell(argv: list) — the model emits either a list argv or a command
+    # string. Both are honoured; the goal-text scan is the fallback. This is the DESTRUCTIVE path, so
+    # the change reaches the sandbox + approval gates downstream UNCHANGED — it only fixes WHERE the
+    # command comes from, not what is allowed to run.
+    import shlex as _shlex
+    _d = (decision.get("args") or {}) if decision else {}
+    _raw = _d.get("argv") or _d.get("command") or _d.get("cmd")
+    argv = None
+    if isinstance(_raw, list) and _raw:
+        argv = [str(x) for x in _raw]
+    elif isinstance(_raw, str) and _raw.strip():
+        try:
+            argv = _shlex.split(_raw)
+        except Exception:
+            argv = None
+    if not argv:
+        argv = al._extract_shell_argv(goal)
     if not argv:
         state["status"] = "parse_failed"
         return DispatchResult(handled=True, flow="break", goal=goal)
