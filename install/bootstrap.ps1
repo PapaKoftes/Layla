@@ -19,7 +19,8 @@
 param(
     [ValidateSet("quality", "balanced", "lite", "speed")][string]$Prefer = "balanced",
     [switch]$SkipModel,
-    [switch]$Verify
+    [switch]$Verify,
+    [switch]$NoStart   # skip auto-launching Layla at the end (CI/automation)
 )
 $ErrorActionPreference = "Stop"
 $Repo = Split-Path -Parent $PSScriptRoot          # install\ -> repo root
@@ -101,7 +102,23 @@ if (-not $SkipModel) {
 }
 
 Write-Host ""
-Write-Host "  Done. Start Layla:  .\layla.cmd   (or: .venv\Scripts\python.exe agent\serve.py)" -ForegroundColor Green
-Write-Host "  Layla opens at http://127.0.0.1:8000/ui"
+Write-Host "  Done. Layla is installed." -ForegroundColor Green
+Write-Host "  Start anytime:     START.bat   (or .\layla.cmd)"
 Write-Host "  Re-check anytime:  powershell -File install\bootstrap.ps1 -Verify"
 Write-Host ""
+
+# The README tells a non-technical user "when it finishes it opens ... in your browser." That was a
+# lie: bootstrap only PRINTED how to start, and INSTALL.bat has no pause, so the console vanished on
+# this line after a 10-40 minute download — no app, no browser, no instruction. In -Verify mode we
+# do NOT launch (it is a re-check, not a first run). Otherwise, actually start Layla so the promise
+# is true, unless the caller opts out (-NoStart, used by CI/automation).
+if (-not $Verify -and -not $NoStart) {
+    $startBat = Join-Path $PSScriptRoot "..\START.bat"
+    if (Test-Path $startBat) {
+        Write-Host "  Starting Layla - your browser will open at http://127.0.0.1:8000/ui ..." -ForegroundColor Cyan
+        Start-Process -FilePath $startBat -WorkingDirectory (Split-Path $startBat -Parent)
+    } else {
+        Write-Host "  (START.bat not found - run it yourself to open Layla.)" -ForegroundColor Yellow
+        Read-Host "  Press Enter to close"
+    }
+}
