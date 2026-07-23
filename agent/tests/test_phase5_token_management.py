@@ -302,15 +302,15 @@ class TestSelectiveContextIntegration:
 
 class TestContextPressureWiring:
     def test_record_context_pressure(self):
-        from services.observability.prom_metrics import CONTEXT_PRESSURE, record_context_pressure
+        from services.observability.prom_metrics import CONTEXT_PRESSURE, metric_values, record_context_pressure
         record_context_pressure(0.75)
-        vals = CONTEXT_PRESSURE.get_all()
+        vals = metric_values(CONTEXT_PRESSURE)
         assert any(v == 0.75 for v in vals.values())
 
     def test_pressure_clamped(self):
-        from services.observability.prom_metrics import CONTEXT_PRESSURE, record_context_pressure
+        from services.observability.prom_metrics import CONTEXT_PRESSURE, metric_values, record_context_pressure
         record_context_pressure(1.5)
-        vals = CONTEXT_PRESSURE.get_all()
+        vals = metric_values(CONTEXT_PRESSURE)
         assert all(v <= 1.0 for v in vals.values())
 
     def test_pressure_zero(self):
@@ -327,8 +327,8 @@ class TestContextPressureWiring:
         }
         _prompt, metrics = build_system_prompt(sections, n_ctx=4096)
         # The metric should have been set — check it was called
-        from services.observability.prom_metrics import CONTEXT_PRESSURE
-        vals = CONTEXT_PRESSURE.get_all()
+        from services.observability.prom_metrics import CONTEXT_PRESSURE, metric_values
+        vals = metric_values(CONTEXT_PRESSURE)
         # Should have at least one value recorded
         assert len(vals) >= 1
 

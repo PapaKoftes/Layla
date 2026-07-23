@@ -18,6 +18,20 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
+      # The pushed tag MUST match agent/version.py, or the installer ships mislabeled and every
+      # client's auto-updater compares the release tag to a stale __version__ and re-downloads
+      # forever. This guard makes that drift a failed release instead of a shipped one.
+      - name: Verify tag matches version.py
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          ver="$(python -c 'import sys; sys.path.insert(0,"agent"); from version import __version__; print(__version__)')"
+          echo "tag=$tag  version.py=$ver"
+          if [ "$tag" != "$ver" ]; then
+            echo "::error::release tag v$tag does not match agent/version.py ($ver). Bump version.py before tagging."
+            exit 1
+          fi
+
       - name: Install build deps
         run: |
           python -m pip install --upgrade pip

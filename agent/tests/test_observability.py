@@ -29,28 +29,28 @@ class TestMetricsFallback:
     """Tests for the lightweight fallback metrics when prometheus_client is absent."""
 
     def test_record_tool_call(self):
-        from services.observability.prom_metrics import TOOL_CALLS, TOOL_DURATION, record_tool_call
+        from services.observability.prom_metrics import TOOL_CALLS, metric_values, record_tool_call
         record_tool_call("read_file", True, 0.5)
-        counters = TOOL_CALLS.get_all()
+        counters = metric_values(TOOL_CALLS)
         # Should have at least one entry
         assert any(v > 0 for v in counters.values())
 
     def test_record_llm_request(self):
-        from services.observability.prom_metrics import LLM_REQUESTS, record_llm_request
+        from services.observability.prom_metrics import LLM_REQUESTS, metric_values, record_llm_request
         record_llm_request("test-model.gguf", "morrigan", 1.2)
-        counters = LLM_REQUESTS.get_all()
+        counters = metric_values(LLM_REQUESTS)
         assert any(v > 0 for v in counters.values())
 
     def test_record_memory_op(self):
-        from services.observability.prom_metrics import MEMORY_OPS, record_memory_op
+        from services.observability.prom_metrics import MEMORY_OPS, metric_values, record_memory_op
         record_memory_op("episodic", "save_learning")
-        counters = MEMORY_OPS.get_all()
+        counters = metric_values(MEMORY_OPS)
         assert any(v > 0 for v in counters.values())
 
     def test_record_scheduler_run(self):
-        from services.observability.prom_metrics import SCHEDULER_RUNS, record_scheduler_run
+        from services.observability.prom_metrics import SCHEDULER_RUNS, metric_values, record_scheduler_run
         record_scheduler_run("mission_worker", "ok")
-        counters = SCHEDULER_RUNS.get_all()
+        counters = metric_values(SCHEDULER_RUNS)
         assert any(v > 0 for v in counters.values())
 
     def test_get_metrics_summary_returns_dict(self):
