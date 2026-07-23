@@ -158,6 +158,12 @@ def log_tool_result(tool: str, ok: bool, duration_ms: float = 0, **kw: Any) -> N
     _log_event("tool_result", tool=tool, ok=ok, duration_ms=round(duration_ms, 2), **kw)
     if duration_ms > 0:
         _record_to_performance_monitor("tool_latency_ms", duration_ms, {"tool": tool})
+    # Liveness (CP-3): this is the UNIVERSAL tool choke point — the registry wrapper calls it for
+    # every TOOLS[name]["fn"] invocation, on every dispatch path. CP-3's first live run proved the
+    # point: instrumenting core.executor.run_tool missed read_file entirely, because file handlers
+    # dispatch through tool_dispatch._handle_read_file, not the executor. This site sees them all.
+    from services.observability import liveness
+    liveness.fire("tool_executed")
     # Tool outcome learning: record for reliability
     try:
         from layla.memory.db import record_tool_outcome

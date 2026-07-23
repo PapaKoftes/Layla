@@ -133,6 +133,8 @@ def summarize_history(
                     create_episode,
                 )
                 add_conversation_summary(summary)
+                from services.observability import liveness
+                liveness.fire("conversation_compacted")  # CP-3; the effect that had 0 rows for the DB's life
                 add_relationship_memory(summary)  # companion intelligence: meaningful interaction
                 tl_id = add_timeline_event(summary, event_type="conversation_summary", importance=0.5)
                 ep_id = create_episode(summary=summary[:200])
