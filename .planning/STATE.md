@@ -61,12 +61,22 @@ commit 3 = delete both fallbacks + Rule A + Rule B; update the characterization 
 
 ## Release sprint (Phase 1) — DONE except two human tasks
 
-All code/config blockers fixed, gated GREEN (4070/0), pushed. Version is **1.6.0** on disk (NOT yet
-tagged — tagging is the operator's call; the release.yml guard now verifies tag == version.py).
+All code/config blockers fixed and pushed. Version is **1.6.0** on disk (NOT yet tagged — tagging is
+the operator's call; the release.yml guard now verifies tag == version.py).
+
+**CI is now fully GREEN on `master` at `a8d6a93`** (Test Linux 3.11/3.12 + Windows, Lint, Package,
+E2E-UI, Inference-smoke, Secret-scan). The prometheus metrics fix (`ae690e8`) was only ONE of the
+red causes — the local `ci-gate.sh` uses a dep-poor config and hid four more, each green locally /
+red on the full-deps runner (see the [CI green restored] memory). They are fixed in `37b5c1a`
+(manifest count from live registry), `22fd513` (maturity temp-path normalize), `d142ff8`
+(HF_HUB_OFFLINE on the test jobs — embedder no longer cold-downloads), `a8d6a93` (write-tracer honours
+os dir_fd). Lesson recorded: local-green ≠ CI-green; reproduce full deps (install sentence-transformers
+into `.venv-test`) before claiming green.
 
 | Blocker | State | Commit |
 |---|---|---|
 | CI red 12 days (metrics shape diverged on prometheus) | ✅ | `ae690e8` |
+| CI red — 4 further full-deps-only failures | ✅ green at `a8d6a93` | `37b5c1a` `22fd513` `d142ff8` `a8d6a93` |
 | Version 1.5.0 tagged / mismatch (update-loop) | ✅ 1.6.0 + guard | `ae690e8` |
 | `write_file`/`shell`/`fetch_url` discard model args (QW-1) | ✅ | `bf7a658` |
 | Anti-fabrication dead on the streaming (default) path | ✅ | `1c0d93b` |
