@@ -52,6 +52,28 @@ def warn(name: str, detail: str) -> None:
     print(f"  WARN {name}: {detail}")
 
 
+# A parse failure must never be silent. This checker used to `except SyntaxError: continue`, and a
+# UTF-8 BOM on routers/agent.py — the 1629-line main chat router, itself a shared_state importer —
+# made every AST gate skip it. The shared_state count read 15, sat exactly at its cap, and PASSED,
+# while the true count was 16. A gate that silently drops the file it is meant to police reports
+# health it never measured. Every AST parse now goes through here: the BOM is stripped so a byte-order
+# mark can never blind the checker again, and any REMAINING parse error is recorded as a hard failure
+# rather than skipped.
+_parse_failures: list[str] = []
+
+
+def parse_py(py_file: Path) -> "ast.Module | None":
+    """Parse a .py file for an architecture gate. BOM-tolerant; loud on real syntax errors."""
+    text = py_file.read_text(encoding="utf-8", errors="replace").lstrip("\ufeff")
+    try:
+        return ast.parse(text)
+    except SyntaxError as e:
+        rel = py_file.relative_to(AGENT_DIR)
+        _parse_failures.append(f"{rel}: {e}")
+        print(f"  FAIL parse {rel}: {e}")
+        return None
+
+
 # ── Check 1: Critical module imports ────────────────────────────────────
 
 print("\n[1] Critical module imports")
@@ -135,10 +157,9 @@ for py_file in AGENT_DIR.rglob("*.py"):
         continue
     if "test" in py_file.name.lower():
         continue
-    try:
-        tree = ast.parse(py_file.read_text(encoding="utf-8", errors="replace"))
-    except (SyntaxError, UnicodeDecodeError):
-        continue
+    tree = parse_py(py_file)
+    if tree is None:
+        continue  # recorded loudly by parse_py; the zero-parse-failures gate below fails the run
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module and "shared_state" in node.module:
             ss_importers += 1
@@ -147,7 +168,10 @@ for py_file in AGENT_DIR.rglob("*.py"):
             if any("shared_state" in alias.name for alias in node.names):
                 ss_importers += 1
                 break
-check(f"shared_state importers <= 15 (current: {ss_importers})", ss_importers <= 15)
+# Cap is 16, the HONEST current count. It read 15 only because a BOM on routers/agent.py — itself a
+# shared_state importer — made the old inline `ast.parse` skip it (CP-1). This is a ratchet: the
+# direction is DOWN as callers migrate to SessionContext. Do not raise it to admit a new importer.
+check(f"shared_state importers <= 16 (current: {ss_importers})", ss_importers <= 16)
 
 
 # ── Check 6: Syntax compilation ─────────────────────────────────────────
@@ -167,6 +191,18 @@ if syntax_errors == 0:
     check("all files compile", True)
 elif syntax_errors > 3:
     check(f"compile ({syntax_errors} total failures)", False)
+
+
+# ── Check 7: No file was silently skipped by an AST gate ────────────────
+# This is the meta-check that makes CP-1 durable: if any gate above could not parse a file, the run
+# fails and names it, instead of quietly under-counting. A blind detector is worse than no detector.
+
+print("\n[7] AST parse coverage")
+check(
+    f"zero files unparseable by AST gates (found: {len(_parse_failures)})",
+    not _parse_failures,
+    "; ".join(_parse_failures[:5]),
+)
 
 
 # ── Summary ─────────────────────────────────────────────────────────────
