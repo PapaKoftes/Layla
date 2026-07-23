@@ -963,9 +963,9 @@ def _autonomous_run_impl_core(
                 state["precomputed_recall_for_stream"] = _precomputed_recall
                 state["stream_workspace_root"] = workspace
                 state["cognition_workspace_roots_for_stream"] = state.get("cognition_workspace_roots") or []
+                state["stream_no_file_access"] = True  # router appends the anti-fabrication directive
             else:
-                max_tok = cfg.get("completion_max_tokens", 256)
-                _fb_out = run_completion(_fb_prompt, max_tokens=max_tok, temperature=temperature, stream=False)
+                _fb_out = run_completion(_fb_prompt, max_tokens=cfg.get("completion_max_tokens", 256), temperature=temperature, stream=False)
                 _fb_text = ""
                 if isinstance(_fb_out, str):
                     _fb_text = _fb_out

@@ -1177,6 +1177,14 @@ async def agent(req: AgentRequest, request: Request):
                     return
                 if result.get("status") == "stream_pending":
                     goal_for_stream = result.get("goal_for_stream", goal)
+                    # Anti-fabrication on the DEFAULT streaming path. agent_loop's parse_failed branch
+                    # sets stream_no_file_access when a tool could not run and re-streams here; without
+                    # this the directive (built into the discarded _fb_prompt) never reaches the model
+                    # and she invents the file's contents. P13-E3 closed only the non-streaming branch.
+                    _stream_context = context
+                    if result.get("stream_no_file_access"):
+                        import orchestrator as _orch
+                        _stream_context = (context or "") + _orch.NO_FILE_ACCESS_DIRECTIVE
                     # NB: mutate in place, don't rebind — `finally` reads this same list to recover
                     # the partial answer on a client abort (see the hoist above).
                     del full[:]
@@ -1191,7 +1199,7 @@ async def agent(req: AgentRequest, request: Request):
                         try:
                             for t in stream_reason(
                                 goal_for_stream,
-                                context=context,
+                                context=_stream_context,
                                 conversation_history=list(conv_history),
                                 aspect_id=aspect_id,
                                 show_thinking=show_thinking,

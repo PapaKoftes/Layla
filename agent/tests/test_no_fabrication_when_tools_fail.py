@@ -75,3 +75,30 @@ def test_the_fallback_prompt_carries_the_directive():
         "the directive was dropped during prompt assembly — the model will not know it failed"
     )
     assert "some prior context" in prompt, "existing context must be preserved, not replaced"
+
+
+def test_the_streaming_path_is_wired_for_anti_fabrication():
+    """The default UI path is STREAMING, and P13-E3 only closed the non-streaming branch. This asserts
+    the streaming wiring exists end to end, by AST — the exact gap the release audit flagged as a
+    live blocker: agent_loop must FLAG a parse_failed streamed turn, and the router must APPEND the
+    directive when it re-streams (it uses its own context, discarding agent_loop's _fb_prompt)."""
+    import ast
+
+    al = (AGENT_DIR / "agent_loop.py").read_text(encoding="utf-8")
+    router = (AGENT_DIR / "routers" / "agent.py").read_text(encoding="utf-8")
+
+    # agent_loop's parse_failed stream branch must set the flag.
+    assert '"stream_no_file_access"' in al or "stream_no_file_access" in al, (
+        "agent_loop no longer flags a parse_failed streamed turn — the router cannot know to append "
+        "the anti-fabrication directive, and the default UI path fabricates again"
+    )
+
+    # The router must both READ the flag and append the directive.
+    rtree = ast.parse(router)
+    reads_flag = "stream_no_file_access" in router
+    appends_directive = any(
+        isinstance(n, ast.Attribute) and n.attr == "NO_FILE_ACCESS_DIRECTIVE"
+        for n in ast.walk(rtree)
+    )
+    assert reads_flag, "the router never reads stream_no_file_access"
+    assert appends_directive, "the router never appends NO_FILE_ACCESS_DIRECTIVE to the streamed context"
