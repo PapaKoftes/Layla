@@ -341,6 +341,10 @@ def commit_turn(
     # ── 2. Receipt: durable operator facts (was wired at only 2 of 10 sites) ──
     receipt = _mem_receipt(goal)
 
+    # Liveness (CP-3): a turn was committed through the single seam. fire() never raises.
+    from services.observability import liveness
+    liveness.fire("turn_committed")
+
     # ── 3. Learn (safety-gated) ──
     if not learn or not _should_learn(status, refused):
         return receipt
@@ -385,6 +389,7 @@ def commit_turn(
             state["outcome_evaluation"] = _ev_struct
             if cid:
                 get_or_create_session(cid).set_outcome_evaluation(_ev_struct)
+            liveness.fire("outcome_evaluated")  # CP-3; liveness already imported above
         except Exception as e:
             logger.debug("commit_turn: outcome evaluation failed: %s", e)
 
