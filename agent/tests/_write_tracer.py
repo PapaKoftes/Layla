@@ -72,6 +72,28 @@ def _norm(p) -> str:
         return ""
 
 
+def _abs_with_dir_fd(path, dir_fd):
+    """Resolve ``path`` for recording, honouring an os ``dir_fd``.
+
+    ``os.unlink``/``remove``/``rmdir``/``mkdir`` accept a ``dir_fd``, and ``shutil.rmtree`` uses it on
+    POSIX: it unlinks each entry by BARE BASENAME relative to an open directory fd. ``abspath()``-ing
+    such a name against CWD invents a location (``agent/leftover.txt``) the file was never at, firing
+    this net on its own scaffolding — which is exactly why the suite was green on Windows (rmtree there
+    passes full paths, no dir_fd) but red on Linux. Resolve against the fd's directory when the platform
+    exposes it (``/proc/self/fd`` on Linux, still valid while rmtree holds the fd open); return ``None``
+    to SKIP when it cannot be resolved. Nothing real is lost by skipping: the top-level ``shutil.rmtree``
+    is traced separately with the correct absolute path, and the defect class this net hunts (a module
+    resolving its data dir wrong) writes via ordinary path ops, never a dir_fd.
+    """
+    if dir_fd is None:
+        return os.fspath(path)
+    try:
+        base = os.readlink("/proc/self/fd/%d" % int(dir_fd))
+        return os.path.join(base, os.fspath(path))
+    except (OSError, ValueError, TypeError):
+        return None
+
+
 def _under(path: str, root: str) -> bool:
     if not root or not path:
         return False
@@ -323,10 +345,13 @@ class WriteTracer:
         creates = name in ("mkdir", "makedirs")
 
         def traced(path, *a, **kw):
-            existed = os.path.exists(path) if creates else False
+            dir_fd = kw.get("dir_fd")
+            existed = os.path.exists(path) if (creates and dir_fd is None) else False
             result = real(path, *a, **kw)
             if not existed:
-                rec(path, op)
+                rp = _abs_with_dir_fd(path, dir_fd)
+                if rp is not None:
+                    rec(rp, op)
             return result
 
         setattr(os, name, traced)
