@@ -38,11 +38,39 @@ def _iter_py_files(root: Path, *, skip_venv: bool = True, skip_tests: bool = Tru
 
 
 def _parse_file(path: Path):
-    """Return an AST tree or *None* on parse failure."""
+    """Return an AST tree or *None* on parse failure. BOM-tolerant.
+
+    The ``.lstrip("\\ufeff")`` is load-bearing: a UTF-8 BOM on routers/agent.py (the main chat
+    router) made ``ast.parse`` raise, and every boundary scan below silently skipped it via the
+    ``if tree is None: continue`` guard — so the 1629-line router was never checked. test_no_source_
+    file_is_unparseable now fails loudly if any file cannot be parsed, so a silent skip is impossible.
+    """
     try:
-        return ast.parse(path.read_text(encoding="utf-8"))
+        return ast.parse(path.read_text(encoding="utf-8").lstrip("\ufeff"))
     except (SyntaxError, UnicodeDecodeError):
         return None
+
+
+def test_no_source_file_is_unparseable():
+    """Every boundary scan skips files _parse_file cannot handle. This makes that skip LOUD.
+
+    A UTF-8 BOM on routers/agent.py once made every AST gate skip the 1629-line main chat
+    router while reporting green. A gate that silently drops the file it polices reports health
+    it never measured. This fails, naming the file, if any source file cannot be parsed after
+    the BOM strip - the guard that makes the rest of this module trustworthy.
+    """
+    unparseable = []
+    for py_file in _iter_py_files(AGENT_DIR):
+        raw = py_file.read_text(encoding="utf-8", errors="replace")
+        try:
+            ast.parse(raw.lstrip("\ufeff"))
+        except SyntaxError as e:
+            unparseable.append(f"{py_file.relative_to(AGENT_DIR)}: {e}")
+    joined = ("\n  ").join(unparseable)
+    assert not unparseable, (
+        "source files the architecture gates cannot parse (silently skipped):"
+        + joined
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -171,10 +199,12 @@ def test_shared_state_import_count():
                         importers.append(str(py_file.relative_to(AGENT_DIR)))
                         break
 
-    # Threshold: 15 importers max (current 13 after SessionContext migration).
-    # Ratchet this down as callers migrate to SessionContext.
-    assert len(importers) <= 15, (
-        f"shared_state has {len(importers)} importers (max 15). "
+    # Threshold: 16, the HONEST current count. It was 15 only because routers/agent.py carried a
+    # UTF-8 BOM that made _parse_file skip it (CP-1) — and that router is itself a shared_state
+    # importer, so the gate under-counted the exact file it should have flagged. Ratchet DOWN as
+    # callers migrate to SessionContext; never raise it to admit a new importer.
+    assert len(importers) <= 16, (
+        f"shared_state has {len(importers)} importers (max 16). "
         f"Refactor callers to use services.session_context.\nFiles:\n  "
         + "\n  ".join(sorted(importers))
     )
