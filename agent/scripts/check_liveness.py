@@ -35,7 +35,7 @@ def main() -> int:
             zero += 1
         print(f"  {flag} {effect:<24} count={count:<6} last={when}")
         if not rec.get("known", True):
-            print(f"       ^ unregistered — a rename may have left a ghost effect")
+            print("       ^ unregistered — a rename may have left a ghost effect")
     print("=" * 60)
     if zero:
         print(f"  {zero} effect(s) have NEVER fired. On a fresh install that is expected; after real")
