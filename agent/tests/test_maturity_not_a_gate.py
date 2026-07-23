@@ -28,6 +28,11 @@ import pytest
 
 AGENT_DIR = Path(__file__).resolve().parents[1]
 
+# The random leaf `tempfile.TemporaryDirectory(prefix="layla-gate-")` appends (lowercase letters,
+# digits, underscore — never a path separator). Normalising it to a constant makes two scenarios'
+# temp-derived paths compare equal regardless of how load_config spelled them (resolve/slash/case).
+_GATE_TOKEN = re.compile(r"layla-gate-[0-9A-Za-z_]+")
+
 # The six keys the overlay owned. Listed literally, on purpose: the registry that used to hold
 # them is deleted, and a test that reads its subject from the code under test cannot notice the
 # subject going missing.
@@ -90,9 +95,16 @@ def _effective_config(seed: dict) -> dict:
         if not hits:
             pytest.fail("load_config() child failed:\n%s\n%s" % (p.stdout[-2000:], p.stderr[-2000:]))
         cfg = json.loads(hits[-1][3:])
-        # Paths derived from the throwaway dir are harness artifacts, not config differences.
-        return {k: v for k, v in cfg.items()
-                if not (isinstance(v, str) and str(d) in v)}
+        # Values derived from the throwaway data dir are harness artifacts, not config differences,
+        # and the two scenarios use DIFFERENT throwaway dirs — so any path under one is a false diff
+        # against the other. The old `str(d) in v` substring drop MISSED models_dir in CI: load_config
+        # stores it in a resolved / forward-slash form that is not a literal substring of str(d) (the
+        # classic Windows resolve()/separator mismatch), so the false diff survived and reddened the
+        # suite. The two dirs differ ONLY in their random `layla-gate-XXXX` leaf, so normalising that
+        # one token to a constant neutralises every temp-derived path at once, immune to how the path
+        # was spelled — while a genuine grant landing on a non-path key still shows in the diff.
+        return {k: (_GATE_TOKEN.sub("layla-gate-X", v) if isinstance(v, str) else v)
+                for k, v in cfg.items()}
 
 
 # ── the safety property ─────────────────────────────────────────────────────────
