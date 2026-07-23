@@ -291,6 +291,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-07-23
+
+Everything below shipped since 1.5.0: the agent actually executes tools now (it never did before),
+memory persists across a conversation, several silent failures were made loud, and the release
+plumbing (CI, versioning, metrics) was repaired.
+
 ### Performance & memory (P13 Phase A)
 - **Replies start ~35× faster after the first one.** Every call was clearing the KV cache before
   running, throwing away the prompt prefix the previous turn had just paid to compute. The stable
