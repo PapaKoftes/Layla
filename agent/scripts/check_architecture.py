@@ -26,7 +26,10 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
-STRICT = "--strict" in sys.argv
+# STRICT is the DEFAULT (CP-2). A gate that only warns is evidentially identical to no gate — this
+# one had never failed AND had never run in CI. Pass --lenient to demote failures to warnings for
+# local exploration; CI runs it plain, so a violation blocks the merge.
+STRICT = "--lenient" not in sys.argv
 
 passed = 0
 failed = 0
@@ -108,26 +111,74 @@ for f in DEAD_CODE:
     check(f"dead code absent: {f}", not path.exists(), "file still exists")
 
 
-# ── Check 3: agent_loop.py size ─────────────────────────────────────────
+# ── Structural ratchets — measured against reality (CP-2) ───────────────
+# Each fails only if the count RISES above its recorded baseline. When a count FALLS (a later
+# checkpoint migrates callers away), the printed "current" flags that the baseline can be tightened.
+# Deliberately inline constants, not a separate arch-baseline.json: the check IS the assertion, and a
+# JSON file + loader is more moving parts than the simplicity brief allows. Every number here was
+# measured by the SAME AST logic that enforces it (post-CP-1, so no file is silently skipped).
 
+
+def _iter_src(skip_tests: bool = True):
+    for py_file in AGENT_DIR.rglob("*.py"):
+        s = str(py_file)
+        if "venv" in s or "site-packages" in s:
+            continue
+        if skip_tests and ("test" in py_file.name.lower()):
+            continue
+        yield py_file
+
+
+def ratchet(name: str, current: int, baseline: int, drives: str) -> None:
+    """A downward-only ceiling. Fails on rise; nudges to tighten on fall."""
+    check(f"{name} <= {baseline} (current: {current})", current <= baseline)
+    if current < baseline:
+        warn(name, f"ratchet can tighten: {current} < {baseline} — lower the baseline ({drives})")
+
+
+# Check 3: agent_loop.py size. The old cap was 1800 against an actual 1000 — pure decoration; the
+# real 1000-line ceiling lives in test_architecture_boundaries. Ratcheted here to reality so the two
+# gates agree and neither can drift.
 print("\n[3] agent_loop.py size")
 al_path = AGENT_DIR / "agent_loop.py"
 if al_path.exists():
     al_lines = len(al_path.read_text(encoding="utf-8", errors="replace").splitlines())
-    check(f"agent_loop.py <= 1800 lines (current: {al_lines})", al_lines <= 1800)
+    ratchet("agent_loop.py lines", al_lines, 1000, "extract into services/agent/")
 else:
     warn("agent_loop.py", "file not found")
 
 
-# ── Check 4: services/ flat file count ──────────────────────────────────
+# Check 4: state["steps"].append sites. THE signature-defect metric: the more places that write the
+# step log, the more places a tool result can be lost or a step silently skipped. CP-6 drives this to
+# a single writer in turn.py; until then, no NEW append site may appear.
+print("\n[4] step-log write sites")
+steps_append = 0
+for py_file in _iter_src():
+    tree = parse_py(py_file)
+    if tree is None:
+        continue
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "append" and isinstance(node.func.value, ast.Subscript)):
+            sl = node.func.value.slice
+            if isinstance(sl, ast.Constant) and sl.value == "steps":
+                steps_append += 1
+ratchet('state["steps"].append sites', steps_append, 49, "route through turn.record_step — CP-6")
 
-print("\n[4] services/ flat file count")
-svc_dir = AGENT_DIR / "services"
-if svc_dir.is_dir():
-    flat = [f for f in svc_dir.glob("*.py") if f.name != "__init__.py"]
-    check(f"services/ flat files <= 205 (current: {len(flat)})", len(flat) <= 205)
-else:
-    warn("services/", "directory not found")
+
+# Check 4b: commit_turn call sites. CP-7/CP-8 collapse the argument shapes; no new call site meanwhile.
+print("\n[4c] commit_turn call sites")
+commit_turn_calls = 0
+for py_file in _iter_src():
+    tree = parse_py(py_file)
+    if tree is None:
+        continue
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            nm = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+            if nm == "commit_turn":
+                commit_turn_calls += 1
+ratchet("commit_turn call sites", commit_turn_calls, 19, "one turn seam — CP-7")
 
 
 # ── Check 4b: Required sub-packages exist ─────────────────────────────
