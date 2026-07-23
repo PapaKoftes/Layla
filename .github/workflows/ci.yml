@@ -210,6 +210,13 @@ jobs:
       - name: Check with ruff
         run: python -m ruff check agent fabrication_assist
 
+      # Architecture ratchets (CP-2). Strict by default: any structural count rising above its
+      # measured baseline, or any source file the AST gates cannot parse, fails the build. This gate
+      # had never run in CI before — a ratchet that is never enforced is decoration.
+      - name: Check architecture boundaries
+        working-directory: agent
+        run: python scripts/check_architecture.py
+
   secret-scan:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest

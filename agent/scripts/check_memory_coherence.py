@@ -111,7 +111,14 @@ def check_chromadb() -> tuple[bool, str]:
 
 
 def check_knowledge_graph() -> tuple[bool, str]:
-    graphml = AGENT_DIR / ".layla" / "knowledge_graph.graphml"
+    # Resolve to the OWNER path, not a second hardcoded one. This checker looked in AGENT_DIR/.layla/,
+    # where the graph has never lived, so it always reported "SKIP: no graphml yet" while the real
+    # 31-node graph sat unread at layla/memory/knowledge_graph.graphml. A coherence check that never
+    # opens the file it checks is the exact defect this whole sequence exists to remove.
+    try:
+        from layla.memory.memory_graph import GRAPH_PATH as graphml
+    except Exception:
+        graphml = AGENT_DIR / "layla" / "memory" / "knowledge_graph.graphml"
     if not graphml.exists():
         return True, "SKIP: no knowledge_graph.graphml yet (will be created on first index)"
     try:
