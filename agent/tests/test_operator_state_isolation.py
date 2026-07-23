@@ -314,3 +314,44 @@ def test_head_build_writes_its_profile_snapshot_into_the_isolated_dir(monkeypatc
         "driving a profile snapshot under an isolated LAYLA_DATA_DIR still modified the operator's "
         f"real profile at {operator_profile}"
     )
+
+
+# ── the write tracer must not mis-blame fd-relative removals on the working directory ──────────────
+# THIS WAS A PROBE BUG, and it stayed invisible on Windows for the reason that matters: shutil.rmtree
+# unlinks each entry by BARE BASENAME relative to an open directory fd on POSIX (os.unlink(name,
+# dir_fd=fd)), but passes full paths on Windows. The tracer abspath'd the bare name against CWD, so a
+# rmtree of a tmp_path dir reported writes at agent/leftover.txt / agent/README.md that no code ever
+# made — green on the Windows job, red on Linux. Windows CI can never exercise this path, so it is
+# pinned here directly on the resolver rather than end to end.
+class TestTracerHonoursDirFd:
+    def _tracer(self):
+        sys.path.insert(0, str(AGENT / "tests"))
+        import _write_tracer  # noqa: E402
+        return _write_tracer
+
+    def test_bare_name_without_dir_fd_is_cwd_relative_as_before(self):
+        wt = self._tracer()
+        assert wt._abs_with_dir_fd("leftover.txt", None) == os.fspath("leftover.txt"), (
+            "the no-dir_fd path must be unchanged — a genuine CWD write still has to be caught"
+        )
+
+    def test_a_bare_name_WITH_a_dir_fd_resolves_against_the_fd_not_cwd(self, monkeypatch):
+        wt = self._tracer()
+        target_dir = os.path.join(os.path.abspath(os.sep), "tmp", "pytest-of-x", "installed", "doomed")
+        monkeypatch.setattr(os, "readlink", lambda p: target_dir if p == "/proc/self/fd/7" else None)
+        got = wt._abs_with_dir_fd("leftover.txt", 7)
+        assert got == os.path.join(target_dir, "leftover.txt"), (
+            "a dir_fd-relative unlink was resolved against CWD, inventing a write the code never made"
+        )
+
+    def test_an_unresolvable_dir_fd_is_skipped_not_cwd_resolved(self, monkeypatch):
+        wt = self._tracer()
+
+        def _boom(_p):
+            raise OSError("no /proc on this platform")
+
+        monkeypatch.setattr(os, "readlink", _boom)
+        assert wt._abs_with_dir_fd("leftover.txt", 7) is None, (
+            "when the fd cannot be resolved the write must be SKIPPED (the top-level rmtree is traced "
+            "with the correct absolute path), never CWD-resolved into a false positive"
+        )
