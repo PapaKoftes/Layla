@@ -13,6 +13,16 @@ jobs:
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    # Unit tests must be hermetic. On a full-deps runner (torch + sentence-transformers present) with a
+    # COLD HF cache, building a prompt triggers semantic recall -> vector_store._get_embedder(), which
+    # downloads a model from HuggingFace: a >120s cold download that tripped pytest-timeout on the
+    # capability-manifest tests and wrote model files outside LAYLA_DATA_DIR (the operator-state write
+    # census). Forcing offline makes the embedder fail FAST and fall back to BM25/keyword-only — exactly
+    # the documented cold-cache degradation — so the suite stays fast and downloads nothing. The real-model
+    # jobs (inference-smoke, coding-benchmark, golden-eval) are SEPARATE jobs and keep their network.
+    env:
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
 
     strategy:
       fail-fast: false
@@ -87,6 +97,10 @@ jobs:
   test-windows:
     name: Test (Windows, Python 3.12)
     runs-on: windows-latest
+    # Hermetic unit tests — see the note on the `test` job above. Same cold-HF-cache download trap.
+    env:
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
     steps:
       - uses: actions/checkout@v4
 
