@@ -14,8 +14,8 @@ attempt.
 | 1 | Detector sees whole codebase | ✅ done | `056f628` |
 | 2 | Baseline gates to reality + wire to CI | ✅ done | `c610615` |
 | 3 | Runtime liveness registry | ✅ done | `aab0600` |
-| 4 | Answer characterization test | ⬜ next | — |
-| 5 | The answer becomes a value | ⬜ | — |
+| 4 | Answer characterization test | ✅ done | `05d3bfe` |
+| 5 | The answer becomes a value | ⬜ **next — highest risk** | — |
 | 6 | One step writer (`state["steps"].append` → 0 outside turn.py) | ⬜ | — |
 | 7 | `state` required at the turn boundary | ⬜ | — |
 | 8 | Exhaustive status | ⬜ | — |
@@ -37,9 +37,27 @@ attempt.
 `tool_executed`, `turn_committed`, `outcome_evaluated`, `conversation_compacted`. Run it after real
 use; a named effect stuck at 0 is a load-bearing path that has gone dark.
 
-## Next: CP-4 — Answer characterization test (~0.5 day, +60 LOC, no dependency)
-Pin what the user sees today (the final answer text for a battery of turns) BEFORE CP-5 changes how
-the answer is produced. Pure safety net; touches no product code. See ARCHITECTURE_TARGET.md §4 CP-4.
+## Next: CP-5 — The answer becomes a value (~1 day, 3 revertible commits) ⚠️ HIGHEST USER-VISIBLE RISK
+
+Give the final user-visible text one owner (`set_answer`/`answer_of` in a new `turn.py`) and delete
+both extraction rules. CP-4's `test_answer_extraction_characterization.py` is the safety net.
+
+**Do NOT rush this on depleted context.** A live ambiguity to resolve BEFORE writing code:
+CP-5 commit 1 says "repoint the 4 readers to `answer_of`, zero behaviour change." But the 4 readers
+use *different* rules today — Rule A readers (agent.py:1325/:1477) take `steps[-1]`, Rule B readers
+(run_finalizer.py:101) take the last reason. A single `answer_of` that does "Rule B then Rule A"
+changes what Rule A's readers return on a **tool-last turn** (the flagship multi-step case): the user
+would see the last reason instead of the raw tool result. Whether that is the intended unification-at-
+commit-1 or a regression must be settled by **driving the real app** on a tool-last goal through BOTH
+`/agent` (streamed + non-streamed) and `/v1`, comparing the answer text before/after. The
+characterization test passing is necessary but NOT sufficient — it tests the isolated rule helpers,
+not the readers. Verify live, per turn shape, per path.
+
+commit 1 = add turn.py + repoint readers (must be provably behaviour-neutral, verified live).
+commit 2 = call set_answer at the 3 producers (stream_handler close, reasoning_handler, agent_loop
+           parse_failed fallback) — POST-polish, since commit_turn's `text` is already cleaned/floored.
+commit 3 = delete both fallbacks + Rule A + Rule B; update the characterization test ONCE (that diff
+           is the reviewable record). Add the `steps[-1] outside diagnostics = 0` gate.
 
 ## Other live tracks (not the architecture sequence)
 - **Release blockers** (`ENGINEERING_HEALTH.md` / the release audit): 7 items, ~25–35h. Highest:
