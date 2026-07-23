@@ -184,57 +184,94 @@ def record_context_pressure(pressure: float) -> None:
 # Output functions
 # ---------------------------------------------------------------------------
 
-def generate_metrics_text() -> str | dict:
-    """Return prometheus text format if prometheus_client available, otherwise a JSON-serialisable dict."""
-    if PROMETHEUS_AVAILABLE:
-        return _generate_latest().decode("utf-8")
-    return _build_fallback_summary()
+def metric_values(metric: Any) -> dict[tuple, Any]:
+    """Values of one metric as {label_tuple: number-or-observations}, in EITHER backend.
+
+    The fallback classes expose `.get_all()`; real prometheus_client metrics do not — they expose
+    `.collect()`. Callers (including the /summary builder and the tests) must never branch on which
+    backend is installed, or the two environments drift and CI goes red on a shape the local venv
+    never exercises. This is that single seam.
+    """
+    if hasattr(metric, "get_all"):
+        return metric.get_all()  # fallback: {label_tuple: float | [observations]}
+    out: dict[tuple, Any] = {}
+    try:
+        for fam in metric.collect():
+            for s in fam.samples:
+                # Skip prometheus internals: creation timestamps and histogram bucket rows.
+                if s.name.endswith("_created") or s.name.endswith("_bucket"):
+                    continue
+                key = tuple(str(v) for v in s.labels.values())
+                if s.name.endswith("_count"):
+                    out.setdefault(key, {})["count"] = s.value
+                elif s.name.endswith("_sum"):
+                    out.setdefault(key, {})["sum"] = s.value
+                else:
+                    # counter `_total` or gauge (bare name): the primary scalar value.
+                    if not isinstance(out.get(key), dict):
+                        out[key] = s.value
+    except Exception:
+        pass
+    return out
 
 
-def get_metrics_summary() -> dict[str, Any]:
-    """Return a dict of all metric values."""
-    if PROMETHEUS_AVAILABLE:
-        return _build_prometheus_summary()
-    return _build_fallback_summary()
+def _summary_scalar(metric: Any) -> dict[str, Any]:
+    raw = metric_values(metric)
+    return {",".join(k): v for k, v in raw.items()} if raw else {}
 
 
-def _build_fallback_summary() -> dict[str, Any]:
+def _summary_histogram(metric: Any) -> dict[str, Any]:
+    raw = metric_values(metric)
+    out: dict[str, Any] = {}
+    for k, v in raw.items():
+        key = ",".join(k)
+        if isinstance(v, dict):  # real prometheus: {count, sum} already extracted
+            out[key] = {"count": v.get("count", 0), "sum": v.get("sum", 0.0)}
+        else:  # fallback: v is a list of observations
+            out[key] = {"count": len(v), "sum": sum(v)}
+    return out
+
+
+def _build_summary() -> dict[str, Any]:
+    """One summary shape, whether or not prometheus_client is installed.
+
+    Was two functions returning DIFFERENT shapes: the fallback keyed by tool_calls/llm_requests/…,
+    the prometheus path dumping raw REGISTRY sample names (python_gc_objects_collected_total, …). So
+    /metrics/summary silently returned garbage in production the moment prometheus was installed, and
+    6 tests passed locally (no prometheus) while failing in CI (prometheus present). One builder, one
+    contract, both environments.
+    """
     summary: dict[str, Any] = {}
     for name, metric in [
         ("tool_calls", TOOL_CALLS), ("memory_ops", MEMORY_OPS),
         ("llm_requests", LLM_REQUESTS), ("scheduler_runs", SCHEDULER_RUNS),
     ]:
-        raw = metric.get_all()
-        summary[name] = {",".join(k): v for k, v in raw.items()} if raw else {}
+        summary[name] = _summary_scalar(metric)
     for name, metric in [
         ("tool_duration", TOOL_DURATION), ("llm_latency", LLM_LATENCY),
         ("embedding_latency", EMBEDDING_LATENCY),
     ]:
-        raw = metric.get_all()
-        summary[name] = {
-            ",".join(k): {"count": len(v), "sum": sum(v)} for k, v in raw.items()
-        } if raw else {}
+        summary[name] = _summary_histogram(metric)
     for name, metric in [
         ("context_pressure", CONTEXT_PRESSURE), ("active_missions", ACTIVE_MISSIONS),
         ("memory_size", MEMORY_SIZE),
     ]:
-        raw = metric.get_all()
-        summary[name] = {",".join(k): v for k, v in raw.items()} if raw else {}
+        summary[name] = _summary_scalar(metric)
     return summary
 
 
-def _build_prometheus_summary() -> dict[str, Any]:
-    """Extract values from prometheus_client registry into a plain dict."""
-    try:
-        from prometheus_client import REGISTRY
-        summary: dict[str, Any] = {}
-        for metric in REGISTRY.collect():
-            for sample in metric.samples:
-                key = sample.name
-                labels = sample.labels
-                label_str = ",".join(f"{k}={v}" for k, v in labels.items()) if labels else ""
-                full_key = f"{key}{{{label_str}}}" if label_str else key
-                summary[full_key] = sample.value
-        return summary
-    except Exception:
-        return {"error": "failed to collect prometheus metrics"}
+def generate_metrics_text() -> str | dict:
+    """Prometheus text format for the /metrics scrape endpoint when available, else the JSON summary."""
+    if PROMETHEUS_AVAILABLE:
+        return _generate_latest().decode("utf-8")
+    return _build_summary()
+
+
+def get_metrics_summary() -> dict[str, Any]:
+    """A stable JSON summary of all app metrics — identical shape in both backends (see _build_summary)."""
+    return _build_summary()
+
+
+# _build_fallback_summary / _build_prometheus_summary were merged into _build_summary above — they
+# returned different shapes for the same endpoint, which is exactly how CI (prometheus present) and
+# local (absent) disagreed for 12 days.
