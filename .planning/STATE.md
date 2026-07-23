@@ -59,11 +59,27 @@ commit 2 = call set_answer at the 3 producers (stream_handler close, reasoning_h
 commit 3 = delete both fallbacks + Rule A + Rule B; update the characterization test ONCE (that diff
            is the reviewable record). Add the `steps[-1] outside diagnostics = 0` gate.
 
-## Other live tracks (not the architecture sequence)
-- **Release blockers** (`ENGINEERING_HEALTH.md` / the release audit): 7 items, ~25–35h. Highest:
-  version-tag mismatch (1h, unrecoverable if a v1.6.0 tag ships against version.py 1.5.0), fresh-install
-  empty sandbox_root, the `write_file`/`shell`/`fetch_url` handlers that STILL discard model args
-  (QW-1 — same class as P13-E1, applied to 5 of 8 handlers).
+## Release sprint (Phase 1) — DONE except two human tasks
+
+All code/config blockers fixed, gated GREEN (4070/0), pushed. Version is **1.6.0** on disk (NOT yet
+tagged — tagging is the operator's call; the release.yml guard now verifies tag == version.py).
+
+| Blocker | State | Commit |
+|---|---|---|
+| CI red 12 days (metrics shape diverged on prometheus) | ✅ | `ae690e8` |
+| Version 1.5.0 tagged / mismatch (update-loop) | ✅ 1.6.0 + guard | `ae690e8` |
+| `write_file`/`shell`/`fetch_url` discard model args (QW-1) | ✅ | `bf7a658` |
+| Anti-fabrication dead on the streaming (default) path | ✅ | `1c0d93b` |
+| INSTALL.bat window vanishes, no browser | ✅ launches now | `0573dae` |
+| Fresh-install wizard discards the workspace | ✅ persists now | `1f3cf2b` |
+| Cluster offload dead on streaming path | ⏭ **reclassified** — off by default, remote-pillar (Phase 5), not a day-one blocker; falls back to local safely |
+
+**Two items genuinely need a human before tagging:**
+1. **Real README screenshots** — current ones show an empty app on a stub model. Needs actual screenshots of a working install.
+2. **Operator UAT (criterion 6)** — click through the live first-run wizard + a real turn. The wizard-persist code path and its backend contract are proven; the click-through is yours.
+
+To ship: verify CI goes green on the pushed commits, take screenshots, click through once, then
+`git tag -a v1.6.0` (the guard confirms the match) and push the tag.
 - **Feature roadmap** (`ROADMAP.md`): 9 phases, natural release line after Phase 5.
 - **Rescued, awaiting review:** branch `rescue/bl-386-overlay-escape` (428 lines that existed in no
   commit — overlay-Escape fix + tests). Merge on its own merits.
