@@ -1,4 +1,4 @@
-﻿"""Agent and learn endpoints. Mounted at / by main."""
+"""Agent and learn endpoints. Mounted at / by main."""
 import asyncio
 import base64
 import json
