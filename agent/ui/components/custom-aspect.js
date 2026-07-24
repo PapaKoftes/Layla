@@ -6,7 +6,7 @@
  * /character/custom-aspects backend. Overlay shell + G1 tokens. ⌘K → "Create custom aspect".
  */
 
-import { setAspect } from "./aspect.js";
+import { refreshCustomAspects, setAspect } from "./aspect.js";
 
 let _root = null;
 let _open = false;
@@ -105,14 +105,20 @@ async function _create() {
     note.setAttribute("data-ok", "true");
     ["ca-id", "ca-name", "ca-symbol", "ca-tagline", "ca-prompt", "ca-color"].forEach((c) => { const el = _root.querySelector("." + c); if (el) el.value = ""; });
     if (window.showToast) window.showToast("Custom aspect created");
+    // Make the new name FIRST-CLASS immediately: merge it into the live roster so the aspect bar
+    // grows a button for it and @mention completes/resolves it without a page reload.
+    try { await refreshCustomAspects(); } catch (_) {}
     _load();
   } catch (e) {
     note.textContent = "error — " + (e && e.message ? e.message : e);
   }
 }
 
-function _use(id, name) {
+async function _use(id, name) {
   if (!id) return;
+  // Merge before switching: setAspect reads the roster for the label, sigil and accent, so
+  // without this the newly-selected aspect renders as a bare id.
+  try { await refreshCustomAspects(); } catch (_) {}
   try { setAspect(id, true); } catch (_) {}
   try { if (window.showToast) window.showToast("Now talking to " + (name || id)); } catch (_) {}
   closeCustomAspect();
@@ -121,6 +127,8 @@ function _use(id, name) {
 async function _del(id) {
   if (!id) return;
   try { await _send("/character/custom-aspects/" + encodeURIComponent(id), "DELETE"); } catch (_) {}
+  // Drop it from the live roster too, or the bar keeps a button that resolves to nothing.
+  try { await refreshCustomAspects(); } catch (_) {}
   _load();
 }
 
