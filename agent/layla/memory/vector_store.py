@@ -85,11 +85,28 @@ _embedder = None
 _embedder_dim: int = 768  # set when embedder loads
 _current_model_name: str = ""  # P1-4: embedding model provenance
 
+# The three models `_get_embedder()` can load, in the order it tries them. Named here (rather than
+# inline) because the INSTALLER now pre-fetches them via `prefetch_embedder()`: a prefetch that warms a
+# different repo id than the runtime later asks for is worse than no prefetch at all — it would look
+# like it worked and still leave the first offline run with a cold cache.
+EMBED_MODEL_STATIC = "minishlab/potion-base-8M"          # model2vec, ~30 MB, no torch — the default
+EMBED_MODEL_QUALITY = "nomic-ai/nomic-embed-text-v1.5"   # sentence-transformers, 768d
+EMBED_MODEL_FALLBACK = "all-MiniLM-L6-v2"                # sentence-transformers, 384d
+
+# What to tell a human whose embedder is missing. One string, used by the loud ERROR, by
+# embedder_status()['remedy'] (so /health/deps carries the fix, not just the symptom) and by the
+# installer's warning — three surfaces that must not drift apart.
+EMBEDDER_REMEDY = (
+    "connect to the internet and run: python agent/install/provision_model.py --embedder-only "
+    "(downloads ~30 MB once; after that semantic search works offline forever)"
+)
+
 # BL-374 — the local-first breach. Every embedder this module can load (model2vec potion-base-8M,
-# nomic-embed-text-v1.5, all-MiniLM-L6-v2) is fetched LAZILY FROM HUGGINGFACE on first use. There is no
-# pre-fetch in the installer — it provisions the GGUF and nothing else — so on a genuinely offline first
-# run _get_embedder() raises OSError("We couldn't connect to huggingface.co...") and every caller swallows
-# it: services/retrieval.retrieve_relevant_memory returned [] at DEBUG (invisible), and
+# nomic-embed-text-v1.5, all-MiniLM-L6-v2) is fetched FROM HUGGINGFACE, and used to be fetched lazily on
+# first use with no pre-fetch in the installer — it provisioned the GGUF and nothing else — so on a
+# genuinely offline first run _get_embedder() raised OSError("We couldn't connect to huggingface.co...")
+# and every caller swallowed it: services/retrieval.retrieve_relevant_memory returned [] at DEBUG
+# (invisible), and
 # system_head_builder.semantic_recall returned '' logged as "ChromaDB failed" (ChromaDB was fine).
 # Semantic memory silently became keyword-only, on the one product whose entire reason to exist is working
 # offline. Recording the failure here — once, at ERROR, with the fix — makes it loud; embedder_status()
@@ -150,14 +167,18 @@ def _record_embedder_failure(err: Exception) -> None:
         "EMBEDDER UNAVAILABLE — semantic memory is DEGRADED, not off. Retrieval falls back to keyword "
         "search (BM25/FTS); it will still answer, but it can no longer match on meaning, so recall will "
         "quietly get worse rather than fail. Cause: %s\n"
-        "  If this machine is OFFLINE: the embedding model is downloaded from HuggingFace on first use and "
-        "is NOT bundled with the installer, so a first run with no network cannot fetch it. Fix: connect "
-        "once (any single turn that touches memory caches it permanently), or `pip install model2vec` and "
-        "run once online to cache minishlab/potion-base-8M (~30 MB, the smallest option).\n"
+        "  The installer pre-fetches the embedding model (provision_model.py -> prefetch_embedder), so "
+        "reaching this means either the install ran OFFLINE and printed its own warning, or the cache has "
+        "since been removed/corrupted.\n"
+        "  If this machine is OFFLINE: the embedding model is downloaded from HuggingFace and is NOT "
+        "bundled with the installer, so it cannot be fetched with no network. Fix: %s — or `pip install "
+        "model2vec` and run once online to cache %s (the smallest option).\n"
         "  If this machine is ONLINE: the HuggingFace cache may be corrupt — clear ~/.cache/huggingface "
         "and retry.\n"
         "  Status is reported at GET /health/deps as embedder=unavailable.",
         _embedder_error,
+        EMBEDDER_REMEDY,
+        EMBED_MODEL_STATIC,
     )
 
 
@@ -172,10 +193,21 @@ def embedder_status() -> dict[str, Any]:
       never attempted -> unknown  (says "unknown", never "ok" — an unproven claim is what got us here)
     """
     if _embedder is not None:
-        return {"status": "ok", "model": _current_model_name or "unknown", "detail": ""}
+        return {"status": "ok", "model": _current_model_name or "unknown", "detail": "", "remedy": ""}
     if _embedder_error:
-        return {"status": "unavailable", "model": "", "detail": _embedder_error}
-    return {"status": "unknown", "model": "", "detail": "not loaded yet — no memory operation has run"}
+        # 'remedy' (added with the installer prefetch): the status was knowable but not ACTIONABLE — a
+        # reader of /health/deps saw an OSError and no way to fix it. The fix is one command; carry it.
+        return {
+            "status": "unavailable",
+            "model": "",
+            "detail": _embedder_error,
+            "remedy": EMBEDDER_REMEDY,
+            "impact": "semantic search is keyword-only until this is fixed",
+        }
+    return {
+        "status": "unknown", "model": "", "remedy": "",
+        "detail": "not loaded yet — no memory operation has run",
+    }
 
 
 def _get_embedder():
@@ -213,7 +245,7 @@ def _get_embedder():
             try:
                 from model2vec import StaticModel
 
-                _m2v_name = "minishlab/potion-base-8M"
+                _m2v_name = EMBED_MODEL_STATIC
                 _static = StaticModel.from_pretrained(_m2v_name)
                 _embedder = _Model2VecAdapter(_static)
                 _embedder_dim = int(_embedder.encode(["dimension probe"]).shape[1])
@@ -230,9 +262,9 @@ def _get_embedder():
             _record_embedder_failure(_st_err)
             raise
         try:
-            model = SentenceTransformer("nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True)
+            model = SentenceTransformer(EMBED_MODEL_QUALITY, trust_remote_code=True)
             _embedder_dim = 768
-            _current_model_name = "nomic-ai/nomic-embed-text-v1.5"
+            _current_model_name = EMBED_MODEL_QUALITY
             log.info("Embedding model: nomic-embed-text-v1.5 (768d)")
         except Exception:
             # BL-374: this last resort was unguarded, so an offline box raised straight out of
@@ -240,12 +272,12 @@ def _get_embedder():
             # callers' keyword fallbacks are genuinely the right degradation), but no longer silently: the
             # reason is recorded and logged loudly before it leaves.
             try:
-                model = SentenceTransformer("all-MiniLM-L6-v2")
+                model = SentenceTransformer(EMBED_MODEL_FALLBACK)
             except Exception as _mini_err:
                 _record_embedder_failure(_mini_err)
                 raise
             _embedder_dim = 384
-            _current_model_name = "all-MiniLM-L6-v2"
+            _current_model_name = EMBED_MODEL_FALLBACK
             log.info("Embedding model: all-MiniLM-L6-v2 (384d) [nomic unavailable]")
         # Quantize to int8 for faster CPU inference when torch is available
         try:
@@ -274,6 +306,80 @@ def _get_embedder():
             logger.debug("vector_store:L91: %s", _exc, exc_info=False)
         _embedder = model
         return _embedder
+
+
+def prefetch_embedder(*, force: bool = False) -> dict[str, Any]:
+    """Download AND load the preferred embedding model NOW. Never raises. Safe to call twice.
+
+    This is the installer's hook (and the self-test's probe). Semantic search used to be decided by
+    whether the user happened to be online the first time a memory operation ran — months after install,
+    with no message either way. Doing the fetch AT INSTALL TIME, while the user is demonstrably online
+    and watching a progress log, turns that coin flip into a decision they can see.
+
+    Deliberately calls `_get_embedder()` rather than reimplementing the download, so the model this warms
+    is by construction the model the runtime will later load (config `embedder_prefer_quality` included).
+
+    It also EMBEDS one string before declaring success. A `from_pretrained()` that returns an object which
+    cannot encode is not a warm cache, and the whole point of this function is that its "ok" is trustworthy
+    enough to stop shipping installs whose semantic search is quietly dead.
+
+    Args:
+        force: reload even if an embedder is already loaded (e.g. retry after fixing the network).
+
+    Returns a dict, never an exception:
+        {"ok": True,  "model": "<repo id>", "detail": "", "already_loaded": bool}
+        {"ok": False, "model": "", "detail": "<why>", "already_loaded": False}
+    """
+    global _embedder, _embedder_error, _embedder_error_logged, _embedder_lock
+
+    if _embedder is not None and not force:
+        # Idempotent: a second install pass, a re-run of the self-test, or the app's own first memory
+        # operation must not re-download anything.
+        return {"ok": True, "model": _current_model_name or "unknown",
+                "detail": "already loaded", "already_loaded": True}
+
+    if _embedder_lock is None:
+        import threading as _t
+
+        _embedder_lock = _t.RLock()
+
+    with _embedder_lock:
+        if force:
+            _embedder = None
+            _embedder_error = None
+            _embedder_error_logged = False
+            try:
+                _embed_cached.cache_clear()  # stale vectors from a previous model would be nonsense
+            except Exception as _exc:  # pragma: no cover — cache_clear does not fail in practice
+                logger.debug("prefetch_embedder: cache_clear: %s", _exc)
+        elif _embedder is not None:
+            return {"ok": True, "model": _current_model_name or "unknown",
+                    "detail": "already loaded", "already_loaded": True}
+
+        try:
+            model = _get_embedder()
+            vec = model.encode(["layla embedder prefetch probe"],
+                               convert_to_numpy=True, normalize_embeddings=True)
+            if vec is None or len(vec) == 0:
+                raise RuntimeError("embedder loaded but produced no vector for the prefetch probe")
+        except (KeyboardInterrupt, SystemExit) as err:
+            # NOT swallowed: an installer you cannot Ctrl+C out of mid-download is a worse bug than a
+            # missing embedder. State is still recorded so the status does not lie afterwards.
+            _embedder = None
+            _record_embedder_failure(RuntimeError(f"interrupted: {type(err).__name__}"))
+            raise
+        except Exception as err:  # noqa: BLE001 — a prefetch must never take the installer down
+            # Keep the observed state honest: nothing usable is loaded, so embedder_status() must say
+            # 'unavailable' (with the reason) rather than inherit a half-initialised object.
+            _embedder = None
+            _record_embedder_failure(err)
+            return {"ok": False, "model": "", "detail": _embedder_error or repr(err),
+                    "already_loaded": False}
+
+        _embedder_error = None  # a success invalidates any earlier recorded failure
+        _embedder_error_logged = False
+        return {"ok": True, "model": _current_model_name or "unknown",
+                "detail": "", "already_loaded": False}
 
 
 @_functools.lru_cache(maxsize=_EMBED_CACHE_SIZE)

@@ -24,6 +24,44 @@ if str(AGENT) not in sys.path:
     sys.path.insert(0, str(AGENT))
 
 
+def prefetch_embedding_model() -> bool:
+    """Download the embedding model DURING INSTALL so semantic search works offline afterwards.
+
+    Until now the installer provisioned the GGUF and nothing else; the embedding model was fetched from
+    HuggingFace on FIRST USE. Anyone who installed and then went offline — the advertised way to run this
+    product — got keyword-only retrieval, silently, forever. Fetching it here (while the user is provably
+    online: they just downloaded a multi-GB GGUF) closes that gap.
+
+    NON-FATAL, BUT LOUD. A failure must not throw away a completed multi-GB model download, so the install
+    still finishes — but it says so in plain language and prints the one command that fixes it. Returns
+    True on success, False on failure. Never raises.
+    """
+    print("[embedder] Fetching embedding model (for offline semantic search) ...", flush=True)
+    remedy = "connect to the internet and re-run: python agent/install/provision_model.py --embedder-only"
+    try:
+        from layla.memory import vector_store as _vs
+
+        remedy = getattr(_vs, "EMBEDDER_REMEDY", remedy)
+        res = _vs.prefetch_embedder()
+        if res.get("ok"):
+            suffix = " (already cached)" if res.get("already_loaded") else ""
+            print(f"[embedder] Fetching embedding model ... done -> {res.get('model')}{suffix}")
+            return True
+        detail = str(res.get("detail") or "unknown error")
+    except Exception as e:  # import error, broken install, anything — still not fatal
+        detail = f"{type(e).__name__}: {e}"
+    print(
+        "\n"
+        "  !!  EMBEDDING MODEL NOT INSTALLED - semantic search will fall back to KEYWORD-ONLY.\n"
+        f"      Reason: {detail[:300]}\n"
+        "      Layla is still fully installed and will run: memory and retrieval keep working, but they\n"
+        "      match on words instead of meaning until the model is present.\n"
+        f"      To fix (takes under a minute): {remedy}\n",
+        file=sys.stderr, flush=True,
+    )
+    return False
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--prefer", default="balanced", choices=["quality", "balanced", "lite", "speed"])
@@ -32,7 +70,17 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--language-assist", action="store_true", help="also download a small multilingual translation/intent helper")
     ap.add_argument("--aspects", default="", help="comma list of extra personalities to provision models for (e.g. nyx,echo)")
     ap.add_argument("--dry-run", action="store_true", help="recommend only; do not download")
+    ap.add_argument("--embedder-only", action="store_true",
+                    help="only fetch the embedding model (semantic search), then exit")
+    ap.add_argument("--skip-embedder", action="store_true",
+                    help="do not fetch the embedding model (semantic search stays keyword-only offline)")
     args = ap.parse_args(argv)
+
+    # Standalone entry point for the bootstrap scripts, for --skip-model installs, and for the retry we
+    # tell the user to run after a failed fetch. Deliberately BEFORE the hardware probe: it must work on a
+    # box with no GGUF and no config at all.
+    if args.embedder_only:
+        return 0 if prefetch_embedding_model() else 3
 
     import runtime_safety as rs
     from install.hardware_probe import probe_hardware
@@ -159,6 +207,16 @@ def main(argv: list[str]) -> int:
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     cfg_path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     print(f"[config] wrote {cfg_path}  (model={fn}, n_ctx={cfg['n_ctx']}, n_gpu_layers={cfg['n_gpu_layers']})")
+
+    # AFTER the config is on disk, deliberately: the embedder the runtime loads depends on
+    # `embedder_prefer_quality`, so pre-fetching before the write could warm a model this install will
+    # never use. Never changes the exit code — a fetch failure is reported loudly and the install stands.
+    if args.skip_embedder:
+        print("[embedder] skipped (--skip-embedder). Semantic search stays keyword-only until you run: "
+              "python agent/install/provision_model.py --embedder-only")
+    else:
+        prefetch_embedding_model()
+
     print("\n[done] Layla provisioned for this machine. Start it per install/INSTALL.md.")
     return 0
 
