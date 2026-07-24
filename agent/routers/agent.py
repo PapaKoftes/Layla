@@ -855,6 +855,11 @@ async def agent(req: AgentRequest, request: Request):
                                 skip_self_reflection=True,
                                 reasoning_mode_override="light",
                                 persona_focus=persona_focus or "",
+                                # This branch is reached only for a self-contained question with no
+                                # workspace/write/plan — nothing ran a tool and nothing needs one, so
+                                # multi-aspect deliberation may take the answer without discarding
+                                # tool results. The post-loop stream below leaves this False.
+                                tool_free=True,
                             ):
                                 tok_q.put(t)
                         except Exception as ex:

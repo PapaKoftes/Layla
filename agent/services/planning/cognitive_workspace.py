@@ -140,11 +140,17 @@ def should_use_cognitive_workspace(goal: str, cfg: dict | None = None, plan_dept
 
     Respects config keys:
       - ``enable_cognitive_workspace`` (default True) — master switch
-      - ``deliberation_enabled`` (default True) — alias / fine-grained switch
+      - ``deliberation_enabled`` (absent = on) — fine-grained opt-OUT. Note this is the opposite
+        semantic to ``config_schema``/``runtime_safety``, where the same key is an opt-IN for the
+        six-POV debate prompt. Same name, two meanings — do not "align" them by flipping this
+        default, which would disable the workspace for every config that omits the key.
       - ``deliberation_min_length`` (default 100) — minimum goal length to trigger
     """
     if cfg is not None and not cfg.get("enable_cognitive_workspace", True):
         return False
+    # Opt-OUT here (absent key = on), which is deliberate and NOT the schema's opt-in semantic for
+    # the same key name. Defaulting this to False to "match the schema" silently disables the
+    # cognitive workspace for every config that never mentions the key.
     if cfg is not None and not cfg.get("deliberation_enabled", True):
         return False
     max_depth = int(cfg.get("max_plan_depth", 3)) if cfg else 3

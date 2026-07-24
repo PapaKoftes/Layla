@@ -163,13 +163,21 @@ def handle_reasoning_intent(
     # ------------------------------------------------------------------
     # Multi-aspect debate engine
     # ------------------------------------------------------------------
-    _delib_mode = str(cfg.get("deliberation_mode", "solo")).strip().lower()
+    _delib_mode = str(cfg.get("deliberation_mode", "auto")).strip().lower()
     _delib_routed = False
     text = ""
     deliberate = False
-    # "auto" is solo-equivalent until the governor decides (see stream_handler); only
-    # explicit debate/council/tribunal force the multi-model engine.
-    if _delib_mode not in ("solo", "auto"):
+    # "auto" now RESOLVES to a concrete mode instead of being pinned solo-equivalent. It escalates
+    # only on a turn that asked for judgement and ran no tools, so the tool/approval path this
+    # engine does not implement can never be bypassed. See debate_engine.should_auto_deliberate.
+    if _delib_mode == "auto":
+        try:
+            from services.planning.debate_engine import should_auto_deliberate as _auto_mode
+            _delib_mode = _auto_mode(goal, state, cfg)
+        except Exception as _auto_exc:
+            logger.debug("auto-deliberation resolve failed, staying solo: %s", _auto_exc)
+            _delib_mode = "solo"
+    if _delib_mode != "solo":
         try:
             from services.planning.debate_engine import run_deliberation as _run_delib
 
