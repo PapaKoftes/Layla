@@ -992,6 +992,9 @@ from routers import (
     goals as goals_router,
 )
 from routers import (
+    graph as graph_router,
+)
+from routers import (
     intelligence as intelligence_router,
 )
 from routers import (
@@ -1110,6 +1113,7 @@ app.include_router(plugins_router.router)          # BL-239: plugin SDK (scaffol
 app.include_router(vision_router.router)           # BL-230: visual understanding (VLM/OCR)
 app.include_router(learning_verification_router.router)  # BL-192: learning verification pipeline
 app.include_router(mood_router.router)             # BL-190: emotional presence
+app.include_router(graph_router.router)            # Knowledge-graph viewer: read-only entities + relationships
 app.include_router(intelligence_router.router)     # AirLLM, compression, prompt optimizer, KB builder
 app.include_router(debate_router.router)            # Multi-aspect debate/council/tribunal engine
 app.include_router(metrics_router.router)           # Phase 3: Observability metrics endpoint
