@@ -197,14 +197,11 @@ def llm_decision(
     objective_complete.  Returns parsed dict or None to fall back to
     classify_intent.
 
-    NOTE (P5-4): The extraction/parsing logic in this function has been
-    refactored into ``services.llm_decision`` using a strategy pattern
-    (OutlinesStrategy, InstructorStrategy, PlainJsonStrategy).  That module
-    provides ``extract_decision()`` as an alternative entry point that
-    accepts the fully-assembled prompt and valid_tools set.  This original
-    function is kept for backward compatibility; the prompt-construction
-    logic above the extraction call remains here since it depends on agent
-    state, aspects, routing hints, and config.
+    This is the only decision-extraction path. A parallel strategy-pattern
+    version once lived at ``services/llm/llm_decision.py``; it was never
+    wired up, lacked the GBNF link this function has, and has been deleted.
+    Prompt construction stays here because it depends on agent state,
+    aspects, routing hints, and config.
     """
     import orchestrator
     import runtime_safety
