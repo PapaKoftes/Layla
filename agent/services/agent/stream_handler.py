@@ -55,9 +55,15 @@ def stream_reason(
     workspace_root: str = "",
     cognition_workspace_roots: list[str] | None = None,
     budget_retrieval_depth: str = "",
+    tool_free: bool = False,
 ):
     """
     Build the same prompt as the reason path and yield token strings from streaming completion.
+
+    ``tool_free`` says this turn ran no tools and needs none, so multi-aspect deliberation may
+    replace the answer without discarding tool results. It defaults False because this generator
+    cannot see ``state`` (it passes ``state={}`` below) — only the caller knows. The router's
+    self-contained-question fast path sets it True; the post-loop path leaves it False.
     Used when the client requests stream=True; no refusal/earned_title parsing.
     Sets model ContextVar for this generator (autonomous_run clears it before streaming).
     """
@@ -90,6 +96,7 @@ def stream_reason(
             persona_focus=persona_focus,
             workspace_root=workspace_root,
             cognition_workspace_roots=cognition_workspace_roots,
+            tool_free=tool_free,
         )
     finally:
         set_model_override(None)
@@ -108,6 +115,7 @@ def _stream_reason_body(
     persona_focus: str = "",
     workspace_root: str = "",
     cognition_workspace_roots: list[str] | None = None,
+    tool_free: bool = False,
 ):
     """Inner generator: prompt + streaming tokens (model override set by stream_reason)."""
     import orchestrator
@@ -193,12 +201,23 @@ def _stream_reason_body(
     # the debate engine for a 3-phase pipeline (generate -> critique -> synthesize).
     # The debate engine runs non-streaming, so we yield the final response in one shot.
     cfg = runtime_safety.load_config()  # noqa: F841
-    _delib_mode = str(cfg.get("deliberation_mode", "solo")).strip().lower()
+    _delib_mode = str(cfg.get("deliberation_mode", "auto")).strip().lower()
     _delib_routed = False
-    # "auto" stays safe (solo-equivalent) until the governor auto-cap (UPG-14) decides —
-    # only EXPLICIT debate/council/tribunal force the multi-model engine. (Was: any
-    # non-solo, so the schema-default "auto" debated every turn + bypassed tools/approvals.)
-    if _delib_mode not in ("solo", "auto") and not cfg.get("skip_deliberation"):
+    # "auto" is no longer pinned solo-equivalent. It resolves to a concrete mode, but ONLY when the
+    # caller vouched that this turn is tool-free: this generator passes state={} below, so it cannot
+    # tell on its own whether tools ran, and escalating blindly is what previously debated every
+    # turn while bypassing tools/approvals (this engine implements neither).
+    if _delib_mode == "auto":
+        if not tool_free:
+            _delib_mode = "solo"
+        else:
+            try:
+                from services.planning.debate_engine import should_auto_deliberate as _auto_mode
+                _delib_mode = _auto_mode(goal, None, cfg)
+            except Exception as _auto_exc:
+                logger.debug("auto-deliberation resolve failed, staying solo: %s", _auto_exc)
+                _delib_mode = "solo"
+    if _delib_mode != "solo" and not cfg.get("skip_deliberation"):
         try:
             from services.planning.debate_engine import run_deliberation as _run_delib
             _delib_result = _run_delib(

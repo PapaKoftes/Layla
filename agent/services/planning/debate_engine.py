@@ -54,6 +54,12 @@ ALL_ASPECT_IDS: list[str] = list(ASPECT_DOMAINS.keys())
 _DEBATE_TRIGGERS: list[str] = [
     "should i", "trade-off", "tradeoff", "compare", "pros and cons",
     "versus", " vs ", "which is better", "weigh",
+    # The plainest ways a person asks for judgement were missing, so the most obvious deliberation
+    # request in the language ("what do you think?") resolved to solo. orchestrator's own
+    # deliberation regex already treats these as intent; the two paths disagreeing on what counts
+    # as asking is why this feature looked dead even when switched on.
+    "what do you think", "your opinion", "what would you do",
+    "help me choose", "thoughts on", "any thoughts",
 ]
 
 _COUNCIL_TRIGGERS: list[str] = [
@@ -139,6 +145,57 @@ def select_deliberation_mode(goal: str, state: dict, cfg: dict) -> str:
     if word_count > 40:
         return MODE_DEBATE
 
+    return MODE_SOLO
+
+
+def _executed_a_tool(state: dict | None) -> bool:
+    """True when this turn already ran a tool, so its results must not be thrown away."""
+    if not state:
+        return False
+    for step in (state.get("steps") or []):
+        if not isinstance(step, dict):
+            continue
+        action = str(step.get("action") or step.get("tool") or "").strip().lower()
+        if action and action not in ("reason", "think", "none", "objective_complete"):
+            return True
+    return False
+
+
+def should_auto_deliberate(goal: str, state: dict | None, cfg: dict | None = None) -> str:
+    """Resolve what a ``deliberation_mode == "auto"`` turn should ACTUALLY do.
+
+    Returns a concrete mode: "solo" | "debate" | "council" | "tribunal".
+
+    WHY THIS EXISTS. "auto" is the schema default, yet both callers pinned it solo-equivalent, so
+    the shipped default was single-voice no matter what the schema said. The pin was correct at the
+    time: the previous behaviour escalated every non-solo turn, and this module dispatches no tools
+    and consults no approval gate (there is not one "tool" reference in it), so a turn routed here
+    silently lost tool capability AND the approval floor. Pinning it was the stop-gap; this is the
+    decision it was waiting on.
+
+    Escalate only when deliberating is both USEFUL and SAFE:
+
+    * useful — the goal explicitly asks for judgement (an intent trigger). Length is NOT used:
+      ``select_deliberation_mode`` falls back to word count, which fires on any long factual
+      question, and "explain this 90-word error" is not a request for six opinions.
+    * safe — the turn executed no tools. With no tool results in hand, replacing the answer path
+      costs nothing. On a turn that DID use tools, a synthesized answer would silently drop what
+      those tools found, so it stays solo.
+    """
+    if _executed_a_tool(state):
+        return MODE_SOLO
+    gl = (goal or "").lower().strip()
+    if not gl:
+        return MODE_SOLO
+    for trigger in _TRIBUNAL_TRIGGERS:
+        if trigger in gl:
+            return MODE_TRIBUNAL
+    for trigger in _COUNCIL_TRIGGERS:
+        if trigger in gl:
+            return MODE_COUNCIL
+    for trigger in _DEBATE_TRIGGERS:
+        if trigger in gl:
+            return MODE_DEBATE
     return MODE_SOLO
 
 
