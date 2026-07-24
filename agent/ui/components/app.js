@@ -269,6 +269,51 @@ function laylaShowPipelineClarify(questions) {
   try { var ta = document.getElementById('pipeline-clarify-answers'); if (ta) ta.focus(); } catch (_e) { console.debug('app:', _e); }
 }
 
+/**
+ * Resolve a leading `@name` on an outgoing message to an aspect id.
+ *
+ * BL-301b. This used to be inline in send(), reading `[a-z]+` against a hardcoded 6-name roster,
+ * which meant a CUSTOM aspect could not be mentioned at all: its id may contain digits and
+ * underscores (`sable_2`, `night_owl`), and even `@sable` was absent from the list being searched.
+ * It is now a named, exported function so the behaviour is directly testable — the inline version
+ * was only reachable through a full send(), which is why it went unverified.
+ *
+ * `window.ASPECTS` is the LIVE roster (aspect.js merges custom aspects into it). Ids are scanned
+ * before display names and built-ins occupy the first slots, so a custom aspect NAMED "Morrigan"
+ * can never take `@morrigan`.
+ *
+ * @returns {{matched:boolean, mentioned:string, aspectId:string, rest:string, hint:string}}
+ */
+export function resolveLeadingMention(message) {
+  var msg = String(message == null ? '' : message);
+  var out = { matched: false, mentioned: '', aspectId: '', rest: msg, hint: '@morrigan' };
+  var m = msg.match(/^\s*@([a-z][a-z0-9_]*)\s*/i);
+  if (!m) return out;
+  out.matched = true;
+  out.mentioned = m[1].toLowerCase();
+  try {
+    var roster = window.ASPECTS || [];
+    var mentioned = out.mentioned;
+    var found = roster.find(function (a) { return a.id === mentioned; })
+      || roster.find(function (a) { return String(a.name || '').toLowerCase() === mentioned; });
+    if (!found) {
+      // Unambiguous partial/typo (@ny or @nyxx -> nyx) — only when exactly one candidate matches.
+      var fuzzy = roster.filter(function (a) {
+        var id = a.id;
+        return id.indexOf(mentioned) === 0 || (mentioned.indexOf(id) === 0 && mentioned.length - id.length <= 2);
+      });
+      if (fuzzy.length === 1) found = fuzzy[0];
+    }
+    if (found) {
+      out.aspectId = found.id;
+      out.rest = msg.slice(m[0].length).trim() || msg;
+    } else {
+      out.hint = roster.slice(0, 3).map(function (a) { return '@' + a.id; }).join(', ') || '@morrigan';
+    }
+  } catch (_e) { console.debug('app:', _e); }
+  return out;
+}
+
 export async function send() {
   _dbg('send() called');
   try { if (typeof window._hideMentionDropdown === 'function') window._hideMentionDropdown(); } catch (_e) { console.debug('app:', _e); }
@@ -292,32 +337,15 @@ export async function send() {
   try { operatorTraceClear(); } catch (_e) { console.debug('app:', _e); }
   try { laylaStreamStatsStart(''); } catch (_e) { console.debug('app:', _e); }
 
-  var msgAspect = window.currentAspect;
-  // A leading @mention switches the aspect for this turn. Tolerate leading whitespace,
-  // accept an unambiguous partial/typo (@ny or @nyxx -> nyx when exactly one aspect
-  // matches), and — instead of the old silent no-op — tell the user when a @word looks
-  // like a mention but resolves to nothing.
-  var mentionMatch = msg.match(/^\s*@([a-z]+)\s*/i);
-  if (mentionMatch) {
-    try {
-      var mentioned = mentionMatch[1].toLowerCase();
-      var ASPECTS = window.ASPECTS || [];
-      var found = ASPECTS.find(function (a) { return a.id === mentioned || (a.name || '').toLowerCase() === mentioned; });
-      if (!found) {
-        var fuzzy = ASPECTS.filter(function (a) {
-          var id = a.id;
-          return id.indexOf(mentioned) === 0 || (mentioned.indexOf(id) === 0 && mentioned.length - id.length <= 2);
-        });
-        if (fuzzy.length === 1) found = fuzzy[0];
-      }
-      if (found) {
-        msgAspect = found.id;
-        msg = msg.slice(mentionMatch[0].length).trim() || msg;
-      } else {
-        var _hint = ASPECTS.slice(0, 3).map(function (a) { return '@' + a.id; }).join(', ');
-        try { showToast('No aspect “@' + mentioned + '”. Try ' + (_hint || '@morrigan') + '…'); } catch (_t) {}
-      }
-    } catch (_e) { console.debug('app:', _e); }
+  var _mention = resolveLeadingMention(msg);
+  var mentionMatch = _mention.matched;
+  var msgAspect = _mention.aspectId || window.currentAspect;
+  if (_mention.matched) {
+    if (_mention.aspectId) {
+      msg = _mention.rest;
+    } else {
+      try { showToast('No aspect “@' + _mention.mentioned + '”. Try ' + _mention.hint + '…'); } catch (_t) {}
+    }
   }
   if (window._aspectLocked) msgAspect = window.currentAspect;
 
