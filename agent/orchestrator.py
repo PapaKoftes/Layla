@@ -73,12 +73,26 @@ def _voice_key_for_familiarity() -> str:
     return _VOICE_TIERS[idx]
 
 
-def reload_aspects() -> list[dict]:
-    """Force-reload all aspect JSON files from personalities/ immediately."""
-    global _ASPECTS_CACHE, _ASPECTS_CACHE_TS
+def invalidate_aspects_cache() -> None:
+    """Drop the aspect + aspect-embedding caches.
+
+    BL-301b: the roster is no longer just `personalities/*.json` — it also carries the operator's
+    CUSTOM aspects, which are rows in the DB and can appear/disappear between two loads. Without an
+    explicit invalidation a freshly created custom aspect stayed unresolvable (aspect bar, @mention,
+    forced-aspect) for up to `_ASPECTS_TTL` seconds. `custom_aspects.save/delete` call this.
+    """
+    global _ASPECTS_CACHE, _ASPECTS_CACHE_TS, _ASPECT_EMBEDDINGS, _ASPECT_EMBEDDINGS_TS
     with _aspects_lock:
         _ASPECTS_CACHE = None
         _ASPECTS_CACHE_TS = 0.0
+    with _embeddings_lock:
+        _ASPECT_EMBEDDINGS = {}
+        _ASPECT_EMBEDDINGS_TS = 0.0
+
+
+def reload_aspects() -> list[dict]:
+    """Force-reload all aspect JSON files from personalities/ immediately."""
+    invalidate_aspects_cache()
     return _load_aspects()
 
 
@@ -165,6 +179,18 @@ def _load_aspects() -> list[dict]:
                     aspects.append(a)
                 except Exception:
                     continue
+        # BL-301b: the operator's CUSTOM aspects are part of the same roster.
+        #
+        # They used to live only in `user_identity` rows, which meant every consumer of this
+        # function — the aspect bar, @mention resolution, /aspects/{id}, the OpenAI-compat model
+        # list, the deliberation roster — could see the 6 built-ins and nothing else. A custom
+        # aspect you had just created and could "talk as" was therefore unresolvable by NAME
+        # anywhere else in the product. Merging here makes one roster the single source, so
+        # anything that already reads _load_aspects() resolves custom aspects for free.
+        #
+        # ORDER IS THE COLLISION RULE: built-ins are always first, and every resolver takes the
+        # first match, so a custom aspect can never shadow a built-in.
+        aspects.extend(_custom_roster_entries(aspects))
         _ASPECTS_CACHE = aspects
         _ASPECTS_CACHE_TS = now
         return aspects
@@ -189,39 +215,99 @@ def _fallback_aspect() -> dict:
     }
 
 
-def _resolve_custom_aspect(aspect_id: str, aspects: list[dict]) -> dict | None:
-    """BL-301: build an orchestrator aspect dict for a user-created CUSTOM aspect.
+def _overlay_custom_aspect(base: dict, cust: dict, aspect_id: str) -> dict:
+    """Layer a custom aspect's identity over its base persona, producing a full aspect dict.
 
-    Custom aspects are stored as `custom_aspect_<id>` user_identity rows (not personalities/*.json),
-    so `_load_aspects()` never sees them and the forced-aspect loop below could never match a custom
-    id — every turn silently fell back to Morrigan. A custom aspect carries a `base_aspect` (one of
-    the 6 built-ins) plus identity overrides. We inherit the base's FULL persona (role / voice /
-    systemPromptAddition / triggers / expertise) and overlay name/title/symbol/tagline/color, then
-    APPEND the custom prompt hint so the model is actually addressed as the custom aspect.
-    Returns None when `aspect_id` is not a custom aspect (so the caller falls through to the miss path).
+    A custom aspect carries a `base_aspect` (one of the 6 built-ins) plus identity overrides. We
+    inherit the base's FULL persona (role / voice / systemPromptAddition / triggers / expertise) and
+    overlay name/title/symbol/tagline/color, then APPEND the custom prompt hint so the model is
+    actually addressed as the custom aspect.
     """
-    try:
-        from services.personality.custom_aspects import get_custom_aspect
-        cust = get_custom_aspect(aspect_id)
-    except Exception:
-        cust = None
-    if not cust:
-        return None
-    base_id = str(cust.get("base_aspect") or "morrigan")
-    base = next((a for a in aspects if a.get("id") == base_id), None) or _default_aspect()
+    aid = (str(cust.get("id") or aspect_id or "")).strip().lower()
     a = dict(base)
-    a["id"] = str(cust.get("id") or aspect_id)
+    a["id"] = aid
     a["custom"] = True
-    a["base_aspect"] = base_id
+    a["base_aspect"] = str(cust.get("base_aspect") or base.get("id") or "morrigan")
     for src, dst in (("name", "name"), ("title", "title"), ("symbol", "symbol"),
                      ("tagline", "tagline"), ("color_primary", "color")):
         if cust.get(src):
             a[dst] = cust[src]
+    # A custom aspect with no usable name would otherwise inherit the BASE's name and become a
+    # second "Nyx" in the roster — invisible in the bar and unresolvable by @mention.
+    if not str(a.get("name") or "").strip() or a.get("name") == base.get("name"):
+        if not str(cust.get("name") or "").strip():
+            a["name"] = aid.replace("_", " ").title()
     hint = str(cust.get("prompt_hint") or "").strip()
     if hint:
         base_add = (a.get("systemPromptAddition") or "").rstrip()
         a["systemPromptAddition"] = (base_add + "\n\n— Custom aspect note —\n" + hint) if base_add else hint
     return a
+
+
+def _custom_roster_entries(builtins: list[dict]) -> list[dict]:
+    """The operator's custom aspects, rendered as full aspect dicts on top of their base persona.
+
+    Called from inside `_load_aspects()` while `_aspects_lock` is held, so it must NOT call back
+    into `_load_aspects()` / `_default_aspect()` — `threading.Lock` is not reentrant and that would
+    deadlock the whole app on the first load after a custom aspect exists. Everything it needs is
+    passed in.
+
+    Collision policy: an entry whose id matches a built-in (or an earlier custom) is DROPPED. The
+    built-in keeps the id; nothing a user creates can displace one of the 6.
+    """
+    try:
+        from services.personality.custom_aspects import list_custom_aspects
+        customs = list_custom_aspects()
+    except Exception:
+        return []
+    if not customs:
+        return []
+    by_id: dict[str, dict] = {}
+    for a in builtins:
+        aid = str(a.get("id") or "").strip().lower()
+        if aid:
+            by_id.setdefault(aid, a)
+    seen = set(by_id)
+    out: list[dict] = []
+    for cust in customs:
+        try:
+            cid = str(cust.get("id") or "").strip().lower()
+            if not cid or cid in seen:
+                continue
+            base = (by_id.get(str(cust.get("base_aspect") or "").strip().lower())
+                    or by_id.get("morrigan")
+                    or (builtins[0] if builtins else _fallback_aspect()))
+            out.append(_overlay_custom_aspect(base, cust, cid))
+            seen.add(cid)
+        except Exception:
+            continue
+    return out
+
+
+def _resolve_custom_aspect(aspect_id: str, aspects: list[dict]) -> dict | None:
+    """BL-301: build an orchestrator aspect dict for a user-created CUSTOM aspect.
+
+    `_load_aspects()` now merges custom aspects into the roster, so the forced-aspect loop in
+    `select_aspect` normally matches them directly. This stays as the belt-and-braces path for the
+    window between "the operator just created one" and "the roster cache was rebuilt".
+    Returns None when `aspect_id` is not a custom aspect (so the caller falls through to the miss path).
+    """
+    aid = str(aspect_id or "").strip().lower()
+    if not aid:
+        return None
+    # Never let a custom row shadow a built-in of the same id.
+    if any(str(a.get("id") or "").strip().lower() == aid and not a.get("custom") for a in aspects):
+        return None
+    try:
+        from services.personality.custom_aspects import get_custom_aspect
+        cust = get_custom_aspect(aid)
+    except Exception:
+        cust = None
+    if not cust:
+        return None
+    base_id = str(cust.get("base_aspect") or "morrigan")
+    base = next((a for a in aspects if a.get("id") == base_id and not a.get("custom")), None) or _default_aspect()
+    return _overlay_custom_aspect(base, cust, aid)
 
 
 def _get_aspect_embeddings(aspects: list[dict]) -> dict[str, Any]:

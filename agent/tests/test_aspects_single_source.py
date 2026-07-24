@@ -21,8 +21,19 @@ def _frontend_aspect_ids() -> set[str]:
 
 
 def _backend_aspect_ids() -> set[str]:
+    """The BUILT-IN backend roster.
+
+    BL-301b: `_load_aspects()` now also carries the operator's custom aspects, which are DB rows and
+    by definition have no counterpart in the static JS literal — the frontend merges those at runtime
+    (aspect.js::mergeCustomAspects). The invariant this test protects is about the built-in six, so
+    the custom entries are filtered out rather than allowed to make the guard flaky on any box where
+    the operator has created one.
+    """
     import orchestrator
-    return {str(a.get("id")) for a in orchestrator._load_aspects() if a.get("id")}
+    return {
+        str(a.get("id")) for a in orchestrator._load_aspects()
+        if a.get("id") and not a.get("custom")
+    }
 
 
 def test_frontend_and_backend_aspects_match():

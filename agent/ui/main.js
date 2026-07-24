@@ -123,6 +123,8 @@ import * as verify from './components/verify.js';
 import * as agentTasks from './components/agent-tasks.js';
 // W2 — Knowledge base
 import * as kb from './components/kb.js';
+// Knowledge-graph viewer — entities + relationships the memory layer auto-links
+import * as graph from './components/graph.js';
 // W2 — Plans & projects
 import * as plans from './components/plans.js';
 // W3 — Intake quiz (REQ-80)
@@ -581,7 +583,12 @@ function init() {
   // switching persona + jumping to a screen the fastest gesture in the app.
   // BL-122: derive from the single canonical roster (aspect.ASPECTS) — no duplicate
   // list here, so adding/renaming an aspect only touches components/aspect.js.
-  const paletteCommands = [
+  //
+  // Built as a FUNCTION, not a one-time array: aspect.ASPECTS now gains the operator's custom
+  // aspects from an async fetch that finishes AFTER init, so a snapshot taken here would leave
+  // every custom aspect out of the palette forever — the one door the aspect bar and @mention
+  // already open. Rebuilt via commandPalette.setCommands when the roster lands.
+  const buildPaletteCommands = () => [
     ...aspect.ASPECTS.map((a) => ({
       id: 'asp-' + a.id, group: 'Aspect', label: 'Switch to ' + a.name,
       keywords: ['persona', 'aspect', a.id],
@@ -636,6 +643,9 @@ function init() {
     { id: 'verify', group: 'Go to', label: 'Verify learnings', keywords: ['verify', 'learn', 'confirm', 'correct', 'facts', 'memory'], run: () => verify.openVerify() },
     { id: 'agent-tasks', group: 'Go to', label: 'Background tasks', keywords: ['background', 'tasks', 'agent', 'queue', 'running', 'async'], run: () => agentTasks.openAgentTasks() },
     { id: 'kb', group: 'Go to', label: 'Knowledge base', keywords: ['knowledge', 'kb', 'articles', 'wiki', 'notes', 'reference', 'build'], run: () => kb.openKb() },
+    // Untagged deliberately: /graph/* reads no feature flag, and _featureOn() HIDES a command whose
+    // tag is off — a wrong tag here would remove the only door this panel has.
+    { id: 'graph', group: 'Go to', label: 'Knowledge graph', keywords: ['graph', 'entities', 'relationships', 'links', 'associations', 'network', 'connections', 'knows'], run: () => graph.openGraph() },
     { id: 'plans', group: 'Go to', label: 'Plans & projects', keywords: ['plans', 'projects', 'goal', 'steps', 'approve', 'execute', 'planner', 'roadmap'], run: () => plans.openPlans() },
     { id: 'intake-quiz', group: 'Go to', label: 'Intake quiz', keywords: ['quiz', 'intake', 'special', 'profile', 'stats', 'onboarding', 'personality'], run: () => intakeQuiz.openIntakeQuiz() },
     { id: 'custom-aspect', group: 'Go to', label: 'Create custom aspect', keywords: ['aspect', 'create', 'custom', 'persona', 'new', 'sigil', 'character'], run: () => customAspect.openCustomAspect() },
@@ -644,7 +654,16 @@ function init() {
     { id: 'tutor', group: 'Go to', label: 'Language tutor', keywords: ['language', 'tutor', 'learn', 'german', 'italian', 'spanish', 'french', 'cefr', 'flashcards', 'deutsch', 'italiano', 'espanol'], run: () => tutor.openTutor() },
     { id: 'macros', group: 'Go to', label: 'Macros / workflows', keywords: ['macro', 'workflow', 'replay', 'record', 'automation', 'routine', 'repeat'], run: () => macros.openMacros() },
   ];
-  commandPalette.initCommandPalette(paletteCommands);
+  commandPalette.initCommandPalette(buildPaletteCommands());
+  // The custom-aspect roster arrives asynchronously (and changes when one is created or deleted),
+  // so re-publish the command list once it does. setCommands existed for exactly this and had no
+  // caller, which is why "Switch to <custom>" never appeared in the palette.
+  const refreshAspectCommands = () => {
+    try { commandPalette.setCommands(buildPaletteCommands()); } catch (_e) { /* palette not built yet */ }
+  };
+  // aspect.js self-schedules the roster fetch and calls this back whenever the roster changes
+  // (boot, create, delete), so there is no second fetch to start here.
+  window.refreshAspectPaletteCommands = refreshAspectCommands;
   window.openCommandPalette = commandPalette.openCommandPalette;
   // Expose the profile wizard + welcome so the first-run sequence (setup.js) can present them.
   window.openSetupProfiles = setupProfiles.openSetupProfiles;
@@ -696,6 +715,8 @@ function init() {
     closeAgentTasks: agentTasks.closeAgentTasks,
     openKb: kb.openKb,
     closeKb: kb.closeKb,
+    openGraph: graph.openGraph,
+    closeGraph: graph.closeGraph,
     openPlans: plans.openPlans,
     closePlans: plans.closePlans,
     openIntakeQuiz: intakeQuiz.openIntakeQuiz,

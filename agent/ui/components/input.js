@@ -45,20 +45,31 @@ function _getMentionQuery(val) {
 function _showMentionDropdown(query) {
   const dd = document.getElementById('mention-dropdown');
   if (!dd) return;
+  // ASPECTS is the LIVE roster: the 6 built-ins first, then the operator's custom aspects
+  // (aspect.js::mergeCustomAspects). So @-completing a custom name works with no extra wiring.
   const filtered = query === ''
-    ? ASPECTS
-    : ASPECTS.filter(a => a.id.startsWith(query) || a.name.toLowerCase().startsWith(query));
+    ? ASPECTS.slice()
+    : ASPECTS.filter(a => a.id.startsWith(query) || String(a.name || '').toLowerCase().startsWith(query));
   if (!filtered.length) { _hideMentionDropdown(); return; }
   _mentionActive = true;
   window._mentionActive = true;
   _mentionIdx = 0;
+  // Every field here can now be OPERATOR INPUT (a custom aspect's name/sigil/tagline), so the row
+  // is escaped and the click is bound as a real listener instead of an inline handler string —
+  // the old `onmousedown="..._pickMention('<id>')"` interpolated a value into executable markup.
   dd.innerHTML = filtered.map((a, i) => {
-    return '<div class="mention-item' + (i === 0 ? ' active' : '') + '" data-id="' + a.id + '" onmousedown="event.preventDefault();_pickMention(\'' + a.id + '\')">'
-      + '<span class="mention-sym">' + a.sym + '</span>'
-      + '<span class="mention-name">' + a.name + '</span>'
-      + '<span class="mention-desc">' + a.desc + '</span>'
+    return '<div class="mention-item' + (i === 0 ? ' active' : '') + '" data-id="' + escapeHtml(a.id) + '">'
+      + '<span class="mention-sym">' + escapeHtml(a.sym || '') + '</span>'
+      + '<span class="mention-name">' + escapeHtml(a.name || '') + '</span>'
+      + '<span class="mention-desc">' + escapeHtml(a.desc || '') + '</span>'
       + '</div>';
   }).join('');
+  dd.querySelectorAll('.mention-item').forEach((el) => {
+    el.addEventListener('mousedown', (ev) => {
+      ev.preventDefault();
+      _pickMention(el.getAttribute('data-id'));
+    });
+  });
   dd.classList.add('open');
   dd._filtered = filtered;
 }
