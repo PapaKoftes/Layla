@@ -187,26 +187,11 @@ def finalize_run_state(
     except Exception:
         pass
 
-    # Persist routing telemetry (local-only) for debugging misroutes and regressions.
-    try:
-        rd = state.get("route_decision") if isinstance(state.get("route_decision"), dict) else {}
-        from layla.memory.routing_telemetry import log_route_telemetry
-
-        log_route_telemetry(
-            conversation_id=str(state.get("conversation_id") or "") or None,
-            goal=str(state.get("original_goal") or state.get("goal") or ""),
-            task_type=str(rd.get("task_type") or ""),
-            is_meta_self=bool(rd.get("is_meta_self")),
-            has_workspace_signals=bool(rd.get("has_workspace_signals")),
-            decision_action=str((state.get("last_decision") or {}).get("action") or ""),
-            decision_tool=str((state.get("last_decision") or {}).get("tool") or ""),
-            preflight_ok=state.get("preflight_ok") if "preflight_ok" in state else None,
-            preflight_reason=str(state.get("preflight_reason") or "") or None,
-            final_status=str(state.get("status") or "") or None,
-            parse_failed=bool(state.get("status") == "parse_failed"),
-        )
-    except Exception as e:
-        logger.debug("agent_loop: %s", e)
+    # Routing telemetry used to be persisted here: every turn wrote the user's goal (up to 2000
+    # chars of verbatim prompt) into a route_telemetry row retained for 90 days. Nothing ever
+    # read it back — no router, no UI, no test, no report — so it was pure standing exposure,
+    # not observability. The writer and layla/memory/routing_telemetry.py were removed; the
+    # table and its 90-day retention sweep stay so existing rows still age out.
 
     emit_run_telemetry_fn(state, state.get("status") in ("finished", "plan_completed"))
 

@@ -60,7 +60,6 @@ layla/memory/
   tasks_db.py           # Coordinator/execution task persistence
   rl_preferences.py     # RL feedback preference cache
   telemetry_db.py       # Telemetry events, model outcomes
-  routing_telemetry.py  # Router decision telemetry
   strategy_stats.py     # Strategy success/failure tallies
   audit_session.py      # Wakeup log, audit trail, session prompts, tool grants
   plans_db.py           # Study plans, layla plans, repo cognition snapshots
@@ -1359,7 +1358,6 @@ UNIQUE: `(task_type, strategy)`
 | `tasks_db.py` | **STABLE** | Minimal coordinator task persistence. JSON fields auto-parsed on read. |
 | `rl_preferences.py` | **STABLE** | 35-line module. Upsert with ON CONFLICT. |
 | `telemetry_db.py` | **STABLE** | Append-only telemetry. Success rate aggregation with min_count threshold. |
-| `routing_telemetry.py` | **STABLE** | Append-only router decision log. |
 | `strategy_stats.py` | **STABLE** | Upsert success/fail counters with UNIQUE constraint. Preferred strategy selection. |
 | `audit_session.py` | **STABLE** | Wakeup log, audit trail, session prompts, tool permission grants with fnmatch matching. |
 | `plans_db.py` | **STABLE** | Study plans + layla plans + repo cognition snapshots. Status FSM validation. |

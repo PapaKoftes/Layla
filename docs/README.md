@@ -80,7 +80,7 @@ Other documents under `docs/` are primarily **explanatory** (onboarding, audits,
 | Document | Description |
 |----------|-------------|
 | [../SYSTEM_PLAN.md](../SYSTEM_PLAN.md) | Master development plan (from current state to fully operational) |
-| [../COMPLETION_PLAN.md](../COMPLETION_PLAN.md) | **Full completion plan** — 9 phases, 265 hours, every gap addressed (2026-05-12) |
+| [archive/COMPLETION_PLAN.md](archive/COMPLETION_PLAN.md) | Full completion plan — 9 phases, 265 hours (2026-05-12). **Archived**: decision history, superseded by `.planning/PLAN.md` |
 | [ROADMAP.md](ROADMAP.md) | Phase-by-phase roadmap |
 | [MILESTONES.md](MILESTONES.md) | Milestones |
 | [TASKS.md](TASKS.md) | Lightweight backlog pointer |
