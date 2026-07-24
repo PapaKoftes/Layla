@@ -76,9 +76,15 @@ def check_imports() -> None:
         (_ok if has(m) else _fail)(f"import {m}")
     (_ok if has("llama_cpp") else _fail)("import llama_cpp", "required to load GGUF models")
     (_ok if has("uvicorn") else _warn)("import uvicorn", "required only to serve the web UI")
-    (_ok if has("sentence_transformers") else _warn)(
-        "import sentence_transformers", "embedder for semantic recall - RAG degrades without it"
-    )
+    # Either embedder backend is enough: model2vec (static, no torch) is the default on low-end boxes and
+    # sentence-transformers is the "quality" path. Reporting only sentence_transformers made a perfectly
+    # healthy model2vec install look degraded.
+    if has("model2vec") or has("sentence_transformers"):
+        _ok("import embedder backend",
+            "model2vec" if has("model2vec") else "sentence_transformers")
+    else:
+        _warn("import embedder backend",
+              "neither model2vec nor sentence_transformers - semantic recall unavailable")
 
 
 def resolve_model() -> Path | None:
@@ -184,18 +190,41 @@ def check_inference(model_path: Path | None) -> None:
     _fail("inference turn", f"probe produced no result: {(r.stderr or stdout or '')[-200:]}")
 
 
-def check_rag() -> None:
-    import importlib.util as u
+def check_embedder() -> None:
+    """Named check: is the embedding model actually PRESENT on this machine?
+
+    The one check that used to be missing. The embedding model is downloaded from HuggingFace and is not
+    bundled, so an install that ran offline (or whose HF cache was wiped) leaves semantic search silently
+    degraded to keyword matching - the installer said "done", /health said "RAG active", and nothing ever
+    told the user. The installer now pre-fetches it; this check is the proof, printed by name.
+
+    It uses prefetch_embedder(), which LOADS AND EMBEDS rather than guessing from an import - and which
+    never raises, so a dead embedder cannot take the self-test down with it. Warning, not failure:
+    Layla runs fine without it, just with worse recall.
+    """
     try:
-        if u.find_spec("sentence_transformers") is None:
-            _warn("RAG / memory", "embedder not installed - semantic recall off until you add sentence-transformers")
-            return
-    except Exception:
-        pass
+        import layla.memory.vector_store as vs
+    except Exception as e:
+        _warn("embedding model", f"vector_store unimportable: {repr(e)[:160]}")
+        return
+    res = vs.prefetch_embedder()
+    if res.get("ok"):
+        _ok("embedding model", f"{res.get('model')} ready - semantic search works offline")
+        return
+    remedy = getattr(vs, "EMBEDDER_REMEDY", "run: python agent/install/provision_model.py --embedder-only")
+    _warn("embedding model",
+          f"UNAVAILABLE - semantic search is KEYWORD-ONLY. {str(res.get('detail'))[:140]} | Fix: {remedy}")
+
+
+def check_rag() -> None:
     try:
         import layla.memory.vector_store as vs
         if not vs._vector_enabled():
             _warn("RAG / memory", "vector memory disabled (LAYLA_CHROMA_DISABLED set)")
+            return
+        if vs.embedder_status().get("status") != "ok":
+            # check_embedder already said why, loudly and by name; don't blame ChromaDB for it.
+            _warn("RAG / memory", "keyword-only - see the 'embedding model' check above")
             return
         vs.embed("hello world")
         backend = "ChromaDB" if vs._real_chroma() else "SQLite+NumPy fallback"
@@ -301,6 +330,7 @@ def main() -> int:
     model_path = resolve_model()
     check_gguf(model_path)
     check_inference(model_path)
+    check_embedder()
     check_rag()
     if args.server:
         check_server()

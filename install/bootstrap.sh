@@ -39,7 +39,7 @@ VPY=".venv/bin/python"
 
 # 1) ensure uv (single static binary; needs no Python, no admin)
 if ! command -v uv >/dev/null 2>&1; then
-  echo "  [1/6] Installing uv (Astral) ..."
+  echo "  [1/7] Installing uv (Astral) ..."
   curl -LsSf https://astral.sh/uv/install.sh | sh
   # the installer drops uv here by default; make it visible for the rest of this run
   export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
@@ -48,7 +48,7 @@ if ! command -v uv >/dev/null 2>&1; then
   echo "  [!] uv is installed but not on PATH. Open a NEW terminal and re-run this script." >&2
   exit 1
 fi
-echo "  [1/6] uv $(uv --version | awk '{print $2}')"
+echo "  [1/7] uv $(uv --version | awk '{print $2}')"
 
 # --verify: just re-run the self-test against an existing venv
 if [ "$VERIFY" = "1" ]; then
@@ -57,15 +57,15 @@ if [ "$VERIFY" = "1" ]; then
 fi
 
 # 2) Python 3.12 (managed standalone build - no system Python required)
-echo "  [2/6] Provisioning Python 3.12 ..."
+echo "  [2/7] Provisioning Python 3.12 ..."
 uv python install 3.12
 
 # 3) virtual environment
-echo "  [3/6] Creating .venv ..."
+echo "  [3/7] Creating .venv ..."
 uv venv --python 3.12 .venv
 
 # 4) compiler-free heavy wheels FIRST (prebuilt; no toolchain), then the app
-echo "  [4/6] Installing dependencies (prebuilt CPU wheels - no compiler) ..."
+echo "  [4/7] Installing dependencies (prebuilt CPU wheels - no compiler) ..."
 uv pip install --python "$VPY" "$LLAMA_SPEC" \
   --extra-index-url "$LLAMA_INDEX" --index-strategy unsafe-best-match
 # torch: Linux uses the CPU-only wheel index (no CUDA, smaller). macOS wheels are NOT on that index
@@ -85,16 +85,26 @@ uv pip install --python "$VPY" -e ".[cpu,llm,research,crawl]"
 
 # 5) detect hardware -> provision the best coding kit + write config
 if [ "$SKIP_MODEL" = "1" ]; then
-  echo "  [5/6] Skipping model download (--skip-model)."
+  echo "  [5/7] Skipping model download (--skip-model)."
   echo "        Later: ( cd agent && ../$VPY install/provision_model.py )"
 else
-  echo "  [5/6] Detecting hardware and provisioning a model ($PREFER) ..."
-  ( cd agent && "../$VPY" install/provision_model.py --prefer "$PREFER" )
+  echo "  [5/7] Detecting hardware and provisioning a model ($PREFER) ..."
+  ( cd agent && "../$VPY" install/provision_model.py --prefer "$PREFER" --skip-embedder )
 fi
 
-# 6) deep self-test - prove the model loads + completes a real turn (SIGILL/OOM/corrupt gate)
+# 6) embedding model - fetched HERE, at install time, while we know the machine is online.
+# It used to be downloaded from HuggingFace on FIRST USE, so anyone who installed and then went
+# offline (the advertised way to run Layla) silently got keyword-only search forever. Non-fatal:
+# `set -e` is suppressed on purpose, because everything above is already installed and works.
+echo "  [6/7] Fetching the embedding model (offline semantic search) ..."
+if ! ( cd agent && "../$VPY" install/provision_model.py --embedder-only ); then
+  echo "  Embedding model not installed - semantic search will use KEYWORD-ONLY matching."
+  echo "  Fix later (needs internet): ( cd agent && ../$VPY install/provision_model.py --embedder-only )"
+fi
+
+# 7) deep self-test - prove the model loads + completes a real turn (SIGILL/OOM/corrupt gate)
 if [ "$SKIP_MODEL" != "1" ]; then
-  echo "  [6/6] Deep self-test (model load + real inference turn) ..."
+  echo "  [7/7] Deep self-test (model load + real inference turn) ..."
   if ! "$VPY" scripts/selftest.py; then
     echo "  Self-test failed - reinstalling the llama-cpp CPU wheel (handles a corrupt wheel"
     echo "  or an AVX build this CPU can't run) and retrying ..."
