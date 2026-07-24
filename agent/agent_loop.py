@@ -5,7 +5,6 @@ import re
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -466,94 +465,6 @@ def _autonomous_run_serialize_lock(workspace_root: str):
 
         return get_agent_serialize_lock(_resolve_workspace_lock_key(workspace_root))
     return llm_serialize_lock
-
-
-# ---------------------------------------------------------------------------
-# P2-5: AgentRunRequest dataclass – bundles all autonomous_run parameters
-# into a single typed object for cleaner call-sites. The existing
-# autonomous_run() signature is unchanged; use autonomous_run_from_request()
-# when you want to pass a dataclass instead.
-# ---------------------------------------------------------------------------
-
-@dataclass
-class AgentRunRequest:
-    """Encapsulates all parameters for an agent run.
-
-    Every field mirrors a parameter of :func:`autonomous_run` with the same
-    default value.  Pass an instance to :func:`autonomous_run_from_request`
-    to invoke the agent loop.
-    """
-
-    goal: str = ""
-    context: str = ""
-    workspace_root: str = ""
-    allow_write: bool = False
-    allow_run: bool = False
-    conversation_history: list = field(default=None)
-    aspect_id: str = ""
-    show_thinking: bool = False
-    stream_final: bool = False
-    ux_state_queue: queue.Queue | None = None
-    research_mode: bool = False
-    plan_depth: int = 0
-    model_override: str | None = None
-    reasoning_effort: str | None = None
-    priority: int = PRIORITY_AGENT
-    persona_focus: str = ""
-    conversation_id: str = ""
-    cognition_workspace_roots: list[str] | None = None
-    client_abort_event: threading.Event | None = None
-    background_progress_callback: Callable[[dict], None] | None = None
-    active_plan_id: str = ""
-    plan_approved: bool = False
-    fabrication_assist_runner_request: str = ""
-    resume_execution_state: dict | None = None
-    coordinator_trace: dict | None = None
-    # keyword-only parameters in autonomous_run()
-    engineering_pipeline_mode: str = "chat"
-    clarification_reply: str = ""
-    skip_engineering_pipeline: bool = False
-    context_files: list[str] | None = None
-
-
-def autonomous_run_from_request(request: AgentRunRequest) -> dict:
-    """Call autonomous_run() from a dataclass request.
-
-    This is a backward-compatible convenience wrapper: the underlying
-    :func:`autonomous_run` function signature is unchanged, so callers
-    that already pass keyword arguments continue to work.
-    """
-    return autonomous_run(
-        goal=request.goal,
-        context=request.context,
-        workspace_root=request.workspace_root,
-        allow_write=request.allow_write,
-        allow_run=request.allow_run,
-        conversation_history=request.conversation_history,
-        aspect_id=request.aspect_id,
-        show_thinking=request.show_thinking,
-        stream_final=request.stream_final,
-        ux_state_queue=request.ux_state_queue,
-        research_mode=request.research_mode,
-        plan_depth=request.plan_depth,
-        model_override=request.model_override,
-        reasoning_effort=request.reasoning_effort,
-        priority=request.priority,
-        persona_focus=request.persona_focus,
-        conversation_id=request.conversation_id,
-        cognition_workspace_roots=request.cognition_workspace_roots,
-        client_abort_event=request.client_abort_event,
-        background_progress_callback=request.background_progress_callback,
-        active_plan_id=request.active_plan_id,
-        plan_approved=request.plan_approved,
-        fabrication_assist_runner_request=request.fabrication_assist_runner_request,
-        resume_execution_state=request.resume_execution_state,
-        coordinator_trace=request.coordinator_trace,
-        engineering_pipeline_mode=request.engineering_pipeline_mode,
-        clarification_reply=request.clarification_reply,
-        skip_engineering_pipeline=request.skip_engineering_pipeline,
-        context_files=request.context_files,
-    )
 
 
 def autonomous_run(

@@ -3,6 +3,25 @@
 Self-contained: its own cross-encoder model cache; embeddings come from vector_store via a
 lazy import inside mmr_rerank, so this module imports nothing from vector_store at load time
 and vector_store re-exports these names without a cycle.
+
+Backend chain (BL-103), selected by the ``reranker_backend`` config key:
+
+    "auto" (default)  flashrank -> cross-encoder -> BM25
+    "flashrank"       flashrank -> BM25
+    "cross_encoder"   cross-encoder -> BM25
+    "bm25"            BM25 only
+
+FlashRank is a lightweight ONNX cross-encoder with no torch dependency — the potato-path
+default. It is optional; when the package is absent the chain falls straight through to the
+sentence-transformers cross-encoder, which is the behaviour this module had before. BM25 is
+the always-available zero-dependency backstop, never a silent `docs[:k]` passthrough.
+
+The optional BGE cross-encoder (``use_bge_reranker``) is an explicit opt-in and still runs
+ahead of the chain when configured.
+
+This module is the single reranker implementation. A second, unwired copy previously lived at
+``services/retrieval/reranker.py``; its FlashRank backend, backend-order selection and cache
+reset were folded in here and it was deleted.
 """
 from __future__ import annotations
 
@@ -20,6 +39,71 @@ _cross_encoder_failed = False  # don't retry after download failure
 _bge_cross_encoder = None
 _bge_cross_encoder_model: str | None = None
 _bge_cross_encoder_failed = False
+_flashrank_ranker = None
+_flashrank_failed = False  # don't retry an absent/broken optional package on every call
+
+
+def reset_reranker_cache() -> None:
+    """Drop every cached model instance + failure memo (tests, or after a config change)."""
+    global _cross_encoder, _cross_encoder_failed
+    global _bge_cross_encoder, _bge_cross_encoder_model, _bge_cross_encoder_failed
+    global _flashrank_ranker, _flashrank_failed
+    _cross_encoder = None
+    _cross_encoder_failed = False
+    _bge_cross_encoder = None
+    _bge_cross_encoder_model = None
+    _bge_cross_encoder_failed = False
+    _flashrank_ranker = None
+    _flashrank_failed = False
+
+
+def _backend_order(pref: str | None) -> list[str]:
+    """Resolve the ``reranker_backend`` config value to an ordered backend chain."""
+    pref = (pref or "auto").lower()
+    if pref == "flashrank":
+        return ["flashrank", "bm25"]
+    if pref == "cross_encoder":
+        return ["cross_encoder", "bm25"]
+    if pref == "bm25":
+        return ["bm25"]
+    return ["flashrank", "cross_encoder", "bm25"]  # auto: lightest capable backend first
+
+
+def _get_flashrank():
+    """Cached FlashRank ranker, or None when the optional package is unavailable."""
+    global _flashrank_ranker, _flashrank_failed
+    if _flashrank_failed:
+        return None
+    if _flashrank_ranker is not None:
+        return _flashrank_ranker
+    try:
+        from flashrank import Ranker
+
+        _flashrank_ranker = Ranker(max_length=512)  # built once, cached from here on
+        return _flashrank_ranker
+    except Exception as exc:
+        _flashrank_failed = True
+        logger.debug("rerank: flashrank unavailable (%s)", exc)
+        return None
+
+
+def _flashrank_rerank(query: str, docs: list[dict], k: int) -> list[dict] | None:
+    """Score with FlashRank. Returns the caller's own dicts reordered, or None to fall through."""
+    ranker = _get_flashrank()
+    if ranker is None:
+        return None
+    try:
+        from flashrank import RerankRequest
+
+        req = RerankRequest(
+            query=query,
+            passages=[{"id": i, "text": _doc_text(d)[:512]} for i, d in enumerate(docs)],
+        )
+        results = ranker.rerank(req)  # [{id, text, score}] sorted desc
+        return [docs[int(r["id"])] for r in results[:k]]
+    except Exception as exc:
+        logger.debug("rerank: flashrank scoring failed (%s)", exc)
+        return None
 
 
 def _get_bge_cross_encoder(model_name: str):
@@ -150,17 +234,22 @@ def mmr_rerank(query: str, docs: list[dict], k: int = 5, lambda_: float = 0.7) -
 
 def rerank(query: str, docs: list[dict], k: int = 5) -> list[dict]:
     """
-    Rerank retrieved docs with a cross-encoder (query, doc) pair scorer.
-    Falls back to original order if model unavailable.
+    Rerank retrieved docs with a (query, doc) pair scorer.
+
+    Walks the configured backend chain (``reranker_backend``, default "auto":
+    flashrank → cross-encoder → BM25). Each unavailable backend is skipped and memoised, so a
+    box without the optional packages pays the import cost once and then goes straight to the
+    backstop. BM25 always produces a real keyword ranking — never a silent `docs[:k]`.
     ~30ms for 20 docs on CPU — well worth the accuracy gain.
     When use_bge_reranker + bge_reranker_model are set, tries BGE CrossEncoder first.
     """
     if not docs:
         return docs
+    cfg: dict = {}
     try:
         import runtime_safety
 
-        cfg = runtime_safety.load_config()
+        cfg = runtime_safety.load_config() or {}
         if cfg.get("use_bge_reranker"):
             mname = (cfg.get("bge_reranker_model") or "").strip()
             if mname:
@@ -172,6 +261,19 @@ def rerank(query: str, docs: list[dict], k: int = 5) -> list[dict]:
                     return [d for _, d in ranked[:k]]
     except Exception as _exc:
         logger.debug("vector_store:L396: %s", _exc, exc_info=False)
+
+    order = _backend_order(cfg.get("reranker_backend"))
+
+    if "flashrank" in order:
+        fr = _flashrank_rerank(query, docs, k)
+        if fr is not None:
+            return fr
+
+    if "cross_encoder" not in order:
+        # BM25 was chosen explicitly (or is the only remaining link) — not a degradation, so
+        # this must not warn. A configured choice and a failed backend are different events.
+        return _bm25_rerank(query, docs, k)
+
     ce = _get_cross_encoder()
     if ce is None:
         # Degraded path A: sentence-transformers absent, or the model was never cached and this

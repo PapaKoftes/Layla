@@ -411,29 +411,42 @@ for thinking-model support.
 
 ---
 
-## 6. LLM Decision Extraction (`llm_decision.py`)
+## 6. LLM Decision Extraction (`services/agent/llm_decision.py`)
 
 The agent loop must extract structured decisions (tool calls, reasoning
-steps) from LLM output. Three strategies are tried in order:
+steps) from LLM output. `llm_decision()` builds the prompt (it depends on
+agent state, aspects, routing hints, and config) and then walks a
+four-link constrained-decoding chain, falling through on any miss:
 
 ### Strategy chain
 
-| Priority | Strategy | Library | Requirements |
-|----------|----------|---------|-------------|
-| 1 | `OutlinesStrategy` | `outlines` | Local Llama, no server URL, `structured_generation_enabled` |
-| 2 | `InstructorStrategy` | `instructor` | Local Llama, no server URL, `use_instructor_for_decisions` |
-| 3 | `PlainJsonStrategy` | (none) | Always available -- runs `run_completion` + JSON parse |
+| Priority | Backend | Library | Requirements |
+|----------|---------|---------|-------------|
+| 1 | GBNF constrained decode | (none — native llama.cpp grammar sampler) | `gbnf_decoding_enabled` (default on), no `llama_server_url` |
+| 2 | Outlines | `outlines` | Local Llama, no server URL, `structured_generation_enabled` |
+| 3 | Instructor | `instructor` | Local Llama, no server URL, `use_instructor_for_decisions` |
+| 4 | Plain JSON | (none) | Always available — runs `run_completion` + JSON parse |
 
-The Outlines strategy uses `outlines.generate.json(model, AgentDecision)`
-for grammar-constrained generation against the `AgentDecision` Pydantic
-schema. Multiple API paths are tried for compatibility with different
-outlines versions (>= 1.x and 0.0.x).
+GBNF is first because it needs no extra package: `services/llm/gbnf_grammar.run_gbnf_agent_decision()`
+hands llama.cpp a grammar so the sampler cannot emit invalid JSON in the
+first place. Both optional libraries are absent on a default install, so
+this is the link that normally carries the load.
 
-The Instructor strategy patches `llm.create_chat_completion_openai_v1`
+The Outlines backend uses `services/llm/structured_gen.run_outlines_agent_decision()`,
+which drives `outlines.generate.json(model, AgentDecision)` against the
+`AgentDecision` Pydantic schema. Multiple API paths are tried for
+compatibility with different outlines versions (>= 1.x and 0.0.x).
+
+The Instructor backend patches `llm.create_chat_completion_openai_v1`
 with `instructor.patch()` using `Mode.JSON_SCHEMA`.
 
-Both structured strategies retry once on failure. PlainJsonStrategy
-appends a retry suffix on the second attempt.
+Structured backends retry once on failure. The plain-JSON path appends a
+retry suffix on the second attempt.
+
+> A second, never-wired implementation of this idea (`services/llm/llm_decision.py`,
+> with `OutlinesStrategy` / `InstructorStrategy` / `PlainJsonStrategy` classes) used to sit
+> beside this one. It was a strict subset — no GBNF link — had zero importers in prod or
+> tests, and was deleted. This section describes the only implementation.
 
 ### Decision normalization (`structured_gen.py`)
 

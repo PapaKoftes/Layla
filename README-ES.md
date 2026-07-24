@@ -47,4 +47,4 @@ Para usar la Layla del PC principal desde el portátil mediante un túnel seguro
 
 ## Ayuda
 - Guía en inglés: `install/INSTALL.md`
-- Notas de la versión: `RELEASE-CASTILLA.md`
+- Notas de la versión: `docs/archive/RELEASE-CASTILLA.md`

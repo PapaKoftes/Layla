@@ -431,8 +431,6 @@ _REQUIRED_AGENT_LOOP_ATTRS = [
     "_build_system_head",
     "_format_steps",
     "TOOLS",
-    "AgentRunRequest",
-    "autonomous_run_from_request",
 ]
 
 

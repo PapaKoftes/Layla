@@ -31,14 +31,18 @@ if str(AGENT_DIR) not in sys.path:
 
 
 class TestRerankerTokenize:
-    """Unit tests for the _tokenize helper."""
+    """Unit tests for the _tokenize helper.
+
+    Repointed from the deleted services/retrieval/reranker.py to the live reranker; the
+    helper is byte-identical between the two, so these assertions carried over unchanged.
+    """
 
     def test_basic(self):
-        from services.retrieval.reranker import _tokenize
+        from layla.memory.vector_store_rerank import _tokenize
         assert _tokenize("Hello World") == ["hello", "world"]
 
     def test_punctuation_stripped(self):
-        from services.retrieval.reranker import _tokenize
+        from layla.memory.vector_store_rerank import _tokenize
         tokens = _tokenize("async/await patterns — Python 3.12!")
         assert "async" in tokens
         assert "await" in tokens
@@ -47,109 +51,21 @@ class TestRerankerTokenize:
         assert "12" in tokens
 
     def test_empty(self):
-        from services.retrieval.reranker import _tokenize
+        from layla.memory.vector_store_rerank import _tokenize
         assert _tokenize("") == []
 
     def test_unicode(self):
-        from services.retrieval.reranker import _tokenize
+        from layla.memory.vector_store_rerank import _tokenize
         tokens = _tokenize("日本語テスト")
         # \w+ matches unicode word characters
         assert len(tokens) >= 1
 
 
-class TestBM25Rerank:
-    """Tests for the BM25 fallback reranker."""
-
-    def test_basic_ranking(self):
-        from services.retrieval.reranker import _bm25_rerank
-        docs = [
-            "Python is great for web development",
-            "Java enterprise application server",
-            "Python async await patterns for web APIs",
-            "C++ memory management pointers",
-        ]
-        result = _bm25_rerank("Python web", docs, top_k=4)
-        assert len(result) == 4
-        # The two Python+web docs should rank higher
-        top_2_indices = {r["original_index"] for r in result[:2]}
-        assert 0 in top_2_indices or 2 in top_2_indices
-
-    def test_returns_correct_structure(self):
-        from services.retrieval.reranker import _bm25_rerank
-        docs = ["alpha beta", "gamma delta"]
-        result = _bm25_rerank("alpha", docs, top_k=2)
-        assert len(result) == 2
-        for r in result:
-            assert "content" in r
-            assert "score" in r
-            assert "original_index" in r
-            assert isinstance(r["score"], float)
-
-    def test_top_k_limits_output(self):
-        from services.retrieval.reranker import _bm25_rerank
-        docs = [f"document {i}" for i in range(10)]
-        result = _bm25_rerank("document", docs, top_k=3)
-        assert len(result) == 3
-
-    def test_empty_query_tokens(self):
-        from services.retrieval.reranker import _bm25_rerank
-        docs = ["hello world"]
-        result = _bm25_rerank("!!!", docs, top_k=5)
-        assert len(result) == 1
-        assert result[0]["score"] == 0.0
-
-    def test_descending_score_order(self):
-        from services.retrieval.reranker import _bm25_rerank
-        docs = ["the the the", "python web python web", "python async patterns"]
-        result = _bm25_rerank("python web", docs, top_k=3)
-        scores = [r["score"] for r in result]
-        assert scores == sorted(scores, reverse=True)
-
-
-class TestRerank:
-    """Tests for the public rerank() function."""
-
-    def test_empty_documents(self):
-        from services.retrieval.reranker import rerank
-        assert rerank("test query", []) == []
-
-    def test_empty_query(self):
-        from services.retrieval.reranker import rerank
-        result = rerank("", ["doc1", "doc2"])
-        assert len(result) == 2
-        assert all(r["score"] == 0.0 for r in result)
-
-    def test_whitespace_query(self):
-        from services.retrieval.reranker import rerank
-        result = rerank("   ", ["doc1"])
-        assert len(result) == 1
-        assert result[0]["score"] == 0.0
-
-    def test_bm25_fallback_used_without_sentence_transformers(self):
-        """Without sentence-transformers installed, should fall back to BM25."""
-        from services.retrieval.reranker import rerank
-        docs = ["Python web async", "Java Spring Boot", "Python FastAPI"]
-        result = rerank("Python web framework", docs, top_k=2)
-        assert len(result) == 2
-        # All results must have the expected keys
-        for r in result:
-            assert "content" in r
-            assert "score" in r
-            assert "original_index" in r
-
-    def test_top_k_respected(self):
-        from services.retrieval.reranker import rerank
-        docs = [f"document number {i} about testing" for i in range(20)]
-        result = rerank("document testing", docs, top_k=5)
-        assert len(result) == 5
-
-    def test_original_index_preserved(self):
-        from services.retrieval.reranker import rerank
-        docs = ["aaa", "bbb query match", "ccc"]
-        result = rerank("query match", docs, top_k=3)
-        indices = {r["original_index"] for r in result}
-        # All original indices should be valid
-        assert indices.issubset({0, 1, 2})
+# The BM25 and rerank() suites that lived here asserted the deleted module's
+# {content, score, original_index} record shape, which no implementation produces any more.
+# Their behavioural content — ranking correctness, top_k, descending order, backend chain —
+# lives on against the surviving reranker in test_reranker_backends.py, and the degradation
+# paths are covered in test_vector_store_rerank_backstop.py.
 
 
 # ============================================================================

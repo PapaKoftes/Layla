@@ -8,7 +8,7 @@
 > **Status snapshot (2026-05-13):** 1348+ tests passing (1288 standalone + 60 deselected hangers), 10/12 health checks green.  
 > Engineering blueprint v2.1: ALL 7 TIERS COMPLETE — personality depth, safety systems (dignity engine + content guard),  
 > memory/codex overhaul, research pipeline, expertise-aware retrieval, privacy separation, documentation cleanup.  
-> See `ENGINEERING_BLUEPRINT.md` for the canonical engineering plan and completion evidence.  
+> See `docs/archive/ENGINEERING_BLUEPRINT.md` for the engineering plan and completion evidence as of that release (archived — decision history, not current state).  
 > See `agent/docs/audit/subsystem_audit.md` for subsystem ground truth.
 
 ---

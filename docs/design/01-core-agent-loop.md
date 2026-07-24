@@ -16,7 +16,6 @@ The agent loop has three public entry points:
 | Entry Point | Signature | Purpose |
 |---|---|---|
 | `autonomous_run()` | 30+ parameters | Primary entry. Prompt-optimizes the goal, sets context vars, acquires scheduling slot + serialize lock, delegates to `_autonomous_run_impl`. |
-| `autonomous_run_from_request()` | `AgentRunRequest` dataclass | Convenience wrapper. Unpacks the dataclass and calls `autonomous_run()`. |
 | `stream_reason()` | (goal, aspect, ...) | Streaming-only path. Builds head + prompt, calls `run_completion(stream=True)`, yields tokens. |
 
 ### 1.2 Call Chain
@@ -422,7 +421,6 @@ Throughout the file, Unicode arrows and symbols appear as mojibake (`ÃÃÃ¶`, 
 
 ### 7.6 Unused Parameters
 
-- `AgentRunRequest.conversation_history` defaults to `None` (mutable default via `field(default=None)`). This is correct behavior for dataclass but worth noting.
 - `plan_depth` parameter is accepted but only used to constrain planning recursion; it is not validated against negative values.
 
 ### 7.7 Serialization Hazard
