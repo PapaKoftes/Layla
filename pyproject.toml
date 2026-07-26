@@ -181,6 +181,7 @@ dev = [
     "pytest-timeout>=2.3",
     "pytest-cov>=5.0",
     "hypothesis>=6.0",
+    "vulture>=2.14",   # static dead-code finder backing scripts/check_dead_symbols.py (symbol-liveness gate)
     # light runtime (no GPU/model) so app modules import under test
     "fastapi>=0.115,<1",
     "pydantic>=2.0",
