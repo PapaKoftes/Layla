@@ -290,6 +290,15 @@ def semantic_recall(query: str, k: int = 5, domain_boost_terms: list[str] | None
                 logger.debug("mem0 recall merge skipped: %s", _me)
         if not lines:
             return ""
+        # Liveness: a fact reached the prompt through the HEAD recall path. The first placement of
+        # this effect (retrieve_relevant_memory) never fired on a real grounding turn — the head does
+        # not use that function — so the registry correctly reported grounding_recall_fired=0 while
+        # grounding worked. This is the seam the head actually recalls through.
+        try:
+            from services.observability import liveness
+            liveness.fire("grounding_recall_fired")
+        except Exception:  # noqa: BLE001 — liveness must never break recall
+            pass
         return "\n".join(lines)
     except Exception as e:
         # BL-374: this said "ChromaDB failed" for EVERY failure, including the common one — the embedder
