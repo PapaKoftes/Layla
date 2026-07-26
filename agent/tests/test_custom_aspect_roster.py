@@ -37,6 +37,20 @@ _SABLE = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _isolate_db(isolated_db):
+    """Run every test in this file against a fresh migrated tmp DB, never the operator's real
+    layla.db. The try/finally cleanups below already delete the aspects they create, but a mid-body
+    failure would otherwise leak a custom-aspect row into the real DB permanently. Also drop the
+    orchestrator roster cache at both ends so a tmp DB from one test cannot bleed into the next.
+    (`isolated_db` — tests/conftest.py — patches db._DB_PATH to a migrated tmp DB.)"""
+    orchestrator.invalidate_aspects_cache()
+    try:
+        yield
+    finally:
+        orchestrator.invalidate_aspects_cache()
+
+
 @pytest.fixture
 def sable():
     """Create the custom aspect, hand back its id, always clean up."""
