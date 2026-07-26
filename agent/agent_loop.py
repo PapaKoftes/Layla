@@ -5,6 +5,7 @@ import re
 import threading
 import time
 from collections.abc import Callable
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -88,7 +89,8 @@ from services.infrastructure.resource_manager import (  # noqa: E402
     classify_load,
     schedule_slot,
 )
-from services.llm.llm_gateway import get_stop_sequences, llm_serialize_lock, run_completion  # noqa: E402
+from services.llm.llm_gateway import get_stop_sequences, llm_serialize_lock  # noqa: E402
+from services.llm.llm_gateway import run_completion as _gateway_run_completion  # noqa: E402
 from services.safety.agent_safety import (  # noqa: E402
     maybe_planning_strict_refusal as _maybe_planning_strict_refusal,
 )
@@ -358,6 +360,41 @@ _reason_mode_lock = _rstate_get_lock()
 _load_lock = threading.Lock()
 
 
+# ---------------------------------------------------------------------------
+# Plan #18: per-request sampling override for the FINAL user-visible generation ONLY.
+#
+# Set by ``autonomous_run`` around a flight; read by the ``run_completion`` seam below.
+# The FINAL-generation call sites (services.agent.reasoning_handler and the parse_failed
+# fallback in _autonomous_run_impl_core) call ``run_completion`` through THIS module's
+# namespace (``_al.run_completion``). The agent's internal tool-DECISION calls
+# (services.agent.llm_decision) import the gateway's ``run_completion`` DIRECTLY, so an
+# override set here can never reach them and can never corrupt tool-decision JSON.
+# Only temperature + max_tokens are applied — the only sampling params the gateway's
+# run_completion accepts (top_p/top_k come from config; seed is not plumbed locally).
+# ---------------------------------------------------------------------------
+_final_sampling_var: ContextVar[dict | None] = ContextVar("agent_final_sampling", default=None)
+
+
+def run_completion(prompt, *args, **kwargs):
+    """FINAL-generation seam over the gateway's run_completion.
+
+    Passthrough unless a per-request sampling override is active (set by autonomous_run),
+    in which case the caller's clamped temperature/max_tokens replace the defaults. Only the
+    final answer path routes through here; tool-decision calls hit the gateway directly.
+    """
+    ov = _final_sampling_var.get()
+    # The final-gen callers always pass generation params by keyword; skip injection on the
+    # (unused) positional form so we can never raise a "multiple values" TypeError.
+    if ov and not args:
+        _t = ov.get("temperature")
+        if _t is not None:
+            kwargs["temperature"] = float(_t)
+        _mt = ov.get("max_tokens")
+        if _mt is not None:
+            kwargs["max_tokens"] = int(_mt)
+    return _gateway_run_completion(prompt, *args, **kwargs)
+
+
 _iter_with_response_pacing = _iter_with_response_pacing_impl
 stream_reason = _stream_reason_impl
 _stream_reason_body = _stream_reason_body_impl
@@ -498,6 +535,7 @@ def autonomous_run(
     clarification_reply: str = "",
     skip_engineering_pipeline: bool = False,
     context_files: list[str] | None = None,
+    sampling: dict | None = None,
 ) -> dict:
     # Prompt optimizer: enhance user goal before processing (graceful; never blocks)
     # Preserve the original user-authored goal text so downstream code can refer to
@@ -530,6 +568,12 @@ def autonomous_run(
     # text the user actually authored. Tokens are reset in the finally below.
     _goal_orig_token = _goal_original_var.set(goal_original or "")
     _goal_opt_token = _goal_optimized_var.set(goal_optimized or "")
+
+    # Plan #18: publish the per-request sampling override so the FINAL-generation run_completion
+    # seam (see module top) applies the caller's clamped temperature/max_tokens to the final
+    # answer only. Reset in the finally below so it never leaks to the next flight. Tool-decision
+    # calls bypass the seam entirely, so this is inert for them.
+    _final_samp_token = _final_sampling_var.set(sampling or None)
 
     # Phase 4.3: set per-task context vars for structured log isolation
     try:
@@ -591,6 +635,7 @@ def autonomous_run(
         try:
             _goal_original_var.reset(_goal_orig_token)
             _goal_optimized_var.reset(_goal_opt_token)
+            _final_sampling_var.reset(_final_samp_token)
         except Exception as e:
             logger.debug("agent_loop: %s", e)
 
