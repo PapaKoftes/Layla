@@ -322,6 +322,30 @@
         <button class="aspect-btn" data-action="setAspect" data-arg="lilith" data-action-stop id="btn-lilith" aria-label="Switch to Lilith aspect (ethics)" aria-pressed="false"><span class="aspect-sigil">⊛</span> Lilith · Ethics</button>
         <span class="aspect-desc">Safety and boundaries: ethics checks, refusal logic, and high-risk decision review.</span>
       </div>
+      <!-- Multi-aspect deliberation — the PROMINENT on/off control, right here in the Aspect
+           panel where a user looks for "who answers". It mirrors #deliberation-mode-select
+           (otherwise reachable only from the deep Settings editor); settings-full.js keeps the
+           two in lockstep via _syncDeliberationControls so they can never disagree.
+           OFF = solo (one voice); ON = the chosen depth (auto / debate / council / tribunal). -->
+      <div class="aspect-delib" id="aspect-delib">
+        <label class="aspect-delib-row" for="delib-enable" title="Let several aspects weigh in before Layla answers a judgment call">
+          <span class="aspect-delib-copy">
+            <span class="aspect-delib-name">Multi-aspect</span>
+            <span class="aspect-delib-sub">Let several aspects weigh in</span>
+          </span>
+          <input type="checkbox" id="delib-enable" class="aspect-delib-switch" role="switch"
+                 data-on-change="toggleDeliberation" aria-label="Multi-aspect deliberation">
+        </label>
+        <label class="aspect-delib-depth" id="aspect-delib-depth" hidden>
+          <span class="settings-label">Depth</span>
+          <select id="deliberation-depth-select" class="settings-select" data-on-change="setDeliberationMode" data-pass-value>
+            <option value="auto">Auto — she decides</option>
+            <option value="debate">Debate · 2 voices</option>
+            <option value="council">Council · 3 voices</option>
+            <option value="tribunal">Tribunal · 6 voices</option>
+          </select>
+        </label>
+      </div>
     </details>
     <!-- Sidebar nav: open overlay panels -->
     <nav class="sidebar-nav" aria-label="Panel shortcuts">
