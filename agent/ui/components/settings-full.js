@@ -898,9 +898,38 @@ export async function saveContentPolicySettings() {
 }
 
 // ── Deliberation mode selector ──────────────────────────────────────────────
+// The "on" state can be any depth EXCEPT solo. solo is the single-voice off state.
+const _DELIB_DEPTHS = ['auto', 'debate', 'council', 'tribunal'];
+
+/**
+ * Reflect ONE deliberation mode across every control that shows it, so the prominent
+ * Aspect-panel switch + depth select and the buried Settings <select> can never disagree.
+ *
+ * There are now two places to change deliberation (the Aspect panel, by design — the user
+ * asked for it to be easy to reach — and the deep config editor). Whichever one the user
+ * touches, this is the single function that repaints the others. Programmatic .value/.checked
+ * assignments do NOT fire a 'change' event, so calling this from a change handler cannot recurse.
+ */
+export function _syncDeliberationControls(mode) {
+  const on = mode !== 'solo';
+  const sel = document.getElementById('deliberation-mode-select');
+  if (sel) sel.value = mode;
+  const sw = document.getElementById('delib-enable');
+  if (sw) sw.checked = on;
+  const depth = document.getElementById('deliberation-depth-select');
+  // Only assign a depth the depth-select actually offers; it has no 'solo' option, so when
+  // OFF we leave its last value so turning back on resumes the same depth.
+  if (depth && _DELIB_DEPTHS.indexOf(mode) >= 0) depth.value = mode;
+  const depthRow = document.getElementById('aspect-delib-depth');
+  if (depthRow) depthRow.hidden = !on;
+}
+
 export async function setDeliberationMode(mode) {
   const valid = ['solo', 'auto', 'debate', 'council', 'tribunal'];
   if (valid.indexOf(mode) < 0) mode = 'auto';
+  // Repaint every control up front so the switch, the depth select and the buried <select>
+  // move together the instant the user acts — before the server has even answered.
+  _syncDeliberationControls(mode);
   try {
     const r = await fetch('/settings', {
       method: 'POST',
@@ -912,6 +941,21 @@ export async function setDeliberationMode(mode) {
   } catch (_) {
     showToast('Could not save deliberation mode');
   }
+}
+
+/**
+ * The prominent Aspect-panel on/off switch. ON resumes the last-picked depth (or 'auto' the
+ * first time); OFF is 'solo' — a single voice. It delegates to setDeliberationMode so there is
+ * exactly one writer of deliberation_mode and one place that keeps every control in sync.
+ */
+export function toggleDeliberation(enabled) {
+  let mode = 'solo';
+  if (enabled) {
+    const depth = document.getElementById('deliberation-depth-select');
+    const chosen = depth && depth.value;
+    mode = (_DELIB_DEPTHS.indexOf(chosen) >= 0) ? chosen : 'auto';
+  }
+  return setDeliberationMode(mode);
 }
 
 // ── Phone access ────────────────────────────────────────────────────────────
@@ -963,8 +1007,10 @@ export function initSettings() {
     fetch('/health').then(function (r) { return r.json(); }).then(function (d) {
       const cfg = (d && d.config) || {};
       const mode = cfg.deliberation_mode || 'auto';
-      const sel = document.getElementById('deliberation-mode-select');
-      if (sel) sel.value = mode;
+      // Paint EVERY deliberation control from the saved value at boot — the buried <select>,
+      // the Aspect-panel switch and its depth select — so the prominent toggle reflects reality
+      // on first paint, not only after someone opens the deep Settings editor.
+      _syncDeliberationControls(mode);
     }).catch(function () {});
   } catch (_) {}
   // Apply the saved text size at BOOT, not just when the settings panel is opened. Someone who needs
