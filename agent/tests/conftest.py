@@ -283,6 +283,86 @@ def isolated_db(tmp_path):
 
 
 @pytest.fixture
+def populated_profile(tmp_path):
+    """A REALISTIC operator profile seeded into an isolated temp DB via the repo's own public write APIs.
+
+    ITEM 11. The head-budget tests otherwise run against an EMPTY DB (the session fixture points
+    LAYLA_DATA_DIR at a fresh mkdtemp), which is exactly why the protected-prefix budget regression was
+    invisible: with no durable_facts and no workspace_context, nothing downstream grew to crowd the
+    per-turn directives out of `system_instructions`. This fixture seeds the nine canonical durable
+    identity facts (user_profile.DURABLE_FACT_KEYS), a handful of learnings, and real project/world
+    context, so get_durable_facts() and world_state.summarize() return substantial text — reproducing
+    the pressure a real profile puts on the head budget.
+
+    Fully isolated (its own tmp DB, migration guards reset on setup AND teardown, mirroring isolated_db)
+    so it can never leak into the empty-DB variants of the same tests.
+    """
+    db_path = tmp_path / "populated_layla.db"
+    with patch("layla.memory.db._DB_PATH", db_path), \
+         patch("layla.memory.db_connection._DB_PATH", db_path):
+        import layla.memory.db as db_mod
+        import layla.memory.migrations as mig
+        from layla.memory.migrations import migrate
+
+        if hasattr(db_mod, "_MIGRATED"):
+            db_mod._MIGRATED = False  # type: ignore[attr-defined]
+        if hasattr(mig, "_MIGRATED"):
+            mig._MIGRATED = False  # type: ignore[attr-defined]
+        migrate()
+
+        # 1) The nine durable identity facts — authoritative ground truth injected verbatim.
+        from layla.memory.user_profile import set_user_identity
+        for _k, _v in {
+            "name": "Mina",
+            "pronouns": "she/her",
+            "timezone": "Europe/Berlin",
+            "locale": "en-GB",
+            "os_platform": "Windows 11 Pro (build 26200)",
+            "editor": "VS Code",
+            "indent_style": "4 spaces, never tabs",
+            "shell": "PowerShell 5.1 and Git Bash",
+            "project_roots": "C:/Work/Programming/Layla; C:/Work/Programming/sideproject",
+        }.items():
+            set_user_identity(_k, _v)
+
+        # 2) A handful of learnings — several relevant to an ordinary coding turn so they surface in memory.
+        from layla.memory.learnings import save_learning
+        for _c in (
+            "The operator prefers concise, direct answers and dislikes filler or flattery.",
+            "When fixing a Python bug, run the failing pytest first and read the traceback before editing code.",
+            "The Layla codebase keeps the agent app under agent/ and runs its tests from a separate .venv-test.",
+            "Prefer replace_in_file or apply_patch over rewriting whole files when editing this repository.",
+            "The operator works mostly in Python, with some TypeScript for the browser UI layer.",
+            "CI must stay green; the head-budget tests are the canary for prompt-assembly regressions.",
+        ):
+            save_learning(_c, kind="fact", confidence=0.85, score=1.0)
+
+        # 3) Project + world context so world_state.summarize() returns real text (inflates workspace_context).
+        from layla.memory.projects_db import set_project_context
+        set_project_context(
+            project_name="Layla",
+            domains=["ai-agents", "prompt-engineering", "python", "local-inference"],
+            key_files=[
+                "agent/services/prompts/system_head_builder.py",
+                "agent/services/context/context_manager.py",
+            ],
+            goals="Ship a bounded local AI companion and engineering agent with a hard-reserved protected prompt prefix.",
+            lifecycle_stage="execution",
+            progress="Head-budget hardening in progress; capability-manifest injection stabilised.",
+            blockers="A populated profile regressed the protected per-turn directives out of the prompt.",
+            last_discussed="prompt assembly token budgets and the protected prefix",
+        )
+
+        try:
+            yield db_path
+        finally:
+            if hasattr(db_mod, "_MIGRATED"):
+                db_mod._MIGRATED = False  # type: ignore[attr-defined]
+            if hasattr(mig, "_MIGRATED"):
+                mig._MIGRATED = False  # type: ignore[attr-defined]
+
+
+@pytest.fixture
 def no_network():
     """Block all outbound network calls."""
     _orig = socket.socket
