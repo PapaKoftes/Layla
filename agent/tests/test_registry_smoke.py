@@ -401,7 +401,7 @@ def test_pure_tools_produce_correct_results():
     r = call("json_schema", data='{"a":1,"b":"x"}')
     assert r["schema"]["properties"]["a"]["type"] == "integer", f"json_schema wrong: {r}"
 
-    r = call("jwt_decode", token="eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.x")
+    r = call("jwt_decode", token="eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.x")  # gitleaks:allow — fake JWT test vector ({"sub":"1"}), not a credential
     assert r["payload"]["sub"] == "1", f"jwt_decode wrong: {r}"
 
     r = call("timestamp_convert", value=1700000000, output_format="iso")

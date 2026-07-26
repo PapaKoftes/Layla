@@ -1,0 +1,8 @@
+# gitleaks false positives — reviewed, confirmed non-secrets.
+# Format: <commit>:<file>:<rule>:<line>  (the fingerprint gitleaks prints/reports)
+#
+# A fake JWT test vector for the jwt_decode tool's smoke test. It decodes to the trivial payload
+# {"sub":"1"} (header {"alg":"HS256"}, signature literally "x") — a test fixture, never a credential.
+# gitleaks' generic-api-key rule matched the `token=` kwarg. The live line also carries an inline
+# `# gitleaks:allow`; this entry covers the historical commit that introduced it (history scan).
+497d0fb6fb6ca17fdc54ad961b991485b82e7063:agent/tests/test_registry_smoke.py:generic-api-key:400
