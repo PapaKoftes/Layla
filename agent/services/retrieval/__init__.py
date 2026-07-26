@@ -105,6 +105,15 @@ def retrieve_relevant_memory(
         _eff_min = max(float(min_confidence or 0.0), max(0.0, min(1.0, _cfg_floor)))
         if _eff_min > 0.0:
             results = [r for r in results if r.get("confidence", 0.0) >= _eff_min]
+        if results:
+            # Liveness: a fact was actually recalled into a turn. This effect being stuck at 0 is how
+            # a silently-degraded embedder (retrieval → []) would look — the exact "correct component,
+            # nobody drives it" signal the registry exists for.
+            try:
+                from services.observability import liveness
+                liveness.fire("grounding_recall_fired")
+            except Exception:  # noqa: BLE001 — liveness must never break retrieval
+                pass
         return results
     except Exception as e:
         # BL-374: this was logger.debug — below the default level — so an offline box returned [] here with

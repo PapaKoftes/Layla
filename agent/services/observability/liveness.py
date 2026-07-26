@@ -31,6 +31,13 @@ KNOWN_EFFECTS: dict[str, str] = {
     "outcome_evaluated": "A turn produced an outcome evaluation (the learning-feedback signal).",
     "conversation_compacted": "Older turns were summarised into conversation_summaries — the "
                               "second-tier memory that had 0 rows for the life of the database.",
+    "grounding_recall_fired": "A stored learning/fact was actually recalled into a turn "
+                              "(retrieve_relevant_memory returned ≥1 item). If this stays 0, retrieval "
+                              "is degraded to nothing and the model answers ungrounded.",
+    "conversation_summary_recalled": "A durable conversation summary reached the prompt "
+                                     "(get_recent_conversation_summaries returned ≥1). Expected 0 until "
+                                     "long-conversation memory writes summaries (plan #21) — this is that "
+                                     "feature's built-in liveness check.",
 }
 
 

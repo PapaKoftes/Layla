@@ -1,0 +1,85 @@
+{
+  "_about": "Capability golden set for Layla — the kinds a MOCKED unit suite cannot prove: real tool selection/execution, memory-grounding (recall of a seeded fact), and same-session carry-over. Run against a LIVE server with a real (tiny) model via scripts/run_real_eval.py, which drives eval/run_golden.py. Cases tagged tier=fast form the gate-able subset; the rest are nightly. On a 360M model these are noisy by design — the harness reports per-kind pass/fail honestly rather than pretending a tiny model is a big one.",
+  "cases": [
+    {
+      "id": "qa-capital",
+      "kind": "qa",
+      "tier": "fast",
+      "prompt": "What is the capital of France? One word.",
+      "assert": [{"type": "icontains", "value": "paris"}]
+    },
+    {
+      "id": "qa-math",
+      "kind": "qa",
+      "tier": "full",
+      "prompt": "What is 12 plus 7? Give only the number.",
+      "assert": [{"type": "contains", "value": "19"}]
+    },
+
+    {
+      "id": "tool-any",
+      "kind": "tool",
+      "tier": "fast",
+      "prompt": "Use a tool to inspect the current directory and summarize its contents. Do not answer from memory.",
+      "expect_tool_any": ["list_dir", "glob_files", "read_file", "file_info"]
+    },
+    {
+      "id": "tool-list-dir",
+      "kind": "tool",
+      "tier": "full",
+      "prompt": "List the files in the current working directory using the list_dir tool, then tell me what you found.",
+      "expect_tool_any": ["list_dir", "glob_files"]
+    },
+    {
+      "id": "tool-memory-search",
+      "kind": "tool",
+      "tier": "full",
+      "prompt": "Search your saved memory for anything you know about the operator's preferred editor and report back.",
+      "expect_tool_any": ["memory_search", "search_memories"]
+    },
+
+    {
+      "id": "grounding-codename",
+      "kind": "grounding",
+      "tier": "fast",
+      "seed": {
+        "content": "The operator's secret project codename is Heron. This is a durable fact: whenever the operator's project is discussed, its codename is Heron.",
+        "kind": "fact"
+      },
+      "prompt": "What is my secret project codename? Answer with the single codename word.",
+      "assert": [{"type": "icontains", "value": "heron"}]
+    },
+    {
+      "id": "grounding-favorite-color",
+      "kind": "grounding",
+      "tier": "full",
+      "seed": {
+        "content": "The operator's favorite color is chartreuse. This is a durable personal preference the operator has stated.",
+        "kind": "preference"
+      },
+      "prompt": "What is my favorite color? Answer with just the color.",
+      "assert": [{"type": "icontains", "value": "chartreuse"}]
+    },
+
+    {
+      "id": "memory-name-carryover",
+      "kind": "memory",
+      "tier": "fast",
+      "turns": [
+        {"prompt": "My name is Zephyrina. Please remember my name."},
+        {"prompt": "Earlier in this conversation I told you my name. Reply with just that name, and do not use any tools."}
+      ],
+      "assert": [{"type": "icontains", "value": "zephyrina"}]
+    },
+    {
+      "id": "memory-number-carryover",
+      "kind": "memory",
+      "tier": "full",
+      "turns": [
+        {"prompt": "Remember this number for later: 4271. Just acknowledge it."},
+        {"prompt": "Earlier I gave you a number to remember. Reply with only that number and do not use any tools."}
+      ],
+      "assert": [{"type": "contains", "value": "4271"}]
+    }
+  ]
+}
