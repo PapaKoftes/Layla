@@ -1005,6 +1005,55 @@ def run_completion(
             def _counting_gen():
                 completion_tokens = 0
                 try:
+                    # ── CLUSTER OFFLOAD on the STREAMING path (Plan #19) ─────────────────────────
+                    # A streamed turn is the DEFAULT UI path. Before this, offload only ever touched
+                    # the non-stream branch below, so a streamed turn ALWAYS ran locally even with a
+                    # beefier paired peer available — the chat path moved zero work. Mirror the
+                    # non-stream branch: try a peer that OUTRANKS this box FIRST.
+                    #
+                    # try_cluster_offload_first makes a SINGLE, fully-materialised (non-streaming)
+                    # request to the peer and returns a complete dict, or None on absolutely any
+                    # problem — clustering off, no peer, weaker peer, malformed/blank reply, timeout,
+                    # exception (it catches everything → None). Because the answer is COMPLETE before
+                    # we emit anything, we hand it to the consumer as one chunk and never touch the
+                    # local model. And because a failed offload has already collapsed to None (or, if
+                    # the hook itself somehow raises, is caught here), we simply fall through to local
+                    # streaming — there is never partial peer output to reconcile, so a mid-offload
+                    # peer failure can NOT leave the user with a half-stream and no fallback.
+                    #
+                    # NO-OP WHEN CLUSTERING IS OFF (the common case): the first line of
+                    # try_cluster_offload_first is the cluster_offload_enabled gate, so this is one
+                    # dict lookup and the local path below stays byte-identical to before.
+                    offloaded = None
+                    try:
+                        from services.llm.inference_router import try_cluster_offload_first
+
+                        _offload_timeout = (
+                            timeout_seconds if timeout_seconds is not None
+                            else cfg.get("llm_timeout_seconds", 120)
+                        )
+                        offloaded = try_cluster_offload_first(
+                            prompt, max_tokens, temperature, stop, _offload_timeout, cfg, model_override,
+                        )
+                    except Exception as _co_e:
+                        logger.debug("cluster offload hook (stream) failed: %s", _co_e)
+                        offloaded = None
+                    if isinstance(offloaded, dict):
+                        peer_text = ""
+                        try:
+                            choices = offloaded.get("choices") or [{}]
+                            msg = (choices[0] if choices else {}).get("message") or {}
+                            peer_text = msg.get("content") or (choices[0] if choices else {}).get("text") or ""
+                        except Exception:
+                            peer_text = ""
+                        if (peer_text or "").strip():
+                            # Peer served the whole turn; emit it as a single chunk and skip local.
+                            completion_tokens += _count_tokens(peer_text)
+                            _add_usage(prompt_tokens, completion_tokens)
+                            yield peer_text
+                            return
+                        # A dict with no usable text is treated exactly like None → fall through to local.
+
                     from services.observability.trace_export import maybe_span
 
                     with maybe_span(cfg, "llm_completion", stream="true"):
