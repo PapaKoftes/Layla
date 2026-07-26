@@ -41,20 +41,12 @@ ALLOWED_DIVERGENCES: dict[str, tuple[object, str]] = {
         "JSON null vs the empty-string default — cosmetic, and both read as falsy at every use site. "
         "Left as null so the key is visibly present-but-unset rather than looking configured.",
     ),
-    "deterministic_tool_routes_enabled": (
-        True,
-        "Deliberate: the example is a daily-driver profile and deterministic routing is the "
-        "recommended operator setting. The schema default stays False so the feature is opt-in for "
-        "anyone assembling a config from scratch.",
-    ),
-    "max_tool_calls": (
-        20,
-        "QUESTIONABLE, recorded rather than silently accepted: the schema default is 5 but the "
-        "example ships 20, so a fresh install gets 4x the tool budget the schema advertises. Both "
-        "values are safe (max_runtime_seconds still bounds a turn); the divergence is a product "
-        "decision about how much rope a new install gets, and it should be made deliberately rather "
-        "than inherited. See also research_max_tool_calls below.",
-    ),
+    # deterministic_tool_routes_enabled and max_tool_calls were removed from this map when the
+    # "config defaults honesty" cluster reconciled the schema DISPLAYED default to the EFFECTIVE
+    # runtime default. Both were schema-vs-runtime lies: the schema advertised False / 5 while
+    # runtime_safety.load_config() (and this example) actually shipped True / 20. The schema now
+    # says True / 20 too, so the example no longer diverges from it — there is nothing left to
+    # declare here, and a stale entry would fail test_declared_divergences_are_still_real.
     "research_max_tool_calls": (
         40,
         "Research runs are explicitly long-horizon and the example doubles the budget for them. "

@@ -41,6 +41,7 @@ SETTINGS_PRESETS: dict[str, dict[str, Any]] = {
 EDITABLE_SCHEMA: list[dict[str, Any]] = [
     # ── Core (always shown) ──
     {"key": "ui_language", "type": "string", "category": "core", "default": "en", "hint": "Web UI language (en, es, de, fr, it, pt, ja, zh, ar, ru, ko). Falls back to English for missing strings."},
+    {"key": "german_mode_enabled", "type": "boolean", "category": "core", "default": False, "hint": "Language-specific: bias Layla's replies toward German. Off by default (language-specific — most installs are English)."},
     {"key": "model_filename", "type": "string", "category": "core", "hint": "GGUF filename in models/ folder. Restart required."},
     {"key": "models_dir", "type": "string", "category": "core", "hint": "Path to models folder. Default: repo/models/ or ~/.layla/models/"},
     {"key": "sandbox_root", "type": "string", "category": "core", "hint": "Workspace root. Layla can only read/write within this path."},
@@ -84,8 +85,8 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "key": "inline_initiative_enabled",
         "type": "boolean",
         "category": "safety",
-        "default": False,
-        "hint": "After 2+ tool steps, append one heuristic next-step line to the final reply.",
+        "default": True,
+        "hint": "After 2+ tool steps, append one heuristic next-step line to the final reply. On by default: model-free, text-only (no tool execution), cheap.",
     },
     {
         "key": "initiative_engine_enabled",
@@ -188,15 +189,24 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "default": [],
         "hint": "Comma-separated list of settings auto-tune must NOT overwrite — the per-key escape hatch. Only auto-tune-managed keys can be locked; anything else is reported back as rejected.",
     },
-    {"key": "max_tool_calls", "type": "number", "category": "limits", "default": 5, "min": 1, "max": 50, "hint": "Max tool calls per agent turn (non-research)."},
+    {"key": "max_tool_calls", "type": "number", "category": "limits", "default": 20, "min": 1, "max": 50, "hint": "Max tool calls per agent turn (non-research). This is the effective runtime default — max_runtime_seconds still bounds the turn."},
     {"key": "max_runtime_seconds", "type": "number", "category": "limits", "default": 900, "min": 5, "max": 3600, "hint": "Max wall time per agent turn (seconds). Align with ui_agent_stream_timeout_seconds so the server does not stop before the browser."},
     {"key": "tool_call_timeout_seconds", "type": "number", "category": "limits", "default": 60, "min": 5, "max": 600, "hint": "Max seconds a single tool call may run before being killed."},
     {"key": "approval_ttl_seconds", "type": "number", "category": "limits", "default": 3600, "min": 60, "max": 86400, "hint": "Seconds before a pending approval expires (default: 1 hour)."},
     {"key": "models_max_keep", "type": "number", "category": "limits", "default": 0, "min": 0, "max": 100, "hint": "Daily maintenance prunes downloaded GGUFs to the newest N (the active model is always kept). 0 = keep all."},
-    {"key": "hyde_enabled", "type": "boolean", "category": "limits", "default": False, "hint": "Enable HyDE retrieval (generates a hypothetical answer before embedding — extra LLM call per query, improves recall quality)."},
+    {"key": "hyde_enabled", "type": "boolean", "category": "limits", "default": False, "hint": "Enable HyDE retrieval (generates a hypothetical answer before embedding — extra LLM call per query, improves recall quality). NOTE: hardware auto-tune reverts this to off on CPU tiers (it is an expensive extra call) — to make a manual value stick, add 'hyde_enabled' to auto_tune_locked_keys or turn off auto_tune_enabled."},
     {"key": "convo_turns", "type": "number", "category": "limits", "default": 6, "min": 0, "max": 10, "hint": "How many recent messages Layla can see of your conversation. 0 means she cannot see her own previous replies at all — which is how this shipped. Each message is re-read every turn: ~1.9s at 2, ~3.3s at 6, ~4.1s at 8 on this machine. Above 10 the prompt no longer fits the context window."},
     {"key": "research_max_tool_calls", "type": "number", "category": "limits", "default": 20, "min": 1, "max": 100, "hint": "Max tool calls when research_mode is on."},
     {"key": "research_max_runtime_seconds", "type": "number", "category": "limits", "default": 1800, "min": 30, "max": 14400, "hint": "Max wall time for research-style runs (seconds)."},
+    {
+        "key": "self_consistency_samples",
+        "type": "number",
+        "category": "limits",
+        "default": 1,
+        "min": 1,
+        "max": 7,
+        "hint": "How many times each agent decision is sampled and majority-voted (1 = off/single sample). CLAMPED to 1..7: each extra sample is another full LLM call, so a weak (potato) box cannot be told to sample huge.",
+    },
     # ── Safety & behavior ──
     {"key": "safe_mode", "type": "boolean", "category": "safety", "default": True, "hint": "Hard floor for destructive tools: while on (default), file writes and code execution (write_file, shell, run_python, git, …) ALWAYS require approval — even if tool_approval_bypass is set. Turn off only if you deliberately want the bypass to auto-approve destructive tools too."},
     {"key": "plugins_enabled", "type": "boolean", "category": "safety", "default": False, "hint": "Allow skill plugins to EXECUTE Python code (exec_module) and contribute MCP subprocess servers. Off = declarative skills only. Security-sensitive: only enable for plugins you trust."},
@@ -216,7 +226,7 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
     {"key": "enable_cot", "type": "boolean", "category": "safety", "default": True, "hint": "Chain-of-thought reasoning."},
     {"key": "deliberation_enabled", "type": "boolean", "category": "safety", "default": False, "hint": "Multi-aspect debate prompt: all six aspects weigh in before answering. Off by default — small models render the six scaffold lines as ~6 stitched answers. Leave off for normal single-voice chat."},
     {"key": "deliberation_mode", "type": "string", "category": "safety", "options": ["solo", "auto", "debate", "council", "tribunal"], "default": "auto", "hint": "Multi-aspect deliberation: solo=one voice, auto=detect complexity, debate=2, council=3, tribunal=all 6."},
-    {"key": "enable_self_reflection", "type": "boolean", "category": "safety", "default": False, "hint": "Post-response self-reflection."},
+    {"key": "enable_self_reflection", "type": "boolean", "category": "safety", "default": True, "hint": "Post-response self-reflection. NOTE: hardware auto-tune manages this per tier and reverts it to off on the weakest (potato) tier — lock it via auto_tune_locked_keys or turn off auto_tune_enabled to force a manual value."},
     {
         "key": "direct_feedback_enabled",
         "type": "boolean",
@@ -257,8 +267,8 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "key": "deterministic_tool_routes_enabled",
         "type": "boolean",
         "category": "safety",
-        "default": False,
-        "hint": "Deterministic tool routing: reduce visible tools and constrain tool choice to task type.",
+        "default": True,
+        "hint": "Deterministic tool routing: reduce visible tools and constrain tool choice to task type. On by default (quality enforcement); set false for the legacy full-tool-menu behaviour.",
     },
     {
         "key": "engineering_pipeline_default_mode",
@@ -347,7 +357,7 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "hint": "Per-workspace autonomous_run lock; local llama generation stays globally serialized. Enable for multi-repo parallelism.",
     },
     # ── Remote ──
-    {"key": "remote_enabled", "type": "boolean", "category": "remote", "default": False, "hint": "Allow remote API access."},
+    {"key": "remote_enabled", "type": "boolean", "category": "remote", "default": False, "hint": "Allow remote (non-localhost) API access. OFF by default (security + needs-credential): it exposes the API off this machine, and it cannot be switched on without an auth credential — with none, every request including your own localhost answers 403. Set remote_api_key / a tunnel token first."},
     {
         "key": "remote_api_key",
         "type": "string",
@@ -390,7 +400,7 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "type": "boolean",
         "category": "safety",
         "default": False,
-        "hint": "Relaxes admin-mode APPROVAL gating for otherwise-blocklisted tools. NOTE: the hard shell command blocklist (rm/dd/format/…) still applies regardless — this does not grant those commands. Do not enable on shared machines.",
+        "hint": "Security-sensitive: relaxes admin-mode APPROVAL gating for otherwise-blocklisted tools. NOTE: the hard shell command blocklist (rm/dd/format/…) still applies regardless — this does not grant those commands. Do not enable on shared machines.",
     },
     {
         "key": "tool_approval_bypass",
@@ -405,7 +415,7 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "type": "boolean",
         "category": "integrations",
         "default": False,
-        "hint": "Enable MCP stdio client (services/mcp_client.py). When true, the mcp_tools_call tool can reach configured mcp_stdio_servers (requires allow_run + approvals like shell).",
+        "hint": "Enable MCP stdio client (services/mcp_client.py). When true, the mcp_tools_call tool can reach configured mcp_stdio_servers (requires allow_run + approvals like shell). OFF by default (security + needs-configured-server): only enable for MCP servers you trust.",
     },
     {"key": "discord_webhook_url", "type": "string", "category": "integrations", "hint": "Discord webhook URL for discord_send. Server Settings → Integrations → Webhooks."},
     {"key": "discord_bot_token", "type": "string", "category": "integrations", "hint": "Discord bot token for full bot (voice, TTS, music). Create at Discord Developer Portal."},
