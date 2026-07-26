@@ -185,7 +185,7 @@ def _seed_learning(base_url: str, content: str, kind: str, timeout: int) -> bool
         return bool(out.get("ok")) and int(out.get("learnings_added") or 0) >= 1
     except Exception as e:
         # A learning already present (dedup) still counts as "seeded"; report others honestly.
-        return f"already" in str(e).lower()
+        return "already" in str(e).lower()
 
 
 # ── Case schema ───────────────────────────────────────────────────────────────
