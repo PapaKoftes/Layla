@@ -153,6 +153,75 @@ def _bg_memory() -> None:
         consolidate_periodic()
     except Exception as _e:
         logger.warning("background_memory_consolidation: %s", _e)
+    # Plan #21: durable long-conversation memory. Run the idle/session-end summariser on the
+    # consolidation cadence (durable conversation summaries ARE memory consolidation). Kept as an
+    # additive call inside this already-registered job so the trigger is genuinely live without
+    # touching the scheduler registry. Fully guarded — never let it disturb consolidation.
+    try:
+        _bg_conversation_summary()
+    except Exception as _e:
+        logger.warning("background_conversation_summary: %s", _e)
+
+
+def _parse_iso_ts(value):
+    """Parse a stored ISO-8601 timestamp (utcnow().isoformat(), tz-aware) → datetime, or None."""
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(str(value))
+    except Exception:
+        return None
+
+
+# ── durable long-conversation memory (plan #21): idle / session-end summariser ──
+def _bg_conversation_summary() -> None:
+    """Session-end / idle-timeout durable-summary trigger (plan #21).
+
+    Scans conversations that have gone IDLE (no new message within the idle window — i.e. the session
+    effectively ended) but were recently active, and distills each one's tail into a persistent
+    conversation_summaries row. This is the cross-session / SHORT-CHAT path: the in-memory ring
+    compaction only fires inside one long session, and the per-append periodic trigger only fires
+    every N messages — so a chat that ends before N never persisted a summary, which is a root cause
+    of conversation_summaries having 0 rows for the life of the DB.
+
+    The dedup watermark lives in-process (summarize_conversation_to_durable_memory), so scoping the
+    scan to RECENTLY-active conversations bounds any re-summarisation after a restart.
+    """
+    from datetime import timedelta
+
+    import runtime_safety as _rs
+    from layla.memory.conversations import summarize_conversation_to_durable_memory
+    from layla.memory.db import list_conversations
+    from layla.time_utils import utcnow
+
+    cfg = _rs.load_config()
+    if not bool(cfg.get("long_conversation_memory_enabled", True)):
+        return
+    idle_min = max(1, int(float(cfg.get("conversation_summary_idle_minutes", 30) or 30)))
+    lookback_hours = max(1, int(float(cfg.get("conversation_summary_lookback_hours", 24) or 24)))
+    min_messages = max(2, int(cfg.get("conversation_summary_min_messages", 6) or 6))
+
+    now = utcnow()
+    idle_cutoff = now - timedelta(minutes=idle_min)
+    lookback_cutoff = now - timedelta(hours=lookback_hours)
+
+    written = 0
+    for c in list_conversations(limit=500):
+        try:
+            if int(c.get("message_count") or 0) < min_messages:
+                continue
+            updated = _parse_iso_ts(c.get("updated_at"))
+            if updated is None:
+                continue
+            if updated > idle_cutoff:       # still active → wait until the session goes idle
+                continue
+            if updated < lookback_cutoff:   # long-idle → handled by an earlier scan; skip to bound work
+                continue
+            if summarize_conversation_to_durable_memory(c.get("id") or "", min_messages=min_messages):
+                written += 1
+        except Exception as _ce:
+            logger.debug("conversation_summary(%s): %s", c.get("id"), _ce)
+    if written:
+        logger.info("conversation_summary: wrote %d durable conversation summaries", written)
 
 
 # ── background initiative / project proposals ──────────────────────────
