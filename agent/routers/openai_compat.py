@@ -34,11 +34,47 @@ def v1_models():
     return JSONResponse({"object": "list", "data": models})
 
 
+# Sane hard cap for a client-requested max_tokens. A huge value would let a (possibly remote)
+# caller force an unbounded generation; 4096 comfortably covers a long structured answer.
+_MAX_SAMPLING_TOKENS = 4096
+
+
+def _clamp_float(v, lo: float, hi: float):
+    """Coerce to float and clamp to [lo, hi]; drop non-numeric / NaN (returns None)."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    if f != f:  # NaN
+        return None
+    return max(lo, min(hi, f))
+
+
+def _clamp_int(v, lo: int, hi: int):
+    """Coerce to int and clamp to [lo, hi]; drop bools / non-numeric (returns None)."""
+    if isinstance(v, bool):  # bool is an int subclass — a JSON `true` is not a token count
+        return None
+    try:
+        i = int(v)
+    except (TypeError, ValueError):
+        return None
+    return max(lo, min(hi, i))
+
+
 def _extract_sampling(body: dict) -> dict:
-    """BL-151: pull the standard OpenAI sampling params coding clients (Cline/Continue/
-    Aider) send. Accepted gracefully; `stop` is honoured on the final text (see
-    `_apply_stop`). We deliberately do NOT feed request temperature/max_tokens into the
-    agent's internal decision calls — that would corrupt tool-decision JSON."""
+    """Plan #18 (was BL-151): pull the standard OpenAI sampling params coding clients
+    (Cline/Continue/Aider) send, CLAMP each to a safe range, and drop anything unparseable.
+
+    The clamped values are threaded to the FINAL user-visible generation ONLY (stream_reason
+    / autonomous_run) — never to the agent's internal tool-DECISION calls, which must stay
+    deterministic/grammar-constrained or the tool-decision JSON breaks. `stop` is honoured on
+    the final text via `_apply_stop`.
+
+    Reach note: the local inference path (llm_gateway.run_completion) accepts only
+    `temperature` and `max_tokens`, reads top_p/top_k from config, and does not plumb `seed`.
+    So temperature + max_tokens actually reach the model; top_p/top_k/seed are accepted and
+    clamped here but not forwarded to the local sampler (kept so the override object is
+    complete and forward-compatible)."""
     b = body or {}
     stop = b.get("stop")
     if isinstance(stop, str):
@@ -47,12 +83,14 @@ def _extract_sampling(body: dict) -> dict:
         stop = [str(s) for s in stop if isinstance(s, str) and s]
     else:
         stop = []
+    _seed = b.get("seed")
     return {
-        "temperature": b.get("temperature"),
-        "max_tokens": b.get("max_tokens"),
-        "top_p": b.get("top_p"),
+        "temperature": _clamp_float(b.get("temperature"), 0.0, 2.0),
+        "max_tokens": _clamp_int(b.get("max_tokens"), 1, _MAX_SAMPLING_TOKENS),
+        "top_p": _clamp_float(b.get("top_p"), 0.0, 1.0),
+        "top_k": _clamp_int(b.get("top_k"), 0, 100_000),
         "stop": stop[:4],  # OpenAI caps stop at 4
-        "seed": b.get("seed"),
+        "seed": (_seed if isinstance(_seed, int) and not isinstance(_seed, bool) else None),
     }
 
 
@@ -327,6 +365,7 @@ async def v1_chat_completions(req: dict, request: Request):
                                 conversation_history=conversation_history,
                                 aspect_id=aspect_id,
                                 show_thinking=show_thinking,
+                                sampling=sampling,  # plan #18: honour request temp/max_tokens on the FINAL stream
                             )
                             for t in gen_tokens:
                                 tok_q.put(t)
@@ -399,6 +438,7 @@ async def v1_chat_completions(req: dict, request: Request):
                     aspect_id=aspect_id,
                     show_thinking=show_thinking,
                     conversation_id=conversation_id,
+                    sampling=sampling,  # plan #18: honour request temp/max_tokens on the FINAL answer
                 )
                 model_name = f"layla-{result.get('aspect', aspect_id or 'morrigan')}"
                 response_text = (result.get("response") or "").strip()
@@ -554,6 +594,7 @@ async def v1_chat_completions(req: dict, request: Request):
             aspect_id=aspect_id,
             show_thinking=show_thinking,
             conversation_id=conversation_id,
+            sampling=sampling,  # plan #18: honour request temp/max_tokens on the FINAL answer
         )
     except Exception:
         # Detail is logged server-side (logger.exception); never leak exception text /

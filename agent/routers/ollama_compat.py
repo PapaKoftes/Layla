@@ -46,6 +46,27 @@ def _content_of(resp) -> tuple[str, dict]:
     return content, d
 
 
+def _map_ollama_options(body: dict, oai: dict) -> None:
+    """Plan #18: Ollama nests sampling under ``options``; map it onto the OpenAI body so the
+    v1 handler's ``_extract_sampling`` clamps it and threads it to the FINAL generation. Only
+    keys the client actually set are forwarded (so absence stays absence → no override). Ollama's
+    ``num_predict`` is the max-tokens equivalent; ``stop`` is forwarded verbatim (v1 coerces it).
+    """
+    opts = (body or {}).get("options") or {}
+    if not isinstance(opts, dict):
+        return
+    for src, dst in (
+        ("temperature", "temperature"),
+        ("top_p", "top_p"),
+        ("top_k", "top_k"),
+        ("seed", "seed"),
+        ("num_predict", "max_tokens"),
+        ("stop", "stop"),
+    ):
+        if opts.get(src) is not None:
+            oai[dst] = opts.get(src)
+
+
 @router.get("/api/version")
 def ollama_version():
     return {"version": "0.1.0-layla"}
@@ -81,9 +102,7 @@ async def ollama_chat(req: dict, request: Request):
         "stream": False,
         "workspace_root": body.get("workspace_root", "") or (body.get("options") or {}).get("workspace_root", ""),
     }
-    _stop = (body.get("options") or {}).get("stop")   # Ollama nests stop under options; forward it to v1.
-    if _stop:
-        oai["stop"] = _stop
+    _map_ollama_options(body, oai)   # plan #18: forward temp/top_p/top_k/seed/num_predict + stop to v1
     resp = await v1_chat_completions(oai, request)
     content, d = _content_of(resp)
     if not d.get("choices") and d.get("error"):
@@ -110,9 +129,7 @@ async def ollama_generate(req: dict, request: Request):
         "stream": False,
         "workspace_root": body.get("workspace_root", "") or (body.get("options") or {}).get("workspace_root", ""),
     }
-    _stop = (body.get("options") or {}).get("stop")   # Ollama nests stop under options; forward it to v1.
-    if _stop:
-        oai["stop"] = _stop
+    _map_ollama_options(body, oai)   # plan #18: forward temp/top_p/top_k/seed/num_predict + stop to v1
     resp = await v1_chat_completions(oai, request)
     content, d = _content_of(resp)
     if not d.get("choices") and d.get("error"):

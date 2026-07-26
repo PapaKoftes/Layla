@@ -56,6 +56,7 @@ def stream_reason(
     cognition_workspace_roots: list[str] | None = None,
     budget_retrieval_depth: str = "",
     tool_free: bool = False,
+    sampling: dict | None = None,
 ):
     """
     Build the same prompt as the reason path and yield token strings from streaming completion.
@@ -97,6 +98,7 @@ def stream_reason(
             workspace_root=workspace_root,
             cognition_workspace_roots=cognition_workspace_roots,
             tool_free=tool_free,
+            sampling=sampling,
         )
     finally:
         set_model_override(None)
@@ -116,6 +118,7 @@ def _stream_reason_body(
     workspace_root: str = "",
     cognition_workspace_roots: list[str] | None = None,
     tool_free: bool = False,
+    sampling: dict | None = None,
 ):
     """Inner generator: prompt + streaming tokens (model override set by stream_reason)."""
     import orchestrator
@@ -259,6 +262,21 @@ def _stream_reason_body(
             max_tok = min(int(max_tok or 256), int(cfg.get("chat_light_max_tokens", 80) or 80))
     except Exception:
         pass
+
+    # Plan #18: honour a per-request sampling override on the FINAL user-visible generation
+    # ONLY. This generator IS the final answer stream; the internal tool-DECISION calls run in
+    # services.agent.llm_decision via the gateway directly and never reach here, so tool JSON
+    # stays deterministic. Applied AFTER the phatic cap so an explicit client request wins.
+    # Only temperature + max_tokens are honoured — the only params the gateway's run_completion
+    # accepts (top_p/top_k come from config, seed is not plumbed on the local path).
+    if sampling:
+        _s_temp = sampling.get("temperature")
+        if _s_temp is not None:
+            temperature = float(_s_temp)
+        _s_max = sampling.get("max_tokens")
+        if _s_max is not None:
+            max_tok = int(_s_max)
+
     stop = get_stop_sequences()
 
     # Thinking mode: an explicit show_thinking (or the enabled deliberation flag) runs ONE
