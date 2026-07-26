@@ -1264,6 +1264,75 @@ body.overlay-scroll-lock {
     opacity: 0.85;
     transform: translateY(0);
   }
+  /* ── Multi-aspect deliberation control (in the Aspect panel) ───────────────
+     A prominent, keyboard-focusable on/off switch + depth select, tinted with the
+     active aspect accent so it reads as part of the panel. State logic + cross-control
+     sync live in components/settings-full.js. */
+  .aspect-delib {
+    margin-top: 10px;
+    padding: 8px 10px 8px 12px;
+    border-left: 2px solid var(--asp, #8b0000);
+    border-radius: 0 var(--radius-sm, 6px) var(--radius-sm, 6px) 0;
+    background: linear-gradient(90deg, var(--asp-mid, rgba(139,0,0,0.10)) 0%, transparent 90%);
+  }
+  .aspect-delib-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    cursor: pointer;
+    margin: 0;
+  }
+  .aspect-delib-copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .aspect-delib-name {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text, #eee);
+  }
+  .aspect-delib-sub {
+    font-size: 0.62rem;
+    color: var(--text-faint, #8a8a8a);
+  }
+  .aspect-delib-switch {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    flex: 0 0 auto;
+    width: 38px;
+    height: 22px;
+    margin: 0;
+    border-radius: 11px;
+    background: rgba(255,255,255,0.14);
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .aspect-delib-switch::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform 0.2s;
+  }
+  .aspect-delib-switch:checked { background: var(--asp, #8b0000); }
+  .aspect-delib-switch:checked::after { transform: translateX(16px); }
+  .aspect-delib-switch:focus-visible {
+    outline: 2px solid var(--asp, #8b0000);
+    outline-offset: 2px;
+  }
+  .aspect-delib-depth {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 8px 0 0;
+    cursor: pointer;
+  }
+  .aspect-delib-depth[hidden] { display: none; }
+  .aspect-delib-depth .settings-select { flex: 1 1 auto; min-width: 0; }
   .option-card {
     border: 1px solid var(--border);
     border-radius: 6px;

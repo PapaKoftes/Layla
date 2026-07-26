@@ -408,6 +408,7 @@ function init() {
     checkForUpdates: settingsFull.checkForUpdates,
     saveContentPolicySettings: settingsFull.saveContentPolicySettings,
     setDeliberationMode: settingsFull.setDeliberationMode,
+    toggleDeliberation: settingsFull.toggleDeliberation,
     addWorkspacePreset: settingsFull.addWorkspacePreset,
     removeWorkspacePreset: settingsFull.removeWorkspacePreset,
     onWorkspacePresetSelect: settingsFull.onWorkspacePresetSelect,
