@@ -212,3 +212,6 @@ agent/runtime_config.json.audit-*
 # ".planning/audit/* is safe to commit" and auto-pushes when green — so without this rule the
 # operator's config is one `git add` from the repo. Exactly the .graphml.bak lesson above.
 .planning/audit/.ci-gate*
+
+# Real-eval trend output (local run history, not source)
+agent/eval/history/
