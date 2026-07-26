@@ -8,11 +8,14 @@ how much Layla has learned about the operator, so the overlay is deleted and the
 ordinary settings.
 
 THE SAFETY PROPERTY IS THE POINT OF THIS FILE. Deleting a gate must not enable anything. The
-argument is structural: every one of these keys defaults to False in `load_config`'s `defaults`,
-and the overlay only ever WROTE False (never True), so its removal cannot flip a key on for a
-config that did not ask — it can only stop overriding a config that did. `test_removing_the_gate_
-granted_nothing` drives that end to end rather than trusting the argument, by diffing the full
-effective config of a never-asked config against an explicit all-False baseline.
+argument is structural: the overlay only ever WROTE False (never True), so its removal cannot
+flip a key on for a config that did not ask — it can only stop overriding a config that did. Each
+key's SHIPPED default is a separate product decision (five ship OFF; inline_initiative_enabled
+ships ON — model-free, text-only, cheap — under the "nothing off-by-default unless necessary"
+cluster), and the gate's removal must not change that default in either direction.
+`test_removing_the_gate_granted_nothing` drives that end to end rather than trusting the argument,
+by diffing the full effective config of a never-asked config against one seeded with those shipped
+defaults (see GATED_DEFAULTS).
 """
 from __future__ import annotations
 
@@ -44,6 +47,15 @@ FORMERLY_GATED = (
     "initiative_project_proposals_enabled",
     "autonomy_optimizer_enabled",
 )
+
+# The SHIPPED default for each formerly-gated key. Five ship OFF; inline_initiative_enabled ships
+# ON by a deliberate product decision (model-free, text-only, cheap), NOT because any gate grants
+# it. The safety property is "never-asked == these shipped defaults", so removing the gate is
+# proven capability-neutral without hard-coding the (now incorrect) assumption that all six are
+# False. If a future flip changes one of these, update it here deliberately — the same discipline
+# test_example_config_matches_shipped_defaults.py applies to the example file.
+GATED_DEFAULTS = {k: False for k in FORMERLY_GATED}
+GATED_DEFAULTS["inline_initiative_enabled"] = True
 
 # Of those six, the ones that a code path outside runtime_safety/config_schema actually READS.
 # `autonomous_research_mode` is excluded and that exclusion is load-bearing — see
@@ -110,26 +122,28 @@ def _effective_config(seed: dict) -> dict:
 # ── the safety property ─────────────────────────────────────────────────────────
 
 def test_removing_the_gate_granted_nothing():
-    """A config that never asked for these capabilities must not acquire one.
+    """A never-asked config must match one seeded with the shipped defaults — no more, no less.
 
     THE FULL effective dict is diffed, not just the six keys, because a silent grant that landed
     on some seventh key an autonomy flag feeds would pass a six-key assertion.
     """
     never_asked = _effective_config({})
-    explicitly_off = _effective_config({k: False for k in FORMERLY_GATED})
+    explicitly_set = _effective_config(GATED_DEFAULTS)
 
-    diff = {k: (explicitly_off.get(k, "<ABSENT>"), never_asked.get(k, "<ABSENT>"))
-            for k in set(never_asked) | set(explicitly_off)
-            if never_asked.get(k, "<ABSENT>") != explicitly_off.get(k, "<ABSENT>")}
+    diff = {k: (explicitly_set.get(k, "<ABSENT>"), never_asked.get(k, "<ABSENT>"))
+            for k in set(never_asked) | set(explicitly_set)
+            if never_asked.get(k, "<ABSENT>") != explicitly_set.get(k, "<ABSENT>")}
     assert not diff, (
-        "a config that never mentioned these keys differs from one that set them all False:\n"
-        + "\n".join(f"  {k}: explicitly-off={o!r} never-asked={n!r}" for k, (o, n) in diff.items())
+        "a config that never mentioned these keys differs from one seeded with their shipped "
+        "defaults:\n"
+        + "\n".join(f"  {k}: explicitly-set={o!r} never-asked={n!r}" for k, (o, n) in diff.items())
     )
     for key in FORMERLY_GATED:
-        assert never_asked.get(key) is False, (
-            f"'{key}' is {never_asked.get(key)!r} on a config that never asked for it. Removing "
-            "the rank gate has silently granted a capability — that is the one outcome this "
-            "change was not allowed to have."
+        assert never_asked.get(key) is GATED_DEFAULTS[key], (
+            f"'{key}' is {never_asked.get(key)!r} on a config that never asked for it, but its "
+            f"shipped default is {GATED_DEFAULTS[key]!r}. Removing the rank gate must not change a "
+            "key's shipped default in either direction — that is the outcome this change was not "
+            "allowed to have."
         )
 
 

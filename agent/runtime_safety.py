@@ -561,11 +561,11 @@ def load_config() -> dict:
             "tool_call_timeout_seconds": 180,  # was 60 — real pytest/build/install steps exceed 60s and got killed
             "approval_ttl_seconds": 3600,
             "hyde_enabled": False,
-            # BL-100 inline RAG grounding (cite-or-abstain). Off by default (non-invasive);
-            # "flag" annotates a grounding block, "abstain" recommends hedging when a
-            # substantive claim isn't supported by retrieved context. min_support is the
-            # lexical-support threshold (0-1) for the default model-free scorer.
-            "grounding_enabled": False,
+            # BL-100 inline RAG grounding (cite-or-abstain). ON by default in the non-invasive
+            # "flag" mode: model-free lexical scorer, annotates a grounding block only when a
+            # substantive claim isn't supported by retrieved context ("abstain" would instead
+            # recommend hedging). min_support is the lexical-support threshold (0-1).
+            "grounding_enabled": True,
             "grounding_mode": "flag",
             "grounding_min_support": 0.35,
             # BL-103 reranker backend: auto (flashrank→cross-encoder→bm25) | flashrank | cross_encoder | bm25.
@@ -769,7 +769,9 @@ def load_config() -> dict:
             "execution_trace_log_enabled": True,
             "knowledge_retrieval_domain_boost": 1.15,
             "memory_cleanup_confidence_threshold": 0.08,
-            "inline_initiative_enabled": False,
+            # ON by default: model-free, text-only next-step suggestion after 2+ tool steps
+            # (no tool execution, cheap). Schema mirrors this in EDITABLE_SCHEMA.
+            "inline_initiative_enabled": True,
             "initiative_engine_enabled": False,
             "initiative_project_proposals_enabled": False,
             # BL-190 mood: was read at system_head_builder.py:896 but set nowhere, so it defaulted
@@ -961,8 +963,10 @@ def load_config() -> dict:
             "mem0_api_key": None,
             "mem0_provider": "local",  # "local" | "cloud"
             "aspect_model_overrides": {},
-            # Debate engine: "solo" (default), "auto", "debate", "council", "tribunal"
-            "deliberation_mode": "auto",  # auto-detects when debate/council is useful
+            # Debate engine mode: "auto" (default) | "solo" | "debate" | "council" | "tribunal".
+            # Default is "auto" — it only escalates tool-free judgment turns (the auto-gate was
+            # made safe in a prior commit) and stays single-voice otherwise. Matches config_schema.
+            "deliberation_mode": "auto",
             "debate_max_tokens": 800,
             "debate_temperature": 0.7,
             "debate_synthesis_max_tokens": 1200,
@@ -1015,6 +1019,28 @@ def load_config() -> dict:
             "german_mode_enabled": False,  # language-specific; off by default
             "golden_examples_enabled": True,
             "speculative_decoding_enabled": False,
+            # ── Editable-schema mirror ────────────────────────────────────────────
+            # These keys are advertised in config_schema.EDITABLE_SCHEMA with a default but were
+            # ABSENT from this dict, so load_config() made no claim and every consumer supplied
+            # its own `.get(key, fallback)` — the exact drift the "schema tells the truth" rule
+            # exists to kill. Each value below EQUALS the schema default (and the fallback every
+            # reader already used), so this is a no-op behaviourally; it just makes load_config the
+            # single authoritative source the displayed default mirrors. See
+            # tests/test_config_defaults_honesty.py (parity scan).
+            "auto_tune_enabled": True,
+            "people_codex_enabled": True,
+            "enable_cot": True,
+            "skill_deps_require_pinned": True,
+            "embedder_prefer_quality": False,
+            "tts_speed": 1.0,
+            "models_max_keep": 0,
+            "wizard_complete": False,
+            # Genuinely-necessitated OFF (security): explicit False here so a blanket flip-on is
+            # visible in the diff, not a silent absence. See the item-9 defaults-lock test.
+            "plugins_enabled": False,
+            "skill_venv_enabled": False,
+            "skill_packs_execute_enabled": False,
+            "allow_legacy_remote_api_key": False,
         }
         hw_defaults = _hardware_derived_defaults()
         defaults.update(hw_defaults)
