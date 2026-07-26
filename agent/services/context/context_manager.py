@@ -232,6 +232,22 @@ def _compress_to_summary(messages: list) -> str:
     return "[Earlier conversation (truncated)]\n" + raw[-1500:]
 
 
+def summarize_messages(messages: list) -> str:
+    """Public entry point for DURABLE long-conversation summarization (plan #21).
+
+    Distill a list of ``{role, content}`` messages into a compact bullet summary via the LLM,
+    degrading to a text-only ``[Earlier conversation (truncated)]`` marker when the model is busy or
+    unavailable. Returns "" for empty/contentless input.
+
+    ``summarize_history`` above compresses the IN-MEMORY ring within a single long session; this
+    wrapper is what the session-independent trigger in ``layla.memory.conversations`` calls to
+    summarize the tail of the PERSISTENT ``conversation_messages`` — the path that finally writes the
+    ``conversation_summaries`` rows that had 0 rows for the life of the database. Kept as a thin,
+    stable public name so callers (and tests) do not reach into the private ``_compress_to_summary``.
+    """
+    return _compress_to_summary(messages)
+
+
 # ─── Prompt assembly with token budgets ──────────────────────────────────────
 
 
