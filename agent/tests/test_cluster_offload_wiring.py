@@ -21,11 +21,12 @@ offload path that can fail a turn is worse than no offload path at all.
 """
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from services.llm import inference_router as ir
+from services.llm import llm_gateway as gw
 
 GOOD = {"choices": [{"message": {"content": "answer from the gaming PC"}}]}
 GPU_PEER = {"name": "battlestation", "hardware_tier": "gpu_high", "ip": "192.168.1.5", "port": 8000}
@@ -113,3 +114,89 @@ def test_the_gateway_actually_calls_the_offload():
         "llm_gateway.run_completion does not call try_cluster_offload_first — clustering is back to "
         "moving zero work, which is exactly the state BL-350 recorded"
     )
+
+
+# ── Plan #19: STREAMING-path offload ────────────────────────────────────────────────────────────
+#
+# The non-stream branch already offloaded (llm_gateway calls try_cluster_offload_first before the
+# local retry loop). The STREAMING branch — the DEFAULT UI path — did not, so a streamed turn always
+# ran locally even with a paired GPU peer available: the chat path moved zero work. These pin the
+# streaming seam's three load-bearing properties.
+#
+# All hermetic: runtime_safety.load_config is patched to a controlled cfg (tool_routing_enabled off
+# so no model-router classification fires; a huge dual-model threshold so no dual-model probe fires),
+# and the LOCAL streaming backend (inference_router.run_completion, which the gateway imports as _run
+# at call time) is mocked — so no real GGUF is ever loaded.
+
+# tool_routing_enabled off + a huge dual_model_threshold_gb keep _effective_model_filename cheap and
+# deterministic; model_filename gives it a concrete basename to return.
+_STREAM_CFG_ON = {
+    "cluster_offload_enabled": True,
+    "hardware_tier": "cpu",
+    "tool_routing_enabled": False,
+    "dual_model_threshold_gb": 999999,
+    "model_filename": "test.gguf",
+}
+_STREAM_CFG_OFF = {
+    # cluster_offload_enabled deliberately absent → the common, clustering-off case.
+    "hardware_tier": "cpu",
+    "tool_routing_enabled": False,
+    "dual_model_threshold_gb": 999999,
+    "model_filename": "test.gguf",
+}
+
+
+def _local_stream_mock(*chunks):
+    """A mock standing in for the LOCAL streaming backend (inference_router.run_completion).
+
+    Returns a MagicMock so callers can assert `.called`; each invocation yields `chunks` and asserts
+    the gateway actually requested stream=True on the local seam.
+    """
+    def _impl(*_a, **kw):
+        assert kw.get("stream") is True, "gateway drove the local seam without stream=True"
+        return (c for c in chunks)
+
+    return MagicMock(side_effect=_impl)
+
+
+class TestStreamingOffload:
+    def test_a_peer_serves_the_stream_local_model_is_not_touched(self):
+        """(a) A beefier peer serves a STREAMED turn (as a single chunk); the local model never runs."""
+        local = MagicMock(side_effect=AssertionError("local streaming ran while a peer served the turn"))
+        with patch("runtime_safety.load_config", return_value=_STREAM_CFG_ON), \
+             patch.object(ir, "try_cluster_offload_first", return_value=GOOD), \
+             patch.object(ir, "run_completion", local):
+            gen = gw.run_completion("hello", max_tokens=64, temperature=0.2, stream=True)
+            chunks = list(gen)
+        assert chunks == ["answer from the gaming PC"], "peer answer was not delivered as one clean chunk"
+        local.assert_not_called()
+
+    def test_b_peer_failure_mid_offload_falls_back_to_local_cleanly(self):
+        """(b) The offload blows up mid-turn; the turn still completes LOCALLY, delivering the FULL
+        answer with no leaked peer fragment — never a half-stream with no fallback."""
+        local = _local_stream_mock("loc", "al ", "answer")
+        with patch("runtime_safety.load_config", return_value=_STREAM_CFG_ON), \
+             patch.object(ir, "try_cluster_offload_first", side_effect=OSError("peer stream died mid-way")), \
+             patch.object(ir, "run_completion", local):
+            gen = gw.run_completion("hello", max_tokens=64, temperature=0.2, stream=True)
+            out = "".join(list(gen))
+        assert local.called, "local streaming fallback never ran after the peer failed"
+        assert out == "local answer", "local fallback did not deliver the full, uncorrupted answer"
+        assert "gaming PC" not in out, "a peer fragment leaked into the fallback stream"
+
+    def test_c_clustering_off_is_a_noop_peer_layer_never_consulted(self):
+        """(c) Clustering off → the local streaming path is byte-identical and the peer layer is
+        never consulted (the real try_cluster_offload_first returns at its enabled-gate)."""
+        cluster_call = MagicMock(name="run_completion_cluster")
+        local = _local_stream_mock("hello ", "from ", "local")
+        with patch("runtime_safety.load_config", return_value=_STREAM_CFG_OFF), \
+             patch.object(ir, "run_completion_cluster", cluster_call), \
+             patch("services.cluster.mdns_discovery.get_best_peer_for_inference") as best_peer, \
+             patch.object(ir, "run_completion", local):
+            gen = gw.run_completion("hi", max_tokens=64, temperature=0.2, stream=True)
+            chunks = list(gen)
+        assert "".join(chunks) == "hello from local"
+        assert chunks == ["hello ", "from ", "local"], "local chunk boundaries were altered when offload is off"
+        assert local.called
+        cluster_call.assert_not_called()
+        best_peer.assert_not_called()
