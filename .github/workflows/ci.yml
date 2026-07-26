@@ -218,8 +218,8 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install ruff
-        run: pip install ruff
+      - name: Install ruff + vulture
+        run: pip install ruff vulture
 
       - name: Check with ruff
         run: python -m ruff check agent fabrication_assist
@@ -230,6 +230,14 @@ jobs:
       - name: Check architecture boundaries
         working-directory: agent
         run: python scripts/check_architecture.py
+
+      # Symbol-liveness gate (vulture): fails when a load-bearing exported function/class/method has
+      # zero non-test callers — the "built but never plugged in" defect, caught statically. Runs at
+      # confidence 60 (functions/classes score 60 in vulture, so 80 would be blind to the exact case)
+      # against a reviewed baseline whitelist, so it starts green and only NEW orphans fail.
+      - name: Check dead symbols
+        working-directory: agent
+        run: python scripts/check_dead_symbols.py
 
   secret-scan:
     name: Secret scan (gitleaks)
@@ -444,3 +452,12 @@ jobs:
           # still catching gross regressions: server down (0%), everything refused/leaked/
           # tool-looped (<15%). Raise this only if the golden model is upgraded.
           test "${rate:-0}" -ge 20 || { echo "golden pass-rate ${rate:-0}% below floor 20%"; exit 1; }
+
+      # Capability eval — the REAL product-quality signal the mocked unit suite cannot give. Boots its
+      # own isolated server on the same cached 360M model and runs tool / grounding / memory cases that
+      # assert the tool actually executed, the seeded fact was recalled, and context carried across
+      # turns. --fast is the gate subset; the floor is a pipeline-liveness smoke (a tiny model is noisy),
+      # matching the golden floor's philosophy. The full set + per-effect liveness snapshot run here too.
+      - name: Capability eval (tool / grounding / memory, real model)
+        working-directory: agent
+        run: python scripts/run_real_eval.py --fast --gate --floor 25
