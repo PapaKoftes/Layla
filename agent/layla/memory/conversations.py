@@ -2,6 +2,7 @@
 import json
 import logging
 import sqlite3
+import threading
 
 from layla.memory.db_connection import _conn
 from layla.memory.migrations import migrate
@@ -41,6 +42,154 @@ def get_recent_conversation_summaries(n: int = 5) -> list[dict]:
             "SELECT id, summary, created_at, embedding_id FROM conversation_summaries ORDER BY id DESC LIMIT ?", (n,)
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+# ── Durable long-conversation memory (plan #21) ─────────────────────────────
+#
+# THE 0-ROWS DEFECT: conversation_summaries had 0 rows for the life of the DB. The only writer was
+# context_manager.summarize_history, which compacts the IN-MEMORY ring (shared_state._conv_histories,
+# a deque(maxlen=20)) within a SINGLE long session — so short chats and cross-session tails never
+# produced a persistent summary. These triggers read the PERSISTENT conversation_messages directly and
+# fire on message-count / idle / session-end, independent of any live session.
+#
+# Best-effort, in-process dedup watermark: the durable message_count at which we last wrote a summary
+# for a conversation. Prevents the periodic (every-N) and idle/session-end triggers from writing
+# near-duplicate summaries of the same tail. It resets on process restart — worst case one redundant
+# summary per recently-active conversation after a restart, which the idle job's recent-window scan
+# bounds. conversation_summaries has no conversation_id column (summaries are a GLOBAL second-tier
+# memory the head recalls via get_recent_conversation_summaries), so a persistent per-conversation
+# watermark cannot live in that table without a schema change owned elsewhere.
+_LAST_DURABLE_SUMMARY_COUNT: dict[str, int] = {}
+_DURABLE_SUMMARY_LOCK = threading.Lock()
+
+DURABLE_SUMMARY_EVERY_N = 16      # summarize on the in-memory ring's rolloff cadence (deque maxlen=20)
+DURABLE_SUMMARY_MIN_MESSAGES = 6  # below this a chat is too short to be worth distilling
+DURABLE_SUMMARY_MAX_TAIL = 30     # summarize at most the most-recent N durable messages
+
+
+def summarize_conversation_to_durable_memory(
+    conversation_id: str,
+    *,
+    min_messages: int = DURABLE_SUMMARY_MIN_MESSAGES,
+    max_tail: int = DURABLE_SUMMARY_MAX_TAIL,
+    force: bool = False,
+) -> str | None:
+    """DURABLE, session-independent long-conversation memory (plan #21). THE fix for the 0-rows defect.
+
+    Summarize the tail of the PERSISTENT ``conversation_messages`` for ``conversation_id`` and WRITE a
+    row to ``conversation_summaries`` via ``add_conversation_summary`` (which embeds best-effort and
+    resolves the DB off LAYLA_DATA_DIR — no ``__file__``-relative writes). Fires the
+    ``conversation_compacted`` liveness effect on a successful write.
+
+    Returns the summary text written, or ``None`` (too few messages / nothing new since the last
+    summary / the summarizer produced nothing persistable).
+
+    ``force`` bypasses the min-messages and watermark gates and persists even the text-only truncation
+    fallback (a session-end / manual snapshot). The AUTOMATIC callers persist only a real LLM summary
+    and leave the watermark unadvanced so the idle job retries once the model is free — this keeps
+    low-value truncation rows out of the global recall pool.
+    """
+    cid = (conversation_id or "").strip()
+    if not cid:
+        return None
+    try:
+        migrate()
+        all_msgs = get_conversation_messages(cid, limit=2000)
+        total = len(all_msgs)
+        if not force:
+            if total < max(1, int(min_messages)):
+                return None
+            with _DURABLE_SUMMARY_LOCK:
+                last = _LAST_DURABLE_SUMMARY_COUNT.get(cid, 0)
+            if total <= last:
+                return None  # nothing new persisted since the last durable summary
+        # get_conversation_messages returns oldest-first; take the most-recent tail to summarize.
+        tail = all_msgs[-max(1, int(max_tail)):]
+        msgs = [{"role": m.get("role", ""), "content": m.get("content", "")} for m in tail]
+
+        from services.context.context_manager import summarize_messages
+        summary = (summarize_messages(msgs) or "").strip()
+        if not summary:
+            return None
+        # Automatic path persists only a real LLM summary; force persists the truncation fallback too.
+        if not (force or summary.startswith("[Earlier conversation summary]")):
+            return None
+        add_conversation_summary(summary)  # writes the row + embeds (best-effort), honouring LAYLA_DATA_DIR
+        with _DURABLE_SUMMARY_LOCK:
+            _LAST_DURABLE_SUMMARY_COUNT[cid] = total
+        try:
+            from services.observability import liveness
+            liveness.fire("conversation_compacted")  # plan #21's built-in liveness check; never raises
+        except Exception:
+            pass
+        return summary
+    except Exception as e:
+        logger.debug("summarize_conversation_to_durable_memory(%s) failed: %s", cid, e)
+        return None
+
+
+def _maybe_durable_summary_on_append(conversation_id: str, new_message_count: int) -> None:
+    """Periodic durable-summary trigger, fired from append_conversation_message.
+
+    Every N persisted messages, distill the conversation tail into a durable summary OFF the reply
+    path (a daemon thread — the summarizer takes an LLM call this box cannot afford inline). This is
+    the ACTIVE-long-session trigger; the idle scheduler job covers short chats that end before N.
+    Best-effort; never raises into the caller.
+    """
+    try:
+        cid = (conversation_id or "").strip()
+        if not cid or int(new_message_count or 0) <= 0:
+            return
+        every_n = DURABLE_SUMMARY_EVERY_N
+        try:
+            import runtime_safety
+            cfg = runtime_safety.load_config()
+            if not bool(cfg.get("long_conversation_memory_enabled", True)):
+                return
+            every_n = max(2, int(cfg.get("long_conversation_summary_every_n", DURABLE_SUMMARY_EVERY_N)
+                                 or DURABLE_SUMMARY_EVERY_N))
+        except Exception:
+            pass
+        if new_message_count < every_n or new_message_count % every_n != 0:
+            return
+        threading.Thread(
+            target=summarize_conversation_to_durable_memory,
+            args=(cid,),
+            daemon=True,
+            name="durable-conv-summary",
+        ).start()
+    except Exception as e:
+        logger.debug("_maybe_durable_summary_on_append(%s) failed: %s", conversation_id, e)
+
+
+def recall_summaries_by_similarity(query: str, n: int = 3) -> list[dict]:
+    """Semantic recall over durable conversation summaries (for future use).
+
+    Embed ``query`` and return up to ``n`` stored conversation summaries ranked by vector similarity,
+    filtered to ``type == 'conversation_summary'``. Read-only; degrades to ``[]`` when the embedder or
+    vector store is unavailable. The head currently recalls the most-RECENT summaries
+    (get_recent_conversation_summaries); this is the by-relevance counterpart.
+    """
+    q = (query or "").strip()
+    if not q:
+        return []
+    try:
+        from layla.memory.vector_store import embed, search_similar
+        vec = embed(q)
+        hits = search_similar(vec, k=max(1, int(n)) * 4) or []
+        out: list[dict] = []
+        for h in hits:
+            if not isinstance(h, dict) or h.get("type") != "conversation_summary":
+                continue
+            content = (h.get("content") or "").strip()
+            if content:
+                out.append({"summary": content, "embedding_id": h.get("embedding_id", "")})
+            if len(out) >= max(1, int(n)):
+                break
+        return out
+    except Exception as e:
+        logger.debug("recall_summaries_by_similarity failed: %s", e)
+        return []
 
 
 import re as _re
@@ -185,6 +334,7 @@ def append_conversation_message(
         if len(safe_content) > 100_000:
             safe_content = safe_content[:100_000]
     safe_role = (role or "assistant").strip()
+    new_count = 0
     with _conn() as db:
         db.execute(
             """INSERT INTO conversation_messages
@@ -195,6 +345,7 @@ def append_conversation_message(
         row = db.execute("SELECT title, message_count FROM conversations WHERE id=?", (cid,)).fetchone()
         title = (row["title"] or "").strip() if row else ""
         count = int(row["message_count"] or 0) if row else 0
+        new_count = count + 1  # this INSERT is the (count+1)-th durable message for the conversation
         if safe_role == "user" and not title and count == 0:
             title = _auto_name_conversation(safe_content)
         dom = (aspect_id or "").strip()
@@ -208,6 +359,10 @@ def append_conversation_message(
             (now, title, title, dom, dom, dom, dom, cid),
         )
         db.commit()
+    # Plan #21: durable long-conversation memory. Every N persisted messages, summarize the tail into
+    # conversation_summaries off the reply path. Fully best-effort — a summariser hiccup must never
+    # break a message write.
+    _maybe_durable_summary_on_append(cid, new_count)
     return msg_id
 
 
