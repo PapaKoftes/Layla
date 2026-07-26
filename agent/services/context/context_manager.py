@@ -387,6 +387,12 @@ def build_system_prompt(
         pass
 
     order = [
+        # ITEM 10 — the hard-reserved per-turn prefix (aspect/familiarity/language/hardware directives
+        # and, on a capability turn, the verified capability manifest). FIRST and reserve-first: its full
+        # token cost is taken from the budget BEFORE any elastic section, and it is truncated only as a
+        # genuine last resort in an impossible window (with a loud warning). Its survival is guaranteed,
+        # not emergent — which is the whole point of the fix.
+        "protected_directives",
         "system_instructions",
         # Durable identity facts are authoritative ground truth — placed right after
         # the identity block (and ahead of goal/memory/knowledge) so token pressure
@@ -449,7 +455,38 @@ def build_system_prompt(
         token_estimate((sections.get("durable_facts") or "").strip()) + 24,
     )
 
+    # ITEM 10 — per-section "appear" reserves. A large identity/persona block (or a large durable_facts
+    # block on a real profile) must not be able to greedily consume the window and silently drop the
+    # sections behind it. Each downstream section is guaranteed a small minimum (capped by its own
+    # content, so absent/short sections reserve nothing), so memory / knowledge / durable facts still
+    # surface on a populated turn instead of being starved.
+    def _appear_reserve(_k: str, _floor: int) -> int:
+        _r = (sections.get(_k) or "").strip()
+        return min(_floor, token_estimate(_r) + 12) if _r else 0
+
+    _section_reserves = {
+        "system_instructions": _appear_reserve("system_instructions", 48),  # keep the core identity line
+        "durable_facts": _appear_reserve("durable_facts", 64),
+        "agent_state": _appear_reserve("agent_state", 48),
+        "memory": _appear_reserve("memory", 64),
+        # NOTE: `knowledge` is deliberately NOT hard-reserved. It carries static reference-doc markdown
+        # whose own `# Title` / `## Section` structure trips the no-dangling-header guard the instant only
+        # a header-sized slice fits — and forcing a low-value doc header onto a tight ordinary turn is not
+        # worth that. It still appears whenever there is leftover budget after the reserved sections.
+    }
+    # current_goal is the user's OWN question — tiny, and it must never yield. Hold its full reserve
+    # aside so NOTHING ahead of it (the protected prefix included) can consume it, and release it the
+    # moment current_goal is reached. The comment on `order` promises "the manifest yields its tail
+    # before the goal yields a word"; this is what makes that literally true.
+    _goal_floor = _reserve_current_goal if (sections.get("current_goal") or "").strip() else 0
+    remaining -= _goal_floor
+    _goal_released = False
+    _order_index = {k: i for i, k in enumerate(order)}
+
     for key in order:
+        if key == "current_goal" and not _goal_released:
+            remaining += _goal_floor
+            _goal_released = True
         raw = (sections.get(key) or "").strip()
         if not raw:
             continue
@@ -468,27 +505,56 @@ def build_system_prompt(
                     _hdr_ctx_done = True
             elif key == "agent_state":
                 raw = "## SCRATCHPAD\n\n" + raw
+        # ITEM 10 — the hard-reserved protected prefix: emitted WHOLE (its full cost is subtracted from
+        # the budget before any elastic section), and truncated only as a genuine last resort when the
+        # window is impossibly small — and then loudly, never silently.
+        if key == "protected_directives":
+            _full = token_estimate(raw)
+            if _full <= remaining:
+                truncated = raw
+            else:
+                _logger.warning(
+                    "protected_directives (%d tok) exceeds the head window (remaining=%d tok) — "
+                    "truncating the hard-reserved per-turn prefix; a directive or the capability "
+                    "manifest will be lost this turn", _full, remaining,
+                )
+                truncated = truncate_to_tokens(raw, remaining)
+            tok = token_estimate(truncated)
+            metrics["section_tokens"][key] = tok
+            if tok < _full:
+                metrics["truncated_sections"].append(key)
+            remaining = max(0, remaining - tok - 2)
+            if truncated:
+                built.append((key, truncated))
+            continue
+
         max_tok = budgets.get(key, 400)
-        if key == "system_instructions":
-            # Leave room for goal + workspace context if they exist.
-            _need_goal = 1 if (sections.get("current_goal") or "").strip() else 0
-            _need_state = 1 if (sections.get("agent_state") or "").strip() else 0
-            _need_durable = 1 if (sections.get("durable_facts") or "").strip() else 0
-            reserve = (
-                (_reserve_current_goal if _need_goal else 0)
-                + (_reserve_agent_state if _need_state else 0)
-                + (_reserve_durable_facts if _need_durable else 0)
-            )
-            if remaining > reserve:
-                max_tok = min(int(max_tok), int(remaining - reserve))
-        elif key == "current_goal":
-            # Leave room for workspace context.
-            if (sections.get("agent_state") or "").strip() and remaining > _reserve_agent_state:
-                max_tok = min(int(max_tok), int(remaining - _reserve_agent_state))
+        # Leave the appear-reserve of every LATER section so nothing behind this one is starved. Skip
+        # current_goal entirely: it is the highest-priority small section, held aside above, and it must
+        # not have the tail-reserve applied to itself (that would starve the very thing it protects).
+        if key != "current_goal":
+            _tail_reserve = 0
+            for _k2 in order[_order_index.get(key, 0) + 1:]:
+                if _k2 == "current_goal":
+                    continue  # held aside separately; released at its own turn
+                if (sections.get(_k2) or "").strip():
+                    _tail_reserve += _section_reserves.get(_k2, 0)
+            if _tail_reserve:
+                max_tok = min(
+                    int(max_tok),
+                    max(int(_section_reserves.get(key, 0)), int(remaining - _tail_reserve)),
+                )
         max_tok = min(max_tok, remaining)
         if max_tok <= 0:
             metrics["dropped_sections"].append(key)
             _logger.debug("context_budget: dropped section=%s (budget exhausted, remaining=%d)", key, remaining)
+            # ITEM 10: keep going ONLY while current_goal is still pending — a starved ELASTIC section
+            # ahead of the user's own question (e.g. a large durable_facts block) must not take the goal
+            # down with it. Once the goal (its reserve held aside) has been placed, restore the original
+            # behavior: stop, so trailing low-priority sections drop cleanly rather than surfacing
+            # header-only slivers (which the no-dangling-header guard rightly rejects).
+            if _goal_floor and not _goal_released:
+                continue
             break
         truncated = truncate_to_tokens(raw, max_tok)
         tok = token_estimate(truncated)

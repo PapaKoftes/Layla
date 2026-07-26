@@ -803,6 +803,146 @@ def test_every_broken_disclosure_survives_with_the_REAL_aspect(monkeypatch):
         assert goal in head, "the user's question was truncated to make room for the manifest"
 
 
+# ── ITEM 11: the same head-budget guards, driven against a REALISTIC seeded profile ────────────────
+# The head-budget tests above run against an EMPTY DB (conftest points LAYLA_DATA_DIR at a fresh
+# mkdtemp), which is why the protected-prefix budget regression was invisible: nothing downstream grew.
+# `populated_profile` (conftest) seeds the nine durable facts, learnings, and project/world context, so
+# durable_facts and workspace_context put real pressure on the budget. These were RED before the
+# item-10 fix — the widened capability head overflowed 1700, and the ordinary head dropped the tail
+# directive ([Hardware:]) — and are GREEN after it (directives hard-reserved; window clamped by a fixed
+# window-derived ceiling; durable_facts/workspace_context kept elastic).
+
+
+def test_capability_turn_head_stays_under_an_absolute_ceiling_populated(monkeypatch, populated_profile):
+    """ITEM 11 — the capability ceiling on a real profile. RED before the fix: durable_facts +
+    workspace_context inflated _needed_head and pushed the widened window past 1700."""
+    from services.context.context_manager import token_estimate
+
+    for language in (None, "spanish"):
+        over = {"response_language": language} if language else {}
+        head = _drive_head("what can you do?", monkeypatch, _aspect=_real_morrigan(), **over)
+        tok = token_estimate(head)
+        assert tok <= _CAPABILITY_HEAD_CEILING_TOK, (
+            f"populated capability turn (language={language}) built a {tok}-token head, over the "
+            f"{_CAPABILITY_HEAD_CEILING_TOK}-token ceiling — durable_facts/workspace_context are "
+            f"inflating the widened window instead of yielding to the protected prefix"
+        )
+        assert _MANIFEST_TAIL in head, (
+            f"manifest lost its tail on a populated capability turn (language={language})"
+        )
+
+
+def test_ordinary_turn_head_stays_under_an_absolute_ceiling_populated(monkeypatch, populated_profile):
+    """ITEM 11 — the ordinary ceiling on a real profile. RED before the fix: durable_facts +
+    workspace_context tripped the head-widening on an ORDINARY turn (the gate counted them as fixed
+    downstream), which doubled the window and inflated the head to ~1334 tok. GREEN after: they are
+    elastic, the widening no longer fires on ordinary turns, and the head returns to its ~830 floor."""
+    from services.context.context_manager import token_estimate
+
+    for language in (None, "spanish"):
+        over = {"response_language": language} if language else {}
+        head = _drive_head("fix this bug in my python code", monkeypatch, _aspect=_real_morrigan(), **over)
+        tok = token_estimate(head)
+        assert tok <= _ORDINARY_HEAD_CEILING_TOK, (
+            f"populated ordinary turn (language={language}) built a {tok}-token head, over the "
+            f"{_ORDINARY_HEAD_CEILING_TOK}-token ceiling — durable_facts/workspace_context are still "
+            f"tripping the head-widening on an ordinary turn"
+        )
+
+
+def test_every_per_turn_directive_survives_an_ordinary_turn_populated(monkeypatch, populated_profile):
+    """ITEM 11 — every per-turn directive on a real profile. RED before the fix: durable_facts +
+    workspace_context ate the budget and the tail directive ([Hardware:]) was truncated away."""
+    head = _drive_head("fix this bug in my python code", monkeypatch,
+                       _aspect=_real_morrigan(), response_language="spanish")
+
+    for label, needle in (
+        ("core identity line", "You are Layla. Use the identity and rules below"),
+        ("aspect behaviour", "Tool bias for this aspect"),
+        ("BL-160 language directive", "## Language"),
+        ("hardware summary", "[Hardware:"),
+        ("the user's actual question", "Current goal:"),
+    ):
+        assert needle in head, (
+            f"{label} is missing from a POPULATED ordinary head. On a real profile the protected "
+            f"per-turn prefix must be hard-reserved against durable_facts/workspace_context growth, not "
+            f"ride the tail of a budget-truncated system_instructions section."
+        )
+
+
+def test_populated_ordinary_turn_still_surfaces_memory_and_knowledge(monkeypatch, populated_profile):
+    """ITEM 11 / VERIFY — the hard reservation must not OVER-reserve and starve the elastic sections.
+
+    A real profile puts learnings in `memory` and reference docs in `knowledge`; both must still reach
+    the prompt on an ordinary turn, or the reservation has simply moved the starvation onto them.
+    """
+    head = _drive_head("fix this bug in my python code", monkeypatch, _aspect=_real_morrigan())
+
+    assert ("Things I remember" in head) or ("Relevant memories" in head), (
+        "the memory section was starved on a populated ordinary turn — the protected prefix / durable "
+        "facts are over-reserving and leaving nothing for learnings"
+    )
+    assert "Reference docs" in head, (
+        "the knowledge section was starved on a populated ordinary turn"
+    )
+    # …and the durable facts themselves (authoritative ground truth) must still be present.
+    assert "Durable facts about the user" in head, (
+        "the durable-facts section vanished on a populated ordinary turn"
+    )
+
+
+def test_impossible_window_leaves_a_breadcrumb(monkeypatch, caplog):
+    """ITEM 12 — the post-assembly invariant. When the window is deliberately too small to hold the
+    hard-reserved protected prefix, the prefix is truncated (a genuine last resort) and a breadcrumb is
+    logged rather than the degradation being silent. Driven end to end through build_system_head with a
+    reply reserve so large the head window cannot widen to fit a Spanish capability turn's manifest."""
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="layla"):
+        head = _drive_head(
+            "¿qué puedes hacer?", monkeypatch, _aspect=_real_morrigan(),
+            response_language="spanish", completion_max_tokens=1900,
+        )
+
+    warned = any(
+        ("protected_directives" in r.getMessage()) or ("protected block missing" in r.getMessage())
+        for r in caplog.records
+    )
+    assert warned, (
+        "an impossible tiny window truncated the protected prefix but logged no breadcrumb — the "
+        "degradation is silent (expected a protected_directives / protected-block-missing warning). "
+        f"head tokens={__import__('services.context.context_manager', fromlist=['token_estimate']).token_estimate(head)}"
+    )
+
+
+def test_impossible_window_warns_at_the_assembler(caplog):
+    """ITEM 12 — the same invariant, unit-tested deterministically at the assembler. A protected_directives
+    section larger than the window must be truncated (never silently dropped) with a loud warning."""
+    import logging
+
+    from services.context.context_manager import build_system_prompt
+
+    big = "PROTECTED DIRECTIVE LINE that must survive. " * 200  # ~1.6k tokens
+    sections = {
+        "protected_directives": big,
+        "system_instructions": "You are Layla.",
+        "current_goal": "Current goal: do the thing",
+    }
+    with caplog.at_level(logging.WARNING, logger="layla"):
+        out, metrics = build_system_prompt(sections, n_ctx=600, reserve_for_response=100)
+
+    assert any("protected_directives" in r.getMessage() for r in caplog.records), (
+        "an oversized protected_directives section was truncated without a warning breadcrumb"
+    )
+    assert "protected_directives" in metrics["truncated_sections"], (
+        "protected_directives was not recorded as truncated"
+    )
+    # It must be TRUNCATED, not dropped — the head must still carry as much of it as fits.
+    assert "PROTECTED DIRECTIVE LINE" in out
+    # …and the tiny mandatory current_goal must still survive the impossible window.
+    assert "do the thing" in out, "current_goal was starved by the oversized protected prefix"
+
+
 def test_aspect_behaviour_directive_reaches_the_prompt(monkeypatch):
     """Another of the seven. test_system_head_builder's pressure-branch test proves these survive a REBUILD,
     but it disables the budget assembler outright — so it never proved they survive the BUDGET, which is

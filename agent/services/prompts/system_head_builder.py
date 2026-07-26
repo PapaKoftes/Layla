@@ -1091,22 +1091,36 @@ def build_system_head(
     _cap_goal_lower = (goal or "").lower()
     if _is_capability_question(_cap_goal_lower) and not _is_identity_question(_cap_goal_lower):
         _cap_manifest = _capability_manifest_core(REPO_ROOT)
+    # ITEM 10 (the real fix): the per-turn directives (aspect behaviour, familiarity, BL-160 language,
+    # hardware) and — on a capability turn — the capability manifest are NO LONGER spliced into the
+    # free-form `system_instructions` string. There they rode the tail of a single budget-truncated
+    # section, and their survival was emergent: as durable_facts / workspace_context grow on a REAL
+    # profile the budget is consumed and the tail directive is the first casualty. They become their own
+    # dedicated section, `protected_directives`, which build_system_prompt hard-reserves at the TOP of the
+    # assembly order (reserve-first, no-truncate). system_instructions keeps only the core line + persona
+    # + identity, which stays truncatable and yields FIRST.
+    #
+    # This section is GOAL-DEPENDENT (the manifest is goal-gated), so it is assembled here — never in the
+    # goal-independent static sys cache (`_STATIC_SYS_CACHE` in prompt_builder), which would leak a
+    # capability-turn manifest into unrelated turns.
     _front: list[str] = list(_directives)
-    if _cap_manifest and _cap_manifest in sys_parts:
-        sys_parts.remove(_cap_manifest)
+    if _cap_manifest:
+        # build_core_sys_parts injected the manifest into sys_parts on its own capability check; pull it
+        # back out so it lives ONLY in the protected section (and is not double-counted / truncatable).
+        if _cap_manifest in sys_parts:
+            sys_parts.remove(_cap_manifest)
         _front.append(_cap_manifest)
-    if _front:
-        sys_parts[1:1] = _front
+    protected_directives = "\n\n".join(p for p in _front if (p or "").strip())
 
-    # Tokens of everything that MUST survive truncation: the core line, the per-turn directives and — on a
-    # capability question — the manifest. Deliberately NOT the persona: it is the largest block in the
-    # prefix and the least operative, and including it is what made the widening unaffordable. Measured,
+    # Tokens of the hard-reserved prefix — the per-turn directives and, on a capability question, the
+    # manifest. Deliberately NOT the persona (it lives in system_instructions and yields first). Measured,
     # not assumed, so a manifest that grows cannot silently start getting cut again.
     _protected_prefix_tokens = 0
-    try:
-        _protected_prefix_tokens = token_estimate("\n\n".join(sys_parts[: 1 + len(_front)]))
-    except Exception as _pp_e:
-        logger.debug("protected prefix measure failed: %s", _pp_e)
+    if protected_directives:
+        try:
+            _protected_prefix_tokens = token_estimate(protected_directives)
+        except Exception as _pp_e:
+            logger.debug("protected prefix measure failed: %s", _pp_e)
 
     system_instructions = "\n\n".join(sys_parts)
 
@@ -1200,6 +1214,13 @@ def build_system_head(
                 summary_texts = [s.get("summary", "") for s in summaries if s.get("summary")]
                 if summary_texts:
                     memory_sections["conversation_summaries"] = "Prior conversation summaries:\n" + "\n\n".join(summary_texts)
+                    # Liveness: a durable summary reached the prompt. Stuck at 0 until plan #21 writes
+                    # summaries — a built-in check that long-conversation memory is actually live.
+                    try:
+                        from services.observability import liveness
+                        liveness.fire("conversation_summary_recalled")
+                    except Exception:  # noqa: BLE001
+                        pass
         except Exception as _e:
             logger.debug("context[conversation_summaries] failed: %s", _e)
 
@@ -1474,6 +1495,9 @@ def build_system_head(
         logger.debug("context[directives] failed: %s", _dir_exc)
 
     sections = {
+        # ITEM 10: the hard-reserved per-turn prefix (directives + manifest). build_system_prompt puts
+        # this first and reserve-first, so downstream DB growth can never truncate it away.
+        "protected_directives": protected_directives,
         "system_instructions": system_instructions,
         "durable_facts": durable_facts_block,
         "pinned_context": pinned_block,
@@ -1531,54 +1555,29 @@ def build_system_head(
         # context). One measured ceiling replaces both guesses.
         _max_head_tokens = 0
         _reserve_for_response = 512
-        # What the sections AFTER system_instructions need. The user's own question lives in
-        # `current_goal` and is ~11 tokens; it is the single most important thing in the prompt and it
-        # must never be the thing that yields. Measured, not guessed, and subtracted from the window so
-        # the manifest gives up its tail before the goal gives up a word.
-        _downstream = 24 + sum(
-            token_estimate(_s) for _s in (current_goal, durable_facts_block, workspace_context) if _s
-        )
-        # How many tokens `system_instructions` gets on an ORDINARY turn — no widening at all. This is
-        # the comparison the widening was missing. `_protected_prefix_tokens` is truthy on EVERY turn
-        # (it is core line + persona + per-turn directives, and those always exist), so gating on its
-        # truthiness fired the widening always: `reserve_for_response` went 512 -> 0 on every ordinary
-        # turn, which doubles build_system_prompt's `total_budget` from (n_ctx - 512) to n_ctx. Measured
-        # cost on the live config: an ordinary coding head went 752 -> 1339 tokens (+78%) to deliver
-        # nothing extra — the manifest was not even on those turns — and pushed head+conversation past
-        # n_ctx at convo_turns=12. So: widen only when the protected content genuinely does NOT fit.
+        # ITEM 10(3): downstream = ONLY the small, mandatory current_goal (the user's own question,
+        # ~11 tok). durable_facts and workspace_context are ELASTIC — they yield to the protected prefix
+        # rather than inflating the window. Counting their size here (as this used to) is exactly what let
+        # a REAL profile push the widened capability window past the 1700 ceiling, and what tripped the
+        # widening on ordinary populated turns and doubled every ordinary head (~830 -> ~1334).
+        _downstream = 24 + (token_estimate(current_goal) if current_goal else 0)
+        # How much the protected prefix would get on an ORDINARY turn — no widening. `_protected_prefix_tokens`
+        # is now ONLY the per-turn directives (and, on a capability turn, the manifest); the persona is out
+        # of it, in system_instructions. On an ordinary turn the directives total ~180 tok and fit this cap
+        # several times over, so no widening fires and the head costs what it did before. Only a capability
+        # turn adds the ~890-token manifest, which genuinely does not fit — and only then do we widen.
         _baseline_budgets = budgets if budgets is not None else _resolve_default_budgets(n_ctx)
         _baseline_si_cap = min(
             int(_baseline_budgets.get("system_instructions", 800) or 0),
             max(0, max(512, n_ctx - _reserve_for_response) - _downstream),
         )
-        # The ordinary case: the core line plus the per-turn directives (aspect behaviour, the rank gate,
-        # the BL-160 language block, hardware) total ~207 tokens and fit the ordinary budget several times
-        # over, so no widening happens and an ordinary turn costs exactly what it cost before this slice
-        # existed — measured identical, 829 tokens, section for section.
-        #
-        # This only works because the prefix was REORDERED above so the persona sits behind the
-        # directives. While the 590-token voice contract was in front of them, protecting a 73-token
-        # language directive cost 663 tokens of protected prefix, this comparison came out true on every
-        # turn, and the widening fired always. Sizing the gate correctly and ordering the prefix
-        # correctly are the same fix; neither works alone.
-        #
-        # A capability turn adds the ~889-token manifest to that prefix, which genuinely does not fit,
-        # and only then is the widening the right trade.
         if _protected_prefix_tokens > _baseline_si_cap:
             # Everything here is in the SAME unit — tokens of final head — so the arithmetic composes.
-            # The first version did not: it bounded the window by (n_ctx - reply - conversation) and then
-            # let build_system_prompt subtract ANOTHER 512 for the response on top, reserving the reply
-            # twice and leaving ~500 tokens of the window unspent. Measured cost of that double-reserve:
-            # `system_instructions` was clamped to 1127 when it needed 1247, and the manifest lost its last
-            # three BROKEN disclosures — she would have claimed LAN offload and a network-blocking sandbox.
-            # So: compute the ceiling once, subtract the output-discipline footer (appended after assembly
-            # and therefore invisible to the assembler), and pass reserve_for_response=0 because the reply
-            # is already accounted for in the ceiling.
             _footer_tokens = token_estimate(_append_output_discipline("", cfg))
-            # No extra safety margin here: the reply reserve is subtracted in full and the conversation
-            # estimate is deliberately conservative (3.5 chars/token against a measured ~5), so the slack
-            # is already inside those two terms. An arbitrary extra margin on top cost exactly the last
-            # 35 tokens of the manifest — the "approval gate is the real protection" line.
+            # A FIXED, window-derived ceiling: what n_ctx can actually spare after the reply reserve and
+            # the conversation block the caller appends. Deliberately independent of DB size — a large
+            # durable_facts or workspace_context can never push the head past what the window can hold,
+            # because they are not in this arithmetic at all (they yield inside build_system_prompt).
             _max_head_tokens = max(
                 512, _n_ctx - _reply_reserve_tokens(cfg) - _convo_block_tokens(cfg, conversation_history)
             )
@@ -1591,15 +1590,9 @@ def build_system_head(
                 # than assuming DEFAULT_BUDGETS — on a small model it chooses a much tighter dict, and
                 # substituting the roomy one here would quietly inflate every other section too.
                 budgets = _resolve_default_budgets(n_ctx)
-            # Raise the section budget to hold the protected prefix — but never past what leaves the
-            # downstream sections whole. Without the second clamp the window ceiling binds first and
-            # `system_instructions` takes everything up to it, chopping "Current goal: <the user's actual
-            # question>" mid-phrase. The manifest losing its closing line is a cost; the model not knowing
-            # what was asked is a broken turn.
-            budgets["system_instructions"] = max(
-                int(budgets.get("system_instructions", 800) or 0),
-                min(int(_protected_prefix_tokens) + 32, max(256, n_ctx - _downstream)),
-            )
+            # No `budgets["system_instructions"]` bump any more: the protected prefix is its OWN
+            # reserve-first section now, so it no longer has to be squeezed through the system_instructions
+            # budget. system_instructions keeps its ordinary budget and yields (persona first) as intended.
 
         def _assemble(window: int) -> tuple[str, dict]:
             _asm, _m = build_system_prompt(
@@ -1611,6 +1604,19 @@ def build_system_head(
             return _append_output_discipline(_h, cfg), _m
 
         head, _ctx_metrics = _assemble(n_ctx)
+        # ITEM 12 — post-assembly invariant. Each hard-reserved block in `_front` (the per-turn directives
+        # and, on a capability turn, the manifest) MUST survive into the final head. If one is missing, the
+        # protected prefix was truncated or dropped in an impossible window — leave a breadcrumb (block
+        # label + measured tokens) rather than shipping a silently-degraded prompt.
+        for _blk in _front:
+            _b = (_blk or "").strip()
+            if _b and _b not in head:
+                _label = _b.splitlines()[0][:60] if _b else "?"
+                logger.warning(
+                    "protected block missing from assembled head: %r (%d tok) — the hard-reserved "
+                    "per-turn prefix was truncated in an impossible head window",
+                    _label, token_estimate(_b),
+                )
         if _max_head_tokens and token_estimate(head) > _max_head_tokens:
             # Not correctable from here, so say so rather than pretending. The head has a structural floor
             # (the window never goes below 1024, and the output-discipline footer adds ~320 tokens after
@@ -1631,7 +1637,11 @@ def build_system_head(
         return head
 
     # Legacy path: no budget enforcement
-    parts = [system_instructions]
+    # ITEM 10: the protected prefix leads here too (it was spliced into system_instructions before).
+    parts = []
+    if protected_directives:
+        parts.append(protected_directives)
+    parts.append(system_instructions)
     if durable_facts_block:
         parts.append(durable_facts_block)
     if pinned_block:
