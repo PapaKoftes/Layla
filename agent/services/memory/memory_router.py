@@ -76,6 +76,13 @@ def _cfg() -> dict:
 def save_learning(content: str, kind: str = "general", **kwargs: Any) -> int:
     """Pass-through to layla.memory.db.save_learning (canonical write path).
 
+    PLAN ITEM 20 / BL-020: this is where sensitive content is *auto-classified* for
+    encryption at rest. Before delegating, `_apply_sensitivity_policy` inspects the content and,
+    when the `encryption_at_rest_enabled` flag is on and the content looks sensitive
+    (credentials, health, financial, gov-id, PII), stamps ``privacy_level="sensitive"`` so the
+    db layer encrypts it. Nothing else in the pipeline marks a memory sensitive, so without this
+    the cipher never engaged and every "remember this" was stored plaintext.
+
     Returns the learning row id on success, or -1 if filtered/rate-limited.
     """
     from layla.memory.db import save_learning as _save_learning
@@ -84,7 +91,63 @@ def save_learning(content: str, kind: str = "general", **kwargs: Any) -> int:
         record_memory_op("episodic", "save_learning")
     except Exception:
         pass
+    kwargs = _apply_sensitivity_policy(content, kwargs)
     return _save_learning(content=content, kind=kind, **kwargs)
+
+
+# ── PLAN ITEM 20: sensitivity classification for encryption at rest ──────────
+_cipher_warned = False  # process-wide latch so the degraded-mode warning is logged only once
+
+
+def _warn_if_cipher_unavailable() -> None:
+    """Emit ONE loud warning if a memory was classified sensitive but the cipher/key can't
+    encrypt it (missing `cryptography` package or an unwritable keyring/key-file). The write
+    still proceeds as plaintext — we never lose the data, we just can't protect it at rest."""
+    global _cipher_warned
+    if _cipher_warned:
+        return
+    try:
+        from services.memory import memory_encryption as enc
+        if not enc.cipher_ready():
+            _cipher_warned = True
+            logger.warning(
+                "encryption_at_rest_enabled is ON and a memory was classified SENSITIVE, but no "
+                "usable encryption key is available (cryptography missing or keyring/key-file "
+                "unwritable) — storing it as PLAINTEXT. Data is preserved but NOT protected at "
+                "rest. Install `cryptography` and ensure a keyring or key-file is writable. "
+                "(shown once per process)"
+            )
+    except Exception:
+        pass
+
+
+def _apply_sensitivity_policy(content: str, kwargs: dict) -> dict:
+    """Return kwargs, upgrading ``privacy_level`` to ``"sensitive"`` when *content* is classified
+    sensitive AND encryption at rest is enabled.
+
+    Gating rationale:
+      • Only act when `encryption_at_rest_enabled` is truthy — the SAME gate the cipher's
+        `should_encrypt` uses. If we marked a row sensitive while the cipher stayed off, the row
+        would be stored plaintext yet hidden from default (`personal`-max) retrieval — the worst
+        of both worlds. Reading the flag identically keeps the two decisions in lock-step.
+        (Production installs ship this flag ON — see install/setup_profiles.py — so the effective
+        default is on; it degrades gracefully when the key is unavailable.)
+      • Never downgrade: if a caller already set ``privacy_level="sensitive"`` we leave it. We only
+        *upgrade* toward sensitive; classification never relaxes a caller's explicit choice.
+    """
+    try:
+        cfg = _cfg()
+        if not cfg.get("encryption_at_rest_enabled"):
+            return kwargs  # feature off → behave exactly as before (no classification, no marking)
+        if str(kwargs.get("privacy_level") or "").strip().lower() == "sensitive":
+            return kwargs  # already marked sensitive; nothing to upgrade
+        from services.memory.sensitivity import is_sensitive
+        if is_sensitive(content):
+            kwargs["privacy_level"] = "sensitive"
+            _warn_if_cipher_unavailable()
+    except Exception as exc:  # never let classification block a write
+        logger.debug("memory_router: sensitivity policy skipped: %s", exc)
+    return kwargs
 
 
 def save_aspect_memory(aspect_id: str, content: str, **kwargs: Any) -> Any:

@@ -44,6 +44,14 @@ def available() -> bool:
     return _fernet_cls() is not None
 
 
+def cipher_ready() -> bool:
+    """True if a cipher can actually encrypt right now — i.e. the package is present AND a key
+    is loadable/creatable. Stronger than `available()` (which only checks the import): used by
+    the write path to detect the degraded "flag on but no usable key" case and warn once, so a
+    sensitive memory is never silently dropped — it falls back to plaintext instead."""
+    return _fernet() is not None
+
+
 def _key_file() -> Path:
     """Weaker fallback location for the key when no OS keyring exists."""
     base = None
