@@ -46,8 +46,13 @@ class TestConfigIntegrity:
         keys = list(cfg.keys())
         assert len(keys) == len(set(keys)), "Duplicate config keys found"
 
-    def test_defaults_are_safe(self):
-        """All new features should be disabled by default."""
+    def test_defaults_are_safe(self, shipped_defaults_config):
+        """All new features should be disabled by default.
+
+        Uses shipped_defaults_config so the assertions read SHIPPED defaults, not the operator's
+        live runtime_config.json (which turns litellm/meilisearch/discord ON). See the fixture in
+        tests/conftest.py — the shipped-default assertion still holds, so a real regression fails.
+        """
         import runtime_safety
         cfg = runtime_safety.load_config()
         assert cfg["litellm_enabled"] is False

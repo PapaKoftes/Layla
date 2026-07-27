@@ -174,11 +174,17 @@ def test_stop_sequences_cover_aspect_names():
     src = (AGENT_DIR / "services" / "llm" / "llm_gateway.py").read_text(encoding="utf-8", errors="replace")
     for name in ("Morrigan", "Nyx", "Echo", "Eris", "Cassandra", "Lilith"):
         assert name in src, f"Missing aspect stop sequence: {name}"
-def test_stop_sequences_no_config_override():
+def test_stop_sequences_no_config_override(shipped_defaults_config):
+    # Reads runtime_safety.CONFIG_FILE, redirected by shipped_defaults_config (tests/conftest.py)
+    # to the shipped-defaults stub, so this asserts the SHIPPED config carries no stop_sequences
+    # override rather than tripping on the operator's live runtime_config.json (which sets one, as
+    # does runtime_config.example.json — this test passed in CI only because the CI stub omits the
+    # key). The raw-file read is deliberate: load_config()'s DEFAULT stop_sequences is itself the
+    # non-empty ["\nUser:", " User:"], so the invariant is about the FILE not baking in an override
+    # that would replace llm_gateway's full echo-prevention list, not about the merged runtime value.
     import json as _json
-    cfg_path = AGENT_DIR / "runtime_config.json"
-    if not cfg_path.exists():
-        pytest.skip("runtime_config.json not found")
+
+    cfg_path = shipped_defaults_config  # == runtime_safety.CONFIG_FILE for this test's duration
     cfg = _json.loads(cfg_path.read_text(encoding="utf-8"))
     overrides = cfg.get("stop_sequences")
     assert not overrides, (

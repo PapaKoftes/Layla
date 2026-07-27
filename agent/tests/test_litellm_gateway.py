@@ -101,7 +101,9 @@ class TestGatewayConfig:
         assert "fallback_chain" in cfg
         assert "timeout" in cfg
 
-    def test_disabled_by_default(self):
+    def test_disabled_by_default(self, shipped_defaults_config):
+        # shipped_defaults_config (tests/conftest.py): read the shipped default, not the operator's
+        # live runtime_config.json which sets litellm_enabled=true.
         from services.llm.litellm_gateway import _load_gateway_config
         cfg = _load_gateway_config()
         assert cfg["enabled"] is False
@@ -111,9 +113,11 @@ class TestGatewayConfig:
 
 
 class TestIsAvailable:
-    def test_disabled_returns_false(self):
+    def test_disabled_returns_false(self, shipped_defaults_config):
         from services.llm.litellm_gateway import is_available
-        # litellm_enabled defaults to False
+        # litellm_enabled defaults to False. shipped_defaults_config (tests/conftest.py) neutralises
+        # the operator file (litellm_enabled=true); without it this passes only because litellm is
+        # absent from .venv-test — it would fail with litellm installed + the operator config.
         assert is_available() is False
 
     @patch("services.llm.litellm_gateway._load_gateway_config")
@@ -387,7 +391,9 @@ class TestGetGatewayInfo:
 
 
 class TestRuntimeSafetyConfig:
-    def test_litellm_config_keys_exist(self):
+    def test_litellm_config_keys_exist(self, shipped_defaults_config):
+        # shipped_defaults_config (tests/conftest.py): assert the shipped default, not the operator
+        # override (litellm_enabled=true in the live runtime_config.json).
         import runtime_safety
         cfg = runtime_safety.load_config()
         assert "litellm_enabled" in cfg
