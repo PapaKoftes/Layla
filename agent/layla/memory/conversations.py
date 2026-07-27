@@ -162,36 +162,6 @@ def _maybe_durable_summary_on_append(conversation_id: str, new_message_count: in
         logger.debug("_maybe_durable_summary_on_append(%s) failed: %s", conversation_id, e)
 
 
-def recall_summaries_by_similarity(query: str, n: int = 3) -> list[dict]:
-    """Semantic recall over durable conversation summaries (for future use).
-
-    Embed ``query`` and return up to ``n`` stored conversation summaries ranked by vector similarity,
-    filtered to ``type == 'conversation_summary'``. Read-only; degrades to ``[]`` when the embedder or
-    vector store is unavailable. The head currently recalls the most-RECENT summaries
-    (get_recent_conversation_summaries); this is the by-relevance counterpart.
-    """
-    q = (query or "").strip()
-    if not q:
-        return []
-    try:
-        from layla.memory.vector_store import embed, search_similar
-        vec = embed(q)
-        hits = search_similar(vec, k=max(1, int(n)) * 4) or []
-        out: list[dict] = []
-        for h in hits:
-            if not isinstance(h, dict) or h.get("type") != "conversation_summary":
-                continue
-            content = (h.get("content") or "").strip()
-            if content:
-                out.append({"summary": content, "embedding_id": h.get("embedding_id", "")})
-            if len(out) >= max(1, int(n)):
-                break
-        return out
-    except Exception as e:
-        logger.debug("recall_summaries_by_similarity failed: %s", e)
-        return []
-
-
 import re as _re
 
 # Leading politeness / question framing to strip so the title is the topic, not "can you help me…".
