@@ -120,24 +120,16 @@ def vector_store(text: str, metadata: dict | None = None, collection: str = "mem
         return {"ok": False, "error": str(e)}
 
 def _sm2(quality: int, ease: float, interval_days: int, reps: int) -> tuple[float, int, int]:
-    """SM-2 step. Returns (ease, interval_days, reps).
+    """SM-2 step for the learnings path — a thin adapter over the ONE canonical implementation.
 
-    Standard SuperMemo-2: quality < 3 resets the repetition count and puts the item back tomorrow;
-    otherwise the interval grows 1 → 6 → interval*ease. Ease is nudged by how hard the recall was and
-    floored at 1.3, below which intervals collapse and the item is shown forever.
+    Returns (ease, interval_days, reps). The maths used to be hand-rolled here and had drifted from
+    the German-deck copy (this one dropped ease by a fixed 0.20 on failure and grew the interval off
+    the stale pre-review ease). It now lives once in services.memory.spaced_repetition.sm2 so the
+    learnings loop, the review tool and the flashcard deck all schedule identically. Imported lazily
+    per call to match the module's import style and keep the canonical authoritative under tests.
     """
-    q = max(0, min(5, int(quality)))
-    if q < 3:
-        return max(1.3, ease - 0.20), 1, 0
-    reps = int(reps) + 1
-    if reps == 1:
-        nxt = 1
-    elif reps == 2:
-        nxt = 6
-    else:
-        nxt = max(1, int(round(max(1, int(interval_days)) * ease)))
-    ease = max(1.3, ease + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02)))
-    return ease, nxt, reps
+    from services.memory.spaced_repetition import sm2
+    return sm2(ease=ease, interval_days=interval_days, reps=reps, quality=int(quality))
 
 
 def spaced_repetition_review(limit: int = 10, learning_id: int | None = None, quality: int | None = None) -> dict:
