@@ -11,6 +11,24 @@ logger = logging.getLogger("layla")
 router = APIRouter(tags=["voice"])
 
 
+def _install_offer() -> dict:
+    """The one-click guided-install descriptor attached to every /voice/* 503.
+
+    Turns the dead-feature 503 into an ACTIONABLE offer: it names the permissive `voice`
+    feature (faster-whisper MIT + pyttsx3) and the EXISTING allowlisted feature-install
+    endpoint the frontend posts to, plus the GPLv3 kokoro upgrade behind an explicit
+    accept. Built in install.feature_status so the licensing split lives in one place;
+    best-effort so a broken descriptor never turns a graceful 503 into a 500.
+    """
+    try:
+        from install.feature_status import voice_install_descriptor
+
+        return voice_install_descriptor()
+    except Exception:
+        logger.debug("voice: install descriptor unavailable", exc_info=True)
+        return {}
+
+
 def _text_for_speech(t: str) -> str:
     """Project a reply/markdown string to PLAIN TEXT for TTS. The visual reply cleaners deliberately
     PRESERVE markdown (bold/`code`/tables/headings) for marked.parse, so feeding that same string to
@@ -78,6 +96,9 @@ async def voice_transcribe(request: Request):
                     "ok": False,
                     "text": "",
                     "error": "Speech-to-text is not available",
+                    # One-click guided install: feature id + what it installs + size, mapping to
+                    # the allowlisted /setup/feature/install path (never arbitrary pip).
+                    "install": _install_offer(),
                     "recovery": rec or {"what_failed": "faster-whisper not loaded"},
                 },
                 status_code=503,
@@ -164,6 +185,10 @@ async def voice_speak(request: Request):
                 {
                     "ok": False,
                     "error": "TTS not available",
+                    # One-click guided install: the permissive [voice] extra is the default; the
+                    # GPLv3 kokoro upgrade is surfaced under `install.kokoro` behind an explicit
+                    # accept, never bundled by the default path.
+                    "install": _install_offer(),
                     "recovery": rec
                     or {
                         "what_failed": "No TTS engine",
@@ -176,3 +201,51 @@ async def voice_speak(request: Request):
     except Exception:
         logger.exception("TTS error")
         return JSONResponse({"ok": False, "error": "Speech synthesis failed."}, status_code=500)
+
+
+@router.post("/voice/tts/kokoro/install")
+async def voice_install_kokoro(body: dict | None = None):
+    """Install the OPT-IN, higher-quality Kokoro neural TTS — GPLv3, so gated on explicit accept.
+
+    kokoro-onnx pulls phonemizer-fork (GPLv3), which pyproject deliberately keeps out of the
+    permissive [voice]/[all] extras and scripts/check_copyleft.py FAILS CI on. So it is NEVER
+    installed by the default guided path (POST /setup/feature/install feature=voice, which
+    installs only faster-whisper + pyttsx3). This endpoint is the one in-app place kokoro can be
+    installed, and it REFUSES unless the caller has explicitly accepted GPLv3.
+
+    The package list is HARD-CODED to the two allowlisted kokoro deps — the caller cannot name a
+    package — so this maps to the allowlisted installer (install.feature_installer.install_packages),
+    never to arbitrary pip. Once the packages land, tts.py prefers kokoro over pyttsx3 on its next
+    (re)load automatically; no flag flip is needed, because kokoro is an engine swap inside the
+    already-enabled voice feature, not a new capability.
+    """
+    body = body or {}
+    if not bool(body.get("gpl_accept")):
+        # Not an error the user did wrong — a required, informed choice. State the licence and
+        # exactly how to proceed; do NOT install anything.
+        return JSONResponse(
+            {
+                "ok": False,
+                "requires_gpl_accept": True,
+                "license": "GPLv3",
+                "error": (
+                    "Kokoro TTS is GPLv3 (it pulls phonemizer-fork) and is not part of the "
+                    "default [voice] install. Re-send with {\"gpl_accept\": true} to accept the "
+                    "GPLv3 licence and install it, or run: pip install layla[voice-kokoro]"
+                ),
+            },
+            status_code=200,
+        )
+    from install.feature_installer import install_packages
+
+    # Hard-coded, allowlisted kokoro deps — never a client-supplied package name.
+    res = await asyncio.to_thread(install_packages, ["kokoro-onnx", "soundfile"])
+    return JSONResponse(
+        {
+            "ok": bool(res.get("ok")),
+            "engine": "kokoro",
+            "installed": res.get("installed", []),
+            "failed": res.get("failed", []),
+        },
+        status_code=200,
+    )
