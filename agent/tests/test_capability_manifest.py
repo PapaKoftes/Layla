@@ -145,14 +145,15 @@ def test_manifest_is_honest_about_what_is_broken():
         #     refused turn recorded nothing.
         # The Study "Quick picks" disclosure was never pinned here, but it was stale for the same reason
         # and was corrected in the same pass (driven in a live browser: a real click adds the plan).
-        ("Encryption-at-rest never fires", "nothing marks a memory sensitive"),
         ("approval gate is the real protection", "the sandbox filters do not hold"),
-        # Added 2026-07-19, each re-verified by driving the real path before pinning:
-        #   - LAN offload: `submit_task` and `run_completion_with_fallback` both still have ZERO callers
-        #     outside comments, so clustering moves no inference work.
-        #   - Python net: python_runner installs _NET_SPEEDBUMP, explicitly labelled "trivially bypassable
-        #     — NOT a boundary" (BL-295 kept it as a speed-bump rather than pretending to a jail).
-        ("LAN peer offload moves no work", "clustering has no inference entry point"),
+        # Encryption + LAN offload were pinned BROKEN here until 2026-07-27, when BOTH were DRIVEN working and
+        # moved to the negative guard below (test_manifest_does_not_reintroduce_the_fixed_lies). What survives
+        # for encryption is the anti-overclaim LIMIT: high-risk classes fire by default, but ordinary memories
+        # and general PII do NOT unless opted in — so the manifest must still say the model can't imply that
+        # EVERYTHING is encrypted. That residual disclosure is what this needle guards.
+        ("never imply everything is encrypted", "high-risk memories ARE encrypted by default; general ones are not"),
+        # Python net: python_runner installs _NET_SPEEDBUMP, explicitly labelled "trivially bypassable — NOT a
+        # boundary" (BL-295 kept it as a speed-bump rather than pretending to a jail).
         ("does NOT block the network", "the python sandbox net-jail is a speed-bump, not a boundary"),
     ]
     for needle, why in required:
@@ -174,6 +175,15 @@ def test_manifest_does_not_reintroduce_the_fixed_lies():
         ("can be created but never selected", "custom aspects resolve via select_aspect"),
         ("scores are frozen", "commit_turn records practice: coding moved 0.50/0 -> 0.51/1"),
         ("blocklist is bypassable", "the .exe / trailing-dot bypass is closed; 17/17 variants blocked"),
+        # Added 2026-07-27 — both DRIVEN working, so the manifest must never again call them dead:
+        #   - encryption: a credential-shaped save through the default save_learning path persisted as
+        #     `\x00enc1:gAAAAA…` Fernet ciphertext while an ordinary memory stayed plaintext (tier() returned
+        #     high_risk vs public). The residual limit is stated positively ("never imply everything is
+        #     encrypted"), guarded above; the old absolute "never fires" is the lie forbidden here.
+        #   - LAN offload: `try_cluster_offload_first` (inference_router.py) is called by llm_gateway.py at two
+        #     sites, gated `cluster_offload_enabled`; test_cluster_offload_wiring.py drives the seam.
+        ("Encryption-at-rest never fires", "high-risk memories are encrypted by DEFAULT — driven 2026-07-27"),
+        ("LAN peer offload moves no work", "inference offload IS wired via try_cluster_offload_first — driven 2026-07-27"),
     ]
     for needle, why in forbidden:
         assert needle not in core, (
@@ -789,8 +799,9 @@ def test_every_broken_disclosure_survives_with_the_REAL_aspect(monkeypatch):
         for needle in (
             "BROKEN — never offer these",
             "I CANNOT speak or listen",
-            "Encryption-at-rest never fires",
-            "LAN peer offload moves no work",
+            # (encryption "never fires" + LAN "moves no work" were pinned here until 2026-07-27; both were
+            #  DRIVEN working and are now positive-section claims — truncation-survival is still proven by the
+            #  four genuinely-broken disclosures that remain in the tail block.)
             "does NOT block the network",
             "approval gate is the real protection",
         ):

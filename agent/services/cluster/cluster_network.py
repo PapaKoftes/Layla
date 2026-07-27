@@ -417,15 +417,17 @@ class ClusterNetwork:
 
     # ── Task submission (to remote nodes) ────────────────────────────
     #
-    # NO ENTRY POINT — VERIFIED 2026-07-17 (BL-350). Nothing in the live tree calls submit_task,
-    # get_task_status or cancel_remote_task. A `task_dispatcher` that would call them was written but
-    # never merged: it exists only in a stale worktree and in build/lib. The inference-side offload
-    # route is closed too — `run_completion_with_fallback` (inference_router.py:659), the only wrapper
-    # that would offload a completion to a peer, also has zero callers.
+    # TASK-QUEUE SEND PATH HAS NO ENTRY POINT — VERIFIED 2026-07-17 (BL-350). Nothing in the live tree
+    # calls submit_task, get_task_status or cancel_remote_task. A `task_dispatcher` that would call them
+    # was written but never merged: it exists only in a stale worktree and in build/lib. So the
+    # push-a-task-to-a-peer direction below moves no work.
     #
-    # So LAN clustering moves ZERO work in either direction. What remains real: the RECEIVING endpoint
-    # (a peer can push a task to us), the heartbeat, and node_sync.py — incremental knowledge
-    # replication, which is a genuinely different feature and is NOT dead.
+    # INFERENCE OFFLOAD, by contrast, IS now wired: `try_cluster_offload_first` (inference_router.py) is
+    # called by llm_gateway on the completion path and prefers a beefier PAIRED peer when
+    # `cluster_offload_enabled` is on (OFF by default; it no-ops when no peer is paired).
+    # `run_completion_with_fallback` remains the zero-caller failure-fallback variant. Also real: the
+    # RECEIVING endpoint (a peer can push a task to us), the heartbeat, and node_sync.py — incremental
+    # knowledge replication, which is a genuinely different feature and is NOT dead.
     #
     # Do not assume "no callers" means "safe to delete and re-add later": the architecture review's
     # verdict on this ~4,600 LOC subsystem is CUT. Distributed inference is how you run a model that
