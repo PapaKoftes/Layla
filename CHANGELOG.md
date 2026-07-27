@@ -291,6 +291,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.3] — 2026-07-27
+
+Finalization pass: make what Layla *says about herself* match what the code actually does, wire the last
+inert producer, fix the learning-feedback loop end-to-end, and benchmark the whole thing on real CPU-only
+hardware. The full test suite is green (4333 passed) and the shipping-model numbers are recorded.
+
+### Honesty — the self-description manifest now matches reality
+- Layla stopped **understating** herself. `.identity/capabilities.md` had frozen weeks earlier and was
+  telling the model to *deny* capabilities that now work. Corrected against the code (and re-verified by
+  driving the real path): **encryption at rest fires** for high-risk memories by default (a credential-shaped
+  memory persists as ciphertext; ordinary memories stay plaintext — she no longer claims *everything* is
+  encrypted, which would also be false); **LAN inference offload is wired** (off by default);
+  spaced-repetition review over learnings, self-improvement from real telemetry, the entity-graph
+  router+viewer, first-class custom aspects, two-way Obsidian sync, and `/v1`+Ollama honouring
+  temperature/max_tokens are all now stated truthfully. The honesty guard-tests were updated to the repo's
+  own "drive the fix, then flip the guard" pattern so the old lies can't return.
+
+### The learning-feedback loop actually closes now
+- **Outcome evaluations are written, read back, and cleared correctly.** The read used `.get()` on a
+  `sqlite3.Row` (which has none), so every persisted outcome evaluation was silently unreadable across a
+  restart — the "does it learn from how a turn went" loop had a broken read half. Fixed, and the liveness
+  signal now fires once per committed turn (verified live: 6/6 turns in a real-model eval, previously 0).
+- **`clear` now clears the durable record, not just memory.** Once the read worked, clearing only the
+  in-memory copy left the append-only row behind and the next read resurrected it; `clear_outcome_evaluation`
+  now deletes the row too. Pinned by a cross-instance regression test.
+
+### Knowledge cross-device sync has a producer
+- Built KB articles now persist into the node-syncable `knowledge_entries` table, so knowledge (not just
+  learnings and memories) actually replicates to paired devices. The sync engine already handled the
+  `knowledge` kind — it had simply never had anything to ship. Proven end-to-end (build → row → export).
+
+### Benchmarked on this system (CPU-only, potato tier)
+- **Coding pass@1: 100%** on both the core (10/10) and hard (12/12) tiers (Qwen2.5-Coder-3B), well past the
+  0.60/0.50 CI floors. **Product turn:** hygiene clean 100%, routing streams 100% (no tool-thrash), 0 errors;
+  median first-token ~47s / ~12 tok/s / ~65s per turn — the CPU-prefill reality. Retrieval recall ~3ms.
+  Honest weak spot recorded: on CPU-class hardware the model under-calls tools (grounding ~33%) — a model
+  ceiling, not a wiring defect (every offered tool executes+verifies when the model emits the call). Full
+  numbers in `.planning/benchmarks/REPORT.md`.
+
 ## [1.6.0] — 2026-07-23
 
 Everything below shipped since 1.5.0: the agent actually executes tools now (it never did before),
