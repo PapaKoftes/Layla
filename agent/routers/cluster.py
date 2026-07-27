@@ -81,11 +81,15 @@ class TaskStatusResponse(BaseModel):
 
 
 class SyncPushRequest(BaseModel):
+    # Legacy flat learnings list (older peers) + the new per-kind records map.
     learnings: list[dict] = Field(default_factory=list)
+    records: dict[str, list[dict]] = Field(default_factory=dict)
 
 
 class SyncPullRequest(BaseModel):
-    since: str  # ISO timestamp
+    since: str = "2000-01-01T00:00:00Z"  # ISO timestamp (legacy / fallback)
+    since_map: dict[str, str] = Field(default_factory=dict)  # per-kind watermark
+    kinds: list[str] = Field(default_factory=list)  # which kinds to return
 
 
 class PairRequest(BaseModel):
@@ -261,86 +265,66 @@ async def cluster_task_cancel(task_id: str, request: Request):
 
 @router.post("/sync/push")
 async def cluster_sync_push(body: SyncPushRequest, request: Request):
-    """Receive learnings pushed from a peer node."""
+    """Receive knowledge pushed from a paired peer node.
+
+    Accepts the new per-kind ``records`` map (learnings + memories + wiki) and
+    the legacy flat ``learnings`` list.  All import runs through the shared
+    node_sync dedup path so a two-way sync can never loop or double-import.
+    """
     _require_auth(request)
 
-    imported = 0
-    skipped = 0
     try:
-        import hashlib as _hashlib
+        from services.cluster.node_sync import SYNC_KINDS, import_records
 
-        from layla.memory.db_connection import _conn
-        from layla.time_utils import utcnow
+        # Merge legacy learnings into the records map (records wins if both present).
+        by_kind: dict[str, list[dict]] = dict(body.records or {})
+        if body.learnings:
+            by_kind.setdefault("learning", list(body.learnings))
 
-        with _conn() as db:
-            for learning in body.learnings:
-                content = learning.get("content", "")
-                if not content:
-                    skipped += 1
-                    continue
-
-                # Dedup by content_hash
-                content_hash = _hashlib.sha256(content.encode()).hexdigest()[:32]
-                existing = db.execute(
-                    "SELECT id FROM learnings WHERE content_hash = ?",
-                    (content_hash,),
-                ).fetchone()
-                if existing:
-                    skipped += 1
-                    continue
-
-                db.execute(
-                    """INSERT INTO learnings (content, type, created_at, content_hash, source, confidence)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (
-                        content,
-                        learning.get("type", "fact"),
-                        learning.get("created_at", utcnow().isoformat()),
-                        content_hash,
-                        learning.get("source", "cluster_sync"),
-                        learning.get("confidence", 0.5),
-                    ),
-                )
-                imported += 1
-            db.commit()
+        total_imported = 0
+        total_skipped = 0
+        per_kind: dict[str, dict] = {}
+        for kind, records in by_kind.items():
+            if kind not in SYNC_KINDS:
+                continue
+            counts = import_records(kind, records, source_label="cluster_sync")
+            per_kind[kind] = counts
+            total_imported += counts.get("imported", 0)
+            total_skipped += counts.get("skipped", 0)
     except Exception as e:
         logger.warning("Sync push failed: %s", e)
         raise HTTPException(status_code=500, detail="internal error")
 
-    logger.info("Sync push: imported %d, skipped %d duplicates", imported, skipped)
-    return {"ok": True, "imported": imported, "skipped": skipped}
+    logger.info("Sync push: imported %d, skipped %d duplicates", total_imported, total_skipped)
+    # Keep top-level imported/skipped for legacy peers; add per-kind detail.
+    return {"ok": True, "imported": total_imported, "skipped": total_skipped, "by_kind": per_kind}
 
 
 @router.post("/sync/pull")
 async def cluster_sync_pull(body: SyncPullRequest, request: Request):
-    """Return learnings created since a given timestamp."""
+    """Return knowledge created since the caller's per-kind watermark.
+
+    Returns both the new per-kind ``records`` map and a legacy flat ``learnings``
+    list (so an older peer that only reads ``learnings`` still works).
+    """
     _require_auth(request)
 
     try:
-        from layla.memory.db_connection import _conn
+        from services.cluster.node_sync import SYNC_KINDS, export_since
 
-        with _conn() as db:
-            rows = db.execute(
-                """SELECT content, type, created_at, confidence, source, content_hash
-                   FROM learnings
-                   WHERE created_at > ?
-                   ORDER BY created_at ASC
-                   LIMIT 500""",
-                (body.since,),
-            ).fetchall()
+        kinds = [k for k in (body.kinds or ["learning"]) if k in SYNC_KINDS]
+        records: dict[str, list[dict]] = {}
+        for kind in kinds:
+            since = (body.since_map or {}).get(kind, body.since)
+            records[kind] = export_since(kind, since)
 
-        learnings = []
-        for row in rows:
-            learnings.append({
-                "content": row["content"] if isinstance(row, dict) else row[0],
-                "type": row["type"] if isinstance(row, dict) else row[1],
-                "created_at": row["created_at"] if isinstance(row, dict) else row[2],
-                "confidence": row["confidence"] if isinstance(row, dict) else row[3],
-                "source": row["source"] if isinstance(row, dict) else row[4],
-                "content_hash": row["content_hash"] if isinstance(row, dict) else row[5],
-            })
+        # Legacy field: the learning kind as a flat list.
+        learnings = records.get("learning")
+        if learnings is None:
+            learnings = export_since("learning", (body.since_map or {}).get("learning", body.since))
 
-        return {"ok": True, "learnings": learnings, "count": len(learnings)}
+        count = sum(len(v) for v in records.values())
+        return {"ok": True, "records": records, "learnings": learnings, "count": count}
     except Exception as e:
         logger.warning("Sync pull failed: %s", e)
         raise HTTPException(status_code=500, detail="internal error")

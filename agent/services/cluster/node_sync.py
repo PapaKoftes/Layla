@@ -11,7 +11,6 @@ import hashlib
 import logging
 import threading
 import time
-from datetime import datetime, timezone
 from typing import Any
 
 logger = logging.getLogger("layla")
@@ -23,19 +22,174 @@ PEER_MAX_CONSECUTIVE_FAILS = 5  # skip peer after this many consecutive failures
 DEAD_LETTER_THRESHOLD = 10      # mark learning as dead-letter after N failed pushes
 
 
+# ── Syncable sources ─────────────────────────────────────────────────────
+#
+# The set of knowledge we replicate between paired nodes.  Each "kind" maps to
+# a DB table (resolved off LAYLA_DATA_DIR via layla.memory.db_connection._conn)
+# plus the metadata columns to carry over the wire.  Every kind dedups on a
+# content hash so a two-way sync can never loop or double-import.
+#
+#   learning   → learnings        (already synced; has a content_hash column)
+#   memory     → aspect_memories  (per-aspect memories; deduped on content)
+#   knowledge  → knowledge_entries (the wiki/KB store; created on demand)
+#
+# NOTE: table names come from this fixed registry, never from request data, so
+# the f-string queries below are not an injection surface.
+_SYNC_SOURCES: dict[str, dict[str, Any]] = {
+    "learning": {
+        "table": "learnings",
+        "carry": ("type", "confidence", "source", "tags", "aspect_id"),
+        "has_hash": True,
+        "dedup": "hash",
+    },
+    "memory": {
+        "table": "aspect_memories",
+        "carry": ("aspect_id",),
+        "has_hash": False,
+        "dedup": "content",
+    },
+    "knowledge": {
+        "table": "knowledge_entries",
+        "carry": ("title", "tags", "source"),
+        "has_hash": True,
+        "dedup": "hash",
+    },
+}
+SYNC_KINDS: tuple[str, ...] = tuple(_SYNC_SOURCES.keys())
+
+
+def _content_hash(content: str) -> str:
+    """Stable 32-char content hash — the dedup key shared by every kind."""
+    return hashlib.sha256(content.encode()).hexdigest()[:32]
+
+
+def _migrate_db() -> None:
+    """Ensure the core schema exists before we read/write it.
+
+    A freshly-paired node legitimately starts with an empty (unmigrated) DB, so
+    node-sync must not assume the tables already exist.  ``migrate()`` is cheap
+    and idempotent (guarded + CREATE TABLE IF NOT EXISTS)."""
+    try:
+        from layla.memory.migrations import migrate
+        migrate()
+    except Exception as e:
+        logger.debug("migrate() during sync failed: %s", e)
+
+
+def _row_get(row: Any, key: str, default: Any = "") -> Any:
+    """Read a column from a sqlite3.Row (by name) or a plain dict."""
+    if isinstance(row, dict):
+        return row.get(key, default)
+    try:
+        return row[key]
+    except (IndexError, KeyError, TypeError):
+        return default
+
+
+def _ensure_knowledge_table(db: Any) -> None:
+    """Create the durable knowledge/wiki entries table if absent (idempotent).
+
+    Kept inline (like ``pending_sync``) so node-sync owns its own storage and
+    does not require a schema migration in a file it doesn't own.  This is the
+    canonical DB home for wiki entries that replicate between nodes.
+    """
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS knowledge_entries (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            content      TEXT NOT NULL,
+            title        TEXT DEFAULT '',
+            tags         TEXT DEFAULT '',
+            source       TEXT DEFAULT '',
+            content_hash TEXT,
+            created_at   TEXT NOT NULL
+        )
+        """
+    )
+    db.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_entries_hash ON knowledge_entries(content_hash)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_entries_created ON knowledge_entries(created_at)")
+
+
+def add_knowledge_entry(content: str, *, title: str = "", tags: str = "", source: str = "local") -> bool:
+    """Store a wiki/KB entry in the node-syncable ``knowledge_entries`` table.
+
+    Deduped by content hash so re-adding the same entry is a no-op.  Returns
+    True if a new row was written.
+    """
+    content = (content or "").strip()
+    if not content:
+        return False
+    try:
+        from layla.memory.db_connection import _conn
+        from layla.time_utils import utcnow
+        ch = _content_hash(content)
+        with _conn() as db:
+            _ensure_knowledge_table(db)
+            if db.execute("SELECT 1 FROM knowledge_entries WHERE content_hash = ? LIMIT 1", (ch,)).fetchone():
+                return False
+            db.execute(
+                "INSERT INTO knowledge_entries (content, title, tags, source, content_hash, created_at) "
+                "VALUES (?,?,?,?,?,?)",
+                (content, title, tags, source, ch, utcnow().isoformat()),
+            )
+            db.commit()
+        return True
+    except Exception as e:
+        logger.debug("add_knowledge_entry failed: %s", e)
+        return False
+
+
+# ── Pairing gate ─────────────────────────────────────────────────────────
+#
+# The whole subsystem is a no-op until a pair exists.  We NEVER push to, or
+# accept a sync from, a peer we are not mutually paired + authenticated with.
+
+def _load_cluster_cfg() -> dict[str, Any]:
+    try:
+        from services.cluster.cluster_network import load_cluster_config
+        return load_cluster_config() or {}
+    except Exception:
+        return {}
+
+
+def is_authorized_peer(peer_id: str, cfg: dict[str, Any] | None = None) -> bool:
+    """A peer may be synced with ONLY when we hold a shared cluster secret AND
+    the peer is a persisted, paired peer.  Refuses every unpaired/unauthenticated
+    node — the core safety invariant."""
+    cfg = cfg if cfg is not None else _load_cluster_cfg()
+    if not cfg.get("cluster_secret_hash"):
+        return False
+    return bool(peer_id) and peer_id in (cfg.get("peers") or {})
+
+
+def sync_paired() -> bool:
+    """True only once a pair exists: clustering persisted on, a shared secret
+    held, and at least one paired peer recorded.  Until then, sync is a complete
+    no-op (no work, no network) — the common single-device case."""
+    cfg = _load_cluster_cfg()
+    return bool(cfg.get("cluster_enabled") and cfg.get("cluster_secret_hash") and (cfg.get("peers")))
+
+
 # ── Sync state tracking ─────────────────────────────────────────────────
 
 _SYNC_STATE_KEY = "cluster_sync_state"
 
 
-def _get_last_sync_time(peer_id: str) -> str:
-    """Get the last sync timestamp for a peer."""
+def _watermark_key(peer_id: str, slot: str = "learning") -> str:
+    """Per-(peer, slot) watermark key.  ``slot`` is a kind, optionally suffixed
+    with a direction (e.g. ``learning:push`` / ``memory:pull``) so push and pull
+    advance independently and re-sync stays incremental."""
+    return f"{_SYNC_STATE_KEY}_{peer_id}_{slot}"
+
+
+def _get_last_sync_time(peer_id: str, slot: str = "learning") -> str:
+    """Get the last sync watermark for a peer + slot."""
     try:
         from layla.memory.db_connection import _conn
         with _conn() as db:
             row = db.execute(
                 "SELECT snapshot FROM user_identity WHERE key = ?",
-                (f"{_SYNC_STATE_KEY}_{peer_id}",),
+                (_watermark_key(peer_id, slot),),
             ).fetchone()
             if row:
                 return row["snapshot"] if isinstance(row, dict) else row[0]
@@ -44,8 +198,8 @@ def _get_last_sync_time(peer_id: str) -> str:
     return "2000-01-01T00:00:00Z"
 
 
-def _set_last_sync_time(peer_id: str, timestamp: str) -> None:
-    """Update the last sync timestamp for a peer."""
+def _set_last_sync_time(peer_id: str, timestamp: str, slot: str = "learning") -> None:
+    """Update the last sync watermark for a peer + slot."""
     try:
         from layla.memory.db_connection import _conn
         from layla.time_utils import utcnow
@@ -53,122 +207,161 @@ def _set_last_sync_time(peer_id: str, timestamp: str) -> None:
             db.execute(
                 """INSERT OR REPLACE INTO user_identity (key, snapshot, updated_at)
                    VALUES (?, ?, ?)""",
-                (f"{_SYNC_STATE_KEY}_{peer_id}", timestamp, utcnow().isoformat()),
+                (_watermark_key(peer_id, slot), timestamp, utcnow().isoformat()),
             )
             db.commit()
     except Exception as e:
         logger.debug("Failed to save sync timestamp: %s", e)
 
 
-# ── Learnings export/import ──────────────────────────────────────────────
+def _max_created(records: list[dict[str, Any]]) -> str:
+    """Highest created_at across records (ISO timestamps sort lexicographically)."""
+    best = ""
+    for r in records:
+        c = r.get("created_at") or ""
+        if c > best:
+            best = c
+    return best
 
-def get_learnings_since(since: str, limit: int = 500) -> list[dict[str, Any]]:
-    """Get learnings created since a given timestamp.
 
-    Used to send our learnings to a peer.
+def _advance_watermark(peer_id: str, slot: str, records: list[dict[str, Any]]) -> None:
+    """Advance a per-slot watermark to the newest record seen, monotonically."""
+    hi = _max_created(records)
+    if not hi:
+        return
+    if hi > _get_last_sync_time(peer_id, slot):
+        _set_last_sync_time(peer_id, hi, slot)
+
+
+# ── Generic multi-kind export/import ─────────────────────────────────────
+
+def export_since(kind: str, since: str, limit: int = 500) -> list[dict[str, Any]]:
+    """Export records of ``kind`` created since ``since`` (incremental).
+
+    Returns wire records: ``{kind, content, content_hash, created_at, <carry>}``.
+    Used to send our knowledge to a peer.
     """
+    src = _SYNC_SOURCES.get(kind)
+    if not src:
+        return []
+    cols = ["content", "created_at", *src["carry"]]
+    if src["has_hash"]:
+        cols.append("content_hash")
+    _migrate_db()
     try:
         from layla.memory.db_connection import _conn
         with _conn() as db:
+            if kind == "knowledge":
+                _ensure_knowledge_table(db)
             rows = db.execute(
-                """SELECT id, content, type, created_at, confidence, source, content_hash, tags, aspect_id
-                   FROM learnings
-                   WHERE created_at > ?
-                   ORDER BY created_at ASC
-                   LIMIT ?""",
+                f"SELECT {', '.join(cols)} FROM {src['table']} "
+                "WHERE created_at > ? ORDER BY created_at ASC LIMIT ?",
                 (since, limit),
             ).fetchall()
-
-        result = []
-        for row in rows:
-            def _g(key, default=""):
-                if isinstance(row, dict):
-                    return row.get(key, default)
-                try:
-                    return row[key]
-                except (IndexError, KeyError):
-                    return default
-
-            entry = {
-                "content": _g("content"),
-                "type": _g("type", "fact"),
-                "created_at": _g("created_at"),
-                "confidence": _g("confidence", 0.5),
-                "source": _g("source", ""),
-                "content_hash": _g("content_hash", ""),
-                "tags": _g("tags", ""),
-                "aspect_id": _g("aspect_id", ""),
-            }
-            # Ensure content_hash is populated
-            if not entry["content_hash"] and entry["content"]:
-                entry["content_hash"] = hashlib.sha256(entry["content"].encode()).hexdigest()[:32]
-            result.append(entry)
-        return result
-
     except Exception as e:
-        logger.warning("get_learnings_since failed: %s", e)
+        logger.warning("export_since(%s) failed: %s", kind, e)
         return []
 
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        content = _row_get(row, "content")
+        if not content:
+            continue
+        ch = _row_get(row, "content_hash") if src["has_hash"] else ""
+        if not ch:
+            ch = _content_hash(content)
+        rec: dict[str, Any] = {
+            "kind": kind,
+            "content": content,
+            "content_hash": ch,
+            "created_at": _row_get(row, "created_at"),
+        }
+        for c in src["carry"]:
+            rec[c] = _row_get(row, c)
+        result.append(rec)
+    return result
 
-def import_learnings(learnings: list[dict[str, Any]], source_label: str = "cluster_sync") -> dict[str, int]:
-    """Import learnings from a remote node, deduplicating by content_hash.
 
-    Returns counts of imported vs skipped.
+def import_records(kind: str, records: list[dict[str, Any]], source_label: str = "cluster_sync") -> dict[str, int]:
+    """Import records of ``kind`` from a remote node, deduping by content hash.
+
+    Never double-imports: a record whose content hash (learnings/knowledge) or
+    exact content (memories) already exists is skipped.  Returns imported/skipped.
     """
+    src = _SYNC_SOURCES.get(kind)
+    if not src or not records:
+        return {"imported": 0, "skipped": 0}
+
     imported = 0
     skipped = 0
-
+    _migrate_db()
     try:
         from layla.memory.db_connection import _conn
         from layla.time_utils import utcnow
 
         with _conn() as db:
-            for entry in learnings:
-                content = entry.get("content", "")
+            if kind == "knowledge":
+                _ensure_knowledge_table(db)
+            for rec in records:
+                content = (rec.get("content") or "").strip()
                 if not content:
                     skipped += 1
                     continue
+                content_hash = rec.get("content_hash") or _content_hash(content)
+                created = rec.get("created_at") or utcnow().isoformat()
 
-                # Compute content hash
-                content_hash = entry.get("content_hash", "")
-                if not content_hash:
-                    content_hash = hashlib.sha256(content.encode()).hexdigest()[:32]
-
-                # Check for duplicates
-                existing = db.execute(
-                    "SELECT id FROM learnings WHERE content_hash = ?",
-                    (content_hash,),
-                ).fetchone()
-                if existing:
+                if _record_exists(db, kind, content_hash, content):
                     skipped += 1
                     continue
 
-                # Insert
-                db.execute(
-                    """INSERT INTO learnings
-                       (content, type, created_at, confidence, source, content_hash, tags, aspect_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        content,
-                        entry.get("type", "fact"),
-                        entry.get("created_at", utcnow().isoformat()),
-                        entry.get("confidence", 0.5),
-                        source_label,
-                        content_hash,
-                        entry.get("tags", ""),
-                        entry.get("aspect_id", ""),
-                    ),
-                )
+                _insert_record(db, kind, rec, content, content_hash, created, source_label)
                 imported += 1
             db.commit()
-
     except Exception as e:
-        logger.warning("import_learnings failed: %s", e)
+        logger.warning("import_records(%s) failed: %s", kind, e)
 
     if imported:
-        logger.info("Imported %d learnings from %s (skipped %d duplicates)", imported, source_label, skipped)
-
+        logger.info("Imported %d %s from %s (skipped %d duplicates)", imported, kind, source_label, skipped)
     return {"imported": imported, "skipped": skipped}
+
+
+def _record_exists(db: Any, kind: str, content_hash: str, content: str) -> bool:
+    """Dedup probe: content-hash for hashed kinds, exact content for memories."""
+    src = _SYNC_SOURCES[kind]
+    if src["dedup"] == "content":
+        row = db.execute(
+            f"SELECT 1 FROM {src['table']} WHERE content = ? LIMIT 1", (content,)
+        ).fetchone()
+    else:
+        row = db.execute(
+            f"SELECT 1 FROM {src['table']} WHERE content_hash = ? LIMIT 1", (content_hash,)
+        ).fetchone()
+    return row is not None
+
+
+def _insert_record(db: Any, kind: str, rec: dict[str, Any], content: str,
+                   content_hash: str, created: str, source_label: str) -> None:
+    """Insert one record into its kind's table."""
+    if kind == "memory":
+        db.execute(
+            "INSERT INTO aspect_memories (aspect_id, content, created_at) VALUES (?,?,?)",
+            (rec.get("aspect_id", "") or "", content, created),
+        )
+    elif kind == "knowledge":
+        db.execute(
+            "INSERT INTO knowledge_entries (content, title, tags, source, content_hash, created_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (content, rec.get("title", "") or "", rec.get("tags", "") or "",
+             source_label, content_hash, created),
+        )
+    else:  # learning
+        db.execute(
+            "INSERT INTO learnings (content, type, created_at, confidence, source, content_hash, tags, aspect_id) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (content, rec.get("type", "fact") or "fact", created,
+             rec.get("confidence", 0.5), source_label, content_hash,
+             rec.get("tags", "") or "", rec.get("aspect_id", "") or ""),
+        )
 
 
 # ── Pending sync buffer (DRONE offline mode) ─────────────────────────────
@@ -455,8 +648,18 @@ class NodeSync:
             "total_pulled": 0,
             "reconnected": [],
             "skipped": [],
+            "refused": [],
             "errors": [],
         }
+
+        # Hard gate: until a pair exists, sync is a complete no-op — no config
+        # read beyond this cheap check, no network, no peers touched.  This keeps
+        # the single-device case free of any sync behaviour.
+        if not sync_paired():
+            summary["note"] = "not_paired"
+            return summary
+
+        cluster_cfg = _load_cluster_cfg()
 
         try:
             from services.cluster.cluster_network import get_cluster_network
@@ -472,6 +675,13 @@ class NodeSync:
 
             for peer in online_peers:
                 pid = peer.instance_id
+
+                # ── Safety: never sync to an unpaired/unauthenticated peer ──
+                if not is_authorized_peer(pid, cluster_cfg):
+                    logger.warning("Refusing sync with unauthorized peer %s", pid[:8])
+                    summary["refused"].append(pid[:8])
+                    continue
+
                 prev_status = self._peer_last_status.get(pid, "unknown")
                 current_status = peer.status.value if hasattr(peer.status, "value") else str(peer.status)
 
@@ -524,104 +734,149 @@ class NodeSync:
 
         return summary
 
+    # Kinds carried over the generic multi-kind transport (everything but the
+    # learning kind, which keeps flowing through the canonical net.sync_push /
+    # net.sync_pull path so that public transport contract stays authoritative).
+    _EXTRA_KINDS: tuple[str, ...] = tuple(k for k in SYNC_KINDS if k != "learning")
+
     def _sync_with_peer(self, net, peer) -> dict[str, int]:
-        """Sync with a single peer: push our new learnings, pull theirs.
+        """Sync with a single AUTHORIZED peer: push our new records for every
+        syncable kind, pull theirs.  Push and pull each carry a per-(peer, kind)
+        watermark that advances to the newest record seen, so re-sync stays
+        incremental instead of resending everything.
+
+        Learnings ride the canonical ``net.sync_push`` / ``net.sync_pull``
+        transport; the newer kinds (memories, wiki) ride the generic multi-kind
+        endpoint via ``net._post``.  Both channels apply the cluster-secret auth.
 
         Each HTTP call is wrapped in an exponential backoff retry loop:
         up to 3 attempts with delays of 2s, 4s, 8s between retries.
         """
         result = {"pushed": 0, "pulled": 0}
+        pid = peer.instance_id
 
-        # Get last sync time for this peer
-        last_sync = _get_last_sync_time(peer.instance_id)
-
-        # Push: send our learnings since last sync (with retry)
-        our_learnings = get_learnings_since(last_sync)
-        if our_learnings:
-            ok = self._retry_sync_push(net, peer, our_learnings)
-            if ok:
-                result["pushed"] = len(our_learnings)
-
-        # Also push any buffered offline items (with retry + dead-letter handling)
+        # ── PUSH learnings (+ buffered offline items) via the canonical transport ──
+        learn_out = export_since("learning", _get_last_sync_time(pid, "learning:push"))
         pending = get_pending_sync()
-        if pending:
-            ok = self._retry_sync_push(net, peer, pending)
-            if ok:
-                ids = [p["id"] for p in pending if "id" in p]
-                mark_synced(ids)
-                result["pushed"] += len(pending)
-            else:
-                # Push failed after all retries — increment fail counts
+        if learn_out or pending:
+            if self._retry_sync_push(net, peer, learn_out + pending):
+                result["pushed"] += len(learn_out) + len(pending)
+                _advance_watermark(pid, "learning:push", learn_out)
+                if pending:
+                    mark_synced([p["id"] for p in pending if "id" in p])
+            elif pending:
+                # Push failed after all retries — increment fail counts + dead-letter.
                 ids = [p["id"] for p in pending if "id" in p]
                 increment_fail_counts(ids)
-                # Check for dead-letter candidates
                 dead = get_dead_letter_candidates()
                 if dead:
                     mark_dead_letters(dead)
 
-        # Pull: get their learnings since last sync (with retry)
-        their_learnings = self._retry_sync_pull(net, peer, last_sync)
-        if their_learnings:
-            counts = import_learnings(their_learnings, source_label=f"sync:{peer.instance_id[:8]}")
-            result["pulled"] = counts.get("imported", 0)
+        # ── PUSH memories + wiki via the multi-kind transport ──
+        extra: dict[str, list[dict]] = {}
+        for kind in self._EXTRA_KINDS:
+            recs = export_since(kind, _get_last_sync_time(pid, f"{kind}:push"))
+            if recs:
+                extra[kind] = recs
+        if extra and self._retry_push_records(net, peer, extra):
+            for kind, recs in extra.items():
+                result["pushed"] += len(recs)
+                _advance_watermark(pid, f"{kind}:push", recs)
 
-        # Update sync timestamp
-        now = datetime.now(timezone.utc).isoformat()
-        _set_last_sync_time(peer.instance_id, now)
+        # ── PULL learnings via the canonical transport ──
+        their_learnings = self._retry_sync_pull(net, peer, _get_last_sync_time(pid, "learning:pull"))
+        if their_learnings:
+            counts = import_records("learning", their_learnings, source_label=f"sync:{pid[:8]}")
+            result["pulled"] += counts.get("imported", 0)
+            _advance_watermark(pid, "learning:pull", their_learnings)
+
+        # ── PULL memories + wiki via the multi-kind transport ──
+        since_map = {kind: _get_last_sync_time(pid, f"{kind}:pull") for kind in self._EXTRA_KINDS}
+        incoming = self._retry_pull_records(net, peer, since_map)
+        for kind in self._EXTRA_KINDS:
+            recs = incoming.get(kind) or []
+            if not recs:
+                continue
+            counts = import_records(kind, recs, source_label=f"sync:{pid[:8]}")
+            result["pulled"] += counts.get("imported", 0)
+            _advance_watermark(pid, f"{kind}:pull", recs)
 
         return result
 
     @staticmethod
     def _retry_sync_push(net, peer, learnings: list[dict]) -> bool:
-        """Push learnings with exponential backoff retry (3 attempts, 2/4/8s delays)."""
+        """Push learnings via the canonical transport with backoff (3 attempts, 2/4/8s)."""
+        if not learnings:
+            return True
         for attempt in range(SYNC_MAX_RETRIES):
             try:
-                ok = net.sync_push(peer, learnings)
-                if ok:
+                if net.sync_push(peer, learnings):
                     return True
             except Exception as e:
-                logger.debug(
-                    "sync_push to %s attempt %d/%d failed: %s",
-                    peer.instance_id[:8], attempt + 1, SYNC_MAX_RETRIES, e,
-                )
+                logger.debug("sync_push to %s attempt %d/%d failed: %s",
+                             peer.instance_id[:8], attempt + 1, SYNC_MAX_RETRIES, e)
             if attempt < SYNC_MAX_RETRIES - 1:
-                delay = SYNC_BACKOFF_BASE * (2 ** attempt)
-                logger.info(
-                    "Retrying sync_push to %s in %ds (attempt %d/%d)",
-                    peer.instance_id[:8], delay, attempt + 2, SYNC_MAX_RETRIES,
-                )
-                time.sleep(delay)
-        logger.warning(
-            "sync_push to %s failed after %d attempts",
-            peer.instance_id[:8], SYNC_MAX_RETRIES,
-        )
+                time.sleep(SYNC_BACKOFF_BASE * (2 ** attempt))
+        logger.warning("sync_push to %s failed after %d attempts", peer.instance_id[:8], SYNC_MAX_RETRIES)
         return False
 
     @staticmethod
     def _retry_sync_pull(net, peer, since: str) -> list[dict]:
-        """Pull learnings with exponential backoff retry (3 attempts, 2/4/8s delays)."""
+        """Pull learnings via the canonical transport with backoff (3 attempts, 2/4/8s).
+
+        ``net.sync_pull`` returns a list (``[]`` for both no-new-data and a
+        swallowed error), so an empty result is not retried — that would only add
+        backoff sleeps to the common no-op pull."""
         for attempt in range(SYNC_MAX_RETRIES):
             try:
                 result = net.sync_pull(peer, since)
                 if result is not None:
                     return result
             except Exception as e:
-                logger.debug(
-                    "sync_pull from %s attempt %d/%d failed: %s",
-                    peer.instance_id[:8], attempt + 1, SYNC_MAX_RETRIES, e,
-                )
+                logger.debug("sync_pull from %s attempt %d/%d failed: %s",
+                             peer.instance_id[:8], attempt + 1, SYNC_MAX_RETRIES, e)
             if attempt < SYNC_MAX_RETRIES - 1:
-                delay = SYNC_BACKOFF_BASE * (2 ** attempt)
-                logger.info(
-                    "Retrying sync_pull from %s in %ds (attempt %d/%d)",
-                    peer.instance_id[:8], delay, attempt + 2, SYNC_MAX_RETRIES,
-                )
-                time.sleep(delay)
-        logger.warning(
-            "sync_pull from %s failed after %d attempts",
-            peer.instance_id[:8], SYNC_MAX_RETRIES,
-        )
+                time.sleep(SYNC_BACKOFF_BASE * (2 ** attempt))
         return []
+
+    @staticmethod
+    def _retry_push_records(net, peer, records: dict[str, list[dict]]) -> bool:
+        """Push the multi-kind ``records`` map over the authenticated channel
+        (net._post applies the cluster-secret header).  Backoff 3×, 2/4/8s."""
+        payload: dict[str, Any] = {"records": records}
+        for attempt in range(SYNC_MAX_RETRIES):
+            try:
+                resp = net._post(peer.address, "/cluster/sync/push", payload)
+                if resp and resp.get("ok"):
+                    return True
+            except Exception as e:
+                logger.debug("records push to %s attempt %d/%d failed: %s",
+                             peer.instance_id[:8], attempt + 1, SYNC_MAX_RETRIES, e)
+            if attempt < SYNC_MAX_RETRIES - 1:
+                time.sleep(SYNC_BACKOFF_BASE * (2 ** attempt))
+        logger.warning("records push to %s failed after %d attempts", peer.instance_id[:8], SYNC_MAX_RETRIES)
+        return False
+
+    @staticmethod
+    def _retry_pull_records(net, peer, since_map: dict[str, str]) -> dict[str, list[dict]]:
+        """Pull the multi-kind ``records`` map (memories, wiki) with backoff."""
+        if not since_map:
+            return {}
+        legacy_since = min(since_map.values())
+        payload = {"since": legacy_since, "since_map": since_map, "kinds": list(since_map.keys())}
+        for attempt in range(SYNC_MAX_RETRIES):
+            try:
+                resp = net._post(peer.address, "/cluster/sync/pull", payload)
+                if resp is not None:
+                    records = resp.get("records")
+                    return records if isinstance(records, dict) else {}
+            except Exception as e:
+                logger.debug("records pull from %s attempt %d/%d failed: %s",
+                             peer.instance_id[:8], attempt + 1, SYNC_MAX_RETRIES, e)
+            if attempt < SYNC_MAX_RETRIES - 1:
+                time.sleep(SYNC_BACKOFF_BASE * (2 ** attempt))
+        logger.warning("records pull from %s failed after %d attempts", peer.instance_id[:8], SYNC_MAX_RETRIES)
+        return {}
 
     # ── Background sync loop ─────────────────────────────────────────
 
