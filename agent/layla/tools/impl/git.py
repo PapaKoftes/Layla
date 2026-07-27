@@ -110,7 +110,16 @@ def git_commit(repo: str, message: str, add_all: bool = False) -> dict:
         cwd=str(repo_path),
         capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
-    return {"ok": result.returncode == 0, "output": (result.stdout or result.stderr or "")[:2000]}
+    ok = result.returncode == 0
+    if ok:
+        # Emit the declared `git_commit` automation event so lifecycle rules can react
+        # (e.g. "on commit → reindex"). Best-effort — never let a rule break the commit.
+        try:
+            from services.automation.rules_engine import dispatch_event
+            dispatch_event("git_commit", {"repo": str(repo_path), "message": (message or "")[:200]})
+        except Exception:
+            pass
+    return {"ok": ok, "output": (result.stdout or result.stderr or "")[:2000]}
 
 def git_push(repo: str, remote: str = "origin", branch: str = "") -> dict:
     """Push commits to remote. branch: empty = current branch."""

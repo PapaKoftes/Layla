@@ -40,6 +40,32 @@ def test_event_type_isolation():
     assert re_.dispatch_event("git_commit", {})["fired"] == 1
 
 
+def test_rank_up_is_a_wired_event_type():
+    """delta-critic C6: automation had ONE real lifecycle trigger (file_modified). rank_up is now a
+    first-class trigger too, so rules can react to growth — not only to file changes."""
+    assert "rank_up" in re_.EVENT_TYPES
+    assert re_.add_rule("on-rank", "rank_up", "log")["ok"]
+    assert re_.dispatch_event("rank_up", {"new_rank": 2})["fired"] == 1
+
+
+def test_award_xp_emits_rank_up_on_transition(isolated_db, monkeypatch):
+    """award_xp must emit a rank_up automation event when (and only when) a rank is crossed —
+    the producer half of the C6 wire. Patches dispatch_event to capture without a real automation DB."""
+    import services.automation.rules_engine as _re
+    from services.personality import maturity_engine as me
+
+    calls: list = []
+    monkeypatch.setattr(_re, "dispatch_event", lambda ev, payload=None: calls.append(ev))
+    cfg = {"maturity_enabled": True}
+
+    me.award_xp(1, reason="tiny", cfg=cfg)  # below threshold → no rank change
+    assert "rank_up" not in calls, "a sub-threshold XP award must not emit rank_up"
+
+    ev = me.award_xp(1_000_000, reason="huge", cfg=cfg)  # crosses ≥1 threshold
+    assert ev.get("ranked_up") is True
+    assert "rank_up" in calls, "award_xp must emit a rank_up automation event on a rank transition"
+
+
 def test_run_macro_action(monkeypatch):
     seen = {}
 
