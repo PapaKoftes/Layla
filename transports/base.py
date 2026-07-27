@@ -4,18 +4,26 @@ Discord, Slack, Telegram use this as thin adapters.
 
 Inbound security (optional): optional allowlist + optional /pair <secret>.
 See transports/README.md and docs/ALIGNMENT_NOTE.md.
+
+Security posture for transport-originated turns (Slack/Telegram/Discord):
+  * They are UNTRUSTED input. ``TransportAdapter`` FORCES ``allow_write=allow_run=False``
+    on every agent call — a remote chat can never get filesystem-write or code-exec.
+  * An inbound allowlist / pairing gate (``check_transport_inbound``) runs before the
+    agent is ever called; a non-allowlisted sender is refused with no agent invocation.
+  * Tokens and config are never echoed back to the chat — replies carry only agent text.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
 import re
 import sys
 import threading
+from collections import deque
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 logger = logging.getLogger("layla.transport")
 
@@ -272,7 +280,11 @@ async def call_layla_async(
     max_response_chars: int = 4000,
     persona_focus: str = "",
 ) -> str:
-    """Async HTTP POST to Layla /agent. For Discord, Slack, Telegram."""
+    """Async HTTP POST to Layla /agent (httpx). For Discord, Slack, Telegram.
+
+    httpx is a first-class Layla core dependency, so the async run path has no
+    extra install (aiohttp was previously used but is declared nowhere).
+    """
     url = get_agent_url() + "/agent"
     payload = {
         "message": message,
@@ -286,15 +298,19 @@ async def call_layla_async(
     if pf:
         payload["persona_focus"] = pf
     try:
-        import aiohttp
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
-                if resp.status != 200:
-                    return f"Layla API error: {resp.status}"
-                data = await resp.json()
+        import httpx
+    except Exception as e:  # httpx is core; degrade rather than crash the transport
+        logger.exception("httpx unavailable for transport call")
+        return f"Could not reach Layla: {e}"
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=payload, timeout=timeout)
+            if resp.status_code != 200:
+                return f"Layla API error: {resp.status_code}"
+            data = resp.json()
         text = data.get("response", data.get("text", str(data)))
         return (text or "")[:max_response_chars]
-    except asyncio.TimeoutError:
+    except httpx.TimeoutException:
         return "Layla took too long to respond."
     except Exception as e:
         logger.exception("Layla API call failed")
@@ -313,13 +329,188 @@ async def save_learning_async(
     if (tags or "").strip():
         payload["tags"] = tags.strip()[:500]
     try:
-        import aiohttp
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=timeout)) as resp:
-                data = await resp.json()
-                if resp.status != 200:
-                    return {"ok": False, "error": data.get("error", f"HTTP {resp.status}")}
-                return data if isinstance(data, dict) else {"ok": False, "error": str(data)}
+        import httpx
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=payload, timeout=timeout)
+            data = resp.json()
+            if resp.status_code != 200:
+                return {"ok": False, "error": data.get("error", f"HTTP {resp.status_code}")}
+            return data if isinstance(data, dict) else {"ok": False, "error": str(data)}
     except Exception as e:
         logger.exception("save_learning_async failed")
         return {"ok": False, "error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Base adapter — the shared, first-class inbound pipeline for chat transports.
+#
+# Every transport (Slack, Telegram, Discord) drives its inbound turns through a
+# single ``TransportAdapter`` so security and history behave identically:
+#
+#     message-in  ->  inbound security gate  ->  run the agent  ->  reply-out
+#                     (allowlist / pairing)      (allow_write =
+#                                                  allow_run = FORCED False)
+#
+# Conversation history is bounded and keyed by chat id, so each chat gets its
+# own short rolling context without any cross-chat bleed. History lives only in
+# this process (in-memory) and is passed to the agent as ``context``; each agent
+# call still gets a fresh server-side conversation id, so nothing leaks between
+# chats even on a shared Layla server.
+# ---------------------------------------------------------------------------
+
+DEFAULT_ASPECT = "morrigan"
+
+# Public type aliases for the pluggable run path (handy for tests / DI).
+AsyncRunner = Callable[..., Awaitable[str]]
+SyncRunner = Callable[..., str]
+
+
+@dataclass
+class InboundResult:
+    """Outcome of one inbound turn through :class:`TransportAdapter`.
+
+    ``allowed`` is False when the security gate refused the sender (``reply`` then
+    holds the user-facing denial / pairing message, or None to stay silent).
+    ``ran_agent`` is True only when the agent was actually invoked.
+    """
+
+    allowed: bool
+    reply: str | None
+    ran_agent: bool = False
+
+
+class TransportAdapter:
+    """Shared inbound pipeline for Layla chat transports.
+
+    Contract
+    --------
+    * ``gate(user_id, text)`` runs the SHARED inbound security policy
+      (:func:`check_transport_inbound`): allowlist + optional ``/pair`` handshake.
+      A non-allowlisted / unpaired sender is refused *before* the agent is called.
+    * ``run_async`` / ``run_sync`` invoke the agent for an already-gated turn with
+      ``allow_write=allow_run=False`` **forced** — transport turns are untrusted and
+      can never obtain filesystem-write or code-execution, mirroring the router's
+      fail-closed stance. There is deliberately no parameter to raise them.
+    * ``handle_inbound_async`` / ``handle_inbound_sync`` are the convenience
+      one-shots: gate, then (if allowed) run and record history.
+    * Conversation history is bounded (``history_turns``) and keyed by chat id.
+
+    The run path defaults to the localhost Layla HTTP API
+    (:func:`call_layla_async` / :func:`call_layla_sync`); a custom ``async_runner`` /
+    ``sync_runner`` may be injected (used by tests to assert the forced flags).
+    """
+
+    def __init__(
+        self,
+        platform: str,
+        *,
+        aspect_id: str = DEFAULT_ASPECT,
+        max_response_chars: int = 4000,
+        timeout: int = 60,
+        history_turns: int = 6,
+        async_runner: AsyncRunner | None = None,
+        sync_runner: SyncRunner | None = None,
+    ) -> None:
+        self.platform = (platform or "").strip().lower()
+        if not self.platform:
+            raise ValueError("platform is required")
+        self.aspect_id = (aspect_id or DEFAULT_ASPECT).strip() or DEFAULT_ASPECT
+        self.max_response_chars = int(max_response_chars)
+        self.timeout = int(timeout)
+        self.history_turns = max(0, int(history_turns))
+        self._async_runner = async_runner
+        self._sync_runner = sync_runner
+        self._history: dict[str, deque[tuple[str, str]]] = {}
+        self._history_lock = threading.RLock()
+
+    # -- conversation history keyed by chat id ------------------------------
+    def conversation_key(self, chat_id: Any) -> str:
+        """Stable per-chat key, namespaced by platform (e.g. ``telegram:12345``)."""
+        return f"{self.platform}:{str(chat_id).strip()}"
+
+    def render_context(self, chat_id: Any) -> str:
+        """Recent turns for ``chat_id`` rendered as agent context (may be empty)."""
+        if self.history_turns <= 0:
+            return ""
+        key = str(chat_id).strip()
+        with self._history_lock:
+            turns = list(self._history.get(key, ()))
+        if not turns:
+            return ""
+        lines: list[str] = []
+        for user_text, reply_text in turns:
+            lines.append(f"User: {user_text}")
+            lines.append(f"Layla: {reply_text}")
+        return "\n".join(lines)
+
+    def _record_turn(self, chat_id: Any, user_text: str, reply_text: str) -> None:
+        if self.history_turns <= 0:
+            return
+        key = str(chat_id).strip()
+        with self._history_lock:
+            dq = self._history.get(key)
+            if dq is None:
+                dq = deque(maxlen=self.history_turns)
+                self._history[key] = dq
+            dq.append((user_text, reply_text))
+
+    def reset(self, chat_id: Any | None = None) -> None:
+        """Drop history for one chat, or all chats when ``chat_id`` is None."""
+        with self._history_lock:
+            if chat_id is None:
+                self._history.clear()
+            else:
+                self._history.pop(str(chat_id).strip(), None)
+
+    # -- shared security gate ------------------------------------------------
+    def gate(self, user_id: Any, text: str | None) -> tuple[bool, str | None]:
+        """Run the shared inbound policy. See :func:`check_transport_inbound`."""
+        return check_transport_inbound(self.platform, str(user_id), text)
+
+    # -- run path (allow_write / allow_run FORCED False) ---------------------
+    async def run_async(self, chat_id: Any, text: str) -> str:
+        """Run the agent for an already-gated turn; record history. Never grants write/run."""
+        runner = self._async_runner or call_layla_async
+        reply = await runner(
+            text,
+            context=self.render_context(chat_id),
+            allow_write=False,  # FORCED: a transport turn is untrusted input
+            allow_run=False,  # FORCED: ...and must never execute code
+            aspect_id=self.aspect_id,
+            max_response_chars=self.max_response_chars,
+            timeout=self.timeout,
+        )
+        reply = reply or ""
+        self._record_turn(chat_id, text, reply)
+        return reply
+
+    def run_sync(self, chat_id: Any, text: str) -> str:
+        """Sync counterpart of :meth:`run_async` (for sync handlers, e.g. slack_bolt)."""
+        runner = self._sync_runner or call_layla_sync
+        reply = runner(
+            text,
+            context=self.render_context(chat_id),
+            allow_write=False,  # FORCED
+            allow_run=False,  # FORCED
+            aspect_id=self.aspect_id,
+            max_response_chars=self.max_response_chars,
+            timeout=self.timeout,
+        )
+        reply = reply or ""
+        self._record_turn(chat_id, text, reply)
+        return reply
+
+    # -- convenience one-shots (gate + run) ----------------------------------
+    async def handle_inbound_async(self, *, chat_id: Any, user_id: Any, text: str | None) -> InboundResult:
+        allowed, deny = self.gate(user_id, text)
+        if not allowed:
+            return InboundResult(allowed=False, reply=deny, ran_agent=False)
+        reply = await self.run_async(chat_id, text or "")
+        return InboundResult(allowed=True, reply=reply, ran_agent=True)
+
+    def handle_inbound_sync(self, *, chat_id: Any, user_id: Any, text: str | None) -> InboundResult:
+        allowed, deny = self.gate(user_id, text)
+        if not allowed:
+            return InboundResult(allowed=False, reply=deny, ran_agent=False)
+        reply = self.run_sync(chat_id, text or "")
+        return InboundResult(allowed=True, reply=reply, ran_agent=True)
