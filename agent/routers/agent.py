@@ -20,6 +20,7 @@ from agent_loop import (
     truncate_at_next_user_turn,
 )
 from schemas.requests import AgentRequest, SteerRequest
+from services.agent.turn import answer_of
 from services.agent.turn_commit import commit_turn
 from services.infrastructure.output_polish import polish_output
 from services.infrastructure.resource_manager import PRIORITY_CHAT, classify_load
@@ -1334,14 +1335,11 @@ async def agent(req: AgentRequest, request: Request):
                         _done_stream["deliberation"] = _dm
                     yield f"data: {json.dumps(_done_stream)}\n\n"
                 else:
-                    steps = result.get("steps") or []
-                    final = steps[-1].get("result", "") if steps else ""
-                    # Prefer the run's synthesized prose answer. NEVER json.dumps a raw tool-result
-                    # dict into the reply — that leaked internal payloads like
-                    # {"ok": true, "memories": [...]} straight to the user as the message.
-                    response_text = (result.get("response") or result.get("reply") or "").strip()
-                    if not response_text and isinstance(final, str):
-                        response_text = final.strip()
+                    # CP-5: the user-visible answer has one owner (services.agent.turn.answer_of):
+                    # synthesized prose, falling back to a STRING last-step result only — never a raw
+                    # tool-result dict, which once leaked payloads like {"ok": true, "memories": [...]}
+                    # straight to the user as the message.
+                    response_text = answer_of(result)
                     # Clean the synthesized answer the SAME way the token-streaming branch does. Assign
                     # the cleaned value UNCONDITIONALLY (parity with the non-stream JSON path ~1388): if
                     # cleaning zeroes an ALL-SCAFFOLD reply ("[TOOL: …]\n{raw results}" / "## SYSTEM …"),
@@ -1489,14 +1487,10 @@ async def agent(req: AgentRequest, request: Request):
     steps = result.get("steps") or []
     final = steps[-1].get("result", "") if steps else ""
     _extra_names = _aspect_extra_names(result)
-    # Prefer the run's SYNTHESIZED prose answer over the last raw step result — and NEVER json.dumps a
-    # raw tool-result dict into the reply. The old `json.dumps(final)` leaked payloads like
-    # {"ok": false, "error": "invalid_args", ...} or a memory dump verbatim as the message (strip_junk
-    # can't recognize a bare JSON dict). Mirror the streaming tool branch (see ~line 1182): use `final`
-    # only when it is already a string.
-    _raw_final = (result.get("response") or result.get("reply") or "").strip()
-    if not _raw_final and isinstance(final, str):
-        _raw_final = final
+    # CP-5: same one owner as the streamed path — services.agent.turn.answer_of returns the synthesized
+    # prose answer, or a STRING last-step result, never a raw tool-result dict (the old json.dumps(final)
+    # leaked payloads like {"ok": false, ...} verbatim). `final` is kept below for the post-clean retry.
+    _raw_final = answer_of(result)
     # truncate_at_next_user_turn (parity with the streaming paths) — the non-stream JSON path omitted
     # it, so a fabricated "User: …" next-turn the small model hallucinated leaked into the reply.
     response_text = truncate_at_next_user_turn(strip_junk_from_reply(_raw_final, _extra_names, active_names=_active_name_set(result)))

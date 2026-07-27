@@ -20,6 +20,20 @@ expression denotes it — so "the suite stayed green" is worthless evidence prec
 operates. This file creates that evidence. It pins the divergence as FACT, it does not fix it. CP-5
 removes the divergence and updates this file once; that diff is the human-readable record of the
 behaviour change.
+
+── CP-5 UPDATE (2026-07-27): the router answer now HAS an owner ──────────────────────────────────────
+`services/agent/turn.py::answer_of(result)` is the single owner of the USER-VISIBLE answer, and both
+router readers (streamed + non-streamed) now call it instead of re-deriving the text inline. Crucially
+the REAL router was never the bare `rule_a_router` copy below: it prefers the synthesized prose
+(`result["response"]`) and only falls back to the last step's result when that is a STRING — so it never
+surfaces a raw tool-result dict (the `rule_a_router` copy models only the fallback, which is why its
+tool-last case returns a dict). `answer_of` captures the real behaviour and is tested directly below.
+
+What did NOT change: the finalizer's `rule_b_finalizer` (the last *reasoned* text) is a DIFFERENT value
+— the input to the off-by-default answer-quality assessment, not the delivered answer. It is
+intentionally left as-is; the two were never two rules for one value, they are two different
+measurements (delivered answer vs. reasoned text). So this file keeps the Rule B tests as a true record
+and adds the owner tests; it does not force the assessment to read the delivered answer.
 """
 from __future__ import annotations
 
@@ -109,17 +123,47 @@ class TestEdgeCases:
         assert rule_a_router(tools_only) == {"ok": True}, "Rule A still returns the last result"
 
 
+class TestAnswerOfOwnsTheRouterAnswer:
+    """CP-5: the real router answer has ONE owner now — services.agent.turn.answer_of. Unlike the
+    simplified rule_a_router copy, it prefers the synthesized prose and never returns a raw dict."""
+
+    def test_prefers_the_synthesized_prose_answer(self):
+        from services.agent.turn import answer_of
+        result = {"response": "The polished answer.", "steps": TOOL_LAST}
+        assert answer_of(result) == "The polished answer.", "prose answer wins over the last step"
+
+    def test_reason_last_falls_back_to_the_reason_string(self):
+        from services.agent.turn import answer_of
+        # no prose response -> fall back to the last step, which here is a reason STRING
+        assert answer_of({"steps": REASON_LAST}) == "Here is the answer, reasoned from what I read."
+
+    def test_tool_last_never_returns_a_raw_dict(self):
+        from services.agent.turn import answer_of
+        # the fallback is a dict (raw tool result) -> answer_of returns "" rather than leak it, the
+        # exact safety the real router's `isinstance(final, str)` guard provides (the rule_a copy lacks).
+        assert answer_of({"steps": TOOL_LAST}) == "", "a raw tool-result dict must never become the answer"
+
+    def test_empty_run_returns_empty_string(self):
+        from services.agent.turn import answer_of
+        assert answer_of({}) == "" and answer_of({"steps": []}) == ""
+
+
 def test_the_source_rules_still_match_these_copies():
-    """Guards the whole file against drift: if Rule A or Rule B changes in source but not here, this
-    characterization is a lie. Anchors on the literal expressions, so a real change to how the answer
-    is extracted forces a deliberate update to this file (which is exactly CP-5's mechanism)."""
+    """Guards the whole file against drift: if Rule B changes in source but not here, this
+    characterization is a lie. Rule A was replaced by CP-5's answer_of() owner — so we now anchor on the
+    owner call in the router AND on the surviving fallback literal (kept for the non-stream retry)."""
     router = (AGENT_DIR / "routers" / "agent.py").read_text(encoding="utf-8")
     finalizer = (AGENT_DIR / "services" / "agent" / "run_finalizer.py").read_text(encoding="utf-8")
 
-    assert 'steps[-1].get("result", "") if steps else ""' in router, (
-        "Rule A no longer matches its copy above — either it moved (update this file) or CP-5 has "
-        "replaced it with answer_of() (update this file to reflect the unified behaviour)"
+    # CP-5: both router readers now route through the one owner.
+    assert "answer_of(result)" in router, (
+        "the router no longer calls answer_of() — CP-5's single-owner unification was reverted or moved; "
+        "update this file to match the new answer source"
     )
-    # Rule B is a two-line pattern; anchor on both lines so a partial edit is caught.
+    # The fallback literal still lives inside the non-stream reader's post-clean retry.
+    assert 'steps[-1].get("result", "") if steps else ""' in router, (
+        "the last-step fallback literal changed — update this file"
+    )
+    # Rule B (finalizer) is a DIFFERENT, unchanged value; anchor on both its lines.
     assert 'for s in reversed(state.get("steps", []))' in finalizer, "Rule B's reverse-scan changed"
     assert 's.get("action") == "reason"' in finalizer, "Rule B's reason-match changed"
