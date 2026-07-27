@@ -704,6 +704,7 @@ def load_config() -> dict:
             "research_max_runtime_seconds": 1800,
             "safe_mode": True,
             "mcp_client_enabled": False,
+            "mcp_server_enabled": False,
             "mcp_stdio_servers": [],
             "mcp_inject_tool_summary_in_decisions": False,
             "mcp_tool_summary_ttl_seconds": 300,
