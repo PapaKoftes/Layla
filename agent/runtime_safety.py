@@ -568,6 +568,14 @@ def load_config() -> dict:
             "grounding_enabled": True,
             "grounding_mode": "flag",
             "grounding_min_support": 0.35,
+            # Encryption at rest (PLAN #20). ON by default: HIGH-RISK memories (credentials, secret
+            # keys, passwords, government IDs) are Fernet-encrypted at rest — rarely keyword-searched,
+            # most damaging if read off disk, so default-protecting them costs almost nothing.
+            # Degrades to plaintext with a loud one-time warning if no key is available (never data
+            # loss). Broader PII (health/financial/contact) stays plaintext-and-searchable unless the
+            # operator opts in below, because that content is often what you WANT to keyword-recall.
+            "encryption_at_rest_enabled": True,
+            "encrypt_pii_at_rest": False,
             # BL-103 reranker backend: auto (flashrank→cross-encoder→bm25) | flashrank | cross_encoder | bm25.
             "reranker_backend": "auto",
             # BL-102 hybrid escalation: re-ask a bigger model when the small model's answer looks

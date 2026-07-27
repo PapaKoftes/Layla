@@ -158,3 +158,34 @@ def classify(text, *, entity_type=None) -> str:
     Conservative: any single category match yields ``"sensitive"``.
     """
     return "sensitive" if is_sensitive(text, entity_type=entity_type) else "public"
+
+
+# ── tier: which sensitivity classes are encrypted BY DEFAULT ──────────────────
+# Operator's choice: HIGH-RISK classes (credentials / secrets / keys / passwords, and government
+# IDs) are encrypted at rest by default; broader PII (health, financial, contact details) is
+# encrypted only when the operator opts in (`encrypt_pii_at_rest`). Rationale: high-risk data is
+# rarely keyword-searched and most damaging if read off disk, so default-encrypting it costs almost
+# nothing; PII is often something you DO want to keyword-recall, so encrypting it by default would
+# silently break that. Both still require `encryption_at_rest_enabled` (on by default).
+_HIGH_RISK_LABELS = frozenset({"credential", "credential_shape", "government_id"})
+_HIGH_RISK_ENTITY_TYPES = frozenset({
+    "credential", "credentials", "secret", "password", "api_key", "apikey", "token",
+    "government_id", "gov_id",
+})
+
+
+def tier(text, *, entity_type=None) -> str:
+    """Sensitivity tier: ``"high_risk"`` > ``"pii"`` > ``"public"``.
+
+    high_risk = credentials/secrets/keys/passwords + government IDs (encrypted by default).
+    pii       = health / financial / contact details (encrypted only when the operator opts in).
+    public    = nothing matched.
+    """
+    labels = explain(text, entity_type=entity_type)
+    if not labels:
+        return "public"
+    if str(entity_type or "").strip().lower() in _HIGH_RISK_ENTITY_TYPES:
+        return "high_risk"
+    if any(lb in _HIGH_RISK_LABELS for lb in labels):
+        return "high_risk"
+    return "pii"
