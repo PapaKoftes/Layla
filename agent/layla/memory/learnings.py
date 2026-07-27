@@ -467,7 +467,11 @@ def get_last_outcome_evaluation_record(conversation_id: str) -> dict | None:
         ).fetchone()
         if not row:
             return None
-        raw = row[0] if isinstance(row, (tuple, list)) else row.get("evaluation_json")
+        # sqlite3.Row has NO .get() — the old `row.get("evaluation_json")` raised AttributeError on
+        # every real read (rows are sqlite3.Row, not tuple/list), so persisted outcome evaluations
+        # were silently unreadable across a restart (the caller swallowed the error → None). Index 0
+        # is safe for tuple/list AND sqlite3.Row, and the SELECT returns exactly evaluation_json.
+        raw = row[0]
         if not raw:
             return None
         try:
