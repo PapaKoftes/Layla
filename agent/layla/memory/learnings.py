@@ -481,6 +481,23 @@ def get_last_outcome_evaluation_record(conversation_id: str) -> dict | None:
             return None
 
 
+def clear_outcome_evaluation(conversation_id: str) -> None:
+    """Delete the persisted outcome evaluation(s) for a conversation.
+
+    Makes ``SessionContext.clear_outcome_evaluation`` a TRUE clear. The table is append-only
+    (``save_outcome_evaluation`` INSERTs; the getter reads the latest by id), so clearing only the
+    in-memory copy would leave the durable row and ``get_last_outcome_evaluation_record`` would
+    resurrect the value on the next read. Best-effort; never raises."""
+    cid = (conversation_id or "").strip() or "default"
+    try:
+        migrate()
+        with _conn() as db:
+            db.execute("DELETE FROM outcome_evaluations WHERE conversation_id = ?", (cid,))
+            db.commit()
+    except Exception:
+        pass
+
+
 def get_learnings_by_embedding_ids(embedding_ids: list[str]) -> dict[str, dict]:
     """Look up confidence and created_at for learnings by embedding_id. Used for retrieval scoring."""
     if not embedding_ids:
