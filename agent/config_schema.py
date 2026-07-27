@@ -419,6 +419,13 @@ EDITABLE_SCHEMA: list[dict[str, Any]] = [
         "default": False,
         "hint": "Enable MCP stdio client (services/mcp_client.py). When true, the mcp_tools_call tool can reach configured mcp_stdio_servers (requires allow_run + approvals like shell). OFF by default (security + needs-configured-server): only enable for MCP servers you trust.",
     },
+    {
+        "key": "mcp_server_enabled",
+        "type": "boolean",
+        "category": "integrations",
+        "default": False,
+        "hint": "Expose Layla AS an MCP server (python -m clients.layla_mcp_server) so other agents can call a SAFE, read-only subset of her tools + memory recall. OFF by default (security: an inbound server is a real exposure): all MCP-served calls force allow_write=allow_run=False and the exposed set is re-filtered against the registry's write/exec/dangerous flags, but it stays opt-in.",
+    },
     {"key": "discord_webhook_url", "type": "string", "category": "integrations", "hint": "Discord webhook URL for discord_send. Server Settings → Integrations → Webhooks."},
     {"key": "discord_bot_token", "type": "string", "category": "integrations", "hint": "Discord bot token for full bot (voice, TTS, music). Create at Discord Developer Portal."},
 ]
