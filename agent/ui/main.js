@@ -508,6 +508,8 @@ function init() {
     // obsidian.js
     laylaObsidianConnect: obsidian.laylaObsidianConnect,
     laylaObsidianSync: obsidian.laylaObsidianSync,
+    laylaObsidianTwoWay: obsidian.laylaObsidianTwoWay,
+    laylaObsidianWriteback: obsidian.laylaObsidianWriteback,
     laylaObsidianStatus: obsidian.laylaObsidianStatus,
     laylaObsidianDiff: obsidian.laylaObsidianDiff,
     laylaObsidianSuggest: obsidian.laylaObsidianSuggest,

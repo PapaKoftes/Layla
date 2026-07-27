@@ -34,14 +34,15 @@ async def obsidian_connect(request: Request):
 def obsidian_status():
     """Return vault connection status and last-sync info."""
     try:
-        from services.infrastructure.obsidian_sync import diff_vault, get_vault_path
+        from services.infrastructure.obsidian_sync import diff_vault, get_vault_path, sync_enabled
         vp = get_vault_path()
         if vp is None:
-            return {"connected": False, "vault_path": None}
+            return {"connected": False, "vault_path": None, "two_way_enabled": sync_enabled()}
         d = diff_vault(_REPO_ROOT)
         return {
             "connected": True,
             "vault_path": str(vp),
+            "two_way_enabled": sync_enabled(),
             "new": len(d.get("new", [])),
             "updated": len(d.get("updated", [])),
             "unchanged": len(d.get("unchanged", [])),
@@ -73,6 +74,57 @@ async def obsidian_sync(request: Request):
     try:
         from services.infrastructure.obsidian_sync import sync_vault
         return sync_vault(_REPO_ROOT, force=force)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.post("/obsidian/sync/two-way")
+async def obsidian_two_way_sync(request: Request):
+    """
+    True bidirectional sync: reconcile vault ↔ knowledge/obsidian in both directions
+    off the per-file sync-state store. Edit-both-sides conflicts are kept, not
+    clobbered. OFF unless obsidian_sync_enabled is set (it writes to the real vault).
+    Pass force=true to let the vault win conflicts (import direction only).
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    force = bool((body or {}).get("force", False))
+    try:
+        from services.infrastructure.obsidian_sync import sync_enabled, two_way_sync
+        if not sync_enabled():
+            return JSONResponse(
+                {"ok": False, "disabled": True,
+                 "error": "Two-way sync is disabled. Set obsidian_sync_enabled=true to opt in."},
+                status_code=403,
+            )
+        return two_way_sync(_REPO_ROOT, force=force)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@router.post("/obsidian/writeback")
+async def obsidian_writeback(request: Request):
+    """
+    Write Layla's high-confidence learnings back into <vault>/layla/ as well-formed,
+    structured notes (frontmatter + body + wikilinks), keeping the vault prepared over
+    time. Never clobbers a user-authored note. OFF unless obsidian_sync_enabled is set.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    n = int((body or {}).get("n", 10) or 10)
+    try:
+        from services.infrastructure.obsidian_sync import sync_enabled, writeback_learnings
+        if not sync_enabled():
+            return JSONResponse(
+                {"ok": False, "disabled": True,
+                 "error": "Writeback is disabled. Set obsidian_sync_enabled=true to opt in."},
+                status_code=403,
+            )
+        return writeback_learnings(n=max(1, min(50, n)), repo_root=_REPO_ROOT)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 

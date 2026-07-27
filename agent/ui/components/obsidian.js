@@ -37,6 +37,37 @@ export async function laylaObsidianSync() {
   } catch(e) { _obsStatus('Network error: ' + e.message, true); }
 }
 
+/** POST /obsidian/sync/two-way — true bidirectional reconcile (opt-in). */
+export async function laylaObsidianTwoWay() {
+  try {
+    _obsStatus('Two-way syncing…');
+    var res = await fetch('/obsidian/sync/two-way', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+    var data = await res.json();
+    if (data.disabled) { _obsStatus('Two-way sync is off. Enable obsidian_sync_enabled in settings to opt in.', true); return; }
+    if (data.ok) {
+      var c = (data.conflicts || []).length;
+      _obsStatus('Two-way: ' + (data.imported || []).length + ' imported · ' +
+        (data.exported || []).length + ' exported → vault · ' + c + ' conflict' + (c === 1 ? '' : 's') +
+        (c ? ' kept (not clobbered)' : ''), c > 0);
+    } else { _obsStatus('Error: ' + (data.error || 'unknown'), true); }
+  } catch(e) { _obsStatus('Network error: ' + e.message, true); }
+}
+
+/** POST /obsidian/writeback — write Layla's learnings back as structured vault notes (opt-in). */
+export async function laylaObsidianWriteback() {
+  try {
+    _obsStatus('Writing learnings to vault…');
+    var res = await fetch('/obsidian/writeback', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({n: 10}) });
+    var data = await res.json();
+    if (data.disabled) { _obsStatus('Writeback is off. Enable obsidian_sync_enabled in settings to opt in.', true); return; }
+    if (data.ok) {
+      var skipped = (data.skipped || []).length;
+      _obsStatus((data.written || []).length + ' learnings written to vault/layla' +
+        (skipped ? ' · ' + skipped + ' skipped (user notes preserved)' : ''));
+    } else { _obsStatus('Error: ' + (data.error || 'unknown'), true); }
+  } catch(e) { _obsStatus('Network error: ' + e.message, true); }
+}
+
 function _obsEsc(s) {
   var d = document.createElement('div');
   d.textContent = s == null ? '' : String(s);
