@@ -1,18 +1,25 @@
 """
-Layla Slack Bot — transport layer. Forwards messages to Layla API, replies in channel.
+Layla Slack transport — Socket Mode (slack-bolt).
+
+Socket Mode needs NO public inbound endpoint (Slack opens the websocket to you),
+so this runs on a local box behind NAT. It is OPTIONAL and OFF by default: start
+it yourself with ``python -m transports.slack_bot``; it is never auto-started from
+the core (agent/main.py).
 
 Setup:
-  1. Create Slack app at api.slack.com/apps
-  2. Enable Event Subscriptions, add bot to channels
-  3. Set SLACK_BOT_TOKEN env or slack_bot_token in runtime_config.json
-  4. pip install slack-sdk
-  5. python -m transports.slack_bot
+  1. Create a Slack app at api.slack.com/apps.
+  2. Enable Socket Mode; subscribe to message.channels / message.groups events.
+  3. Add the bot to channels.
+  4. Set SLACK_BOT_TOKEN (xoxb-…) and SLACK_APP_TOKEN (xapp-…) env or config.
+  5. pip install slack-bolt   (optional extra: layla[transports])
+  6. python -m transports.slack_bot
 
-Requires Layla server at localhost:8000.
+Security: every inbound turn goes through transports.base.TransportAdapter, which
+enforces the shared allowlist/pairing gate and FORCES allow_write=allow_run=False.
+Requires the Layla server at localhost:8000.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import sys
@@ -23,6 +30,9 @@ if str(_agent) not in sys.path:
     sys.path.insert(0, str(_agent))
 
 logger = logging.getLogger("layla.slack")
+
+PLATFORM = "slack"
+MAX_CHARS = 3000
 
 
 def _get_token() -> str:
@@ -37,48 +47,77 @@ def _get_token() -> str:
         return ""
 
 
-async def _call_layla(message: str, aspect_id: str = "morrigan") -> str:
-    from transports.base import call_layla_async
-    return await call_layla_async(message, aspect_id=aspect_id, max_response_chars=3000)
+def _get_app_token() -> str:
+    token = os.environ.get("SLACK_APP_TOKEN", "")
+    if token:
+        return token
+    try:
+        import runtime_safety
+        cfg = runtime_safety.load_config()
+        return cfg.get("slack_app_token", "") or ""
+    except Exception:
+        return ""
 
 
-def run_bot():
+def build_app():
+    """Build the Socket Mode handler, or return None if it cannot start.
+
+    Returns (never raises) None when slack-bolt is not installed (graceful
+    degrade) or when either required token is missing (clean refusal).
+    Returns a started-ready ``SocketModeHandler`` otherwise.
+    """
     try:
         from slack_bolt import App
         from slack_bolt.adapter.socket_mode import SocketModeHandler
     except ImportError:
-        logger.error("slack-sdk not installed. pip install slack-sdk")
-        return
+        logger.error(
+            "slack-bolt not installed; Slack transport unavailable. "
+            "pip install slack-bolt  (or: pip install layla[transports])"
+        )
+        return None
+
     token = _get_token()
     if not token:
-        logger.error("No SLACK_BOT_TOKEN. Set env or slack_bot_token in runtime_config.json")
-        return
+        logger.error(
+            "No SLACK_BOT_TOKEN. Set the env var or slack_bot_token in runtime_config.json; "
+            "refusing to start."
+        )
+        return None
+    app_token = _get_app_token()
+    if not app_token:
+        logger.error(
+            "No SLACK_APP_TOKEN (required for Socket Mode). Set the env var or slack_app_token in "
+            "runtime_config.json; refusing to start."
+        )
+        return None
+
+    from transports.base import TransportAdapter
+
+    adapter = TransportAdapter(PLATFORM, max_response_chars=MAX_CHARS)
     app = App(token=token)
 
     @app.message()
-    def handle_message(message, say, client, logger):
+    def handle_message(message, say, client, logger):  # noqa: A002 (bolt injects `logger`)
         text = message.get("text", "")
         if not text or message.get("bot_id"):
             return
         uid = str(message.get("user") or "")
-        from transports.base import check_transport_inbound
-
-        allowed, deny = check_transport_inbound("slack", uid, text)
-        if not allowed:
-            if deny:
-                thread_ts = message.get("thread_ts") or message.get("ts")
-                say(text=deny[:3000], thread_ts=thread_ts)
-            return
+        chat_id = message.get("channel") or uid
         thread_ts = message.get("thread_ts") or message.get("ts")
-        reply = asyncio.run(_call_layla(text))
-        say(text=reply[:3000], thread_ts=thread_ts)
+        result = adapter.handle_inbound_sync(chat_id=chat_id, user_id=uid, text=text)
+        if result.reply:
+            say(text=result.reply[:MAX_CHARS], thread_ts=thread_ts)
 
-    app_token = os.environ.get("SLACK_APP_TOKEN", "")
-    if not app_token:
-        logger.error("SLACK_APP_TOKEN required for Socket Mode. Add from Slack app settings.")
-        return
-    handler = SocketModeHandler(app, app_token)
+    return SocketModeHandler(app, app_token)
+
+
+def run_bot():
+    """Build and start Socket Mode. Returns None if the bot could not start."""
+    handler = build_app()
+    if handler is None:
+        return None
     handler.start()
+    return handler
 
 
 if __name__ == "__main__":

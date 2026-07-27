@@ -1,13 +1,20 @@
 """
-Layla Telegram Bot — transport layer. Forwards messages to Layla API, replies in chat.
+Layla Telegram transport — long-polling (python-telegram-bot).
+
+Long-polling needs NO public HTTPS endpoint, so this runs happily on a local box
+behind NAT (sovereignty-friendly). It is OPTIONAL and OFF by default: start it
+yourself with ``python -m transports.telegram_bot``; it is never auto-started
+from the core (agent/main.py).
 
 Setup:
-  1. Create bot via @BotFather on Telegram
-  2. Set TELEGRAM_BOT_TOKEN env or telegram_bot_token in runtime_config.json
-  3. pip install python-telegram-bot
+  1. Create a bot via @BotFather on Telegram, copy the token.
+  2. Set TELEGRAM_BOT_TOKEN env or telegram_bot_token in runtime_config.json.
+  3. pip install python-telegram-bot   (optional extra: layla[transports])
   4. python -m transports.telegram_bot
 
-Requires Layla server at localhost:8000.
+Security: every inbound turn goes through transports.base.TransportAdapter, which
+enforces the shared allowlist/pairing gate and FORCES allow_write=allow_run=False.
+Requires the Layla server at localhost:8000.
 """
 from __future__ import annotations
 
@@ -22,6 +29,9 @@ if str(_agent) not in sys.path:
 
 logger = logging.getLogger("layla.telegram")
 
+PLATFORM = "telegram"
+MAX_CHARS = 4000
+
 
 def _get_token() -> str:
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -35,44 +45,63 @@ def _get_token() -> str:
         return ""
 
 
-async def _call_layla(message: str, aspect_id: str = "morrigan") -> str:
-    from transports.base import call_layla_async
-    return await call_layla_async(message, aspect_id=aspect_id, max_response_chars=4000)
+def build_app():
+    """Build the polling Application, or return None if it cannot start.
 
-
-def run_bot():
+    Returns None (never raises) when python-telegram-bot is not installed
+    (graceful degrade) or when no token is configured (clean refusal).
+    """
     try:
         from telegram import Update
-        from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+        from telegram.ext import (
+            Application,
+            CommandHandler,
+            ContextTypes,
+            MessageHandler,
+            filters,
+        )
     except ImportError:
-        logger.error("python-telegram-bot not installed. pip install python-telegram-bot")
-        return None
-    token = _get_token()
-    if not token:
-        logger.error("No TELEGRAM_BOT_TOKEN. Set env or telegram_bot_token in runtime_config.json")
+        logger.error(
+            "python-telegram-bot not installed; Telegram transport unavailable. "
+            "pip install python-telegram-bot  (or: pip install layla[transports])"
+        )
         return None
 
-    async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    token = _get_token()
+    if not token:
+        logger.error(
+            "No TELEGRAM_BOT_TOKEN. Set the env var or telegram_bot_token in runtime_config.json; "
+            "refusing to start."
+        )
+        return None
+
+    from transports.base import TransportAdapter, get_inbound_transport_security
+
+    adapter = TransportAdapter(PLATFORM, max_response_chars=MAX_CHARS)
+
+    async def handle_message(update: "Update", context: "ContextTypes.DEFAULT_TYPE"):
         if not update.message or not update.message.text:
             return
         text = update.message.text
         uid = str(update.effective_user.id) if update.effective_user else ""
-        from transports.base import check_transport_inbound
+        chat_id = update.effective_chat.id if update.effective_chat else uid
 
-        allowed, deny = check_transport_inbound("telegram", uid, text)
+        # Shared security gate first (handles /pair, allowlist). A refusal never
+        # reaches the agent.
+        allowed, deny = adapter.gate(uid, text)
         if not allowed:
             if deny:
-                await update.message.reply_text(deny[:4000])
+                await update.message.reply_text(deny[:MAX_CHARS])
             return
+        # Allowed but a bare slash-command (e.g. /pair in open mode): don't forward.
         if text.startswith("/"):
             return
         await update.message.chat.send_action("typing")
-        reply = await _call_layla(text)
-        await update.message.reply_text(reply[:4000])
+        reply = await adapter.run_async(chat_id, text)
+        if reply:
+            await update.message.reply_text(reply[:MAX_CHARS])
 
-    async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        from transports.base import get_inbound_transport_security
-
+    async def cmd_start(update: "Update", context: "ContextTypes.DEFAULT_TYPE"):
         sec = get_inbound_transport_security()
         extra = ""
         if sec.get("pairing_secret"):
@@ -89,8 +118,15 @@ def run_bot():
     return app
 
 
+def run_bot():
+    """Build and start long-polling. Returns None if the bot could not start."""
+    app = build_app()
+    if app is None:
+        return None
+    app.run_polling()
+    return app
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    app = run_bot()
-    if app:
-        app.run_polling()
+    run_bot()
