@@ -369,6 +369,14 @@ def award_xp(amount: int, *, reason: str = "", cfg: dict | None = None) -> dict[
     }
     if ranked_up:
         event["rank_up"] = {"new_rank": after.rank, "new_phase": after.phase}
+        # Emit a lifecycle automation event on the (rare, discrete) rank transition so rules can
+        # react to growth — a real second/third trigger beyond file changes. Best-effort.
+        try:
+            from services.automation.rules_engine import dispatch_event
+            dispatch_event("rank_up", {"new_rank": after.rank, "new_phase": after.phase,
+                                       "reason": (reason or "").strip()[:120]})
+        except Exception:
+            pass
     return event
 
 
