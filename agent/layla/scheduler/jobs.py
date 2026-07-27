@@ -161,6 +161,13 @@ def _bg_memory() -> None:
         _bg_conversation_summary()
     except Exception as _e:
         logger.warning("background_conversation_summary: %s", _e)
+    # Plan #22: spaced-repetition review loop. Advancing due learnings' SM-2 schedule is memory
+    # consolidation too, so it rides the same cadence as an additive call (same pattern as #21) —
+    # the trigger is live without a new scheduler-registry entry. Fully guarded.
+    try:
+        _bg_spaced_repetition_review()
+    except Exception as _e:
+        logger.warning("background_spaced_repetition_review: %s", _e)
 
 
 def _parse_iso_ts(value):
@@ -222,6 +229,69 @@ def _bg_conversation_summary() -> None:
             logger.debug("conversation_summary(%s): %s", c.get("id"), _ce)
     if written:
         logger.info("conversation_summary: wrote %d durable conversation summaries", written)
+
+
+# ── spaced-repetition review loop (plan #22) ───────────────────────────
+def _bg_spaced_repetition_review() -> None:
+    """Grade due learnings and advance their SM-2 schedule (plan #22).
+
+    This is the review LOOP that was missing. The single-item review tool (spaced_repetition_review)
+    could grade a learning WHEN the model chose to call it, and set_review_state/get_review_state
+    persisted the SM-2 state — but nothing ever swept the DUE queue on its own. That gap is load-
+    bearing: get_learnings_due_for_review counts a NULL next_review_at as due, so a learning that is
+    never graded stays permanently due and the same handful of items resurface forever (measured on
+    the live DB: next_review_at NULL on every row). This loop closes it — find due learnings, self-
+    grade each one deterministically (an LLM grade per item is far too slow for a batch), and move
+    next_review_at / interval / ease forward via the ONE canonical SM-2. Runs on the memory-
+    consolidation cadence; fully guarded so a bad row can never disturb the rest of the batch.
+    """
+    import runtime_safety as _rs
+    from layla.memory.db import (
+        get_learnings_due_for_review,
+        get_review_state,
+        set_review_state,
+    )
+    from layla.time_utils import utcnow
+    from services.memory.spaced_repetition import self_grade_learning, sm2
+
+    cfg = _rs.load_config()
+    if not bool(cfg.get("spaced_repetition_review_enabled", True)):
+        return
+    batch = max(1, int(float(cfg.get("spaced_repetition_review_batch", 25) or 25)))
+
+    due = get_learnings_due_for_review(limit=batch)
+    now = utcnow()
+    graded = 0
+    for row in due:
+        lid = row.get("id")
+        if lid is None:
+            continue
+        try:
+            # Staleness signal for the self-grade — never let a bad/naive timestamp skip the item.
+            age_days = 0.0
+            created = _parse_iso_ts(row.get("created_at"))
+            if created is not None:
+                try:
+                    if created.tzinfo is None:
+                        from datetime import timezone
+                        created = created.replace(tzinfo=timezone.utc)
+                    age_days = max(0.0, (now - created).total_seconds() / 86400.0)
+                except Exception:
+                    age_days = 0.0
+            grade = self_grade_learning(importance=row.get("importance_score"), age_days=age_days)
+            st = get_review_state(int(lid)) or {}
+            ease, interval_days, reps = sm2(
+                ease=float(st.get("ease", 2.5) or 2.5),
+                interval_days=int(st.get("interval_days", 0) or 0),
+                reps=int(st.get("reps", 0) or 0),
+                quality=grade,
+            )
+            set_review_state(int(lid), ease=ease, interval_days=interval_days, reps=reps)
+            graded += 1
+        except Exception as _re:
+            logger.debug("spaced_repetition_review(%s): %s", lid, _re)
+    if graded:
+        logger.info("spaced_repetition_review: graded %d due learning(s)", graded)
 
 
 # ── background initiative / project proposals ──────────────────────────
