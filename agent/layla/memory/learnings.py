@@ -570,14 +570,14 @@ def get_learnings_due_for_review(limit: int = 10) -> list[dict]:
 
 
 def schedule_next_review(learning_id: int, interval_hours: float = 24.0) -> None:
-    """Schedule next review for a learning at a FIXED offset. This is not spaced repetition: the
+    """Schedule next review for a learning at a FIXED offset. This function is not spaced repetition: the
     interval does not grow with recall quality and no per-item ease/reps state is kept.
 
-    There is no adaptive SM-2 path for learnings. `services.memory.spaced_repetition` used to offer one
-    and was deleted 2026-07-17 — it had zero production importers and had never scheduled a single row
-    (next_review_at: 0 rows, review_reps>0: 0 rows). The only live SM-2 is german_mode._sm2, which
-    drives the flashcard deck and is a different store. If adaptive scheduling for learnings is ever
-    wanted, adopt `fsrs` (MIT, one dep) rather than reviving a third copy of the algorithm."""
+    The adaptive SM-2 path for learnings DOES exist and is separate from this helper: `set_review_state`
+    / `get_review_state` (below) persist per-item ease/interval/reps, `services.memory.spaced_repetition`
+    is the single shared SM-2 implementation, and the scheduled review loop in `layla/scheduler/jobs.py`
+    grades each due item and calls `sm2` -> `set_review_state`. Use those for adaptive scheduling; this
+    flat-offset helper remains for callers that just want a plain next-review stamp."""
     migrate()
     from datetime import datetime, timedelta, timezone
     try:

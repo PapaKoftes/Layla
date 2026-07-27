@@ -180,6 +180,7 @@ Layla is one consciousness expressed through aspects:
 * **Nyx** — Knowledge
 * **Echo** — Patterns
 * **Eris** — Creativity
+* **Cassandra** — Unfiltered perception
 * **Lilith** — Authority
 
 Lilith governs autonomy and stability.

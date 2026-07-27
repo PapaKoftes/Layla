@@ -539,9 +539,10 @@ async def lifespan(app: FastAPI):
     # the task queue forever: drone every 5s, queen every 8s.
     #
     # They can never find work. The queue's only writer is the RECEIVING endpoint (a paired peer pushing
-    # a task in), and nothing in the live tree ever submits: submit_task / get_task_status /
-    # cancel_remote_task have zero callers, and so does run_completion_with_fallback, the inference-side
-    # offload wrapper. Both entry points are closed, so the loop is shut with nothing able to enter it.
+    # a task in), and nothing in the live tree submits to the queue: submit_task / get_task_status /
+    # cancel_remote_task have zero callers. (Inference offload is a SEPARATE, now-wired path —
+    # try_cluster_offload_first in llm_gateway — that does not use these task-queue workers, so gating
+    # them off is still correct.) So this queue loop is shut with nothing able to enter it.
     # Verified live on the operator's box: GET /cluster/queue/stats -> {"stats":{},"pending":[],"running":[]}.
     #
     # Gating on cluster_enabled keeps the receive path intact for anyone who genuinely runs a cluster
