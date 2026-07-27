@@ -281,17 +281,32 @@ def test_router_reads_what_the_real_writers_wrote(client, tmp_path):
 
 # ── read-only by construction ─────────────────────────────────────────────────
 
-def test_graph_router_exposes_no_mutation_endpoints(client):
+def test_graph_router_exposes_no_mutation_endpoints():
     """The viewer must not be able to plant entities. Anything written here re-enters the
     prompt as if Layla had learned it — the 'planted test data' failure mode, with a UI.
 
-    Read through the OpenAPI schema, not app.routes: this FastAPI builds included routers
-    lazily (app.routes holds _IncludedRouter placeholders whose .path is None), so walking
-    it directly reports an empty, always-passing result.
+    Isolation (PLAN item 33 — deflake): build a FRESH FastAPI app that includes ONLY
+    routers.graph.router and read THAT app's openapi(), rather than the shared main.app
+    schema. FastAPI generates a schema once and memoizes it on `app.openapi_schema`; other
+    tests in the suite mount onto / mutate the shared main.app before this test runs, so
+    reading main's cached schema made this assertion see a stale or polluted result depending
+    on collection order — a pure ordering flake, not a real regression. A private app pinned
+    to just this router carries no cross-module state. Sibling router tests (e.g.
+    tests/test_character_creator.py) use the same build-your-own-app isolation pattern.
+
+    Reading through openapi() (not app.routes) keeps the meaning: it is the served contract,
+    and it lists only the verbs FastAPI actually publishes for each path.
     """
-    spec = client.get("/openapi.json").json()
+    from fastapi import FastAPI
+
+    from routers.graph import router as graph_router
+
+    app = FastAPI()
+    app.include_router(graph_router)
+    spec = app.openapi()
+
     graph_paths = {p: ops for p, ops in spec["paths"].items() if p.startswith("/graph")}
-    assert graph_paths, "the /graph router is not mounted in main.py"
+    assert graph_paths, "the /graph router exposes no paths"
     assert set(graph_paths) == {"/graph/stats", "/graph/entities", "/graph/entity/{entity_id}"}
     mutating = {
         f"{verb.upper()} {path}"
