@@ -363,6 +363,54 @@ def populated_profile(tmp_path):
 
 
 @pytest.fixture
+def shipped_defaults_config(tmp_path, monkeypatch):
+    """ITEM 32. Neutralise the operator's live ``agent/runtime_config.json`` for one test, so a
+    config-asserting test reads the SHIPPED defaults regardless of what the operator toggled locally.
+
+    WHY THIS EXISTS. ``runtime_config.json`` is gitignored operator state (see ``agent/.gitignore``).
+    The operator's live file turns on features that ship OFF — ``litellm_enabled``,
+    ``meilisearch_enabled``, ``discord_bot_autostart`` — and sets a ``stop_sequences`` override.
+    Tests that assert the shipped default therefore FAIL on the operator's box while PASSING in CI,
+    which writes its own minimal stub (``.github/workflows/ci.yml`` -> "Write CI runtime config").
+    That stub omits every key these tests assert, so in CI they fall through to the shipped default.
+    This is the recurring "operator-config artifact" failure.
+
+    WHAT IT DOES. Point ``runtime_safety.CONFIG_FILE`` at an EMPTY tmp stub and reset the TTL config
+    cache, so ``load_config()`` returns pure shipped defaults. The only overlays ``load_config``
+    applies on top of the static defaults are ``_hardware_derived_defaults()`` and the auto-tune
+    profile (``PROFILE_KEYS``); neither touches the feature flags / ``stop_sequences`` under test, so
+    an empty stub is deterministic for those keys on any machine. Same mechanism as
+    ``test_config_defaults_honesty.py::empty_cfg``, lifted here for reuse across the offender files.
+
+    NOT A MASK. The test still asserts the TRUE shipped default: with an empty stub, ``load_config``
+    returns exactly the values ``runtime_safety`` ships, so a real regression in a shipped default
+    (e.g. someone flips ``litellm_enabled`` to True in the defaults dict) still fails the test. The
+    fixture only removes the operator-file override. The in-setup assertion below proves the
+    neutralisation actually took effect — if ``load_config`` were still reading the operator file
+    (which ships these ON), it would fail LOUDLY here in setup rather than silently in the test body.
+    Passes both locally (operator file present) and under the CI stub (which already omits these keys).
+    """
+    import runtime_safety as rs
+
+    stub = tmp_path / "runtime_config.json"
+    stub.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(rs, "CONFIG_FILE", stub)
+    rs.invalidate_config_cache()
+
+    # Neutralisation proof. Both ship OFF (runtime_safety.load_config defaults); the operator's live
+    # file turns both ON. Reading the shipped default here confirms the redirect + cache reset took.
+    _cfg = rs.load_config()
+    assert _cfg["litellm_enabled"] is False and _cfg["meilisearch_enabled"] is False, (
+        "shipped_defaults_config failed to neutralise the operator runtime_config.json — "
+        "load_config() still reflects operator overrides, so the test would not assert shipped defaults."
+    )
+    try:
+        yield stub
+    finally:
+        rs.invalidate_config_cache()  # drop the stub-derived cache; next test re-reads the real file
+
+
+@pytest.fixture
 def no_network():
     """Block all outbound network calls."""
     _orig = socket.socket

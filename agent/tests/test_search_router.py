@@ -107,7 +107,9 @@ class TestMeilisearchBridge:
 
 
 class TestConfigKeys:
-    def test_meilisearch_config_exists(self):
+    def test_meilisearch_config_exists(self, shipped_defaults_config):
+        # shipped_defaults_config (tests/conftest.py): assert the shipped default, not the operator
+        # override (meilisearch_enabled=true in the live runtime_config.json).
         import runtime_safety
         cfg = runtime_safety.load_config()
         assert "meilisearch_enabled" in cfg
