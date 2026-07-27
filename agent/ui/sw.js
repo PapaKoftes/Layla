@@ -34,7 +34,13 @@
 // `multi_agent` and `remote` — the server still answers both, so the operator would go on being told
 // a working panel is locked, and told to rotate a tunnel token that does not enable sync. A wrong
 // answer that renders perfectly is exactly what stale-while-revalidate would serve here.
-const CACHE = "layla-ui-v34";
+// v35 (BL-386 follow-up, rescued): 21 overlay components (approvals, agent-tasks, custom-aspect, missions,
+// kb, codex, journal, improvements, marketplace, plans, intake-quiz, macros, intelligence, self-test,
+// german, sync, system-diagnostics, tools-history, tutor, verify, debate) each gained the document-level
+// Escape handler + clickable "esc" chip that setup-profiles.js already had. A stale bundle would keep
+// serving the old _root-only handlers, so every one of these overlays would still trap the operator with a
+// dead esc chip — the exact bug we just fixed, looking unfixed on first load. Bump to purge atomically.
+const CACHE = "layla-ui-v35";
 const PRECACHE = [
   "/ui/",
   "/manifest.json",
