@@ -756,6 +756,12 @@ class KBBuilder:
 
             saved += 1
 
+            # Persist the article as a node-syncable KB entry. The disk files above are for
+            # local browse / RAG; THIS durable row is the unit the cluster sync engine ships to
+            # paired devices (node_sync.export_since("knowledge", ...)). Without it, knowledge
+            # cross-device sync stays inert — the knowledge_entries table had no producer.
+            _persist_article_to_sync_kb(art)
+
         # Write index
         index = {
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -813,6 +819,37 @@ class KBBuilder:
             lines.append("")
 
         return "\n".join(lines)
+
+
+# ── Node-sync producer ────────────────────────────────────────────────────────
+
+def _persist_article_to_sync_kb(art: dict) -> bool:
+    """Persist a built KB article into the node-syncable ``knowledge_entries`` table.
+
+    This is the producer that makes locally-built knowledge replicate across paired
+    devices: the KB lives on disk for browsing/RAG, and this content-hash-deduped row is
+    the unit ``node_sync.export_since("knowledge", ...)`` ships to peers. Best-effort —
+    a persist failure never breaks a KB save, and a re-save of the same article is a no-op.
+    """
+    try:
+        from services.cluster.node_sync import add_knowledge_entry
+
+        body = (art.get("body") or "").strip() or (art.get("summary") or "").strip()
+        if not body:
+            return False
+        tags = art.get("tags", [])
+        tag_str = ", ".join(str(t) for t in tags[:10]) if isinstance(tags, list) else str(tags)
+        sources = art.get("sources", [])
+        source = str(sources[0]) if isinstance(sources, list) and sources else "kb_builder"
+        return add_knowledge_entry(
+            content=body,
+            title=str(art.get("title", ""))[:200],
+            tags=tag_str[:500],
+            source=source[:200],
+        )
+    except Exception as exc:
+        logger.debug("kb_builder: node-sync KB persist skipped: %s", exc)
+        return False
 
 
 # ── Convenience functions ─────────────────────────────────────────────────────
