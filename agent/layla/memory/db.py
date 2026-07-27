@@ -65,6 +65,7 @@ from layla.memory.journal import (
 from layla.memory.learnings import (
     _ASPECT_LEARNING_PREFERENCE,
     _apply_confidence_decay,
+    clear_outcome_evaluation,
     count_learnings,
     delete_learnings_by_id,
     get_last_outcome_evaluation_record,
