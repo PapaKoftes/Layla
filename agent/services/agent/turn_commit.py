@@ -389,9 +389,21 @@ def commit_turn(
             state["outcome_evaluation"] = _ev_struct
             if cid:
                 get_or_create_session(cid).set_outcome_evaluation(_ev_struct)
-            liveness.fire("outcome_evaluated")  # CP-3; liveness already imported above
         except Exception as e:
             logger.debug("commit_turn: outcome evaluation failed: %s", e)
+
+    # CP-3 liveness fires at the TURN BOUNDARY, keyed on the turn CARRYING an evaluation — NOT on
+    # commit_turn having been the one to COMPUTE it. The fire used to live inside the compute-if-absent
+    # block above, so it only ever ran on the STREAMED path (where commit_turn computes the evaluation).
+    # On the non-streamed path run_finalizer.finalize_run_state already evaluated the run (it is reached
+    # with status=="finished"), set state["outcome_evaluation"] and persisted the row — but it never
+    # fires liveness, and the field it set makes the block above skip. So the only fire() site never ran
+    # for a non-streamed turn. The real-model eval driver posts every case with stream:false, which is
+    # why it reported outcome_evaluated=0 while outcome_evaluations rows were still being written — a
+    # severed SIGNAL, not a severed pipeline. Firing on presence covers both paths, and commit_turn runs
+    # exactly once per turn (learn=False replays returned early above), so each evaluated turn counts once.
+    if state is not None and (state.get("outcome_evaluation") or {}):
+        liveness.fire("outcome_evaluated")
 
     # ── 3b. The rest of the learners run_finalizer cannot reach on a streamed turn ──
     #
