@@ -135,6 +135,13 @@ research = [
     "pandas>=2.0,<3",
     "nbformat>=5.10",
 ]
+obsidian = [
+    "python-frontmatter>=1.1",       # lossless YAML-frontmatter round-trip for two-way vault sync (MIT)
+]
+transports = [
+    "python-telegram-bot>=21,<22",   # Telegram long-polling — no public endpoint needed (MIT)
+    "slack-bolt>=1.18,<2",           # Slack Socket Mode — no public endpoint needed (MIT; pulls slack-sdk)
+]
 data = [
     "duckdb>=0.10",
     "yfinance>=0.2",
