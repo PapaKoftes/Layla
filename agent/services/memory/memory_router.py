@@ -137,12 +137,16 @@ def _apply_sensitivity_policy(content: str, kwargs: dict) -> dict:
     """
     try:
         cfg = _cfg()
-        if not cfg.get("encryption_at_rest_enabled"):
+        if not cfg.get("encryption_at_rest_enabled", True):
             return kwargs  # feature off → behave exactly as before (no classification, no marking)
         if str(kwargs.get("privacy_level") or "").strip().lower() == "sensitive":
             return kwargs  # already marked sensitive; nothing to upgrade
-        from services.memory.sensitivity import is_sensitive
-        if is_sensitive(content):
+        # Tiered default (operator's choice): HIGH-RISK (credentials/keys/passwords/gov-id) is
+        # encrypted by default; broader PII (health/financial/contact) only when encrypt_pii_at_rest
+        # is opted in — so ordinary personal facts stay keyword-searchable unless the operator asks.
+        from services.memory.sensitivity import tier
+        t = tier(content)
+        if t == "high_risk" or (t == "pii" and bool(cfg.get("encrypt_pii_at_rest", False))):
             kwargs["privacy_level"] = "sensitive"
             _warn_if_cipher_unavailable()
     except Exception as exc:  # never let classification block a write

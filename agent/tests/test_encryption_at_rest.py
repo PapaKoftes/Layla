@@ -119,6 +119,38 @@ def test_sensitive_learning_ciphertext_at_rest_plaintext_on_read(isolated_db, mo
     assert hit is not None and hit["content"] == secret
 
 
+@_needs_cipher
+def test_high_risk_encrypts_by_default_pii_only_on_opt_in(isolated_db, monkeypatch):
+    """The operator's tiered choice: HIGH-RISK (credentials/keys/passwords/gov-id) is encrypted at
+    rest BY DEFAULT; broader PII (health/financial/contact) stays plaintext-and-searchable unless
+    encrypt_pii_at_rest is opted in. Pins that split so a future default flip is a deliberate act."""
+    from services.memory.memory_router import save_learning
+
+    # Shipped default: encryption on, PII opt-in OFF (_enable omits encrypt_pii_at_rest → False).
+    _enable(monkeypatch, True)
+    hi = save_learning(content="my api key is sk-abc123def456ghi789jkl and ssn 123-45-6789",
+                       kind="user_fact", confidence=0.9, source="user_command")
+    pii = save_learning(content="I was diagnosed with anxiety; my email is alice@example.com",
+                        kind="user_fact", confidence=0.9, source="user_command")
+    hi_raw, hi_pl = _raw_row(hi)
+    pii_raw, _ = _raw_row(pii)
+    assert enc.is_encrypted(hi_raw) and (hi_pl or "").lower() == "sensitive", \
+        "high-risk memory must be encrypted at rest by default"
+    assert not enc.is_encrypted(pii_raw), "PII must stay plaintext (keyword-searchable) by default"
+
+    # Opt in to PII encryption → now the PII memory encrypts too.
+    import runtime_safety
+    import services.memory.memory_router as mr
+    monkeypatch.setattr(runtime_safety, "load_config", lambda: {
+        "encryption_at_rest_enabled": True, "encrypt_pii_at_rest": True,
+        "learning_quality_gate_enabled": False})
+    monkeypatch.setattr(mr, "_cipher_warned", False, raising=False)
+    pii2 = save_learning(content="my personal email is bob@example.com", kind="user_fact",
+                         confidence=0.9, source="user_command")
+    pii2_raw, _ = _raw_row(pii2)
+    assert enc.is_encrypted(pii2_raw), "PII must encrypt at rest when encrypt_pii_at_rest is opted in"
+
+
 # ── (c) ordinary stays plaintext + searchable; sensitive is not keyword-searchable ──
 
 @_needs_cipher
