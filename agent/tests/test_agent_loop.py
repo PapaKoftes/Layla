@@ -239,6 +239,11 @@ def test_tool_preflight_redirects_missing_args_to_reason(monkeypatch, tmp_path):
         ]
     )
     monkeypatch.setattr(agent_loop, "_llm_decision", lambda *a, **k: next(decisions))
+    # Hermetic: the goal is a self-contained question, so the loop's reason-first fast path would force
+    # `reason` on the first step and bypass the tool decision this test exists to exercise (preflight).
+    # Whether it fired depended on config/state other tests mutate — the pre-existing ordering flake.
+    # Pin it OFF so the forced read_file decision is always reached and preflight is tested deterministically.
+    monkeypatch.setattr(agent_loop, "_is_self_contained_question", lambda *a, **k: False)
     long_ok = "ok " + ("done. " * 60)
     monkeypatch.setattr(agent_loop, "run_completion", lambda *a, **k: {"choices": [{"message": {"content": long_ok}}]})
     monkeypatch.setattr(agent_loop.orchestrator, "select_aspect", lambda *a, **k: {"id": "morrigan", "name": "Morrigan"})
