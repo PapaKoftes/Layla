@@ -29,3 +29,23 @@ def test_persisted_outcome_evaluation_reads_back_through_the_real_reader(isolate
     save_outcome_evaluation(cid, {"quality": "poor", "score": 0.1})
     latest = get_last_outcome_evaluation_record(cid)
     assert latest and latest.get("quality") == "poor"
+
+
+def test_clear_outcome_evaluation_clears_the_durable_row(isolated_db):
+    """`clear` must clear the DURABLE record, not just an in-memory cache.
+
+    Once the DB read works (the .get-on-Row fix), clearing only in-memory left the row behind, so a
+    fresh SessionContext (or the get() DB-fallback) resurrected the value — exactly what the full suite
+    caught in test_outcome_evaluation_lifecycle. This pins the cross-instance clear: a NEW context
+    (simulating a restart) must see None after a clear.
+    """
+    from services.infrastructure.session_context import SessionContext
+
+    cid = "conv-clear"
+    SessionContext(cid).set_outcome_evaluation({"score": 0.8, "success": True})
+    # durability: a fresh context reads the persisted value (this is the learning loop)
+    assert SessionContext(cid).get_outcome_evaluation() == {"score": 0.8, "success": True}
+
+    SessionContext(cid).clear_outcome_evaluation()
+    # a fresh context (restart) must now see None — the durable row was actually cleared
+    assert SessionContext(cid).get_outcome_evaluation() is None

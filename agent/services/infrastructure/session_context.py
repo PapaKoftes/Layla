@@ -121,6 +121,13 @@ class SessionContext:
     def clear_outcome_evaluation(self) -> None:
         with self._lock:
             self._outcome_evaluation = None
+        # Also clear the durable row, else get_outcome_evaluation's DB fallback resurrects it
+        # (the table is append-only + read-latest, so an in-memory-only clear is a no-op to readers).
+        try:
+            from layla.memory.db import clear_outcome_evaluation as _db_clear
+            _db_clear(self.conversation_id)
+        except Exception:
+            pass
 
     # ── Coordinator trace ────────────────────────────────────────────────
 
