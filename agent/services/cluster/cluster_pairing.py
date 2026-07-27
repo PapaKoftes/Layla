@@ -12,16 +12,75 @@ Phase 2D of the distributed infrastructure plan.
 from __future__ import annotations
 
 import hashlib
-import hmac
 import logging
+import os
 import secrets
 import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger("layla")
+
+
+# ── Pairing IS the on-switch ───────────────────────────────────────────────
+
+def enable_and_activate_sync(role: str) -> dict[str, Any]:
+    """Make a successful pair the durable enable for cluster networking + node sync.
+
+    A paired multi-device setup used to sync NOTHING because pairing only wrote
+    ``cluster_enabled`` into cluster_config.json, while both the app startup gate
+    (main.py) and ``ClusterNetwork._enabled`` read ``cluster_enabled`` from the
+    RUNTIME config (runtime_safety).  So the switch pairing flipped was never the
+    one anyone read.  This persists the enable into the runtime config too, so it
+    survives a reboot, then brings the subsystem up live for the current process.
+
+    SAFE-BY-DEFAULT: no-op under the test harness (LAYLA_MINIMAL_STARTUP=1) so an
+    under-isolated test can never flip the operator's real runtime_config.json or
+    spawn a background sync thread.  Returns a small status dict for logging/tests.
+    """
+    status: dict[str, Any] = {"persisted": False, "activated": False}
+
+    # The test harness mounts routes but skips blocking subsystems; honour that
+    # here so pairing during a test neither writes the real config nor starts threads.
+    if os.environ.get("LAYLA_MINIMAL_STARTUP") == "1":
+        status["note"] = "skipped_minimal_startup"
+        return status
+
+    # 1) Persist the durable enable into the runtime config that startup reads.
+    #    cluster_enabled is a known flag (not an /settings-editable key), so we
+    #    write it with editable_only=False.  This is the single authoritative switch.
+    try:
+        from runtime_safety import save_config_keys
+        save_config_keys(
+            {"cluster_enabled": True, "node_role": role},
+            editable_only=False,
+            clamp=False,
+        )
+        status["persisted"] = True
+    except Exception as e:
+        logger.warning("Failed to persist cluster enable to runtime config: %s", e)
+
+    # 2) Bring the live process up now: rebuild the network from the freshly
+    #    persisted config (its _enabled is computed at construction), then start
+    #    the heartbeat + node sync loop so THIS session begins syncing immediately.
+    try:
+        import services.cluster.cluster_network as cn
+        cn._network = None  # force rebuild so cluster_enabled=True takes effect live
+        net = cn.get_cluster_network()
+        if net.enabled:
+            try:
+                net.start_heartbeat()
+            except Exception as hb_err:
+                logger.debug("heartbeat start skipped: %s", hb_err)
+            from services.cluster.node_sync import get_node_sync
+            get_node_sync().start()
+            status["activated"] = True
+    except Exception as e:
+        logger.debug("cluster activation skipped: %s", e)
+
+    return status
 
 
 # ── Pairing token lifecycle ─────────────────────────────────────────────
@@ -157,6 +216,11 @@ class ClusterPairing:
             "paired_at": datetime.now(timezone.utc).isoformat(),
         }
 
+        # Pairing IS the on-switch: persist the enable into cluster_config.json too
+        # (the runtime-config flip + live activation happen in enable_and_activate_sync).
+        config["cluster_enabled"] = True
+        config["node_role"] = "queen"
+
         save_cluster_config(config)
 
         # Also add to the live cluster network
@@ -191,6 +255,12 @@ class ClusterPairing:
             drone_name,
             drone_address,
         )
+
+        # Pairing succeeded → turn cluster networking + node sync ON and persist it.
+        try:
+            enable_and_activate_sync("queen")
+        except Exception as e:  # never let activation failure fail the pairing itself
+            logger.debug("post-pair activation skipped: %s", e)
 
         return {
             "ok": True,
@@ -268,6 +338,12 @@ class ClusterPairing:
                 }
                 save_cluster_config(config)
                 logger.info("Successfully paired with queen at %s", queen_address)
+
+                # Pairing succeeded → turn cluster networking + node sync ON and persist it.
+                try:
+                    enable_and_activate_sync("drone")
+                except Exception as e:
+                    logger.debug("post-pair activation skipped: %s", e)
 
             return result
         except Exception as e:
