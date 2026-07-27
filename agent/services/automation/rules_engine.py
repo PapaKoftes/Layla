@@ -23,7 +23,7 @@ from typing import Any
 
 logger = logging.getLogger("layla")
 
-EVENT_TYPES = ("file_created", "file_modified", "git_commit", "schedule", "manual")
+EVENT_TYPES = ("file_created", "file_modified", "git_commit", "rank_up", "schedule", "manual")
 ACTION_TYPES = ("run_macro", "record_timeline", "reindex", "log")
 
 
