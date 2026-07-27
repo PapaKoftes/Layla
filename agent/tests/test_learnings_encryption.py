@@ -72,18 +72,22 @@ def test_flag_off_stores_plaintext_even_if_marked_sensitive(monkeypatch):
     assert not enc.is_encrypted(raw_content)
 
 
-def test_production_write_path_stays_plaintext_with_flag_on(monkeypatch):
-    """BL-326: the marketing was made honest — prove the claim TRUE.
+def test_production_write_path_encrypts_sensitive_content(monkeypatch):
+    """PLAN ITEM 20 (resolves BL-326): the production write path now AUTO-CLASSIFIES sensitive
+    content and encrypts it at rest.
 
-    The surfaces (welcome.js / kit_catalog / setup_profiles) used to promise "encrypt sensitive
-    memories at rest." But NO production path ever passes privacy_level="sensitive": the canonical
-    write path (services.memory.memory_router.save_learning — used by the 'remember this' command,
-    the most personal write there is) omits it entirely. So even with encryption ENABLED (the
-    operator's real config), the content lands in the DB as PLAINTEXT — the vault never engages.
-    That is exactly what the honest wording now says.
+    History: the surfaces promised "encrypt sensitive memories at rest", but NO production path
+    ever passed privacy_level="sensitive". The canonical write path
+    (services.memory.memory_router.save_learning — used by the 'remember this' command) omitted it,
+    so even with encryption ENABLED the vault never engaged and content landed as PLAINTEXT.
+    This was the old BL-326 canary asserting that broken state.
 
-    Teeth: were any production path to mark this write 'sensitive' (add privacy_level="sensitive"
-    below), is_encrypted() would flip to True and this assertion would FAIL.
+    Now services.memory.sensitivity classifies the content on the router write path and stamps
+    privacy_level="sensitive", so the claim is TRUE: a personal fact written through the canonical
+    path is ciphertext at rest and plaintext on read-back.
+
+    Teeth: were the classifier wiring removed, is_encrypted() would flip back to False and this
+    assertion would FAIL.
     """
     _enable(monkeypatch, True)  # flag ON — the operator's actual state
     from services.memory.memory_router import save_learning  # THE canonical production write path
@@ -95,7 +99,27 @@ def test_production_write_path_stays_plaintext_with_flag_on(monkeypatch):
     lid = save_learning(content=content, kind="user_fact", confidence=0.9, source="user_command")
     assert lid and lid > 0
     raw_content, _, pl = _raw_row(lid)
-    assert not enc.is_encrypted(raw_content), "production write must be plaintext — nothing marks it sensitive"
+    assert enc.is_encrypted(raw_content), "sensitive content on the production path must be encrypted"
+    assert content not in (raw_content or "")
+    assert (pl or "public") == "sensitive"
+
+    # Read-back through the canonical read path returns the plaintext.
+    from services.memory.memory_router import get_recent_learnings
+    hit = next((r for r in get_recent_learnings(n=20) if r.get("id") == lid), None)
+    assert hit is not None and hit["content"] == content
+
+
+def test_production_write_path_leaves_ordinary_content_plaintext(monkeypatch):
+    """The classifier must not over-encrypt: an ordinary memory written through the canonical
+    production path (flag ON) stays plaintext and therefore keyword-searchable."""
+    _enable(monkeypatch, True)
+    from services.memory.memory_router import save_learning
+
+    content = "the operator prefers two-space indentation in python projects"
+    lid = save_learning(content=content, kind="user_fact", confidence=0.9, source="user_command")
+    assert lid and lid > 0
+    raw_content, _, pl = _raw_row(lid)
+    assert not enc.is_encrypted(raw_content), "ordinary content must not be encrypted"
     assert content in (raw_content or "")
     assert (pl or "public") != "sensitive"
 
