@@ -467,3 +467,17 @@ jobs:
       - name: Capability eval (tool / grounding / memory, real model)
         working-directory: agent
         run: python scripts/run_real_eval.py --fast --gate --floor 25
+
+      # Driven per-tool verification — PIPELINE-LIVENESS, not a quality gate. Runs a real 360M turn
+      # per representative tool (pinned so each is offered, seeded sandbox, effect-verified) and prints
+      # offered/selected/verified per tool. Deliberately NOT gated on green-count: the 360M has a
+      # read_file monoculture and can't close the effect chain, so a green-gate here would be a false
+      # fail (the real quality bar is the 3B coding-benchmark job). The gate is exit 0 = the
+      # decision->dispatch->execute->verify chain RAN live — which is the thing that was silently dead
+      # for 16 days. The full battery + trend is on the 3B / workflow_dispatch.
+      - name: Driven tool verification (real model, liveness only)
+        working-directory: agent
+        env:
+          LAYLA_DRIVEN_TOOL_EVAL: "1"
+          HF_HUB_OFFLINE: "1"   # 360M already cached by the download step above
+        run: python tests/_tool_verify_harness.py
