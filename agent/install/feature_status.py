@@ -490,3 +490,59 @@ def intended_feature_ids(cfg: dict) -> list[str]:
         [p for p in (cfg.get("setup_profiles") or []) if isinstance(p, str)],
         [f for f in (cfg.get("setup_features") or []) if isinstance(f, str)],
     )
+
+
+# ── Voice: the one-click guided-install descriptor ──────────────────────────────
+# WHY THIS LIVES HERE, NOT IN THE ROUTER. When /voice/* has no engine it must return an
+# ACTIONABLE install offer, not a wall of manual pip commands. That offer has to name an
+# allowlisted install path — a real FEATURE_MANIFEST feature whose deps are all on the pip
+# allowlist — so the frontend's one-click can POST it to the EXISTING /setup/feature/install
+# endpoint and never to arbitrary pip. Building it beside the manifest reader keeps the router
+# out of install policy and states the licensing split in exactly one place.
+#
+# LICENSING (settled in pyproject + scripts/check_copyleft.py — restated so nobody re-litigates
+# it from the router). The DEFAULT offer is the permissive `voice` feature: faster-whisper (MIT)
+# + pyttsx3 (system voice). kokoro-onnx is a SEPARATE opt-in upgrade because it pulls
+# phonemizer-fork (GPLv3), which pyproject keeps out of the [voice]/[all] extras and CI fails on.
+# So kokoro is NEVER in the default `installs`, and its sub-offer carries `requires_gpl_accept`
+# so no surface can install it without an explicit, informed acceptance.
+
+def voice_install_descriptor() -> dict:
+    """The actionable install offer the /voice/* 503 carries, sourced from FEATURE_MANIFEST.
+
+    Returns {feature_id, label, endpoint, confirm_payload, installs, missing, size_mb, license,
+    default, kokoro}. `feature_id` is a real FEATURE_MANIFEST id and every package in `installs`
+    is on the pip allowlist, so the frontend's one-click maps to the existing allowlisted
+    feature-install path (POST /setup/feature/install) — never arbitrary pip. The `kokoro`
+    sub-offer is the GPLv3 upgrade: surfaced, `requires_gpl_accept`, and NEVER in the default
+    `installs`.
+    """
+    from install.feature_installer import missing_deps
+    from install.setup_profiles import feature_by_id
+
+    feat = feature_by_id("voice") or {}
+    deps = list(feat.get("deps") or [])
+    return {
+        "feature_id": "voice",
+        "label": feat.get("label") or "Voice (speak & listen)",
+        # The EXISTING allowlisted feature-install endpoint — reused, not reinvented.
+        "endpoint": "/setup/feature/install",
+        "confirm_payload": {"feature_id": "voice", "confirm": True},
+        "installs": deps,                       # e.g. ["faster-whisper", "pyttsx3"]
+        "missing": missing_deps(deps),          # subset not importable right now
+        "size_mb": feat.get("size_mb", 0),
+        "license": "permissive (faster-whisper MIT + pyttsx3 system voice)",
+        "default": True,
+        # The GPLv3 upgrade. NEVER installed by the default path; only offered once the operator
+        # has explicitly accepted GPLv3. Both packages are on the pip allowlist, and the install
+        # endpoint hard-codes them (the caller cannot name arbitrary packages).
+        "kokoro": {
+            "label": "Higher-quality neural TTS (Kokoro)",
+            "installs": ["kokoro-onnx", "soundfile"],
+            "endpoint": "/voice/tts/kokoro/install",
+            "license": "GPLv3 (pulls phonemizer-fork) — kept out of [voice] and [all]",
+            "requires_gpl_accept": True,
+            "manual_command": "pip install layla[voice-kokoro]",
+            "default": False,
+        },
+    }

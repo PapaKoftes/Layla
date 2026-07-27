@@ -117,13 +117,28 @@ export function setTtsEnabled(on) {
 // voice was explicitly asked for — it is one install away, not a fiction. `null` = not yet probed.
 let _ttsAvailable = null;
 
+// The one-click install descriptor last seen on a /voice/* 503 (feature id, size, endpoint, the
+// GPLv3 kokoro sub-offer). Captured so the Settings install button acts on the SERVER's offer
+// rather than a hardcoded guess; falls back to the stable defaults before any 503 is observed.
+let _lastInstallOffer = null;
+
 export function isTtsAvailable() { return _ttsAvailable === true; }
+
+function _installOffer() {
+  return _lastInstallOffer || {
+    feature_id: 'voice',
+    endpoint: '/setup/feature/install',
+    confirm_payload: { feature_id: 'voice', confirm: true },
+    size_mb: 500,
+    kokoro: { requires_gpl_accept: true, endpoint: '/voice/tts/kokoro/install' },
+  };
+}
 
 function _applyTtsAvailability() {
   const available = _ttsAvailable === true;
   const note = available
     ? ''
-    : "Voice isn't installed — Settings → Setup → install the Voice feature (~500 MB) to enable spoken replies.";
+    : "Voice isn't installed — install it from Settings → Voice & Audio (~500 MB) to enable spoken replies.";
 
   ['tts-toggle', 'tts-toggle2'].forEach(function (id) {
     const cb = document.getElementById(id);
@@ -146,6 +161,137 @@ function _applyTtsAvailability() {
     el.textContent = note;
     el.hidden = available;
   });
+
+  _ensureInstallAffordance(available);
+}
+
+// ── One-click guided install (BL: Voice installable + wired) ─────────────────
+//
+// When the engine is absent the "Speak replies" toggle is disabled and a note explains why. This
+// injects the ACTION that note promises: a permissive [voice] install button (faster-whisper MIT
+// + pyttsx3), plus the GPLv3 Kokoro upgrade surfaced ONLY behind an explicit accept toggle. It is
+// built in JS (not index.html) so the settings markup needs no new elements, and it is idempotent
+// — built once, then shown/hidden by availability.
+function _ensureInstallAffordance(available) {
+  const anchor = document.getElementById('tts-note2');
+  if (!anchor || !anchor.parentNode) return;
+  let box = document.getElementById('voice-install-affordance');
+  if (available) { if (box) box.hidden = true; return; }
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'voice-install-affordance';
+    box.style.cssText = 'margin-top:6px;display:flex;flex-direction:column;gap:6px';
+
+    const installBtn = document.createElement('button');
+    installBtn.type = 'button';
+    installBtn.id = 'voice-install-btn';
+    installBtn.className = 'tab-btn';
+    installBtn.style.cssText = 'font-size:0.7rem';
+    installBtn.textContent = 'Install Voice (permissive, ~500 MB)';
+    installBtn.title = 'Installs faster-whisper (MIT) + pyttsx3 (system voice). No GPL dependency.';
+    installBtn.addEventListener('click', function () { installVoiceFeature(); });
+    box.appendChild(installBtn);
+
+    const status = document.createElement('div');
+    status.id = 'voice-install-status';
+    status.className = 'hint';
+    box.appendChild(status);
+
+    // GPLv3 Kokoro upgrade — never bundled by default; gated on an explicit licence accept.
+    const gplRow = document.createElement('label');
+    gplRow.className = 'option-row';
+    gplRow.style.cssText = 'font-size:0.7rem';
+    gplRow.title = 'Kokoro is higher quality but GPLv3 (pulls phonemizer-fork). Opt in explicitly.';
+    const gplCb = document.createElement('input');
+    gplCb.type = 'checkbox';
+    gplCb.id = 'voice-kokoro-gpl-accept';
+    gplRow.appendChild(gplCb);
+    gplRow.appendChild(document.createTextNode(' Accept Kokoro GPLv3 licence (optional, higher-quality TTS)'));
+    box.appendChild(gplRow);
+
+    const kokoroBtn = document.createElement('button');
+    kokoroBtn.type = 'button';
+    kokoroBtn.id = 'voice-install-kokoro-btn';
+    kokoroBtn.className = 'tab-btn';
+    kokoroBtn.style.cssText = 'font-size:0.7rem';
+    kokoroBtn.textContent = 'Install Kokoro neural TTS (GPLv3)';
+    kokoroBtn.disabled = true;  // stays dead until GPLv3 is explicitly accepted
+    kokoroBtn.addEventListener('click', function () { installKokoroTts(); });
+    box.appendChild(kokoroBtn);
+
+    gplCb.addEventListener('change', function () { kokoroBtn.disabled = !gplCb.checked; });
+
+    anchor.parentNode.insertBefore(box, anchor.nextSibling);
+  }
+  box.hidden = false;
+}
+
+/** Install the permissive [voice] feature via the EXISTING allowlisted feature-install endpoint. */
+export async function installVoiceFeature() {
+  const offer = _installOffer();
+  const btn = document.getElementById('voice-install-btn');
+  const status = document.getElementById('voice-install-status');
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = 'Installing voice engines (this can take a few minutes)…';
+  try {
+    const resp = await fetch(offer.endpoint || '/setup/feature/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(offer.confirm_payload || { feature_id: 'voice', confirm: true }),
+    });
+    const d = await resp.json();
+    if (d && d.ok) {
+      if (status) status.textContent = 'Installed. Enabling…';
+      showToast('Voice installed');
+    } else {
+      const why = (d && (d.error || (d.failed && d.failed[0] && d.failed[0].error))) || 'install failed';
+      if (status) status.textContent = 'Install failed: ' + why;
+      showToast('Voice install failed');
+    }
+    await refreshVoiceAvailability();  // re-probe /health/deps; enables the toggle if it landed
+    return d;
+  } catch (e) {
+    if (status) status.textContent = 'Install failed: ' + ((e && e.message) || e);
+    showToast('Voice install failed');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+/** Install the GPLv3 Kokoro TTS upgrade — refuses unless the accept toggle is ticked. */
+export async function installKokoroTts() {
+  const cb = document.getElementById('voice-kokoro-gpl-accept');
+  const status = document.getElementById('voice-install-status');
+  if (!cb || !cb.checked) {
+    if (status) status.textContent = 'Accept the Kokoro GPLv3 licence first.';
+    return;
+  }
+  const offer = _installOffer();
+  const endpoint = (offer.kokoro && offer.kokoro.endpoint) || '/voice/tts/kokoro/install';
+  const btn = document.getElementById('voice-install-kokoro-btn');
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = 'Installing Kokoro (GPLv3)…';
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gpl_accept: true }),  // explicit, informed acceptance
+    });
+    const d = await resp.json();
+    if (d && d.ok) {
+      if (status) status.textContent = 'Kokoro installed.';
+      showToast('Kokoro TTS installed');
+    } else {
+      if (status) status.textContent = 'Kokoro install failed: ' + ((d && d.error) || 'failed');
+      showToast('Kokoro install failed');
+    }
+    await refreshVoiceAvailability();
+    return d;
+  } catch (e) {
+    if (status) status.textContent = 'Kokoro install failed: ' + ((e && e.message) || e);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 /** Probe /health/deps and reflect real TTS availability into the controls. */
@@ -181,6 +327,9 @@ export function initVoiceControls() {
   // Expose onto window for legacy compat reads
   window._ttsEnabled = _ttsEnabled;
   window._streamEnabled = _streamEnabled;
+  // Guided-install actions, reachable from the settings panel / delegated handlers.
+  window.installVoiceFeature = installVoiceFeature;
+  window.installKokoroTts = installKokoroTts;
 
   refreshVoiceAvailability();
 }
@@ -253,6 +402,11 @@ async function transcribeAndSend(blob) {
         if (typeof window.toggleSendButton === 'function') window.toggleSendButton();
         if (typeof window.send === 'function') window.send();
       }
+    } else if (resp.status === 503) {
+      // Engine not installed: capture the guided-install descriptor and steer to the button.
+      if (data && data.install) _lastInstallOffer = data.install;
+      showToast("Voice isn't installed — install it in Settings → Voice & Audio");
+      refreshVoiceAvailability();
     } else {
       showToast('Could not transcribe audio');
     }
