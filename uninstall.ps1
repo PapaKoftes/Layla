@@ -64,7 +64,10 @@ Write-Host ""
 Write-Host "  [3/5]  Removing service registrations..." -ForegroundColor Yellow
 
 # Remove NSSM service
-$agentDir = Split-Path -Parent $PSScriptRoot
+# uninstall.ps1 lives at the repo root, and .venv / models / agent\ are repo-root-relative — so the
+# install root IS $PSScriptRoot. The old Split-Path -Parent pointed one level too high, so venv,
+# models, and logs were never actually removed while the run still reported success.
+$agentDir = $PSScriptRoot
 $nssmPath = Join-Path $agentDir "agent\tools\nssm.exe"
 if (Test-Path $nssmPath) {
     & $nssmPath remove LaylaSvc confirm 2>$null
