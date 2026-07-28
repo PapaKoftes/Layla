@@ -53,7 +53,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 | **Vision** | ~1.5 GB | easyocr, pytesseract, ultralytics | OCR from images, object detection (YOLOv8) |
 | **Crawl** | ~260 MB | trafilatura, playwright, crawl4ai | Web crawling, article extraction, browser automation |
 | **Search** | ~10 MB | rank-bm25, faiss-cpu | BM25 hybrid search, fast approximate nearest neighbor |
-| **Research** | ~50 MB | PyMuPDF, pypdf, wikipedia, arxiv, yfinance, duckduckgo-search, pandas | PDF reading, Wikipedia, arXiv papers, financial data, web search |
+| **Research** | ~50 MB | PyMuPDF, pypdf, wikipedia, arxiv, yfinance, ddgs, pandas | PDF reading, Wikipedia, arXiv papers, financial data, web search |
 | **Viz** | ~80 MB | matplotlib, plotly, seaborn, folium | Charts (bar, line, scatter, pie, heatmap), interactive maps |
 | **Dev** | ~30 MB | pytest, pytest-asyncio, pytest-timeout, pytest-cov, ruff, bandit | Testing, linting, security analysis |
 
@@ -100,7 +100,7 @@ pip install fastapi "uvicorn[standard]" pydantic sqlite-utils duckdb \
     diskcache Pillow PyYAML networkx numpy psutil llama-cpp-python
 
 # Research
-pip install PyMuPDF pypdf wikipedia arxiv yfinance duckduckgo-search pandas
+pip install PyMuPDF pypdf wikipedia arxiv yfinance ddgs pandas
 
 # Viz
 pip install matplotlib

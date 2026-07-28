@@ -35,7 +35,7 @@ _PIP_ALLOWLIST: frozenset[str] = frozenset(
         "PyMuPDF",
         "pypdf",
         "trafilatura",
-        "duckduckgo-search",
+        "ddgs",
         "arxiv",
         "wikipedia-api",
         "sympy",

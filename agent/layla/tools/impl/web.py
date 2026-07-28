@@ -205,7 +205,7 @@ def ddg_search(query: str, max_results: int = 10, region: str = "wt-wt") -> dict
     except Exception:
         cfg = {}
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS  # was duckduckgo_search; upstream renamed the project + PyPI dist (O-3)
         with DDGS() as ddgs:
             results = list(ddgs.text(query, region=region, max_results=max_results))
         out = {"ok": True, "query": query, "results": results, "count": len(results)}
@@ -218,7 +218,7 @@ def ddg_search(query: str, max_results: int = 10, region: str = "wt-wt") -> dict
             pass
         return out
     except ImportError:
-        return {"ok": False, "error": "duckduckgo-search not installed: pip install duckduckgo-search"}
+        return {"ok": False, "error": "ddgs not installed: pip install ddgs"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

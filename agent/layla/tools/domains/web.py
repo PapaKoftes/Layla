@@ -20,7 +20,7 @@ TOOLS = {
         "description": "Search Wikipedia and return article summaries for a given topic.",
     },
     "ddg_search": {
-        "requires": "duckduckgo_search",
+        "requires": "ddgs",
         "dangerous": False, "require_approval": False, "risk_level": "low", "concurrency_safe": True,
         "category": "search",
         "description": "Search the web via DuckDuckGo. Returns titles, URLs, and snippets.",
