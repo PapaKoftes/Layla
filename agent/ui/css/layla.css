@@ -2705,6 +2705,11 @@ body.overlay-scroll-lock {
     color: #ff4466;
     font-size: 0.88em;
   }
+  /* Light-theme fixes for two spots whose hardcoded dark values don't flip: the inline-code
+     pink is too bright on the light code surface, and the right-panel tabs carry a dark scrim
+     background. Both verified via WCAG contrast in the light-mode preview. */
+  body.theme-light code { color: #b0286a; }
+  body.theme-light #layla-right-panel .rcp-tab { background: rgba(74, 58, 85, 0.06); }
 
   /* ── Toast ── */
   @keyframes toast-in {
