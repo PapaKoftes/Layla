@@ -466,6 +466,34 @@ def _hardware_derived_defaults() -> dict:
     return {"n_ctx": 2048, "n_gpu_layers": 0, "n_batch": 128, "use_mlock": False, "completion_max_tokens": 256}
 
 
+def validate_backend_selection(cfg: dict) -> list[str]:
+    """Surface a storage-backend selection that is NOT currently honored, so `vector_backend` and
+    `search_backend` can never be silent config lies (the review found both are read but never
+    dispatched). qdrant + the external search engines are complete modules but are not wired into the
+    core memory/recall choke points (there is no single one — the upserts are spread across the
+    collection layer), and both need an external service. Rather than pretend the selection took
+    effect, log a clear warning at startup and return the messages (for callers/tests). Full dispatch
+    is a dedicated refactor; this makes the current state honest instead of invisible."""
+    out: list[str] = []
+    vb = str((cfg or {}).get("vector_backend", "chroma")).strip().lower()
+    if vb and vb != "chroma":
+        out.append(
+            f"vector_backend='{vb}' is selected, but vector add/search still routes through chroma / "
+            f"the sqlite-vec fallback — the selection is not dispatched (layla/memory/vector_qdrant.py "
+            f"is complete but not wired into the core paths). Using chroma."
+        )
+    sb = str((cfg or {}).get("search_backend", "auto")).strip().lower()
+    if sb in ("meilisearch", "elasticsearch"):
+        out.append(
+            f"search_backend='{sb}' is selected, but learnings search calls sqlite FTS directly and "
+            f"does not route through services/retrieval/search_router — the external backend is unused. "
+            f"Using sqlite FTS."
+        )
+    for _w in out:
+        logger.warning("backend selection not honored: %s", _w)
+    return out
+
+
 def load_config() -> dict:
     """Load runtime config. Cached: skips disk stat for _CONFIG_CHECK_TTL seconds during hot loops."""
     global _config_cache, _config_mtime, _config_last_check, _applying_auto_tune
