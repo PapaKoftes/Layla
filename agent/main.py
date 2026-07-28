@@ -131,6 +131,21 @@ async def lifespan(app: FastAPI):
         _logging.getLogger().handlers = [h]
         _logging.getLogger().setLevel(log_level)
 
+    # A local-first desktop app needs an on-disk log — the console handler above vanishes with the
+    # window, so without this every user bug report is unactionable. Best-effort RotatingFileHandler in
+    # the data dir (never break startup if the dir isn't writable). 5 MB x 3 keeps it bounded.
+    try:
+        from logging.handlers import RotatingFileHandler as _RFH
+        from pathlib import Path as _P
+        _log_dir = _P(os.getenv("LAYLA_DATA_DIR") or (_P.home() / ".layla")) / "logs"
+        _log_dir.mkdir(parents=True, exist_ok=True)
+        _fh = _RFH(str(_log_dir / "layla.log"), maxBytes=5_000_000, backupCount=3, encoding="utf-8")
+        _fh.setFormatter(_SafeFormatter(fmt="%(asctime)s [%(levelname)s] %(name)s: %(task_ctx)s%(message)s",
+                                        datefmt="%Y-%m-%d %H:%M:%S"))
+        _logging.getLogger().addHandler(_fh)
+    except Exception as _fh_err:
+        logger.debug("file log handler setup skipped: %s", _fh_err)
+
     # Phase 4.3: install task-context filter so concurrent runs don't mix logs.
     # Must be on the root logger too — _SafeFormatter only supplies a fallback;
     # the filter populates the real workspace / aspect / task-id values.

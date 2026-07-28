@@ -67,7 +67,15 @@ def migrate() -> None:
                 except Exception:
                     pass
         except Exception as e:
-            logger.warning("DB migrate failed: %s", e)
+            # A failed migration must be LOUD + flagged, not a DEBUG-invisible warning the app then
+            # reads against a half-built schema (silent data damage). Escalate to ERROR and mark the
+            # subsystem degraded so /health and the degraded registry surface it.
+            logger.error("DB migrate failed (schema may be incomplete): %s", e)
+            try:
+                from services.infrastructure.degraded import mark_degraded
+                mark_degraded("db_migration", str(e))
+            except Exception:
+                pass
 
 
 def _migrate_impl() -> None:
