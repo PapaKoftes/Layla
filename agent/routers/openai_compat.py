@@ -286,6 +286,37 @@ async def v1_chat_completions(req: dict, request: Request):
     if not goal:
         return _v1_error("No user message content found in 'messages'.", param="messages")
 
+    # tools / tool_choice: Layla's /v1 runs its OWN internal agent tools; it does not do OpenAI
+    # client-side function-calling passthrough (the model calling the CALLER's tool schemas and
+    # returning tool_calls for the client to execute — a separate raw-completion path that would
+    # bypass the agent, safety and persona layers). When a client merely OFFERS tools with the
+    # default "auto"/"none" choice, returning a normal assistant message is valid OpenAI behavior,
+    # so we proceed. But when the client REQUIRES a tool call, prose would hand back a response the
+    # client cannot parse — so fail clearly instead of silently degrading.
+    _tool_choice = body.get("tool_choice")
+    _requires_tool = _tool_choice == "required" or (
+        isinstance(_tool_choice, dict)
+        and (_tool_choice.get("type") == "function" or _tool_choice.get("function"))
+    )
+    if _requires_tool:
+        return _v1_error(
+            "This endpoint runs Layla's own agent tools and does not support client-side "
+            "function-calling passthrough (tool_choice 'required' or a named function). Omit "
+            "tool_choice or set it to 'auto'.",
+            code="tool_choice_unsupported", status_code=400, param="tool_choice",
+        )
+
+    # response_format: honor OpenAI json_object mode by instructing the model to emit strict JSON.
+    # Layla runs its agent loop rather than a raw constrained decode, so this is the strongest lever
+    # available without a separate non-agent path — a best-effort directive, not a hard guarantee.
+    _resp_fmt = body.get("response_format")
+    if isinstance(_resp_fmt, dict) and str(_resp_fmt.get("type") or "").strip() == "json_object":
+        _json_directive = (
+            "OUTPUT FORMAT (required): respond with a single valid JSON object and nothing else — "
+            "no prose, no explanation, no markdown code fences, nothing before or after the JSON."
+        )
+        system_ctx = f"{system_ctx}\n{_json_directive}".strip() if system_ctx else _json_directive
+
     # Security review Finding 3: the deterministic content-guard floor lived only in the
     # autonomous_run path, so the reason-first / quick-reply / synthesize path every remote
     # caller and trivial turn takes SKIPPED it. Apply it here so it covers ALL /v1 paths.
