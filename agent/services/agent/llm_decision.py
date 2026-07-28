@@ -164,7 +164,7 @@ def _drop_missing_dependency_tools(names: set, tools_registry: dict) -> set:
     the `feature` filter above. Without this, every web/search tool is declared unconditionally
     on a box where none of the backing libraries are installed, so the model is told it can
     search the web and only discovers otherwise by calling a tool that returns
-    "duckduckgo-search not installed".
+    "ddgs not installed".
     """
     kept = set()
     for n in names:

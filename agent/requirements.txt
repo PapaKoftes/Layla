@@ -89,7 +89,7 @@ pypdf>=4.0                      # PDF reading (BSD-licensed). NOTE: PyMuPDF (fit
                                 # source license. file_ops.read_pdf still uses fitz
                                 # IF a user installs it themselves, but we never ship it.
 wikipedia>=1.4                  # Wikipedia summaries and search
-duckduckgo-search>=6.0          # DuckDuckGo web search (pure Python, no browser)
+ddgs>=9.0,<10                   # DuckDuckGo web search (pure Python, no browser); renamed from duckduckgo-search
 arxiv>=2.1                      # arXiv paper search and metadata
 pandas>=2.0,<3                  # CSV/tabular data reading and statistics
 nbformat>=5.10                  # Jupyter .ipynb read/edit tools (notebook_read_cells, notebook_edit_cell)

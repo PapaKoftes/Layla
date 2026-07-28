@@ -31,7 +31,7 @@ from tests._tool_verify import offered_set, pin_tools_config
 _FILE_TOOL = "write_file"        # filesystem
 _GIT_TOOL = "git_log"            # code
 _DATA_TOOL = "read_csv"          # data (outside a coding goal's intent set)
-_WEB_TOOL_DEPGATED = "ddg_search"  # web, requires duckduckgo_search
+_WEB_TOOL_DEPGATED = "ddg_search"  # web, requires ddgs
 
 _SPREAD = (_FILE_TOOL, _GIT_TOOL, _DATA_TOOL, _WEB_TOOL_DEPGATED)
 
