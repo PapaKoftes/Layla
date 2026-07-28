@@ -30,6 +30,22 @@ def model_is_loaded() -> bool:
     """
     return _llm is not None or bool(_llm_by_path)
 
+
+def get_resident_model():
+    """Return a currently-RESIDENT Llama instance, or None — never triggers a load.
+
+    For read-only, vocab-level uses such as exact token counting (see services/llm/token_count.py,
+    O-7): the shipped Qwen2.5 tokenizer is exact and free, whereas tiktoken's cl100k_base over-counts
+    non-Latin scripts and silently over-truncates a CJK user's context. Callers MUST treat this as
+    best-effort (fall back when it returns None) and MUST NOT trigger model loading from a hot path.
+    """
+    if _llm is not None:
+        return _llm
+    try:
+        return next(iter(_llm_by_path.values()), None)
+    except Exception:
+        return None
+
 _DEFAULT_MAX_RESIDENT_MODELS = 2  # cap on concurrently-loaded GGUF models (memory bound, F9)
 
 
