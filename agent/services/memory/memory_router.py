@@ -232,7 +232,7 @@ def set_user_identity(key: str, value: str, **kwargs: Any) -> None:
         from layla.memory.db import set_user_identity as _sui
         _sui(key, value, **kwargs)
     except Exception as exc:
-        logger.debug("memory_router: set_user_identity failed: %s", exc)
+        logger.warning("memory_router: set_user_identity WRITE failed (the caller may believe it saved): %s", exc)
 
 
 def get_all_user_identity() -> dict[str, Any]:
@@ -251,7 +251,7 @@ def delete_learnings_by_id(ids: list[int]) -> int:
         from layla.memory.db import delete_learnings_by_id as _dli
         return _dli(ids)
     except Exception as exc:
-        logger.debug("memory_router: delete_learnings_by_id failed: %s", exc)
+        logger.warning("memory_router: delete_learnings_by_id WRITE failed (the caller may believe it saved): %s", exc)
         return 0
 
 
@@ -263,7 +263,7 @@ def create_conversation(conversation_id: str = "", title: str = "", **kwargs: An
         from layla.memory.db import create_conversation as _cc
         return _cc(conversation_id=conversation_id, title=title, **kwargs)
     except Exception as exc:
-        logger.debug("memory_router: create_conversation failed: %s", exc)
+        logger.warning("memory_router: create_conversation WRITE failed (the caller may believe it saved): %s", exc)
         return conversation_id or ""
 
 
@@ -275,7 +275,7 @@ def append_conversation_message(
         from layla.memory.db import append_conversation_message as _acm
         _acm(conversation_id, role, content, **kwargs)
     except Exception as exc:
-        logger.debug("memory_router: append_conversation_message failed: %s", exc)
+        logger.warning("memory_router: append_conversation_message WRITE failed (the caller may believe it saved): %s", exc)
 
 
 def get_conversation_messages(
@@ -509,12 +509,10 @@ def query(
     _privacy = max_privacy or _max_privacy_from_config()
     results: list[MemoryResult] = []
 
-    if query_type == "auto":
-        # Heuristic: short exact-match queries → factual, longer queries → semantic
-        if len(text.split()) <= 4:
-            query_type = "factual"
-        else:
-            query_type = "semantic"
+    # 'auto' deliberately queries BOTH stores (it is in both tuples below). The old heuristic
+    # collapsed it to a single store (short→factual, long→semantic), so a default query(text) call
+    # searched only entities OR chromadb — halving recall. Leave query_type as 'auto' so both the
+    # factual (entities) and semantic (chromadb) branches fire and results merge.
 
     if query_type in ("factual", "auto"):
         results.extend(_query_sqlite_entities(text, limit=limit, min_confidence=min_confidence, max_privacy=_privacy))

@@ -209,7 +209,11 @@ def update_person_mention(
             # Update last_seen_at
             eid = matches[0].get("id", "")
             if eid:
-                now = utcnow()
+                # Store the canonical ISO 'T…Z' string every other entities writer uses. A raw
+                # datetime goes through sqlite3's default adapter as '2026-… …+00:00' (space, not
+                # 'T'), which sorts BEFORE the canonical form — so `ORDER BY updated_at DESC` ranked
+                # the just-touched person as OLDEST — and that adapter is deprecated in 3.12.
+                now = utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
                 with _conn() as db:
                     db.execute(
                         "UPDATE entities SET last_seen_at = ?, updated_at = ? WHERE id = ?",
