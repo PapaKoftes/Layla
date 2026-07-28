@@ -79,14 +79,6 @@ _NOT_IMPORTED_OK = {
               "import path.",
     "python-multipart": "Imported by FastAPI internally (as `multipart`) to parse form data; "
                         "our code never imports it directly.",
-    "requests": "FINDING (dead dep): declared in [core]+[cpu] and requirements.txt but not "
-                "imported anywhere in live code — httpx is used instead. Removal is a separate "
-                "change; recorded, not fixed here.",
-    "orjson": "FINDING (dead dep): declared in [core]+[cpu] and requirements.txt but not "
-              "imported anywhere in live code. Removal is a separate change.",
-    "diskcache": "FINDING (dead dep): went dead when services/retrieval/retrieval_cache.py was "
-                 "rewritten to a bounded OrderedDict LRU; only the stale build/lib/ copy still "
-                 "imports it. Removal is a separate change.",
     "python-telegram-bot": "[transports] extra: imported as `telegram` by the repo-root transports/ "
                            "package (transports/telegram_bot.py), which is OUTSIDE the agent/ import "
                            "scan. The Telegram transport is opt-in (write/run forced off).",

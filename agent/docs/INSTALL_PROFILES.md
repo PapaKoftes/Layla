@@ -28,9 +28,9 @@ To run with only the bare minimum:
 
 ```bash
 pip install fastapi "uvicorn[standard]" pydantic sqlite-utils duckdb \
-    apscheduler httpx orjson chromadb sentence-transformers \
+    apscheduler httpx chromadb sentence-transformers \
     langchain-text-splitters beautifulsoup4 tiktoken tenacity \
-    diskcache Pillow PyYAML networkx numpy psutil llama-cpp-python
+    Pillow PyYAML networkx numpy psutil llama-cpp-python
 ```
 
 Then start the server:
@@ -47,7 +47,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 
 | Profile | Approx. Size | Key Packages | What It Enables |
 |---------|-------------|--------------|-----------------|
-| **Core** | ~250 MB | FastAPI, uvicorn, pydantic, sqlite-utils, duckdb, apscheduler, httpx, orjson, chromadb, sentence-transformers, langchain-text-splitters, beautifulsoup4, tiktoken, tenacity, diskcache, Pillow, PyYAML, networkx | Agent chat, memory, vector search, web server, scheduling, text splitting |
+| **Core** | ~250 MB | FastAPI, uvicorn, pydantic, sqlite-utils, duckdb, apscheduler, httpx, chromadb, sentence-transformers, langchain-text-splitters, beautifulsoup4, tiktoken, tenacity, Pillow, PyYAML, networkx | Agent chat, memory, vector search, web server, scheduling, text splitting |
 | **ML** | ~2 GB | torch, transformers, scikit-learn, torchao | Image captioning (BLIP), clustering, classification, advanced embeddings |
 | **Voice** | ~600 MB | faster-whisper, kokoro-onnx, soundfile, sounddevice | Speech-to-text (Whisper), text-to-speech (Kokoro ONNX or pyttsx3 fallback) |
 | **Vision** | ~1.5 GB | easyocr, pytesseract, ultralytics | OCR from images, object detection (YOLOv8) |
@@ -95,9 +95,9 @@ Mix and match profiles by installing the packages from each group you need.
 ```bash
 # Core (always required)
 pip install fastapi "uvicorn[standard]" pydantic sqlite-utils duckdb \
-    apscheduler httpx orjson chromadb sentence-transformers \
+    apscheduler httpx chromadb sentence-transformers \
     langchain-text-splitters beautifulsoup4 tiktoken tenacity \
-    diskcache Pillow PyYAML networkx numpy psutil llama-cpp-python
+    Pillow PyYAML networkx numpy psutil llama-cpp-python
 
 # Research
 pip install PyMuPDF pypdf wikipedia arxiv yfinance ddgs pandas
@@ -111,9 +111,9 @@ pip install matplotlib
 ```bash
 # Core (always required)
 pip install fastapi "uvicorn[standard]" pydantic sqlite-utils duckdb \
-    apscheduler httpx orjson chromadb sentence-transformers \
+    apscheduler httpx chromadb sentence-transformers \
     langchain-text-splitters beautifulsoup4 tiktoken tenacity \
-    diskcache Pillow PyYAML networkx numpy psutil llama-cpp-python
+    Pillow PyYAML networkx numpy psutil llama-cpp-python
 
 # Voice
 pip install faster-whisper kokoro-onnx soundfile sounddevice
@@ -132,9 +132,9 @@ python agent/install/installer_cli.py packs install intelligence
 
 ```bash
 pip install fastapi "uvicorn[standard]" pydantic sqlite-utils duckdb \
-    apscheduler httpx orjson chromadb sentence-transformers \
+    apscheduler httpx chromadb sentence-transformers \
     langchain-text-splitters beautifulsoup4 tiktoken tenacity \
-    diskcache Pillow PyYAML networkx numpy psutil llama-cpp-python
+    Pillow PyYAML networkx numpy psutil llama-cpp-python
 
 pip install pytest pytest-asyncio pytest-timeout pytest-cov httpx python-multipart
 ```
