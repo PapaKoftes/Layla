@@ -139,3 +139,35 @@ def test_apply_retention_policies_prunes_operator_journal(tmp_path, monkeypatch)
         assert n_old == 0  # old entry pruned by the 365-day policy
         assert n_new == 1  # recent entry retained
 
+
+
+def test_retention_days_zero_means_keep_forever_not_wipe(tmp_path, monkeypatch):
+    """Critical data-safety: retention_*_days <= 0 must KEEP FOREVER, not delete everything.
+
+    Before the guard, _cutoff(0) == now, so `WHERE created_at < now` hard-deleted the ENTIRE table —
+    a user setting retention_conversation_messages_days: 0 (a natural 'keep all' choice) would
+    silently erase every message.
+    """
+    data_dir = tmp_path / "layla_data_zero"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("LAYLA_DATA_DIR", str(data_dir))
+
+    from layla.memory.db_connection import _conn
+    from layla.memory.migrations import migrate
+    from services.memory.memory_consolidation import apply_retention_policies
+
+    migrate()
+    ancient = (datetime.now(timezone.utc) - timedelta(days=999)).isoformat()
+    with _conn() as db:
+        db.execute(
+            "INSERT INTO tool_outcomes (tool_name, context, success, latency_ms, quality_score, created_at) VALUES (?,?,?,?,?,?)",
+            ("keep_me", "", 1, 0, 0.5, ancient),
+        )
+        db.commit()
+
+    # days=0 for the age policy, and 0 max_rows for the hard cap — both must be no-ops, not wipes.
+    apply_retention_policies({"retention_tool_outcomes_days": 0})
+
+    with _conn() as db:
+        n = db.execute("SELECT COUNT(*) FROM tool_outcomes WHERE tool_name='keep_me'").fetchone()[0]
+    assert n == 1, "retention days=0 must keep rows (was hard-deleting the whole table)"

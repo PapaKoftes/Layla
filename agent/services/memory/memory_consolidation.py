@@ -152,6 +152,12 @@ def apply_retention_policies(cfg: dict | None = None) -> dict[str, Any]:
 
             _orphan_vector_ids: list[str] = []  # H1: vectors whose rows we're deleting
             for table, days, _ in policies:
+                # `days <= 0` means KEEP FOREVER, not "delete everything". Without this guard
+                # _cutoff(0) == now, so `WHERE created_at < now` would hard-delete the ENTIRE table —
+                # a user setting retention_conversation_messages_days: 0 (a natural "keep all" choice)
+                # would silently erase every message. Mirrors the hard_caps `max_rows <= 0: continue`.
+                if int(days) <= 0:
+                    continue
                 if "created_at" not in _cols(table):
                     # Either the table doesn't exist (name mismatch) or has no created_at
                     # column — the policy silently no-ops. Log it so a future typo like the
@@ -186,6 +192,8 @@ def apply_retention_policies(cfg: dict | None = None) -> dict[str, Any]:
                     out["actions"].append(f"retention:{table}:skip:{e}")
 
             for table, col, days in special_policies:
+                if int(days) <= 0:  # keep-forever guard (see the main policies loop)
+                    continue
                 if col not in _cols(table):
                     continue
                 cutoff = _cutoff(days)
