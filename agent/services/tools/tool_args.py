@@ -27,6 +27,11 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
         "required": ["image"],
         "types": {"image": str, "args": str, "name": str, "rm": bool},
     },
+    # ── learned skills (approval-gated: replays a recorded tool sequence) ─
+    "invoke_skill": {
+        "required": ["name"],
+        "types": {"name": str, "params": dict},
+    },
     # ── system capture (now approval-gated: privacy-sensitive) ───────────
     "clipboard_read": {
         "required": [],
