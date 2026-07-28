@@ -257,7 +257,7 @@ def test_write_and_load_snapshot(tmp_path, monkeypatch):
         "maturity_phase": "growth",
         "goals_summary": "Build leverage.",
     }
-    write_profile_snapshot(uid)
+    write_profile_snapshot(uid, force=True)  # force past the per-turn throttle
 
     snap = load_profile_snapshot()
     assert snap["stats"]["technical"] == 9
@@ -273,7 +273,7 @@ def test_snapshot_active_modifiers_match_build(tmp_path, monkeypatch):
     monkeypatch.setattr(fm, "_profile_path", lambda: tmp_path / "profile.json")
 
     uid = {"stat_technical": "8", "stat_patience": "2"}
-    write_profile_snapshot(uid)
+    write_profile_snapshot(uid, force=True)
     snap = load_profile_snapshot()
 
     stats = load_stats_from_identity(uid)
@@ -307,6 +307,6 @@ def test_write_snapshot_bad_path_does_not_raise(tmp_path, monkeypatch):
 
     monkeypatch.setattr(fm, "_profile_path", lambda: target)
     # Should not raise -- errors are swallowed
-    write_profile_snapshot({"stat_technical": "8"})
+    write_profile_snapshot({"stat_technical": "8"}, force=True)
 
     assert not target.exists(), "the target was writable, so the swallow path was never exercised"
