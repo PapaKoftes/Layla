@@ -240,7 +240,7 @@ See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md#quality-enforcement-recomm
 | Qwen2.5-Coder-7B-Q4 *(default)* | **100 % (10/10)** | **100 % (12/12)** | 3.4 / 4.2 |
 | Qwen2.5-Coder-3B-Q4 *(`-Prefer lite`)* | **100 % (10/10)** | **100 % (12/12)** | 6.6 / 9.6 |
 
-Both models pass **22/22**; the 3B matches the 7B at ~2× the speed on a CPU-only laptop. Per-problem scorecards and honest caveats: **[benchmarks/README.md](benchmarks/README.md)**. A **nightly CI job** re-runs both tiers against a real model with a regression floor, so these numbers stay current as the project evolves. Regenerate locally:
+Both models pass **22/22**; the 3B matches the 7B at ~2× the speed on a CPU-only laptop. Per-problem scorecards and honest caveats: **[benchmarks/README.md](benchmarks/README.md)**. A **nightly CI job** re-runs the coding benchmark on the **3B Coder** against a regression floor (core ≥ 0.6, hard ≥ 0.5) so quality can't silently regress; the **7B row is measured locally** on the reference laptop, not CI-gated. Regenerate locally:
 
 ```bash
 python scripts/benchmark_coding.py --model models/<model>.gguf                 # core
