@@ -112,7 +112,7 @@ def scan_conversations_for_people(limit: int = 100) -> list[dict]:
         with _conn() as db:
             # Search user messages for people mentions
             rows = db.execute(
-                "SELECT content FROM messages WHERE role = 'user' "
+                "SELECT content FROM conversation_messages WHERE role = 'user' "
                 "ORDER BY created_at DESC LIMIT ?",
                 (limit,),
             ).fetchall()
