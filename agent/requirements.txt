@@ -30,6 +30,10 @@ llama-cpp-python>=0.3.1,<0.4
 sentence-transformers>=3.0,<4
 numpy>=1.24,<3
 psutil>=5.9
+cryptography>=42               # Fernet cipher backing encryption-at-rest (default-ON high-risk tier).
+                               # WITHOUT it, memory_encryption.py's `from cryptography.fernet import Fernet`
+                               # fails, get_cipher() returns None, and high-risk memories are written PLAINTEXT
+                               # with no signal — a default-on security feature silently degraded. Now declared.
 keyring>=24                    # OS keyring for secret storage. In [core] AND [cpu], so EVERY user has it,
                                # while CI installed it nowhere — secret_store.py:27 catches the absence and
                                # silently uses the env/plaintext path, so CI could not even IMPORT what every
@@ -93,6 +97,11 @@ nbformat>=5.10                  # Jupyter .ipynb read/edit tools (notebook_read_
 # ─── HTTP & Networking ────────────────────────────────────────────────────────
 httpx>=0.27                     # Async HTTP client (used for internal requests)
 requests>=2.31                  # Sync HTTP (used by download_docs.py and tools)
+mcp>=1.0,<2.0                   # Model Context Protocol SDK (client + opt-in read-only server). Now in
+                               # layla[all]; mcp_client.py flips a real path on its absence, so CI must
+                               # install it to exercise the real MCP path instead of the fallback.
+python-frontmatter>=1.1        # Obsidian two-way vault sync (imported as `frontmatter`). Now in
+                               # layla[all]; obsidian_sync.py flips a path on its absence, so CI tests it.
 
 # ─── JSON & Serialization ─────────────────────────────────────────────────────
 orjson>=3.9                     # Fast JSON serialization (drop-in for json module)
