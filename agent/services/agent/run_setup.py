@@ -437,6 +437,15 @@ def setup_autonomous_run(
                     state["tool_calls"] = v
             else:
                 state[k] = v
+        # Restore accumulated WORK too, not just the counters — otherwise a resumed run keeps its
+        # SPENT budget (depth/tool_calls) but starts from an empty step log and re-does everything
+        # it already did, against a budget it has already burned.
+        _resumed_steps = resume_execution_state.get("steps")
+        if isinstance(_resumed_steps, list):
+            if isinstance(state.get("steps"), list):
+                state["steps"][:] = _resumed_steps
+            else:
+                state["steps"] = list(_resumed_steps)
 
     # ------------------------------------------------------------------
     # 11. Workspace + tool/runtime budgets
