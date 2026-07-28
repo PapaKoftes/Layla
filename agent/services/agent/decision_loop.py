@@ -61,7 +61,11 @@ def run_decision_loop(
 
     _VALID_TOOLS = _al._VALID_TOOLS
 
-    while state["depth"] < 5:
+    # Bound by the effective tool budget, not a hardcoded 5: research/agent turns set
+    # max_tool_calls up to 20, and the real per-turn gate is the tool_calls>=cap check below —
+    # this outer cap only exists to bound total loop iterations, so track the budget (+2 for the
+    # probe/finalize passes) instead of silently shadowing it at 5.
+    while state["depth"] < max(5, max_tool_calls_effective + 2):
         state["tool_attempted_this_turn"] = False
 
         # -- Decision policy caps --
