@@ -260,3 +260,27 @@ class TestAutoLinker:
 
         match = find_best_codex_match("xyzzy_nonexistent_thing_12345")
         assert match is None
+
+
+class TestScanConversationsForPeople:
+    """Regression: scan_conversations_for_people must read the real conversation_messages table.
+
+    It previously queried a non-existent `messages` table, so the query raised 'no such table'
+    (swallowed by a broad except) and the default-on people-codex feature was silently dead on
+    every install — no person was ever learned from conversations.
+    """
+
+    def test_reads_user_messages_from_conversation_messages(self, monkeypatch):
+        from layla.memory.conversations import append_conversation_message, create_conversation
+        from services.memory import people_codex
+
+        create_conversation("conv-codex-regress", title="Regress")
+        append_conversation_message("conv-codex-regress", "user", "I had lunch with Ada Lovelace today.")
+        # Isolate the table-query fix from the extraction heuristic.
+        monkeypatch.setattr(
+            people_codex, "extract_people_from_text",
+            lambda text: [{"name": "Ada Lovelace", "confidence": 0.9}] if "Ada" in text else [],
+        )
+        result = people_codex.scan_conversations_for_people(limit=50)
+        names = {p.get("name") for p in result}
+        assert "Ada Lovelace" in names, "scan must read conversation_messages (was querying a dead table)"
