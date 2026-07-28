@@ -417,7 +417,11 @@ def setup_autonomous_run(
     if resume_execution_state and isinstance(resume_execution_state, dict):
         _rk = (
             "depth", "tool_calls", "consecutive_no_progress", "last_tool_used",
-            "strategy_shift_count", "status", "pipeline_stage", "retries",
+            "strategy_shift_count", "status", "pipeline_stage",
+            # ST-9: the loop-termination backstops MUST carry over too, or a resumed run resets them
+            # (decision_loop.py reads blocked_calls/no_op_steps at :123-124) and can re-run guarded
+            # tools / re-spin past the budget it already burned. Restore them so resume is conservative.
+            "blocked_calls", "no_op_steps",
         )
         for k in _rk:
             if k not in resume_execution_state:
