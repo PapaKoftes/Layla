@@ -15,6 +15,7 @@
  */
 
 import { escapeHtml, showToast } from '../services/utils.js';
+import { laylaAutoMonitorStart } from './autonomous.js';
 
 // ── Call-time resolved helpers (modules may load after us) ──────────────────
 function _addMsg()                  { return (window.addMsg || function () {}).apply(null, arguments); }
@@ -302,6 +303,11 @@ export async function sendResearch(customMessage) {
   const ra = _getCurrentAspect();
   const UX = _getUxStateLabels();
 
+  // Hoisted to function scope so the outer catch/finally can clear them on a mid-stream drop. They
+  // used to be declared inside the try, so a network error left metaTimer's 500ms interval running
+  // forever, ticking against a bubble that was never finalized.
+  let metaTimer = null, firstTokenTimer = null, stalledTimer = null;
+
   try {
     if (streamMode) {
       // Stream mode
@@ -342,7 +348,7 @@ export async function sendResearch(customMessage) {
       let liveStatus = 'connecting';
       _laylaNotifyStreamPhase(div, 'connecting');
 
-      const metaTimer = setInterval(function () {
+      metaTimer = setInterval(function () {
         const secs = Math.max(0, Math.floor((Date.now() - streamStartedAt) / 1000));
         const UXnow = _getUxStateLabels();
         streamMeta.textContent = 'Status: ' + (UXnow[liveStatus] || liveStatus) + ' · ' + secs + 's · ' + (full || '').length + ' chars';
@@ -351,7 +357,7 @@ export async function sendResearch(customMessage) {
       let researchStreamGotToken = false;
       const researchStallMs = _laylaStalledSilenceMs();
 
-      const firstTokenTimer = setTimeout(function () {
+      firstTokenTimer = setTimeout(function () {
         liveStatus = 'waiting_first_token';
         const UXnow = _getUxStateLabels();
         let statusEl = div.querySelector('.tool-status-label');
@@ -360,7 +366,6 @@ export async function sendResearch(customMessage) {
         _laylaNotifyStreamPhase(div, liveStatus);
       }, 1200);
 
-      let stalledTimer;
       function _resetStalledTimer() {
         clearTimeout(stalledTimer);
         stalledTimer = setTimeout(function () {
@@ -494,6 +499,12 @@ export async function sendResearch(customMessage) {
     } else {
       _addMsg('layla', 'Error: ' + (e && e.message || 'unknown'));
     }
+  } finally {
+    // Clear the streaming timers on EVERY exit path (success, error, mid-stream drop) so no zombie
+    // interval keeps ticking against an abandoned bubble.
+    if (metaTimer) { clearInterval(metaTimer); }
+    if (firstTokenTimer) { clearTimeout(firstTokenTimer); }
+    if (stalledTimer) { clearTimeout(stalledTimer); }
   }
   refreshApprovals();
 }
@@ -562,6 +573,15 @@ export async function laylaRunAutonomousResearch() {
     ? window.crypto.randomUUID()
     : ('au-' + String(Date.now()));
   window._laylaCurrentAutoTaskId = taskId;
+
+  // Activate the live execution-monitor panel here. The window-level wrapper (autonomous.js
+  // initAutoMonitorHook) never fires — the button invokes this raw export through the action
+  // registry, not window.laylaRunAutonomousResearch, and the hook runs before that window ref is
+  // even set. Start the monitor directly so it works regardless of how the run is triggered.
+  try {
+    const _goalEl = document.getElementById('autonomous-goal');
+    laylaAutoMonitorStart(taskId, _goalEl ? _goalEl.value.trim() : '');
+  } catch (_) { /* monitor is best-effort UI */ }
 
   const sumOut = document.getElementById('autonomous-result-summary');
   if (sumOut) sumOut.textContent = 'Running… (task ' + taskId.slice(0, 8) + ')';
