@@ -620,6 +620,16 @@ async def lifespan(app: FastAPI):
             t.join(timeout=5)
         except Exception:
             pass
+    # ST-3: give in-flight derived-memory writers (title/skills/learnings/capability) a brief chance
+    # to finish before their daemon threads are killed at exit, so closing the window right after a
+    # turn no longer silently drops that turn's derived memory. Bounded — never blocks exit for long.
+    try:
+        from services.agent.turn_commit import join_derived_writes
+        _still = join_derived_writes(timeout_total=2.5)
+        if _still:
+            logger.info("shutdown: %d derived-memory write(s) did not finish within the budget", _still)
+    except Exception as _jderr:
+        logger.debug("join_derived_writes on shutdown failed: %s", _jderr)
     # Stop system tray
     try:
         from services.infrastructure.system_tray import stop_tray

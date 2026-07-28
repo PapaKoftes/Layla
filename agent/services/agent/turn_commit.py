@@ -45,8 +45,50 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 
 logger = logging.getLogger("layla")
+
+# ST-3: derived-memory writers (title synthesis, skill acquisition, learning extraction, capability
+# practice) run on daemon threads so a hung LLM call can never block interpreter exit. But daemon
+# threads are killed instantly at exit, so closing the window right after a turn used to silently
+# drop that turn's derived memory — no error, no queue entry, no record. Every such spawn is now
+# registered here so the shutdown hook (main.py lifespan) can join outstanding writers within a
+# short total budget, giving in-flight writes a chance to land while still never blocking exit.
+_DERIVED_THREADS: list[threading.Thread] = []
+_DERIVED_LOCK = threading.Lock()
+_DERIVED_MAX = 64  # bound the registry; only still-alive threads matter at shutdown
+
+
+def _spawn_derived(target, *, name: str, args: tuple = ()) -> threading.Thread:
+    """Spawn a derived-memory writer daemon thread and register it for shutdown-join (ST-3)."""
+    t = threading.Thread(target=target, args=args, daemon=True, name=name)
+    with _DERIVED_LOCK:
+        # Prune finished threads so the registry can't grow over the whole process lifetime.
+        _DERIVED_THREADS[:] = [x for x in _DERIVED_THREADS if x.is_alive()][-_DERIVED_MAX:]
+        _DERIVED_THREADS.append(t)
+    t.start()
+    return t
+
+
+def join_derived_writes(timeout_total: float = 2.5) -> int:
+    """Give outstanding derived-memory writers a brief chance to finish before daemon threads are
+    killed at interpreter exit (ST-3). Joins within a total time budget and keeps the threads
+    daemon=True, so a hung LLM call can never block exit beyond the budget. Returns the count still
+    alive after the budget (writes that did not finish in time)."""
+    with _DERIVED_LOCK:
+        threads = [t for t in _DERIVED_THREADS if t.is_alive()]
+    deadline = time.monotonic() + max(0.0, float(timeout_total))
+    for t in threads:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            t.join(timeout=remaining)
+        except Exception:
+            pass
+    with _DERIVED_LOCK:
+        return sum(1 for t in _DERIVED_THREADS if t.is_alive())
 
 # Persistence is deliberately NOT gated on this — a refused, blocked, timed-out or aborted turn
 # still belongs in the transcript; only LEARNING is withheld.
@@ -268,7 +310,7 @@ def _maybe_synth_title(conversation_id: str, user_msg: str, assistant_text: str)
         with _TITLE_SYNTH_LOCK:
             _TITLE_SYNTH_PENDING.add(cid)
         try:
-            threading.Thread(target=_bg, daemon=True, name="title-synth").start()
+            _spawn_derived(_bg, name="title-synth")
         except Exception:
             # Thread never started, so _bg's finally will never run — don't strand the flag.
             with _TITLE_SYNTH_LOCK:
@@ -442,7 +484,7 @@ def commit_turn(
                     except Exception as e:
                         logger.debug("commit_turn: skill acquisition failed: %s", e)
 
-                threading.Thread(target=_acquire, daemon=True, name="skill-acquire").start()
+                _spawn_derived(_acquire, name="skill-acquire")
                 state["skill_acquisition_started"] = True
             except Exception as e:
                 logger.debug("commit_turn: skill acquisition gate failed: %s", e)
@@ -483,12 +525,7 @@ def commit_turn(
     try:
         from services.infrastructure.outcome_writer import _auto_extract_learnings
 
-        threading.Thread(
-            target=_auto_extract_learnings,
-            args=(goal, text, asp),
-            daemon=True,
-            name="auto-learn",
-        ).start()
+        _spawn_derived(_auto_extract_learnings, name="auto-learn", args=(goal, text, asp))
     except Exception as e:
         logger.debug("commit_turn: learning extraction failed: %s", e)
 
@@ -505,12 +542,7 @@ def commit_turn(
     try:
         _dom = _practice_domain_for_turn(goal, status, refused, state)
         if _dom:
-            threading.Thread(
-                target=_record_practice_domain,
-                args=(_dom,),
-                daemon=True,
-                name="cap-practice",
-            ).start()
+            _spawn_derived(_record_practice_domain, name="cap-practice", args=(_dom,))
     except Exception as e:
         logger.debug("commit_turn: capability practice failed: %s", e)
 
