@@ -158,6 +158,11 @@ async def lifespan(app: FastAPI):
     # ── Load runtime config (shared by all subsystems below) ────────────────
     import runtime_safety
     cfg = runtime_safety.load_config()
+    # Honesty: warn if a storage-backend selection (vector_backend/search_backend) isn't dispatched.
+    try:
+        runtime_safety.validate_backend_selection(cfg)
+    except Exception as _bse:
+        logger.debug("backend-selection validation skipped: %s", _bse)
 
     # R6: minimal startup for TestClient-based tests. The heavy subsystems below
     # (embedder preload, scheduler, knowledge indexing, cluster/mDNS) block or
