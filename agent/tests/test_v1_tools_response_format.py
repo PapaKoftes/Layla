@@ -54,12 +54,17 @@ def test_tool_choice_named_function_is_rejected():
     assert r.json().get("error", {}).get("code") == "tool_choice_unsupported"
 
 
-def test_tool_choice_auto_proceeds_past_the_tool_guard():
-    # "auto" (merely OFFERING tools) must NOT trip the tool_choice guard — it proceeds into the
-    # normal handler, which then fails only for lack of an initialized app/runtime in this bare
-    # TestClient. That downstream failure proves it got past our early 400 (which would have been a
-    # clean JSON response, not a raised runtime error).
-    import pytest
-    with pytest.raises(Exception) as ei:  # noqa: PT011 — asserting on message below
-        _post(tool_choice="auto", extra={"tools": [{"type": "function", "function": {"name": "x"}}]})
-    assert "tool_choice" not in str(ei.value).lower()
+def test_tool_choice_auto_is_not_rejected_by_the_tool_guard():
+    # "auto" (merely OFFERING tools) must NOT trip OUR tool_choice guard. Downstream it may return a
+    # 200, or fail for unrelated reasons that depend on whether the runtime was initialised by an
+    # earlier test — but it must NEVER come back as our tool_choice_unsupported 400. Handle both a
+    # raised runtime error (uninitialised) and a returned response (initialised) without depending
+    # on test order.
+    try:
+        r = _post(tool_choice="auto", extra={"tools": [{"type": "function", "function": {"name": "x"}}]})
+    except Exception as e:
+        # Proceeded past our guard into an uninitialised runtime — definitely not our 400.
+        assert "tool_choice" not in str(e).lower()
+        return
+    if r.status_code == 400:
+        assert r.json().get("error", {}).get("code") != "tool_choice_unsupported"

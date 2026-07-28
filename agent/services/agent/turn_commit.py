@@ -60,12 +60,23 @@ _DERIVED_LOCK = threading.Lock()
 _DERIVED_MAX = 64  # bound the registry; only still-alive threads matter at shutdown
 
 
+def _thread_alive(t) -> bool:
+    """True only if `t` is a live thread. Defensive: tests routinely monkeypatch threading.Thread
+    with a lightweight double (start() only, no is_alive()), and production code here would then
+    register that double — so treat anything without a working is_alive() as dead. Never crash the
+    registry over a foreign object."""
+    try:
+        return bool(t.is_alive())
+    except Exception:
+        return False
+
+
 def _spawn_derived(target, *, name: str, args: tuple = ()) -> threading.Thread:
     """Spawn a derived-memory writer daemon thread and register it for shutdown-join (ST-3)."""
     t = threading.Thread(target=target, args=args, daemon=True, name=name)
     with _DERIVED_LOCK:
         # Prune finished threads so the registry can't grow over the whole process lifetime.
-        _DERIVED_THREADS[:] = [x for x in _DERIVED_THREADS if x.is_alive()][-_DERIVED_MAX:]
+        _DERIVED_THREADS[:] = [x for x in _DERIVED_THREADS if _thread_alive(x)][-_DERIVED_MAX:]
         _DERIVED_THREADS.append(t)
     t.start()
     return t
@@ -77,7 +88,7 @@ def join_derived_writes(timeout_total: float = 2.5) -> int:
     daemon=True, so a hung LLM call can never block exit beyond the budget. Returns the count still
     alive after the budget (writes that did not finish in time)."""
     with _DERIVED_LOCK:
-        threads = [t for t in _DERIVED_THREADS if t.is_alive()]
+        threads = [t for t in _DERIVED_THREADS if _thread_alive(t)]
     deadline = time.monotonic() + max(0.0, float(timeout_total))
     for t in threads:
         remaining = deadline - time.monotonic()
@@ -88,7 +99,7 @@ def join_derived_writes(timeout_total: float = 2.5) -> int:
         except Exception:
             pass
     with _DERIVED_LOCK:
-        return sum(1 for t in _DERIVED_THREADS if t.is_alive())
+        return sum(1 for t in _DERIVED_THREADS if _thread_alive(t))
 
 # Persistence is deliberately NOT gated on this — a refused, blocked, timed-out or aborted turn
 # still belongs in the transcript; only LEARNING is withheld.
