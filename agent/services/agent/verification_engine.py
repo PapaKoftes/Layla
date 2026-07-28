@@ -217,7 +217,12 @@ def run_verification_after_tool(
     steps_text = format_steps_fn(state.get("steps") or []) if format_steps_fn else ""
     try:
         cfg_v = runtime_safety.load_config()
-        llm_verify = bool(cfg_v.get("llm_tool_verification_enabled", True))
+        # The LLM tool-progress verify fires an EXTRA model completion after every write/run/git tool,
+        # ~doubling model calls on an agentic turn. On a low/CPU tier that latency dominates, and the
+        # deterministic observe_environment() check below already runs — so skip the LLM verify there
+        # (an explicit config flag still turns it on for capable tiers).
+        _pm = (cfg_v.get("performance_mode") or "auto").strip().lower()
+        llm_verify = bool(cfg_v.get("llm_tool_verification_enabled", True)) and _pm != "low"
     except Exception as e:
         logger.warning("llm_tool_verification config load failed: %s", e, exc_info=True)
         llm_verify = True
