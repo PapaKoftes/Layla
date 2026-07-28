@@ -87,9 +87,7 @@ class ExecutionState(dict):
                 "tool_attempted_this_turn": False,
                 "errors": [],
                 "results": [],
-                "retries": 0,
                 "tools_used": [],
-                "memory_hits": [],
             }
         )
 
