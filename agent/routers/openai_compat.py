@@ -560,7 +560,11 @@ async def v1_chat_completions(req: dict, request: Request):
             yield f"data: {json.dumps(done_evt)}\n\n"
             yield "data: [DONE]\n\n"
 
-        return StreamingResponse(gen(), media_type="text/event-stream")
+        return StreamingResponse(gen(), media_type="text/event-stream", headers={
+            # Match the /agent path so /v1 token streams don't stall behind a buffering reverse proxy.
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        })
 
     if not allow_write and not allow_run:
         quick = _quick_reply_for_trivial_turn(goal)
