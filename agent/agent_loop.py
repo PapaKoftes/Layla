@@ -24,6 +24,7 @@ from services.agent.goal_context import (  # noqa: E402,F401
     get_last_goal_optimized,
     get_last_goal_original,
 )
+from services.agent.turn import record_step
 
 logger = logging.getLogger("layla")
 
@@ -931,7 +932,7 @@ def _autonomous_run_impl_core(
                 _fb_text = truncate_at_next_user_turn(_fb_text)
                 _fb_text = _polish_output(_fb_text, cfg)
                 if _fb_text and not _is_junk_reply(_fb_text):
-                    state["steps"].append({
+                    record_step(state, {
                         "action": "reason",
                         "result": _fb_text,
                         "deliberated": False,
