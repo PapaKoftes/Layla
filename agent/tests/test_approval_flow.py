@@ -184,3 +184,33 @@ def test_approve_invalid_tool_returns_error(monkeypatch):
     result = payload.get("result", {})
     assert result.get("ok") is False
     assert "unknown tool" in result.get("error", "").lower()
+
+
+def test_approve_and_deny_are_local_only(monkeypatch):
+    """Security: /approve executes a pending guarded tool and /deny mutates it, so a REMOTE caller
+    (interactive remote mode) must not reach them — else it could self-approve a pending its own
+    remote /agent turn created, defeating the allow_run=False force. Gated to direct-local callers."""
+    from fastapi.testclient import TestClient
+
+    import services.safety.auth as auth
+    from main import app
+
+    monkeypatch.setattr(auth, "is_direct_local", lambda *a, **k: False)
+    client = TestClient(app)
+    r = client.post("/approve", json={"id": "anything"})
+    assert r.status_code == 403 and "local-only" in r.text
+    r2 = client.post("/deny", json={"id": "anything"})
+    assert r2.status_code == 403 and "local-only" in r2.text
+
+
+def test_approve_allowed_for_local_caller(monkeypatch):
+    """The local operator can still approve (no 403); an unknown id just yields a normal error."""
+    from fastapi.testclient import TestClient
+
+    import services.safety.auth as auth
+    from main import app
+
+    monkeypatch.setattr(auth, "is_direct_local", lambda *a, **k: True)
+    client = TestClient(app)
+    r = client.post("/approve", json={"id": "no-such-pending"})
+    assert r.status_code != 403  # locality gate passed; handler ran
