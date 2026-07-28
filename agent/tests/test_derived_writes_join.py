@@ -19,7 +19,20 @@ AGENT_DIR = Path(__file__).resolve().parent.parent
 if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
+import pytest  # noqa: E402
+
 from services.agent import turn_commit as tc  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _isolate_registry():
+    """The registry is module-global and other tests (which monkeypatch threading.Thread) can leave
+    doubles in it. Clear it around each test so these assertions are deterministic."""
+    with tc._DERIVED_LOCK:
+        tc._DERIVED_THREADS.clear()
+    yield
+    with tc._DERIVED_LOCK:
+        tc._DERIVED_THREADS.clear()
 
 
 def test_spawn_derived_thread_is_daemon_and_registered():
