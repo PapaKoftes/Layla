@@ -437,6 +437,29 @@ export async function _renderSessionList(isAppendArg) {
             if (dj.ok) _renderSessionList();
           } catch (_) {}
         });
+        // Fork: branch a new independent chat from this one (backend POST /conversations/{id}/fork
+        // was complete but had no UI door).
+        const forkBtn = document.createElement('button');
+        forkBtn.className = 'sess-del';
+        forkBtn.title = 'Fork — branch a new chat from here';
+        forkBtn.textContent = '⑂';
+        forkBtn.type = 'button';
+        forkBtn.addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          try {
+            const rr = await fetch('/conversations/' + encodeURIComponent(s.id) + '/fork', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+            });
+            const dj = await rr.json().catch(() => ({}));
+            if (dj.ok && dj.conversation && dj.conversation.id) {
+              showToast('Forked to a new branch');
+              _renderSessionList();
+              loadConversationIntoChat(String(dj.conversation.id), true);
+            } else {
+              showToast('Fork failed');
+            }
+          } catch (_) { showToast('Fork failed'); }
+        });
         const delBtn = document.createElement('button');
         delBtn.className = 'sess-del';
         delBtn.title = 'Delete';
@@ -448,6 +471,7 @@ export async function _renderSessionList(isAppendArg) {
           await _deleteSession(ev.target.dataset.sessionId);
         });
         item.appendChild(renBtn);
+        item.appendChild(forkBtn);
         item.appendChild(delBtn);
         const pinBtn = document.createElement('button');
         pinBtn.className = 'sess-del';
