@@ -81,6 +81,35 @@
   --header-bar-min-h: 52px;
 }
 
+/* ── 1b. Light theme ──────────────────────────────────────────────────────────
+   This stylesheet is loaded LAST and OWNS the token layer, so the light-mode
+   values must live here too — otherwise its dark :root defaults (and every
+   `var(--token, darkFallback)` fallback below) win in light mode and leave a
+   half-dark UI. Values mirror layla.css's AA-tuned light palette. */
+body.theme-light {
+  --bg:        #f5f0f8;
+  --bg2:       #ebe5f0;
+  --surface:   #ffffff;
+  --surface-2: #f3eef8;
+  --surface-3: #e7ddf0;
+  --border:    #d5c8e0;
+  --border-2:  #c3b2d6;
+  --code-bg:   #e8e0f0;
+  --text:       #2a1a35;
+  --text-dim:   #4a3a55;
+  --text-faint: #6a5f78;
+  --crimson:  #6b0000;
+  --violet:   #4a2060;
+  --accent:      #8b0050;
+  --accent-text: #b0286a;   /* AA on the light bg */
+  --accent-2:    #6e3a94;
+  --accent-soft: rgba(139, 0, 80, 0.10);
+  --success: #2e8b57;
+  --danger:  #c0392b;
+  --wf-line:     var(--border-2);
+  --wf-line-dim: var(--border);
+}
+
 /* ── 2. Base ─────────────────────────────────────────────────────────────── */
 html { font-size: 16px; }        /* explicit rem anchor (was implicit; killed em-compounding drift) */
 body {
