@@ -116,7 +116,7 @@ The platform is organized into 10 capability domains. Each domain has a purpose,
 | research_stages | `agent/research_stages.py` | Research mission pipeline: mapping → investigation → verification → distillation → synthesis |
 | registry (tools) | `agent/layla/tools/registry.py` | shell, run_python, schedule_task, list_scheduled_tasks, cancel_task, crawl_site |
 
-**Open-source foundations:** playwright, apscheduler, trafilatura, beautifulsoup4, duckduckgo-search, httpx, requests
+**Open-source foundations:** playwright, apscheduler, trafilatura, beautifulsoup4, ddgs, httpx, requests
 
 **Future improvements:**
 

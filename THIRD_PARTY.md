@@ -73,7 +73,7 @@ trafilatura (Apache-2.0) · beautifulsoup4 (MIT) · playwright (Apache-2.0)
 
 ### `research`
 pypdf (BSD-3 — the permissive replacement for the removed PyMuPDF) · wikipedia (MIT) ·
-duckduckgo-search (MIT) · arxiv (MIT) · pandas (BSD-3) · nbformat (BSD-3)
+ddgs (MIT) · arxiv (MIT) · pandas (BSD-3) · nbformat (BSD-3)
 
 ### `data`
 duckdb (MIT) · yfinance (Apache-2.0) · scipy (BSD-3) · scikit-learn (BSD-3) ·
