@@ -19,12 +19,15 @@ identical, nearest-first). ``query`` returns the Chroma-style nested-list shape
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import threading
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+logger = logging.getLogger("layla")
 
 try:  # optional SIMD cosine KNN; NumPy brute force serves as the fallback when absent
     import sqlite_vec as _sqlite_vec
@@ -83,7 +86,17 @@ class FallbackCollection:
             try:
                 self._rebuild_vec_index()
             except Exception:
-                self._vec_ok = False
+                self._disable_vec("index rebuild failed")
+
+    def _disable_vec(self, reason: str) -> None:
+        """Turn off the sqlite-vec fast path after a RUNTIME error, warning ONCE. Otherwise a single
+        transient error silently degrades the whole session to NumPy brute-force with no trace at
+        all — an invisible search-quality cliff. (The init-time 'extension not installed' case is
+        expected and stays quiet.)"""
+        if self._vec_ok:
+            logger.warning("sqlite-vec index disabled for this session (%s) — vector search now "
+                           "falls back to NumPy brute-force", reason)
+        self._vec_ok = False
 
     def vacuum(self) -> bool:
         """Reclaim free pages so the file tracks current data instead of its high-water mark.
@@ -148,7 +161,7 @@ class FallbackCollection:
                 (item_id, _sqlite_vec.serialize_float32(v)),
             )
         except Exception:
-            self._vec_ok = False  # never let the index break a write
+            self._disable_vec("index write failed")  # never let the index break a write
 
     def _vec_del(self, ids) -> None:
         if not self._vec_ok:
@@ -156,7 +169,7 @@ class FallbackCollection:
         try:
             self._db.executemany("DELETE FROM vec_idx WHERE item_id=?", [(i,) for i in ids])
         except Exception:
-            self._vec_ok = False
+            self._disable_vec("index delete failed")
 
     # ---- writes ----
     def add(self, ids, embeddings, metadatas=None, documents=None):
