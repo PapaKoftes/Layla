@@ -47,11 +47,11 @@ authoritative.**
 
 ### `core`
 fastapi (MIT) · pydantic (MIT) · uvicorn (BSD-3) · python-multipart (Apache-2.0) ·
-httpx (BSD-3) · requests (Apache-2.0) · tenacity (Apache-2.0) · sqlite-utils (Apache-2.0) ·
-diskcache (Apache-2.0) · sentence-transformers (Apache-2.0) · chromadb (Apache-2.0) ·
+httpx (BSD-3) · tenacity (Apache-2.0) · sqlite-utils (Apache-2.0) ·
+sentence-transformers (Apache-2.0) · chromadb (Apache-2.0) ·
 langchain-text-splitters (MIT) · rank-bm25 (Apache-2.0) · torchao (BSD-3) · tiktoken (MIT) ·
 numpy (BSD-3) · psutil (BSD-3) · keyring (MIT) · apscheduler (MIT) · networkx (BSD-3) ·
-orjson (Apache-2.0 / MIT) · PyYAML (MIT) · unidiff (MIT) · Pillow (HPND / MIT-CMU)
+PyYAML (MIT) · unidiff (MIT) · Pillow (HPND / MIT-CMU)
 
 ### `llm`
 llama-cpp-python (MIT) · litellm (MIT) · instructor (MIT)
