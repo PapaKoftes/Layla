@@ -192,7 +192,7 @@ function stream(url, body, opts) {
 // ── Error formatting ─────────────────────────────────────────────────────────
 function formatError(res, body) {
   if (!res) return "Can't reach Layla. Is the server running at http://127.0.0.1:8000?";
-  if (res.status === 500) return 'Something went wrong. Check the server logs or try again.';
+  if (res.status === 500) return (typeof window !== 'undefined' && typeof window.t === 'function') ? window.t('toast.generic_error') : 'Something went wrong. Check the server logs or try again.';
   if (res.status === 503) return (body && body.detail) || 'Service temporarily unavailable.';
   const err = body && (body.detail || body.response || body.message);
   if (err && String(err).length < 200) return String(err);
