@@ -407,8 +407,13 @@ def recommend_kit(
         usable.sort(key=lambda m: (-_params_b(m), (m.get("name") or "")))
     elif pref == "lite":  # constrained box (older CPU / tight disk): target ~3B, ties -> smaller
         usable.sort(key=lambda m: (abs(_params_b(m) - _LITE_TARGET_B), _params_b(m)))
-    else:  # balanced: closest to the CPU sweet spot, ties → larger
-        usable.sort(key=lambda m: (abs(_params_b(m) - _BALANCED_TARGET_B), -_params_b(m)))
+    else:  # balanced: closest to the sweet spot, ties → larger
+        # On a no-GPU (CPU-only) box a 7B runs ~4-5 tok/s — a painfully slow first chat, when the 3B
+        # is the same coding quality (our own pass@1 benchmark) at ~2x speed. Target the LITE size on
+        # CPU-only so the default 'balanced' install is responsive out of the box; keep 7B where a GPU
+        # can actually drive it.
+        _bt = _BALANCED_TARGET_B if has_gpu else _LITE_TARGET_B
+        usable.sort(key=lambda m: (abs(_params_b(m) - _bt), -_params_b(m)))
 
     primary = usable[0]
     fam = (primary.get("family") or "").lower()
