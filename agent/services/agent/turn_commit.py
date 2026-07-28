@@ -71,6 +71,19 @@ def _thread_alive(t) -> bool:
         return False
 
 
+def register_derived_thread(t) -> None:
+    """Register an already-started derived-memory writer thread for the shutdown-join (ST-3).
+
+    For writers spawned OUTSIDE _spawn_derived — the non-streamed skill-acquire path in
+    run_finalizer, and the entity-graph extractor which owns its own Thread — so join_derived_writes
+    still waits for them on a fast window-close. Best-effort; ignores None / non-thread objects."""
+    if t is None:
+        return
+    with _DERIVED_LOCK:
+        _DERIVED_THREADS[:] = [x for x in _DERIVED_THREADS if _thread_alive(x)][-_DERIVED_MAX:]
+        _DERIVED_THREADS.append(t)
+
+
 def _spawn_derived(target, *, name: str, args: tuple = ()) -> threading.Thread:
     """Spawn a derived-memory writer daemon thread and register it for shutdown-join (ST-3)."""
     t = threading.Thread(target=target, args=args, daemon=True, name=name)
@@ -543,7 +556,7 @@ def commit_turn(
     try:
         from services.memory.conversation_entity_extractor import extract_in_background
 
-        extract_in_background(goal, text, conversation_id=cid, aspect_id=asp)
+        register_derived_thread(extract_in_background(goal, text, conversation_id=cid, aspect_id=asp))
     except Exception as e:
         logger.debug("commit_turn: entity extraction failed: %s", e)
 
