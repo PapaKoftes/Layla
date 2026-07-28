@@ -920,7 +920,12 @@ def build_system_head(
     project_instructions = ""
     skills_block = ""
     wr_root = (workspace_root or cfg.get("sandbox_root") or "").strip()
-    if wr_root:
+    # Gate the git snapshot / project instructions / skills the same way knowledge, learnings and
+    # semantic recall are gated: a phatic "hi"/"thanks" turn never needs `git status` (3 subprocess
+    # spawns), the CLAUDE.md read, or the skills scan, and on a small-context box the whole block is
+    # budget-truncated off the tail anyway — so it was pure per-turn waste on exactly the turns that
+    # most want a fast reply. Real engineering turns (_skip_expensive == False) are unchanged.
+    if wr_root and not _skip_expensive:
         try:
             cwd = Path(wr_root).expanduser().resolve()
             if cwd.is_dir():

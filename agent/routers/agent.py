@@ -660,6 +660,7 @@ async def agent(req: AgentRequest, request: Request):
     fast_reply = _quick_reply_for_trivial_turn(goal)
     if (
         fast_reply
+        and not stream
         and not context
         and not image_url
         and not image_base64
