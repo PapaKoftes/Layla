@@ -49,6 +49,11 @@ def fetch_url_tool(url: str, store: bool = False) -> dict:
     try:
         _cb = str((cfg or {}).get("crawler_backend", "auto")).strip().lower()
         if _cb in ("firecrawl", "crawl4ai"):
+            # audit round-5 #11: the external crawler path had NO SSRF check — guard the URL (and
+            # every redirect hop, which the crawler backends themselves don't) before fetching.
+            from services.safety.url_guard import is_safe_url
+            if not is_safe_url(url):
+                return {"ok": False, "error": "blocked_unsafe_url", "url": url}
             from services.retrieval.web_crawler import crawl_url as _crawl
             _res = _crawl(url, cfg=cfg, backend=_cb)
             if _res.get("ok") and (_res.get("content") or "").strip():

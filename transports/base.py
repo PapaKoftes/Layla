@@ -14,6 +14,7 @@ Security posture for transport-originated turns (Slack/Telegram/Discord):
 """
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import os
@@ -201,7 +202,8 @@ def check_transport_inbound(
     if secret and text is not None:
         m = _PAIR_CMD.match(text.strip())
         if m:
-            if m.group(1) == secret:
+            # constant-time compare so the shared pairing secret can't be recovered by timing
+            if hmac.compare_digest(str(m.group(1)), str(secret)):
                 key = f"{plat}:{uid}"
                 with _PAIR_LOCK:
                     cur = _load_paired_ids()

@@ -421,7 +421,10 @@ def security_scan(path: str, scan_type: str = "bandit") -> dict:
         if target.is_file():
             scan_files = [target]
         else:
-            scan_files = [f for f in target.rglob("*") if f.is_file() and f.suffix in {".py", ".js", ".ts", ".env", ".json", ".yaml", ".yml", ".txt", ".cfg", ".ini"} and ".git" not in str(f)][:100]
+            # audit round-5 #8: f.is_file() FOLLOWS symlinks, so an in-sandbox symlink to an
+            # out-of-sandbox secret file would be read + reported. Require each file resolve INSIDE
+            # the sandbox before scanning it.
+            scan_files = [f for f in target.rglob("*") if f.is_file() and inside_sandbox(f) and f.suffix in {".py", ".js", ".ts", ".env", ".json", ".yaml", ".yml", ".txt", ".cfg", ".ini"} and ".git" not in str(f)][:100]
         for fpath in scan_files:
             files_scanned += 1
             try:
