@@ -166,7 +166,7 @@
 |---|---|---|---|
 | read/write/list/grep tools | REAL | `layla/tools/impl/file_ops.py`, `layla/tools/domains/file.py`; registered via `layla/tools/registry.py`. Validated at startup `main.py:250-253`. | Solid. |
 | run_shell, run_python | REAL | `services/sandbox/shell_runner.py`, `services/sandbox/python_runner.py`; `layla/tools/impl/system.py`. | Solid. |
-| web_search | REAL | `layla/tools/impl/web.py`, `layla/tools/domains/web.py`; deps `duckduckgo-search` (req:53), `wikipedia` (req:54), `arxiv` (req:55), `trafilatura` (req:21). | Solid. |
+| web_search | REAL | `layla/tools/impl/web.py`, `layla/tools/domains/web.py`; deps `ddgs` (req:53), `wikipedia` (req:54), `arxiv` (req:55), `trafilatura` (req:21). | Solid. |
 | apply_patch | REAL | `unidiff>=0.7` (req:28); patch handling in `layla/tools/impl/code.py`, `services/file_checkpoints.py`. | Solid. |
 | Tool tracing → DB | REAL | `core/executor.py:183-245` inserts into `tool_calls` table; surfaced via `routers/tools_history.py`. Tests in `tests/test_tool_tracing.py`. | Solid. |
 

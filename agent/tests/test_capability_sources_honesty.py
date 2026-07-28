@@ -242,7 +242,7 @@ def test_web_tools_declare_their_optional_dependency():
 
     expected = {
         "fetch_article": "trafilatura", "wiki_search": "wikipedia",
-        "ddg_search": "duckduckgo_search", "arxiv_search": "arxiv",
+        "ddg_search": "ddgs", "arxiv_search": "arxiv",
         "browser_navigate": "playwright", "browser_search": "playwright",
         "browser_screenshot": "playwright", "browser_click": "playwright",
         "browser_fill": "playwright", "crawl_site": "trafilatura",
@@ -284,7 +284,7 @@ def test_the_gate_is_dependency_driven_not_a_blocklist(monkeypatch):
     real = importlib.util.find_spec
 
     def fake(name, *a, **k):
-        if name == "duckduckgo_search":
+        if name == "ddgs":
             return object()
         return real(name, *a, **k)
 
@@ -294,7 +294,7 @@ def test_the_gate_is_dependency_driven_not_a_blocklist(monkeypatch):
 
     monkeypatch.setattr(importlib.util, "find_spec", real)
     _module_installed.cache_clear()
-    if importlib.util.find_spec("duckduckgo_search") is None:
+    if importlib.util.find_spec("ddgs") is None:
         assert "ddg_search" not in _drop_missing_dependency_tools(set(TOOLS), TOOLS)
     _module_installed.cache_clear()
 
