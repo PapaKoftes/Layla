@@ -537,33 +537,3 @@ def build_decision_tool_hints(valid_tools: set[str], goal: str) -> tuple[str, st
         )
     return tools_list, edit_hint
 
-
-class PromptBuilder:
-    """Facade for tests and future callers."""
-
-    @staticmethod
-    def build_static(
-        aspect: dict | None,
-        cfg: dict[str, Any],
-        *,
-        identity: str,
-        personality: str,
-        goal: str,
-        reasoning_mode: str,
-        repo_root: Path | None = None,
-    ) -> str:
-        parts = build_core_sys_parts(
-            cfg=cfg,
-            aspect=aspect,
-            identity=identity,
-            personality=personality,
-            goal=goal,
-            reasoning_mode=reasoning_mode,
-            repo_root=repo_root,
-        )
-        return "\n\n".join(parts)
-
-    @staticmethod
-    def tool_injection(valid_tools: set[str], goal: str) -> str:
-        return tool_names_for_decision(valid_tools, goal)
-
