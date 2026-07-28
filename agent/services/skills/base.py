@@ -41,6 +41,10 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     return meta, body
 
 
+_SKILLS_CACHE: dict[str, tuple[float, tuple, list["Skill"]]] = {}
+_SKILLS_TTL = 30.0
+
+
 def load_skills(workspace_root: str) -> list[Skill]:
     root = Path(workspace_root).expanduser().resolve()
     dirs = [
@@ -49,6 +53,16 @@ def load_skills(workspace_root: str) -> list[Skill]:
         root / ".claude" / "skills",
         root / ".cursor" / "skills",  # Cursor AgentSkills location
     ]
+    # This globs 4 dirs and reads+parses EVERY skill .md, yet it is called per substantive turn
+    # (pick_skills_for_goal) just to keep the 2 best. Cache by (root, per-dir mtimes) with a short
+    # TTL so an unchanged skills tree isn't re-read every turn (add/remove bumps the dir mtime;
+    # in-place content edits are picked up within the TTL).
+    import time as _time
+    _sig = tuple((str(d), (d.stat().st_mtime if d.is_dir() else 0.0)) for d in dirs)
+    _now = _time.monotonic()
+    _hit = _SKILLS_CACHE.get(str(root))
+    if _hit and (_now - _hit[0]) < _SKILLS_TTL and _hit[1] == _sig:
+        return _hit[2]
     out: list[Skill] = []
     seen: set[str] = set()
     for d in dirs:
@@ -73,6 +87,7 @@ def load_skills(workspace_root: str) -> list[Skill]:
             elif isinstance(tr, list):
                 triggers = [str(x).strip() for x in tr if str(x).strip()]
             out.append(Skill(name=name, triggers=triggers, description=desc, body=body.strip(), path=str(f)))
+    _SKILLS_CACHE[str(root)] = (_now, _sig, out)
     return out
 
 
