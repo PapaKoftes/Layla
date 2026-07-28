@@ -51,7 +51,7 @@
     "missions": "Missions"
   },
   "chat": {
-    "placeholder": "Message Layla…",
+    "placeholder": "Ask Layla… drop a file, or type @nyx, @morrigan… (Shift+Enter for newline)",
     "server_status": "Server status",
     "llm_status": "LLM status",
     "session_duration": "Session duration",
@@ -140,7 +140,7 @@
     "export_failed": "Export failed",
     "compact_done": "Context compacted",
     "compact_failed": "Compact failed",
-    "generic_error": "Something went wrong. Check the server logs."
+    "generic_error": "Something went wrong. Check the server logs or try again."
   },
   "error": {
     "network": "Cannot reach Layla — is the server running?",
