@@ -58,7 +58,10 @@ TOOLS = {
         "description": "Add a new event to the calendar with title, time, duration, and description.",
     },
     "screenshot_desktop": {
-        "dangerous": False, "require_approval": False, "risk_level": "low",
+        # Captures the whole screen (other apps, notifications, credentials). In
+        # runtime_safety.DANGEROUS_TOOLS; the generic dispatch gate reads THIS registry flag, so it
+        # must require approval here rather than run silently on a normal turn.
+        "dangerous": True, "require_approval": True, "risk_level": "high",
         "category": "system",
         "description": "Take a screenshot of the desktop or a specific window and save it as an image.",
     },

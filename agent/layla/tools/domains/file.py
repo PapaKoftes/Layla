@@ -52,7 +52,10 @@ TOOLS = {
         "description": "Read an STL mesh file and report vertex count, face count, bounding box, and volume estimate.",
     },
     "clipboard_read": {
-        "dangerous": False, "require_approval": False, "risk_level": "low",
+        # Reading the clipboard can capture a just-copied password/token — it is in
+        # runtime_safety.DANGEROUS_TOOLS, but the generic dispatch gate reads THIS registry flag, so
+        # it must require approval here too (clipboard_write already does; read is more sensitive).
+        "dangerous": True, "require_approval": True, "risk_level": "medium",
         "category": "system",
         "description": "Read the current contents of the system clipboard.",
     },
