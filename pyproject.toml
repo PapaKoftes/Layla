@@ -263,6 +263,13 @@ filterwarnings = [
   "ignore:pytest.PytestConfigWarning",
 ]
 
+# NOTE: this wheel is a LIBRARY / editable-dev artifact, NOT a runnable-app package. It ships the
+# importable packages below (fabrication_assist, layla, routers, services, …) but intentionally omits
+# the top-level entry modules (main.py, agent_loop.py, runtime_safety.py) and the static agent/ui/
+# assets. The APP is delivered as a copied source tree — installer/layla.iss copies payload\Layla\*
+# to {app}, install/bootstrap.ps1 builds the .venv, and launcher.py runs `uvicorn main:app` against
+# that source (where agent/ui is present). So "the wheel has no UI" is by design, not a packaging bug;
+# do not add main.py/ui here without also making this a real console-script app (a larger change).
 [tool.setuptools.packages.find]
 where = [".", "agent"]
 include = [
