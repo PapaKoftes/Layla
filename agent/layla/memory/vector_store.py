@@ -1473,7 +1473,11 @@ def refresh_knowledge_if_changed(knowledge_dir: Path, min_interval_s: float = 30
     fp = _knowledge_dir_fingerprint(knowledge_dir)
     if fp and fp != _knowledge_fingerprint:
         index_knowledge_docs(knowledge_dir)
-        _knowledge_fingerprint = fp
+        # Recompute AFTER indexing rather than storing the pre-index `fp`: the fingerprint folds in
+        # the embedder identity, and index_knowledge_docs warms the embedder, so `fp` computed above
+        # may carry the cold-start default identity. Storing that stale value would make the next
+        # cycle's (now-warm) fingerprint mismatch and trigger a spurious no-op reindex (ST-1).
+        _knowledge_fingerprint = _knowledge_dir_fingerprint(knowledge_dir)
         return True
     return False
 

@@ -82,7 +82,7 @@ def finalize_run_state(
         # Selective (≥3 tool steps) so ordinary chat/Q&A turns never mint a skill; non-blocking.
         try:
             if runtime_safety_module.load_config().get("skill_acquisition_enabled", True):
-                import threading as _t
+                from services.agent.turn_commit import _spawn_derived
 
                 def _acquire_skill() -> None:
                     try:
@@ -91,7 +91,10 @@ def finalize_run_state(
                     except Exception as _sk_exc:
                         logger.debug("skill acquisition failed: %s", _sk_exc)
 
-                _t.Thread(target=_acquire_skill, daemon=True, name="skill-acquire").start()
+                # ST-3: register so the shutdown join covers this non-streamed skill-acquire path too
+                # (it is the ONLY skill-acquire on the non-streamed path — commit_turn's copy is gated
+                # off by skill_acquisition_started below).
+                _spawn_derived(_acquire_skill, name="skill-acquire")
                 # Claim it, so the turn-boundary copy in commit_turn (which handles the streamed
                 # path this block cannot see) does not mint the same skill twice.
                 state["skill_acquisition_started"] = True

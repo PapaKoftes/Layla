@@ -181,9 +181,12 @@ def extract_in_background(
     *,
     conversation_id: str = "",
     aspect_id: str = "",
-) -> None:
+):
     """
     Fire-and-forget background extraction. Called from agent_loop post-response.
+
+    Returns the started daemon Thread so the caller can register it for the shutdown-join that
+    keeps a fast window-close from dropping this turn's entity-graph write (ST-3).
     """
     def _run():
         try:
@@ -198,3 +201,4 @@ def extract_in_background(
 
     t = threading.Thread(target=_run, daemon=True, name="conv_entity_extract")
     t.start()
+    return t

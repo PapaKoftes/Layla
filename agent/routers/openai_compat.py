@@ -315,7 +315,10 @@ async def v1_chat_completions(req: dict, request: Request):
             "OUTPUT FORMAT (required): respond with a single valid JSON object and nothing else — "
             "no prose, no explanation, no markdown code fences, nothing before or after the JSON."
         )
-        system_ctx = f"{system_ctx}\n{_json_directive}".strip() if system_ctx else _json_directive
+        # PREPEND, not append: the system context is head-kept / tail-truncated to budget
+        # (_truncate_to_budget keeps text[:budget]), so a directive appended to the tail is silently
+        # dropped for exactly the large-system-prompt IDE clients this targets. Put it at the head.
+        system_ctx = f"{_json_directive}\n{system_ctx}".strip() if system_ctx else _json_directive
 
     # Security review Finding 3: the deterministic content-guard floor lived only in the
     # autonomous_run path, so the reason-first / quick-reply / synthesize path every remote
