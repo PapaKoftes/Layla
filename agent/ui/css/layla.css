@@ -2003,6 +2003,23 @@ body.overlay-scroll-lock {
     color: var(--text-dim);
   }
   .msg:hover .msg-ts { opacity: 0.7; }
+  .msg-feedback { display: flex; gap: 6px; margin-top: 6px; }
+  .msg-fb-btn {
+    font-size: 0.78rem;
+    line-height: 1;
+    padding: 2px 8px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 3px;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .msg:hover .msg-fb-btn { opacity: 1; }
+  .msg-fb-btn:hover { color: var(--asp); border-color: var(--asp); }
+  .msg-fb-btn.chosen { color: var(--asp); border-color: var(--asp); opacity: 1; }
+  .msg-fb-btn:disabled { cursor: default; }
   .msg-copy-btn {
     margin-left: auto;
     font-size: 0.6rem;
