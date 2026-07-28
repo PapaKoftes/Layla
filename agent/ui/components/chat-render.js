@@ -641,6 +641,45 @@ export function addMsg(role, text, aspectName, deliberated, steps, uxStates, mem
 
   chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+
+// Feedback door: a 👍/👎 bar posting to /feedback (the record_feedback write path, which had no UI
+// producer — so the feedback_hint_for_prompt read path was structurally empty). Attached to a
+// finalized assistant answer (not error bubbles). One vote per message; the chosen button lights up.
+export function attachFeedbackBar(container, answerText, goalText) {
+  if (!container || container.querySelector('.msg-feedback')) return;
+  var bar = document.createElement('div');
+  bar.className = 'msg-feedback';
+  var mk = function (rating, glyph, title) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'msg-fb-btn';
+    b.title = title;
+    b.textContent = glyph;
+    b.setAttribute('aria-label', title);
+    b.onclick = function (ev) {
+      ev.stopPropagation();
+      fetch('/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rating: rating,
+          goal: goalText || '',
+          answer: (answerText || '').slice(0, 8000),
+          conversation_id: (window.currentConversationId || ''),
+        }),
+      }).then(function () {
+        bar.querySelectorAll('.msg-fb-btn').forEach(function (x) { x.disabled = true; });
+        b.classList.add('chosen');
+        showToast(rating === 'up' ? 'Thanks — glad it helped' : 'Thanks — noted for next time');
+      }).catch(function () { showToast('Could not send feedback'); });
+    };
+    return b;
+  };
+  bar.appendChild(mk('up', '👍', 'Good answer'));
+  bar.appendChild(mk('down', '👎', 'Needs work'));
+  container.appendChild(bar);
 }
 
 // ── Deliberation transcript renderer ──────────────────────────────────────────
