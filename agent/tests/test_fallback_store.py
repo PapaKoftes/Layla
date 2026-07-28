@@ -167,7 +167,8 @@ def test_nonpositive_limit_returns_empty_without_disabling_vec(tmp_path):
     c.add(ids=["a", "b"], embeddings=[[1, 0, 0], [0, 1, 0]], metadatas=[{"t": "x"}, {"t": "y"}])
     vec_ok_before = c._vec_ok
     res = c.query(query_embeddings=[[1, 0, 0]], n_results=0)
-    assert res == {"ids": [], "distances": [], "metadatas": [], "documents": []}
+    # Nested per-query empty, matching _vec_query / brute-force / ChromaDB shape (one sublist per query).
+    assert res == {"ids": [[]], "distances": [[]], "metadatas": [[]], "documents": [[]]}
     assert c._vec_ok == vec_ok_before, "limit<=0 must not disable the SIMD path"
     # A subsequent normal query still works (the fast path was not latched off).
     res2 = c.query(query_embeddings=[[1, 0, 0]], n_results=1)

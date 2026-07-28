@@ -318,9 +318,12 @@ class FallbackCollection:
             n_results = 5
         # A non-positive limit reaching sqlite-vec's KNN (LIMIT 0) raises, and the except below
         # would then latch _vec_ok=False and disable the SIMD path for the whole process over a
-        # benign empty request. Short-circuit to a clean empty Chroma-shaped result instead.
+        # benign empty request. Short-circuit to an empty result instead — nested per-query, matching
+        # the shape both real return paths and ChromaDB produce ({"ids": [[], ...]}) so callers that
+        # index res["ids"][i] don't trip.
         if n_results <= 0:
-            return {"ids": [], "distances": [], "metadatas": [], "documents": []}
+            nq = len(list(query_embeddings or []))
+            return {k: [[] for _ in range(nq)] for k in ("ids", "distances", "metadatas", "documents")}
         # Fast path: sqlite-vec SIMD cosine KNN when available and no metadata filter.
         if self._vec_ok and not where and self._vec_dim is not None:
             try:
