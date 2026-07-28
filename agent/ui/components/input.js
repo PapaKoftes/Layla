@@ -217,20 +217,39 @@ export function acceptUrlFetch() {
 }
 
 // ── File attachments ────────────────────────────────────────────────────────
+// Pending image for the Vision door. An attached IMAGE is read as a data-URI and sent as
+// `image_base64` on the next turn (the /agent multimodal path, which the backend already wires
+// into _get_image_context) rather than dumped into the text box as raw bytes — reading a binary
+// image with readAsText produced garbage the model could never use.
+let _pendingImageB64 = '';
+let _pendingImageName = '';
+
+function _ingestAttachment(f, verb) {
+  if (!f) return;
+  const isImage = String(f.type || '').startsWith('image/');
+  const r = new FileReader();
+  r.onload = () => {
+    if (isImage) {
+      _pendingImageB64 = String(r.result || '');
+      _pendingImageName = f.name || 'image';
+      try { window.laylaPendingImageB64 = _pendingImageB64; } catch (_) {}
+      _renderImageChip();
+      showToast(verb + ' ' + _pendingImageName + ' — sent with your next message');
+    } else {
+      const text = String(r.result || '').slice(0, 120000);
+      const mi = document.getElementById('msg-input');
+      if (mi) mi.value = (mi.value ? mi.value + '\n\n' : '') + '--- file: ' + f.name + ' ---\n' + text;
+      showToast(verb + ' ' + f.name);
+    }
+    try { if (typeof window.toggleSendButton === 'function') window.toggleSendButton(); } catch (_) {}
+  };
+  if (isImage) r.readAsDataURL(f); else r.readAsText(f);
+}
+
 export function attachFile(inp) {
   const f = inp && inp.files && inp.files[0];
   if (!f) return;
-  const r = new FileReader();
-  r.onload = () => {
-    const text = String(r.result || '').slice(0, 120000);
-    const mi = document.getElementById('msg-input');
-    if (mi) {
-      mi.value = (mi.value ? mi.value + '\n\n' : '') + '--- file: ' + f.name + ' ---\n' + text;
-      try { if (typeof window.toggleSendButton === 'function') window.toggleSendButton(); } catch (_) {}
-    }
-    showToast('Attached ' + f.name);
-  };
-  r.readAsText(f);
+  _ingestAttachment(f, 'Attached');
   inp.value = '';
 }
 
@@ -240,19 +259,42 @@ export function handleFileDrop(ev) {
   if (area) area.style.borderColor = '';
   const fl = ev.dataTransfer && ev.dataTransfer.files;
   if (!fl || !fl.length) return;
-  const f = fl[0];
-  const r = new FileReader();
-  r.onload = () => {
-    const text = String(r.result || '').slice(0, 120000);
-    const mi = document.getElementById('msg-input');
-    if (mi) {
-      mi.value = (mi.value ? mi.value + '\n\n' : '') + '--- file: ' + f.name + ' ---\n' + text;
-      try { if (typeof window.toggleSendButton === 'function') window.toggleSendButton(); } catch (_) {}
-    }
-    showToast('Dropped ' + f.name);
-  };
-  r.readAsText(f);
+  _ingestAttachment(fl[0], 'Dropped');
 }
+
+// Pending-image indicator in the pre-built #file-context-chips tray. Styled with theme tokens so it
+// tracks light/dark automatically; the ✕ (reusing .url-chip-dismiss) clears the pending image.
+function _renderImageChip() {
+  const tray = document.getElementById('file-context-chips');
+  if (!tray) return;
+  tray.style.display = 'flex';
+  tray.innerHTML = '';
+  const chip = document.createElement('span');
+  chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;background:var(--code-bg);border:1px solid var(--asp);border-radius:3px;padding:3px 10px;color:var(--text)';
+  const label = document.createElement('span');
+  label.textContent = '🖼 ' + _pendingImageName;
+  const x = document.createElement('button');
+  x.className = 'url-chip-dismiss';
+  x.type = 'button';
+  x.title = 'Remove image';
+  x.textContent = '✕';
+  x.addEventListener('click', clearPendingImage);
+  chip.appendChild(label);
+  chip.appendChild(x);
+  tray.appendChild(chip);
+}
+
+export function getPendingImage() { return _pendingImageB64; }
+
+export function clearPendingImage() {
+  _pendingImageB64 = '';
+  _pendingImageName = '';
+  try { window.laylaPendingImageB64 = ''; } catch (_) {}
+  const tray = document.getElementById('file-context-chips');
+  if (tray) { tray.innerHTML = ''; tray.style.display = 'none'; }
+}
+
+try { window.laylaClearPendingImage = clearPendingImage; } catch (_) {}
 
 // ── Theme / Sidebar toggles ─────────────────────────────────────────────────
 export function toggleTheme() {
