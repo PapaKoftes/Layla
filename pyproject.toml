@@ -51,6 +51,7 @@ core = [
     "numpy>=1.24,<3",
     "psutil>=5.9",
     "keyring>=24",  # OS keyring for secret storage (graceful fallback if backend absent)
+    "cryptography>=42",  # Fernet cipher backing encryption-at-rest (default-ON high-risk tier); without it, sensitive memories silently fall back to plaintext
     "apscheduler>=3.10,<4",
     "networkx>=3.0",
     "orjson>=3.9",
@@ -85,6 +86,7 @@ cpu = [
     "numpy>=1.24,<3",
     "psutil>=5.9",
     "keyring>=24",
+    "cryptography>=42",  # Fernet cipher backing encryption-at-rest (default-ON high-risk tier); without it, sensitive memories silently fall back to plaintext
     "apscheduler>=3.10,<4",
     "networkx>=3.0",
     "orjson>=3.9",
@@ -217,7 +219,7 @@ dev = [
     "nbformat>=5.10",
 ]
 all = [
-    "layla[core,llm,voice,vision,crawl,research,data,docs,viz,nlp,security,tui,network,tray,watcher]",
+    "layla[core,llm,voice,vision,crawl,research,data,docs,viz,nlp,security,tui,network,tray,watcher,obsidian,transports,mcp]",
 ]
 
 [tool.ruff]
