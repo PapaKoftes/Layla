@@ -57,6 +57,12 @@ jobs:
       - name: License compliance — no strong-copyleft deps (REQ-02)
         run: python scripts/check_copyleft.py
 
+      # ST-12 — pip-audit is deliberately NON-blocking (advisory, not a gate). Rationale, recorded:
+      # a transitive-dependency advisory (the common case) is usually unfixable in the same PR and is
+      # unrelated to the change under review, so blocking would fail unrelated work on a local-first,
+      # non-internet-exposed app and train maintainers to ignore red CI. It runs on every push and
+      # surfaces advisories as a GitHub ::warning:: for review; escalate a SPECIFIC advisory to a hard
+      # fail here if it ever affects a directly-declared, network-reachable dependency.
       - name: Dependency vulnerability audit (pip-audit)
         continue-on-error: true
         run: |
