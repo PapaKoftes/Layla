@@ -303,6 +303,11 @@ def test_head_build_writes_its_profile_snapshot_into_the_isolated_dir(monkeypatc
     before = operator_profile.read_bytes() if operator_profile.exists() else None
 
     monkeypatch.setenv("LAYLA_DATA_DIR", str(tmp_path))
+    # write_profile_snapshot throttles to one write per 30s via a module global; a prior test in the
+    # same process can leave that timer warm and make this write a no-op. This is a PATH test, not a
+    # throttle test, so reset the timer to guarantee the write actually fires (deterministic under any
+    # test order). monkeypatch restores it afterwards.
+    monkeypatch.setattr("services.personality.frame_modifier._last_snapshot_write", 0.0)
     write_profile_snapshot({"name": "isolation-probe", "stat_technical": "9"})
 
     written = tmp_path / ".layla" / "layla_profile.json"
