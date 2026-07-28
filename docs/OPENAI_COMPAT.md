@@ -16,16 +16,19 @@ Base URL: `http://127.0.0.1:8000/v1` · API key: any non-empty string (local, un
 | `messages` | Full history; `system`/`user`/`assistant` roles. Multimodal `image_url` parts are read when the `vision` feature is enabled (local data-URIs only, no outbound fetch). |
 | `stream: true` | Real server-sent-event token streaming (not post-hoc chunking of a finished string). |
 | `stop` | Honored — the reply is truncated at the earliest stop sequence (max 4, per OpenAI). |
-| `usage` | **Real token counts** (cached tiktoken), suitable for cost/'token accounting. |
+| `response_format` | `{"type": "json_object"}` is honored **best-effort** — a strict-JSON output directive is prepended to the system context. Not a hard schema guarantee (Layla runs its agent loop, not a constrained decode). |
+| `usage` | **Real token counts** (resident-model tokenizer for non-ASCII, tiktoken otherwise), suitable for cost/token accounting. |
 
 ## Not supported (by design) — and what to do instead
 
-- **OpenAI function/tool calling** (`tools`, `tool_choice`, `functions`). These are accepted but
-  **ignored** — the response never contains `tool_calls`. Layla's 200 tools are not driven by the
-  OpenAI tool protocol; they run inside Layla's own agent loop. To let a `/v1` turn use them, add the
-  non-standard body fields `allow_write`, `allow_run`, and `workspace_root` (Layla extension), or use
-  the native `POST /agent` endpoint. If your client *requires* server-side `tool_calls`, `/v1` is not
-  the right surface for that workflow yet.
+- **OpenAI client-side function/tool calling** (`tools`, `tool_choice`, `functions`). Layla's tools
+  run inside its own agent loop, not via the OpenAI tool protocol, so the response never contains
+  `tool_calls`. Offering `tools` with the default `tool_choice: "auto"` (or omitting `tool_choice`)
+  is accepted and returns a normal assistant message. But `tool_choice: "required"` or a named
+  function — which *demand* a `tool_call` — cannot be satisfied and return a clear `400`
+  (`tool_choice_unsupported`) rather than silently handing back unparseable prose. To let a `/v1`
+  turn use Layla's own tools, add the non-standard body fields `allow_write`, `allow_run`, and
+  `workspace_root` (Layla extension), or use the native `POST /agent` endpoint.
 - **Request `temperature` / `max_tokens` / `top_p` applied to generation.** They are accepted (so
   clients that always send them don't break) but the server uses its own tuned sampling — feeding a
   client temperature into the internal tool-decision calls corrupts their JSON, so it is deliberately

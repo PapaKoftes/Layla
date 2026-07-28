@@ -73,7 +73,6 @@ Client
       /aspects/{aspect_id} → `routers/aspects.py` (v3 aspect character sheet; safe subset)
       /codex/relationship → `routers/codex.py` (GET/PUT workspace `.layla/relationship_codex.json`; sandbox-gated)
       /settings, /settings/schema, /settings/preset, /settings/appearance, /settings/optional_features, /settings/install_feature, /settings/git_undo_checkpoint, /setup_* → `routers/settings.py`
-      GET /agent/decision_trace → routers/agent.py (last PolicyCaps trace per conversation)
       GET /agents/blackboard/{job_id} → routers/agents.py (in-process job blackboard)
       /knowledge/ingest, /knowledge/ingest/sources, /knowledge/import_chat, /knowledge/import_chat_preview, /workspace/index, /workspace/cognition*, /project_discovery → `routers/knowledge.py`
       /v1/*, /ui               → main.py (inline)

@@ -448,7 +448,7 @@ inline comments.  Total install is ~3.5 GB for everything.
 | voice | ~600 MB | faster-whisper, kokoro-onnx, soundfile |
 | vision | ~1.5 GB | easyocr (pulls torch) |
 | crawl | ~260 MB | trafilatura, playwright |
-| research | ~50 MB | PyMuPDF, pypdf, wikipedia, duckduckgo-search, arxiv |
+| research | ~50 MB | PyMuPDF, pypdf, wikipedia, ddgs, arxiv |
 | data | ~125 MB | duckdb, yfinance, scipy, scikit-learn |
 | all | ~3.5 GB | Everything |
 
@@ -594,7 +594,7 @@ Runtime recovery system with an allowlisted set of pip packages that can be
 auto-installed:
 
 **Allowlist:** faster-whisper, kokoro-onnx, soundfile, pyttsx3,
-llama-cpp-python, PyMuPDF, pypdf, trafilatura, duckduckgo-search, arxiv,
+llama-cpp-python, PyMuPDF, pypdf, trafilatura, ddgs, arxiv,
 wikipedia-api, sympy, pyperclip, easyocr, pytesseract, Pillow, matplotlib,
 python-docx, trimesh, sounddevice.
 
