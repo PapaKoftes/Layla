@@ -1226,3 +1226,30 @@ def jwt_decode(token: str, verify: bool = False, secret: str = "") -> dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+
+
+def run_learned_skill(name: str = "", params: dict | None = None) -> dict:
+    """Invoke a previously-learned skill (a recorded macro) by name.
+
+    Closes the learning loop: a successful tool sequence is captured as a named learned skill, and
+    this lets the AGENT replay it — not just a human via the API. The tool is approval-gated, so the
+    operator's approval of THIS call is the confirmation to execute the macro's recorded steps.
+    """
+    from services.skills.skill_acquisition import invoke_skill as _invoke
+    if not (name or "").strip():
+        return {"ok": False, "error": "name required (see list_learned_skills)"}
+    return _invoke(name.strip(), params=params if isinstance(params, dict) else {}, confirm=True)
+
+
+def list_learned_skills_tool() -> dict:
+    """List the skills Layla has learned (name, what they do, times used) — each runnable via invoke_skill."""
+    from services.skills.skill_acquisition import list_learned_skills as _list
+    out = []
+    for s in (_list() or []):
+        out.append({
+            "name": s.get("name", ""),
+            "description": s.get("description", ""),
+            "use_count": s.get("use_count", 0),
+            "step_count": s.get("step_count", 0),
+        })
+    return {"ok": True, "skills": out, "count": len(out)}

@@ -189,6 +189,20 @@ TOOLS = {
         "category": "system",
         "description": "List installed skill packs with their version, description, and entry point.",
     },
+    "list_learned_skills": {
+        "fn_key": "list_learned_skills_tool",
+        "dangerous": False, "require_approval": False, "risk_level": "low",
+        "category": "system",
+        "description": "List the skills Layla has LEARNED from past successful runs (recorded procedures). Each can be replayed with invoke_skill.",
+    },
+    "invoke_skill": {
+        "fn_key": "run_learned_skill",
+        # Replays a recorded macro = executes its tool sequence (which may include write/run steps),
+        # so it is approval-gated: the operator approves running the learned skill.
+        "dangerous": True, "require_approval": True, "risk_level": "high",
+        "category": "system",
+        "description": "Run a previously-LEARNED skill by name (replays its recorded steps). Use list_learned_skills to see what's available.",
+    },
     "mcp_tools_call": {
         "fn_key": "mcp_tools_call",
         "dangerous": True, "require_approval": True, "risk_level": "high",
