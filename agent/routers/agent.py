@@ -322,14 +322,6 @@ def _blocked_input_response(message: str) -> JSONResponse:
     )
 
 
-@router.get("/agent/decision_trace")
-def get_decision_trace(conversation_id: str = "default"):
-    """Last run decision policy trace (caps + tool samples) for debugging."""
-    from shared_state import get_last_decision_trace
-
-    return {"ok": True, "conversation_id": conversation_id, "trace": get_last_decision_trace(conversation_id) or []}
-
-
 @router.post("/agent/steer")
 def agent_steer(req: SteerRequest):
     """Queue a short operator redirect for the in-flight run on this conversation (next decision tick)."""

@@ -27,8 +27,6 @@ def _reset_shared_state():
         ss._last_coordinator_trace.clear()
     with ss._execution_snap_lock:
         ss._last_execution_snapshot.clear()
-    with ss._decision_trace_lock:
-        ss._last_decision_trace.clear()
     with ss._bb_lock:
         ss._blackboard.clear()
     with ss._workspace_lease_lock:
@@ -228,32 +226,6 @@ class TestExecutionSnapshot:
         ss.set_last_execution_snapshot("conv1", {"x": 1})
         ss.clear_last_execution_snapshot("conv1")
         assert ss.get_last_execution_snapshot("conv1") is None
-
-
-# ===========================================================================
-# Decision trace
-# ===========================================================================
-
-
-class TestDecisionTrace:
-    """set/get_last_decision_trace."""
-
-    def test_roundtrip(self):
-        traces = [{"gate": "safety", "passed": True}, {"gate": "budget", "passed": False}]
-        ss.set_last_decision_trace("conv1", traces)
-        result = ss.get_last_decision_trace("conv1")
-        assert result == traces
-
-    def test_returns_copy(self):
-        traces = [{"gate": "a"}]
-        ss.set_last_decision_trace("conv1", traces)
-        result = ss.get_last_decision_trace("conv1")
-        result.append({"gate": "mutated"})
-        assert len(ss.get_last_decision_trace("conv1")) == 1
-
-    def test_non_list_ignored(self):
-        ss.set_last_decision_trace("conv1", "not a list")  # type: ignore[arg-type]
-        assert ss.get_last_decision_trace("conv1") is None
 
 
 # ===========================================================================
