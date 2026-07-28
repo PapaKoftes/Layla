@@ -11,7 +11,7 @@ Read this before touching any file. It tells you what this project is, where thi
 > active requirements, explicit out-of-scope, constraints, and the key decisions that constrain
 > future work. This file tells you HOW to work in the repo; PROJECT.md tells you WHAT and WHY.
 
-Layla is a **self-hosted AI companion and engineering agent** that runs on the user's own hardware via a local GGUF model (llama-cpp-python). No cloud. No API keys required. She has six personality aspects, persistent memory (SQLite; optional ChromaDB — **usually absent, and RAG then silently falls back to SQLite FTS**, so do not assume vector search is live), **200 registered tools** (authoritative count: `agent/tests/test_registered_tools_count.py` → `EXPECTED_TOOL_COUNT`), voice I/O, and browser automation. The FastAPI server lives at `localhost:8000`. The web UI is at `/ui`.
+Layla is a **self-hosted AI companion and engineering agent** that runs on the user's own hardware via a local GGUF model (llama-cpp-python). No cloud. No API keys required. She has six personality aspects, persistent memory (SQLite; optional ChromaDB — **usually absent, and RAG then silently falls back to SQLite FTS**, so do not assume vector search is live), **202 registered tools** (authoritative count: `agent/tests/test_registered_tools_count.py` → `EXPECTED_TOOL_COUNT`), voice I/O, and browser automation. The FastAPI server lives at `localhost:8000`. The web UI is at `/ui`.
 
 **The operator chooses their model.** Layla is uncensored by default. Everything is configurable via `agent/runtime_config.json`.
 
