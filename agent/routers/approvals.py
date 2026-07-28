@@ -1,7 +1,7 @@
 """Pending approvals, approve, refresh lens knowledge."""
 import threading
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from shared_state import get_audit, get_read_pending, get_write_pending_list
@@ -11,13 +11,33 @@ router = APIRouter(tags=["approvals"])
 _approve_lock = threading.Lock()
 
 
+def _require_local(request: Request):
+    """Approving or denying a pending EXECUTES / mutates a guarded tool, so it is operator-only.
+    A remote /agent turn forces allow_run=allow_write=False, but a blocked shell/run_python still
+    writes a pending — a token-holding REMOTE caller could then POST /approve to self-execute it,
+    defeating the "remote never gets code execution" invariant. Gate these mutations to the direct
+    local caller. Returns a 403 JSONResponse when the caller is not local, else None."""
+    try:
+        from services.safety.auth import is_direct_local
+        host = request.client.host if request.client else None
+        if not is_direct_local(request.headers, host):
+            return JSONResponse({"ok": False, "error": "approval is local-only"}, status_code=403)
+    except Exception:
+        # Fail closed: if locality can't be determined, refuse the mutation.
+        return JSONResponse({"ok": False, "error": "approval is local-only"}, status_code=403)
+    return None
+
+
 @router.get("/pending")
 def get_pending():
     return JSONResponse({"pending": get_read_pending()()})
 
 
 @router.post("/approve")
-def approve(req: dict):
+def approve(req: dict, request: Request):
+    _local = _require_local(request)
+    if _local is not None:
+        return _local
     approval_id = ((req or {}).get("id") or "").strip()
     if not approval_id:
         return JSONResponse({"ok": False, "error": "No id provided"})
@@ -124,8 +144,11 @@ def approve(req: dict):
 
 
 @router.post("/deny")
-def deny_approval(req: dict):
+def deny_approval(req: dict, request: Request):
     """Explicitly reject a pending approval — marks it denied so the agent knows."""
+    _local = _require_local(request)
+    if _local is not None:
+        return _local
     approval_id = ((req or {}).get("id") or "").strip()
     if not approval_id:
         return JSONResponse({"ok": False, "error": "No id provided"})

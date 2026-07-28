@@ -1210,7 +1210,9 @@ def _remote_allowed_paths(cfg: dict) -> list[str]:
             "/setup/models",
             "/setup/download",
             "/setup/auto",
-            "/approve",
+            # NOTE: /approve is intentionally NOT remote-allowlisted — approving a pending executes a
+            # guarded tool, so it is gated to the direct local operator (routers/approvals.py
+            # _require_local). /pending is read-only listing and stays reachable.
             "/pending",
             "/doctor",
             "/usage",

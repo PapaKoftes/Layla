@@ -27,6 +27,15 @@ TOOL_SCHEMAS: dict[str, dict[str, Any]] = {
         "required": ["image"],
         "types": {"image": str, "args": str, "name": str, "rm": bool},
     },
+    # ── system capture (now approval-gated: privacy-sensitive) ───────────
+    "clipboard_read": {
+        "required": [],
+        "types": {},
+    },
+    "screenshot_desktop": {
+        "required": [],
+        "types": {"region": list, "output_path": str},
+    },
     # ── filesystem write ─────────────────────────────────────────────────
     "write_file": {
         "required": ["path", "content"],
