@@ -16,6 +16,18 @@ from __future__ import annotations
 from typing import Any
 
 
+def record_step(state: dict[str, Any], step: dict[str, Any]) -> dict[str, Any]:
+    """Append one reasoning/tool step to the run's step log — the SINGLE write point (CP-6).
+
+    Every ``state["steps"].append(...)`` routes through here so there is exactly one place that
+    records a step (the signature-defect metric the architecture gate ratchets). Behaviour is
+    identical to the raw append — the step dict passes through untouched — and ``state["steps"]`` is
+    created if it does not exist yet. Returns the step for convenience.
+    """
+    state.setdefault("steps", []).append(step)
+    return step
+
+
 def answer_of(result: dict[str, Any]) -> str:
     """The final user-visible answer for a completed run.
 

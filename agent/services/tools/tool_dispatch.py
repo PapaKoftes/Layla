@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from services.agent.turn import record_step
+
 logger = logging.getLogger("layla.tool_dispatch")
 
 
@@ -69,7 +71,7 @@ def _handle_write_file(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
         if not al._path_under_lab(path, lab_root):
             # Rejected (write outside lab) — no tool ran; accrue to blocked_calls.
             state["blocked_calls"] = state.get("blocked_calls", 0) + 1
-            state["steps"].append({
+            record_step(state, {
                 "action": "write_file",
                 "result": {"ok": False, "reason": "research_lab_only",
                            "message": "Writes allowed only inside .research_lab"},
@@ -85,7 +87,7 @@ def _handle_write_file(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
             state, "write_file", result, workspace=workspace, cfg=cfg,
             re_execute=lambda: TOOLS["write_file"]["fn"](path=path, content=content),
         )
-        state["steps"].append({"action": "write_file", "result": _res})
+        record_step(state, {"action": "write_file", "result": _res})
         state["last_tool_used"] = "write_file"
         al._run_verification_after_tool(state, "write_file", _res if isinstance(_res, dict) else result, workspace)
         al._emit_ux(state, ctx.ux_state_queue, al.UX_STATE_VERIFYING)
@@ -112,7 +114,7 @@ def _handle_write_file(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
         except Exception:
             pass
         if not rs.backup_file(target):
-            state["steps"].append({"action": "write_file", "result": {"ok": False, "reason": "backup_failed"}})
+            record_step(state, {"action": "write_file", "result": {"ok": False, "reason": "backup_failed"}})
             state["status"] = "finished"
             return DispatchResult(handled=True, flow="break", goal=goal)
 
@@ -125,7 +127,7 @@ def _handle_write_file(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
         state, "write_file", result, workspace=workspace, cfg=cfg,
         re_execute=lambda: TOOLS["write_file"]["fn"](path=path, content=content),
     )
-    state["steps"].append({"action": "write_file", "result": _res})
+    record_step(state, {"action": "write_file", "result": _res})
     state["last_tool_used"] = "write_file"
     al._run_verification_after_tool(state, "write_file", _res if isinstance(_res, dict) else result, workspace)
     al._emit_ux(state, ctx.ux_state_queue, al.UX_STATE_VERIFYING)
@@ -149,7 +151,7 @@ def _handle_write_files_batch(intent: str, goal: str, ctx: DispatchContext) -> D
     args = (decision.get("args") or {}) if decision else {}
     files = args.get("files") or []
     if not isinstance(files, list) or not files:
-        state["steps"].append({
+        record_step(state, {
             "action": "write_files_batch",
             "result": {"ok": False, "error": "write_files_batch requires args.files: [{path, content}, ...]"},
         })
@@ -191,7 +193,7 @@ def _handle_write_files_batch(intent: str, goal: str, ctx: DispatchContext) -> D
         if isinstance(_res, dict):
             _res["_deterministic_verify_batch_error"] = str(_exc)[:240]
 
-    state["steps"].append({"action": "write_files_batch", "result": _res})
+    record_step(state, {"action": "write_files_batch", "result": _res})
     state["last_tool_used"] = "write_files_batch"
     if result.get("ok") and result.get("written"):
         for p in result.get("written", [])[:1]:
@@ -300,7 +302,7 @@ def _handle_simple_git(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
     result = invoke_tool(intent, TOOLS[intent]["fn"], git_args)
     al._register_exact_tool_call(state, intent, decision)
     rs.log_execution(intent, {"repo": workspace})
-    state["steps"].append({"action": intent, "result": al._maybe_validate_tool_output(intent, result)})
+    record_step(state, {"action": intent, "result": al._maybe_validate_tool_output(intent, result)})
     state["last_tool_used"] = intent
     al._run_verification_after_tool(state, intent, result, workspace)
     al._emit_ux(state, ctx.ux_state_queue, al.UX_STATE_VERIFYING)
@@ -385,7 +387,7 @@ def _handle_run_python(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
         if not ctx.allow_run:
             # Rejected (run_python disabled in research) — no tool ran.
             state["blocked_calls"] = state.get("blocked_calls", 0) + 1
-            state["steps"].append({
+            record_step(state, {
                 "action": "run_python",
                 "result": {"ok": False, "reason": "disabled_in_research",
                            "message": "run_python is disabled for this research stage. Use read_file, list_dir, grep_code instead."},
@@ -395,7 +397,7 @@ def _handle_run_python(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
         if not al._path_under_lab(workspace, lab_root):
             # Rejected (run_python cwd outside lab) — no tool ran.
             state["blocked_calls"] = state.get("blocked_calls", 0) + 1
-            state["steps"].append({
+            record_step(state, {
                 "action": "run_python",
                 "result": {"ok": False, "reason": "research_lab_only",
                            "message": "run_python allowed only with cwd inside .research_lab"},
@@ -415,7 +417,7 @@ def _handle_run_python(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
             lambda: TOOLS["run_python"]["fn"](code=code, cwd=workspace),
             {"cwd": workspace},
         )
-        state["steps"].append({"action": "run_python", "result": _res})
+        record_step(state, {"action": "run_python", "result": _res})
         state["last_tool_used"] = "run_python"
         al._run_verification_after_tool(state, "run_python", _res if isinstance(_res, dict) else result, workspace)
         al._emit_ux(state, ctx.ux_state_queue, al.UX_STATE_VERIFYING)
@@ -424,7 +426,7 @@ def _handle_run_python(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
     # Non-lab: approval check
     if not _is_approval_bypassed(ctx, "run_python") and (not ctx.allow_run or not rs.is_tool_allowed("run_python")):
         approval_id = al._write_pending("run_python", {"code": goal, "cwd": workspace})
-        state["steps"].append({
+        record_step(state, {
             "action": "run_python",
             "result": {"ok": False, "reason": "approval_required",
                        "approval_id": approval_id, "message": f"Run: layla approve {approval_id}"},
@@ -444,7 +446,7 @@ def _handle_run_python(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
         lambda: TOOLS["run_python"]["fn"](code=code, cwd=workspace),
         {"cwd": workspace},
     )
-    state["steps"].append({"action": "run_python", "result": _res})
+    record_step(state, {"action": "run_python", "result": _res})
     state["last_tool_used"] = "run_python"
     al._run_verification_after_tool(state, "run_python", _res if isinstance(_res, dict) else result, workspace)
     al._emit_ux(state, ctx.ux_state_queue, al.UX_STATE_VERIFYING)
@@ -478,7 +480,7 @@ def _handle_apply_patch(intent: str, goal: str, ctx: DispatchContext) -> Dispatc
     if max_patch_lines and patch_body and patch_body.count("\n") > max_patch_lines:
         # Rejected (patch exceeds max_patch_lines) — no tool ran.
         state["blocked_calls"] = state.get("blocked_calls", 0) + 1
-        state["steps"].append({
+        record_step(state, {
             "action": "apply_patch",
             "result": {"ok": False, "error": "diff_too_large",
                        "lines": patch_body.count("\n"), "max": max_patch_lines},
@@ -503,7 +505,7 @@ def _handle_apply_patch(intent: str, goal: str, ctx: DispatchContext) -> Dispatc
         lambda: TOOLS["apply_patch"]["fn"](original_path=path, patch_text=patch_body),
         {"path": path},
     )
-    state["steps"].append({"action": "apply_patch", "result": _res})
+    record_step(state, {"action": "apply_patch", "result": _res})
     state["last_tool_used"] = "apply_patch"
     al._run_verification_after_tool(state, "apply_patch", _res if isinstance(_res, dict) else result, workspace)
     al._emit_ux(state, ctx.ux_state_queue, al.UX_STATE_VERIFYING)
@@ -527,7 +529,7 @@ def _handle_replace_in_file(intent: str, goal: str, ctx: DispatchContext) -> Dis
     if state.get("research_lab_root"):
         # Rejected (replace_in_file not allowed in research) — no tool ran.
         state["blocked_calls"] = state.get("blocked_calls", 0) + 1
-        state["steps"].append({
+        record_step(state, {
             "action": "replace_in_file",
             "result": {"ok": False, "reason": "not_allowed_in_research"},
         })
@@ -545,7 +547,7 @@ def _handle_replace_in_file(intent: str, goal: str, ctx: DispatchContext) -> Dis
     if not path or not old_text:
         # Rejected (missing required args) — no tool ran.
         state["blocked_calls"] = state.get("blocked_calls", 0) + 1
-        state["steps"].append({
+        record_step(state, {
             "action": "replace_in_file",
             "result": {"ok": False, "error": "replace_in_file requires path and old_text in args"},
         })
@@ -575,7 +577,7 @@ def _handle_replace_in_file(intent: str, goal: str, ctx: DispatchContext) -> Dis
         lambda: TOOLS["replace_in_file"]["fn"](path=path, old_text=old_text, new_text=new_text, count=rcount),
         {"path": path},
     )
-    state["steps"].append({"action": "replace_in_file", "result": _res})
+    record_step(state, {"action": "replace_in_file", "result": _res})
     state["last_tool_used"] = "replace_in_file"
     al._run_verification_after_tool(state, "replace_in_file", _res if isinstance(_res, dict) else result, workspace)
     al._emit_ux(state, ctx.ux_state_queue, al.UX_STATE_VERIFYING)
@@ -648,7 +650,7 @@ def _handle_shell(intent: str, goal: str, ctx: DispatchContext) -> DispatchResul
 
     if not ctx.allow_run and not _is_approval_bypassed(ctx, "shell"):
         approval_id = al._write_pending("shell", {"argv": argv, "cwd": workspace})
-        state["steps"].append({
+        record_step(state, {
             "action": "shell",
             "result": {"ok": False, "reason": "approval_required",
                        "approval_id": approval_id, "message": f"Run: layla approve {approval_id}"},
@@ -662,7 +664,7 @@ def _handle_shell(intent: str, goal: str, ctx: DispatchContext) -> DispatchResul
     _shell_allowed = rs.is_tool_allowed("shell")
     if not _shell_allowed and not shell_command_is_safe_whitelisted(argv) and not _grant_ok and not _is_approval_bypassed(ctx, "shell"):
         approval_id = al._write_pending("shell", {"argv": argv, "cwd": workspace})
-        state["steps"].append({
+        record_step(state, {
             "action": "shell",
             "result": {"ok": False, "reason": "approval_required",
                        "approval_id": approval_id, "message": f"Run: layla approve {approval_id}"},
@@ -681,7 +683,7 @@ def _handle_shell(intent: str, goal: str, ctx: DispatchContext) -> DispatchResul
         lambda: TOOLS["shell"]["fn"](argv=argv, cwd=workspace),
         {"argv": argv, "cwd": workspace},
     )
-    state["steps"].append({"action": "shell", "result": _res})
+    record_step(state, {"action": "shell", "result": _res})
     state["last_tool_used"] = "shell"
     al._run_verification_after_tool(state, "shell", _res if isinstance(_res, dict) else result, workspace)
     al._emit_ux(state, ctx.ux_state_queue, al.UX_STATE_VERIFYING)
@@ -703,7 +705,7 @@ def _handle_mcp_tools_call(intent: str, goal: str, ctx: DispatchContext) -> Disp
 
     if not _is_approval_bypassed(ctx, "mcp_tools_call") and not ctx.allow_run:
         approval_id = al._write_pending("mcp_tools_call", args)
-        state["steps"].append({
+        record_step(state, {
             "action": "mcp_tools_call",
             "result": {"ok": False, "reason": "approval_required",
                        "approval_id": approval_id, "message": f"Run: layla approve {approval_id}"},
@@ -715,7 +717,7 @@ def _handle_mcp_tools_call(intent: str, goal: str, ctx: DispatchContext) -> Disp
     _mcp_grant_ok = al._has_any_grant("mcp_tools_call", args)
     if not _mcp_allowed and not _mcp_grant_ok and not _is_approval_bypassed(ctx, "mcp_tools_call"):
         approval_id = al._write_pending("mcp_tools_call", args)
-        state["steps"].append({
+        record_step(state, {
             "action": "mcp_tools_call",
             "result": {"ok": False, "reason": "approval_required",
                        "approval_id": approval_id, "message": f"Run: layla approve {approval_id}"},
@@ -732,7 +734,7 @@ def _handle_mcp_tools_call(intent: str, goal: str, ctx: DispatchContext) -> Disp
     al._register_exact_tool_call(state, "mcp_tools_call", decision)
     rs.log_execution("mcp_tools_call", args)
     _val = al._maybe_validate_tool_output("mcp_tools_call", result)
-    state["steps"].append({"action": "mcp_tools_call", "result": _val})
+    record_step(state, {"action": "mcp_tools_call", "result": _val})
     if ctx.show_thinking:
         al._emit_tool_step(ctx.ux_state_queue, "mcp_tools_call", _val)
     state["last_tool_used"] = "mcp_tools_call"
@@ -776,7 +778,7 @@ def invoke_tool(intent: str, fn, args: dict) -> dict:
 
         search_memories() got an unexpected keyword argument 'max_results'   (the real param is `n`)
 
-    Because `state["steps"].append(...)` runs AFTER the call, the exception meant the step was never
+    Because `record_step(state, ...)` runs AFTER the call, the exception meant the step was never
     recorded at all. Measured on the live DB: 104 completed runs over 16 days, ZERO with any tool
     step — not because tools were never chosen, but because choosing one with a single wrong argument
     name destroyed the turn before it could be logged. The caught exception then surfaced upstream as
@@ -839,7 +841,7 @@ def _handle_extended_tools(intent: str, goal: str, ctx: DispatchContext) -> Disp
     al._register_exact_tool_call(state, intent, decision)
     rs.log_execution(intent, args)
     _val = al._maybe_validate_tool_output(intent, result)
-    state["steps"].append({"action": intent, "result": _val})
+    record_step(state, {"action": intent, "result": _val})
     if ctx.show_thinking:
         al._emit_tool_step(ctx.ux_state_queue, intent, _val)
     state["last_tool_used"] = intent
@@ -863,7 +865,7 @@ def _handle_git_commit(intent: str, goal: str, ctx: DispatchContext) -> Dispatch
     al._register_exact_tool_call(state, "git_commit", decision)
     rs.log_execution("git_commit", args)
     _val = al._maybe_validate_tool_output("git_commit", result)
-    state["steps"].append({"action": "git_commit", "result": _val})
+    record_step(state, {"action": "git_commit", "result": _val})
     if ctx.show_thinking:
         al._emit_tool_step(ctx.ux_state_queue, "git_commit", _val)
     state["last_tool_used"] = "git_commit"
@@ -884,7 +886,7 @@ def _handle_get_project_context(intent: str, goal: str, ctx: DispatchContext) ->
     result = TOOLS["get_project_context"]["fn"]()
     al._register_exact_tool_call(state, "get_project_context", decision)
     _val = al._maybe_validate_tool_output("get_project_context", result)
-    state["steps"].append({"action": "get_project_context", "result": _val})
+    record_step(state, {"action": "get_project_context", "result": _val})
     if ctx.show_thinking:
         al._emit_tool_step(ctx.ux_state_queue, "get_project_context", _val)
     state["last_tool_used"] = "get_project_context"
@@ -906,7 +908,7 @@ def _handle_update_project_context(intent: str, goal: str, ctx: DispatchContext)
     )
     al._register_exact_tool_call(state, "update_project_context", decision)
     _val = al._maybe_validate_tool_output("update_project_context", result)
-    state["steps"].append({"action": "update_project_context", "result": _val})
+    record_step(state, {"action": "update_project_context", "result": _val})
     if ctx.show_thinking:
         al._emit_tool_step(ctx.ux_state_queue, "update_project_context", _val)
     state["last_tool_used"] = "update_project_context"
@@ -931,7 +933,7 @@ def _handle_understand_file(intent: str, goal: str, ctx: DispatchContext) -> Dis
     state["tool_calls"] += 1
     result = TOOLS["understand_file"]["fn"](path=path)
     al._register_exact_tool_call(state, "understand_file", decision)
-    state["steps"].append({"action": "understand_file", "result": al._maybe_validate_tool_output("understand_file", result)})
+    record_step(state, {"action": "understand_file", "result": al._maybe_validate_tool_output("understand_file", result)})
     state["last_tool_used"] = "understand_file"
     return DispatchResult(handled=True, flow="continue", goal=_rebuild_goal(state))
 
@@ -1028,7 +1030,7 @@ def _handle_generic(intent: str, goal: str, ctx: DispatchContext) -> DispatchRes
         ),
         args,
     )
-    state["steps"].append({"action": intent, "result": _res})
+    record_step(state, {"action": intent, "result": _res})
     state["last_tool_used"] = intent
     al._run_verification_after_tool(state, intent, _res if isinstance(_res, dict) else result, workspace)
     al._emit_ux(state, ctx.ux_state_queue, al.UX_STATE_VERIFYING)

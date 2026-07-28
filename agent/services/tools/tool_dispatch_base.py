@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from services.agent.turn import record_step
+
 logger = logging.getLogger("layla.tool_dispatch")
 
 # ---------------------------------------------------------------------------
@@ -185,7 +187,7 @@ def _approval_break(intent, args, ctx) -> DispatchResult:
     al, _, _ = _imports()
     al._approval_preview_diff(intent, args, ctx.workspace)
     approval_id = al._write_pending(intent, args)
-    ctx.state["steps"].append({
+    record_step(ctx.state, {
         "action": intent,
         "result": {
             "ok": False,
@@ -202,7 +204,7 @@ def _lab_blocked(intent, state) -> DispatchResult:
     """Block a tool in research-lab mode and continue."""
     # Rejected — no tool ran; accrue to blocked_calls, not the real tool budget.
     state["blocked_calls"] = state.get("blocked_calls", 0) + 1
-    state["steps"].append({
+    record_step(state, {
         "action": intent,
         "result": {"ok": False, "reason": "not_allowed_in_research",
                    "message": f"{intent} not allowed in research missions"},
@@ -293,7 +295,7 @@ def _base_tool_handler(ctx: DispatchContext, tool_name: str, tool_fn, args: dict
     # --- record step ------------------------------------------------------
     # `args` is a compact snapshot (long values truncated) so a run can be
     # replayed/recorded as a macro (BL-231); the step formatter ignores it.
-    state["steps"].append({"action": tool_name, "result": _res, "args": _compact_args(log_args)})
+    record_step(state, {"action": tool_name, "result": _res, "args": _compact_args(log_args)})
     state["last_tool_used"] = tool_name
 
     # --- optional verification --------------------------------------------
