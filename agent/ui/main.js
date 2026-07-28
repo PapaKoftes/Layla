@@ -463,6 +463,7 @@ function init() {
     showMemorySubTab: memory.showMemorySubTab,
     laylaMemBrowse: memory.laylaMemBrowse,
     renderMemoryAbout: memory.renderMemoryAbout,
+    runMemorySelfCheck: memory.runMemorySelfCheck,
     laylaForgetIdentity: memory.laylaForgetIdentity,
     laylaImportMemoryBundle: memory.laylaImportMemoryBundle,
     // artifacts.js

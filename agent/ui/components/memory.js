@@ -317,3 +317,44 @@ export function laylaImportMemoryBundle() {
   }
   inp.click();
 }
+
+
+// ── Memory self-consistency door (verification + conflicts) ──────────────────
+// Backend was complete (POST /memory/verification/run, GET /memory/conflicts) but had no UI.
+export async function runMemorySelfCheck() {
+  const out = document.getElementById('mem-selfcheck-result');
+  if (out) out.textContent = 'Running self-check…';
+  try {
+    const res = await fetch('/memory/verification/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const data = await res.json().catch(() => ({}));
+    let conflicts = [];
+    try {
+      const cr = await fetch('/memory/conflicts');
+      const cd = await cr.json().catch(() => ({}));
+      conflicts = (cd && cd.conflicts) || [];
+    } catch (_) { /* conflicts are best-effort */ }
+    if (out) {
+      const pick = (...keys) => { for (const k of keys) { if (data && data[k] != null) return data[k]; } return null; };
+      const scanned = pick('checked', 'sample', 'scanned', 'verified');
+      const pruned = pick('pruned', 'removed', 'deleted') ?? 0;
+      let html = '<div style="color:var(--text-dim);font-size:0.66rem;margin-top:4px">Self-check'
+        + (scanned != null ? (' · scanned ' + escapeHtml(String(scanned))) : '')
+        + ' · pruned ' + escapeHtml(String(pruned)) + '</div>';
+      if (conflicts.length) {
+        html += '<div style="margin-top:6px;font-size:0.66rem;color:#ffb454">' + conflicts.length + ' conflict(s):</div>';
+        html += conflicts.slice(0, 12).map((c) => {
+          const txt = c.summary || c.description || c.detail
+            || (c.new_content && c.existing_content ? (c.new_content + ' <-> ' + c.existing_content) : JSON.stringify(c));
+          return '<div style="font-size:0.64rem;color:var(--text);margin:2px 0">- ' + escapeHtml(String(txt).slice(0, 140)) + '</div>';
+        }).join('');
+      } else {
+        html += '<div style="margin-top:6px;font-size:0.66rem;color:#4dff88">No conflicts found — memory looks consistent.</div>';
+      }
+      out.innerHTML = html;
+    }
+    showToast('Memory self-check complete');
+  } catch (_e) {
+    if (out) out.textContent = 'Self-check failed — see server logs.';
+    showToast('Self-check failed');
+  }
+}
