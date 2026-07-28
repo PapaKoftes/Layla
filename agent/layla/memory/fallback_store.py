@@ -312,6 +312,15 @@ class FallbackCollection:
 
     def query(self, query_embeddings=None, n_results=5, where=None, include=None):
         include = include or ["metadatas", "distances"]
+        try:
+            n_results = int(n_results)
+        except (TypeError, ValueError):
+            n_results = 5
+        # A non-positive limit reaching sqlite-vec's KNN (LIMIT 0) raises, and the except below
+        # would then latch _vec_ok=False and disable the SIMD path for the whole process over a
+        # benign empty request. Short-circuit to a clean empty Chroma-shaped result instead.
+        if n_results <= 0:
+            return {"ids": [], "distances": [], "metadatas": [], "documents": []}
         # Fast path: sqlite-vec SIMD cosine KNN when available and no metadata filter.
         if self._vec_ok and not where and self._vec_dim is not None:
             try:

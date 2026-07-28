@@ -154,3 +154,21 @@ def test_disabled_flag_turns_memory_off(monkeypatch):
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+def test_nonpositive_limit_returns_empty_without_disabling_vec(tmp_path):
+    """A limit<=0 query must return a clean empty result and NOT latch off the SIMD path.
+
+    Regression: n_results=0 reaching sqlite-vec's KNN (LIMIT 0) raises, and the query()
+    except-guard would then set _vec_ok=False, disabling the fast path process-wide over a
+    benign empty request. The n_results<=0 short-circuit prevents that.
+    """
+    c = _coll(tmp_path)
+    c.add(ids=["a", "b"], embeddings=[[1, 0, 0], [0, 1, 0]], metadatas=[{"t": "x"}, {"t": "y"}])
+    vec_ok_before = c._vec_ok
+    res = c.query(query_embeddings=[[1, 0, 0]], n_results=0)
+    assert res == {"ids": [], "distances": [], "metadatas": [], "documents": []}
+    assert c._vec_ok == vec_ok_before, "limit<=0 must not disable the SIMD path"
+    # A subsequent normal query still works (the fast path was not latched off).
+    res2 = c.query(query_embeddings=[[1, 0, 0]], n_results=1)
+    assert res2["ids"] == [["a"]], res2["ids"]
