@@ -219,7 +219,8 @@ jobs:
           cache: pip
 
       - name: Install ruff + vulture
-        run: pip install ruff vulture
+        # Pinned so an upstream release can't turn the lint/dead-symbol gates red for no code change.
+        run: pip install ruff==0.16.0 vulture==2.16
 
       - name: Check with ruff
         run: python -m ruff check agent fabrication_assist

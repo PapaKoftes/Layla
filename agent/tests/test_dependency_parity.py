@@ -67,6 +67,7 @@ _DIST_TO_MODULE = {
     "python-docx": "docx",
     "llama-cpp-python": "llama_cpp",
     "python-multipart": "multipart",
+    "python-frontmatter": "frontmatter",  # [obsidian] extra; imported by services/infrastructure/obsidian_sync.py
 }
 
 # [all]-closure dists that are never imported anywhere under agent/. Each needs a REASON, and
@@ -86,6 +87,11 @@ _NOT_IMPORTED_OK = {
     "diskcache": "FINDING (dead dep): went dead when services/retrieval/retrieval_cache.py was "
                  "rewritten to a bounded OrderedDict LRU; only the stale build/lib/ copy still "
                  "imports it. Removal is a separate change.",
+    "python-telegram-bot": "[transports] extra: imported as `telegram` by the repo-root transports/ "
+                           "package (transports/telegram_bot.py), which is OUTSIDE the agent/ import "
+                           "scan. The Telegram transport is opt-in (write/run forced off).",
+    "slack-bolt": "[transports] extra: imported as `slack_bolt` by the repo-root transports/ package "
+                  "(transports/slack_bot.py), outside the agent/ import scan. Opt-in transport.",
 }
 
 
