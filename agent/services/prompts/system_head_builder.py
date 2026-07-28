@@ -590,6 +590,30 @@ def _git_snapshot(cwd: Path) -> str:
     return preamble
 
 
+def _learned_skills_block(goal: str, limit: int = 6) -> str:
+    """Prompt block listing the skills Layla has LEARNED (recorded procedures) so the model knows it
+    can replay them via invoke_skill — closing the loop between acquiring a skill and using it.
+    Relevance-ranked against the goal; capped."""
+    try:
+        from services.skills.skill_acquisition import list_learned_skills
+        skills = list_learned_skills() or []
+    except Exception:
+        return ""
+    if not skills:
+        return ""
+    g = (goal or "").lower()
+
+    def _rel(s: dict) -> int:
+        text = (str(s.get("name", "")) + " " + str(s.get("description", ""))).lower()
+        return sum(1 for w in g.split() if len(w) > 3 and w in text)
+
+    ranked = sorted(skills, key=_rel, reverse=True)[:limit]
+    lines = [f"- {s.get('name')}: {(s.get('description') or '')[:100]}" for s in ranked if s.get("name")]
+    if not lines:
+        return ""
+    return "Learned skills you can replay with invoke_skill(name=...):\n" + "\n".join(lines)
+
+
 def build_system_head(
     goal: str = "",
     aspect: dict | None = None,
@@ -1215,6 +1239,12 @@ def build_system_head(
 
     if skills_block and not _small_model:
         memory_sections["skills"] = "Matched skills:\n" + skills_block
+    # Learned skills (recorded procedures the agent can replay via invoke_skill) — appended to the
+    # already-ordered "skills" section so the model knows the loop between acquiring and using is live.
+    if not _skip_expensive and not _small_model:
+        _ls_block = _learned_skills_block(goal)
+        if _ls_block:
+            memory_sections["skills"] = (memory_sections.get("skills", "") + "\n\n" + _ls_block).strip()
     if aspect_memories:
         memory_sections["aspect_memories"] = aspect_memories
     if learnings:
