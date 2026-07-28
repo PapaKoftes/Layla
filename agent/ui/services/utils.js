@@ -130,7 +130,7 @@ export function sanitizeHtml(html) {
       ALLOWED_TAGS: ['p','br','strong','em','code','pre','ul','ol','li','a',
                      'h1','h2','h3','h4','h5','h6','hr','del','blockquote','span','div','table','thead',
                      'tbody','tr','th','td'],
-      ALLOWED_ATTR: ['href','class'],
+      ALLOWED_ATTR: ['href','class','align','title'],
     });
   }
   // Fallback: DOMPurify not loaded (should not happen — vendored locally)

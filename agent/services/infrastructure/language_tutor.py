@@ -219,12 +219,15 @@ def review_card(card_id: int, quality: int, user_id: str = "default") -> dict[st
         if not row:
             return {"ok": False, "error": "card not found"}
         ease, interval, reps = float(row["ease"]), float(row["interval_days"]), int(row["reps"])
+        # Classic SM-2 updates the ease factor on EVERY review, including failures — a failed
+        # card must LOSE ease (q<3 drives the term negative) so it isn't over-scheduled next pass.
+        # This previously sat in the else, so failed cards kept default ease.
+        ease = max(1.3, ease + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02)))
         if q < 3:
             reps, interval = 0, 1.0
         else:
             reps += 1
             interval = 1.0 if reps == 1 else (6.0 if reps == 2 else interval * ease)
-            ease = max(1.3, ease + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02)))
         due = time.time() + interval * 86400
         conn.execute("UPDATE lang_card SET ease=?, interval_days=?, reps=?, due_at=? WHERE id=? AND user_id=?",
                      (ease, interval, reps, due, card_id, user_id))

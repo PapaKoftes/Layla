@@ -329,7 +329,7 @@ def git_blame(repo: str, file_path: str, line_start: int = 1, line_end: int = 0)
                     current[k] = v
                 elif k == "author-time":
                     import datetime as _dt
-                    current["date"] = str(_dt.datetime.utcfromtimestamp(int(v)))[:10]
+                    current["date"] = str(_dt.datetime.fromtimestamp(int(v), _dt.timezone.utc))[:10]
                 elif len(k) == 40:
                     current["commit"] = k[:8]
         return {"ok": True, "file": file_path, "lines": lines[:200], "total_lines": len(lines)}

@@ -863,7 +863,7 @@ def timestamp_convert(value: str | int | float, input_format: str = "auto", outp
         if input_format in ("auto", "unix"):
             try:
                 f = float(str(value))
-                dt = _dt.datetime.utcfromtimestamp(f if f < 1e12 else f/1000)
+                dt = _dt.datetime.fromtimestamp(f if f < 1e12 else f/1000, _dt.timezone.utc).replace(tzinfo=None)
                 input_format = "unix"
             except ValueError:
                 pass
