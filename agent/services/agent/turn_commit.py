@@ -402,7 +402,15 @@ def commit_turn(
         append_conversation_message(cid, "assistant", text, aspect_id=asp)
         _maybe_synth_title(cid, goal, text)
     except Exception as e:
-        logger.debug("commit_turn: durable persist failed: %s", e)
+        # This is THE durable turn write; a DB lock / disk-full / corruption here loses the whole
+        # turn on reload. Debug-under-INFO made that invisible — log loud and flag degraded so
+        # /health surfaces it instead of the turn silently vanishing.
+        logger.error("commit_turn: durable persist FAILED (turn will be lost on reload): %s", e, exc_info=True)
+        try:
+            from services.infrastructure.degraded import mark_degraded
+            mark_degraded("persistence", str(e))
+        except Exception:
+            pass
 
     # ── 2. Receipt: durable operator facts (was wired at only 2 of 10 sites) ──
     receipt = _mem_receipt(goal)

@@ -558,6 +558,38 @@ def _append_output_discipline(head: str, cfg: dict) -> str:
     return head
 
 
+# Short-TTL cache for the workspace git snapshot. Recomputing it means 3 `git` subprocess spawns on
+# the response path; quick successive turns in the same repo reuse the last snapshot instead. 15s is
+# long enough to spare rapid back-to-back turns yet short enough that `git status` stays fresh.
+_GIT_SNAPSHOT_CACHE: dict[str, tuple[float, str]] = {}
+_GIT_SNAPSHOT_TTL = 15.0
+
+
+def _git_snapshot(cwd: Path) -> str:
+    """Return the 'Git snapshot' preamble for a workspace, cached per-directory with a short TTL."""
+    import time as _time
+    key = str(cwd)
+    now = _time.monotonic()
+    hit = _GIT_SNAPSHOT_CACHE.get(key)
+    if hit and (now - hit[0]) < _GIT_SNAPSHOT_TTL:
+        return hit[1]
+    preamble = ""
+    try:
+        if cwd.is_dir():
+            def _git(*args: str) -> str:
+                return (subprocess.run(
+                    ["git", *args], cwd=str(cwd), capture_output=True, text=True,
+                    timeout=3, encoding="utf-8", errors="replace",
+                ).stdout or "").strip()
+            b, s, l = _git("branch", "--show-current"), _git("status", "--short"), _git("log", "--oneline", "-5")
+            if b or s or l:
+                preamble = f"Git snapshot:\nbranch: {b}\nstatus:\n{s}\nrecent:\n{l}"[:1200]
+    except Exception as _exc:
+        logger.debug("system_head_builder[git]: %s", _exc, exc_info=False)
+    _GIT_SNAPSHOT_CACHE[key] = (now, preamble)
+    return preamble
+
+
 def build_system_head(
     goal: str = "",
     aspect: dict | None = None,
@@ -927,26 +959,7 @@ def build_system_head(
     # most want a fast reply. Real engineering turns (_skip_expensive == False) are unchanged.
     if wr_root and not _skip_expensive:
         try:
-            cwd = Path(wr_root).expanduser().resolve()
-            if cwd.is_dir():
-                br = subprocess.run(
-                    ["git", "branch", "--show-current"],
-                    cwd=str(cwd), capture_output=True, text=True, timeout=3,
-                    encoding="utf-8", errors="replace",
-                )
-                st = subprocess.run(
-                    ["git", "status", "--short"],
-                    cwd=str(cwd), capture_output=True, text=True, timeout=3,
-                    encoding="utf-8", errors="replace",
-                )
-                lg = subprocess.run(
-                    ["git", "log", "--oneline", "-5"],
-                    cwd=str(cwd), capture_output=True, text=True, timeout=3,
-                    encoding="utf-8", errors="replace",
-                )
-                b, s, l = (br.stdout or "").strip(), (st.stdout or "").strip(), (lg.stdout or "").strip()
-                if b or s or l:
-                    git_preamble = f"Git snapshot:\nbranch: {b}\nstatus:\n{s}\nrecent:\n{l}"[:1200]
+            git_preamble = _git_snapshot(Path(wr_root).expanduser().resolve())
         except Exception as _exc:
             logger.debug("system_head_builder[git]: %s", _exc, exc_info=False)
         try:
