@@ -149,8 +149,10 @@ else:
 
 
 # Check 4: state["steps"].append sites. THE signature-defect metric: the more places that write the
-# step log, the more places a tool result can be lost or a step silently skipped. CP-6 drives this to
-# a single writer in turn.py; until then, no NEW append site may appear.
+# step log, the more places a tool result can be lost or a step silently skipped. CP-6 is DONE — the
+# run-state step log now has a single writer (services/agent/turn.py::record_step); the 3 sites the
+# AST still counts are routers/settings.py's unrelated `out["steps"]` diagnostic list. Ratchet holds
+# the floor: no NEW `["steps"].append` site may appear.
 print("\n[4] step-log write sites")
 steps_append = 0
 for py_file in _iter_src():
@@ -163,7 +165,7 @@ for py_file in _iter_src():
             sl = node.func.value.slice
             if isinstance(sl, ast.Constant) and sl.value == "steps":
                 steps_append += 1
-ratchet('state["steps"].append sites', steps_append, 49, "route through turn.record_step — CP-6")
+ratchet('state["steps"].append sites', steps_append, 3, "route run-state steps through turn.record_step — CP-6 (done)")
 
 
 # Check 4b: commit_turn call sites. CP-7/CP-8 collapse the argument shapes; no new call site meanwhile.

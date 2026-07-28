@@ -10,6 +10,8 @@ import logging
 import re
 import time
 
+from services.agent.turn import record_step
+
 logger = logging.getLogger(__name__)
 
 
@@ -422,7 +424,7 @@ def handle_reasoning_intent(
     # ------------------------------------------------------------------
     # Append step + finish
     # ------------------------------------------------------------------
-    state["steps"].append({
+    record_step(state, {
         "action": "reason",
         "result": text,
         "deliberated": deliberate,

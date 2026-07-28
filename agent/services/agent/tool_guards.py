@@ -9,6 +9,8 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from services.agent.turn import record_step
+
 logger = logging.getLogger(__name__)
 
 
@@ -61,7 +63,7 @@ def run_tool_guards(
                     "(tools_profile / tools_allow / tools_deny / intent filter)."
                 ),
             }
-            state["steps"].append({"action": intent, "result": _tpd})
+            record_step(state, {"action": intent, "result": _tpd})
             log_tool_outcome_fn(intent, _tpd)
             state["last_tool_used"] = intent
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + format_steps_fn(state["steps"])
@@ -81,7 +83,7 @@ def run_tool_guards(
                     "reason": "tool_loop_detected",
                     "message": _loop_ev[5:].strip(),
                 }
-                state["steps"].append({"action": intent, "result": _tlr})
+                record_step(state, {"action": intent, "result": _tlr})
                 log_tool_outcome_fn(intent, _tlr)
                 state["last_tool_used"] = intent
                 goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + format_steps_fn(state["steps"])
@@ -98,7 +100,7 @@ def run_tool_guards(
             _verr = validate_tool_invocation(intent, decision, goal, workspace)
             if _verr:
                 state["blocked_calls"] = state.get("blocked_calls", 0) + 1
-                state["steps"].append({"action": intent, "result": _verr})
+                record_step(state, {"action": intent, "result": _verr})
                 log_tool_outcome_fn(intent, _verr)
                 state["last_tool_used"] = intent
                 goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + format_steps_fn(state["steps"])
@@ -119,7 +121,7 @@ def run_tool_guards(
                     "reason": "tool_loop_detected",
                     "message": "Exact duplicate tool invocation blocked for this run.",
                 }
-                state["steps"].append({"action": intent, "result": _tdup})
+                record_step(state, {"action": intent, "result": _tdup})
                 log_tool_outcome_fn(intent, _tdup)
                 state["last_tool_used"] = intent
                 goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + format_steps_fn(state["steps"])
@@ -140,7 +142,7 @@ def run_tool_guards(
                         "Same mutating tool blocked under retry_constrained; verify with read_file/grep before retrying."
                     ),
                 }
-                state["steps"].append({"action": intent, "result": _br})
+                record_step(state, {"action": intent, "result": _br})
                 log_tool_outcome_fn(intent, _br)
                 state["last_tool_used"] = intent
                 goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + format_steps_fn(state["steps"])

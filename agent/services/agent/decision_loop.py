@@ -9,6 +9,8 @@ from __future__ import annotations
 import logging
 import time
 
+from services.agent.turn import record_step
+
 logger = logging.getLogger(__name__)
 
 
@@ -86,7 +88,7 @@ def run_decision_loop(
         if client_abort_event is not None and client_abort_event.is_set():
             state["status"] = "client_abort"
             _last_tool = (state.get("last_tool_used") or "agent") if isinstance(state.get("last_tool_used"), str) else "agent"
-            state["steps"].append({
+            record_step(state, {
                 "action": "client_abort",
                 "result": {
                     "ok": False,
@@ -258,7 +260,7 @@ def run_decision_loop(
                 # Count this no-progress iteration toward the spin cap (audit #3).
                 state["no_op_steps"] = int(state.get("no_op_steps", 0) or 0) + 1
                 if thought:
-                    state["steps"].append({
+                    record_step(state, {
                         "action": "think",
                         "result": {"ok": True, "thought": thought[:4000]},
                     })
@@ -343,7 +345,7 @@ def run_decision_loop(
 
         # -- Intent == none --
         if intent == "none":
-            state["steps"].append({
+            record_step(state, {
                 "action": "none",
                 "result": {"ok": True, "message": "No action needed"},
             })
@@ -357,7 +359,7 @@ def run_decision_loop(
         if _ps:
             # Refusal — no tool ran. Accrue to blocked_calls, not the real tool budget.
             state["blocked_calls"] = state.get("blocked_calls", 0) + 1
-            state["steps"].append({"action": intent, "result": _ps})
+            record_step(state, {"action": intent, "result": _ps})
             _al._log_tool_outcome(intent, _ps)
             state["last_tool_used"] = intent
             goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _al._format_steps(state["steps"])
@@ -369,7 +371,7 @@ def run_decision_loop(
             if _alr:
                 # Allowlist refusal — no tool ran. Accrue to blocked_calls.
                 state["blocked_calls"] = state.get("blocked_calls", 0) + 1
-                state["steps"].append({"action": intent, "result": _alr})
+                record_step(state, {"action": intent, "result": _alr})
                 _al._log_tool_outcome(intent, _alr)
                 state["last_tool_used"] = intent
                 goal = state["original_goal"] + "\n\n[Tool results so far]:\n" + _al._format_steps(state["steps"])
@@ -589,7 +591,7 @@ def _run_concurrent_batch(
         _tcheck, _pbx = _blocked_bt
         # Batch pre-check refused this tool — nothing ran. Accrue to blocked_calls.
         state["blocked_calls"] = state.get("blocked_calls", 0) + 1
-        state["steps"].append({"action": _tcheck, "result": _pbx})
+        record_step(state, {"action": _tcheck, "result": _pbx})
         _al._log_tool_outcome(_tcheck, _pbx)
         state["last_tool_used"] = _tcheck
         return "continue"
@@ -641,7 +643,7 @@ def _run_concurrent_batch(
         if not _ok_det and isinstance(_res, dict):
             _res["_deterministic_retry_skipped"] = True
             _res["_deterministic_retry_reason"] = _det_reason
-        state["steps"].append({"action": _bt, "result": _res})
+        record_step(state, {"action": _bt, "result": _res})
         state["last_tool_used"] = _bt
         _al._emit_tool_start(ux_state_queue, _bt)
     state["_batch_last_tool"] = _batch[-1][0]
