@@ -206,7 +206,7 @@ def _cap_dict(d: dict, cap: int) -> int:
 def prune_conversation_histories(max_conversations: int = 500) -> int:
     """Bound ALL the in-memory per-conversation registries (M6). Each grew one entry per distinct
     conversation for the whole process lifetime — the history deques AND the legacy trace/snapshot
-    dicts (_last_coordinator_trace, _last_execution_snapshot, _last_decision_trace,
+    dicts (_last_coordinator_trace, _last_execution_snapshot,
     _last_outcome_evaluation, _steer_hints, _blackboard). Durable copies live in SQLite. Drops
     oldest-inserted beyond the cap. Returns total entries removed."""
     cap = max(1, int(max_conversations))
@@ -218,7 +218,6 @@ def prune_conversation_histories(max_conversations: int = 500) -> int:
         removed += _cap_dict(_last_outcome_evaluation, cap)
         removed += _cap_dict(_last_coordinator_trace, cap)
         removed += _cap_dict(_last_execution_snapshot, cap)
-        removed += _cap_dict(_last_decision_trace, cap)
         removed += _cap_dict(_blackboard, cap)
         with _steer_lock:
             removed += _cap_dict(_steer_hints, cap)
@@ -412,26 +411,6 @@ def clear_last_execution_snapshot(conversation_id: str) -> None:
         get_or_create_session(cid).clear_execution_snapshot()
     except Exception:
         pass
-
-
-# Last decision policy trace per conversation (for /agent/decision_trace)
-_decision_trace_lock = threading.Lock()
-_last_decision_trace: dict[str, list] = {}
-
-
-def set_last_decision_trace(conversation_id: str, traces: list) -> None:
-    cid = (conversation_id or "").strip() or "default"
-    if not isinstance(traces, list):
-        return
-    with _decision_trace_lock:
-        _last_decision_trace[cid] = list(traces)
-
-
-def get_last_decision_trace(conversation_id: str) -> list | None:
-    cid = (conversation_id or "").strip() or "default"
-    with _decision_trace_lock:
-        v = _last_decision_trace.get(cid)
-        return list(v) if isinstance(v, list) else None
 
 
 # Namespaced blackboard for spawned agents / jobs (thread-safe, in-process)
