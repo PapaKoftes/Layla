@@ -38,11 +38,17 @@ def test_operator_profile_serves_familiarity_not_unlocks():
         assert gone not in src, f"operator_profile still serves the removed unlock shape {gone!r}"
 
 
-def test_null_post_body_hardening_no_attributeerror():
+def test_null_post_body_hardening_no_attributeerror(monkeypatch):
     # A client sending {"id": null} must not 500 with None.strip(); the hardened handlers coerce to "".
+    from types import SimpleNamespace
+
     import routers.approvals as appr
+    import services.safety.auth as auth
+    # /approve is now local-only; treat the caller as local so we reach the null-body hardening.
+    monkeypatch.setattr(auth, "is_direct_local", lambda *a, **k: True)
+    _req = SimpleNamespace(headers={}, client=SimpleNamespace(host="127.0.0.1"))
     # approve reads ((req or {}).get("id") or "").strip() — a null id yields "id required", not a crash.
-    r = _body(appr.approve({"id": None}))  # the null must not raise AttributeError
+    r = _body(appr.approve({"id": None}, _req))  # the null must not raise AttributeError
     assert r.get("ok") is False and "id" in str(r.get("error", "")).lower()
 
 
