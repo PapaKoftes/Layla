@@ -384,6 +384,15 @@ export async function send() {
     stream: !!streamMode,
   };
   if (modelOverride) payload.model_override = modelOverride;
+  // Vision door: an attached image rides along as image_base64 (the /agent multimodal path). Cleared
+  // after the request is dispatched so it is not re-sent on the next turn.
+  try {
+    var _img = window.laylaPendingImageB64 || '';
+    if (_img) {
+      payload.image_base64 = _img;
+      if (typeof window.laylaClearPendingImage === 'function') window.laylaClearPendingImage();
+    }
+  } catch (_e) { console.debug('app: image attach', _e); }
   // Wire the previously-dead composer toggles to the fields the server expects
   // (agent.py reads req.plan_mode and req.reasoning_effort=="high").
   var _planEl = document.getElementById('plan-mode-toggle');
