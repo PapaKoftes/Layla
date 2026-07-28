@@ -151,8 +151,10 @@ SKIP: dict[str, SkipReason] = {
     "extract_frames": SkipReason.MEDIA, "calendar_read": SkipReason.MEDIA,
     "plot_chart": SkipReason.MEDIA, "plot_scatter": SkipReason.MEDIA,
     "plot_histogram": SkipReason.MEDIA,
-    # HARDWARE — pyautogui / pyperclip / screen grab
-    "screenshot_desktop": SkipReason.HARDWARE, "clipboard_read": SkipReason.HARDWARE,
+    # NOTE: screenshot_desktop + clipboard_read used to be SKIP:HARDWARE, but they are now
+    # require_approval:True (privacy — they capture the screen / a just-copied password), so the
+    # meta-guard partition already excludes them from the driven set. Keeping them here too would be
+    # a redundant double-listing the partition tests forbid — the approval gate covers them.
     # SCHEDULER — _get_scheduler() starts a BackgroundScheduler thread (apscheduler present here)
     "schedule_task": SkipReason.SCHEDULER, "cancel_task": SkipReason.SCHEDULER,
     "list_scheduled_tasks": SkipReason.SCHEDULER,
@@ -166,7 +168,7 @@ SKIP: dict[str, SkipReason] = {
 
 # Pinned so any addition/removal forces a deliberate review (anti-accretion; the skip list is where
 # rot hides). Bump only with a matching SKIP change and a written reason above.
-EXPECTED_SKIP_COUNT = 70  # -2: send_webhook/discord_send moved to GUARDED (approval-gated)
+EXPECTED_SKIP_COUNT = 68  # -2 more: clipboard_read/screenshot_desktop moved to GUARDED (now require_approval:True for privacy)
 
 
 def _is_guarded(meta: dict) -> bool:
