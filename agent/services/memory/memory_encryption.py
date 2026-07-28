@@ -53,15 +53,28 @@ def cipher_ready() -> bool:
 
 
 def _key_file() -> Path:
-    """Weaker fallback location for the key when no OS keyring exists."""
-    base = None
+    """Fallback key location when there is no OS keyring.
+
+    Co-located with the ENCRYPTED DB: under LAYLA_DATA_DIR when the installer/launcher set it, so an
+    app-dir reinstall/move can't orphan the key from the data it decrypts (the DB lives in the data
+    dir, the key used to live in the install tree — "losing the key means losing the data"). Falls
+    back to the agent dir for source/dev installs. Migration-safe: an existing key already at the
+    legacy agent-dir path is still honored, so no already-encrypted install loses access to its data.
+    """
     try:
         import runtime_safety
+        data_root = runtime_safety.resolve_layla_data_dir()
         base = getattr(runtime_safety, "AGENT_DIR", None)
     except Exception:
-        base = None
-    root = Path(base) if base else (Path.home() / ".layla")
-    return root / ".layla" / "memory_encryption.key"
+        data_root, base = None, None
+    legacy = (Path(base) if base else (Path.home() / ".layla")) / ".layla" / "memory_encryption.key"
+    if data_root is None:
+        return legacy
+    preferred = data_root / ".layla" / "memory_encryption.key"
+    # If the co-located key doesn't exist yet but a legacy one does, keep decrypting with the legacy.
+    if not preferred.exists() and legacy.exists():
+        return legacy
+    return preferred
 
 
 def _load_or_create_key():

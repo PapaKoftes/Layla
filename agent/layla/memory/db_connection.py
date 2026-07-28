@@ -156,6 +156,25 @@ def verify_and_recover_db() -> str:
                 shutil.copy2(str(backups[0]), str(db_path))
                 logger.critical("Recovered layla.db from backup %s (corrupt db saved as %s)",
                                 backups[0].name, bad.name)
+                # Restore the PAIRED vector snapshot the backup captured (vectors_{ts}) so the rolled-
+                # back DB's embedding_id references stay consistent with the vector store. Without
+                # this, semantic recall points at vectors that were pruned or leaves post-backup
+                # vectors orphaned — the "no orphaned vectors" guarantee the backup makes is otherwise
+                # never honored on restore. Best-effort; the DB recovery already succeeded above.
+                try:
+                    _name = backups[0].name  # layla_{ts}.db
+                    _ts = _name[len("layla_"):-len(".db")] if _name.startswith("layla_") and _name.endswith(".db") else ""
+                    _vsnap = (backup_dir / f"vectors_{_ts}") if _ts else None
+                    if _vsnap is not None and _vsnap.is_dir():
+                        from layla.memory.vector_store import _chroma_path, reset_chroma_clients
+                        _vdst = Path(_chroma_path())
+                        if _vdst.exists():
+                            shutil.rmtree(str(_vdst), ignore_errors=True)
+                        shutil.copytree(str(_vsnap), str(_vdst), dirs_exist_ok=True)
+                        reset_chroma_clients()
+                        logger.critical("Restored paired vector snapshot vectors_%s", _ts)
+                except Exception as _ve:
+                    logger.error("paired vector-store restore failed (DB restored, vectors stale): %s", _ve)
                 return "recovered"
             except Exception as e:
                 logger.critical("backup restore failed: %s (corrupt db saved as %s)", e, bad.name)

@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 # Layla — Clean Uninstaller
 # Removes: Windows Service, venv, models (optional), data (optional)
 # ============================================================================
@@ -127,6 +127,21 @@ Write-Host "  [5/5]  Cleaning up..." -ForegroundColor Yellow
 
 $laylaHome = Join-Path $env:USERPROFILE ".layla"
 
+# Resolve EVERY place persistent data actually lives. A DEFAULT source install does NOT set
+# LAYLA_DATA_DIR, so the primary store (layla.db + its wal/shm) sits at the REPO ROOT and
+# runtime_config.json (which can hold remote_api_key / tunnel_token_hash) under agent\ — NOT under
+# ~/.layla, which only holds the auxiliary DBs. The old script deleted only ~/.layla yet reported
+# "Data removed", leaving the real DB and secrets on disk. Cover them all here.
+$dataTargets = @(
+    (Join-Path $agentDir "layla.db"),
+    (Join-Path $agentDir "layla.db-wal"),
+    (Join-Path $agentDir "layla.db-shm"),
+    (Join-Path $agentDir "agent\runtime_config.json"),
+    (Join-Path $agentDir "agent\.layla"),          # legacy encryption-key dir
+    $laylaHome
+)
+if ($env:LAYLA_DATA_DIR) { $dataTargets += $env:LAYLA_DATA_DIR }
+
 if ($keepModels.ToLower() -eq 'n') {
     Write-Host "         Removing downloaded models..."
     $modelsDir = Join-Path $agentDir "models"
@@ -142,9 +157,17 @@ if ($keepData.ToLower() -eq 'n') {
     Write-Host "            Memories, conversations, learnings, wiki entries..." -ForegroundColor Red
     $confirm = Read-Host "         Type 'DELETE' to confirm"
     if ($confirm -eq 'DELETE') {
-        if (Test-Path $laylaHome) {
-            Remove-Item -Recurse -Force $laylaHome -ErrorAction SilentlyContinue
-            Write-Host "         Data removed." -ForegroundColor Green
+        $removedAny = $false
+        foreach ($t in $dataTargets) {
+            if ($t -and (Test-Path $t)) {
+                Remove-Item -Recurse -Force $t -ErrorAction SilentlyContinue
+                if (-not (Test-Path $t)) { $removedAny = $true }
+            }
+        }
+        if ($removedAny) {
+            Write-Host "         Data removed (database, config/secrets, memories, conversations)." -ForegroundColor Green
+        } else {
+            Write-Host "         No data files were found to remove." -ForegroundColor DarkGray
         }
     } else {
         Write-Host "         Skipped — your data is safe." -ForegroundColor Yellow
