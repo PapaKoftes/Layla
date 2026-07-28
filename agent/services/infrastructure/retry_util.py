@@ -1,7 +1,9 @@
 """Standard retry helper (BL-181) — one tenacity-backed retry for flaky I/O.
 
-`diskcache` (retrieval cache) and `apscheduler` (scheduler registry) are already adopted;
-tenacity was a declared-but-unused dependency. This gives the codebase one place to get
+`apscheduler` (scheduler registry) is adopted; `tenacity` was a declared-but-unused dependency
+until this helper. (An earlier version of this note also claimed `diskcache` was adopted for the
+retrieval cache — it is NOT: that cache was rewritten to a bounded OrderedDict LRU, so diskcache
+is now a dead dependency, not an adopted one.) This gives the codebase one place to get
 resilient retries with exponential backoff + jitter, so ad-hoc `for attempt in range(...)`
 loops can standardise on it. Degrades gracefully: if tenacity is somehow absent, a tiny
 stdlib fallback preserves the same call contract.

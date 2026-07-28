@@ -1,9 +1,9 @@
-# Layla — Edición Castilla
+# Layla — Léeme (Español)
 
 Tu compañera de programación con IA, **100 % local y privada**, que responde en **español**.
 
 ## Qué es
-Layla se ejecuta enteramente en tu portátil — sin nube, sin cuotas y sin enviar tus datos a ningún sitio. La **Edición Castilla** está ajustada para equipos como el tuyo (CPU de gama media, 16 GB de RAM, poco espacio libre en disco) y conversa en español, manteniendo el código y los términos técnicos estándar en inglés (que es lo habitual al programar).
+Layla se ejecuta enteramente en tu portátil — sin nube, sin cuotas y sin enviar tus datos a ningún sitio. Está ajustada para equipos modestos (CPU de gama media, 16 GB de RAM, poco espacio libre en disco) y conversa en español, manteniendo el código y los términos técnicos estándar en inglés (que es lo habitual al programar).
 
 ## Instalación (un solo comando)
 Requisitos: Windows + conexión a internet (solo para instalar y descargar el modelo).
