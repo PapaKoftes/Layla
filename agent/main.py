@@ -1239,6 +1239,24 @@ async def remote_auth_middleware(request: Request, call_next):
         import runtime_safety
         cfg = runtime_safety.load_config()
         if not cfg.get("remote_enabled"):
+            # DNS-rebinding defense (applies in the default local-only mode): a malicious page can
+            # resolve its own hostname to 127.0.0.1 and reach this tool-executing API. Reject any Host
+            # header that isn't a known-local name. (remote_enabled=True is the explicit opt-in that
+            # allows a configured external host, handled below.)
+            _rh = (request.headers.get("host") or "").strip().lower()
+            if _rh.startswith("["):            # [ipv6]:port
+                _hn = _rh.split("]", 1)[0].lstrip("[")
+            elif _rh.count(":") == 1:          # host:port
+                _hn = _rh.rsplit(":", 1)[0]
+            else:                              # bare host or bare ipv6
+                _hn = _rh
+            _allowed_hosts = {"127.0.0.1", "localhost", "::1", "::ffff:127.0.0.1", "testserver", "testclient", ""}
+            _ch = str(os.getenv("LAYLA_HOST", "") or cfg.get("host", "")).strip().lower()
+            if _ch:
+                _allowed_hosts.add(_ch)
+            if _hn not in _allowed_hosts:
+                from starlette.responses import JSONResponse as _JR
+                return _JR({"error": "host_not_allowed", "detail": "unrecognized Host header"}, status_code=400)
             return await call_next(request)
     except Exception:
         return await call_next(request)
