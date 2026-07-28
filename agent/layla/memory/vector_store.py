@@ -1270,6 +1270,17 @@ def index_knowledge_docs(knowledge_dir: Path) -> None:
     try:
         coll = _get_knowledge_collection()
 
+        # A stored vector is only valid for the embedder that produced it. Namespace the
+        # per-chunk content_hash by the active embedder's identity + dim so that swapping
+        # models (e.g. 384d MiniLM -> 768d nomic) re-embeds every chunk instead of leaving
+        # stale-dim rows the query layer would silently filter out, making the whole KB
+        # appear empty (ST-1). Warm the embedder first so the globals are populated.
+        try:
+            _get_embedder()
+        except Exception as _exc:
+            logger.debug("vector_store:embed-warm: %s", _exc, exc_info=False)
+        _embed_tag = f"{_current_model_name or 'unknown'}:{_embedder_dim}"
+
         # Existing hashes for dedupe / no-op updates
         existing_hash: dict[str, str] = {}
         existing_ids: set[str] = set()
@@ -1306,7 +1317,9 @@ def index_knowledge_docs(knowledge_dir: Path) -> None:
                             continue
                         source = str(f.relative_to(knowledge_dir)).replace("\\", "/")
                         chunk_id = f"{source}_{i}"
-                        content_hash = hashlib.sha1(part.encode("utf-8", errors="ignore")).hexdigest()
+                        content_hash = hashlib.sha1(
+                            (_embed_tag + "\x00" + part).encode("utf-8", errors="ignore")
+                        ).hexdigest()
                         aspects = fm.get("aspects") if isinstance(fm, dict) else []
                         if isinstance(aspects, str):
                             aspects = [a.strip() for a in aspects.split(",") if a.strip()]
@@ -1424,6 +1437,9 @@ def _parse_knowledge_front_matter(text: str) -> dict[str, object]:
 def _knowledge_dir_fingerprint(knowledge_dir: Path) -> str:
     """Cheap fingerprint for change detection. Excludes paths containing .identity."""
     h = hashlib.sha1()
+    # Fold the active embedder identity in so a model swap (different dim) flips the
+    # fingerprint and forces a refresh even when no file changed (ST-1).
+    h.update(f"{_current_model_name}:{_embedder_dim}".encode("utf-8", errors="ignore"))
     try:
         for ext in ("*.md", "*.txt", "*.pdf"):
             for f in sorted(knowledge_dir.rglob(ext)):
