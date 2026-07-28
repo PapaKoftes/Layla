@@ -158,10 +158,12 @@ def _summarize_group(group: list[dict]) -> str:
     for L in group:
         c = (L.get("content") or "").strip()
         if c:
-            # First sentence or first 120 chars
-            first = c.split(".")[0].strip() + "." if "." in c else c[:120]
+            # First sentence (boundary = . ! ? followed by whitespace), not the first '.' — the old
+            # split('.')[0] cut mid-string on decimals ('3.14'), abbreviations ('e.g.'), and URLs.
+            import re as _re
+            first = _re.split(r"(?<=[.!?])\s+", c, maxsplit=1)[0][:120]
             if first and first not in parts:
-                parts.append(first[:120])
+                parts.append(first)
     if not parts:
         return "Merged experience (no content)."
     summary = " ".join(parts[:3])

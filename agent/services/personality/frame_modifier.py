@@ -374,11 +374,23 @@ def load_stats_from_identity(uid: dict[str, Any]) -> dict[str, int]:
     return stats
 
 
-def write_profile_snapshot(uid: dict[str, Any]) -> None:
+_last_snapshot_write = 0.0  # monotonic ts of the last write — throttle guard (see below)
+
+
+def write_profile_snapshot(uid: dict[str, Any], *, force: bool = False) -> None:
     """
     Write .layla/layla_profile.json for offline inspection / debugging.
-    Non-critical: errors are logged and swallowed.
+    Non-critical: errors are logged and swallowed. THROTTLED to at most once per ~30s: this is
+    called from build_system_head on the critical path of every substantive turn, and a synchronous
+    mkdir + json.dump + disk write per turn is pure overhead for a debug artifact. Pass force=True
+    for an explicit/on-demand write (e.g. tests, a manual snapshot) that must not be throttled.
     """
+    global _last_snapshot_write
+    import time as _time
+    _mono = _time.monotonic()
+    if not force and _mono - _last_snapshot_write < 30.0:
+        return
+    _last_snapshot_write = _mono
     try:
         stats = load_stats_from_identity(uid)
         hints = build_frame_modifiers(stats)
