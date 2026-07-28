@@ -18,7 +18,6 @@ Mounted from [`agent/main.py`](../../agent/main.py) unless noted. Router **`pref
 
 | Method | Path | Module |
 |--------|------|--------|
-| GET | `/agent/decision_trace` | `routers/agent.py` |
 | POST | `/agent/steer` | `routers/agent.py` |
 | POST | `/agent` | `routers/agent.py` |
 | POST | `/resume` | `routers/agent_tasks.py` |

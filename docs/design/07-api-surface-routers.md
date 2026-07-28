@@ -11,7 +11,6 @@
 | # | Method | Path | Router | Pydantic? | Auth | Description |
 |---|--------|------|--------|-----------|------|-------------|
 | 1 | POST | `/agent` | agent | AgentRequest | remote | Main chat endpoint (streaming + JSON) |
-| 2 | GET | `/agent/decision_trace` | agent | -- | remote | Last decision policy trace |
 | 3 | POST | `/agent/steer` | agent | SteerRequest | remote | Queue redirect for in-flight run |
 | 4 | DELETE | `/agent` | system | -- | remote | Cancel latest agent run |
 | 5 | POST | `/agent/cancel/{conversation_id}` | system | -- | remote | Cancel specific conversation run |
