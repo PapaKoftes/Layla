@@ -10,7 +10,7 @@
 - **Rich agent loop** — 179 registered tools (see `agent/tests/test_registered_tools_count.py`), tool-dispatch loop, approval flow, audit log, sandbox enforcement
 - **6 personality aspects** — rich character definitions, auto-routing, deliberation, earned titles
 - **Solid memory system** — SQLite + ChromaDB RAG, learnings, study plans, capabilities/evolution, memory graph
-- **Voice I/O** — faster-whisper STT, kokoro-onnx TTS, both wired into the UI
+- **Voice I/O** — faster-whisper STT + kokoro-onnx/pyttsx3 TTS (opt-in, off by default; install the voice extras and the UI mic/speaker controls light up — until then the endpoints return 503 with install guidance)
 - **Multiple access methods** — Web UI, TUI, CLI, MCP bridge (Cursor), OpenAI-compatible API
 - **Research mission system** — autonomous multi-stage repo + web research
 - **Setup scripts** — INSTALL.bat, START.bat, first_run.py, Docker

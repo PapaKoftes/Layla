@@ -129,7 +129,7 @@ The `start.sh` script uses this by default. If you run uvicorn manually and get 
 **TTS not working**
 - `kokoro-onnx` and `soundfile` must be installed: `pip install kokoro-onnx soundfile`
 - On first use, downloads ~80MB ONNX model — needs internet
-- If not installed, Layla falls back to browser SpeechSynthesis automatically
+- If not installed, `POST /voice/speak` returns `503` with install guidance — Layla does **not** silently substitute the browser's generic voice
 
 **Browser automation (Playwright) fails**
 - Run: `playwright install chromium`

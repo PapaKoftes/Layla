@@ -135,7 +135,7 @@ Layla's complete tool registry. Dangerous tools require `allow_run=true` AND app
 
 | Tool | Parameters | Notes |
 |------|-----------|-------|
-| `list_tools` | `filter_by: str = "", include_dangerous: bool = True` | List all 59 tools with descriptions, risk levels, approval requirements. |
+| `list_tools` | `filter_by: str = "", include_dangerous: bool = True` | List all registered tools with descriptions, risk levels, approval requirements. |
 | `tool_recommend` | `task: str` | Given a task, suggest the most relevant tools (keyword + category scoring). |
 
 ## Context Management

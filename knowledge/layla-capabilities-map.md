@@ -4,7 +4,7 @@ domain: architecture
 aspect: morrigan
 ---
 
-# Layla Capabilities Map — 191 tools
+# Layla Capabilities Map — 202 tools
 
 Full inventory of every tool Layla can call, organized by capability domain.
 All tools are defined in `agent/layla/tools/registry.py`. **Authoritative count:** `EXPECTED_TOOL_COUNT` in `agent/tests/test_registered_tools_count.py` (bump when adding/removing tools).
@@ -57,7 +57,7 @@ Not tools — these are automatic in every response:
 - **Dense vector search** (ChromaDB + nomic-embed-text) — semantic similarity
 - **Reciprocal Rank Fusion** — merges BM25 + dense results
 - **Cross-encoder reranking** — sentence-transformers rerank top candidates
-- **HyDE** — Hypothetical Document Embeddings for underspecified queries
+- **HyDE** — Hypothetical Document Embeddings for underspecified queries (auto-reverted on CPU tiers — the extra generation pass is too slow, so it is off on the default build)
 - **Parent-document retrieval** — returns full context around matched chunks
 - **SQLite FTS5** — full-text search on learnings
 
@@ -187,9 +187,9 @@ Not tools — these are automatic in every response:
 
 ## 12. Speech Intelligence
 
-Not tools — integrated into API endpoints:
-- **STT:** `POST /voice/transcribe` — faster-whisper (CPU/CUDA)
-- **TTS:** `POST /voice/speak` — kokoro-onnx (fallback: browser SpeechSynthesis)
+Not tools — integrated into API endpoints. **Opt-in and off by default**: both return `503` with install guidance until you install the voice extras. There is **no silent browser-voice fallback** — Layla will not substitute the browser's generic robot voice behind your back.
+- **STT:** `POST /voice/transcribe` — faster-whisper (CPU/CUDA), when installed
+- **TTS:** `POST /voice/speak` — kokoro-onnx (or pyttsx3), when installed
 
 ---
 
@@ -197,7 +197,7 @@ Not tools — integrated into API endpoints:
 
 | Tool | What it does |
 |------|-------------|
-| `list_tools` | List all 59 tools with descriptions, risk levels, approval status |
+| `list_tools` | List all registered tools with descriptions, risk levels, approval status |
 | `tool_recommend` | Given a task, suggest the most relevant tools (keyword + category scoring) |
 | `context_compress` | Compress text to token budget: smart (extractive), truncate, middle_out |
 

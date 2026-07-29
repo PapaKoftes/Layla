@@ -63,7 +63,7 @@ Tools available to Layla (109 total):
 
 Voice (optional):
 - faster-whisper (STT): POST /voice/transcribe
-- kokoro-onnx (TTS): POST /voice/speak (fallback: browser SpeechSynthesis)
+- kokoro-onnx / pyttsx3 (TTS): POST /voice/speak (opt-in; 503 with install guidance when absent — no browser-voice fallback)
 
 Interaction surfaces:
 - Cursor IDE via MCP (cursor-layla-mcp/server.py)
