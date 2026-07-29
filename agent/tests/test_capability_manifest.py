@@ -1250,10 +1250,17 @@ def test_capability_detection_does_not_backtrack_pathologically():
     ]
 
     SMALL, LARGE = 5_000, 20_000          # 4x the input
-    GROWTH_LIMIT = 8.0                    # linear=4x, quadratic=16x -> threshold between them
+    GROWTH_LIMIT = 11.0                   # linear=4x, quadratic=16x -> threshold sits below quadratic
     ABSOLUTE_CEILING_S = 2.0              # ~300x the nominal: catches exponential without flaking
 
-    def best_of(fn, rounds=5):
+    # NOTE on the 11.0 threshold (was 8.0) and best-of-9 (was best-of-5): under a fully saturated box
+    # — measured at the tail of a 14.5-min full suite — even the min-of-5 for the LARGE input stayed
+    # contaminated while a SMALL round got a lucky-fast sample, inflating a genuinely-LINEAR regex to
+    # 8.9x. That is scheduler noise, not backtracking (quadratic is 16x, exponential trips the absolute
+    # ceiling). More rounds attacks the root cause (a cleaner min), and 11.0 keeps a clear gap below
+    # quadratic. The real regression guard is test_capability_anchors_are_written_possessively, which
+    # asserts the anchor FORM directly and cannot be flaked by a loaded runner.
+    def best_of(fn, rounds=9):
         """Minimum of N runs. The minimum is the sample least contaminated by preemption — a mean or a
         single sample is what made the old assertion a coin flip on a loaded runner."""
         best = float("inf")
