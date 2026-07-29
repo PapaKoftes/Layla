@@ -542,6 +542,35 @@ def commit_turn(
             except Exception as e:
                 logger.debug("commit_turn: answer_quality failed: %s", e)
 
+        # Outcome-reinforcement: reinforce the learnings this run RETRIEVED and used, accumulate
+        # golden few-shot examples, persist tool-success patterns, and run reflection. All four
+        # lived only in outcome_writer._save_outcome_memory, whose sole caller is run_finalizer's
+        # `status == "finished"` block — which a streamed turn (status "stream_pending") never
+        # enters. So on the default streamed UI, retrieved-learning reinforcement and golden-example
+        # accumulation never happened: the exact same severed-by-status defect as the four learners
+        # above, applied to the fifth. Claimed by `outcome_memory_saved` (set inside
+        # _save_outcome_memory) so the non-streamed path — where run_finalizer already ran it —
+        # never double-writes. Threaded: _save_outcome_memory runs reflection_engine, which can make
+        # an LLM call, so it must never sit on the streamed done-frame path. Resolved on a COPY: the
+        # function self-guards on status=="finished", and the run's real terminal status is not ours
+        # to overwrite (see the outcome-evaluation note above).
+        if not state.get("outcome_memory_saved"):
+            _om_state = state if state.get("status") == "finished" else {**state, "status": status}
+            if _om_state.get("status") == "finished":
+                try:
+                    def _save_om(_s=_om_state) -> None:
+                        try:
+                            from services.infrastructure.outcome_writer import _save_outcome_memory
+
+                            _save_outcome_memory(_s)
+                        except Exception as _oe:
+                            logger.debug("commit_turn: outcome memory save failed: %s", _oe)
+
+                    _spawn_derived(_save_om, name="outcome-memory")
+                    state["outcome_memory_saved"] = True
+                except Exception as e:
+                    logger.debug("commit_turn: outcome memory gate failed: %s", e)
+
     try:
         if _cfg().get("emotional_presence_enabled", True):
             from services.personality.emotional_presence import register_from_turn

@@ -161,7 +161,11 @@ def finalize_run_state(
 
     # Personality evolution: record interaction and update relationship tracking
     try:
-        from services.personality.evolution import get_personality_evolution, infer_interaction_type
+        from services.personality.evolution import (
+            detect_comm_preferences,
+            get_personality_evolution,
+            infer_interaction_type,
+        )
 
         _evo = get_personality_evolution()
         _evo_aspect_id = active_aspect.get("id", "") if isinstance(active_aspect, dict) else ""
@@ -173,6 +177,12 @@ def finalize_run_state(
                 _evo_itype,
                 {"tools_used": _evo_tools},
             )
+            # Communication-preference learning: the only caller of learn_communication_preference
+            # (it had none, so get_evolved_hints' whole preference branch was dead). High-precision —
+            # only explicit cues the operator typed ("be concise", "explain in detail", "eli5",
+            # "under the hood") move a preference; get_evolved_hints still needs >=5 counts to surface.
+            for _ptype, _pval in detect_comm_preferences(goal):
+                _evo.learn_communication_preference(_evo_aspect_id, _ptype, _pval)
     except Exception as _evo_exc:
         logger.debug("personality_evolution record_interaction failed: %s", _evo_exc)
 

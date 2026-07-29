@@ -83,6 +83,65 @@ def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# ── explicit communication-preference cues (the missing signal source) ────────────────────────
+# learn_communication_preference() had ZERO callers, so get_evolved_hints' entire
+# communication-preference branch could never fire. It needs a per-turn signal, and the only
+# HONEST one is the operator saying so outright — inferring "they want it short" from message
+# length is the same read-the-wrong-thing mistake BL-376 fixed for operator facts. So this fires
+# ONLY on unambiguous phrases the user typed, maps them to the [0,1] value get_evolved_hints reads
+# (val<0.3 = concise/simple, val>0.7 = detailed/technical), and stays silent otherwise. A single
+# stray cue can't swing behaviour: the EMA needs repetition and get_evolved_hints gates at count>=5.
+_COMM_PREF_CUES: tuple[tuple[str, str, float], ...] = (
+    # (substring, preference_type, value) — substrings are matched case-insensitively.
+    ("be concise", "response_length", 0.15),
+    ("keep it short", "response_length", 0.15),
+    ("keep it brief", "response_length", 0.15),
+    ("keep it concise", "response_length", 0.15),
+    ("tl;dr", "response_length", 0.15),
+    ("short answer", "response_length", 0.15),
+    ("one sentence", "response_length", 0.15),
+    ("no fluff", "response_length", 0.15),
+    ("just the answer", "response_length", 0.15),
+    ("in detail", "response_length", 0.85),
+    ("be thorough", "response_length", 0.85),
+    ("explain fully", "response_length", 0.85),
+    ("step by step", "response_length", 0.85),
+    ("step-by-step", "response_length", 0.85),
+    ("walk me through", "response_length", 0.85),
+    ("eli5", "technical_depth", 0.15),
+    ("explain like i'm 5", "technical_depth", 0.15),
+    ("in simple terms", "technical_depth", 0.15),
+    ("non-technical", "technical_depth", 0.15),
+    ("in layman", "technical_depth", 0.15),
+    ("high level overview", "technical_depth", 0.15),
+    ("under the hood", "technical_depth", 0.85),
+    ("technical details", "technical_depth", 0.85),
+    ("low level", "technical_depth", 0.85),
+    ("low-level", "technical_depth", 0.85),
+    ("go deep on", "technical_depth", 0.85),
+)
+
+
+def detect_comm_preferences(user_msg: str) -> list[tuple[str, float]]:
+    """High-precision detector: map explicit user cues to (preference_type, value) pairs.
+
+    Reads the OPERATOR's message only, returns nothing unless an unambiguous phrase is present.
+    At most one pair per preference_type (first cue wins) so one message never double-counts.
+    """
+    um = (user_msg or "").strip().lower()
+    if not um or len(um) > 2000:
+        return []
+    out: list[tuple[str, float]] = []
+    seen: set[str] = set()
+    for needle, ptype, value in _COMM_PREF_CUES:
+        if ptype in seen:
+            continue
+        if needle in um:
+            out.append((ptype, value))
+            seen.add(ptype)
+    return out
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
