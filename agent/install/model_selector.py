@@ -278,7 +278,17 @@ def _benchmark_preferred(candidates: list[dict[str, Any]]) -> dict[str, Any] | N
         for key in ((m.get("filename") or ""), (m.get("name") or "")):
             b = marks.get(key)
             if isinstance(b, dict):
-                return (float(b.get("pass_at_1", 0) or 0), float(b.get("tok_per_s", 0) or 0))
+                # model_benchmark.run_benchmark persists the speed under `tokens_per_sec`
+                # (services/llm/model_benchmark.py:116). This scorer used to read `tok_per_s`,
+                # a key NOTHING writes, so every measured model scored (0.0, 0.0), tied, and
+                # fits-first always won — REQ-85 benchmark-driven selection was silently inert.
+                # Read the real key (with the old alias as a fallback). pass_at_1 stays an
+                # optional quality dimension: preferred first when a coding harness has written
+                # it, else selection falls through to measured speed.
+                tok = b.get("tokens_per_sec")
+                if tok is None:
+                    tok = b.get("tok_per_s", 0)
+                return (float(b.get("pass_at_1", 0) or 0), float(tok or 0))
         return None
 
     scored = [(c, _score(c)) for c in candidates]

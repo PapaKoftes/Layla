@@ -282,6 +282,14 @@ def step_model(hw: dict[str, Any]) -> dict[str, Any]:
     print(f"    Size:  {rec['size_gb']} GB")
     print(f"    Why:   {rec['description']}")
     print()
+    # Be honest about HOW this pick is made (the user asked benchmarks be surfaced at setup).
+    print("    How this pick is made: hardware-fit first (what your RAM/VRAM can run), then")
+    print("    category + size. Benchmark numbers refine it only AFTER you measure on this box.")
+    print("    - Speed: set benchmark_on_load: true and Layla times each model on load.")
+    print("    - Coding pass@1: python scripts/benchmark_coding.py --model models/<file>.gguf")
+    print("    Default coder (Qwen2.5-Coder-3B Q4) recorded 100% pass@1 (10/10 core, 12/12 hard).")
+    print("    Full per-model reference + benchmarks: docs/MODELS.md")
+    print()
 
     download = _ask_yn("Download this model now?", default=True)
 
