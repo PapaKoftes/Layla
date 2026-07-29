@@ -614,6 +614,49 @@ def _learned_skills_block(goal: str, limit: int = 6) -> str:
     return "Learned skills you can replay with invoke_skill(name=...):\n" + "\n".join(lines)
 
 
+def _strip_bare_reference_titles(blob: str) -> str:
+    """Drop a reference-doc's redundant level-1 '# Title' when it sits directly above another heading.
+
+    Injected knowledge chunks carry a '--- <file> ---' banner that already names the doc, and most
+    curated docs open with '# Title' then blank then '## Section'. That title has no body before the
+    next heading, so it reaches the model as a *bare* header — "a section that announces itself and
+    then says nothing", which a small model imitates by emitting empty sections. `_drop_dangling_headers`
+    only strips a header at the very TAIL of the (truncated) head; an interior title-above-subheading
+    slips past it (see test_no_dangling_headers). This removes exactly that shape.
+
+    Surgical by design: only LEVEL-1 (`# `) headings whose next non-empty line is itself a heading are
+    dropped. Interior `##`/`###` structure, and any title that has real body directly beneath it, are
+    left untouched — so a doc's actual content is never mangled, only the redundant top banner-title.
+    """
+    if not blob or "#" not in blob:
+        return blob
+    lines = blob.split("\n")
+    n = len(lines)
+    drop: set[int] = set()
+    for i, ln in enumerate(lines):
+        s = ln.strip()
+        if not (s.startswith("# ") and not s.startswith("## ")):
+            continue
+        nxt = next((lines[j].strip() for j in range(i + 1, n) if lines[j].strip()), None)
+        if nxt is not None and nxt.startswith("#"):
+            drop.add(i)
+    if not drop:
+        return blob
+    kept = [ln for i, ln in enumerate(lines) if i not in drop]
+    # Collapse any 3+ blank run that dropping a title may have opened up.
+    res: list[str] = []
+    blanks = 0
+    for ln in kept:
+        if ln.strip() == "":
+            blanks += 1
+            if blanks > 2:
+                continue
+        else:
+            blanks = 0
+        res.append(ln)
+    return "\n".join(res).strip()
+
+
 def build_system_head(
     goal: str = "",
     aspect: dict | None = None,
@@ -683,6 +726,12 @@ def build_system_head(
         knowledge = runtime_safety.load_knowledge_docs(max_bytes=cfg.get("knowledge_max_bytes", 4000)).strip()
     else:
         knowledge = knowledge.strip()
+
+    # A curated doc's redundant leading '# Title' (banner already names it) is a bare header the model
+    # imitates; strip it from the reference blob before it is injected. Covers both the RAG and static
+    # paths above. See _strip_bare_reference_titles / test_no_dangling_headers.
+    if knowledge:
+        knowledge = _strip_bare_reference_titles(knowledge)
 
     # Relevance-gate recent learnings against the goal, and skip them entirely on
     # phatic/lightweight turns (a greeting must not pull in remembered topics).
