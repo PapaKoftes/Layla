@@ -95,6 +95,11 @@ def _save_outcome_memory(state: dict) -> None:
     tool_steps = [s for s in steps if s.get("action") and s["action"] != "reason"]
     if state.get("status") != "finished":
         return
+    # Claim the turn. On the non-streamed path run_finalizer calls this inline (real state,
+    # status=="finished"); this flag lets the turn-boundary copy in commit_turn — which handles
+    # the streamed path this status gate cannot see — skip so reinforcement + golden examples are
+    # not written twice for a single turn.
+    state["outcome_memory_saved"] = True
     # NOTE: we deliberately do NOT store an "Objective: <goal>. Replied. Snippet: <reply>"
     # summary as a learning. That echoed the run's own prompt+reply into the learnings table,
     # so every trivial turn ("hello", "ready") — and worse, a research turn carrying its
