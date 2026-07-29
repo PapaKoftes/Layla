@@ -128,7 +128,7 @@ body {
 * { scrollbar-width: thin; scrollbar-color: var(--border-2) transparent; }
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 6px; border: 2px solid var(--bg); }
-::-webkit-scrollbar-thumb:hover { background: #46395c; }
+::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--border-2) 62%, var(--text) 38%); }
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* Consistent focus ring */

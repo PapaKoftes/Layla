@@ -732,8 +732,8 @@ user_profile.set_identity({
     },
     "relationship_frame": "daughter_learning",
     "ai_name": "Layla",
-    "watch_folders": ["C:\\Users\\minam\\Projects", "C:\\Users\\minam\\Documents"],
-    "exclude_folders": ["C:\\Users\\minam\\Private"],
+    "watch_folders": ["C:\\Users\\youruser\\Projects", "C:\\Users\\youruser\\Documents"],
+    "exclude_folders": ["C:\\Users\\youruser\\Private"],
     "data_consent": {"files": True, "web": True, "code": True}
 })
 ```

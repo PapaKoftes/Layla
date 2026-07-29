@@ -22,44 +22,13 @@
 <div id="warmup-bar">⧗ Loading model — <span id="warmup-detail">warming up, this may take a moment</span></div>
 <div id="connection-banner" style="display:none;background:#8b0000;color:#fff;padding:8px 20px;font-size:0.8rem;text-align:center">Cannot reach Layla — is the server running? <button onclick="location.reload()" style="margin-left:12px;padding:4px 12px;background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:4px;cursor:pointer">Retry</button></div>
 <div id="remote-key-banner" style="display:none;background:#1a3a5c;color:#e8f4ff;padding:8px 16px;font-size:0.78rem;text-align:center;border-bottom:1px solid rgba(255,255,255,0.15)">Remote access: enter the same <strong>remote_api_key</strong> you set in <code>runtime_config.json</code> (stored only in this browser). <input type="password" id="remote-api-key-input" placeholder="API key" style="margin:0 8px;padding:4px 8px;max-width:220px;border-radius:4px;border:1px solid #4a7ab0;background:#0d1b2a;color:#e8f4ff" autocomplete="off" /> <button type="button" onclick="(function(){try{var v=document.getElementById('remote-api-key-input');if(v&&v.value){localStorage.setItem('layla_remote_api_key',v.value);document.getElementById('remote-key-banner').style.display='none';location.reload();}}catch(_){}})()" style="padding:4px 12px;background:#4a7ab0;border:none;color:#fff;border-radius:4px;cursor:pointer">Save &amp; reload</button></div>
+<!-- Markdown / syntax-highlight / sanitize libs (marked, highlight.js, DOMPurify) are vendored
+     locally and loaded synchronously in <head> above (lines 14-16). There is deliberately NO CDN
+     fallback: the CSP (script-src 'self', see main.py) blocks external scripts by design, so a
+     runtime cdnjs fetch could never execute — it would only fail the CSP and log a console error.
+     The vendored copies are the single source of truth; if one is ever missing, fix the vendor
+     bundle rather than reaching out to a CDN the page is not allowed to load. -->
 <script>
-(function(){
-  function _loadScript(src) {
-    return new Promise(function(resolve, reject) {
-      try {
-        var s = document.createElement('script');
-        s.src = src;
-        s.async = true;
-        s.onload = function(){ resolve(true); };
-        s.onerror = function(){ reject(new Error('failed:'+src)); };
-        document.head.appendChild(s);
-      } catch (e) { reject(e); }
-    });
-  }
-  function _loadCss(href) {
-    return new Promise(function(resolve, reject) {
-      try {
-        var l = document.createElement('link');
-        l.rel = 'stylesheet';
-        l.href = href;
-        l.onload = function(){ resolve(true); };
-        l.onerror = function(){ reject(new Error('failed:'+href)); };
-        document.head.appendChild(l);
-      } catch (e) { reject(e); }
-    });
-  }
-  try {
-    var needMarked = (typeof window.marked === 'undefined');
-    var needHl = (typeof window.hljs === 'undefined');
-    // DOMPurify is vendored locally (purify.min.js loaded at top of page)
-    if (needMarked) _loadScript('https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js').catch(function(){});
-    if (needHl) {
-      _loadCss('https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css').catch(function(){});
-      _loadScript('https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js').catch(function(){});
-    }
-    // DOMPurify CDN fallback removed — vendored locally at /layla-ui/vendor/js/purify.min.js
-  } catch (_) {}
-})();
 (function(){
   try {
     var h = location.hostname || '';
