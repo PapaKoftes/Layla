@@ -197,7 +197,6 @@ suggest_optimization  # unused function (services\observability\telemetry.py:122
 get_tool_preferences  # unused function (services\personality\aspect_behavior.py:265)
 get_behavior_summary  # unused function (services\personality\aspect_behavior.py:274)
 resolve_aspect_ref  # unused function (services\personality\custom_aspects.py:210)
-_.learn_communication_preference  # unused method (services\personality\evolution.py:144)
 _.get_drift_summary  # unused method (services\personality\evolution.py:279)
 load_profile_snapshot  # unused function (services\personality\frame_modifier.py:410)
 is_valid_phase  # unused function (services\personality\maturity_engine.py:38)
