@@ -104,7 +104,10 @@ What to expect the first time: it **downloads a model (~2–5 GB)**, which can t
 
 **10-minute green path** (health, `/ui`, first chat, optional approval): [docs/GOLDEN_FLOW.md](docs/GOLDEN_FLOW.md) — section *Ten-minute operator acceptance*.
 
-**Prerequisite:** Python **3.11 or 3.12** (**3.13+** — including **3.14** — is not supported for the full dependency stack yet).
+**Do you need Python installed first?** **No** — both the double-click installer above and the `uv`
+one-liner below fetch their own standalone Python for you. You only need a system Python if you
+deliberately choose the *"system Python + winget"* alternative below; in that one case it must be
+**3.11 or 3.12** (**3.13+** — including **3.14** — is not supported for the full dependency stack yet).
 
 ### Quickest — one command (installs Python **and** every dependency)
 

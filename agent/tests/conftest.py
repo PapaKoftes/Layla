@@ -27,7 +27,7 @@ os.environ.setdefault("LAYLA_MINIMAL_STARTUP", "1")
 # That window is not hypothetical. Traced with `tests/_write_tracer.py` over a full `--collect-only`
 # with this block removed, collection reaches the operator's real repo-root `layla.db`:
 #
-#     sqlite3.connect  C:\Work\Programming\Layla\layla.db
+#     sqlite3.connect  <repo-root>\layla.db
 #         via layla/memory/db_connection.py:44 in _make_connection
 #
 # and `_make_connection` immediately runs `PRAGMA journal_mode=WAL` — a write that materialises
@@ -321,7 +321,7 @@ def populated_profile(tmp_path):
             "editor": "VS Code",
             "indent_style": "4 spaces, never tabs",
             "shell": "PowerShell 5.1 and Git Bash",
-            "project_roots": "C:/Work/Programming/Layla; C:/Work/Programming/sideproject",
+            "project_roots": "C:/Users/you/projects/Layla; C:/Users/you/projects/sideproject",
         }.items():
             set_user_identity(_k, _v)
 
