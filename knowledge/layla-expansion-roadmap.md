@@ -6,18 +6,23 @@ aspect: morrigan
 
 # Layla Expansion Roadmap — Full 20-Domain Capability Architecture
 
-This document is the canonical capability map. It tracks what's built, what's next,
-and how the system scales from 74 tools (current) toward 120+.
+This document is a historical roadmap of how the tool surface grew. It tracks what
+was built and in what order.
+
+> **Current reality:** the live registry ships **202 registered tools** — the tier
+> counts below are historical milestones the project has long since passed, not the
+> current inventory. For the authoritative live count, `list_tools` reflects the
+> registry directly.
 
 ---
 
-## Tier Overview
+## Tier Overview (historical milestones)
 
 | Tier | Tool Count | Status | Focus |
 |------|-----------|--------|-------|
 | **Tier 1** | 1–59 tools | ✅ Complete | Core infrastructure, all major domains seeded |
-| **Tier 2** | 60–80 tools | ✅ 74 built | Deep per-domain capability, ML, NLP, science |
-| **Tier 3** | 81–120+ tools | 🔜 Planned | Video, desktop automation, geo, orchestration, devops |
+| **Tier 2** | 60–80 tools | ✅ Complete | Deep per-domain capability, ML, NLP, science |
+| **Tier 3** | 81–120+ tools | ✅ Complete | Video, desktop automation, geo, orchestration, devops |
 
 ---
 
@@ -172,10 +177,10 @@ and how the system scales from 74 tools (current) toward 120+.
 
 | Tool | Status | Description |
 |------|--------|-------------|
-| `speech_to_text` | ✅ | API endpoint: POST /voice/transcribe (faster-whisper) |
-| `text_to_speech` | ✅ | API endpoint: POST /voice/speak (kokoro-onnx, pyttsx3 fallback) |
+| `speech_to_text` | ⚙️ opt-in | API endpoint: POST /voice/transcribe (faster-whisper) — off by default, 503 until voice extras installed |
+| `text_to_speech` | ⚙️ opt-in | API endpoint: POST /voice/speak (kokoro-onnx or pyttsx3) — off by default, 503 until voice extras installed. No browser-voice fallback. |
 
-**Note:** These are API endpoints, not registry tools. Accessible from UI mic button.
+**Note:** These are API endpoints, not registry tools. Accessible from the UI mic button once the voice extras are installed.
 **Roadmap:** Expose as registry tools `stt(audio_path)` and `tts(text, voice)` for pipeline use
 
 ---
