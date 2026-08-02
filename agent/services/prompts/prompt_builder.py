@@ -509,9 +509,35 @@ def build_core_sys_parts(
     return sys_parts
 
 
+def _decision_tool_gloss(name: str) -> str:
+    """A terse (<=6-word) 'use when' hint from the tool's registered description (ts03).
+
+    Bare tool names force a small model to disambiguate read_file vs grep_code from token
+    familiarity alone — the measured read_file monoculture. A one-clause gloss lets it pick by
+    MEANING. Commas are stripped so the parenthetical never reads as an extra tool in the
+    comma-joined list. Empty string when there is no usable description (caller emits the bare name).
+    """
+    try:
+        from layla.tools.registry import TOOLS
+
+        desc = (TOOLS.get(name, {}).get("description") or "").strip()
+    except Exception:
+        desc = ""
+    if not desc:
+        return ""
+    first = desc.split(".")[0].replace(",", "").strip()
+    return " ".join(first.split()[:6])
+
+
 def tool_names_for_decision(valid_tools: set[str], goal: str) -> str:
     """
     Ordered tool list for the decision prompt: keyword overlap with goal first, then alpha.
+
+    Each of the leading tools carries a terse 'use when' gloss (ts03) so a weak model chooses by
+    meaning rather than token familiarity; the tail stays bare to bound token cost if the offered
+    set was not shortlisted upstream. The GBNF grammar pins the emitted `tool` to the exact name
+    enum independently of this display string, so the glosses are prompt-only and cannot widen the
+    valid-name set.
     """
     g = (goal or "").lower()
     words = {w for w in g.replace("/", " ").split() if len(w) > 2}
@@ -522,8 +548,15 @@ def tool_names_for_decision(valid_tools: set[str], goal: str) -> str:
         return (-score, name)
 
     names = sorted((valid_tools - {"reason"}), key=_score)
-    # Keep "reason" visible to weak models even though it is not a registry tool.
-    return ", ".join(["reason", *names])
+    # Gloss only the leading GLOSS_CAP tools (the ones a weak model actually weighs); the offered
+    # set is normally shortlisted to ~15 upstream, so this glosses all of them in practice.
+    GLOSS_CAP = 24
+    out: list[str] = []
+    for i, name in enumerate(names):
+        gl = _decision_tool_gloss(name) if i < GLOSS_CAP else ""
+        out.append(f"{name} ({gl})" if gl else name)
+    # Keep "reason" visible + first for weak models even though it is not a registry tool.
+    return ", ".join(["reason (answer directly no tool)", *out])
 
 
 def build_decision_tool_hints(valid_tools: set[str], goal: str) -> tuple[str, str]:
