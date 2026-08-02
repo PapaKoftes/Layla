@@ -247,6 +247,183 @@ def test_known_broken_tools_are_still_actually_broken():
         )
 
 
+# ── every PROMPT-CORE capability line must map to a LIVE backing symbol ──────────────────────────────
+# The end-gate for "Capability manifest reconciled with reality": a manifest sentence the code cannot back
+# is an authoritative lie waiting to happen — the very failure this whole file exists to prevent, one
+# direction worse than inventing a feature because it wears the manifest's credibility.
+#
+# `registry.TOOLS` and the router route table are this app's two runtime affordance registries; a capability
+# the model can actually exercise is a tool it can call or an endpoint that is mounted. Every line the
+# PROMPT-CORE block claims resolves to one of those, or — for the faculties that are neither a tool nor an
+# HTTP route (encryption tiering, LAN offload, the python net speed-bump, the content policy) — to a live
+# config key or an importable module symbol. All of it is checked against LIVE runtime state: the imported
+# registry, the imported routers, the loaded config, the imported modules. So a rename that breaks the
+# affordance fails this guard even while the English word survives in the markdown, which a source grep
+# cannot see.
+
+
+def _live_routes() -> set[str]:
+    """Every route path mounted by a module under `routers/`, read from the live APIRouter objects.
+
+    Collected from the routers package rather than the assembled FastAPI app so the guard needs no app
+    lifespan/startup; a module that fails to import is skipped rather than failing the whole sweep."""
+    import importlib
+    import pkgutil
+    import warnings
+
+    import routers
+
+    paths: set[str] = set()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for m in pkgutil.iter_modules(routers.__path__):
+            try:
+                mod = importlib.import_module("routers." + m.name)
+            except Exception:
+                continue
+            r = getattr(mod, "router", None)
+            for rt in (getattr(r, "routes", []) if r is not None else []):
+                p = getattr(rt, "path", None)
+                if p:
+                    paths.add(p)
+    return paths
+
+
+def _core_bullets(core: str) -> list[str]:
+    """The PROMPT-CORE bullet lines, folding indented continuation lines back into the bullet they wrap.
+
+    Section headers ('BROKEN — ...', 'Guidance: ...') are not bullets and close the current run. Used by the
+    coverage guard so a NEW capability line cannot be added to the manifest without a backing-symbol mapping.
+    """
+    bullets: list[str] = []
+    cur: str | None = None
+    for raw in core.split("\n"):
+        if raw.lstrip().startswith("- "):
+            if cur:
+                bullets.append(cur)
+            cur = raw.lstrip()[2:].strip()
+        elif cur is not None and raw[:1].isspace() and raw.strip():
+            cur += " " + raw.strip()
+        elif cur:
+            bullets.append(cur)
+            cur = None
+    if cur:
+        bullets.append(cur)
+    return bullets
+
+
+def test_every_prompt_core_capability_maps_to_a_live_symbol():
+    """No manifest claim may lack a backing symbol. Bidirectional: manifest drift and code drift each fail.
+
+    For every capability line in the PROMPT-CORE block, assert BOTH that the manifest still makes the claim
+    (the needle is present — so a silent wording change that orphans the guard is caught) AND that its
+    backing affordance is live in the running process (a registry tool, a mounted route, or a config/module
+    symbol). Then a coverage guard requires every bullet to be mapped, so nothing new slips in unbacked.
+    """
+    import importlib
+
+    import runtime_safety as rs
+    from layla.tools.registry import TOOLS
+
+    tools = set(TOOLS)
+    routes = _live_routes()
+    cfg = rs.load_config()
+
+    assert tools, "the tool registry imported empty — no capability could be backed by a tool"
+    assert routes, "no router routes were collected — the route-backed claims cannot be verified"
+
+    def has_tool(*names: str) -> bool:
+        return all(n in tools for n in names)
+
+    def has_route(*subs: str) -> bool:
+        return all(any(sub in p for p in routes) for sub in subs)
+
+    def has_cfg(*keys: str) -> bool:
+        return any(k in cfg for k in keys)
+
+    def has_symbol(mod: str, attr: str) -> bool:
+        try:
+            return hasattr(importlib.import_module(mod), attr)
+        except Exception:
+            return False
+
+    # (needle that MUST appear in the PROMPT-CORE block, resolver proving the live symbol, human why).
+    claims = [
+        ("Local GGUF model via llama.cpp",
+         lambda: has_route("/v1/chat/completions", "/api/chat"),
+         "local model + the OpenAI-compat and Ollama endpoints it names"),
+        ("tools registered",
+         lambda: has_tool("read_file", "write_file", "apply_patch", "grep_code", "glob_files",
+                          "list_dir", "run_python", "shell", "git_status"),
+         "the read/write/git/grep/glob/patch/python/shell tools this bullet lists"),
+        ("Persistent memory in SQLite",
+         lambda: has_route("/memory/about", "/journal", "/graph/stats"),
+         "persistent memory + journal + the entity-linker graph"),
+        ("knowledge base",
+         lambda: has_route("/intelligence/kb/build/directory", "/intelligence/kb/articles"),
+         "the folder-Ingest path the bullet describes"),
+        ("Six aspects: Morrigan",
+         lambda: has_route("/aspects/{aspect_id}", "/character/aspects"),
+         "the six built-in aspects"),
+        ("Custom aspects are first-class",
+         lambda: has_route("/character/custom-aspects"),
+         "custom-aspect CRUD"),
+        ("Capability/Growth scores move from real use",
+         lambda: has_route("/api/growth/stats") or has_route("/character/summary"),
+         "the growth-scoring surface"),
+        ("Study \"Quick picks\" presets work",
+         lambda: has_route("/study_plans/presets"),
+         "the study-plan preset endpoint"),
+        ("Reachable via OpenAI-compatible /v1",
+         lambda: has_route("/v1/models", "/api/tags", "/obsidian/sync"),
+         "the /v1, Ollama /api and Obsidian sync surfaces"),
+        ("Encryption at rest FIRES",
+         lambda: has_cfg("encryption_at_rest_enabled", "encrypt_pii_at_rest"),
+         "the encryption-at-rest config keys"),
+        ("LAN inference offload is wired",
+         lambda: has_cfg("cluster_offload_enabled")
+                 and has_symbol("services.llm.inference_router", "try_cluster_offload_first"),
+         "the offload seam and its enabling flag"),
+        ("Uncensored/NSFW are ON by default",
+         lambda: has_cfg("uncensored", "nsfw_allowed"),
+         "the content-policy flag"),
+        ("I CANNOT speak or listen",
+         lambda: has_route("/voice/speak"),
+         "the voice endpoint whose absence of engines makes the claim true"),
+        ("My Python sandbox does NOT block the network",
+         lambda: has_tool("run_python")
+                 and has_symbol("services.sandbox.python_runner", "_NET_SPEEDBUMP"),
+         "the python runner and its labelled net speed-bump"),
+        ("Web search / article extraction / browser control",
+         lambda: has_tool("fetch_url", "http_request", "check_url", "ddg_search",
+                          "fetch_article", "browser_navigate"),
+         "the always-on http tools plus the optional-dep web tools"),
+    ]
+
+    core = _capability_manifest_core(ROOT)
+    assert core, "the PROMPT-CORE block did not resolve — there is no manifest to verify"
+
+    for needle, resolver, why in claims:
+        assert needle in core, (
+            f"the PROMPT-CORE block no longer states {needle!r}; this guard anchors on it to prove the "
+            f"backing symbol ({why}) is live. If the wording changed, update the needle — never drop the guard."
+        )
+        assert resolver(), (
+            f"the manifest claims {needle!r} but its backing affordance is not live ({why}). A capability "
+            f"line the code cannot back is the authoritative lie this file exists to prevent: fix the feature "
+            f"or correct the manifest, do not leave the claim standing."
+        )
+
+    # Guard the guard: every PROMPT-CORE bullet must be covered by at least one mapped needle, so a NEW
+    # capability line added to the manifest without a backing symbol cannot pass this test unnoticed.
+    needles = [n for n, _, _ in claims]
+    for bullet in _core_bullets(core):
+        assert any(n in bullet for n in needles), (
+            f"a PROMPT-CORE capability line has no backing-symbol mapping: {bullet[:90]!r}. Every claim must "
+            f"resolve to a live registry tool, router route, or config/module symbol — add it to `claims`."
+        )
+
+
 @pytest.mark.parametrize("goal", CAPABILITY_QUESTIONS)
 def test_gate_fires_on_capability_questions(goal):
     assert _is_capability_question(goal.lower()), f"must inject self-knowledge for: {goal!r}"
