@@ -62,10 +62,35 @@ def prefetch_embedding_model() -> bool:
     return False
 
 
+def resolve_provision_domain(explicit_domain, rs) -> str:
+    """Resolve the model domain for provisioning (pd01/in05).
+
+    Explicit --domain wins; else honor the operator's first-run persona choice
+    (model_category_preference / persona_choice from config); else 'general' (companion). This
+    replaces the old hardcoded 'coding' default that installed a coder model for everyone — the #1
+    confuser for a companion-seeking user.
+    """
+    valid = {"general", "coding", "reasoning", "creative", "chat", "code", "math", "writing", "roleplay"}
+    if explicit_domain:
+        return str(explicit_domain).strip().lower()
+    try:
+        cfg = rs.load_config() or {}
+    except Exception:
+        cfg = {}
+    pref = str(cfg.get("model_category_preference") or "").strip().lower()
+    if pref in valid:
+        return pref
+    if str(cfg.get("persona_choice") or "").strip().lower() == "coder":
+        return "coding"
+    return "general"
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--prefer", default="balanced", choices=["quality", "balanced", "lite", "speed"])
-    ap.add_argument("--domain", default="coding")
+    ap.add_argument("--domain", default=None,
+                    help="general (companion) | coding | reasoning | creative. Default: honor the "
+                         "first-run persona choice, else general (companion) — not the old coder default.")
     ap.add_argument("--spanish", action="store_true", help="Castilla: respond in Spanish (bilingual ES/EN)")
     ap.add_argument("--language-assist", action="store_true", help="also download a small multilingual translation/intent helper")
     ap.add_argument("--aspects", default="", help="comma list of extra personalities to provision models for (e.g. nyx,echo)")
@@ -110,7 +135,13 @@ def main(argv: list[str]) -> int:
         print(f"[disk] only ~{free_gb:.0f} GB free -> switching to a lighter model (--prefer lite)")
         args.prefer = "lite"
 
-    kit = recommend_kit(hw_info, domain=args.domain, prefer=args.prefer)
+    # Domain resolution honors the operator's first-run persona choice (pd01/in05): the friend /
+    # companion path installs a companion-tuned (general) model, NOT the old coder default that was
+    # the #1 confuser. Explicit --domain always wins; else read the persona choice; else general.
+    domain = resolve_provision_domain(args.domain, rs)
+    print(f"[persona] provisioning a '{domain}' model"
+          + (" (companion default)" if domain == "general" and not args.domain else ""))
+    kit = recommend_kit(hw_info, domain=domain, prefer=args.prefer)
     if not kit or not kit.get("primary"):
         print("[error] no compatible model for this hardware", file=sys.stderr)
         return 1
