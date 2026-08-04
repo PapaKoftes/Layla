@@ -27,6 +27,8 @@ _BLEED_PHRASES = [
     "REFERENCE",
     "[END]",
     "[End of message]",
+    "Response length: concise",
+    "Be terse: no preamble",
 ]
 
 # (raw_leak, must_start_with) — real captures. The answer is always the leading prose.
@@ -62,6 +64,24 @@ _LEAK_SAMPLES = [
         "Reply with ONLY your message to the user, as plain conversational prose.",  # whole reply IS the bleed
         None,  # → empty is acceptable (better than leaking); assert no bleed phrase survives
     ),
+    (
+        # Real capture (2026-08-04): the 3B parroted its aspect-behavior length directive as a tail on a
+        # Spanish coding reply. Answer (incl. non-ASCII) must survive; the directive echo must be cut.
+        "Una función recursiva es aquella que se llama a sí misma.\n\nResponse length: concise. terse.",
+        "Una función recursiva",
+    ),
+    (
+        "The answer is 4. Be terse: no preamble, no filler, no padding.",
+        "The answer is 4.",
+    ),
+    (
+        # Real capture (2026-08-04): the familiarity context line (2nd-person private note to Layla)
+        # parroted as a tail on a factual recall reply. The answer must survive; the note must be cut.
+        "Your CNC post-processor is LinuxCNC and you prefer metric units. You have 22 of 23 of this "
+        "operator's stated preferences on file (name, working style). That is how well you know them, "
+        "not what you can do.",
+        "Your CNC post-processor is LinuxCNC and you prefer metric units.",
+    ),
 ]
 
 # Legit replies that MUST be preserved intact (over-truncation guard).
@@ -70,6 +90,8 @@ _CLEAN_SAMPLES = [
     "Please reply as soon as you can; I only need a yes or no.",
     "The answer is 4. No further explanation needed.",
     "```python\ndef add(a, b):\n    return a + b  # this is a written note, not TEXT chat scaffold\n```",
+    # A legit prose mention of response length (no concise/balanced/thorough directive shape) must survive.
+    "You can change the response length in Settings if you'd like shorter replies.",
 ]
 
 

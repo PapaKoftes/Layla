@@ -50,33 +50,40 @@ def save_learning(
     aspect_id: str = "",
     privacy_level: str = "",
     min_length: int | None = None,
+    bypass_rate_limit: bool = False,
 ) -> int:
     """Save a learning. Uses content_hash for dedup. confidence: 0.9 study, 0.7 LLM, 0.4 heuristic.
     Hook: learning quality filter rejects short/uncertain entries; long content summarized before storing.
     `privacy_level="sensitive"` + the `encryption_at_rest_enabled` flag → content is encrypted at rest
     (BL-020): stored ciphertext, dedup still on plaintext hash, and the plaintext is kept OUT of the
-    embedding + Elasticsearch index (FTS auto-indexes the opaque ciphertext, which cannot be searched)."""
+    embedding + Elasticsearch index (FTS auto-indexes the opaque ciphertext, which cannot be searched).
+
+    `bypass_rate_limit=True` skips the anti-spam window: the limiter exists to protect the DB +
+    vector store from rapid-fire *automatic* learning writes (outcome/reinforcement), NOT to reject
+    an intentional user command. An explicit "remember this" must never be starved by auto-saves that
+    filled the window earlier in the same turn — that silently drops the one memory the user asked for."""
     migrate()
     # Simple in-process rate limit: protects DB + vector store from rapid-fire learning spam.
-    # Best-effort only (resets on restart).
-    try:
-        limit = 20
-        window_s = 60.0
-        now = time.time()
-        with _rate_lock:
-            while _recent_learning_ts and (now - _recent_learning_ts[0]) > window_s:
-                _recent_learning_ts.popleft()
-            if len(_recent_learning_ts) >= limit:
-                try:
-                    from services.observability import log_learning_skipped
-                    log_learning_skipped(reason="rate_limited")
-                except Exception:
-                    pass
-                logger.debug("save_learning rate-limited (%d/%d in %.0fs window)", limit, limit, window_s)
-                return -1
-            _recent_learning_ts.append(now)
-    except Exception:
-        pass
+    # Best-effort only (resets on restart). Explicit user commands opt out (see bypass_rate_limit).
+    if not bypass_rate_limit:
+        try:
+            limit = 20
+            window_s = 60.0
+            now = time.time()
+            with _rate_lock:
+                while _recent_learning_ts and (now - _recent_learning_ts[0]) > window_s:
+                    _recent_learning_ts.popleft()
+                if len(_recent_learning_ts) >= limit:
+                    try:
+                        from services.observability import log_learning_skipped
+                        log_learning_skipped(reason="rate_limited")
+                    except Exception:
+                        pass
+                    logger.debug("save_learning rate-limited (%d/%d in %.0fs window)", limit, limit, window_s)
+                    return -1
+                _recent_learning_ts.append(now)
+        except Exception:
+            pass
     try:
         from services.memory.learning_filter import filter_learning
         pass_filter, filtered, reason = filter_learning(content, min_length=min_length)

@@ -18,29 +18,55 @@ def collect_initiative_hints(state: dict[str, Any], cfg: dict[str, Any]) -> list
     if not isinstance(steps, list):
         return []
 
-    for s in reversed(steps):
-        if not isinstance(s, dict):
-            continue
-        act = str(s.get("action") or "").strip()
-        if act in ("reason", "think", "client_abort", "none", ""):
-            continue
-        r = s.get("result")
-        if isinstance(r, dict) and r.get("ok") is False:
-            err = str(r.get("error") or r.get("reason") or "error")[:100]
-            out.append(f"Recent `{act}` failed ({err}) — add a read or narrow verify step before retrying.")
-            break
+    # Tool-oriented hints ("Recent `read_file` failed …" / "add a verify step") only make sense when
+    # the user is driving agentic/engineering work. On a conversational turn (e.g. "what is my
+    # indentation preference?") a read-only tool the model spuriously called must NOT bleed a follow-up
+    # suggestion into the reply — that is noise the user never asked about. A turn counts as agentic if
+    # the user authorized tools/planning, the goal reads like an engineering task, OR a *mutating* tool
+    # actually ran (mutating tools only execute when the user is genuinely driving work; a stray
+    # read_file/list_dir/search does not, so their presence alone does not make a turn agentic).
+    goal_l = str(state.get("original_goal") or state.get("objective") or "").lower()
+    _AGENTIC_KW = (
+        "implement", "fix", "refactor", "debug", "build", "write", "add", "create", "run",
+        "test", "migrate", "patch", "edit", "modify", "delete", "install", "deploy", "commit",
+        "code", "script", "compile", "generate", "convert",
+    )
+    _MUTATING_TOOLS = frozenset({
+        "write_file", "edit_file", "create_file", "append_file", "delete_file", "move_file",
+        "shell", "run_shell", "run_command", "run_python", "exec", "apply_patch",
+        "git_commit", "git_apply", "git_push", "git_add", "install_package",
+    })
+    _ran_mutating = any(
+        isinstance(s, dict) and str(s.get("action") or "").strip() in _MUTATING_TOOLS for s in steps
+    )
+    agentic = (
+        bool(state.get("allow_run")) or bool(state.get("allow_write")) or bool(state.get("plan_mode"))
+        or any(k in goal_l for k in _AGENTIC_KW) or _ran_mutating
+    )
+    if agentic:
+        for s in reversed(steps):
+            if not isinstance(s, dict):
+                continue
+            act = str(s.get("action") or "").strip()
+            if act in ("reason", "think", "client_abort", "none", ""):
+                continue
+            r = s.get("result")
+            if isinstance(r, dict) and r.get("ok") is False:
+                err = str(r.get("error") or r.get("reason") or "error")[:100]
+                out.append(f"Recent `{act}` failed ({err}) — add a read or narrow verify step before retrying.")
+                break
 
-    try:
-        from services.infrastructure.outcome_evaluation import evaluate_outcome_structured
+        try:
+            from services.infrastructure.outcome_evaluation import evaluate_outcome_structured
 
-        probe = {**state, "status": state.get("status") or "finished"}
-        ev = evaluate_outcome_structured(probe)
-        if ev.get("reason") not in ("ok", "reply_only") and ev.get("improvement"):
-            imp = str(ev["improvement"]).strip()
-            if imp and imp not in out:
-                out.append(imp[:300])
-    except Exception:
-        pass
+            probe = {**state, "status": state.get("status") or "finished"}
+            ev = evaluate_outcome_structured(probe)
+            if ev.get("reason") not in ("ok", "reply_only") and ev.get("improvement"):
+                imp = str(ev["improvement"]).strip()
+                if imp and imp not in out:
+                    out.append(imp[:300])
+        except Exception:
+            pass
 
     if len(out) < 2:
         goal = (state.get("original_goal") or state.get("objective") or "").lower()
