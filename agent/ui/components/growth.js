@@ -15,6 +15,10 @@ let _refreshing = false;
 // /operator/profile payload — the single source of truth. No client threshold table
 // (it duplicated the server's ranks and could silently drift out of sync).
 
+// i18n: window.t is installed by ui/core/i18n.js init. Fall back to the key's default if it isn't
+// ready yet (never render "undefined"). Keys live under growth.* in ui/locales/*.json.
+function T(key, fallback, params){ try{ if(window.t){ const v=window.t(key,params); if(v&&v!==key) return v; } }catch(_){}; let s=fallback; if(params) for(const k in params) s=s.replace("{"+k+"}",params[k]); return s; }
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function _esc(s) {
   return escapeHtml(String(s || ''));
@@ -66,8 +70,8 @@ function _renderFamiliarity(f) {
   if (!el) return;
 
   if (!f || !f.ok || !f.total) {
-    el.innerHTML = '<div style="font-size:0.6rem;color:var(--text-dim)">Nothing on file yet — '
-      + 'finish onboarding or the operator quiz and this fills in.</div>';
+    el.innerHTML = '<div style="font-size:0.6rem;color:var(--text-dim)">'
+      + _esc(T("growth.familiarity.empty", "Nothing on file yet — finish onboarding or the operator quiz and this fills in.")) + '</div>';
     return;
   }
 
@@ -79,7 +83,7 @@ function _renderFamiliarity(f) {
 
   let html = '';
   html += '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">';
-  html += '<span style="font-size:0.72rem;color:var(--text)"><strong>' + known + '</strong> of ' + total + ' things about you</span>';
+  html += '<span style="font-size:0.72rem;color:var(--text)">' + T("growth.familiarity.headline", "<strong>{known}</strong> of {total} things about you", { known: known, total: total }) + '</span>';
   html += '<span style="font-size:0.6rem;color:var(--accent)">' + pct + '%</span>';
   html += '</div>';
   html += '<div class="growth-xp-bar"><div class="growth-xp-bar-fill" style="width:' + pct + '%"></div></div>';
@@ -99,7 +103,7 @@ function _renderFamiliarity(f) {
 
   // The audit trail: every roster row with the value actually stored for it.
   html += '<details style="margin-top:8px">';
-  html += '<summary style="font-size:0.6rem;color:var(--text-dim);cursor:pointer">What she has on file (' + known + '/' + total + ')</summary>';
+  html += '<summary style="font-size:0.6rem;color:var(--text-dim);cursor:pointer">' + _esc(T("growth.familiarity.onfile", "What she has on file ({known}/{total})", { known: known, total: total })) + '</summary>';
   html += '<div style="margin-top:6px;display:flex;flex-direction:column;gap:2px">';
   for (let i = 0; i < answers.length; i++) {
     const a = answers[i];
@@ -110,7 +114,7 @@ function _renderFamiliarity(f) {
     html += '<span style="flex:0 0 40%;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'
       + _esc(a.key || '') + '">' + _esc(a.label || '') + '</span>';
     html += '<span style="flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
-      + (a.known ? _esc(a.value || '') : '<em style="color:var(--text-dim)">not set</em>') + '</span>';
+      + (a.known ? _esc(a.value || '') : '<em style="color:var(--text-dim)">' + _esc(T("growth.familiarity.not_set", "not set")) + '</em>') + '</span>';
     html += '</div>';
   }
   html += '</div>';
@@ -119,7 +123,7 @@ function _renderFamiliarity(f) {
   }
   const src = f.sources || {};
   if (src.profile || src.traits) {
-    html += '<p style="font-size:0.53rem;color:var(--text-dim);line-height:1.4;margin:4px 0 0">Read from: '
+    html += '<p style="font-size:0.53rem;color:var(--text-dim);line-height:1.4;margin:4px 0 0">' + _esc(T("growth.familiarity.read_from", "Read from:")) + ' '
       + _esc([src.profile, src.traits].filter(Boolean).join(' · ')) + '</p>';
   }
   html += '</details>';
@@ -159,7 +163,7 @@ function _populateMaturity(p) {
   // Rank badge
   const badgeEl = document.getElementById('growth-rank-badge');
   if (badgeEl) {
-    badgeEl.textContent = 'Rank ' + rank;
+    badgeEl.textContent = T("growth.rank", "Rank {n}", { n: rank });
     badgeEl.className = 'growth-rank-badge phase-' + phase;
   }
   _setText('growth-phase-name', _phaseDisplayName(phase));
@@ -167,11 +171,11 @@ function _populateMaturity(p) {
 
 function _phaseDisplayName(phase) {
   const map = {
-    awakening: 'Awakening',
-    attunement: 'Attunement',
-    resonance: 'Resonance',
-    sovereignty: 'Sovereignty',
-    transcendence: 'Transcendence',
+    awakening: T("growth.phase.awakening", "Awakening"),
+    attunement: T("growth.phase.attunement", "Attunement"),
+    resonance: T("growth.phase.resonance", "Resonance"),
+    sovereignty: T("growth.phase.sovereignty", "Sovereignty"),
+    transcendence: T("growth.phase.transcendence", "Transcendence"),
   };
   return map[phase] || phase;
 }
@@ -242,7 +246,7 @@ function _renderVelocitySparkline(weeks) {
   if (!el) return;
 
   if (!weeks || weeks.length === 0) {
-    el.innerHTML = '<span style="color:var(--text-dim);font-size:0.6rem">No velocity data yet</span>';
+    el.innerHTML = '<span style="color:var(--text-dim);font-size:0.6rem">' + _esc(T("growth.velocity.empty", "No velocity data yet")) + '</span>';
     return;
   }
 
@@ -256,7 +260,7 @@ function _renderVelocitySparkline(weeks) {
     const h = Math.max(2, Math.round((count / safeMax) * 28));
     const label = data[i].label || ('W' + (i + 1));
     html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:1px">';
-    html += '<div style="width:100%;height:' + h + 'px;background:var(--accent);border-radius:2px;min-width:8px" title="' + _esc(label) + ': ' + count + ' learnings"></div>';
+    html += '<div style="width:100%;height:' + h + 'px;background:var(--accent);border-radius:2px;min-width:8px" title="' + _esc(T("growth.velocity.tooltip", "{label}: {n} learnings", { label: label, n: count })) + '"></div>';
     html += '<span style="font-size:0.45rem;color:var(--text-dim)">' + count + '</span>';
     html += '</div>';
   }
@@ -270,7 +274,7 @@ function _renderCapabilities(caps) {
   if (!el) return;
 
   if (!caps.length) {
-    el.textContent = 'No capabilities tracked yet';
+    el.textContent = T("growth.capabilities.empty", "No capabilities tracked yet");
     return;
   }
 
@@ -279,7 +283,7 @@ function _renderCapabilities(caps) {
   let html = '<div style="display:flex;flex-direction:column;gap:4px">';
   for (let i = 0; i < caps.length; i++) {
     const c = caps[i];
-    const name = _esc(c.name || 'Unknown');
+    const name = _esc(c.name || T("growth.capability.unknown", "Unknown"));
     const level = (c.level || 0).toFixed(1);
     const conf = Math.round((c.confidence || 0) * 100);
     // record_practice writes improving|weakening|stagnant|stable (capabilities.py:55) — NOT rising/falling.
@@ -298,7 +302,7 @@ function _renderCapabilities(caps) {
     html += '<div style="width:' + pct + '%;height:100%;background:var(--accent);border-radius:3px"></div>';
     html += '</div>';
     html += '<span style="flex:0 0 28px;text-align:right;font-size:0.6rem">' + level + '</span>';
-    html += '<span style="flex:0 0 14px;color:' + trendColor + '" title="' + trend + ' (' + conf + '% conf)">' + trendIcon + '</span>';
+    html += '<span style="flex:0 0 14px;color:' + trendColor + '" title="' + _esc(T("growth.capability.trend_title", "{trend} ({n}% conf)", { trend: trend, n: conf })) + '">' + trendIcon + '</span>';
     html += '</div>';
   }
   html += '</div>';
@@ -311,7 +315,7 @@ function _renderTypes(types) {
 
   const keys = Object.keys(types);
   if (!keys.length) {
-    el.textContent = 'No learnings yet';
+    el.textContent = T("growth.types.empty", "No learnings yet");
     return;
   }
 
@@ -332,23 +336,24 @@ function _renderWatcher(w) {
   if (!el) return;
 
   if (!w || !Object.keys(w).length) {
-    el.textContent = 'Knowledge watcher not active';
+    el.textContent = T("growth.watcher.inactive", "Knowledge watcher not active");
     return;
   }
 
   // Field names match the server's get_stats(): watch_dirs[], files_ingested,
   // files_skipped (was reading nonexistent watched_folders/files_processed/files_pending).
-  const running = w.running ? '● Running' : '○ Stopped';
+  const running = w.running ? ('● ' + T("growth.watcher.running", "Running")) : ('○ ' + T("growth.watcher.stopped", "Stopped"));
   const runColor = w.running ? '#4caf50' : '#f44336';
   const watched = Array.isArray(w.watch_dirs) ? w.watch_dirs.length : (w.watched_folders || 0);
   const processed = (w.files_ingested != null) ? w.files_ingested : (w.files_processed || 0);
   const skipped = w.files_skipped || 0;
 
-  let html = '<span style="color:' + runColor + '">' + running + '</span>';
-  html += ' · ' + watched + ' folder' + (watched !== 1 ? 's' : '') + ' watched';
-  html += ' · ' + _fmtNum(processed) + ' ingested';
+  const folderWord = watched !== 1 ? T("growth.watcher.folders", "folders watched") : T("growth.watcher.folder", "folder watched");
+  let html = '<span style="color:' + runColor + '">' + _esc(running) + '</span>';
+  html += ' · ' + watched + ' ' + _esc(folderWord);
+  html += ' · ' + _fmtNum(processed) + ' ' + _esc(T("growth.watcher.ingested", "ingested"));
   if (skipped > 0) {
-    html += ' · <span style="color:#ff9800">' + _fmtNum(skipped) + ' skipped</span>';
+    html += ' · <span style="color:#ff9800">' + _fmtNum(skipped) + ' ' + _esc(T("growth.watcher.skipped", "skipped")) + '</span>';
   }
   el.innerHTML = html;
 }
@@ -365,26 +370,26 @@ function _verifyActionsVisible(on) {
 
 async function _verifyLoadNext() {
   const body = document.getElementById('verify-review-body');
-  if (body) body.textContent = 'Loading…';
+  if (body) body.textContent = T("growth.verify.loading", "Loading…");
   try {
     const r = await fetch('/verify/next');
     const d = await r.json();
-    if (!d || !d.ok) { if (body) body.textContent = 'Could not load: ' + ((d && d.error) || 'error'); return; }
+    if (!d || !d.ok) { if (body) body.textContent = T("growth.verify.could_not_load", "Could not load:") + ' ' + ((d && d.error) || T("growth.verify.error", "error")); return; }
     if (!d.fact) {
       _verifyCurrentFactId = null;
-      if (body) body.innerHTML = '<span style="color:var(--success,#3fae6b)">&#10003; All caught up — nothing to verify right now.</span>';
+      if (body) body.innerHTML = '<span style="color:var(--success,#3fae6b)">&#10003; ' + _esc(T("growth.verify.all_caught_up", "All caught up — nothing to verify right now.")) + '</span>';
       _verifyActionsVisible(false);
       return;
     }
     _verifyCurrentFactId = d.fact.id;
     const conf = Math.round((Number(d.fact.confidence) || 0) * 100);
-    const meta = escapeHtml(String(d.fact.source || 'inferred')) + ' · ' + conf + '% conf'
+    const meta = escapeHtml(String(d.fact.source || T("growth.verify.inferred", "inferred"))) + ' · ' + conf + '% ' + escapeHtml(T("growth.verify.conf", "conf"))
       + (d.fact.prompt_number ? (' · ' + d.fact.prompt_number + '/' + d.fact.max_prompts) : '');
-    if (body) body.innerHTML = '<div style="margin-bottom:5px;color:var(--text-dim);font-size:0.6rem">Is this true? (' + meta + ')</div>'
+    if (body) body.innerHTML = '<div style="margin-bottom:5px;color:var(--text-dim);font-size:0.6rem">' + _esc(T("growth.verify.is_true", "Is this true?")) + ' (' + meta + ')</div>'
       + '<div style="color:var(--text)">' + escapeHtml(String(d.fact.fact || '')) + '</div>';
     _verifyActionsVisible(true);
   } catch (_e) {
-    if (body) body.textContent = 'Could not load verifications.';
+    if (body) body.textContent = T("growth.verify.load_failed", "Could not load verifications.");
   }
 }
 

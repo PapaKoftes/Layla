@@ -17,6 +17,10 @@
 import { escapeHtml, showToast } from '../services/utils.js';
 import { laylaAutoMonitorStart } from './autonomous.js';
 
+// i18n: window.t is installed by ui/core/i18n.js init. Fall back to the key's default if it isn't
+// ready yet (never render "undefined"). Keys live under research.* in ui/locales/*.json.
+function T(key, fallback, params){ try{ if(window.t){ const v=window.t(key,params); if(v&&v!==key) return v; } }catch(_){}; let s=fallback; if(params) for(const k in params) s=s.replace("{"+k+"}",params[k]); return s; }
+
 // ── Call-time resolved helpers (modules may load after us) ──────────────────
 function _addMsg()                  { return (window.addMsg || function () {}).apply(null, arguments); }
 function _addSeparator()            { return (window.addSeparator || function () {})(); }
@@ -28,7 +32,7 @@ function _laylaRemoveTypingIndicator()   { return (window.laylaRemoveTypingIndic
 function _laylaStartNonStreamTypingPhases() { return (window.laylaStartNonStreamTypingPhases || function () {})(); }
 function _laylaNotifyStreamPhase(r, k)   { return (window.laylaNotifyStreamPhase || function () {})(r, k); }
 function _fetchWithTimeout(u, o, t) { return (window.fetchWithTimeout || function (u2, o2) { return fetch(u2, o2 || {}); })(u, o, t); }
-function _formatAgentError(r, b)    { return (window.formatAgentError || function (r2) { return r2 ? 'Request failed' : "Can't reach server"; })(r, b); }
+function _formatAgentError(r, b)    { return (window.formatAgentError || function (r2) { return r2 ? T('research.agentError.requestFailed', 'Request failed') : T('research.agentError.unreachable', "Can't reach server"); })(r, b); }
 function _cleanLaylaText(s)         { return (window.cleanLaylaText || function (s2) { return String(s2 || ''); })(s); }
 function _sanitizeHtml(h)           { return (window.sanitizeHtml || function (h2) { return h2; })(h); }
 function _getUxStateLabels()        { return window.UX_STATE_LABELS || {}; }
@@ -50,7 +54,7 @@ export async function startResearchMission(isResume) {
   const nsEl = document.getElementById('next-stage');
   const nextStage = nsEl ? nsEl.checked : false;
 
-  _addMsg('you', (isResume ? '&#9208; Resume' : '&#9654; Start') + ' research mission: depth=' + missionDepth + (nextStage ? ', next_stage' : '') + (workspacePath ? ' · ' + workspacePath : ''));
+  _addMsg('you', (isResume ? '&#9208; ' + T('research.mission.resume', 'Resume') : '&#9654; ' + T('research.mission.start', 'Start')) + ' ' + T('research.mission.depthLabel', 'research mission: depth={depth}', { depth: missionDepth }) + (nextStage ? ', next_stage' : '') + (workspacePath ? ' · ' + workspacePath : ''));
   _addSeparator();
 
   const chatEl = document.getElementById('chat');
@@ -74,7 +78,7 @@ export async function startResearchMission(isResume) {
     });
     wrap.remove();
     if (!res.ok) {
-      let errMsg = 'Research mission failed: ' + res.status;
+      let errMsg = T('research.mission.failed', 'Research mission failed: {status}', { status: res.status });
       try { const errBody = await res.json(); if (errBody && (errBody.error || errBody.response || errBody.detail)) errMsg = errBody.response || errBody.error || (typeof errBody.detail === 'string' ? errBody.detail : errMsg); } catch (_) {}
       _addMsg('layla', errMsg);
       await refreshMissionStatus();
@@ -82,7 +86,7 @@ export async function startResearchMission(isResume) {
       return;
     }
     const data = await res.json().catch(function () { return {}; });
-    const resp = (data && data.response) || '(no output)';
+    const resp = (data && data.response) || T('research.mission.noOutput', '(no output)');
     const aspectName = data && data.state ? data.state.aspect_name : undefined;
     const deliberated = data && data.state && data.state.steps ? data.state.steps.some(function (s) { return s.deliberated; }) : false;
     const steps = data && data.state ? data.state.steps : undefined;
@@ -91,7 +95,7 @@ export async function startResearchMission(isResume) {
     _addMsg('layla', resp, aspectName, deliberated, steps, uxStates, memInfluenced);
     if (data && data.mission_depth) {
       const stagesRun = Array.isArray(data.stages_run) ? data.stages_run : [];
-      _addMsg('layla', 'Mission depth: ' + data.mission_depth + (stagesRun.length ? ', stages run: ' + stagesRun.join(', ') : ''));
+      _addMsg('layla', T('research.mission.depthResult', 'Mission depth: {depth}', { depth: data.mission_depth }) + (stagesRun.length ? T('research.mission.stagesRun', ', stages run: {stages}', { stages: stagesRun.join(', ') }) : ''));
     }
     if (window._ttsEnabled && resp && resp !== '(no output)') { _speakText(resp).catch(function () {}); }
     await refreshMissionStatus();
@@ -100,7 +104,7 @@ export async function startResearchMission(isResume) {
     await showResearchTab(activeTab);
   } catch (e) {
     wrap.remove();
-    _addMsg('layla', 'Error: ' + e.message);
+    _addMsg('layla', T('research.error', 'Error: {msg}', { msg: e.message }));
     await refreshMissionStatus();
   }
   refreshApprovals();
@@ -122,19 +126,19 @@ export async function refreshMissionStatus() {
     const completed = Array.isArray(data.completed) ? data.completed : [];
     const stage = (data.stage != null) ? data.stage : null;
     const lastRun = (data.last_run != null) ? data.last_run : null;
-    lineEl.textContent = 'Status: ' + (status || '—');
+    lineEl.textContent = T('research.status.label', 'Status: {status}', { status: status || '—' });
     const completedStr = completed.length ? '✔ ' + completed.join(', ') : '';
-    if (detailEl) detailEl.innerHTML = (lastRun ? 'Last run: ' + escapeHtml(String(lastRun)) + '<br>' : '') + (stage ? '⏳ Current: ' + escapeHtml(String(stage)) + '<br>' : '') + (completedStr ? escapeHtml(completedStr) : '');
+    if (detailEl) detailEl.innerHTML = (lastRun ? T('research.status.lastRun', 'Last run: {run}', { run: escapeHtml(String(lastRun)) }) + '<br>' : '') + (stage ? '⏳ ' + T('research.status.current', 'Current: {stage}', { stage: escapeHtml(String(stage)) }) + '<br>' : '') + (completedStr ? escapeHtml(completedStr) : '');
     if (liveEl) {
-      liveEl.textContent = 'Updated ' + new Date().toLocaleTimeString();
+      liveEl.textContent = T('research.status.updated', 'Updated {time}', { time: new Date().toLocaleTimeString() });
       liveEl.style.animation = status !== 'complete' ? 'mission-pulse 2s ease-in-out infinite' : 'none';
     }
     if (warnEl) warnEl.style.display = (status === 'partial' || status === 'stopped') ? 'block' : 'none';
     if (resumableEl) resumableEl.style.display = (status && status !== 'complete') ? 'block' : 'none';
   } catch (_) {
-    lineEl.textContent = 'Status: —';
+    lineEl.textContent = T('research.status.label', 'Status: {status}', { status: '—' });
     if (detailEl) detailEl.textContent = '';
-    if (liveEl) liveEl.textContent = 'Update failed';
+    if (liveEl) liveEl.textContent = T('research.status.updateFailed', 'Update failed');
     if (warnEl) warnEl.style.display = 'none';
     if (resumableEl) resumableEl.style.display = 'none';
   }
@@ -155,7 +159,7 @@ export async function refreshApprovals() {
       const _badge = document.getElementById('topbar-approvals');
       if (_badge) {
         if (todo.length) {
-          _badge.textContent = '⚠ ' + todo.length + (todo.length === 1 ? ' approval' : ' approvals');
+          _badge.textContent = '⚠ ' + (todo.length === 1 ? T('research.approvals.badgeOne', '{n} approval', { n: todo.length }) : T('research.approvals.badgeMany', '{n} approvals', { n: todo.length }));
           _badge.style.display = '';
         } else {
           _badge.style.display = 'none';
@@ -163,7 +167,7 @@ export async function refreshApprovals() {
       }
     } catch (_) {}
     if (!todo.length) {
-      box.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">No pending approvals</span>';
+      box.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">' + escapeHtml(T('research.approvals.none', 'No pending approvals')) + '</span>';
       return;
     }
     const html = [];
@@ -177,14 +181,14 @@ export async function refreshApprovals() {
         : '';
       html.push(
         '<div class="approval-card" style="margin:8px 0;padding:8px;border:1px solid var(--border);border-radius:6px;background:rgba(0,0,0,0.12)">' +
-          '<div style="font-size:0.72rem"><strong>' + escapeHtml(tool || 'tool') + '</strong> <span style="color:var(--text-dim)">(' + escapeHtml(id.slice(0, 8) || 'id') + '…)</span></div>' +
+          '<div style="font-size:0.72rem"><strong>' + escapeHtml(tool || T('research.approvals.toolFallback', 'tool')) + '</strong> <span style="color:var(--text-dim)">(' + escapeHtml(id.slice(0, 8) || 'id') + '…)</span></div>' +
           diffBlock +
           '<pre style="margin:6px 0 8px;white-space:pre-wrap;word-break:break-word;font-size:0.65rem;background:var(--code-bg);padding:6px;border-radius:4px;border:1px solid rgba(255,255,255,0.06);max-height:160px;overflow:auto">' + escapeHtml(argsPreview) + '</pre>' +
-          '<label style="font-size:0.62rem;display:flex;gap:6px;align-items:center;margin:4px 0;color:var(--text-dim)"><input type="checkbox" class="grant-session-cb" /> Grant for session (same tool)</label>' +
-          '<label style="font-size:0.62rem;display:block;margin:4px 0;color:var(--text-dim)">grant_pattern <input type="text" class="grant-pattern-inp" style="width:100%;padding:4px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.62rem" placeholder="optional path glob" /></label>' +
+          '<label style="font-size:0.62rem;display:flex;gap:6px;align-items:center;margin:4px 0;color:var(--text-dim)"><input type="checkbox" class="grant-session-cb" /> ' + escapeHtml(T('research.approvals.grantSession', 'Grant for session (same tool)')) + '</label>' +
+          '<label style="font-size:0.62rem;display:block;margin:4px 0;color:var(--text-dim)">grant_pattern <input type="text" class="grant-pattern-inp" style="width:100%;padding:4px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:0.62rem" placeholder="' + escapeHtml(T('research.approvals.patternPlaceholder', 'optional path glob')) + '" /></label>' +
           '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">' +
-            '<button type="button" class="approve-btn" data-approve-id="' + escapeHtml(id) + '">Approve</button>' +
-            '<button type="button" class="approve-btn" style="background:transparent;border-color:var(--border);color:var(--text-dim)" data-deny-id="' + escapeHtml(id) + '">Deny</button>' +
+            '<button type="button" class="approve-btn" data-approve-id="' + escapeHtml(id) + '">' + escapeHtml(T('research.approvals.approve', 'Approve')) + '</button>' +
+            '<button type="button" class="approve-btn" style="background:transparent;border-color:var(--border);color:var(--text-dim)" data-deny-id="' + escapeHtml(id) + '">' + escapeHtml(T('research.approvals.deny', 'Deny')) + '</button>' +
           '</div></div>'
       );
     });
@@ -205,10 +209,10 @@ export async function refreshApprovals() {
           const r = await _fetchWithTimeout('/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }, 15000);
           let body = {};
           try { body = await r.json(); } catch (_) {}
-          if (!r.ok || !body.ok) showToast((body && body.error) ? ('Approve failed: ' + body.error) : ('Approve failed: ' + r.status));
-          else showToast('Approved');
+          if (!r.ok || !body.ok) showToast((body && body.error) ? T('research.approvals.approveFailed', 'Approve failed: {msg}', { msg: body.error }) : T('research.approvals.approveFailed', 'Approve failed: {msg}', { msg: r.status }));
+          else showToast(T('research.approvals.approved', 'Approved'));
         } catch (e2) {
-          showToast('Approve error: ' + (e2 && e2.message || e2));
+          showToast(T('research.approvals.approveError', 'Approve error: {msg}', { msg: (e2 && e2.message || e2) }));
         } finally {
           btn.disabled = false;
           refreshApprovals();
@@ -225,10 +229,10 @@ export async function refreshApprovals() {
           const r = await _fetchWithTimeout('/deny', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: denyId }) }, 15000);
           let body = {};
           try { body = await r.json(); } catch (_) {}
-          if (!r.ok || !body.ok) showToast((body && body.error) ? ('Deny failed: ' + body.error) : ('Deny failed: ' + r.status));
-          else showToast('Denied');
+          if (!r.ok || !body.ok) showToast((body && body.error) ? T('research.approvals.denyFailed', 'Deny failed: {msg}', { msg: body.error }) : T('research.approvals.denyFailed', 'Deny failed: {msg}', { msg: r.status }));
+          else showToast(T('research.approvals.denied', 'Denied'));
         } catch (e2) {
-          showToast('Deny error: ' + (e2 && e2.message || e2));
+          showToast(T('research.approvals.denyError', 'Deny error: {msg}', { msg: (e2 && e2.message || e2) }));
         } finally {
           btn.disabled = false;
           refreshApprovals();
@@ -236,7 +240,7 @@ export async function refreshApprovals() {
       });
     });
   } catch (_) {
-    box.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">Could not load approvals</span>';
+    box.innerHTML = '<span style="color:var(--text-dim);font-size:0.75rem">' + escapeHtml(T('research.approvals.loadFailed', 'Could not load approvals')) + '</span>';
   }
 }
 
@@ -262,8 +266,8 @@ export async function showResearchTab(tab) {
     try {
       const res = await _fetchWithTimeout('/research_output/last', {}, 12000);
       const data = res.ok ? await res.json() : {};
-      contentEl.textContent = data.content || '(no output yet)';
-    } catch (_) { contentEl.textContent = '(failed to load)'; }
+      contentEl.textContent = data.content || T('research.tab.noOutputYet', '(no output yet)');
+    } catch (_) { contentEl.textContent = T('research.tab.loadFailed', '(failed to load)'); }
     return;
   }
   const path = RESEARCH_BRAIN_PATHS[tab];
@@ -271,8 +275,8 @@ export async function showResearchTab(tab) {
   try {
     const res = await _fetchWithTimeout('/research_brain/file?path=' + encodeURIComponent(path), {}, 12000);
     const data = res.ok ? await res.json() : {};
-    contentEl.textContent = data.content || '(no content yet)';
-  } catch (_) { contentEl.textContent = '(failed to load)'; }
+    contentEl.textContent = data.content || T('research.tab.noContentYet', '(no content yet)');
+  } catch (_) { contentEl.textContent = T('research.tab.loadFailed', '(failed to load)'); }
 }
 
 // ── sendResearch ────────────────────────────────────────────────────────────
@@ -281,9 +285,9 @@ export async function sendResearch(customMessage) {
   const workspacePath = (wpEl ? wpEl.value : '').trim();
   const researchMsg = (typeof customMessage === 'string' && customMessage.trim())
     ? customMessage.trim()
-    : 'Research this repo and tell me if the implementation is optimal. Do not modify anything.';
+    : T('research.send.defaultPrompt', 'Research this repo and tell me if the implementation is optimal. Do not modify anything.');
 
-  _addMsg('you', '🔬 ' + (researchMsg.length > 120 ? researchMsg.slice(0, 120) + '…' : researchMsg) + (workspacePath ? ' (Repo: ' + workspacePath + ')' : ''));
+  _addMsg('you', '🔬 ' + (researchMsg.length > 120 ? researchMsg.slice(0, 120) + '…' : researchMsg) + (workspacePath ? T('research.send.repoSuffix', ' (Repo: {path})', { path: workspacePath }) : ''));
   _addSeparator();
 
   try { const rmBadge = document.getElementById('reasoning-mode-badge'); if (rmBadge) rmBadge.textContent = ''; } catch (_) {}
@@ -334,14 +338,14 @@ export async function sendResearch(customMessage) {
       div.innerHTML = '<div class="msg-label msg-label-layla">' + _formatLaylaLabelHtml(ra) +
         '</div><div class="msg-bubble" title="Click to copy"><div class="md-content stream-md-placeholder">' +
         '<div class="typing-indicator" style="min-height:36px"><div class="typing-dots"><span></span><span></span><span></span></div></div>' +
-        '<div class="tool-status-label">' + (UX.connecting || 'Connecting') + '</div></div></div>';
+        '<div class="tool-status-label">' + (UX.connecting || T('research.ux.connecting', 'Connecting')) + '</div></div></div>';
       chatEl.appendChild(div);
 
       const bubble = div.querySelector('.md-content');
 
       const streamMeta = document.createElement('div');
       streamMeta.className = 'memory-attribution';
-      streamMeta.textContent = 'Status: ' + (UX.connecting || 'Connecting') + ' · 0s · 0 chars';
+      streamMeta.textContent = T('research.stream.statusMeta', 'Status: {status} · {secs}s · {chars} chars', { status: (UX.connecting || T('research.ux.connecting', 'Connecting')), secs: 0, chars: 0 });
       div.appendChild(streamMeta);
 
       const streamStartedAt = Date.now();
@@ -351,7 +355,7 @@ export async function sendResearch(customMessage) {
       metaTimer = setInterval(function () {
         const secs = Math.max(0, Math.floor((Date.now() - streamStartedAt) / 1000));
         const UXnow = _getUxStateLabels();
-        streamMeta.textContent = 'Status: ' + (UXnow[liveStatus] || liveStatus) + ' · ' + secs + 's · ' + (full || '').length + ' chars';
+        streamMeta.textContent = T('research.stream.statusMeta', 'Status: {status} · {secs}s · {chars} chars', { status: (UXnow[liveStatus] || liveStatus), secs: secs, chars: (full || '').length });
       }, 500);
 
       let researchStreamGotToken = false;
@@ -362,7 +366,7 @@ export async function sendResearch(customMessage) {
         const UXnow = _getUxStateLabels();
         let statusEl = div.querySelector('.tool-status-label');
         if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; const msgBub = div.querySelector('.msg-bubble'); if (msgBub) msgBub.appendChild(statusEl); }
-        statusEl.textContent = UXnow.waiting_first_token || 'Waiting for first token';
+        statusEl.textContent = UXnow.waiting_first_token || T('research.ux.waitingFirstToken', 'Waiting for first token');
         _laylaNotifyStreamPhase(div, liveStatus);
       }, 1200);
 
@@ -373,7 +377,7 @@ export async function sendResearch(customMessage) {
           const UXnow = _getUxStateLabels();
           let statusEl = div.querySelector('.tool-status-label');
           if (!statusEl) { statusEl = document.createElement('div'); statusEl.className = 'tool-status-label'; const msgBub = div.querySelector('.msg-bubble'); if (msgBub) msgBub.appendChild(statusEl); }
-          statusEl.textContent = (UXnow.stalled || 'Stalled') + ' — ' + (UXnow.retry_hint || 'Retry suggested');
+          statusEl.textContent = (UXnow.stalled || T('research.ux.stalled', 'Stalled')) + ' — ' + (UXnow.retry_hint || T('research.ux.retryHint', 'Retry suggested'));
           _laylaNotifyStreamPhase(div, 'stalled');
         }, researchStallMs);
       }
@@ -399,7 +403,7 @@ export async function sendResearch(customMessage) {
               if (obj.error) {
                 clearTimeout(firstTokenTimer); clearTimeout(stalledTimer); clearInterval(metaTimer);
                 try { div.remove(); } catch (_) {}
-                _addMsg('layla', 'Research stream error: ' + String(obj.error));
+                _addMsg('layla', T('research.stream.error', 'Research stream error: {msg}', { msg: String(obj.error) }));
                 refreshApprovals();
                 return;
               }
@@ -429,7 +433,7 @@ export async function sendResearch(customMessage) {
               if (obj.done) {
                 clearTimeout(firstTokenTimer); clearTimeout(stalledTimer);
                 if (obj.content != null && String(obj.content).trim() !== '') full = String(obj.content).trim();
-                try { const rmB = document.getElementById('reasoning-mode-badge'); if (rmB && obj.reasoning_mode) rmB.textContent = 'Thinking: ' + obj.reasoning_mode; } catch (_) {}
+                try { const rmB = document.getElementById('reasoning-mode-badge'); if (rmB && obj.reasoning_mode) rmB.textContent = T('research.thinking', 'Thinking: {mode}', { mode: obj.reasoning_mode }); } catch (_) {}
                 gotDone = true;
                 break;
               }
@@ -440,7 +444,7 @@ export async function sendResearch(customMessage) {
       }
 
       clearInterval(metaTimer); clearTimeout(firstTokenTimer); clearTimeout(stalledTimer);
-      streamMeta.textContent = 'Done · ' + Math.max(0, Math.floor((Date.now() - streamStartedAt) / 1000)) + 's · ' + (full || '').length + ' chars';
+      streamMeta.textContent = T('research.stream.doneMeta', 'Done · {secs}s · {chars} chars', { secs: Math.max(0, Math.floor((Date.now() - streamStartedAt) / 1000)), chars: (full || '').length });
 
       full = _cleanLaylaText(full);
       // Balance an unclosed fence on the final render too (parity with the live render above).
@@ -480,7 +484,7 @@ export async function sendResearch(customMessage) {
     }
 
     const data = await res.json();
-    try { const rmBadge2 = document.getElementById('reasoning-mode-badge'); const rm = data.reasoning_mode || (data.state ? data.state.reasoning_mode : undefined); if (rmBadge2) rmBadge2.textContent = rm ? ('Thinking: ' + rm) : ''; } catch (_) {}
+    try { const rmBadge2 = document.getElementById('reasoning-mode-badge'); const rm = data.reasoning_mode || (data.state ? data.state.reasoning_mode : undefined); if (rmBadge2) rmBadge2.textContent = rm ? T('research.thinking', 'Thinking: {mode}', { mode: rm }) : ''; } catch (_) {}
 
     const respText = data.response || '';
     const aspName = data.aspect_name;
@@ -497,7 +501,7 @@ export async function sendResearch(customMessage) {
     if (lc.indexOf('fetch') !== -1 || lc.indexOf('network') !== -1 || lc.indexOf('abort') !== -1) {
       _addMsg('layla', _formatAgentError(null, null));
     } else {
-      _addMsg('layla', 'Error: ' + (e && e.message || 'unknown'));
+      _addMsg('layla', T('research.error', 'Error: {msg}', { msg: (e && e.message || T('research.unknown', 'unknown')) }));
     }
   } finally {
     // Clear the streaming timers on EVERY exit path (success, error, mid-stream drop) so no zombie
@@ -521,7 +525,7 @@ export function laylaAutonomousInvestigationPreset(goalText) {
 
 export function laylaRunInvestigation() {
   const g = document.getElementById('autonomous-goal');
-  if (g) g.value = 'Investigate this workspace for bugs, risky patterns, and inconsistencies. Trace logic across files where needed. Summarize root causes and cite paths/lines. Do not modify any files.';
+  if (g) g.value = T('research.investigation.default', 'Investigate this workspace for bugs, risky patterns, and inconsistencies. Trace logic across files where needed. Summarize root causes and cite paths/lines. Do not modify any files.');
   const rm = document.getElementById('autonomous-research-mode');
   if (rm) rm.checked = true;
   const cf = document.getElementById('autonomous-confirm');
@@ -531,21 +535,21 @@ export function laylaRunInvestigation() {
 
 export function laylaInvestigationTemplateTrace() {
   laylaAutonomousInvestigationPreset(
-    'Trace where the selected symbol, function, or public API is defined and used across this repository. Map call sites, key modules, and data flow between files. Summarize findings with file:line evidence. Do not modify any files.'
+    T('research.investigation.trace', 'Trace where the selected symbol, function, or public API is defined and used across this repository. Map call sites, key modules, and data flow between files. Summarize findings with file:line evidence. Do not modify any files.')
   );
   return laylaRunAutonomousResearch();
 }
 
 export function laylaInvestigationTemplateStructure() {
   laylaAutonomousInvestigationPreset(
-    'Analyze the repository structure: top-level layout, main packages, entry points, configuration and CI workflows. Identify coupling risks and ambiguous boundaries across multiple directories. Summarize with cited paths. Do not modify any files.'
+    T('research.investigation.structure', 'Analyze the repository structure: top-level layout, main packages, entry points, configuration and CI workflows. Identify coupling risks and ambiguous boundaries across multiple directories. Summarize with cited paths. Do not modify any files.')
   );
   return laylaRunAutonomousResearch();
 }
 
 export function laylaInvestigationTemplateBug() {
   laylaAutonomousInvestigationPreset(
-    'Investigate likely sources of incorrect behavior: trace error paths, suspicious hotspots, and inconsistent assumptions across modules. Hypothesize root causes with evidence from code reads and search; propose verification steps only (no execution). Do not modify any files.'
+    T('research.investigation.bug', 'Investigate likely sources of incorrect behavior: trace error paths, suspicious hotspots, and inconsistent assumptions across modules. Hypothesize root causes with evidence from code reads and search; propose verification steps only (no execution). Do not modify any files.')
   );
   return laylaRunAutonomousResearch();
 }
@@ -559,8 +563,8 @@ export async function laylaRunAutonomousResearch() {
   const wpEl = document.getElementById('workspace-path');
   const wp = (wpEl ? wpEl.value : '').trim();
 
-  if (!goal) { showToast('Enter a goal'); return; }
-  if (!confirmCb || !confirmCb.checked) { showToast('Check confirm_autonomous'); return; }
+  if (!goal) { showToast(T('research.autonomous.enterGoal', 'Enter a goal')); return; }
+  if (!confirmCb || !confirmCb.checked) { showToast(T('research.autonomous.checkConfirm', 'Check confirm_autonomous')); return; }
 
   const msEl = document.getElementById('autonomous-max-steps');
   const toEl = document.getElementById('autonomous-timeout');
@@ -584,8 +588,8 @@ export async function laylaRunAutonomousResearch() {
   } catch (_) { /* monitor is best-effort UI */ }
 
   const sumOut = document.getElementById('autonomous-result-summary');
-  if (sumOut) sumOut.textContent = 'Running… (task ' + taskId.slice(0, 8) + ')';
-  if (out) out.textContent = 'Running (task ' + taskId.slice(0, 8) + '…)…\nPoll /agent/tasks for tool progress.';
+  if (sumOut) sumOut.textContent = T('research.autonomous.runningSummary', 'Running… (task {id})', { id: taskId.slice(0, 8) });
+  if (out) out.textContent = T('research.autonomous.runningDetail', 'Running (task {id}…)…\nPoll /agent/tasks for tool progress.', { id: taskId.slice(0, 8) });
 
   const rmEl = document.getElementById('autonomous-research-mode');
   const poll = setInterval(async function () {
@@ -595,7 +599,7 @@ export async function laylaRunAutonomousResearch() {
       if (d && d.ok && d.task && Array.isArray(d.task.progress_tail) && d.task.progress_tail.length && out) {
         const tail = d.task.progress_tail;
         const last = tail[tail.length - 1];
-        out.textContent = 'progress: ' + JSON.stringify(last).slice(0, 1500) + '\n…';
+        out.textContent = T('research.autonomous.progress', 'progress: {data}', { data: JSON.stringify(last).slice(0, 1500) }) + '\n…';
       }
     } catch (_) {}
   }, 500);
@@ -621,23 +625,23 @@ export async function laylaRunAutonomousResearch() {
 
     if (sumOut && d && typeof d === 'object') {
       const lines = [];
-      lines.push('Steps: ' + (d.steps_used != null ? d.steps_used : '—') + ' · Stopped: ' + (d.stopped_reason || '—'));
-      if (d.budget_detail) lines[lines.length - 1] += ' · budget: ' + d.budget_detail;
-      lines.push('Confidence: ' + (d.confidence != null ? d.confidence : '—'));
+      lines.push(T('research.autonomous.stepsStopped', 'Steps: {steps} · Stopped: {reason}', { steps: (d.steps_used != null ? d.steps_used : '—'), reason: (d.stopped_reason || '—') }));
+      if (d.budget_detail) lines[lines.length - 1] += T('research.autonomous.budget', ' · budget: {detail}', { detail: d.budget_detail });
+      lines.push(T('research.autonomous.confidence', 'Confidence: {value}', { value: (d.confidence != null ? d.confidence : '—') }));
       const src = String(d.source || '').trim();
-      if (src === 'reuse') lines.push('Source: reused knowledge (investigation_reuse.jsonl)');
-      else if (src === 'wiki') lines.push('Source: wiki markdown (prefetch)');
-      else if (src === 'fresh') lines.push('Source: fresh investigation');
-      else if (src === 'blocked') lines.push('Source: blocked (value gate)');
-      else if (src) lines.push('Source: ' + src);
-      if (d.reused === true) lines.push('Reused: yes');
-      else if (d.reused === false) lines.push('Reused: no');
+      if (src === 'reuse') lines.push(T('research.autonomous.sourceReuse', 'Source: reused knowledge (investigation_reuse.jsonl)'));
+      else if (src === 'wiki') lines.push(T('research.autonomous.sourceWiki', 'Source: wiki markdown (prefetch)'));
+      else if (src === 'fresh') lines.push(T('research.autonomous.sourceFresh', 'Source: fresh investigation'));
+      else if (src === 'blocked') lines.push(T('research.autonomous.sourceBlocked', 'Source: blocked (value gate)'));
+      else if (src) lines.push(T('research.autonomous.source', 'Source: {src}', { src: src }));
+      if (d.reused === true) lines.push(T('research.autonomous.reusedYes', 'Reused: yes'));
+      else if (d.reused === false) lines.push(T('research.autonomous.reusedNo', 'Reused: no'));
       const files = Array.isArray(d.files_accessed) ? d.files_accessed : [];
       const show = files.slice(0, 12);
       const more = files.length - show.length;
-      lines.push('Files accessed (' + files.length + '): ' + (show.length ? show.join(', ') : '—') + (more > 0 ? ' … +' + more + ' more' : ''));
+      lines.push(T('research.autonomous.filesAccessed', 'Files accessed ({count}): {list}', { count: files.length, list: (show.length ? show.join(', ') : '—') }) + (more > 0 ? T('research.autonomous.filesMore', ' … +{n} more', { n: more }) : ''));
       const rs = String(d.investigation_trace || d.reasoning_summary || d.reasoning || '').trim();
-      if (rs) lines.push('Trace: ' + rs.slice(0, 1200) + (rs.length > 1200 ? '…' : ''));
+      if (rs) lines.push(T('research.autonomous.trace', 'Trace: {trace}', { trace: rs.slice(0, 1200) + (rs.length > 1200 ? '…' : '') }));
       sumOut.textContent = lines.join('\n');
     } else if (sumOut) {
       sumOut.textContent = '';
@@ -646,7 +650,7 @@ export async function laylaRunAutonomousResearch() {
       const pretty = typeof d === 'object' ? JSON.stringify(d, null, 2) : String(d);
       out.textContent = pretty.slice(0, 16000);
     }
-    showToast(r.ok ? 'Autonomous run finished' : 'Autonomous run error');
+    showToast(r.ok ? T('research.autonomous.finished', 'Autonomous run finished') : T('research.autonomous.runError', 'Autonomous run error'));
   } catch (e) {
     clearInterval(poll);
     if (out) out.textContent = String(e);
