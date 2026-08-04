@@ -212,6 +212,12 @@ def generate_runtime_config(
         "stop_sequences": ["\nUser:", " User:"],
         "uncensored": True,
         "nsfw_allowed": True,
+        # pd02 SAFETY GATE: uncensored/nsfw are seeded on, but the runtime gate
+        # (setup_engine.content_uncensored_active) keeps that prompt content INERT until the operator
+        # makes the forced first-run choice. That gate treats a MISSING key as "grandfathered = active",
+        # so a fresh install MUST seed this False explicitly — otherwise a friend-install runs uncensored
+        # before ever being shown the choice. apply_content_policy_choice() flips it True once they pick.
+        "content_policy_chosen": False,
         "safe_mode": True,
         "use_chroma": True,
         "scheduler_study_enabled": True,
