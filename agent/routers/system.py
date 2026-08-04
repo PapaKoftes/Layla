@@ -145,7 +145,14 @@ def update_check():
 
 
 @router.post("/update/apply")
-def update_apply(req: dict | None = None):
+def update_apply(request: Request, req: dict | None = None):
+    # Self-update pulls code and restarts — as dangerous as /approve, and it is on the remote
+    # allowlist ('/update/'), so a remote Bearer-authed caller could otherwise trigger a code
+    # pull+restart. Gate to the direct-local operator only (audit wf_b0ad28f4 security finding).
+    from routers.approvals import _require_local
+    _local = _require_local(request)
+    if _local is not None:
+        return _local
     req = req or {}
     allow_run = req.get("allow_run") is True
     if not allow_run:
@@ -817,6 +824,12 @@ def skill_packs_list():
 
 @router.post("/skill_packs/install")
 async def skill_packs_install(req: Request):
+    # Cloning an arbitrary repo to disk is remote-allowlisted ('/skill_packs') — gate the write to
+    # the direct-local operator (audit wf_b0ad28f4 security finding). Execution is separately gated.
+    from routers.approvals import _require_local
+    _local = _require_local(req)
+    if _local is not None:
+        return _local
     try:
         body = await req.json()
     except Exception:

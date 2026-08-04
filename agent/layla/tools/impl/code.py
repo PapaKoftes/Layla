@@ -380,10 +380,20 @@ def security_scan(path: str, scan_type: str = "bandit") -> dict:
                 capture_output=True, text=True, timeout=60, encoding="utf-8", errors="replace",
             )
             import json as _json
+            # `python -m bandit` with bandit ABSENT exits non-zero with "No module named bandit" and
+            # EMPTY stdout — json.loads("{}") then yielded a FALSE clean scan (ok:True, 0 issues). A
+            # real bandit run always emits JSON carrying 'results'/'metrics' (exit 1 just means issues
+            # found). So: no parseable bandit JSON == the scan did NOT run; report the failure, never
+            # a clean bill of health (audit wf_b0ad28f4 BROKEN finding).
             try:
-                data = _json.loads(r.stdout or "{}")
+                data = _json.loads(r.stdout) if (r.stdout or "").strip() else None
             except Exception:
-                data = {}
+                data = None
+            if not isinstance(data, dict) or ("results" not in data and "metrics" not in data):
+                err = (r.stderr or "").strip()
+                if "no module named bandit" in err.lower():
+                    return {"ok": False, "error": "bandit not installed: pip install bandit"}
+                return {"ok": False, "error": f"bandit scan did not run (exit {r.returncode}): {err[:200] or 'no parseable output'}"}
             issues = data.get("results", [])
             metrics = data.get("metrics", {})
             return {
