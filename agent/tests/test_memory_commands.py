@@ -79,6 +79,18 @@ def test_remember_triggers_pattern():
     assert "Python" in r.response or "Stored" in r.response
 
 
+def test_remember_bypasses_rate_limit():
+    """An explicit user 'remember this' must set bypass_rate_limit=True, so the anti-spam window
+    (which this turn's automatic outcome/reinforcement saves can fill) cannot silently drop the one
+    memory the user actually asked for. Regression for the live 'Rate limit hit' no-save bug."""
+    with patch("layla.memory.db.save_learning", return_value=7) as mock_save, \
+         patch("services.memory.working_memory.add_to_working_memory", return_value=None):
+        r = detect_and_handle("remember: the deploy script lives in scripts/deploy.sh")
+    assert r.is_command is True and r.command == "remember"
+    assert mock_save.called
+    assert mock_save.call_args.kwargs.get("bypass_rate_limit") is True
+
+
 def test_remember_aliases():
     """memorize, note, store, save all trigger remember."""
     for verb in ("memorize", "note", "store", "save"):
