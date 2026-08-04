@@ -116,6 +116,11 @@ DEFAULTS: dict = {
     "uncensored": True,
     "nsfw_allowed": True,
     "knowledge_unrestricted": True,
+    # Operator decision (v1-scope-decisions 2026-08-01): the content policy is a FORCED first-run
+    # choice, never a silent default. This flag is False until the user has explicitly chosen; the
+    # first-run flow (CLI + Web wizard) must present the choice and call apply_content_policy_choice,
+    # which flips it True. A fresh install with this False means "not yet disclosed/chosen".
+    "content_policy_chosen": False,
     "use_chroma": True,
     "scheduler_study_enabled": True,
     "scheduler_interval_minutes": 30,
@@ -127,6 +132,46 @@ DEFAULTS: dict = {
     "whisper_model": "base",
     "tts_voice": "af_heart",
 }
+
+
+# ── First-run choices (shared by the CLI wizard and the Web setup flow) ──────────────────────────
+
+_PERSONA_CHOICES = {
+    # persona key -> (default aspect id, model category preference for the picker)
+    "companion": ("morrigan", "general"),
+    "coder": ("morrigan", "coding"),
+}
+
+
+def apply_content_policy_choice(cfg: dict, allow_uncensored: bool) -> dict:
+    """Record the operator's FORCED first-run content-policy choice (v1-scope-decisions).
+
+    allow_uncensored=True  -> uncensored/nsfw/knowledge-unrestricted ON (the operator opted in).
+    allow_uncensored=False -> all three OFF (safer).
+    Either way `content_policy_chosen` becomes True, so the app never silently applies a policy the
+    user has not seen. Mutates and returns cfg.
+    """
+    allow = bool(allow_uncensored)
+    cfg["uncensored"] = allow
+    cfg["nsfw_allowed"] = allow
+    cfg["knowledge_unrestricted"] = allow
+    cfg["content_policy_chosen"] = True
+    return cfg
+
+
+def apply_persona_choice(cfg: dict, persona: str) -> dict:
+    """Record the operator's first-run persona choice (companion vs coder/engineer).
+
+    Sets the default aspect + a model-category preference the picker uses so a companion-seeker
+    lands on a companion-tuned model, not the coder default (#1 confuser, pd01). Unknown values
+    fall back to companion. Mutates and returns cfg.
+    """
+    key = (persona or "").strip().lower()
+    aspect, model_pref = _PERSONA_CHOICES.get(key, _PERSONA_CHOICES["companion"])
+    cfg["default_aspect"] = aspect
+    cfg["model_category_preference"] = model_pref
+    cfg["persona_choice"] = key if key in _PERSONA_CHOICES else "companion"
+    return cfg
 
 
 MODELS_CATALOG = [
