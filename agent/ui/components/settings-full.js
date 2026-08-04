@@ -7,6 +7,15 @@
 
 import { escapeHtml, showToast, laylaConfirm } from '../services/utils.js';
 
+// i18n: window.t is installed by ui/core/i18n.js init. Fall back to the key's default if it isn't
+// ready yet (never render "undefined"). Keys live under settings.* in ui/locales/*.json.
+function T(key, fallback, params) {
+  try { if (window.t) { const v = window.t(key, params); if (v && v !== key) return v; } } catch (_) {}
+  let s = fallback;
+  if (params) for (const k in params) s = s.replace("{" + k + "}", params[k]);
+  return s;
+}
+
 // Fallback client-side humanizer (backend normally supplies f.label). snake_case -> Title.
 const _ACRONYMS = { ui: 'UI', api: 'API', cors: 'CORS', url: 'URL', ttl: 'TTL', id: 'ID', llm: 'LLM', gpu: 'GPU', cpu: 'CPU', tts: 'TTS', stt: 'STT', cot: 'CoT', rag: 'RAG', mcp: 'MCP', nsfw: 'NSFW', db: 'DB', os: 'OS' };
 function humanizeKey(key) {
@@ -34,8 +43,8 @@ async function _renderFeatureThemes() {
       '<div class="hint">' + escapeHtml(t.desc) + '</div></div>';
   }).join('');
   return '<div class="settings-row" style="margin-bottom:10px">' +
-    '<div style="font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-faint);margin-bottom:6px">Feature areas</div>' +
-    '<div class="hint" style="margin-bottom:8px">Turn whole capability areas on or off — Layla only carries what you switch on.</div>' +
+    '<div style="font-size:0.72rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-faint);margin-bottom:6px">' + escapeHtml(T('settings.feature_areas.heading', 'Feature areas')) + '</div>' +
+    '<div class="hint" style="margin-bottom:8px">' + escapeHtml(T('settings.feature_areas.hint', 'Turn whole capability areas on or off — Layla only carries what you switch on.')) + '</div>' +
     rows +
     '<div style="border-bottom:1px solid var(--border);margin:12px 0 4px"></div>' +
     '</div>';
@@ -66,8 +75,8 @@ export async function laylaToggleFeatureTheme(key, enabled) {
       // with no credential: rotate a token, then enable it).
       const refused = (d && d.refused) || [];
       showToast(refused.length
-        ? 'Refused: ' + key.replace(/_/g, ' ') + ' — ' + (d.error || 'a security policy declined this change')
-        : 'Could not update feature area — ' + ((d && d.error) || ('HTTP ' + r.status)));
+        ? T('settings.feature_areas.refused', 'Refused: {name} — {why}', { name: key.replace(/_/g, ' '), why: (d.error || T('settings.feature_areas.refused_default', 'a security policy declined this change')) })
+        : T('settings.feature_areas.update_failed_reason', 'Could not update feature area — {why}', { why: ((d && d.error) || ('HTTP ' + r.status)) }));
       // The write did not happen, so the control must not keep showing that it did. The
       // server's effective state is authoritative when it sent one.
       if (box) box.checked = (d && typeof d.enabled === 'boolean') ? d.enabled : !enabled;
@@ -85,22 +94,22 @@ export async function laylaToggleFeatureTheme(key, enabled) {
       // CPU tier — so this toggle could never read back as ON until the server started locking
       // the key. Say when that lock was taken, rather than doing it invisibly.
       const locked = (d.auto_tune_locked_keys || []);
-      const base = (enabled ? 'Enabled: ' : 'Disabled: ') + label;
+      const base = (enabled ? T('settings.feature_areas.enabled', 'Enabled: {name}', { name: label }) : T('settings.feature_areas.disabled', 'Disabled: {name}', { name: label }));
       showToast(enabled && locked.length
-        ? base + ' — locked ' + locked.join(', ') + ' so hardware auto-tune cannot revert it'
+        ? T('settings.feature_areas.enabled_locked', '{base} — locked {keys} so hardware auto-tune cannot revert it', { base: base, keys: locked.join(', ') })
         : base);
     } else {
       const why = d.not_in_force_note ||
         ((d.missing_packages || []).length
-          ? 'needs packages that are not installed: ' + d.missing_packages.join(', ')
-          : 'an owner is holding its settings');
-      showToast('NOT in force: ' + label + ' — ' + why);
+          ? T('settings.feature_areas.needs_packages', 'needs packages that are not installed: {pkgs}', { pkgs: d.missing_packages.join(', ') })
+          : T('settings.feature_areas.owner_holding', 'an owner is holding its settings'));
+      showToast(T('settings.feature_areas.not_in_force', 'NOT in force: {name} — {why}', { name: label, why: why }));
     }
     // Whatever happened, the panel's not-in-force state may have changed. Re-read it from the
     // server rather than inferring it from this one response.
     await _loadNotInForce();
   } catch (_e) {
-    showToast('Could not update feature area');
+    showToast(T('settings.feature_areas.update_failed', 'Could not update feature area'));
     if (box) box.checked = !enabled;
   }
 }
@@ -145,7 +154,7 @@ export async function openSettings() {
   loadPhoneAccess();
   const loadEl = document.getElementById('settings-loading');
   const formEl = document.getElementById('settings-form');
-  if (loadEl) { loadEl.style.display = 'block'; loadEl.textContent = 'Loading…'; }
+  if (loadEl) { loadEl.style.display = 'block'; loadEl.textContent = T('settings.loading', 'Loading…'); }
   if (formEl) formEl.style.display = 'none';
   try {
     const res = await fetch('/settings/schema');
@@ -171,14 +180,13 @@ export async function openSettings() {
         const owned = !!f.auto_tune_owned;
         const badge = owned
           ? '<span class="cfg-owner' + (f.auto_tune_active ? '' : ' is-locked') + '" title="' +
-            (f.auto_tune_active
-              ? 'Hardware auto-tune sets this on every config load and will overwrite your value.'
-              : 'You have locked this key — auto-tune will leave your value alone.') + '">' +
-            (f.auto_tune_active ? 'auto-tune owns this' : 'locked — your value wins') + '</span>'
+            escapeHtml(f.auto_tune_active
+              ? T('settings.autotune.badge_owned_title', 'Hardware auto-tune sets this on every config load and will overwrite your value.')
+              : T('settings.autotune.badge_locked_title', 'You have locked this key — auto-tune will leave your value alone.')) + '">' +
+            escapeHtml(f.auto_tune_active ? T('settings.autotune.badge_owned', 'auto-tune owns this') : T('settings.autotune.badge_locked', 'locked — your value wins')) + '</span>'
           : '';
         const ownHint = (owned && f.auto_tune_active)
-          ? '<div class="hint cfg-owner-hint">Auto-tune re-derives this from your hardware on every load, so a value set here does not stick. ' +
-            'Add <code>' + escapeHtml(k) + '</code> to <em>Auto tune locked keys</em> below (or turn off <em>Auto tune enabled</em>) to keep your own value.</div>'
+          ? '<div class="hint cfg-owner-hint">' + T('settings.autotune.own_hint', 'Auto-tune re-derives this from your hardware on every load, so a value set here does not stick. Add <code>{key}</code> to <em>Auto tune locked keys</em> below (or turn off <em>Auto tune enabled</em>) to keep your own value.', { key: escapeHtml(k) }) + '</div>'
           : '';
         const rowCls = 'settings-row settings-section' + (owned ? ' is-auto-tuned' : '');
         if (f.type === 'boolean') {
@@ -210,8 +218,8 @@ export async function openSettings() {
       formEl.style.display = 'block';
       formEl.innerHTML =
         '<div style="color:var(--text-dim);font-size:0.8rem;line-height:1.5">' +
-        'Could not load settings. Is Layla running?<br>' +
-        '<button type="button" class="tab-btn" style="margin-top:10px" onclick="openSettings()">Retry</button>' +
+        escapeHtml(T('settings.load_error', 'Could not load settings. Is Layla running?')) + '<br>' +
+        '<button type="button" class="tab-btn" style="margin-top:10px" onclick="openSettings()">' + escapeHtml(T('settings.retry', 'Retry')) + '</button>' +
         '</div>';
     }
   }
@@ -310,19 +318,21 @@ function _renderNotInForce(report) {
   // kinds are actually present rather than assert the common one.
   const anyRefused = bad.some(function (r) { return r && r.outcome === 'refused'; });
   const anyOther = bad.some(function (r) { return r && r.outcome !== 'refused'; });
-  const head = anyRefused && anyOther ? 'Refused, or saved but NOT in force'
-    : (anyRefused ? 'Refused — not saved' : 'Saved to disk, but NOT in force');
+  const head = anyRefused && anyOther ? T('settings.nif.head_mixed', 'Refused, or saved but NOT in force')
+    : (anyRefused ? T('settings.nif.head_refused', 'Refused — not saved') : T('settings.nif.head_not_in_force', 'Saved to disk, but NOT in force'));
+  const headCount = bad.length === 1
+    ? T('settings.nif.count_one', '{n} setting', { n: bad.length })
+    : T('settings.nif.count_many', '{n} settings', { n: bad.length });
   box.innerHTML =
-    '<div class="nif-head">⚠ ' + head + ' — ' + bad.length +
-    (bad.length === 1 ? ' setting' : ' settings') + '</div>' +
+    '<div class="nif-head">⚠ ' + escapeHtml(head) + ' — ' + escapeHtml(headCount) + '</div>' +
     bad.map(function (r) {
       const el = document.getElementById('cfg_' + String(r.key).replace(/[^a-zA-Z0-9_]/g, '_'));
       const row = el && el.closest ? el.closest('.settings-row') : null;
       if (row) row.classList.add('is-not-in-force');
-      const owner = r.owner ? String(r.owner) : 'unknown';
+      const owner = r.owner ? String(r.owner) : T('settings.nif.owner_unknown', 'unknown');
       const eff = Object.prototype.hasOwnProperty.call(r, 'effective')
-        ? ' <span class="nif-eff">in force: ' + escapeHtml(JSON.stringify(r.effective)) + '</span>' : '';
-      const label = r.outcome === 'refused' ? 'refused by ' : 'owned by ';
+        ? ' <span class="nif-eff">' + escapeHtml(T('settings.nif.in_force', 'in force:')) + ' ' + escapeHtml(JSON.stringify(r.effective)) + '</span>' : '';
+      const label = r.outcome === 'refused' ? T('settings.nif.refused_by', 'refused by ') : T('settings.nif.owned_by', 'owned by ');
       return '<div class="nif-item"><code>' + escapeHtml(String(r.key)) + '</code>' +
         ' <span class="nif-owner">' + label + escapeHtml(owner) + '</span>' + eff +
         '<div class="nif-reason">' + escapeHtml(String(r.reason || '')) + '</div></div>';
@@ -368,11 +378,11 @@ export async function saveSettings() {
     }
     showToast(text);
   };
-  if (!changedKeys.length) { say('No changes to save', false); return; }
+  if (!changedKeys.length) { say(T('settings.save.no_changes', 'No changes to save'), false); return; }
   try {
     const res = await fetch('/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await res.json().catch(function () { return {}; });
-    if (!res.ok) { say('Save failed — ' + (d.error || ('HTTP ' + res.status)), true); return; }
+    if (!res.ok) { say(T('settings.save.failed_reason', 'Save failed — {why}', { why: (d.error || ('HTTP ' + res.status)) }), true); return; }
 
     const rejected = d.rejected || [];
     const badLocks = d.rejected_locks || [];
@@ -411,12 +421,14 @@ export async function saveSettings() {
     if (refusedRows.length) {
       // The reason is the product here — it names the precondition the operator has to meet.
       // "Refused", not "failed": nothing broke, the request was understood and declined.
-      say('Refused: ' + refusedRows.map(function (r) { return r.key; }).join(', ') + ' — ' +
-          refusedRows.map(function (r) { return r.reason; }).join(' · '), true);
+      say(T('settings.save.refused', 'Refused: {keys} — {reasons}', {
+        keys: refusedRows.map(function (r) { return r.key; }).join(', '),
+        reasons: refusedRows.map(function (r) { return r.reason; }).join(' · '),
+      }), true);
     } else if (badLocks.length) {
-      say('Cannot lock (not auto-tune settings): ' + badLocks.join(', '), true);
+      say(T('settings.save.cannot_lock', 'Cannot lock (not auto-tune settings): {keys}', { keys: badLocks.join(', ') }), true);
     } else if (rejected.length) {
-      say('Saved ' + saved.length + ', REJECTED: ' + rejected.join(', '), true);
+      say(T('settings.save.rejected', 'Saved {n}, REJECTED: {keys}', { n: saved.length, keys: rejected.join(', ') }), true);
     } else if (adjusted.length || notInForce.length) {
       // C4 — THE ORDER USED TO HIDE ONE BEHIND THE OTHER. `else if (adjusted.length)` came
       // first, so a save that clamped one key AND had another reverted reported only the
@@ -446,20 +458,25 @@ export async function saveSettings() {
           const o = r.owner || 'unknown';
           if (owners.indexOf(o) === -1) owners.push(o);
         });
-        bits.push('NOT in force: ' + notInForce.map(function (r) { return r.key; }).join(', ') +
-                  ' — held by ' + owners.join(', '));
+        bits.push(T('settings.save.not_in_force', 'NOT in force: {keys} — held by {owners}', {
+          keys: notInForce.map(function (r) { return r.key; }).join(', '),
+          owners: owners.join(', '),
+        }));
       }
       if (adjusted.length) {
         bits.push(adjusted.map(function (a) {
-          return a.key + ' was ' + a.reason + ' to ' + JSON.stringify(a.stored) +
-                 ' (you entered ' + JSON.stringify(a.requested) + ')';
+          return T('settings.save.adjusted_item', '{key} was {reason} to {stored} (you entered {requested})', {
+            key: a.key, reason: a.reason, stored: JSON.stringify(a.stored), requested: JSON.stringify(a.requested),
+          });
         }).join('; '));
       }
-      say('Saved, but ' + bits.join(' · ') + '. See the details below the buttons.', true);
+      say(T('settings.save.saved_but', 'Saved, but {details}. See the details below the buttons.', { details: bits.join(' · ') }), true);
     } else if (saved.length) {
-      say('Saved ' + saved.length + ' change' + (saved.length === 1 ? '' : 's') + ': ' + saved.join(', '), false);
+      say((saved.length === 1
+        ? T('settings.save.saved_one', 'Saved {n} change: {keys}', { n: saved.length, keys: saved.join(', ') })
+        : T('settings.save.saved_many', 'Saved {n} changes: {keys}', { n: saved.length, keys: saved.join(', ') })), false);
     } else {
-      say('Nothing was saved', true);
+      say(T('settings.save.nothing_saved', 'Nothing was saved'), true);
     }
     // Re-render when the lock set changed, so the ownership badges flip to "locked — your
     // value wins" immediately instead of lying until the next panel open. Report the locks
@@ -471,8 +488,8 @@ export async function saveSettings() {
     const unlocked = before.filter(function (k) { return after.indexOf(k) === -1; });
     if (!badLocks.length && !rejected.length && (newlyLocked.length || unlocked.length)) {
       const bits = [];
-      if (newlyLocked.length) bits.push('locked ' + newlyLocked.join(', ') + ' — auto-tune will leave your value alone');
-      if (unlocked.length) bits.push('unlocked ' + unlocked.join(', ') + ' — auto-tune owns it again');
+      if (newlyLocked.length) bits.push(T('settings.save.locked', 'locked {keys} — auto-tune will leave your value alone', { keys: newlyLocked.join(', ') }));
+      if (unlocked.length) bits.push(T('settings.save.unlocked', 'unlocked {keys} — auto-tune owns it again', { keys: unlocked.join(', ') }));
       // APPEND when a warning is already on screen. Overwriting it would trade one silence
       // (locks never reported) for another (the clamp warning wiped by the lock confirmation)
       // whenever the same save did both.
@@ -484,38 +501,38 @@ export async function saveSettings() {
       try { await openSettings(); } catch (_e) { /* panel stays as-is */ }
     }
   } catch (e) {
-    say('Save failed', true);
+    say(T('settings.save_failed', 'Save failed'), true);
   }
 }
 
 export async function laylaLoadOptionalFeatures() {
   const box = document.getElementById('optional-features-list');
   if (!box) return;
-  box.textContent = 'Loading…';
+  box.textContent = T('settings.loading', 'Loading…');
   try {
     const r = await fetch('/settings/optional_features');
     const d = await r.json();
-    if (!d.ok || !d.features) { box.textContent = 'Could not load'; return; }
+    if (!d.ok || !d.features) { box.textContent = T('settings.could_not_load', 'Could not load'); return; }
     box.innerHTML = d.features.map(function (f) {
       const st = f.installed ? 'ok' : '—';
       return '<div style="margin:4px 0;padding:4px;border-bottom:1px solid rgba(255,255,255,0.08)">' + st + ' <strong>' + escapeHtml(f.id) + '</strong> — ' + escapeHtml(f.label) +
-        (!f.installed ? ' <button type="button" class="settings-save" style="padding:2px 8px;font-size:0.65rem" data-fid="' + escapeHtml(f.id) + '">Install</button>' : '') + '</div>';
+        (!f.installed ? ' <button type="button" class="settings-save" style="padding:2px 8px;font-size:0.65rem" data-fid="' + escapeHtml(f.id) + '">' + escapeHtml(T('settings.optional.install', 'Install')) + '</button>' : '') + '</div>';
     }).join('');
     box.querySelectorAll('button[data-fid]').forEach(function (btn) {
       btn.onclick = function () { laylaInstallFeature(btn.getAttribute('data-fid')); };
     });
-  } catch (e) { box.textContent = 'Error'; }
+  } catch (e) { box.textContent = T('settings.error', 'Error'); }
 }
 
 export async function laylaInstallFeature(fid) {
-  if (!fid || !(await laylaConfirm('Install feature ' + fid + ' via pip (allowlisted packages)?'))) return;
+  if (!fid || !(await laylaConfirm(T('settings.optional.install_confirm', 'Install feature {id} via pip (allowlisted packages)?', { id: fid })))) return;
   try {
     const r = await fetch('/settings/install_feature', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ feature_id: fid }) });
     const d = await r.json();
-    const note = d.ok ? 'Install finished' : ((d.pip_attempt && d.pip_attempt.error) || d.error || 'failed');
+    const note = d.ok ? T('settings.optional.install_finished', 'Install finished') : ((d.pip_attempt && d.pip_attempt.error) || d.error || T('settings.failed', 'failed'));
     showToast(note);
     laylaLoadOptionalFeatures();
-  } catch (e) { showToast('Install failed'); }
+  } catch (e) { showToast(T('settings.optional.install_failed', 'Install failed')); }
 }
 
 export async function laylaImportChat() {
@@ -523,26 +540,26 @@ export async function laylaImportChat() {
   const title = document.getElementById('import-chat-title');
   const msg = document.getElementById('import-chat-msg');
   const text = (ta && ta.value || '').trim();
-  if (!text) { if (msg) msg.textContent = 'Paste export text first'; return; }
+  if (!text) { if (msg) msg.textContent = T('settings.import.paste_first', 'Paste export text first'); return; }
   try {
     const r = await fetch('/knowledge/import_chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ format: 'whatsapp', text: text, title: (title && title.value) || 'import' }) });
     const d = await r.json();
-    if (msg) msg.textContent = d.ok ? ('Saved ' + d.path) : (d.error || 'failed');
+    if (msg) msg.textContent = d.ok ? T('settings.import.saved', 'Saved {path}', { path: d.path }) : (d.error || T('settings.failed', 'failed'));
     if (d.ok && ta) ta.value = '';
-  } catch (e) { if (msg) msg.textContent = 'Request failed'; }
+  } catch (e) { if (msg) msg.textContent = T('settings.request_failed', 'Request failed'); }
 }
 
 export async function laylaGitUndoCheckpoint() {
   const winp = document.getElementById('admin-undo-workspace');
   const ws = (winp && winp.value || '').trim();
   const msg = document.getElementById('admin-undo-msg');
-  if (!ws) { if (msg) msg.textContent = 'Set workspace path'; return; }
-  if (!(await laylaConfirm('Revert the last Layla checkpoint commit in this repo?'))) return;
+  if (!ws) { if (msg) msg.textContent = T('settings.admin.set_workspace', 'Set workspace path'); return; }
+  if (!(await laylaConfirm(T('settings.admin.undo_confirm', 'Revert the last Layla checkpoint commit in this repo?')))) return;
   try {
     const r = await fetch('/settings/git_undo_checkpoint', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workspace_root: ws }) });
     const d = await r.json();
-    if (msg) msg.textContent = d.ok ? 'Reverted' : (d.error || 'failed');
-  } catch (e) { if (msg) msg.textContent = 'Request failed'; }
+    if (msg) msg.textContent = d.ok ? T('settings.admin.reverted', 'Reverted') : (d.error || T('settings.failed', 'failed'));
+  } catch (e) { if (msg) msg.textContent = T('settings.request_failed', 'Request failed'); }
 }
 
 // ── Workspace presets ───────────────────────────────────────────────────────
@@ -576,7 +593,7 @@ export function refreshWorkspacePresetsDropdown() {
   const presets = _loadWorkspacePresets();
   const inp = document.getElementById('workspace-path');
   const cur = inp ? (inp.value || '').trim() : '';
-  sel.innerHTML = '<option value="">— saved paths —</option>';
+  sel.innerHTML = '<option value="">' + escapeHtml(T('settings.workspace.saved_paths', '— saved paths —')) + '</option>';
   presets.forEach(function (p) {
     const opt = document.createElement('option');
     opt.value = p;
@@ -595,7 +612,7 @@ export function addWorkspacePreset() {
     presets.push(v);
     _saveWorkspacePresets(presets);
     refreshWorkspacePresetsDropdown();
-    showToast('Saved preset');
+    showToast(T('settings.workspace.saved_preset', 'Saved preset'));
   }
 }
 
@@ -609,7 +626,7 @@ export function removeWorkspacePreset() {
     presets.splice(idx, 1);
     _saveWorkspacePresets(presets);
     refreshWorkspacePresetsDropdown();
-    showToast('Removed preset');
+    showToast(T('settings.workspace.removed_preset', 'Removed preset'));
   }
 }
 
@@ -640,21 +657,21 @@ export async function refreshRelationshipCodex() {
   if (!ta) return;
   const ws = _codexWorkspace();
   if (!ws) {
-    if (status) status.textContent = 'Set a workspace path in Library → Workspace first, then Load.';
+    if (status) status.textContent = T('settings.codex.set_workspace_load', 'Set a workspace path in Library → Workspace first, then Load.');
     return;
   }
-  if (status) status.textContent = 'Loading…';
+  if (status) status.textContent = T('settings.loading', 'Loading…');
   try {
     const r = await fetch('/codex/relationship?workspace_root=' + encodeURIComponent(ws));
     const d = await r.json();
     if (d && d.ok) {
       ta.value = JSON.stringify(d.data || { entities: {} }, null, 2);
-      if (status) status.textContent = 'Loaded from ' + (d.path || ws);
+      if (status) status.textContent = T('settings.codex.loaded_from', 'Loaded from {path}', { path: (d.path || ws) });
     } else {
-      if (status) status.textContent = 'Error: ' + ((d && d.error) || r.status);
+      if (status) status.textContent = T('settings.error_reason', 'Error: {why}', { why: ((d && d.error) || r.status) });
     }
   } catch (e) {
-    if (status) status.textContent = 'Error: ' + (e && e.message ? e.message : e);
+    if (status) status.textContent = T('settings.error_reason', 'Error: {why}', { why: (e && e.message ? e.message : e) });
   }
 }
 
@@ -664,14 +681,14 @@ export async function saveRelationshipCodex() {
   if (!ta) return;
   const ws = _codexWorkspace();
   if (!ws) {
-    if (status) status.textContent = 'Set a workspace path in Library → Workspace first.';
+    if (status) status.textContent = T('settings.codex.set_workspace', 'Set a workspace path in Library → Workspace first.');
     return;
   }
   const raw = (ta.value || '').trim();
   if (!raw) return;
   let payload;
   try { payload = JSON.parse(raw); } catch (_) {
-    if (status) status.textContent = 'Invalid JSON — fix and try again.';
+    if (status) status.textContent = T('settings.codex.invalid_json', 'Invalid JSON — fix and try again.');
     return;
   }
   if (payload && typeof payload === 'object' && !payload.entities) payload.entities = {};
@@ -682,10 +699,10 @@ export async function saveRelationshipCodex() {
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(function () { return {}; });
-    if (status) status.textContent = (data && data.ok) ? 'Saved' : ('Save failed: ' + ((data && data.error) || res.status));
-    if (data && data.ok && typeof showToast === 'function') showToast('Saved codex');
+    if (status) status.textContent = (data && data.ok) ? T('settings.saved', 'Saved') : T('settings.save_failed_reason', 'Save failed: {why}', { why: ((data && data.error) || res.status) });
+    if (data && data.ok && typeof showToast === 'function') showToast(T('settings.codex.saved', 'Saved codex'));
   } catch (e) {
-    if (status) status.textContent = 'Save error: ' + ((e && e.message) || e);
+    if (status) status.textContent = T('settings.codex.save_error', 'Save error: {why}', { why: ((e && e.message) || e) });
   }
 }
 
@@ -708,26 +725,30 @@ export async function applySettingsPreset(name) {
       body: JSON.stringify({ preset: name }),
     });
     const d = await r.json().catch(function () { return {}; });
-    if (!r.ok || !d.ok) { showToast(d.error || 'Preset failed'); return; }
+    if (!r.ok || !d.ok) { showToast(d.error || T('settings.preset.failed', 'Preset failed')); return; }
     const nif = d.not_in_force || [];
     if (nif.length) {
       const owners = [];
       (d.report || []).forEach(function (row) {
         if (nif.indexOf(row.key) === -1) return;
-        const o = row.owner || 'unknown';
+        const o = row.owner || T('settings.nif.owner_unknown', 'unknown');
         if (owners.indexOf(o) === -1) owners.push(o);
       });
-      showToast('Preset ' + name + ': ' + (d.applied || []).length + ' of ' +
-                ((d.applied || []).length + nif.length) + ' settings in force — ' +
-                nif.join(', ') + ' held by ' + owners.join(', '));
+      showToast(T('settings.preset.partial', 'Preset {name}: {applied} of {total} settings in force — {keys} held by {owners}', {
+        name: name,
+        applied: (d.applied || []).length,
+        total: ((d.applied || []).length + nif.length),
+        keys: nif.join(', '),
+        owners: owners.join(', '),
+      }));
     } else {
-      showToast('Preset applied: ' + name + ' (' + (d.applied || []).length + ' settings)');
+      showToast(T('settings.preset.applied', 'Preset applied: {name} ({n} settings)', { name: name, n: (d.applied || []).length }));
     }
     // The preset just wrote a large slice of the config; whatever it could not put in force
     // belongs in the panel, not only in a toast that fades.
     await _loadNotInForce();
   } catch (_) {
-    showToast('Preset failed');
+    showToast(T('settings.preset.failed', 'Preset failed'));
   }
 }
 
@@ -801,8 +822,8 @@ export async function saveAppearanceLite() {
 
   if (!Object.keys(body).length) {
     // The old code's silent failure mode, made loud. If the controls vanish again, SAY so.
-    if (msg) msg.textContent = 'Nothing to save — appearance controls are missing.';
-    showToast('Appearance controls are missing — nothing was saved');
+    if (msg) msg.textContent = T('settings.appearance.nothing_to_save', 'Nothing to save — appearance controls are missing.');
+    showToast(T('settings.appearance.controls_missing', 'Appearance controls are missing — nothing was saved'));
     return;
   }
 
@@ -818,22 +839,24 @@ export async function saveAppearanceLite() {
 
     // Report what the SERVER saved. Never "saved" over a no-op again.
     if (rejected.length) {
-      const t = 'Saved ' + saved.length + ', REJECTED: ' + rejected.join(', ');
+      const t = T('settings.save.rejected', 'Saved {n}, REJECTED: {keys}', { n: saved.length, keys: rejected.join(', ') });
       if (msg) msg.textContent = t;
       showToast(t);
     } else if (saved.length) {
       applyAppearance(body.ui_font_size, body.ui_animation_level);
-      const t = 'Appearance saved (' + saved.length + ' setting' + (saved.length === 1 ? '' : 's') + ')';
+      const t = (saved.length === 1
+        ? T('settings.appearance.saved_one', 'Appearance saved ({n} setting)', { n: saved.length })
+        : T('settings.appearance.saved_many', 'Appearance saved ({n} settings)', { n: saved.length }));
       if (msg) msg.textContent = t;
       showToast(t);
     } else {
-      const t = d.error ? ('Save failed: ' + d.error) : 'Save failed — nothing was written';
+      const t = d.error ? T('settings.save_failed_reason', 'Save failed: {why}', { why: d.error }) : T('settings.appearance.save_failed_nothing', 'Save failed — nothing was written');
       if (msg) msg.textContent = t;
       showToast(t);
     }
   } catch (e) {
-    if (msg) msg.textContent = 'Save failed: ' + e;
-    showToast('Save failed');
+    if (msg) msg.textContent = T('settings.save_failed_reason', 'Save failed: {why}', { why: e });
+    showToast(T('settings.save_failed', 'Save failed'));
   }
 }
 
@@ -845,10 +868,10 @@ export async function runKnowledgeIngest() {
   const msg = document.getElementById('km-ingest-list');
   const path = inp ? (inp.value || '').trim() : '';
   if (!path) {
-    if (msg) msg.textContent = 'Enter a folder path inside your workspace';
+    if (msg) msg.textContent = T('settings.ingest.enter_path', 'Enter a folder path inside your workspace');
     return;
   }
-  if (msg) msg.textContent = 'Ingesting…';
+  if (msg) msg.textContent = T('settings.ingest.ingesting', 'Ingesting…');
   try {
     const r = await fetch('/intelligence/kb/build/directory', {
       method: 'POST',
@@ -856,21 +879,21 @@ export async function runKnowledgeIngest() {
       body: JSON.stringify({ directory: path }),
     });
     const d = await r.json().catch(function () { return {}; });
-    if (msg) msg.textContent = d.ok ? ('Done — ' + (d.articles_count || 0) + ' articles') : (d.error || 'failed');
+    if (msg) msg.textContent = d.ok ? T('settings.ingest.done', 'Done — {n} articles', { n: (d.articles_count || 0) }) : (d.error || T('settings.failed', 'failed'));
   } catch (e) {
-    if (msg) msg.textContent = 'Ingest failed';
+    if (msg) msg.textContent = T('settings.ingest.failed', 'Ingest failed');
   }
 }
 
 export async function checkForUpdates() {
   const el = document.getElementById('update-status');
-  if (el) el.textContent = 'Checking…';
+  if (el) el.textContent = T('settings.update.checking', 'Checking…');
   try {
     const r = await fetch('/update/check');
     const d = await r.json().catch(function () { return {}; });
-    if (el) el.textContent = d.update_available ? ('Update available: ' + (d.latest_version || d.latest || '')) : 'Up to date';
+    if (el) el.textContent = d.update_available ? T('settings.update.available', 'Update available: {version}', { version: (d.latest_version || d.latest || '') }) : T('settings.update.up_to_date', 'Up to date');
   } catch (_) {
-    if (el) el.textContent = 'Could not check';
+    if (el) el.textContent = T('settings.update.could_not_check', 'Could not check');
   }
 }
 
@@ -889,9 +912,9 @@ export async function saveContentPolicySettings() {
       body: JSON.stringify({ uncensored: unc, nsfw_allowed: nsfw }),
     });
     const d = await r.json().catch(function () { return {}; });
-    showToast((d && d.ok) ? 'Saved content policy' : 'Save failed');
+    showToast((d && d.ok) ? T('settings.content_policy.saved', 'Saved content policy') : T('settings.save_failed', 'Save failed'));
   } catch (_) {
-    showToast('Save failed');
+    showToast(T('settings.save_failed', 'Save failed'));
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -937,9 +960,9 @@ export async function setDeliberationMode(mode) {
       body: JSON.stringify({ deliberation_mode: mode }),
     });
     const d = await r.json().catch(function () { return {}; });
-    showToast((d && d.ok) ? ('Deliberation: ' + mode) : 'Setting failed — check server logs');
+    showToast((d && d.ok) ? T('settings.deliberation.set', 'Deliberation: {mode}', { mode: mode }) : T('settings.deliberation.failed', 'Setting failed — check server logs'));
   } catch (_) {
-    showToast('Could not save deliberation mode');
+    showToast(T('settings.deliberation.save_failed', 'Could not save deliberation mode'));
   }
 }
 
@@ -962,7 +985,7 @@ export function toggleDeliberation(enabled) {
 export async function loadPhoneAccess() {
   const urlEl = document.getElementById('phone-access-url');
   const stEl = document.getElementById('phone-access-status');
-  if (urlEl) urlEl.textContent = 'Loading…';
+  if (urlEl) urlEl.textContent = T('settings.loading', 'Loading…');
   if (stEl) stEl.textContent = '';
   try {
     const proto = location.protocol || 'http:';
@@ -971,10 +994,10 @@ export async function loadPhoneAccess() {
     const url = proto + '//' + host + port + '/ui';
     if (urlEl) urlEl.textContent = url;
     if (stEl) stEl.textContent = (host === '127.0.0.1' || host === 'localhost')
-      ? 'Tip: for LAN access, start Layla with --host 0.0.0.0 and use your PC IP address.'
-      : 'If this is your LAN IP, open it on your phone (same WiFi).';
+      ? T('settings.phone.tip_lan', 'Tip: for LAN access, start Layla with --host 0.0.0.0 and use your PC IP address.')
+      : T('settings.phone.tip_open', 'If this is your LAN IP, open it on your phone (same WiFi).');
   } catch (e) {
-    if (urlEl) urlEl.textContent = '(could not compute URL)';
+    if (urlEl) urlEl.textContent = T('settings.phone.no_url', '(could not compute URL)');
     if (stEl) stEl.textContent = String(e && e.message ? e.message : e);
   }
 }
@@ -985,7 +1008,7 @@ export async function copyPhoneUrl() {
   if (!trimmed) return;
   try {
     await navigator.clipboard.writeText(trimmed);
-    showToast('Copied');
+    showToast(T('settings.copied', 'Copied'));
   } catch (_) {
     try {
       const ta = document.createElement('textarea');
@@ -994,9 +1017,9 @@ export async function copyPhoneUrl() {
       ta.select();
       document.execCommand('copy');
       document.body.removeChild(ta);
-      showToast('Copied');
+      showToast(T('settings.copied', 'Copied'));
     } catch (_2) {
-      showToast('Copy failed');
+      showToast(T('settings.copy_failed', 'Copy failed'));
     }
   }
 }
