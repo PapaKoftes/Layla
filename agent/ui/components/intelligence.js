@@ -10,6 +10,16 @@
 let _root = null;
 let _open = false;
 
+// i18n: window.t is installed by ui/core/i18n.js init. Fall back to the key's default if it isn't
+// ready yet (never render "undefined"). Panel bodies use this so a Spanish user gets Spanish content,
+// not just Spanish chrome. Keys live under intel.* in ui/locales/*.json.
+function T(key, fallback, params) {
+  try { if (window.t) { const v = window.t(key, params); if (v && v !== key) return v; } } catch (_) {}
+  let s = fallback;
+  if (params) for (const k in params) s = s.replace("{" + k + "}", params[k]);
+  return s;
+}
+
 function _esc(s) {
   const d = document.createElement("div");
   d.textContent = s == null ? "" : String(s);
@@ -23,9 +33,9 @@ function _rel(iso) {
   const t = Date.parse(String(iso || "").replace(" ", "T"));
   if (!t) return "";
   const s = Math.max(0, (Date.now() - t) / 1000);
-  if (s < 3600) return Math.floor(s / 60) + "m ago";
-  if (s < 86400) return Math.floor(s / 3600) + "h ago";
-  return Math.floor(s / 86400) + "d ago";
+  if (s < 3600) return T("intel.rel.m", "{n}m ago", { n: Math.floor(s / 60) });
+  if (s < 86400) return T("intel.rel.h", "{n}h ago", { n: Math.floor(s / 3600) });
+  return T("intel.rel.d", "{n}d ago", { n: Math.floor(s / 86400) });
 }
 
 function _card(title, sigil, bodyHtml) {
@@ -55,8 +65,8 @@ function _build() {
   _root.innerHTML =
     '<div class="cmdp-panel sysdiag-panel" role="document" style="max-width:640px">' +
       '<div class="cmdp-search-row"><span class="cmdp-search-icon" aria-hidden="true">✦</span>' +
-        '<span class="sysdiag-title">intelligence</span>' +
-        '<button type="button" class="sysdiag-refresh intel-refresh">refresh</button>' +
+        '<span class="sysdiag-title">' + _esc(T("intel.title", "intelligence")) + '</span>' +
+        '<button type="button" class="sysdiag-refresh intel-refresh">' + _esc(T("intel.refresh", "refresh")) + '</button>' +
         '<kbd class="cmdp-esc">esc</kbd></div>' +
       '<div class="intel-body" style="padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px;max-height:70vh;overflow-y:auto"></div>' +
     "</div>";
@@ -77,7 +87,7 @@ function _build() {
 
 async function _load() {
   const body = _root.querySelector(".intel-body");
-  body.innerHTML = '<div class="sysdiag-muted" style="grid-column:1/-1">loading…</div>';
+  body.innerHTML = '<div class="sysdiag-muted" style="grid-column:1/-1">' + _esc(T("intel.loading", "loading…")) + "</div>";
   const [mood, goals, world, timeline, decisions, skills] = await Promise.all([
     _get("/mood"), _get("/goals"), _get("/world"), _get("/timeline"), _get("/decisions"), _get("/skills/learned"),
   ]);
@@ -85,10 +95,10 @@ async function _load() {
 
   // Mood
   if (mood) {
-    cards.push(_card("Mood", "◎",
-      '<div style="font-size:0.8rem;color:var(--text)">' + _esc(mood.label || "steady") + "</div>" +
-      '<div style="font-size:0.62rem;color:var(--text-dim);margin-top:3px">valence ' + _esc((mood.valence || 0).toFixed ? mood.valence.toFixed(2) : mood.valence) +
-      " · energy " + _esc((mood.energy || 0).toFixed ? mood.energy.toFixed(2) : mood.energy) + "</div>"));
+    cards.push(_card(T("intel.card.mood", "Mood"), "◎",
+      '<div style="font-size:0.8rem;color:var(--text)">' + _esc(mood.label || T("intel.mood.steady", "steady")) + "</div>" +
+      '<div style="font-size:0.62rem;color:var(--text-dim);margin-top:3px">' + _esc(T("intel.mood.valence", "valence")) + " " + _esc((mood.valence || 0).toFixed ? mood.valence.toFixed(2) : mood.valence) +
+      " · " + _esc(T("intel.mood.energy", "energy")) + " " + _esc((mood.energy || 0).toFixed ? mood.energy.toFixed(2) : mood.energy) + "</div>"));
   }
 
   // Goals
@@ -98,9 +108,9 @@ async function _load() {
     const body2 = gs.length
       ? gs.slice(0, 5).map((g) => '<div style="margin-bottom:2px">• ' + _esc(g.goal || g.title || g.description || g.text || "") +
           (g.progress != null ? ' <span style="color:var(--text-dim)">(' + _esc(g.progress) + "%)</span>" : "") + "</div>").join("")
-      : '<div class="sysdiag-muted">No active goals. Tell Layla what you\'re working toward.</div>';
-    cards.push(_card("Goals", "⌖", '<div style="font-size:0.7rem;color:var(--text)">' + body2 + "</div>" +
-      (c.total ? '<div style="font-size:0.6rem;color:var(--text-dim);margin-top:4px">' + _esc(c.on_track || 0) + " on track · " + _esc(c.stalled || 0) + " stalled</div>" : "")));
+      : '<div class="sysdiag-muted">' + _esc(T("intel.goals.empty", "No active goals. Tell Layla what you're working toward.")) + "</div>";
+    cards.push(_card(T("intel.card.goals", "Goals"), "⌖", '<div style="font-size:0.7rem;color:var(--text)">' + body2 + "</div>" +
+      (c.total ? '<div style="font-size:0.6rem;color:var(--text-dim);margin-top:4px">' + _esc(c.on_track || 0) + " " + _esc(T("intel.goals.ontrack", "on track")) + " · " + _esc(c.stalled || 0) + " " + _esc(T("intel.goals.stalled", "stalled")) + "</div>" : "")));
   }
 
   // World model
@@ -108,11 +118,11 @@ async function _load() {
     const cp = world.current_project || {};
     const idx = world.repo_index || {};
     const lines = [];
-    if (cp.name) lines.push("Project: " + _esc(cp.name) + (cp.lifecycle_stage ? " [" + _esc(cp.lifecycle_stage) + "]" : ""));
-    if (idx.files) lines.push(_esc(idx.files) + " files · " + _esc(idx.symbols || 0) + " symbols");
-    if ((world.projects || []).length) lines.push(_esc(world.projects.length) + " known project(s)");
-    cards.push(_card("World model", "⊛",
-      '<div style="font-size:0.7rem;color:var(--text)">' + (lines.length ? lines.join("<br>") : '<span class="sysdiag-muted">No project set. Point Layla at a workspace.</span>') + "</div>"));
+    if (cp.name) lines.push(_esc(T("intel.world.project", "Project:")) + " " + _esc(cp.name) + (cp.lifecycle_stage ? " [" + _esc(cp.lifecycle_stage) + "]" : ""));
+    if (idx.files) lines.push(_esc(idx.files) + " " + _esc(T("intel.world.files", "files")) + " · " + _esc(idx.symbols || 0) + " " + _esc(T("intel.world.symbols", "symbols")));
+    if ((world.projects || []).length) lines.push(_esc(world.projects.length) + " " + _esc(T("intel.world.known", "known project(s)")));
+    cards.push(_card(T("intel.card.world", "World model"), "⊛",
+      '<div style="font-size:0.7rem;color:var(--text)">' + (lines.length ? lines.join("<br>") : '<span class="sysdiag-muted">' + _esc(T("intel.world.empty", "No project set. Point Layla at a workspace.")) + "</span>") + "</div>"));
   }
 
   // Timeline
@@ -121,8 +131,8 @@ async function _load() {
     const body2 = ev.length
       ? ev.slice(0, 6).map((e) => '<div style="margin-bottom:3px"><span style="color:var(--asp-cassandra,var(--asp));font-size:0.6rem">' +
           _esc(_rel(e.timestamp || e.created_at)) + "</span> " + _esc(e.content || e.description || e.summary || "") + "</div>").join("")
-      : '<div class="sysdiag-muted">Nothing yet — milestones and events show here as you work together.</div>';
-    cards.push(_card("Timeline", "⧗", '<div style="font-size:0.68rem;color:var(--text)">' + body2 + "</div>"));
+      : '<div class="sysdiag-muted">' + _esc(T("intel.timeline.empty", "Nothing yet — milestones and events show here as you work together.")) + "</div>";
+    cards.push(_card(T("intel.card.timeline", "Timeline"), "⧗", '<div style="font-size:0.68rem;color:var(--text)">' + body2 + "</div>"));
   }
 
   // Decisions
@@ -130,8 +140,8 @@ async function _load() {
     const ds = decisions.decisions || [];
     const body2 = ds.length
       ? ds.slice(0, 5).map((d) => '<div style="margin-bottom:2px">• ' + _esc(d.decision || d.title || d.summary || d.content || "") + "</div>").join("")
-      : '<div class="sysdiag-muted">No recorded decisions yet.</div>';
-    cards.push(_card("Decisions", "⚖", '<div style="font-size:0.68rem;color:var(--text)">' + body2 + "</div>"));
+      : '<div class="sysdiag-muted">' + _esc(T("intel.decisions.empty", "No recorded decisions yet.")) + "</div>";
+    cards.push(_card(T("intel.card.decisions", "Decisions"), "⚖", '<div style="font-size:0.68rem;color:var(--text)">' + body2 + "</div>"));
   }
 
   // Learned skills
@@ -139,12 +149,12 @@ async function _load() {
     const sk = skills.skills || [];
     const body2 = sk.length
       ? sk.slice(0, 6).map((s) => '<div style="margin-bottom:2px">• ' + _esc(s.name || "") +
-          (s.step_count ? ' <span style="color:var(--text-dim)">(' + _esc(s.step_count) + " steps)</span>" : "") + "</div>").join("")
-      : '<div class="sysdiag-muted">Layla learns reusable skills from finished multi-step tasks — none yet.</div>';
-    cards.push(_card("Learned skills", "⚔", '<div style="font-size:0.68rem;color:var(--text)">' + body2 + "</div>"));
+          (s.step_count ? ' <span style="color:var(--text-dim)">(' + _esc(s.step_count) + " " + _esc(T("intel.skills.steps", "steps")) + ")</span>" : "") + "</div>").join("")
+      : '<div class="sysdiag-muted">' + _esc(T("intel.skills.empty", "Layla learns reusable skills from finished multi-step tasks — none yet.")) + "</div>";
+    cards.push(_card(T("intel.card.skills", "Learned skills"), "⚔", '<div style="font-size:0.68rem;color:var(--text)">' + body2 + "</div>"));
   }
 
-  body.innerHTML = cards.length ? cards.join("") : '<div class="sysdiag-muted" style="grid-column:1/-1">Nothing loaded.</div>';
+  body.innerHTML = cards.length ? cards.join("") : '<div class="sysdiag-muted" style="grid-column:1/-1">' + _esc(T("intel.nothing_loaded", "Nothing loaded.")) + "</div>";
 }
 
 export function openIntelligence() {

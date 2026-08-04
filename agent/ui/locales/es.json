@@ -152,5 +152,51 @@
     "apply_to_file": "¿Aplicar al archivo?",
     "requires_approval": "Aplicar (requiere aprobación)",
     "delete_conversation": "¿Eliminar esta conversación?"
+  },
+  "intel": {
+    "title": "inteligencia",
+    "refresh": "actualizar",
+    "loading": "cargando…",
+    "nothing_loaded": "No se ha cargado nada.",
+    "rel": {
+      "m": "hace {n}m",
+      "h": "hace {n}h",
+      "d": "hace {n}d"
+    },
+    "card": {
+      "mood": "Ánimo",
+      "goals": "Objetivos",
+      "world": "Modelo del mundo",
+      "timeline": "Cronología",
+      "decisions": "Decisiones",
+      "skills": "Habilidades aprendidas"
+    },
+    "mood": {
+      "steady": "estable",
+      "valence": "valencia",
+      "energy": "energía"
+    },
+    "goals": {
+      "empty": "No hay objetivos activos. Dile a Layla en qué estás trabajando.",
+      "ontrack": "en marcha",
+      "stalled": "estancados"
+    },
+    "world": {
+      "project": "Proyecto:",
+      "files": "archivos",
+      "symbols": "símbolos",
+      "known": "proyecto(s) conocido(s)",
+      "empty": "Ningún proyecto configurado. Indícale a Layla un espacio de trabajo."
+    },
+    "timeline": {
+      "empty": "Nada todavía: los hitos y eventos aparecerán aquí a medida que trabajéis juntos."
+    },
+    "decisions": {
+      "empty": "Aún no hay decisiones registradas."
+    },
+    "skills": {
+      "empty": "Layla aprende habilidades reutilizables de tareas de varios pasos completadas — todavía ninguna.",
+      "steps": "pasos"
+    }
   }
 }
